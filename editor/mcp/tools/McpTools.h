@@ -133,8 +133,6 @@ namespace jasperengine::editor::mcp {
     // S80: diff_images (editor_tools) and the title_art group
     void registerImageDiffTools(McpRegistry& registry);
     void registerTitleArtTools(McpRegistry& registry);
-    // S95: edit_string_table (group localization)
-    void registerLocalizationTools(McpRegistry& registry);
     void registerHubTools(McpRegistry& registry);
 
     void registerPoseTools(McpRegistry& registry);

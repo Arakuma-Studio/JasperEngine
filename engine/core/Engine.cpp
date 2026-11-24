@@ -36,7 +36,6 @@
 #include "audio/MusicPlayer.h"
 #include "object/sound/Audio.h"
 #endif
-#include "object/TitleArt.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -1812,8 +1811,6 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
 
     // Log.onMessageReceived and the console commands a released script added
     Log::onMessageReceived.removeByTagSubstring(substring);
-    // TitleArt.onLanguageChanged, which is Localization.onLanguageChanged too (S95 REQ-27)
-    TitleArt::getOnLanguageChanged().removeByTagSubstring(substring);
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
 #if JASPERENGINE_SOUND_LAYER
@@ -1866,7 +1863,6 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
 
     // what scripts subscribed to the log and the console commands they added
     Log::onMessageReceived.clear();
-    TitleArt::getOnLanguageChanged().clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
 #if JASPERENGINE_SOUND_LAYER

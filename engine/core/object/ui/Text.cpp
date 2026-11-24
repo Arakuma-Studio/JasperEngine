@@ -638,15 +638,3 @@ void Text::setVisibleCharacters(int visibleCharacters){
 int Text::getVisibleCharacters() const{
     return getComponent<TextComponent>().visibleCharacters;
 }
-
-void Text::setLocalizationKey(const std::string& key){
-    TextComponent& textcomp = getComponent<TextComponent>();
-    if (textcomp.localizationKey != key){
-        textcomp.localizationKey = key;
-        textcomp.needUpdateText = true;
-    }
-}
-
-std::string Text::getLocalizationKey() const{
-    return getComponent<TextComponent>().localizationKey;
-}

@@ -3790,7 +3790,6 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("shadowSoftness", &Text::getShadowSoftness, &Text::setShadowSoftness)
         .addProperty("shadowDilate", &Text::getShadowDilate, &Text::setShadowDilate)
         .addProperty("visibleCharacters", &Text::getVisibleCharacters, &Text::setVisibleCharacters)
-        .addProperty("localizationKey", &Text::getLocalizationKey, &Text::setLocalizationKey)
         .addProperty("outlineNeighbors", &Text::getOutlineNeighbors, &Text::setOutlineNeighbors)
         .addProperty("pixelScale", &Text::getPixelScale)
         .addProperty("effectiveFontSize", &Text::getEffectiveFontSize)

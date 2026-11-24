@@ -482,8 +482,6 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         std::vector<fs::path> paths;
         for (const FileChange& change : changes) paths.push_back(change.path);
         project->audioFilesChanged(paths);
-        // String Tables (S95 REQ-29), another program's edits included
-        project->localizationFilesChanged(paths);
     }
     {
         // S50 R47: linked tile maps, after this pass: they write .tileset files and edit the scene,

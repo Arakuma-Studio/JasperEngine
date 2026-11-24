@@ -295,9 +295,6 @@ namespace {
                  .visibleIf = &textIsVector),
         JE_FIELD(TextComponent, visibleCharacters, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault, .updateFlags = kText, .min = -1.0f,
                  .tooltip = "Characters past it are not drawn (-1: all)."),
-        // S95 REQ-28: drawn by the Text drawer's key picker (InspectorPixelFont.cpp)
-        JE_FIELD(TextComponent, localizationKey, .flags = OmitIfDefault | Hidden, .updateFlags = kText, .label = "Localization Key",
-                 .tooltip = "A String Tables key: the text is its value in the game's language (\"Table:key\" for one table)."),
     };
 
     // ---------------------------------------------------------------- Image

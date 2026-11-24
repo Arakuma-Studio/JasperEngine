@@ -1,7 +1,9 @@
 # S95 — Lua runtime gaps from the JasperArcade port
 
-**Status: implemented** on `feature/s95-lua-runtime-gaps` (WP-1..WP-6). What the code does where it
-differs from this text is in "Deviations" at the end.
+**Status: implemented** on `feature/s95-lua-runtime-gaps` (WP-1..WP-5). WP-6 (String Tables, S10)
+is not in this branch: it is one design with `game-ui-localization.md` (its D-15), which ships it
+(Deviations, WP-6). What the code does where it differs from this text is in "Deviations" at the
+end.
 
 Program "arcade engine gaps" (S92-S98). Source: the port's ledger,
 `JasperArcade-Ported/docs/port/ENGINE_LIMITATIONS.md`, section "Scripting / runtime API (Lua)",
@@ -645,7 +647,7 @@ Per package, before merging:
 - **The class index.** Exports write `je-dataassets.json` (class to assets) for
   `DataAsset.loadAll`; editor Play builds the index from the project.
 - **Data classes leave Add Script**: a `---@dataasset` module is not offered as a component.
-- **`AssetType::DataAsset = 35`** (36 is WP-6's String Table).
+- **`AssetType::DataAsset = 35`** (the next free value when this branch lands).
 - **References load with the asset.** References to other Data Assets load together with the asset
   that holds them (cycles handled), not lazily per field: a lazy proxy would break `pairs` and `#list`.
 - **Stored type name** is `data_asset`; `assetType = "dataasset"` is accepted as an alias.
@@ -654,28 +656,15 @@ Per package, before merging:
 
 ### WP-6 String Tables
 
-- **`Localization.language` reads the resolved language.** Writing it is `TitleArt.setLanguage`
-  (one value, REQ-27). Reading it gives the language strings show (the device's or the Game view's
-  matched against the project's languages, never `""`), as Unity's `SelectedLocale` does, while
-  `TitleArt.getLanguage()` keeps returning the global value (`""` = Auto).
-- **File shape.** `{version: 1, entries: [{key, comment?, values: {language: text | {form: text}}}]}`:
-  a list keeps the authored order and leaves room for the translators' comment (the CSV context
-  column, the XLIFF note).
-- **Interchange of plurals.** CSV and XLIFF carry a plural value as an ICU plural
-  (`{count, plural, one {...} other {...}}`), which translation tools read; `#` imports as `{count}`.
-- **The duplicate-key check** runs with `check --lua` (and for a `.stringtable` given to `--files`
-  or the hook) as tool `strings`, and `edit_string_table` results list `duplicates`.
-- **`AssetType::StringTable = 36`.** 35 is left for WP-5's Data Assets, whatever order they land in
-  (the gap reads "unknown", as 27 once did).
-- **The prebuilt player** gets `localization` in `game.json` (languages, Remember Language Choice,
-  tables) and now also applies Project Settings > Localization > Default Language, which only
-  Compile builds set before.
-- **`TitleArt.onLanguageChanged` is cleared at Stop** and on a script's tag removal
-  (`Engine::clearAllSubscriptions`, `removeSubscriptionsByTag`): it is `Localization.onLanguageChanged`
-  too, and a Lua listener left from one Play would outlive its Lua state.
-- **`data-loc` text is never markup**: a translation cannot inject elements.
-- **The editor shows String Tables in Edit mode too** (a Text's Localization Key, `data-loc`), and a
-  table edited during Play applies at once.
+- **Moved to `game-ui-localization.md` (user decision: one design).** S95's WP-6 and that spec
+  built the same feature; their merged design is that spec's D-15, which takes from WP-6 the
+  positional `{0}` arguments, a writable `Localization.language`, the stored names
+  `localizationKey` and `localization.remember_language`, `setLocalized` on Text and HTML
+  elements, edits applied at once, keyed text in Edit mode and the `check` tool `strings`, and
+  drops the rest (the one-file format, `{form: text}` plurals, `data-loc`, `"Table:key"`, the
+  cross-table duplicate check, the `.meta` GUID). This branch drops its WP-6 implementation
+  (REQ-25 to REQ-30, AC-22) so that one lands; S10 closes with it. `AssetType::StringTable` is
+  that spec's, and WP-5's `DataAsset` takes the next free value when this branch lands.
 
 ### WP-2 Frame order and transforms
 

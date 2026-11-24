@@ -90,7 +90,6 @@ const ToolModule TOOL_MODULES[] = {
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19
     {registerVcsTools, "Git/SVN status, diffs, commits, locks", "vcs"},   // S29
     {registerTitleArtTools, "Title Art", "title_art"},   // S80
-    {registerLocalizationTools, "Localization: String Tables", "localization"},   // S95
     {registerSpriteTools, "Sprites: Aseprite import, atlases, drawing", "sprites"},   // S44 (S45, S47)
     {registerPixelFontTools, "Pixel art: font previews", "pixel_art"},   // S51
 };

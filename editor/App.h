@@ -83,7 +83,6 @@ namespace jasperengine::editor{
     class GraphEditorWindow;
     class ProceduralMaterialWindow;
     class AudioCapturesWindow;
-    class StringTablesWindow;
     class ApplyPaletteDialog;
     class PaletteWindow;
     class PixelArtCheckWindow;
@@ -277,7 +276,6 @@ namespace jasperengine::editor{
         GraphEditorWindow* graphEditorWindow;
         ProceduralMaterialWindow* proceduralMaterialWindow;
         AudioCapturesWindow* audioCapturesWindow;
-        StringTablesWindow* stringTablesWindow;
         // S43: Window > 2D > Palette and the Apply Palette / Reduce Colours dialog
         PaletteWindow* paletteWindow = nullptr;
         PixelArtCheckWindow* pixelArtCheckWindow = nullptr;
@@ -768,7 +766,6 @@ namespace jasperengine::editor{
         void openConsole() override;
         void openPaletteWindow(const std::string& palettePath, const std::string& texturePath) override;
         PaletteWindow* getPaletteWindow() const { return paletteWindow; }
-        StringTablesWindow* getStringTablesWindow() const { return stringTablesWindow; }
         PixelArtCheckWindow* getPixelArtCheckWindow() const { return pixelArtCheckWindow; }
         PixelArtCleanupWindow* getPixelArtCleanupWindow() const { return pixelArtCleanupWindow; }
         tilemap::TilePaletteWindow* getTilePaletteWindow() const { return tilePaletteWindow; }

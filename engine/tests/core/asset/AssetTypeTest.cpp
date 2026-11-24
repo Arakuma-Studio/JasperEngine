@@ -25,10 +25,6 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
         if (value == 27) {
             continue;
         }
-        // 35 is reserved for S95's Data Assets (WP-5), which may land after the String Tables
-        if (value == 35 && std::string(assetTypeName(static_cast<AssetType>(value))) == "unknown") {
-            continue;
-        }
         const AssetType type = static_cast<AssetType>(value);
         const std::string name = assetTypeName(type);
         EXPECT_NE(name, "unknown") << "value " << (int)value << " has no name";
@@ -40,7 +36,5 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
     EXPECT_EQ(assetTypeFromName("title_art"), AssetType::TitleArt);
     EXPECT_EQ(assetTypeFromName("sound_event"), AssetType::SoundEvent);
     EXPECT_EQ(static_cast<int>(AssetType::TitleArt), 34) << "the numbers are a file format: append only";
-    EXPECT_EQ(assetTypeFromName("string_table"), AssetType::StringTable);
-    EXPECT_EQ(static_cast<int>(AssetType::StringTable), 36) << "the numbers are a file format: append only";
     EXPECT_EQ(assetTypeFromName("nothing"), AssetType::Unknown);
 }

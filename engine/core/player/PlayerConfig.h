@@ -19,7 +19,6 @@
 #include "render/shadow/ShadowTiers.h"
 #include "texture/MaterialPbr.h"
 #include "device/DeviceSettings.h"
-#include "localization/Localization.h"
 #include "pixelart/ScreenTransition.h"
 
 #include "json.hpp"
@@ -159,11 +158,6 @@ namespace jasperengine::player {
         // MiB unused clips stay cached (SoundPool::setUnusedBudget)
         int audioUnusedClipCacheMb = 16;
 
-        // Project Settings > Localization (S87 R64, S95 REQ-27): the default language with its
-        // fallbacks applied, and the String Tables (a Compile build's generated main sets the same)
-        std::string defaultLanguage = "en";
-        LocalizationConfig localization;
-
         // the project's native plugins with code for other platforms only (the Compile build's
         // NativeBridge::setPlatformOnlyPlugins): a call to one fails with "unavailable", and its
         // Lua mock answering logs a warning
@@ -183,7 +177,5 @@ namespace jasperengine::player {
     // The player's audio as Play and a Compile build have it: the voices and sample rate, then the
     // project's mixer (before the first scene loads)
     JASPERENGINE_API void applyAudio(const PlayerConfig& game);
-    // ... and its languages and String Tables, Remember Language Choice applied (before any script)
-    JASPERENGINE_API void applyLocalization(const PlayerConfig& game);
 
 }

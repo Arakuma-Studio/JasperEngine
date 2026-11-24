@@ -26,8 +26,6 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Framebuffer.h"
 #include "htmlui/compat/DocumentLoader.h"
-#include "htmlui/HtmlUILocalization.h"
-#include "LocalizationArgsLua.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
@@ -236,25 +234,6 @@ namespace {
     int elementRemoveEventListener(lua_State* L){
         UIElement* self = luabridge::detail::Userdata::get<UIElement>(L, 1, false);
         return listenerCall(L, self ? UIElementAccess::get(*self) : nullptr, false);
-    }
-
-    // el:setLocalized(key [, args]) (S95 REQ-28): the element follows the key and the language
-    int elementSetLocalized(lua_State* L){
-        UIElement* self = luabridge::detail::Userdata::get<UIElement>(L, 1, false);
-        const char* key = luaL_checkstring(L, 2);
-        bool failed = false;
-        {
-            LocalizationArgs args;
-            std::string error;
-            if (!luaReadLocalizationArgs(L, 3, args, error)){
-                lua_pushstring(L, ("setLocalized: " + error + ".").c_str());
-                failed = true;
-            }else if (self){
-                HtmlUILocalization::setLocalized(UIElementAccess::get(*self), key, args);
-            }
-        }
-        if (failed) return lua_error(L);
-        return 0;
     }
 
     Rml::ElementDocument* luaDocumentOf(UIDocument* document){
@@ -1291,7 +1270,6 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
             return self->hasAttribute(name) ? std::optional<std::string>(self->getAttribute(name)) : std::nullopt;
         })
         .addFunction("setAttribute", &UIElement::setAttribute)
-        .addFunction("setLocalized", &elementSetLocalized)
         .addFunction("hasAttribute", &UIElement::hasAttribute)
         .addFunction("removeAttribute", &UIElement::removeAttribute)
         .addFunction("getAttributes", &UIElement::getAttributes)

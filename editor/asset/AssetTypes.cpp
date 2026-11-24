@@ -73,8 +73,6 @@ namespace {
             {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
             // Data Assets (S95 REQ-21): the file holds no GUID, its .meta does
             {{AssetType::DataAsset, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".dataasset"}},
-            // String Tables (S95): the file holds no GUID, its .meta does
-            {{AssetType::StringTable, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".stringtable"}},
         };
         return table;
     }

@@ -1563,7 +1563,6 @@ set(JASPERENGINE_SRCS
     core/htmlui/HtmlUIContext.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
-    core/htmlui/HtmlUILocalization.cpp
     core/htmlui/HtmlUITexture.cpp
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEffects.cpp
@@ -1665,9 +1664,6 @@ set(JASPERENGINE_SRCS
     core/native/NativeBridge.cpp
     core/net/Http.cpp
     core/net/HttpUtil.cpp
-    core/localization/Localization.cpp
-    core/localization/PluralRules.cpp
-    core/localization/StringTable.cpp
     core/io/UserSettings.cpp
     core/io/AtomicFile.cpp
     core/io/ScopedFileLock.cpp
@@ -1855,7 +1851,6 @@ set(JASPERENGINE_SRCS
     core/script/binding/FoliageLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/TitleArtClassesLua.cpp
-    core/script/binding/LocalizationClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/PhysicsQueriesLua.cpp

@@ -161,7 +161,6 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createAnimationMontage", "Create Animation Montage", AppMenuCommand::AssetsCreateAnimationMontage);
     b.menu("assets.createAudioMixer", "Create Audio Mixer", AppMenuCommand::AssetsCreateAudioMixer);
     b.menu("assets.createSoundEvent", "Create Sound Event", AppMenuCommand::AssetsCreateSoundEvent);
-    b.menu("assets.createStringTable", "Create String Table", AppMenuCommand::AssetsCreateStringTable);
     b.menu("assets.createSoundEventFromClips", "Create Sound Event from Clips", AppMenuCommand::AssetsCreateSoundEventFromClips);
     b.menu("assets.createPlaceholderSound", "Create Placeholder Sound", AppMenuCommand::AssetsCreatePlaceholderSound);
     b.menu("assets.reanalyzeAudio", "Reanalyze Audio", AppMenuCommand::AssetsReanalyzeAudio).description =
@@ -263,7 +262,6 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
     b.menu("window.graphEditor", "Graph Editor", AppMenuCommand::ToggleGraphEditor);
     b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
-    b.menu("window.stringTables", "String Tables", AppMenuCommand::ToggleStringTables);
     b.menu("window.voxelVolume", "Voxel Volume", AppMenuCommand::ToggleVoxelVolume).description = "Brushes, materials, overlays and stats of a Voxel Volume";
     b.menu("window.voxelSlice", "Voxel Slice", AppMenuCommand::ToggleVoxelSlice).description = "One plane of a Voxel Volume, drawn on the CPU";
     b.menu("window.noiseGraph", "Noise Graph", AppMenuCommand::ToggleNoiseGraph).description = "Edit a Noise Graph: the node graphs that generate Terrains";

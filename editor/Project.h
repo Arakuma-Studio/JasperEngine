@@ -684,14 +684,10 @@ namespace jasperengine::editor{
     struct LocalizationSettings {
         std::vector<std::string> languages;     // BCP 47, canonical case
         std::string defaultLanguage;
-        // S95 REQ-27: a language the game chose is stored in UserSettings and applied at the next start
-        bool rememberLanguage = true;
 
         // the default with its fallbacks applied ("" -> the first language, else "en")
         std::string effectiveDefault() const { return !defaultLanguage.empty() ? defaultLanguage : !languages.empty() ? languages.front() : "en"; }
-        bool operator==(const LocalizationSettings& other) const {
-            return languages == other.languages && defaultLanguage == other.defaultLanguage && rememberLanguage == other.rememberLanguage;
-        }
+        bool operator==(const LocalizationSettings& other) const { return languages == other.languages && defaultLanguage == other.defaultLanguage; }
         bool operator!=(const LocalizationSettings& other) const { return !(*this == other); }
     };
 
@@ -2180,14 +2176,6 @@ namespace jasperengine::editor{
         const PresentationSettings& getPresentationSettings() const;
         LocalizationSettings& getLocalizationSettings() { return localizationSettings; }
         const LocalizationSettings& getLocalizationSettings() const { return localizationSettings; }
-        // S95 REQ-27, REQ-30: what a game's Localization gets (its languages, Remember Language
-        // Choice and every .stringtable of the assets folder, in path order)
-        LocalizationConfig getLocalizationConfig() const;
-        // the editor's Localization and project default language from the project: at its open,
-        // a Localization settings change and a .stringtable change (Edit mode and Play alike)
-        void applyLocalization();
-        // after files changed on disk: a changed, added or removed .stringtable applies again
-        void localizationFilesChanged(const std::vector<std::filesystem::path>& changed);
         // Play start: Engine.targetFrameRate / vSyncCount, Screen and the application info from
         // these settings, before any script runs (the generated main of an export does the same)
         void applyPresentationSettings();

@@ -16,7 +16,6 @@
 #include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
 #include "htmlui/HtmlUIClock.h"
-#include "htmlui/HtmlUILocalization.h"
 #include "htmlui/UIParticleSystemElement.h"
 #include "htmlui/anim/AnimEngine.h"
 
@@ -242,8 +241,6 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
             if (loadedDocument){
                 documents[entity] = loadedDocument;
                 document.loaded = true;
-                // S95 REQ-28: data-loc texts before the document's scripts see it
-                HtmlUILocalization::apply(loadedDocument);
                 scriptDocumentLoaded(entity);
             }else{
                 document.loadFailed = true;
@@ -305,11 +302,6 @@ void UIDocumentSystem::update(double dt){
     }
     // the live safe area, before the layout below
     updateSafeAreaProperties();
-    // S95 REQ-28: data-loc texts follow a language or table change
-    if (localizedGeneration != Localization::generation()){
-        localizedGeneration = Localization::generation();
-        for (const auto& loaded : documents) HtmlUILocalization::apply(loaded.second);
-    }
 
     // p2-html: <script type="text/lua"> of the documents loaded above, before the layout
     compatRunScripts();

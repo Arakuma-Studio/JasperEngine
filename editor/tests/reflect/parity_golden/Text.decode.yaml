@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest a764dedb672566cd
+digest efc401147bc713b1
 --- 0
 font: []
 text: "multi\nline"
@@ -15,7 +15,6 @@ shadowEnabled: true
 shadowColor: [-0, 0, 72, 0]
 shadowOffset: [0, -85]
 visibleCharacters: 6
-localizationKey: with "quotes"
 --- 1
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf]
 text: "Hello, YAML: [1, 2]"
@@ -27,7 +26,6 @@ fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
 visibleCharacters: 0
-localizationKey: "#hash"
 --- 2
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf]
 text: ""
@@ -45,7 +43,6 @@ shadowColor: [1e-45, 0, 3062.2715, 6644.9365]
 shadowOffset: [3818.4624, 1827.0333]
 shadowSoftness: 2608.3262
 visibleCharacters: 5
-localizationKey: "- dash"
 --- 3
 font: [fonts/F0.ttf, "", fonts/F2.ttf]
 text: "multi\nline"
@@ -73,7 +70,6 @@ shadowEnabled: true
 shadowColor: [-0, -0.24143454, -56, 80]
 shadowOffset: [-55, -15.285714]
 shadowSoftness: 0.75127137
-localizationKey: "Hello, YAML: [1, 2]"
 --- 5
 font: ["", fonts/F1.ttf]
 text: "  padded  "
@@ -88,7 +84,6 @@ outlineColor: [3e+38, -0, 5256.1304, -22.714285]
 shadowEnabled: true
 shadowColor: [-94.57143, -102.28571, 0, 23]
 shadowOffset: [-47, 2822.8708]
-localizationKey: "multi\nline"
 --- 6
 font: [fonts/F0.ttf]
 text: "  padded  "
@@ -104,7 +99,6 @@ shadowColor: [-0.3379538, -0.805099, -0.9656368, 3e+38]
 shadowOffset: [-0.16696316, 0.9542685]
 shadowSoftness: 0.23796543
 visibleCharacters: 7
-localizationKey: "#hash"
 --- 7
 font: [fonts/F0.ttf, fonts/F1.ttf]
 text: textures/a.png
@@ -119,4 +113,3 @@ outlineWidth: 0.44957882
 shadowEnabled: true
 shadowColor: [3e+38, 0, 0, 4453.748]
 visibleCharacters: 14
-localizationKey: true

@@ -36,7 +36,6 @@ namespace jasperengine::editor {
         Palette,        // a .palette (S43; the main menu's Create > 2D)
         NoiseGraph,
         Tileset,        // a .tileset (S50; the main menu's Create > 2D)
-        StringTable,    // a .stringtable (S95)
         DataAsset       // a .dataasset of a data class (S95): a submenu of the project's data classes
     };
 

@@ -5576,39 +5576,6 @@ CASES = [
         "max_turns": 12,
     },
     {
-        "id": "guard_string_table_set_not_json_edit",
-        "kind": "guard",
-        "what_happened": "S95 String Tables: edit_string_table set writes a .stringtable as one undo step, refuses a "
-                         "language the project does not ship and answers the keys each language still misses. Asked to "
-                         "fill a table's missing translations, agents should use it (the localization group) rather than "
-                         "hand-edit the JSON, which gives no undo, no check of the plural forms and no missing report. The "
-                         "tool is in a group, so only the guide's Other areas entry and Tool groups line lead to it.",
-        "text_at_issue": "Guide 'Other areas': 'localization' and the Tool groups line's 'localization'; edit_string_table description: 'set writes "
-                         "{key: {language: text or plural forms or null, comment}} in one undo step'.",
-        "source": "S95 WP-6 (new tool text); no failure on record",
-        "prompt": "assets/Localization/UI.stringtable lacks Spanish for two keys: menu.quit is \"Salir\", and hud.lives is "
-                  "\"{count} vida\" for one and \"{count} vidas\" otherwise. Add them.",
-        "files": {"assets/Localization/UI.stringtable": '{\n  "version": 1,\n  "entries": [\n'
-                  '    {"key": "menu.quit", "values": {"en": "Quit"}},\n'
-                  '    {"key": "hud.lives", "values": {"en": {"one": "{count} life", "other": "{count} lives"}}}\n  ]\n}\n'},
-        "mocks": [
-            {"tool": "edit_string_table", "args": {"action": "get"},
-             "result": ok("assets/Localization/UI.stringtable: 2 key(s). es misses 2 key(s) (menu.quit, ...).",
-                          {"path": "assets/Localization/UI.stringtable", "name": "UI", "keys": 2, "languages": ["en", "es"],
-                           "missing": {"en": [], "es": ["menu.quit", "hud.lives"]},
-                           "entries": [{"key": "menu.quit", "values": {"en": "Quit"}},
-                                       {"key": "hud.lives", "values": {"en": {"one": "{count} life", "other": "{count} lives"}}}],
-                           "next": "es misses 2 key(s) (menu.quit, ...)."})},
-            {"tool": "edit_string_table", "args": {"action": "set"},
-             "result": ok("Changed assets/Localization/UI.stringtable: 2 key(s) set, one undo step. Nothing missing.",
-                          {"path": "assets/Localization/UI.stringtable", "name": "UI", "keys": 2, "languages": ["en", "es"],
-                           "missing": {"en": [], "es": []}})},
-        ],
-        "checks": {"calls": [{"tool": "edit_string_table", "args": {"action": "set"}}],
-                   "edits_must_not": [r"\.stringtable$"]},
-        "max_turns": 10,
-    },
-    {
         "id": "bad_data_asset_written_by_hand",
         "kind": "bad",
         "what_happened": "S95 REQ-24: a .dataasset is JSON, so an agent asked for one writes the file itself and gets no GUID "

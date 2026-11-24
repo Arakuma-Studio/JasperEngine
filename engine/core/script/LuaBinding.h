@@ -100,7 +100,6 @@ namespace jasperengine {
         // S76: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride (NavigationComponentsLua.cpp)
         static void registerNavigationComponentClasses(lua_State *L);
         static void registerTitleArtClasses(lua_State *L);
-        static void registerLocalizationClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
         static void registerNoiseClasses(lua_State *L);
         static void registerTerrainClasses(lua_State *L);

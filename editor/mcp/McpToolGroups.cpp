@@ -46,7 +46,6 @@ std::vector<ToolGroupInfo> buildGroups() {
         // the pixel-art family's group: S42's check, S43's palettes, S51's font previews, S48's effect contact sheets, S46's cleanup and lints (pages named in pixel-art.md)
         {"pixel_art", "Pixel art: checks, lints, cleanup, palettes, fonts, effect contact sheets (jasper://docs/pixel-art)."},
         {"title_art", "Title Art documents (.titleart): library, edit, render, check, export."},
-        {"localization", "String Tables (.stringtable): keys, translations, plurals, missing keys, CSV/XLIFF (jasper://docs/localization)."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

@@ -1874,7 +1874,6 @@ const FieldEntry kBody_TextComponent_fields[] = {
     JE_RF(TextComponent, shadowSoftness, 0xaf91db2fu, Float),
     JE_RF(TextComponent, shadowDilate, 0xb1df77c7u, Float),
     JE_RF(TextComponent, visibleCharacters, 0xdd043522u, Int),
-    JE_RF(TextComponent, localizationKey, 0x756bf148u, String),
 };
 const StructTable kBody_TextComponent{"text", kBody_TextComponent_fields, std::size(kBody_TextComponent_fields)};
 

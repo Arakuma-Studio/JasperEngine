@@ -2536,10 +2536,7 @@ std::vector<Setting> mcpSettingsTable() {
                     const std::string code = TitleArtLanguage::canonicalize(item.get<std::string>());
                     if (std::find(codes.begin(), codes.end(), code) == codes.end()) codes.push_back(code);
                 }
-                if (apply) {
-                    ctx.project()->getLocalizationSettings().languages = codes;
-                    ctx.project()->applyLocalization();
-                }
+                if (apply) ctx.project()->getLocalizationSettings().languages = codes;
                 return true;
             };
             add(s);
@@ -2558,22 +2555,11 @@ std::vector<Setting> mcpSettingsTable() {
                 }
                 const std::string code = value.get<std::string>();
                 if (!code.empty() && !TitleArtLanguage::isValid(code, &error)) return false;
-                if (apply) {
-                    ctx.project()->getLocalizationSettings().defaultLanguage = TitleArtLanguage::canonicalize(code);
-                    ctx.project()->applyLocalization();
-                }
+                if (apply) ctx.project()->getLocalizationSettings().defaultLanguage = TitleArtLanguage::canonicalize(code);
                 return true;
             };
             add(s);
         }
-        // S95 REQ-27: the language a game chose comes back at its next start
-        add(boolSetting("localization.remember_language",
-                        "Store the language a game chooses (Localization.language, TitleArt.setLanguage) in UserSettings and apply it at its next start.",
-                        [](Project& p) { return p.getLocalizationSettings().rememberLanguage; },
-                        [](Project& p, bool v) {
-                            p.getLocalizationSettings().rememberLanguage = v;
-                            p.applyLocalization();
-                        }));
         // Project Settings > Title Art (S80 R52): one undoable step each
         add(titleArtSetting("title_art.auto_bake", "bool", "Rebake a Title Art document's existing outputs 500 ms after its last edit.", {},
                             [](const TitleArtProjectSettings& t) { return Json(t.autoBake); },
@@ -4469,7 +4455,6 @@ const Placement placements[] = {
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"localization.languages", "Localization", "", "Languages", "language locale translation"},
     {"localization.default_language", "Localization", "", "Default Language", "language locale translation"},
-    {"localization.remember_language", "Localization", "", "Remember Language Choice", "language locale translation saved userSettings playerprefs"},
     {"title_art.auto_bake", "Title Art", "", "Auto Bake", "titleart bake automatic outputs png"},
     {"title_art.stale_bakes_on_export", "Title Art", "", "Stale Bakes On Export", "titleart export rebake warn fail outputs"},
     {"title_art.frame_budget_ms", "Title Art", "Runtime", "Frame Budget", "titleart realtime glyph atlas render time slice ms"},

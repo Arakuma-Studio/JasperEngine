@@ -183,14 +183,6 @@ namespace {
 
 // ==================================================================== export
 
-std::string editor::titleStringsCsvField(const std::string& value) {
-    return csvField(value);
-}
-
-std::string editor::titleStringsXmlEscape(const std::string& value, bool attribute) {
-    return xmlEscape(value, attribute);
-}
-
 std::string editor::exportTitleStringsCsv(const std::vector<TitleStringsDocument>& docs, const std::vector<std::string>& languages) {
     const bool multi = docs.size() > 1;
     std::set<std::string> sources;
