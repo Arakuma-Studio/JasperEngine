@@ -117,7 +117,7 @@ void main() {
     vec4 acc = vec4(0.0);
     for (int j = 0; j < taps; j++) for (int i = 0; i < taps; i++) {
         vec2 uv = taPlaceUv(gl_FragCoord.xy + (vec2(i, j) + 0.5) / float(taps) - 0.5);
-        if (uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0) acc += texture(TA_TEX0, uv);
+        if (uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0) acc += textureLod(TA_TEX0, uv, 0.0);
     }
     frag_color = acc / float(taps * taps);
 }

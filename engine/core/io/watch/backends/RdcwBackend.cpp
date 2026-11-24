@@ -103,6 +103,10 @@ namespace jasperengine::watch {
         // flush requests, and the last one the thread has served (its events handed to the sink)
         std::condition_variable flushedCv;
         uint64_t flushRequested = 0, flushServed = 0;
+        // start() waits for the thread's first read (armed: readPending; else armError)
+        std::condition_variable armedCv;
+        bool armDone = false;
+        DWORD armError = 0;
         fs::path pendingOldName;
         bool hasPendingOldName = false;
         ULONGLONG pendingOldNameAt = 0;
@@ -142,17 +146,25 @@ bool RdcwBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::string& 
     }
     {
         std::lock_guard<std::mutex> lock(readMutex);
-        if (!issueReadLocked()) {
-            error = "ReadDirectoryChangesW failed (error " + std::to_string(GetLastError()) + ")";
-            readPending = false;
-        }
+        armDone = false;
+        armError = 0;
     }
-    if (!readPending) {
+    // the thread issues the first read too (run()); started means armed, so this waits for it
+    running = true;
+    thread = std::thread([this]() { run(); });
+    bool armed = false;
+    DWORD armFailure = 0;
+    {
+        std::unique_lock<std::mutex> lock(readMutex);
+        armedCv.wait(lock, [this]() { return armDone; });
+        armed = readPending;
+        armFailure = armError;
+    }
+    if (!armed) {
+        error = "ReadDirectoryChangesW failed (error " + std::to_string(armFailure) + ")";
         stop();
         return false;
     }
-    running = true;
-    thread = std::thread([this]() { run(); });
     return true;
 }
 
@@ -294,13 +306,24 @@ void RdcwBackend::deliver(std::vector<RawEvent>&& events) {
     sink->onRawEvents(std::move(events));
 }
 
-// Only this thread issues the reads (a read is cancelled when the thread that issued it exits) and
-// so only this thread completes them: a completed read's event is set in the issuing thread's
-// context, after the write that completed it may have returned. A flush therefore asks this thread
-// to drain: once it runs again, the completion of every change made before the request is in.
+// Only this thread issues the reads, the first one included (a read is cancelled when the thread
+// that issued it exits) and so only this thread completes them: a completed read's event is set in
+// the issuing thread's context, after the write that completed it may have returned. A flush
+// therefore asks this thread to drain: once it runs again, the completion of every change made
+// before the request is in. The first read issued by start()'s caller (the service's dispatcher)
+// completed in that thread's context, and a flush here could miss the first change after start
+// (JournalCursorsAndPause/Native on Windows).
 void RdcwBackend::run() {
+    bool armed = false;
+    {
+        std::lock_guard<std::mutex> lock(readMutex);
+        armed = issueReadLocked();
+        if (!armed) armError = GetLastError();
+        armDone = true;
+    }
+    armedCv.notify_all();
     HANDLE handles[3] = {overlapped.hEvent, stopEvent, flushEvent};
-    while (running) {
+    while (armed && running) {
         DWORD timeout = INFINITE;   // idle: no wakeup (S05 R21)
         {
             std::lock_guard<std::mutex> lock(readMutex);
