@@ -102,7 +102,7 @@ TEST(LuaMath, VectorMoveTowardsAndLerp){
 // angle-axis constructor. Four numbers are always the raw (w, x, y, z) form.
 TEST(LuaMath, EulerFactoryMatchesConstructor){
     ASSERT_NE(LuaBinding::getLuaState(), nullptr);
-    EXPECT_EQ(runLua(R"lua(
+    EXPECT_EQ(runMathLua(R"lua(
         assert(type(Quaternion.euler) == "function" and type(Quaternion.angleAxis) == "function", "the factories exist")
         local function near(a, b)
             -- q and -q are the same rotation
@@ -156,7 +156,7 @@ TEST(LuaMath, WrongCallsRaise){
     Scene scene;
     GameObject go(&scene);
     luabridge::setGlobal(L, go, "wrongCallsGo");
-    EXPECT_EQ(runLua(R"lua(
+    EXPECT_EQ(runMathLua(R"lua(
         -- the crashes S32 named
         local ok, message = pcall(Quaternion, nil)
         assert(not ok, "Quaternion(nil) raises")

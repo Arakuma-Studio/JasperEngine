@@ -160,7 +160,7 @@ TEST(LuaHierarchy, NoTransformGivesNil){
     ASSERT_EQ(scene.findComponent<Transform>(action.getEntity()), nullptr);
 
     luabridge::setGlobal(L, GameObject(&scene, action.getEntity()), "noTransform");
-    EXPECT_EQ(runLua(L, R"lua(
+    EXPECT_EQ(runHierarchyLua(L, R"lua(
         local go = noTransform
         for _, name in ipairs({"getWorldPosition", "getWorldRotation", "getWorldScale"}) do
             assert(go[name](go) == nil, name .. " is nil")
@@ -198,7 +198,7 @@ TEST(LuaHierarchy, TransformMembersReadAndWrite){
     Scene scene;
     const Entity mover = named(scene, "Mover");
     luabridge::setGlobal(L, GameObject(&scene, mover), "mover");
-    EXPECT_EQ(runLua(L, R"lua(
+    EXPECT_EQ(runHierarchyLua(L, R"lua(
         mover:setPosition(1, 2)
         assert(mover.position == Vector3(1, 2, 0), "(x, y): z is 0")
         mover:setPosition(1, 2, 3)
@@ -233,7 +233,7 @@ TEST(LuaHierarchy, FindEntityUnderParent){
     lua_pushinteger(L, b); lua_setglobal(L, "B_ID");
     lua_pushinteger(L, blueA); lua_setglobal(L, "BLUE_A");
     lua_pushinteger(L, blueB); lua_setglobal(L, "BLUE_B");
-    EXPECT_EQ(runLua(L, R"lua(
+    EXPECT_EQ(runHierarchyLua(L, R"lua(
         assert(hierScene:findEntity("Blue", B_ID) == BLUE_B, "B's Blue")
         assert(hierScene:findEntity("Blue", A_ID) == BLUE_A, "A's Blue")
         local found = hierB:findChild("Blue")
@@ -284,7 +284,7 @@ TEST(LuaHierarchy, WorldPoseFreshAfterParentMove){
 
     luabridge::setGlobal(L, GameObject(&scene, parent), "poseParent");
     luabridge::setGlobal(L, GameObject(&scene, child), "poseChild");
-    ASSERT_EQ(runLua(L, R"lua(
+    ASSERT_EQ(runHierarchyLua(L, R"lua(
         Engine.onUpdate:add("worldPoseFresh", function()
             poseParent.position = Vector3(7, -2, 5)
             poseParent:setRotation(10, 70, -30)
@@ -308,7 +308,7 @@ TEST(LuaHierarchy, WorldPoseFreshAfterParentMove){
     EXPECT_TRUE(sameWorldBits(&after.worldPosition, &before.worldPosition, sizeof(Vector3)));
     EXPECT_TRUE(sameWorldBits(&after.modelMatrix, &before.modelMatrix, sizeof(Matrix4)));
 
-    ASSERT_EQ(runLua(L, "poseSeenPosition = poseSeen.position; poseSeenRotation = poseSeen.rotation; "
+    ASSERT_EQ(runHierarchyLua(L, "poseSeenPosition = poseSeen.position; poseSeenRotation = poseSeen.rotation; "
                         "poseSeenScale = poseSeen.scale; poseSeenModel = poseSeen.model; poseSeen = nil"), "");
     const Vector3 seenPosition = luabridge::getGlobal(L, "poseSeenPosition").cast<Vector3>().value();
     const Quaternion seenRotation = luabridge::getGlobal(L, "poseSeenRotation").cast<Quaternion>().value();
@@ -326,7 +326,7 @@ TEST(LuaHierarchy, WorldPoseFreshAfterParentMove){
     // the values did move: the check compares this frame's pose, not two stale ones
     EXPECT_FALSE(sameWorldBits(&before.worldPosition, &world.worldPosition, sizeof(Vector3)));
 
-    ASSERT_EQ(runLua(L, "poseParent = nil; poseChild = nil; poseSeenPosition = nil; poseSeenRotation = nil; "
+    ASSERT_EQ(runHierarchyLua(L, "poseParent = nil; poseChild = nil; poseSeenPosition = nil; poseSeenRotation = nil; "
                         "poseSeenScale = nil; poseSeenModel = nil"), "");
     EXPECT_NO_ENGINE_ERRORS();
 }
@@ -339,7 +339,7 @@ TEST(LuaHierarchy, CameraConstructorUsesRotation){
 
     Scene scene;
     luabridge::setGlobal(L, &scene, "cameraTestScene");
-    ASSERT_EQ(runLua(L, R"(
+    ASSERT_EQ(runHierarchyLua(L, R"(
         cameraTest = Camera(cameraTestScene)
         assert(cameraTest.useTarget == false, "a new camera aims with its rotation")
         assert(cameraTest:isUsingTarget() == false)
@@ -363,7 +363,7 @@ TEST(LuaHierarchy, CameraConstructorUsesRotation){
     EXPECT_NEAR(ahead.y, 0.0f, 1e-4f);
     EXPECT_NEAR(ahead.z, -1.0f, 1e-4f);
 
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(runHierarchyLua(L, R"(
         cameraTest:setTarget(0, 0, 0)
         assert(cameraTest.useTarget == true, "setTarget turns target mode on")
         cameraTest.useTarget = false

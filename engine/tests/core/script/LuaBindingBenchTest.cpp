@@ -101,7 +101,7 @@ TEST(LuaBindingBench, EngineEventDispatch){
     ASSERT_NE(L, nullptr);
 
     constexpr int scripts = 1000;
-    ASSERT_EQ(runLua(L, "benchDispatch = {}\n"
+    ASSERT_EQ(luaBindingBenchRunLua(L, "benchDispatch = {}\n"
                         "local Script = {}\n"
                         "function Script:onUpdate() self.n = self.n + 1 end\n"
                         "for i = 1, " + std::to_string(scripts) + " do\n"
@@ -122,7 +122,7 @@ TEST(LuaBindingBench, EngineEventDispatch){
     std::sort(samples.begin(), samples.end());
     std::printf("[bench] Lua engine event dispatch (1000 onUpdate): %.1f ns per handler\n", samples[runs / 2]);
 
-    ASSERT_EQ(runLua(L, "assert(benchDispatch[1].n == " + std::to_string(20 + dispatches * runs) + ", 'every dispatch ran')\n"
+    ASSERT_EQ(luaBindingBenchRunLua(L, "assert(benchDispatch[1].n == " + std::to_string(20 + dispatches * runs) + ", 'every dispatch ran')\n"
                         "for i = 1, " + std::to_string(scripts) + " do Engine.onUpdate:remove('benchDispatch' .. i) end\n"
                         "benchDispatch = nil\ncollectgarbage()"), "");
 }
