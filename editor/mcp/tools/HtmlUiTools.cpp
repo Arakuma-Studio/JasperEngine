@@ -2052,7 +2052,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "create_ui_document";
         tool.title = "Create UI Document";
         tool.description =
-            "Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo step). A missing html is made "
+            "Create a GameObject with a UI Document showing an HTML/CSS file. A missing html is made "
             "from template (blank or an example) with its .css, assets and Lua (script: attached); existing files are "
             "kept unless overwrite. Returns the files and the first load's diagnostics.";
         tool.inputSchema = object({
