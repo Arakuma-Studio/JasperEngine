@@ -692,7 +692,7 @@ fails without the change. Where a red control cannot be built, the PR says so.
 | AC12 | F12 | `TextureTest.ReadyAfterLoad` (false before the GPU texture, true after `load()` and an upload). The stub is in `test_lua_api.py`. Red: a missing property |
 | AC13 | F13 | `ShaderManifestTest.RequireVertexNormals` and `ShaderVariantGpu.VertexNormalsWithoutVarying`: it compiles on glcore and Vulkan, and reflection shows `a_normal` with no `v_normal`. Red: an unknown require |
 | AC14 | F14 | `ShaderManifestTest.GameTimeIsAnOrdinaryProperty`: `@property gameTime float 0` parses with no error and a per-mesh value is written. Red: the error at `:624` |
-| AC15 | F15 | `AmbientGpu.GradientTrilight`: a sphere's top, side and bottom pixels match sky, equator and ground. `AmbientGpu.ColorModeUnchanged` equals the pre-change golden bit for bit. `ShaderVariantTest.ColorAmbientHasNoGradientDefine`. `test_scene_settings.py::test_ambient_gradient` (set, undo, save and reload). Red: the mode is unknown |
+| AC15 | F15 | Dropped: S99 (#149) delivers the gradient ambient and its tests (Deviations, P3 F15) |
 | AC16 | F16 | `test_sky.py::test_skybox_visible_and_inactive`: in Play, Lua `sky.visible = false` and then an inactive sky entity each give a screenshot pixel equal to the clear colour, and the probe capture skips them. Red: a Lua error, and the inactive sky still drawn |
 | AC17 | F17 | The existing sky goldens (`SkyGpu.*`, `test_post_fx_golden.py` defaults) are unchanged. The S15 frame pass list shows the sky after the opaque queue with a depth test. Red: the pass order before |
 | AC18 | F18 | `SkyGpu.PanoramaVertexMapping`: max channel error ≤ 3/255 against per-pixel mapping outside ±10° of the poles (a documented band). The `check_shader` source of the variant has no `atan`, `acos` or `dFdx`. Red: the feature is unknown |
@@ -972,6 +972,12 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
   Console note naming the mesh. ARCADE's B `Walk.fbx` reimported on a scratch editor gives slot 0
   `Material.003` (Unity's `EntityBody`, by the Unity `.meta`'s external objects) then slot 1
   `Material.004` (`Eyes`): Unity's renderer order (body, eyes).
+- **P7, F42, and P6, F33/F34 (old projects).** By the lead's rule that old projects behave as
+  before, neither change reaches saved content. The project 1 -> 2 migration sets Project Settings >
+  Mesh > FBX Submesh Order to Used Materials (the old order: the used slots, an empty one shifting the
+  next ones); new projects take Material Slots. The scene 8 -> 9 and prefab 9 -> 10 migrations tick
+  Legacy Root Drift (`legacyRootDrift`) on every Animator and Animation Player without Apply Root
+  Motion, which keeps a clip's drift with Apply Root Motion off; new components play in place.
 - **P7, F43.** Tangents: Calculate is meshoptimizer's `meshopt_generateTangents` in its
   MikkTSpace-compatible mode (the vendored library, unpatched). Normals: None also drops the
   tangents. Smoothing groups go from the FBX conversion to the cook as a `_SMOOTHING_GROUP` vertex
