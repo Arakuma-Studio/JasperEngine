@@ -10,6 +10,7 @@
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
 #include "titleart/TitleArtExport.h"
+#include "titleart/fonts/WebFontDecode.h"
 #include "titleart/three_d/Title3DExport.h"
 #include "titleart/runtime/TitleArtRuntimeExport.h"
 #include "titleart/runtime/TitleArtRuntimeFonts.h"
@@ -3890,6 +3891,9 @@ bool editor::Exporter::copyAssets() {
         // editor, a game loads by path
         if (relPath.extension() == ".tileset" && writeResolvedTileset(entry.path(), destPath)) return TreeStep::Skip;
 
+        // a web font ships decoded, at its own path: the stylesheets' url() still name it
+        if (shipWebFontDecoded(entry.path(), destPath)) return TreeStep::Skip;
+
         // a PNG ships without the editor's own chunks (the sprite normals recipe and paint layer,
         // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly, the
         // file read once
@@ -4034,6 +4038,31 @@ bool editor::Exporter::copyPngWithoutEditorChunks(const fs::path& source, const 
         return false;   // copied as it is instead
     }
     return true;
+}
+
+bool editor::Exporter::shipWebFontDecoded(const fs::path& source, const fs::path& destination) {
+    if (!titlefonts::isWebFontFileName(FileUtils::pathToUtf8(source.filename()))) return false;
+    std::string text;
+    if (!assetio::readFile(source, text)) {
+        Out::warning("%s ships undecoded, so the game cannot load it: it could not be read", FileUtils::pathToGenericUtf8(source).c_str());
+        return false;
+    }
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(text.data());
+    const titlefonts::FontFileFormat format = titlefonts::sniffFontFormat(bytes, text.size());
+    // a plain font named .woff loads as it is
+    if (format != titlefonts::FontFileFormat::Woff && format != titlefonts::FontFileFormat::Woff2) return false;
+    const titlefonts::DecodedFont decoded = titlefonts::decodeWebFont(bytes, text.size());
+    std::string why = decoded.error;
+    if (decoded.ok) {
+        io::AtomicWriteOptions options;
+        options.skipIfUnchanged = true;     // a re-export keeps the build cache's file time
+        const io::WriteResult written = io::writeFileAtomic(
+            destination, std::string_view(reinterpret_cast<const char*>(decoded.bytes.data()), decoded.bytes.size()), options);
+        if (written.ok()) return true;
+        why = written.message;
+    }
+    Out::warning("%s ships undecoded, so the game cannot load it: %s", FileUtils::pathToGenericUtf8(source).c_str(), why.c_str());
+    return false;
 }
 
 bool editor::Exporter::copyCustomShaderSources() {

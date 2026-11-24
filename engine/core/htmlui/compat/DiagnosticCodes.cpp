@@ -300,7 +300,7 @@ namespace {
         {codes::FontVariantUnavailable, W, false, "font-variant-unavailable", "Font variant unavailable",
          "The font provider does not offer a requested weight or style; the text falls back to the nearest available one."},
         {codes::WoffOnly, W, false, "woff-only", "WOFF only",
-         "Legacy diagnostic, no longer emitted: WOFF and WOFF2 fonts are decoded at runtime."},
+         "Legacy diagnostic, no longer emitted: WOFF and WOFF2 fonts are imported as they are."},
         {codes::LicenseNote, I, false, "license-note", "License note",
          "The license of an imported resource was recorded, or it is unknown and must be verified before shipping."},
         {codes::ManifestFileMissing, W, false, "manifest-file-missing", "Manifest file missing",

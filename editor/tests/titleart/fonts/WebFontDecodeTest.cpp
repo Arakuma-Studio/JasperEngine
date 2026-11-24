@@ -15,6 +15,9 @@
 #include "titleart/fonts/FontTables.h"
 #include "titleart/fonts/WebFontDecode.h"
 
+#include "Exporter.h"
+#include "support/TestTempDir.h"
+
 #include <algorithm>
 
 using namespace jasperengine::editor::titlefonts;
@@ -197,4 +200,74 @@ TEST(WebFontDecodeTest, ListsTheFacesOfACollection) {
     EXPECT_EQ(faces[1].family, "Source Sans 3");
     const std::vector<uint8_t> single = reference();
     EXPECT_EQ(listFontFaces(single.data(), single.size()).size(), 1u);
+}
+
+// Red control: a WOFF directory the format forbids (a table over the directory, a duplicate tag,
+// overlapping tables) or a length that wraps 32-bit padding decodes instead
+TEST(WebFontDecodeTest, InvalidWoffDirectoriesAreRefused) {
+    const std::vector<uint8_t> original = woff();
+    const size_t tables = (size_t(original[12]) << 8) | original[13];
+    ASSERT_GT(tables, 2u);
+    auto refused = [&](size_t at, uint32_t value) {
+        std::vector<uint8_t> bytes = original;
+        put32(bytes, at, value);
+        EXPECT_FALSE(decodeWebFont(bytes.data(), bytes.size()).ok) << "field at " << at;
+    };
+    refused(8, (uint32_t)original.size() + 1);                  // total length
+    refused(16, be32(original, 16) + 4);                        // sfnt length
+    refused(44 + 4, 44);                                        // a table over the directory
+    refused(44 + 20, be32(original, 44));                       // a duplicate tag
+    refused(44 + 20 + 4, be32(original, 44 + 4));               // overlapping tables
+    for (uint32_t oversized : {0xFFFFFFFDu, 0xFFFFFFFEu, 0xFFFFFFFFu}) refused(44 + 12, oversized);
+}
+
+// Red control: FontFace without the decoder installed refuses both files
+TEST(WebFontDecodeTest, InstalledInFontFaceWebFontsOpenAsTheirSfnt) {
+    installWebFontDecoder();
+    const std::vector<uint8_t> ttf = reference();
+    const std::shared_ptr<jasperengine::FontFace> expected = jasperengine::FontFace::loadMemory(ttf.data(), ttf.size(), 0, true, "reference");
+    ASSERT_NE(expected, nullptr);
+    for (const std::vector<uint8_t>& source : {woff(), woff2()}) {
+        std::string error;
+        const std::shared_ptr<jasperengine::FontFace> face = jasperengine::FontFace::loadMemory(source.data(), source.size(), 0, true, "web font", &error);
+        ASSERT_NE(face, nullptr) << error;
+        EXPECT_EQ(face->getFamilyName(), expected->getFamilyName());
+        EXPECT_EQ(face->getUnitsPerEm(), expected->getUnitsPerEm());
+        for (uint32_t codepoint : {0x41u, 0x67u, 0xE9u}) {
+            const uint32_t glyph = face->getGlyphIndex(codepoint);
+            ASSERT_NE(glyph, 0u);
+            EXPECT_EQ(glyph, expected->getGlyphIndex(codepoint));
+            EXPECT_EQ(face->getGlyphAdvance(glyph, 1.0f), expected->getGlyphAdvance(glyph, 1.0f));
+        }
+    }
+    jasperengine::FontFace::setWebFontDecoder(nullptr);
+}
+
+// Red control: copying a .woff2 as it is ships bytes a player (no decoder) cannot open
+TEST(WebFontDecodeTest, TheExportShipsWebFontsDecodedAtTheirPath) {
+    jasperengine::test::TestTempDir dir{"webfont-export"};
+    auto write = [](const fs::path& path, const std::vector<uint8_t>& bytes) {
+        std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
+    };
+    write(dir.path() / "brand.woff2", woff2());
+    write(dir.path() / "brand.woff", woff());
+    write(dir.path() / "plain.woff", reference());
+    std::vector<uint8_t> damaged = woff2();
+    damaged.resize(damaged.size() / 2);
+    write(dir.path() / "damaged.woff2", damaged);
+    write(dir.path() / "brand.ttf", reference());
+
+    for (const char* name : {"brand.woff2", "brand.woff"}) {
+        const fs::path shipped = dir.path() / (std::string("out-") + name);
+        ASSERT_TRUE(jasperengine::editor::Exporter::shipWebFontDecoded(dir.path() / name, shipped)) << name;
+        const std::vector<uint8_t> bytes = readBytes(shipped);
+        EXPECT_EQ(sniffFontFormat(bytes.data(), bytes.size()), FontFileFormat::TrueType) << name;
+        std::string error;
+        EXPECT_NE(jasperengine::FontFace::loadMemory(bytes.data(), bytes.size(), 0, true, name, &error), nullptr) << error;
+    }
+    // left to the plain copy: a TrueType file named .woff, one that does not decode, not a web font
+    EXPECT_FALSE(jasperengine::editor::Exporter::shipWebFontDecoded(dir.path() / "plain.woff", dir.path() / "out-plain.woff"));
+    EXPECT_FALSE(jasperengine::editor::Exporter::shipWebFontDecoded(dir.path() / "damaged.woff2", dir.path() / "out-damaged.woff2"));
+    EXPECT_FALSE(jasperengine::editor::Exporter::shipWebFontDecoded(dir.path() / "brand.ttf", dir.path() / "out-brand.ttf"));
+    EXPECT_FALSE(fs::exists(dir.path() / "out-damaged.woff2"));
 }

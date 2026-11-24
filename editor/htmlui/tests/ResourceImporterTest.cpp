@@ -13,6 +13,7 @@
 #include "htmlui/StylesheetImporter.h"
 
 #include "htmlui/compat/UrlResolver.h"
+#include "titleart/fonts/WebFontDecode.h"
 #include "util/FontFace.h"
 
 #include "json.hpp"
@@ -150,6 +151,8 @@ TEST(Stylesheets, WoffOnlyFontsAreImported){
     EXPECT_TRUE(withCode(direct, "HTMLUI-IMP-0007").empty()) << dump(direct);
     const std::string bytes = project.read("assets/" + font.entry()->path);
     std::string error;
+    // as the editor's main() does: the imported file opens in the editor's HTML UI
+    jasperengine::editor::titlefonts::installWebFontDecoder();
     EXPECT_NE(jasperengine::FontFace::loadMemory((const unsigned char*)bytes.data(), bytes.size(), 0, true,
                                                 font.entry()->path, &error), nullptr) << error;
 }

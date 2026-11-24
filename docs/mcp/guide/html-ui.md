@@ -1550,10 +1550,10 @@ about 1000 particles (one mesh is rebuilt each frame).
 
 ### Fonts
 
-WOFF and WOFF2 decode to SFNT in memory when loaded, on every export target. Keep the
-original font files in the project and use them directly in `@font-face`; no converter
-or network access is needed in the player. Decoded fonts are limited to 64 MiB. Invalid
-compressed data reports the font path and format in the Console. The remote importer
+WOFF and WOFF2 files work directly in `@font-face`: the editor decodes them when it loads
+them, and an export ships each one decoded at its own path, so the player needs no decoder.
+Decoded fonts are limited to 64 MiB. A font that does not decode reports its path, format and
+reason in the Console, and the export warns that it ships undecoded. The remote importer
 prefers a TTF/OTF source when one is supplied and imports WOFF/WOFF2 sources otherwise.
 
 - Built in: Roboto and Noto Sans Arabic; every generic family maps to them.

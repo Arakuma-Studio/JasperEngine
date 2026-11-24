@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,7 +32,16 @@ namespace jasperengine {
     // shape a face from one thread at a time, which is the main thread for both users).
     class JASPERENGINE_API FontFace {
     public:
-        // TTF/OTF/TTC and WOFF/WOFF2 (decoded to owned SFNT bytes, at most 64 MiB).
+        // WOFF or WOFF2 bytes to the sfnt they encode; false with the reason in `error`
+        using WebFontDecoder = std::function<bool(const unsigned char* data, size_t length,
+                                                  std::vector<unsigned char>& sfnt, std::string& error)>;
+        // The editor installs its import decoder at startup, before any font loads. Players have
+        // none: the export ships every .woff/.woff2 decoded to sfnt at its own path, so the
+        // decoder costs them nothing.
+        static void setWebFontDecoder(WebFontDecoder decoder);
+
+        // TTF/OTF/TTC; WOFF/WOFF2 too where a web font decoder is installed (decoded to owned
+        // sfnt bytes).
         // Read through the engine's file system (Data::open: project-relative, asset://,
         // data://, resource packs). On failure returns nullptr and, when `error` is given,
         // writes why ("Font file not found: <path>", "Failed to initialize font: <path>");

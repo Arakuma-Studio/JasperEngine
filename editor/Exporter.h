@@ -574,6 +574,10 @@ namespace jasperengine::editor {
         // without them, or not a well-formed PNG, as it is); false when it is not a .png or could
         // not be read or written this way (the caller then copies the file)
         static bool copyPngWithoutEditorChunks(const std::filesystem::path& source, const std::filesystem::path& destination);
+        // a .woff / .woff2 written as the sfnt it encodes (titlefonts::decodeWebFont), at the same
+        // path: players have no web font decoder. False when it is not a web font, or (warned with
+        // the decoder's reason) cannot be decoded or written; the caller then copies it as it is
+        static bool shipWebFontDecoded(const std::filesystem::path& source, const std::filesystem::path& destination);
         // What the HTML/CSS of each UI Document refers to (HtmlUIDependencies): a missing
         // file, a path outside the assets directory or a remote URL is an error with
         // file:line:column (project-relative); an absolute path is a warning. documents =

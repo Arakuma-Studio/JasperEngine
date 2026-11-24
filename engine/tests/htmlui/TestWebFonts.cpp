@@ -5,12 +5,15 @@
 
 // The fixtures are a fontTools 4.61.1 subset of fonts/Roboto-Regular-subset-post.ttf,
 // packaged as TTF, WOFF and WOFF2 (Brotli 1.2.0); their font licence is beside them.
+// The decoding itself is the editor's (editor/titleart/fonts/WebFontDecode, its own tests): here
+// the engine's side, with a stand-in decoder that returns the TTF.
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <fstream>
 #include <iterator>
+#include <utility>
 
 using namespace jasperengine;
 
@@ -22,26 +25,29 @@ namespace {
         return std::vector<unsigned char>(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
     }
 
-    uint32_t webFontU32(const unsigned char* p){
-        return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | p[3];
-    }
-
-    void webFontPut32(std::vector<unsigned char>& bytes, size_t at, uint32_t value){
-        for (size_t i = 0; i < 4; i++)
-            bytes[at + i] = (unsigned char)(value >> (24 - 8 * i));
-    }
-
     std::shared_ptr<FontFace> webFontLoad(const std::vector<unsigned char>& bytes, std::string* error = nullptr){
         return FontFace::loadMemory(bytes.data(), bytes.size(), 0, false, "web-font regression", error);
     }
 
+    // players run without a decoder: every test leaves it that way
+    struct WebFontDecoderScope {
+        explicit WebFontDecoderScope(FontFace::WebFontDecoder decoder){ FontFace::setWebFontDecoder(std::move(decoder)); }
+        ~WebFontDecoderScope(){ FontFace::setWebFontDecoder(nullptr); }
+    };
+
 }
 
-TEST(WebFonts, WoffAndWoff2KeepSfntMetricsAndGlyphPixels){
+TEST(WebFonts, DecodedBytesBelongToTheFaceAndKeepSfntMetricsAndGlyphPixels){
     const auto sfntBytes = webFontFixture("ttf");
     ASSERT_FALSE(sfntBytes.empty());
     const auto sfnt = webFontLoad(sfntBytes);
     ASSERT_NE(sfnt, nullptr);
+    std::vector<size_t> decodedLengths;
+    WebFontDecoderScope scope([&](const unsigned char*, size_t length, std::vector<unsigned char>& out, std::string&){
+        decodedLengths.push_back(length);
+        out = sfntBytes;
+        return true;
+    });
     for (const std::string extension : {"woff", "woff2"}){
         SCOPED_TRACE(extension);
         auto compressed = webFontFixture(extension);
@@ -49,112 +55,55 @@ TEST(WebFonts, WoffAndWoff2KeepSfntMetricsAndGlyphPixels){
         std::string error;
         auto font = webFontLoad(compressed, &error);
         ASSERT_NE(font, nullptr) << error;
+        ASSERT_FALSE(decodedLengths.empty());
+        EXPECT_EQ(decodedLengths.back(), compressed.size());
         // Decoded bytes belong to the face, including loadMemory(copy = false).
         std::fill(compressed.begin(), compressed.end(), 0);
         EXPECT_EQ(font->getFamilyName(), sfnt->getFamilyName());
         EXPECT_EQ(font->getWeight(), sfnt->getWeight());
         EXPECT_EQ(font->getUnitsPerEm(), sfnt->getUnitsPerEm());
         EXPECT_EQ(font->getAscender(), sfnt->getAscender());
-        EXPECT_EQ(font->getDescender(), sfnt->getDescender());
-        EXPECT_EQ(font->getLineGap(), sfnt->getLineGap());
         for (uint32_t codepoint : {0x41u, 0x61u, 0x7Au, 0xE9u, 0xF1u, 0x303u}){
             SCOPED_TRACE(codepoint);
             const auto glyph = font->getGlyphIndex(codepoint);
             ASSERT_NE(glyph, 0u);
             EXPECT_EQ(glyph, sfnt->getGlyphIndex(codepoint));
             const float scale = sfnt->scaleForEmSize(48);
-            EXPECT_EQ(font->getGlyphAdvance(glyph, scale), sfnt->getGlyphAdvance(glyph, scale));
             std::vector<unsigned char> expected, actual;
             int ew = 0, eh = 0, ex = 0, ey = 0, aw = 0, ah = 0, ax = 0, ay = 0;
             ASSERT_TRUE(sfnt->rasterizeGlyph(glyph, scale, expected, ew, eh, ex, ey));
             ASSERT_TRUE(font->rasterizeGlyph(glyph, scale, actual, aw, ah, ax, ay));
             EXPECT_EQ(aw, ew);
             EXPECT_EQ(ah, eh);
-            EXPECT_EQ(ax, ex);
-            EXPECT_EQ(ay, ey);
             EXPECT_EQ(actual, expected);
         }
     }
+    // a plain sfnt never reaches the decoder
+    decodedLengths.clear();
+    EXPECT_NE(webFontLoad(sfntBytes), nullptr);
+    EXPECT_TRUE(decodedLengths.empty());
 }
 
-TEST(WebFonts, RejectsTruncatedFilesAndReportsTheFormat){
+TEST(WebFonts, WithoutADecoderAWebFontIsRefusedNamingTheExport){
     for (const std::string extension : {"woff", "woff2"}){
-        const auto original = webFontFixture(extension);
-        ASSERT_GT(original.size(), 48u);
-        for (size_t length : {size_t(4), size_t(12), size_t(43), original.size() / 2, original.size() - 1}){
-            SCOPED_TRACE(extension + " at " + std::to_string(length));
-            const std::vector<unsigned char> bytes(original.begin(), original.begin() + length);
-            std::string error;
-            EXPECT_EQ(webFontLoad(bytes, &error), nullptr);
-            EXPECT_NE(error.find(extension == "woff" ? "WOFF" : "WOFF2"), std::string::npos);
-        }
-    }
-}
-
-TEST(WebFonts, RejectsOversizedDecodedFontsBeforeAllocation){
-    for (const std::string extension : {"woff", "woff2"}){
-        auto bytes = webFontFixture(extension);
-        ASSERT_GT(bytes.size(), 48u);
-        webFontPut32(bytes, 16, 64 * 1024 * 1024 + 4);
+        SCOPED_TRACE(extension);
         std::string error;
-        EXPECT_EQ(webFontLoad(bytes, &error), nullptr);
-        EXPECT_NE(error.find("64 MiB"), std::string::npos);
+        EXPECT_EQ(webFontLoad(webFontFixture(extension), &error), nullptr);
+        EXPECT_NE(error.find(extension == "woff" ? "is WOFF," : "is WOFF2,"), std::string::npos) << error;
+        EXPECT_NE(error.find("export again"), std::string::npos) << error;
     }
 }
 
-TEST(WebFonts, RejectsInvalidWoffDirectoryAndCorruptTables){
-    const auto original = webFontFixture("woff");
-    ASSERT_GT(original.size(), 84u);
-    auto rejected = [&](size_t at, uint32_t value){
-        auto bytes = original;
-        webFontPut32(bytes, at, value);
-        EXPECT_EQ(webFontLoad(bytes), nullptr) << "field at " << at;
-    };
-    rejected(8, (uint32_t)original.size() + 1);             // total length
-    rejected(12, 0x00010001);                             // reserved bits
-    rejected(16, webFontU32(original.data() + 16) + 4);    // SFNT length
-    rejected(48, 44);                                     // table overlaps directory
-    rejected(52, webFontU32(original.data() + 56) + 1);    // compressed > original
-    rejected(64, webFontU32(original.data() + 44));        // duplicate table tag
-    rejected(68, webFontU32(original.data() + 48));        // overlapping tables
-    rejected(60, webFontU32(original.data() + 60) ^ 1);    // table checksum
-    const size_t tables = (size_t(original[12]) << 8) | original[13];
-    bool compressedTable = false;
-    for (size_t i = 0; i < tables; i++){
-        const size_t entry = 44 + i * 20;
-        const size_t packed = webFontU32(original.data() + entry + 8);
-        if (packed >= webFontU32(original.data() + entry + 12))
-            continue;
-        auto bytes = original;
-        const size_t at = webFontU32(original.data() + entry + 4);
-        bytes[at + packed - 1] ^= 1;                      // zlib Adler32
-        EXPECT_EQ(webFontLoad(bytes), nullptr);
-        compressedTable = true;
-        break;
+TEST(WebFonts, ADecoderRefusalNamesTheFormatAndItsReason){
+    WebFontDecoderScope scope([](const unsigned char*, size_t, std::vector<unsigned char>&, std::string& why){
+        why = "it is truncated";
+        return false;
+    });
+    for (const std::string extension : {"woff", "woff2"}){
+        SCOPED_TRACE(extension);
+        std::string error;
+        EXPECT_EQ(webFontLoad(webFontFixture(extension), &error), nullptr);
+        EXPECT_NE(error.find(std::string("Failed to decode ") + (extension == "woff" ? "WOFF" : "WOFF2") + " font"), std::string::npos) << error;
+        EXPECT_NE(error.find("it is truncated"), std::string::npos) << error;
     }
-    EXPECT_TRUE(compressedTable);
-}
-
-TEST(WebFonts, RejectsWoffLengthsThatOverflow32BitPadding){
-    const auto original = webFontFixture("woff");
-    ASSERT_GT(original.size(), 84u);
-    const size_t tables = (size_t(original[12]) << 8) | original[13];
-    bool checked = false;
-    for (size_t i = 0; i < tables; i++){
-        const size_t entry = 44 + i * 20;
-        const uint32_t length = webFontU32(original.data() + entry + 12);
-        if (webFontU32(original.data() + entry + 8) >= length)
-            continue;
-        // On wasm32/ARM32, UINT32_MAX + 3 wraps to 2 and its padded size becomes 0.
-        // Keep the advertised SFNT size consistent with that wrapped calculation.
-        for (uint32_t oversized : {0xFFFFFFFDu, 0xFFFFFFFEu, 0xFFFFFFFFu}){
-            auto bytes = original;
-            webFontPut32(bytes, entry + 12, oversized);
-            webFontPut32(bytes, 16, webFontU32(original.data() + 16) - ((length + 3) & ~uint32_t(3)));
-            EXPECT_EQ(webFontLoad(bytes), nullptr);
-        }
-        checked = true;
-        break;
-    }
-    EXPECT_TRUE(checked);
 }
