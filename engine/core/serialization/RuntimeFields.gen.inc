@@ -2240,6 +2240,7 @@ const FieldEntry kBody_AnimationPlayerComponent_fields[] = {
     JE_RF(AnimationPlayerComponent, defaultFadeTime, 0x3dc0f0a8u, Float),
     JE_RF(AnimationPlayerComponent, poseFrameRate, 0xd7dfba9eu, Float),
     JE_RF(AnimationPlayerComponent, applyRootMotion, 0x11500aacu, Bool),
+    JE_RF(AnimationPlayerComponent, legacyRootDrift, 0x0ed71920u, Bool),
 };
 const StructTable kBody_AnimationPlayerComponent{"animationplayer", kBody_AnimationPlayerComponent_fields, std::size(kBody_AnimationPlayerComponent_fields)};
 
@@ -2464,6 +2465,7 @@ const FieldEntry kBody_AnimatorComponent_fields[] = {
     JE_RF(AnimatorComponent, speed, 0xe0cb0d91u, Float),
     JE_RF(AnimatorComponent, poseFrameRate, 0x7900b90au, Float),
     JE_RF(AnimatorComponent, applyRootMotion, 0x48a13828u, Bool),
+    JE_RF(AnimatorComponent, legacyRootDrift, 0x9bba942cu, Bool),
     JE_RF(AnimatorComponent, rootMotionBone, 0x5625d33eu, String),
     JE_RF(AnimatorComponent, updateMode, 0x6b93e230u, Enum),
     JE_RF(AnimatorComponent, cullingMode, 0x3a1bad41u, Enum),
@@ -2919,6 +2921,7 @@ const FieldEntry kBody_VehicleDrivetrainComponent_fields[] = {
 };
 const StructTable kBody_VehicleDrivetrainComponent{"vehicledrivetrain", kBody_VehicleDrivetrainComponent_fields, std::size(kBody_VehicleDrivetrainComponent_fields)};
 #endif // JASPERENGINE_PHYSICS_3D
+
 const FieldEntry kBody_OutlineComponent_fields[] = {
     JE_RF(OutlineComponent, enabled, 0x7ac7ddc2u, Bool),
     JE_RF(OutlineComponent, mode, 0x21f8bb06u, Enum),

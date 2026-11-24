@@ -6965,8 +6965,7 @@ void registerWorldTools(McpRegistry& registry) {
     add("edit_animation", "Edit Animation",
         "Keyframes in seconds (jasper://docs/animation). clip (.anim): tracks by path from its player's root; "
         "create {from?, humanoid?, unity: Unity .anim}; one project undo step. No clip: an entity "
-        "Animation under target (tweens, actions). tracks: channel + keys {time, value|points, ease}; "
-        "audio: sound cues.",
+        "Animation under target (tweens, actions). tracks: channel + keys {time, value|points, ease}.",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},

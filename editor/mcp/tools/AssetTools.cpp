@@ -4679,18 +4679,18 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "set_shader_uniform";
         tool.title = "Set Shader Uniform";
         tool.description =
-            "Set or remove one parameter of a custom or library shader of entity (+ component, + submesh; override: "
-            "the Mesh's Property Override, over its materials), pass_index or shader_type (the scene default).";
+            "Set or remove a custom or library shader's parameter: entity (+ component, + submesh; override: a Property "
+            "Override, over its materials), pass_index or shader_type (scene default).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
-            {"component", componentName("Default: auto-detect.")},
+            {"component", componentName("Default: auto.")},
             {"submesh", integer("Default 0 if its material has a shader.")},
-            {"pass_index", integer("A post-process pass instead.")},
+            {"pass_index", integer("Or a post-process pass.")},
             {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines"})},
             {"name", string("")},
             {"value", {{"type", {"number", "array", "string"}}, {"items", {{"type", "number"}}},
-                       {"description", "Number or [x,y(,z(,w))] (colours linear), or \"#RRGGBB[AA]\" (sRGB) for a colour."}}},
+                       {"description", "Number, [x,y(,z(,w))] (colours linear) or \"#RRGGBB[AA]\" (sRGB)."}}},
             {"remove", withDefault(boolean(""), false)},
             {"override", withDefault(boolean(""), false)}
         }, {"name"});
