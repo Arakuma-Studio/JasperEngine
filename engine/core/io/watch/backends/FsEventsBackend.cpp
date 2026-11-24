@@ -43,9 +43,11 @@ namespace {
     constexpr int START_ATTEMPTS = 3;
     // setFsEventsDeadStreamsForTesting: how many of the next streams report nothing
     std::atomic<int> deadStreamsForTesting{0};
-    // how often a barrier asks fseventsd again for what it holds
+    // how often a barrier asks fseventsd again for what it holds (FSEventStreamFlushAsync, which has no
+    // effect on macOS 26.2: there the marker comes at the stream's latency)
     constexpr std::chrono::milliseconds FLUSH_ASK{2};
-    // a barrier without a marker: the longest a flush's events take to be reported
+    // a barrier without a marker: twice the stream's latency, by when what came before it has usually
+    // been reported (nothing proves it)
     constexpr std::chrono::milliseconds PLAIN_FLUSH_WAIT{100};
 
 }
@@ -300,9 +302,11 @@ fs::path FsEventsBackend::writeMarker() {
 // completed just before it has usually not reached fseventsd yet (999 of 1,000 misses in
 // FileWatchServiceTests.FlushBarrier on macOS 26). FSEvents delivers in event id order, so once
 // the stream reports a marker file written now, every change completed before it has been
-// delivered too. Markers are numbered: a late one of an earlier barrier is never taken for this
-// one's. Without a writable root it is the plain flush.
-// FSEventStreamFlushAsync, never FlushSync: FlushSync has no timeout, and on a stream fseventsd
+// delivered too: the marker is the barrier, whatever the asks do. Markers are numbered: a late one
+// of an earlier barrier is never taken for this one's. Without a writable root it is the plain flush.
+// The asks are FSEventStreamFlushAsync, which on macOS 26.2 has no effect (FlushBarrier's 1,000
+// barriers: 51.7 s with them, 51.8 s without): there a barrier waits for the stream's 50 ms latency
+// (R18), longer on a loaded machine. Never FlushSync: it has no timeout, and on a stream fseventsd
 // does not serve (start()) it never returns, past the deadline, so that stop() never ended either.
 bool FsEventsBackend::barrier(std::chrono::steady_clock::time_point deadline) {
     std::error_code ec;
@@ -326,7 +330,7 @@ bool FsEventsBackend::barrier(std::chrono::steady_clock::time_point deadline) {
 
     bool seen = false;
     while (true) {
-        // the callback reports what fseventsd holds, the marker among it, on the stream's queue
+        // the stream's queue reports the marker once fseventsd delivers it: asking may hurry that
         FSEventStreamFlushAsync(stream);
         const auto now = std::chrono::steady_clock::now();
         {
