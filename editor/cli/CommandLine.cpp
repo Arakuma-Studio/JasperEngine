@@ -3759,7 +3759,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         }
         const l10n::StringsCheck strings = l10n::checkStrings(root, localization);
         run.findings.insert(run.findings.end(), strings.findings.begin(), strings.findings.end());
-        if (!fileMode || strings.tables) run.checked.push_back({"strings", strings.tables});
+        // listed when it read a table, so a project without String Tables reports what it did before
+        if (strings.tables) run.checked.push_back({"strings", strings.tables});
     }
     if (run.vatRan) {
         run.findings.insert(run.findings.end(), run.vat.findings.begin(), run.vat.findings.end());
