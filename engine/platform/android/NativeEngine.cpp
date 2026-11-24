@@ -418,7 +418,7 @@ NativeEngine::NativeEngine(struct android_app *app) {
     GameActivityPointerAxes_enableAxis(AMOTION_EVENT_AXIS_PRESSURE);
 
     // the IME's settings until a field asks for its own (showSoftInput)
-    applyImeEditorInfo(app->activity, jasperengine::android::editorInfoOf(jasperengine::TextEntryTraits()));
+    applyImeEditorInfo(app->activity, mImeEditorInfo, jasperengine::android::editorInfoOf(jasperengine::TextEntryTraits()));
 
     if (app->savedState != NULL) {
         // we are starting with previously saved state -- restore it

@@ -39,13 +39,13 @@ namespace luabridge{
 
 namespace {
 
-    // the main thread's buffers (the Lua state belongs to it)
-    std::vector<OverlapHit>& pqOverlapBuffer(){
+    // the main thread's buffers (the Lua state belongs to it); [[maybe_unused]]: a game with both physics modules off uses none of the cast and overlap helpers
+    [[maybe_unused]] std::vector<OverlapHit>& pqOverlapBuffer(){
         static std::vector<OverlapHit> hits;
         return hits;
     }
 
-    std::vector<RayReturn>& pqCastBuffer(){
+    [[maybe_unused]] std::vector<RayReturn>& pqCastBuffer(){
         static std::vector<RayReturn> hits;
         return hits;
     }
@@ -101,7 +101,7 @@ namespace {
         return lua_isnoneornil(L, index) ? Physics::DEFAULT_RAYCAST_LAYERS : (uint32_t)luaL_checkinteger(L, index);
     }
 
-    QueryTriggerInteraction pqOptTriggers(lua_State* L, int index, const char* function){
+    [[maybe_unused]] QueryTriggerInteraction pqOptTriggers(lua_State* L, int index, const char* function){
         if (lua_isnoneornil(L, index)){
             return QueryTriggerInteraction::UseGlobal;
         }
@@ -149,7 +149,7 @@ namespace {
         return std::span<const Entity>(ignore.data(), ignore.size());
     }
 
-    int pqOptTable(lua_State* L, int index){
+    [[maybe_unused]] int pqOptTable(lua_State* L, int index){
         if (lua_isnoneornil(L, index)){
             return 0;
         }
@@ -182,7 +182,7 @@ namespace {
         }
     }
 
-    void pqPushRayReturn(lua_State* L, const RayReturn& hit){
+    [[maybe_unused]] void pqPushRayReturn(lua_State* L, const RayReturn& hit){
         if (!luabridge::push(L, hit)){
             lua_pushnil(L);
         }
@@ -192,7 +192,7 @@ namespace {
     using Shape = physics::QueryShape::Type;
 
     // The results of an overlap form, pushed; results / colliders: the NonAlloc tables
-    int pqReturnOverlap(lua_State* L, PqForm form, const std::vector<OverlapHit>& hits, int results, int colliders){
+    [[maybe_unused]] int pqReturnOverlap(lua_State* L, PqForm form, const std::vector<OverlapHit>& hits, int results, int colliders){
         if (form == PqForm::NonAlloc){
             pqFillTable(L, results, hits.size(), [&](size_t i){ return (lua_Integer)hits[i].body; });
             if (colliders){

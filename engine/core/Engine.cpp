@@ -83,8 +83,8 @@
 #include "dialogue/DialogueKind.h"
 #include "dialogue/DialogueVariables.h"
 #include "object/DialogueRunner.h"
-#include "object/SimulationCulling.h"
 #endif
+#include "object/SimulationCulling.h"
 #include "device/QualityResolver.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
