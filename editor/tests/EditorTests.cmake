@@ -94,6 +94,20 @@ jasperengine_add_test_target(jasperengine-editor-tests
         JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}"
 )
 add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper je_vcs_process_helper)
+jasperengine_skip_unity_build(
+    REASON "replaces the global operator new and delete: in a batch GCC inlines them into their callers and reports a mismatched new and free"
+    SOURCES ${CMAKE_CURRENT_LIST_DIR}/support/AllocationProbe.cpp)
+# Every later batch of 16 moves by one source per test file added before it, and several editor
+# tests (pixelart, titleart, reflect) keep file-scope using-directives whose Json, Kind, RgbaImage
+# or detail meet another test's in a moved batch: S97's tests stay out of the batches
+jasperengine_skip_unity_build(
+    REASON "S97's tests: compiled alone so the batches of the editor tests after them do not move"
+    SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/audio/SoundDropTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/object/AudioSourceSlotsTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/pool/SoundPoolLifetimeTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/subsystem/AudioSourceEffectsTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/subsystem/AudioSpatialBlendTest.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
     # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose

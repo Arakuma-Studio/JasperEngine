@@ -37,13 +37,13 @@ using namespace animatortest;
 
 namespace {
 
-    constexpr float kDt = 1.0f / 60.0f;
+    constexpr float kAnimatorRetargetDt = 1.0f / 60.0f;
 
-    std::string fixturePath(const std::string& name){
+    std::string animatorRetargetFixturePath(const std::string& name){
         return std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/" + name;
     }
 
-    float angleBetween(const Vector3& a, const Vector3& b){
+    float animatorRetargetAngleBetween(const Vector3& a, const Vector3& b){
         const float d = a.normalized().dotProduct(b.normalized());
         return std::acos(std::min(1.0f, std::max(-1.0f, d))) * 57.29577951f;
     }
@@ -58,7 +58,7 @@ namespace {
             Model& model = *models.back();
             // as the editor loads a ModelComponent (MeshSystem's update): the file's root nodes
             // under the model's entity, the root transform kept
-            EXPECT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), fixturePath(file), false, false, false));
+            EXPECT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), animatorRetargetFixturePath(file), false, false, false));
             // loaded at once (MeshSystem's update would clear the flag the next frame)
             scene.getComponent<ModelComponent>(model.getEntity()).needUpdateModel = false;
             scene.getComponent<Transform>(model.getEntity()).position = Vector3(x, 0, 0);
@@ -73,7 +73,7 @@ namespace {
 TEST_F(AnimatorRetargeting, SameRigIdentity){
     const Entity direct = load("hero_animated.gltf", -1);
     const Entity retargeted = load("hero_tpose.gltf", 1);
-    const std::string walk = fixturePath("hero_animated.gltf") + "#Walk";
+    const std::string walk = animatorRetargetFixturePath("hero_animated.gltf") + "#Walk";
     const std::string path = controllerFile("walk", controller({}, {state("Walk", walk)}));
     animator(path, direct).retarget = AnimatorRetarget::Off;
     animator(path, retargeted);
@@ -85,7 +85,7 @@ TEST_F(AnimatorRetargeting, SameRigIdentity){
     EXPECT_FALSE(instance(direct).clips[0].retargeted);
     ASSERT_EQ(instance(direct).rig.unresolved, 0u) << "the clip binds on its own model";
     for (int frame = 0; frame < 90; frame++){
-        step(kDt);
+        step(kAnimatorRetargetDt);
         for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
             const int a = instance(direct).humanoid.slotBones[(size_t)s];
             const int b = instance(retargeted).humanoid.slotBones[(size_t)s];
@@ -104,7 +104,7 @@ TEST_F(AnimatorRetargeting, SameRigIdentity){
 TEST_F(AnimatorRetargeting, CrossAxisConvention){
     const Entity hero = load("hero_animated.gltf", -1);
     const Entity robot = load("robot_apose.gltf", 1);
-    const std::string walk = fixturePath("hero_animated.gltf") + "#Walk";
+    const std::string walk = animatorRetargetFixturePath("hero_animated.gltf") + "#Walk";
     const std::string path = controllerFile("walk", controller({}, {state("Walk", walk)}));
     animator(path, hero).retarget = AnimatorRetarget::Off;
     animator(path, robot);
@@ -120,7 +120,7 @@ TEST_F(AnimatorRetargeting, CrossAxisConvention){
                                         {B::RightUpperLeg, B::RightLowerLeg}, {B::RightLowerLeg, B::RightFoot}};
     float worst = 0.0f;
     for (int frame = 0; frame < 60; frame++){
-        step(kDt);
+        step(kAnimatorRetargetDt);
         for (const auto& segment : segments){
             const auto dir = [&](Entity e){
                 const AnimatorInstance& i = instance(e);
@@ -128,7 +128,7 @@ TEST_F(AnimatorRetargeting, CrossAxisConvention){
                 const int b = i.humanoid.slotBones[(size_t)segment.second];
                 return i.rigPositions()[(size_t)b] - i.rigPositions()[(size_t)a];
             };
-            worst = std::max(worst, angleBetween(dir(hero), dir(robot)));
+            worst = std::max(worst, animatorRetargetAngleBetween(dir(hero), dir(robot)));
         }
     }
     EXPECT_LE(worst, 5.0f) << "hand and foot directions follow the source";
@@ -147,7 +147,7 @@ namespace {
 
         void SetUp() override{
             updateTime = Engine::getUpdateTime();
-            Engine::setUpdateTime(kDt);
+            Engine::setUpdateTime(kAnimatorRetargetDt);
             const float side[2] = {0.12f, -0.12f};
             const float forward[2] = {0.2f, -0.2f};
             for (int i = 0; i < 2; i++){
@@ -212,8 +212,8 @@ namespace {
 
         void frame(){
             resolveTransforms();
-            scene.fixedUpdate(kDt);
-            step(kDt);
+            scene.fixedUpdate(kAnimatorRetargetDt);
+            step(kAnimatorRetargetDt);
             resolveTransforms();
         }
 
@@ -234,7 +234,7 @@ namespace {
                 // the sole faces the slope up to the clamp, whatever the bent knee did to the shin
                 const float tilt = std::min(degrees, 30.0f) * 0.0174532925f;
                 const Vector3 up(0, std::cos(tilt), std::sin(-tilt));
-                EXPECT_LE(angleBetween(foot.worldRotation * Vector3(0, 1, 0), up), 0.5f) << "at " << degrees << " degrees";
+                EXPECT_LE(animatorRetargetAngleBetween(foot.worldRotation * Vector3(0, 1, 0), up), 0.5f) << "at " << degrees << " degrees";
             }
         }
     };
@@ -318,7 +318,7 @@ TEST_F(AnimatorFootIK, ReachedReadsTheSolve){
     step(0.0);
     ASSERT_TRUE(instance().bound);
     Animator object(&scene, root);
-    step(kDt);
+    step(kAnimatorRetargetDt);
     EXPECT_TRUE(object.isIKReached("Leg"));
     const anim::AnimatorIKRun& run = instance().ik[0];
     EXPECT_LE(run.reachError, kIKReachTolerance);
@@ -326,33 +326,33 @@ TEST_F(AnimatorFootIK, ReachedReadsTheSolve){
     EXPECT_EQ(run.solvedTargetWorld, c.targetPosition);
     // beyond the leg: the miss in world metres
     component.ik[0].targetPosition = Vector3(0.0f, -3.0f, 0.0f);
-    step(kDt);
+    step(kAnimatorRetargetDt);
     EXPECT_FALSE(object.isIKReached("Leg"));
     EXPECT_GT(instance().ik[0].reachError, 2.0f);
     // weight 0 solves nothing; a script's weight the same
     component.ik[0].targetPosition = c.targetPosition;
-    step(kDt);
+    step(kAnimatorRetargetDt);
     EXPECT_TRUE(object.isIKReached("Leg"));
     object.setIKWeight("Leg", 0.0f);
-    step(kDt);
+    step(kAnimatorRetargetDt);
     EXPECT_FALSE(object.isIKReached("Leg"));
     EXPECT_EQ(instance().ik[0].solvedWeight, 0.0f);
     EXPECT_EQ(instance().ik[0].reachError, 0.0f);
     // a partial weight leaves the end short of it
     object.setIKWeight("Leg", 0.4f);
-    step(kDt);
+    step(kAnimatorRetargetDt);
     EXPECT_FALSE(object.isIKReached("Leg"));
     EXPECT_NEAR(instance().ik[0].solvedWeight, 0.4f, 1e-6f);
     EXPECT_GT(instance().ik[0].reachError, 0.01f);
     object.clearIKTarget("Leg");
-    step(kDt);
+    step(kAnimatorRetargetDt);
     EXPECT_TRUE(object.isIKReached("Leg"));
     // an Animator that does not run reports nothing stale
     component.enabled = false;
-    step(kDt);
+    step(kAnimatorRetargetDt);
     EXPECT_FALSE(object.isIKReached("Leg"));
     component.enabled = true;
-    step(kDt);
+    step(kAnimatorRetargetDt);
     EXPECT_TRUE(object.isIKReached("Leg"));
     EXPECT_FALSE(object.isIKReached("Nobody"));
 }
@@ -370,21 +370,21 @@ TEST_F(AnimatorFootIK, ScriptSettersReachTheSolver){
     step(0.0);
     ASSERT_TRUE(instance().bound);
     Animator object(&scene, root);
-    step(kDt);
+    step(kAnimatorRetargetDt);
     resolveTransforms();
     EXPECT_TRUE(object.isIKReached("Leg")) << instance().ik[0].reachError;
     object.setIKSoften("Leg", 0.2f);
-    step(kDt);
+    step(kAnimatorRetargetDt);
     EXPECT_FALSE(object.isIKReached("Leg")) << "near the full reach a soft leg stops short of the target";
     EXPECT_EQ(component.ik[0].soften, 0.2f);
     object.setIKSoften("Leg", 5.0f);
     EXPECT_EQ(component.ik[0].soften, 1.0f) << "clamped";
     object.setIKSoften("Leg", 0.0f);
-    step(kDt);
+    step(kAnimatorRetargetDt);
     resolveTransforms();
     const Vector3 plain = scene.getComponent<Transform>(lower[1]).worldPosition;
     object.setIKTwist("Leg", 90.0f);
-    step(kDt);
+    step(kAnimatorRetargetDt);
     resolveTransforms();
     EXPECT_GT((scene.getComponent<Transform>(lower[1]).worldPosition - plain).length(), 1e-3f) << "the knee turned about the line";
     object.setIKTwist("Leg", 0.0f);
@@ -403,11 +403,11 @@ TEST_F(AnimatorFootIK, ScriptSettersReachTheSolver){
     look.targetPosition = Vector3(0, 1.1f, 3.0f);
     component.ik.push_back(look);
     component.needsLoad = true;
-    step(kDt);
+    step(kAnimatorRetargetDt);
     const Vector3 offset(0, 0.1f, 0);
     object.setIKAimOffset("Look", offset);
     EXPECT_EQ(component.ik[1].aimOffset, offset);
-    step(kDt);
+    step(kAnimatorRetargetDt);
     EXPECT_TRUE(object.isIKReached("Look")) << instance().ik[1].reachError;
 }
 
@@ -422,7 +422,7 @@ TEST_F(AnimatorFootIK, LuaReadsReachedAndSetsTheShape){
     c.targetPosition = Vector3(0.0f, 0.4f, -0.1f);
     component.ik.push_back(c);
     step(0.0);
-    step(kDt);
+    step(kAnimatorRetargetDt);
     lua_State* L = LuaBinding::getLuaState();
     ASSERT_TRUE(L != nullptr);
     luabridge::setGlobal(L, Animator(&scene, root), "ikAnimator");
@@ -464,13 +464,13 @@ TEST_F(AnimatorFootIK, FootLockKeepsTheAnimatedFootRotation){
     component.ik.push_back(c);
     step(0.0);
     for (int i = 0; i < 40; i++){
-        step(kDt);
+        step(kAnimatorRetargetDt);
         resolveTransforms();
     }
     // the free foot only rides the hips: it holds what the animation gives the locked one too
     const Vector3 locked = scene.getComponent<Transform>(ankles[1]).worldRotation * Vector3(0, 1, 0);
     const Vector3 animated = scene.getComponent<Transform>(ankles[0]).worldRotation * Vector3(0, 1, 0);
-    EXPECT_LE(angleBetween(locked, animated), 0.5f);
+    EXPECT_LE(animatorRetargetAngleBetween(locked, animated), 0.5f);
 }
 
 // S77 R34 with a lock on the same leg, the usual stack: the lock runs after Foot IK and must not
@@ -503,7 +503,7 @@ TEST_F(AnimatorFootIK, SoleStaysOnTheSlopeUnderFootLock){
     EXPECT_LE((foot.worldPosition - start).length(), 0.002f) << "the lock holds";
     const float tilt = degrees * 0.0174532925f;
     const Vector3 normal(0, std::cos(tilt), -std::sin(tilt));
-    EXPECT_LE(angleBetween(foot.worldRotation * Vector3(0, 1, 0), normal), 0.5f);
+    EXPECT_LE(animatorRetargetAngleBetween(foot.worldRotation * Vector3(0, 1, 0), normal), 0.5f);
     const Vector3 sole = foot.worldPosition - foot.worldRotation * Vector3(0, 0.08f, 0);
     EXPECT_NEAR((sole.y - ground(sole.z, degrees)) * std::cos(tilt), 0.0f, 0.001f);
 }
@@ -529,12 +529,12 @@ TEST_F(AnimatorFootIK, FootLockNoSlide){
     component.ik.push_back(c);
     step(0.0);
     resolveTransforms();
-    step(kDt);
+    step(kAnimatorRetargetDt);
     resolveTransforms();
     const Vector3 start = scene.getComponent<Transform>(ankles[1]).worldPosition;
     const Vector3 freeStart = scene.getComponent<Transform>(ankles[0]).worldPosition;
     for (int i = 0; i < 40; i++){
-        step(kDt);
+        step(kAnimatorRetargetDt);
         resolveTransforms();
     }
     const Vector3 end = scene.getComponent<Transform>(ankles[1]).worldPosition;
@@ -543,7 +543,7 @@ TEST_F(AnimatorFootIK, FootLockNoSlide){
     // released: it follows the animation again
     Animator(&scene, root).setFloat("Contact", 0.0f);
     for (int i = 0; i < 30; i++){
-        step(kDt);
+        step(kAnimatorRetargetDt);
         resolveTransforms();
     }
     EXPECT_GT(scene.getComponent<Transform>(ankles[1]).worldPosition.z - end.z, 0.01f);

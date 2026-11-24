@@ -505,6 +505,8 @@ namespace jasperengine::editor::sprite {
             if (image || !(TextureData::hasImageDecoder(ext))) return image;
         }
         TextureData data;
+        // the raster is copied out below: this one frees it (a TextureData owns no pixels by default)
+        data.setDataOwned(true);
         if (!data.loadTextureFromFile(file.string().c_str()) || !data.getData() || data.getWidth() <= 0 || data.getHeight() <= 0) {
             if (error) *error = ext == ".svg" ? "the SVG does not rasterize" : "the image does not decode";
             return std::nullopt;

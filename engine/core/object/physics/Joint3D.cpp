@@ -4,8 +4,11 @@
 #include "Joint3D.h"
 
 #include "Scene.h"
+#include "object/GameObject.h"
+#include "manager/ObjectManager.h"
 #include "subsystem/PhysicsSystem.h"
 #include "component/Joint3DComponent.h"
+#include "component/Transform.h"
 #include "util/Angle.h"
 
 #include <cmath>
@@ -13,6 +16,9 @@
 using namespace jasperengine;
 
 Joint3D::Joint3D(Scene* scene): EntityHandle(scene){
+    // a GameObject, so it can go under its bodyA
+    addComponent<Transform>();
+    scene->setEntityName(entity, "Joint 3D");
     addComponent<Joint3DComponent>();
 }
 
@@ -38,6 +44,33 @@ void Joint3D::rebuild(){
     joint().needUpdateJoint = true;
 }
 
+void Joint3D::liveUnderBodyA(){
+    const Entity bodyA = joint().bodyA;
+    if (!entityOwned || bodyA == NULL_ENTITY || bodyA == entity || !scene->isEntityCreated(bodyA) ||
+            !scene->findComponent<Transform>(bodyA) || scene->isParentOf(entity, bodyA)){
+        return;
+    }
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform || transform->parent != NULL_ENTITY){
+        return;
+    }
+    const GameObject body(scene, bodyA);
+    GameObject(scene, entity).setParent(&body, true);
+    if (scene->getComponent<Transform>(entity).parent == bodyA){
+        setEntityOwned(false);
+    }
+}
+
+GameObject Joint3D::getGameObject() const{
+    return GameObject(scene, entity);
+}
+
+void Joint3D::destroy(float delay){
+    // the handle must not destroy the entity (or a later one with its id) again
+    setEntityOwned(false);
+    ObjectManager::destroy(scene, entity, delay);
+}
+
 JPH::TwoBodyConstraint* Joint3D::getJoltJoint() const{
     return joint().joint;
 }
@@ -55,6 +88,7 @@ namespace {
 void Joint3D::setFixedJoint(Entity bodyA, Entity bodyB){
     Joint3DComponent& joint = this->joint();
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::FIXED, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setDistanceJoint(Entity bodyA, Entity bodyB){
@@ -63,6 +97,7 @@ void Joint3D::setDistanceJoint(Entity bodyA, Entity bodyB){
     joint.anchorA = Vector3::ZERO;
     joint.anchorB = Vector3::ZERO;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::DISTANCE, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setDistanceJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchorOnBodyA, Vector3 worldAnchorOnBodyB){
@@ -72,12 +107,14 @@ void Joint3D::setDistanceJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchorOn
     // world anchors given: they are used (the two-argument form takes the body origins)
     joint.autoAnchors = false;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::DISTANCE, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setPointJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchor){
     Joint3DComponent& joint = this->joint();
     joint.anchor = worldAnchor;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::POINT, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setHingeJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchor, Vector3 axis, Vector3 normal){
@@ -86,6 +123,7 @@ void Joint3D::setHingeJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchor, Vec
     joint.axis = axis;
     joint.normal = normal;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::HINGE, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setConeJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchor, Vector3 twistAxis){
@@ -93,6 +131,7 @@ void Joint3D::setConeJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchor, Vect
     joint.anchor = worldAnchor;
     joint.twistAxis = twistAxis;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::CONE, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setPrismaticJoint(Entity bodyA, Entity bodyB, Vector3 sliderAxis, float limitsMin, float limitsMax){
@@ -101,6 +140,7 @@ void Joint3D::setPrismaticJoint(Entity bodyA, Entity bodyB, Vector3 sliderAxis, 
     joint.limitsMin = limitsMin;
     joint.limitsMax = limitsMax;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::PRISMATIC, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setSwingTwistJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchor, Vector3 twistAxis, Vector3 planeAxis, float normalHalfConeAngle, float planeHalfConeAngle, float twistMinAngle, float twistMaxAngle){
@@ -113,6 +153,7 @@ void Joint3D::setSwingTwistJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchor
     joint.twistMinAngle = twistMinAngle;
     joint.twistMaxAngle = twistMaxAngle;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::SWINGTWIST, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setSixDOFJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchorOnBodyA, Vector3 worldAnchorOnBodyB, Vector3 axisX, Vector3 axisY){
@@ -122,6 +163,7 @@ void Joint3D::setSixDOFJoint(Entity bodyA, Entity bodyB, Vector3 worldAnchorOnBo
     joint.axisX = axisX;
     joint.axisY = axisY;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::SIXDOF, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setPathJoint(Entity bodyA, Entity bodyB, std::vector<Vector3> positions, std::vector<Vector3> tangents, std::vector<Vector3> normals, Vector3 pathPosition, bool isLooping){
@@ -133,6 +175,7 @@ void Joint3D::setPathJoint(Entity bodyA, Entity bodyB, std::vector<Vector3> posi
     joint.pathPosition = pathPosition;
     joint.isLooping = isLooping;
     joint.needUpdateJoint = !scene->getSystem<PhysicsSystem>()->loadPathJoint3D(joint, bodyA, bodyB, positions, tangents, normals, pathPosition, isLooping);
+    liveUnderBodyA();
 }
 
 void Joint3D::setGearJoint(Entity bodyA, Entity bodyB, Entity hingeA, Entity hingeB, int numTeethGearA, int numTeethGearB){
@@ -142,6 +185,7 @@ void Joint3D::setGearJoint(Entity bodyA, Entity bodyB, Entity hingeA, Entity hin
     joint.numTeethGearA = numTeethGearA;
     joint.numTeethGearB = numTeethGearB;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::GEAR, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setRackAndPinionJoint(Entity bodyA, Entity bodyB, Entity hinge, Entity slider, int numTeethRack, int numTeethGear, int rackLength){
@@ -152,6 +196,7 @@ void Joint3D::setRackAndPinionJoint(Entity bodyA, Entity bodyB, Entity hinge, En
     joint.numTeethGear = numTeethGear;
     joint.rackLength = rackLength;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::RACKANDPINON, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 void Joint3D::setPulleyJoint(Joint3DComponent& unused, Entity bodyA, Entity bodyB, Vector3 worldAnchorOnBodyA, Vector3 worldAnchorOnBodyB, Vector3 fixedPointA, Vector3 fixedPointB){
@@ -162,6 +207,7 @@ void Joint3D::setPulleyJoint(Joint3DComponent& unused, Entity bodyA, Entity body
     joint.fixedPointA = fixedPointA;
     joint.fixedPointB = fixedPointB;
     joint.needUpdateJoint = !makeLegacyJoint(scene, entity, joint, Joint3DType::PULLEY, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 Joint3DType Joint3D::getType() const{
@@ -190,6 +236,7 @@ Entity Joint3D::getBodyA() const{
 void Joint3D::setBodyA(Entity value){
     joint().bodyA = value;
     rebuild();
+    liveUnderBodyA();
 }
 
 Entity Joint3D::getBodyB() const{

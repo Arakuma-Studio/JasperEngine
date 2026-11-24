@@ -91,3 +91,13 @@ __pycache__/
 
 # HTML UI effect cost reports written by EffectPerfTest when run from the repository root
 htmlui-effects-cost*.json
+
+### JetBrains IDEs (CLion, etc.) ###
+.idea/
+
+# Local CMake presets (user-specific)
+CMakeUserPresets.json
+
+# Vim swap files
+*.swp
+*.swo

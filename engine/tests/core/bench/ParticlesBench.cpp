@@ -47,10 +47,10 @@ using jasperengine::particles::referencestack::referenceStack;
 
 namespace {
 
-    int kWorkers = 8;
-    constexpr double kTick = 1.0 / 30.0;
+    int kParticlesBenchWorkers = 8;
+    constexpr double kParticlesBenchTick = 1.0 / 30.0;
 
-    jobs::Config benchConfig(int workers){
+    jobs::Config particlesBenchConfig(int workers){
         jobs::Config config;
         config.workers = workers;
         config.reserveForFrame = 2;
@@ -113,7 +113,7 @@ namespace {
 
         void frame(jobs::JobSystem& jobs){
             for (EmitterTask& task : tasks){
-                task.dt = kTick;
+                task.dt = kParticlesBenchTick;
                 task.input.jobs = &jobs;
             }
             world.simulate(tasks, &jobs);
@@ -225,11 +225,11 @@ namespace {
     double emptySchedulerUs(){
         Scene scene;
         auto particles = scene.getSystem<ParticleSubsystem>();
-        for (int i = 0; i < 100; i++) particles->update(kTick);
+        for (int i = 0; i < 100; i++) particles->update(kParticlesBenchTick);
         std::vector<double> samples;
         for (int i = 0; i < 2000; i++){
             const auto start = bench::Clock::now();
-            particles->update(kTick);
+            particles->update(kParticlesBenchTick);
             samples.push_back(bench::secondsSince(start) * 1.0e6);
         }
         return bench::percentile(samples, 0.5);
@@ -256,11 +256,11 @@ namespace {
                 scene.addComponent<ParticleSystemComponent>(entity, component);
             }
             auto particles = scene.getSystem<ParticleSubsystem>();
-            for (int i = 0; i < 100; i++) particles->update(kTick);
+            for (int i = 0; i < 100; i++) particles->update(kParticlesBenchTick);
             std::vector<double> samples;
             for (int i = 0; i < 1000; i++){
                 const auto start = bench::Clock::now();
-                particles->update(kTick);
+                particles->update(kParticlesBenchTick);
                 samples.push_back(bench::secondsSince(start) * 1.0e6);
             }
             return bench::percentile(samples, 0.5);
@@ -277,19 +277,19 @@ int main(int argc, char** argv){
     for (int i = 1; i < argc; i++){
         const std::string arg = argv[i];
         if (arg == "--workers" && i + 1 < argc)
-            kWorkers = std::max(1, std::atoi(argv[++i]));
+            kParticlesBenchWorkers = std::max(1, std::atoi(argv[++i]));
         else if (arg == "--count-allocs")
             countAllocs = true;
     }
     const unsigned hardware = std::thread::hardware_concurrency();
-    if (hardware > 2 && (int)hardware - 2 < kWorkers)
-        kWorkers = (int)hardware - 2;
+    if (hardware > 2 && (int)hardware - 2 < kParticlesBenchWorkers)
+        kParticlesBenchWorkers = (int)hardware - 2;
     Engine::systemInit(argc, argv, new testsupport::JobsTestSystem());
-    std::printf("je-bench-particles: %d workers, %u hardware threads%s\n", kWorkers, hardware,
+    std::printf("je-bench-particles: %d workers, %u hardware threads%s\n", kParticlesBenchWorkers, hardware,
                 forceScalarKernels() ? " (scalar kernels forced)" : "");
 
-    jobs::JobSystem pool(benchConfig(kWorkers));
-    jobs::JobSystem single(benchConfig(0));
+    jobs::JobSystem pool(particlesBenchConfig(kParticlesBenchWorkers));
+    jobs::JobSystem single(particlesBenchConfig(0));
     bench::Results results("je-bench-particles");
 
     // ---- ref_100k: simulation (all workers, one thread, scalar), render prep, sorted prep
@@ -306,7 +306,7 @@ int main(int argc, char** argv){
         results.add("ref_100k_sim_ms", sim, "ms");
         results.add("ref_100k_sim_1t_ms", sim1, "ms");
         results.add("ref_100k_sim_scalar_1t_ms", simScalar1, "ms");
-        results.add("ref_100k_parallel_speedup_ratio", sim1 / std::max(sim, 1e-9) / (kWorkers + 1), "of workers+1");
+        results.add("ref_100k_parallel_speedup_ratio", sim1 / std::max(sim, 1e-9) / (kParticlesBenchWorkers + 1), "of workers+1");
         results.add("ref_100k_simd_speedup", simScalar1 / std::max(sim1, 1e-9), "x");
         const double prep = prepMs(ref, pool, false);
         const double prep1 = prepMs(ref, single, false);
@@ -410,7 +410,7 @@ int main(int argc, char** argv){
         auto frame = [&](){
             ref.frame(pool);
             trail.frame(pool);
-            parent->advance(parentInput, kTick);
+            parent->advance(parentInput, kParticlesBenchTick);
             arena.reset();
             ParticleRenderPrep::pack(*ref.runtimes[0], view, arena, &pool);
             ParticleRenderPrep::pack(*trail.runtimes[0], view, arena, &pool);

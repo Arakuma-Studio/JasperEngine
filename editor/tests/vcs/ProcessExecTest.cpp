@@ -30,7 +30,7 @@ using namespace jasperengine::editor::test;
 
 namespace {
 
-    fs::path helper() {
+    fs::path processExecHelper() {
         return fs::path(JASPER_TEST_VCS_PROCESS_HELPER);
     }
 
@@ -48,7 +48,7 @@ namespace {
 
     ProcessSpec helperSpec(std::vector<std::string> args) {
         ProcessSpec spec;
-        spec.exe = helper();
+        spec.exe = processExecHelper();
         spec.args = std::move(args);
         spec.timeoutMs = 20000;
         return spec;
@@ -287,7 +287,7 @@ TEST(ProcessExec, NoProjectDirHijack) {
     // a `git` in the project, below it, and in folders PATH names relatively
     for (const fs::path& at : {project, project / "tools", dir.path() / "rel"}) {
         fs::create_directories(at);
-        fs::copy_file(helper(), at / exeName, fs::copy_options::overwrite_existing);
+        fs::copy_file(processExecHelper(), at / exeName, fs::copy_options::overwrite_existing);
 #ifndef _WIN32
         fs::permissions(at / exeName, fs::perms::owner_all, fs::perm_options::replace);
 #endif
@@ -334,9 +334,9 @@ TEST(ProcessExec, NoProjectDirHijack) {
 
 TEST(ProcessExec, ConfiguredExecutableWins) {
     ExecutableLookup lookup;
-    lookup.configured = helper();
-    EXPECT_EQ(findExecutable("git", lookup), helper().lexically_normal());
-    lookup.configured = fs::relative(helper(), fs::current_path());
+    lookup.configured = processExecHelper();
+    EXPECT_EQ(findExecutable("git", lookup), processExecHelper().lexically_normal());
+    lookup.configured = fs::relative(processExecHelper(), fs::current_path());
     std::string why;
     EXPECT_TRUE(findExecutable("git", lookup, &why).empty());
     EXPECT_NE(why.find("not absolute"), std::string::npos);

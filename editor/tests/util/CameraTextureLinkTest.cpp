@@ -38,15 +38,15 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Headless {
+    struct CameraTextureLinkHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    CameraTextureLinkHeadless& cameraTextureLinkHeadless() {
+        static CameraTextureLinkHeadless h = []() {
+            CameraTextureLinkHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-camera-link-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -67,7 +67,7 @@ namespace {
         return h;
     }
 
-    Project* project() { return headless().project.get(); }
+    Project* cameraTextureLinkProject() { return cameraTextureLinkHeadless().project.get(); }
 
     const Texture& screenTexture(Scene* scene, Entity screen) {
         return scene->getComponent<MeshComponent>(screen).submeshes[0].material.baseColorTexture;
@@ -80,10 +80,10 @@ namespace {
 }
 
 TEST(CameraTextureLink, AGameObjectWithASystemRangeIdIsBoundByAWholeSceneBindAndAfterAnApply) {
-    ASSERT_TRUE(headless().ready);
-    fs::create_directories(headless().dir / "camera_link");
-    project()->createNewScene("Camera Link", SceneType::SCENE_3D);
-    SceneProject* sceneProject = project()->getScene(project()->getSelectedSceneId());
+    ASSERT_TRUE(cameraTextureLinkHeadless().ready);
+    fs::create_directories(cameraTextureLinkHeadless().dir / "camera_link");
+    cameraTextureLinkProject()->createNewScene("Camera Link", SceneType::SCENE_3D);
+    SceneProject* sceneProject = cameraTextureLinkProject()->getScene(cameraTextureLinkProject()->getSelectedSceneId());
     const uint32_t sceneId = sceneProject->id;
     Scene* scene = sceneProject->scene;
 
@@ -100,9 +100,9 @@ TEST(CameraTextureLink, AGameObjectWithASystemRangeIdIsBoundByAWholeSceneBindAnd
     // (no render target made: the link binds the camera's framebuffer object, drawn or not)
     scene->addComponent<CameraComponent>(lens, CameraComponent());
     sceneProject->entities.push_back(lens);
-    CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project(), sceneId, fs::path("camera_link") / "Eye.prefab",
-        Stream::encodeEntity(eye, scene, project(), sceneProject)));
-    ASSERT_TRUE(project()->isPrefabInstanceRoot(sceneId, eye));
+    CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(cameraTextureLinkProject(), sceneId, fs::path("camera_link") / "Eye.prefab",
+        Stream::encodeEntity(eye, scene, cameraTextureLinkProject(), sceneProject)));
+    ASSERT_TRUE(cameraTextureLinkProject()->isPrefabInstanceRoot(sceneId, eye));
 
     // a GameObject an older file saved at id 1000, its material showing the lens
     const Entity made = scene->createEntity();
@@ -117,7 +117,7 @@ TEST(CameraTextureLink, AGameObjectWithASystemRangeIdIsBoundByAWholeSceneBindAnd
     const Entity screen = EntityManager::lastSystemEntity();
     ASSERT_FALSE(scene->isEntityCreated(screen));
     node["entity"] = screen;
-    const std::vector<Entity> decoded = Stream::decodeEntity(node, scene, &sceneProject->entities, project(), sceneProject);
+    const std::vector<Entity> decoded = Stream::decodeEntity(node, scene, &sceneProject->entities, cameraTextureLinkProject(), sceneProject);
     ASSERT_FALSE(decoded.empty());
     ASSERT_EQ(decoded.front(), screen);
     ASSERT_TRUE(scene->findComponent<MeshComponent>(screen));
@@ -132,7 +132,7 @@ TEST(CameraTextureLink, AGameObjectWithASystemRangeIdIsBoundByAWholeSceneBindAnd
     const std::string id = texture.getId();
     texture.setFramebuffer(nullptr); // clears the id
     texture.setId(id);
-    ASSERT_TRUE(project()->reimportPrefabInstance(sceneProject, eye, YAML::Node()));
+    ASSERT_TRUE(cameraTextureLinkProject()->reimportPrefabInstance(sceneProject, eye, YAML::Node()));
     ASSERT_TRUE(scene->isEntityCreated(lens) && scene->findComponent<CameraComponent>(lens));
     EXPECT_EQ(screenTexture(scene, screen).getFramebuffer(), lensFramebuffer(scene, lens)) << "the apply's bind binds it";
     sceneProject->isModified = false;

@@ -49,7 +49,7 @@ namespace {
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=";
 
     // two triangles, each its own primitive with material 0 and 1 (`materials`), with UVs
-    fs::path writeGltf(const std::string& name, const nlohmann::json& materials, const nlohmann::json& extensionsUsed) {
+    fs::path gltfUnlitMaterialWriteGltf(const std::string& name, const nlohmann::json& materials, const nlohmann::json& extensionsUsed) {
         const fs::path dir = fs::temp_directory_path() / "jasperengine-editor-tests-gltf-unlit";
         fs::create_directories(dir);
         const float positions[9] = {0, 0, 0, 1, 0, 0, 0, 1, 0};
@@ -116,7 +116,7 @@ TEST_F(GltfUnlitMaterial, KhrMaterialsUnlitLoadsAsLightingNone) {
          {"extensions", {{"KHR_materials_unlit", nlohmann::json::object()}}}},
         {{"name", "Plain"},
          {"pbrMetallicRoughness", {{"baseColorFactor", {0.1, 0.2, 0.3, 1.0}}}}}};
-    const fs::path path = writeGltf("unlit", materials, {"KHR_materials_unlit"});
+    const fs::path path = gltfUnlitMaterialWriteGltf("unlit", materials, {"KHR_materials_unlit"});
 
     Scene scene;
     Model model(&scene);
@@ -151,7 +151,7 @@ TEST_F(GltfUnlitMaterial, UnlitWithoutExtensionsUsedAndFoliageExtra) {
          {"extras", {{"jasperengine_foliage_transmission", 0.35}}}},
         {{"pbrMetallicRoughness", {{"baseColorFactor", {0.5, 1, 1, 1}}}},
          {"extras", {{"jasperengine_foliage_transmission", 4.0}}}}};
-    const fs::path path = writeGltf("unlit_lenient", materials, nullptr);
+    const fs::path path = gltfUnlitMaterialWriteGltf("unlit_lenient", materials, nullptr);
 
     Scene scene;
     Model model(&scene);

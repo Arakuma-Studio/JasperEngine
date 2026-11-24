@@ -50,11 +50,11 @@ using namespace jasperengine::test;
 
 namespace {
 
-    constexpr double PINNED_TIME = 4.5;
+    constexpr double SPLINE_PINNED_TIME = 4.5;
     constexpr int HEIGHT_RESOLUTION = 129;
-    constexpr float TERRAIN_SIZE = 128.0f;
+    constexpr float SPLINE_TERRAIN_SIZE = 128.0f;
 
-    CompareOptions backendOptions(){
+    CompareOptions splineBackendOptions(){
         CompareOptions options;
         if (std::strcmp(HeadlessContext::getBackendName(), "glcore") != 0){
             options.pixelThreshold = 16;
@@ -90,7 +90,7 @@ namespace {
         std::vector<unsigned char> heightPixels;
 
         void SetUp() override{
-            Engine::setPinnedShaderTime(PINNED_TIME);
+            Engine::setPinnedShaderTime(SPLINE_PINNED_TIME);
             scene.setBackgroundColor(0.55f, 0.68f, 0.82f, 1.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
             sun.setType(LightType::DIRECTIONAL);
@@ -109,15 +109,15 @@ namespace {
         // a 128 x 128 terrain at the origin of the heights given in 0..1 by f(x, z) (world XZ)
         void makeTerrain(float maxHeight, const std::function<float(float, float)>& f){
             terrain = std::make_unique<Terrain>(&scene);
-            terrain->setSize(TERRAIN_SIZE);
+            terrain->setSize(SPLINE_TERRAIN_SIZE);
             terrain->setMaxHeight(maxHeight);
             std::vector<unsigned char>& pixels = heightPixels;
             pixels.assign(static_cast<size_t>(HEIGHT_RESOLUTION) * HEIGHT_RESOLUTION * 2, 0);
             for (int j = 0; j < HEIGHT_RESOLUTION; j++){
                 for (int i = 0; i < HEIGHT_RESOLUTION; i++){
                     // texel i at (i + 0.5) / N of the size (texel-centre sampling)
-                    const float x = ((static_cast<float>(i) + 0.5f) / HEIGHT_RESOLUTION - 0.5f) * TERRAIN_SIZE;
-                    const float z = ((static_cast<float>(j) + 0.5f) / HEIGHT_RESOLUTION - 0.5f) * TERRAIN_SIZE;
+                    const float x = ((static_cast<float>(i) + 0.5f) / HEIGHT_RESOLUTION - 0.5f) * SPLINE_TERRAIN_SIZE;
+                    const float z = ((static_cast<float>(j) + 0.5f) / HEIGHT_RESOLUTION - 0.5f) * SPLINE_TERRAIN_SIZE;
                     const float h = std::fmin(std::fmax(f(x, z), 0.0f), 1.0f);
                     const unsigned q = static_cast<unsigned>(std::lround(h * 65535.0f));
                     const size_t at = (static_cast<size_t>(j) * HEIGHT_RESOLUTION + i) * 2;
@@ -188,7 +188,7 @@ namespace {
                     ADD_FAILURE() << name << ": " << warning.message;
                 }
             }
-            const CompareResult result = compareTargetWithGolden(name, backendOptions());
+            const CompareResult result = compareTargetWithGolden(name, splineBackendOptions());
             std::printf("[gpu] %s on %s: largest difference %d, %zu pixels over the threshold, mean %.4f\n",
                         name.c_str(), HeadlessContext::getBackendName(), result.maxDiff, result.badPixels, result.meanDiff);
             EXPECT_TRUE(result.passed) << result.message;

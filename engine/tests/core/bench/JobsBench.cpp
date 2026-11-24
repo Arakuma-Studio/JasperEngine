@@ -37,9 +37,9 @@ using namespace jasperengine::jobs;
 
 namespace{
 
-    int kWorkers = 8;
+    int kJobsBenchWorkers = 8;
 
-    Config benchConfig(int workers = kWorkers){
+    Config jobsBenchConfig(int workers = kJobsBenchWorkers){
         Config config;
         config.workers = workers;
         config.reserveForFrame = 2;
@@ -50,7 +50,7 @@ namespace{
     // R23: empty jobs from one producer, published and executed. `publishRate` is the
     // producer's side alone (diagnostic: which end limits the throughput)
     double submitThroughput(double& publishRate){
-        JobSystem system(benchConfig());
+        JobSystem system(jobsBenchConfig());
         constexpr int kJobs = 2000000;
         double best = 0.0;
         publishRate = 0.0;
@@ -69,7 +69,7 @@ namespace{
 
     // R23: parallelFor of one unit (no helper): the call's own overhead
     double parallelForDispatchNs(){
-        JobSystem system(benchConfig());
+        JobSystem system(jobsBenchConfig());
         constexpr int kCalls = 5000000;
         unsigned sink = 0;
         double best = 1e9;
@@ -85,8 +85,8 @@ namespace{
     }
 
     // R23: submit + wait on an idle pool, the job run by a worker (polled, not helped)
-    void roundTrip(double& p99Us, double& waitP99Us){
-        JobSystem system(benchConfig());
+    void jobsBenchRoundTrip(double& p99Us, double& waitP99Us){
+        JobSystem system(jobsBenchConfig());
         std::vector<double> samples;
         samples.reserve(20000);
         for (int i = 0; i < 20000; i++){
@@ -115,7 +115,7 @@ namespace{
             out[i] = bench::spinWork(1.0);
         const double serial = bench::secondsSince(serialStart);
 
-        JobSystem system(benchConfig());
+        JobSystem system(jobsBenchConfig());
         ParallelForOptions options;
         options.grain = 64;
         double best = 1e9;
@@ -148,7 +148,7 @@ namespace{
         // both sides timed in blocks, the fastest block of each: a neighbour taking cores on a
         // shared machine slows some blocks, not the scheduler (every iteration still runs, for
         // the deadlock check)
-        JobSystem serialSystem(benchConfig(0));
+        JobSystem serialSystem(jobsBenchConfig(0));
         double serial = 1e9;
         for (int block = 0; block < 5; block++){
             const auto start = bench::Clock::now();
@@ -157,7 +157,7 @@ namespace{
             serial = std::min(serial, bench::secondsSince(start) / 4);
         }
 
-        JobSystem system(benchConfig());
+        JobSystem system(jobsBenchConfig());
         constexpr int kBlock = 50;
         double parallel = 1e9;
         for (int done = 0; done < iterations; done += kBlock){
@@ -186,7 +186,7 @@ namespace{
 
     // One run of R25: 500 frames of 8 x 1 ms High units while 200 Heavy cooks stay queued
     double frameProtectionRunP99Ms(){
-        JobSystem system(benchConfig());
+        JobSystem system(jobsBenchConfig());
         std::atomic<int> queued{0};
         std::atomic<bool> stop{false};
         SubmitOptions heavy;
@@ -293,7 +293,7 @@ namespace{
     double oldPoolFrameP99Ms(){
         // what MeshSystem::parallelForIndexed did on the old pool: the frame's units queue
         // behind the cooks (fewer iterations: each one waits out the backlog)
-        OldPool pool(kWorkers);
+        OldPool pool(kJobsBenchWorkers);
         std::atomic<bool> stop{false};
         for (int i = 0; i < 200; i++)
             pool.enqueue([&]{ if (!stop.load()) bench::spinWork(20000.0); });
@@ -317,17 +317,17 @@ namespace{
 int main(int argc, char** argv){
     const int hardware = (int)std::thread::hardware_concurrency();
     if (hardware > 0)
-        kWorkers = std::max(1, std::min(8, hardware - 2));
+        kJobsBenchWorkers = std::max(1, std::min(8, hardware - 2));
     bool onlyFrame = false;
     for (int i = 1; i < argc; i++){
         if (std::string(argv[i]) == "--workers" && i + 1 < argc)
-            kWorkers = std::max(1, std::atoi(argv[i + 1]));
+            kJobsBenchWorkers = std::max(1, std::atoi(argv[i + 1]));
         if (std::string(argv[i]) == "--only-frame-protection")
             onlyFrame = true;
     }
     jasperengine::Engine::systemInit(argc, argv, new testsupport::JobsTestSystem());
     bench::Results results("je-bench-jobs");
-    std::printf("je-bench-jobs: %d workers, %u hardware threads\n", kWorkers, std::thread::hardware_concurrency());
+    std::printf("je-bench-jobs: %d workers, %u hardware threads\n", kJobsBenchWorkers, std::thread::hardware_concurrency());
 
     if (onlyFrame){
         // R25 alone (a quick look at a shared machine), no JSON
@@ -341,17 +341,17 @@ int main(int argc, char** argv){
     results.add("submit_publish_jobs_per_s", publishRate, "jobs/s");
     results.add("parallel_for_dispatch_ns", parallelForDispatchNs(), "ns");
     double roundTripP99 = 0.0, waitP99 = 0.0;
-    roundTrip(roundTripP99, waitP99);
+    jobsBenchRoundTrip(roundTripP99, waitP99);
     results.add("submit_round_trip_p99_us", roundTripP99, "us");
     results.add("submit_wait_p99_us", waitP99, "us");
 
     const double flat = flatSpeedup();
     results.add("parallel_for_speedup", flat, "x");
-    results.add("parallel_for_speedup_ratio", flat / (kWorkers + 1), "of workers+1");
+    results.add("parallel_for_speedup_ratio", flat / (kJobsBenchWorkers + 1), "of workers+1");
     bool completed = false;
     const double nested = nestedSpeedup(1000, completed);
     results.add("nested_parallel_for_speedup", nested, "x");
-    results.add("nested_parallel_for_speedup_ratio", nested / (kWorkers + 1), "of workers+1");
+    results.add("nested_parallel_for_speedup_ratio", nested / (kJobsBenchWorkers + 1), "of workers+1");
     results.add("nested_parallel_for_deadlocks", completed ? 0.0 : 1.0, "");
 
     results.add("frame_protection_p99_ms", frameProtectionP99Ms(), "ms");

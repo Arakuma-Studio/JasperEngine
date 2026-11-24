@@ -24,6 +24,14 @@ add_library(
 
 )
 
+# UBSan: plutovg 1.3.3's font face cache sorts and bsearches its entries while it has none (a null
+# array and a count of 0, plutovg_font_face_cache_get; an SVG <text> with no font registered). The
+# sanitized builds stop at the first report (-fno-sanitize-recover), which a suppression cannot
+# skip: this file alone is built without the nonnull check
+if(JASPERENGINE_SANITIZE_UNDEFINED AND NOT MSVC)
+    set_source_files_properties(plutovg/source/plutovg-font.c PROPERTIES COMPILE_OPTIONS -fno-sanitize=nonnull-attribute)
+endif()
+
 target_include_directories(lunasvg SYSTEM PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(lunasvg PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/source"

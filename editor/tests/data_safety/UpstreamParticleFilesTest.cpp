@@ -32,7 +32,7 @@ using namespace jasperengine::particles;
 
 namespace {
 
-    constexpr float kDeg = 57.29577951308232f;
+    constexpr float kUpstreamParticleFilesDeg = 57.29577951308232f;
 
     YAML::Node migratedScene(){
         YAML::Node root = YAML::Load(readText(fixture("migrations/upstream-v2/Upstream.scene")));
@@ -42,14 +42,14 @@ namespace {
         return root;
     }
 
-    YAML::Node entityNamed(const YAML::Node& entities, const std::string& name){
+    YAML::Node upstreamParticleFilesEntityNamed(const YAML::Node& entities, const std::string& name){
         for (const YAML::Node& e : entities){
             if (e["name"] && e["name"].as<std::string>() == name) return e;
         }
         return YAML::Node();
     }
 
-    ParticleSystemComponent systemOf(const YAML::Node& entity){
+    ParticleSystemComponent upstreamParticleFilesSystemOf(const YAML::Node& entity){
         EXPECT_TRUE(entity.IsMap());
         const YAML::Node node = entity["components"]["particlesystem"];
         EXPECT_TRUE(node.IsMap());
@@ -58,7 +58,7 @@ namespace {
         return Stream::decodeParticleSystemComponent(node);
     }
 
-    float srgb(float linear){
+    float upstreamParticleFilesSrgb(float linear){
         return Color::linearTosRGB(Vector3(linear, linear, linear)).x;
     }
 
@@ -66,8 +66,8 @@ namespace {
 
 TEST(UpstreamParticleFiles, TheFullSystemKeepsEveryValue){
     const YAML::Node root = migratedScene();
-    const YAML::Node full = entityNamed(root["entities"], "Full");
-    const ParticleSystemComponent c = systemOf(full);
+    const YAML::Node full = upstreamParticleFilesEntityNamed(root["entities"], "Full");
+    const ParticleSystemComponent c = upstreamParticleFilesSystemOf(full);
     const ParticleEffectDocument& d = c.inlineEffect;
 
     // main
@@ -84,13 +84,13 @@ TEST(UpstreamParticleFiles, TheFullSystemKeepsEveryValue){
     EXPECT_FLOAT_EQ(d.main.startSize.multiplier, 0.5f);
     EXPECT_FLOAT_EQ(d.main.startSize.curve.evaluate(1.0f), 0.4f) << "the min curve first";
     EXPECT_FLOAT_EQ(d.main.startSize.curveMax.evaluate(1.0f), 2.0f);
-    EXPECT_NEAR(d.main.startRotation.constant, 0.5f * kDeg, 1e-3f) << "radians there, degrees here";
-    EXPECT_NEAR(d.main.startRotation.constantMax, 1.5f * kDeg, 1e-3f);
+    EXPECT_NEAR(d.main.startRotation.constant, 0.5f * kUpstreamParticleFilesDeg, 1e-3f) << "radians there, degrees here";
+    EXPECT_NEAR(d.main.startRotation.constantMax, 1.5f * kUpstreamParticleFilesDeg, 1e-3f);
     EXPECT_FLOAT_EQ(d.main.flipRotation, 0.25f);
     EXPECT_EQ(d.main.startColor.mode, GradientValueMode::TwoColors);
     EXPECT_NEAR(d.main.startColor.color.y, 128.0f / 255.0f, 1e-6f) << "#FF8000 is sRGB";
     EXPECT_NEAR(d.main.startColor.colorMax.z, 1.0f, 1e-6f);
-    EXPECT_NEAR(d.main.startColor.colorMax.x, srgb(0.2f), 1e-5f) << "an array is linear";
+    EXPECT_NEAR(d.main.startColor.colorMax.x, upstreamParticleFilesSrgb(0.2f), 1e-5f) << "an array is linear";
     EXPECT_NEAR(d.main.startColor.colorMax.w, 0.5f, 1e-6f);
     EXPECT_EQ(d.main.gravityModifier.mode, CurveMode::Curve);
     EXPECT_FLOAT_EQ(d.main.gravityModifier.multiplier, 2.0f);
@@ -207,8 +207,8 @@ TEST(UpstreamParticleFiles, TheFullSystemKeepsEveryValue){
 TEST(UpstreamParticleFiles, MeshPointsAndTheOtherSystems){
     const YAML::Node root = migratedScene();
     // Mesh mode: the GameObject's own cube, kept and disabled, aligned to the velocity
-    const YAML::Node cubes = entityNamed(root["entities"], "Cubes");
-    const ParticleEffectDocument cd = systemOf(cubes).inlineEffect;
+    const YAML::Node cubes = upstreamParticleFilesEntityNamed(root["entities"], "Cubes");
+    const ParticleEffectDocument cd = upstreamParticleFilesSystemOf(cubes).inlineEffect;
     EXPECT_EQ(cd.renderer.renderMode, RenderMode::Mesh);
     ASSERT_EQ(cd.renderer.meshes.size(), 1u);
     EXPECT_EQ(cd.renderer.meshes[0].type, MeshSourceType::GameObject);
@@ -217,17 +217,17 @@ TEST(UpstreamParticleFiles, MeshPointsAndTheOtherSystems){
     EXPECT_FALSE(cubes["components"]["mesh"]["enabled"].as<bool>());
     EXPECT_FALSE(cubes["components"]["instancedmesh"]);
     EXPECT_TRUE(cd.main.startRotation3D);
-    EXPECT_NEAR(cd.main.startRotationX.constant, 0.5f * kDeg, 1e-3f);
+    EXPECT_NEAR(cd.main.startRotationX.constant, 0.5f * kUpstreamParticleFilesDeg, 1e-3f);
     EXPECT_TRUE(cd.main.startSize3D);
     EXPECT_FLOAT_EQ(cd.main.startSizeY.constant, 2.0f);
     EXPECT_TRUE(cd.rotationBySpeed.separateAxes);
-    EXPECT_NEAR(cd.rotationBySpeed.angularVelocityX.constant, kDeg, 1e-3f);
-    EXPECT_NEAR(cd.rotationBySpeed.angularVelocityY.constant, 2.0f * kDeg, 1e-3f);
+    EXPECT_NEAR(cd.rotationBySpeed.angularVelocityX.constant, kUpstreamParticleFilesDeg, 1e-3f);
+    EXPECT_NEAR(cd.rotationBySpeed.angularVelocityY.constant, 2.0f * kUpstreamParticleFilesDeg, 1e-3f);
     EXPECT_EQ(cd.rotationBySpeed.speedRange, Vector2(0.0f, 10.0f));
 
     // a Points system: its points go (empty), billboards drawing squares without a texture
-    const YAML::Node pts = entityNamed(root["entities"], "Pts");
-    const ParticleEffectDocument pd = systemOf(pts).inlineEffect;
+    const YAML::Node pts = upstreamParticleFilesEntityNamed(root["entities"], "Pts");
+    const ParticleEffectDocument pd = upstreamParticleFilesSystemOf(pts).inlineEffect;
     EXPECT_FALSE(pts["components"]["points"]);
     EXPECT_EQ(pd.renderer.renderMode, RenderMode::Billboard);
     EXPECT_EQ(pd.renderer.untexturedShape, UntexturedShape::Square);
@@ -237,7 +237,7 @@ TEST(UpstreamParticleFiles, MeshPointsAndTheOtherSystems){
     EXPECT_TRUE(pd.noise.present && pd.noise.enabled);
 
     // 2D gravity, the Rigidbody's velocity, unscaled time, a stretched billboard
-    const ParticleEffectDocument kd = systemOf(entityNamed(root["entities"], "Counter")).inlineEffect;
+    const ParticleEffectDocument kd = upstreamParticleFilesSystemOf(upstreamParticleFilesEntityNamed(root["entities"], "Counter")).inlineEffect;
     EXPECT_EQ(kd.main.gravitySource, GravitySource::Physics2D);
     EXPECT_EQ(kd.emitterVelocityMode, EmitterVelocityMode::Rigidbody);
     EXPECT_TRUE(kd.useUnscaledTime);
@@ -255,14 +255,14 @@ TEST(UpstreamParticleFiles, PrefabAndItsInstance){
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, prefab);
     EXPECT_EQ(result.versionRead, 3);
     EXPECT_EQ(prefab["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
-    const ParticleEffectDocument pd = systemOf(prefab["members"][0]).inlineEffect;
+    const ParticleEffectDocument pd = upstreamParticleFilesSystemOf(prefab["members"][0]).inlineEffect;
     EXPECT_EQ(pd.renderer.texture, "textures/spark.png");
     EXPECT_FALSE(prefab["members"][0]["components"]["mesh"]);
 
     // the instance in the scene: its own values and the names of what it overrides
     const YAML::Node root = migratedScene();
-    const YAML::Node instance = entityNamed(root["entities"], "FireInstance");
-    const ParticleSystemComponent c = systemOf(instance);
+    const YAML::Node instance = upstreamParticleFilesEntityNamed(root["entities"], "FireInstance");
+    const ParticleSystemComponent c = upstreamParticleFilesSystemOf(instance);
     EXPECT_FLOAT_EQ(c.inlineEffect.main.startSpeed.constant, 7.0f);
     EXPECT_FLOAT_EQ(c.inlineEffect.emission.rateOverTime.constant, 33.0f);
     const YAML::Node names = instance["prefabInstance"]["overrides"][0]["properties"]["particlesystem"];
@@ -274,7 +274,7 @@ TEST(UpstreamParticleFiles, PrefabAndItsInstance){
 
 TEST(UpstreamParticleFiles, LinesAndTrailsKeepTheirCurves){
     const YAML::Node root = migratedScene();
-    const LineRendererComponent line = Stream::decodeLineRendererComponent(entityNamed(root["entities"], "Laser")["components"]["linerenderer"]);
+    const LineRendererComponent line = Stream::decodeLineRendererComponent(upstreamParticleFilesEntityNamed(root["entities"], "Laser")["components"]["linerenderer"]);
     ASSERT_EQ(line.widthCurve.keys.size(), 3u);
     EXPECT_EQ(line.widthCurve.preWrapMode, CurveWrapMode::PingPong);
     EXPECT_EQ(line.widthCurve.postWrapMode, CurveWrapMode::Loop);
@@ -282,7 +282,7 @@ TEST(UpstreamParticleFiles, LinesAndTrailsKeepTheirCurves){
     EXPECT_EQ(line.colorGradient.mode, GradientMode::Fixed);
     EXPECT_NEAR(line.colorGradient.evaluate(0.5f).z, 2.0f, 1e-3f) << "an HDR linear key";
     EXPECT_NEAR(line.colorGradient.evaluateAlpha(1.0f), 0.25f, 1e-6f);
-    const TrailRendererComponent trail = Stream::decodeTrailRendererComponent(entityNamed(root["entities"], "Trail")["components"]["trailrenderer"]);
+    const TrailRendererComponent trail = Stream::decodeTrailRendererComponent(upstreamParticleFilesEntityNamed(root["entities"], "Trail")["components"]["trailrenderer"]);
     ASSERT_EQ(trail.widthCurve.keys.size(), 2u);
     EXPECT_FLOAT_EQ(trail.widthCurve.evaluate(1.0f), 0.0f);
     EXPECT_NEAR(trail.colorGradient.colorKeys[0].color.y, 1.0f, 1e-6f);

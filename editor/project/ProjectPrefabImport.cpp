@@ -114,9 +114,9 @@ namespace jasperengine::editor::prefabinternal {
             case PropertyType::Vector3: return *static_cast<Vector3*>(a.ref) == *static_cast<Vector3*>(b.ref);
             case PropertyType::Vector4: return *static_cast<Vector4*>(a.ref) == *static_cast<Vector4*>(b.ref);
             case PropertyType::Quat: return *static_cast<Quaternion*>(a.ref) == *static_cast<Quaternion*>(b.ref);
-            case PropertyType::Int: return *static_cast<int*>(a.ref) == *static_cast<int*>(b.ref);
-            case PropertyType::UInt: return *static_cast<unsigned int*>(a.ref) == *static_cast<unsigned int*>(b.ref);
-            case PropertyType::Enum: return *static_cast<int*>(a.ref) == *static_cast<int*>(b.ref);
+            case PropertyType::Int:
+            case PropertyType::UInt:
+            case PropertyType::Enum: return readPropertyInteger(a, a.ref) == readPropertyInteger(b, b.ref);
             case PropertyType::Entity: return *static_cast<Entity*>(a.ref) == *static_cast<Entity*>(b.ref);
             case PropertyType::EntityReference: {
                 const EntityReference* ra = static_cast<EntityReference*>(a.ref);

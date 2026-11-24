@@ -28,12 +28,12 @@ using namespace jasperengine::titleart::analysis;
 
 namespace {
 
-    Json defaultsOf(const char* type) {
+    Json particleLayoutDefaultsOf(const char* type) {
         const GeneratorDef* def = findGenerator(type);
         return def ? defaultParams(def->params) : Json::object();
     }
 
-    bool sameBits(float a, float b) {
+    bool particleLayoutSameBits(float a, float b) {
         uint32_t x = 0, y = 0;
         std::memcpy(&x, &a, sizeof(x));
         std::memcpy(&y, &b, sizeof(y));
@@ -47,7 +47,7 @@ namespace {
         const float fb[] = {b.x, b.y, b.mx, b.my, b.w, b.h, b.rot, b.color[0], b.color[1], b.color[2], b.color[3],
                             b.blur, b.aspect, b.phase, b.z, b.side, b.motionPhase};
         for (size_t i = 0; i < sizeof(fa) / sizeof(fa[0]); i++) {
-            if (!sameBits(fa[i], fb[i])) return false;
+            if (!particleLayoutSameBits(fa[i], fb[i])) return false;
         }
         return true;
     }
@@ -115,7 +115,7 @@ TEST(ParticleLayout, CountStability) {
         {"glint mix", Json{{"glint_mix", 20}}},
     };
     for (const Case& c : cases) {
-        Json params = defaultsOf("particles");
+        Json params = particleLayoutDefaultsOf("particles");
         ASSERT_FALSE(params.empty());
         for (auto it = c.overrides.begin(); it != c.overrides.end(); ++it) params[it.key()] = it.value();
         params["count"] = 400;
@@ -129,7 +129,7 @@ TEST(ParticleLayout, CountStability) {
     const Grid g = inkGrid();
     EmitMap map;
     ASSERT_TRUE(buildEmitMap(g, false, 4.0, map));
-    Json params = defaultsOf("particles");
+    Json params = particleLayoutDefaultsOf("particles");
     params["emitter"] = "layer";
     params["color_mode"] = "sample";
     params["count"] = 400;
@@ -139,7 +139,7 @@ TEST(ParticleLayout, CountStability) {
 }
 
 TEST(ParticleLayout, FlippedMaskCellMovesOnlyItsParticles) {
-    Json params = defaultsOf("particles");
+    Json params = particleLayoutDefaultsOf("particles");
     params["emitter"] = "layer";
     params["source"] = "fill";
     // the heading and radius colours: a particle's record then depends on its own samples only
@@ -192,7 +192,7 @@ TEST(ParticleLayout, FlippedMaskCellMovesOnlyItsParticles) {
 }
 
 TEST(ParticleLayout, MotionTimeOneIsTheStill) {
-    const std::vector<ParticleRecord> records = layout(defaultsOf("particles"));
+    const std::vector<ParticleRecord> records = layout(particleLayoutDefaultsOf("particles"));
     ASSERT_FALSE(records.empty());
     const ParticleMotion still{};   // time 1, no gravity, spin, twinkle or fade
     for (const ParticleRecord& r : records) {
@@ -205,7 +205,7 @@ TEST(ParticleLayout, MotionTimeOneIsTheStill) {
 }
 
 TEST(ParticleLayout, MotionIsClosedForm) {
-    const std::vector<ParticleRecord> records = layout(defaultsOf("particles"));
+    const std::vector<ParticleRecord> records = layout(particleLayoutDefaultsOf("particles"));
     ASSERT_FALSE(records.empty());
     ParticleMotion m;
     m.time = 0.37;
@@ -242,7 +242,7 @@ TEST(ParticleLayout, MotionIsClosedForm) {
 }
 
 TEST(ParticleLayout, MotionLoopWraps) {
-    const std::vector<ParticleRecord> records = layout(defaultsOf("particles"));
+    const std::vector<ParticleRecord> records = layout(particleLayoutDefaultsOf("particles"));
     ASSERT_FALSE(records.empty());
     ParticleMotion m;
     m.loop = true;
@@ -268,7 +268,7 @@ TEST(ParticleLayout, MotionLoopWraps) {
 }
 
 TEST(ParticleLayout, AnimationParamsLeaveTheRecords) {
-    Json params = defaultsOf("particles");
+    Json params = particleLayoutDefaultsOf("particles");
     params["glint_mix"] = 10;
     const std::vector<ParticleRecord> still = layout(params);
     params["time"] = 0.25;
@@ -284,7 +284,7 @@ TEST(ParticleLayout, AnimationParamsLeaveTheRecords) {
 }
 
 TEST(ParticleLayout, DeterministicAndSeeded) {
-    const Json params = defaultsOf("particles");
+    const Json params = particleLayoutDefaultsOf("particles");
     const std::vector<ParticleRecord> a = layout(params);
     const std::vector<ParticleRecord> b = layout(params);
     ASSERT_EQ(a.size(), b.size());
@@ -333,7 +333,7 @@ TEST(ParticleLayout, InkSplatterDrops) {
     for (int y = 12; y < 20; y++) {
         for (int x = 20; x < 44; x++) g.alpha[(size_t)y * g.w + x] = 1.0f;
     }
-    Json params = defaultsOf("ink_splatter");
+    Json params = particleLayoutDefaultsOf("ink_splatter");
     ASSERT_FALSE(params.empty());
     const std::vector<InkBlot> a = layoutInkSplatter(g, ParamValues(params), 1.0);
     ASSERT_FALSE(a.empty());

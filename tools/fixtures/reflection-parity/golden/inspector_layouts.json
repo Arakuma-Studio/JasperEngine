@@ -173,6 +173,46 @@
  ],
  "audio_source#0": [
   {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
    "component": "audiosource",
    "group": "",
    "kind": "Enum",
@@ -226,6 +266,14 @@
    "kind": "Float",
    "label": "Pan",
    "path": "pan",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Float_0_1",
+   "label": "Spatial Blend",
+   "path": "spatialBlend",
    "read_only": false
   },
   {
@@ -404,6 +452,14 @@
    "kind": "Float",
    "label": "Pan",
    "path": "pan",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Float_0_1",
+   "label": "Spatial Blend",
+   "path": "spatialBlend",
    "read_only": false
   },
   {
@@ -622,6 +678,14 @@
    "kind": "Float",
    "label": "Pan",
    "path": "pan",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Playback",
+   "kind": "Float_0_1",
+   "label": "Spatial Blend",
+   "path": "spatialBlend",
    "read_only": false
   },
   {
@@ -6331,6 +6395,14 @@
   {
    "component": "rigidbody",
    "group": "",
+   "kind": "Bool",
+   "label": "Attach To Parent Body",
+   "path": "attachToParentBody",
+   "read_only": false
+  },
+  {
+   "component": "rigidbody",
+   "group": "",
    "kind": "Enum",
    "label": "Body Type",
    "path": "type",
@@ -6384,6 +6456,14 @@
    "kind": "Bool",
    "label": "Billboard",
    "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "rigidbody2d",
+   "group": "",
+   "kind": "Bool",
+   "label": "Attach To Parent Body",
+   "path": "attachToParentBody",
    "read_only": false
   },
   {

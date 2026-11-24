@@ -18,10 +18,10 @@ using namespace jasperengine::editor::pixelart::cleanup;
 
 namespace {
 
-    using Rows = std::vector<std::string>;
+    using CleanupReduceRows = std::vector<std::string>;
 
     // outline.test.ts's colours; K is index 1
-    PixelArt strokeArt(const Rows& rows) {
+    PixelArt strokeArt(const CleanupReduceRows& rows) {
         const std::string keys = "WKB";
         PixelArt art;
         art.width = int(rows[0].size());
@@ -36,7 +36,7 @@ namespace {
     // features.test.ts's colours
     const std::string reduceKeys = "WPKBSG";
 
-    PixelArt reduceArt(const Rows& rows) {
+    PixelArt reduceArt(const CleanupReduceRows& rows) {
         PixelArt art;
         art.width = int(rows[0].size());
         art.height = int(rows.size());
@@ -48,8 +48,8 @@ namespace {
         return art;
     }
 
-    Rows lettersOf(const PixelArt& art, const std::string& keys) {
-        Rows out;
+    CleanupReduceRows lettersOf(const PixelArt& art, const std::string& keys) {
+        CleanupReduceRows out;
         for (int y = 0; y < art.height; y++) {
             std::string row;
             for (int x = 0; x < art.width; x++) {
@@ -102,7 +102,7 @@ TEST(CleanupReduce, KeepsAOnePixelRingWholeWhereTheMostCoveringColourLosesItsSid
         "..KBBBBBBBBBBK..", "..KKKBBBBBBKKK..", "....KKKKKKKK....", "................",
     });
     const PixelArt reduced = reduce(ring, 11, 11, ReduceMode::Outlines);
-    EXPECT_EQ(lettersOf(reduced, "WKB"), (Rows{"...........", "..KKKKKKK..", ".KBBBBBBBK.", ".KBBBBBBBK.", ".KBBBBBBBK.", ".KBBBBBBBK.",
+    EXPECT_EQ(lettersOf(reduced, "WKB"), (CleanupReduceRows{"...........", "..KKKKKKK..", ".KBBBBBBBK.", ".KBBBBBBBK.", ".KBBBBBBBK.", ".KBBBBBBBK.",
                                                ".KBBBBBBBK.", ".KBBBBBBBK.", ".KBBBBBBBK.", "..KKKKKKK..", "..........."}));
     EXPECT_EQ(strokeCount(reduced), 1);
 }
@@ -148,28 +148,28 @@ TEST(CleanupReduce, ShrinksARingByTwoClosedAndOnePixelThick) {
 TEST(CleanupReduce, TurnsAOnePixelStepInAStrokeIntoADiagonal) {
     PixelArt picture = strokeArt({"WKWWW", "WKKKK", "WWWWW"});
     smoothStairs(picture.indices, picture.width, picture.height, outlineIsOne);
-    EXPECT_EQ(lettersOf(picture, "WKB"), (Rows{"WKWWW", "WWKKK", "WWWWW"}));
+    EXPECT_EQ(lettersOf(picture, "WKB"), (CleanupReduceRows{"WKWWW", "WWKKK", "WWWWW"}));
 }
 
 TEST(CleanupReduce, KeepsARealCorner) {
     PixelArt picture = strokeArt({"KWWW", "KWWW", "KKKK"});
-    const Rows before = lettersOf(picture, "WKB");
+    const CleanupReduceRows before = lettersOf(picture, "WKB");
     smoothStairs(picture.indices, picture.width, picture.height, outlineIsOne);
     EXPECT_EQ(lettersOf(picture, "WKB"), before);
 }
 
 TEST(CleanupReduce, HalvesAPictureByTheMostCommonColourOfEachBlock) {
-    EXPECT_EQ(lettersOf(reduce(reduceArt({"BBSS", "BWSS", "KKWW", "KKWP"}), 2, 2, ReduceMode::Common), reduceKeys), (Rows{"BS", "KW"}));
+    EXPECT_EQ(lettersOf(reduce(reduceArt({"BBSS", "BWSS", "KKWW", "KKWP"}), 2, 2, ReduceMode::Common), reduceKeys), (CleanupReduceRows{"BS", "KW"}));
 }
 
 TEST(CleanupReduce, KeepsAOnePixelOutlineThatTheMostCommonColourWouldDrop) {
     const PixelArt picture = reduceArt({"KKKKKK", "WWWWWW", "WWWWWW", "WWWWWW", "WWWWWW", "WWWWWW"});
-    EXPECT_EQ(lettersOf(reduce(picture, 3, 2, ReduceMode::Common), reduceKeys), (Rows{"WWW", "WWW"}));
-    EXPECT_EQ(lettersOf(reduce(picture, 3, 2, ReduceMode::Outlines), reduceKeys), (Rows{"KKK", "WWW"}));
+    EXPECT_EQ(lettersOf(reduce(picture, 3, 2, ReduceMode::Common), reduceKeys), (CleanupReduceRows{"WWW", "WWW"}));
+    EXPECT_EQ(lettersOf(reduce(picture, 3, 2, ReduceMode::Outlines), reduceKeys), (CleanupReduceRows{"KKK", "WWW"}));
 }
 
 TEST(CleanupReduce, DoesNotGrowALoneDarkPixelIntoABlock) {
-    EXPECT_EQ(lettersOf(reduce(reduceArt({"WWWW", "WKWW", "WWWW", "WWWW"}), 2, 2, ReduceMode::Outlines), reduceKeys), (Rows{"WW", "WW"}));
+    EXPECT_EQ(lettersOf(reduce(reduceArt({"WWWW", "WKWW", "WWWW", "WWWW"}), 2, 2, ReduceMode::Outlines), reduceKeys), (CleanupReduceRows{"WW", "WW"}));
 }
 
 TEST(CleanupReduce, MergesBlocksOfAnyRatioTransparentOnesIncluded) {

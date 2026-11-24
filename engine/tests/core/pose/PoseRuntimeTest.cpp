@@ -27,7 +27,7 @@ namespace {
         return data;
     }
 
-    double maxDifference(const HumanPose& a, const HumanPose& b){
+    double poseRuntimeMaxDifference(const HumanPose& a, const HumanPose& b){
         double worst = 0.0;
         for (int s = 0; s < HUMAN_BONE_COUNT; s++){
             worst = std::max(worst, rotationError(a.rotations[s], b.rotations[s]));
@@ -58,10 +58,10 @@ TEST(PoseRuntime, BuildRealisesKeysAndFrames){
         // count + 1 frames, the last a copy of the first (loop)
         const size_t count = std::max<size_t>(1, (size_t)std::lround(timeline.length * data.settings.frameRate));
         EXPECT_EQ(runtime->frames().size(), count + 1);
-        EXPECT_LT(maxDifference(runtime->frames().front(), runtime->frames().back()), 1e-6);
+        EXPECT_LT(poseRuntimeMaxDifference(runtime->frames().front(), runtime->frames().back()), 1e-6);
         // the keys are fromBodyPose of the key bodies (joint limits on, grounded)
         HumanPose expected = rig->skinned->fromBodyPose(data.poses[1].body, nullptr, true, 0.0f);
-        EXPECT_LT(maxDifference(runtime->keys()[1], expected), 1e-5) << rig->label;
+        EXPECT_LT(poseRuntimeMaxDifference(runtime->keys()[1], expected), 1e-5) << rig->label;
     }
 }
 
@@ -74,7 +74,7 @@ TEST(PoseRuntime, SamplingBetweenFrames){
     HumanPose out;
     // on a frame: that frame
     runtime->samplePlayback(3 * frameTime, out);
-    EXPECT_LT(maxDifference(out, runtime->frames()[3]), 1e-5);
+    EXPECT_LT(poseRuntimeMaxDifference(out, runtime->frames()[3]), 1e-5);
     // between two frames: the slerp (hips lerp) at the fraction
     runtime->samplePlayback(3.25f * frameTime, out);
     const HumanPose& a = runtime->frames()[3];
@@ -87,7 +87,7 @@ TEST(PoseRuntime, SamplingBetweenFrames){
     // a loop wraps
     HumanPose wrapped;
     runtime->samplePlayback(runtime->length + 3.25f * frameTime, wrapped);
-    EXPECT_LT(maxDifference(out, wrapped), 1e-4);
+    EXPECT_LT(poseRuntimeMaxDifference(out, wrapped), 1e-4);
 }
 
 TEST(PoseRuntime, SteppedPlaybackShowsThePreviousFrame){
@@ -99,7 +99,7 @@ TEST(PoseRuntime, SteppedPlaybackShowsThePreviousFrame){
     const float frameTime = runtime->length / (float)last;
     HumanPose out;
     runtime->samplePlayback(5.9f * frameTime, out);
-    EXPECT_LT(maxDifference(out, runtime->frames()[5]), 1e-6);
+    EXPECT_LT(poseRuntimeMaxDifference(out, runtime->frames()[5]), 1e-6);
 }
 
 TEST(PoseRuntime, OneShotEndsOnceAndClamps){
@@ -135,7 +135,7 @@ TEST(PoseRuntime, OneShotEndsOnceAndClamps){
     auto runtime = loaded(data, aposeRig());
     HumanPose out;
     runtime->samplePlayback(runtime->length + 1.0f, out);
-    EXPECT_LT(maxDifference(out, runtime->frames().back()), 1e-6);
+    EXPECT_LT(poseRuntimeMaxDifference(out, runtime->frames().back()), 1e-6);
 }
 
 TEST(PoseRuntime, GoToPoseReachesTheKeyPose){
@@ -152,19 +152,19 @@ TEST(PoseRuntime, GoToPoseReachesTheKeyPose){
         HumanPose out = runtime->displayed;
         // moving, not there yet after a third of the duration
         runtime->sampleTransition(0.05f, out);
-        EXPECT_GT(maxDifference(out, runtime->keys()[1]), 1e-3) << rig->label;
+        EXPECT_GT(poseRuntimeMaxDifference(out, runtime->keys()[1]), 1e-3) << rig->label;
         for (int i = 0; i < 600 && !runtime->transitionArrived; i++){
             runtime->sampleTransition(1.0f / 60.0f, out);
         }
         EXPECT_TRUE(runtime->transitionArrived) << rig->label;
-        EXPECT_LT(maxDifference(out, runtime->keys()[1]), 1e-7) << rig->label;
+        EXPECT_LT(poseRuntimeMaxDifference(out, runtime->keys()[1]), 1e-7) << rig->label;
         // then holds it
         runtime->sampleTransition(1.0f, out);
-        EXPECT_LT(maxDifference(out, runtime->keys()[1]), 1e-7) << rig->label;
+        EXPECT_LT(poseRuntimeMaxDifference(out, runtime->keys()[1]), 1e-7) << rig->label;
         // near the settle time it is already within the spring's tolerance
         HumanPose late;
         runtime->transitionPose(runtime->transitionSettle * 0.999f, late);
-        EXPECT_LT(maxDifference(late, runtime->keys()[1]), 2e-3) << rig->label;
+        EXPECT_LT(poseRuntimeMaxDifference(late, runtime->keys()[1]), 2e-3) << rig->label;
     }
 
     PoseAnimatorRuntime empty;
@@ -331,7 +331,7 @@ TEST(PoseRuntime, PausedTransitionFreezes){
     HumanPose frozen = out;
     runtime->sampleTransition(0.0f, frozen);
     EXPECT_FLOAT_EQ(runtime->transitionTime, time);
-    EXPECT_LT(maxDifference(frozen, out), 1e-7);
+    EXPECT_LT(poseRuntimeMaxDifference(frozen, out), 1e-7);
     // a new goToPose runs again
     ASSERT_TRUE(runtime->startTransition(request));
     EXPECT_FALSE(runtime->transitionPaused);
@@ -369,7 +369,7 @@ TEST(PoseRuntime, RebuildKeepsTheGoToPoseTarget){
     ASSERT_TRUE(settled->startPending());
     HumanPose shown;
     settled->sampleTransition(0.0f, shown);
-    EXPECT_LT(maxDifference(shown, settled->keys()[2]), 1e-7);
+    EXPECT_LT(poseRuntimeMaxDifference(shown, settled->keys()[2]), 1e-7);
 
     // a request made before the first load is kept as it is; nothing to keep: nothing pending
     PoseAnimatorRuntime waiting;

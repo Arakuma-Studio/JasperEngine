@@ -5,6 +5,7 @@
 
 #include "diag/HangWatchdog.h"
 #include "util/FileUtils.h"
+#include "util/StringUtils.h"
 
 #include <algorithm>
 #include <atomic>
@@ -35,11 +36,6 @@ namespace {
     PickerState& picker() {
         static PickerState* instance = new PickerState();
         return *instance;
-    }
-
-    std::string lowered(std::string text) {
-        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return text;
     }
 
     const char* modeTitle(EditorFilePicker::Mode mode) {
@@ -78,7 +74,7 @@ namespace {
             return shown + " does not exist.";
         }
         if (!request.extensions.empty()) {
-            std::string extension = lowered(FileUtils::pathToUtf8(path.extension()));
+            std::string extension = jasperengine::StringUtils::toLowerAscii(FileUtils::pathToUtf8(path.extension()));
             if (!extension.empty() && extension[0] == '.') extension.erase(0, 1);
             if (std::find(request.extensions.begin(), request.extensions.end(), extension) == request.extensions.end()) {
                 return shown + " is not one of the types this picker takes: " + extensionList(request) + ".";

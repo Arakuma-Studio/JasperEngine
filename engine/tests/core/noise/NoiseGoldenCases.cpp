@@ -30,7 +30,7 @@ namespace jasperengine { namespace noise { namespace golden {
         constexpr int kGridSize = 64;
 
         // Deterministic points, from integers: rand() and friends differ per library
-        std::vector<float> scatteredPoints(uint32_t seed, size_t count, float span){
+        std::vector<float> noiseGoldenCasesScatteredPoints(uint32_t seed, size_t count, float span){
             std::vector<float> values(count);
             uint32_t state = seed;
             for (size_t i = 0; i < count; i++){
@@ -50,9 +50,9 @@ namespace jasperengine { namespace noise { namespace golden {
         }
 
         void addBasisCases(Cases& out, Backend backend){
-            const std::vector<float> xs = scatteredPoints(11u, 1027, 300.0f);
-            const std::vector<float> ys = scatteredPoints(23u, 1027, 300.0f);
-            const std::vector<float> zs = scatteredPoints(37u, 1027, 300.0f);
+            const std::vector<float> xs = noiseGoldenCasesScatteredPoints(11u, 1027, 300.0f);
+            const std::vector<float> ys = noiseGoldenCasesScatteredPoints(23u, 1027, 300.0f);
+            const std::vector<float> zs = noiseGoldenCasesScatteredPoints(37u, 1027, 300.0f);
             const std::vector<float> extreme = extremeCoords();
             std::vector<float> xe, ye, ze;
             for (float a : extreme){

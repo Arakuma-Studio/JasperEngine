@@ -29,7 +29,7 @@ namespace up = jasperengine::editor::upstreamparticles;
 
 namespace {
 
-    constexpr float kDeg = 57.29577951308232f;
+    constexpr float kUpstreamParticlesDeg = 57.29577951308232f;
 
     // origin/main's own quad (library:unlit with its particle texture): nothing to note about it
     up::Target quadTarget(){
@@ -46,13 +46,13 @@ namespace {
         return up::convert(YAML::Load(yaml), target);
     }
 
-    float srgb(float linear){
+    float upstreamParticlesSrgb(float linear){
         return Color::linearTosRGB(Vector3(linear, linear, linear)).x;
     }
 
     // the 3x3 turn (column-major) of S20's shape Euler degrees: Ry Rx Rz
     void s20Turn(const Vector3& e, const Vector3& v, Vector3& out){
-        const float r = 1.0f / kDeg;
+        const float r = 1.0f / kUpstreamParticlesDeg;
         const float cx = std::cos(e.x * r), sx = std::sin(e.x * r), cy = std::cos(e.y * r), sy = std::sin(e.y * r);
         const float cz = std::cos(e.z * r), sz = std::sin(e.z * r);
         const Vector3 a(cz * v.x - sz * v.y, sz * v.x + cz * v.y, v.z);
@@ -62,7 +62,7 @@ namespace {
 
     // origin/main's: Rz Ry Rx (X first)
     void upstreamTurn(const Vector3& e, const Vector3& v, Vector3& out){
-        const float r = 1.0f / kDeg;
+        const float r = 1.0f / kUpstreamParticlesDeg;
         const float cx = std::cos(e.x * r), sx = std::sin(e.x * r), cy = std::cos(e.y * r), sy = std::sin(e.y * r);
         const float cz = std::cos(e.z * r), sz = std::sin(e.z * r);
         const Vector3 a(v.x, cx * v.y - sx * v.z, sx * v.y + cx * v.z);
@@ -70,7 +70,7 @@ namespace {
         out = Vector3(cz * b.x - sz * b.y, sz * b.x + cz * b.y, b.z);
     }
 
-    ParticleEffectDocument effectOf(const YAML::Node& component){
+    ParticleEffectDocument upstreamParticlesEffectOf(const YAML::Node& component){
         ParticleEffectDocument d;
         std::vector<Diagnostic> diagnostics;
         EXPECT_TRUE(ParticleEffectCodec::read(component["inlineEffect"].as<std::string>(), d, diagnostics))
@@ -106,7 +106,7 @@ TEST(UpstreamParticles, MinMaxForms){
     EXPECT_FLOAT_EQ(m.startSize.multiplier, 2.0f);
     EXPECT_FLOAT_EQ(m.startSize.curve.evaluate(0.0f), 0.5f);
     EXPECT_EQ(m.startRotation.mode, CurveMode::TwoCurves);
-    EXPECT_NEAR(m.startRotation.multiplier, 1.5f * kDeg, 1e-3f);
+    EXPECT_NEAR(m.startRotation.multiplier, 1.5f * kUpstreamParticlesDeg, 1e-3f);
     EXPECT_FLOAT_EQ(m.startRotation.curve.evaluate(0.0f), 0.0f) << "the min curve first";
     EXPECT_FLOAT_EQ(m.startRotation.curveMax.evaluate(0.0f), 1.0f);
     // Gravity Modifier's curve runs over the emitter's time there
@@ -126,15 +126,15 @@ TEST(UpstreamParticles, GradientForms){
     EXPECT_EQ(start.mode, GradientValueMode::TwoColors);
     EXPECT_NEAR(start.color.x, 1.0f, 1e-6f);
     EXPECT_NEAR(start.color.y, 128.0f / 255.0f, 1e-6f);
-    EXPECT_NEAR(start.colorMax.x, srgb(0.5f), 1e-5f);
-    EXPECT_NEAR(start.colorMax.y, srgb(0.25f), 1e-5f);
+    EXPECT_NEAR(start.colorMax.x, upstreamParticlesSrgb(0.5f), 1e-5f);
+    EXPECT_NEAR(start.colorMax.y, upstreamParticlesSrgb(0.25f), 1e-5f);
     EXPECT_NEAR(start.colorMax.w, 0.5f, 1e-6f);
     const ColorOverLifetimeModule& col = r.effect.colorOverLifetime;
     EXPECT_TRUE(col.present && col.enabled);
     EXPECT_EQ(col.color.mode, GradientValueMode::Gradient);
     EXPECT_EQ(col.color.gradient.mode, GradientMode::Fixed);
     ASSERT_EQ(col.color.gradient.colorKeys.size(), 2u);
-    EXPECT_NEAR(col.color.gradient.colorKeys[1].color.z, srgb(0.5f), 1e-5f);
+    EXPECT_NEAR(col.color.gradient.colorKeys[1].color.z, upstreamParticlesSrgb(0.5f), 1e-5f);
     EXPECT_NEAR(col.color.gradient.evaluateAlpha(1.0f), 0.0f, 1e-6f);
     EXPECT_EQ(r.effect.colorBySpeed.color.mode, GradientValueMode::RandomColor);
     EXPECT_EQ(r.effect.colorBySpeed.speedRange, Vector2(1.0f, 4.0f));
@@ -181,8 +181,8 @@ TEST(UpstreamParticles, EveryModuleField){
     EXPECT_TRUE(d.main.startSize3D);
     EXPECT_FLOAT_EQ(d.main.startSizeZ.constant, 3.0f);
     EXPECT_TRUE(d.main.startRotation3D);
-    EXPECT_NEAR(d.main.startRotationX.constant, kDeg, 1e-3f);
-    EXPECT_NEAR(d.main.startRotationY.constant, -kDeg, 1e-3f);
+    EXPECT_NEAR(d.main.startRotationX.constant, kUpstreamParticlesDeg, 1e-3f);
+    EXPECT_NEAR(d.main.startRotationY.constant, -kUpstreamParticlesDeg, 1e-3f);
     EXPECT_FLOAT_EQ(d.main.flipRotation, 0.25f);
     EXPECT_EQ(d.main.gravitySource, GravitySource::Physics2D);
     EXPECT_EQ(d.simulationSpace, SimulationSpace::World);
@@ -228,7 +228,7 @@ TEST(UpstreamParticles, EveryModuleField){
     const VelocityOverLifetimeModule& v = d.velocityOverLifetime;
     EXPECT_TRUE(v.present && v.enabled);
     EXPECT_FLOAT_EQ(v.z.constant, 3.0f);
-    EXPECT_NEAR(v.orbitalY.constant, 2.0f * kDeg, 1e-3f);
+    EXPECT_NEAR(v.orbitalY.constant, 2.0f * kUpstreamParticlesDeg, 1e-3f);
     EXPECT_FLOAT_EQ(v.offsetX.constant, 0.5f);
     EXPECT_FLOAT_EQ(v.offsetZ.constant, 0.125f);
     EXPECT_FLOAT_EQ(v.radial.constant, 0.25f);
@@ -254,10 +254,10 @@ TEST(UpstreamParticles, EveryModuleField){
     EXPECT_TRUE(d.sizeOverLifetime.separateAxes);
     EXPECT_FLOAT_EQ(d.sizeOverLifetime.sizeZ.constant, 4.0f);
     EXPECT_EQ(d.sizeBySpeed.speedRange, Vector2(2.0f, 8.0f));
-    EXPECT_NEAR(d.rotationOverLifetime.angularVelocity.constant, 3.0f * kDeg, 1e-3f);
-    EXPECT_NEAR(d.rotationOverLifetime.angularVelocityX.constant, 1.0f * kDeg, 1e-3f);
+    EXPECT_NEAR(d.rotationOverLifetime.angularVelocity.constant, 3.0f * kUpstreamParticlesDeg, 1e-3f);
+    EXPECT_NEAR(d.rotationOverLifetime.angularVelocityX.constant, 1.0f * kUpstreamParticlesDeg, 1e-3f);
     EXPECT_TRUE(d.rotationBySpeed.separateAxes);
-    EXPECT_NEAR(d.rotationBySpeed.angularVelocityY.constant, 1.0f * kDeg, 1e-3f);
+    EXPECT_NEAR(d.rotationBySpeed.angularVelocityY.constant, 1.0f * kUpstreamParticlesDeg, 1e-3f);
     EXPECT_EQ(d.rotationBySpeed.speedRange, Vector2(0.0f, 10.0f));
 
     const NoiseModule& n = d.noise;
@@ -496,7 +496,7 @@ TEST(UpstreamParticles, SceneMigrationMovesTheQuadIntoTheRenderer){
     ASSERT_TRUE(cubes["mesh"]);
     EXPECT_FALSE(cubes["mesh"]["enabled"].as<bool>());
     EXPECT_FALSE(cubes["instancedmesh"]);
-    const ParticleEffectDocument d = effectOf(cubes["particlesystem"]);
+    const ParticleEffectDocument d = upstreamParticlesEffectOf(cubes["particlesystem"]);
     ASSERT_EQ(d.renderer.meshes.size(), 1u);
     EXPECT_EQ(d.renderer.meshes[0].type, MeshSourceType::GameObject);
 
@@ -519,7 +519,7 @@ TEST(UpstreamParticles, PointsTargetAndSpriteFrames){
     ASSERT_TRUE(points["particlesystem"]) << "on its target";
     EXPECT_FALSE(root["entities"][0]["components"]["particlesystem"]);
     EXPECT_FALSE(points["points"]) << "its empty Points go";
-    const ParticleEffectDocument d = effectOf(points["particlesystem"]);
+    const ParticleEffectDocument d = upstreamParticlesEffectOf(points["particlesystem"]);
     EXPECT_EQ(d.renderer.texture, "textures/flake.png");
     EXPECT_EQ(d.renderer.untexturedShape, UntexturedShape::Square);
     EXPECT_EQ(d.textureSheetAnimation.mode, TextureSheetMode::Sprites);

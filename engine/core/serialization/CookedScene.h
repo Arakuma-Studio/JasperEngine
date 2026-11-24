@@ -39,8 +39,8 @@ namespace jasperengine {
         constexpr uint16_t FORMAT_MAJOR = 1;
         // 1: the scene settings' capsule shadows (S57); 2: the LOD cross-fade's (S54); 3: the default shaders'
         // property values; 4: the planar reflections (water-reflections); 5: the Water Wakes' map (water-boats);
-        // 7: the scene settings' Environment Lighting Source and gradient (S94; 6 is S92's)
-        constexpr uint16_t FORMAT_MINOR = 7;
+        // 6: the Box2D sub-steps and the physics world settings, and the scene hierarchy (S96)
+        constexpr uint16_t FORMAT_MINOR = 6;
         constexpr size_t HEADER_BYTES = 28;
 
         // entity record flags

@@ -29,39 +29,39 @@ using namespace jasperengine;
 
 namespace {
 
-constexpr unsigned int RATE = 48000;
+constexpr unsigned int SEQUENCE_RATE = 48000;
 
-void putU32(std::vector<unsigned char>& out, uint32_t value){
+void sequencePutU32(std::vector<unsigned char>& out, uint32_t value){
     for (int i = 0; i < 4; i++) out.push_back((unsigned char)(value >> (8 * i)));
 }
 
-void putU16(std::vector<unsigned char>& out, uint16_t value){
+void sequencePutU16(std::vector<unsigned char>& out, uint16_t value){
     for (int i = 0; i < 2; i++) out.push_back((unsigned char)(value >> (8 * i)));
 }
 
 // a float32 WAV of planar channels
-std::vector<unsigned char> wavBytes(const std::vector<std::vector<float>>& channels){
+std::vector<unsigned char> sequenceWavBytes(const std::vector<std::vector<float>>& channels){
     const uint32_t frames = (uint32_t)channels[0].size();
     const uint16_t count = (uint16_t)channels.size();
     const uint32_t dataBytes = frames * count * 4;
     std::vector<unsigned char> out;
     for (const char* c = "RIFF"; *c; c++) out.push_back((unsigned char)*c);
-    putU32(out, 36 + dataBytes);
+    sequencePutU32(out, 36 + dataBytes);
     for (const char* c = "WAVEfmt "; *c; c++) out.push_back((unsigned char)*c);
-    putU32(out, 16);
-    putU16(out, 3);
-    putU16(out, count);
-    putU32(out, RATE);
-    putU32(out, RATE * count * 4);
-    putU16(out, (uint16_t)(count * 4));
-    putU16(out, 32);
+    sequencePutU32(out, 16);
+    sequencePutU16(out, 3);
+    sequencePutU16(out, count);
+    sequencePutU32(out, SEQUENCE_RATE);
+    sequencePutU32(out, SEQUENCE_RATE * count * 4);
+    sequencePutU16(out, (uint16_t)(count * 4));
+    sequencePutU16(out, 32);
     for (const char* c = "data"; *c; c++) out.push_back((unsigned char)*c);
-    putU32(out, dataBytes);
+    sequencePutU32(out, dataBytes);
     for (uint32_t i = 0; i < frames; i++) {
         for (uint16_t c = 0; c < count; c++) {
             uint32_t bits = 0;
             std::memcpy(&bits, &channels[c][i], 4);
-            putU32(out, bits);
+            sequencePutU32(out, bits);
         }
     }
     return out;
@@ -91,7 +91,7 @@ struct Clip{
     std::shared_ptr<AudioClipSource> source;
 
     Clip(std::vector<std::vector<float>> planar, const ClipImportSettings& settings): channels(std::move(planar)){
-        bytes = wavBytes(channels);
+        bytes = sequenceWavBytes(channels);
         auto wav = std::make_shared<SoLoud::Wav>();
         EXPECT_EQ(wav->loadMem(bytes.data(), (unsigned int)bytes.size(), true, false), (unsigned int)SoLoud::SO_NO_ERROR);
         source = std::make_shared<AudioClipSource>(wav, settings);
@@ -158,7 +158,7 @@ struct Sequence{
 // step no further than the signals themselves
 TEST(MusicSequence, PlaysPassesAndTailsOfEachSectionGaplessly){
     Sequence clips;
-    MusicSequenceSource source(2, (float)RATE);
+    MusicSequenceSource source(2, (float)SEQUENCE_RATE);
     source.setFirst(section(clips.clip0, 0, 2));
     ASSERT_TRUE(source.offerNext(section(clips.clip1, 1, 1)));
     std::unique_ptr<SoLoud::AudioSourceInstance> voice(source.createInstance());
@@ -229,7 +229,7 @@ TEST(MusicSequence, PlaysPassesAndTailsOfEachSectionGaplessly){
 // R5: a stop frame cuts the voice exactly there, whatever the block
 TEST(MusicSequence, StopsAtItsStopFrameExactly){
     Sequence clips;
-    MusicSequenceSource source(2, (float)RATE);
+    MusicSequenceSource source(2, (float)SEQUENCE_RATE);
     source.setFirst(section(clips.clip0, 0, 0));
     source.stopAt(3000);
     std::unique_ptr<SoLoud::AudioSourceInstance> voice(source.createInstance());
@@ -244,7 +244,7 @@ TEST(MusicSequence, StopsAtItsStopFrameExactly){
 // R5: with no next section offered in time the track waits in silence, and ends when told no more come
 TEST(MusicSequence, WaitsInSilenceForALateSectionAndEndsAfterTheLast){
     Sequence clips;
-    MusicSequenceSource source(2, (float)RATE);
+    MusicSequenceSource source(2, (float)SEQUENCE_RATE);
     source.setFirst(section(clips.clip1, 0, 1));
     std::unique_ptr<SoLoud::AudioSourceInstance> voice(source.createInstance());
     voice->init(source, 0);
@@ -264,7 +264,7 @@ namespace {
 // what a voice costs the mix: SoLoud's null driver mixing it block by block, the fastest of several runs
 double mixSeconds(SoLoud::AudioSource& source, bool looping, int blocks){
     SoLoud::Soloud engine;
-    EXPECT_EQ(engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER, RATE, 512, 2), (unsigned int)SoLoud::SO_NO_ERROR);
+    EXPECT_EQ(engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER, SEQUENCE_RATE, 512, 2), (unsigned int)SoLoud::SO_NO_ERROR);
     const SoLoud::handle voice = engine.play(source);
     engine.setLooping(voice, looping);
     std::vector<float> buffer(1024);
@@ -291,7 +291,7 @@ double mixSeconds(SoLoud::AudioSource& source, bool looping, int blocks){
 TEST(MusicSequenceBudget, DISABLED_AddsAtMostTwoPercentToAStreamedVoice){
     std::vector<float> tone(480000);
     for (size_t i = 0; i < tone.size(); i++) tone[i] = (float)std::sin((double)i * 0.0576);
-    const std::vector<unsigned char> bytes = wavBytes({tone, tone});
+    const std::vector<unsigned char> bytes = sequenceWavBytes({tone, tone});
     auto stream = std::make_shared<SoLoud::WavStream>();
     ASSERT_EQ(stream->loadMem(bytes.data(), (unsigned int)bytes.size(), true, false), (unsigned int)SoLoud::SO_NO_ERROR);
     ClipImportSettings settings;
@@ -302,7 +302,7 @@ TEST(MusicSequenceBudget, DISABLED_AddsAtMostTwoPercentToAStreamedVoice){
     double plain = 1e9, music = 1e9;
     for (int run = 0; run < 15; run++) {
         plain = std::min(plain, mixSeconds(*clip, true, blocks));
-        MusicSequenceSource sequence(2, (float)RATE);
+        MusicSequenceSource sequence(2, (float)SEQUENCE_RATE);
         auto first = std::make_unique<MusicSection>();
         first->clip = clip;
         first->instance.reset(clip->createInstance());

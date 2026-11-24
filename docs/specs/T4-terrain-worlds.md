@@ -934,3 +934,10 @@ Recorded while implementing (`terrain/t4-worlds`). The code is what holds; each 
   far ground kept its old heights until Rebuild Overview. The tiles settled since the last refresh are now held for it.
   AC34's `TerrainWorldGpu.OverviewRefreshAfterStroke` is the CPU test
   `TerrainWorldStreaming.OverviewFollowsAnEditFlushedBeforeItsRefresh`: what draws far away is the overview's samples.
+- **R23: a chunk's samples are compressed at 8 bits, not at `CalculateBitsPerSampleForError`'s answer for 1 cm.** On a
+  side that is not a multiple of the block size (a chunk's 2^n + 1 at Jolt's default block of 2) that function's
+  second pass over a block reads past the block, wrapping into the next row and past the end of the samples on the
+  last one (a heap-buffer-overflow under ASan in `TerrainWorldPlacement.CratesRestOnTheSurfaceAcrossBorders`); those
+  far samples made it answer 8 for every chunk that was not flat, which is what the colliders were tested with. With
+  the bits it means once the pass is clamped, the crate at the four-chunk corner of that test never settles. Both
+  builders (`TerrainWorldCollision`, Physics Placement's `addWorldChunks`) take `TerrainWorldCollision::CHUNK_BITS_PER_SAMPLE`.

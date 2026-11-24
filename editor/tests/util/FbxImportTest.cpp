@@ -9,6 +9,7 @@
 
 #include "util/FbxImporter.h"
 
+#include "io/watch/SharedFileReader.h"
 #include "ufbx.h"
 
 #include "stb_image_write.h"
@@ -20,6 +21,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -313,8 +315,11 @@ TEST(FbxImport, ConcurrentImportsNeverShowAHalfWrittenFile) {
     }
     std::thread reader([&]() {
         while (!done) {
-            std::ifstream file(project.glb, std::ios::binary);
-            const std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            // read as the engine reads the import (MeshSystem::readWholeFile through File): shared for
+            // deletion on Windows, so the publish replaces the file while it is read. std::ifstream never
+            // shares it: a reader reopening it back to back would hold every replace off, past the retries
+            std::vector<uint8_t> bytes;
+            jasperengine::SharedFileReader::readAll(project.glb, bytes);
             tinygltf::TinyGLTF loader;
             loader.SetImagesAsIs(true);
             tinygltf::Model model;

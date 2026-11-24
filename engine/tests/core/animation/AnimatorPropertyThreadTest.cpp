@@ -40,9 +40,9 @@ using namespace animatortest;
 
 namespace {
 
-    constexpr float kDt = 1.0f / 60.0f;
+    constexpr float kAnimatorPropertyThreadDt = 1.0f / 60.0f;
     // more than one chunk of the wave (4 Animators per job), with work for the workers to take
-    constexpr int kCharacters = 16;
+    constexpr int kAnimatorPropertyThreadCharacters = 16;
 
     enum WriteKind : size_t { LuaHeap, ScriptCallback, ActiveRow, PlainRow, WatchedRow, WriteKindCount };
 
@@ -123,7 +123,7 @@ namespace {
         return 0;
     }
 
-    ClipTrackData propertyTrack(const std::string& path, const std::string& component, const std::string& name, std::vector<ClipKey> keys){
+    ClipTrackData animatorPropertyThreadPropertyTrack(const std::string& path, const std::string& component, const std::string& name, std::vector<ClipKey> keys){
         ClipTrackData t;
         t.path = path;
         t.channel = ClipChannel::Property;
@@ -138,7 +138,7 @@ namespace {
         return {key(0, {1}), key(0.25f, {0}), key(0.5f, {1}), key(0.75f, {0}), key(1, {1})};
     }
 
-    ControllerDef oneState(const std::string& clip){
+    ControllerDef animatorPropertyThreadOneState(const std::string& clip){
         return controller({}, {state("Play", clip)});
     }
 
@@ -211,7 +211,7 @@ namespace {
 
         // Animators keying a Lua field, a script's enabled, GameObject active and a plain row
         void buildCharacters(const std::string& controllerPath){
-            for (int i = 0; i < kCharacters; i++){
+            for (int i = 0; i < kAnimatorPropertyThreadCharacters; i++){
                 const Entity character = node(NULL_ENTITY, "Character", Vector3((float)i, 0, 0));
                 node(character, "Hips", Vector3(0, 1, 0));
                 lamp(character, "Lamp");
@@ -224,11 +224,11 @@ namespace {
 
         ClipData everyRowType(){
             ClipData data = slide("Hips", 1.0f);
-            data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
-            data.tracks.push_back(propertyTrack("", "script:Probe", "offset", {key(0, {0, 0, 0}), key(1, {1, 2, 3})}));
-            data.tracks.push_back(propertyTrack("", "script:Probe", "enabled", toggling()));
-            data.tracks.push_back(propertyTrack("Door", "gameobject", "active", toggling()));
-            data.tracks.push_back(propertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
+            data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
+            data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "offset", {key(0, {0, 0, 0}), key(1, {1, 2, 3})}));
+            data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "enabled", toggling()));
+            data.tracks.push_back(animatorPropertyThreadPropertyTrack("Door", "gameobject", "active", toggling()));
+            data.tracks.push_back(animatorPropertyThreadPropertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
             return data;
         }
 
@@ -242,7 +242,7 @@ namespace {
         // frames until a worker wrote a plain row: proves the wave was parallel (a busy host may
         // leave the first frames' chunks to the main thread)
         void stepUntilAWorkerRan(){
-            for (int frame = 0; frame < 6000 && threadLog.workers(PlainRow) == 0; frame++) step(kDt);
+            for (int frame = 0; frame < 6000 && threadLog.workers(PlainRow) == 0; frame++) step(kAnimatorPropertyThreadDt);
             ASSERT_GT(threadLog.workers(PlainRow), 0u) << "no plain row ran on a worker: this run says nothing about threads";
         }
     };
@@ -253,7 +253,7 @@ namespace {
 // enabled run user callbacks on a worker
 TEST_F(AnimatorPropertyThread, LuaFieldsActiveAndEnabledAreWrittenOnTheMainThread){
     if (jobs::system().getWorkerCount() == 0) GTEST_SKIP() << "no workers on this machine: the wave is serial";
-    buildCharacters(controllerFile("c", oneState(clip("rows", everyRowType()))));
+    buildCharacters(controllerFile("c", animatorPropertyThreadOneState(clip("rows", everyRowType()))));
     ScriptRuntime::awakeScene(&scene);
     step(0.0);
     recordRows();
@@ -261,7 +261,7 @@ TEST_F(AnimatorPropertyThread, LuaFieldsActiveAndEnabledAreWrittenOnTheMainThrea
     const size_t usesBefore = LuaBinding::getOffThreadUseCount();
     {
         LuaHeapRecorder recorder(L);
-        step(kDt, 240);
+        step(kAnimatorPropertyThreadDt, 240);
         stepUntilAWorkerRan();
     }
     EXPECT_EQ(threadLog.workers(LuaHeap), 0u) << "a Lua field written from a worker";
@@ -269,23 +269,23 @@ TEST_F(AnimatorPropertyThread, LuaFieldsActiveAndEnabledAreWrittenOnTheMainThrea
     EXPECT_EQ(threadLog.workers(ActiveRow), 0u) << "GameObject active written from a worker";
     EXPECT_EQ(LuaBinding::getOffThreadUseCount(), usesBefore);
     // the frames really wrote them
-    EXPECT_GE(threadLog.main(LuaHeap) + threadLog.workers(LuaHeap), (size_t)(240 * kCharacters));
-    EXPECT_GE(threadLog.main(ScriptCallback) + threadLog.workers(ScriptCallback), (size_t)(2 * 12 * kCharacters));
-    EXPECT_GE(threadLog.main(ActiveRow) + threadLog.workers(ActiveRow), (size_t)(12 * kCharacters));
+    EXPECT_GE(threadLog.main(LuaHeap) + threadLog.workers(LuaHeap), (size_t)(240 * kAnimatorPropertyThreadCharacters));
+    EXPECT_GE(threadLog.main(ScriptCallback) + threadLog.workers(ScriptCallback), (size_t)(2 * 12 * kAnimatorPropertyThreadCharacters));
+    EXPECT_GE(threadLog.main(ActiveRow) + threadLog.workers(ActiveRow), (size_t)(12 * kAnimatorPropertyThreadCharacters));
 }
 
 // A field whose value does not change is only read: nothing allocates, the Lua stack is still used
 TEST_F(AnimatorPropertyThread, ReadsOfAnUnchangedLuaFieldStayOnTheMainThread){
     if (jobs::system().getWorkerCount() == 0) GTEST_SKIP() << "no workers on this machine: the wave is serial";
     ClipData data = slide("Hips", 1.0f);
-    data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0.5f}), key(1, {0.5f})}));
-    data.tracks.push_back(propertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
-    buildCharacters(controllerFile("c", oneState(clip("rows", data))));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "glow", {key(0, {0.5f}), key(1, {0.5f})}));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
+    buildCharacters(controllerFile("c", animatorPropertyThreadOneState(clip("rows", data))));
     step(0.0);
     recordRows();
     threadLog.reset();
     const size_t usesBefore = LuaBinding::getOffThreadUseCount();
-    step(kDt, 240);
+    step(kAnimatorPropertyThreadDt, 240);
     stepUntilAWorkerRan();
     EXPECT_EQ(LuaBinding::getOffThreadUseCount(), usesBefore) << "a Lua field read from a worker";
     EXPECT_FLOAT_EQ(luaField(refs[0], "glow"), 0.5f);
@@ -300,22 +300,22 @@ TEST_F(AnimatorPropertyThread, TwoAnimatorsOnOnePlainRowDefer){
     const Entity shared = lamp(inner, "Shared");
     node(inner, "Bone", Vector3(0, 0, 0));
     ClipData fromOuter = slide("Inner/Bone", 1.0f);
-    fromOuter.tracks.push_back(propertyTrack("Inner/Shared", "light", "intensity", {key(0, {10}), key(1, {20})}));
+    fromOuter.tracks.push_back(animatorPropertyThreadPropertyTrack("Inner/Shared", "light", "intensity", {key(0, {10}), key(1, {20})}));
     ClipData fromInner;
     fromInner.wrap = ClipWrapMode::Loop;
-    fromInner.tracks.push_back(propertyTrack("Shared", "light", "intensity", {key(0, {100}), key(1, {200})}));
-    animator(controllerFile("outer", oneState(clip("outer", fromOuter))), outer);
+    fromInner.tracks.push_back(animatorPropertyThreadPropertyTrack("Shared", "light", "intensity", {key(0, {100}), key(1, {200})}));
+    animator(controllerFile("outer", animatorPropertyThreadOneState(clip("outer", fromOuter))), outer);
     ClipData filler = slide("Hips", 1.0f);
-    filler.tracks.push_back(propertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
-    buildCharacters(controllerFile("filler", oneState(clip("filler", filler))));
-    animator(controllerFile("inner", oneState(clip("inner", fromInner))), inner);
+    filler.tracks.push_back(animatorPropertyThreadPropertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
+    buildCharacters(controllerFile("filler", animatorPropertyThreadOneState(clip("filler", filler))));
+    animator(controllerFile("inner", animatorPropertyThreadOneState(clip("inner", fromInner))), inner);
 
     step(0.0);
     recordRows();
     threadLog.reset();
     RecordedRow<WatchedRow>::install(instance(outer), "light");
     RecordedRow<WatchedRow>::install(instance(inner), "light");
-    step(kDt, 240);
+    step(kAnimatorPropertyThreadDt, 240);
     stepUntilAWorkerRan();
     EXPECT_GT(threadLog.main(WatchedRow), 0u);
     EXPECT_EQ(threadLog.workers(WatchedRow), 0u) << "a row two Animators key was written from a worker";
@@ -327,9 +327,9 @@ TEST_F(AnimatorPropertyThread, TwoAnimatorsOnOnePlainRowDefer){
 TEST_F(AnimatorPropertyThread, SpriteFramesAreWrittenOnTheMainThread){
     if (jobs::system().getWorkerCount() == 0) GTEST_SKIP() << "no workers on this machine: the wave is serial";
     ClipData data = slide("Hips", 1.0f);
-    data.tracks.push_back(propertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
-    data.tracks.push_back(propertyTrack("Lamp", "sprite", "frame", {key(0, {0}), key(0.5f, {1}), key(1, {0})}));
-    buildCharacters(controllerFile("c", oneState(clip("rows", data))));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("Lamp", "sprite", "frame", {key(0, {0}), key(0.5f, {1}), key(1, {0})}));
+    buildCharacters(controllerFile("c", animatorPropertyThreadOneState(clip("rows", data))));
     for (Entity character : characters){
         for (Entity child : getChildren(&scene, character)){
             if (scene.getEntityName(child) != "Lamp") continue;
@@ -348,7 +348,7 @@ TEST_F(AnimatorPropertyThread, SpriteFramesAreWrittenOnTheMainThread){
     recordRows();
     for (Entity character : characters) RecordedRow<WatchedRow>::install(instance(character), "sprite");
     threadLog.reset();
-    step(kDt, 240);
+    step(kAnimatorPropertyThreadDt, 240);
     stepUntilAWorkerRan();
     EXPECT_GT(threadLog.main(WatchedRow), 0u);
     EXPECT_EQ(threadLog.workers(WatchedRow), 0u) << "a sprite frame written from a worker";
@@ -362,12 +362,12 @@ TEST(AnimatorPropertyThreadDeterminism, ParallelEqualsSerial){
         f.system().setParallel(r == 0);
         lua_State* L = LuaBinding::getLuaState();
         ClipData data = slide("Hips", 1.0f);
-        data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
-        data.tracks.push_back(propertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
-        const std::string path = f.controllerFile("c", oneState(f.clip("rows", data)));
+        data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
+        data.tracks.push_back(animatorPropertyThreadPropertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
+        const std::string path = f.controllerFile("c", animatorPropertyThreadOneState(f.clip("rows", data)));
         std::vector<Entity> characters;
         std::vector<int> refs;
-        for (int i = 0; i < kCharacters; i++){
+        for (int i = 0; i < kAnimatorPropertyThreadCharacters; i++){
             const Entity character = f.node(NULL_ENTITY, "Character", Vector3((float)i, 0, 0));
             f.node(character, "Hips", Vector3(0, 1, 0));
             const Entity lampEntity = f.node(character, "Lamp", Vector3(0, 0, 0));
@@ -398,15 +398,15 @@ TEST(AnimatorPropertyThreadDeterminism, ParallelEqualsSerial){
         f.scene.addComponent<LightComponent>(shared, LightComponent{});
         ClipData fromOuter;
         fromOuter.wrap = ClipWrapMode::Loop;
-        fromOuter.tracks.push_back(propertyTrack("Inner/Shared", "light", "intensity", {key(0, {10}), key(1, {20})}));
+        fromOuter.tracks.push_back(animatorPropertyThreadPropertyTrack("Inner/Shared", "light", "intensity", {key(0, {10}), key(1, {20})}));
         ClipData fromInner;
         fromInner.wrap = ClipWrapMode::Loop;
-        fromInner.tracks.push_back(propertyTrack("Shared", "light", "intensity", {key(0, {100}), key(1, {200})}));
-        f.animator(f.controllerFile("outer", oneState(f.clip("outer", fromOuter))), outer);
-        f.animator(f.controllerFile("inner", oneState(f.clip("inner", fromInner))), inner);
+        fromInner.tracks.push_back(animatorPropertyThreadPropertyTrack("Shared", "light", "intensity", {key(0, {100}), key(1, {200})}));
+        f.animator(f.controllerFile("outer", animatorPropertyThreadOneState(f.clip("outer", fromOuter))), outer);
+        f.animator(f.controllerFile("inner", animatorPropertyThreadOneState(f.clip("inner", fromInner))), inner);
         f.step(0.0);
         for (int frame = 0; frame < 240; frame++){
-            f.step(kDt);
+            f.step(kAnimatorPropertyThreadDt);
             results[(size_t)r].push_back(f.scene.getComponent<LightComponent>(shared).intensity);
             for (size_t i = 0; i < characters.size(); i++){
                 lua_rawgeti(L, LUA_REGISTRYINDEX, refs[i]);
@@ -428,9 +428,9 @@ TEST(AnimatorPropertyThreadDeterminism, ParallelEqualsSerial){
 TEST_F(AnimatorPropertyThread, EveryValueIsWrittenBeforeAnyCallback){
     ClipData data = slide("Hips", 1.0f);
     data.events = {event(0.5f, "mark")};
-    data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
-    data.tracks.push_back(propertyTrack("", "script:Probe", "enabled", {key(0, {1}), key(0.5f, {0}), key(1, {1})}));
-    const std::string path = controllerFile("c", oneState(clip("rows", data)));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "enabled", {key(0, {1}), key(0.5f, {0}), key(1, {1})}));
+    const std::string path = controllerFile("c", animatorPropertyThreadOneState(clip("rows", data)));
     ASSERT_EQ(luaL_dostring(L, "orderLog = {}"), LUA_OK);
     std::vector<std::string> log;
     int glows[2];
@@ -486,9 +486,9 @@ TEST_F(AnimatorPropertyThread, EveryValueIsWrittenBeforeAnyCallback){
 TEST_F(AnimatorPropertyThread, ACallbackMayRemoveAnAnimator){
     ClipData data = slide("Hips", 1.0f);
     data.events = {event(0.5f, "mark")};
-    data.tracks.push_back(propertyTrack("", "script:Probe", "enabled", {key(0, {1}), key(0.5f, {0}), key(1, {1})}));
-    data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
-    const std::string path = controllerFile("c", oneState(clip("rows", data)));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "enabled", {key(0, {1}), key(0.5f, {0}), key(1, {1})}));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
+    const std::string path = controllerFile("c", animatorPropertyThreadOneState(clip("rows", data)));
     std::vector<int> fired(3, 0);
     std::vector<int> glows;
     for (int i = 0; i < 3; i++){
@@ -529,12 +529,12 @@ TEST_F(AnimatorPropertyThread, PlainRowsLeaveTheWaveWhileTheEntityIsShared){
     const Entity other = lamp(inner, "Other");
     ClipData fromOuter;
     fromOuter.wrap = ClipWrapMode::Loop;
-    fromOuter.tracks.push_back(propertyTrack("Inner/Shared", "light", "intensity", {key(0, {10}), key(1, {20})}));
-    fromOuter.tracks.push_back(propertyTrack("Inner/Other", "light", "intensity", {key(0, {10}), key(1, {20})}));
+    fromOuter.tracks.push_back(animatorPropertyThreadPropertyTrack("Inner/Shared", "light", "intensity", {key(0, {10}), key(1, {20})}));
+    fromOuter.tracks.push_back(animatorPropertyThreadPropertyTrack("Inner/Other", "light", "intensity", {key(0, {10}), key(1, {20})}));
     ClipData fromInner;
     fromInner.wrap = ClipWrapMode::Loop;
-    fromInner.tracks.push_back(propertyTrack("Shared", "light", "intensity", {key(0, {100}), key(1, {200})}));
-    animator(controllerFile("outer", oneState(clip("outer", fromOuter))), outer);
+    fromInner.tracks.push_back(animatorPropertyThreadPropertyTrack("Shared", "light", "intensity", {key(0, {100}), key(1, {200})}));
+    animator(controllerFile("outer", animatorPropertyThreadOneState(clip("outer", fromOuter))), outer);
     step(0.0);
     auto inWave = [&](Entity animatorEntity, Entity target){
         for (const RigProperty& property : instance(animatorEntity).rig.properties){
@@ -546,22 +546,22 @@ TEST_F(AnimatorPropertyThread, PlainRowsLeaveTheWaveWhileTheEntityIsShared){
     EXPECT_TRUE(inWave(outer, shared)) << "one writer, a row that touches only its entity";
     EXPECT_TRUE(inWave(outer, other));
 
-    animator(controllerFile("inner", oneState(clip("inner", fromInner))), inner);
-    step(kDt);
+    animator(controllerFile("inner", animatorPropertyThreadOneState(clip("inner", fromInner))), inner);
+    step(kAnimatorPropertyThreadDt);
     EXPECT_FALSE(inWave(outer, shared)) << "the first Animator's row follows the second's bind";
     EXPECT_FALSE(inWave(inner, shared));
     EXPECT_TRUE(inWave(outer, other)) << "another entity is not concerned";
     EXPECT_GE(scene.getComponent<LightComponent>(shared).intensity, 100.0f) << "the later Animator's value";
 
     scene.removeComponent<AnimatorComponent>(inner);
-    step(kDt);
+    step(kAnimatorPropertyThreadDt);
     EXPECT_TRUE(inWave(outer, shared)) << "one writer again";
     EXPECT_LE(scene.getComponent<LightComponent>(shared).intensity, 20.0f);
 
     // a row on another Animator's bone
     ClipData boneOfInner = slide("Shared", 1.0f);
-    animator(controllerFile("bones", oneState(clip("bones", boneOfInner))), inner);
-    step(kDt);
+    animator(controllerFile("bones", animatorPropertyThreadOneState(clip("bones", boneOfInner))), inner);
+    step(kAnimatorPropertyThreadDt);
     EXPECT_FALSE(inWave(outer, shared)) << "the other Animator writes that entity's Transform";
 }
 
@@ -591,10 +591,10 @@ TEST(AnimatorPropertyThreadRows, RowsThatReachSharedStateAreNotWorkerSafe){
 // The edit-mode preview has no finalize: its rows are written before it returns
 TEST_F(AnimatorPropertyThread, PreviewWritesEveryRowAtOnce){
     ClipData data = slide("Hips", 1.0f);
-    data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
-    data.tracks.push_back(propertyTrack("Hips/Spine/Head", "gameobject", "active", {key(0, {1}), key(0.5f, {0}), key(1, {1})}));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("Hips/Spine/Head", "gameobject", "active", {key(0, {1}), key(0.5f, {0}), key(1, {1})}));
     const int ref = script(root, "Probe");
-    animator(controllerFile("c", oneState(clip("rows", data))));
+    animator(controllerFile("c", animatorPropertyThreadOneState(clip("rows", data))));
     std::string error;
     ASSERT_TRUE(system().preview(root, 0.6f, &error)) << error;
     EXPECT_NEAR(luaField(ref, "glow"), 0.6f, 1e-5f);
@@ -608,13 +608,13 @@ TEST_F(AnimatorPropertyThread, PreviewWritesEveryRowAtOnce){
 TEST_F(AnimatorPropertyThread, WaitingRowsAllocateNothing){
     if (!testsupport::countsAllocations()) GTEST_SKIP() << "this build cannot count allocations";
     ClipData data = slide("Hips", 1.0f);
-    data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
-    data.tracks.push_back(propertyTrack("Door", "gameobject", "active", {key(0, {1}), key(1, {1})}));
-    data.tracks.push_back(propertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
-    buildCharacters(controllerFile("c", oneState(clip("rows", data))));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("Door", "gameobject", "active", {key(0, {1}), key(1, {1})}));
+    data.tracks.push_back(animatorPropertyThreadPropertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
+    buildCharacters(controllerFile("c", animatorPropertyThreadOneState(clip("rows", data))));
     system().setParallel(false);
     step(0.0);
-    step(kDt, 120);
+    step(kAnimatorPropertyThreadDt, 120);
     ASSERT_TRUE(system().getStats().sampled > 0) << "the characters play";
     // Serially: the rows wait for the main thread on either path (writePose fills the waiting
     // buffers whether or not the wave is parallel), and the parallel wave's own blocks come from the
@@ -622,6 +622,6 @@ TEST_F(AnimatorPropertyThread, WaitingRowsAllocateNothing){
     // jobs::detail::acquireSlab in runParallelFor, 1 or 20 allocations in 6 of 100 runs). R9's parallel
     // zero is Crowd200's (je-bench-anim --count-allocs)
     testsupport::AllocationCountScope scope;
-    step(kDt, 600);
+    step(kAnimatorPropertyThreadDt, 600);
     EXPECT_EQ(scope.count(), 0u);
 }

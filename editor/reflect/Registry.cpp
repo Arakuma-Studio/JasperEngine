@@ -122,6 +122,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
         &kOutlineDesc,
         &kSpriteSkinDesc,
     };
@@ -234,6 +236,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
         &kOutlineDesc,
         &kSpriteSkinDesc,
     };
@@ -344,6 +348,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
         &kOutlineDesc,
         &kSpriteSkinDesc,
     };
@@ -380,6 +386,8 @@ namespace {
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
         // 2D sorting and Sprite Batch (S52)
         &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
+        // S96 vehicles
+        &enums::kVehicleTransmissionMode,
         // Text alignment (S94)
         &enums::kTextHorizontalAlignment, &enums::kTextVerticalAlignment, &enums::kTextFontSizeUnit,
         // the Outline (S94)

@@ -34,17 +34,17 @@ namespace {
         return R"("outputs": [{"id": "main", "file": ")" + file + R"(", "content": "all", "size": [400, 200]}])";
     }
 
-    struct Fixture {
+    struct TitleLanguageShippingFixture {
         bool ready = false;
         std::unique_ptr<Project> project;
         fs::path dir;
         std::string sourceSidecar;
     };
 
-    Fixture& fixture() {
-        static Fixture f = []() {
-            Fixture out;
-            test::ensureEngine();
+    TitleLanguageShippingFixture& titleLanguageShippingFixture() {
+        static TitleLanguageShippingFixture f = []() {
+            TitleLanguageShippingFixture out;
+            jasperengine::editor::test::ensureEngine();
             const fs::path root = fs::temp_directory_path() / ("jasper-title-shipping-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -57,21 +57,22 @@ namespace {
             std::ofstream(titles / "win.titleart") << titleart::writeTitleArt(titleart::makeNewTitleArt({800, 400, "WIN", ""}));
             out.sourceSidecar = std::string("{") + SIDECAR_HEAD + ", " + output("win.titleart.png") +
                                 R"(, "languages": {"source": "en", "sets": {"de": "win.titleart.de.bake.json", "fr": null, "ja": "win.titleart.ja.bake.json"}}})";
-            std::ofstream(titles / "win.titleart.bake.json") << out.sourceSidecar;
-            std::ofstream(titles / "win.titleart.de.bake.json") << std::string("{") + SIDECAR_HEAD + ", " + output("win.titleart.de.png") + R"(, "language": "de"})";
-            std::ofstream(titles / "win.titleart.ja.bake.json") << std::string("{") + SIDECAR_HEAD + ", " + output("win.titleart.ja.png") + R"(, "language": "ja"})";
+            // binary: the test compares the sidecar's bytes, which a text-mode stream gives CRLF on Windows
+            std::ofstream(titles / "win.titleart.bake.json", std::ios::binary) << out.sourceSidecar;
+            std::ofstream(titles / "win.titleart.de.bake.json", std::ios::binary) << std::string("{") + SIDECAR_HEAD + ", " + output("win.titleart.de.png") + R"(, "language": "de"})";
+            std::ofstream(titles / "win.titleart.ja.bake.json", std::ios::binary) << std::string("{") + SIDECAR_HEAD + ", " + output("win.titleart.ja.png") + R"(, "language": "ja"})";
             AppSettings::initialize();
             out.project.reset(new Project());
-            test::useProjectPaths(out.project.get());
+            jasperengine::editor::test::useProjectPaths(out.project.get());
             out.ready = out.project->loadProject(out.dir, false);
-            test::releaseAtExit(out.project.get());
+            jasperengine::editor::test::releaseAtExit(out.project.get());
             return out;
         }();
-        if (f.project) test::useProjectPaths(f.project.get());
+        if (f.project) jasperengine::editor::test::useProjectPaths(f.project.get());
         return f;
     }
 
-    std::string readAll(const fs::path& path) {
+    std::string titleLanguageShippingReadAll(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
         std::ostringstream out;
         out << in.rdbuf();
@@ -81,7 +82,7 @@ namespace {
 }
 
 TEST(TitleLanguageShipping, DropsTheLanguagesTheProjectDoesNotList) {
-    Fixture& f = fixture();
+    TitleLanguageShippingFixture& f = titleLanguageShippingFixture();
     ASSERT_TRUE(f.ready);
     f.project->getLocalizationSettings().languages = {"en", "DE", "fr"};
     const TitleLanguageShipping plan = planTitleLanguageShipping(f.project.get());
@@ -100,11 +101,11 @@ TEST(TitleLanguageShipping, DropsTheLanguagesTheProjectDoesNotList) {
     std::vector<std::string> codes;
     for (const auto& set : shipped.languages.sets) codes.push_back(set.first);
     EXPECT_EQ(codes, (std::vector<std::string>{"de", "fr"})) << "the table without Japanese, in its order";
-    EXPECT_EQ(readAll(f.dir / "assets/titles/win.titleart.bake.json"), f.sourceSidecar) << "the project's sidecar is unchanged";
+    EXPECT_EQ(titleLanguageShippingReadAll(f.dir / "assets/titles/win.titleart.bake.json"), f.sourceSidecar) << "the project's sidecar is unchanged";
 }
 
 TEST(TitleLanguageShipping, AnEmptyListShipsEverything) {
-    Fixture& f = fixture();
+    TitleLanguageShippingFixture& f = titleLanguageShippingFixture();
     ASSERT_TRUE(f.ready);
     f.project->getLocalizationSettings().languages.clear();
     const TitleLanguageShipping plan = planTitleLanguageShipping(f.project.get());
@@ -114,7 +115,7 @@ TEST(TitleLanguageShipping, AnEmptyListShipsEverything) {
 }
 
 TEST(TitleLanguageShipping, AllListedShipsTheTableAsItIs) {
-    Fixture& f = fixture();
+    TitleLanguageShippingFixture& f = titleLanguageShippingFixture();
     ASSERT_TRUE(f.ready);
     f.project->getLocalizationSettings().languages = {"en", "de", "fr", "ja"};
     const TitleLanguageShipping plan = planTitleLanguageShipping(f.project.get());

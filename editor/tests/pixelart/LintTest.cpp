@@ -64,13 +64,13 @@ namespace {
         return lintOne(std::vector<PixelImage>{lintFixture(fixture)}, id, input);
     }
 
-    pixelart::Palette sweetie16() {
-        pixelart::Palette p;
+    jasperengine::pixelart::Palette lintSweetie16() {
+        jasperengine::pixelart::Palette p;
         p.name = "Sweetie 16";
         for (const char* hex : {"1a1c2c", "5d275d", "b13e53", "ef7d57", "ffcd75", "a7f070", "38b764", "257179",
                                 "29366f", "3b5dc9", "41a6f6", "73eff7", "f4f4f4", "94b0c2", "566c86", "333c57"}) {
-            pixelart::Rgba8 c;
-            EXPECT_TRUE(pixelart::parseHex(hex, c));
+            jasperengine::pixelart::Rgba8 c;
+            EXPECT_TRUE(jasperengine::pixelart::parseHex(hex, c));
             p.colors.push_back(c);
         }
         return p;
@@ -95,7 +95,7 @@ TEST(PixelLint, CatalogueIsInR26Order) {
 }
 
 TEST(PixelLint, OffPaletteFailsOnAnyOffPixelAndSkipsWithoutAPalette) {
-    const pixelart::Palette palette = sweetie16();
+    const jasperengine::pixelart::Palette palette = lintSweetie16();
     LintInput input;
     input.palette = &palette;
     const LintResult pos = lintOne("off_palette_pos", "off_palette", input);
@@ -214,7 +214,7 @@ TEST(PixelLint, FlickerWarnsOnAOneFrameBlinkAndSkipsUnderThreeFrames) {
 
 TEST(PixelLint, ContrastWarnsOnADarkSpriteOnADarkBackdrop) {
     LintInput input;
-    input.backdrops = {pixelart::Rgba8{0x10, 0x10, 0x18, 255}};
+    input.backdrops = {jasperengine::pixelart::Rgba8{0x10, 0x10, 0x18, 255}};
     input.backdropsSource = "pixel_art.backdrops";
     const LintResult pos = lintOne("contrast_pos", "contrast", input);
     expectStatus(pos, LintStatus::Warn, "dark on dark");
@@ -303,7 +303,7 @@ TEST(PixelLint, ThresholdOptionsAreReportedWithTheirSource) {
 }
 
 TEST(PixelLint, EveryResultHasTheR25KeysAndAtMostEightSpots) {
-    const pixelart::Palette palette = sweetie16();
+    const jasperengine::pixelart::Palette palette = lintSweetie16();
     std::vector<PixelImage> frames = lintFrames("flicker_pos", 4);
     // many spots: a frame of single pixels in a checkerboard
     PixelImage noisy(32, 32);
@@ -316,7 +316,7 @@ TEST(PixelLint, EveryResultHasTheR25KeysAndAtMostEightSpots) {
         LintInput input;
         input.frames = set;
         input.palette = &palette;
-        input.backdrops = {pixelart::Rgba8{0, 0, 0, 255}};
+        input.backdrops = {jasperengine::pixelart::Rgba8{0, 0, 0, 255}};
         input.rules.maxColors = 2;
         input.rules.sizes = {{8, 8}};
         input.rules.transparentBackground = true;
@@ -346,7 +346,7 @@ TEST(PixelLint, EveryResultHasTheR25KeysAndAtMostEightSpots) {
     LintInput input;
     std::vector<PixelImage> one = {noisy};
     input.frames = one;
-    input.backdrops = {pixelart::Rgba8{200, 50, 50, 255}};
+    input.backdrops = {jasperengine::pixelart::Rgba8{200, 50, 50, 255}};
     for (const LintResult& r : pl::lint(input).results) {
         for (const char* craft : {"near_duplicates", "orphans", "jaggies", "doubles", "holes", "flicker", "contrast", "banding", "pillow_shading"}) {
             if (r.id == craft) {
@@ -357,13 +357,13 @@ TEST(PixelLint, EveryResultHasTheR25KeysAndAtMostEightSpots) {
 }
 
 TEST(PixelLint, IsDeterministicOverRunsAndThreads) {
-    const pixelart::Palette palette = sweetie16();
+    const jasperengine::pixelart::Palette palette = lintSweetie16();
     std::vector<PixelImage> frames = lintFrames("flicker_pos", 4);
     frames.push_back(lintFixture("banding_pos"));   // a size of its own: per-frame lints still run
     LintInput input;
     input.frames = frames;
     input.palette = &palette;
-    input.backdrops = {pixelart::Rgba8{0x10, 0x10, 0x18, 255}};
+    input.backdrops = {jasperengine::pixelart::Rgba8{0x10, 0x10, 0x18, 255}};
     const std::string first = toJson(pl::lint(input)).dump();
     for (int run = 0; run < 3; run++) EXPECT_EQ(toJson(pl::lint(input)).dump(), first) << "run " << run;
     std::vector<std::string> results(8);
@@ -414,13 +414,13 @@ namespace {
 
 // R38: every lint on 16 frames of 64 x 64 <= 15 ms; banding and pillow_shading <= 5 ms per 128 x 128 frame
 TEST(PixelLintBench, LintsStayInteractive) {
-    const pixelart::Palette palette = sweetie16();
+    const jasperengine::pixelart::Palette palette = lintSweetie16();
     std::vector<PixelImage> frames;
     for (uint32_t f = 0; f < 16; f++) frames.push_back(lintBenchFrame(64, f + 1));
     LintInput input;
     input.frames = frames;
     input.palette = &palette;
-    input.backdrops = {pixelart::Rgba8{0, 0, 0, 255}, pixelart::Rgba8{255, 255, 255, 255}};
+    input.backdrops = {jasperengine::pixelart::Rgba8{0, 0, 0, 255}, jasperengine::pixelart::Rgba8{255, 255, 255, 255}};
     input.rules.maxColors = 16;
     (void)pl::lint(input);   // warm the OKLab path
     double best = 1e9;

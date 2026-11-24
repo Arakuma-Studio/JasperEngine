@@ -19,7 +19,7 @@ using namespace jasperengine::test;
 namespace {
 
     // type 2 with property bits 0x41, built in (ShaderKey is a struct since the 64-bit keys)
-    const ShaderKey key(2, 0x41, 0);
+    const ShaderKey shaderDataSerializerKey(2, 0x41, 0);
 
     ShaderData shaderDataSample(){
         ShaderData data;
@@ -53,7 +53,7 @@ namespace {
         return data;
     }
 
-    void expectSame(const ShaderData& a, const ShaderData& b){
+    void shaderDataSerializerExpectSame(const ShaderData& a, const ShaderData& b){
         EXPECT_EQ(a.lang, b.lang);
         EXPECT_EQ(a.version, b.version);
         EXPECT_EQ(a.es, b.es);
@@ -116,11 +116,11 @@ TEST(ShaderDataSerializer, RoundTripsThroughBytes){
     const ShaderData original = shaderDataSample();
     std::vector<unsigned char> bytes;
     std::string error;
-    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, key, original, &error)) << error;
+    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, shaderDataSerializerKey, original, &error)) << error;
     EXPECT_FALSE(bytes.empty());
     ShaderData read;
-    ASSERT_TRUE(ShaderDataSerializer::readFromBytes(bytes, key, read, &error)) << error;
-    expectSame(original, read);
+    ASSERT_TRUE(ShaderDataSerializer::readFromBytes(bytes, shaderDataSerializerKey, read, &error)) << error;
+    shaderDataSerializerExpectSame(original, read);
 }
 
 TEST(ShaderDataSerializer, RoundTripsThroughAFile){
@@ -128,29 +128,29 @@ TEST(ShaderDataSerializer, RoundTripsThroughAFile){
     const ShaderData original = shaderDataSample();
     const std::string path = dir.file("variant.sdat").string();
     std::string error;
-    ASSERT_TRUE(ShaderDataSerializer::writeToFile(path, key, original, &error)) << error;
+    ASSERT_TRUE(ShaderDataSerializer::writeToFile(path, shaderDataSerializerKey, original, &error)) << error;
     ShaderData read;
-    ASSERT_TRUE(ShaderDataSerializer::readFromFile(path, key, read, &error)) << error;
-    expectSame(original, read);
+    ASSERT_TRUE(ShaderDataSerializer::readFromFile(path, shaderDataSerializerKey, read, &error)) << error;
+    shaderDataSerializerExpectSame(original, read);
 }
 
 TEST(ShaderDataSerializer, WritingIsDeterministic){
     std::vector<unsigned char> first, second;
-    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(first, key, shaderDataSample()));
-    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(second, key, shaderDataSample()));
+    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(first, shaderDataSerializerKey, shaderDataSample()));
+    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(second, shaderDataSerializerKey, shaderDataSample()));
     EXPECT_EQ(first, second);
 }
 
 TEST(ShaderDataSerializer, BlobStartsWithTheMagic){
     std::vector<unsigned char> bytes;
-    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, key, shaderDataSample()));
+    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, shaderDataSerializerKey, shaderDataSample()));
     ASSERT_GE(bytes.size(), 4u);
     EXPECT_EQ(std::string(bytes.begin(), bytes.begin() + 4), "SDAT");
 }
 
 TEST(ShaderDataSerializer, RefusesAnotherShadersKey){
     std::vector<unsigned char> bytes;
-    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, key, shaderDataSample()));
+    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, shaderDataSerializerKey, shaderDataSample()));
     ShaderData read;
     std::string error;
     EXPECT_FALSE(ShaderDataSerializer::readFromBytes(bytes, ShaderKey(2, 0x42, 0), read, &error));
@@ -159,18 +159,18 @@ TEST(ShaderDataSerializer, RefusesAnotherShadersKey){
 
 TEST(ShaderDataSerializer, RefusesDamagedData){
     std::vector<unsigned char> bytes;
-    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, key, shaderDataSample()));
+    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, shaderDataSerializerKey, shaderDataSample()));
     ShaderData read;
     std::string error;
 
     std::vector<unsigned char> truncated(bytes.begin(), bytes.begin() + bytes.size() / 2);
-    EXPECT_FALSE(ShaderDataSerializer::readFromBytes(truncated, key, read, &error));
+    EXPECT_FALSE(ShaderDataSerializer::readFromBytes(truncated, shaderDataSerializerKey, read, &error));
 
     std::vector<unsigned char> badMagic = bytes;
     badMagic[0] ^= 0xFF;
-    EXPECT_FALSE(ShaderDataSerializer::readFromBytes(badMagic, key, read, &error));
+    EXPECT_FALSE(ShaderDataSerializer::readFromBytes(badMagic, shaderDataSerializerKey, read, &error));
 
-    EXPECT_FALSE(ShaderDataSerializer::readFromBytes({}, key, read, &error));
+    EXPECT_FALSE(ShaderDataSerializer::readFromBytes({}, shaderDataSerializerKey, read, &error));
     EXPECT_FALSE(error.empty());
 }
 
@@ -178,14 +178,14 @@ TEST(ShaderDataSerializer, MissingFileIsAnError){
     TempDir dir;
     ShaderData read;
     std::string error;
-    EXPECT_FALSE(ShaderDataSerializer::readFromFile(dir.file("none.sdat").string(), key, read, &error));
+    EXPECT_FALSE(ShaderDataSerializer::readFromFile(dir.file("none.sdat").string(), shaderDataSerializerKey, read, &error));
     EXPECT_FALSE(error.empty());
 }
 
 TEST(ShaderDataSerializer, JsonDumpNamesTheStages){
     TempDir dir;
     const std::string path = dir.file("variant.json").string();
-    ASSERT_TRUE(ShaderDataSerializer::writeJsonToFile(path, key, shaderDataSample()));
+    ASSERT_TRUE(ShaderDataSerializer::writeJsonToFile(path, shaderDataSerializerKey, shaderDataSample()));
     const std::string json = dir.read("variant.json");
     EXPECT_NE(json.find("u_vs_params"), std::string::npos);
     EXPECT_NE(json.find("u_baseTexture"), std::string::npos);
@@ -205,10 +205,10 @@ TEST(ShaderDataSerializer, HlslBytecodeRoundTrips){
     }
     std::vector<unsigned char> bytes;
     std::string error;
-    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, key, original, &error)) << error;
+    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, shaderDataSerializerKey, original, &error)) << error;
     ShaderData read;
-    ASSERT_TRUE(ShaderDataSerializer::readFromBytes(bytes, key, read, &error)) << error;
-    expectSame(original, read);
+    ASSERT_TRUE(ShaderDataSerializer::readFromBytes(bytes, shaderDataSerializerKey, read, &error)) << error;
+    shaderDataSerializerExpectSame(original, read);
     for (const ShaderStage& stage : read.stages){
         EXPECT_TRUE(stage.source.empty());
         ASSERT_EQ(stage.bytecode.size, 4u);

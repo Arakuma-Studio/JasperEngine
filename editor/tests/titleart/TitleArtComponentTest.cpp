@@ -4,7 +4,8 @@
 // The Title Art Renderer (docs/specs/S81-title-art-runtime.md AC1, AC2, AC20 Baked part): its S08
 // table (defaults omitted, round trip), the companion it adds, Set Native Size, the companion's
 // own values while a Live Effect drives it and after the component goes, the overrides as
-// properties (prefab copies by name, set_properties by name), and the Lua sentences.
+// properties (prefab copies by name, set_properties by name), the Lua sentences, and the title_fx
+// variants an export cooks for it (S81 R47, S85 R13).
 
 #include <gtest/gtest.h>
 
@@ -25,6 +26,7 @@
 #include "subsystem/TitleArtSystem.h"
 #include "support/EditorTestSupport.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/runtime/TitleArtExportKeys.h"
 #include "titleart/runtime/TitleArtOverrides.h"
 #include "yaml-cpp/yaml.h"
 
@@ -39,15 +41,15 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Headless {
+    struct TitleArtComponentHeadless {
         bool ready = false;
         std::unique_ptr<Project> project;
         fs::path dir;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    TitleArtComponentHeadless& titleArtComponentHeadless() {
+        static TitleArtComponentHeadless h = []() {
+            TitleArtComponentHeadless out;
             test::ensureEngine();
             const fs::path root = fs::temp_directory_path() / ("jasper-titleart-component-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
@@ -83,14 +85,14 @@ namespace {
         return h;
     }
 
-    uint32_t newScene(SceneType type) {
-        Project* p = headless().project.get();
+    uint32_t titleArtComponentNewScene(SceneType type) {
+        Project* p = titleArtComponentHeadless().project.get();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene("Titles", type);
         return p->getSelectedSceneId();
     }
 
-    Scene* sceneOf(uint32_t sceneId) { return headless().project->getScene(sceneId)->scene; }
+    Scene* titleArtComponentSceneOf(uint32_t sceneId) { return titleArtComponentHeadless().project->getScene(sceneId)->scene; }
 
     const reflect::ComponentDesc& desc() { return *reflect::find(ComponentType::TitleArtRendererComponent); }
 
@@ -98,7 +100,7 @@ namespace {
         return reflect::encode(desc(), &title, reflect::EncodeContext{});
     }
 
-    TitleArtRendererComponent roundTrip(const TitleArtRendererComponent& title) {
+    TitleArtRendererComponent titleArtComponentRoundTrip(const TitleArtRendererComponent& title) {
         TitleArtRendererComponent out;
         reflect::DecodeReport report;
         reflect::decode(desc(), YAML::Load(YAML::Dump(encodeTitle(title))), &out, reflect::DecodeContext{}, report);
@@ -107,7 +109,7 @@ namespace {
 
     // an Image with a Title Art Renderer, as GameObject > UI > Title Art makes it
     Entity makeUITitle(uint32_t sceneId, const std::string& title) {
-        CreateEntityCmd* create = new CreateEntityCmd(headless().project.get(), sceneId, "Logo", EntityCreationType::TITLE_ART_UI);
+        CreateEntityCmd* create = new CreateEntityCmd(titleArtComponentHeadless().project.get(), sceneId, "Logo", EntityCreationType::TITLE_ART_UI);
         create->setQuiet(true);
         create->setTitleArt(title);
         CommandHandle::get(sceneId)->addCommandNoMerge(create);
@@ -117,7 +119,7 @@ namespace {
 }
 
 TEST(TitleArtComponent, DefaultsAreOmittedAndValuesRoundTrip) {
-    ASSERT_TRUE(headless().ready);
+    ASSERT_TRUE(titleArtComponentHeadless().ready);
     const TitleArtRendererComponent defaults;
     EXPECT_TRUE(defaults.enabled);
     EXPECT_EQ(defaults.renderMode, TitleArtRenderMode::BAKED);
@@ -142,7 +144,7 @@ TEST(TitleArtComponent, DefaultsAreOmittedAndValuesRoundTrip) {
     title.sweepColor = Vector4(0.5f, 0.25f, 1.0f, 0.75f);
     title.transition = TitleArtTransition::CROSSFADE;
     title.runtimeEnvironments = {"studio"};
-    const TitleArtRendererComponent back = roundTrip(title);
+    const TitleArtRendererComponent back = titleArtComponentRoundTrip(title);
     EXPECT_EQ(back.title.path, title.title.path);
     EXPECT_EQ(back.renderMode, TitleArtRenderMode::REALTIME);
     ASSERT_EQ(back.overrides.size(), 2u);
@@ -156,16 +158,16 @@ TEST(TitleArtComponent, DefaultsAreOmittedAndValuesRoundTrip) {
 }
 
 TEST(TitleArtComponent, AddingToAnEmptyGameObjectAddsTheScenesCompanionInOneStep) {
-    ASSERT_TRUE(headless().ready);
+    ASSERT_TRUE(titleArtComponentHeadless().ready);
     for (SceneType type : {SceneType::SCENE_UI, SceneType::SCENE_2D}) {
-        const uint32_t sceneId = newScene(type);
-        CreateEntityCmd* create = new CreateEntityCmd(headless().project.get(), sceneId, "Empty", EntityCreationType::GAMEOBJECT);
+        const uint32_t sceneId = titleArtComponentNewScene(type);
+        CreateEntityCmd* create = new CreateEntityCmd(titleArtComponentHeadless().project.get(), sceneId, "Empty", EntityCreationType::GAMEOBJECT);
         create->setQuiet(true);
         CommandHandle::get(sceneId)->addCommandNoMerge(create);
         const Entity entity = create->getEntity();
         CommandHandle::get(sceneId)->addCommandNoMerge(
-            new AddComponentCmd(headless().project.get(), sceneId, entity, ComponentType::TitleArtRendererComponent));
-        Scene* scene = sceneOf(sceneId);
+            new AddComponentCmd(titleArtComponentHeadless().project.get(), sceneId, entity, ComponentType::TitleArtRendererComponent));
+        Scene* scene = titleArtComponentSceneOf(sceneId);
         ASSERT_TRUE(scene->findComponent<TitleArtRendererComponent>(entity));
         if (type == SceneType::SCENE_UI) {
             EXPECT_TRUE(scene->findComponent<UIComponent>(entity) && scene->findComponent<ImageComponent>(entity)) << "R1: an Image in a UI scene";
@@ -182,10 +184,10 @@ TEST(TitleArtComponent, AddingToAnEmptyGameObjectAddsTheScenesCompanionInOneStep
 }
 
 TEST(TitleArtComponent, SetNativeSizeUsesTheBakeFrameAndOrigin) {
-    ASSERT_TRUE(headless().ready);
-    const uint32_t sceneId = newScene(SceneType::SCENE_UI);
+    ASSERT_TRUE(titleArtComponentHeadless().ready);
+    const uint32_t sceneId = titleArtComponentNewScene(SceneType::SCENE_UI);
     const Entity entity = makeUITitle(sceneId, "assets/titles/logo.titleart");
-    Scene* scene = sceneOf(sceneId);
+    Scene* scene = titleArtComponentSceneOf(sceneId);
     // created at native size (R6): frame 400 x 200, origin (100, 150) of it
     const RectTransformComponent& rect = scene->getComponent<RectTransformComponent>(entity);
     EXPECT_EQ(rect.width, 400u);
@@ -199,12 +201,12 @@ TEST(TitleArtComponent, SetNativeSizeUsesTheBakeFrameAndOrigin) {
     EXPECT_EQ(scene->getComponent<RectTransformComponent>(entity).height, 100u);
 
     // world: frame px / Pixels Per Unit, the nearest pivot preset
-    const uint32_t worldScene = newScene(SceneType::SCENE_2D);
-    CreateEntityCmd* create = new CreateEntityCmd(headless().project.get(), worldScene, "Logo", EntityCreationType::TITLE_ART_SPRITE);
+    const uint32_t worldScene = titleArtComponentNewScene(SceneType::SCENE_2D);
+    CreateEntityCmd* create = new CreateEntityCmd(titleArtComponentHeadless().project.get(), worldScene, "Logo", EntityCreationType::TITLE_ART_SPRITE);
     create->setQuiet(true);
     create->setTitleArt("assets/titles/logo.titleart");
     CommandHandle::get(worldScene)->addCommandNoMerge(create);
-    Scene* world = sceneOf(worldScene);
+    Scene* world = titleArtComponentSceneOf(worldScene);
     const Entity sprite = create->getEntity();
     EXPECT_EQ(world->getComponent<SpriteComponent>(sprite).width, 400u);
     EXPECT_EQ(world->getComponent<SpriteComponent>(sprite).height, 200u);
@@ -218,10 +220,10 @@ TEST(TitleArtComponent, SetNativeSizeUsesTheBakeFrameAndOrigin) {
 }
 
 TEST(TitleArtComponent, LiveEffectsDriveTheShaderAndTheCompanionKeepsItsOwn) {
-    ASSERT_TRUE(headless().ready);
-    const uint32_t sceneId = newScene(SceneType::SCENE_UI);
+    ASSERT_TRUE(titleArtComponentHeadless().ready);
+    const uint32_t sceneId = titleArtComponentNewScene(SceneType::SCENE_UI);
     const Entity entity = makeUITitle(sceneId, "assets/titles/logo.titleart");
-    Scene* scene = sceneOf(sceneId);
+    Scene* scene = titleArtComponentSceneOf(sceneId);
     scene->getComponent<UIComponent>(entity).customShader = ShaderRef("library:ui_fx");
     scene->getComponent<UIComponent>(entity).shaderFeatures = {"SHINE"};
     scene->getComponent<TitleArtRendererComponent>(entity).sweepEnabled = true;
@@ -249,12 +251,51 @@ TEST(TitleArtComponent, LiveEffectsDriveTheShaderAndTheCompanionKeepsItsOwn) {
     EXPECT_EQ(scene->getComponent<UIComponent>(entity).shaderFeatures, std::vector<std::string>{"SHINE"});
 }
 
+TEST(TitleArtComponent, ExportCooksTheVariantsOfAPlayingAnimation) {
+    ASSERT_TRUE(titleArtComponentHeadless().ready);
+    const fs::path root = titleArtComponentHeadless().dir;
+    // S85 R13: a playing animation draws its companion with ANIM, and a live.* track turns its
+    // Live Effect on: a player without the runtime shader compiler draws only what was cooked
+    titleart::TitleArtDoc doc = titleart::makeNewTitleArt({800, 400, "WIN", ""});
+    auto keyed = [](const char* field){ return titleart::Json{{"layer", ""}, {"field", field}, {"keys", titleart::Json::array({titleart::Json::array({0, 0}), titleart::Json::array({1, 1})})}}; };
+    titleart::Json intro = {{"name", "Intro"}, {"duration", 1.0}, {"tracks", titleart::Json::array({keyed("opacity")})}};
+    titleart::Json pulse = {{"name", "Pulse"}, {"duration", 1.0}, {"tracks", titleart::Json::array({keyed("live.tint_amount")})}};
+    doc.root["animation"] = {{"animations", titleart::Json::array({intro, pulse})}};
+    titleart::normalizeTitleArt(doc);
+    std::ofstream(root / "assets" / "titles" / "animated.titleart") << titleart::writeTitleArt(doc);
+
+    using Sets = std::vector<std::vector<std::string>>;
+    TitleArtRendererComponent title;
+    title.title.path = "assets/titles/animated.titleart";
+    title.renderMode = TitleArtRenderMode::BAKED;
+    EXPECT_EQ(titleArtLiveFeatureSets(title, root), (Sets{{"ANIM"}, {"TINT", "ANIM"}})) << "each animation's variant (Intro, Pulse)";
+
+    // with a Live Effect of its own, the effect stays on while it plays; a Realtime title's
+    // crossfade can come in over any of them
+    title.sweepEnabled = true;
+    title.renderMode = TitleArtRenderMode::REALTIME;
+    title.transition = TitleArtTransition::CROSSFADE;
+    EXPECT_EQ(titleArtLiveFeatureSets(title, root), (Sets{{"SWEEP"}, {"SWEEP", "CROSSFADE"}, {"SWEEP", "ANIM"}, {"SWEEP", "TINT", "ANIM"},
+                                                           {"SWEEP", "CROSSFADE", "ANIM"}, {"SWEEP", "TINT", "CROSSFADE", "ANIM"}}));
+
+    // Glow over a Baked flipbook frame is off (R16: frames have no glow output)
+    title.sweepEnabled = false;
+    title.glowEnabled = true;
+    title.renderMode = TitleArtRenderMode::BAKED;
+    EXPECT_EQ(titleArtLiveFeatureSets(title, root), (Sets{{"GLOW"}, {"ANIM"}, {"GLOW", "ANIM"}, {"TINT", "ANIM"}, {"GLOW", "TINT", "ANIM"}}));
+
+    // a title without animations and Live Effects draws the built-in shader: nothing of title_fx
+    title.glowEnabled = false;
+    title.title.path = "assets/titles/logo.titleart";
+    EXPECT_TRUE(titleArtLiveFeatureSets(title, root).empty());
+}
+
 TEST(TitleArtComponent, OverridesAreOnePropertyPerName) {
-    ASSERT_TRUE(headless().ready);
-    const uint32_t sceneId = newScene(SceneType::SCENE_UI);
+    ASSERT_TRUE(titleArtComponentHeadless().ready);
+    const uint32_t sceneId = titleArtComponentNewScene(SceneType::SCENE_UI);
     const Entity a = makeUITitle(sceneId, "assets/titles/logo.titleart");
     const Entity b = makeUITitle(sceneId, "assets/titles/logo.titleart");
-    Scene* scene = sceneOf(sceneId);
+    Scene* scene = titleArtComponentSceneOf(sceneId);
     scene->getComponent<TitleArtRendererComponent>(a).overrides.push_back({"text", "text", Vector4(0, 0, 0, 0), "WIN"});
     const PropertyData property = Catalog::findProperty(scene, a, ComponentType::TitleArtRendererComponent, "overrides.text");
     ASSERT_TRUE(property.ref);
@@ -292,10 +333,10 @@ TEST(TitleArtComponent, OverridesAreOnePropertyPerName) {
 }
 
 TEST(TitleArtComponent, ScriptSentencesSayTheFix) {
-    ASSERT_TRUE(headless().ready);
-    const uint32_t sceneId = newScene(SceneType::SCENE_UI);
+    ASSERT_TRUE(titleArtComponentHeadless().ready);
+    const uint32_t sceneId = titleArtComponentNewScene(SceneType::SCENE_UI);
     const Entity entity = makeUITitle(sceneId, "assets/titles/logo.titleart");
-    Scene* scene = sceneOf(sceneId);
+    Scene* scene = titleArtComponentSceneOf(sceneId);
     std::string error;
     // §6.6: text on a Baked title
     EXPECT_FALSE(TitleArtSystem::setParameter(scene, entity, "text", TitleArtValue::fromString("WIN"), error));

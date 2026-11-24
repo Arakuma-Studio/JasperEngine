@@ -53,12 +53,12 @@ using namespace jasperengine::terraincore;
 
 namespace {
 
-    constexpr double PINNED_TIME = 2.5;
+    constexpr double FOLIAGE_PINNED_TIME = 2.5;
     constexpr int RESOLUTION = 65;
-    constexpr float SIZE = 128.0f;
+    constexpr float FOLIAGE_SIZE = 128.0f;
     constexpr int ATLAS = 256;
 
-    CompareOptions backendOptions(){
+    CompareOptions foliageBackendOptions(){
         CompareOptions options;
         if (std::strcmp(HeadlessContext::getBackendName(), "glcore") != 0){
             options.pixelThreshold = 16;
@@ -95,7 +95,7 @@ namespace {
     }
 
     // what the golden compare reports, between two frames of one run
-    CompareResult compareImages(const ImageData& a, const ImageData& b, const CompareOptions& options){
+    CompareResult foliageCompareImages(const ImageData& a, const ImageData& b, const CompareOptions& options){
         CompareResult result;
         const size_t pixels = static_cast<size_t>(a.width) * a.height;
         double total = 0.0;
@@ -130,7 +130,7 @@ namespace {
 
         void SetUp() override{
             JASPER_REQUIRE_GPU();
-            Engine::setPinnedShaderTime(PINNED_TIME);
+            Engine::setPinnedShaderTime(FOLIAGE_PINNED_TIME);
             scene.setBackgroundColor(0.55f, 0.68f, 0.82f, 1.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
             camera.setFarClip(1200.0f);
@@ -158,7 +158,7 @@ namespace {
 
         void makeTerrain(){
             terrain = std::make_unique<Terrain>(&scene);
-            terrain->setSize(SIZE);
+            terrain->setSize(FOLIAGE_SIZE);
             terrain->setMaxHeight(10.0f);
             heightPixels.assign(static_cast<size_t>(RESOLUTION) * RESOLUTION * 2, 0);
             TerrainComponent& terrainData = component();
@@ -210,8 +210,8 @@ namespace {
             std::vector<TreeRecord> added;
             for (const auto& point : points){
                 TreeRecord record{};
-                record.u = point.first / SIZE + 0.5f;
-                record.v = point.second / SIZE + 0.5f;
+                record.u = point.first / FOLIAGE_SIZE + 0.5f;
+                record.v = point.second / FOLIAGE_SIZE + 0.5f;
                 record.scale = 1.0f;
                 record.rotation[3] = 32767;
                 record.prototypeId = static_cast<uint16_t>(prototype);
@@ -263,7 +263,7 @@ namespace {
         }
 
         void expectGolden(const std::string& name){
-            const CompareResult result = compareTargetWithGolden(name, backendOptions());
+            const CompareResult result = compareTargetWithGolden(name, foliageBackendOptions());
             std::printf("[gpu] %s on %s: largest difference %d, %zu pixels over the threshold, mean %.4f\n",
                         name.c_str(), HeadlessContext::getBackendName(), result.maxDiff, result.badPixels, result.meanDiff);
             EXPECT_TRUE(result.passed) << result.message;
@@ -326,7 +326,7 @@ TEST_F(FoliageGpu, LegacyLayerLooksTheSame){
     ASSERT_TRUE(render());
     const ImageData legacyImage = captureTarget();
 
-    const CompareResult result = compareImages(foliageImage, legacyImage, []{
+    const CompareResult result = foliageCompareImages(foliageImage, legacyImage, []{
         CompareOptions options;
         options.pixelThreshold = 16;
         options.maxBadFraction = 0.005;
@@ -425,7 +425,7 @@ TEST_F(FoliageGpu, ShadowSwaysWithThePlant){
     CompareOptions strict;
     strict.pixelThreshold = 4;
     strict.maxBadFraction = 0.0;
-    const CompareResult result = compareImages(first, second, strict);
+    const CompareResult result = foliageCompareImages(first, second, strict);
     EXPECT_GT(result.badPixels, 0u) << "the shadow moves with the wind";
 }
 
@@ -524,7 +524,7 @@ TEST_F(FoliageGpu, ShadowMaskOffCastsNothing){
     CompareOptions strict;
     strict.pixelThreshold = 8;
     strict.maxBadFraction = 0.0;
-    EXPECT_GT(compareImages(without, with, strict).badPixels, 0u) << "the mask decides whether its shadow exists";
+    EXPECT_GT(foliageCompareImages(without, with, strict).badPixels, 0u) << "the mask decides whether its shadow exists";
 }
 
 // AC29: a material with a custom vertex program has no compact variant: the 96-byte stream

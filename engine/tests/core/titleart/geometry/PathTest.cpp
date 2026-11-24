@@ -15,7 +15,7 @@ namespace {
 
     class PathTest : public ::testing::Test {};
 
-    Path square(double x, double y, double side) {
+    Path pathSquare(double x, double y, double side) {
         Path p;
         p.moveTo(x, y);
         p.lineTo(x + side, y);
@@ -57,12 +57,12 @@ TEST_F(PathTest, FlattenStaysOnTheCurveAndAreaHasTheWinding) {
         for (const TitleVec2& point : contour) EXPECT_NEAR(std::hypot(point.x, point.y), 10.0, 0.03);
     }
     EXPECT_NEAR(circle.signedArea(0.01), 3.14159265358979323846 * 100.0, 0.5);
-    EXPECT_NEAR(square(0, 0, 4).signedArea(0.1), 16.0, 1e-9);
+    EXPECT_NEAR(pathSquare(0, 0, 4).signedArea(0.1), 16.0, 1e-9);
 }
 
 TEST_F(PathTest, TransformAndAppend) {
-    Path p = square(0, 0, 2);
-    p.append(square(10, 10, 1));
+    Path p = pathSquare(0, 0, 2);
+    p.append(pathSquare(10, 10, 1));
     EXPECT_EQ(p.contourCount(), 2u);
     p.transform(Affine::translate(5, 0).after(Affine::scale(2, 2)));
     const TitleRect b = p.bounds();

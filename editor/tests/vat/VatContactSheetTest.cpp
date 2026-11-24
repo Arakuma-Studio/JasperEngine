@@ -46,7 +46,7 @@ namespace {
             std::memcpy(payload.bytes.data() + texel * 16, v, 16);
         } else {
             for (int k = 0; k < 4; k++) {
-                const uint16_t h = floatToHalf(v[k]);
+                const uint16_t h = jasperengine::editor::vat::floatToHalf(v[k]);
                 std::memcpy(payload.bytes.data() + texel * 8 + k * 2, &h, 2);
             }
         }

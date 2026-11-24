@@ -11,6 +11,7 @@
 #include "window/ProjectWindow.h"
 
 #include "audio/BuiltinSoundImport.h"
+#include "audio/SourceEffectEdit.h"
 #include "audio/SoundEssentials.h"
 #include "audio/SoundLibrary.h"
 #include "util/ProjectFileWrites.h"
@@ -266,6 +267,18 @@ std::shared_ptr<SearchSnapshot> SearchPalette::buildSnapshot(const std::vector<S
                 out->entries.push_back(std::move(entry));
             }
         }
+        // Unity's audio filters: an effect on the selection's Audio Sources (S97 REQ-5)
+        for (const SourceEffectEdit::FilterAlias& alias : SourceEffectEdit::filterAliases()) {
+            SearchEntry entry;
+            entry.kind = SearchKind::Component;
+            entry.label = alias.name;
+            entry.detail = "Add Component > Audio";
+            entry.searchText = std::string("Audio ") + alias.description;
+            entry.key = std::string("component:filter:") + alias.effect;
+            entry.enabled = !project->isAnyScenePlaying();
+            entry.payload = std::string("filter:") + alias.effect;
+            out->entries.push_back(std::move(entry));
+        }
     }
 
     if (want(SearchKind::Asset)) {
@@ -361,6 +374,11 @@ bool SearchPalette::run(const SearchEntry& entry, bool alternate, CommandSource 
             break;
         }
         case SearchKind::Component: {
+            if (entry.payload.compare(0, 7, "filter:") == 0) {
+                std::string why;
+                if (!app->getInspectorWindow()->addAudioEffectToSelection(entry.payload.substr(7), &why)) return fail(why);
+                break;
+            }
             const auto type = static_cast<ComponentType>(std::strtol(entry.payload.c_str(), nullptr, 10));
             std::string why;
             if (!app->getInspectorWindow()->addComponentToSelection(type, &why)) return fail(why);

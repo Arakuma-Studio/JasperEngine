@@ -64,7 +64,7 @@ namespace jasperengine::editor {
     };
 }
 
-using Access = jasperengine::editor::PixelArtCleanupWindowTestAccess;
+using CleanupAccess = jasperengine::editor::PixelArtCleanupWindowTestAccess;
 
 namespace {
 
@@ -91,13 +91,13 @@ TEST(CleanupWindow, CompareIsTheSourceSizedResult) {
     window.openDemo();
     window.runNow();
     ASSERT_TRUE(window.hasResult());
-    const auto& compare = Access::compare(window);
+    const auto& compare = CleanupAccess::compare(window);
     const auto* prepared = window.getPrepared();
     ASSERT_NE(prepared, nullptr);
     EXPECT_EQ(compare.width(), prepared->frames[0].width());
     EXPECT_EQ(compare.height(), prepared->frames[0].height());
     // the result at its own size is the demo's 16 x 16 mushroom
-    EXPECT_EQ(Access::result(window).width(), 16);
+    EXPECT_EQ(CleanupAccess::result(window).width(), 16);
 }
 
 TEST(CleanupWindow, AMovedLineIsOneUndoStepAndChangesTheGrid) {
@@ -180,7 +180,7 @@ TEST(CleanupWindow, AHandEraseIsOneStepAndClearsThePixel) {
     const int x = 8, y = 8;
     ASSERT_NE(art.indices[static_cast<size_t>(y) * art.width + x], cu::TRANSPARENT);
     window.setTool(PixelArtCleanupWindow::HandTool::Erase);
-    Access::stroke(window, x, y, false);
+    CleanupAccess::stroke(window, x, y, false);
     EXPECT_EQ(window.undoDepth(), 1u);
     EXPECT_EQ(window.getRecipe().edits.strokes.size(), 1u);
     window.runNow();
@@ -223,13 +223,13 @@ TEST(CleanupWindow, ARunPredictedWithinTheBudgetIsInline) {
     PixelArtCleanupWindow window(nullptr);
     window.openDemo();
     window.runNow();
-    const void* first = Access::shown(window);
+    const void* first = CleanupAccess::shown(window);
     ASSERT_NE(first, nullptr);
-    Access::predict(window, 5.0, 5.0);
+    CleanupAccess::predict(window, 5.0, 5.0);
     window.applyEdit([](cu::Recipe& r) { r.crop = true; });
-    Access::tick(window);
+    CleanupAccess::tick(window);
     EXPECT_FALSE(window.isRunning());
-    EXPECT_NE(Access::shown(window), first);
+    EXPECT_NE(CleanupAccess::shown(window), first);
     EXPECT_FALSE(window.isStale());
 }
 
@@ -238,20 +238,20 @@ TEST(CleanupWindow, ARunPredictedOverTheBudgetIsAJobAndThePreviousResultStaysUnt
     PixelArtCleanupWindow window(nullptr);
     window.openDemo();
     window.runNow();
-    const void* previous = Access::shown(window);
+    const void* previous = CleanupAccess::shown(window);
     ASSERT_NE(previous, nullptr);
-    Access::predict(window, 500.0, 500.0);
+    CleanupAccess::predict(window, 500.0, 500.0);
     window.applyEdit([](cu::Recipe& r) { r.crop = true; });
-    Access::tick(window);
+    CleanupAccess::tick(window);
     ASSERT_TRUE(window.isRunning());
-    EXPECT_EQ(Access::shown(window), previous);
+    EXPECT_EQ(CleanupAccess::shown(window), previous);
     EXPECT_TRUE(window.isStale());
-    Access::waitForJob(window);
+    CleanupAccess::waitForJob(window);
     // finished, not adopted yet: the frame loop adopts it
-    EXPECT_EQ(Access::shown(window), previous);
-    Access::tick(window);
+    EXPECT_EQ(CleanupAccess::shown(window), previous);
+    CleanupAccess::tick(window);
     EXPECT_FALSE(window.isRunning());
-    EXPECT_NE(Access::shown(window), previous);
+    EXPECT_NE(CleanupAccess::shown(window), previous);
     EXPECT_FALSE(window.isStale());
 }
 
@@ -260,16 +260,16 @@ TEST(CleanupWindow, AGridEditIsPredictedFromTheLastFullRun) {
     PixelArtCleanupWindow window(nullptr);
     window.openDemo();
     window.runNow();
-    const void* previous = Access::shown(window);
+    const void* previous = CleanupAccess::shown(window);
     // the last run was fast, the last full run was not: only a non-grid change stays inline
-    Access::predict(window, 5.0, 500.0);
+    CleanupAccess::predict(window, 5.0, 500.0);
     window.applyEdit([](cu::Recipe& r) { r.follow = cu::Follow::Straight; });
-    Access::tick(window);
+    CleanupAccess::tick(window);
     ASSERT_TRUE(window.isRunning());
-    EXPECT_EQ(Access::shown(window), previous);
-    Access::waitForJob(window);
-    Access::tick(window);
-    EXPECT_NE(Access::shown(window), previous);
+    EXPECT_EQ(CleanupAccess::shown(window), previous);
+    CleanupAccess::waitForJob(window);
+    CleanupAccess::tick(window);
+    EXPECT_NE(CleanupAccess::shown(window), previous);
 }
 
 TEST(CleanupWindow, ASheetLintSpotLandsOnItsCellOfTheSourceFrame) {
@@ -284,7 +284,7 @@ TEST(CleanupWindow, ASheetLintSpotLandsOnItsCellOfTheSourceFrame) {
     prepared.spec.sheet = cu::SheetArg::On;
     prepared.recipe.removeBackground = true;
     PixelArtCleanupWindow window(nullptr);
-    Access::adopt(window, std::move(prepared), "(sheet)");
+    CleanupAccess::adopt(window, std::move(prepared), "(sheet)");
     window.runNow();
     ASSERT_TRUE(window.hasResult());
     ASSERT_TRUE(window.result()->animation.has_value());
@@ -313,14 +313,14 @@ TEST(CleanupWindow, ASheetLintSpotLandsOnItsCellOfTheSourceFrame) {
     spot.x = px;
     spot.y = py;
     double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
-    ASSERT_TRUE(Access::spotRect(window, spot, x0, y0, x1, y1));
+    ASSERT_TRUE(CleanupAccess::spotRect(window, spot, x0, y0, x1, y1));
     EXPECT_DOUBLE_EQ(x0, fixed.box.x + fixed.outcome.grid.xs[static_cast<size_t>(ax)]);
     EXPECT_DOUBLE_EQ(y0, fixed.box.y + fixed.outcome.grid.ys[static_cast<size_t>(ay)]);
     EXPECT_DOUBLE_EQ(x1, fixed.box.x + fixed.outcome.grid.xs[static_cast<size_t>(ax) + 1]);
     // R42: the flash outlines the whole cell, not one source pixel of it
-    Access::focusAndFlash(window, x0, y0, x1, y1);
-    EXPECT_DOUBLE_EQ(Access::flashWidth(window), x1 - x0);
-    EXPECT_GT(Access::flashWidth(window), 1.0);
+    CleanupAccess::focusAndFlash(window, x0, y0, x1, y1);
+    EXPECT_DOUBLE_EQ(CleanupAccess::flashWidth(window), x1 - x0);
+    EXPECT_GT(CleanupAccess::flashWidth(window), 1.0);
 }
 
 TEST(CleanupWindow, ASheetLostCellInTheResultViewIsOnItsFrameInTheAtlas) {
@@ -334,7 +334,7 @@ TEST(CleanupWindow, ASheetLostCellInTheResultViewIsOnItsFrameInTheAtlas) {
     prepared.spec.sheet = cu::SheetArg::On;
     prepared.recipe.removeBackground = true;
     PixelArtCleanupWindow window(nullptr);
-    Access::adopt(window, std::move(prepared), "(sheet)");
+    CleanupAccess::adopt(window, std::move(prepared), "(sheet)");
     window.runNow();
     ASSERT_TRUE(window.hasResult());
     ASSERT_TRUE(window.result()->animation.has_value());
@@ -356,12 +356,12 @@ TEST(CleanupWindow, ASheetLostCellInTheResultViewIsOnItsFrameInTheAtlas) {
     ASSERT_TRUE(firstOpaque(placed.art, px, py));
     ASSERT_TRUE(firstOpaque(fixed.art, ax, ay));
     const cu::AtlasRect* rect = nullptr;
-    for (const cu::AtlasRect& candidate : Access::atlas(window)) {
+    for (const cu::AtlasRect& candidate : CleanupAccess::atlas(window)) {
         if (candidate.clip == 0 && candidate.frame == 0) rect = &candidate;
     }
     ASSERT_NE(rect, nullptr);
     double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
-    ASSERT_TRUE(Access::cellInView(window, placed.index, ax, ay, x0, y0, x1, y1));
+    ASSERT_TRUE(CleanupAccess::cellInView(window, placed.index, ax, ay, x0, y0, x1, y1));
     EXPECT_DOUBLE_EQ(x0, rect->x + px);
     EXPECT_DOUBLE_EQ(y0, rect->y + py);
 }
@@ -370,12 +370,12 @@ TEST(CleanupWindow, ClosingTheWindowDropsItsFocusAndItsRunCache) {
     PixelArtCleanupWindow window(nullptr);
     window.openDemo();
     window.runNow();
-    Access::setFocused(window, true);
-    ASSERT_TRUE(Access::cacheHolds(window));
+    CleanupAccess::setFocused(window, true);
+    ASSERT_TRUE(CleanupAccess::cacheHolds(window));
     window.setOpen(false);
     // a closed window takes no Ctrl+Z (App's lastFocusedWindow) and holds no cache
     EXPECT_FALSE(window.isFocused());
-    EXPECT_FALSE(Access::cacheHolds(window));
+    EXPECT_FALSE(CleanupAccess::cacheHolds(window));
     // what it showed stays for when it opens again
     EXPECT_TRUE(window.hasResult());
 }
@@ -383,10 +383,10 @@ TEST(CleanupWindow, ClosingTheWindowDropsItsFocusAndItsRunCache) {
 TEST(CleanupWindow, ACancelledRunDoesNotChangeThePrediction) {
     PixelArtCleanupWindow window(nullptr);
     window.openDemo();
-    Access::predict(window, 500.0, 500.0);
-    Access::applyCancelled(window, 1.0);
-    EXPECT_DOUBLE_EQ(Access::lastRunMs(window), 500.0);
-    EXPECT_DOUBLE_EQ(Access::lastFullRunMs(window), 500.0);
+    CleanupAccess::predict(window, 500.0, 500.0);
+    CleanupAccess::applyCancelled(window, 1.0);
+    EXPECT_DOUBLE_EQ(CleanupAccess::lastRunMs(window), 500.0);
+    EXPECT_DOUBLE_EQ(CleanupAccess::lastFullRunMs(window), 500.0);
 }
 
 TEST(CleanupWindow, AFailedReplaceLeavesNoOverwriteBehind) {

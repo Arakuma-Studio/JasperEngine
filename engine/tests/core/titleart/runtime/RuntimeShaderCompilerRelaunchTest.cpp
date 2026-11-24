@@ -22,7 +22,7 @@ using namespace jasperengine;
 
 namespace {
 
-    ResourceLoadState settle(ShaderKey key){
+    ResourceLoadState runtimeShaderCompilerRelaunchSettle(ShaderKey key){
         const auto start = std::chrono::steady_clock::now();
         ResourceLoadState state = ResourceLoadState::Loading;
         while (state == ResourceLoadState::Loading && std::chrono::steady_clock::now() - start < std::chrono::seconds(60)){
@@ -44,7 +44,7 @@ TEST(RuntimeShaderCompilerRelaunchGpu, AVariantFirstAskedAfterAnEngineRelaunchCo
     const ShaderKey key = ShaderPool::getShaderKey(ShaderType::TITLE_ART, 36);
     std::error_code ec;
     std::filesystem::remove_all(RuntimeShaderCompiler::getCacheDirectory(), ec);
-    EXPECT_EQ(settle(key), ResourceLoadState::Finished) << "the first engine run compiles it";
+    EXPECT_EQ(runtimeShaderCompilerRelaunchSettle(key), ResourceLoadState::Finished) << "the first engine run compiles it";
     // what a recreated Android activity does: the runtime compiler and the job system shut down,
     // a new job system starts; the variant is not on disk, so it must compile. The asset readers
     // stop and start with the jobs, as the engine's shutdown and init do: they take the process
@@ -56,7 +56,7 @@ TEST(RuntimeShaderCompilerRelaunchGpu, AVariantFirstAskedAfterAnEngineRelaunchCo
     jobs::shutdown();
     jobs::initialize(jobs::Config{});
     AssetIOService::instance().start();
-    EXPECT_EQ(settle(key), ResourceLoadState::Finished) << "the relaunched engine compiles it too";
+    EXPECT_EQ(runtimeShaderCompilerRelaunchSettle(key), ResourceLoadState::Finished) << "the relaunched engine compiles it too";
     RuntimeShaderCompiler::shutdown();
     RuntimeShaderCompiler::setEnabled(enabled);
     RuntimeShaderCompiler::setAsync(async);

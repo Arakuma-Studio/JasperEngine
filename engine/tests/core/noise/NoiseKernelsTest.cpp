@@ -34,10 +34,10 @@ namespace {
         return presets;
     }
 
-    struct Named { BasisParams params; std::string name; };
+    struct NoiseKernelsNamed { BasisParams params; std::string name; };
 
-    std::vector<Named> everyKernel() {
-        std::vector<Named> out;
+    std::vector<NoiseKernelsNamed> everyKernel() {
+        std::vector<NoiseKernelsNamed> out;
         for (int dims : {2, 3}) {
             for (Basis basis : {Basis::Perlin, Basis::Simplex, Basis::Value, Basis::Cellular}) {
                 BasisParams params;
@@ -67,7 +67,7 @@ namespace {
     struct Points { std::vector<float> x, y, z; size_t size() const { return x.size(); } };
 
     // Negative cells, the wrap and tiny coordinates (AC1)
-    Points scatteredPoints(size_t count) {
+    Points noiseKernelsScatteredPoints(size_t count) {
         Points points;
         std::mt19937 rng(7);
         std::uniform_real_distribution<float> wide(-70000.0f, 70000.0f);
@@ -97,9 +97,9 @@ namespace {
 
 TEST(NoiseDeterminism, ScalarMatchesNativeBitForBit) {
     ASSERT_TRUE(hasScalarBackend());
-    const Points points = scatteredPoints(10000);
+    const Points points = noiseKernelsScatteredPoints(10000);
     std::vector<float> native(points.size()), scalar(points.size());
-    for (const Named& kernel : everyKernel()) {
+    for (const NoiseKernelsNamed& kernel : everyKernel()) {
         basisBatch(kernel.params, points.x.data(), points.y.data(), points.z.data(), points.size(), native.data(), Backend::Native);
         basisBatch(kernel.params, points.x.data(), points.y.data(), points.z.data(), points.size(), scalar.data(), Backend::Scalar);
         for (size_t i = 0; i < points.size(); i++) {
@@ -120,9 +120,9 @@ TEST(NoiseDeterminism, FloatingPointEnvironmentIsDefault) {
 }
 
 TEST(NoiseKernels, SinglePointMatchesBatch) {
-    const Points points = scatteredPoints(2000);
+    const Points points = noiseKernelsScatteredPoints(2000);
     std::vector<float> batch(points.size());
-    for (const Named& kernel : everyKernel()) {
+    for (const NoiseKernelsNamed& kernel : everyKernel()) {
         basisBatch(kernel.params, points.x.data(), points.y.data(), points.z.data(), points.size(), batch.data());
         for (size_t i = 0; i < points.size(); i++) {
             ASSERT_EQ(bitsOf(basisPoint(kernel.params, points.x[i], points.y[i], points.z[i])), bitsOf(batch[i])) << kernel.name;
@@ -134,9 +134,9 @@ TEST(NoiseKernels, SinglePointMatchesBatch) {
 }
 
 TEST(NoiseKernels, ChunkingDoesNotChangeBits) {
-    const Points points = scatteredPoints(97);
+    const Points points = noiseKernelsScatteredPoints(97);
     std::vector<float> whole(points.size()), split(points.size());
-    for (const Named& kernel : everyKernel()) {
+    for (const NoiseKernelsNamed& kernel : everyKernel()) {
         basisBatch(kernel.params, points.x.data(), points.y.data(), points.z.data(), points.size(), whole.data());
         for (size_t offset = 0; offset < 8; offset++) {
             basisBatch(kernel.params, points.x.data(), points.y.data(), points.z.data(), offset, split.data());
@@ -161,7 +161,7 @@ TEST(NoiseKernels, ExtremeInputsStayDefined) {
         }
     }
     std::vector<float> out(x.size());
-    for (const Named& kernel : everyKernel()) {
+    for (const NoiseKernelsNamed& kernel : everyKernel()) {
         for (Backend backend : {Backend::Native, Backend::Scalar}) {
             basisBatch(kernel.params, x.data(), y.data(), z.data(), x.size(), out.data(), backend);
             for (size_t i = 0; i < out.size(); i++) {

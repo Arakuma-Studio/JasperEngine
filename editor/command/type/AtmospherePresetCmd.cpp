@@ -28,9 +28,11 @@ namespace {
             case editor::PropertyType::Vector3:
                 if (*static_cast<Vector3*>(live.ref) == *static_cast<Vector3*>(preset.ref)) return nullptr;
                 return std::make_unique<editor::PropertyCmd<Vector3>>(project, sceneId, entity, component, name, *static_cast<Vector3*>(preset.ref));
-            case editor::PropertyType::Enum:
-                if (*static_cast<int*>(live.ref) == *static_cast<int*>(preset.ref)) return nullptr;
-                return std::make_unique<editor::PropertyCmd<int>>(project, sceneId, entity, component, name, *static_cast<int*>(preset.ref));
+            case editor::PropertyType::Enum: {
+                const int64_t value = editor::readPropertyInteger(preset, preset.ref);
+                if (editor::readPropertyInteger(live, live.ref) == value) return nullptr;
+                return std::make_unique<editor::PropertyCmd<int>>(project, sceneId, entity, component, name, (int)value);
+            }
             default:
                 // presets set no other kind of field (textures stay)
                 return nullptr;

@@ -957,7 +957,7 @@ void capturePassOutputTool(const CallPtr& call){
     }
     // the pass: an index in the frame, or a label (its first pass, or `occurrence`)
     const PassRecord* pass = nullptr;
-    const Json& which = args["pass"];
+    const Json& which = args.contains("pass") ? args["pass"] : Json();
     if (which.is_number_integer()){
         const long long index = which.get<long long>();
         if (index >= 0 && index < (long long)list.passes.size())

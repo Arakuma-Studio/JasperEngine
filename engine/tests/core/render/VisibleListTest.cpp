@@ -36,7 +36,7 @@ namespace {
         }
     };
 
-    AABB box(const Vector3& centre, float half){
+    AABB visibleListBox(const Vector3& centre, float half){
         return AABB(centre - Vector3(half, half, half), centre + Vector3(half, half, half));
     }
 }
@@ -57,11 +57,11 @@ TEST(VisibleList, JobsAndInlineGiveTheSameList){
         models[i] = Matrix4::translateMatrix(centre);
         // three submeshes side by side along x, in the mesh's space
         for (int s = 0; s < 3; s++)
-            submeshBounds[i * 3 + s] = box(Vector3((float)(s - 1) * half * 2.0f, 0, 0), half);
+            submeshBounds[i * 3 + s] = visibleListBox(Vector3((float)(s - 1) * half * 2.0f, 0, 0), half);
         for (int s = 0; s < 3; s++)
             submeshPointers[i * 3 + s] = &submeshBounds[i * 3 + s];
         VisibleCandidate& candidate = candidates[i];
-        candidate.worldBounds = box(centre, half * 3.0f);
+        candidate.worldBounds = visibleListBox(centre, half * 3.0f);
         candidate.model = &models[i];
         candidate.submeshBounds = &submeshPointers[i * 3];
         candidate.numSubmeshes = 3;
@@ -90,7 +90,7 @@ TEST(VisibleList, CullsSubmeshesByTheirOwnBounds){
     BoxFrustum box3;
     // a mesh across the right plane: its left submesh inside, its right one outside
     Matrix4 model = Matrix4::translateMatrix(Vector3(9.0f, 0.0f, 0.0f));
-    AABB bounds[2] = {box(Vector3(-2.0f, 0, 0), 1.0f), box(Vector3(4.0f, 0, 0), 1.0f)};
+    AABB bounds[2] = {visibleListBox(Vector3(-2.0f, 0, 0), 1.0f), visibleListBox(Vector3(4.0f, 0, 0), 1.0f)};
     const AABB* boundsOf[2] = {&bounds[0], &bounds[1]};
     VisibleCandidate candidate;
     candidate.worldBounds = AABB(Vector3(6.0f, -1.0f, -1.0f), Vector3(14.0f, 1.0f, 1.0f));
@@ -109,7 +109,7 @@ TEST(VisibleList, CullsSubmeshesByTheirOwnBounds){
     EXPECT_EQ(VisibleList::cull(box3.frustum, candidate).submeshMask, 3u);
 
     // a submesh of unknown (null) bounds is kept with its mesh
-    AABB unknown[2] = {AABB(), box(Vector3(4.0f, 0, 0), 1.0f)};
+    AABB unknown[2] = {AABB(), visibleListBox(Vector3(4.0f, 0, 0), 1.0f)};
     const AABB* unknownOf[2] = {&unknown[0], &unknown[1]};
     candidate.submeshBounds = unknownOf;
     EXPECT_EQ(VisibleList::cull(box3.frustum, candidate).submeshMask, 1u);
@@ -118,9 +118,9 @@ TEST(VisibleList, CullsSubmeshesByTheirOwnBounds){
 TEST(VisibleList, SubmeshBoundsApartInMemory){
     // a mesh's submeshes are allocated one by one (StableArray): each submesh's own bounds, wherever they are
     std::vector<std::unique_ptr<AABB>> held;
-    held.push_back(std::make_unique<AABB>(box(Vector3(-5, 0, 0), 1.0f)));
-    held.push_back(std::make_unique<AABB>(box(Vector3(50, 0, 0), 1.0f)));
-    held.push_back(std::make_unique<AABB>(box(Vector3(5, 0, 0), 1.0f)));
+    held.push_back(std::make_unique<AABB>(visibleListBox(Vector3(-5, 0, 0), 1.0f)));
+    held.push_back(std::make_unique<AABB>(visibleListBox(Vector3(50, 0, 0), 1.0f)));
+    held.push_back(std::make_unique<AABB>(visibleListBox(Vector3(5, 0, 0), 1.0f)));
     const AABB* bounds[3] = {held[2].get(), held[1].get(), held[0].get()};
     BoxFrustum box3;
     Matrix4 model;
@@ -135,7 +135,7 @@ TEST(VisibleList, SubmeshBoundsApartInMemory){
 TEST(VisibleList, DistanceAndUnboundedMeshes){
     BoxFrustum box3;
     VisibleCandidate candidate;
-    candidate.worldBounds = box(Vector3(0, 0, 8), 1.0f);
+    candidate.worldBounds = visibleListBox(Vector3(0, 0, 8), 1.0f);
     candidate.numSubmeshes = 1;
     VisibleResult result = VisibleList::cull(box3.frustum, candidate);
     EXPECT_EQ(result.submeshMask, 1u);
@@ -149,7 +149,7 @@ TEST(VisibleList, DistanceAndUnboundedMeshes){
 
     // outside, and unbounded (cullBounds false: drawn wherever the frustum is)
     candidate.maxDistance = std::numeric_limits<float>::infinity();
-    candidate.worldBounds = box(Vector3(0, 0, 40), 1.0f);
+    candidate.worldBounds = visibleListBox(Vector3(0, 0, 40), 1.0f);
     EXPECT_EQ(VisibleList::cull(box3.frustum, candidate).submeshMask, 0u);
     candidate.cullBounds = false;
     EXPECT_EQ(VisibleList::cull(box3.frustum, candidate).submeshMask, 1u);

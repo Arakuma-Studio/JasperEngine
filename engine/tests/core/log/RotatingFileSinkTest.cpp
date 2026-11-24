@@ -14,7 +14,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    LogRecord makeRecord(const std::string& text) {
+    LogRecord rotatingFileSinkMakeRecord(const std::string& text) {
         LogRecord record;
         record.id = 1;
         record.level = LogLevel::Info;
@@ -38,7 +38,7 @@ TEST(FileSinkTest, RotatesAtRuntime) {
     const size_t lineBytes = 1000 + 30;
     // 3 MB in batches of 64 lines
     for (int i = 0; i < 3 * 1024; i++) {
-        sink.write(makeRecord(text));
+        sink.write(rotatingFileSinkMakeRecord(text));
         if (i % 64 == 63) sink.flush();
     }
     sink.flush();
@@ -76,7 +76,7 @@ TEST(FileSinkTest, RotationFailureKeepsAppending) {
     };
     RotatingFileSink sink(options);
     for (int i = 0; i < 200; i++) {
-        sink.write(makeRecord("line " + std::to_string(i)));
+        sink.write(rotatingFileSinkMakeRecord("line " + std::to_string(i)));
         sink.flush();
     }
     EXPECT_TRUE(sink.rotationDisabled());

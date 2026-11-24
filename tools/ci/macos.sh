@@ -67,11 +67,13 @@ step_editor() {
         universal) preset=macos-universal-release; archs="x86_64;arm64" ;;
         *) echo "ARCHS is arm64 or universal (got $ARCHS)" >&2; exit 2 ;;
     esac
-    local targets=(jasperengine-editor) tests=ON
+    local targets=(jasperengine-editor) tests=ON pch=()
+    # JASPERENGINE_PCH=OFF in CI, as tools/build.sh
+    if [[ -n "${JASPERENGINE_PCH:-}" ]]; then pch=(-DJASPERENGINE_PCH="$JASPERENGINE_PCH"); fi
     if [[ "${EDITOR_TESTS:-1}" == 0 ]]; then tests=OFF; else targets+=(jasperengine-editor-tests); fi
     cmake --preset "$preset" -B "$EDITOR_TREE" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$archs" \
         -DJASPERENGINE_TESTS:BOOL="$tests" -DJASPERENGINE_WERROR="$WERROR_VALUE" "-DCMAKE_INSTALL_PREFIX:PATH=$INSTALL" \
-        ${EDITOR_VERSION_ARGS[@]+"${EDITOR_VERSION_ARGS[@]}"} ${LAUNCHERS[@]+"${LAUNCHERS[@]}"}
+        ${EDITOR_VERSION_ARGS[@]+"${EDITOR_VERSION_ARGS[@]}"} ${LAUNCHERS[@]+"${LAUNCHERS[@]}"} ${pch[@]+"${pch[@]}"}
     cmake --build "$EDITOR_TREE" --target "${targets[@]}" ${JOBS_ARGS[@]+"${JOBS_ARGS[@]}"}
     rm -rf "$INSTALL"
     cmake --install "$EDITOR_TREE" --strip

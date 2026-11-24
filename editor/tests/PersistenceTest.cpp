@@ -17,6 +17,7 @@
 #include "component/ActionComponent.h"
 #include "subsystem/AudioSystem.h"
 #include "object/GameObject.h"
+#include "object/sound/Audio.h"
 #include "component/ButtonComponent.h"
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
@@ -38,6 +39,7 @@
 #include <thread>
 #endif
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -165,7 +167,7 @@ namespace {
         for (int i = 0; i < samples; i++) u16(0);
     }
 
-    std::vector<std::string> cppLog;
+    std::vector<std::string> persistenceCppLog;
 
     class CppManager : public ScriptBase {
     public:
@@ -174,12 +176,12 @@ namespace {
         void init() override {
             if (persistSingleton<CppManager>() != this) {
                 duplicate = true;
-                cppLog.push_back("duplicate");
+                persistenceCppLog.push_back("duplicate");
                 return;
             }
-            cppLog.push_back("first");
+            persistenceCppLog.push_back("first");
         }
-        void onDestroy() override { cppLog.push_back(std::string("destroy") + (duplicate ? "Dup" : "First")); }
+        void onDestroy() override { persistenceCppLog.push_back(std::string("destroy") + (duplicate ? "Dup" : "First")); }
     };
 
     // a C++ script entry filled in as the generated factory does
@@ -215,7 +217,7 @@ namespace {
         }
     }
 
-    void deleteCppScripts(Scene* scene) {
+    void persistenceDeleteCppScripts(Scene* scene) {
         if (!scene) return;
         auto scripts = scene->getComponentArray<ScriptComponent>();
         for (size_t i = 0; i < scripts->size(); i++) {
@@ -367,6 +369,48 @@ TEST_F(PersistenceTest, PlayingSoundKeepsItsVoice) {
         moved.handle = 0;
     }
     Engine::removeAllScenes();
+}
+
+// S97 REQ-23 (AC22): a free voice the persistent scene owns plays on across a load; one the main
+// scene owns stops with it
+TEST_F(PersistenceTest, PersistentFreeVoiceSurvivesALoad) {
+    const AudioBackend backend = AudioSystem::getBackend();
+    AudioSystem::close();
+    // the null driver: a voice whatever the machine has (this test needs no output)
+    AudioSystem::setBackend(AudioBackend::Null);
+    writeWav(dir / "hum.wav", 8000 * 5);
+    Scene* first = nullptr;
+    SceneManager::registerScene(1, "First", [this, &first]() {
+        first = newScene();
+        Engine::setScene(first);
+    });
+    SceneManager::registerScene(2, "Second", [this, &first]() {
+        Engine::setScene(newScene());
+        // as the exported load_X: the replaced scene goes
+        LuaBinding::cleanupLuaScripts(first);
+        ObjectManager::forgetScene(first);
+        scenes.erase(std::remove_if(scenes.begin(), scenes.end(), [first](const std::unique_ptr<Scene>& scene) { return scene.get() == first; }),
+                     scenes.end());
+        first = nullptr;
+    });
+    loadAndFrame("First");
+    Scene* persistent = SceneManager::ensurePersistentScene();
+    ASSERT_NE(persistent, nullptr);
+    PlayOptions kept;
+    kept.scene = persistent;
+    SoundHandle survives = Audio::play("hum.wav", kept);
+    SoundHandle stops = Audio::play("hum.wav");
+    ASSERT_TRUE(survives.isPlaying());
+    ASSERT_TRUE(stops.isPlaying());
+
+    loadAndFrame("Second");
+    frame();
+    EXPECT_TRUE(survives.isPlaying()) << "owned by the persistent scene";
+    EXPECT_FALSE(stops.isValid()) << "owned by the scene the load replaced";
+    survives.stop();
+    Engine::removeAllScenes();
+    AudioSystem::close();
+    AudioSystem::setBackend(backend);
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -638,7 +682,7 @@ TEST_F(PersistenceTest, ScriptWrappersAndActionsFollow) {
 
 // C++ scripts: ScriptBase::dontDestroyOnLoad / persistSingleton, rebound by the move
 TEST_F(PersistenceTest, CppScriptsPersistAndRebind) {
-    cppLog.clear();
+    persistenceCppLog.clear();
     ObjectManager::setCppScriptHooks(nullptr, cleanupCppScripts);
     Scene* one = newScene();
     const Entity first = entity(one, "CppFirst");
@@ -656,14 +700,14 @@ TEST_F(PersistenceTest, CppScriptsPersistAndRebind) {
     Engine::addSceneLayer(two);
     ScriptRuntime::awakeScene(two);
     frame();
-    EXPECT_EQ(cppLog, (std::vector<std::string>{"first", "duplicate", "destroyDup"}));
+    EXPECT_EQ(persistenceCppLog, (std::vector<std::string>{"first", "duplicate", "destroyDup"}));
     EXPECT_EQ(two->findEntity("CppSecond"), NULL_ENTITY);
 
     ScriptRuntime::quitAll();
-    EXPECT_EQ(cppLog.back(), "destroyFirst");
-    deleteCppScripts(SceneManager::getPersistentScene());
-    deleteCppScripts(one);
-    deleteCppScripts(two);
+    EXPECT_EQ(persistenceCppLog.back(), "destroyFirst");
+    persistenceDeleteCppScripts(SceneManager::getPersistentScene());
+    persistenceDeleteCppScripts(one);
+    persistenceDeleteCppScripts(two);
     ObjectManager::setCppScriptHooks(nullptr, nullptr);
     Engine::removeAllScenes();
 }

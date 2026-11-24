@@ -38,7 +38,7 @@ using jasperengine::editor::pixelart::PixelImage;
 
 namespace {
 
-    std::string readFile(const std::filesystem::path& path) {
+    std::string spriteAtlasBuildReadFile(const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     }
@@ -123,7 +123,7 @@ TEST(SpriteAtlasBuild, RemapsKeepTheMembersFrames) {
     ASSERT_TRUE(r->ok) << r->error.message;
     const TextureSheetInfo info = textureSheetSettings(member.absolute);
     const TextureSheetBuild own = buildTextureSheet(member.absolute, member.path, info.settings);
-    SpriteSheetParseResult remap = parseSheet(readFile(r->memberFile(member.path)));
+    SpriteSheetParseResult remap = parseSheet(spriteAtlasBuildReadFile(r->memberFile(member.path)));
     ASSERT_TRUE(remap.ok()) << remap.error;
     ASSERT_EQ(remap.sheet->frames.size(), own.sheet.frames.size());
     for (size_t i = 0; i < own.sheet.frames.size(); i++) {
@@ -297,7 +297,7 @@ TEST(SpriteAtlasBuild, AFinishedBuildKeepsANewerBuildsPages) {
     // the older build is adopted last (its swap finished after the newer one was written)
     SpriteAtlasBuilder::removeStaleFiles(*older);
     for (size_t p = 0; p < newer->pages.size(); p++) EXPECT_TRUE(std::filesystem::exists(newer->pageFile(p))) << "the newer build's page " << p << " is kept";
-    SpriteSheetParseResult sheet = parseSheet(readFile(newer->sheetFile()));
+    SpriteSheetParseResult sheet = parseSheet(spriteAtlasBuildReadFile(newer->sheetFile()));
     ASSERT_TRUE(sheet.ok()) << sheet.error;
     for (const SpritePage& page : sheet.sheet->pages) {
         EXPECT_TRUE(std::filesystem::exists(newer->dir / std::filesystem::path(page.texture).filename())) << page.texture << ": sheet.json names no missing page";
@@ -444,10 +444,10 @@ TEST(SpriteAtlasBuild, GpuFixtureIsTheBuildersOutput) {
     // the files as the GPU tests read them
     std::map<std::string, std::string> files;
     for (const auto& [path, image] : images) files[path] = image.encodePng();
-    files["panel.png.meta"] = readFile(editor::SetAssetMetaCmd::metaPathOf(dir.assets() / "panel.png"));
+    files["panel.png.meta"] = spriteAtlasBuildReadFile(editor::SetAssetMetaCmd::metaPathOf(dir.assets() / "panel.png"));
     files["page0.png"] = PixelImage::loadPng(r->pageFile(0), nullptr)->encodePng();
     for (const std::string& member : r->members) {
-        SpriteSheetParseResult remap = parseSheet(readFile(r->memberFile(member)));
+        SpriteSheetParseResult remap = parseSheet(spriteAtlasBuildReadFile(r->memberFile(member)));
         ASSERT_TRUE(remap.ok()) << remap.error;
         for (size_t p = 0; p < remap.sheet->pages.size(); p++) remap.sheet->pages[p].texture = "page" + std::to_string(p) + ".png";
         files[std::filesystem::path(member).stem().string() + ".remap.json"] = writeSheet(*remap.sheet);
@@ -461,7 +461,7 @@ TEST(SpriteAtlasBuild, GpuFixtureIsTheBuildersOutput) {
         }
     }
     for (const auto& [name, bytes] : files) {
-        const std::string committed = readFile(fixture / name);
+        const std::string committed = spriteAtlasBuildReadFile(fixture / name);
         if (name.size() > 4 && name.substr(name.size() - 4) == ".png") {
             std::optional<PixelImage> want = PixelImage::loadPng(fixture / name, nullptr);
             std::optional<PixelImage> got = PixelImage::decodePng(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()), nullptr);

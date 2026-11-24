@@ -25,7 +25,7 @@
 using namespace jasperengine;
 
 namespace{
-constexpr float DT = 1.0f / 60.0f;
+constexpr float DYNAMIC_RESOLUTION_CONTROLLER_DT = 1.0f / 60.0f;
 
 // cost(s) = unscalable + scalableAtFull * s^2. The square is the point: the
 // lever moves internal pixel AREA, and the unscalable term is the post-TAA
@@ -82,7 +82,7 @@ float driveUntilFirstChange(DynamicResolutionController& c, float costMs, int ma
     const float start = c.getScale();
     for (int i = 0; i < maxFrames; ++i)
     {
-        c.update(makeSample(costMs), DT);
+        c.update(makeSample(costMs), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         if (c.getScale() != start)
             break;
     }
@@ -99,7 +99,7 @@ std::vector<float> runClosedLoop(DynamicResolutionController& c, const Synthetic
     for (int i = 0; i < frames; ++i)
     {
         const float cost = model.cost(c.getScale());
-        c.update(makeSample(cost, provideUnscalableHint ? model.unscalable : 0.0f), DT);
+        c.update(makeSample(cost, provideUnscalableHint ? model.unscalable : 0.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         trace.push_back(c.getScale());
     }
     return trace;
@@ -132,7 +132,7 @@ TEST(DynamicResolutionController, DisconnectedLeverHoldsAndLearnsNothing)
     {
         DynamicResolutionSample s = makeSample(40.0f); // far over a 10 ms target
         s.scaleIsConnected = false;
-        c.update(s, DT);
+        c.update(s, DYNAMIC_RESOLUTION_CONTROLLER_DT);
     }
     EXPECT_FLOAT_EQ(c.getScale(), cfg.maxScale) << "must not move a lever that is not connected";
     EXPECT_TRUE(c.getStats().scaleDisconnected);
@@ -171,7 +171,7 @@ TEST(DynamicResolutionController, ResponseFitUsesAppliedScaleNotRequested)
         const float applied = c.getScale() * 0.5f;
         DynamicResolutionSample s = makeSample(model.cost(applied));
         s.appliedScale = applied;
-        c.update(s, DT);
+        c.update(s, DYNAMIC_RESOLUTION_CONTROLLER_DT);
     }
     ASSERT_TRUE(c.getStats().responseFitValid);
     EXPECT_NEAR(c.getStats().estimatedUnscalableMs, model.unscalable, 1.5f)
@@ -189,13 +189,13 @@ TEST(DynamicResolutionController, InvalidSampleHoldsScale)
 
     DynamicResolutionSample none{};
     none.valid = false;
-    EXPECT_FLOAT_EQ(c.update(none, DT), 0.8f);
+    EXPECT_FLOAT_EQ(c.update(none, DYNAMIC_RESOLUTION_CONTROLLER_DT), 0.8f);
 
     // The measurement resolves several frames late and can legitimately drop
     // out; a NaN or non-positive reading must hold, never be acted on.
-    EXPECT_FLOAT_EQ(c.update(makeSample(std::nanf("")), DT), 0.8f);
-    EXPECT_FLOAT_EQ(c.update(makeSample(0.0f), DT), 0.8f);
-    EXPECT_FLOAT_EQ(c.update(makeSample(-3.0f), DT), 0.8f);
+    EXPECT_FLOAT_EQ(c.update(makeSample(std::nanf("")), DYNAMIC_RESOLUTION_CONTROLLER_DT), 0.8f);
+    EXPECT_FLOAT_EQ(c.update(makeSample(0.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT), 0.8f);
+    EXPECT_FLOAT_EQ(c.update(makeSample(-3.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT), 0.8f);
 }
 
 TEST(DynamicResolutionController, DeadbandSuppressesChatter)
@@ -210,7 +210,7 @@ TEST(DynamicResolutionController, DeadbandSuppressesChatter)
     for (int i = 0; i < 200; ++i)
     {
         const float wobble = (i % 2 == 0) ? 10.9f : 9.1f;
-        EXPECT_FLOAT_EQ(c.update(makeSample(wobble), DT), 0.9f)
+        EXPECT_FLOAT_EQ(c.update(makeSample(wobble), DYNAMIC_RESOLUTION_CONTROLLER_DT), 0.9f)
             << "in-deadband cost must never move the ladder (frame " << i << ")";
     }
 }
@@ -222,12 +222,12 @@ TEST(DynamicResolutionController, OverBudgetDropsAndUnderBudgetRises)
     c.reset(0.9f);
 
     for (int i = 0; i < 60; ++i)
-        c.update(makeSample(20.0f), DT);
+        c.update(makeSample(20.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_LT(c.getScale(), 0.9f) << "sustained over-budget must reduce the scale";
     const float dropped = c.getScale();
 
     for (int i = 0; i < 600; ++i)
-        c.update(makeSample(3.0f), DT);
+        c.update(makeSample(3.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_GT(c.getScale(), dropped) << "sustained headroom must give resolution back";
 }
 
@@ -244,13 +244,13 @@ TEST(DynamicResolutionController, ResponseIsAsymmetric)
     down.configure(cfg);
     down.reset(0.75f);
     for (int i = 0; i < 30; ++i)
-        down.update(makeSample(20.0f), DT);
+        down.update(makeSample(20.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
 
     DynamicResolutionController up;
     up.configure(cfg);
     up.reset(0.75f);
     for (int i = 0; i < 30; ++i)
-        up.update(makeSample(5.0f), DT);
+        up.update(makeSample(5.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
 
     const float dropTravel = 0.75f - down.getScale();
     const float riseTravel = up.getScale() - 0.75f;
@@ -280,7 +280,7 @@ TEST(DynamicResolutionController, RateLimitBoundsPerSecondTravel)
     // last accepted change landed on).
     const float dropStart = c.getScale();
     for (int i = 0; i < 60; ++i)
-        c.update(makeSample(200.0f), DT);
+        c.update(makeSample(200.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     const float dropped = dropStart - c.getScale();
     EXPECT_GT(dropped, 0.0f) << "a catastrophic frame must actually move the scale";
     EXPECT_LE(dropped, cfg.maxDropPerSecond * 1.0f + cfg.quantizeStep + 1e-4f)
@@ -289,7 +289,7 @@ TEST(DynamicResolutionController, RateLimitBoundsPerSecondTravel)
     c.reset(0.5f);
     const float riseStart = c.getScale();
     for (int i = 0; i < 60; ++i)
-        c.update(makeSample(0.5f), DT);
+        c.update(makeSample(0.5f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     const float risen = c.getScale() - riseStart;
     EXPECT_GT(risen, 0.0f) << "a rung wider than one frame's budget must still be reachable";
     EXPECT_LE(risen, cfg.maxRisePerSecond * 1.0f + cfg.quantizeStep + 1e-4f)
@@ -308,11 +308,11 @@ TEST(DynamicResolutionController, ClampsToConfiguredRange)
     EXPECT_FLOAT_EQ(c.getScale(), 0.9f) << "Reset must clamp into range";
 
     for (int i = 0; i < 2000; ++i)
-        c.update(makeSample(500.0f), DT);
+        c.update(makeSample(500.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_FLOAT_EQ(c.getScale(), 0.6f);
 
     for (int i = 0; i < 4000; ++i)
-        c.update(makeSample(0.1f), DT);
+        c.update(makeSample(0.1f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_FLOAT_EQ(c.getScale(), 0.9f);
 }
 
@@ -387,7 +387,7 @@ TEST(DynamicResolutionController, ScaleAlwaysSitsOnALadderRung)
     for (int i = 0; i < 400; ++i)
     {
         model.scalableAtFull = 6.0f + 14.0f * static_cast<float>((i / 40) % 3);
-        c.update(makeSample(model.cost(c.getScale())), DT);
+        c.update(makeSample(model.cost(c.getScale())), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         if (c.getScale() <= cfg.minScale + 1e-6f)
             continue; // the clamped floor is a deliberate off-ladder endpoint
         const float rungs = (cfg.maxScale - c.getScale()) / cfg.quantizeStep;
@@ -412,7 +412,7 @@ TEST(DynamicResolutionController, DwellRateLimitsAcceptedChanges)
     std::vector<float> trace;
     for (int i = 0; i < 600; ++i) // 10 seconds
     {
-        c.update(makeSample(14.0f), DT);
+        c.update(makeSample(14.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         trace.push_back(c.getScale());
     }
     const int changes = countChanges(trace, 0);
@@ -434,16 +434,16 @@ TEST(DynamicResolutionController, EmergencyDropBypassesDwellButNotRateLimit)
     const float afterFirst = driveUntilFirstChange(c, 12.0f);
     ASSERT_LT(afterFirst, 1.0f);
     for (int i = 0; i < 120; ++i) // 2 s, well inside the 5 s dwell
-        c.update(makeSample(12.0f), DT);
+        c.update(makeSample(12.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_FLOAT_EQ(c.getScale(), afterFirst) << "non-emergency changes must respect dwell";
 
     // A spike past 1.5x target must get through immediately.
     const float spikeStart = c.getScale();
     for (int i = 0; i < 30; ++i)
-        c.update(makeSample(40.0f), DT);
+        c.update(makeSample(40.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_LT(c.getScale(), afterFirst) << "an emergency spike must move the scale despite dwell";
     EXPECT_LE(spikeStart - c.getScale(),
-              cfg.maxDropPerSecond * (30.0f * DT) + cfg.quantizeStep + 1e-4f)
+              cfg.maxDropPerSecond * (30.0f * DYNAMIC_RESOLUTION_CONTROLLER_DT) + cfg.quantizeStep + 1e-4f)
         << "emergency must bypass dwell, never the slew limit";
 
 
@@ -455,11 +455,11 @@ TEST(DynamicResolutionController, EmergencyDropBypassesDwellButNotRateLimit)
     limited.reset(limitedCfg.maxScale);
     const float limitedStart = driveUntilFirstChange(limited, 12.0f);
     ASSERT_LT(limitedStart, limitedCfg.maxScale);
-    const float emergencyAllowance = limitedCfg.maxDropPerSecond * (30.0f * DT)
+    const float emergencyAllowance = limitedCfg.maxDropPerSecond * (30.0f * DYNAMIC_RESOLUTION_CONTROLLER_DT)
         + limitedCfg.quantizeStep + 1e-4f;
     ASSERT_GT(limitedStart - limitedCfg.minScale, emergencyAllowance);
     for (int i = 0; i < 30; ++i)
-        limited.update(makeSample(40.0f), DT);
+        limited.update(makeSample(40.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_LT(limited.getScale(), limitedStart);
     EXPECT_LE(limitedStart - limited.getScale(), emergencyAllowance)
         << "an emergency must preserve the narrower per-second slew limit";
@@ -478,7 +478,7 @@ TEST(DynamicResolutionController, EmergencyNeverBypassesDwellUpward)
     const float afterFirst = driveUntilFirstChange(c, 1.0f); // arms the dwell
     ASSERT_GT(afterFirst, 0.7f);
     for (int i = 0; i < 50; ++i) // 0.83 s, inside the 1 s dwell
-        c.update(makeSample(1.0f), DT);
+        c.update(makeSample(1.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_FLOAT_EQ(c.getScale(), afterFirst) << "rises must always wait out the dwell";
 }
 
@@ -541,7 +541,7 @@ TEST(DynamicResolutionController, ResistsOscillationUnderNoisyMeasurements)
     std::vector<float> trace;
     for (int i = 0; i < 1800; ++i)
     {
-        c.update(makeSample(model.cost(c.getScale()) * noise()), DT);
+        c.update(makeSample(model.cost(c.getScale()) * noise()), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         trace.push_back(c.getScale());
     }
 
@@ -576,7 +576,7 @@ TEST(DynamicResolutionController, UnscalableHintConvergesFasterThanBlindLoop)
         for (int i = 0; i < 3000; ++i)
         {
             const float cost = model.cost(c.getScale());
-            c.update(makeSample(cost, hint ? model.unscalable : 0.0f), DT);
+            c.update(makeSample(cost, hint ? model.unscalable : 0.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
             if (std::fabs(model.cost(c.getScale()) - cfg.targetMs) <=
                 cfg.targetMs * cfg.deadbandFraction)
                 return i;
@@ -680,7 +680,7 @@ TEST(DynamicResolutionController, FillBoundContentStillDropsWhenTargetUnreachabl
     c.reset(cfg.maxScale);
 
     for (int i = 0; i < 1200; ++i){
-        c.update(makeSample(fillBound.cost(c.getScale())), DT);
+        c.update(makeSample(fillBound.cost(c.getScale())), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         EXPECT_FALSE(c.getStats().scalingIneffective)
             << "useful fill-bound content must not be misclassified (frame " << i << ")";
     }
@@ -737,7 +737,7 @@ TEST(DynamicResolutionController, ResetClearsAdaptationState)
     c.configure(testConfig());
     c.reset(1.0f);
     for (int i = 0; i < 300; ++i)
-        c.update(makeSample(40.0f), DT);
+        c.update(makeSample(40.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_LT(c.getScale(), 1.0f);
     EXPECT_GT(c.getStats().acceptedDrops, 0u);
 
@@ -749,7 +749,7 @@ TEST(DynamicResolutionController, ResetClearsAdaptationState)
 
     // The smoothed cost must seed from the next sample, not blend against a
     // stale pre-reset value.
-    c.update(makeSample(12.0f), DT);
+    c.update(makeSample(12.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_FLOAT_EQ(c.getStats().smoothedMs, 12.0f);
 }
 
@@ -812,7 +812,7 @@ TEST(DynamicResolutionController, PeriodLawNoiseHoldsSteady){
     Lcg noise;
     std::vector<float> trace;
     for (int i = 0; i < 600; i++){
-        c.update(periodSample(model.cost(c.getScale()) * noise.next(0.08f), 4.0f), DT);
+        c.update(periodSample(model.cost(c.getScale()) * noise.next(0.08f), 4.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         trace.push_back(c.getScale());
     }
     EXPECT_LE(countChanges(trace, 0), 2);
@@ -829,7 +829,7 @@ TEST(DynamicResolutionController, PeriodLawVsyncNoiseHoldsSteady){
     Lcg noise;
     std::vector<float> trace;
     for (int i = 0; i < 600; i++){
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale()) * noise.next(0.08f)), 4.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale()) * noise.next(0.08f)), 4.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         trace.push_back(c.getScale());
     }
     EXPECT_EQ(countChanges(trace, 0), 0);
@@ -843,23 +843,23 @@ TEST(DynamicResolutionController, PeriodLawLoadStepDropsFast){
     c.configure(periodConfig());
     c.reset(1.0f);
     for (int i = 0; i < 120; i++)
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     ASSERT_FLOAT_EQ(c.getScale(), 1.0f);
 
     model = SyntheticGpu{4.0f, 20.0f}; // 24 ms at 1
     int dropFrame = -1;
     for (int i = 0; i < 120 && dropFrame < 0; i++){
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         if (c.getScale() < 1.0f)
             dropFrame = i;
     }
     ASSERT_GE(dropFrame, 0) << "a doubled load never dropped";
-    EXPECT_LE((dropFrame + 1) * DT, 0.5f) << "dropped after " << dropFrame + 1 << " frames";
+    EXPECT_LE((dropFrame + 1) * DYNAMIC_RESOLUTION_CONTROLLER_DT, 0.5f) << "dropped after " << dropFrame + 1 << " frames";
     EXPECT_GT(c.getStats().acceptedDrops, 0u);
 
     // and it settles where the frame fits again
     for (int i = 0; i < 600; i++)
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_LE(model.cost(c.getScale()), REFRESH_MS * 1.2f) << "scale " << c.getScale();
 }
 
@@ -870,7 +870,7 @@ TEST(DynamicResolutionController, PeriodLawCpuBoundNeverDrops){
     c.configure(periodConfig());
     c.reset(1.0f);
     for (int i = 0; i < 600; i++)
-        c.update(periodSample(2.0f * REFRESH_MS, 0.8f * REFRESH_MS + 0.5f), DT);
+        c.update(periodSample(2.0f * REFRESH_MS, 0.8f * REFRESH_MS + 0.5f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_FLOAT_EQ(c.getScale(), 1.0f);
     EXPECT_EQ(c.getStats().acceptedChanges, 0u);
     EXPECT_TRUE(c.getStats().cpuBound);
@@ -883,14 +883,14 @@ TEST(DynamicResolutionController, PeriodLawProbesUpWithHeadroom){
     c.configure(periodConfig());
     c.reset(0.6f);
     for (int i = 0; i < 100; i++) // 1.67 s
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 3.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 3.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_FLOAT_EQ(c.getScale(), 0.6f) << "probed before probeSeconds";
     EXPECT_GT(c.getStats().probeRemainingSeconds, 0.0f);
     for (int i = 0; i < 40; i++) // 2.33 s
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 3.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 3.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_NEAR(c.getScale(), 0.65f, 1e-4f) << "one rung after probeSeconds";
     for (int i = 0; i < 60 * 30; i++)
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 3.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 3.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_FLOAT_EQ(c.getScale(), 1.0f) << "a cheap scene climbs back to the top";
     EXPECT_FLOAT_EQ(c.getStats().probeRemainingSeconds, 0.0f);
 }
@@ -905,7 +905,7 @@ TEST(DynamicResolutionController, PeriodLawFailedRiseDoublesProbe){
     std::vector<float> intervals;
     uint32_t failed = 0;
     for (int i = 0; i < 60 * 60 && intervals.size() < 5; i++){
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         if (c.getStats().failedRises != failed){
             failed = c.getStats().failedRises;
             intervals.push_back(c.getStats().probeIntervalSeconds);
@@ -919,7 +919,7 @@ TEST(DynamicResolutionController, PeriodLawFailedRiseDoublesProbe){
     EXPECT_FLOAT_EQ(intervals[3], 16.0f) << "capped at maxProbeSeconds";
     // a failed probe returns at once: after the last failure it sits at 0.8 again
     for (int i = 0; i < 60; i++)
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_NEAR(c.getScale(), 0.8f, 1e-4f);
 }
 
@@ -930,17 +930,17 @@ TEST(DynamicResolutionController, PeriodLawCostChangeResetsProbe){
     c.configure(periodConfig());
     c.reset(0.8f);
     for (int i = 0; i < 60 * 20 && c.getStats().failedRises < 2; i++)
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     ASSERT_GE(c.getStats().failedRises, 2u);
     // settle at the held rung, then the CPU side of the content changes by far more than 25 %
     for (int i = 0; i < 90; i++)
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
     ASSERT_GT(c.getStats().probeIntervalSeconds, 2.0f);
     // (the reset interval may be spent at once: the frames since the last miss already exceed it,
     // so a probe follows, fails again on this content and doubles from 2 to 4, not from 8 to 16)
     float shortest = c.getStats().probeIntervalSeconds;
     for (int i = 0; i < 60; i++){
-        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 9.0f), DT);
+        c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 9.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         shortest = std::min(shortest, c.getStats().probeIntervalSeconds);
     }
     EXPECT_FLOAT_EQ(shortest, 2.0f);
@@ -953,7 +953,7 @@ TEST(DynamicResolutionController, GpuTimeSelectsTheGpuLaw){
     c.reset(1.0f);
     DynamicResolutionSample s = periodSample(REFRESH_MS, 3.0f);
     s.gpuMs = 8.0f;
-    c.update(s, DT);
+    c.update(s, DYNAMIC_RESOLUTION_CONTROLLER_DT);
     EXPECT_EQ(c.getStats().source, DynamicResolutionSource::GPU);
     EXPECT_FLOAT_EQ(c.getStats().smoothedMs, 8.0f);
     EXPECT_STREQ(dynamicResolutionSourceName(DynamicResolutionSource::GPU), "gpu");
@@ -967,7 +967,7 @@ TEST(DynamicResolutionController, FrameIndexTicksOncePerFrame){
     c.reset(1.0f);
     for (uint64_t frame = 1; frame <= 10; frame++){
         for (int view = 0; view < 3; view++)
-            c.update(periodSample(REFRESH_MS, 3.0f), DT, frame);
+            c.update(periodSample(REFRESH_MS, 3.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT, frame);
     }
     EXPECT_EQ(c.getStats().ticks, 10u);
 }
@@ -984,11 +984,11 @@ TEST(DynamicResolutionControllerBench, Tick){
     const int ITERATIONS = 100000;
     const auto start = std::chrono::steady_clock::now();
     for (int i = 0; i < ITERATIONS; i++){
-        frameLaw.update(periodSample(vsyncPeriod(model.cost(frameLaw.getScale())), 4.0f), DT);
+        frameLaw.update(periodSample(vsyncPeriod(model.cost(frameLaw.getScale())), 4.0f), DYNAMIC_RESOLUTION_CONTROLLER_DT);
         DynamicResolutionSample s{};
         s.gpuMs = model.cost(gpuLaw.getScale()) * (1.0f + 0.05f * (float)((i * 7) % 11 - 5) / 5.0f);
         s.valid = true;
-        gpuLaw.update(s, DT);
+        gpuLaw.update(s, DYNAMIC_RESOLUTION_CONTROLLER_DT);
     }
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     const double perTick = ms / (2.0 * ITERATIONS);

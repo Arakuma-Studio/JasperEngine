@@ -43,7 +43,7 @@ namespace jasperengine::editor::test {
             ASSERT_TRUE(project->loadProject(dir.path(), false));
         }
         void TearDown() override {
-            // closes the scenes as a project switch does: a Project frees none itself
+            // closes the scenes and their histories as a project switch does
             if (project) closeProject(*project);
             project.reset();
         }

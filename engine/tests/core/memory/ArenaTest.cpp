@@ -46,15 +46,15 @@ namespace{
         return entry.count;
     }
 
-    struct Tracked {
+    struct ArenaTracked {
         static int live;
         static int destroyed;
         int value = 0;
-        explicit Tracked(int v): value(v){ live++; }
-        ~Tracked(){ live--; destroyed++; }
+        explicit ArenaTracked(int v): value(v){ live++; }
+        ~ArenaTracked(){ live--; destroyed++; }
     };
-    int Tracked::live = 0;
-    int Tracked::destroyed = 0;
+    int ArenaTracked::live = 0;
+    int ArenaTracked::destroyed = 0;
 
     // one frame's worth of mixed allocations
     void fillOneFrame(Arena& arena){
@@ -122,50 +122,50 @@ TEST(ArenaTests, ResetRewindsAndKeepsTheHighWaterCapacity){
 }
 
 TEST(ArenaTests, AllocateRunsDestructorsOnReset){
-    Tracked::live = 0;
-    Tracked::destroyed = 0;
+    ArenaTracked::live = 0;
+    ArenaTracked::destroyed = 0;
     {
         Arena arena("Tests.Arena.Destructors");
         for (int value = 0; value < 10; value++)
-            arena.allocate<Tracked>(value);
-        EXPECT_EQ(Tracked::live, 10);
+            arena.allocate<ArenaTracked>(value);
+        EXPECT_EQ(ArenaTracked::live, 10);
         EXPECT_EQ(arena.marker().destructorCount, 10u);
         arena.reset();
-        EXPECT_EQ(Tracked::live, 0);
-        EXPECT_EQ(Tracked::destroyed, 10);
+        EXPECT_EQ(ArenaTracked::live, 0);
+        EXPECT_EQ(ArenaTracked::destroyed, 10);
     }
-    EXPECT_EQ(Tracked::destroyed, 10) << "destroying the arena after reset destroyed an object twice";
+    EXPECT_EQ(ArenaTracked::destroyed, 10) << "destroying the arena after reset destroyed an object twice";
 }
 
 TEST(ArenaTests, DestructorsRunOnArenaDestruction){
-    Tracked::live = 0;
-    Tracked::destroyed = 0;
+    ArenaTracked::live = 0;
+    ArenaTracked::destroyed = 0;
     {
         Arena arena("Tests.Arena.Destruction");
-        arena.allocate<Tracked>(1);
-        arena.allocate<Tracked>(2);
+        arena.allocate<ArenaTracked>(1);
+        arena.allocate<ArenaTracked>(2);
     }
-    EXPECT_EQ(Tracked::live, 0);
-    EXPECT_EQ(Tracked::destroyed, 2);
+    EXPECT_EQ(ArenaTracked::live, 0);
+    EXPECT_EQ(ArenaTracked::destroyed, 2);
 }
 
 TEST(ArenaTests, RewindRunsOnlyTheDestructorsAboveTheMarker){
-    Tracked::live = 0;
-    Tracked::destroyed = 0;
+    ArenaTracked::live = 0;
+    ArenaTracked::destroyed = 0;
     Arena arena("Tests.Arena.RewindMarker");
-    arena.allocate<Tracked>(1);
-    arena.allocate<Tracked>(2);
+    arena.allocate<ArenaTracked>(1);
+    arena.allocate<ArenaTracked>(2);
     const Arena::Marker mark = arena.marker();
     const size_t usedAtMarker = arena.bytesUsed();
-    arena.allocate<Tracked>(3);
-    arena.allocate<Tracked>(4);
-    arena.allocate<Tracked>(5);
+    arena.allocate<ArenaTracked>(3);
+    arena.allocate<ArenaTracked>(4);
+    arena.allocate<ArenaTracked>(5);
     arena.rewind(mark);
-    EXPECT_EQ(Tracked::destroyed, 3);
-    EXPECT_EQ(Tracked::live, 2);
+    EXPECT_EQ(ArenaTracked::destroyed, 3);
+    EXPECT_EQ(ArenaTracked::live, 2);
     EXPECT_EQ(arena.bytesUsed(), usedAtMarker);
     arena.reset();
-    EXPECT_EQ(Tracked::destroyed, 5);
+    EXPECT_EQ(ArenaTracked::destroyed, 5);
 }
 
 TEST(ArenaTests, OverAlignmentOf4096IsServedAcrossBlocks){

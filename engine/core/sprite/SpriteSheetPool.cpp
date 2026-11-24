@@ -43,7 +43,7 @@ namespace {
     };
 
     // never destroyed: sprites may release sheets during static destruction
-    PoolState& state(){
+    PoolState& poolState(){
         static PoolState* pool = new PoolState();
         return *pool;
     }
@@ -68,7 +68,7 @@ namespace {
         SpriteSheetSources::ensureRegistered();
         std::vector<Source> sources;
         {
-            PoolState& pool = state();
+            PoolState& pool = poolState();
             std::lock_guard<std::mutex> lock(pool.mutex);
             sources = pool.sources;
         }
@@ -175,7 +175,7 @@ std::shared_ptr<const SpriteSheetData> SpriteSheetPool::loadTexture(const std::s
 
 std::shared_ptr<const SpriteSheetData> SpriteSheetPool::find(const std::string& path){
     const std::string key = getKey(path);
-    PoolState& pool = state();
+    PoolState& pool = poolState();
     std::lock_guard<std::mutex> lock(pool.mutex);
     auto it = pool.sheets.find(key);
     return it == pool.sheets.end() ? nullptr : it->second;
@@ -184,7 +184,7 @@ std::shared_ptr<const SpriteSheetData> SpriteSheetPool::find(const std::string& 
 std::shared_ptr<const SpriteSheetData> SpriteSheetPool::get(const std::string& path){
     if (path.empty()) return nullptr;
     const std::string key = getKey(path);
-    PoolState& pool = state();
+    PoolState& pool = poolState();
     uint64_t epoch = 0, clearEpoch = 0;
     {
         std::lock_guard<std::mutex> lock(pool.mutex);
@@ -216,7 +216,7 @@ std::shared_ptr<const SpriteSheetData> SpriteSheetPool::get(const std::string& p
 
 uint64_t SpriteSheetPool::generation(const std::string& path){
     const std::string key = getKey(path);
-    PoolState& pool = state();
+    PoolState& pool = poolState();
     std::lock_guard<std::mutex> lock(pool.mutex);
     auto it = pool.generations.find(key);
     return it == pool.generations.end() ? 0 : it->second;
@@ -224,7 +224,7 @@ uint64_t SpriteSheetPool::generation(const std::string& path){
 
 void SpriteSheetPool::invalidate(const std::string& path){
     const std::string key = getKey(path);
-    PoolState& pool = state();
+    PoolState& pool = poolState();
     std::lock_guard<std::mutex> lock(pool.mutex);
     pool.sheets.erase(key);
     pool.failed.erase(key);
@@ -235,7 +235,7 @@ void SpriteSheetPool::invalidate(const std::string& path){
 }
 
 void SpriteSheetPool::clear(){
-    PoolState& pool = state();
+    PoolState& pool = poolState();
     std::lock_guard<std::mutex> lock(pool.mutex);
     pool.sheets.clear();
     pool.failed.clear();
@@ -245,13 +245,13 @@ void SpriteSheetPool::clear(){
 }
 
 uint64_t SpriteSheetPool::revision(){
-    PoolState& pool = state();
+    PoolState& pool = poolState();
     std::lock_guard<std::mutex> lock(pool.mutex);
     return pool.revision;
 }
 
 void SpriteSheetPool::registerSource(std::function<bool(const std::string& path)> accepts, Loader loader){
-    PoolState& pool = state();
+    PoolState& pool = poolState();
     std::lock_guard<std::mutex> lock(pool.mutex);
     pool.sources.push_back({std::move(accepts), std::move(loader)});
     pool.revision++;

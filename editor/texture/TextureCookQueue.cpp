@@ -60,8 +60,17 @@ namespace {
         return TextureImportSettings::parse(stored, settings, &error);
     }
 
+    // fs::path::extension() of the bytes, without a fs::path: one made from a name that is not
+    // UTF-8 throws on Windows, where narrow strings are converted with the UTF-8 code page
     std::string cookLowerExtension(const std::string& path){
-        std::string extension = fs::path(path).extension().string();
+#ifdef _WIN32
+        const size_t slash = path.find_last_of("/\\");
+#else
+        const size_t slash = path.find_last_of('/');
+#endif
+        const std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
+        const size_t dot = name.rfind('.');
+        std::string extension = dot == std::string::npos || dot == 0 || name == ".." ? std::string() : name.substr(dot);
         std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
         return extension;
     }

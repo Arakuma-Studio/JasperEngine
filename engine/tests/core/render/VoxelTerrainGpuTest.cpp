@@ -24,8 +24,8 @@ using namespace jasperengine::voxel;
 namespace {
 
     constexpr float GROUND = 10.0f;     // the terrain's height: a quarter of its 40 m
-    constexpr float VIEW_WIDTH = 64.0f;
-    constexpr float VIEW_HEIGHT = 36.0f;
+    constexpr float VOXEL_TERRAIN_VIEW_WIDTH = 64.0f;
+    constexpr float VOXEL_TERRAIN_VIEW_HEIGHT = 36.0f;
 
     class VoxelTerrainGpu : public TerrainGpuFixture {
     protected:
@@ -132,15 +132,15 @@ namespace {
 
         void lookDown() {
             camera.setType(CameraType::CAMERA_ORTHO);
-            camera.setOrtho(-VIEW_WIDTH * 0.5f, VIEW_WIDTH * 0.5f, -VIEW_HEIGHT * 0.5f, VIEW_HEIGHT * 0.5f, 1.0f, 400.0f);
+            camera.setOrtho(-VOXEL_TERRAIN_VIEW_WIDTH * 0.5f, VOXEL_TERRAIN_VIEW_WIDTH * 0.5f, -VOXEL_TERRAIN_VIEW_HEIGHT * 0.5f, VOXEL_TERRAIN_VIEW_HEIGHT * 0.5f, 1.0f, 400.0f);
             camera.setPosition(0.0f, 200.0f, 0.0f);
             camera.setUp(0.0f, 0.0f, -1.0f);
             camera.setTarget(0.0f, 0.0f, 0.0f);
         }
 
         const uint8_t* pixelAt(const std::vector<uint8_t>& frame, float x, float z) const {
-            const int px = static_cast<int>((x + VIEW_WIDTH * 0.5f) / VIEW_WIDTH * FRAME_WIDTH);
-            const int py = static_cast<int>((z + VIEW_HEIGHT * 0.5f) / VIEW_HEIGHT * FRAME_HEIGHT);
+            const int px = static_cast<int>((x + VOXEL_TERRAIN_VIEW_WIDTH * 0.5f) / VOXEL_TERRAIN_VIEW_WIDTH * FRAME_WIDTH);
+            const int py = static_cast<int>((z + VOXEL_TERRAIN_VIEW_HEIGHT * 0.5f) / VOXEL_TERRAIN_VIEW_HEIGHT * FRAME_HEIGHT);
             if (px < 0 || py < 0 || px >= FRAME_WIDTH || py >= FRAME_HEIGHT) return nullptr;
             return &frame[(static_cast<size_t>(py) * FRAME_WIDTH + px) * 4];
         }

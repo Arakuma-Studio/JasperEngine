@@ -2259,7 +2259,7 @@ rest of S82 lands in 6B.
     in the preprocessor (`patterns.glsl` compiles one kind under `TA_PATTERN_ONLY`; constants alone
     left the first draw small but the front end still parsed and optimized everything, 2-4 s on the
     render thread). So every variant draws the whole program's pixels: byte for byte on both pixel
-    paths for every Material member (`TitleArtScenesGpu.ElementVariantsDrawTheWholeProgram`; red
+    paths for every Material member (`TitleArtScenesGpuSlow.ElementVariantsDrawTheWholeProgram`; red
     control by hand: without the satin bit the satin case differs by up to 128/255), and every golden
     and parity test passes unchanged. Count: at most 1 + 27 x 2 pattern states x 13 texture states x
     2^4 = 11,440 variants; a document plans one per distinct material (a title with rims 2-6), S32's
@@ -2290,3 +2290,42 @@ rest of S82 lands in 6B.
 60. **Merge with upstream: the guide entry is `titles (edit_title)`.** The upstream merges took the
     whole guide to its headroom (6,693 bytes, one over); the area's own entry gives the bytes
     instead of another area's (§6.11's 40-byte cap still holds).
+61. **Implementation: a synchronous render never waits for a program.** `TitleArtRenderHost::runToEnd`
+    and `render` waited on the main thread up to 60 s for a program still being built, then failed the
+    render (deviation 54); on a loaded host 3 of the title library gate's 830 renders failed so
+    (`fallback_parity`, `scifi/galaxy-starfield-3d`), and the editor drew no frame meanwhile. Now the
+    render stops with a `not_ready:` error at a program still being built (asking for every program
+    the job binds, so they build together), counts it (`TitleArtRenderHost::notReadyCount`), and the
+    frames go on building it; until shader creation is idle again the next synchronous renders stop
+    the same way at once, and a step that waits while no shader is being built (a 3D layer's build
+    runs a share per call) is called on for up to 1 s (deviation 58's bound). A program that cannot
+    be built still fails the render. Each caller
+    that needs the image waits for that state, not for a time: `view_asset` waits frame by frame
+    (a 120 s hang guard ends it naming the retry), `check_title` runs its checks again on a later frame of its job
+    with the context it began with (its finished renders cached; after a render that is not ready
+    the pass's later renders do not start), the library sheet its cell, `render_title`'s animation frames, flipbook bakes,
+    `export_title`'s sheet steps (`TitleExportContext::later`) and the export's prebakes (resumable,
+    asked again frame by frame from the export's worker, which stops on cancel or a 10 minute hang
+    guard) do the same, and the Title Designer's pick and Check Rendered and the Animation panel's
+    pose try again on a later frame. The runtime (S81) already showed the prebaked image or nothing
+    until its render was ready. Test: `test_title_art_programs.py` with `JASPER_TEST_TITLE_PROGRAM_BUILD`
+    (`delay:<n>` builds a program n main-loop iterations after it was first asked for; `fail` never);
+    red run: the blocking wait never saw a program built and failed after 60 s. Measured on llvmpipe
+    on a loaded server, the first `check_title` of a 3D look (`gems/amethyst-crystal-3d`, the gate's
+    arguments) took 18-20 s with the blocking wait and 22-33 s now (its 3D variants are met one per
+    pass, about ten passes); a restart of the whole pass per frame without the cache, the idle wait
+    and the 1 s slice took 46-61 s. The export's Glyph Atlas prebake (`TitleGlyphPrebake`) works
+    20 ms per call of the export's worker and resumes on later frames (each string keeps its 60 s
+    guard), and the bakes that ran to the end in one call (`edit_title`'s `bake`, the export's rebake
+    of stale outputs) are `TitleArtBakeJob`s stepped from the frames, as `export_title`'s and Auto
+    Bake's were: on the main thread in one call they never saw a delayed program built (their red
+    runs hung the editor; the glyph prebake's waited 60 s and shipped no atlas).
+62. **Implementation: the node cache gives way to a render's targets.** The cache's results are
+    targets lent from the renderer's pool, kept across renders up to its 128 MB, and the pool's
+    limit freed only idle targets before it failed. The title library gate's eighth part (104
+    template renders in one editor) so failed `metal_range` with `out_of_target_memory` for 1 to
+    4 MB while about 120 MB of earlier results stayed cached (an instrumented run: 516 MB lent at
+    the failure, 120 MB of it in the cache, a preview's render and the check's own render the rest).
+    Now an acquire the limit refuses has the pool's reclaim hook drop the cache's least recently
+    used entries (a target a job still holds stays the job's) before it fails. Test:
+    `TitleTargetPoolTest.TheNodeCacheGivesWayBeforeAnAcquireFails`.

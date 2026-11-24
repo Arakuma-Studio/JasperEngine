@@ -39,7 +39,7 @@ namespace {
         fs::path path;
     };
 
-    void writeFile(const fs::path& path, const std::string& text) {
+    void soundEventAssetWriteFile(const fs::path& path, const std::string& text) {
         fs::create_directories(path.parent_path());
         std::ofstream(path, std::ios::binary) << text;
     }
@@ -70,7 +70,7 @@ TEST(SoundEventAsset, TypeIsSidecarInTheAssets) {
 
 TEST(SoundEventAsset, GetsAMetaGuidAndARenameKeepsIt) {
     SoundEventTestDir dir;
-    writeFile(dir.path / "assets/steps.soundevent", SoundEventIO::write(eventOf({AssetRef("sounds/a.wav")})));
+    soundEventAssetWriteFile(dir.path / "assets/steps.soundevent", SoundEventIO::write(eventOf({AssetRef("sounds/a.wav")})));
     AssetDatabase database;
     database.open(dir.path, "assets");
     database.waitForBackgroundWork();
@@ -97,8 +97,8 @@ TEST(SoundEventAsset, GetsAMetaGuidAndARenameKeepsIt) {
 
 TEST(SoundEventAsset, OneEdgePerClipByGuidThenPath) {
     SoundEventTestDir dir;
-    writeFile(dir.path / "assets/sounds/a.wav", "a");
-    writeFile(dir.path / "assets/sounds/b.wav", "b");
+    soundEventAssetWriteFile(dir.path / "assets/sounds/a.wav", "a");
+    soundEventAssetWriteFile(dir.path / "assets/sounds/b.wav", "b");
     AssetDatabase database;
     database.open(dir.path, "assets");
     database.waitForBackgroundWork();
@@ -108,7 +108,7 @@ TEST(SoundEventAsset, OneEdgePerClipByGuidThenPath) {
     ASSERT_FALSE(b.isNull());
 
     // a by GUID with a stale hint, b by its path, and one that is missing
-    writeFile(dir.path / "assets/steps.soundevent",
+    soundEventAssetWriteFile(dir.path / "assets/steps.soundevent",
               SoundEventIO::write(eventOf({AssetRef("sounds/old.wav", a), AssetRef("sounds/b.wav"), AssetRef("sounds/gone.wav")})));
     const AssetIndex::Roots roots{"assets", ""};
     const std::vector<DepEdge> edges = AssetIndex::extractFile(database, dir.path, roots, "assets/steps.soundevent", AssetType::SoundEvent, Guid(1, 2));

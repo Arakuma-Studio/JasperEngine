@@ -74,7 +74,7 @@ using Json = nlohmann::json;
 
 namespace {
 
-    fs::path repoRoot() {
+    fs::path vatEndToEndRepoRoot() {
         return fs::weakly_canonical(fs::path(JASPER_TEST_FIXTURES_DIR) / ".." / ".." / "..");
     }
 
@@ -82,7 +82,7 @@ namespace {
     fs::path bundleDirectory() {
         if (const char* env = std::getenv("JASPER_VAT_E2E_DIR"); env && *env) return fs::path(env);
         uint64_t hash = 1469598103934665603ull;
-        for (unsigned char c : repoRoot().generic_string()) {
+        for (unsigned char c : vatEndToEndRepoRoot().generic_string()) {
             hash ^= c;
             hash *= 1099511628211ull;
         }
@@ -91,15 +91,15 @@ namespace {
         return fs::temp_directory_path() / name;
     }
 
-    struct Headless {
+    struct VatEndToEndHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    VatEndToEndHeadless& vatEndToEndHeadless() {
+        static VatEndToEndHeadless h = []() {
+            VatEndToEndHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-vat-e2e-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -109,10 +109,10 @@ namespace {
             const fs::path models = out.dir / "assets" / "models";
             fs::create_directories(models);
             std::ofstream(out.dir / "project.yaml") << "name: vate2e\nassetsDir: assets\n";
-            fs::copy_file(repoRoot() / "tools/fixtures/pose-animation/assets/models/hero_animated.gltf", models / "hero.gltf",
+            fs::copy_file(vatEndToEndRepoRoot() / "tools/fixtures/pose-animation/assets/models/hero_animated.gltf", models / "hero.gltf",
                           fs::copy_options::overwrite_existing);
             for (const char* name : {"rigid_arm.gltf", "morph_blob.gltf"}) {
-                fs::copy_file(repoRoot() / "tools/fixtures/vertex-animation/assets/models" / name, models / name, fs::copy_options::overwrite_existing);
+                fs::copy_file(vatEndToEndRepoRoot() / "tools/fixtures/vertex-animation/assets/models" / name, models / name, fs::copy_options::overwrite_existing);
             }
             AppSettings::initialize();
             out.project.reset(new Project());
@@ -129,7 +129,7 @@ namespace {
         return h;
     }
 
-    void writeText(const fs::path& path, const std::string& text) {
+    void vatEndToEndWriteText(const fs::path& path, const std::string& text) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file << text;
@@ -163,15 +163,15 @@ namespace {
         D3 operator-(const D3& o) const { return {x - o.x, y - o.y, z - o.z}; }
         D3 operator*(double s) const { return {x * s, y * s, z * s}; }
     };
-    double dot(const D3& a, const D3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+    double vatEndToEndDot(const D3& a, const D3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
     D3 cross(const D3& a, const D3& b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
-    double length(const D3& a) { return std::sqrt(dot(a, a)); }
+    double vatEndToEndLength(const D3& a) { return std::sqrt(vatEndToEndDot(a, a)); }
     D3 normalized(const D3& a) {
-        const double l = length(a);
+        const double l = vatEndToEndLength(a);
         return l > 0 ? a * (1.0 / l) : a;
     }
     double angleDegrees(const D3& a, const D3& b) {
-        return std::atan2(length(cross(normalized(a), normalized(b))), dot(normalized(a), normalized(b))) * 180.0 / 3.14159265358979323846;
+        return std::atan2(vatEndToEndLength(cross(normalized(a), normalized(b))), vatEndToEndDot(normalized(a), normalized(b))) * 180.0 / 3.14159265358979323846;
     }
 
     D3 transformPoint(const Matrix4& m, const Vector3& p) {
@@ -185,16 +185,16 @@ namespace {
 
     // a source vertex: rest (identity skin) and posed (CpuSkin of the scene posed by the clip, the
     // GPU skinning's formula), positions and normals in the root's space
-    struct RefVertex {
+    struct VatEndToEndRefVertex {
         D3 rest, restNormal, posed, posedNormal;
     };
 
-    std::vector<RefVertex> referencePose(Scene* scene, Entity root, const std::shared_ptr<const AnimationClip>& clip, float time) {
-        std::vector<RefVertex> out;
+    std::vector<VatEndToEndRefVertex> vatEndToEndReferencePose(Scene* scene, Entity root, const std::shared_ptr<const AnimationClip>& clip, float time) {
+        std::vector<VatEndToEndRefVertex> out;
         cpuskin::updateTransforms(scene);
         const Matrix4 rootInverse = scene->getComponent<Transform>(root).modelMatrix.inverse();
         std::vector<Entity> meshes;
-        std::vector<std::vector<RefVertex>> rests;
+        std::vector<std::vector<VatEndToEndRefVertex>> rests;
         auto transforms = scene->getComponentArray<Transform>();
         for (size_t i = 0; i < transforms->size(); i++) {
             const Entity entity = transforms->getEntity(i);
@@ -217,7 +217,7 @@ namespace {
             cpuskin::CpuSkinResult rest;
             EXPECT_TRUE(cpuskin::cpuDeform(source, identity, mesh->morphWeights, nullptr, rest, &error)) << error;
             const Matrix4 toRoot = rootInverse * scene->getComponent<Transform>(entity).modelMatrix;
-            std::vector<RefVertex> r(rest.positions.size());
+            std::vector<VatEndToEndRefVertex> r(rest.positions.size());
             for (size_t v = 0; v < r.size(); v++) {
                 r[v].rest = transformPoint(toRoot, rest.positions[v]);
                 r[v].restNormal = transformDirection(toRoot, rest.normals[v]);
@@ -242,7 +242,7 @@ namespace {
             EXPECT_TRUE(cpuskin::deformEntity(scene, meshes[m], posed, &error)) << error;
             const Matrix4 toRoot = rootInverse * scene->getComponent<Transform>(meshes[m]).modelMatrix;
             for (size_t v = 0; v < posed.positions.size(); v++) {
-                RefVertex r = rests[m][v];
+                VatEndToEndRefVertex r = rests[m][v];
                 r.posed = transformPoint(toRoot, posed.positions[v]);
                 r.posedNormal = transformDirection(toRoot, posed.normals[v]);
                 out.push_back(r);
@@ -257,7 +257,7 @@ namespace {
     struct Q {
         double x = 0, y = 0, z = 0, w = 1;
     };
-    D3 rotate(const Q& q, const D3& v) {
+    D3 vatEndToEndRotate(const Q& q, const D3& v) {
         const D3 u(q.x, q.y, q.z);
         return v + cross(u, cross(u, v) + v * q.w) * 2.0;
     }
@@ -269,7 +269,7 @@ namespace {
         return {q.x / l, q.y / l, q.z / l, q.w / l};
     }
 
-    std::array<double, 4> texel(const jasperengine::vat::VatPayload& payload, uint64_t index) {
+    std::array<double, 4> vatEndToEndTexel(const jasperengine::vat::VatPayload& payload, uint64_t index) {
         std::array<double, 4> out{};
         if (payload.precision == jasperengine::vat::VatPrecision::Float) {
             float f[4];
@@ -298,13 +298,13 @@ namespace {
             const D3 restNormal(mesh.normals[v * 3], mesh.normals[v * 3 + 1], mesh.normals[v * 3 + 2]);
             if (data.mode == VatMode::Vertices) {
                 const int element = (int)mesh.vatIndex[v];
-                const auto o0 = texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Vertices, data.layout, f.frame0, element, 0));
-                const auto o1 = texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Vertices, data.layout, f.frame1, element, 0));
+                const auto o0 = vatEndToEndTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Vertices, data.layout, f.frame0, element, 0));
+                const auto o1 = vatEndToEndTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Vertices, data.layout, f.frame1, element, 0));
                 positions.push_back(rest + D3(o0[0] + (o1[0] - o0[0]) * f.alpha, o0[1] + (o1[1] - o0[1]) * f.alpha, o0[2] + (o1[2] - o0[2]) * f.alpha));
                 if (data.layout.normals) {
-                    const auto q0 = texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Vertices, data.layout, f.frame0, element, 1));
-                    const auto q1 = texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Vertices, data.layout, f.frame1, element, 1));
-                    normals.push_back(rotate(nlerp({q0[0], q0[1], q0[2], q0[3]}, {q1[0], q1[1], q1[2], q1[3]}, f.alpha), D3(0, 0, 1)));
+                    const auto q0 = vatEndToEndTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Vertices, data.layout, f.frame0, element, 1));
+                    const auto q1 = vatEndToEndTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Vertices, data.layout, f.frame1, element, 1));
+                    normals.push_back(vatEndToEndRotate(nlerp({q0[0], q0[1], q0[2], q0[3]}, {q1[0], q1[1], q1[2], q1[3]}, f.alpha), D3(0, 0, 1)));
                 } else {
                     normals.push_back(restNormal);
                 }
@@ -315,15 +315,15 @@ namespace {
                     const double w = mesh.weights[v * 4 + k];
                     if (w == 0) continue;
                     const int bone = mesh.joints[v * 4 + k];
-                    const auto q0 = texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, f.frame0, bone, 0));
-                    const auto q1 = texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, f.frame1, bone, 0));
-                    const auto t0 = texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, f.frame0, bone, 1));
-                    const auto t1 = texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, f.frame1, bone, 1));
+                    const auto q0 = vatEndToEndTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, f.frame0, bone, 0));
+                    const auto q1 = vatEndToEndTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, f.frame1, bone, 0));
+                    const auto t0 = vatEndToEndTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, f.frame0, bone, 1));
+                    const auto t1 = vatEndToEndTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, f.frame1, bone, 1));
                     const Q q = nlerp({q0[0], q0[1], q0[2], q0[3]}, {q1[0], q1[1], q1[2], q1[3]}, f.alpha);
                     double ts[4];
                     for (int i = 0; i < 4; i++) ts[i] = t0[i] + (t1[i] - t0[i]) * f.alpha;
-                    p = p + (rotate(q, rest * ts[3]) + D3(ts[0], ts[1], ts[2])) * w;
-                    n = n + rotate(q, restNormal) * (ts[3] * w);
+                    p = p + (vatEndToEndRotate(q, rest * ts[3]) + D3(ts[0], ts[1], ts[2])) * w;
+                    n = n + vatEndToEndRotate(q, restNormal) * (ts[3] * w);
                     weightSum += w;
                 }
                 positions.push_back(weightSum > 0 ? p * (1.0 / weightSum) : rest);
@@ -332,7 +332,7 @@ namespace {
         }
     }
 
-    std::string restKey(const D3& p) {
+    std::string vatEndToEndRestKey(const D3& p) {
         char text[96];
         std::snprintf(text, sizeof(text), "%.4f,%.4f,%.4f", std::round(p.x * 1e4) / 1e4, std::round(p.y * 1e4) / 1e4, std::round(p.z * 1e4) / 1e4);
         return text;
@@ -343,9 +343,9 @@ namespace {
     // rest position with the closest rest normal
     void measureAt(Scene* scene, Entity root, const VatBakeResult& result, int clipIndex, const std::shared_ptr<const AnimationClip>& clip, float time,
                    double& errorMm, double& normalDegrees) {
-        const std::vector<RefVertex> reference = referencePose(scene, root, clip, time);
-        std::map<std::string, std::vector<const RefVertex*>> byRest;
-        for (const RefVertex& r : reference) byRest[restKey(r.rest)].push_back(&r);
+        const std::vector<VatEndToEndRefVertex> reference = vatEndToEndReferencePose(scene, root, clip, time);
+        std::map<std::string, std::vector<const VatEndToEndRefVertex*>> byRest;
+        for (const VatEndToEndRefVertex& r : reference) byRest[vatEndToEndRestKey(r.rest)].push_back(&r);
         std::vector<D3> positions, normals;
         decodeAt(result, clipIndex, time, positions, normals);
         errorMm = 0;
@@ -353,15 +353,15 @@ namespace {
         for (size_t v = 0; v < positions.size(); v++) {
             const D3 rest(result.mesh.positions[v * 3], result.mesh.positions[v * 3 + 1], result.mesh.positions[v * 3 + 2]);
             const D3 restNormal(result.mesh.normals[v * 3], result.mesh.normals[v * 3 + 1], result.mesh.normals[v * 3 + 2]);
-            auto it = byRest.find(restKey(rest));
+            auto it = byRest.find(vatEndToEndRestKey(rest));
             if (it == byRest.end()) {
                 ADD_FAILURE() << "baked vertex " << v << " has no source vertex at its rest position";
                 return;
             }
-            const RefVertex* best = it->second[0];
-            for (const RefVertex* r : it->second)
+            const VatEndToEndRefVertex* best = it->second[0];
+            for (const VatEndToEndRefVertex* r : it->second)
                 if (angleDegrees(r->restNormal, restNormal) < angleDegrees(best->restNormal, restNormal)) best = r;
-            errorMm = std::max(errorMm, length(best->posed - positions[v]) * 1000.0);
+            errorMm = std::max(errorMm, vatEndToEndLength(best->posed - positions[v]) * 1000.0);
             normalDegrees = std::max(normalDegrees, angleDegrees(best->posedNormal, normals[v]));
         }
     }
@@ -374,15 +374,15 @@ namespace {
         bool crowd = false;     // one of the 4 crowd instances (heroes)
     };
 
-    uint32_t newScene() {
-        Project* p = headless().project.get();
+    uint32_t vatEndToEndNewScene() {
+        Project* p = vatEndToEndHeadless().project.get();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene("VatE2E", SceneType::SCENE_3D);
         return p->getSelectedSceneId();
     }
 
-    Entity loadModel(uint32_t sceneId, const std::string& assetsRelative) {
-        Project* p = headless().project.get();
+    Entity vatEndToEndLoadModel(uint32_t sceneId, const std::string& assetsRelative) {
+        Project* p = vatEndToEndHeadless().project.get();
         CreateEntityCmd* create = new CreateEntityCmd(p, sceneId, "Source", EntityCreationType::MODEL);
         create->setQuiet(true);
         CommandHandle::get(sceneId)->addCommandNoMerge(create);
@@ -400,19 +400,19 @@ namespace {
     void bakeIntoBundle(const std::string& name, VatBakeSpec spec, const std::string& model, const std::string& sourceFile,
                         jasperengine::vat::VatMode expectedMode, const std::vector<CaseSpec>& cases) {
         SCOPED_TRACE(name);
-        ASSERT_TRUE(headless().ready);
+        ASSERT_TRUE(vatEndToEndHeadless().ready);
         spec.output = "assets/e2e/" + name + ".vat";
         spec.overwrite = true;
-        VatBakeSession session(headless().project.get());
+        VatBakeSession session(vatEndToEndHeadless().project.get());
         session.setSpec(spec);
         ASSERT_TRUE(session.run()) << session.error() << " / " << issuesText(session.failureIssues());
         const VatBakeResult* result = session.result();
         ASSERT_TRUE(result);
         EXPECT_EQ(result->data.mode, expectedMode) << result->report.modeReason;
 
-        const uint32_t sceneId = newScene();
-        Scene* scene = headless().project->getScene(sceneId)->scene;
-        const Entity root = loadModel(sceneId, "models/" + model);
+        const uint32_t sceneId = vatEndToEndNewScene();
+        Scene* scene = vatEndToEndHeadless().project->getScene(sceneId)->scene;
+        const Entity root = vatEndToEndLoadModel(sceneId, "models/" + model);
         Json measured = Json::array();
         for (const CaseSpec& c : cases) {
             int clipIndex = -1;
@@ -444,7 +444,7 @@ namespace {
         const fs::path bundle = bundleDirectory();
         fs::create_directories(bundle);
         for (const std::string& file : written.files) {
-            const fs::path from = headless().dir / file;
+            const fs::path from = vatEndToEndHeadless().dir / file;
             ASSERT_TRUE(fs::exists(from)) << file;
             fs::copy_file(from, bundle / from.filename(), fs::copy_options::overwrite_existing);
         }
@@ -453,14 +453,14 @@ namespace {
         const Json meta = {{"vat", name + ".vat"},
                            {"mesh", name + ".vat.glb"},
                            {"mode", result->data.mode == jasperengine::vat::VatMode::Bones ? "bones" : "vertices"},
-                           {"source", (repoRoot() / sourceFile).generic_string()},
+                           {"source", (vatEndToEndRepoRoot() / sourceFile).generic_string()},
                            {"clips", clipsJson(result->data, result->report)},
                            {"report", reportJson(result->report)},
                            {"cases", measured}};
-        writeText(bundle / (name + ".json"), meta.dump(2));
+        vatEndToEndWriteText(bundle / (name + ".json"), meta.dump(2));
     }
 
-    VatBakeSpec modelSpec(const std::string& model, std::vector<std::string> clips, VatModeChoice mode) {
+    VatBakeSpec vatEndToEndModelSpec(const std::string& model, std::vector<std::string> clips, VatModeChoice mode) {
         VatBakeSpec spec;
         spec.source.kind = VatSourceKind::Model;
         spec.source.path = "assets/models/" + model;
@@ -480,8 +480,8 @@ namespace {
         VatEncodedFiles files;
         std::string error;
         ASSERT_TRUE(encodeVatImport(r, (bundle / (name + ".vat")).string(), files, &error)) << error;
-        writeText(bundle / (name + ".vat"), files.vatText);
-        writeText(bundle / (name + ".vat.glb"), std::string(files.glbBytes.begin(), files.glbBytes.end()));
+        vatEndToEndWriteText(bundle / (name + ".vat"), files.vatText);
+        vatEndToEndWriteText(bundle / (name + ".vat.glb"), std::string(files.glbBytes.begin(), files.glbBytes.end()));
         Json samples = Json::array();
         for (double t : times) samples.push_back({{"time", t}, {"tolerance_mm", toleranceMm(t)}, {"triangles", truth(t)}});
         const Json meta = {{"vat", name + ".vat"},
@@ -490,7 +490,7 @@ namespace {
                            {"clips", clipsJson(r.data, r.report)},
                            {"report", Json::parse(vatImportReportJson(r.report))},
                            {"samples", samples}};
-        writeText(bundle / (name + ".json"), meta.dump(2));
+        vatEndToEndWriteText(bundle / (name + ".json"), meta.dump(2));
     }
 
 }
@@ -516,16 +516,16 @@ TEST(VatEndToEnd, BakesTheRenderParityBundle) {
         {"Wave", 10.0, "a sample"},
         {"Wave", 10.5, "between samples"},
     };
-    bakeIntoBundle("hero_vertices", modelSpec("hero.gltf", {"Walk", "Idle", "Wave"}, VatModeChoice::Vertices), "hero.gltf", hero,
+    bakeIntoBundle("hero_vertices", vatEndToEndModelSpec("hero.gltf", {"Walk", "Idle", "Wave"}, VatModeChoice::Vertices), "hero.gltf", hero,
                    VatMode::Vertices, heroCases);
-    bakeIntoBundle("hero_bones", modelSpec("hero.gltf", {"Walk", "Idle", "Wave"}, VatModeChoice::Bones), "hero.gltf", hero,
+    bakeIntoBundle("hero_bones", vatEndToEndModelSpec("hero.gltf", {"Walk", "Idle", "Wave"}, VatModeChoice::Bones), "hero.gltf", hero,
                    VatMode::Bones, heroCases);
     // Auto: a rigid hierarchy bakes as bones, morph targets as vertices
-    bakeIntoBundle("rigid_arm", modelSpec("rigid_arm.gltf", {"Swing"}, VatModeChoice::Auto), "rigid_arm.gltf",
+    bakeIntoBundle("rigid_arm", vatEndToEndModelSpec("rigid_arm.gltf", {"Swing"}, VatModeChoice::Auto), "rigid_arm.gltf",
                    "tools/fixtures/vertex-animation/assets/models/rigid_arm.gltf", VatMode::Bones,
                    {{"Swing", 8.0, "a sample"}, {"Swing", 8.5, "between samples"}, {"Swing", 15.0, "the turn's peak"},
                     {"Swing", 29.5, "across the loop seam"}});
-    bakeIntoBundle("morph_blob", modelSpec("morph_blob.gltf", {"Pulse"}, VatModeChoice::Auto), "morph_blob.gltf",
+    bakeIntoBundle("morph_blob", vatEndToEndModelSpec("morph_blob.gltf", {"Pulse"}, VatModeChoice::Auto), "morph_blob.gltf",
                    "tools/fixtures/vertex-animation/assets/models/morph_blob.gltf", VatMode::Vertices,
                    {{"Pulse", 10.0, "a sample"}, {"Pulse", 15.0, "the peak"}, {"Pulse", 15.5, "between samples"}});
     std::printf("[ e2e      ] bundle written to %s\n", bundleDirectory().c_str());

@@ -50,7 +50,7 @@ namespace {
         return result;
     }
 
-    bool sameBits(float a, float b){
+    bool meshBvhSameBits(float a, float b){
         return std::memcmp(&a, &b, sizeof(float)) == 0;
     }
 
@@ -135,14 +135,14 @@ TEST(MeshBvh, SimdPathsBitIdentical){
             hit.triangle = UINT32_MAX;
             bvh.raycast(makeRay(rays[i]), hit);
             ASSERT_EQ(hit.triangle, reference[i].triangle) << pickSimdPathName(path);
-            ASSERT_TRUE(sameBits(hit.t, reference[i].t) && sameBits(hit.u, reference[i].u) && sameBits(hit.v, reference[i].v))
+            ASSERT_TRUE(meshBvhSameBits(hit.t, reference[i].t) && meshBvhSameBits(hit.u, reference[i].u) && meshBvhSameBits(hit.v, reference[i].v))
                 << pickSimdPathName(path);
             std::vector<MeshBvhHit> all;
             bvh.raycastAll(makeRay(rays[i]), all);
             ASSERT_EQ(all.size(), referenceAll[i].size()) << pickSimdPathName(path);
             for (size_t h = 0; h < all.size(); h++){
                 ASSERT_EQ(all[h].triangle, referenceAll[i][h].triangle);
-                ASSERT_TRUE(sameBits(all[h].t, referenceAll[i][h].t));
+                ASSERT_TRUE(meshBvhSameBits(all[h].t, referenceAll[i][h].t));
             }
         }
     }
@@ -171,7 +171,7 @@ TEST(MeshBvh, ScalarForcedOnAvx2Host){
         hit.triangle = UINT32_MAX;
         bvh.raycast(makeRay(rays[i]), hit);
         ASSERT_EQ(hit.triangle, nativeHits[i].triangle) << "native " << pickSimdPathName(native);
-        ASSERT_TRUE(sameBits(hit.t, nativeHits[i].t));
+        ASSERT_TRUE(meshBvhSameBits(hit.t, nativeHits[i].t));
     }
 }
 
@@ -470,7 +470,7 @@ TEST(MeshBvh, SerializeRoundTrip){
         ASSERT_EQ(hitA, bvh.raycast(makeRay(testRay), b));
         if (hitA){
             ASSERT_EQ(a.triangle, b.triangle);
-            ASSERT_TRUE(sameBits(a.t, b.t));
+            ASSERT_TRUE(meshBvhSameBits(a.t, b.t));
         }
     }
 }

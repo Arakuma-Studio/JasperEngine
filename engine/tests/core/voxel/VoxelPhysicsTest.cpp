@@ -20,15 +20,18 @@
 
 #include "Jolt/Jolt.h"
 #include "Jolt/Physics/Body/BodyInterface.h"
+#include "Jolt/Physics/Collision/Shape/BoxShape.h"
 
 #include <gtest/gtest.h>
+
+#include <vector>
 
 using namespace jasperengine;
 using namespace voxeltest;
 
 namespace {
 
-    constexpr float DT = 1.0f / 60.0f;
+    constexpr float VOXEL_PHYSICS_DT = 1.0f / 60.0f;
 
     Vec3d toLocal(const Vector3& v) { return Vec3d{v.x, v.y, v.z}; }
 
@@ -43,8 +46,8 @@ namespace {
 
         void SetUp() override {
             updateTime = Engine::getUpdateTime();
-            Engine::setUpdateTime(DT);
-            Engine::setFixedDeltatime(DT);
+            Engine::setUpdateTime(VOXEL_PHYSICS_DT);
+            Engine::setFixedDeltatime(VOXEL_PHYSICS_DT);
             scene = std::make_unique<Scene>();
             test::disableSubSystems(*scene);
             scene->getScheduler().setEnabled("PhysicsSystem", true);
@@ -102,8 +105,8 @@ namespace {
 
         void step(int count = 1) {
             for (int i = 0; i < count; i++) {
-                scene->fixedUpdate(DT);
-                scene->update(DT);
+                scene->fixedUpdate(VOXEL_PHYSICS_DT);
+                scene->update(VOXEL_PHYSICS_DT);
             }
         }
 
@@ -181,6 +184,27 @@ TEST_F(VoxelPhysics, BudgetPerTick) {
         EXPECT_LE(now - previous, batch);
         previous = now;
     }
+}
+
+TEST_F(VoxelPhysics, APreparedBodyJoinsAtItsFinalize) {
+    // V8: a block's body joins the world when its batch is finalized; a step while the batch is
+    // prepared (off the main thread) leaves it out. The step adding it too put it in the broad phase
+    // twice, and a later update walked a leaf whose body had moved (a SEGV in Jolt's Debug check)
+    const Entity entity = scene->createEntity();
+    scene->addComponent<Transform>(entity, {});
+    physics->createRigidbody(entity);
+    const JPH::Ref<JPH::Shape> shape = new JPH::BoxShape(JPH::Vec3(1.0f, 1.0f, 1.0f));
+    std::vector<JPH::BodyID> ids{physics->createStaticBodyForShape(entity, shape.GetPtr())};
+    ASSERT_FALSE(ids[0].IsInvalid());
+    const JPH::BodyInterface::AddState add = physics->prepareBodies(ids);
+    step();
+    EXPECT_FALSE(bodies().IsAdded(ids[0])) << "the step added a body its batch is adding";
+    physics->finalizeBodies(ids, add);
+    EXPECT_TRUE(bodies().IsAdded(ids[0]));
+    step(2);
+    EXPECT_TRUE(bodies().IsAdded(ids[0]));
+    physics->removeRigidbody(entity);
+    step();
 }
 
 TEST_F(VoxelPhysics, EmptiedBlockRemovesBody) {
@@ -275,10 +299,10 @@ TEST_F(VoxelPhysics, RebuildContract) {
     for (int i = 0; i < 4 && collisionUpdates == 0; i++) {
         EXPECT_FALSE(isAwake(sitting));
         EXPECT_NEAR(heightOf(sitting), rest, 0.001f);
-        scene->update(DT);
+        scene->update(VOXEL_PHYSICS_DT);
         if (i == 1) system->finishPendingWork();
-        scene->fixedUpdate(DT);
-        scene->update(DT);
+        scene->fixedUpdate(VOXEL_PHYSICS_DT);
+        scene->update(VOXEL_PHYSICS_DT);
     }
     for (int i = 0; i < 20 && collisionUpdates == 0; i++) {
         system->finishPendingWork();

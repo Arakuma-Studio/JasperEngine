@@ -52,14 +52,14 @@ namespace {
         return ops;
     }
 
-    struct Outcome {
+    struct SpriteDrawDeterminismOutcome {
         std::vector<uint8_t> bytes;
         std::string text;
     };
 
-    Outcome runScript() {
+    SpriteDrawDeterminismOutcome runScript() {
         draw::SpriteDoc sprite = s47test::makeSprite(32, 32);
-        Outcome outcome;
+        SpriteDrawDeterminismOutcome outcome;
         const s47test::Run run = s47test::apply(sprite, hundredOps());
         EXPECT_TRUE(run.ok) << run.problem.kind << ": " << run.problem.message << " at " << run.opIndex;
         PixelProblem problem;
@@ -77,8 +77,8 @@ namespace {
 }
 
 TEST(SpriteDrawDeterminism, SameScriptSameBytesAndEcho) {
-    const Outcome first = runScript();
-    const Outcome second = runScript();
+    const SpriteDrawDeterminismOutcome first = runScript();
+    const SpriteDrawDeterminismOutcome second = runScript();
     EXPECT_EQ(first.bytes, second.bytes);
     EXPECT_EQ(first.text, second.text);
 }

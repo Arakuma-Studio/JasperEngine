@@ -42,7 +42,7 @@ namespace {
         return standardGradient(std::move(stops));
     }
 
-    Json linear(const Json& gradient) {
+    Json colorSchemeApplyLinear(const Json& gradient) {
         return standardLinear(gradient);
     }
 
@@ -63,14 +63,14 @@ namespace {
         return grad({{0, "#3a0c00"}, {0.25, "#a83800"}, {0.5, "#f08c00"}, {0.75, "#ffd23a"}, {1, "#fff8d6"}});
     }
 
-    Json goldMaterial() {
+    Json colorSchemeApplyGoldMaterial() {
         return Json{{"preset", "gold"}, {"color", "#ffc23a"}, {"metallic", 1}, {"roughness", 0.06}, {"gradient_span", "line"}, {"gradient_bend", 0.6},
                     {"gradient", grad({{0, "#fff8d8"}, {0.3, "#f0a018"}, {0.51, "#1a0800"}, {0.72, "#c87810"}, {1, "#fff4c8"}})}};
     }
 
     Json goldRim() {
-        return paint(linear(grad({{0, "#8a2c00"}, {0.17, "#ffe470"}, {0.33, "#c05a00"}, {0.5, "#ffbe30"}, {0.67, "#fff0a0"}, {0.83, "#f09a10"}, {1, "#ffe060"}})),
-                     goldRampGradient(), goldMaterial(), "#4a2200");
+        return paint(colorSchemeApplyLinear(grad({{0, "#8a2c00"}, {0.17, "#ffe470"}, {0.33, "#c05a00"}, {0.5, "#ffbe30"}, {0.67, "#fff0a0"}, {0.83, "#f09a10"}, {1, "#ffe060"}})),
+                     goldRampGradient(), colorSchemeApplyGoldMaterial(), "#4a2200");
     }
 
     Json whitePaint() {
@@ -85,10 +85,10 @@ namespace {
     Json goldSchemeJson() {
         Json j = schemeHeader("gold");
         j["paints"] = Json{
-            {"face", paint(linear(grad({{0, "#ffffff"}, {0.16, "#fff8b8"}, {0.38, "#ffd820"}, {0.6, "#ff9400"}, {0.8, "#b84000"}, {1, "#4a1000"}})),
-                           goldRampGradient(), goldMaterial(), "#5a2a00")},
+            {"face", paint(colorSchemeApplyLinear(grad({{0, "#ffffff"}, {0.16, "#fff8b8"}, {0.38, "#ffd820"}, {0.6, "#ff9400"}, {0.8, "#b84000"}, {1, "#4a1000"}})),
+                           goldRampGradient(), colorSchemeApplyGoldMaterial(), "#5a2a00")},
             {"dark", darkPaint("#0a0604")},
-            {"accents", Json::array({goldRim(), paint(linear(redFill()), grad({{0, "#2a0000"}, {0.4, "#a10010"}, {0.75, "#ff3a3a"}, {1, "#fff0f0"}}),
+            {"accents", Json::array({goldRim(), paint(colorSchemeApplyLinear(redFill()), grad({{0, "#2a0000"}, {0.4, "#a10010"}, {0.75, "#ff3a3a"}, {1, "#fff0f0"}}),
                                                       Json{{"preset", "red_metal"}, {"color", "#c00010"}, {"metallic", 1}}, "#3a0000")})},
             {"base", darkPaint("#120600")},
             {"side_3d", Json{{"preset", "copper"}, {"color", "#c87533"}, {"metallic", 1}, {"roughness", 0.25}}}};
@@ -109,13 +109,13 @@ namespace {
     Json rainbowSchemeJson() {
         Json j = schemeHeader("rainbow");
         j["paints"] = Json{
-            {"face", paint(linear(grad({{0, "#ff1838"}, {0.14, "#ff5a00"}, {0.28, "#ffc400"}, {0.42, "#20d838"}, {0.5, "#008a40"}, {0.58, "#0088e8"},
+            {"face", paint(colorSchemeApplyLinear(grad({{0, "#ff1838"}, {0.14, "#ff5a00"}, {0.28, "#ffc400"}, {0.42, "#20d838"}, {0.5, "#008a40"}, {0.58, "#0088e8"},
                                         {0.82, "#2a34f0"}, {1, "#9a10f0"}})),
                            nullptr, Json{{"preset", "rainbow"}, {"metallic", 1}}, "#3a0060")},
             {"dark", darkPaint("#1a0030")},
             {"accents", Json::array({whitePaint(), goldRim()})},
             {"base", darkPaint("#0a0014")},
-            {"side_3d", goldMaterial()}};
+            {"side_3d", colorSchemeApplyGoldMaterial()}};
         j["face_glow"] = "#3a0080";
         j["glow"] = "#fff4c8";
         j["glow_gradient"] = rainbowSpectrumGradient();
@@ -133,7 +133,7 @@ namespace {
 
     Json zebraSchemeJson() {
         Json j = schemeHeader("zebra");
-        Json face = paint(linear(grad({{0, "#ffffff"}, {0.4, "#eef1f6"}, {0.5, "#a9b0bd"}, {0.56, "#e2e6ed"}, {0.8, "#f7f9fc"}, {1, "#c9cfd9"}})),
+        Json face = paint(colorSchemeApplyLinear(grad({{0, "#ffffff"}, {0.4, "#eef1f6"}, {0.5, "#a9b0bd"}, {0.56, "#e2e6ed"}, {0.8, "#f7f9fc"}, {1, "#c9cfd9"}})),
                           grad({{0, "#14161c"}, {0.35, "#5d6474"}, {0.7, "#c9cfdb"}, {1, "#ffffff"}}),
                           Json{{"preset", "silver"}, {"color", "#eef1f6"}, {"metallic", 0.75}, {"pattern", zebraMarks()}}, "#2a3040");
         face["material_3d"]["pattern"]["relief"] = 0.4;
@@ -162,10 +162,10 @@ namespace {
     // blue: a 3D bevel rim (silver) on bands in the face's own material
     Json blueSchemeJson() {
         Json j = schemeHeader("blue");
-        const Json silverRim = paint(linear(grad({{0, "#f4f6fa"}, {0.28, "#9aa3b2"}, {0.5, "#283040"}, {0.72, "#c3cad6"}, {1, "#ffffff"}})),
+        const Json silverRim = paint(colorSchemeApplyLinear(grad({{0, "#f4f6fa"}, {0.28, "#9aa3b2"}, {0.5, "#283040"}, {0.72, "#c3cad6"}, {1, "#ffffff"}})),
                                      grad({{0, "#14161c"}, {0.35, "#5d6474"}, {0.7, "#c9cfdb"}, {1, "#ffffff"}}),
                                      Json{{"preset", "chrome"}, {"color", "#ffffff"}, {"metallic", 1}, {"roughness", 0.04}}, "#1a2234");
-        j["paints"] = Json{{"face", paint(linear(grad({{0, "#e0f4ff"}, {0.45, "#1a7aff"}, {1, "#001a6a"}})),
+        j["paints"] = Json{{"face", paint(colorSchemeApplyLinear(grad({{0, "#e0f4ff"}, {0.45, "#1a7aff"}, {1, "#001a6a"}})),
                                           grad({{0, "#000a2a"}, {0.4, "#0a3cc9"}, {0.75, "#4fb4ff"}, {1, "#f0fbff"}}),
                                           Json{{"preset", "blue_metal"}, {"color", "#1a6aff"}, {"metallic", 1}}, "#001a5c")},
                            {"dark", darkPaint("#001a5c")},
@@ -193,7 +193,7 @@ namespace {
         return fs::path(jasperengine::test::testPaths().sourceDir) / ".." / ".." / ".." / "editor" / "resources" / "titleart" / "color-schemes";
     }
 
-    std::string readText(const fs::path& path) {
+    std::string colorSchemeApplyReadText(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     }
@@ -209,7 +209,7 @@ namespace {
                 if (e.path().extension() == ".titlecolors") files.push_back(e.path());
             }
             std::sort(files.begin(), files.end());
-            for (const fs::path& f : files) out.push_back(parsed(Json::parse(readText(f))));
+            for (const fs::path& f : files) out.push_back(parsed(Json::parse(colorSchemeApplyReadText(f))));
         }
         return out;
     }
@@ -224,7 +224,7 @@ namespace {
         return doc.root["layers"][layer]["style"]["rims"][rim]["material"];
     }
 
-    Json textLayer(const char* id, Json rims, Json face = Json::object()) {
+    Json colorSchemeApplyTextLayer(const char* id, Json rims, Json face = Json::object()) {
         Json style{{"face", std::move(face)}, {"rims", std::move(rims)}};
         return Json{{"id", id}, {"type", "text"}, {"text", "AB"}, {"style", std::move(style)}};
     }
@@ -250,7 +250,7 @@ namespace {
 
         Json faded = standardRim("00000301", 4, Json{{"fill", {{"kind", "linear"}, {"gradient", {{"stops", Json::array({
             Json{{"pos", 0}, {"color", "#ffffff"}, {"alpha", 1}}, Json{{"pos", 1}, {"color", "#ffffff"}, {"alpha", 0}}})}}}}}});
-        Json shape = textLayer("00000002", Json::array({faded}), Json{{"fill", standardSolid("#40a0ff")},
+        Json shape = colorSchemeApplyTextLayer("00000002", Json::array({faded}), Json{{"fill", standardSolid("#40a0ff")},
                                                                        {"pattern", {{"kind", "asanoha"}, {"opacity", 0}, {"relief", 0.4}}}});
         shape["type"] = "shape";
         shape.erase("text");
@@ -264,7 +264,7 @@ namespace {
         layers.push_back(artwork);
 
         Json group{{"id", "00000005"}, {"type", "group"}, {"effects", Json::array({standardEffect("00000207", "outer_glow", Json{{"color", "#00ff00"}})})}};
-        group["children"] = Json::array({textLayer("00000006", Json::array({standardRim("00000304", 2, Json{{"fill", standardSolid("#202020")}})})),
+        group["children"] = Json::array({colorSchemeApplyTextLayer("00000006", Json::array({standardRim("00000304", 2, Json{{"fill", standardSolid("#202020")}})})),
                                          generatorLayer("00000007", "particles")});
         layers.push_back(group);
 
@@ -282,7 +282,7 @@ namespace {
             char id[9];
             std::snprintf(id, sizeof(id), "%08x", 0x200 + e);
             // rims and effects without ids get fresh ones from normalize
-            Json l = textLayer(id, Json::array({standardRim("", 2, Json{{"fill", standardSolid("#ffffff")}})}));
+            Json l = colorSchemeApplyTextLayer(id, Json::array({standardRim("", 2, Json{{"fill", standardSolid("#ffffff")}})}));
             l["effects"] = effects;
             layers.push_back(l);
             effects = Json::array();
@@ -296,11 +296,11 @@ namespace {
         flush();
 
         if (HAS_3D) {
-            const Json face = goldMaterial();
+            const Json face = colorSchemeApplyGoldMaterial();
             Json s3{{"face", face},
                     {"bands", Json::array({Json{{"material", face}}, Json{{"material", {{"color", "#101010"}}}},
                                            Json{{"material", {{"color", "#ffffff"}, {"gradient_axis", "depth"}}}}})}};
-            Json t3 = textLayer("00000008", Json::array());
+            Json t3 = colorSchemeApplyTextLayer("00000008", Json::array());
             t3["dimension"] = "3d";
             t3["style_3d"] = s3;
             layers.push_back(t3);
@@ -320,18 +320,18 @@ namespace {
         return writeTitleArtJson(value);
     }
 
-    bool contains(const std::vector<std::string>& list, const std::string& item) {
+    bool colorSchemeApplyContains(const std::vector<std::string>& list, const std::string& item) {
         return std::find(list.begin(), list.end(), item) != list.end();
     }
 
-    std::string joined(const std::vector<std::string>& list) {
+    std::string colorSchemeApplyJoined(const std::vector<std::string>& list) {
         std::string out;
         for (const std::string& s : list) out += s + "\n";
         return out;
     }
 
     // the paths where two JSON values differ (at most `limit` of them)
-    void differences(const Json& a, const Json& b, const std::string& path, std::vector<std::string>& out, size_t limit = 8) {
+    void colorSchemeApplyDifferences(const Json& a, const Json& b, const std::string& path, std::vector<std::string>& out, size_t limit = 8) {
         if (out.size() >= limit) return;
         if (a.is_object() && b.is_object()) {
             std::vector<std::string> ka, kb;
@@ -341,11 +341,11 @@ namespace {
                 out.push_back(path + ": members " + Json(ka).dump() + " vs " + Json(kb).dump());
                 return;
             }
-            for (const std::string& k : ka) differences(a[k], b[k], path + "." + k, out, limit);
+            for (const std::string& k : ka) colorSchemeApplyDifferences(a[k], b[k], path + "." + k, out, limit);
             return;
         }
         if (a.is_array() && b.is_array() && a.size() == b.size()) {
-            for (size_t i = 0; i < a.size(); i++) differences(a[i], b[i], path + "[" + std::to_string(i) + "]", out, limit);
+            for (size_t i = 0; i < a.size(); i++) colorSchemeApplyDifferences(a[i], b[i], path + "[" + std::to_string(i) + "]", out, limit);
             return;
         }
         if (a != b) out.push_back(path + ": " + a.dump() + " vs " + b.dump());
@@ -353,8 +353,8 @@ namespace {
 
     std::string differencesOf(const Json& a, const Json& b) {
         std::vector<std::string> out;
-        differences(a, b, "", out);
-        return joined(out);
+        colorSchemeApplyDifferences(a, b, "", out);
+        return colorSchemeApplyJoined(out);
     }
 
     class ColorSchemeTest : public ::testing::Test {};
@@ -456,10 +456,10 @@ TEST_F(ColorSchemeTest, LenientRead) {
     auto warned = [&](const std::string& prefix) {
         return std::any_of(warnings.begin(), warnings.end(), [&](const std::string& w) { return w.rfind(prefix, 0) == 0; });
     };
-    EXPECT_TRUE(warned("glow:")) << joined(warnings);
-    EXPECT_TRUE(warned("spectrum:")) << joined(warnings);
-    EXPECT_TRUE(warned("paints.dark.fill.kind:")) << joined(warnings);
-    EXPECT_TRUE(warned("paints.accents:")) << joined(warnings);
+    EXPECT_TRUE(warned("glow:")) << colorSchemeApplyJoined(warnings);
+    EXPECT_TRUE(warned("spectrum:")) << colorSchemeApplyJoined(warnings);
+    EXPECT_TRUE(warned("paints.dark.fill.kind:")) << colorSchemeApplyJoined(warnings);
+    EXPECT_TRUE(warned("paints.accents:")) << colorSchemeApplyJoined(warnings);
 }
 
 TEST_F(ColorSchemeTest, CommittedFilesAreCanonical) {
@@ -471,11 +471,11 @@ TEST_F(ColorSchemeTest, CommittedFilesAreCanonical) {
     for (const auto& e : fs::directory_iterator(schemesDir(), ec)) {
         if (e.path().extension() != ".titlecolors") continue;
         count++;
-        const std::string text = readText(e.path());
+        const std::string text = colorSchemeApplyReadText(e.path());
         ColorScheme s;
         std::vector<std::string> warnings;
         ASSERT_TRUE(parseColorScheme(Json::parse(text), s, &warnings)) << e.path();
-        EXPECT_TRUE(warnings.empty()) << e.path() << "\n" << joined(warnings);
+        EXPECT_TRUE(warnings.empty()) << e.path() << "\n" << colorSchemeApplyJoined(warnings);
         EXPECT_EQ(writeColorSchemeText(s), text) << e.path();
         EXPECT_EQ(s.id + ".titlecolors", e.path().filename().string());
         EXPECT_GE(s.lightRamp.size(), 4u) << e.path();
@@ -515,7 +515,7 @@ TEST_F(ColorSchemeTest, DocumentMemberIsWrittenOnlyWhenUsed) {
 
 TEST_F(ColorSchemeApplyTest, KeylineIsDark) {
     // a keyline at luma 0.1 takes the dark paint; a light ring takes an accent
-    TitleArtDoc doc = standardDocument({textLayer("00000001", Json::array({standardRim("00000101", 1, Json{{"fill", standardSolid("#1a1a1a")}}),
+    TitleArtDoc doc = standardDocument({colorSchemeApplyTextLayer("00000001", Json::array({standardRim("00000101", 1, Json{{"fill", standardSolid("#1a1a1a")}}),
                                                                            standardRim("00000102", 2, Json{{"fill", standardSolid("#e0e0e0")}})}))});
     const ColorScheme gold = parsed(goldSchemeJson());
     applyColorScheme(doc, gold, {});
@@ -527,7 +527,7 @@ TEST_F(ColorSchemeApplyTest, KeylineIsDark) {
 }
 
 TEST_F(ColorSchemeApplyTest, OffsetRimIsBase) {
-    TitleArtDoc doc = standardDocument({textLayer("00000001", Json::array({standardRim("00000101", 2, Json{{"fill", standardSolid("#ffffff")}}),
+    TitleArtDoc doc = standardDocument({colorSchemeApplyTextLayer("00000001", Json::array({standardRim("00000101", 2, Json{{"fill", standardSolid("#ffffff")}}),
                                                                            standardRim("00000102", 2, Json{{"fill", standardSolid("#ffffff")}}, Json::array({0, -3}))}))});
     applyColorScheme(doc, parsed(goldSchemeJson()), {});
     EXPECT_EQ(rimMaterial(doc, 0, 1)["fill"]["color"], "#120600");
@@ -538,7 +538,7 @@ TEST_F(ColorSchemeApplyTest, OutermostAccentTakesTheLast) {
     // three accent rings, two accents: rings 0 and 1 take accents[0], the outermost accents[1]
     Json rims = Json::array();
     for (const char* id : {"00000101", "00000102", "00000103"}) rims.push_back(standardRim(id, 2, Json{{"fill", standardSolid("#c0c0c0")}}));
-    TitleArtDoc doc = standardDocument({textLayer("00000001", rims)});
+    TitleArtDoc doc = standardDocument({colorSchemeApplyTextLayer("00000001", rims)});
     applyColorScheme(doc, parsed(goldSchemeJson()), {});
     const std::string goldRimStop = "#ffe470", redStop = "#e00012";
     EXPECT_EQ(rimMaterial(doc, 0, 0)["fill"]["gradient"]["stops"][1]["color"], goldRimStop);
@@ -638,7 +638,7 @@ TEST_F(ColorSchemeApplyTest, FaceSpansLinesCharStays) {
     Json face{{"fill", {{"kind", "linear"}, {"gradient", goldRampGradient()}, {"angle", 30}, {"scale", 1.5}, {"span", "layer"}}}};
     Json charFace = face;
     charFace["fill"]["span"] = "char";
-    TitleArtDoc doc = standardDocument({textLayer("00000001", Json::array(), face), textLayer("00000002", Json::array(), charFace)});
+    TitleArtDoc doc = standardDocument({colorSchemeApplyTextLayer("00000001", Json::array(), face), colorSchemeApplyTextLayer("00000002", Json::array(), charFace)});
     applyColorScheme(doc, parsed(goldSchemeJson()), {});
     const Json& a = doc.root["layers"][0]["style"]["face"]["fill"];
     EXPECT_EQ(a["span"], "line");
@@ -653,7 +653,7 @@ TEST_F(ColorSchemeApplyTest, FaceSpansLinesCharStays) {
 
 TEST_F(ColorSchemeApplyTest, FinishFollowsBevel) {
     Json face{{"fill", standardSolid("#808080")}, {"bevel", {{"enabled", true}}}};
-    TitleArtDoc doc = standardDocument({textLayer("00000001", Json::array(), face)});
+    TitleArtDoc doc = standardDocument({colorSchemeApplyTextLayer("00000001", Json::array(), face)});
     applyColorScheme(doc, parsed(goldSchemeJson()), {});
     const Json& finish = doc.root["layers"][0]["style"]["face"]["finish"];
     EXPECT_TRUE(finish["enabled"]);
@@ -711,7 +711,7 @@ TEST_F(ColorSchemeApplyTest, SourceFacesKeepTheirPixels) {
 }
 
 TEST_F(ColorSchemeApplyTest, GuideAndAdjustmentLayersSkipped) {
-    Json guide = textLayer("00000001", Json::array(), Json{{"fill", standardSolid("#808080")}});
+    Json guide = colorSchemeApplyTextLayer("00000001", Json::array(), Json{{"fill", standardSolid("#808080")}});
     guide["guide"] = true;
     Json adjustment{{"id", "00000002"}, {"type", "adjustment"}};
     TitleArtDoc doc = standardDocument({guide, adjustment});
@@ -781,7 +781,7 @@ TEST_F(ColorSchemeApplyTest, SpectrumOnRainbow) {
     TitleArtDoc doc = standardDocument({generatorLayer("00000001", "speed_lines", Json{{"color_mode", "solid"}}),
                                         generatorLayer("00000002", "particles", Json{{"color_mode", "solid"}}),
                                         generatorLayer("00000003", "aura"),
-                                        textLayer("00000004", Json::array(), Json{{"fill", standardSolid("#808080")}})});
+                                        colorSchemeApplyTextLayer("00000004", Json::array(), Json{{"fill", standardSolid("#808080")}})});
     applyColorScheme(doc, parsed(rainbowSchemeJson()), {});
     EXPECT_EQ(doc.root["layers"][0]["generator"]["params"]["color_mode"], "around") << "the SpectrumSwitch shows the spectrum";
     EXPECT_EQ(doc.root["layers"][1]["generator"]["params"]["color_mode"], "palette");
@@ -818,11 +818,11 @@ TEST_F(ColorSchemeApplyTest, OrbTint) {
 TEST_F(ColorSchemeApplyTest, ChangedPathsAndTargets) {
     TitleArtDoc doc = fixtureDocument();
     const std::vector<std::string> paths = applyColorScheme(doc, parsed(goldSchemeJson()), {"00000001"});
-    EXPECT_TRUE(contains(paths, "00000001:style.rims[1].material.fill.kind")) << joined(paths);
-    EXPECT_TRUE(contains(paths, "00000001:effects[0].params.color")) << joined(paths);
-    EXPECT_TRUE(contains(paths, "00000001:part_effects.rim:00000102[0].params.color")) << joined(paths);
-    EXPECT_TRUE(contains(paths, "00000001:chars.0.face.fill.kind")) << joined(paths);
-    EXPECT_TRUE(contains(paths, "00000001:look.color_scheme")) << joined(paths);
+    EXPECT_TRUE(colorSchemeApplyContains(paths, "00000001:style.rims[1].material.fill.kind")) << colorSchemeApplyJoined(paths);
+    EXPECT_TRUE(colorSchemeApplyContains(paths, "00000001:effects[0].params.color")) << colorSchemeApplyJoined(paths);
+    EXPECT_TRUE(colorSchemeApplyContains(paths, "00000001:part_effects.rim:00000102[0].params.color")) << colorSchemeApplyJoined(paths);
+    EXPECT_TRUE(colorSchemeApplyContains(paths, "00000001:chars.0.face.fill.kind")) << colorSchemeApplyJoined(paths);
+    EXPECT_TRUE(colorSchemeApplyContains(paths, "00000001:look.color_scheme")) << colorSchemeApplyJoined(paths);
     for (const std::string& p : paths) EXPECT_EQ(p.rfind("00000001:", 0), 0u) << p << ": a layer target changes that layer only";
     std::vector<std::string> unique = paths;
     std::sort(unique.begin(), unique.end());
@@ -830,9 +830,9 @@ TEST_F(ColorSchemeApplyTest, ChangedPathsAndTargets) {
     EXPECT_EQ(doc.root["layers"][1]["look"]["color_scheme"], "") << "other layers untouched";
     // a group target recolours itself and its members
     const std::vector<std::string> group = applyColorScheme(doc, parsed(goldSchemeJson()), {"00000005"});
-    EXPECT_TRUE(contains(group, "00000005:effects[0].params.color")) << joined(group);
-    EXPECT_TRUE(contains(group, "00000006:look.color_scheme")) << joined(group);
-    EXPECT_TRUE(contains(group, "00000007:look.color_scheme")) << joined(group);
+    EXPECT_TRUE(colorSchemeApplyContains(group, "00000005:effects[0].params.color")) << colorSchemeApplyJoined(group);
+    EXPECT_TRUE(colorSchemeApplyContains(group, "00000006:look.color_scheme")) << colorSchemeApplyJoined(group);
+    EXPECT_TRUE(colorSchemeApplyContains(group, "00000007:look.color_scheme")) << colorSchemeApplyJoined(group);
     // a target that names nothing changes nothing
     EXPECT_TRUE(applyColorScheme(doc, parsed(goldSchemeJson()), {"0badf00d"}).empty());
 }
@@ -844,11 +844,11 @@ TEST_F(ColorSchemeApplyTest, OwnedGeneratorsFollowTheirLayer) {
     other["follow"] = "00000001";
     Json fxGroup{{"id", "00000004"}, {"type", "group"}, {"look", {{"owner", "00000001"}}},
                  {"effects", Json::array({standardEffect("00000201", "outer_glow", Json{{"color", "#00ff00"}})})},
-                 {"children", Json::array({textLayer("00000001", Json::array()), owned})}};
+                 {"children", Json::array({colorSchemeApplyTextLayer("00000001", Json::array()), owned})}};
     TitleArtDoc doc = standardDocument({fxGroup, other});
     const std::vector<std::string> paths = applyColorScheme(doc, parsed(goldSchemeJson()), {"00000001"});
-    EXPECT_TRUE(contains(paths, "00000002:look.color_scheme")) << joined(paths);
-    EXPECT_TRUE(contains(paths, "00000004:effects[0].params.color")) << "the auto group's effects\n" << joined(paths);
+    EXPECT_TRUE(colorSchemeApplyContains(paths, "00000002:look.color_scheme")) << colorSchemeApplyJoined(paths);
+    EXPECT_TRUE(colorSchemeApplyContains(paths, "00000004:effects[0].params.color")) << "the auto group's effects\n" << colorSchemeApplyJoined(paths);
     for (const std::string& p : paths) EXPECT_NE(p.rfind("00000003:", 0), 0u) << "a generator that only follows the layer is not its look's";
 }
 
@@ -874,7 +874,7 @@ TEST_F(ColorSchemeApplyTest, Idempotent) {
             const std::string once = writeTitleArt(doc);
             const Json onceRoot = doc.root;
             const std::vector<std::string> again = applyColorScheme(doc, s, {});
-            EXPECT_TRUE(again.empty()) << first.id << " then " << s.id << " twice changed:\n" << joined(again);
+            EXPECT_TRUE(again.empty()) << first.id << " then " << s.id << " twice changed:\n" << colorSchemeApplyJoined(again);
             EXPECT_EQ(writeTitleArt(doc), once) << s.id;
             // what it writes is canonical: normalize changes nothing
             TitleArtDoc normalized = doc;
@@ -914,7 +914,7 @@ TEST_F(ColorSchemeApplyTest, EmbeddedSchemes) {
     // applying an offered scheme refreshes its data; empty options offer every scheme
     doc.root["color_schemes"]["gold"]["glow"] = "#000001";
     const std::vector<std::string> applied = applyColorScheme(doc, gold, {});
-    EXPECT_TRUE(contains(applied, "color_schemes.gold")) << joined(applied);
+    EXPECT_TRUE(colorSchemeApplyContains(applied, "color_schemes.gold")) << colorSchemeApplyJoined(applied);
     EXPECT_EQ(canonical(doc.root["color_schemes"]["gold"]), canonical(writeColorScheme(gold)));
     doc.root["exposed"].back()["options"] = Json::array();
     EXPECT_EQ(embedColorSchemes(doc, {zebra}), std::vector<std::string>{"color_schemes.zebra"});

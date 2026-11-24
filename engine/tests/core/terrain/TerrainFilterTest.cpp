@@ -13,25 +13,25 @@ using namespace terraintest;
 
 namespace {
 
-    constexpr int SIZE = 32;
-    constexpr float MAX_HEIGHT = 32.0f;
+    constexpr int TERRAIN_FILTER_SIZE = 32;
+    constexpr float TERRAIN_FILTER_MAX_HEIGHT = 32.0f;
 
     // World-unit texels on a 32 map: x below 16 is a flat floor at height 4; x from 16 climbs one
     // unit per texel (45 degrees), so slope and height tell the texels apart exactly
     std::unique_ptr<RawMapStore> rampStore() {
-        auto store = std::make_unique<RawMapStore>(static_cast<float>(SIZE), MAX_HEIGHT);
-        store->addMap(HEIGHT, SIZE, SIZE, 1, 16);
-        fillHeight(*store, SIZE, SIZE, [](int x, int) {
-            return (x < 16 ? 4.0f : 4.0f + static_cast<float>(x - 15)) / MAX_HEIGHT;
+        auto store = std::make_unique<RawMapStore>(static_cast<float>(TERRAIN_FILTER_SIZE), TERRAIN_FILTER_MAX_HEIGHT);
+        store->addMap(HEIGHT, TERRAIN_FILTER_SIZE, TERRAIN_FILTER_SIZE, 1, 16);
+        fillHeight(*store, TERRAIN_FILTER_SIZE, TERRAIN_FILTER_SIZE, [](int x, int) {
+            return (x < 16 ? 4.0f : 4.0f + static_cast<float>(x - 15)) / TERRAIN_FILTER_MAX_HEIGHT;
         });
-        store->addMap(blend(0), SIZE, SIZE, 4, 8);
+        store->addMap(blend(0), TERRAIN_FILTER_SIZE, TERRAIN_FILTER_SIZE, 4, 8);
         std::vector<float> weights;
-        for (int y = 0; y < SIZE; y++) {
-            for (int x = 0; x < SIZE; x++) {
+        for (int y = 0; y < TERRAIN_FILTER_SIZE; y++) {
+            for (int x = 0; x < TERRAIN_FILTER_SIZE; x++) {
                 weights.insert(weights.end(), {0.0f, y < 16 ? 1.0f : 0.0f, 0.0f, 1.0f});
             }
         }
-        store->write(blend(0), TexelRect{0, 0, SIZE, SIZE}, weights);
+        store->write(blend(0), TexelRect{0, 0, TERRAIN_FILTER_SIZE, TERRAIN_FILTER_SIZE}, weights);
         return store;
     }
 
@@ -39,8 +39,8 @@ namespace {
     std::vector<int> changedColumns(const TerrainMapStore& store, const std::vector<float>& before, int row = 8) {
         const std::vector<float> after = readHeights(store);
         std::vector<int> columns;
-        for (int x = 0; x < SIZE; x++) {
-            const size_t at = static_cast<size_t>(row) * SIZE + x;
+        for (int x = 0; x < TERRAIN_FILTER_SIZE; x++) {
+            const size_t at = static_cast<size_t>(row) * TERRAIN_FILTER_SIZE + x;
             if (after[at] != before[at]) columns.push_back(x);
         }
         return columns;
@@ -76,8 +76,8 @@ TEST(TerrainFilter, SlopeHeightLayerAndInvert) {
         std::vector<int> flat = range(0, 14);
         flat.push_back(31);
         EXPECT_EQ(changedColumns(*store, before), flat);
-        EXPECT_EQ(result.ops[0].filteredOut, static_cast<int64_t>(SIZE) * 16);
-        EXPECT_EQ(result.ops[0].changedTexels, static_cast<int64_t>(SIZE) * 16);
+        EXPECT_EQ(result.ops[0].filteredOut, static_cast<int64_t>(TERRAIN_FILTER_SIZE) * 16);
+        EXPECT_EQ(result.ops[0].changedTexels, static_cast<int64_t>(TERRAIN_FILTER_SIZE) * 16);
     }
     {
         auto store = rampStore();
@@ -103,7 +103,7 @@ TEST(TerrainFilter, SlopeHeightLayerAndInvert) {
         Op op = raiseAll();
         op.filter.layer = LayerRange{1, 0.5f, 1.0f};
         ASSERT_TRUE(apply(*store, op).ok);
-        EXPECT_EQ(changedColumns(*store, before, 8).size(), static_cast<size_t>(SIZE));
+        EXPECT_EQ(changedColumns(*store, before, 8).size(), static_cast<size_t>(TERRAIN_FILTER_SIZE));
         EXPECT_TRUE(changedColumns(*store, before, 24).empty());
     }
     // invert is the complement, whichever way the filter cut
@@ -120,7 +120,7 @@ TEST(TerrainFilter, SlopeHeightLayerAndInvert) {
         const std::vector<int> other = changedColumns(*inverted, before);
         both.insert(both.end(), other.begin(), other.end());
         std::sort(both.begin(), both.end());
-        EXPECT_EQ(both, range(0, SIZE - 1));
+        EXPECT_EQ(both, range(0, TERRAIN_FILTER_SIZE - 1));
     }
 }
 
@@ -156,10 +156,10 @@ TEST(TerrainFilter, OutOfFilterBytesAreUnchanged) {
     op.filter.height = FilterRange{4.5f, 8.5f};
     ASSERT_TRUE(apply(*store, op).ok);
     const std::vector<uint8_t> after = readAllBytes(*store, HEIGHT);
-    for (int y = 0; y < SIZE; y++) {
-        for (int x = 0; x < SIZE; x++) {
+    for (int y = 0; y < TERRAIN_FILTER_SIZE; y++) {
+        for (int x = 0; x < TERRAIN_FILTER_SIZE; x++) {
             if (x >= 16 && x <= 19) continue;
-            const size_t at = (static_cast<size_t>(y) * SIZE + x) * 2;
+            const size_t at = (static_cast<size_t>(y) * TERRAIN_FILTER_SIZE + x) * 2;
             ASSERT_EQ(after[at], before[at]);
             ASSERT_EQ(after[at + 1], before[at + 1]);
         }
@@ -186,7 +186,7 @@ TEST(TerrainFilter, SoftnessBandValues) {
     const float expected = softRange(6.0f, 4.5f, 8.5f, 1.0f);
     EXPECT_GT(expected, 0.0f);
     EXPECT_LT(expected, 1.0f);
-    EXPECT_NEAR(after[static_cast<size_t>(8) * SIZE + 17], (6.0f + expected) / MAX_HEIGHT, 2.0f / 65535.0f);
+    EXPECT_NEAR(after[static_cast<size_t>(8) * TERRAIN_FILTER_SIZE + 17], (6.0f + expected) / TERRAIN_FILTER_MAX_HEIGHT, 2.0f / 65535.0f);
 }
 
 TEST(TerrainFilter, SoftSlopeIsHardAtZeroAndFadesWithin) {
@@ -209,13 +209,13 @@ TEST(TerrainFilter, ReadsTheStateFromBeforeTheOp) {
     const TerrainOpResult result = apply(*store, op);
     ASSERT_TRUE(result.ok);
     const std::vector<float> after = readHeights(*store);
-    EXPECT_NEAR(after[static_cast<size_t>(8) * SIZE], 12.0f / MAX_HEIGHT, 1.0f / 65535.0f);
+    EXPECT_NEAR(after[static_cast<size_t>(8) * TERRAIN_FILTER_SIZE], 12.0f / TERRAIN_FILTER_MAX_HEIGHT, 1.0f / 65535.0f);
 }
 
 TEST(TerrainFilter, StrokeFilterSeesEachStamp) {
     // A stroke's filter reads before each stamp: a height band a stamp lifts out of stops the rest
-    RawMapStore store(static_cast<float>(SIZE), MAX_HEIGHT);
-    addFlatHeight(store, SIZE, 4.0f / MAX_HEIGHT);
+    RawMapStore store(static_cast<float>(TERRAIN_FILTER_SIZE), TERRAIN_FILTER_MAX_HEIGHT);
+    addFlatHeight(store, TERRAIN_FILTER_SIZE, 4.0f / TERRAIN_FILTER_MAX_HEIGHT);
     Op op;
     op.type = OpType::Raise;
     op.delta = 1.0f;
@@ -228,12 +228,12 @@ TEST(TerrainFilter, StrokeFilterSeesEachStamp) {
     ASSERT_TRUE(apply(store, op).ok);
     // the first stamp passes, the rest see a raised texel and stop
     const float once = 1.0f * 1.5f / 60.0f;
-    EXPECT_NEAR(readHeights(store)[static_cast<size_t>(16) * SIZE + 16], (4.0f + once) / MAX_HEIGHT, 2.0f / 65535.0f);
+    EXPECT_NEAR(readHeights(store)[static_cast<size_t>(16) * TERRAIN_FILTER_SIZE + 16], (4.0f + once) / TERRAIN_FILTER_MAX_HEIGHT, 2.0f / 65535.0f);
 }
 
 TEST(TerrainFilter, ABlendMapOfAnotherSizeSamplesTheHeightMapByPlace) {
     // Today's mask reads the surface at the texel's own centre, whatever the map sizes are
-    RawMapStore store(32.0f, MAX_HEIGHT);
+    RawMapStore store(32.0f, TERRAIN_FILTER_MAX_HEIGHT);
     store.addMap(HEIGHT, 32, 32, 1, 16);
     fillHeight(store, 32, 32, [](int x, int) { return x < 16 ? 0.1f : 0.9f; });
     store.addMap(blend(0), 8, 8, 4, 8);

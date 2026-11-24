@@ -66,7 +66,7 @@ namespace {
         return s;
     }
 
-    void writeText(const std::filesystem::path& path, const std::string& text){
+    void writeSheetText(const std::filesystem::path& path, const std::string& text){
         std::filesystem::create_directories(path.parent_path());
         std::ofstream out(path, std::ios::binary);
         out << text;
@@ -176,8 +176,8 @@ TEST(SpriteSheetIOTest, SpriteSheetBench){
 TEST(ImportedAssetsTest, ProviderAndExportIndexAgree){
     test::TestTempDir dir("imported");
     const std::filesystem::path assets = dir.path() / "assets";
-    writeText(assets / "je-imported" / "ab" / "abcd" / "sheet.json", writeSheet(sampleSheet()));
-    writeText(assets / "je-imported" / "index.json",
+    writeSheetText(assets / "je-imported" / "ab" / "abcd" / "sheet.json", writeSheet(sampleSheet()));
+    writeSheetText(assets / "je-imported" / "index.json",
               "{\"format\": \"jasperengine.imported\", \"version\": 1, \"files\": {"
               "\"sprites/hero.aseprite#sheet\": \"je-imported/ab/abcd/sheet.json\","
               "\"sprites/hero.aseprite#image#0\": \"je-imported/ab/abcd/page0.png\","
