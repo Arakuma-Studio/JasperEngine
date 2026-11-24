@@ -91,6 +91,7 @@
 #include "object/ui/CanvasGroup.h"
 #include "object/PixelPerfectCamera.h"
 #include "AudioSource.h"
+#include "AudioSourceSlots.h"
 #include "Engine.h"
 #include "ObjectManager.h"
 #include "PrefabAsset.h"
@@ -409,6 +410,53 @@ namespace {
         const std::string group = lua_isstring(L, 5) ? lua_tostring(L, 5) : "";
         AudioSource::playClipAtPoint(scene, path, position.value(), volume, group);
         return 0;
+    }
+
+    // ---- S97 WP-B: a source's own effects (docs/specs/S97-audio-gaps.md REQ-41)
+
+    int luaPushSourceEffect(lua_State* L, const AudioSourceEffect& effect){
+        if (!effect.isValid() || !luabridge::push(L, effect)) lua_pushnil(L);
+        return 1;
+    }
+
+    // sound:addEffect(type) -> AudioSourceEffect | nil (not a source's effect, or 4 already)
+    int luaAudioAddEffect(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        return luaPushSourceEffect(L, self->addEffect(luaL_checkstring(L, 2)));
+    }
+
+    // sound:getEffect(indexOrType) -> AudioSourceEffect | nil (index 1-based; a type: the first of it)
+    int luaAudioGetEffect(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        if (lua_type(L, 2) == LUA_TNUMBER) return luaPushSourceEffect(L, self->getEffect((int)lua_tointeger(L, 2)));
+        return luaPushSourceEffect(L, self->getEffect(std::string(luaL_checkstring(L, 2))));
+    }
+
+    // sound:removeEffect(indexOrType) -> boolean
+    int luaAudioRemoveEffect(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        if (lua_type(L, 2) == LUA_TNUMBER) lua_pushboolean(L, self->removeEffect((int)lua_tointeger(L, 2)));
+        else lua_pushboolean(L, self->removeEffect(std::string(luaL_checkstring(L, 2))));
+        return 1;
+    }
+
+    // AudioSourceEffect:setParameter(name, value [, seconds [, opts]]) -> boolean
+    int luaSourceEffectSetParameter(lua_State* L){
+        AudioSourceEffect* self = luabridge::detail::Userdata::get<AudioSourceEffect>(L, 1, false);
+        const std::string name = luaL_checkstring(L, 2);
+        const float value = (float)luaL_checknumber(L, 3);
+        const float seconds = (float)luaL_optnumber(L, 4, 0.0);
+        lua_pushboolean(L, self && self->setParameter(name, value, seconds, luaAudioOpt(L, 5, "unscaled")));
+        return 1;
+    }
+
+    // AudioSourceEffect:getParameter(name) -> number | nil
+    int luaSourceEffectGetParameter(lua_State* L){
+        AudioSourceEffect* self = luabridge::detail::Userdata::get<AudioSourceEffect>(L, 1, true);
+        float value = 0.0f;
+        if (self && self->getParameter(luaL_checkstring(L, 2), value)) lua_pushnumber(L, value);
+        else lua_pushnil(L);
+        return 1;
     }
 
 }
@@ -4761,6 +4809,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity), void (*) (Scene*, bool)> ()
         .addFunction("loadSound", &AudioSource::loadSound)
         .addFunction("destroySound", &AudioSource::destroySound)
+        // read-only: Unloaded, Loading (from loadSound until ready), Loaded or Failed
+        .addProperty("loadState", &AudioSource::getLoadState)
         .addFunction("getGameObject", &AudioSource::getGameObject)
         .addFunction("play", &AudioSource::play)
         .addFunction("pause", &AudioSource::pause)
@@ -4772,6 +4822,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isPaused", &AudioSource::isPaused)
         .addFunction("isStopped", &AudioSource::isStopped)
         .addProperty("sound3D", &AudioSource::isSound3D, &AudioSource::setSound3D)
+        // 0 = 2D .. 1 = 3D (Unity's spatialBlend); a source without a Transform is 2D
+        .addProperty("spatialBlend", &AudioSource::getSpatialBlend, &AudioSource::setSpatialBlend)
         .addProperty("clockedSound", &AudioSource::isClockedSound, &AudioSource::setClockedSound)
         .addProperty("volume", &AudioSource::getVolume, &AudioSource::setVolume)
         .addProperty("speed", &AudioSource::getSpeed, &AudioSource::setSpeed)
@@ -4808,7 +4860,28 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isFading", &AudioSource::isFading)
         .addFunction("getVoiceCount", &AudioSource::getVoiceCount)
         .addStaticFunction("playClipAtPoint", &luaAudioPlayClipAtPoint)
+        .addStaticFunction("getAll", &AudioSourceSlots::getAll)
+        .addStaticFunction("add", &AudioSourceSlots::add)
+        .addStaticFunction("remove", &AudioSourceSlots::remove)
         .addFunction("getAudioSourceComponent", &AudioSource::getComponent<AudioSourceComponent>)
+        // S97 WP-B: its own effects
+        .addFunction("addEffect", &luaAudioAddEffect)
+        .addFunction("getEffect", &luaAudioGetEffect)
+        .addFunction("removeEffect", &luaAudioRemoveEffect)
+        .addFunction("getEffectCount", &AudioSource::getEffectCount)
+        .endClass();
+
+    // an effect of an Audio Source's own list (S97 REQ-41), as AudioMixerEffect is a group's
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AudioSourceEffect>("AudioSourceEffect")
+        .addProperty("type", &AudioSourceEffect::getType)
+        .addProperty("index", &AudioSourceEffect::getIndex)
+        .addProperty("bypass", &AudioSourceEffect::getBypass, &AudioSourceEffect::setBypass)
+        .addProperty("wet", &AudioSourceEffect::getWet, &AudioSourceEffect::setWet)
+        .addFunction("isValid", &AudioSourceEffect::isValid)
+        .addFunction("hasParameter", &AudioSourceEffect::hasParameter)
+        .addFunction("setParameter", &luaSourceEffectSetParameter)
+        .addFunction("getParameter", &luaSourceEffectGetParameter)
         .endClass();
 
     // CharacterController(2D).move's result, Unity's CollisionFlags

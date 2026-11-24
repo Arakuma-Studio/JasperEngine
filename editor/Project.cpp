@@ -178,6 +178,8 @@
 #include "project/SceneFileIdentity.h"
 #include "component/CameraComponent.h"
 #include "component/Transform.h"
+#include "component/AudioSourceComponent.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "device/Device.h"
 #include "shader/ShaderWarmup.h"
 #include "Input.h"
@@ -399,7 +401,8 @@ editor::Project::~Project(){
     shaderListWrite.wait();
     // its scenes and their renders are its own: they go with it while the engine runs (the unit
     // tests' Projects). One destroyed after Engine::systemShutdown, the editor's (a static App's,
-    // after the engine's own statics) or a CLI command's, leaves them to the process exit
+    // after the engine's own statics), leaves them to the process exit; a CLI command releases
+    // them before its engine guard shuts the engine down
     if (jobs::hasSystem() && !jobs::system().isShuttingDown()){
         deleteScenes();
     }
@@ -3711,6 +3714,8 @@ void editor::Project::setAudioSettings(const AudioSettings& settings){
     audioSettings.maxVoices = std::clamp(audioSettings.maxVoices, 1, 1000);
     if (audioSettings.sampleRate < 0) audioSettings.sampleRate = 0;
     audioSettings.seed = std::max(audioSettings.seed, 0);
+    audioSettings.unusedClipCacheMb = std::clamp(audioSettings.unusedClipCacheMb, 0, 4096);
+    SoundPool::setUnusedBudget((uint64_t)audioSettings.unusedClipCacheMb * 1024 * 1024);
     AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate,
                             AudioSystem::outputStageFromName(audioSettings.outputStage),
                             AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory), (uint32_t)audioSettings.seed,
@@ -7367,8 +7372,12 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         }
 
         if (!std::filesystem::exists(projectFile)) {
-            // a file in its place is no project folder: nothing could be saved there
-            if (!std::filesystem::is_directory(projectPath) && !std::filesystem::create_directories(projectPath)) {
+            // a file in its place is no project folder: nothing could be saved there. Asked after
+            // the creation, not before it: create_directories says false for a folder another
+            // writer made since a check, and the new project then refused its own folder
+            std::error_code folderEc;
+            std::filesystem::create_directories(projectPath, folderEc);
+            if (!std::filesystem::is_directory(projectPath, folderEc)) {
                 throw std::runtime_error(FileUtils::pathToGenericUtf8(projectPath) + " is not a folder");
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
@@ -8985,6 +8994,12 @@ std::vector<Entity> editor::Project::getPickableEntities(const SceneProject* sce
     // what a running scene made for itself is drawn too (and selectable, read-only)
     const std::vector<Entity> playCreated = getPlayCreatedEntities(sceneProject);
     entities.insert(entities.end(), playCreated.begin(), playCreated.end());
+    // an Audio Source slot is picked as its GameObject (ScenePicker::pickedEntity, S97 REQ-25)
+    if (sceneProject->scene && sceneProject->scene->getComponentArray<AudioSourceComponent>()->size() > 0) {
+        entities.erase(std::remove_if(entities.begin(), entities.end(), [sceneProject](Entity entity) {
+            return AudioSourceSlots::isSlot(sceneProject->scene, entity);
+        }), entities.end());
+    }
     return entities;
 }
 

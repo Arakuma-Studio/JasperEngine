@@ -5015,6 +5015,7 @@
     "attenuationModel",
     "attenuationRolloffFactor",
     "dopplerFactor",
+    "effects",
     "enableClocked",
     "enabled",
     "event",
@@ -5037,6 +5038,8 @@
     "playOn",
     "priority",
     "protectVoice",
+    "slot",
+    "spatialBlend",
     "speed",
     "state",
     "volume",
@@ -5056,6 +5059,11 @@
     ],
     "dopplerFactor": [
      2,
+     134217728,
+     true
+    ],
+    "effects": [
+     15,
      134217728,
      true
     ],
@@ -5171,6 +5179,16 @@
     ],
     "protectVoice": [
      0,
+     134217728,
+     true
+    ],
+    "slot": [
+     8,
+     134217728,
+     true
+    ],
+    "spatialBlend": [
+     2,
      134217728,
      true
     ],
@@ -5211,6 +5229,31 @@
      134217728,
      true
     ],
+    "effects": [
+     15,
+     134217728,
+     true
+    ],
+    "effects[].bypass": [
+     0,
+     134217728,
+     true
+    ],
+    "effects[].params": [
+     15,
+     134217728,
+     true
+    ],
+    "effects[].type": [
+     1,
+     134217728,
+     true
+    ],
+    "effects[].wet": [
+     2,
+     134217728,
+     true
+    ],
     "enableClocked": [
      0,
      134217728,
@@ -5323,6 +5366,16 @@
     ],
     "protectVoice": [
      0,
+     134217728,
+     true
+    ],
+    "slot": [
+     8,
+     134217728,
+     true
+    ],
+    "spatialBlend": [
+     2,
      134217728,
      true
     ],
@@ -24824,6 +24877,11 @@
     134217728,
     true
    ],
+   "effects": [
+    15,
+    134217728,
+    true
+   ],
    "enableClocked": [
     0,
     134217728,
@@ -24936,6 +24994,16 @@
    ],
    "protectVoice": [
     0,
+    134217728,
+    true
+   ],
+   "slot": [
+    8,
+    134217728,
+    true
+   ],
+   "spatialBlend": [
+    2,
     134217728,
     true
    ],

@@ -411,7 +411,7 @@ namespace {
 
     struct RenderState {
         RenderSpec spec;
-        Json extra;
+        std::shared_ptr<Json> extra;    // shared with a caller that adds to it before the render ends (edit_title's bake)
         std::string textPrefix;
         Project* project = nullptr;
         std::vector<Variant> variants;
@@ -467,7 +467,7 @@ namespace {
     bool finishRender(RenderState& s, McpJob& job, FrameTask& task) {
         const titleart::TitleArtDoc& doc = *s.spec.doc;
         const int cw = doc.canvasWidth(), ch = doc.canvasHeight();
-        Json result = s.extra.is_object() ? s.extra : Json::object();
+        Json result = s.extra && s.extra->is_object() ? *s.extra : Json::object();
         const PendingRender* main = nullptr;
         const PendingRender* rgba8 = nullptr;
         const PendingRender* canonical = nullptr;
@@ -579,6 +579,8 @@ namespace {
         }
         result["cells"] = cells;
         task.text = text + ".";
+        // a reply past the call's wait is a job_id: get_job then returns the images
+        job.setImages(task.images);
         job.succeed(task.text, result);
         return true;
     }
@@ -711,17 +713,17 @@ bool checkRenderOptions(const Json& options, std::string& error) {
     return true;
 }
 
-void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::string& textPrefix) {
+std::shared_ptr<FrameTask> renderTask(const CallPtr& call, RenderSpec spec, std::shared_ptr<Json> extra, const std::string& textPrefix) {
     Project* project = call->ctx().project();
     auto s = std::make_shared<RenderState>();
     s->project = project;
-    s->extra = std::move(extra);
+    s->extra = extra ? std::move(extra) : std::make_shared<Json>(Json::object());
     s->textPrefix = textPrefix;
     const Json& args = spec.args;
     std::string error;
     if (!parseBackgrounds(project, args.contains("backgrounds") ? args["backgrounds"] : Json(), s->backgrounds, error)) {
         call->fail(error);
-        return;
+        return nullptr;
     }
     s->maxWidth = std::clamp(args.value("max_width", 768), 64, 4096);
     s->columns = std::clamp(args.value("columns", 0), 0, 16);
@@ -737,7 +739,7 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
     base.label = "current";
     if (!applyWhatIf(doc, args.contains("ops") ? args["ops"] : Json(), base.doc, error)) {
         call->fail("ops: " + error);
-        return;
+        return nullptr;
     }
     const bool whatIf = args.contains("ops") || args.contains("try");
     s->variants.push_back(base);
@@ -745,14 +747,14 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
         const Json& tries = args["try"];
         if (!tries.is_array() || tries.size() > 9) {
             call->fail("`try` is a list of at most 9 {label, ops}.");
-            return;
+            return nullptr;
         }
         for (size_t i = 0; i < tries.size(); i++) {
             Variant v;
             v.label = tries[i].value("label", "try " + std::to_string(i + 1));
             if (!applyWhatIf(*base.doc, tries[i].contains("ops") ? tries[i]["ops"] : Json::array(), v.doc, error)) {
                 call->fail("try[" + std::to_string(i) + "] (" + v.label + "): " + error + " Nothing was rendered.");
-                return;
+                return nullptr;
             }
             s->variants.push_back(v);
         }
@@ -763,7 +765,7 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
     if (args.contains("layer")) {
         if (!resolveLayerRef(*base.doc, args.value("layer", std::string()), isolate, error)) {
             call->fail("layer: " + error);
-            return;
+            return nullptr;
         }
     }
     titleart::OutputContent content = titleart::OutputContent::All;
@@ -783,7 +785,7 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
         }
         if (s->outputIndex < 0) {
             call->fail("output: no output '" + id + "' (outputs: " + list + ").");
-            return;
+            return nullptr;
         }
         // the output's frame: the shared one of its last bake when it is fresh, else the canvas
         TitleBakeInfo info;
@@ -797,12 +799,12 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
         const Json& crop = args["crop"];
         if (!crop.is_array() || crop.size() != 4) {
             call->fail("`crop` is [x, y, w, h] in canvas pixels (image space, top-left origin).");
-            return;
+            return nullptr;
         }
         s->region = {crop[0].get<int>(), crop[1].get<int>(), crop[2].get<int>(), crop[3].get<int>()};
         if (s->region.empty()) {
             call->fail("`crop` needs a width and a height.");
-            return;
+            return nullptr;
         }
     }
     const int regionW = s->region.empty() ? cw : s->region.width;
@@ -825,14 +827,14 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
         std::vector<std::string> codes;
         if (!titleExportLanguages(doc, toOrdered(args["options"]["languages"]), codes, error)) {
             call->fail("options.languages: " + error);
-            return;
+            return nullptr;
         }
         languageRows.clear();
         const titleart::AssetResolver* assets = TitleArtRenderHost::editor().resolver(project);
         for (const std::string& code : codes) languageRows.emplace_back(code, titleLanguageRowLabel(doc, code, assets));
         Json rows = Json::array();
         for (const auto& row : languageRows) rows.push_back(row.second);
-        s->extra["language_rows"] = rows;
+        (*s->extra)["language_rows"] = rows;
     }
     for (const auto& [languageCode, languageLabel] : languageRows)
     for (size_t v = 0; v < s->variants.size(); v++) {
@@ -875,8 +877,8 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
     // stats_3d (S86 R60): every 3D layer's mesh at the requested tier
     const titleart::Json stats3d = title3DStats(*s->variants[0].doc, TitleArtRenderHost::editor().resolver(project), tier);
     if (!stats3d.empty()) {
-        s->extra["stats_3d"] = fromOrdered(stats3d);
-        s->extra["quality"] = titleart::titleTierName(tier);
+        (*s->extra)["stats_3d"] = fromOrdered(stats3d);
+        (*s->extra)["quality"] = titleart::titleTierName(tier);
     }
     s->spec = std::move(spec);
     auto task = std::make_shared<FrameTask>();
@@ -885,7 +887,13 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
         auto t = weakTask.lock();
         return t ? tickRender(*s, job, *t) : true;
     };
-    runFrameTask(call, "render_title", "Render " + s->spec.relative, task);
+    return task;
+}
+
+void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::string& textPrefix) {
+    const std::string title = "Render " + spec.relative;
+    std::shared_ptr<FrameTask> task = renderTask(call, std::move(spec), std::make_shared<Json>(std::move(extra)), textPrefix);
+    if (task) runFrameTask(call, "render_title", title, task);
 }
 
 // ==================================================================== tools
@@ -1088,6 +1096,7 @@ void checkTitleTool(const CallPtr& call) {
         t->text = std::string(titleCheckStatusName(report.verdict == TitleCheckStatus::Skip ? TitleCheckStatus::Pass : report.verdict)) + " " + rel +
                   ": " + std::to_string(counts[0]) + " pass, " + std::to_string(counts[1]) + " warn, " + std::to_string(counts[2]) + " fail, " +
                   std::to_string(counts[3]) + " skipped. " + TitleArtChecks::guidance();
+        job.setImages(t->images);
         job.succeed(t->text, result);
         return true;
     };

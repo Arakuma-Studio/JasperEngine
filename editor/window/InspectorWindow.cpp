@@ -93,6 +93,9 @@
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/SetMainCameraCmd.h"
 #include "command/type/AddComponentCmd.h"
+#include "command/type/AudioSourceSlotCmd.h"
+#include "component/AudioSourceComponent.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "command/type/RemoveComponentCmd.h"
 #include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/ComponentValuesCmd.h"
@@ -1800,15 +1803,33 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
         }
         ImGui::Separator();
 
+        // a further Audio Source of its GameObject (S97 REQ-26): removed with its entity, reordered
+        // among the GameObject's slots
+        const bool audioSlot = cpType == ComponentType::AudioSourceComponent && entities.size() == 1 &&
+                               AudioSourceSlots::isSlot(sceneProject->scene, entities[0]);
         bool canRemove = !(cpType == ComponentType::Transform && isPrefab);
         if (ImGui::MenuItem("Remove Component", nullptr, false, canRemove)) {
-            for (Entity& entity : entities){
-                cmd = new RemoveComponentCmd(project, sceneProject->id, entity, cpType);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            if (audioSlot){
+                addMenuCommand(new RemoveAudioSourceSlotCmd(project, sceneProject->id, entities[0]));
+            }else{
+                for (Entity& entity : entities){
+                    cmd = new RemoveComponentCmd(project, sceneProject->id, entity, cpType);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+                cmd->setNoMerge();
             }
-            cmd->setNoMerge();
 
             headerOpen = false;
+        }
+        if (audioSlot){
+            for (int direction : {-1, 1}){
+                Command* move = buildMoveAudioSourceSlot(project, sceneProject->id, entities[0], direction);
+                if (ImGui::MenuItem(direction < 0 ? "Move Up" : "Move Down", nullptr, false, move != nullptr)){
+                    addMenuCommand(move);
+                }else{
+                    delete move;
+                }
+            }
         }
 
         ImGui::EndDisabled();
@@ -1896,6 +1917,22 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
 }
 
 void editor::InspectorWindow::addComponents(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType) {
+    // an Audio Source on a GameObject that has one is a further one, a slot (S97 REQ-26): one step
+    if (cpType == ComponentType::AudioSourceComponent &&
+        std::any_of(entities.begin(), entities.end(), [sceneProject](Entity entity) {
+            return sceneProject->scene->findComponent<AudioSourceComponent>(entity) != nullptr;
+        })) {
+        auto* multi = new MultiPropertyCmd();
+        for (Entity entity : entities) {
+            if (sceneProject->scene->findComponent<AudioSourceComponent>(entity)) {
+                multi->addCommand(std::make_unique<AddAudioSourceSlotCmd>(project, sceneProject->id, entity));
+            } else {
+                multi->addCommand(std::make_unique<AddComponentCmd>(project, sceneProject->id, entity, cpType));
+            }
+        }
+        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(multi);
+        return;
+    }
     // Add component to all selected entities
     Command* last = nullptr;
     for (const Entity& entity : entities) {
@@ -1931,6 +1968,9 @@ bool editor::InspectorWindow::addComponentToSelection(ComponentType type, std::s
 }
 
 bool editor::InspectorWindow::canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType) {
+    // a GameObject takes several Audio Sources (S97 REQ-26)
+    if (cpType == ComponentType::AudioSourceComponent)
+        return AddAudioSourceSlotCmd::refusal(sceneProject->scene, entity).empty();
     // Check if entity already has this component
     std::vector<ComponentType> existingComponents = Catalog::findComponents(sceneProject->scene, entity);
     if (std::find(existingComponents.begin(), existingComponents.end(), cpType) != existingComponents.end())
@@ -2461,6 +2501,27 @@ bool editor::InspectorWindow::drawComponentHeader(SceneProject* sceneProject, co
     return open;
 }
 
+void editor::InspectorWindow::drawAudioSourceSlots(SceneProject* sceneProject, Entity owner, bool readOnly){
+    Scene* scene = sceneProject->scene;
+    for (Entity slot : AudioSourceSlots::getSlots(scene, owner)) {
+        const std::vector<Entity> slotEntities = {slot};
+        PrefabObjectRef ref;
+        const bool isPrefab = project->findPrefabObject(sceneProject->id, slot, ref);
+        ImGui::PushID("audio_source_slot");
+        ImGui::PushID(static_cast<int>(slot));
+        // (its rows are not in the Inspector layout: that names one component of a type)
+        if (drawComponentHeader(sceneProject, slotEntities, ComponentType::AudioSourceComponent, isPrefab, readOnly)) {
+            beginPrefabComponent(sceneProject, slotEntities, ComponentType::AudioSourceComponent, readOnly);
+            if (readOnly) ImGui::BeginDisabled(true);
+            drawAudioComponent(ComponentType::AudioSourceComponent, sceneProject, slotEntities);
+            if (readOnly) ImGui::EndDisabled();
+            endPrefabComponent();
+        }
+        ImGui::PopID();
+        ImGui::PopID();
+    }
+}
+
 void editor::InspectorWindow::drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen){
     const ImGuiStyle& style = ImGui::GetStyle();
 
@@ -2527,6 +2588,10 @@ void editor::InspectorWindow::drawAddComponentButton(SceneProject* sceneProject,
                 attachScriptFile(sceneProject, entities, script.file);
             });
         }
+        componentAddDialog.setAudioFilters([this](const std::string& effect) {
+            std::string why;
+            if (!addAudioEffectToSelection(effect, &why)) Out::warning("Add Component: %s", why.c_str());
+        });
     }
     ImGui::EndDisabled();
 
@@ -10197,6 +10262,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
     panSettings.help = "-1 left, 0 center, 1 right";
     propertyRow(RowPropertyType::Float, cpType, "pan", "Pan", sceneProject, entities, panSettings);
 
+    // Unity's Spatial Blend (S97 REQ-18, REQ-38)
+    RowSettings blendSettings = floatSettings;
+    blendSettings.floatMin = 0.0f;
+    blendSettings.floatMax = 1.0f;
+    blendSettings.format = "2D %.2f 3D";
+    blendSettings.help = "0 plays 2D (Pan, no distance attenuation); 1 plays 3D from the GameObject's position; between them a mix without Doppler. A source without a Transform plays 2D.";
+    propertyRow(RowPropertyType::Float_0_1, cpType, "spatialBlend", "Spatial Blend", sceneProject, entities, blendSettings);
+
     propertyRow(RowPropertyType::Bool, cpType, "looping", "Looping", sceneProject, entities, compactSettings);
     propertyRow(RowPropertyType::DoublePositive, cpType, "loopingPoint", "Loop Point", sceneProject, entities, doubleSettings);
     propertyRow(RowPropertyType::Bool, cpType, "protectVoice", "Protect Voice", sceneProject, entities, compactSettings);
@@ -10242,10 +10315,12 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         }
     }
 
+    // the 3D settings matter where the blend has some 3D and a Transform places it
     bool show3DSettings = false;
     for (Entity entity : entities){
         Signature signature = sceneProject->scene->getSignature(entity);
-        show3DSettings = show3DSettings || signature.test(sceneProject->scene->getComponentId<Transform>());
+        show3DSettings = show3DSettings || (signature.test(sceneProject->scene->getComponentId<Transform>()) &&
+                                            sceneProject->scene->getComponent<AudioSourceComponent>(entity).spatialBlend > 0.0f);
     }
 
     endTable();
@@ -10266,6 +10341,8 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         endTable();
     }
 
+    // S97 WP-B: the source's own effects (Unity's filter components, below the source)
+    drawAudioEffectRows(cpType, sceneProject, entities);
 }
 
 void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -13790,6 +13867,13 @@ void editor::InspectorWindow::show(){
                 if (compReadOnly) ImGui::EndDisabled();
                 endPrefabComponent();
             }
+            if (cpType == ComponentType::AudioSourceComponent && entities.size() == 1) {
+                drawAudioSourceSlots(sceneProject, entities[0], isRuntimeSelection || documentLocked);
+            }
+        }
+        // slots whose GameObject has no Audio Source of its own come after its components
+        if (entities.size() == 1 && !scene->findComponent<AudioSourceComponent>(entities[0])) {
+            drawAudioSourceSlots(sceneProject, entities[0], isRuntimeSelection || documentLocked);
         }
 
         if (isPrefab) {

@@ -1225,15 +1225,18 @@ The other subsystems (from `self.scene:getActionSystem()`, `getMeshSystem()`, ..
 
 `AudioSystem` (static): `AudioSystem.stopAll()`, `pauseAll()` / `resumeAll()` (the mixer's Master
 bus holds, as in the app pause but apart from it; a source a script paused stays paused), `AudioSystem.globalVolume` (rw,
-= `AudioListener.volume`), `preload(path [, loadType])` (decode or open a clip ahead),
-`isOutputAvailable()` (false without an audio device: sounds still mix, meters still read),
+= `AudioListener.volume`), `preload(path [, loadType])` (decode or open a clip ahead; held until
+`unload`), `unload(path [, loadType])` (Unity's UnloadAudioData: the preload pin goes and the cached
+copies nothing holds drop; returns how many; a held clip goes at its release), `getLoadState(path [,
+loadType])` (`AudioLoadState.*` of a clip in the cache), `isOutputAvailable()` (false without an audio device: sounds still mix, meters still read),
 `getVoiceCount()`.
 
 `Audio` (static, free voices with no AudioSource): `Audio.play(eventOrClip [, opts])` -> `SoundHandle`
 (a Sound Event by GUID or `.soundevent` path, or a clip path; `opts = {target = GameObject (3D, follows
 it, stops when it is destroyed), position = Vector3 (3D, fixed), scene = Scene (the owner: it holds
 and stops with it; default the target's, else the main scene), volume = 1, pitch = 1, group = "SFX"
-(default the event's, else Master), delay = 0 (s), unscaled = false (the delay's time)}`; an unknown
+(default the event's, else Master), delay = 0 (s), unscaled = false (the delay's time), loop = false
+(a clip loops until `stop()` or its owner scene stops it; a Sound Event keeps its own loop)}`; an unknown
 name gives an invalid handle and one warning per name per Play), `Audio.stopAll([group])` -> integer
 (the voices of `Audio.play`, triggers and one-shots, all or those on `group` or below it;
 `AudioSystem.stopAll()` also stops the sources' main voices). Inside a physics callback they run at
@@ -2707,16 +2710,24 @@ end
 
 Clips that vary (footsteps, hits: no repeats, random pitch and volume) need no script: a Sound Event does it as data (`edit_sound_event`, group audio; then `event` on the AudioSource, `jasper://docs/sound`).
 
-Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)`, `destroySound()`,
-`isPlaying()`, `isPaused()`, `isStopped()`, `getLength()`, `getPlayingTime()`,
+Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)` (the old clip stays cached, so
+switching back decodes nothing), `destroySound()` (stops it and frees its clip when nothing else holds
+it), `isPlaying()`, `isPaused()`, `isStopped()`, `getLength()` (0 until `loadState` is Loaded), `getPlayingTime()`,
 `getGameObject()`, `setMinMaxDistance(min, max)`, `setInaudibleBehavior(mustTick, kill)`,
-`getAudioSourceComponent()`.
-rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopingPoint`, `sound3D`,
+`getAudioSourceComponent()`. `AudioSource(scene)` makes a 2D source on a new GameObject,
+`AudioSource(scene, true)` a 3D one; `getGameObject()` always works (an entity without a Transform
+gets one and stays 2D).
+rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopingPoint`,
+`spatialBlend` (0 = 2D .. 1 = 3D, clamped), `sound3D` (a Transform and a blend above 0; true sets 1,
+false sets 0),
 `clockedSound`, `protectVoice`, `minDistance`, `maxDistance`, `attenuationModel`
 (`AudioSourceAttenuation.*`), `attenuationRolloffFactor`, `dopplerFactor`, `outputGroup` (the
 mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and
 more), `priority` (0 most important .. 256, default 128), `maxVoices` (1..64, default 8),
-`ignoreListenerPause`.
+`ignoreListenerPause`. Read-only: `loadState` (`AudioLoadState.*`: Loading from `loadSound` until
+the clip is ready, then Loaded or Failed; Unloaded without a request).
+`getAudioSourceComponent().onLoad = function(ok) ... end` runs once for each `loadSound` (and the
+scene's own load of the clip), in a later audio update, never inside the call.
 Sound Events and triggers: `event` (rw: its path; assigning a path or GUID resolves it, `""` clears it;
 set, the source plays the event and its clip is ignored), `playOn` (rw, `AudioPlayOn` flags),
 `minImpactSpeed`, `fullVolumeImpactSpeed` (contact triggers: below the first nothing plays; below the
@@ -2732,6 +2743,20 @@ the next play), `fadeTo(volume, seconds [, opts])`, `isFading()`, `getVoiceCount
 [, group]])` (stops with `scene`). `isPlaying()` follows the voice: true for a looping clip at any
 pitch, and right after `play()`. `play()` on a playing source starts it over; two sources play
 one clip at once.
+
+Its own effects (Unity's Audio Low Pass Filter and its siblings; `jasper://docs/audio` 7):
+`addEffect(type)` -> `AudioSourceEffect` or nil (a mixer effect but `duck` and `limiter`, up to 4),
+`getEffect(index (1-based) or type)` -> `AudioSourceEffect` or nil, `removeEffect(index or type)` ->
+bool, `getEffectCount()`. `AudioSourceEffect`: `type`, `index` (ro), `bypass`, `wet` (rw),
+`setParameter(name, value [, seconds [, opts]])` -> bool (scaled time unless `{unscaled = true}`;
+the mixer's curves), `getParameter(name)` -> number or nil (the value heard now), `hasParameter(name)`,
+`isValid()` (false once its place in the list holds another effect).
+
+Several sources on one GameObject (Unity's `GetComponents<AudioSource>()`, `AddComponent`,
+`Destroy`): static `AudioSource.getAll(gameObject)` (its own source first, then the further ones in
+order), `AudioSource.add(gameObject)` (its own when it has none, else a further one: a hidden child
+at its origin, Spatial Blend 1) and `AudioSource.remove(source)`. As Unity's components, the
+further ones are not in `childCount`, `getChild`, `getChildren`, `findChild` or `GameObject.find`.
 
 ### 4.13 Rigidbody2D (EntityHandle) - 2D physics (Box2D)
 
@@ -3504,6 +3529,7 @@ gate.area = 0 ; gate:remove()
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |
 | `AudioSourceAttenuation` | `NO_ATTENUATION`, `INVERSE_DISTANCE`, `LINEAR_DISTANCE`, `EXPONENTIAL_DISTANCE` |
 | `AudioLoadType` | `Auto`, `DecompressOnLoad`, `CompressedInMemory`, `Streaming` |
+| `AudioLoadState` | `Unloaded`, `Loading`, `Loaded`, `Failed` |
 | `AnchorPreset` | `NONE`, `TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_RIGHT`, `CENTER_LEFT`, `CENTER_TOP`, `CENTER_RIGHT`, `CENTER_BOTTOM`, `CENTER`, `LEFT_WIDE`, `TOP_WIDE`, `RIGHT_WIDE`, `BOTTOM_WIDE`, `VERTICAL_CENTER_WIDE`, `HORIZONTAL_CENTER_WIDE`, `FULL_LAYOUT` |
 | `PivotPreset` | `CENTER`, `TOP_CENTER`, `BOTTOM_CENTER`, `LEFT_CENTER`, `RIGHT_CENTER`, `TOP_LEFT`, `BOTTOM_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT` |
 | `LayoutGroupType` | `VERTICAL`, `HORIZONTAL`, `VERTICAL_WRAP`, `HORIZONTAL_WRAP` |

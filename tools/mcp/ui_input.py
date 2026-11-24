@@ -18,7 +18,11 @@ history row read before its click). Two rules on top of that:
    that is released in the same frame;
  - a click waits until ImGui's clock has moved past its double-click time since the previous
    release (DOUBLE_CLICK_SECONDS; ImGui's clock is the wall clock between frames). On a busy host
-   frames can come in bursts: two clicks a couple of fast frames apart read as a double click.
+   frames can come in bursts: two clicks a couple of fast frames apart read as a double click;
+ - a press, a key, a wheel turn and typed text wait until the Loading progress modal is down
+   (input_ready): it opens while shaders, textures, models or sounds build, and as a modal it
+   holds every input meant for the windows under it. A project's first frames build its assets,
+   so on a slow host a test's first click came while it was up.
 Positions are window coordinates from the editor (find_ui_item rects, view_rect_in_window, the
 rects of editor_status and focus_window), turned into screen points with the window's origin.
 """
@@ -39,6 +43,10 @@ DOUBLE_CLICK_SECONDS = 0.45
 SETTLE_FRAMES = 2
 # a label no control has: find_ui_item with it only waits its two frames
 FRAME_PACER = "##ui_input frame pacer (no such item)"
+# the progress modal's window (editor/window/LoadingWindow.cpp), focused while it is up
+LOADING_MODAL = "Loading"
+# a hang guard: a software renderer on a loaded host builds a project's shaders for minutes
+LOADING_FRAMES = 6000
 
 
 class Ui:
@@ -177,6 +185,7 @@ class Ui:
     async def press(self, point: tuple[int, int] | None = None, button: str = "1") -> None:
         if point is not None:
             await self._pointer(point)
+        await input_ready(self.ed)
         await self._clear_double_click()
         self.xdo("mousedown", button)
         self.buttons_down.add(button)
@@ -213,6 +222,7 @@ class Ui:
         so this one is timed by the editor, not paced)."""
         if point is not None:
             await self._pointer(point)
+        await input_ready(self.ed)
         await self._clear_double_click()
         self.xdo("click", "--repeat", "2", "--delay", "40", button)
         await self.frames(4)
@@ -244,6 +254,7 @@ class Ui:
         """notches > 0 scrolls down (button 5), < 0 up (button 4); one notch a frame."""
         if point is not None:
             await self._pointer(point)
+        await input_ready(self.ed)
         if modifier:
             self.xdo("keydown", modifier)
             await self.frames(1)
@@ -261,6 +272,7 @@ class Ui:
         frames apart (`xdotool key ctrl+z` can land Z's press and Ctrl's release in one frame,
         where Ctrl reads up)."""
         for key in keys:
+            await input_ready(self.ed)
             *mods, main = key.split("+")
             for mod in mods:
                 self.xdo("keydown", mod)
@@ -273,6 +285,7 @@ class Ui:
             await self.frames()
 
     async def type(self, text: str) -> None:
+        await input_ready(self.ed)
         self.xdo("type", "--delay", "40", text)
         await self.frames(max(SETTLE_FRAMES, 2 + len(text) // 8))
 
@@ -291,6 +304,18 @@ async def frames(ed: Editor, count: int = SETTLE_FRAMES) -> None:
     dialog is open, a job runs or Play stops."""
     for _ in range((max(1, count) + 1) // 2):
         await ed.call("find_ui_item", label=FRAME_PACER)
+
+
+async def input_ready(ed: Editor, frames: int = LOADING_FRAMES) -> None:
+    """Until the editor's windows take real input: the Loading progress modal is not up (it holds a
+    press or a key that lands while it is). Editor frames apart; `frames` only guards a hang."""
+    focused = None
+    for _ in range(max(1, frames // 2)):
+        focused = (await ed.call("editor_status"))["windows"]["focused"]
+        if focused != LOADING_MODAL:
+            return
+        await ed.call("find_ui_item", label=FRAME_PACER)
+    ed.fail(f"the Loading progress modal stayed up for {frames} editor frames: real input would land on it")
 
 
 def for_editor(ed: Editor) -> Ui:
