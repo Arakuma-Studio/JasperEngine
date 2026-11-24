@@ -426,14 +426,17 @@ async def test_a_new_fbx_b_rig_takes_the_naming_rules_once_imported(ed: Editor):
     # naming rules that map it
     fbx = "assets/models/b_rig_new.fbx"
     sidecar = ed.project / (fbx + ".humanoid")
+    # the project is open first: a model there when it opens is no new import
+    await ed.call("editor_status")
     (ed.project / fbx).write_text(b_rig_fbx(), encoding="utf-8")
     await ed.call("sync_files", paths=[fbx])
     deadline = time.monotonic() + 120
     while not (sidecar.is_file() and json.loads(sidecar.read_text()).get("name_rules") == 2):
         if time.monotonic() > deadline:
-            status = await ed.call("editor_status")
+            info = await ed.call("get_asset_info", path=fbx)
+            console = await ed.call("read_console", limit=30)
             ed.fail(f"no sidecar with name_rules 2 after the import: {sidecar.read_text() if sidecar.is_file() else 'none'}; "
-                    f"jobs {status.get('jobs')}")
+                    f"the import: {info.get('fbx_import')}; console: {str(console)[-1500:]}")
         await asyncio.sleep(0.5)
     rig = (await ed.call("get_asset_info", path=fbx)).get("fbx_import", {})
     ed.check_eq(rig.get("state"), "current", f"the FBX was imported: {rig}")
