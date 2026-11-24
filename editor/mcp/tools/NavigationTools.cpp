@@ -1331,6 +1331,10 @@ void paintNavGridTool(const CallPtr& call) {
         return;
     }
     const bool world = args.value("space", std::string("cell")) == "world";
+    if (!args.contains("strokes") || !args["strokes"].is_array()) {
+        call->fail("strokes: pass a list of strokes, each with cells [[x, y]...] or points [[x, y, z]...].");
+        return;
+    }
     NavGridBrush::Stroke stroke;
     const Json& strokes = args["strokes"];
     for (size_t s = 0; s < strokes.size(); s++) {

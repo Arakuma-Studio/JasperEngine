@@ -199,6 +199,9 @@ async def test_edit_preview_restores(ed: Editor):
     pose = await ed.call("sample_animation_pose", entity="Hero", state="Jump", time=0.25, bones=["left_hand"])
     ed.check(pose["state"].endswith("Jump"), f"the state asked for: {pose['state']}")
     ed.check(approx(await local_rotation(ed, arm), rest, 1e-5), "sampling leaves the scene as it was")
+    # no entity: an error that names it (the handler once read the missing argument)
+    await ed.check_error("control_animator", {}, contains="entity")
+    await ed.check_error("sample_animation_pose", {}, contains="entity")
 
 
 async def test_mask_and_montage(ed: Editor):

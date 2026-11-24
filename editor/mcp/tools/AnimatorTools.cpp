@@ -515,7 +515,7 @@ bool resolveAnimator(const CallPtr& call, AnimatorTarget& target) {
         call->fail(McpRefs::notOpenError(target.project, *target.scene));
         return false;
     }
-    target.entity = McpRefs::resolveEntity(target.scene, args["entity"], error);
+    target.entity = McpRefs::resolveEntity(target.scene, args.contains("entity") ? args["entity"] : Json(), error);
     if (target.entity == NULL_ENTITY) {
         call->fail(error);
         return false;

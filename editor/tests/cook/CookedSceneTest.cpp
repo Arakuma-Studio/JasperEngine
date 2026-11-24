@@ -21,9 +21,12 @@
 #include "component/SkyboxComponent.h"
 #include "component/SplineComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "component/TweenComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
+#include "log/Logger.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "reflect/Reflect.h"
 #include "serialization/CookedScene.h"
 #include "serialization/SceneSettingsCodec.h"
@@ -141,6 +144,8 @@ TEST(CookedScene, RoundTripEveryComponent) {
             // what a scene load leaves (the component a cook sees): the invariants its decode keeps
             // (a spline's unit up axis and non-negative radii)
             if (desc->postDecode) desc->postDecode(comp, reflect::DecodeContext{.registry = scene, .entity = entity});
+            // and the load's Audio Source slot repair: a random slot on a root is no slot (S97 REQ-29)
+            AudioSourceSlots::repair(scene);
 
             DecodedScene loaded;
             std::string error;
@@ -689,6 +694,29 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_EQ(old.getWaterWakeResolution(), defaults.waterWakeResolution);
     EXPECT_FLOAT_EQ(old.getWaterWakeArea(), defaults.waterWakeArea);
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
+}
+
+// S97 REQ-29: the cook writes the editor's scene as it is, and an edit after the editor's load can
+// leave a broken Audio Source slot in it (here a slot number on a root GameObject); the player's
+// loader repairs it as the editor's decode does (the renumbering of shared slots is
+// AudioSourceSlotsEditorTest.BrokenSlotsLoadWithAWarning's)
+TEST(CookedScene, BrokenAudioSourceSlotsLoadRepaired) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    const Entity stray = scene->createUserEntity();
+    scene->setEntityName(stray, "Stray");
+    scene->addComponent<Transform>(stray, Transform());
+    AudioSourceComponent audio;
+    audio.slot = 3;
+    scene->addComponent<AudioSourceComponent>(stray, audio);
+
+    jasperengine::test::LogCapture log;
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {stray}, loaded, error)) << error;
+    jasperengine::Logger::flush();
+    EXPECT_EQ(loaded.scene->scene->getComponent<AudioSourceComponent>(stray).slot, 0) << "an ordinary GameObject now";
+    EXPECT_EQ(log.count(D_LOG_WARN, "'Stray'"), 1u) << "named in a warning";
 }
 
 // A newer minor adds only length-prefixed fields: a player reads its content without them and warns

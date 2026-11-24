@@ -334,6 +334,10 @@ async def test_tolerance_and_skin_change_the_answer(ed: Editor):
     ed.check_eq(floored["clips"][0]["skin_distance_mm"], 10, "measured at the floor")
     r = await ed.call_raw("optimize_animation", {"clips": [DENSE], "joints": [{"path": "NoSuchBone", "tolerance_mm": 1}]})
     ed.check(r.is_error and "unknown_joint" in r.text, r.text[:200])
+    # a missing clips or joint tolerance is an error that names the fix (the handler once read the missing key)
+    await ed.check_error("optimize_animation", {}, contains="clips")
+    await ed.check_error("optimize_animation", {"clips": [DENSE], "joints": [{"path": "NoSuchBone"}]},
+                         contains="give each entry a path (the bone's path) and a tolerance_mm")
 
 
 async def test_skeleton_summary(ed: Editor):
