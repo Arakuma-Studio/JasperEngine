@@ -163,6 +163,7 @@ namespace je_logger {
         bool named = false;
         bool isDrainThread = false;
         bool holdsQueueLock = false;
+        bool sweeping = false;   // in a sweep of the rate limit (its summaries log back through logSubmit)
         // the sink being written on this thread (a record logged from inside it skips it)
         uint32_t currentSink = 0;
         char formatBuffer[1024];
@@ -339,6 +340,8 @@ namespace je_logger {
         std::atomic<uint64_t> backtracesOmitted{0};
 
         std::array<std::mutex, kValveStripes> valveMutexes;
+        // one sweep at a time, from taking its summaries to logging them
+        std::mutex sweepMutex;
         std::array<ValveSlot, kValveSlots> valve;
         std::atomic<int64_t> nextValveSweepMs{0};
         std::atomic<void (*)()> sweepHook{nullptr};
@@ -710,8 +713,21 @@ namespace je_logger {
     }
 
     // The summaries of windows that ended with records held back
-    // (every window with `all`: over or not. How many summaries went out: the rest are for the next)
-    size_t sweepValve(LoggerState& s, int64_t nowMs, bool all = false) {
+    // (every window with `all`: over or not. How many summaries went out: the rest are for the next).
+    // With `wait` (flush, flushSummaries, shutdown) a sweep in progress, the drain thread's, is
+    // waited for: the summaries it took are logged before the caller goes on. Without, a sweep in
+    // progress is enough.
+    size_t sweepValve(LoggerState& s, int64_t nowMs, bool all = false, bool wait = false) {
+        ThreadState& thread = logThreadState();
+        if (thread.sweeping) return 0;
+        std::unique_lock<std::mutex> sweepLock(s.sweepMutex, std::defer_lock);
+        // inside an Inline sink or on the drain thread the sweeper could be waiting for this thread
+        if (wait && !thread.holdsQueueLock && !thread.isDrainThread) {
+            sweepLock.lock();
+        } else if (!sweepLock.try_lock()) {
+            return 0;
+        }
+        thread.sweeping = true;
         ValveSummary summaries[16];
         size_t count = 0;
         for (size_t stripe = 0; stripe < kValveStripes && count < 16; stripe++) {
@@ -735,6 +751,7 @@ namespace je_logger {
             if (void (*hook)() = s.sweepHook.load(std::memory_order_acquire)) hook();
         }
         emitSummaries(summaries, count);
+        thread.sweeping = false;
         return count;
     }
 
@@ -1319,7 +1336,7 @@ void Logger::shutdown() {
     LoggerState& s = logState();
     if (!s.initialized.load(std::memory_order_acquire)) return;
     // what the rate limit still holds back is reported while the sinks are there
-    sweepValve(s, std::numeric_limits<int64_t>::max() / 2);
+    sweepValve(s, std::numeric_limits<int64_t>::max() / 2, false, true);
     std::thread* drain = nullptr;
     {
         std::lock_guard<std::mutex> lock(s.queueMutex);
@@ -1532,7 +1549,7 @@ void Logger::flush() {
     if (thread.isDrainThread || thread.holdsQueueLock) return;
     if (!s.initialized.load(std::memory_order_acquire)) return;
     // windows of the rate limit that ended report what they held back
-    sweepValve(s, logMonotonicMs());
+    sweepValve(s, logMonotonicMs(), false, true);
     if (!s.async.load(std::memory_order_relaxed)) {
         std::array<SinkPtr, kMaxSinks> sinks;
         size_t sinkCount = 0;
@@ -1556,7 +1573,7 @@ void Logger::flush() {
 void Logger::flushSummaries() {
     LoggerState& s = logState();
     if (!s.initialized.load(std::memory_order_acquire)) return;
-    while (sweepValve(s, logMonotonicMs(), true) > 0) {}
+    while (sweepValve(s, logMonotonicMs(), true, true) > 0) {}
     flush();
 }
 
