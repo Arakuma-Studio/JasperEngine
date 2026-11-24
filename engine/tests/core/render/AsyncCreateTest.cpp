@@ -997,7 +997,7 @@ TEST_F(AsyncCreateGpu, AScreenshotWaitsForAVariantCompilingAtRuntime){
     EXPECT_TRUE(SystemRender::isGpuCreationIdle()) << "nothing is being created on the GPU meanwhile";
     EXPECT_FALSE(ShaderPool::isCreationIdle()) << "the compile is counted";
 
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     player::LaunchOptions options;
     options.screenshotFrame = 1;
     options.screenshot = dir.path() / "compiled.png";
