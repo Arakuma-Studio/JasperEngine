@@ -1139,6 +1139,24 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   median of 2 h (up to 10) while the merge queue stalled behind them. The queue is the gate: it, a push
   to `main`, full runs and the nightly build `macos` for every change that builds, so a macOS break
   still stops the merge, one queue run later than a PR would have shown it.
+- **macOS in the merge queue** builds only for a macOS-only input. macOS is what caps the queue: 5
+  hosted runners and `je-mac`, a `macos` job a group. Its inputs, wider than a pull request's (the queue
+  is the last gate), are:
+  - `APPLE_INPUTS`, plus Objective-C sources (`*.mm`, `*.m`), Mac and Apple named sources and
+    resources (`*/Mac[A-Z]*`, `*Mac.cpp`, `*/Apple*`, `editor/resources/macos/`), the vendored sokol
+    (its Metal backend), `tools/ci/macos.sh` and the ccache actions it runs;
+  - a C/C++ source whose text, before or after, names `__APPLE__`, `TARGET_OS_`, `SOKOL_METAL` or
+    `__OBJC__`;
+  - a CMake file whose changed lines or their 10 lines of context name an Apple setting (`APPLE`,
+    `IOS`, `CMAKE_OSX`, `Darwin`, `XCODE`, macOS, Metal);
+  - `ci.yml`'s `macos` job or `env` (`tools/ci/plan_lanes.py` `MACOS_PATHS`, `macos_inputs`).
+
+  Without one, the lane is planned off (`queue_off`), so a mac-only break (a compile error or a CPU
+  test) shows on `main` right after the merge, not in the queue. The push to `main` runs the whole lane
+  then (`macos_full`: its CPU tests, the call CLI and the compile smoke, which a push otherwise skips
+  because the queue ran them), and the nightly builds it every night. Replayed over the 40 merges up
+  to #181 (38 that build), the queue would have built `macos` for 13 (34%) and left it out for 25;
+  today's mix was CI-heavy.
 - **iOS in the merge queue** follows the same rule (`lanes.json` `queue_off`, which `Check` accepts as
   a planned skip). `ios` is a compile check of the Xcode project with the same Apple Clang the queue's
   `macos` lane builds every change with, and macOS capacity is the bottleneck. `nightly.yml`'s `ios`
