@@ -84,8 +84,8 @@ if [[ "$save" == true ]]; then
             || { echo "ccache-save: the cut to $JASPER_CCACHE_CAP failed; nothing saved"; out false; exit 0; }
     fi
     # zstd level 9 instead of the level 1 a build writes: 14 % smaller (a linux entry's 296 MB: 255 MB,
-    # 23 s on 2 CPUs; level 19, 22 % in 277 s), what lets the 10 GB budget hold the Windows engine legs'
-    # entries (docs/testing.md "CI"). After the cut: ccache 4.5 gives each rewritten file a new mtime,
+    # 23 s on 2 CPUs; level 19, 22 % in 277 s), room in the repository's budget for every lane's entry
+    # (docs/testing.md "CI"). After the cut: ccache 4.5 gives each rewritten file a new mtime,
     # which would lose the order the cut evicts by. A hit decompresses at the same speed
     run_ccache --recompress "$RECOMPRESS_LEVEL" > /dev/null \
         || { echo "ccache-save: recompressing failed; nothing saved"; out false; exit 0; }

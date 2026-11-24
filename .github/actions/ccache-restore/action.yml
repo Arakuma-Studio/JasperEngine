@@ -9,7 +9,7 @@ description: >
   §10.2).
 inputs:
   lane:
-    description: The cache's lane (linux, unit-core, unit-editor, asan-core, asan-editor, htmlui, smoke, web, android, windows-editor, windows-engine-glcore, windows-engine-d3d11, windows-engine-vulkan, macos)
+    description: The cache's lane (linux, unit-core, unit-editor, asan-core, asan-editor, htmlui, smoke, web, android, windows-editor, windows-engine-glcore, windows-engine-d3d11, windows-engine-vulkan, windows-compile, macos)
     required: true
   max-size:
     description: The lane's cap (§10.2), what ccache-save cuts the saved entry to

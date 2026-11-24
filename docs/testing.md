@@ -1015,7 +1015,7 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
 | `web` | `tools/build.sh web && tools/build.sh web-gate` |
 | `android` | `tools/build.sh android` (`ANDROID_ABIS=arm64-v8a` on a PR) |
-| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`), the D3D11 and Vulkan legs on a PR and in the queue only for their inputs (below); then a Compile build of a fixture with the editor job's install. The editor and engine jobs each keep a ccache entry |
+| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`), the D3D11 and Vulkan legs on a PR and in the queue only for their inputs (below); then a Compile build of a fixture with the editor job's install. Each job keeps its own ccache entry |
 | `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `XCODE_CAS=build/.cache/xcode-cas tools/ci/macos.sh xcode ios` (and `macos`) for the Xcode project, through Xcode's compilation cache |
 | `report` | writes the PR comment (below) |
 | `check` | the one required status, `Check` (`tools/ci/check_gate.py`): green only when every lane that had to run passed |
@@ -1173,7 +1173,8 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   `main` saved, never what the queue did; and it publishes the deps dumps `changes` plans from (below,
   "Plan inputs"). The queue built and tested the same commit, so a push runs no check, nor any step
   the queue ran (`MAIN_STAGE` in `ci.yml`). ASan builds both binaries for their entries, the Windows
-  engine legs build without their tests and macOS makes its Compile build, for theirs, and `smoke` runs when a game-building path changed, for its
+  engine legs build without their tests and `windows (compile)` and macOS make their Compile builds,
+  for theirs, and `smoke` runs when a game-building path changed, for its
   entry.
 - **One push run at a time.** Merge-queue groups land one push each, some minutes apart (2026-11-15
   to 20: 21 pushes, gaps of 62 s, 3 and 4 min among 20). Push runs share one concurrency group without
@@ -1211,7 +1212,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   recently used entries of any lane: during push run 44629653601 the repository held 11.7 GB, two
   entries of linux, unit-core and Android, and the plan inputs, the coverage map and the Vulkan SDK
   were gone. A cap below the working set loses the start of the build, not all of it. The caches
-  share GitHub's 10 GB per repository (the repository's `max_cache_size_gb`); working sets from each
+  share the repository's 20 GB (`max_cache_size_gb`, raised from GitHub's default 10 on 2026-11-24); working sets from each
   lane's `ccache-save` (no precompiled headers, line tables only: `JASPERENGINE_DEBUG_INFO=lines`,
   "Build speed"), in decimal GB (ccache's caps are decimal; `du -h` prints binary), from PR 131's
   runs 44775260806 and 44806837004:
@@ -1228,19 +1229,20 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   | Windows editor | 0.92 (MSVC: `/Z7` as before) | 0.91 | 0.95G | yes |
   | Windows OpenGL | 1.50 (1.4 GiB; `/Z7`: its core tests' reports name frames), 1.29 recompressed; PR 176's run 45274919394 | | 1.6G | yes |
   | Windows D3D11, Vulkan | 0.35 each (337 MiB; Release, no debug information), 0.31 recompressed; same run | | 0.4G each | yes |
-  | Windows Compile | 0.45 (425 MiB), 0.38 recompressed; same run | | | no: the budget holds the engine legs', which shorten the lane more (each leg 54-109 min cold, the Compile build 17-33) |
+  | Windows Compile | 0.45 (425 MiB), 0.38 recompressed; same run | | 0.5G | yes |
   | iOS and macOS Xcode (`xcode-cas`, Xcode's compilation cache, no debug symbols) | 1.14-1.23 raw, 0.35-0.38 compressed (both SDKs, five builds of two commits 36 apart, on the Mac); saved by the nightly's `ios` job on `main` (a push would take a macOS runner for a lane the queue mostly leaves out), and it only grows, so a nightly that restores over 2 GB starts it afresh (`COMPILATION_CACHE_LIMIT_SIZE=1600M` held it at 1.78 GB with 92 % hits on a commit seen before, against 100 % without) | iOS alone 0.89 compressed | 2 GB raw (`fresh-over`) | yes |
   | Android | 0.27 | 0.63 | 0.3G | yes |
   | web | 0.24 | 0.48 | 0.3G | yes |
   | smoke | 1.93 (the player runtime and two Compile builds, which share nothing: each its own directory) | 3.5 | 0.5G | yes, the last-used part: the second Compile build |
   | Gradle, Vulkan SDK, MCP timings, uv | 0.73, 0.21, under 0.01 each | | | yes |
 
-  The caps add up to 11.4 GB in ccache's sizes; a saved entry is recompressed to about 0.86 of its
-  working set (the Windows engine legs: 0.86-0.89), and GitHub counts the saved archives, about 0.96
-  of that again (asan-editor: 1,526 MB for its 1.59 GB). At these working sets the ccache entries
-  come to about 8.2 GB and the rest (Gradle, the Vulkan SDK, `xcode-cas`, MCP timings, uv) to 1.3 GB,
-  9.5 GB of the 10; caps full everywhere would pass it, so a lane whose working set grows near its cap
-  needs another lane's room first. A cap a few percent above its working set still cuts it: ccache 4.5 (the image's) empties
+  The caps add up to 11.9 GB in ccache's sizes; a saved entry is recompressed to about 0.86 of its
+  working set (the Windows legs: 0.85-0.89), and GitHub counts the saved archives, about 0.96 of that
+  again (asan-editor: 1,526 MB for its 1.59 GB). At these working sets the ccache entries come to
+  about 8.6 GB and the rest (Gradle, the Vulkan SDK, `xcode-cas`, MCP timings, uv) to 1.3 GB: main's
+  entries hold about 10 GB, and caps full everywhere about 11 GB, which leaves the 20 GB room for a
+  push's old and new entries side by side and for the other branches' caches (the Vulkan SDK of a PR,
+  the merge queue's Gradle) without GitHub evicting one of main's. A cap a few percent above its working set still cuts it: ccache 4.5 (the image's) empties
   each of its 16 subdirectories that is over a sixteenth of the cap down to 80 % of that
   (`limit_multiple`), whatever the total, and the largest subdirectory runs about a quarter above the
   mean. asan-editor's whole build (1.58 GB, the largest subdirectory 123 MB) lost 415 of its 7,721
