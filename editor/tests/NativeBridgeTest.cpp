@@ -724,10 +724,13 @@ TEST_F(NativeBridgeTest, ManySyncCallsWarnOnce) {
     EXPECT_EQ(system.count("more than 200 Native.call in one frame"), 1);
 }
 
+// (declared at namespace scope: MSVC binds a block-scope extern to the global namespace, not to
+// this file's namespace, where the definition below is)
+void nativeBridgeTestRegisterMacroPlugin();
+
 TEST_F(NativeBridgeTest, MacroRegistersAtLoad) {
     // a JASPERENGINE_NATIVE_PLUGIN below registered "MacroPlugin" at static initialization; the
     // fixture's clearCppPlugins dropped it: register again the way the macro does
-    extern void nativeBridgeTestRegisterMacroPlugin();
     nativeBridgeTestRegisterMacroPlugin();
     NativeError err;
     EXPECT_EQ(NativeBridge::call("MacroPlugin", "hello", NativeJson::array({"x"}), err), "hello x");
