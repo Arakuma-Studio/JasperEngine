@@ -2010,13 +2010,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HIGH", LitQuality::HIGH)
         .endNamespace();
 
-    // the Environment Lighting Source (scene.ambientMode)
-    luabridge::getGlobalNamespace(L)
-        .beginNamespace("AmbientMode")
-        .addVariable("COLOR", AmbientMode::COLOR)
-        .addVariable("GRADIENT", AmbientMode::GRADIENT)
-        .endNamespace();
-
     luabridge::getGlobalNamespace(L)
         .beginNamespace("SceneColorScale")
         .addVariable("FULL", SceneColorScale::FULL)
@@ -3464,13 +3457,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)
         .addFunction("getGlobalIlluminationColorLinear", &Scene::getGlobalIlluminationColorLinear)
         .addFunction("setGlobalIllumination", (void (Scene::*)(float, Vector3))&Scene::setGlobalIllumination)
-        // the Environment Lighting Source (AmbientMode.COLOR, GRADIENT) and the gradient's colours
-        // (sRGB; globalIlluminationIntensity scales them)
-        .addProperty("ambientMode", &Scene::getAmbientMode, &Scene::setAmbientMode)
-        .addProperty("ambientSkyColor", &Scene::getAmbientSkyColor, &Scene::setAmbientSkyColor)
-        .addProperty("ambientEquatorColor", &Scene::getAmbientEquatorColor, &Scene::setAmbientEquatorColor)
-        .addProperty("ambientGroundColor", &Scene::getAmbientGroundColor, &Scene::setAmbientGroundColor)
-        .addFunction("setAmbientGradient", &Scene::setAmbientGradient)
         .addProperty("maxLightsPerObject", &Scene::getMaxLightsPerObject, &Scene::setMaxLightsPerObject)
         // the built-in Lit's quality (LitQuality.STANDARD, HIGH) and the exposure lights in
         // physical units are drawn at (EV100)

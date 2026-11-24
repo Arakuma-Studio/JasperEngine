@@ -466,7 +466,6 @@ Details: [mcp/guide/terrain.md](mcp/guide/terrain.md) (`jasper://docs/terrain`).
 
 | Unity term | JasperEngine |
 |---|---|
-| Lighting > Environment Lighting > Source: Color, Gradient (Sky Color, Equator Color, Ground Color), Intensity Multiplier | Lighting > Environment Lighting > Source (`ambientMode`: Color, Gradient), Sky / Equator / Ground Color, Intensity (`globalIlluminationIntensity`, 1 for Unity's look); Lua `scene.ambientMode`, `scene:setAmbientGradient(sky, equator, ground)`; shaders read it through `ambientLight(normal)` |
 | `RenderSettings.skybox = null`, a disabled skybox | `Skybox.visible = false` (the sky stops drawing, its lighting stays) or an inactive sky entity |
 | Skybox/Panoramic (Latitude Longitude, 360 degrees), `_Rotation` r | `library:panoramic_sky`, `rotation` = (r + 270) mod 360 (Unity's image centre faces Unity's +X, the engine's -Z at rotation 0; a Unity direction (x, y, z) is the engine's (-x, y, z)). Mobile: its Per-Vertex Mapping feature (`VERTEX_MAPPING`) |
 | Skybox/Cubemap (or 6 Sided), `_Rotation` r | the Skybox's six faces with +X and -X swapped and each face mirrored left to right, `rotation` = -r (the engine samples the cube in its own right-handed space) |

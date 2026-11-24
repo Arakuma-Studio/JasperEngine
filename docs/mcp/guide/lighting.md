@@ -1,4 +1,4 @@
-# Lighting: tiles, capsule and contact shadows, OIT, hair, ambient, sky
+# Lighting: tiles, capsule and contact shadows, OIT, hair, sky
 
 For agents: what to set and how to check it. The full reference is `docs/rendering/lighting.md`.
 
@@ -23,11 +23,6 @@ For agents: what to set and how to check it. The full reference is `docs/renderi
   `primaryColor`, `primaryShift`, `primaryWidth`, `secondaryColor`, `secondaryShift`,
   `secondaryWidth`, `rotation`, `flowMap`.
 
-- Ambient (Lighting > Environment Lighting): `set_scene_settings` `ambient_mode` color (one
-  colour, `global_illumination_color`) or gradient (Unity's trilight: `ambient_sky_color` from
-  above, `ambient_equator_color` from the side, `ambient_ground_color` from below);
-  `global_illumination_intensity` scales either (1 for a Unity scene's look). A sky's image-based
-  lighting replaces it on the built-in Lit. Custom shaders get it through `ambientLight(normal)`.
 - Sky: a hidden sky (`skybox.visible` false, Lua `Skybox.visible`) or one on an inactive entity
   draws nothing and feeds no reflection probe; a hidden one keeps lighting the scene. It draws
   after the opaque objects (only the pixels they leave are shaded), first under a camera without

@@ -603,61 +603,6 @@ Vector3 Scene::getGlobalIlluminationColorLinear() const{
     return settings.globalIllumColor;
 }
 
-void Scene::setAmbientMode(AmbientMode mode){
-    settings.ambientMode = (mode == AmbientMode::GRADIENT) ? AmbientMode::GRADIENT : AmbientMode::COLOR;
-}
-
-AmbientMode Scene::getAmbientMode() const{
-    return settings.ambientMode;
-}
-
-void Scene::setAmbientGradient(Vector3 sky, Vector3 equator, Vector3 ground){
-    setAmbientSkyColor(sky);
-    setAmbientEquatorColor(equator);
-    setAmbientGroundColor(ground);
-}
-
-void Scene::setAmbientSkyColor(Vector3 color){
-    settings.ambientSkyColor = Color::sRGBToLinear(color);
-}
-
-void Scene::setAmbientEquatorColor(Vector3 color){
-    settings.ambientEquatorColor = Color::sRGBToLinear(color);
-}
-
-void Scene::setAmbientGroundColor(Vector3 color){
-    settings.ambientGroundColor = Color::sRGBToLinear(color);
-}
-
-Vector3 Scene::getAmbientSkyColor() const{
-    return Color::linearTosRGB(settings.ambientSkyColor);
-}
-
-Vector3 Scene::getAmbientEquatorColor() const{
-    return Color::linearTosRGB(settings.ambientEquatorColor);
-}
-
-Vector3 Scene::getAmbientGroundColor() const{
-    return Color::linearTosRGB(settings.ambientGroundColor);
-}
-
-Vector3 Scene::getAmbientLightLinear(Vector3 worldNormal) const{
-    if (settings.ambientMode != AmbientMode::GRADIENT)
-        return settings.globalIllumColor * settings.globalIllumIntensity;
-    const float up = std::max(worldNormal.y, 0.0f);
-    const float down = std::max(-worldNormal.y, 0.0f);
-    return (settings.ambientSkyColor * up + settings.ambientGroundColor * down +
-            settings.ambientEquatorColor * (1.0f - up - down)) * settings.globalIllumIntensity;
-}
-
-Vector3 Scene::getAmbientLightAverageLinear() const{
-    if (settings.ambientMode != AmbientMode::GRADIENT)
-        return settings.globalIllumColor * settings.globalIllumIntensity;
-    // over the sphere max(y, 0) and max(-y, 0) average 1/4 each, 1 - |y| 1/2
-    return (settings.ambientSkyColor * 0.25f + settings.ambientEquatorColor * 0.5f +
-            settings.ambientGroundColor * 0.25f) * settings.globalIllumIntensity;
-}
-
 void Scene::setMaxLightsPerObject(int maxLightsPerObject){
     // a new capacity tier reloads the meshes (RenderSystem::update)
     settings.maxLightsPerObject = std::clamp(maxLightsPerObject, 1, MAX_LIGHTS_PER_OBJECT);

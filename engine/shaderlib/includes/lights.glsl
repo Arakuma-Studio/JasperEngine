@@ -354,7 +354,6 @@ LightSample getLight(int index, vec3 worldPosition){
 const float LIGHT_INV_PI = 0.31830988618;
 
 #if defined(LIGHTS_FS_DECLARED) || !defined(USE_PUNCTUAL)
-#ifndef AMBIENT_GRADIENT
 // scene ambient plus the lights over the cap, for a world normal; light to multiply by
 // albedo, linear, never negative
 vec3 ambientLight(vec3 worldNormal){
@@ -363,36 +362,6 @@ vec3 ambientLight(vec3 worldNormal){
         dot(objectLights.shG.xyz, worldNormal) + objectLights.shG.w,
         dot(objectLights.shB.xyz, worldNormal) + objectLights.shB.w), vec3(0.0));
 }
-// the object's SH ambient alone (the built-in Lit's): the same in Color mode
-#define shAmbientLight ambientLight
-#else
-// Environment Lighting Source Gradient ('Agr', includes/ambient.glsl): the SH ambient holds the
-// gradient's average over every direction, which ambientLight swaps for the gradient
-#if defined(LIGHTS_FS_DECLARED) && !defined(AMBIENT_FS)
-    #define AMBIENT_FS
-#elif !defined(LIGHTS_FS_DECLARED) && defined(LIGHTS_VS_DECLARED) && !defined(AMBIENT_VS)
-    #define AMBIENT_VS
-#endif
-#include "includes/ambient.glsl"
-
-// the object's SH ambient alone: the gradient's average plus the lights over the cap; never negative
-vec3 shAmbientLight(vec3 worldNormal){
-    return max(vec3(
-        dot(objectLights.shR.xyz, worldNormal) + objectLights.shR.w,
-        dot(objectLights.shG.xyz, worldNormal) + objectLights.shG.w,
-        dot(objectLights.shB.xyz, worldNormal) + objectLights.shB.w), vec3(0.0));
-}
-
-// scene ambient (the gradient) plus the lights over the cap, for a world normal; light to
-// multiply by albedo, linear, never negative
-vec3 ambientLight(vec3 worldNormal){
-    return max(vec3(
-        dot(objectLights.shR.xyz, worldNormal) + objectLights.shR.w,
-        dot(objectLights.shG.xyz, worldNormal) + objectLights.shG.w,
-        dot(objectLights.shB.xyz, worldNormal) + objectLights.shB.w) - ambientGradientBlock.average.rgb +
-        ambientGradient(worldNormal), vec3(0.0));
-}
-#endif
 #endif
 
 // Lambert diffuse of one light: light to multiply by albedo (radiance * max(n.l, 0) / PI)

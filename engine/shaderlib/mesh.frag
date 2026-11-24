@@ -193,19 +193,6 @@ uniform u_fs_pbrParams {
     in vec3 v_vertexLight;
 #endif
 
-// The scene ambient (S94 F15): the camera block's colour, or with AMBIENT_GRADIENT ('Agr') the
-// gradient for the normal (includes/ambient.glsl). The camera block's colour (a Gradient scene's
-// average) is also the share of the SH ambient that is the scene's: the lights over the cap are
-// the rest of it.
-#if defined(AMBIENT_GRADIENT) && !defined(MATERIAL_UNLIT)
-    #define AMBIENT_FS
-    #include "includes/ambient.glsl"
-    #define LIT_SCENE_AMBIENT(n) ambientGradient(n)
-#elif !defined(MATERIAL_UNLIT)
-    #define LIT_SCENE_AMBIENT(n) litFrame.ambient_fogType.rgb
-#endif
-#define LIT_SH_SCENE_AMBIENT litFrame.ambient_fogType.rgb
-
 #ifdef USE_SSAO
     uniform texture2D u_ssaoTexture;
     uniform sampler u_ssao_smp;
@@ -495,7 +482,7 @@ void main() {
         #if defined(USE_IBL) && defined(PBR_EXT_LOBES)
             pbrExtEnvironment(materialInfo, n, v, vec3(0.0), f_diffuse, f_specular);
             #ifdef USE_PUNCTUAL
-                vec3 overflowLight = max(shAmbientLight(n) - LIT_SH_SCENE_AMBIENT, vec3(0.0));
+                vec3 overflowLight = max(ambientLight(n) - litFrame.ambient_fogType.rgb, vec3(0.0));
                 float overflowNdotV = clampedDot(n, v);
                 f_specular += envRadianceGGX(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
                 f_diffuse += envRadianceLambertian(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
@@ -507,7 +494,7 @@ void main() {
             #ifdef USE_PUNCTUAL
                 // the lights over the object's cap, folded into its SH ambient (zero without any;
                 // already divided by PI, see includes/lights.glsl)
-                vec3 overflowLight = max(shAmbientLight(n) - LIT_SH_SCENE_AMBIENT, vec3(0.0));
+                vec3 overflowLight = max(ambientLight(n) - litFrame.ambient_fogType.rgb, vec3(0.0));
                 float overflowNdotV = clampedDot(n, v);
                 f_specular += envRadianceGGX(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
                 f_diffuse += envRadianceLambertian(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
@@ -517,9 +504,9 @@ void main() {
             // lights, plus the lights over the object's cap from its SH ambient, which is the
             // scene ambient alone when none is over the cap
             #ifdef USE_PUNCTUAL
-                vec3 envLight = LIT_SCENE_AMBIENT(n) + max(shAmbientLight(n) - LIT_SH_SCENE_AMBIENT, vec3(0.0));
+                vec3 envLight = litFrame.ambient_fogType.rgb + max(ambientLight(n) - litFrame.ambient_fogType.rgb, vec3(0.0));
             #else
-                vec3 envLight = LIT_SCENE_AMBIENT(n);
+                vec3 envLight = litFrame.ambient_fogType.rgb;
             #endif
             #ifdef PBR_EXT_LOBES
                 pbrExtEnvironment(materialInfo, n, v, envLight, f_diffuse, f_specular);
@@ -634,7 +621,7 @@ void main() {
             #else
                 // VERTEX: v_vertexLight carries the SH ambient too (no lights block here),
                 // the scene ambient part of which is applied above
-                vec3 vertexLight = max(v_vertexLight - LIT_SH_SCENE_AMBIENT, vec3(0.0));
+                vec3 vertexLight = max(v_vertexLight - litFrame.ambient_fogType.rgb, vec3(0.0));
             #endif
             f_diffuse += vertexLight * materialInfo.albedoColor;
         #endif

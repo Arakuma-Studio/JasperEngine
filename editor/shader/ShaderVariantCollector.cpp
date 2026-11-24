@@ -278,8 +278,6 @@ namespace {
         environment.oit = (facts & FACT_OIT_CAMERA) != 0;
         environment.waterExclusion = (facts & FACT_WATER_EXCLUDERS) != 0;
         environment.waterWake = (facts & FACT_WATER_WAKES) != 0;
-        // S94 F15: the scene's Environment Lighting Source (addAmbientGradientTwins: a script's switch)
-        environment.ambientGradient = scene->getAmbientMode() == AmbientMode::GRADIENT;
         return environment;
     }
 
@@ -291,7 +289,7 @@ namespace {
             (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u) |
             (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
             (e.oit ? (1u << 29) : 0u) | (e.waterExclusion ? (1u << 30) : 0u) | (e.waterWake ? (1u << 31) : 0u) |
-            (e.directionalLightsOnly ? (1ull << 32) : 0ull) | (e.ambientGradient ? (1ull << 40) : 0ull) |
+            (e.directionalLightsOnly ? (1ull << 32) : 0ull) |
             // T3 R34: the tier a build may force
             (e.terrainForced ? (1ull << (static_cast<int>(e.terrainForcedTier) + 33)) : 0ull);
     }
@@ -1489,26 +1487,6 @@ void editor::ShaderVariantCollector::addDirectionalOnlyTwins(std::set<ShaderKey>
                 twins.push_back(twin);
             }
         }
-    }
-    keys.insert(twins.begin(), twins.end());
-}
-
-void editor::ShaderVariantCollector::addAmbientGradientTwins(std::set<ShaderKey>& keys){
-    const uint64_t bit = ShaderPool::getAmbientGradientProperty();
-    std::vector<ShaderKey> twins;
-    for (const ShaderKey& key : keys){
-        // a lit variant (not MATERIAL_UNLIT, bit 0) that takes the scene ambient
-        // (RenderSystem::getSubmeshShaderVariant): the built-in Lit's without the IBL that replaces
-        // it, a custom shader's with pixel or vertex lights (or, a fork's, without the IBL)
-        if (ShaderPool::getShaderTypeFromKey(key) != ShaderType::MESH || (key.properties & shaderPropertyBit(0)))
-            continue;
-        const bool lights = (key.properties & (shaderPropertyBit(3) | shaderPropertyBit(28))) != 0;
-        const bool ibl = (key.properties & shaderPropertyBit(19)) != 0;
-        if (!(key.properties & bit) && (key.customId == 0 ? ibl : (!lights && ibl)))
-            continue;
-        ShaderKey twin = key;
-        twin.properties ^= bit;
-        twins.push_back(twin);
     }
     keys.insert(twins.begin(), twins.end());
 }

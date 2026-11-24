@@ -356,26 +356,6 @@ namespace jasperengine{
         Vector3 getGlobalIlluminationColor() const;
         Vector3 getGlobalIlluminationColorLinear() const;
 
-        // Environment Lighting Source: Color (the global illumination colour) or Gradient (sky,
-        // equator and ground colours, sRGB here, stored linear); the intensity scales both. The
-        // lit variants change with it (they reload)
-        void setAmbientMode(AmbientMode mode);
-        AmbientMode getAmbientMode() const;
-        void setAmbientGradient(Vector3 sky, Vector3 equator, Vector3 ground);
-        void setAmbientSkyColor(Vector3 color);
-        void setAmbientEquatorColor(Vector3 color);
-        void setAmbientGroundColor(Vector3 color);
-        Vector3 getAmbientSkyColor() const;
-        Vector3 getAmbientEquatorColor() const;
-        Vector3 getAmbientGroundColor() const;
-        // the linear colours times the intensity, as the shaders take them; the ambient light a
-        // surface facing worldNormal receives (the colour, or the gradient's
-        // sky * max(y, 0) + equator * (1 - |y|) + ground * max(-y, 0))
-        Vector3 getAmbientLightLinear(Vector3 worldNormal) const;
-        // the ambient averaged over every direction (the colour, or sky / 4 + equator / 2 +
-        // ground / 4): what a shader without normals (particles, frame.ambient) takes
-        Vector3 getAmbientLightAverageLinear() const;
-
         // lights each object is lit by (1..16); the other lights reaching it are folded into
         // its spherical-harmonics ambient
         void setMaxLightsPerObject(int maxLightsPerObject);

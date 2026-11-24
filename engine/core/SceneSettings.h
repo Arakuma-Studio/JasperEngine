@@ -25,14 +25,6 @@ namespace jasperengine{
         AUTO
     };
 
-    // Environment Lighting Source (Unity's Lighting > Environment): COLOR one ambient colour
-    // (globalIllumColor), GRADIENT Unity's trilight: the sky colour from above, the equator's from
-    // the side, the ground's from below. Stored as ints: append only.
-    enum class AmbientMode {
-        COLOR,
-        GRADIENT
-    };
-
     // Shadow quality, uniform-driven (no shader rebuild). Stored as ints: append only.
     // 3D shadows (shadowQuality) pick the quality tier (ShadowTiers.h): AUTO the platform's
     // (project graphics.shadowTier.<platform>), LOW, MEDIUM, HIGH, ULTRA that tier, NONE ("Hard
@@ -475,12 +467,6 @@ namespace jasperengine{
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear
         float globalIllumIntensity = 0.1f;
-        // the gradient's colours (ambientMode GRADIENT), stored linear; globalIllumIntensity
-        // scales them as it does the colour (Unity's defaults)
-        AmbientMode ambientMode = AmbientMode::COLOR;
-        Vector3 ambientSkyColor = Vector3(0.0368895f, 0.0423114f, 0.0544803f);       // sRGB (54, 58, 66)
-        Vector3 ambientEquatorColor = Vector3(0.0122865f, 0.0144438f, 0.0159963f);   // sRGB (29, 32, 34)
-        Vector3 ambientGroundColor = Vector3(0.0036765f, 0.0033465f, 0.0027317f);    // sRGB (12, 11, 9)
 
         // lights evaluated per object (1..16); the rest of the lights reaching it are folded
         // into its spherical-harmonics ambient

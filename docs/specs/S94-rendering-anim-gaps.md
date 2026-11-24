@@ -918,13 +918,13 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
 - **P8 (F49) what draws skinned.** A frame drawn Sliced, or instanced by a Sprite Batch, draws its
   quad (a 9-slice and the instance buffer carry no bone weights). Preview Pose bends the mesh in the
   Skinning Editor only; the scene's pose is the bone GameObjects'.
-- **P3, F15 (gradient ambient).** The SH ambient, `frame.ambient`, Lit's camera block and every
-  variant without `'Agr'` carry the gradient's average over every direction (sky/4 + equator/2 +
-  ground/4); `'Agr'` variants swap that share for the exact gradient (`includes/ambient.glsl`,
-  a block of its own). So shaders without normals (particles), old forks and a build missing an
-  `'Agr'` variant draw a gradient scene with a uniform average instead of no ambient. The built-in
-  Lit takes `'Agr'` only without the sky's IBL (the IBL replaces the scene ambient there). Cooked
-  scene format minor 7 (6 is S92's), MESH bit 55, shader cache v69.
+- **P3, F15 (gradient ambient), AC15, F-PF5.** Not delivered here: S99 (PR #149) implements the
+  same Unity Environment Lighting Source under the same keys (`ambientMode` Color/Gradient,
+  `ambientSkyColor`, `ambientEquatorColor`, `ambientGroundColor`) and lands first, so by the lead's
+  decision this branch dropped its own version (MESH bit 55 `'Agr'`, `includes/ambient.glsl`, the
+  cooked format minor 7, the `AmbientGpu`/`AmbientGradientShader` tests and the
+  `guard_ambient_gradient_setting` eval case) and uses S99's. S99's default colours go through the
+  engine's gamma-2.2 conversion where this branch's were exact sRGB.
 - **P3, F17 (sky after opaques).** No scene-input exception was needed: the scene-colour copy is
   taken after the opaque queue and the sky in both orders. Besides a camera without depth test,
   the sky also stays first under a Video Player's far plane (drawn over it without depth). The

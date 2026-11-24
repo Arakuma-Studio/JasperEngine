@@ -957,10 +957,7 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
     // frame block of the camera's passes is filled by updatePassFrame
     view.fs_lighting.eyePos = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z, 0.0);
     view.fs_lighting.cameraDir = Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, shadowPCFRadius());
-    // (an older fork knows one colour: the gradient's average in Gradient mode)
-    view.fs_lighting.globalIllum = (scene->getAmbientMode() == AmbientMode::GRADIENT)
-        ? Vector4(scene->getAmbientLightAverageLinear(), 1.0f)
-        : Vector4(scene->getGlobalIlluminationColorLinear(), scene->getGlobalIlluminationIntensity());
+    view.fs_lighting.globalIllum = Vector4(scene->getGlobalIlluminationColorLinear(), scene->getGlobalIlluminationIntensity());
     view.fs_lighting.envColor = environmentInfo();
     view.fs_lighting.viewportInfo = lightingViewportInfo(camera);
 }

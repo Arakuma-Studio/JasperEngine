@@ -378,9 +378,8 @@ void main() {
         v_vertexLight = vertexDiffuse(worldPos.xyz / worldPos.w, lightingNormal);
         #ifndef USE_PUNCTUAL
             // VERTEX: the fragment stage has no lights block, so the SH ambient (the scene
-            // ambient and the lights over the cap) comes along; a Gradient scene's gradient is the
-            // fragment stage's (includes/ambient.glsl), which takes the SH's share off
-            v_vertexLight += shAmbientLight(lightingNormal);
+            // ambient and the lights over the cap) comes along
+            v_vertexLight += ambientLight(lightingNormal);
         #endif
     #endif
 

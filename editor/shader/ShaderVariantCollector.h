@@ -95,9 +95,6 @@ namespace jasperengine::editor {
         // point or spot light, and the scene then draws the general variant (a build missing the
         // 'Dlo' one falls back to it, ShaderPool::getFallbackProperties; the reverse cannot)
         static void addDirectionalOnlyTwins(std::set<ShaderKey>& keys);
-        // Each lit MESH variant ('Agr' or not) with its Environment Lighting Source twin: a project
-        // script switching scene.ambientMode draws the other (S94 F15)
-        static void addAmbientGradientTwins(std::set<ShaderKey>& keys);
 
         static void collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                  const std::vector<ShaderVariantContent>& prefabContents,

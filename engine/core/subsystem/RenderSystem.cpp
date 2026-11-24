@@ -2076,15 +2076,8 @@ void RenderSystem::updateSceneLights(){
         }
     }
 
-    // the gradient ambient of the 'Agr' variants (includes/ambient.glsl); the SH ambient, the
-    // frame and Lit's camera block carry its average, which those variants swap for it (S94 F15)
-    ambientGradientBlock.average = Vector4(scene->getAmbientLightAverageLinear(), 0.0f);
-    ambientGradientBlock.sky = Vector4(scene->getAmbientLightLinear(Vector3(0.0f, 1.0f, 0.0f)), 0.0f);
-    ambientGradientBlock.equator = Vector4(scene->getAmbientLightLinear(Vector3(1.0f, 0.0f, 0.0f)), 0.0f);
-    ambientGradientBlock.ground = Vector4(scene->getAmbientLightLinear(Vector3(0.0f, -1.0f, 0.0f)), 0.0f);
-
     // what every mesh's pick depends on
-    const Vector3 ambient = scene->getAmbientLightAverageLinear();
+    const Vector3 ambient = scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity();
     const int cap = std::clamp(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()), 1, MAX_LIGHTS_PER_OBJECT);
     if (restructured || ambient != lightListAmbient || cap != lightListCap){
         lightListEpoch++;
@@ -3540,7 +3533,6 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.lights = hasLights;
     environment.lightCapacity = getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
     environment.directionalLightsOnly = directionalLightsOnly;
-    environment.ambientGradient = scene->getAmbientMode() == AmbientMode::GRADIENT;
     environment.shadows = hasShadows;
     environment.shadowsHQ = shadowHQVariants;
     environment.ibl = hasIBL;
@@ -4511,11 +4503,6 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // whose tiles list the scene's lights as they come)
     if (environment.directionalLightsOnly && inputs.builtinLit && !manifest && (p_punctual || p_vertexLights) && !p_tiledLights)
         variant.properties |= ShaderPool::getDirectionalOnlyProperty();
-    // 'Agr' (S94 F15): a lit variant that takes the scene ambient in a Gradient scene: a library
-    // shader's ambientLight (pixel or vertex lights), the built-in Lit's without the IBL that
-    // replaces it
-    if (environment.ambientGradient && !p_unlit && (manifest ? (p_punctual || p_vertexLights) : !p_ibl))
-        variant.properties |= ShaderPool::getAmbientGradientProperty();
     // Water Excluders and Water Wakes: only for a shader asking for them, in a scene that has them
     if ((manifestRequire & ShaderRequire_WaterExclusion) && environment.waterExclusion)
         variant.properties |= ShaderPool::getWaterExclusionProperty();
@@ -4986,9 +4973,7 @@ void RenderSystem::fillFrameBlock(frame_t& frame, const CameraComponent& camera,
         frame.mainLightColor = Vector4(light.resolvedColor, 1.0f);
     }
 
-    // (the gradient's average in Gradient mode: frame.ambient is the library contract's one
-    // colour, which shaders without normals take)
-    frame.ambient = Vector4(scene->getAmbientLightAverageLinear(), 1.0f);
+    frame.ambient = Vector4(scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity(), 1.0f);
 }
 
 Vector2 RenderSystem::passFrameResolution(const CameraComponent& camera) const{
@@ -7308,9 +7293,6 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             mesh.submeshes[i].slotFSLitFrame = shaderData.getUniformBlockIndexByName("u_fs_litFrame");
             shaderData.getUniformBlockMembers("u_fs_litFrame", mesh.submeshes[i].sizeFSLitFrame);
             mesh.submeshes[i].sizeFSLitFrame = std::min(mesh.submeshes[i].sizeFSLitFrame, (unsigned int)sizeof(lit_frame_block_t));
-            // the gradient ambient ('Agr', includes/ambient.glsl)
-            mesh.submeshes[i].slotVSAmbientGradient = shaderData.getUniformBlockIndexByName("u_vs_ambientGradient");
-            mesh.submeshes[i].slotFSAmbientGradient = shaderData.getUniformBlockIndexByName("u_fs_ambientGradient");
             mesh.submeshes[i].slotFSLighting = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING);
             if (p_ibl){
                 mesh.submeshes[i].slotFSReflectionProbe = shaderData.getUniformBlockIndex(UniformBlockType::FS_REFLECTION_PROBE);
@@ -9555,8 +9537,6 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     extra.lightDataTail = LightDataTail();
     extra.slotFSLitFrame = -1;
     extra.sizeFSLitFrame = 0;
-    extra.slotVSAmbientGradient = -1;
-    extra.slotFSAmbientGradient = -1;
     extra.slotFSLighting = -1;
     if (p_lit){
         extra.slotVSObjectLights = shaderData.getUniformBlockIndexByName("u_vs_objectLights");
@@ -9572,8 +9552,6 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         extra.slotFSLitFrame = shaderData.getUniformBlockIndexByName("u_fs_litFrame");
         shaderData.getUniformBlockMembers("u_fs_litFrame", extra.sizeFSLitFrame);
         extra.sizeFSLitFrame = std::min(extra.sizeFSLitFrame, (unsigned int)sizeof(lit_frame_block_t));
-        extra.slotVSAmbientGradient = shaderData.getUniformBlockIndexByName("u_vs_ambientGradient");
-        extra.slotFSAmbientGradient = shaderData.getUniformBlockIndexByName("u_fs_ambientGradient");
         extra.slotFSLighting = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING);
     }
     extra.slotFSLighting2D = (properties & (1u << 22)) ? shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING2D) : -1;
@@ -9685,10 +9663,6 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
             render.applyUniformBlock(extra.slotFSLitFrame, extra.sizeFSLitFrame,
                 (properties & ShaderPool::getPostColorProperty(ShaderType::MESH)) ? (void*)&litFrame : (void*)&litFrame.lit);
         }
-        if (extra.slotVSAmbientGradient != -1)
-            render.applyUniformBlock(extra.slotVSAmbientGradient, sizeof(ambient_gradient_t), &ambientGradientBlock);
-        if (extra.slotFSAmbientGradient != -1)
-            render.applyUniformBlock(extra.slotFSAmbientGradient, sizeof(ambient_gradient_t), &ambientGradientBlock);
         if (extra.slotFSLighting != -1){
             buildLegacyLighting(mesh, properties, legacyLightingBlock);
             render.applyUniformBlock(extra.slotFSLighting, sizeof(fs_lighting_t), &legacyLightingBlock);
@@ -11169,11 +11143,6 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.applyUniformBlock(mesh.submeshes[i].slotFSLitFrame, mesh.submeshes[i].sizeFSLitFrame,
                         (mesh.submeshes[i].shaderProperties & ShaderPool::getPostColorProperty(ShaderType::MESH)) ? (void*)&litFrame : (void*)&litFrame.lit);
                 }
-                // the gradient ambient ('Agr' variants only declare it)
-                if (mesh.submeshes[i].slotVSAmbientGradient != -1)
-                    render.applyUniformBlock(mesh.submeshes[i].slotVSAmbientGradient, sizeof(ambient_gradient_t), &ambientGradientBlock);
-                if (mesh.submeshes[i].slotFSAmbientGradient != -1)
-                    render.applyUniformBlock(mesh.submeshes[i].slotFSAmbientGradient, sizeof(ambient_gradient_t), &ambientGradientBlock);
                 if (mesh.submeshes[i].slotFSLighting != -1){
                     buildLegacyLighting(mesh, mesh.submeshes[i].shaderProperties, legacyLightingBlock);
                     render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), &legacyLightingBlock);
@@ -13808,8 +13777,6 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSObjectLights = -1;
         submesh.slotFSObjectLights = -1;
         submesh.slotFSLitFrame = -1;
-        submesh.slotVSAmbientGradient = -1;
-        submesh.slotFSAmbientGradient = -1;
         submesh.slotFSReflectionProbe = -1;
         submesh.slotVSSprite = -1;
         submesh.slotVSShadows = -1;
@@ -18389,11 +18356,6 @@ void RenderSystem::update(double dt){
         loadedDirectionalLightsOnly = directionalLightsOnly;
     }else if (directionalLightsOnly != loadedDirectionalLightsOnly){
         loadedDirectionalLightsOnly = directionalLightsOnly;
-        needReloadMeshVariants();
-    }
-    // so is the Environment Lighting Source ('Agr', S94 F15)
-    if (scene->getAmbientMode() != loadedAmbientMode){
-        loadedAmbientMode = scene->getAmbientMode();
         needReloadMeshVariants();
     }
     // the Lit Quality and the lobe tier are part of the built-in Lit's variants (builtin:lit)
