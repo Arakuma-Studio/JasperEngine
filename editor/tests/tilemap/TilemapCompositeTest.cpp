@@ -48,12 +48,12 @@ namespace {
 
     // one texture page holding `page` cut into tiles of `tileW` x `tileH`, one per column;
     // tiles get ids 0, 1, ... left to right
-    struct Fixture {
+    struct TilemapCompositeFixture {
         PixelImage page;
         TilesetRuntime runtime;
         TilesetPagePixels pixels;
 
-        Fixture(const std::vector<std::string>& rows, int tileW, int tileH, int tiles):
+        TilemapCompositeFixture(const std::vector<std::string>& rows, int tileW, int tileH, int tiles):
             page(pageOf(rows)),
             pixels([this](const std::string&, std::string*) -> std::optional<PixelImage> { return page; }) {
             auto data = std::make_shared<TilesetData>();
@@ -79,7 +79,7 @@ namespace {
         }
     };
 
-    CompositeParams baseParams(const TileCells& cells, const Fixture& fixture, TileGridLayout layout, int cellW, int cellH) {
+    CompositeParams baseParams(const TileCells& cells, const TilemapCompositeFixture& fixture, TileGridLayout layout, int cellW, int cellH) {
         CompositeParams params;
         params.cells = &cells;
         params.tileset = &fixture.runtime;
@@ -89,7 +89,7 @@ namespace {
         return params;
     }
 
-    std::vector<std::string> compositeRows(CompositeParams params, Fixture& fixture, int& originX, int& originY) {
+    std::vector<std::string> compositeRows(CompositeParams params, TilemapCompositeFixture& fixture, int& originX, int& originY) {
         CompositeResult result;
         PixelProblem error;
         EXPECT_TRUE(compositeLayer(params, fixture.pixels, result, error)) << error.message;
@@ -119,7 +119,7 @@ TEST(TilemapComposite, FlipsAndTransposeFollowTiledsOrder) {
         {TILE_TRANSPOSE | TILE_FLIP_X | TILE_FLIP_Y, {"DB", "CA"}},
     };
     for (const Case& c : cases) {
-        Fixture fixture({"AB", "CD"}, 2, 2, 1);
+        TilemapCompositeFixture fixture({"AB", "CD"}, 2, 2, 1);
         TileCells cells;
         cells.setTile(CellCoord{0, 0}, 0, c.flags);
         CompositeParams params = baseParams(cells, fixture, TileGridLayout::Rectangle, 2, 2);
@@ -130,7 +130,7 @@ TEST(TilemapComposite, FlipsAndTransposeFollowTiledsOrder) {
 }
 
 TEST(TilemapComposite, RectangleAnchorsBottomLeftAndCoversEmptyCells) {
-    Fixture fixture({"AB", "CD"}, 2, 2, 1);
+    TilemapCompositeFixture fixture({"AB", "CD"}, 2, 2, 1);
     TileCells cells;
     cells.setTile(CellCoord{1, 0}, 0);
     CompositeParams params = baseParams(cells, fixture, TileGridLayout::Rectangle, 2, 2);
@@ -147,7 +147,7 @@ TEST(TilemapComposite, RectangleAnchorsBottomLeftAndCoversEmptyCells) {
 // the row's pixels where its image is transparent
 TEST(TilemapComposite, TallTileOverlapsTheRowAboveInThePaintersOrder) {
     // tile 0: 2x3 with a transparent top row; tile 1: 2x3 fully opaque with one letter
-    Fixture fixture({"..xx", "AByy", "CDyy"}, 2, 3, 2);
+    TilemapCompositeFixture fixture({"..xx", "AByy", "CDyy"}, 2, 3, 2);
     TileCells cells;
     cells.setTile(CellCoord{0, 0}, 0);
     cells.setTile(CellCoord{0, 1}, 1);
@@ -162,7 +162,7 @@ TEST(TilemapComposite, TallTileOverlapsTheRowAboveInThePaintersOrder) {
 }
 
 TEST(TilemapComposite, IsometricAnchorsTheImageAtTheBottomVertexCentre) {
-    Fixture fixture({"AB", "CD"}, 2, 2, 1);
+    TilemapCompositeFixture fixture({"AB", "CD"}, 2, 2, 1);
     TileCells cells;
     cells.setTile(CellCoord{0, 0}, 0);
     CompositeParams params = baseParams(cells, fixture, TileGridLayout::Isometric, 4, 2);
@@ -175,7 +175,7 @@ TEST(TilemapComposite, IsometricAnchorsTheImageAtTheBottomVertexCentre) {
 }
 
 TEST(TilemapComposite, TileOffsetAndTileAnchorMoveTheImage) {
-    Fixture fixture({"AB", "CD"}, 2, 2, 1);
+    TilemapCompositeFixture fixture({"AB", "CD"}, 2, 2, 1);
     fixture.runtime.tiles[0].offsetX = 1;
     fixture.runtime.tiles[0].offsetY = 1;
     TileCells cells;
@@ -188,7 +188,7 @@ TEST(TilemapComposite, TileOffsetAndTileAnchorMoveTheImage) {
 }
 
 TEST(TilemapComposite, DualGridDrawsHalfACellDownLeft) {
-    Fixture fixture({"AB", "CD"}, 2, 2, 1);
+    TilemapCompositeFixture fixture({"AB", "CD"}, 2, 2, 1);
     TileCells cells;
     cells.setTile(CellCoord{0, 0}, 0);
     CompositeParams params = baseParams(cells, fixture, TileGridLayout::Rectangle, 2, 2);
@@ -201,7 +201,7 @@ TEST(TilemapComposite, DualGridDrawsHalfACellDownLeft) {
 }
 
 TEST(TilemapComposite, ScaleRepeatsPixels) {
-    Fixture fixture({"AB", "CD"}, 2, 2, 1);
+    TilemapCompositeFixture fixture({"AB", "CD"}, 2, 2, 1);
     TileCells cells;
     cells.setTile(CellCoord{0, 0}, 0);
     CompositeParams params = baseParams(cells, fixture, TileGridLayout::Rectangle, 2, 2);
@@ -212,7 +212,7 @@ TEST(TilemapComposite, ScaleRepeatsPixels) {
 }
 
 TEST(TilemapComposite, SameArgumentsGiveTheSameBytes) {
-    Fixture fixture({"AB", "CD"}, 2, 2, 1);
+    TilemapCompositeFixture fixture({"AB", "CD"}, 2, 2, 1);
     TileCells cells;
     for (int y = 0; y < 4; y++) {
         for (int x = 0; x < 4; x++) cells.setTile(CellCoord{x, y}, 0, x % 2 ? TILE_FLIP_X : TILE_FLIP_Y);
@@ -228,7 +228,7 @@ TEST(TilemapComposite, SameArgumentsGiveTheSameBytes) {
 }
 
 TEST(TilemapComposite, MissingTilesAreCounted) {
-    Fixture fixture({"AB", "CD"}, 2, 2, 1);
+    TilemapCompositeFixture fixture({"AB", "CD"}, 2, 2, 1);
     TileCells cells;
     cells.setTile(CellCoord{0, 0}, 9);
     CompositeParams params = baseParams(cells, fixture, TileGridLayout::Rectangle, 2, 2);
@@ -241,7 +241,7 @@ TEST(TilemapComposite, MissingTilesAreCounted) {
 }
 
 TEST(TilemapComposite, ScaleOutsideTheRangeIsTyped) {
-    Fixture fixture({"AB", "CD"}, 2, 2, 1);
+    TilemapCompositeFixture fixture({"AB", "CD"}, 2, 2, 1);
     TileCells cells;
     CompositeParams params = baseParams(cells, fixture, TileGridLayout::Rectangle, 2, 2);
     params.scale = 9;
@@ -255,7 +255,7 @@ TEST(TilemapComposite, ScaleOutsideTheRangeIsTyped) {
 // R76: the image is capped by its area, not only per side: 900 x 900 cells of 5-pixel tiles are
 // 4,500 pixels a side (under the 65,535 per side) but 20 megapixels; the error names the fix
 TEST(TilemapComposite, ImagePastThePixelLimitIsTyped) {
-    Fixture fixture({"AAAAA", "AAAAA", "AAAAA", "AAAAA", "AAAAA"}, 5, 5, 1);
+    TilemapCompositeFixture fixture({"AAAAA", "AAAAA", "AAAAA", "AAAAA", "AAAAA"}, 5, 5, 1);
     TileCells cells;
     cells.setTile(CellCoord{0, 0}, 0);
     CompositeParams params = baseParams(cells, fixture, TileGridLayout::Rectangle, 5, 5);

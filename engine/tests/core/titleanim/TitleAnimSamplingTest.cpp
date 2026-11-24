@@ -21,7 +21,7 @@ using namespace jasperengine::titleanim;
 
 namespace {
 
-    ClipKey key(float time, std::vector<float> value, EaseType ease = EaseType::LINEAR){
+    ClipKey titleAnimSamplingKey(float time, std::vector<float> value, EaseType ease = EaseType::LINEAR){
         ClipKey k;
         k.time = time;
         k.value = std::move(value);
@@ -49,7 +49,7 @@ namespace {
         return t;
     }
 
-    CompiledTitleAnimation compile(const TitleAnimation& a){
+    CompiledTitleAnimation titleAnimSamplingCompile(const TitleAnimation& a){
         CompiledTitleAnimation c;
         compileTitleOnly(a, c, nullptr);
         return c;
@@ -72,7 +72,7 @@ TEST(TitleAnimSamplingTest, MatchesClipSampler){
         for (size_t k = 0; k < count; k++){
             std::vector<float> v(width);
             for (float& x : v) x = value(random);
-            ClipKey ck = key(time, v, tangents ? EaseType::LINEAR : (EaseType)ease(random));
+            ClipKey ck = titleAnimSamplingKey(time, v, tangents ? EaseType::LINEAR : (EaseType)ease(random));
             if (tangents){
                 ck.inTangent.resize(width);
                 ck.outTangent.resize(width);
@@ -159,7 +159,7 @@ TEST(TitleAnimSamplingTest, RelativeCombine){
     combineWithRest(TrackCombine::Replace, sample, rest, 2, out);
     EXPECT_DOUBLE_EQ(out[0], 2.0);
     // a whole layer field track (the module's): a relative opacity multiplies, then clamps
-    CompiledTitleTrack opacity = numericTrack({key(0, {2.0f})}, 1);
+    CompiledTitleTrack opacity = numericTrack({titleAnimSamplingKey(0, {2.0f})}, 1);
     opacity.combine = TrackCombine::Multiply;
     opacity.rest = {0.8f};
     opacity.min = 0.0;
@@ -188,7 +188,7 @@ TEST(TitleAnimSamplingTest, TitleFieldsIdentityRest){
     anim.tracks.push_back(titleTrack("transform.position", {{0.0f, {5.0f, -3.0f}}}, true));
     anim.tracks.push_back(titleTrack("opacity", {{0.0f, {0.5f}}}, false));
     anim.tracks.push_back(titleTrack("flash.amount", {{0.0f, {0.25f}}}, true));
-    CompiledTitleAnimation c = compile(anim);
+    CompiledTitleAnimation c = titleAnimSamplingCompile(anim);
     ASSERT_EQ(c.tracks.size(), 4u);
     TitleAnimPose pose;
     pose.size(c);
@@ -208,7 +208,7 @@ TEST(TitleAnimSamplingTest, TitleFieldsIdentityRest){
     TitleAnimation live;
     live.name = "Sweep";
     live.tracks.push_back(titleTrack("live.sweep_angle", {{0.0f, {10.0f}}}, true));
-    CompiledTitleAnimation lc = compile(live);
+    CompiledTitleAnimation lc = titleAnimSamplingCompile(live);
     TitleAnimPose lp;
     lp.size(lc);
     sampleAnimation(lc, 0.0, lp);

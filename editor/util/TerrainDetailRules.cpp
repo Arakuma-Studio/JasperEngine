@@ -15,7 +15,7 @@ using namespace jasperengine;
 
 namespace {
 
-std::string number(float value) {
+std::string ruleNumberText(float value) {
     std::ostringstream text;
     text << value;
     return text.str();
@@ -75,14 +75,14 @@ std::string editor::terraindetail::checkDetailLayer(const TerrainFoliageLayer& l
     for (const DetailRange& range : detailRanges()) {
         const float value = layer.*range.field;
         if (!std::isfinite(value) || value < range.min || value > range.max) {
-            return std::string(range.key) + " " + number(value) + " is outside " + number(range.min) + "-" + number(range.max) +
+            return std::string(range.key) + " " + ruleNumberText(value) + " is outside " + ruleNumberText(range.min) + "-" + ruleNumberText(range.max) +
                    " (" + range.meaning + ").";
         }
     }
     for (const DetailPair& pair : kPairs) {
         if (layer.*pair.min > layer.*pair.max) {
-            return std::string(pair.minKey) + " " + number(layer.*pair.min) + " is above " + pair.maxKey + " " +
-                   number(layer.*pair.max) + ".";
+            return std::string(pair.minKey) + " " + ruleNumberText(layer.*pair.min) + " is above " + pair.maxKey + " " +
+                   ruleNumberText(layer.*pair.max) + ".";
         }
     }
     const std::string& mesh = layer.meshPath;
@@ -100,7 +100,7 @@ std::vector<std::string> editor::terraindetail::clampDetailLayer(TerrainFoliageL
         const float fixed = std::isfinite(value) ? std::clamp(value, range.min, range.max) : range.min;
         if (fixed != before || !std::isfinite(before)) {
             value = fixed;
-            changed.push_back(std::string(range.key) + " " + number(before) + " -> " + number(fixed));
+            changed.push_back(std::string(range.key) + " " + ruleNumberText(before) + " -> " + ruleNumberText(fixed));
         }
     }
     for (const DetailPair& pair : kPairs) {

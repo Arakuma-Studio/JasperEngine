@@ -42,7 +42,7 @@ namespace {
         ASSERT_TRUE(writePng(path.string(), rgba, size, size));
     }
 
-    void writeText(const fs::path& path, const std::string& text) {
+    void titleBakedLanguageWriteText(const fs::path& path, const std::string& text) {
         std::ofstream out(path, std::ios::binary);
         out << text;
     }
@@ -97,10 +97,10 @@ TEST_F(TitleBakedLanguageGpu, SwitchShowsThePreviousLanguageUntilTheNewSetIsLoad
     writeSolidPng(titles / "logo.titleart.png", EN);
     writeSolidPng(titles / "logo.titleart.de.png", DE);
     writeSolidPng(titles / "logo.titleart.ja.png", JA);
-    writeText(titles / "logo.titleart", "{}");
-    writeText(titles / "logo.titleart.bake.json", sidecar("logo.titleart.png", R"({"source": "en", "sets": {"de": "logo.titleart.de.bake.json", "ja": "logo.titleart.ja.bake.json"}})"));
-    writeText(titles / "logo.titleart.de.bake.json", sidecar("logo.titleart.de.png"));
-    writeText(titles / "logo.titleart.ja.bake.json", sidecar("logo.titleart.ja.png"));
+    titleBakedLanguageWriteText(titles / "logo.titleart", "{}");
+    titleBakedLanguageWriteText(titles / "logo.titleart.bake.json", sidecar("logo.titleart.png", R"({"source": "en", "sets": {"de": "logo.titleart.de.bake.json", "ja": "logo.titleart.ja.bake.json"}})"));
+    titleBakedLanguageWriteText(titles / "logo.titleart.de.bake.json", sidecar("logo.titleart.de.png"));
+    titleBakedLanguageWriteText(titles / "logo.titleart.ja.bake.json", sidecar("logo.titleart.ja.png"));
 
     Image logo(&scene);
     logo.setAnchorPreset(AnchorPreset::CENTER);

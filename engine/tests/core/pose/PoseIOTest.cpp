@@ -28,9 +28,9 @@ namespace {
         return std::string("{") + HEADER + (body.empty() ? "" : ", " + body) + "}";
     }
 
-    using Parsed = posetest::ParsedPose;
+    using PoseIOParsed = posetest::ParsedPose;
 
-    Parsed parse(const std::string& text){
+    PoseIOParsed poseIOParse(const std::string& text){
         return posetest::parsePose(text);
     }
 
@@ -216,7 +216,7 @@ TEST(PoseIO, TinyAnglesOmittedOnWrite){
     EXPECT_NE(text.find("\"neck.bend\": 0.0005"), std::string::npos);
     EXPECT_NE(text.find("\"neck.side\": -0.0005"), std::string::npos);
 
-    Parsed back = parse(text);
+    PoseIOParsed back = poseIOParse(text);
     ASSERT_TRUE(back.ok) << back.error;
     EXPECT_FLOAT_EQ(back.data.poses[0].body.angles[dof("head.bend")], 0.0f);
     EXPECT_FLOAT_EQ(back.data.poses[0].body.angles[dof("neck.bend")], 0.0005f);
@@ -253,7 +253,7 @@ TEST(PoseIO, AllDofsRoundTripAndLinesStayShort){
     while (std::getline(lines, line)){
         EXPECT_LE(line.size(), 130u) << line;
     }
-    Parsed back = parse(text);
+    PoseIOParsed back = poseIOParse(text);
     ASSERT_TRUE(back.ok) << back.error;
     EXPECT_TRUE(back.warnings.empty()) << back.warnings[0];
     expectDataEq(data, back.data);
@@ -266,7 +266,7 @@ TEST(PoseIO, AllDofsRoundTripAndLinesStayShort){
 TEST(PoseIO, EveryFieldRoundTrips){
     const PoseAnimationData data = fullData();
     const std::string text = writePoseAnimation(data);
-    Parsed back = parse(text);
+    PoseIOParsed back = poseIOParse(text);
     ASSERT_TRUE(back.ok) << back.error;
     EXPECT_TRUE(back.warnings.empty()) << (back.warnings.empty() ? "" : back.warnings[0]);
     expectDataEq(data, back.data);
@@ -282,7 +282,7 @@ TEST(PoseIO, RoundTripOfUnroundedValuesSettlesAfterOneWrite){
     key.body.offset = Vector3(0.1234567f, 0, 0.7654321f);
     data.poses.push_back(key);
     const std::string first = writePoseAnimation(data);
-    Parsed back = parse(first);
+    PoseIOParsed back = poseIOParse(first);
     ASSERT_TRUE(back.ok) << back.error;
     EXPECT_EQ(writePoseAnimation(back.data), first);
     EXPECT_NEAR(back.data.poses[0].body.angles[dof("head.bend")], 12.34567f, 0.00006f);
@@ -310,7 +310,7 @@ TEST(PoseIO, ParsesTheSpecExample){
      "angles": {"left_upper_arm.raise": 8, "right_upper_leg.forward": 25}}
   ]
 })";
-    Parsed parsed = parse(text);
+    PoseIOParsed parsed = poseIOParse(text);
     ASSERT_TRUE(parsed.ok) << parsed.error;
     EXPECT_TRUE(parsed.warnings.empty());
     EXPECT_EQ(parsed.data.previewModel, "models/hero.gltf");
@@ -321,13 +321,13 @@ TEST(PoseIO, ParsesTheSpecExample){
     EXPECT_FLOAT_EQ(key.body.offset.z, 0.03f);
     EXPECT_FLOAT_EQ(key.body.angles[dof("left_upper_arm.raise")], 8.0f);
     EXPECT_FLOAT_EQ(key.body.angles[dof("right_upper_leg.forward")], 25.0f);
-    expectDataEq(parsed.data, parse(writePoseAnimation(parsed.data)).data);
+    expectDataEq(parsed.data, poseIOParse(writePoseAnimation(parsed.data)).data);
 }
 
 // ---- defaults for missing keys ----
 
 TEST(PoseIO, MissingKeysKeepTheDefaults){
-    Parsed parsed = parse(withHeader(""));
+    PoseIOParsed parsed = poseIOParse(withHeader(""));
     ASSERT_TRUE(parsed.ok) << parsed.error;
     EXPECT_TRUE(parsed.warnings.empty());
     expectDataEq(parsed.data, PoseAnimationData());
@@ -335,7 +335,7 @@ TEST(PoseIO, MissingKeysKeepTheDefaults){
 }
 
 TEST(PoseIO, PartialBlocksKeepTheRestOfTheDefaults){
-    Parsed parsed = parse(withHeader(
+    PoseIOParsed parsed = poseIOParse(withHeader(
         "\"feel\": {\"transition\": {\"duration\": 0.3}, \"weights\": {\"legs\": 1}},"
         "\"humanize\": {\"enabled\": true},"
         "\"poses\": [{\"name\": \"A\", \"transition\": {\"curve\": \"linear\"}}, {}]"));
@@ -364,7 +364,7 @@ TEST(PoseIO, PartialBlocksKeepTheRestOfTheDefaults){
 }
 
 TEST(PoseIO, TransitionNullVersusObject){
-    Parsed parsed = parse(withHeader(
+    PoseIOParsed parsed = poseIOParse(withHeader(
         "\"poses\": [{\"transition\": null}, {\"transition\": {}}, "
         "{\"transition\": {\"curve\": \"smooth\", \"duration\": 0.5, \"overshoot\": 0.1, \"anticipation\": 0.2}}, {}]"));
     ASSERT_TRUE(parsed.ok) << parsed.error;
@@ -377,7 +377,7 @@ TEST(PoseIO, TransitionNullVersusObject){
 
     // the write keeps the difference: null stays null, an object stays an object
     const std::string text = writePoseAnimation(parsed.data);
-    Parsed back = parse(text);
+    PoseIOParsed back = poseIOParse(text);
     ASSERT_TRUE(back.ok);
     EXPECT_FALSE(back.data.poses[0].customTransition);
     EXPECT_TRUE(back.data.poses[1].customTransition);
@@ -388,7 +388,7 @@ TEST(PoseIO, TransitionNullVersusObject){
     EXPECT_FLOAT_EQ(transitionOut(parsed.data, 0).duration, 0.9f);
     EXPECT_FLOAT_EQ(transitionOut(parsed.data, 2).duration, 0.5f);
 
-    parsed = parse(withHeader("\"poses\": [{\"transition\": 5}]"));
+    parsed = poseIOParse(withHeader("\"poses\": [{\"transition\": 5}]"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_FALSE(parsed.data.poses[0].customTransition);
     EXPECT_TRUE(anyWarningContains(parsed.warnings, "poses[0].transition"));
@@ -396,7 +396,7 @@ TEST(PoseIO, TransitionNullVersusObject){
 
 TEST(PoseIO, CustomTransitionMissingFieldsTakeTheTransitionDefaults){
     // not the animation's transition: feel.transition.duration 0.3 does not leak into the pose
-    Parsed parsed = parse(withHeader(
+    PoseIOParsed parsed = poseIOParse(withHeader(
         "\"feel\": {\"transition\": {\"curve\": \"linear\", \"duration\": 0.3, \"overshoot\": 0.5}}, "
         "\"poses\": [{\"transition\": {\"anticipation\": 0.2}}]"));
     ASSERT_TRUE(parsed.ok) << parsed.error;
@@ -410,29 +410,29 @@ TEST(PoseIO, CustomTransitionMissingFieldsTakeTheTransitionDefaults){
 // ---- failures ----
 
 TEST(PoseIO, BadFormatFails){
-    EXPECT_FALSE(parse("{\"format\": \"other\", \"version\": 1}").ok);
-    EXPECT_FALSE(parse("{\"version\": 1}").ok);
-    EXPECT_FALSE(parse("{\"format\": 5, \"version\": 1}").ok);
-    Parsed parsed = parse("{\"format\": \"jasperengine.humanoid\", \"version\": 1}");
+    EXPECT_FALSE(poseIOParse("{\"format\": \"other\", \"version\": 1}").ok);
+    EXPECT_FALSE(poseIOParse("{\"version\": 1}").ok);
+    EXPECT_FALSE(poseIOParse("{\"format\": 5, \"version\": 1}").ok);
+    PoseIOParsed parsed = poseIOParse("{\"format\": \"jasperengine.humanoid\", \"version\": 1}");
     EXPECT_FALSE(parsed.ok);
     EXPECT_NE(parsed.error.find("format"), std::string::npos) << parsed.error;
 }
 
 TEST(PoseIO, NewerVersionFails){
-    Parsed parsed = parse("{\"format\": \"jasperengine.poseanim\", \"version\": 2}");
+    PoseIOParsed parsed = poseIOParse("{\"format\": \"jasperengine.poseanim\", \"version\": 2}");
     EXPECT_FALSE(parsed.ok);
     EXPECT_NE(parsed.error.find("version"), std::string::npos) << parsed.error;
-    EXPECT_FALSE(parse("{\"format\": \"jasperengine.poseanim\", \"version\": 99, \"poses\": []}").ok);
-    EXPECT_FALSE(parse("{\"format\": \"jasperengine.poseanim\", \"version\": 0}").ok);
-    EXPECT_FALSE(parse("{\"format\": \"jasperengine.poseanim\", \"version\": \"1\"}").ok);
-    EXPECT_TRUE(parse("{\"format\": \"jasperengine.poseanim\", \"version\": 1}").ok);
+    EXPECT_FALSE(poseIOParse("{\"format\": \"jasperengine.poseanim\", \"version\": 99, \"poses\": []}").ok);
+    EXPECT_FALSE(poseIOParse("{\"format\": \"jasperengine.poseanim\", \"version\": 0}").ok);
+    EXPECT_FALSE(poseIOParse("{\"format\": \"jasperengine.poseanim\", \"version\": \"1\"}").ok);
+    EXPECT_TRUE(poseIOParse("{\"format\": \"jasperengine.poseanim\", \"version\": 1}").ok);
 }
 
 TEST(PoseIO, NotJsonFails){
-    EXPECT_FALSE(parse("").ok);
-    EXPECT_FALSE(parse("not json").ok);
-    EXPECT_FALSE(parse("[1, 2]").ok);
-    EXPECT_FALSE(parse("{\"format\": \"jasperengine.poseanim\", \"version\": 1").ok);   // truncated
+    EXPECT_FALSE(poseIOParse("").ok);
+    EXPECT_FALSE(poseIOParse("not json").ok);
+    EXPECT_FALSE(poseIOParse("[1, 2]").ok);
+    EXPECT_FALSE(poseIOParse("{\"format\": \"jasperengine.poseanim\", \"version\": 1").ok);   // truncated
     std::string error;
     PoseAnimationData data;
     std::vector<std::string> warnings;
@@ -444,7 +444,7 @@ TEST(PoseIO, NotJsonFails){
 // ---- warnings, ignored content ----
 
 TEST(PoseIO, UnknownDofAndKeysWarn){
-    Parsed parsed = parse(withHeader(
+    PoseIOParsed parsed = poseIOParse(withHeader(
         "\"mystery\": 1, \"feel\": {\"wobble\": 2}, "
         "\"poses\": [{\"name\": \"A\", \"colour\": \"red\", "
         "\"angles\": {\"left_upper_arm.raise\": 10, \"left_upper_arm.wobble\": 5, \"tail.bend\": 1}}]"));
@@ -465,7 +465,7 @@ TEST(PoseIO, UnknownDofAndKeysWarn){
 }
 
 TEST(PoseIO, WronglyTypedValuesWarnAndKeepTheDefault){
-    Parsed parsed = parse(withHeader(
+    PoseIOParsed parsed = poseIOParse(withHeader(
         "\"loop\": \"yes\", \"frame_rate\": true, \"preview_model\": 5, \"feel\": 3, "
         "\"humanize\": {\"seed\": \"x\", \"enabled\": 1}, "
         "\"poses\": [{\"hold\": \"long\", \"grounded\": 0, \"name\": 4, \"angles\": {\"head.bend\": \"a\"}, "
@@ -493,14 +493,14 @@ TEST(PoseIO, WronglyTypedValuesWarnAndKeepTheDefault){
     EXPECT_FLOAT_EQ(parsed.data.poses[0].hold, 0.1f);
     EXPECT_TRUE(parsed.data.poses[0].grounded);
 
-    parsed = parse(withHeader("\"feel\": {\"transition\": {\"curve\": \"bouncy\"}}"));
+    parsed = poseIOParse(withHeader("\"feel\": {\"transition\": {\"curve\": \"bouncy\"}}"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_TRUE(anyWarningContains(parsed.warnings, "feel.transition.curve"));
     EXPECT_EQ(parsed.data.settings.transition.curve, TransitionCurve::Spring);
 }
 
 TEST(PoseIO, MissingVersionIsAWarning){
-    Parsed parsed = parse("{\"format\": \"jasperengine.poseanim\"}");
+    PoseIOParsed parsed = poseIOParse("{\"format\": \"jasperengine.poseanim\"}");
     ASSERT_TRUE(parsed.ok);
     EXPECT_TRUE(anyWarningContains(parsed.warnings, "version"));
 }
@@ -508,7 +508,7 @@ TEST(PoseIO, MissingVersionIsAWarning){
 // ---- clamping ----
 
 TEST(PoseIO, OutOfRangeValuesAreClampedWithWarnings){
-    Parsed parsed = parse(withHeader(
+    PoseIOParsed parsed = poseIOParse(withHeader(
         "\"frame_rate\": 500, "
         "\"feel\": {\"transition\": {\"duration\": 0, \"overshoot\": 3, \"anticipation\": -1}, "
         "\"step_rate\": 99, \"overlap\": 1, \"looseness\": -2, \"weights\": {\"spine\": 5, \"legs\": -1}}, "
@@ -555,14 +555,14 @@ TEST(PoseIO, OutOfRangeValuesAreClampedWithWarnings){
     EXPECT_EQ(parsed.warnings.size(), 21u);   // one per clamped field, no duplicates
 
     // the clamped data is stable: writing and parsing again warns about nothing
-    Parsed again = parse(writePoseAnimation(parsed.data));
+    PoseIOParsed again = poseIOParse(writePoseAnimation(parsed.data));
     ASSERT_TRUE(again.ok);
     EXPECT_TRUE(again.warnings.empty());
     expectDataEq(parsed.data, again.data);
 }
 
 TEST(PoseIO, InRangeBoundariesAreUntouched){
-    Parsed parsed = parse(withHeader(
+    PoseIOParsed parsed = poseIOParse(withHeader(
         "\"frame_rate\": 12, \"feel\": {\"transition\": {\"duration\": 1.0, \"overshoot\": 0.9, \"anticipation\": 0.5}, "
         "\"step_rate\": 30, \"overlap\": 0.3, \"looseness\": 1, \"weights\": {\"spine\": 2, \"head\": 0}}, "
         "\"humanize\": {\"seed\": 2147483647, \"life\": 5}, "
@@ -573,37 +573,37 @@ TEST(PoseIO, InRangeBoundariesAreUntouched){
 }
 
 TEST(PoseIO, FrameRateIsRoundedToAWholeNumber){
-    Parsed parsed = parse(withHeader("\"frame_rate\": 30.4"));
+    PoseIOParsed parsed = poseIOParse(withHeader("\"frame_rate\": 30.4"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(parsed.data.settings.frameRate, 30);
     EXPECT_EQ(parsed.warnings, std::vector<std::string>({"frame_rate: 30.4 is not a whole number, rounded"}));
 
     // out of range: the range clamp is the only report
-    parsed = parse(withHeader("\"frame_rate\": 500"));
+    parsed = poseIOParse(withHeader("\"frame_rate\": 500"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(parsed.data.settings.frameRate, 120);
     EXPECT_EQ(parsed.warnings, std::vector<std::string>({"out of range, clamped: frame_rate: 500 -> 120"}));
-    parsed = parse(withHeader("\"frame_rate\": 1e12"));
+    parsed = poseIOParse(withHeader("\"frame_rate\": 1e12"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(parsed.data.settings.frameRate, 120);
     EXPECT_EQ(parsed.warnings.size(), 1u);
-    parsed = parse(withHeader("\"frame_rate\": -5"));
+    parsed = poseIOParse(withHeader("\"frame_rate\": -5"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(parsed.data.settings.frameRate, 12);
     EXPECT_EQ(parsed.warnings, std::vector<std::string>({"out of range, clamped: frame_rate: -5 -> 12"}));
 
-    parsed = parse(withHeader("\"humanize\": {\"seed\": -3}"));
+    parsed = poseIOParse(withHeader("\"humanize\": {\"seed\": -3}"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(parsed.data.settings.humanize.seed, 0u);
     EXPECT_EQ(parsed.warnings, std::vector<std::string>({"out of range, clamped: humanize.seed: -3 -> 0"}));
-    parsed = parse(withHeader("\"humanize\": {\"seed\": 4000000000}"));
+    parsed = poseIOParse(withHeader("\"humanize\": {\"seed\": 4000000000}"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(parsed.data.settings.humanize.seed, 2147483647u);
     EXPECT_EQ(parsed.warnings, std::vector<std::string>({"out of range, clamped: humanize.seed: 4e+09 -> 2147483647"}));
 }
 
 TEST(PoseIO, HugeNumbersDoNotOverflowTheFloatCast){
-    Parsed parsed = parse(withHeader(
+    PoseIOParsed parsed = poseIOParse(withHeader(
         "\"feel\": {\"overlap\": 1e300, \"looseness\": -1e300}, "
         "\"poses\": [{\"hold\": 1e300, \"lift\": -1e300, \"offset\": {\"left\": 1e39, \"forward\": -1e39}, "
         "\"angles\": {\"head.bend\": 1e300, \"head.side\": -1e300}}]"));
@@ -622,11 +622,11 @@ TEST(PoseIO, HugeNumbersDoNotOverflowTheFloatCast){
         EXPECT_LE(angle, 180.0f) << name;
     }
     EXPECT_TRUE(anyWarningContains(parsed.warnings, "poses[0].hold: 3.40282e+38 -> 5"));
-    EXPECT_TRUE(parse(writePoseAnimation(parsed.data)).warnings.empty());
+    EXPECT_TRUE(poseIOParse(writePoseAnimation(parsed.data)).warnings.empty());
 }
 
 TEST(PoseIO, AnglesWrapToMinus180Plus180){
-    Parsed parsed = parse(withHeader(
+    PoseIOParsed parsed = poseIOParse(withHeader(
         "\"poses\": [{\"angles\": {\"head.bend\": 190, \"head.side\": -190, \"head.twist\": 540, "
         "\"neck.bend\": -180, \"neck.side\": 180, \"neck.twist\": 360, \"spine.bend\": -720.5, "
         "\"spine.side\": 179.5}}]"));
@@ -661,7 +661,7 @@ TEST(PoseIO, AnglesRoundingToMinus180WriteAs180){
     EXPECT_NE(text.find("\"neck.bend\": 180"), std::string::npos);
     EXPECT_EQ(text.find("-180"), std::string::npos);
 
-    Parsed back = parse(text);
+    PoseIOParsed back = poseIOParse(text);
     ASSERT_TRUE(back.ok) << back.error;
     EXPECT_TRUE(back.warnings.empty()) << back.warnings[0];
     EXPECT_EQ(writePoseAnimation(back.data), text) << "write -> parse -> write must be byte-identical";
@@ -811,7 +811,7 @@ TEST(PoseIO, TemplateInfoIsPreserved){
     EXPECT_GT(tmpl, version);
     EXPECT_LT(tmpl, preview);
 
-    Parsed back = parse(text);
+    PoseIOParsed back = poseIOParse(text);
     ASSERT_TRUE(back.ok) << back.error;
     EXPECT_TRUE(back.warnings.empty());
     ASSERT_TRUE(back.info.has_value());
@@ -824,7 +824,7 @@ TEST(PoseIO, TemplateInfoIsPreserved){
 
 TEST(PoseIO, NoTemplateKeyWithoutTemplateInfo){
     EXPECT_EQ(writePoseAnimation(fullData()).find("template"), std::string::npos);
-    Parsed parsed = parse(withHeader("\"template\": {\"name\": \"X\", \"extra\": 1}"));
+    PoseIOParsed parsed = poseIOParse(withHeader("\"template\": {\"name\": \"X\", \"extra\": 1}"));
     ASSERT_TRUE(parsed.ok);
     ASSERT_TRUE(parsed.info.has_value());
     EXPECT_EQ(parsed.info->name, "X");

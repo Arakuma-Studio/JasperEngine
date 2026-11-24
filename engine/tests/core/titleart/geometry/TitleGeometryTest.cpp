@@ -29,14 +29,14 @@ using namespace jasperengine::titleart::test;
 
 namespace {
 
-    Json rim(double width, Json extra = Json::object()) {
+    Json titleGeometryRim(double width, Json extra = Json::object()) {
         Json r = {{"width", width}};
         for (auto it = extra.begin(); it != extra.end(); ++it) r[it.key()] = it.value();
         return r;
     }
 
     // a filled square polygon centred at (cx, cy)
-    Path square(double cx, double cy, double half, bool clockwise = false) {
+    Path geometrySquare(double cx, double cy, double half, bool clockwise = false) {
         Path p;
         p.moveTo(cx - half, cy - half);
         if (clockwise) {
@@ -89,7 +89,7 @@ namespace {
 
 TEST_F(TitleGeometryTest, TextElementsGrowRimsCumulatively) {
     const TitleArtDoc doc = documentWith({{{"type", "text"}, {"id", "0000000a"}, {"text", "確定"}, {"font", fontRef(DELA_GOTHIC)},
-                                           {"style", {{"rims", Json::array({rim(3), rim(4, {{"enabled", false}}), rim(0), rim(5, {{"join", "round"}, {"fill_counters", true}, {"offset", {0, -2}}})})}}}}});
+                                           {"style", {{"rims", Json::array({titleGeometryRim(3), titleGeometryRim(4, {{"enabled", false}}), titleGeometryRim(0), titleGeometryRim(5, {{"join", "round"}, {"fill_counters", true}, {"offset", {0, -2}}})})}}}}});
     TitleGeometry geometry(&assets);
     const Json& layer = doc.layers()[0];
     const LayerElements els = geometry.elements(layer, doc);
@@ -124,7 +124,7 @@ TEST_F(TitleGeometryTest, TextElementsGrowRimsCumulatively) {
 TEST_F(TitleGeometryTest, PerCharacterFacesSplitTheFaceButNotTheRims) {
     const Json red = {{"fill", {{"color", "#ff0000"}}}};
     const TitleArtDoc doc = documentWith({{{"type", "text"}, {"text", "確定確"}, {"font", fontRef(DELA_GOTHIC)},
-                                           {"chars", {{"1", {{"face", red}}}}}, {"style", {{"rims", Json::array({rim(3)})}}}}});
+                                           {"chars", {{"1", {{"face", red}}}}}, {"style", {{"rims", Json::array({titleGeometryRim(3)})}}}}});
     TitleGeometry geometry(&assets);
     const Json& layer = doc.layers()[0];
     const LayerElements els = geometry.elements(layer, doc);
@@ -167,8 +167,8 @@ TEST_F(TitleGeometryTest, OutlineOperationsRunWarpDistortWeight) {
 
 TEST(TitleOffsetTest, WeightUnionsAndOffsetsWithRoundJoins) {
     // two overlapping squares: the non-zero union merges them; a reversed one is a counter
-    Path p = square(0, 0, 50);
-    p.append(square(60, 0, 50));
+    Path p = geometrySquare(0, 0, 50);
+    p.append(geometrySquare(60, 0, 50));
     const Path grown = weightPath(p, 10, 200);
     const TitleRect b = grown.controlBounds();
     EXPECT_NEAR(b.x, -60, 0.01);
@@ -178,8 +178,8 @@ TEST(TitleOffsetTest, WeightUnionsAndOffsetsWithRoundJoins) {
     const double expected = 160 * 100 + 2 * 160 * 10 + 2 * 100 * 10 + 3.14159265 * 100;
     EXPECT_NEAR(area(grown), expected, expected * 0.002);
     EXPECT_EQ(weightPath(p, 0, 200).pointList().size(), p.pointList().size()) << "weight 0 is the outline itself";
-    Path counter = square(0, 0, 50);
-    counter.append(square(0, 0, 20, true));
+    Path counter = geometrySquare(0, 0, 50);
+    counter.append(geometrySquare(0, 0, 20, true));
     const Path thicker = weightPath(counter, 5, 200);
     EXPECT_EQ(thicker.contourCount(), 2u);
     EXPECT_NEAR(thicker.signedArea(0.01), (110.0 * 110 - 4 * 25 + 3.14159265 * 25) - 30.0 * 30, 3) << "the counter shrinks";
@@ -187,8 +187,8 @@ TEST(TitleOffsetTest, WeightUnionsAndOffsetsWithRoundJoins) {
 
 TEST(TitlePlateTest, ContourClosingHullAndBox) {
     // two squares 20 apart: closing by 15 bridges the gap, closing by 5 does not
-    Path pair = square(-40, 0, 30);
-    pair.append(square(40, 0, 30));
+    Path pair = geometrySquare(-40, 0, 30);
+    pair.append(geometrySquare(40, 0, 30));
     const Path closed = plateBase(pair, PlateParams{PlateKind::Contour, 15.0 / 2, 0, 0}, 200, 0);
     EXPECT_EQ(closed.contourCount(), 1u);
     // the bridge fills the gap but for the two shallow notches a closing disc leaves at its ends
@@ -346,7 +346,7 @@ TEST_F(TitleGeometryTest, BoundsFollowTransformsGroupsAndReach) {
 TEST_F(TitleGeometryTest, ImageLayersGrowFromTheirAlpha) {
     assets.addImage("textures/disc.png", disc(64, 32, 14));
     const TitleArtDoc doc = documentWith({{{"type", "image"}, {"image", fontRef("textures/disc.png")}, {"size", 200},
-                                           {"style", {{"rims", Json::array({rim(5), rim(5, {{"plate", {{"kind", "hull"}}}})})}}}}});
+                                           {"style", {{"rims", Json::array({titleGeometryRim(5), titleGeometryRim(5, {{"plate", {{"kind", "hull"}}}})})}}}}});
     TitleGeometry geometry(&assets);
     const LayerElements els = geometry.elements(doc.layers()[0], doc);
     EXPECT_TRUE(els.fromAlpha);
@@ -380,7 +380,7 @@ TEST_F(TitleGeometryTest, VectorShapeModeKeepsStrokesAndReportsWhatItIgnores) {
                    "<path d='M70 10 L95 40' stroke='#000' stroke-width='6' stroke-linecap='round' fill='none'/>"
                    "<text x='0' y='10'>Hi</text></svg>");
     const TitleArtDoc doc = documentWith({{{"type", "vector"}, {"svg", fontRef("art/logo.svg")}, {"size", 100},
-                                           {"style", {{"rims", Json::array({rim(4)})}}}}});
+                                           {"style", {{"rims", Json::array({titleGeometryRim(4)})}}}}});
     TitleGeometry geometry(&assets);
     const LayerElements els = geometry.elements(doc.layers()[0], doc);
     ASSERT_EQ(els.elements.size(), 2u);

@@ -30,14 +30,14 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    fs::path tempProject(const std::string& name) {
+    fs::path generatorInputTempProject(const std::string& name) {
         const fs::path dir = fs::temp_directory_path() / ("jasper-generator-input-test-" + name + "-" + std::to_string(::getpid()));
         fs::remove_all(dir);
         fs::create_directories(dir / ".jasperengine" / "generated");
         return dir;
     }
 
-    std::string readFile(const fs::path& path) {
+    std::string generatorInputReadFile(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
@@ -88,17 +88,17 @@ TEST_F(GeneratorInputTest, ThePathSurvivesAsALiteral) {
 }
 
 TEST_F(GeneratorInputTest, MainCppHasTheLineOnlyWhenTheProjectHasAnAsset) {
-    const fs::path project = tempProject("main");
+    const fs::path project = generatorInputTempProject("main");
     const fs::path internal = project / ".jasperengine";
     const std::vector<SceneBuildInfo> scenes = {SceneBuildInfo{1, "Level", {1}, {1}, true}};
 
     Generator generator;
     generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17);
-    EXPECT_EQ(readFile(internal / "generated" / "main.cpp").find("InputActions::loadDefault"), std::string::npos);
+    EXPECT_EQ(generatorInputReadFile(internal / "generated" / "main.cpp").find("InputActions::loadDefault"), std::string::npos);
 
     generator.setInputSettings("InputManager.inputactions", 0.15f);
     generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17);
-    const std::string mainCpp = readFile(internal / "generated" / "main.cpp");
+    const std::string mainCpp = generatorInputReadFile(internal / "generated" / "main.cpp");
     const size_t at = mainCpp.find("InputActions::loadDefault(\"InputManager.inputactions\");");
     ASSERT_NE(at, std::string::npos) << mainCpp;
     // before the first scene loads
@@ -106,7 +106,7 @@ TEST_F(GeneratorInputTest, MainCppHasTheLineOnlyWhenTheProjectHasAnAsset) {
     // main.cpp includes only JasperEngine.h: InputActions (and the Input Manager's names) must be declared through it
     EXPECT_NE(mainCpp.find("#include \"JasperEngine.h\""), std::string::npos);
     EXPECT_EQ(mainCpp.find("InputActions::loadJson"), std::string::npos);
-    const std::string umbrella = readFile(fs::path(JASPER_TEST_REPO_DIR) / "engine" / "core" / "JasperEngine.h");
+    const std::string umbrella = generatorInputReadFile(fs::path(JASPER_TEST_REPO_DIR) / "engine" / "core" / "JasperEngine.h");
     EXPECT_NE(umbrella.find("#include \"input/InputActions.h\""), std::string::npos);
     EXPECT_NE(umbrella.find("#include \"input/InputControlNames.h\""), std::string::npos);
 

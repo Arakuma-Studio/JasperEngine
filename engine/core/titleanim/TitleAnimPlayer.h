@@ -133,8 +133,6 @@ namespace jasperengine::titleanim{
         std::vector<PlayingAnimation> overlayList;
         PlayingAnimation fadeFrom;
         float fadeDuration = 0.0f, fadeElapsed = 0.0f;
-        TitlePoseSummary fadeSnapshot;
-        bool fadeSnapshotValid = false;
         bool pausedFlag = false;
         bool stopped = false;       // stop(): poses held, nothing advances
         bool driven = false;

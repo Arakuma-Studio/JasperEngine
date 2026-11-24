@@ -69,7 +69,7 @@ namespace {
 
     // ---------------------------------------------------------------- headless project
 
-    struct Headless {
+    struct CpuSkinHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
@@ -79,9 +79,9 @@ namespace {
         return (fs::path(JASPER_TEST_FIXTURES_DIR) / ".." / ".." / ".." / relative).lexically_normal();
     }
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    CpuSkinHeadless& cpuSkinHeadless() {
+        static CpuSkinHeadless h = []() {
+            CpuSkinHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-cpuskin-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -118,25 +118,25 @@ namespace {
         return h;
     }
 
-    Project* project() { return headless().project.get(); }
-    CommandHistory* history(uint32_t sceneId) { return CommandHandle::get(sceneId); }
-    Scene* sceneOf(uint32_t sceneId) { return project()->getScene(sceneId)->scene; }
+    Project* cpuSkinProject() { return cpuSkinHeadless().project.get(); }
+    CommandHistory* cpuSkinHistory(uint32_t sceneId) { return CommandHandle::get(sceneId); }
+    Scene* cpuSkinSceneOf(uint32_t sceneId) { return cpuSkinProject()->getScene(sceneId)->scene; }
 
-    uint32_t newScene() {
-        Project* p = project();
+    uint32_t cpuSkinNewScene() {
+        Project* p = cpuSkinProject();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene("CpuSkin", SceneType::SCENE_3D);
         return p->getSelectedSceneId();
     }
 
     Entity loadModel(uint32_t sceneId, const std::string& assetsRelative) {
-        CreateEntityCmd* create = new CreateEntityCmd(project(), sceneId, "Model", EntityCreationType::MODEL);
+        CreateEntityCmd* create = new CreateEntityCmd(cpuSkinProject(), sceneId, "Model", EntityCreationType::MODEL);
         create->setQuiet(true);
-        history(sceneId)->addCommandNoMerge(create);
+        cpuSkinHistory(sceneId)->addCommandNoMerge(create);
         const Entity entity = create->getEntity();
         const uint64_t logs = Out::lastLogId();
-        history(sceneId)->addCommandNoMerge(new ModelLoadCmd(project(), sceneId, entity, assetsRelative));
-        const ModelComponent& model = sceneOf(sceneId)->getComponent<ModelComponent>(entity);
+        cpuSkinHistory(sceneId)->addCommandNoMerge(new ModelLoadCmd(cpuSkinProject(), sceneId, entity, assetsRelative));
+        const ModelComponent& model = cpuSkinSceneOf(sceneId)->getComponent<ModelComponent>(entity);
         std::string log;
         for (const editor::LogEntry& entry : Out::getLogsSince(logs)) log += entry.message + "\n";
         EXPECT_FALSE(model.loadedFilename.empty()) << "loaded " << assetsRelative << ": " << log;
@@ -174,7 +174,7 @@ namespace {
         double m[4][4]; // [column][row]
     };
 
-    M4 identity() {
+    M4 cpuSkinIdentity() {
         M4 out{};
         for (int i = 0; i < 4; i++) out.m[i][i] = 1.0;
         return out;
@@ -236,7 +236,7 @@ namespace {
             {2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)},
             {2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)}};
         const double scale[3] = {s.x, s.y, s.z};
-        M4 out = identity();
+        M4 out = cpuSkinIdentity();
         for (int c = 0; c < 3; c++)
             for (int row = 0; row < 3; row++) out.m[c][row] = r[row][c] * scale[c];
         out.m[3][0] = t.x;
@@ -246,12 +246,12 @@ namespace {
     }
 
     // the entity's world matrix from the TRS of every Transform up its chain (not modelMatrix)
-    M4 worldOf(Scene* scene, Entity entity) {
+    M4 cpuSkinWorldOf(Scene* scene, Entity entity) {
         const Transform* transform = scene->findComponent<Transform>(entity);
-        if (!transform) return identity();
+        if (!transform) return cpuSkinIdentity();
         const M4 local = trs(transform->position, transform->rotation, transform->scale);
         if (transform->parent == NULL_ENTITY) return local;
-        return mul(worldOf(scene, transform->parent), local);
+        return mul(cpuSkinWorldOf(scene, transform->parent), local);
     }
 
     Vector3 point(const M4& m, const Vector3& p) {
@@ -284,7 +284,7 @@ namespace {
         return out;
     }
 
-    double distance(const Vector3& a, const Vector3& b) {
+    double cpuSkinDistance(const Vector3& a, const Vector3& b) {
         const double dx = (double)a.x - b.x, dy = (double)a.y - b.y, dz = (double)a.z - b.z;
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
@@ -369,13 +369,13 @@ namespace {
         if (skinIndex >= 0) {
             const tinygltf::Skin& skin = g.skins.at(static_cast<size_t>(skinIndex));
             const std::vector<double> ibm = readAccessor(g, skin.inverseBindMatrices);
-            const M4 inverseMesh = inverse(worldOf(scene, meshEntity));
+            const M4 inverseMesh = inverse(cpuSkinWorldOf(scene, meshEntity));
             for (size_t j = 0; j < skin.joints.size(); j++) {
                 float columns[16];
                 for (int i = 0; i < 16; i++) columns[i] = (float)ibm[j * 16 + static_cast<size_t>(i)];
                 const Entity joint = jointEntity(model, skin.joints[j]);
                 EXPECT_NE(joint, NULL_ENTITY) << "joint " << j;
-                mats.push_back(mul(mul(inverseMesh, worldOf(scene, joint)), fromColumns(columns)));
+                mats.push_back(mul(mul(inverseMesh, cpuSkinWorldOf(scene, joint)), fromColumns(columns)));
             }
         }
 
@@ -432,9 +432,9 @@ namespace {
                 } else if (hasNormal) {
                     normal = unit(normal);
                 }
-                out.position.add(distance(position, result.positions[v]), v);
-                if (hasNormal) out.normal.add(distance(normal, result.normals[v]), v);
-                out.moved = std::max(out.moved, distance(result.positions[v], source.positions[v]));
+                out.position.add(cpuSkinDistance(position, result.positions[v]), v);
+                if (hasNormal) out.normal.add(cpuSkinDistance(normal, result.normals[v]), v);
+                out.moved = std::max(out.moved, cpuSkinDistance(result.positions[v], source.positions[v]));
                 out.vertices++;
             }
         }
@@ -619,7 +619,7 @@ namespace {
             mesh["weights"] = defaults;
             mesh["extras"] = {{"targetNames", names}};
         }
-        const fs::path path = project()->getAssetsPath() / assetsRelative;
+        const fs::path path = cpuSkinProject()->getAssetsPath() / assetsRelative;
         fs::create_directories(path.parent_path());
         const std::string binName = path.stem().string() + ".bin";
         json gltf = {
@@ -650,12 +650,12 @@ namespace {
 
     LayoutReference layoutReference(Scene* scene, Entity model, const Layout& d, const float* morphWeights) {
         const ModelComponent& component = scene->getComponent<ModelComponent>(model);
-        const M4 inverseMesh = inverse(worldOf(scene, model));
+        const M4 inverseMesh = inverse(cpuSkinWorldOf(scene, model));
         std::vector<M4> mats;
         for (int j = 0; j < 3; j++) {
-            M4 ibm = identity();
+            M4 ibm = cpuSkinIdentity();
             ibm.m[3][1] = -d.jointY[j];
-            mats.push_back(mul(mul(inverseMesh, worldOf(scene, jointEntity(component, j + 1))), ibm));
+            mats.push_back(mul(mul(inverseMesh, cpuSkinWorldOf(scene, jointEntity(component, j + 1))), ibm));
         }
         LayoutReference out;
         for (int v = 0; v < 8; v++) {
@@ -714,13 +714,13 @@ namespace {
     }
 
     LatticeBinding binding(Entity lattice, LatticeStage stage, float weight, int submesh = -1,
-                           LatticeMaskChannel mask = LatticeMaskChannel::NONE) {
+                           LatticeMaskChannel cpuSkinMask = LatticeMaskChannel::NONE) {
         LatticeBinding b;
         b.lattice = lattice;
         b.stage = stage;
         b.weight = weight;
         b.submesh = submesh;
-        b.mask = mask;
+        b.mask = cpuSkinMask;
         return b;
     }
 
@@ -732,7 +732,7 @@ namespace {
     };
 
     std::unique_ptr<DirectLattice> directLattice(Scene* scene, Entity latticeEntity, Entity meshEntity, float weight,
-                                                 LatticeMaskChannel mask = LatticeMaskChannel::NONE) {
+                                                 LatticeMaskChannel cpuSkinMask = LatticeMaskChannel::NONE) {
         auto out = std::make_unique<DirectLattice>();
         out->component = scene->getComponent<LatticeComponent>(latticeEntity);
         lattice::buildPaddedGrid(out->component, out->padded);
@@ -742,7 +742,7 @@ namespace {
                                                                       scene->getComponent<Transform>(meshEntity).modelMatrix);
         out->binding.normalizedToObject = out->binding.objectToNormalized.inverse();
         out->binding.weight = weight;
-        out->binding.mask = mask;
+        out->binding.mask = cpuSkinMask;
         return out;
     }
 
@@ -761,7 +761,7 @@ namespace {
     class CpuSkin_ : public ::testing::Test {
     protected:
         void SetUp() override {
-            ASSERT_TRUE(headless().ready) << "the headless project did not open";
+            ASSERT_TRUE(cpuSkinHeadless().ready) << "the headless project did not open";
         }
     };
 
@@ -803,8 +803,8 @@ namespace {
 // ==================================================================== the source
 
 TEST_F(CpuSkin_, HeroSourceReadsEveryVertexOfEverySubmeshAsTheGpu) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = cpuSkinNewScene();
+    Scene* scene = cpuSkinSceneOf(sceneId);
     const Entity hero = loadModel(sceneId, "models/hero.gltf");
     const Entity meshEntity = meshEntityOf(scene, hero);
     ASSERT_NE(meshEntity, NULL_ENTITY);
@@ -879,8 +879,8 @@ TEST_F(CpuSkin_, HeroSourceReadsEveryVertexOfEverySubmeshAsTheGpu) {
 TEST_F(CpuSkin_, BindPoseGivesTheBindPositions) {
     for (const char* model : {"models/hero.gltf", "models/tpose.gltf"}) {
         SCOPED_TRACE(model);
-        const uint32_t sceneId = newScene();
-        Scene* scene = sceneOf(sceneId);
+        const uint32_t sceneId = cpuSkinNewScene();
+        Scene* scene = cpuSkinSceneOf(sceneId);
         const Entity hero = loadModel(sceneId, model);
         const Entity meshEntity = meshEntityOf(scene, hero);
         bindPose(scene, hero);
@@ -891,8 +891,8 @@ TEST_F(CpuSkin_, BindPoseGivesTheBindPositions) {
         ASSERT_TRUE(deformEntity(scene, meshEntity, result, &error, &source)) << error;
         MaxError position, normal;
         for (size_t v = 0; v < source.vertexCount(); v++) {
-            position.add(distance(result.positions[v], source.positions[v]), v);
-            normal.add(distance(result.normals[v], unit(source.normals[v])), v);
+            position.add(cpuSkinDistance(result.positions[v], source.positions[v]), v);
+            normal.add(cpuSkinDistance(result.normals[v], unit(source.normals[v])), v);
         }
         EXPECT_LT(position.value, 1e-4) << "vertex " << position.at;
         EXPECT_LT(normal.value, 1e-4) << "vertex " << normal.at;
@@ -900,8 +900,8 @@ TEST_F(CpuSkin_, BindPoseGivesTheBindPositions) {
 }
 
 TEST_F(CpuSkin_, ClipPosesMatchThePlainMathReference) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = cpuSkinNewScene();
+    Scene* scene = cpuSkinSceneOf(sceneId);
     const Entity hero = loadModel(sceneId, "models/hero.gltf");
     const Entity meshEntity = meshEntityOf(scene, hero);
     // the model placed somewhere: mesh space is the mesh entity's
@@ -922,7 +922,7 @@ TEST_F(CpuSkin_, ClipPosesMatchThePlainMathReference) {
             // updateTransforms made every modelMatrix the TRS chain's
             const ModelComponent& heroModel = scene->getComponent<ModelComponent>(hero);
             for (Entity e : {hero, meshEntity, jointEntity(heroModel, heroModel.gltfModel->skins[0].joints[5])}) {
-                const M4 expected = worldOf(scene, e);
+                const M4 expected = cpuSkinWorldOf(scene, e);
                 const Matrix4& actual = scene->getComponent<Transform>(e).modelMatrix;
                 for (int c = 0; c < 4; c++)
                     for (int r = 0; r < 4; r++) EXPECT_NEAR(actual.get(c, r), expected.m[c][r], 1e-4);
@@ -949,8 +949,8 @@ TEST_F(CpuSkin_, ClipPosesMatchThePlainMathReference) {
 }
 
 TEST_F(CpuSkin_, SkinMatricesAreTheRenderFormulaOnBothPaths) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = cpuSkinNewScene();
+    Scene* scene = cpuSkinSceneOf(sceneId);
     // alone, the T-pose hero loads in the legacy layout: the mesh on the model entity
     const Entity hero = loadModel(sceneId, "models/tpose.gltf");
     ModelComponent& model = scene->getComponent<ModelComponent>(hero);
@@ -972,9 +972,9 @@ TEST_F(CpuSkin_, SkinMatricesAreTheRenderFormulaOnBothPaths) {
     ASSERT_TRUE(computeSkinMatrices(scene, hero, skin, &error)) << error;
     const ModelSkinBinding& binding = model.skinBindings[0];
     ASSERT_GE(skin.size(), binding.joints.size());
-    const M4 inverseMesh = inverse(worldOf(scene, hero));
+    const M4 inverseMesh = inverse(cpuSkinWorldOf(scene, hero));
     for (size_t j = 0; j < binding.joints.size(); j++) {
-        const M4 expected = mul(mul(inverseMesh, worldOf(scene, binding.joints[j])), fromMatrix(binding.inverseBindMatrices[j]));
+        const M4 expected = mul(mul(inverseMesh, cpuSkinWorldOf(scene, binding.joints[j])), fromMatrix(binding.inverseBindMatrices[j]));
         for (int c = 0; c < 4; c++)
             for (int r = 0; r < 4; r++) EXPECT_NEAR(skin[j].get(c, r), expected.m[c][r], 1e-4) << "joint " << j;
     }
@@ -1007,8 +1007,8 @@ TEST_F(CpuSkin_, SkinMatricesAreTheRenderFormulaOnBothPaths) {
 }
 
 TEST_F(CpuSkin_, AgreesWithPoseSkinOnItsSubsample) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = cpuSkinNewScene();
+    Scene* scene = cpuSkinSceneOf(sceneId);
     const Entity hero = loadModel(sceneId, "models/hero.gltf");
     const Entity meshEntity = meshEntityOf(scene, hero);
     const std::shared_ptr<const AnimationClip> clip = modelClip("models/hero.gltf#Walk");
@@ -1060,8 +1060,8 @@ TEST_F(CpuSkin_, AgreesWithPoseSkinOnItsSubsample) {
 // ==================================================================== morph targets
 
 TEST_F(CpuSkin_, MorphTargetsAreAppliedBeforeSkinning) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = cpuSkinNewScene();
+    Scene* scene = cpuSkinSceneOf(sceneId);
     const Entity strip = loadModel(sceneId, "models/strip.gltf");
     const Entity meshEntity = meshEntityOf(scene, strip);
     ModelComponent& model = scene->getComponent<ModelComponent>(strip);
@@ -1090,7 +1090,7 @@ TEST_F(CpuSkin_, MorphTargetsAreAppliedBeforeSkinning) {
     EXPECT_LT(compared.position.value, 1e-4) << "vertex " << compared.position.at;
     EXPECT_LT(compared.normal.value, 1e-4) << "vertex " << compared.normal.at;
     double changed = 0.0;
-    for (size_t v = 0; v < source.vertexCount(); v++) changed = std::max(changed, distance(with.positions[v], without.positions[v]));
+    for (size_t v = 0; v < source.vertexCount(); v++) changed = std::max(changed, cpuSkinDistance(with.positions[v], without.positions[v]));
     EXPECT_GT(changed, 0.01) << "the weight moves the vertices";
 
     // cpuDeform with no weights (null) is the weights at 0
@@ -1116,8 +1116,8 @@ TEST_F(CpuSkin_, InterleavedNormalizedLayoutWithMorphsAndTangents) {
         SCOPED_TRACE(c.file);
         const Layout d = layoutData(c.mode);
         writeLayout(c.file, d);
-        const uint32_t sceneId = newScene();
-        Scene* scene = sceneOf(sceneId);
+        const uint32_t sceneId = cpuSkinNewScene();
+        Scene* scene = cpuSkinSceneOf(sceneId);
         const Entity model = loadModel(sceneId, c.file);
         ASSERT_EQ(meshEntityOf(scene, model), model) << "one skinned mesh node: the legacy layout";
 
@@ -1196,10 +1196,10 @@ TEST_F(CpuSkin_, InterleavedNormalizedLayoutWithMorphsAndTangents) {
         MaxError position, normal, tangent;
         for (uint32_t v = 0; v < source.vertexCount(); v++) {
             const uint32_t e = source.vertexIndex[v];
-            position.add(distance(result.positions[v], expected.positions[e]), v);
-            normal.add(distance(result.normals[v], expected.normals[e]), v);
+            position.add(cpuSkinDistance(result.positions[v], expected.positions[e]), v);
+            normal.add(cpuSkinDistance(result.normals[v], expected.normals[e]), v);
             const Vector3 t(result.tangents[v].x, result.tangents[v].y, result.tangents[v].z);
-            tangent.add(distance(t, Vector3(expected.tangents[e].x, expected.tangents[e].y, expected.tangents[e].z)), v);
+            tangent.add(cpuSkinDistance(t, Vector3(expected.tangents[e].x, expected.tangents[e].y, expected.tangents[e].z)), v);
             EXPECT_EQ(result.tangents[v].w, d.tangents[e].w) << "the tangent keeps its handedness";
             EXPECT_NEAR(t.length(), 1.0f, 1e-5f);
             EXPECT_NEAR(result.normals[v].length(), 1.0f, 1e-5f);
@@ -1213,8 +1213,8 @@ TEST_F(CpuSkin_, InterleavedNormalizedLayoutWithMorphsAndTangents) {
 // ==================================================================== rigid and interleaved meshes
 
 TEST_F(CpuSkin_, RigidMeshesKeepTheirVertices) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = cpuSkinNewScene();
+    Scene* scene = cpuSkinSceneOf(sceneId);
 
     // the procedural box: its own interleaved "vertices" and "indices" buffers, no submesh attributes
     const Entity box = scene->createUserEntity();
@@ -1241,7 +1241,7 @@ TEST_F(CpuSkin_, RigidMeshesKeepTheirVertices) {
     ASSERT_TRUE(cpuDeform(source, {}, nullptr, nullptr, result, &error)) << "no skin: no matrices needed: " << error;
     for (uint32_t v = 0; v < source.vertexCount(); v++) {
         EXPECT_EQ(result.positions[v], source.positions[v]);
-        EXPECT_LT(distance(result.normals[v], unit(source.normals[v])), 1e-6);
+        EXPECT_LT(cpuSkinDistance(result.normals[v], unit(source.normals[v])), 1e-6);
     }
 
     // a rigid glTF of three submeshes over the same vertex buffers
@@ -1299,8 +1299,8 @@ TEST_F(CpuSkin_, InterleavedSkinnedBuffer) {
         // bone 5 is past the matrices: a zero matrix, so the position divides by the other weight
         if (jointIds[1] == 5) w[1] = 0.0;
         const M4 b = blend(mats, jointIds, w);
-        EXPECT_LT(distance(result.positions[v], point(b, positions[e])), 1e-5) << "vertex " << v;
-        EXPECT_LT(distance(result.normals[v], direction(b, Vector3(0, 0, 2))), 1e-5) << "vertex " << v;
+        EXPECT_LT(cpuSkinDistance(result.positions[v], point(b, positions[e])), 1e-5) << "vertex " << v;
+        EXPECT_LT(cpuSkinDistance(result.normals[v], direction(b, Vector3(0, 0, 2))), 1e-5) << "vertex " << v;
     }
 
     std::string missing;
@@ -1311,8 +1311,8 @@ TEST_F(CpuSkin_, InterleavedSkinnedBuffer) {
 // ==================================================================== lattices
 
 TEST_F(CpuSkin_, LatticeStagesMatchDeformVertex) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = cpuSkinNewScene();
+    Scene* scene = cpuSkinSceneOf(sceneId);
     const Entity column = loadModel(sceneId, "models/column.gltf");
     const Entity meshEntity = meshEntityOf(scene, column);
     ASSERT_EQ(meshEntity, column);
@@ -1371,12 +1371,12 @@ TEST_F(CpuSkin_, LatticeStagesMatchDeformVertex) {
     const std::vector<double> weights = readAccessor(g, prim.attributes.at("WEIGHTS_0"));
     const std::vector<double> morph = readAccessor(g, prim.targets[0].at("POSITION"));
     const std::vector<double> ibm = readAccessor(g, g.skins[0].inverseBindMatrices);
-    const M4 inverseMesh = inverse(worldOf(scene, meshEntity));
+    const M4 inverseMesh = inverse(cpuSkinWorldOf(scene, meshEntity));
     std::vector<M4> mats;
     for (size_t j = 0; j < g.skins[0].joints.size(); j++) {
         float columns[16];
         for (int i = 0; i < 16; i++) columns[i] = (float)ibm[j * 16 + static_cast<size_t>(i)];
-        mats.push_back(mul(mul(inverseMesh, worldOf(scene, jointEntity(model, g.skins[0].joints[j]))), fromColumns(columns)));
+        mats.push_back(mul(mul(inverseMesh, cpuSkinWorldOf(scene, jointEntity(model, g.skins[0].joints[j]))), fromColumns(columns)));
     }
     MaxError position, normal;
     double latticeMoved = 0.0;
@@ -1398,9 +1398,9 @@ TEST_F(CpuSkin_, LatticeStagesMatchDeformVertex) {
         n = direction(b, n);
         t = direction(b, t);
         lattice::deformVertex(directAfter->binding, p, &n, &t, nullptr, nullptr);
-        position.add(distance(result.positions[v], p), v);
-        normal.add(distance(result.normals[v], n), v);
-        latticeMoved = std::max(latticeMoved, distance(result.positions[v], plain.positions[v]));
+        position.add(cpuSkinDistance(result.positions[v], p), v);
+        normal.add(cpuSkinDistance(result.normals[v], n), v);
+        latticeMoved = std::max(latticeMoved, cpuSkinDistance(result.positions[v], plain.positions[v]));
     }
     EXPECT_LT(position.value, 1e-4) << "vertex " << position.at;
     EXPECT_LT(normal.value, 1e-4) << "vertex " << normal.at;
@@ -1422,8 +1422,8 @@ TEST_F(CpuSkin_, LatticeStagesMatchDeformVertex) {
 
 // A mesh without skinning takes every binding after skinning, even one marked before
 TEST_F(CpuSkin_, LatticeOnARigidMeshIsAlwaysStageOne) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = cpuSkinNewScene();
+    Scene* scene = cpuSkinSceneOf(sceneId);
     const Entity box = scene->createUserEntity();
     scene->addComponent<Transform>(box, {});
     scene->addComponent<MeshComponent>(box, {});
@@ -1449,9 +1449,9 @@ TEST_F(CpuSkin_, LatticeOnARigidMeshIsAlwaysStageOne) {
         Vector3 n = unit(source.normals[v]);
         Vector3 t(1.0f, 0.0f, 0.0f);
         lattice::deformVertex(direct->binding, p, &n, &t, nullptr, nullptr);
-        position.add(distance(result.positions[v], p), v);
-        normal.add(distance(result.normals[v], n), v);
-        moved = std::max(moved, distance(result.positions[v], source.positions[v]));
+        position.add(cpuSkinDistance(result.positions[v], p), v);
+        normal.add(cpuSkinDistance(result.normals[v], n), v);
+        moved = std::max(moved, cpuSkinDistance(result.positions[v], source.positions[v]));
     }
     EXPECT_LT(position.value, 1e-5) << "vertex " << position.at;
     EXPECT_LT(normal.value, 1e-5) << "vertex " << normal.at;
@@ -1463,8 +1463,8 @@ TEST_F(CpuSkin_, LatticeOnARigidMeshIsAlwaysStageOne) {
 TEST_F(CpuSkin_, LatticeMaskAndSubmeshBinding) {
     const Layout d = layoutData(MorphMode::PositionNormalTangent);
     writeLayout("models/gen/masked.gltf", d);
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = cpuSkinNewScene();
+    Scene* scene = cpuSkinSceneOf(sceneId);
     const Entity model = loadModel(sceneId, "models/gen/masked.gltf");
     ModelComponent& component = scene->getComponent<ModelComponent>(model);
     Transform& mid = scene->getComponent<Transform>(jointEntity(component, 2));
@@ -1495,11 +1495,11 @@ TEST_F(CpuSkin_, LatticeMaskAndSubmeshBinding) {
             const Vector4 color = source.colors[v];
             lattice::deformVertex(direct->binding, p, &n, &t, nullptr, &color);
         }
-        position.add(distance(result.positions[v], p), v);
-        normal.add(distance(result.normals[v], n), v);
-        tangent.add(distance(Vector3(result.tangents[v].x, result.tangents[v].y, result.tangents[v].z), t), v);
+        position.add(cpuSkinDistance(result.positions[v], p), v);
+        normal.add(cpuSkinDistance(result.normals[v], n), v);
+        tangent.add(cpuSkinDistance(Vector3(result.tangents[v].x, result.tangents[v].y, result.tangents[v].z), t), v);
         EXPECT_EQ(result.tangents[v].w, plain.tangents[v].w);
-        if (source.canonical[v] != v && distance(result.positions[v], result.positions[source.canonical[v]]) > 1e-3) differing++;
+        if (source.canonical[v] != v && cpuSkinDistance(result.positions[v], result.positions[source.canonical[v]]) > 1e-3) differing++;
     }
     EXPECT_LT(position.value, 1e-5) << "vertex " << position.at;
     EXPECT_LT(normal.value, 1e-5) << "vertex " << normal.at;
@@ -1516,8 +1516,8 @@ TEST_F(CpuSkin_, UnsupportedLayoutsFailWithTheReason) {
     // a normalized byte VEC3 normal of a file (mesh quantization) loads as the BYTE4N the renderer
     // binds (S53 R1), so it skins with its normals; a layout no vertex format binds is refused below
     writeLayout("models/gen/bad_normal.gltf", layoutData(MorphMode::PositionOnly), true);
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = cpuSkinNewScene();
+    Scene* scene = cpuSkinSceneOf(sceneId);
     const Entity quantized = loadModel(sceneId, "models/gen/bad_normal.gltf");
     ASSERT_TRUE(buildSource(scene, quantized, source, &error)) << error;
     ASSERT_FALSE(source.normals.empty());

@@ -20,18 +20,8 @@
 #include <sstream>
 #include <string>
 #include "support/PosixCompat.h"
+#include "support/SystemTestAccess.h"
 #include <vector>
-
-namespace jasperengine {
-    // TEST-ONLY seam (System.h befriends it): detach / restore the instance
-    struct SystemTestAccess {
-        static System* swap(System* system) {
-            System* previous = System::systemInstance;
-            System::systemInstance = system;
-            return previous;
-        }
-    };
-}
 
 namespace headlesssystem {
 

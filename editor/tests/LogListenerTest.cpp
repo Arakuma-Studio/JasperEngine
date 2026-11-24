@@ -24,6 +24,7 @@
 #include "debug/DebugStats.h"
 #include "profiler/FrameTimes.h"
 #include "script/LuaBinding.h"
+#include "support/EditorTestSupport.h"
 #include "util/FunctionSubscribe.h"
 
 #include "lua.hpp"
@@ -40,17 +41,6 @@
 #include <vector>
 
 using namespace jasperengine;
-
-#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    #define JE_LOG_TEST_SANITIZED 1
-#elif defined(__has_feature)
-    #if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-        #define JE_LOG_TEST_SANITIZED 1
-    #endif
-#endif
-#ifndef JE_LOG_TEST_SANITIZED
-    #define JE_LOG_TEST_SANITIZED 0
-#endif
 
 namespace {
 
@@ -346,7 +336,7 @@ namespace {
 // a listener removing itself while another thread is inside it too: no wait, no hang; no new
 // call starts
 TEST_F(LogListenerTest, SelfRemovalWithAnotherCallRunning) {
-    // shared with threads a hang would leave behind: never freed
+    // shared with threads a hang would leave behind: freed only once the scenario ended
     struct Shared {
         std::atomic<int> inside{0};
         std::atomic<int> calls{0};
@@ -375,10 +365,14 @@ TEST_F(LogListenerTest, SelfRemovalWithAnotherCallRunning) {
     std::thread([]() { Log::print("after the removal"); }).join();
     EXPECT_EQ(shared->calls.load(), 2) << "no call after the removal";
     Log::dispatchPending();
+    // (a no-op unless a failed check above left it listening)
+    Log::removeListener(shared->id.load());
+    delete shared;
 }
 
 // two listeners removing each other from inside their calls on two threads: no deadlock
 TEST_F(LogListenerTest, CrossRemovalDoesNotDeadlock) {
+    // as above: freed only once the scenario ended
     struct Shared {
         std::atomic<bool> inA{false}, inB{false};
         std::atomic<LogListenerId> a{0}, b{0};
@@ -410,6 +404,9 @@ TEST_F(LogListenerTest, CrossRemovalDoesNotDeadlock) {
     std::thread([]() { Log::print("a"); Log::print("b"); }).join();
     EXPECT_EQ(shared->calls.load(), 2) << "both removed";
     Log::dispatchPending();
+    Log::removeListener(shared->a.load());
+    Log::removeListener(shared->b.load());
+    delete shared;
 }
 
 // past 1,000 lines waiting for the main thread, worker lines are counted and reported once
@@ -717,8 +714,12 @@ TEST_F(LogListenerTest, CostsNothingWhenOff) {
     for (int i = 0; i < 10000; i++)
         printDistinct("line of the cost test", i);
     const double lineUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - lineStart).count() / 10000.0;
-    if (!JE_LOG_TEST_SANITIZED) {
-        EXPECT_LT(lineUs, 5.0) << lineUs << " us per line";
+    // wall-clock budgets: printed always, enforced where perfSlack() asks for them (the benchmark
+    // run, never under the sanitizers)
+    std::printf("[bench] a line with the overlay off: %.3f us (budget 5)\n", lineUs);
+    const double slack = editor::test::perfSlack();
+    if (slack > 0.0) {
+        EXPECT_LT(lineUs, 5.0 * slack) << lineUs << " us per line";
     }
 
     // what a frame and its input cost the overlay: the frame-time ring, the update check, the hooks
@@ -735,8 +736,9 @@ TEST_F(LogListenerTest, CostsNothingWhenOff) {
         DebugOverlay::handleTouch(2, 10.0f, 10.0f, 2);
     }
     const double frameMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart).count() / 1000.0;
-    if (!JE_LOG_TEST_SANITIZED) {
-        EXPECT_LT(frameMs, 0.01) << frameMs << " ms per frame";
+    std::printf("[bench] a frame with the overlay off: %.4f ms (budget 0.01)\n", frameMs);
+    if (slack > 0.0) {
+        EXPECT_LT(frameMs, 0.01 * slack) << frameMs << " ms per frame";
     }
     EXPECT_FALSE(DebugOverlay::isConsoleVisible());
     EXPECT_EQ(DebugOverlay::getScene(), nullptr);

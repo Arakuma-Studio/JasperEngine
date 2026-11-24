@@ -31,7 +31,7 @@ using namespace jasperengine;
 
 namespace {
 
-    std::string clipText(float x, const std::string& extra = ""){
+    std::string clipPoolClipText(float x, const std::string& extra = ""){
         return "{\"format\": \"jasperengine.anim\", \"version\": 1, " + extra + "\"tracks\": [{\"path\": \"\", \"channel\": \"position\", "
                "\"keys\": [[0, [0, 0, 0]], [1, [" + std::to_string(x) + ", 0, 0]]]}]}";
     }
@@ -60,7 +60,7 @@ namespace {
 }
 
 TEST_F(ClipPool, AssetRelativeAndAbsolutePathsShareOneKey){
-    std::string absolute = animtest::writeAsset(p("walk.anim"), clipText(1));
+    std::string absolute = animtest::writeAsset(p("walk.anim"), clipPoolClipText(1));
     EXPECT_EQ(AnimationClipPool::getKey(p("walk.anim")), absolute);
     EXPECT_EQ(AnimationClipPool::getKey(absolute), absolute);
     EXPECT_EQ(AnimationClipPool::getKey("anim/../anim/./" + p("walk.anim").substr(5)), absolute);
@@ -84,13 +84,13 @@ TEST_F(ClipPool, AssetRelativeAndAbsolutePathsShareOneKey){
 // The contract test: the document invalidates with absolutePath(), the player loaded through the
 // component's asset-relative path and sees the new generation, re-fetching the edited file
 TEST_F(ClipPool, InvalidateThroughTheAbsolutePathReachesTheComponentPath){
-    std::string absolute = animtest::writeAsset(p("run.anim"), clipText(2));
+    std::string absolute = animtest::writeAsset(p("run.anim"), clipPoolClipText(2));
     std::shared_ptr<const AnimationClip> held = AnimationClipPool::getOrLoad(p("run.anim"));
     ASSERT_TRUE(held);
     uint64_t generation = AnimationClipPool::getGeneration(p("run.anim"));
     uint64_t revision = AnimationClipPool::revision();
 
-    animtest::writeAsset(p("run.anim"), clipText(5));
+    animtest::writeAsset(p("run.anim"), clipPoolClipText(5));
     AnimationClipPool::invalidate(absolute);
     EXPECT_GT(AnimationClipPool::getGeneration(p("run.anim")), generation);
     EXPECT_GT(AnimationClipPool::revision(), revision);
@@ -117,7 +117,7 @@ TEST_F(ClipPool, FailuresCarryTheErrorAndAreNotCached){
     EXPECT_EQ(AnimationClipPool::getGeneration(p("broken.anim")), 0u);
 
     // fixed on disk: the next call loads it (no failure was cached)
-    animtest::writeAsset(p("broken.anim"), clipText(3));
+    animtest::writeAsset(p("broken.anim"), clipPoolClipText(3));
     EXPECT_FLOAT_EQ(endX(AnimationClipPool::getOrLoad(p("broken.anim"), &error)), 3.0f) << error;
 
     std::string unity = "%YAML 1.1\n--- !u!74 &7400000\nAnimationClip:\n";
@@ -127,7 +127,7 @@ TEST_F(ClipPool, FailuresCarryTheErrorAndAreNotCached){
 }
 
 TEST_F(ClipPool, WarningsAreReturnedAndKeptOnTheClip){
-    animtest::writeAsset(p("warn.anim"), clipText(1, "\"wrap\": \"bounce\", \"extra\": 1, "));
+    animtest::writeAsset(p("warn.anim"), clipPoolClipText(1, "\"wrap\": \"bounce\", \"extra\": 1, "));
     std::vector<ClipWarning> warnings;
     std::shared_ptr<const AnimationClip> clip = AnimationClipPool::getOrLoad(p("warn.anim"), nullptr, &warnings);
     ASSERT_TRUE(clip);
@@ -141,8 +141,8 @@ TEST_F(ClipPool, WarningsAreReturnedAndKeptOnTheClip){
 }
 
 TEST_F(ClipPool, ClearUnusedAndReleaseUnusedKeepHeldClips){
-    animtest::writeAsset(p("a.anim"), clipText(1));
-    animtest::writeAsset(p("b.anim"), clipText(2));
+    animtest::writeAsset(p("a.anim"), clipPoolClipText(1));
+    animtest::writeAsset(p("b.anim"), clipPoolClipText(2));
     std::shared_ptr<const AnimationClip> held = AnimationClipPool::getOrLoad(p("a.anim"));
     ASSERT_TRUE(AnimationClipPool::getOrLoad(p("b.anim")));
     EXPECT_EQ(AnimationClipPool::size(), 2u);
@@ -158,10 +158,10 @@ TEST_F(ClipPool, ClearUnusedAndReleaseUnusedKeepHeldClips){
 }
 
 TEST_F(ClipPool, EnginePoolHooksClearClips){
-    animtest::writeAsset(p("hook.anim"), clipText(1));
+    animtest::writeAsset(p("hook.anim"), clipPoolClipText(1));
     std::shared_ptr<const AnimationClip> held = AnimationClipPool::getOrLoad(p("hook.anim"));
     ASSERT_TRUE(AnimationClipPool::getOrLoad(p("a2.anim")) == nullptr);
-    animtest::writeAsset(p("a2.anim"), clipText(1));
+    animtest::writeAsset(p("a2.anim"), clipPoolClipText(1));
     ASSERT_TRUE(AnimationClipPool::getOrLoad(p("a2.anim")));
     Engine::clearUnusedPools();
     EXPECT_EQ(AnimationClipPool::size(), 1u);
@@ -173,7 +173,7 @@ TEST_F(ClipPool, EnginePoolHooksClearClips){
 }
 
 TEST_F(ClipPool, InvalidateModelKeepsClipFilesAndNeverLoadedAliasesAreNull){
-    animtest::writeAsset(p("keep.anim"), clipText(1));
+    animtest::writeAsset(p("keep.anim"), clipPoolClipText(1));
     std::shared_ptr<const AnimationClip> held = AnimationClipPool::getOrLoad(p("keep.anim"));
     uint64_t revision = AnimationClipPool::revision();
     AnimationClipPool::invalidateModel("models/hero.gltf");
@@ -196,7 +196,7 @@ TEST_F(ClipPool, ConcurrentAccess){
     std::vector<std::string> absolute;
     for (int i = 0; i < files; i++){
         relative.push_back(p("thread" + std::to_string(i) + ".anim"));
-        absolute.push_back(animtest::writeAsset(relative.back(), clipText((float)(i + 1))));
+        absolute.push_back(animtest::writeAsset(relative.back(), clipPoolClipText((float)(i + 1))));
     }
 
     // first loads racing: everybody gets the cached one
@@ -277,10 +277,10 @@ TEST_F(ClipPool, ConcurrentAccess){
     }
     std::thread writer([&](){
         for (int i = 0; i < 100; i++){
-            animtest::writeAsset(relative[3], clipText(i % 2 ? 40.0f : 4.0f));
+            animtest::writeAsset(relative[3], clipPoolClipText(i % 2 ? 40.0f : 4.0f));
             AnimationClipPool::invalidate(absolute[3]);
         }
-        animtest::writeAsset(relative[3], clipText(4.0f));
+        animtest::writeAsset(relative[3], clipPoolClipText(4.0f));
         AnimationClipPool::invalidate(absolute[3]);
     });
     for (std::thread& thread : threads) thread.join();
@@ -297,14 +297,14 @@ TEST_F(ClipPool, ConcurrentAccess){
 // Exact in-flight check: an invalidate between a load and its insert keeps the (stale) result out
 // of the cache, and the caller still gets it
 TEST_F(ClipPool, InvalidateDuringAnInFlightLoadIsNotCached){
-    std::string absolute = animtest::writeAsset(p("flight.anim"), clipText(1));
+    std::string absolute = animtest::writeAsset(p("flight.anim"), clipPoolClipText(1));
     bool fired = false;
     AnimationClipPoolTestHooks hooks;
     hooks.beforeInsert = [&](const std::string& key){
         if (fired) return;
         fired = true;
         EXPECT_EQ(key, absolute);
-        animtest::writeAsset(p("flight.anim"), clipText(2));
+        animtest::writeAsset(p("flight.anim"), clipPoolClipText(2));
         AnimationClipPool::invalidate(absolute);
     };
     setAnimationClipPoolTestHooks(hooks);
@@ -339,10 +339,10 @@ namespace {
 
     // over pollOrLoad's limit for a load in the call, and the same clip
     std::string largeClipText(float x){
-        return clipText(x) + std::string(70000, ' ');
+        return clipPoolClipText(x) + std::string(70000, ' ');
     }
 
-    std::shared_ptr<const AnimationClip> pollUntilDone(const std::string& path, std::string* error = nullptr){
+    std::shared_ptr<const AnimationClip> clipPoolPollUntilDone(const std::string& path, std::string* error = nullptr){
         const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
         bool loading = true;
         std::shared_ptr<const AnimationClip> clip;
@@ -384,7 +384,7 @@ TEST_F(ClipPool, PollOrLoadParsesAnimOnAWorker){
     EXPECT_FALSE(AnimationClipPool::pollOrLoad(p("async.anim"), loading, &error));
     EXPECT_TRUE(loading) << "one job, polled";
     release = true;
-    std::shared_ptr<const AnimationClip> clip = pollUntilDone(p("async.anim"), &error);
+    std::shared_ptr<const AnimationClip> clip = clipPoolPollUntilDone(p("async.anim"), &error);
     setAnimationClipPoolTestHooks(AnimationClipPoolTestHooks());
     ASSERT_TRUE(clip) << error;
     EXPECT_NE(builtOn, std::this_thread::get_id()) << "parsed on a worker";
@@ -400,14 +400,14 @@ TEST_F(ClipPool, PollOrLoadParsesAnimOnAWorker){
     EXPECT_FALSE(AnimationClipPool::getOrLoad(p("broken.anim"), &syncError));
     Engine::setAsyncLoading(true);
     std::string asyncError;
-    EXPECT_FALSE(pollUntilDone(p("broken.anim"), &asyncError));
+    EXPECT_FALSE(clipPoolPollUntilDone(p("broken.anim"), &asyncError));
     EXPECT_EQ(asyncError, syncError);
     EXPECT_FALSE(syncError.empty());
     animtest::writeAsset(p("broken.anim"), largeClipText(4));
-    EXPECT_TRUE(pollUntilDone(p("broken.anim")));
+    EXPECT_TRUE(clipPoolPollUntilDone(p("broken.anim")));
 
     // a small file and a missing one: in the call, with no job and no frame's wait
-    animtest::writeAsset(p("small.anim"), clipText(6));
+    animtest::writeAsset(p("small.anim"), clipPoolClipText(6));
     EXPECT_FLOAT_EQ(endX(AnimationClipPool::pollOrLoad(p("small.anim"), loading)), 6.0f);
     EXPECT_FALSE(loading);
     std::string missing;
@@ -468,7 +468,7 @@ TEST_F(ClipPool, PollOrLoadInvalidateAndRelease){
     animtest::writeAsset(p("flight.anim"), largeClipText(2));
     AnimationClipPool::invalidate(p("flight.anim"));
     stage = 2;
-    std::shared_ptr<const AnimationClip> clip = pollUntilDone(p("flight.anim"));
+    std::shared_ptr<const AnimationClip> clip = clipPoolPollUntilDone(p("flight.anim"));
     setAnimationClipPoolTestHooks(AnimationClipPoolTestHooks());
     ASSERT_TRUE(clip);
     EXPECT_FLOAT_EQ(endX(clip), 2.0f) << "the file after the invalidate";
@@ -490,7 +490,7 @@ TEST_F(ClipPool, GenerationsAreUniqueAcrossKeys){
     std::vector<std::string> paths;
     for (int i = 0; i < 3; i++){
         paths.push_back(p("gen" + std::to_string(i) + ".anim"));
-        animtest::writeAsset(paths.back(), clipText((float)i));
+        animtest::writeAsset(paths.back(), clipPoolClipText((float)i));
     }
     for (int round = 0; round < 5; round++){
         for (const std::string& path : paths){

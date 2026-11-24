@@ -499,6 +499,8 @@ namespace jasperengine::editor::sprite {
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (ext != ".svg") return pixelart::PixelImage::loadPng(file, error);
         TextureData data;
+        // the raster is copied out below: this one frees it (a TextureData owns no pixels by default)
+        data.setDataOwned(true);
         if (!data.loadTextureFromFile(file.string().c_str()) || !data.getData() || data.getWidth() <= 0 || data.getHeight() <= 0) {
             if (error) *error = "the SVG does not rasterize";
             return std::nullopt;

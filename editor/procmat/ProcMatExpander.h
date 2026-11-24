@@ -253,7 +253,6 @@ namespace jasperengine::editor::procmat {
         std::string replaceInput(int index, const std::string& suffix, const std::string& parameters, Variables& variables, ExpandedCode& rv, ExpansionContext& context);
         std::string replaceVariables(std::string text, Variables& variables, ExpandedCode& rv, ExpansionContext& context);
 
-        int genericSize;
         double seed;
         std::vector<std::string> functions;
         std::string instance;

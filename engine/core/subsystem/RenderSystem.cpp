@@ -7457,9 +7457,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                                 depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                                 continue;
                             }
-                            // (the colour: a lattice variant's mask reads it)
+                            // (the colour: a lattice variant's mask reads it; the snap pivot: a pixel-snapped
+                            // sprite's 'Pxs' program snaps about it, as its colour program does)
                             if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::COLOR ||
-                                    attr.first == AttributeType::VAT_INDEX){
+                                    attr.first == AttributeType::VAT_INDEX || attr.first == AttributeType::SNAPPIVOT){
                                 depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                             }
                             if (mesh.submeshes[i].hasSkinning || vatBones){
@@ -7491,7 +7492,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                         depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                         continue;
                     }else if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::COLOR ||
-                            attr.first == AttributeType::VAT_INDEX){
+                            attr.first == AttributeType::VAT_INDEX || attr.first == AttributeType::SNAPPIVOT){
                         depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                     }
                     if (mesh.submeshes[i].hasSkinning || vatBones){
@@ -8807,7 +8808,7 @@ void RenderSystem::loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submes
         // as the depth render binds them (loadMesh: no skin, morph targets or terrain here)
         auto depthInput = [allDepthAttributes](AttributeType type){
             return allDepthAttributes || type == AttributeType::POSITION || type == AttributeType::TEXCOORD1 ||
-                   type == AttributeType::COLOR || type == AttributeType::VAT_INDEX;
+                   type == AttributeType::COLOR || type == AttributeType::VAT_INDEX || type == AttributeType::SNAPPIVOT;
         };
         for (auto const& buf : buffers){
             if (!buf.second->isRenderAttributes())
@@ -10904,8 +10905,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 // (a World's block is wider and per draw item: drawTerrainWorldItems)
                 if (!terrain->world)
                     render.applyUniformBlock(mesh.submeshes[i].slotVSTerrain, sizeof(float) * 8, &(terrain->eyePos));
-                applyTerrainLayersUniform(render, mesh.submeshes[i].slotFSTerrainLayers, entity, *terrain, mesh.submeshes[i].litDefineBits,
-                                          (mesh.submeshes[i].litDefineBits & MaterialPbr::getDefineBit("TERRAIN_EXTENDED_LAYERS")) != 0);
+                applyTerrainLayersUniform(render, mesh.submeshes[i].slotFSTerrainLayers, entity, *terrain, mesh.submeshes[i].shader->shaderData);
                 applyTerrainMacroVertexUniform(render, mesh.submeshes[i].slotVSTerrainMacro, *terrain);
             }
 #if JASPERENGINE_VOXEL
@@ -12211,8 +12211,7 @@ void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, c
             terrain->eyePos = terrainNodes->nodesEyePos;
             if (!terrain->world)
                 gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferTerrain, sizeof(float) * 8, &(terrain->eyePos));
-            applyTerrainLayersUniform(gbufferRender, mesh.submeshes[i].slotFSGBufferTerrainLayers, entity, *terrain, 0,
-                                      (mesh.submeshes[i].gbufferShaderProperties & ShaderPool::getTerrainExtendedProperty()) != 0);
+            applyTerrainLayersUniform(gbufferRender, mesh.submeshes[i].slotFSGBufferTerrainLayers, entity, *terrain, mesh.submeshes[i].gbufferShader->shaderData);
             instanceCount = terrainNodes->nodesbuffer[i].getCount();
             gbufferRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrainNodes->nodesbuffer[i].getRender());
         }

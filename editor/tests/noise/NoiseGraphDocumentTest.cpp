@@ -39,15 +39,15 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Headless {
+    struct NoiseGraphDocumentHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    NoiseGraphDocumentHeadless& noiseGraphDocumentHeadless() {
+        static NoiseGraphDocumentHeadless h = []() {
+            NoiseGraphDocumentHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-noise-document-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -89,7 +89,7 @@ namespace {
     public:
         NoiseDocumentFixture() {
             noise::registerNoiseKind();
-            project = headless().project.get();
+            project = noiseGraphDocumentHeadless().project.get();
             history = project->getProjectCommandHistory();
             history->clear();
             file = project->getAssetsPath() / "test.noisegraph";

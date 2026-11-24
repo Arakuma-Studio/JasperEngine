@@ -34,14 +34,14 @@ using titleart::TitleRectI;
 
 namespace {
 
-    fs::path scratch(const std::string& name) {
+    fs::path titleArtBakeScratch(const std::string& name) {
         const fs::path dir = fs::temp_directory_path() / ("jasper-titleart-bake-test-" + std::to_string(::getpid())) / name;
         fs::remove_all(dir);
         fs::create_directories(dir);
         return dir;
     }
 
-    void writeAll(const fs::path& path, const std::string& content) {
+    void titleArtBakeWriteAll(const fs::path& path, const std::string& content) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file << content;
@@ -95,7 +95,7 @@ namespace {
         std::string error;
         ASSERT_TRUE(insertTitleBakeRecipe(png, recipe, withRecipe, error)) << error;
         const fs::path out = document.parent_path() / (document.filename().string() + (id == "main" ? ".png" : "." + id + ".png"));
-        writeAll(out, std::string(withRecipe.begin(), withRecipe.end()));
+        titleArtBakeWriteAll(out, std::string(withRecipe.begin(), withRecipe.end()));
     }
 
 }
@@ -231,14 +231,14 @@ TEST(TitleArtBakeTest, Sidecar) {
 }
 
 TEST(TitleArtBakeTest, FreshStaleMissingInvalid) {
-    const fs::path dir = scratch("status");
-    writeAll(dir / "fonts/a.ttf", "font bytes");
+    const fs::path dir = titleArtBakeScratch("status");
+    titleArtBakeWriteAll(dir / "fonts/a.ttf", "font bytes");
     titleart::TitleArtDoc doc = titleart::makeNewTitleArt();
     doc.root["layers"][0]["font"] = TJson{{"path", "fonts/a.ttf"}, {"guid", "0123456789abcdef0123456789abcdef"}};
     doc.root["outputs"].push_back(TJson{{"id", "glow"}, {"content", "glow"}});
     titleart::normalizeTitleArt(doc, nullptr);
     const fs::path document = dir / "logo.titleart";
-    writeAll(document, titleart::writeTitleArt(doc));
+    titleArtBakeWriteAll(document, titleart::writeTitleArt(doc));
     FolderAssets assets(dir);
 
     TitleBakeStatus status = titleArtBakeStatus(document, doc, assets);
@@ -251,18 +251,18 @@ TEST(TitleArtBakeTest, FreshStaleMissingInvalid) {
     bakeLike(document, doc, status, "main", status.bakeVersion);
     bakeLike(document, doc, status, "glow", status.bakeVersion);
     TitleBakeInfo info;
-    writeAll(titleArtSidecarPath(document), info.toText());
+    titleArtBakeWriteAll(titleArtSidecarPath(document), info.toText());
     status = titleArtBakeStatus(document, doc, assets);
     EXPECT_EQ(status.outputs[0].status, TitleOutputStatus::Fresh);
     EXPECT_TRUE(status.allFresh());
 
     // a font change makes both stale, naming the asset
-    writeAll(dir / "fonts/a.ttf", "other font bytes!");
+    titleArtBakeWriteAll(dir / "fonts/a.ttf", "other font bytes!");
     status = titleArtBakeStatus(document, doc, assets);
     EXPECT_EQ(status.outputs[0].status, TitleOutputStatus::Stale);
     ASSERT_FALSE(status.outputs[0].changed.empty());
     EXPECT_NE(status.outputs[0].changed[0].find("fonts/a.ttf"), std::string::npos);
-    writeAll(dir / "fonts/a.ttf", "font bytes");
+    titleArtBakeWriteAll(dir / "fonts/a.ttf", "font bytes");
     EXPECT_TRUE(titleArtBakeStatus(document, doc, assets).allFresh()) << "the font as baked: fresh again";
 
     // a document edit: stale with "document"
@@ -282,7 +282,7 @@ TEST(TitleArtBakeTest, FreshStaleMissingInvalid) {
     // a PNG without a recipe, or another document's, is invalid
     std::vector<uint8_t> plain;
     ASSERT_TRUE(texsynth::encodePng(rgba(4, 4), plain));
-    writeAll(dir / "logo.titleart.glow.png", std::string(plain.begin(), plain.end()));
+    titleArtBakeWriteAll(dir / "logo.titleart.glow.png", std::string(plain.begin(), plain.end()));
     status = titleArtBakeStatus(document, doc, assets);
     EXPECT_EQ(status.outputs[1].status, TitleOutputStatus::Invalid);
 

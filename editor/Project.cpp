@@ -31,6 +31,7 @@
 #include "diag/HangWatchdog.h"
 #include "util/ProjectChecks.h"
 #include "util/EditorDiagnostics.h"
+#include "util/ThreadCpuTime.h"
 #include "util/ScriptReloadService.h"
 #include "util/ScriptStatus.h"
 #include "util/EditorScripts.h"
@@ -177,6 +178,8 @@
 #include "project/SceneFileIdentity.h"
 #include "component/CameraComponent.h"
 #include "component/Transform.h"
+#include "component/AudioSourceComponent.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "device/Device.h"
 #include "shader/ShaderWarmup.h"
 #include "Input.h"
@@ -396,6 +399,13 @@ editor::Project::~Project(){
     playStopTask.wait();
     sceneSaveTask.wait();
     shaderListWrite.wait();
+    // its scenes and their renders are its own: they go with it while the engine runs (the unit
+    // tests' Projects). One destroyed after Engine::systemShutdown, the editor's (a static App's,
+    // after the engine's own statics), leaves them to the process exit; a CLI command releases
+    // them before its engine guard shuts the engine down
+    if (jobs::hasSystem() && !jobs::system().isShuttingDown()){
+        deleteScenes();
+    }
     if (shaderForkReaderProject == this){
         shaderForkReaderProject = nullptr;
         ShaderManifests::setForkReader(nullptr);
@@ -3452,6 +3462,20 @@ const editor::SourceCodeExportSettings& editor::Project::getSourceCodeExportSett
     return sourceCodeExportSettings;
 }
 
+void editor::Project::setTargetPlatforms(uint8_t platforms){
+    platforms &= allTargetPlatforms;
+    targetPlatforms = platforms ? platforms : allTargetPlatforms;
+}
+
+editor::BuildPlatform editor::Project::defaultBuildPlatform() const{
+    if (isTargetPlatform(hostBuildPlatform())) return hostBuildPlatform();
+    for (BuildPlatform platform : {BuildPlatform::Windows, BuildPlatform::MacOS, BuildPlatform::Linux, BuildPlatform::Android,
+                                   BuildPlatform::IOS, BuildPlatform::Web}){
+        if (isTargetPlatform(platform)) return platform;
+    }
+    return hostBuildPlatform();
+}
+
 editor::DesktopExportSettings& editor::Project::getDesktopExportSettings(){
     return desktopExportSettings;
 }
@@ -3692,6 +3716,8 @@ void editor::Project::setAudioSettings(const AudioSettings& settings){
     audioSettings.maxVoices = std::clamp(audioSettings.maxVoices, 1, 1000);
     if (audioSettings.sampleRate < 0) audioSettings.sampleRate = 0;
     audioSettings.seed = std::max(audioSettings.seed, 0);
+    audioSettings.unusedClipCacheMb = std::clamp(audioSettings.unusedClipCacheMb, 0, 4096);
+    SoundPool::setUnusedBudget((uint64_t)audioSettings.unusedClipCacheMb * 1024 * 1024);
     AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate,
                             AudioSystem::outputStageFromName(audioSettings.outputStage),
                             AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory), (uint32_t)audioSettings.seed,
@@ -6436,6 +6462,17 @@ void editor::Project::releaseScenes() {
     resetConfigs();
 }
 
+void editor::Project::deleteScenes() {
+    // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
+    while (!prefabStages.empty()) {
+        popPrefabStage();
+    }
+    for (auto& sceneProject : scenes) {
+        deleteSceneProject(&sceneProject);
+    }
+    scenes.clear();
+}
+
 void editor::Project::resetConfigs() {
     // an old project has no terrain tiers: High everywhere (T3 R51), set again as it loads
     for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
@@ -6459,16 +6496,7 @@ void editor::Project::resetConfigs() {
     // and the offscreen renderers render_pose_animation keeps of its models
     PoseSheetRenderer::clearShared();
 
-    // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
-    while (!prefabStages.empty()) {
-        popPrefabStage();
-    }
-
-    // Clear existing scenes
-    for (auto& sceneProject : scenes) {
-        deleteSceneProject(&sceneProject);
-    }
-    scenes.clear();
+    deleteScenes();
     unresolvedScenes.clear();
     unresolvedSceneStates.clear();
     prefabAssets.clear();
@@ -6508,6 +6536,7 @@ void editor::Project::resetConfigs() {
     buildMethod = "auto";
     packContent = false;
     stripEngineCode = true;
+    targetPlatforms = allTargetPlatforms;
     spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setPixelsPerUnit(defaultPixelsPerUnit);
@@ -7337,8 +7366,12 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         }
 
         if (!std::filesystem::exists(projectFile)) {
-            // a file in its place is no project folder: nothing could be saved there
-            if (!std::filesystem::is_directory(projectPath) && !std::filesystem::create_directories(projectPath)) {
+            // a file in its place is no project folder: nothing could be saved there. Asked after
+            // the creation, not before it: create_directories says false for a folder another
+            // writer made since a check, and the new project then refused its own folder
+            std::error_code folderEc;
+            std::filesystem::create_directories(projectPath, folderEc);
+            if (!std::filesystem::is_directory(projectPath, folderEc)) {
                 throw std::runtime_error(FileUtils::pathToGenericUtf8(projectPath) + " is not a folder");
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
@@ -8955,6 +8988,12 @@ std::vector<Entity> editor::Project::getPickableEntities(const SceneProject* sce
     // what a running scene made for itself is drawn too (and selectable, read-only)
     const std::vector<Entity> playCreated = getPlayCreatedEntities(sceneProject);
     entities.insert(entities.end(), playCreated.begin(), playCreated.end());
+    // an Audio Source slot is picked as its GameObject (ScenePicker::pickedEntity, S97 REQ-25)
+    if (sceneProject->scene && sceneProject->scene->getComponentArray<AudioSourceComponent>()->size() > 0) {
+        entities.erase(std::remove_if(entities.begin(), entities.end(), [sceneProject](Entity entity) {
+            return AudioSourceSlots::isSlot(sceneProject->scene, entity);
+        }), entities.end());
+    }
     return entities;
 }
 
@@ -11546,6 +11585,7 @@ void editor::Project::stop(uint32_t sceneId) {
         return;
     }
 
+    const double stopCpuStart = threadCpuMs();
     session->cancelled.store(true, std::memory_order_release);
     sceneProject->playState = ScenePlayState::CANCELLING;
 
@@ -11595,6 +11635,7 @@ void editor::Project::stop(uint32_t sceneId) {
         // All teardown happens on the main/GL thread so that script
         // destructors and engine resource cleanup run with a valid GL context.
         editor::getEditorHost().enqueueMainThreadTask([this, session, sceneId, startupSucceededAtStop]() {
+            const double teardownCpuStart = threadCpuMs();
             SceneProject* mainSceneProject = getScene(sceneId);
             const bool startupSucceeded = session->startupSucceeded.load(std::memory_order_acquire);
 
@@ -11728,12 +11769,19 @@ void editor::Project::stop(uint32_t sceneId) {
             Engine::resetApplicationState();
             editor::Platform::endPlaySimulation();
 
+            session->stopCpuMs += threadCpuMs() - teardownCpuStart;
+            lastStopCpuMs = session->stopCpuMs;
             {
                 std::scoped_lock lock(playSessionMutex);
                 if (activePlaySession == session) activePlaySession.reset();
             }
         });
     }, stopOptions);
+    session->stopCpuMs += threadCpuMs() - stopCpuStart;
+}
+
+double editor::Project::getLastStopCpuMs() const {
+    return lastStopCpuMs;
 }
 
 void editor::Project::stopActivePlay() {

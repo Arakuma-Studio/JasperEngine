@@ -6,6 +6,7 @@
 // "<method>:<self>:<other>:<this index>:<other index>@<step>" to the Lua `log` table.
 
 #include "ScriptTestHarness.h"
+#include "support/EditorTestSupport.h"
 
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
@@ -941,13 +942,14 @@ TEST_F(PhysicsContactsTest, ContactProcessingCostIsSmall) {
     //   only, since the step moves with the box (the per-callback budget is the sensitive one).
     // - Lua garbage a callback (deterministic): 153 bytes; 184 is 20% over.
     // - no listener: 0.13-0.16% of the step; spec 8: < 1%.
-#if defined(__SANITIZE_ADDRESS__)
-    const double slack = 1e9;
-#else
-    const double slack = 1.0;
-#endif
-    const double perCallbackBudget = 4.4 * slack;
-    const double ratioBudget = 0.07 * slack;
+    // The times (and their ratios: the step's moves with the box's free cores and load) are
+    // wall-clock budgets, enforced where perfSlack() asks for them (the benchmark run) and printed
+    // always; the garbage a callback makes is deterministic and checked everywhere.
+    const double slack = editor::test::perfSlack();
+    const bool enforce = slack > 0.0;
+    const double perCallbackBudget = 4.4 * (enforce ? slack : 1.0);
+    const double ratioBudget = 0.07 * (enforce ? slack : 1.0);
+    const double quietBudget = 0.01 * (enforce ? slack : 1.0);
     const double bytesPerCallbackBudget = 184.0; // the same under the sanitizers
     for (int listeners = 10; listeners >= 0; listeners -= 10) {
         if (listeners == 0) {
@@ -979,7 +981,7 @@ TEST_F(PhysicsContactsTest, ContactProcessingCostIsSmall) {
         int runs = 0;
         auto withinBudgets = [&](){
             return listeners ? (minPerCallback < perCallbackBudget && minContacts < minStep * ratioBudget)
-                             : minContacts < minStep * 0.01 * slack;
+                             : minContacts < minStep * quietBudget;
         };
         for (int round = 0; round < 5 && (runs == 0 || !withinBudgets()); round++) {
             for (int trial = 0; trial < 5; trial++, runs++) {
@@ -999,8 +1001,10 @@ TEST_F(PhysicsContactsTest, ContactProcessingCostIsSmall) {
                     listeners, minStep * 1000.0, minContacts * 1000.0, 100.0 * minContacts / minStep,
                     listeners ? minPerCallback : 0.0, runs);
         if (listeners) {
-            EXPECT_LT(minPerCallback, perCallbackBudget) << "main-thread time a callback (us), the least disturbed run";
-            EXPECT_LT(minContacts, minStep * ratioBudget) << "step " << minStep << " s, contacts " << minContacts << " s";
+            if (enforce) {
+                EXPECT_LT(minPerCallback, perCallbackBudget) << "main-thread time a callback (us), the least disturbed run";
+                EXPECT_LT(minContacts, minStep * ratioBudget) << "step " << minStep << " s, contacts " << minContacts << " s";
+            }
             EXPECT_GE(number("stays"), 10.0 * 300) << "10 listeners, a Stay each step";
 
             // the Lua garbage a callback makes (its Collision and what the dispatch allocates):
@@ -1015,7 +1019,9 @@ TEST_F(PhysicsContactsTest, ContactProcessingCostIsSmall) {
             std::printf("[cost] Lua garbage: %.0f bytes a callback (%.0f callbacks)\n", bytesPerCallback, callbacks);
             EXPECT_LT(bytesPerCallback, bytesPerCallbackBudget) << "Lua bytes a callback";
         } else {
-            EXPECT_LT(minContacts, minStep * 0.01 * slack) << "step " << minStep << " s, contacts " << minContacts << " s";
+            if (enforce) {
+                EXPECT_LT(minContacts, minStep * quietBudget) << "step " << minStep << " s, contacts " << minContacts << " s";
+            }
             EXPECT_EQ(physics()->getContactTracker3D().recordedCount(), 0u);
         }
     }

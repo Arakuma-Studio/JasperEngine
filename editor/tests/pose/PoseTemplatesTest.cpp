@@ -42,9 +42,9 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    using Json = nlohmann::json;
+    using PoseJson = nlohmann::json;
 
-    std::string readText(const fs::path& path){
+    std::string poseTemplatesReadText(const fs::path& path){
         std::ifstream in(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
@@ -53,12 +53,12 @@ namespace {
     // joint that are not joints (the scene root node) are folded into its rest transform (they
     // are identity in the fixtures, checked)
     Skeleton gltfSkeleton(const fs::path& file){
-        const Json gltf = Json::parse(readText(file));
-        const Json& nodes = gltf["nodes"];
-        const Json& joints = gltf["skins"][0]["joints"];
+        const PoseJson gltf = PoseJson::parse(poseTemplatesReadText(file));
+        const PoseJson& nodes = gltf["nodes"];
+        const PoseJson& joints = gltf["skins"][0]["joints"];
         std::vector<int> parentOf(nodes.size(), -1);
         for (size_t n = 0; n < nodes.size(); n++){
-            for (const Json& child : nodes[n].value("children", Json::array())){
+            for (const PoseJson& child : nodes[n].value("children", PoseJson::array())){
                 parentOf[child.get<int>()] = static_cast<int>(n);
             }
         }
@@ -69,7 +69,7 @@ namespace {
         Skeleton skeleton;
         for (size_t j = 0; j < joints.size(); j++){
             const int node = joints[j].get<int>();
-            const Json& n = nodes[node];
+            const PoseJson& n = nodes[node];
             SkeletonBone bone;
             bone.name = n["name"].get<std::string>();
             if (n.contains("translation")){
@@ -85,7 +85,7 @@ namespace {
             }
             int parent = parentOf[node];
             while (parent >= 0 && !boneOfNode.count(parent)){
-                const Json& ancestor = nodes[parent];
+                const PoseJson& ancestor = nodes[parent];
                 EXPECT_FALSE(ancestor.contains("translation") || ancestor.contains("rotation") || ancestor.contains("scale") ||
                              ancestor.contains("matrix")) << file << ": a non-joint ancestor with a transform (not folded here)";
                 parent = parentOf[parent];
@@ -120,15 +120,15 @@ namespace {
     }
 
     // spec section 3: name -> category, pose count, loop
-    struct Expected {
+    struct PoseTemplatesExpected {
         const char* category;
         size_t poses;
         bool loop;
         size_t mirroredHalf;   // poses [half, 2 * half) mirror poses [0, half); 0 = no mirrored halves
     };
 
-    const std::map<std::string, Expected>& expected(){
-        static const std::map<std::string, Expected> table = {
+    const std::map<std::string, PoseTemplatesExpected>& expected(){
+        static const std::map<std::string, PoseTemplatesExpected> table = {
             {"Idle", {"Basics", 2, true, 0}},
             {"Walk", {"Locomotion", 4, true, 2}},
             {"Run", {"Locomotion", 4, true, 2}},
@@ -143,21 +143,21 @@ namespace {
         return table;
     }
 
-    struct TempProject {
+    struct PoseTemplatesTempProject {
         fs::path path;
-        TempProject(){
+        PoseTemplatesTempProject(){
             static std::atomic<int> counter{0};
             path = fs::temp_directory_path() / ("jasper-posetemplates-" + std::to_string(
                 std::chrono::steady_clock::now().time_since_epoch().count()) + "-" + std::to_string(counter++));
             fs::create_directories(path);
         }
-        ~TempProject(){
+        ~PoseTemplatesTempProject(){
             std::error_code ec;
             fs::remove_all(path, ec);
         }
     };
 
-    void write(const fs::path& path, const std::string& text){
+    void poseTemplatesWrite(const fs::path& path, const std::string& text){
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         out << text;
     }
@@ -439,7 +439,7 @@ TEST(PoseTemplates, MirroredHalvesAreExactMirrors){
 }
 
 TEST(PoseTemplates, StoreListsLoadsShadowsSavesAndDeletes){
-    TempProject project;
+    PoseTemplatesTempProject project;
     // a project without templates lists the built-ins
     std::vector<PoseTemplateInfo> list = PoseTemplates::list(project.path);
     ASSERT_EQ(list.size(), expected().size());
@@ -512,8 +512,8 @@ TEST(PoseTemplates, StoreListsLoadsShadowsSavesAndDeletes){
     EXPECT_FALSE(fs::exists(PoseTemplates::userDirectory(project.path))) << "and the folder it created";
 
     // a removal that cannot complete removes nothing
-    TempProject other;
-    write(other.path / "a.poseanim", "a");
+    PoseTemplatesTempProject other;
+    poseTemplatesWrite(other.path / "a.poseanim", "a");
     RemoveFilesCmd* failing = new RemoveFilesCmd({other.path / "a.poseanim", other.path / "missing.poseanim"}, nullptr);
     EXPECT_FALSE(history.addCommand(failing));   // deleted by the history
     EXPECT_TRUE(fs::exists(other.path / "a.poseanim"));

@@ -21,25 +21,25 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    struct Expected {
+    struct SourceLocationExpected {
         std::string path;
         int line;
         int column;
     };
 
-    struct Case {
+    struct SourceLocationCase {
         const char* text;
-        std::vector<Expected> locations;
+        std::vector<SourceLocationExpected> locations;
     };
 
-    std::string describe(const std::vector<SourceLocation>& found) {
+    std::string sourceLocationDescribe(const std::vector<SourceLocation>& found) {
         std::string out;
         for (const SourceLocation& l : found) out += "{" + l.path + ":" + std::to_string(l.line) + ":" + std::to_string(l.column) + "} ";
         return out;
     }
 
-    const std::vector<Case>& table() {
-        static const std::vector<Case> cases = {
+    const std::vector<SourceLocationCase>& table() {
+        static const std::vector<SourceLocationCase> cases = {
             // Lua: both chunk name forms, lua://, tracebacks
             {"scripts/player.lua:12: attempt to index a nil value (field 'body')", {{"scripts/player.lua", 12, 0}}},
             {"Lua Error: scripts/player.lua:12: attempt to call a nil value (method 'jump')", {{"scripts/player.lua", 12, 0}}},
@@ -103,9 +103,9 @@ namespace {
 
 TEST(SourceLocation, Table) {
     ASSERT_GE(table().size(), 40u);
-    for (const Case& test : table()) {
+    for (const SourceLocationCase& test : table()) {
         const std::vector<SourceLocation> found = findSourceLocations(test.text);
-        ASSERT_EQ(found.size(), test.locations.size()) << test.text << "\nfound: " << describe(found);
+        ASSERT_EQ(found.size(), test.locations.size()) << test.text << "\nfound: " << sourceLocationDescribe(found);
         for (size_t i = 0; i < found.size(); i++) {
             EXPECT_EQ(found[i].path, test.locations[i].path) << test.text;
             EXPECT_EQ(found[i].line, test.locations[i].line) << test.text;
@@ -163,7 +163,7 @@ TEST(SourceLocation, BuildTreePathsMapToProjectFiles) {
 
 TEST(SourceLocation, InsertTimeBudget) {
     std::vector<std::string> lines;
-    for (const Case& test : table()) lines.push_back(test.text);
+    for (const SourceLocationCase& test : table()) lines.push_back(test.text);
     for (int i = 0; i < 200; i++) lines.push_back("[Hot Reload] Reloaded assets/hero_" + std::to_string(i) + ".png (texture, 34 ms)");
     const int rounds = 200;
     size_t found = 0;

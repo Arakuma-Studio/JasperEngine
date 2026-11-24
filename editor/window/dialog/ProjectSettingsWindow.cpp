@@ -42,6 +42,7 @@
 #include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "util/UIProbe.h"
+#include "window/TargetPlatformsUi.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
 #include "util/NativeNeeds.h"
 #include "input/InputActions.h"
@@ -1852,6 +1853,40 @@ void ProjectSettingsWindow::drawPlayerSettings() {
         }
 
         if (settingsFoldout("Publishing Settings") && beginSettingsTable("##PlayerPublishingTable")) {
+            // Target Platforms: applied at once, each change one undo step of the project (Build Settings'
+            // Target column edits the same set)
+            if (settingsui::beginRow("player.target_platforms")) {
+                const uint8_t targets = m_project->getTargetPlatforms();
+                if (projectBeginSettingsRow("Target Platforms", targets != Project::allTargetPlatforms, "Target every platform")) {
+                    setTargetPlatformsUndoable(m_project, Project::allTargetPlatforms);
+                }
+                const ImGuiStyle& style = ImGui::GetStyle();
+                const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x - helpMarkerWidth();
+                bool first = true;
+                for (BuildPlatform platform : {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS, BuildPlatform::Android,
+                                               BuildPlatform::IOS, BuildPlatform::Web}) {
+                    const std::string label = std::string(targetPlatformIcon(platform)) + " " + targetPlatformTitle(platform) +
+                                              "##Target" + buildPlatformName(platform);
+                    const float width = ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(label.c_str(), nullptr, true).x;
+                    // one line while it fits, wrapped in a narrow window
+                    if (!first && ImGui::GetItemRectMax().x + style.ItemSpacing.x + width <= right) ImGui::SameLine();
+                    first = false;
+                    const uint8_t bit = Project::targetPlatformBit(platform);
+                    bool on = (targets & bit) != 0;
+                    const bool last = targets == bit;
+                    ImGui::BeginDisabled(last);
+                    if (ImGui::Checkbox(label.c_str(), &on)) {
+                        setTargetPlatformsUndoable(m_project, on ? (uint8_t)(targets | bit) : (uint8_t)(targets & ~bit));
+                    }
+                    ImGui::EndDisabled();
+                    UIProbe::item(std::string("player.target_platforms.") + buildPlatformName(platform));
+                    if (last && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::SetTooltip("A game needs at least one target platform.");
+                    }
+                }
+                endSettingsRow("The platforms this game ships on. Build Settings and the MCP tools default to them; you can still "
+                               "build any platform.");
+            }
             if (settingsui::beginRow("player.pack_native_resources")) {
                 if (projectBeginSettingsRow("Native Resource Pack", m_packNativeResources != Project::defaultPackNativeResources)) {
                     m_packNativeResources = Project::defaultPackNativeResources;
@@ -3060,6 +3095,18 @@ void ProjectSettingsWindow::drawAudioSettings() {
                 audio.maxVoices = std::clamp(audio.maxVoices, 1, 1000);
                 endSettingsRow("Voices playing at all. Past it the least important (the highest Audio Source Priority, the oldest first) "
                                "is stopped, or the new one does not start when it is the least important.");
+            }
+
+            if (settingsui::beginRow("audio.unused_clip_cache")) {
+                if (projectBeginSettingsRow("Unused Clip Cache (MiB)", audio.unusedClipCacheMb != defaults.unusedClipCacheMb)) {
+                    audio.unusedClipCacheMb = defaults.unusedClipCacheMb;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioUnusedClipCache", &audio.unusedClipCacheMb, 1.0f, 0, 4096);
+                audio.unusedClipCacheMb = std::clamp(audio.unusedClipCacheMb, 0, 4096);
+                endSettingsRow("Clips no source or voice plays stay loaded up to this many MiB, so switching back to one decodes "
+                               "nothing; the least recently used go first. Streamed clips count nothing. 0 drops a clip when "
+                               "its last source or voice lets it go. AudioSource.destroySound and AudioSystem.unload free one at once.");
             }
 
             if (settingsui::beginRow("audio.seed")) {

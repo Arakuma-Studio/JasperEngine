@@ -105,6 +105,10 @@ platform (`docs/editor/text-and-languages.md` for users):
   `legacyToUtf8` are the helpers.
 - Paths stored in project files use `/`: `Stream::portablePath` writes them so and reads `\` as a
   separator.
+- The editor converts paths with `FileUtils::pathFromUtf8`, `pathToUtf8` and `pathToGenericUtf8`,
+  never `path::string()`: they never throw. On Windows, where a name is UTF-16, a byte that is not
+  part of valid UTF-8 travels as U+DC80 + byte and back, and a lone surrogate as its three-byte
+  form, so a name that is not UTF-8 is reported where it is checked, as on POSIX.
 - Text from outside: `TextEncoding::consoleToUtf8` (child output), vswhere through
   `CommandRunner::vswhere` (`-utf8`), Apple paths through `UTF8String`.
 - `tools/check_text_encoding.py` (a lint to run when you change these areas; `--self-test` is its red control) fails on `CP_ACP`, ANSI Win32 calls that take

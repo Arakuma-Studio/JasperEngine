@@ -689,6 +689,7 @@ bool editor::Exporter::writeGameConfig() {
     game.audioMaxRealVoices = audio.maxRealVoices;
     game.audioMaxVoices = audio.maxVoices;
     game.audioSeed = audio.seed;
+    game.audioUnusedClipCacheMb = audio.unusedClipCacheMb;
     game.audioMusicGroup = audio.musicGroup;
     game.audioSampleRate = audio.sampleRate;
     game.audioOutputStage = audio.outputStage;

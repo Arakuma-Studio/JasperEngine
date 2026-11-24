@@ -67,7 +67,7 @@ namespace {
         return false;
     }
 
-    std::string readFile(const std::filesystem::path& path) {
+    std::string titleGenCatalogReadFile(const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary);
         std::stringstream text;
         text << in.rdbuf();
@@ -232,7 +232,7 @@ TEST(TitleFxNoClock, GeneratorsReadNoTime) {
     for (const char* dir : {"engine/shaderlib/titleart/gen", "engine/core/titleart/generators", "engine/core/titleart/analysis", "engine/core/titleart/gpu"}) {
         if (!std::filesystem::exists(root / dir)) continue;
         for (const auto& entry : std::filesystem::directory_iterator(root / dir)) {
-            const std::string text = readFile(entry.path());
+            const std::string text = titleGenCatalogReadFile(entry.path());
             const bool shader = entry.path().extension() == ".glsl";
             EXPECT_FALSE(std::regex_search(text, shader ? shaderClock : cppClock)) << entry.path().string() << " reads a clock";
             scanned++;

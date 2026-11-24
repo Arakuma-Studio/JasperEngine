@@ -66,7 +66,7 @@ namespace {
 
     FrameBox boxAt(int x, int y, int width, int height) { return FrameBox{x, y, width, height}; }
 
-    PixelArt dot(int x, int y) {
+    PixelArt cleanupSheetDot(int x, int y) {
         PixelArt art;
         art.width = art.height = 4;
         art.palette = {Rgba8{255, 0, 0, 255}};
@@ -342,7 +342,7 @@ TEST(CleanupSheet, EveryFrameStaysInOneAnimationAsTheyChange) {
 
 // ritmo: "puts every frame's anchor on one spot, on the smallest canvas"
 TEST(CleanupSheet, LayOutPutsAnchorsOnOneSpotOnTheSmallestCanvas) {
-    const Layout laid = layOut({dot(0, 0), dot(3, 3)}, {Point{0, 0}, Point{-3, -3}}, 0);
+    const Layout laid = layOut({cleanupSheetDot(0, 0), cleanupSheetDot(3, 3)}, {Point{0, 0}, Point{-3, -3}}, 0);
     EXPECT_EQ(laid.width, 1);
     EXPECT_EQ(laid.height, 1);
     ASSERT_EQ(laid.frames.size(), 2u);
@@ -360,7 +360,7 @@ TEST(CleanupSheet, PlayOrderGoesThereAndBackWithoutRepeatingTheEnds) {
 TEST(CleanupSheet, EachAnimationFromANewRowWithNamedFrames) {
     AtlasClip fire;
     fire.name = "fire";
-    for (int i = 0; i < 5; i++) fire.frames.push_back(dot(1, 1));
+    for (int i = 0; i < 5; i++) fire.frames.push_back(cleanupSheetDot(1, 1));
     fire.anchor = {1, 3};
     fire.fps = 10;
     fire.loop = Loop::PingPong;

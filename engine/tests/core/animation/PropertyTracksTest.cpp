@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "AnimTestEnvironment.h"
+#include "AnimatorTestUtil.h"
 
 #include "Engine.h"
 #include "Scene.h"
@@ -53,16 +54,9 @@
 #include <thread>
 
 using namespace jasperengine;
+using namespace animatortest;
 
 namespace {
-
-    ClipKey key(float time, std::vector<float> value, EaseType ease = EaseType::LINEAR){
-        ClipKey k;
-        k.time = time;
-        k.value = std::move(value);
-        k.ease = ease;
-        return k;
-    }
 
     ClipTrackData property(const std::string& path, const std::string& component, const std::string& name, std::vector<ClipKey> keys){
         ClipTrackData t;
@@ -74,21 +68,14 @@ namespace {
         return t;
     }
 
-    ClipEventData event(float time, const std::string& function){
-        ClipEventData e;
-        e.time = time;
-        e.function = function;
-        return e;
-    }
-
-    bool hasWarning(const std::vector<ClipWarning>& warnings, const std::string& part){
+    bool trackHasWarning(const std::vector<ClipWarning>& warnings, const std::string& part){
         for (const ClipWarning& warning : warnings){
             if (warning.message.find(part) != std::string::npos) return true;
         }
         return false;
     }
 
-    std::string clipText(const std::string& tracks){
+    std::string propertyTracksClipText(const std::string& tracks){
         return "{\n  \"format\": \"jasperengine.anim\",\n  \"version\": 1,\n  \"frame_rate\": 30,\n  \"wrap\": \"once\",\n"
                "  \"tracks\": [\n" + tracks + "\n  ],\n  \"events\": []\n}\n";
     }
@@ -218,7 +205,7 @@ TEST(PropertyRegistry, ResolvesNamesSwizzlesAndSuggestions){
 // ---- 1. IO ----
 
 TEST(PropertyClipIO, EveryKindParsesAndWritesCanonically){
-    const std::string text = clipText(
+    const std::string text = propertyTracksClipText(
         "    {\"path\": \"Panel/Stats/puntaje\", \"channel\": \"property\", \"component\": \"gameobject\", \"property\": \"active\", \"keys\": [[0, false], [0.5, true]]},\n"
         "    {\"path\": \"Fade\", \"channel\": \"property\", \"component\": \"ui\", \"property\": \"color.a\", \"keys\": [{\"time\": 0, \"value\": 0, \"in\": 0, \"out\": 0, \"tangent_mode\": \"auto\"}, {\"time\": 1.5, \"value\": 1, \"in\": 0, \"out\": 0, \"tangent_mode\": \"auto\"}]},\n"
         "    {\"path\": \"Panel/Vignette\", \"channel\": \"property\", \"component\": \"ui\", \"property\": \"color\", \"keys\": [[0, [1, 0, 0, 1]], [0.1, \"#330000FF\", \"step\"]]},\n"
@@ -244,7 +231,7 @@ TEST(PropertyClipIO, EveryKindParsesAndWritesCanonically){
     const ClipTrackData& width = data.tracks[2];
     EXPECT_EQ(width.kind, PropertyKind::Int);
     EXPECT_FLOAT_EQ(width.keys[1].value[0], 200.0f) << "a fractional int rounds";
-    EXPECT_TRUE(hasWarning(parsed.warnings, "not a whole number"));
+    EXPECT_TRUE(trackHasWarning(parsed.warnings, "not a whole number"));
     const ClipTrackData& alpha = data.tracks[3];
     EXPECT_EQ(alpha.width, 1u);
     EXPECT_EQ(alpha.swizzle, 3);
@@ -277,7 +264,7 @@ TEST(PropertyClipIO, EveryKindParsesAndWritesCanonically){
 }
 
 TEST(PropertyClipIO, HexColoursEasesOnBoolsAndUnknownTracks){
-    anim::ClipParseResult parsed = anim::parseClip(clipText(
+    anim::ClipParseResult parsed = anim::parseClip(propertyTracksClipText(
         "    {\"path\": \"A\", \"channel\": \"property\", \"component\": \"ui\", \"property\": \"color\", \"keys\": [[0, \"#FF000080\"]]},\n"
         "    {\"path\": \"A\", \"channel\": \"property\", \"component\": \"gameobject\", \"property\": \"active\", \"keys\": [[0, 0], [1, 1, \"quad_out\"], [2, false, \"cubic_in\"]]}"));
     ASSERT_TRUE(parsed.ok());
@@ -298,12 +285,12 @@ TEST(PropertyClipIO, HexColoursEasesOnBoolsAndUnknownTracks){
     EXPECT_EQ(easeWarnings, 1u) << "one warning per track";
 
     // a v1 file with tracks this engine cannot animate round-trips byte-identically
-    const std::string unknown = clipText(
+    const std::string unknown = propertyTracksClipText(
         "    {\"path\":\"Fx\",\"channel\":\"property\",\"component\":\"light\",\"property\":\"fooBar\",\"keys\":[[0,{\"x\":1}]],\"extra\":true},\n"
         "    {\"path\":\"Fx\",\"channel\":\"property\",\"component\":\"particlecollider\",\"property\":\"bounce\",\"keys\":[[0,1]]}");
     anim::ClipParseResult kept = anim::parseClip(unknown);
     ASSERT_TRUE(kept.ok());
-    EXPECT_TRUE(hasWarning(kept.warnings, "unknown animatable property 'light.fooBar' (did you mean"));
+    EXPECT_TRUE(trackHasWarning(kept.warnings, "unknown animatable property 'light.fooBar' (did you mean"));
     EXPECT_FALSE(kept.data->tracks[0].known);
     const std::string canonical = anim::writeClip(*kept.data);
     anim::ClipParseResult reread = anim::parseClip(canonical);
@@ -753,7 +740,7 @@ TEST_F(Properties, RgbKeysOfAColor4ScriptFieldAreOpaque){
     scripts.scripts.push_back(entry);
     scene.addComponent<ScriptComponent>(root, scripts);
     // as a file has them: "#RRGGBB" keys (3 values)
-    anim::ClipParseResult parsed = anim::parseClip(clipText(
+    anim::ClipParseResult parsed = anim::parseClip(propertyTracksClipText(
         "    {\"path\": \"\", \"channel\": \"property\", \"component\": \"script:Tint\", \"property\": \"tint\", "
         "\"keys\": [[0, \"#FF0000\"], [1, \"#FF0000\"]]}"));
     ASSERT_TRUE(parsed.ok());

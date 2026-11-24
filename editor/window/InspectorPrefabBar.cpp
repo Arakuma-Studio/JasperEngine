@@ -558,7 +558,7 @@ std::string editor::InspectorWindow::formatPrefabValue(EntityRegistry* registry,
             return buffer;
         }
         case PropertyType::Enum:
-            return std::to_string(*static_cast<int*>(prop.ref));
+            return std::to_string(readPropertyInteger(prop, prop.ref));
         case PropertyType::Material: {
             const Material& material = *static_cast<Material*>(prop.ref);
             const Vector4& c = material.baseColorFactor;

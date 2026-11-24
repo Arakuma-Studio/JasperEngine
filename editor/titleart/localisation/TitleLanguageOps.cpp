@@ -415,7 +415,9 @@ namespace {
             for (auto it = translations->begin(); it != translations->end(); ++it) keys.push_back(it.key());
             for (const std::string& key : keys) {
                 if (!only.empty() && lower(key) != lower(only)) continue;
-                const Json& t = (*translations)[key];
+                // a copy: a write replaces the whole layer (setTitleArtField), so nothing held into
+                // it, `translations` included, outlives the first one
+                const Json t = layer["translations"][key];
                 if (!t.is_object() || !t.contains("status")) continue;
                 if (str(t, "status") != "translated") ok = ok && ctx.set(&layer, "translations." + key + ".status", "translated");
                 if (titleart::layerTypeOf(layer) == titleart::LayerType::Text && str(t, "source_hash") != hash) {

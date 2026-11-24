@@ -30,7 +30,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    std::set<std::string> keys(const YAML::Node& node){
+    std::set<std::string> streamAtmosphereKeys(const YAML::Node& node){
         std::set<std::string> out;
         for (auto it = node.begin(); it != node.end(); ++it)
             out.insert(it->first.as<std::string>());
@@ -93,7 +93,7 @@ TEST(StreamAtmosphere, SerializeDistanceFogWritesItsOldKeys){
     FogComponent fog;
     fog.type = FogType::EXPONENTIAL;
     fog.density = 0.05f;
-    const std::set<std::string> written = keys(reflect::encodeValue(ComponentType::FogComponent, &fog));
+    const std::set<std::string> written = streamAtmosphereKeys(reflect::encodeValue(ComponentType::FogComponent, &fog));
     EXPECT_EQ(written, (std::set<std::string>{"type", "color", "density", "linearStart", "linearEnd"}));
 }
 

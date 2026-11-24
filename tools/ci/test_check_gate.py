@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -209,6 +210,39 @@ class GateTest(unittest.TestCase):
         self.assertEqual(status, 0, out)
         self.assertRegex(out, r"(?m)^unit\s+success\s+ok \(build only on push\)$")
 
+    def test_the_advisory_run_lists_its_failures(self):
+        # the run a push to main dispatches: the advisory lanes' tests the merge queue left out, and the
+        # linux and windows jobs they need; what the queue ran is planned off (tools/ci/plan_lanes.py)
+        p = plan(event="advisory", off=("lint", "web", "android", "macos", "ios"))
+        p["build_only"] = []
+        status, out = self.gate(needs_for(p), p, reports_for(p))
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^unit\s+success\s+ok \(50 tests\)$")
+        self.assertRegex(out, r"(?m)^web\s+skipped\s+ok \(not planned: not needed\)$")
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+success\s+ok \(50 tests\)$")
+        advisory = "unit asan htmlui mcp smoke windows-editor-tests"
+        reps = [r for r in reports_for(p, ran={"unit": 0}) if r["lane"] != "windows-editor-tests"]
+        status, out = self.gate(needs_for(p, htmlui="failure"), p, reps, advisory=advisory)
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^unit\s+success\s+advisory \(rollout\): 0 tests ran$")
+        self.assertRegex(out, r"(?m)^htmlui\s+failure\s+advisory \(rollout\): failing$")
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+missing\s+advisory \(rollout\): no report, so no proof tests ran$")
+        # a report that failed while its job succeeded (a step that continues on error) is failing
+        reps = [dict(r, status="failure") if r["lane"] == "htmlui" else r for r in reports_for(p)]
+        status, out = self.gate(needs_for(p), p, reps)
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^htmlui\s+success\s+FAIL: failing$")
+        # the lanes it needs are not advisory: a linux failure fails Check
+        status, out = self.gate(needs_for(p, linux="failure"), p, reports_for(p), advisory=advisory)
+        self.assertEqual(status, 1, out)
+
+    def test_a_superseded_push_runs_nothing_and_passes(self):
+        p = plan(event="push", off=LANES[1:])
+        p["build_only"] = []
+        status, out = self.gate(needs_for(p), p, [])
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^linux\s+skipped\s+ok \(not planned: not needed\)$")
+
     def test_zero_test_unit_suite_fails(self):
         p = plan()
         p["unit_run"] = {"core": True, "editor": True}
@@ -220,6 +254,62 @@ class GateTest(unittest.TestCase):
         self.assertEqual(status, 1, out)
         self.assertRegex(out, r"(?m)^unit-core\s+success\s+ok \(40 tests\)$")
         self.assertRegex(out, r"(?m)^unit-editor\s+success\s+FAIL: 0 tests ran$")
+
+    def test_every_editor_part_must_run_tests(self):
+        # the editor tests run in two jobs (unit-editor-1, -2): each must report tests, and pass
+        p = plan()
+        p["unit_jobs"] = ["core", "editor-1", "editor-2"]
+
+        def reps(**ran):
+            out = [r for r in reports_for(p) if r["lane"] != "unit"]
+            for job, n in ran.items():
+                out.append({"lane": f"unit-{job.replace('_', '-')}", "status": "success", "sha": "", "commands": [],
+                            "failures": [], "artifacts": [], "tests": {"ran": n, "failed": 0, "skipped": 0, "disabled": 0}})
+            return out
+
+        status, out = self.gate(needs_for(p), p, reps(core=40, editor_1=30, editor_2=31))
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^unit-editor-2\s+success\s+ok \(31 tests\)$")
+        status, out = self.gate(needs_for(p), p, reps(core=40, editor_1=30, editor_2=0))
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^unit-editor-2\s+success\s+FAIL: 0 tests ran$")
+        status, out = self.gate(needs_for(p), p, reps(core=40, editor_1=30))
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^unit-editor-2\s+success\s+FAIL: no report, so no proof tests ran$")
+        # a part that failed fails the unit job, which the matrix's result already says
+        status, out = self.gate(needs_for(p, unit="failure"), p, reps(core=40, editor_1=30, editor_2=31))
+        self.assertEqual(status, 1, out)
+
+    def test_every_asan_job_must_run_tests(self):
+        # ASan runs one job per test binary (asan-core, asan-editor): each planned one must report tests
+        p = plan()
+        p["asan_jobs"] = ["core", "editor"]
+
+        def reps(**ran):
+            out = [r for r in reports_for(p) if r["lane"] != "asan"]
+            for job, n in ran.items():
+                out.append({"lane": f"asan-{job}", "status": "success", "sha": "", "commands": [],
+                            "failures": [], "artifacts": [], "tests": {"ran": n, "failed": 0, "skipped": 0, "disabled": 0}})
+            return out
+
+        status, out = self.gate(needs_for(p), p, reps(core=40, editor=30))
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^asan-editor\s+success\s+ok \(30 tests\)$")
+        self.assertNotRegex(out, r"(?m)^asan\s")
+        status, out = self.gate(needs_for(p), p, reps(core=40, editor=0))
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^asan-editor\s+success\s+FAIL: 0 tests ran$")
+        status, out = self.gate(needs_for(p), p, reps(editor=30))
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^asan-core\s+success\s+FAIL: no report, so no proof tests ran$")
+        # advisory during rollout: listed, not failing
+        status, out = self.gate(needs_for(p), p, reps(core=40, editor=0), advisory="asan")
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^asan-editor\s+success\s+advisory \(rollout\): 0 tests ran$")
+        # only the planned binary: core alone
+        p["asan_jobs"] = ["core"]
+        status, out = self.gate(needs_for(p), p, reps(core=40))
+        self.assertEqual(status, 0, out)
 
     def test_zero_test_mcp_shard_fails(self):
         p = plan()
@@ -256,10 +346,65 @@ class GateTest(unittest.TestCase):
         status, out = self.gate(needs_for(p), p, reports_for(p))
         self.assertEqual(status, 1, out)
         self.assertRegex(out, r"(?m)^asan\s+skipped\s+FAIL: the merge queue skips no lane$")
+        # ios without an Apple-only input: planned off by rule (queue_off), which the gate reads
+        p = dict(plan(event="merge_group", off=("ios",)), queue_off=["ios"])
+        status, out = self.gate(needs_for(p), p, reports_for(p))
+        self.assertEqual(status, 0, out)
+        p = plan(event="merge_group", off=("ios",))
+        self.assertEqual(self.gate(needs_for(p), p, reports_for(p))[0], 1)
+        # (a lane the queue may skip only when the plan said so: not macos)
+        p = dict(plan(event="merge_group", off=("macos",)), queue_off=["ios"])
+        self.assertEqual(self.gate(needs_for(p), p, reports_for(p))[0], 1)
         # a group nothing reads runs nothing (D3)
         p = plan(event="merge_group", off=tuple(n for n in LANES if n != "changes"))
         status, out = self.gate(needs_for(p), p, reports_for(p))
         self.assertEqual(status, 0, out)
+
+    def test_merge_group_skips_the_advisory_lanes_it_planned_off(self):
+        # the queue leaves ADVISORY_LANES to the push to main (tools/ci/plan_lanes.py advisory_off): Check
+        # waits for the blocking lanes only
+        deferred = ("unit", "asan", "htmlui", "mcp", "smoke")
+        advisory = "unit asan htmlui mcp smoke windows-editor-tests"
+        p = plan(event="merge_group", off=deferred)
+        p["advisory_off"] = [*deferred, "windows-editor-tests"]
+        p["build_only"] = ["windows-editor-tests"]
+        reps = [r for r in reports_for(p) if r["lane"] != "windows-editor-tests"]
+        status, out = self.gate(needs_for(p), p, reps, advisory=advisory)
+        self.assertEqual(status, 0, out)
+        for name in deferred:
+            self.assertRegex(out, rf"(?m)^{name}\s+skipped\s+ok \(not planned: not needed\)$")
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+skipped\s+ok \(advisory: not run in the merge queue\)$")
+        # a lane Check does not hold advisory: the queue skips it at its peril
+        status, out = self.gate(needs_for(p), p, reps, advisory="unit htmlui mcp smoke windows-editor-tests")
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^asan\s+skipped\s+FAIL: the merge queue skips no lane$")
+        # advisory, but planned off for another reason (or by a plan that names no reason)
+        q = dict(p, advisory_off=["unit", "htmlui", "mcp", "smoke", "windows-editor-tests"])
+        status, out = self.gate(needs_for(q), q, reps, advisory=advisory)
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^asan\s+skipped\s+FAIL: the merge queue skips no lane$")
+        q = {k: v for k, v in p.items() if k not in ("advisory_off", "build_only")}
+        status, out = self.gate(needs_for(q), q, reps, advisory=advisory)
+        self.assertEqual(status, 1, out)
+        # a blocking lane is never skipped for being "advisory"
+        q = plan(event="merge_group", off=("linux",))
+        q["advisory_off"] = ["linux"]
+        status, out = self.gate(needs_for(q), q, reports_for(q), advisory=advisory)
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^linux\s+skipped\s+FAIL: the merge queue skips no lane$")
+        # the editor leg's test run: skipped only while advisory and planned off for it
+        for advisory_lanes, off in (("unit asan htmlui mcp smoke", p["advisory_off"]), (advisory, list(deferred))):
+            q = dict(p, advisory_off=off)
+            status, out = self.gate(needs_for(q), q, reps, advisory=advisory_lanes)
+            self.assertEqual(status, 1, (advisory_lanes, out))
+            self.assertRegex(out, r"(?m)^windows-editor-tests\s+skipped\s+FAIL: the merge queue skips no test run$")
+        # nor in a full run
+        q = plan(event="full", full=True)
+        q["advisory_off"] = q["build_only"] = ["windows-editor-tests"]
+        status, out = self.gate(needs_for(q), q, [r for r in reports_for(q) if r["lane"] != "windows-editor-tests"],
+                                advisory=advisory)
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+skipped\s+FAIL: a full run skips no test run$")
 
     def test_changes_failure_fails(self):
         p = plan()
@@ -282,6 +427,18 @@ class GateTest(unittest.TestCase):
         self.assertEqual(status, 0, out)
         self.assertIn("warning: lanes.json plans ios, which Check does not need", out)
 
+    def test_advisory_lanes_left_out_of_needs(self):
+        # ci.yml's Check does not need the advisory lanes (it would not wait for them): no warning, and a
+        # blocking lane still fails
+        p = plan()
+        advisory = "unit asan htmlui mcp smoke windows-editor-tests"
+        needs = {n: "success" for n in LANES if n not in advisory.split()}
+        rc, text = self.gate(needs, p, reports_for(p), advisory=advisory)
+        self.assertEqual(rc, 0, text)
+        self.assertNotIn("which Check does not need", text)
+        rc, text = self.gate(dict(needs, linux="failure"), p, reports_for(p), advisory=advisory)
+        self.assertEqual(rc, 1, text)
+
     def test_cli_exit_codes(self):
         p = plan()
         (self.dir / "needs.json").write_text(json.dumps(needs_for(p, linux="failure")))
@@ -291,6 +448,108 @@ class GateTest(unittest.TestCase):
         self.assertEqual(subprocess.run(cmd, capture_output=True).returncode, 1)
         (self.dir / "needs.json").write_text("not json")
         self.assertEqual(subprocess.run(cmd, capture_output=True).returncode, 2)
+
+    def test_results_only_needs(self):
+        # ci.yml passes {"<job>": "<result>"}, not toJSON(needs)
+        p = plan()
+        needs = {n: "success" for n in LANES}
+        rc, text = self.gate(needs, p, reports_for(p))
+        self.assertEqual(rc, 0, text)
+        rc, text = self.gate(dict(needs, web="failure"), p, reports_for(p))
+        self.assertEqual(rc, 1, text)
+
+
+MAX_ARG_STRLEN = 131072   # Linux: one environment string or argument (32 pages)
+CI_YML = HERE.parent.parent / ".github" / "workflows" / "ci.yml"
+EXPR = re.compile(r"\$\{\{(.*?)\}\}")
+
+
+def workflow_jobs(text: str) -> dict[str, str]:
+    body = text[text.index("\njobs:\n"):]
+    parts = re.split(r"^  ([\w-]+):\n", body, flags=re.M)
+    return dict(zip(parts[1::2], parts[2::2]))
+
+
+def env_entries(block: str):
+    """(key, value) of every entry of every env: map in a YAML block."""
+    env_indent = None
+    for line in block.splitlines():
+        indent = len(line) - len(line.lstrip())
+        if env_indent is not None and line.strip() and indent <= env_indent:
+            env_indent = None
+        if re.fullmatch(r"\s*env:\s*", line):
+            env_indent = indent
+        elif env_indent is not None and (m := re.fullmatch(r"\s*([A-Za-z_][\w]*): (.*)", line)):
+            yield m.group(1), m.group(2)
+
+
+class WorkflowEnvTest(unittest.TestCase):
+    """Every environment value of ci.yml fits one environment string when the changes job's outputs are
+    their largest (each filter FILTER_LIMIT long: a plan selecting every unit test, run 45088926257)."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(HERE))
+        import plan_lanes
+        cls.filter_limit = plan_lanes.FILTER_LIMIT
+        cls.text = CI_YML.read_text(encoding="utf-8")
+        cls.jobs = workflow_jobs(cls.text)
+        outputs = re.search(r"^    outputs:\n((?:      .*\n)+)", cls.jobs["changes"], re.M).group(1)
+        cls.outputs = {name: "x" * (cls.filter_limit if "filter" in name else 4096)
+                       for name in re.findall(r"^      (\w+):", outputs, re.M)}
+
+    def needs_of(self, job: str) -> list[str]:
+        m = re.search(r"^    needs: (\[.*\]|[\w-]+)$", self.jobs[job], re.M)
+        return [n.strip() for n in m.group(1).strip("[]").split(",")] if m else []
+
+    def bound(self, job: str, expr: str) -> int:
+        """An upper bound of the expression's value's length."""
+        if re.search(r"toJSON\(\s*needs\s*\)", expr):
+            # the runner's toJSON indents by 2
+            return len(json.dumps({n: {"result": "cancelled", "outputs": self.outputs if n == "changes" else {}}
+                                   for n in self.needs_of(job)}, indent=2))
+        size = len(expr)
+        for ref in re.findall(r"\b(?:needs|steps|github|inputs|vars|env|matrix|secrets)\.[\w.-]+", expr):
+            m = re.fullmatch(r"needs\.changes\.outputs\.(\w+)", ref)
+            size += len(self.outputs.get(m.group(1), "")) if m else 9 if ref.endswith(".result") else 1024
+        return size
+
+    def test_every_env_value_fits_one_environment_string(self):
+        blocks = {"(workflow)": self.text[:self.text.index("\njobs:\n")], **self.jobs}
+        checked = 0
+        for job, block in blocks.items():
+            for key, value in env_entries(block):
+                size = len(EXPR.sub("", value)) + sum(self.bound(job, e) for e in EXPR.findall(value))
+                checked += 1
+                self.assertLess(size, MAX_ARG_STRLEN, f"{job}: env {key} can reach {size} bytes ({value[:80]})")
+        self.assertGreater(checked, 50)
+
+    def test_needs_maps_name_every_needed_job(self):
+        # the gate and the report see only the jobs NEEDS names: a job added to needs must be added there
+        for job in ("check", "report"):
+            values = [v for k, v in env_entries(self.jobs[job]) if k == "NEEDS"]
+            self.assertEqual(len(values), 1, job)
+            m = re.fullmatch(r"\$\{\{ format\('\{\{(.*)\}\}', (.*)\) \}\}", values[0])
+            self.assertTrue(m, f"{job}: NEEDS is not format('{{{{...}}}}', needs.<job>.result, ...)")
+            keys = re.findall(r'"([\w-]+)":"\{(\d+)\}"', m.group(1))
+            args = [a.strip() for a in m.group(2).split(",")]
+            self.assertEqual([int(i) for _, i in keys], list(range(len(keys))), job)
+            self.assertEqual(args, [f"needs.{k}.result" for k, _ in keys], job)
+            self.assertEqual([k for k, _ in keys], self.needs_of(job), job)
+
+    def test_check_needs_every_lane_but_the_advisory_ones(self):
+        # Check waits only for what can fail it; a lane taken off ADVISORY_LANES must join its needs
+        advisory = re.search(r"^  ADVISORY_LANES: \"([a-z0-9 _-]*)\"$", self.text, re.M).group(1).split()
+        lanes = [n for n in self.needs_of("report") if n != "check"]
+        import plan_lanes
+        self.assertLessEqual(set(plan_lanes.LANES), set(lanes), "report must need every lane")
+        self.assertEqual(self.needs_of("check"), [n for n in lanes if n not in advisory],
+                         "check's needs: report's needs (but check) without ADVISORY_LANES, in that order")
+
+    def test_filter_limit_fits_one_argument(self):
+        # the unit, asan and HTML UI steps pass `printf %q` of --gtest_filter=<filter> in one argument:
+        # %q at most doubles it
+        self.assertLess(2 * (self.filter_limit + len("UNIT_TEST_ARGS=--gtest_filter=")) + 4096, MAX_ARG_STRLEN)
 
 
 if __name__ == "__main__":

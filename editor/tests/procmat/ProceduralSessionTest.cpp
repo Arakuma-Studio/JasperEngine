@@ -69,7 +69,7 @@ namespace {
     };
 
     // Graph::findNode looks nodes up in id order, as load() and the edit ops keep them
-    void sortById(graph::Graph& file) {
+    void proceduralSessionSortById(graph::Graph& file) {
         std::sort(file.nodes.begin(), file.nodes.end(), [](const graph::Node& a, const graph::Node& b) { return graph::idLess(a.id, b.id); });
         std::sort(file.edges.begin(), file.edges.end(), [](const graph::Edge& a, const graph::Edge& b) { return graph::idLess(a.id, b.id); });
     }
@@ -100,7 +100,7 @@ namespace {
             out.from = {"b", "output"};
             out.to = {"out", "base_color"};
             file.edges = {in, out};
-            sortById(file);
+            proceduralSessionSortById(file);
             options.size = 64;
         }
 
@@ -160,7 +160,7 @@ TEST_F(ProceduralSessionTest, AColourAndARampEditCauseNoRebuild) {
     file.edges.back().id = "e3";
     file.edges.back().from = {"n", "output"};
     file.edges.back().to = {"c", "input"};
-    sortById(file);
+    proceduralSessionSortById(file);
     ProceduralSession session(evaluator, library, options);
     start(session);
     ASSERT_EQ(evaluator.prepares, 1);

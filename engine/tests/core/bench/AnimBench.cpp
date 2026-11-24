@@ -76,10 +76,10 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    int kWorkers = 3;
+    int kAnimBenchWorkers = 3;
     int kFrames = 600;
-    constexpr float kDt = 1.0f / 60.0f;
-    constexpr int kCharacters = 200;
+    constexpr float kAnimBenchDt = 1.0f / 60.0f;
+    constexpr int kAnimBenchCharacters = 200;
 
     // ---- the 65-bone humanoid (Mixamo names) ----
 
@@ -135,7 +135,7 @@ namespace {
 
     fs::path assetDir;
 
-    std::string writeFile(const std::string& name, const std::string& text){
+    std::string animBenchWriteFile(const std::string& name, const std::string& text){
         const fs::path path = assetDir / name;
         std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
         return path.generic_string();
@@ -144,12 +144,12 @@ namespace {
     // a 1 s loop of every bone's rotation (30 keys a second, a swing of `amplitude` degrees with
     // its own phase) and the hips moving `forward` m/s: what a mocap clip costs to sample
     ClipData motionClip(const std::vector<std::string>& paths, float amplitude, float phase, float forward, bool hipsMotion,
-                        const std::vector<size_t>& only = {}){
+                        const std::vector<size_t>& animBenchOnly = {}){
         ClipData data;
         data.wrap = ClipWrapMode::Loop;
         data.frameRate = 30.0f;
         for (size_t b = 0; b < paths.size(); b++){
-            if (!only.empty() && std::find(only.begin(), only.end(), b) == only.end()) continue;
+            if (!animBenchOnly.empty() && std::find(animBenchOnly.begin(), animBenchOnly.end(), b) == animBenchOnly.end()) continue;
             ClipTrackData track;
             track.path = paths[b];
             track.channel = ClipChannel::Rotation;
@@ -192,18 +192,18 @@ namespace {
     Assets writeAssets(const std::vector<BoneSpec>& bones){
         Assets out;
         out.paths = bonePaths(bones);
-        const std::string idle = writeFile("idle.anim", writeClip(motionClip(out.paths, 4, 0.0f, 0.0f, true)));
-        const std::string fwd = writeFile("fwd.anim", writeClip(motionClip(out.paths, 18, 0.5f, 1.4f, true)));
-        const std::string back = writeFile("back.anim", writeClip(motionClip(out.paths, 16, 1.0f, -1.0f, true)));
-        const std::string left = writeFile("left.anim", writeClip(motionClip(out.paths, 14, 1.5f, 0.3f, true)));
-        const std::string right = writeFile("right.anim", writeClip(motionClip(out.paths, 14, 2.0f, 0.3f, true)));
+        const std::string idle = animBenchWriteFile("idle.anim", writeClip(motionClip(out.paths, 4, 0.0f, 0.0f, true)));
+        const std::string fwd = animBenchWriteFile("fwd.anim", writeClip(motionClip(out.paths, 18, 0.5f, 1.4f, true)));
+        const std::string back = animBenchWriteFile("back.anim", writeClip(motionClip(out.paths, 16, 1.0f, -1.0f, true)));
+        const std::string left = animBenchWriteFile("left.anim", writeClip(motionClip(out.paths, 14, 1.5f, 0.3f, true)));
+        const std::string right = animBenchWriteFile("right.anim", writeClip(motionClip(out.paths, 14, 2.0f, 0.3f, true)));
         std::vector<size_t> upper, spineOnly;
         for (size_t b = 0; b < bones.size(); b++){
             if (out.paths[b].find("Shoulder") != std::string::npos || out.paths[b].find("Neck") != std::string::npos) upper.push_back(b);
             if (bones[b].name.find("Spine") != std::string::npos) spineOnly.push_back(b);
         }
-        const std::string wave = writeFile("wave.anim", writeClip(motionClip(out.paths, 30, 0.2f, 0.0f, false, upper)));
-        const std::string breath = writeFile("breath.anim", writeClip(motionClip(out.paths, 3, 0.0f, 0.0f, false, spineOnly)));
+        const std::string wave = animBenchWriteFile("wave.anim", writeClip(motionClip(out.paths, 30, 0.2f, 0.0f, false, upper)));
+        const std::string breath = animBenchWriteFile("breath.anim", writeClip(motionClip(out.paths, 3, 0.0f, 0.0f, false, spineOnly)));
 
         AvatarMaskDef mask;
         mask.defaultWeight = 0.0f;
@@ -212,7 +212,7 @@ namespace {
         mask.bodyParts[(int)AvatarBodyPart::LeftArm] = mask.bodyParts[(int)AvatarBodyPart::RightArm] = 1.0f;
         mask.bodyParts[(int)AvatarBodyPart::LeftHand] = mask.bodyParts[(int)AvatarBodyPart::RightHand] = 1.0f;
         mask.bodyParts[(int)AvatarBodyPart::LeftFingers] = mask.bodyParts[(int)AvatarBodyPart::RightFingers] = 1.0f;
-        const std::string maskPath = writeFile("upper.mask", writeMask(mask));
+        const std::string maskPath = animBenchWriteFile("upper.mask", writeMask(mask));
 
         ControllerDef def;
         auto parameter = [&](const char* name, AnimatorParameterType type){
@@ -288,7 +288,7 @@ namespace {
         additive.machine.states = {breathing};
         def.layers.push_back(additive);
         normalizeController(def);
-        out.controller = writeFile("crowd.controller", writeController(def));
+        out.controller = animBenchWriteFile("crowd.controller", writeController(def));
         return out;
     }
 
@@ -308,7 +308,7 @@ namespace {
         }
     };
 
-    Entity node(Scene& scene, Entity parent, const std::string& name, const Vector3& position){
+    Entity animBenchNode(Scene& scene, Entity parent, const std::string& name, const Vector3& position){
         const Entity entity = scene.createEntity();
         scene.setEntityName(entity, name);
         Transform transform;
@@ -318,13 +318,13 @@ namespace {
         return entity;
     }
 
-    std::unique_ptr<Crowd> buildCrowd(const Assets& assets, const std::vector<BoneSpec>& bones, int characters = kCharacters){
+    std::unique_ptr<Crowd> buildCrowd(const Assets& assets, const std::vector<BoneSpec>& bones, int characters = kAnimBenchCharacters){
         auto crowd = std::make_unique<Crowd>();
         crowd->scene = std::make_unique<Scene>();
         Scene& scene = *crowd->scene;
         // the ground: a static 400 m box whose top is y = 0
         {
-            const Entity ground = node(scene, NULL_ENTITY, "Ground", Vector3(0, -0.5f, 0));
+            const Entity ground = animBenchNode(scene, NULL_ENTITY, "Ground", Vector3(0, -0.5f, 0));
             RigidbodyComponent body;
             body.type = BodyType::STATIC;
             body.colliders.resize(1);
@@ -334,15 +334,15 @@ namespace {
             body.colliders[0].depth = 400.0f;
             scene.addComponent<RigidbodyComponent>(ground, body);
         }
-        crowd->lookTarget = node(scene, NULL_ENTITY, "LookTarget", Vector3(0, 1.6f, 50.0f));
+        crowd->lookTarget = animBenchNode(scene, NULL_ENTITY, "LookTarget", Vector3(0, 1.6f, 50.0f));
         for (int c = 0; c < characters; c++){
-            const Entity root = node(scene, NULL_ENTITY, "Hero" + std::to_string(c), Vector3((float)(c % 20) * 1.5f - 15.0f, 0, (float)(c / 20) * 1.5f));
+            const Entity root = animBenchNode(scene, NULL_ENTITY, "Hero" + std::to_string(c), Vector3((float)(c % 20) * 1.5f - 15.0f, 0, (float)(c / 20) * 1.5f));
             std::vector<Entity> entities(bones.size());
             for (size_t b = 0; b < bones.size(); b++){
-                entities[b] = node(scene, bones[b].parent < 0 ? root : entities[(size_t)bones[b].parent], bones[b].name, bones[b].position);
+                entities[b] = animBenchNode(scene, bones[b].parent < 0 ? root : entities[(size_t)bones[b].parent], bones[b].name, bones[b].position);
             }
             // a skin over every bone (its mesh under the root)
-            const Entity mesh = node(scene, root, "HeroMesh", Vector3(0, 0, 0));
+            const Entity mesh = animBenchNode(scene, root, "HeroMesh", Vector3(0, 0, 0));
             scene.addComponent<MeshComponent>(mesh, {});
             ModelComponent model;
             ModelSkinBinding skin;
@@ -387,7 +387,7 @@ namespace {
         }
         crowd->resolveTransforms();
         // the ground body exists before the first raycast
-        scene.fixedUpdate(kDt);
+        scene.fixedUpdate(kAnimBenchDt);
         AnimatorSystem* system = scene.getSystem<AnimatorSystem>().get();
         system->update(0.0);
         // parameters: each its own place in the tree; a quarter crossfading for good
@@ -418,7 +418,7 @@ namespace {
         system->setParallel(parallel);
         // warm-up: every buffer at its size, the transitions running
         for (int i = 0; i < 120; i++){
-            system->update(kDt);
+            system->update(kAnimBenchDt);
             crowd.resolveTransforms();
         }
         std::vector<double> times, mains;
@@ -431,7 +431,7 @@ namespace {
             crowd.resolveTransforms();
             if (countAllocs) scope = std::make_unique<testsupport::AllocationCountScope>();
             const auto start = bench::Clock::now();
-            system->update(kDt);
+            system->update(kAnimBenchDt);
             const double ms = bench::secondsSince(start) * 1000.0;
             if (scope){
                 allocations += scope->count();
@@ -461,9 +461,9 @@ namespace {
         return bench::percentile(samples, 0.5);
     }
 
-    volatile float sink = 0.0f;
+    volatile float animBenchSink = 0.0f;
 
-    void randomPose(Pose& pose, std::mt19937& rng){
+    void animBenchRandomPose(Pose& pose, std::mt19937& rng){
         std::uniform_real_distribution<float> unit(-1.0f, 1.0f);
         for (size_t b = 0; b < pose.boneCount(); b++){
             pose.setPosition(b, Vector3(unit(rng), unit(rng), unit(rng)));
@@ -527,7 +527,7 @@ namespace {
         std::vector<Quaternion> rotations;
 
         explicit ClipRig(const std::shared_ptr<const AnimationClip>& loaded): clip(loaded){
-            const Entity root = node(*scene, NULL_ENTITY, "Root", Vector3(0, 0, 0));
+            const Entity root = animBenchNode(*scene, NULL_ENTITY, "Root", Vector3(0, 0, 0));
             std::vector<std::pair<std::string, Entity>> made;
             std::vector<std::string> paths;
             for (const AnimationClip::Track& track : clip->getTracks()){
@@ -541,7 +541,7 @@ namespace {
                     path += (path.empty() ? "" : "/") + part;
                     auto found = std::find_if(made.begin(), made.end(), [&](const auto& entry){ return entry.first == path; });
                     if (found == made.end()){
-                        made.push_back({path, node(*scene, parent, part, Vector3(0, 0, 0))});
+                        made.push_back({path, animBenchNode(*scene, parent, part, Vector3(0, 0, 0))});
                         parent = made.back().second;
                     }else{
                         parent = found->second;
@@ -560,7 +560,7 @@ namespace {
         }
     };
 
-    size_t keyCount(const AnimationClip& clip){
+    size_t animBenchKeyCount(const AnimationClip& clip){
         size_t keys = 0;
         for (const AnimationClip::Track& track : clip.getTracks()) keys += track.keyCount;
         return keys;
@@ -582,7 +582,7 @@ namespace {
         anim::ClipParseResult parsed = anim::parseClip(text);
         std::shared_ptr<const AnimationClip> clip = AnimationClip::build(parsed);
         results.add(name + "_tracks", (double)clip->getTracks().size(), "tracks");
-        results.add(name + "_keys", (double)keyCount(*clip), "keys");
+        results.add(name + "_keys", (double)animBenchKeyCount(*clip), "keys");
         results.add(name + "_parse_build_ms", bench::percentile(parseBuild, 0.5), "ms");
         results.add(name + "_text_bytes", (double)text.size(), "B");
         results.add(name + "_heap_bytes", (double)clip->memoryBytes(), "B");
@@ -591,13 +591,13 @@ namespace {
         const int iterations = std::max(50, std::min(4000, 2000000 / std::max(1, (int)bound.binding.targets.size() * 8)));
         results.add(name + "_sample_us", microUs([&](int i){
             sampleClip(bound.binding, bound.rig, length * (float)(i % 997) * (1.0f / 997.0f), bound.cursors, bound.pose);
-            sink = bound.pose.raw()[i & 63];
+            animBenchSink = bound.pose.raw()[i & 63];
         }, iterations), "us");
         RigSpace space{bound.world.data(), bound.positions.data(), bound.rotations.data(), bound.scales.data()};
         results.add(name + "_sample_hierarchy_us", microUs([&](int i){
             sampleClip(bound.binding, bound.rig, length * (float)(i % 997) * (1.0f / 997.0f), bound.cursors, bound.pose);
             poseToRigSpace(bound.pose, bound.rig.parents.data(), space);
-            sink = bound.positions[(size_t)i % bound.positions.size()].x;
+            animBenchSink = bound.positions[(size_t)i % bound.positions.size()].x;
         }, iterations), "us");
     }
 
@@ -692,14 +692,14 @@ namespace {
             KeyLocation at;
             at.index = 1;
             at.interpolation = (float)(i & 63) * (1.0f / 64.0f) + 0.0078125f;
-            sink = sampleQuaternion(at, values, nullptr, nullptr).w;
+            animBenchSink = sampleQuaternion(at, values, nullptr, nullptr).w;
         }, 200000);
     }
 
     double slerpNs(const std::vector<std::pair<Quaternion, Quaternion>>& pairs){
         return 1000.0 * microUs([&](int i){
             const std::pair<Quaternion, Quaternion>& pair = pairs[(size_t)i & 255];
-            sink = Quaternion::slerp((float)(i & 63) * (1.0f / 64.0f) + 0.0078125f, pair.first, pair.second).w;
+            animBenchSink = Quaternion::slerp((float)(i & 63) * (1.0f / 64.0f) + 0.0078125f, pair.first, pair.second).w;
         }, 200000);
     }
 
@@ -711,7 +711,7 @@ namespace {
 
         double step(){
             const auto start = bench::Clock::now();
-            scene->getSystem<ActionSystem>()->update(kDt);
+            scene->getSystem<ActionSystem>()->update(kAnimBenchDt);
             const double ms = bench::secondsSince(start) * 1000.0;
             auto transforms = scene->getComponentArray<Transform>();
             RenderSystem* render = scene->getSystem<RenderSystem>().get();
@@ -726,10 +726,10 @@ namespace {
         auto crowd = std::make_unique<PlayerCrowd>();
         Scene& scene = *crowd->scene;
         for (int c = 0; c < characters; c++){
-            const Entity root = node(scene, NULL_ENTITY, "Hero" + std::to_string(c), Vector3((float)(c % 20), 0, (float)(c / 20)));
+            const Entity root = animBenchNode(scene, NULL_ENTITY, "Hero" + std::to_string(c), Vector3((float)(c % 20), 0, (float)(c / 20)));
             std::vector<Entity> entities(bones.size());
             for (size_t b = 0; b < bones.size(); b++){
-                entities[b] = node(scene, bones[b].parent < 0 ? root : entities[(size_t)bones[b].parent], bones[b].name, bones[b].position);
+                entities[b] = animBenchNode(scene, bones[b].parent < 0 ? root : entities[(size_t)bones[b].parent], bones[b].name, bones[b].position);
             }
             AnimationPlayer player(&scene, root);
             player.addClip(clip, "Move");
@@ -749,7 +749,7 @@ namespace {
             uint64_t allocations = 0;
             for (int i = 0; i < frames; i++){
                 testsupport::AllocationCountScope scope;
-                crowd.scene->getSystem<ActionSystem>()->update(kDt);
+                crowd.scene->getSystem<ActionSystem>()->update(kAnimBenchDt);
                 allocations += scope.count();
             }
             results.add(name + "_steady_state_allocations", (double)allocations, "allocations");
@@ -772,7 +772,7 @@ namespace {
         layer.machine.states = {walk};
         def.layers.push_back(layer);
         normalizeController(def);
-        const std::string controller = writeFile("retarget.controller", writeController(def));
+        const std::string controller = animBenchWriteFile("retarget.controller", writeController(def));
 
         Scene scene;
         std::vector<std::unique_ptr<Model>> models;
@@ -799,12 +799,12 @@ namespace {
             retargeted += instance && instance->bound && !instance->clips.empty() && instance->clips[0].retargeted ? 1 : 0;
         }
         results.add("retarget_crowd_retargeted", (double)retargeted, "animators");
-        for (int i = 0; i < 120; i++) system->update(kDt);
+        for (int i = 0; i < 120; i++) system->update(kAnimBenchDt);
         std::vector<double> times;
         times.reserve((size_t)frames);
         for (int i = 0; i < frames; i++){
             const auto start = bench::Clock::now();
-            system->update(kDt);
+            system->update(kAnimBenchDt);
             times.push_back(bench::secondsSince(start) * 1000.0);
         }
         results.add("retarget_crowd_serial_p50_ms", bench::percentile(times, 0.5), "ms");
@@ -823,7 +823,7 @@ int main(int argc, char** argv){
 #endif
     for (int i = 1; i < argc; i++){
         const std::string arg = argv[i];
-        if (arg == "--workers" && i + 1 < argc) kWorkers = std::max(0, std::atoi(argv[++i]));
+        if (arg == "--workers" && i + 1 < argc) kAnimBenchWorkers = std::max(0, std::atoi(argv[++i]));
         else if (arg == "--frames" && i + 1 < argc) kFrames = std::max(60, std::atoi(argv[++i]));
         else if (arg == "--count-allocs") countAllocs = true;
         else if (arg == "--clip" && i + 1 < argc) clipFiles.push_back(argv[++i]);
@@ -834,7 +834,7 @@ int main(int argc, char** argv){
         return 2;
     }
     jobs::Config config;
-    config.workers = kWorkers;
+    config.workers = kAnimBenchWorkers;
     config.reserveForFrame = 0;
     config.detectWaitCycles = false;
     jobs::initialize(config);
@@ -880,7 +880,7 @@ int main(int argc, char** argv){
             RigSpace space{world.data(), positions.data(), rotations.data(), scales.data()};
             results.add("micro_rig_space65_us", microUs([&](int i){
                 poseToRigSpace(instance->pose(), rig.parents.data(), space);
-                sink = positions[(size_t)i % positions.size()].x;
+                animBenchSink = positions[(size_t)i % positions.size()].x;
             }, 4000), "us");
             const RigSkin& skin = rig.skins[0];
             const size_t skinned = std::min(skin.joints.size(), skin.inverseBindMatrices.size());
@@ -890,7 +890,7 @@ int main(int argc, char** argv){
                 for (size_t j = 0; j < skinned; j++){
                     matrices[j] = inverseMesh * affineMatrix(world[(size_t)skin.joints[j]]) * skin.inverseBindMatrices[j];
                 }
-                sink = matrices[(size_t)i % skinned][3][1];
+                animBenchSink = matrices[(size_t)i % skinned][3][1];
             }, 4000), "us");
         }
         // where the serial time goes (information): without the IK, then without the two upper
@@ -917,11 +917,11 @@ int main(int argc, char** argv){
         a.resize(128, 0);
         b.resize(128, 0);
         out.resize(128, 0);
-        randomPose(a, rng);
-        randomPose(b, rng);
+        animBenchRandomPose(a, rng);
+        animBenchRandomPose(b, rng);
         auto blend = [&](int i){
             poseBlend(out, a, b, 0.3f + 0.0001f * (float)(i & 63), nullptr, nullptr);
-            sink = out.raw()[i & 127];
+            animBenchSink = out.raw()[i & 127];
         };
         setPoseOpsBackend(PoseBackend::Native);
         const double native = microUs(blend, 20000);
@@ -936,10 +936,10 @@ int main(int argc, char** argv){
     // ---- one 65-bone clip sample (the bench character's forward clip, bound to its rig)
     {
         Scene scene;
-        const Entity root = node(scene, NULL_ENTITY, "Hero", Vector3(0, 0, 0));
+        const Entity root = animBenchNode(scene, NULL_ENTITY, "Hero", Vector3(0, 0, 0));
         std::vector<Entity> entities(bones.size());
         for (size_t b = 0; b < bones.size(); b++){
-            entities[b] = node(scene, bones[b].parent < 0 ? root : entities[(size_t)bones[b].parent], bones[b].name, bones[b].position);
+            entities[b] = animBenchNode(scene, bones[b].parent < 0 ? root : entities[(size_t)bones[b].parent], bones[b].name, bones[b].position);
         }
         std::string error;
         std::shared_ptr<const AnimationClip> clip = AnimationClipPool::getOrLoad((assetDir / "fwd.anim").generic_string(), &error);
@@ -961,7 +961,7 @@ int main(int argc, char** argv){
         pose.copyFrom(rig.rest);
         const double sample = microUs([&](int i){
             sampleClip(binding, rig, (float)(i % 997) * (1.0f / 997.0f), cursors, pose);
-            sink = pose.raw()[i & 63];
+            animBenchSink = pose.raw()[i & 63];
         }, 4000);
         results.add("micro_sample65_us", sample, "us");
     }
@@ -997,7 +997,7 @@ int main(int argc, char** argv){
         results.add("micro_sample65_key_groups", (double)bound.binding.groups.size(), "groups");
         results.add("micro_sample65_key_groups_us", microUs([&](int i){
             sampleClip(bound.binding, bound.rig, (float)(i % 997) * (1.0f / 997.0f), bound.cursors, bound.pose);
-            sink = bound.pose.raw()[i & 63];
+            animBenchSink = bound.pose.raw()[i & 63];
         }, 4000), "us");
         const std::pair<const char*, float> tiers[] = {{"nlerp_4deg", 4.0f}, {"corrected_20deg", 20.0f}, {"exact_60deg", 60.0f}};
         for (const std::pair<const char*, float>& tier : tiers){
@@ -1026,8 +1026,8 @@ int main(int argc, char** argv){
     // ---- S77 R10: an Animation Player crowd, playing and idle, and a retargeted Animator crowd
     {
         const std::string fwd = (assetDir / "fwd.anim").generic_string();
-        playerCrowdRows(results, "player_crowd200", *buildPlayerCrowd(bones, fwd, kCharacters, true), std::max(120, kFrames / 3), countAllocs);
-        playerCrowdRows(results, "player_idle200", *buildPlayerCrowd(bones, fwd, kCharacters, false), std::max(120, kFrames / 3), countAllocs);
+        playerCrowdRows(results, "player_crowd200", *buildPlayerCrowd(bones, fwd, kAnimBenchCharacters, true), std::max(120, kFrames / 3), countAllocs);
+        playerCrowdRows(results, "player_idle200", *buildPlayerCrowd(bones, fwd, kAnimBenchCharacters, false), std::max(120, kFrames / 3), countAllocs);
     }
     retargetCrowdRows(results, fixtures, 50, std::max(120, kFrames / 3));
 
@@ -1037,11 +1037,11 @@ int main(int argc, char** argv){
         AnimatorInstance instance;
         AnimatorComponent component;
         Scene scene;
-        const Entity root = node(scene, NULL_ENTITY, "Machine", Vector3(0, 0, 0));
+        const Entity root = animBenchNode(scene, NULL_ENTITY, "Machine", Vector3(0, 0, 0));
         instance.setController(compiled, 1, component.clipOverrides);
         instance.bind(&scene, root, component, {});
         AnimatorUpdateContext context;
-        context.dt = kDt;
+        context.dt = kAnimBenchDt;
         context.sample = false;
         for (int i = 0; i < 10; i++) instance.update(component, context);
         const double update = microUs([&](int){ instance.update(component, context); }, 20000);
@@ -1071,7 +1071,7 @@ int main(int argc, char** argv){
             refreshRigSpace(context, 0);
             const float angle = (float)(i % 360) * 0.0174532925f;
             solveLookAt(context, chain, weights, kBones, Vector3(0, 0, 1), Vector3(std::sin(angle), 0.6f, std::cos(angle)), 60.0f, 1.0f);
-            sink = rotations[2].w;
+            animBenchSink = rotations[2].w;
         }, 20000);
         results.add("micro_look_at3_us", lookAt, "us");
     }

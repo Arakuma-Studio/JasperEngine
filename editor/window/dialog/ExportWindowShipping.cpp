@@ -75,7 +75,11 @@ void ExportWindow::finishBackgroundWork() {
 }
 
 ExportWindow::ShipPlatform ExportWindow::shipPlatform() const {
-    switch (m_platform) {
+    return shipPlatformOf(m_platform);
+}
+
+ExportWindow::ShipPlatform ExportWindow::shipPlatformOf(BuildPlatform platform) {
+    switch (platform) {
         case BuildPlatform::Windows: return ShipPlatform::Windows;
         case BuildPlatform::MacOS: return ShipPlatform::MacOS;
         case BuildPlatform::Android: return ShipPlatform::Android;

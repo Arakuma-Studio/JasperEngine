@@ -28,7 +28,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    const char* FLAT = R"(#version 450
+    const char* OBJECT_RENDER_SHADER_FLAT = R"(#version 450
 
 in vec2 v_texcoord;
 out vec4 frag_color;
@@ -50,7 +50,7 @@ TEST(ObjectRenderShaderGpu, APipelineOfADeadShaderIsNeverApplied){
         [&](const std::string& file, std::string& content){
             if (file != path)
                 return false;
-            content = FLAT;
+            content = OBJECT_RENDER_SHADER_FLAT;
             return true;
         }, ShaderType::POSTPROCESS);
     ASSERT_TRUE(sources.valid) << sources.error;

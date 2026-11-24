@@ -47,7 +47,7 @@ using namespace jasperengine::test;
 namespace {
 
     // the shader time of every golden here (seconds)
-    constexpr double PINNED_TIME = 7.25;
+    constexpr double WATER_FEATURES_PINNED_TIME = 7.25;
 
     bool isGoldenBackend(){
         return std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0;
@@ -88,7 +88,7 @@ namespace {
         void SetUp() override{
             // the view the goldens and pixel positions were made at
             GpuEnvironment::resetView();
-            Engine::setPinnedShaderTime(PINNED_TIME);
+            Engine::setPinnedShaderTime(WATER_FEATURES_PINNED_TIME);
             scene.setBackgroundColor(0.12f, 0.14f, 0.18f, 1.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
             sun.setType(LightType::DIRECTIONAL);
