@@ -282,6 +282,9 @@ async def test_webfont_sync_files_reloads_documents(ed: Editor):
                  f"sync_files dispatches the changed {extension} dependency to HTML UI: {result}")
         after = (await ed.call("inspect_ui", entity=entity, depth=0, limit=1))["document"]["load_count"]
         ed.check_eq(after, after_save + 1, f"explicit sync_files forces one {extension} document reload")
+        # documents of one context share its lazily loaded images (getDocumentFiles): this one
+        # would be restyled by the later tests' image edits in the same scene
+        await ed.call("delete_entities", entities=[entity])
 
 
 async def test_css_edit_reloads_before_call(ed: Editor):
