@@ -58,8 +58,7 @@ namespace {
     // kind's defaults set with anim() / hash(), then what the member call sets
     class KindBuilder {
     public:
-        KindBuilder(TitleArtSchema& schema, const char* name, const char* label, HashScope rootHash = HashScope::Node)
-            : schema(schema) {
+        KindBuilder(TitleArtSchema& schema, const char* name, const char* label, HashScope rootHash = HashScope::Node) {
             SchemaKind kind;
             kind.name = name;
             kind.label = label;
@@ -157,7 +156,6 @@ namespace {
         }
 
     private:
-        TitleArtSchema& schema;
         SchemaKind* target = nullptr;
         FxAnim kindAnim = FxAnim::Rerender;
         bool hasKindAnim = false;

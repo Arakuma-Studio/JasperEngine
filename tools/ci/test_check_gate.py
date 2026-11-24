@@ -346,6 +346,15 @@ class GateTest(unittest.TestCase):
         status, out = self.gate(needs_for(p), p, reports_for(p))
         self.assertEqual(status, 1, out)
         self.assertRegex(out, r"(?m)^asan\s+skipped\s+FAIL: the merge queue skips no lane$")
+        # ios without an Apple-only input: planned off by rule (queue_off), which the gate reads
+        p = dict(plan(event="merge_group", off=("ios",)), queue_off=["ios"])
+        status, out = self.gate(needs_for(p), p, reports_for(p))
+        self.assertEqual(status, 0, out)
+        p = plan(event="merge_group", off=("ios",))
+        self.assertEqual(self.gate(needs_for(p), p, reports_for(p))[0], 1)
+        # (a lane the queue may skip only when the plan said so: not macos)
+        p = dict(plan(event="merge_group", off=("macos",)), queue_off=["ios"])
+        self.assertEqual(self.gate(needs_for(p), p, reports_for(p))[0], 1)
         # a group nothing reads runs nothing (D3)
         p = plan(event="merge_group", off=tuple(n for n in LANES if n != "changes"))
         status, out = self.gate(needs_for(p), p, reports_for(p))
@@ -417,6 +426,18 @@ class GateTest(unittest.TestCase):
         status, out = self.gate(needs, p, reports_for(p))
         self.assertEqual(status, 0, out)
         self.assertIn("warning: lanes.json plans ios, which Check does not need", out)
+
+    def test_advisory_lanes_left_out_of_needs(self):
+        # ci.yml's Check does not need the advisory lanes (it would not wait for them): no warning, and a
+        # blocking lane still fails
+        p = plan()
+        advisory = "unit asan htmlui mcp smoke windows-editor-tests"
+        needs = {n: "success" for n in LANES if n not in advisory.split()}
+        rc, text = self.gate(needs, p, reports_for(p), advisory=advisory)
+        self.assertEqual(rc, 0, text)
+        self.assertNotIn("which Check does not need", text)
+        rc, text = self.gate(dict(needs, linux="failure"), p, reports_for(p), advisory=advisory)
+        self.assertEqual(rc, 1, text)
 
     def test_cli_exit_codes(self):
         p = plan()
@@ -515,6 +536,15 @@ class WorkflowEnvTest(unittest.TestCase):
             self.assertEqual([int(i) for _, i in keys], list(range(len(keys))), job)
             self.assertEqual(args, [f"needs.{k}.result" for k, _ in keys], job)
             self.assertEqual([k for k, _ in keys], self.needs_of(job), job)
+
+    def test_check_needs_every_lane_but_the_advisory_ones(self):
+        # Check waits only for what can fail it; a lane taken off ADVISORY_LANES must join its needs
+        advisory = re.search(r"^  ADVISORY_LANES: \"([a-z0-9 _-]*)\"$", self.text, re.M).group(1).split()
+        lanes = [n for n in self.needs_of("report") if n != "check"]
+        import plan_lanes
+        self.assertLessEqual(set(plan_lanes.LANES), set(lanes), "report must need every lane")
+        self.assertEqual(self.needs_of("check"), [n for n in lanes if n not in advisory],
+                         "check's needs: report's needs (but check) without ADVISORY_LANES, in that order")
 
     def test_filter_limit_fits_one_argument(self):
         # the unit, asan and HTML UI steps pass `printf %q` of --gtest_filter=<filter> in one argument:

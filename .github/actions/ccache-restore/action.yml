@@ -55,8 +55,9 @@ runs:
         dir="$(pwd -W 2> /dev/null || pwd)/build/.cache/ccache"
         mkdir -p build/.cache/ccache
         maxsize=0
-        if [[ "$RUNNER_ENVIRONMENT" == self-hosted && "$RUNNER_OS" != Linux ]]; then
-            # an overflow runner keeps its own capped cache between jobs, outside the workspace its hook
+        if [[ "$RUNNER_ENVIRONMENT" == self-hosted && "$RUNNER_OS" != Linux && "$RUNNER_NAME" == je-* ]]; then
+            # an overflow machine (je-*; not a Blacksmith VM, which starts empty: it restores the entry as
+            # GitHub's runners do) keeps its own capped cache between jobs, outside the workspace its hook
             # empties: the hosted entry's paths miss there (0 of 3,834 compiles, run 45104498209) and took
             # 7.5 min to download. (Linux lanes mount build/.cache/ccache into the image: restored as here)
             dir="$(cygpath -m "$RUNNER_TOOL_CACHE" 2> /dev/null || echo "$RUNNER_TOOL_CACHE")/ccache/$LANE"

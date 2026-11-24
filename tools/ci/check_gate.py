@@ -12,7 +12,8 @@ skipped while lanes.json says that lane did not need to run. It fails when:
   - a full run (workflow_dispatch full=true) skipped any lane or test run, or a merge-queue run
     skipped one other than mcp (whose planned selection may be empty) while anything ran (a group
     only paths nothing reads touch runs nothing, D3), unless the lane or test run is --advisory and
-    lanes.json lists it under advisory_off (planned off for that: tools/ci/plan_lanes.py);
+    lanes.json lists it under advisory_off (planned off for that: tools/ci/plan_lanes.py), or lists it
+    under queue_off (ios without an Apple-only input: the nightly builds it);
   - a test lane (TEST_LANES) succeeded with zero tests in its report, with no report, or with a
     report that failed (a test step that continues on error) unless lanes.json lists it under
     build_only (a push to main building what the queue tested); each MCP
@@ -22,7 +23,8 @@ A job of a lane that is not the lane's own job (windows-compile, of windows) is 
 A job's test run reported apart from the job (windows-editor-tests, of the windows editor leg) must
 have passed with tests in its report, or be --advisory.
 An --advisory lane's failure or zero tests are listed, not failing (rollout, design §14.1); its
-cancellation still fails. The report job only posts the comment, so its result never gates.
+cancellation still fails. ci.yml's Check does not need the advisory lanes, so it does not wait for them;
+the report job lists them. The report job only posts the comment, so its result never gates.
 Prints a table of job, result and verdict, also into $GITHUB_STEP_SUMMARY when set. Exit 2 when
 --needs is unreadable. Reports and lanes.json are read as untrusted data (tools/ci/report.py).
 """
@@ -120,7 +122,8 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
                 row(job, result, "FAIL: skipped, but the plan needed it", True)
             elif event == "full":
                 row(job, result, "FAIL: a full run skips no lane", True)
-            elif event == "merge_group" and job != "mcp" and ran_any and not advisory_off(job):
+            elif event == "merge_group" and job != "mcp" and ran_any and not advisory_off(job) \
+                    and job not in plan["queue_off"]:
                 row(job, result, "FAIL: the merge queue skips no lane", True)
             else:
                 row(job, result, f"ok (not planned: {lane['why'] or 'no reason given'})", False)
@@ -172,7 +175,8 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
             row(test_report, result, f"FAIL: {problem}", True)
 
     for name, lane in plan["lanes"].items():
-        if lane["run"] and name not in needs:
+        # (ci.yml's Check does not need the advisory lanes: report lists them)
+        if lane["run"] and name not in needs and name not in advisory_set:
             notes.append(f"warning: lanes.json plans {name}, which Check does not need")
 
     width = max([len(r[0]) for r in rows] + [4])
