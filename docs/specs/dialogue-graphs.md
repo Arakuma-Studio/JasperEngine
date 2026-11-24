@@ -307,7 +307,7 @@ every feature here is genre-agnostic. Yarn Spinner and Ink are cited for names a
 - **R30** `.dialogue` is a graph file (`formatVersion 1`, kind `dialogue`, `kindVersion 1`): the
   model's unknown-key preservation and migrations apply. GUID in-file: a top-level `guid` the model
   keeps as an unknown key, as S90's `.procmat` does (`editor/procmat/ProceduralMaterialKind.cpp:454`).
-  `AssetType::Dialogue` (36 at the time of writing, after the sibling's String Table value; an
+  `AssetType::Dialogue` (37 at the time of writing, after the String Table value; an
   explicit value, the next free one at merge); Lua name `dialogue`.
 - **R31** New component, new project settings (`dialogue.action_prefixes`,
   `dialogue.condition_prefixes`, `dialogue.variables`, `dialogue.speakers`, all default empty): no
