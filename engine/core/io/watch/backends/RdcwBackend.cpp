@@ -103,9 +103,6 @@ namespace jasperengine::watch {
         // flush requests, and the last one the thread has served (its events handed to the sink)
         std::condition_variable flushedCv;
         uint64_t flushRequested = 0, flushServed = 0;
-        // the thread's first read: issued (1) or refused (-1), for start() to wait on
-        int firstRead = 0;
-        DWORD firstReadError = 0;
         fs::path pendingOldName;
         bool hasPendingOldName = false;
         ULONGLONG pendingOldNameAt = 0;
@@ -143,23 +140,19 @@ bool RdcwBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::string& 
         stop();
         return false;
     }
-    // the thread issues even the first read: its completion comes in that thread's context, where
-    // a flush looks for it (a read issued here waited for this caller to be scheduled, and ended
-    // with it)
-    firstRead = 0;
-    running = true;
-    thread = std::thread([this]() { run(); });
-    bool issued = false;
     {
-        std::unique_lock<std::mutex> lock(readMutex);
-        flushedCv.wait(lock, [this]() { return firstRead != 0; });
-        issued = firstRead > 0;
-        if (!issued) error = "ReadDirectoryChangesW failed (error " + std::to_string(firstReadError) + ")";
+        std::lock_guard<std::mutex> lock(readMutex);
+        if (!issueReadLocked()) {
+            error = "ReadDirectoryChangesW failed (error " + std::to_string(GetLastError()) + ")";
+            readPending = false;
+        }
     }
-    if (!issued) {
+    if (!readPending) {
         stop();
         return false;
     }
+    running = true;
+    thread = std::thread([this]() { run(); });
     return true;
 }
 
@@ -306,15 +299,6 @@ void RdcwBackend::deliver(std::vector<RawEvent>&& events) {
 // context, after the write that completed it may have returned. A flush therefore asks this thread
 // to drain: once it runs again, the completion of every change made before the request is in.
 void RdcwBackend::run() {
-    bool issued = false;
-    {
-        std::lock_guard<std::mutex> lock(readMutex);
-        issued = issueReadLocked();
-        firstReadError = issued ? 0 : GetLastError();
-        firstRead = issued ? 1 : -1;
-    }
-    flushedCv.notify_all();
-    if (!issued) return;
     HANDLE handles[3] = {overlapped.hEvent, stopEvent, flushEvent};
     while (running) {
         DWORD timeout = INFINITE;   // idle: no wakeup (S05 R21)
