@@ -870,7 +870,7 @@ bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmis
 // step (undo scope project)
 bool setSorting(SettingsContext& ctx, const SortingSettings& changed, bool apply, std::string& error) {
     Project* p = ctx.project();
-    if (apply && changed != SortingSettings::current()) {
+    if (apply && changed != SortingSettings::of(*p)) {
         auto* command = new SortingLayersCmd(p, changed);
         command->setNoMerge();
         if (!p->getProjectCommandHistory()->addCommand(command)) {
@@ -2475,7 +2475,7 @@ std::vector<Setting> mcpSettingsTable() {
                     error = "must be \"default\" or \"custom_axis\"";
                     return false;
                 }
-                SortingSettings changed = SortingSettings::current();
+                SortingSettings changed = SortingSettings::of(*ctx.project());
                 changed.mode = value.get<std::string>() == "custom_axis" ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
                 return setSorting(ctx, changed, apply, error);
             };
@@ -2495,7 +2495,7 @@ std::vector<Setting> mcpSettingsTable() {
                     error = "must be [x, y, z]";
                     return false;
                 }
-                SortingSettings changed = SortingSettings::current();
+                SortingSettings changed = SortingSettings::of(*ctx.project());
                 changed.axis = Vector3(value[0].get<float>(), value[1].get<float>(), value[2].get<float>());
                 return setSorting(ctx, changed, apply, error);
             };
@@ -4272,7 +4272,7 @@ std::vector<Setting> mcpSettingsTable() {
                     error = "the list must include \"Default\" (it cannot be removed; place it where it draws)";
                     return false;
                 }
-                SortingSettings changed = SortingSettings::current();
+                SortingSettings changed = SortingSettings::of(*ctx.project());
                 if (!SortingLayers::resolve(entries, changed.layers, error)) return false;
                 for (size_t a = 0; a < changed.layers.size(); a++) {
                     for (size_t b = a + 1; b < changed.layers.size(); b++) {

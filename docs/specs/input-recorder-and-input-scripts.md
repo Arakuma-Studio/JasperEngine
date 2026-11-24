@@ -727,3 +727,16 @@ wait until clicked, shot). Red controls are named per criterion.
   `quantizeState` now rounds half away from zero itself (pinned against `std::round`), and the hash
   reads each Transform by its slot in entity order, skipping the hierarchy walk when no GameObject is
   inactive: 0.11-0.13 ms (six runs), the same hashes.
+- **Input scripts are a module (S34 `inputscripts`), not in every release player.** R25 said every
+  player, release included, takes `--input-script`, and "Release players carry the interpreter"
+  defaulted to yes (at most 64 KB, R35). The integration review held that a feature a game does not
+  use costs nothing in a mobile or web download, so the interpreter, the recorder, checkpoints and
+  their Lua API compile to nothing without the module (`input/InputScriptSwitch.h`; the engine's
+  input entry points test a constant, `core/input/InputScriptsOff.cpp` answers the few calls the
+  engine makes). Development Builds and the full player keep it; a release Compile build or a
+  ui/core/lite variant has it when the project's scripts name `InputRecording` or `InputReplay`
+  (`ModuleUsage`, `ModuleUsage.DetectsInputScripts`). Without it `--input-script` logs `[input]
+  failed` ("this build has no input scripts") and exits 10, and the two Lua names warn once and do
+  nothing. Measured on release glcore players (`tools/build.sh players`, this branch before and after,
+  the same image): lite3d `.text` 23,854,482 -> 23,600,946 bytes (-253,536; `.rodata` -9,888); the full
+  player, which keeps the module, 40,666,306 -> 40,665,538.

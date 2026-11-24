@@ -100,11 +100,21 @@ fs::path BuildProfilesPane::outputDir(Project* project) const {
 }
 
 bool BuildProfilesPane::writeFiles(Project* project, const std::string& step, std::vector<std::pair<fs::path, std::string>> writes,
-                                   std::vector<fs::path> removes, const std::string& mergeKey) {
+                                   std::vector<fs::path> removes, const std::string& mergeKey,
+                                   const std::optional<std::pair<std::string, std::string>>& activeNameChange) {
     std::vector<EditBuildProfileCmd::FileChange> changes;
     for (const fs::path& file : removes) changes.push_back({file, paneFileText(file), std::nullopt});
-    for (auto& [file, text] : writes) changes.push_back({file, paneFileText(file), std::move(text)});
+    for (auto& [file, text] : writes) {
+        // a file the step also removes (a rename to another letter case, on a case-insensitive
+        // filesystem) did not exist before under its new name
+        const bool removed = std::any_of(removes.begin(), removes.end(), [&file](const fs::path& gone) {
+            std::error_code ec;
+            return fs::equivalent(gone, file, ec);
+        });
+        changes.push_back({file, removed ? std::nullopt : paneFileText(file), std::move(text)});
+    }
     auto* command = new EditBuildProfileCmd(step, std::move(changes));
+    if (activeNameChange) command->setActiveNameChange(project->getProjectPath(), activeNameChange->first, activeNameChange->second);
     auto failure = std::make_shared<std::string>();
     command->reportFailureTo(failure);
     if (mergeKey.empty()) command->setNoMerge();
@@ -178,8 +188,9 @@ void BuildProfilesPane::drawList(Project* project, float height) {
                                 }
                             if (renamed) writes.push_back({publish::PublishingConfig::pathOf(projectPath), publishing.toJson()});
                         }
-                        if (writeFiles(project, "Rename Build Profile '" + entry.name + "'", std::move(writes), {entry.file})) {
-                            if (active) buildprofiles::setActiveName(projectPath, target, error);
+                        // the active profile follows its rename, in the same undo step
+                        if (writeFiles(project, "Rename Build Profile '" + entry.name + "'", std::move(writes), {entry.file}, std::string(),
+                                       active ? std::optional<std::pair<std::string, std::string>>({entry.name, target}) : std::nullopt)) {
                             if (selected == entry.name) selected = target;
                         }
                     }

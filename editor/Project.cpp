@@ -410,6 +410,11 @@ std::shared_ptr<editor::Project> editor::Project::makeSettingsSnapshot(Project& 
     // what the engine holds for the open project (no profile overrides these categories)
     snapshot->tags = source.tags;
     snapshot->layerNames = source.layerNames;
+    // the Sorting Layers as the engine resolved them, and the Transparency Sort a profile's
+    // graphics.transparency_sort_* may override
+    snapshot->snapshotSortingLayers = source.getSortingLayers();
+    snapshot->snapshotSortMode = source.getTransparencySortMode();
+    snapshot->snapshotSortAxis = source.getTransparencySortAxis();
     snapshot->physics3DWorld = source.physics3DWorld;
     return snapshot;
 }
@@ -2306,25 +2311,34 @@ void editor::Project::setTagsAndLayers(const std::vector<std::string>& tags, con
 }
 
 void editor::Project::setSortingLayers(const std::vector<SortingLayerInfo>& layers){
-    if (settingsSnapshot) return;
+    if (settingsSnapshot){
+        snapshotSortingLayers = layers;
+        return;
+    }
     SortingLayers::setLayers(layers);
 }
 
 const std::vector<SortingLayerInfo>& editor::Project::getSortingLayers() const{
-    return SortingLayers::getLayers();
+    return settingsSnapshot ? snapshotSortingLayers : SortingLayers::getLayers();
 }
 
 void editor::Project::setTransparencySort(TransparencySortMode mode, const Vector3& axis){
-    if (settingsSnapshot) return;
+    if (settingsSnapshot){
+        snapshotSortMode = mode;
+        snapshotSortAxis = axis;
+        return;
+    }
     SortingLayers::setTransparencySortMode(mode);
     SortingLayers::setTransparencySortAxis(axis);
 }
 
 TransparencySortMode editor::Project::getTransparencySortMode() const{
+    if (settingsSnapshot) return snapshotSortMode;
     return SortingLayers::getTransparencySortMode();
 }
 
 Vector3 editor::Project::getTransparencySortAxis() const{
+    if (settingsSnapshot) return snapshotSortAxis;
     return SortingLayers::getTransparencySortAxis();
 }
 
@@ -4010,7 +4024,8 @@ const editor::SaveGameSettings& editor::Project::getSaveGameSettings() const{
 void editor::Project::setSaveGameSettings(const SaveGameSettings& settings){
     const bool changed = settings != saveGameSettings;
     saveGameSettings = settings;
-    savegame::configure(settings.engineSettings());
+    // a Build Profile's settings snapshot leaves the editor's store to the open project
+    if (!settingsSnapshot) savegame::configure(settings.engineSettings());
     if (changed && modelLoaded){
         markGeneratedSourcesDirty();
     }
@@ -7621,6 +7636,15 @@ bool editor::Project::saveProjectFile(DegradedSavePolicy policy, SaveResult* out
     if (projectPath.empty()) {
         return false;
     }
+    // A build's settings snapshot keeps the project's path for its validators, and a settings
+    // command a Build Profile override runs saves from it: it lives only for that build, so
+    // nothing of it reaches the open project's files
+    if (settingsSnapshot) {
+        if (outcome) {
+            *outcome = SaveResult::Saved;
+        }
+        return true;
+    }
 
     // project.yaml read with values this editor could not keep (a newer format): not written
     // over unless the loss was accepted
@@ -7697,6 +7721,10 @@ bool editor::Project::saveWorkspaceFile() {
     if (projectPath.empty()) {
         return false;
     }
+    // a build's settings snapshot writes nothing (saveProjectFile)
+    if (settingsSnapshot) {
+        return true;
+    }
     // the editor's own per-user workspace file, .jasperengine/user/workspace.yaml (a hidden folder the
     // guard refuses to agents): the editor names that one file (util/SafeWrite.h); its folder is made
     // first when missing, under a token for that folder alone
@@ -7719,6 +7747,10 @@ bool editor::Project::saveWorkspaceFile() {
 bool editor::Project::writeVersionControlMetadata() {
     if (projectPath.empty()) {
         return false;
+    }
+    // a build's settings snapshot writes nothing (saveProjectFile)
+    if (settingsSnapshot) {
+        return true;
     }
 
     const std::pair<const char*, std::pair<vcsfiles::FileKind, std::string>> files[] = {
@@ -7812,6 +7844,10 @@ std::string editor::Project::saveAsRefusal(const fs::path& path) const {
 }
 
 bool editor::Project::saveProjectToPath(const std::filesystem::path& requestedPath) {
+    // a build's settings snapshot writes nothing (saveProjectFile)
+    if (settingsSnapshot) {
+        return true;
+    }
     const fs::path path = requestedPath.lexically_normal();
     const fs::path oldPath = projectPath;
     const bool saveAs = !oldPath.empty() && oldPath.lexically_normal() != path;

@@ -218,10 +218,11 @@ bool editor::Exporter::resolvePlayer() {
     // the full player, else any installed variant of it (the method only needs one);
     // selectPlayerVariant picks the build's once its modules are known
     const std::string id = playerIdFor(config, config.developmentBuild);
+    const std::string content = ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr);
     std::string error;
-    std::optional<PlayerInfo> found = PlayerRuntimes::find(id, config.playersDir, config.allowPlayerMismatch, error);
+    std::optional<PlayerInfo> found = PlayerRuntimes::find(id, config.playersDir, config.allowPlayerMismatch, error, content);
     if (!found) {
-        std::vector<PlayerInfo> variants = PlayerRuntimes::findVariants(id, config.playersDir, config.allowPlayerMismatch);
+        std::vector<PlayerInfo> variants = PlayerRuntimes::findVariants(id, config.playersDir, config.allowPlayerMismatch, content);
         if (!variants.empty()) found = variants.front();
     }
     {
@@ -236,9 +237,9 @@ bool editor::Exporter::resolvePlayer() {
     if (config.allowPlayerMismatch && player->engineVersion != PlayerRuntimes::editorVersion())
         warn("W-PLAYER-MISMATCH", "player " + id + " is for editor " + player->engineVersion + ", this is " + PlayerRuntimes::editorVersion() +
                                   " (--allow-player-mismatch; publish verify refuses the build)");
-    else if (config.allowPlayerMismatch && !::jasperengine::cook::readsContentFormat(player->contentFormatVersion, ::jasperengine::cook::contentFormatVersion()))
-        warn("W-PLAYER-MISMATCH", "player " + id + " reads content format " + player->contentFormatVersion + ", this editor writes " +
-                                  ::jasperengine::cook::contentFormatVersion() + ": it skips what is newer (--allow-player-mismatch; publish verify refuses the build)");
+    else if (config.allowPlayerMismatch && !::jasperengine::cook::readsContentFormat(player->contentFormatVersion, content))
+        warn("W-PLAYER-MISMATCH", "player " + id + " reads content format " + player->contentFormatVersion + ", this build writes " +
+                                  content + ": it skips what is newer (--allow-player-mismatch; publish verify refuses the build)");
     return true;
 }
 
@@ -351,7 +352,8 @@ void editor::Exporter::runPlayerBuild() {
 
     if (!player) {
         std::string error;
-        PlayerRuntimes::find(playerIdFor(config, config.developmentBuild), config.playersDir, config.allowPlayerMismatch, error);
+        PlayerRuntimes::find(playerIdFor(config, config.developmentBuild), config.playersDir, config.allowPlayerMismatch, error,
+                             ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr));
         // what would build it without the runtime
         if (config.platform == BuildPlatform::Web && config.method == BuildMethod::Auto)
             error += "; or install the Emscripten SDK (EMSDK, or Preferences > External Tools) to compile it";
@@ -410,7 +412,8 @@ bool editor::Exporter::selectPlayerVariant() {
     }
     const std::vector<std::string> needed = moduleUsage.list();
     const std::string baseId = playerIdFor(config, config.developmentBuild);
-    const std::vector<PlayerInfo> installed = PlayerRuntimes::findVariants(baseId, config.playersDir, config.allowPlayerMismatch);
+    const std::vector<PlayerInfo> installed = PlayerRuntimes::findVariants(baseId, config.playersDir, config.allowPlayerMismatch,
+                                                                           ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr));
     const PlayerInfo* best = PlayerRuntimes::smallestWith(installed, needed);
     // (a development build is always the full player: its variants are release ones)
     const PlayerVariant& fitting = config.developmentBuild ? PlayerRuntimes::variants().front() : PlayerRuntimes::variantFor(needed);
@@ -923,7 +926,8 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
     setProgressRaw("Writing the content manifest...", 0.88f);
     player::ContentManifest manifest;
     manifest.engineVersion = JASPERENGINE_EDITOR_VERSION;
-    manifest.contentFormatVersion = ::jasperengine::cook::contentFormatVersion();
+    // what this build's content needs: a build without a Build Profile stays playable by older runtimes
+    manifest.contentFormatVersion = ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr);
     manifest.method = prebuilt ? "prebuilt" : "compile";
     manifest.backend = config.graphicBackend.empty() ? getCMakeGraphicBackend(*config.selectedBackends.begin()) : normalizeBackend(config.graphicBackend);
     manifest.allowPlayerMismatch = config.allowPlayerMismatch;

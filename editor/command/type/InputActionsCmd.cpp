@@ -53,7 +53,8 @@ editor::InputActionsCmd::InputActionsCmd(Project* project, const std::vector<Inp
 
 bool editor::InputActionsCmd::apply(bool undoing){
     const std::filesystem::path& asset = undoing ? beforeAsset : afterAsset;
-    if (!project->getProjectPath().empty()){
+    // a build's settings snapshot (a Build Profile override) changes its settings, never the files
+    if (!project->getProjectPath().empty() && !project->isSettingsSnapshot()){
         const std::filesystem::path file = project->getProjectPath() / afterAsset;
         if (undoing && created){
             std::error_code ec;

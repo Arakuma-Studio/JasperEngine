@@ -1,6 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+// Only with the input scripts module (input/InputScriptSwitch.h); InputScriptsOff.cpp answers the
+// engine without it
+#include "input/InputScriptSwitch.h"
+#if JASPERENGINE_INPUT_SCRIPTS_ENABLED
+
 #include "input/InputScript.h"
 #include "input/InputScriptRunner.h"
 #include "input/InputRecorder.h"
@@ -2224,3 +2229,5 @@ void ScriptRunner::afterUpdate(){
 }
 
 }
+
+#endif // JASPERENGINE_INPUT_SCRIPTS_ENABLED

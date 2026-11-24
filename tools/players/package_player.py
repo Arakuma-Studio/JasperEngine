@@ -71,9 +71,11 @@ def sha256(path: Path) -> str:
 def content_format_version() -> str:
     text = (REPO / "engine/core/serialization/CookedScene.h").read_text(encoding="utf-8")
     major = re.search(r"FORMAT_MAJOR = (\d+)", text)
-    minor = re.search(r"FORMAT_MINOR = (\d+)", text)
+    # the newest content minor the player reads (above the cooked files' FORMAT_MINOR when game.json
+    # gained something, e.g. Build Profiles)
+    minor = re.search(r"CONTENT_MINOR = (\d+)", text)
     if not major or not minor:
-        raise SystemExit("engine/core/serialization/CookedScene.h has no FORMAT_MAJOR/FORMAT_MINOR")
+        raise SystemExit("engine/core/serialization/CookedScene.h has no FORMAT_MAJOR/CONTENT_MINOR")
     return f"{major.group(1)}.{minor.group(1)}"
 
 

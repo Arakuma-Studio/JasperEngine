@@ -18,8 +18,11 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "input/InputScriptSwitch.h"
+#if JASPERENGINE_INPUT_SCRIPTS_ENABLED
 #include "input/InputRecorder.h"
 #include "input/InputReplay.h"
+#endif
 #include "io/AtomicFile.h"
 #include "io/FileData.h"
 #include "io/watch/FileWatcher.h"
@@ -35,6 +38,7 @@
 
 using namespace jasperengine;
 
+#if JASPERENGINE_INPUT_SCRIPTS_ENABLED
 namespace jasperengine {
 
     // a replay started by InputRecording.play (Coroutine.waitFor(replay) waits for it); its replay
@@ -56,8 +60,9 @@ namespace jasperengine {
     };
 
 }
+#endif
 
-#ifndef DISABLE_LUA_BINDINGS
+#if !defined(DISABLE_LUA_BINDINGS) && JASPERENGINE_INPUT_SCRIPTS_ENABLED
 namespace {
 
     constexpr size_t LUA_DEFAULT_MAX_BYTES = 1024 * 1024;
@@ -344,8 +349,44 @@ namespace {
 }
 #endif
 
+#if !defined(DISABLE_LUA_BINDINGS) && !JASPERENGINE_INPUT_SCRIPTS_ENABLED
+namespace {
+
+    // Without the input scripts module the names exist: any use logs once and does nothing
+    int inputScriptsNotCompiled(lua_State* L) {
+        static bool logged = false;
+        if (!logged) {
+            logged = true;
+            Log::warn("InputRecording: the input scripts module is not compiled into this build (JASPERENGINE_INPUT_SCRIPTS is off): "
+                      "InputRecording and InputReplay do nothing");
+        }
+        lua_settop(L, 0);
+        lua_pushnil(L);
+        return 1;
+    }
+
+    // any field is the stub again, a call logs and returns nil
+    void pushInputScriptsStub(lua_State* L) {
+        lua_newtable(L);
+        lua_newtable(L);
+        lua_pushcfunction(L, inputScriptsNotCompiled);
+        lua_setfield(L, -2, "__call");
+        lua_pushcfunction(L, [](lua_State* state) -> int {
+            lua_pushvalue(state, 1);
+            return 1;
+        });
+        lua_setfield(L, -2, "__index");
+        lua_pushcfunction(L, [](lua_State*) -> int { return 0; });
+        lua_setfield(L, -2, "__newindex");
+        lua_setmetatable(L, -2);
+    }
+
+}
+#endif
+
 void LuaBinding::registerInputRecordingClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
+#if JASPERENGINE_INPUT_SCRIPTS_ENABLED
     // Records the input that reaches the game from now, and replays recordings and scripts
     // (.input.json) through the engine's input entry points (docs/input-recording.md)
     luabridge::getGlobalNamespace(L)
@@ -379,5 +420,11 @@ void LuaBinding::registerInputRecordingClasses(lua_State *L){
         // nil, or {frame, differences} at the first checkpoint that differed
         .addProperty("diverged", &replayDiverged)
         .endClass();
+#else
+    pushInputScriptsStub(L);
+    lua_setglobal(L, "InputRecording");
+    pushInputScriptsStub(L);
+    lua_setglobal(L, "InputReplay");
+#endif
 #endif
 }

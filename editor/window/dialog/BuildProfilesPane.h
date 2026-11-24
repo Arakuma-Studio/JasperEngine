@@ -11,7 +11,9 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor {
@@ -65,7 +67,8 @@ namespace jasperengine::editor {
         // one undo step (merged with the step before for the same `mergeKey` while typing)
         bool commit(Project* project, const BuildProfile& next, const std::string& mergeKey);
         bool writeFiles(Project* project, const std::string& step, std::vector<std::pair<std::filesystem::path, std::string>> writes,
-                        std::vector<std::filesystem::path> removes, const std::string& mergeKey = std::string());
+                        std::vector<std::filesystem::path> removes, const std::string& mergeKey = std::string(),
+                        const std::optional<std::pair<std::string, std::string>>& activeNameChange = std::nullopt);
         void drawIdentity(Project* project, BuildProfile& next, bool& changed, std::string& key);
         void drawStore(BuildProfile& next, bool& changed, std::string& key);
         void drawBuild(Project* project, BuildProfile& next, bool& changed, std::string& key);

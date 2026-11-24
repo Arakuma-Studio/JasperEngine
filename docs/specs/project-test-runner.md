@@ -824,4 +824,6 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   `.text` 39,219,810 against 39,271,938 bytes (+52,128). None of it is the runner (no `gametest::` or
   `PlayerTests` symbol in the release player); the input scripts that came with the merge
   (`input::Script*`, about 22.5 KB of functions, compiled in every player for `--input-script`), the
-  `data://` override and the link's layout make it, so `.text` is not equal to the base tree's.
+  `data://` override and the link's layout make it, so `.text` is not equal to the base tree's. The input scripts are now a module
+  (input-recorder-and-input-scripts.md Deviations): a release player whose project uses none of them
+  leaves them out (lite3d `.text` -253,536 bytes); the full player keeps them.

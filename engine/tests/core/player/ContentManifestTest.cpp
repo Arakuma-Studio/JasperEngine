@@ -106,10 +106,15 @@ TEST(ContentManifest, ReadsContentFormat) {
     EXPECT_FALSE(cook::readsContentFormat("1.5", "2.0"));
     EXPECT_FALSE(cook::readsContentFormat("2.0", "1.5"));
     for (const char* bad : {"", "1", "1.", ".5", "1.x", "v1.5", "1.5.0", "-1.5"}) EXPECT_FALSE(cook::readsContentFormat("1.5", bad)) << bad;
-    // minor 6 (Build Profiles): game.json's buildProfile and defines; a runtime of minor 5 would
-    // ignore the defines and run a demo as the full game, so the editor does not use one
-    EXPECT_TRUE(cook::readsContentFormat(cook::contentFormatVersion(), "1.6"));
-    EXPECT_FALSE(cook::readsContentFormat("1.5", cook::contentFormatVersion()));
+    // Build Profiles: game.json's buildProfile and defines need a runtime of BUILD_PROFILE_MINOR (one
+    // of the cooked files' minor would ignore the defines and run a demo as the full game); a build
+    // without a profile needs only the cooked files' minor, so older runtimes still serve it
+    const std::string cooked = std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::FORMAT_MINOR);
+    EXPECT_EQ(cook::buildContentFormatVersion(false), cooked);
+    EXPECT_EQ(cook::buildContentFormatVersion(true), std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::BUILD_PROFILE_MINOR));
+    EXPECT_TRUE(cook::readsContentFormat(cook::contentFormatVersion(), cook::buildContentFormatVersion(true)));
+    EXPECT_TRUE(cook::readsContentFormat(cooked, cook::buildContentFormatVersion(false)));
+    EXPECT_FALSE(cook::readsContentFormat(cooked, cook::buildContentFormatVersion(true)));
 }
 
 // game.json's side of the same (R17): the profile and its defines, absent without a profile
@@ -149,7 +154,7 @@ TEST(ContentManifest, ReadsANewerMinorAndRefusesAnotherMajor) {
     present() = {"scenes/3.jscn", "scenes/4.jscn", "prefabs/2.jpfb", "assets/shaders/MESH_x_glsl410.sdat", "content.jpak"};
     const ContentAccess access{&exists, &noSha};
     ContentManifest m = sample();
-    const std::string newer = std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::FORMAT_MINOR + 1);
+    const std::string newer = std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::CONTENT_MINOR + 1);
     m.contentFormatVersion = newer;
     std::vector<std::string> problems;
     EXPECT_TRUE(checkContent(m, "linux-x64-glcore-release", access, false, problems)) << problems.front();
@@ -194,10 +199,10 @@ TEST(ContentManifest, RefusesContentNeedingAModuleThePlayerLacks) {
     ASSERT_TRUE(ContentManifest::fromJson(json, old, error)) << error;
     EXPECT_FALSE(old.hasModules);
     EXPECT_EQ(missingModules(old, allModules()), std::vector<std::string>{});
-    // T2 added noise, T6 voxel, T4 terrainworld, T1 runtime terrain edits, S81 titleart and dialogue-graphs.md
-    // dialogue, which this lite list leaves out (N11, T4 R55, S81 R51)
-    EXPECT_EQ(missingModules(old, lite),
-              (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue"}));
+    // T2 added noise, T6 voxel, T4 terrainworld, T1 runtime terrain edits, S81 titleart, dialogue-graphs.md
+    // dialogue and input scripts, which this lite list leaves out (N11, T4 R55, S81 R51)
+    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise", "voxel", "terrainworld",
+                                                                    "terrainedit", "titleart", "dialogue", "inputscripts"}));
     // and a Compile build (no player id) is not asked
     problems.clear();
     EXPECT_TRUE(checkContent(m, "", access, false, problems, &lite));
@@ -236,14 +241,17 @@ TEST(ContentManifest, ContentNeedingTerrainWorldRefusesLite3D) {
 
 // the newest last: T6's Voxel Volumes, T4's Terrain World, then T1's runtime terrain edits
 TEST(PlayerModules, KnowsVoxelTerrainWorldAndTerrainEdits) {
-    // the terrain programme's three, then Title Art's (S81 R51) and dialogue's (dialogue-graphs.md R15), which merged after them
-    ASSERT_GE(allModules().size(), 5u);
-    EXPECT_EQ(allModules()[allModules().size() - 5], "voxel");
-    EXPECT_EQ(allModules()[allModules().size() - 4], "terrainworld");
-    EXPECT_EQ(allModules()[allModules().size() - 3], "terrainedit");
-    EXPECT_EQ(allModules()[allModules().size() - 2], "titleart");
-    EXPECT_EQ(allModules().back(), "dialogue");
+    // the terrain programme's three, then Title Art's (S81 R51), dialogue's (dialogue-graphs.md R15) and
+    // input scripts' (input-recorder-and-input-scripts.md Deviations), which merged after them
+    ASSERT_GE(allModules().size(), 6u);
+    EXPECT_EQ(allModules()[allModules().size() - 6], "voxel");
+    EXPECT_EQ(allModules()[allModules().size() - 5], "terrainworld");
+    EXPECT_EQ(allModules()[allModules().size() - 4], "terrainedit");
+    EXPECT_EQ(allModules()[allModules().size() - 3], "titleart");
+    EXPECT_EQ(allModules()[allModules().size() - 2], "dialogue");
+    EXPECT_EQ(allModules().back(), "inputscripts");
     EXPECT_EQ(moduleDisplayName("dialogue"), "dialogue graphs and the Dialogue Runner");
+    EXPECT_TRUE(isModuleBuilt("inputscripts")) << "the tests' engine has every module";
     EXPECT_EQ(moduleDisplayName("voxel"), "Voxel Volumes");
     EXPECT_EQ(moduleDisplayName("terrainworld"), "Terrain World");
     EXPECT_EQ(moduleDisplayName("terrainedit"), "runtime terrain edits");

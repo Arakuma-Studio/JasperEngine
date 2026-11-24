@@ -139,7 +139,11 @@ namespace {
 }
 
 std::string cook::contentFormatVersion() {
-    return std::to_string(FORMAT_MAJOR) + "." + std::to_string(FORMAT_MINOR);
+    return std::to_string(FORMAT_MAJOR) + "." + std::to_string(CONTENT_MINOR);
+}
+
+std::string cook::buildContentFormatVersion(bool buildProfile) {
+    return std::to_string(FORMAT_MAJOR) + "." + std::to_string(buildProfile ? BUILD_PROFILE_MINOR : FORMAT_MINOR);
 }
 
 namespace {
@@ -170,7 +174,7 @@ bool cook::readsContentFormat(std::string_view reader, std::string_view content)
 bool cook::playerReadsContentFormat(std::string_view content) {
     unsigned long major = 0, minor = 0;
     if (!parseFormatVersion(content, major, minor) || major != FORMAT_MAJOR) return false;
-    if (minor > FORMAT_MINOR) {
+    if (minor > CONTENT_MINOR) {
         static std::mutex mutex;
         static std::set<std::string> warned;
         std::lock_guard<std::mutex> lock(mutex);

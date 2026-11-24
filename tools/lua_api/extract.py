@@ -57,6 +57,8 @@ _MODULE_MACROS = {
     'JASPERENGINE_TERRAIN_EDIT': 'terrainedit',
     'JASPERENGINE_DIALOGUE': 'dialogue',
     'JASPERENGINE_DIALOGUE_ENABLED': 'dialogue',
+    'JASPERENGINE_INPUT_SCRIPTS': 'inputscripts',
+    'JASPERENGINE_INPUT_SCRIPTS_ENABLED': 'inputscripts',
 }
 
 

@@ -51,6 +51,11 @@ option(JASPERENGINE_SOUND_LAYER "Compile Sound Events, triggers, free voices and
 option(JASPERENGINE_NOISE "Compile the noise library and Noise Graphs for scripts and voxels" ON)
 # dialogue-graphs.md R15: .dialogue graphs, the Dialogue Runner and the Dialogue Lua API
 option(JASPERENGINE_DIALOGUE "Compile dialogue graphs and the Dialogue Runner" ON)
+# Input scripts (S34 module inputscripts; input-recorder-and-input-scripts.md Deviations): the
+# interpreter, the recorder, checkpoints, --input-script and Lua's InputRecording and InputReplay.
+# A player leaves it out when its project uses none of them; its sources then compile to nothing
+# and core/input/InputScriptsOff.cpp answers the engine
+option(JASPERENGINE_INPUT_SCRIPTS "Compile input scripts, the input recorder and their Lua API" ON)
 option(JASPERENGINE_NOISE_ALL_BACKENDS "Build the noise kernels' Scalar back end beside Native (editor and tests)" OFF)
 # The HTML/CSS UI (UI Document components, their Lua API, anime, widgets, effects, the on-screen
 # controls: RmlUi, lexbor, ThorVG, msdfgen, the Lucide icons) and its <video> (dav1d, Opus,
@@ -1250,7 +1255,13 @@ endif()
 option(JASPERENGINE_AUDIO_CAPTURE "Compile audio captures and their gameplay markers" ${JASPERENGINE_AUDIO_CAPTURE_DEFAULT})
 # The project test runner (core/test, docs/specs/project-test-runner.md R32): the editor, the unit
 # tests and development players; a release player compiles none of it, and its sites to nothing
-option(JASPERENGINE_TEST_RUNNER "Compile the project test runner (--run-tests)" ${JASPERENGINE_PROFILER_DEFAULT})
+# (its replay cases run input scripts: not in a build without them)
+if(JASPERENGINE_PROFILER_DEFAULT AND JASPERENGINE_INPUT_SCRIPTS)
+    set(JASPERENGINE_TEST_RUNNER_DEFAULT ON)
+else()
+    set(JASPERENGINE_TEST_RUNNER_DEFAULT OFF)
+endif()
+option(JASPERENGINE_TEST_RUNNER "Compile the project test runner (--run-tests)" ${JASPERENGINE_TEST_RUNNER_DEFAULT})
 # Tracy remote profiling of a running development game (desktop and Android, libs/tracy)
 option(JASPERENGINE_TRACY "Send the profiler's zones, frames and plots to Tracy" OFF)
 if(JASPERENGINE_TRACY)
@@ -1450,6 +1461,7 @@ set(JASPERENGINE_SRCS
     core/input/InputRecorder.cpp
     core/input/InputReplay.cpp
     core/input/StateHash.cpp
+    core/input/InputScriptsOff.cpp
     core/Log.cpp
     core/device/Device.cpp
     core/device/DeviceSettings.cpp
@@ -2180,6 +2192,9 @@ if(JASPERENGINE_VOXEL)
 endif()
 # always there: with the module off it is the plain terrain query (T6 R45)
 list(APPEND JASPERENGINE_SRCS core/object/voxel/GroundQuery.cpp)
+if(JASPERENGINE_TEST_RUNNER AND NOT JASPERENGINE_INPUT_SCRIPTS)
+    message(FATAL_ERROR "JASPERENGINE_TEST_RUNNER needs JASPERENGINE_INPUT_SCRIPTS: replay cases run input scripts")
+endif()
 if(JASPERENGINE_TEST_RUNNER)
     list(APPEND JASPERENGINE_SRCS core/test/TestOptions.cpp core/test/TestResults.cpp core/test/TestRunner.cpp core/test/TestScan.cpp
                                   core/player/PlayerTests.cpp)
@@ -2419,6 +2434,7 @@ target_compile_definitions(jasperengine
         JASPERENGINE_TERRAIN_WORLD=$<BOOL:${JASPERENGINE_TERRAIN_WORLD}>
         JASPERENGINE_SOUND_LAYER=$<BOOL:${JASPERENGINE_SOUND_LAYER}>
         JASPERENGINE_DIALOGUE=$<BOOL:${JASPERENGINE_DIALOGUE}>
+        JASPERENGINE_INPUT_SCRIPTS=$<BOOL:${JASPERENGINE_INPUT_SCRIPTS}>
         JASPERENGINE_NOISE=$<BOOL:${JASPERENGINE_NOISE}>
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
         JASPERENGINE_VOXEL=$<BOOL:${JASPERENGINE_VOXEL}>

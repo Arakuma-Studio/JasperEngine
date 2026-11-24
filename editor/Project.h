@@ -1708,6 +1708,11 @@ namespace jasperengine::editor{
         // A build's settings snapshot (makeSettingsSnapshot): its setters keep their values and
         // apply nothing to the engine, the editor or the files of the project it was made from
         bool settingsSnapshot = false;
+        // what the engine's SortingLayers holds for the open project, a snapshot's own (a Build
+        // Profile's graphics.transparency_sort_* override)
+        std::vector<SortingLayerInfo> snapshotSortingLayers;
+        TransparencySortMode snapshotSortMode = TransparencySortMode::DEFAULT;
+        Vector3 snapshotSortAxis = Vector3(0.0f, 1.0f, 0.0f);
         struct SettingsSnapshotTag {};
         explicit Project(SettingsSnapshotTag);
 
@@ -2072,7 +2077,8 @@ namespace jasperengine::editor{
 
         // Project Settings > Tags and Layers > Sorting Layers and Graphics > Transparency Sort Mode /
         // Axis (spec S52 R1, R4): the engine's SortingLayers holds them (the Inspector, Play and
-        // the render systems read it); setSortingLayers keeps what SortingLayers accepts
+        // the render systems read it); setSortingLayers keeps what SortingLayers accepts. A settings
+        // snapshot holds its own
         void setSortingLayers(const std::vector<SortingLayerInfo>& layers);
         const std::vector<SortingLayerInfo>& getSortingLayers() const;
         void setTransparencySort(TransparencySortMode mode, const Vector3& axis);

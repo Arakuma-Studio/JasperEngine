@@ -239,6 +239,18 @@ TEST(ModuleUsage, DetectsDialogue) {
     EXPECT_EQ(one.usage().firstEvidence("dialogue"), "scene Main: Dialogue Runner on Thing");
 }
 
+// Input scripts are a module (input-recorder-and-input-scripts.md Deviations): a script that records or
+// replays input (an attract mode) needs it; a game that does neither ships without the interpreter
+TEST(ModuleUsage, DetectsInputScripts) {
+    EXPECT_FALSE(withLua("local x = Input.isKeyPressed(1)").needs("inputscripts"));
+    const ModuleUsage replay = withLua("local r = InputRecording.play('asset://demo/attract.input.json')");
+    EXPECT_EQ(modules(replay), "inputscripts");
+    EXPECT_NE(replay.firstEvidence("inputscripts").find("lua/test.lua:1"), std::string::npos) << replay.firstEvidence("inputscripts");
+    EXPECT_TRUE(withLua("InputRecording.checkpoint('gold', 3)").needs("inputscripts"));
+    // a member or a string of that name is not the global
+    EXPECT_FALSE(withLua("local t = self.InputRecording\nprint('InputReplay')").needs("inputscripts"));
+}
+
 // T1 R54: runtime terrain edits are a module, needed by a terrain that allows them or a script that writes one
 TEST(ModuleUsage, AllowRuntimeEditsNeedsTerrainEdits) {
     OneEntity one;
@@ -376,7 +388,7 @@ TEST(ModuleUsage, LuaNamesNeedTheirModules) {
 }
 
 TEST(ModuleUsage, DynamicAccessNeedsEveryModule) {
-    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit dialogue";
+    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit dialogue inputscripts";
     for (const char* code : {"local f = _G[name]", "local f = _ENV[name]", "local chunk = load(text)", "local s = loadstring(text)",
                              "dofile(path)", "local r = debug.getregistry()", "local g = package.loaded", "local m = require(name)",
                              "local g = require('_G')"}) {
@@ -392,7 +404,7 @@ TEST(ModuleUsage, CppScriptsNeedEveryModule) {
     ModuleScan scan = empty();
     scan.cppScripts.push_back("scripts/Player.cpp");
     const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
-    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit dialogue");
+    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit dialogue inputscripts");
     EXPECT_NE(usage.firstEvidence("htmlui").find("scripts/Player.cpp"), std::string::npos);
 }
 

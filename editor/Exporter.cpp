@@ -1641,15 +1641,19 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 std::vector<std::string> editor::Exporter::compiledModules() const {
     // what Project Settings allow (the HTML UI, its video, the sound layer and Terrain Worlds have no
     // switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue"};
+    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue", "inputscripts"};
     if (settings->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
     if (settings->getNavigationSettings().includeInBuilds) modules.push_back("navigation");
     modules.push_back("noise");
     // of them, those the project reaches (a source export: all of them)
+    // a Development Build keeps input scripts whatever the project uses: its test runner replays
+    // them, and run_build {input_script} drives it (input-recorder-and-input-scripts.md Deviations)
     if (moduleUsageKnown)
-        modules.erase(std::remove_if(modules.begin(), modules.end(), [this](const std::string& m) { return !moduleUsage.needs(m); }), modules.end());
+        modules.erase(std::remove_if(modules.begin(), modules.end(), [this](const std::string& m) {
+                          return !moduleUsage.needs(m) && !(m == "inputscripts" && config.developmentBuild);
+                      }), modules.end());
     std::vector<std::string> ordered;
     for (const std::string& module : player::allModules())
         if (std::find(modules.begin(), modules.end(), module) != modules.end()) ordered.push_back(module);
@@ -5172,6 +5176,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_TERRAIN_EDIT", "terrainedit");
         moduleSwitch("JASPERENGINE_TITLE_ART", "titleart");
         moduleSwitch("JASPERENGINE_DIALOGUE", "dialogue");
+        moduleSwitch("JASPERENGINE_INPUT_SCRIPTS", "inputscripts");
         // S81 R51: the sub-options, off when no shipped Realtime title needs them (ModuleUsage)
         {
             const bool titleArt = std::find(modules.begin(), modules.end(), "titleart") != modules.end();
@@ -6099,6 +6104,12 @@ bool editor::Exporter::writeAppleProjectSettings() {
     // the Lua names as stubs and registers nothing
     if (moduleUsageKnown && !moduleUsage.needs("dialogue")) {
         replaceAll(xcodeProject, "\t\t\t\t\tRMLUI_STATIC_LIB,\n", "\t\t\t\t\t\"JASPERENGINE_DIALOGUE=0\",\n\t\t\t\t\tRMLUI_STATIC_LIB,\n");
+    }
+
+    // The input scripts module (input/InputScriptSwitch.h): as dialogue's, its sources compile to nothing
+    // without it; a Development Build keeps it (compiledModules)
+    if (moduleUsageKnown && !moduleUsage.needs("inputscripts") && !config.developmentBuild) {
+        replaceAll(xcodeProject, "\t\t\t\t\tRMLUI_STATIC_LIB,\n", "\t\t\t\t\t\"JASPERENGINE_INPUT_SCRIPTS=0\",\n\t\t\t\t\tRMLUI_STATIC_LIB,\n");
     }
 
     // Navigation off (Project Settings > Navigation > Include in Builds): Recast/Detour and the

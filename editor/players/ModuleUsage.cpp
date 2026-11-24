@@ -56,7 +56,7 @@ namespace {
 
     // the modules a dynamic access or C++ code can reach: every one the detection decides
     const std::vector<std::string>& detectedModules() {
-        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel", "terrainworld", "terrainedit", "dialogue"};
+        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel", "terrainworld", "terrainedit", "dialogue", "inputscripts"};
         return modules;
     }
 
@@ -483,6 +483,8 @@ namespace {
                     if (token.text == "DebugOverlay") add("htmlui", where(token.line), "DebugOverlay (an HTML UI document)");
                     // the Dialogue table is bound with the C API, which the Lua API description does not list
                     if (!member && (token.text == "Dialogue" || token.text == "DialogueRunner")) add("dialogue", where(token.line), token.text);
+                    // InputRecording's functions are not in the Lua API description either; a replay comes only from it
+                    if (!member && (token.text == "InputRecording" || token.text == "InputReplay")) add("inputscripts", where(token.line), token.text);
                     if (lower(token.text).find("video") != std::string::npos) addVideo(where(token.line), token.text);
                 } else if (token.kind == LuaToken::String) {
                     for (const std::string& word : wordsOf(token.text)) {
