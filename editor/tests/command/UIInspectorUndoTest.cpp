@@ -32,7 +32,8 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace ui_inspector_undo_test {
 
     constexpr Entity GAME = 1001;   // a plain GameObject of the fixture's Main Scene
 
@@ -98,8 +99,6 @@ namespace {
             ASSERT_TRUE(history()->undo()) << property;
         }
     };
-
-}
 
 TEST_F(UIInspectorUndoTest, UIDocumentFieldsAreUndoable) {
     Scene* registry = scene->scene;
@@ -195,4 +194,6 @@ TEST_F(UIInspectorUndoTest, OldSceneLoadsWithTheDefaults) {
         for (const char* key : {"horizontalAlignment", "verticalAlignment", "autoSize", "fontSizeMin", "fontSizeMax"})
             EXPECT_FALSE(components["text"] && components["text"][key]) << key;
     }
+}
+
 }
