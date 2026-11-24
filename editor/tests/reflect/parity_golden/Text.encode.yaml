@@ -1,9 +1,9 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest adb431399b953f90
+digest 8ad7666989b0774b
 --- 0
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf, fonts/F3.ttf]
 text: "  padded  "
-textKey: "multi\nline"
+localizationKey: a/b/c.html
 fontSize: 317
 multiline: true
 maxTextSize: 169
@@ -22,7 +22,7 @@ visibleCharacters: -8
 --- 1
 font: [fonts/F0.ttf]
 text: true
-textKey: "multi\nline"
+localizationKey: true
 fontSize: 4929
 multiline: false
 maxTextSize: 945
@@ -41,7 +41,6 @@ visibleCharacters: -10
 --- 2
 font: []
 text: "multi\nline"
-textKey: "#hash"
 fontSize: 3498
 multiline: false
 maxTextSize: 2259
@@ -61,7 +60,7 @@ visibleCharacters: -17
 --- 3
 font: [fonts/F0.ttf, fonts/F1.ttf]
 text: with "quotes"
-textKey: ümlaut
+localizationKey: a
 fontSize: 2609
 multiline: false
 maxTextSize: 1960
@@ -81,7 +80,7 @@ visibleCharacters: -17
 --- 4
 font: []
 text: textures/a.png
-textKey: true
+localizationKey: textures/a.png
 fontSize: 4294967295
 multiline: true
 maxTextSize: 3382
@@ -100,7 +99,7 @@ visibleCharacters: -12
 --- 5
 font: []
 text: true
-textKey: textures/a.png
+localizationKey: "~"
 fontSize: 1632
 multiline: false
 maxTextSize: 1654
@@ -119,7 +118,7 @@ visibleCharacters: 1
 --- 6
 font: [fonts/F0.ttf]
 text: "- dash"
-textKey: with "quotes"
+localizationKey: a
 fontSize: 4929
 multiline: false
 maxTextSize: 2014
@@ -139,7 +138,7 @@ visibleCharacters: 19
 --- 7
 font: ["", "", fonts/F2.ttf, fonts/F3.ttf]
 text: with "quotes"
-textKey: true
+localizationKey: true
 fontSize: 1287
 multiline: true
 maxTextSize: 3861

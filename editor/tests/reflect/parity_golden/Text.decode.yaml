@@ -1,9 +1,9 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 2e5ef0cfd0fc76c0
+digest 0f0032c3fb0cab66
 --- 0
 font: []
 text: "multi\nline"
-textKey: ümlaut
+localizationKey: with "quotes"
 fontSize: 3881
 multiline: false
 maxTextSize: 2177
@@ -21,16 +21,18 @@ font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf]
 text: "Hello, YAML: [1, 2]"
 fontSize: 2579
 multiline: false
-maxTextSize: 4618
+maxTextSize: 4294967295
 fixedWidth: true
-fixedHeight: true
+fixedHeight: false
 pivotBaseline: false
 pivotCentered: false
+outlineColor: [90.14286, 5782.803, 1e-45, 17]
+shadowOffset: [0.9141565, 67]
 visibleCharacters: 0
 --- 2
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf]
 text: ""
-textKey: true
+localizationKey: "- dash"
 fontSize: 4766
 multiline: false
 maxTextSize: 3760
@@ -59,7 +61,7 @@ shadowOffset: [0.84386736, 2192.981]
 --- 4
 font: []
 text: "  padded  "
-textKey: true
+localizationKey: "Hello, YAML: [1, 2]"
 fontSize: 3049
 multiline: false
 maxTextSize: 33
@@ -89,7 +91,7 @@ shadowOffset: [-47, 2822.8708]
 --- 6
 font: [fonts/F0.ttf]
 text: "  padded  "
-textKey: a
+localizationKey: "#hash"
 fontSize: 3688
 multiline: true
 maxTextSize: 1703
