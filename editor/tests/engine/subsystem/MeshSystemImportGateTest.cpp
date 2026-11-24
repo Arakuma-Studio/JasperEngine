@@ -58,7 +58,7 @@ TEST_F(MeshSystemImportGate, APendingImportWaitsWithoutAnError) {
     component.filename = "models/importing.fbx";
     component.needUpdateModel = true;
 
-    test::LogCapture log;
+    jasperengine::test::LogCapture log;
     scene.getSystem<MeshSystem>()->update(0);
     EXPECT_EQ(log.count(D_LOG_ERROR, "Model file not found"), 0u) << log.describeErrors();
     EXPECT_EQ(log.count(D_LOG_ERROR, "not retrying"), 0u) << log.describeErrors();
