@@ -42,6 +42,7 @@ namespace fs = std::filesystem;
 
 // (a named namespace, tests included: a unity build merges the test sources)
 namespace vertex_colors_component_test {
+    using namespace jasperengine::editor::test;
 
     constexpr ComponentType VC = ComponentType::VertexColorsComponent;
 
@@ -93,11 +94,6 @@ namespace vertex_colors_component_test {
         if (h.project) useProjectPaths(h.project.get());
         return h;
     }
-
-}
-
-namespace vertex_colors_component_test {
-    using namespace jasperengine::editor::test;
 
 TEST(VertexColorsScene, DefaultsAreNotWritten) {
     const reflect::ComponentDesc* desc = reflect::find(VC);

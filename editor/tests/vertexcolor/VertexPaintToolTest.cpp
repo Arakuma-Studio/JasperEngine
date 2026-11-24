@@ -42,6 +42,7 @@ namespace fs = std::filesystem;
 
 // (a named namespace, tests included: a unity build merges the test sources)
 namespace vertex_paint_tool_test {
+    using namespace jasperengine::editor::vertexcolor;
 
     struct Headless {
         std::unique_ptr<Project> project;
@@ -131,11 +132,6 @@ namespace vertex_paint_tool_test {
             return event;
         }
     };
-
-}
-
-namespace vertex_paint_tool_test {
-    using namespace jasperengine::editor::vertexcolor;
 
 [[maybe_unused]] static ::testing::Environment* const vertexPaintCleanup = ::testing::AddGlobalTestEnvironment(new TempCleanup);
 
