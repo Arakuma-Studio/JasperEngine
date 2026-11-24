@@ -9,12 +9,12 @@
 #include "vertexcolor/VertexColorOpsJson.h"
 
 using namespace jasperengine;
-using Json = nlohmann::json;
 
 // (a named namespace, tests included: a unity build merges the test sources)
 namespace vertex_color_ops_json_test {
     using namespace jasperengine::vertexcolor;
     using namespace jasperengine::vertexcolor::test;
+    using Json = nlohmann::json;
 
     bool parseOne(const std::string& text, Op& op, std::string& error, OpJsonHooks hooks = OpJsonHooks()) {
         OpJsonParser parser(std::move(hooks));

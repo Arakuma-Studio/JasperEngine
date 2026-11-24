@@ -46,7 +46,7 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::vertexcolor;
 namespace vcd = jasperengine::editor::vertexcolor::detail;
-using Json = GltfDocument::Json;
+using GltfJson = GltfDocument::Json;
 
 namespace {
 
@@ -55,22 +55,22 @@ namespace {
     }
 
     // a new bufferView of `bytes` in the bin; its index
-    size_t vcAddView(Json& root, std::vector<uint8_t>& bin, const std::vector<uint8_t>& bytes, int target) {
+    size_t vcAddView(GltfJson& root, std::vector<uint8_t>& bin, const std::vector<uint8_t>& bytes, int target) {
         vcAlign4(bin);
-        Json view = {{"buffer", 0}, {"byteOffset", bin.size()}, {"byteLength", bytes.size()}};
+        GltfJson view = {{"buffer", 0}, {"byteOffset", bin.size()}, {"byteLength", bytes.size()}};
         if (target) view["target"] = target;
         bin.insert(bin.end(), bytes.begin(), bytes.end());
         root["bufferViews"].push_back(view);
         return root["bufferViews"].size() - 1;
     }
 
-    size_t vcAddAccessor(Json& root, Json accessor) {
+    size_t vcAddAccessor(GltfJson& root, GltfJson accessor) {
         root["accessors"].push_back(std::move(accessor));
         return root["accessors"].size() - 1;
     }
 
     // the accessor's elements picked by `source` (one output element per entry), dense, as a new accessor
-    bool vcRemapAccessor(const GltfDocument& doc, Json& root, std::vector<uint8_t>& bin, size_t accessor, const std::vector<uint32_t>& source,
+    bool vcRemapAccessor(const GltfDocument& doc, GltfJson& root, std::vector<uint8_t>& bin, size_t accessor, const std::vector<uint32_t>& source,
                          size_t& out, std::string& error) {
         std::vector<uint8_t> raw;
         GltfAccessorLayout layout;
@@ -83,8 +83,8 @@ namespace {
             }
             std::memcpy(bytes.data() + i * layout.elementSize, raw.data() + (size_t)source[i] * layout.elementSize, layout.elementSize);
         }
-        const Json& old = doc.json()["accessors"][accessor];
-        Json created = {{"bufferView", vcAddView(root, bin, bytes, gltf::ARRAY_BUFFER)}, {"componentType", layout.componentType},
+        const GltfJson& old = doc.json()["accessors"][accessor];
+        GltfJson created = {{"bufferView", vcAddView(root, bin, bytes, gltf::ARRAY_BUFFER)}, {"componentType", layout.componentType},
                         {"count", source.size()}, {"type", old.value("type", std::string("SCALAR"))}};
         if (layout.normalized) created["normalized"] = true;
         // the same values: the bounds stay true
@@ -94,9 +94,9 @@ namespace {
         return true;
     }
 
-    size_t vcColorAccessor(Json& root, std::vector<uint8_t>& bin, const std::vector<Vector4>& values, vc::Format format) {
+    size_t vcColorAccessor(GltfJson& root, std::vector<uint8_t>& bin, const std::vector<Vector4>& values, vc::Format format) {
         std::vector<uint8_t> bytes;
-        Json accessor = {{"count", values.size()}, {"type", "VEC4"}};
+        GltfJson accessor = {{"count", values.size()}, {"type", "VEC4"}};
         if (format == vc::Format::RGBA8) {
             // glTF's normalized bytes, linear as COLOR_0 is
             bytes.resize(values.size() * 4);
@@ -119,7 +119,7 @@ namespace {
         return vcAddAccessor(root, std::move(accessor));
     }
 
-    size_t vcIndexAccessor(Json& root, std::vector<uint8_t>& bin, const std::vector<uint32_t>& indices, size_t vertexCount) {
+    size_t vcIndexAccessor(GltfJson& root, std::vector<uint8_t>& bin, const std::vector<uint32_t>& indices, size_t vertexCount) {
         std::vector<uint8_t> bytes;
         int type = gltf::UNSIGNED_INT;
         if (vertexCount <= 65535) {
@@ -137,10 +137,10 @@ namespace {
                                     {"count", indices.size()}, {"type", "SCALAR"}});
     }
 
-    bool vcRemoveExtension(Json& root, const char* list, const char* name) {
+    bool vcRemoveExtension(GltfJson& root, const char* list, const char* name) {
         if (!root.contains(list) || !root[list].is_array()) return false;
-        Json kept = Json::array();
-        for (const Json& item : root[list]) {
+        GltfJson kept = GltfJson::array();
+        for (const GltfJson& item : root[list]) {
             if (!(item.is_string() && item.get<std::string>() == name)) kept.push_back(item);
         }
         const bool removed = kept.size() != root[list].size();
@@ -161,13 +161,13 @@ namespace {
     }
 
     // the floats of `count` elements of `components` each, as a new accessor (POSITION gets its bounds)
-    size_t vcFloatAccessor(Json& root, std::vector<uint8_t>& bin, const float* values, size_t count, int components, bool bounds) {
+    size_t vcFloatAccessor(GltfJson& root, std::vector<uint8_t>& bin, const float* values, size_t count, int components, bool bounds) {
         std::vector<uint8_t> bytes(count * (size_t)components * 4);
         if (!bytes.empty()) std::memcpy(bytes.data(), values, bytes.size());
-        Json accessor = {{"bufferView", vcAddView(root, bin, bytes, gltf::ARRAY_BUFFER)}, {"componentType", gltf::FLOAT},
+        GltfJson accessor = {{"bufferView", vcAddView(root, bin, bytes, gltf::ARRAY_BUFFER)}, {"componentType", gltf::FLOAT},
                          {"count", count}, {"type", gltf::typeName(components)}};
         if (bounds && count > 0) {
-            Json lo = Json::array(), hi = Json::array();
+            GltfJson lo = GltfJson::array(), hi = GltfJson::array();
             for (int k = 0; k < components; k++) {
                 float a = values[k], b = values[k];
                 for (size_t i = 1; i < count; i++) {
@@ -184,7 +184,7 @@ namespace {
     }
 
     // the file primitive's triangles are the ones the target was painted on (R9 topology)
-    bool vcFileTopologyMatches(const GltfDocument& doc, const Json& primitive, const vc::TargetData& target, std::string& why) {
+    bool vcFileTopologyMatches(const GltfDocument& doc, const GltfJson& primitive, const vc::TargetData& target, std::string& why) {
         size_t position = 0;
         GltfAccessorLayout layout;
         if (!GltfDocument::getIndex(primitive["attributes"], "POSITION", position) || !doc.accessorLayout(position, layout, why)) {
@@ -210,13 +210,13 @@ namespace {
 
     // R2: with Merge Static Meshes the targets are the merged submeshes. The loader fills them node by
     // node (the nodes with a mesh, ascending) and primitive by primitive, then reverses the list.
-    std::vector<vc::TargetKey> vcMergedFileKeys(const Json& root) {
+    std::vector<vc::TargetKey> vcMergedFileKeys(const GltfJson& root) {
         std::vector<vc::TargetKey> flat;
         if (!root.contains("nodes") || !root.contains("meshes")) return flat;
         for (size_t n = 0; n < root["nodes"].size(); n++) {
             size_t mesh = 0;
             if (!GltfDocument::getIndex(root["nodes"][n], "mesh", mesh) || mesh >= root["meshes"].size()) continue;
-            const Json& primitives = root["meshes"][mesh]["primitives"];
+            const GltfJson& primitives = root["meshes"][mesh]["primitives"];
             for (size_t p = 0; primitives.is_array() && p < primitives.size(); p++) {
                 vc::TargetKey key;
                 key.node = (int32_t)n;
@@ -248,7 +248,7 @@ namespace {
             }
         }
 
-        Json root = doc.json();
+        GltfJson root = doc.json();
         std::vector<uint8_t> bin;
         // every existing bufferView into the one buffer, decoded
         if (root.contains("bufferViews") && root["bufferViews"].is_array()) {
@@ -260,16 +260,16 @@ namespace {
                     return false;
                 }
                 vcAlign4(bin);
-                Json view = {{"buffer", 0}, {"byteOffset", bin.size()}, {"byteLength", size}};
+                GltfJson view = {{"buffer", 0}, {"byteOffset", bin.size()}, {"byteLength", size}};
                 if (stride) view["byteStride"] = stride;
                 if (root["bufferViews"][v].contains("target")) view["target"] = root["bufferViews"][v]["target"];
                 bin.insert(bin.end(), bytes, bytes + size);
                 root["bufferViews"][v] = std::move(view);
             }
         } else {
-            root["bufferViews"] = Json::array();
+            root["bufferViews"] = GltfJson::array();
         }
-        if (!root.contains("accessors")) root["accessors"] = Json::array();
+        if (!root.contains("accessors")) root["accessors"] = GltfJson::array();
         vcRemoveExtension(root, "extensionsUsed", "EXT_meshopt_compression");
         vcRemoveExtension(root, "extensionsRequired", "EXT_meshopt_compression");
         vcRemoveExtension(root, "extensionsUsed", "KHR_meshopt_compression");
@@ -279,7 +279,7 @@ namespace {
         // the meshes several nodes draw: a painted node gets its own copy
         std::map<size_t, int> meshUsers;
         if (root.contains("nodes")) {
-            for (const Json& node : root["nodes"]) {
+            for (const GltfJson& node : root["nodes"]) {
                 size_t mesh = 0;
                 if (GltfDocument::getIndex(node, "mesh", mesh)) meshUsers[mesh]++;
             }
@@ -299,7 +299,7 @@ namespace {
                 error = where + " is not a node of the model's file: the file changed since it was painted. Open and save the scene, then export.";
                 return false;
             }
-            Json& node = root["nodes"][(size_t)key.node];
+            GltfJson& node = root["nodes"][(size_t)key.node];
             size_t mesh = 0;
             if (!GltfDocument::getIndex(node, "mesh", mesh) || mesh >= root["meshes"].size()) {
                 error = where + " draws no mesh in the model's file.";
@@ -311,12 +311,12 @@ namespace {
                 node["mesh"] = root["meshes"].size() - 1;
             }
             if (copiedFor.count(key.node)) mesh = copiedFor[key.node];
-            Json& primitives = root["meshes"][mesh]["primitives"];
+            GltfJson& primitives = root["meshes"][mesh]["primitives"];
             if (key.primitive < 0 || (size_t)key.primitive >= primitives.size()) {
                 error = where + " is not a primitive of the model's file.";
                 return false;
             }
-            Json& primitive = primitives[(size_t)key.primitive];
+            GltfJson& primitive = primitives[(size_t)key.primitive];
 
             const std::shared_ptr<const vc::MeshView> view = vc::sceneMeshView(scene, entity, target.key);
             if (!view || view->fingerprint() != target.fingerprint || view->vertexCount() != target.base.size()) {
@@ -330,7 +330,7 @@ namespace {
 
             const vc::SplitResult split = options.splitHardEdges && target.hasOverrides() ? vc::buildSplit(target, *view, {}) : vc::SplitResult();
             if (split.split) {
-                Json attributes = Json::object();
+                GltfJson attributes = GltfJson::object();
                 for (auto it = primitive["attributes"].begin(); it != primitive["attributes"].end(); ++it) {
                     if (it.key() == "COLOR_0") continue;
                     size_t created = 0;
@@ -342,7 +342,7 @@ namespace {
                 }
                 primitive["attributes"] = std::move(attributes);
                 if (primitive.contains("targets") && primitive["targets"].is_array()) {
-                    for (Json& morph : primitive["targets"]) {
+                    for (GltfJson& morph : primitive["targets"]) {
                         for (auto it = morph.begin(); it != morph.end(); ++it) {
                             size_t created = 0;
                             if (!vcRemapAccessor(doc, root, bin, it.value().get<size_t>(), split.sourceVertex, created, why)) {
@@ -361,9 +361,9 @@ namespace {
         }
 
         // one buffer, in the GLB; images beside the old file stay reachable from the new one
-        root["buffers"] = Json::array({Json{{"byteLength", bin.size()}}});
+        root["buffers"] = GltfJson::array({GltfJson{{"byteLength", bin.size()}}});
         if (root.contains("images") && root["images"].is_array()) {
-            for (Json& image : root["images"]) {
+            for (GltfJson& image : root["images"]) {
                 if (!image.contains("uri") || !image["uri"].is_string()) continue;
                 const std::string uri = image["uri"].get<std::string>();
                 if (uri.rfind("data:", 0) == 0) continue;
@@ -378,8 +378,8 @@ namespace {
     // ---- a plain mesh (or an OBJ Model) written from its CPU geometry
 
     // a texture of the material as a glTF texture reference (null when it names no file)
-    Json vcTextureRef(Project* project, Json& root, const Texture& texture, int texCoord, const fs::path& destination, std::map<std::string, size_t>& images) {
-        if (texture.empty() || texture.isFramebuffer() || texture.getPath().empty()) return Json();
+    GltfJson vcTextureRef(Project* project, GltfJson& root, const Texture& texture, int texCoord, const fs::path& destination, std::map<std::string, size_t>& images) {
+        if (texture.empty() || texture.isFramebuffer() || texture.getPath().empty()) return GltfJson();
         const std::string path = texture.getPath();
         auto found = images.find(path);
         if (found == images.end()) {
@@ -389,24 +389,24 @@ namespace {
             root["textures"].push_back({{"source", root["images"].size() - 1}});
             found = images.emplace(path, root["textures"].size() - 1).first;
         }
-        Json ref = {{"index", found->second}};
+        GltfJson ref = {{"index", found->second}};
         if (texCoord > 0) ref["texCoord"] = texCoord;
         return ref;
     }
 
     // the metallic-roughness part of the engine's material (factors, the five maps, alpha, culling)
-    Json vcMaterial(Project* project, Json& root, const Material& material, bool faceCulling, const std::string& name, const fs::path& destination,
+    GltfJson vcMaterial(Project* project, GltfJson& root, const Material& material, bool faceCulling, const std::string& name, const fs::path& destination,
                     std::map<std::string, size_t>& images) {
         const Vector4& base = material.baseColorFactor;
-        Json pbr = {{"baseColorFactor", {base.x, base.y, base.z, base.w}}, {"metallicFactor", material.metallicFactor}, {"roughnessFactor", material.roughnessFactor}};
-        Json out = {{"name", name}};
-        if (Json ref = vcTextureRef(project, root, material.baseColorTexture, material.baseColorTexCoord, destination, images); !ref.is_null()) pbr["baseColorTexture"] = ref;
-        if (Json ref = vcTextureRef(project, root, material.metallicRoughnessTexture, material.metallicRoughnessTexCoord, destination, images); !ref.is_null())
+        GltfJson pbr = {{"baseColorFactor", {base.x, base.y, base.z, base.w}}, {"metallicFactor", material.metallicFactor}, {"roughnessFactor", material.roughnessFactor}};
+        GltfJson out = {{"name", name}};
+        if (GltfJson ref = vcTextureRef(project, root, material.baseColorTexture, material.baseColorTexCoord, destination, images); !ref.is_null()) pbr["baseColorTexture"] = ref;
+        if (GltfJson ref = vcTextureRef(project, root, material.metallicRoughnessTexture, material.metallicRoughnessTexCoord, destination, images); !ref.is_null())
             pbr["metallicRoughnessTexture"] = ref;
         out["pbrMetallicRoughness"] = pbr;
-        if (Json ref = vcTextureRef(project, root, material.normalTexture, material.normalTexCoord, destination, images); !ref.is_null()) out["normalTexture"] = ref;
-        if (Json ref = vcTextureRef(project, root, material.occlusionTexture, material.occlusionTexCoord, destination, images); !ref.is_null()) out["occlusionTexture"] = ref;
-        if (Json ref = vcTextureRef(project, root, material.emissiveTexture, material.emissiveTexCoord, destination, images); !ref.is_null()) out["emissiveTexture"] = ref;
+        if (GltfJson ref = vcTextureRef(project, root, material.normalTexture, material.normalTexCoord, destination, images); !ref.is_null()) out["normalTexture"] = ref;
+        if (GltfJson ref = vcTextureRef(project, root, material.occlusionTexture, material.occlusionTexCoord, destination, images); !ref.is_null()) out["occlusionTexture"] = ref;
+        if (GltfJson ref = vcTextureRef(project, root, material.emissiveTexture, material.emissiveTexCoord, destination, images); !ref.is_null()) out["emissiveTexture"] = ref;
         const Vector3& emissive = material.emissiveFactor;
         if (emissive.x != 0.0f || emissive.y != 0.0f || emissive.z != 0.0f) out["emissiveFactor"] = {emissive.x, emissive.y, emissive.z};
         if (material.alphaMode == MaterialAlphaMode::MASK) {
@@ -422,11 +422,11 @@ namespace {
     bool vcBuildMeshFile(Project* project, Scene* scene, Entity entity, const vc::Data& data, const ExportModelOptions& options, const fs::path& destination,
                          std::vector<uint8_t>& glb, std::string& error) {
         const std::string name = scene->getEntityName(entity);
-        Json root = {{"asset", {{"version", "2.0"}, {"generator", "JasperEngine Export as Model"}}}, {"bufferViews", Json::array()}, {"accessors", Json::array()},
-                     {"materials", Json::array()}, {"images", Json::array()}, {"textures", Json::array()}};
+        GltfJson root = {{"asset", {{"version", "2.0"}, {"generator", "JasperEngine Export as Model"}}}, {"bufferViews", GltfJson::array()}, {"accessors", GltfJson::array()},
+                     {"materials", GltfJson::array()}, {"images", GltfJson::array()}, {"textures", GltfJson::array()}};
         std::vector<uint8_t> bin;
         std::map<std::string, size_t> images;
-        Json primitives = Json::array();
+        GltfJson primitives = GltfJson::array();
         for (const vc::SceneTarget& info : vc::sceneTargets(scene, entity)) {
             const std::string where = info.key.describe();
             const std::shared_ptr<const vc::MeshView> view = vc::sceneMeshView(scene, entity, info.key);
@@ -452,7 +452,7 @@ namespace {
             };
             std::vector<float> positions, normals, uv0, uv1;
             gather(view->positions, [&](const Vector3& p) { positions.insert(positions.end(), {p.x, p.y, p.z}); });
-            Json attributes = {{"POSITION", vcFloatAccessor(root, bin, positions.data(), source.size(), 3, true)}};
+            GltfJson attributes = {{"POSITION", vcFloatAccessor(root, bin, positions.data(), source.size(), 3, true)}};
             if (view->normals.size() == view->vertexCount()) {
                 gather(view->normals, [&](const Vector3& n) { normals.insert(normals.end(), {n.x, n.y, n.z}); });
                 attributes["NORMAL"] = vcFloatAccessor(root, bin, normals.data(), source.size(), 3, false);
@@ -484,15 +484,15 @@ namespace {
         // the loader reverses a node's primitives into submeshes: written last to first, submesh i
         // of the new Model is submesh i of this mesh
         std::reverse(primitives.begin(), primitives.end());
-        root["meshes"] = Json::array({Json{{"name", name}, {"primitives", primitives}}});
-        root["nodes"] = Json::array({Json{{"name", name}, {"mesh", 0}}});
-        root["scenes"] = Json::array({Json{{"nodes", {0}}}});
+        root["meshes"] = GltfJson::array({GltfJson{{"name", name}, {"primitives", primitives}}});
+        root["nodes"] = GltfJson::array({GltfJson{{"name", name}, {"mesh", 0}}});
+        root["scenes"] = GltfJson::array({GltfJson{{"nodes", {0}}}});
         root["scene"] = 0;
         if (root["images"].empty()) {
             root.erase("images");
             root.erase("textures");
         }
-        root["buffers"] = Json::array({Json{{"byteLength", bin.size()}}});
+        root["buffers"] = GltfJson::array({GltfJson{{"byteLength", bin.size()}}});
         glb = GltfDocument::writeGlb(root, bin);
         return true;
     }
