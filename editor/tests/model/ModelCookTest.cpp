@@ -574,7 +574,7 @@ TEST(ModelCook, NormalsNone){
     GltfDocument original;
     std::string error;
     ASSERT_TRUE(original.load(source, error)) << error;
-    ResolvedModelSettings settings = settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
+    ResolvedModelSettings settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
     settings.normals = ModelNormals::None;
     Cooked cooked;
     ASSERT_TRUE(cookModel(source, settings, cooked));
@@ -618,7 +618,7 @@ TEST(ModelCook, AreaAndAngleWeighting){
         const double length = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
         return std::array<float, 3>{(float)(n[0] / length), (float)(n[1] / length), (float)(n[2] / length)};
     };
-    ResolvedModelSettings settings = settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
+    ResolvedModelSettings settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
     settings.normals = ModelNormals::Calculate;
     settings.smoothingAngle = 180.0f;
     for (NormalsWeighting weighting : {NormalsWeighting::AreaAndAngle, NormalsWeighting::Area}){
@@ -657,7 +657,7 @@ TEST(ModelCook, SmoothingGroupsFromFbx){
     const fs::path glb = scratch.path / "imported" / "cube.fbx.glb";
     fs::create_directories(assets);
     std::ofstream(fs::path(fbx.string() + ".meta")) << "import:\n  modelImporter:\n    version: 1\n    smoothnessSource: from_smoothing_groups\n";
-    ResolvedModelSettings settings = settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
+    ResolvedModelSettings settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
     settings.normals = ModelNormals::Calculate;
     settings.smoothingAngle = 0.0f;
     settings.smoothnessSource = SmoothnessSource::FromSmoothingGroups;
@@ -704,7 +704,7 @@ TEST(ModelCook, TangentsCalculateMikkt){
     build.json["meshes"].push_back({{"name", "Quad"}, {"primitives", {primitive}}});
     build.json["nodes"] = GJson::array({{{"mesh", 0}}});
     const fs::path source = writeSource(scratch, build.glb());
-    ResolvedModelSettings settings = settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
+    ResolvedModelSettings settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
     settings.tangents = ModelTangents::Calculate;
     Cooked cooked;
     ASSERT_TRUE(cookModel(source, settings, cooked));

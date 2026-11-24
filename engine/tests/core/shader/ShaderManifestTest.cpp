@@ -472,19 +472,19 @@ TEST(ShaderManifest, SpriteManifestHasPixelFx){
 // S94 F14 (AC14): gameTime is no longer reserved (the engine writes sceneTime); a manifest may
 // declare it and a mesh value of it is stored like any other
 TEST(ShaderManifest, GameTimeIsAnOrdinaryProperty){
-    const ShaderManifest manifest = parse("// @shader mesh\n// @property gameTime float 0\n");
+    const ShaderManifest manifest = shaderManifestParse("// @shader mesh\n// @property gameTime float 0\n");
     EXPECT_FALSE(manifest.hasErrors());
     ASSERT_NE(manifest.findProperty("gameTime"), nullptr);
     ShaderUniformValues values;
     EXPECT_TRUE(ShaderUniforms::set(values, "gameTime", Vector4(2.5f, 0.0f, 0.0f, 0.0f)));
     EXPECT_FLOAT_EQ(ShaderUniforms::get(values, "gameTime").x, 2.5f);
     // the engine-written names stay refused
-    EXPECT_TRUE(hasDiagnostic(parse("// @shader mesh\n// @property time float 0\n"), true, "'time' is written by the engine"));
+    EXPECT_TRUE(shaderManifestHasDiagnostic(shaderManifestParse("// @shader mesh\n// @property time float 0\n"), true, "'time' is written by the engine"));
 }
 
 // S94 F13 (AC13): @require vertexnormals asks for the attribute without the varying
 TEST(ShaderManifest, RequireVertexNormals){
-    const ShaderManifest manifest = parse("// @shader mesh\n// @require vertexnormals uv1\n");
+    const ShaderManifest manifest = shaderManifestParse("// @shader mesh\n// @require vertexnormals uv1\n");
     EXPECT_FALSE(manifest.hasErrors());
     EXPECT_NE(manifest.require & ShaderRequire_VertexNormals, 0u);
     EXPECT_EQ(manifest.require & ShaderRequire_Normals, 0u);
@@ -498,7 +498,7 @@ TEST(ShaderManifest, RequireVertexNormals){
 // S94 F9 (AC9): ShaderLab's custom factors, the 2- and 4-factor forms and blendop=; an unknown
 // factor names the valid ones
 TEST(ShaderManifest, BlendCustomFactorsParse){
-    const ShaderManifest two = parse("// @shader mesh\n// @state blend=DstColor,SrcColor\n");
+    const ShaderManifest two = shaderManifestParse("// @shader mesh\n// @state blend=DstColor,SrcColor\n");
     EXPECT_FALSE(two.hasErrors());
     EXPECT_EQ(two.state.blend, MaterialBlendMode::CUSTOM);
     EXPECT_EQ(two.state.blendFactors.src, MaterialBlendFactor::DST_COLOR);
@@ -507,7 +507,7 @@ TEST(ShaderManifest, BlendCustomFactorsParse){
     EXPECT_EQ(two.state.blendFactors.dstAlpha, MaterialBlendFactor::SRC_COLOR);
     EXPECT_EQ(two.state.blendFactors.op, MaterialBlendOp::ADD);
 
-    const ShaderManifest four = parse("// @shader mesh\n// @state blend=SrcAlpha,OneMinusSrcAlpha,One,One blendop=RevSub\n"
+    const ShaderManifest four = shaderManifestParse("// @shader mesh\n// @state blend=SrcAlpha,OneMinusSrcAlpha,One,One blendop=RevSub\n"
                                       "// @feature MAXED \"Max\"\n// @state[MAXED] blendop=max\n");
     EXPECT_FALSE(four.hasErrors());
     EXPECT_EQ(four.state.blendFactors.src, MaterialBlendFactor::SRC_ALPHA);
@@ -521,29 +521,29 @@ TEST(ShaderManifest, BlendCustomFactorsParse){
     EXPECT_EQ(maxed.blendFactors.op, MaterialBlendOp::MAX);
     EXPECT_EQ(maxed.blendFactors.src, MaterialBlendFactor::SRC_ALPHA);
 
-    const ShaderManifest bad = parse("// @shader mesh\n// @state blend=DstColour,SrcColor\n");
-    EXPECT_TRUE(hasDiagnostic(bad, true, "OneMinusDstAlpha"));
-    const ShaderManifest three = parse("// @shader mesh\n// @state blend=One,One,One\n");
-    EXPECT_TRUE(hasDiagnostic(three, true, "<src>,<dst>[,<srcAlpha>,<dstAlpha>]"));
-    const ShaderManifest op = parse("// @shader mesh\n// @state blendop=multiply\n");
-    EXPECT_TRUE(hasDiagnostic(op, true, "add, sub, revsub, min or max"));
+    const ShaderManifest bad = shaderManifestParse("// @shader mesh\n// @state blend=DstColour,SrcColor\n");
+    EXPECT_TRUE(shaderManifestHasDiagnostic(bad, true, "OneMinusDstAlpha"));
+    const ShaderManifest three = shaderManifestParse("// @shader mesh\n// @state blend=One,One,One\n");
+    EXPECT_TRUE(shaderManifestHasDiagnostic(three, true, "<src>,<dst>[,<srcAlpha>,<dstAlpha>]"));
+    const ShaderManifest op = shaderManifestParse("// @shader mesh\n// @state blendop=multiply\n");
+    EXPECT_TRUE(shaderManifestHasDiagnostic(op, true, "add, sub, revsub, min or max"));
 }
 
 // S94 F11: the texture Mesh:setTexture writes, marked main or else the first; one main only
 TEST(ShaderManifest, TextureMain){
-    const ShaderManifest marked = parse("// @shader mesh\n// @texture u_mask white\n// @texture u_albedo white \"Albedo\" main\n");
+    const ShaderManifest marked = shaderManifestParse("// @shader mesh\n// @texture u_mask white\n// @texture u_albedo white \"Albedo\" main\n");
     EXPECT_FALSE(marked.hasErrors());
     ASSERT_NE(marked.getMainTexture(), nullptr);
     EXPECT_EQ(marked.getMainTexture()->uniform, "u_albedo");
-    const ShaderManifest shortForm = parse("// @shader mesh\n// @texture u_mask black\n// @texture u_albedo main\n");
+    const ShaderManifest shortForm = shaderManifestParse("// @shader mesh\n// @texture u_mask black\n// @texture u_albedo main\n");
     EXPECT_FALSE(shortForm.hasErrors());
     ASSERT_NE(shortForm.getMainTexture(), nullptr);
     EXPECT_EQ(shortForm.getMainTexture()->uniform, "u_albedo");
     EXPECT_EQ(shortForm.findTexture("u_albedo")->defaultTexture, ShaderTextureDefault::WHITE);
-    const ShaderManifest first = parse("// @shader mesh\n// @texture u_mask white\n// @texture u_albedo white\n");
+    const ShaderManifest first = shaderManifestParse("// @shader mesh\n// @texture u_mask white\n// @texture u_albedo white\n");
     ASSERT_NE(first.getMainTexture(), nullptr);
     EXPECT_EQ(first.getMainTexture()->uniform, "u_mask");
-    EXPECT_EQ(parse("// @shader mesh\n").getMainTexture(), nullptr);
-    const ShaderManifest twice = parse("// @shader mesh\n// @texture u_a white main\n// @texture u_b white main\n");
-    EXPECT_TRUE(hasDiagnostic(twice, true, "is the main texture already"));
+    EXPECT_EQ(shaderManifestParse("// @shader mesh\n").getMainTexture(), nullptr);
+    const ShaderManifest twice = shaderManifestParse("// @shader mesh\n// @texture u_a white main\n// @texture u_b white main\n");
+    EXPECT_TRUE(shaderManifestHasDiagnostic(twice, true, "is the main texture already"));
 }
