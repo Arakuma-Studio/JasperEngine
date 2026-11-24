@@ -2590,8 +2590,17 @@ OVERRIDES.update({
         'overloads': [([('name', 'string')], 'number?')]},
     ('AudioSystem', 'preload'): {
         'doc': ['Decodes (or opens, for streaming) a clip ahead so its first play or one-shot has no load; held until',
-                'the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
+                'AudioSystem.unload or the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
         'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'boolean')]},
+    ('AudioSystem', 'unload'): {
+        'doc': ["Unity's AudioClip.UnloadAudioData: removes the clip's preload pin and drops its cached copies that nothing",
+                'holds (every load type, or the one `loadType` resolves to). Returns how many it dropped; a clip a source',
+                'or a voice holds stays until released.'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'integer')]},
+    ('AudioSystem', 'getLoadState'): {
+        'doc': ["Unity's AudioClip.loadState of a clip in the cache: Loaded, Loading while its load is on its way, Failed",
+                'after a failed load, else Unloaded. `loadType` as AudioSource.loadType (default Auto).'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'AudioLoadState')]},
     ('AudioSource', 'playOneShot'): {
         'doc': ["Unity's PlayOneShot: the clip, or a Sound Event's pick (its .soundevent path or GUID), as an extra",
                 "voice over what plays (volume x volumeScale, the source's group, pitch, pan and position). Up to",
@@ -2658,6 +2667,24 @@ OVERRIDES.update({
         'doc': ["Unity's AudioSource.PlayClipAtPoint: the clip at a world position (3D when the scene has a camera),",
                 'through a mixer group (name; default Master); it belongs to `scene` and stops with it.'],
         'overloads': [([('scene', 'Scene'), ('path', 'string'), ('position', 'Vector3'), ('volume?', 'number'), ('group?', 'string')], '')]},
+    # S97: a source's own effects (GameObjectClassesLua.cpp)
+    ('AudioSource', 'addEffect'): {
+        'doc': ["Appends a mixer effect to this source's own list (Unity's Audio Low Pass Filter...): lowpass, highpass, bandpass,",
+                'echo, reverb, equalizer, distortion, flanger, lofi or bassboost, up to 4. Nil (logged) for another type or a fifth.'],
+        'overloads': [([('type', 'string')], 'AudioSourceEffect?')]},
+    ('AudioSource', 'getEffect'): {
+        'doc': ["An effect of the source's own list by index (1-based) or type (\"lowpass\": the first of it); nil when none."],
+        'overloads': [([('index', 'integer')], 'AudioSourceEffect?'), ([('type', 'string')], 'AudioSourceEffect?')]},
+    ('AudioSource', 'removeEffect'): {
+        'doc': ['Removes an effect by index (1-based) or type (the first of it); false when none. Heard from the next play().'],
+        'overloads': [([('index', 'integer')], 'boolean'), ([('type', 'string')], 'boolean')]},
+    ('AudioSourceEffect', 'setParameter'): {
+        'doc': ['Sets a parameter of the effect ("cutoff", "resonance", "wet", ...: docs audio.md), over `seconds` of scaled',
+                'time (opts.unscaled: unscaled), along the mixer curves. False when the effect has no such parameter.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioSourceEffect', 'getParameter'): {
+        'doc': ['The value a parameter has now (what it sets, else its default); nil when the effect has no such parameter.'],
+        'overloads': [([('name', 'string')], 'number?')]},
 })
 
 # http (NetClassesLua.cpp): the request functions are lua_CFunctions (positional options and

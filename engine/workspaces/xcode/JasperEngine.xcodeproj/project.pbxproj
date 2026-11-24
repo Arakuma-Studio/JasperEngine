@@ -5035,6 +5035,15 @@
 		4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C03036C6074531C9 /* WorldSettings.h */; };
 		4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */; };
 		4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */; };
+		4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
+		4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
+		4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */; };
+		4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */; };
+		4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */; };
+		4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */; };
+		4A534E470B4DE35C16A95940 /* SourceEffects.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474EF3A626395839CB /* SourceEffects.h */; };
+		4A534E4790C4382A59538EAB /* AudioSourceEffect.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478EC1864DF63D273D /* AudioSourceEffect.h */; };
+		4A534E4729EC20A3DF0CF8E6 /* AudioSourceSlots.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474DECF4105CE3068D /* AudioSourceSlots.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9682,6 +9691,12 @@
 		4A534E47C03036C6074531C9 /* WorldSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldSettings.h; sourceTree = "<group>"; };
 		4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueriesLua.h; sourceTree = "<group>"; };
 		4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VehicleSystem.h; sourceTree = "<group>"; };
+		4A534E472C361D2083EA2902 /* SourceEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SourceEffects.cpp; sourceTree = "<group>"; };
+		4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceSlots.cpp; sourceTree = "<group>"; };
+		4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceEffect.cpp; sourceTree = "<group>"; };
+		4A534E474EF3A626395839CB /* SourceEffects.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SourceEffects.h; sourceTree = "<group>"; };
+		4A534E478EC1864DF63D273D /* AudioSourceEffect.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSourceEffect.h; sourceTree = "<group>"; };
+		4A534E474DECF4105CE3068D /* AudioSourceSlots.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSourceSlots.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11227,6 +11242,8 @@
 				4A534E534AEB5B56495774E8 /* SoundEventIO.cpp */,
 				4A534E53D4C6CA5E69528207 /* SoundEventLibrary.cpp */,
 				4A534E53EF84D2340239D35A /* TimelineAudio.cpp */,
+				4A534E472C361D2083EA2902 /* SourceEffects.cpp */,
+				4A534E474EF3A626395839CB /* SourceEffects.h */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -13022,6 +13039,10 @@
 				4A534E4779D650DFEE40600C /* SoundHandle.h */,
 				4A534E536C3F9DBC9C819346 /* Audio.cpp */,
 				4A534E537FA2457AFE4EDB15 /* SoundHandle.cpp */,
+				4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */,
+				4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */,
+				4A534E478EC1864DF63D273D /* AudioSourceEffect.h */,
+				4A534E474DECF4105CE3068D /* AudioSourceSlots.h */,
 			);
 			path = sound;
 			sourceTree = "<group>";
@@ -17139,6 +17160,9 @@
 				4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */,
 				4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */,
 				4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */,
+				4A534E470B4DE35C16A95940 /* SourceEffects.h in Headers */,
+				4A534E4790C4382A59538EAB /* AudioSourceEffect.h in Headers */,
+				4A534E4729EC20A3DF0CF8E6 /* AudioSourceSlots.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19857,6 +19881,9 @@
 				4A534E478AA5B63EAA52315B /* VehicleDrivetrain.cpp in Sources */,
 				4A534E4757409C2B8884C336 /* VehicleClassesLua.cpp in Sources */,
 				4A534E47706936990B8552E9 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */,
+				4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */,
+				4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20866,6 +20893,9 @@
 				4A534E4745EC5F61B6962A54 /* VehicleDrivetrain.cpp in Sources */,
 				4A534E47BE01B38E98FA2F1E /* VehicleClassesLua.cpp in Sources */,
 				4A534E47C8BC5AC830F6D577 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */,
+				4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */,
+				4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

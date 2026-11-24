@@ -23,6 +23,7 @@
 #include "object/spline/SplineAnimate.h"
 #include "object/spline/SplineExtrude.h"
 #include "object/spline/SplineInstantiate.h"
+#include "object/sound/AudioSourceSlots.h"
 
 #include "subsystem/RenderSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -324,7 +325,8 @@ void GameObject::removeParent(){
 
 namespace {
     // the direct children of `entity` with a Transform, in Hierarchy order: its branch follows it
-    // in the Transform array (parents before children), children are the ones it parents
+    // in the Transform array (parents before children), children are the ones it parents. A further
+    // Audio Source of `entity` is a component in Unity, not a child: its slot entity is left out.
     std::vector<Entity> directChildren(Scene* scene, Entity entity){
         std::vector<Entity> children;
         auto transforms = scene->getComponentArray<Transform>();
@@ -333,8 +335,11 @@ namespace {
         const size_t start = transforms->getIndex(entity);
         const size_t last = scene->findBranchLastIndex(entity);
         for (size_t i = start + 1; i <= last && i < transforms->size(); i++){
-            if (transforms->getComponentFromIndex(i).parent == entity)
-                children.push_back(transforms->getEntity(i));
+            if (transforms->getComponentFromIndex(i).parent != entity)
+                continue;
+            const Entity child = transforms->getEntity(i);
+            if (!AudioSourceSlots::isSlot(scene, child))
+                children.push_back(child);
         }
         return children;
     }

@@ -3159,6 +3159,18 @@ void ProjectSettingsWindow::drawAudioSettings() {
                                "is stopped, or the new one does not start when it is the least important.");
             }
 
+            if (settingsui::beginRow("audio.unused_clip_cache")) {
+                if (projectBeginSettingsRow("Unused Clip Cache (MiB)", audio.unusedClipCacheMb != defaults.unusedClipCacheMb)) {
+                    audio.unusedClipCacheMb = defaults.unusedClipCacheMb;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioUnusedClipCache", &audio.unusedClipCacheMb, 1.0f, 0, 4096);
+                audio.unusedClipCacheMb = std::clamp(audio.unusedClipCacheMb, 0, 4096);
+                endSettingsRow("Clips no source or voice plays stay loaded up to this many MiB, so switching back to one decodes "
+                               "nothing; the least recently used go first. Streamed clips count nothing. 0 drops a clip when "
+                               "its last source or voice lets it go. AudioSource.destroySound and AudioSystem.unload free one at once.");
+            }
+
             if (settingsui::beginRow("audio.seed")) {
                 if (projectBeginSettingsRow("Random Seed", audio.seed != defaults.seed)) {
                     audio.seed = defaults.seed;

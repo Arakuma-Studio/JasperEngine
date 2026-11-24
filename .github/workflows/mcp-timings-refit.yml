@@ -6,12 +6,10 @@ name: MCP timings refit
 # updates the standing pull request from ci/mcp-timings-refit. docs/testing.md, "How the MCP shards are
 # balanced".
 #
-# GitHub Actions may not open pull requests in this repository (Settings > Actions > General), and a
-# push with the workflow token starts no pull_request run: with the secret MCP_TIMINGS_TOKEN (a
-# fine-grained token, contents and pull requests read and write) it does both; without it the job
-# pushes the branch, dispatches ci.yml on it with status (a ruleset counts no dispatched job's check,
-# but counts the commit status Check that run sets on the head), and fails when it has no PR yet, saying
-# so. Either way it turns on auto-merge, so the merge queue lands the PR once Check is green.
+# The GitHub App jasper-ci-bot (secrets CI_BOT_APP_ID, CI_BOT_APP_PRIVATE_KEY) pushes the branch, opens
+# the pull request and turns on auto-merge: the workflow token may not open pull requests here, and its
+# push starts no pull_request run, whose Check the ruleset requires, nor does its auto-merge enqueue. The
+# App's push runs CI as any pull request's, and the merge queue lands it once Check is green.
 on:
   schedule:
     - cron: '43 5 * * *'
@@ -32,16 +30,15 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 30
     permissions:
-      contents: write
-      pull-requests: write
-      actions: write
+      contents: read
+      actions: read  # the CI runs' artifacts; the App token does the writes
     env:
       BRANCH: ci/mcp-timings-refit
       RUNS: build/mcp-timings-runs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.MCP_TIMINGS_TOKEN || github.token }}
+          persist-credentials: false
 
       - name: Fetch the newest CI runs' MCP results
         env:
@@ -60,19 +57,31 @@ jobs:
           fi
           cat build/refit.txt >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Mint the App token
+        id: app
+        if: steps.refit.outputs.changed == 'true'
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          app-id: ${{ secrets.CI_BOT_APP_ID }}
+          private-key: ${{ secrets.CI_BOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Open or update the pull request
         if: steps.refit.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.MCP_TIMINGS_TOKEN || github.token }}
-          OWN_TOKEN: ${{ secrets.MCP_TIMINGS_TOKEN != '' }}
-          WORKFLOW_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bot_id="$(gh api "users/$APP_SLUG%5Bbot%5D" --jq .id)"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "$bot_id+${APP_SLUG}[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
           git add tools/mcp/ci-timings.json
           git commit -q -m "ci: refit the MCP shard timings from the newest CI runs (tools/ci/mcp_timings.py)"
-          git push --force origin "$BRANCH"
+          git push --force "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "$BRANCH"
           {
               echo "## Problem"
               echo
@@ -97,22 +106,18 @@ jobs:
               echo "---"
               echo "By the mcp-timings-refit workflow."
           } > build/pr-body.md
-          open_pr() { gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty'; }
-          pr="$(open_pr)"
+          pr="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
           if [[ -n "$pr" ]]; then
               gh pr edit "$pr" --body-file build/pr-body.md
-          elif gh pr create --base main --head "$BRANCH" --body-file build/pr-body.md \
-                  --title "ci: refit the MCP shard timings from the newest CI runs"; then
-              pr="$(open_pr)"
           else
-              echo "::error::no pull request opened: allow GitHub Actions to create pull requests (Settings > Actions > General), or add the secret MCP_TIMINGS_TOKEN; $BRANCH is pushed"
-              exit 1
+              pr="$(gh pr create --base main --head "$BRANCH" --body-file build/pr-body.md \
+                  --title "ci: refit the MCP shard timings from the newest CI runs")"
           fi
-          # a push with the workflow token starts no pull_request run: Check reports on the head this way
-          if [[ "$OWN_TOKEN" != true ]]; then
-              GH_TOKEN="$WORKFLOW_TOKEN" gh workflow run ci.yml --ref "$BRANCH" -f status=true
-          fi
-          # the merge queue takes it once Check is green (on already: an earlier run turned it on)
-          if [[ "$(gh pr view "$pr" --json autoMergeRequest --jq '.autoMergeRequest != null')" != true ]]; then
-              gh pr merge "$pr" --merge --auto
+          # the merge queue takes it once Check is green; an auto-merge another actor turned on is
+          # turned on again as the App, since the workflow token's never enqueues
+          num="$(gh pr view "$pr" --json number --jq .number)"
+          enabled_by="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$num" --jq '.auto_merge.enabled_by.login // empty')"
+          if [[ "$enabled_by" != "${APP_SLUG}[bot]" ]]; then
+              [[ -z "$enabled_by" ]] || gh pr merge "$num" --disable-auto
+              gh pr merge "$num" --merge --auto
           fi

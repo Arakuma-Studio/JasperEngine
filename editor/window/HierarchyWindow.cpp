@@ -63,6 +63,7 @@
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "pixelart/aseprite/AsepriteSpriteSetup.h"
 #include "sprite/SpriteSheetPool.h"
 #include "spline/SplineEditor.h"
@@ -3371,7 +3372,8 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
             Entity entity = childTransforms->getEntity(i);
             Signature signature = contentRegistry->getSignature(entity);
 
-            if (childEntitiesSet.find(entity) != childEntitiesSet.end()) {
+            // an Audio Source slot is drawn as a component of its GameObject (S97 REQ-25)
+            if (childEntitiesSet.find(entity) != childEntitiesSet.end() && !AudioSourceSlots::isSlot(contentRegistry, entity)) {
                 TreeNode enode;
                 enode.icon = iconOf(contentRegistry, signature);
                 enode.id = entity;
@@ -3560,7 +3562,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
 
         const Entity modelAncestor = sceneHasModels ? modelAncestorOf(sceneProject->scene, entity, transform.parent, modelAncestors) : NULL_ENTITY;
 
-        if (sceneEntitiesSet.find(entity) != sceneEntitiesSet.end()){
+        if (sceneEntitiesSet.find(entity) != sceneEntitiesSet.end() && !AudioSourceSlots::isSlot(sceneProject->scene, entity)){
             if (applySeparator){
                 root.children.back().separator = true;
                 applySeparator = false;

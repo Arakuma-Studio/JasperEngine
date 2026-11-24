@@ -712,6 +712,8 @@ void prepare<AudioSourceComponent>(AudioSourceComponent& audio, Entity, CloneCon
     audio.handle = 0;
     audio.oneShots.clear();
     audio.pendingOneShots.clear();
+    // the copy's voices get effects of their own
+    audio.effectRuntime.reset();
     // a running fade does not carry over; fadeIn / fadeOut leave the authored volume
     if (audio.fade.active && audio.fade.restore) audio.volume = audio.fade.restoreVolume;
     audio.fade = AudioFade();

@@ -80,9 +80,13 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"MeshRaycastHit", 0x79d628f8u},
         {"Audio", 0xff36e463u},
         {"SoundHandle", 0x3606cf71u},
-        {"AudioSource", 0xd25afbe8u},
-        {"AudioSystem", 0xa2f97588u},
-        {"AudioSourceComponent", 0xff06d789u},
+        // (S97's effects, Audio Source slots, load state and Load Type, Spatial Blend, AudioSystem.unload
+        // reviewed: what a voice plays and how it is held; a slot is a child with a Transform and an
+        // Audio Source only)
+        {"AudioSource", 0xadfc9b4au},
+        {"AudioSourceEffect", 0xf5f832f0u},
+        {"AudioSystem", 0x821d0b1au},
+        {"AudioSourceComponent", 0x5f38e3ddu},
         {"NavMeshQueryFilter", 0xda689962u},
         {"GridCell", 0xa297eb80u},
         {"NavigationSystem", 0x0b2f5764u},

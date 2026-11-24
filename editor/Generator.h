@@ -179,6 +179,8 @@ namespace jasperengine::editor {
         std::string defaultOutputGroup; // the group new Audio Sources get ("" = Master)
         std::string musicGroup;         // the group music plays through when nothing names one ("" = Master)
         int seed = 1;                   // the Sound Event generator's seed in a deterministic run
+        // MiB unused clips stay cached (SoundPool::setUnusedBudget, S97 REQ-10); 0 drops a clip at its release
+        int unusedClipCacheMb = 16;
         // Play's audio captures (docs/specs/S35-agent-audio.md): editor only, not exported
         int captureMaxSeconds = 120;
         int captureKeep = 3;
@@ -198,6 +200,7 @@ namespace jasperengine::editor {
                    loudnessTargetLufs == other.loudnessTargetLufs && loudnessToleranceLu == other.loudnessToleranceLu &&
                    truePeakCeilingDbtp == other.truePeakCeilingDbtp && outputStage == other.outputStage &&
                    iosSessionCategory == other.iosSessionCategory && seed == other.seed && creditsFile == other.creditsFile &&
+                   unusedClipCacheMb == other.unusedClipCacheMb &&
                    captureMaxSeconds == other.captureMaxSeconds && captureKeep == other.captureKeep && captureStems == other.captureStems && qa == other.qa;
         }
         bool operator!=(const AudioSettings& other) const { return !(*this == other); }
