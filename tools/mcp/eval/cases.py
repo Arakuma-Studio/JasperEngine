@@ -2457,6 +2457,44 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_muffle_one_source_with_a_group",
+        "kind": "bad",
+        "what_happened": "S97: muffling one sound (a radio, a voice behind a door) took a new mixer group with a low-pass and "
+                         "a reroute, since sources had no effects; that group's filter then catches every other source sent "
+                         "to it. A source now holds its own effects (Unity's Audio Low Pass Filter).",
+        "text_at_issue": "docs/mcp/guide/audio.md 7: 'Effects on one source' (to muffle one source, its own effects)",
+        "source": "S97 REQ-43 (a), spec-first",
+        "groups_enabled": ["audio"],
+        "prompt": "The Radio GameObject plays a song through its Audio Source, on the Music group with the level's music. "
+                  "Make the radio sound muffled, as if it were in the next room. The level's music must stay clear.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok(
+                "Radio (entity 7): Transform, AudioSource {filename: music/radio.ogg, outputGroup: Music, looping: true}",
+                {"entity": 7, "name": "Radio", "components": {"transform": {}, "audiosource": {
+                    "filename": "music/radio.ogg", "outputGroup": "Music", "looping": True, "volume": 1}}})},
+            {"tool": "audio_mixer", "args": {"action": "get"}, "result": ok(
+                "audio/Main.mixer (the project's mixer). Groups: Master, Music, SFX. Exposed: none. Snapshots: none.",
+                {"mixer": "audio/Main.mixer", "groups": [{"name": "Master", "effects": [{"type": "limiter"}]},
+                                                         {"name": "Music", "effects": []}, {"name": "SFX", "effects": []}]})},
+            {"tool": "set_properties", "result": ok(
+                "Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"entity": 7, "name": "Radio"}]})},
+            {"tool": "add_component", "result": ok(
+                "Added 1 component(s) (one undo step).",
+                {"added": [{"entity": 7, "component": "audiosource", "effect": "lowpass"}], "skipped": []})},
+        ],
+        # the source's own effects, by any spelling of the component (set_properties' values or changes), or
+        # Unity's filter by name; never a group edit
+        "checks": {"any_of": [
+            *[{"calls": [{"tool": "set_properties", "args": {"values": {key: {"effects": "*"}}}}],
+               "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]}
+              for key in ("audiosource", "AudioSource", "AudioSourceComponent", "audio_source", "Audio Source")],
+            {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:^effects"}]}}],
+             "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]},
+            {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)low ?pass"}}],
+             "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]}]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_sound_too_quiet_no_measure",
         "groups_enabled": ["audio"],
         "files": {"assets/sfx/jump.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
@@ -2510,6 +2548,62 @@ CASES = [
         "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"music": "*"}}}],
                    "must_not_call": ["write_file"]},
         "max_turns": 8,
+    },
+    {
+        "id": "bad_small_loop_streams_by_clip_load_type",
+        "groups_enabled": ["audio"],
+        "files": {"assets/ambience/rain.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "S97 AU2: a clip's Load Type was per Audio Source only, so agents asked to stream a sub-1-MiB loop set "
+                         "loadType on one source (others kept decoding it) or wrote the .meta by hand; the clip's own Load Type is "
+                         "the load_type import settings key.",
+        "text_at_issue": "set_audio_import_settings' description and settings key list (load_type); jasper://docs/sound's import settings table",
+        "source": "S97 REQ-16, REQ-43 (b) (spec-first)",
+        "prompt": "assets/ambience/rain.wav is a 700 KB loop several sources and Audio.play use. Make it stream from disk "
+                  "everywhere instead of being decoded into memory.",
+        "mocks": [
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/ambience/rain.wav: -24.0 LUFS, 4.000 s",
+                {"items": [{"n": 1, "path": "assets/ambience/rain.wav", "settings": {"load_type": "streaming"},
+                            "resolved": {"sample_rate": 44100, "frames": 176400}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"load_type": "streaming"}}}],
+                   "must_not_call": ["write_file", "set_properties"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_second_audio_source_by_slot_id",
+        "kind": "bad",
+        "what_happened": "S97 AU4: a GameObject held one Audio Source, add_component skipped a second, so agents asked for an engine "
+                         "and a horn on one car made a child GameObject for the horn or overwrote the engine's clip; a second "
+                         "add_component AudioSource now adds a slot and returns its entity to set its values on.",
+        "text_at_issue": "add_component's description (AudioSource adds another); its result's added[].audio_source and next",
+        "source": "S97 REQ-28, REQ-43 (c) (spec-first)",
+        "prompt": "The Car GameObject (id 12) in the open scene needs two sounds playing from it: an engine loop "
+                  "(sounds/engine.wav, looping) and a horn (sounds/horn.wav, not looping). Set both up.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok("Car [12] components: Transform Mesh",
+                                                {"id": 12, "name": "Car", "components": {"Transform": {}, "Mesh": {}}})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\n12 Car",
+                                                   {"count": 1, "entities": [{"id": 12, "name": "Car", "path": "Car"}]})},
+            {"tool": "add_component", "once": True, "result": ok(
+                "Added 1 component(s) (one undo step).",
+                {"scene_id": 1, "added": [{"entity": 12, "component": "AudioSource"}], "skipped": []})},
+            {"tool": "add_component", "after": "add_component", "result": ok(
+                "Added 1 component(s) (one undo step). Each further Audio Source is its own entity (31), hidden in the scene tree: "
+                "pass that id as entity to set_properties, get_entity and remove_component.",
+                {"scene_id": 1, "added": [{"entity": 12, "component": "AudioSource", "audio_source": 31, "slot": 1}], "skipped": [],
+                 "next": "Each further Audio Source is its own entity (31), hidden in the scene tree: pass that id as entity to "
+                         "set_properties, get_entity and remove_component."})},
+            {"tool": "set_properties", "result": ok("Set 2 propertie(s) (one undo step).", {"scene_id": 1, "values": {}})},
+            {"tool": "create_entity", "result": ok("Created GameObject \"Horn\" [40] under Car.", {"entity_id": 40})},
+        ],
+        "checks": {"min_calls": {"add_component": 2},
+                   "any_of": [{"calls": [{"tool": "set_properties", "args": {"entity": "re:^31$"}}]},
+                              {"calls": [{"tool": "add_component", "args": {"values": "*"}}],
+                               "must_not_call": [{"tool": "set_properties", "args": {"entity": "re:^12$"}}]}],
+                   "must_not_call": ["create_entity"]},
+        "max_turns": 10,
     },
     {
         "id": "guard_placeholder_coin_finds_the_group",

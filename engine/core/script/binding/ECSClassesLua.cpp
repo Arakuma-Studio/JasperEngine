@@ -211,6 +211,22 @@ namespace {
         return 1;
     }
 
+    // AudioSystem.unload(path [, loadType]) -> integer
+    int luaAudioUnload(lua_State* L){
+        const std::string path = luaL_checkstring(L, 1);
+        const AudioLoadType type = (AudioLoadType)lua_tointeger(L, 2);
+        lua_pushinteger(L, AudioSystem::unload(path, lua_isnumber(L, 2) ? &type : nullptr));
+        return 1;
+    }
+
+    // AudioSystem.getLoadState(path [, loadType]) -> AudioLoadState
+    int luaAudioGetLoadState(lua_State* L){
+        const std::string path = luaL_checkstring(L, 1);
+        const AudioLoadType type = lua_isnumber(L, 2) ? (AudioLoadType)lua_tointeger(L, 2) : AudioLoadType::Auto;
+        lua_pushinteger(L, (lua_Integer)AudioSystem::getLoadState(path, type));
+        return 1;
+    }
+
     // RenderSystem:getLoadCount() -> loaded, total
     int luaRenderGetLoadCount(lua_State* L){
         RenderSystem* self = luabridge::detail::Userdata::get<RenderSystem>(L, 1, true);
@@ -248,6 +264,15 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("DecompressOnLoad", AudioLoadType::DecompressOnLoad)
         .addVariable("CompressedInMemory", AudioLoadType::CompressedInMemory)
         .addVariable("Streaming", AudioLoadType::Streaming)
+        .endNamespace();
+
+    // Unity's AudioDataLoadState names (AudioSource.loadState, AudioSystem.getLoadState)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AudioLoadState")
+        .addVariable("Unloaded", AudioLoadState::Unloaded)
+        .addVariable("Loading", AudioLoadState::Loading)
+        .addVariable("Loaded", AudioLoadState::Loaded)
+        .addVariable("Failed", AudioLoadState::Failed)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -507,6 +532,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addStaticFunction("checkActive", &AudioSystem::checkActive)
         .addStaticProperty("globalVolume", &AudioSystem::getGlobalVolume,  &AudioSystem::setGlobalVolume)
         .addStaticFunction("preload", &luaAudioPreload)
+        .addStaticFunction("unload", &luaAudioUnload)
+        .addStaticFunction("getLoadState", &luaAudioGetLoadState)
         .addStaticFunction("isOutputAvailable", &AudioSystem::isOutputAvailable)
         .addStaticFunction("getVoiceCount", &AudioSystem::getVoiceCount)
         // the sounds of this system's scene only (stopAll: every scene's)
@@ -1197,6 +1224,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("onStart", [] (AudioSourceComponent* self, lua_State* L) { return &self->onStart; }, [] (AudioSourceComponent* self, lua_State* L) { self->onStart = L; })
         .addProperty("onPause", [] (AudioSourceComponent* self, lua_State* L) { return &self->onPause; }, [] (AudioSourceComponent* self, lua_State* L) { self->onPause = L; })
         .addProperty("onStop", [] (AudioSourceComponent* self, lua_State* L) { return &self->onStop; }, [] (AudioSourceComponent* self, lua_State* L) { self->onStop = L; })
+        .addProperty("onLoad", [] (AudioSourceComponent* self, lua_State* L) { return &self->onLoad; }, [] (AudioSourceComponent* self, lua_State* L) { self->onLoad = L; })
         .addProperty("volume", &AudioSourceComponent::volume, &setTrackedMember<&AudioSourceComponent::volume>)
         .addProperty("pan", &AudioSourceComponent::pan, &setTrackedMember<&AudioSourceComponent::pan>)
         .addProperty("speed", &AudioSourceComponent::speed, &setTrackedMember<&AudioSourceComponent::speed>)
@@ -1219,6 +1247,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("priority", &AudioSourceComponent::priority, &AudioSourceComponent::priority)
         .addProperty("maxVoices", &AudioSourceComponent::maxVoices, &AudioSourceComponent::maxVoices)
         .addProperty("ignoreListenerPause", &AudioSourceComponent::ignoreListenerPause, &AudioSourceComponent::ignoreListenerPause)
+        .addProperty("spatialBlend", &AudioSourceComponent::spatialBlend, &setTrackedMember<&AudioSourceComponent::spatialBlend>)
+        .addProperty("slot", &AudioSourceComponent::slot)
         .endClass();
 
     // the raw fields of a Video Player (VideoPlayer's setters clamp; entity fields are entity numbers here)

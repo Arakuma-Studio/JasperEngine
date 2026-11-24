@@ -153,6 +153,13 @@ template<> struct Codec<ActionFrame> {
 template<> struct TextureVisit<ActionFrame> {
     static void visit(ActionFrame& value, const TextureVisitor& f);
 };
+template<> struct Codec<AudioSourceEffectDef> {
+    static void write(Writer& w, const AudioSourceEffectDef& value);
+    static void read(Reader& r, AudioSourceEffectDef& value);
+};
+template<> struct TextureVisit<AudioSourceEffectDef> {
+    static void visit(AudioSourceEffectDef& value, const TextureVisitor& f);
+};
 #ifdef JASPERENGINE_PHYSICS_2D
 template<> struct Codec<Collider2D> {
     static void write(Writer& w, const Collider2D& value);
@@ -695,6 +702,17 @@ const StructTable kStruct_ActionFrame{"ActionFrame", kStruct_ActionFrame_fields,
 void Codec<ActionFrame>::write(Writer& w, const ActionFrame& value) { writeStruct(w, kStruct_ActionFrame, &value); }
 void Codec<ActionFrame>::read(Reader& r, ActionFrame& value) { readStruct(r, kStruct_ActionFrame, &value); }
 void TextureVisit<ActionFrame>::visit(ActionFrame& value, const TextureVisitor& f) { visitStructTextures(kStruct_ActionFrame, &value, f); }
+
+const FieldEntry kStruct_AudioSourceEffectDef_fields[] = {
+    JE_RF(AudioSourceEffectDef, type, 0x20e72f9eu, String),
+    JE_RF(AudioSourceEffectDef, bypass, 0x7f580c1au, Bool),
+    JE_RF(AudioSourceEffectDef, wet, 0xb0418e7au, Float),
+    JE_RF(AudioSourceEffectDef, params, 0x2b103f44u, Custom),
+};
+const StructTable kStruct_AudioSourceEffectDef{"AudioSourceEffectDef", kStruct_AudioSourceEffectDef_fields, std::size(kStruct_AudioSourceEffectDef_fields)};
+void Codec<AudioSourceEffectDef>::write(Writer& w, const AudioSourceEffectDef& value) { writeStruct(w, kStruct_AudioSourceEffectDef, &value); }
+void Codec<AudioSourceEffectDef>::read(Reader& r, AudioSourceEffectDef& value) { readStruct(r, kStruct_AudioSourceEffectDef, &value); }
+void TextureVisit<AudioSourceEffectDef>::visit(AudioSourceEffectDef& value, const TextureVisitor& f) { visitStructTextures(kStruct_AudioSourceEffectDef, &value, f); }
 
 #ifdef JASPERENGINE_PHYSICS_2D
 const FieldEntry kStruct_Collider2D_fields[] = {
@@ -1353,6 +1371,9 @@ const FieldEntry kBody_AudioSourceComponent_fields[] = {
     JE_RF(AudioSourceComponent, fullVolumeImpactSpeed, 0xd50acf0eu, Float),
     JE_RF(AudioSourceComponent, pitchRandomSemitones, 0xa6b06beeu, Float),
     JE_RF(AudioSourceComponent, volumeRandomDb, 0x7255c581u, Float),
+    JE_RF(AudioSourceComponent, effects, 0x3ab94640u, Array),
+    JE_RF(AudioSourceComponent, spatialBlend, 0x292dbcfdu, Float),
+    JE_RF(AudioSourceComponent, slot, 0x851121bau, Int),
 };
 const StructTable kBody_AudioSourceComponent{"audiosource", kBody_AudioSourceComponent_fields, std::size(kBody_AudioSourceComponent_fields)};
 
