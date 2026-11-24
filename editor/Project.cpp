@@ -399,7 +399,8 @@ editor::Project::~Project(){
     shaderListWrite.wait();
     // its scenes and their renders are its own: they go with it while the engine runs (the unit
     // tests' Projects). One destroyed after Engine::systemShutdown, the editor's (a static App's,
-    // after the engine's own statics) or a CLI command's, leaves them to the process exit
+    // after the engine's own statics), leaves them to the process exit; a CLI command releases
+    // them before its engine guard shuts the engine down
     if (jobs::hasSystem() && !jobs::system().isShuttingDown()){
         deleteScenes();
     }
@@ -7359,8 +7360,12 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         }
 
         if (!std::filesystem::exists(projectFile)) {
-            // a file in its place is no project folder: nothing could be saved there
-            if (!std::filesystem::is_directory(projectPath) && !std::filesystem::create_directories(projectPath)) {
+            // a file in its place is no project folder: nothing could be saved there. Asked after
+            // the creation, not before it: create_directories says false for a folder another
+            // writer made since a check, and the new project then refused its own folder
+            std::error_code folderEc;
+            std::filesystem::create_directories(projectPath, folderEc);
+            if (!std::filesystem::is_directory(projectPath, folderEc)) {
                 throw std::runtime_error(FileUtils::pathToGenericUtf8(projectPath) + " is not a folder");
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());

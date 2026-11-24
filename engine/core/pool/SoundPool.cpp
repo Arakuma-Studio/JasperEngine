@@ -87,9 +87,11 @@ void SoundPool::invalidate(const std::string& filename){
 
 namespace {
 
+#if JASPERENGINE_SOUND_LAYER
     // the head of an Ogg file, enough to reach its first audio page (AudioClipSource's look at whether
     // its seeks can trust the stream's sample positions)
     constexpr size_t OGG_HEAD_BYTES = 256 * 1024;
+#endif
 
     // the sample with the clip's import settings, when they change its samples
     std::shared_ptr<SoLoud::AudioSource> withImportSettings(std::shared_ptr<SoLoud::AudioSource> sample, const std::string& filename,

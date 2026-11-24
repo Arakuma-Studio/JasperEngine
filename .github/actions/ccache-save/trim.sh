@@ -21,6 +21,13 @@ if [[ "$JASPER_CCACHE_LANE" != "$LANE" ]]; then
     echo "::error::ccache-save: lane $LANE, but ccache-restore ran for '$JASPER_CCACHE_LANE'"; exit 1
 fi
 
+# an overflow runner's own cache (ccache-restore): capped by CCACHE_MAXSIZE as it builds, kept whole,
+# never saved (the run-start eviction below would empty it of every other job's entries)
+if [[ "${JASPER_CCACHE_LOCAL:-}" == 1 ]]; then
+    ccache --show-stats | grep -E 'Hits|Misses|Cache size' || true
+    echo "ccache-save: the runner's own cache at $CCACHE_DIR: kept, not saved"; out false; exit 0
+fi
+
 # ccache of the lane: the runner's on Windows and macOS (ccache-restore installs it), the lane's build
 # image's on Linux, whose runner has none (and whose ccache wrote the entries); CAP is its max size
 CAP=0
