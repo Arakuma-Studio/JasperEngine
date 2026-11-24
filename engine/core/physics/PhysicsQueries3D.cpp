@@ -39,15 +39,17 @@ namespace jasperengine::physicsqueries3d {
         return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
     }
 
-    JPH::Vec3 toJolt(const Vector3& v){
+    // query-prefixed: this namespace is used at file scope below, and a unity batch also holds
+    // PlacementWorld.cpp's toJolt / fromJolt
+    JPH::Vec3 queryToJolt(const Vector3& v){
         return JPH::Vec3(v.x, v.y, v.z);
     }
 
-    Vector3 fromJolt(JPH::Vec3Arg v){
+    Vector3 queryFromJolt(JPH::Vec3Arg v){
         return Vector3(v.GetX(), v.GetY(), v.GetZ());
     }
 
-    JPH::Quat toJolt(const Quaternion& q){
+    JPH::Quat queryToJolt(const Quaternion& q){
         return JPH::Quat(q.x, q.y, q.z, q.w).Normalized();
     }
 
@@ -169,9 +171,9 @@ namespace jasperengine::physicsqueries3d {
                 hit.normal = -direction;
             }else{
                 hit.distance = result.mFraction * maxDistance;
-                hit.point = fromJolt(JPH::Vec3(baseOffset + result.mContactPointOn2));
+                hit.point = queryFromJolt(JPH::Vec3(baseOffset + result.mContactPointOn2));
                 const JPH::Vec3 axis = result.mPenetrationAxis;
-                hit.normal = axis.LengthSq() > 1.0e-12f ? fromJolt(-axis.Normalized()) : -direction;
+                hit.normal = axis.LengthSq() > 1.0e-12f ? queryFromJolt(-axis.Normalized()) : -direction;
             }
             if (all){
                 keepHit(*all, hit, maxHits);
@@ -252,11 +254,11 @@ namespace jasperengine::physicsqueries3d {
         JPH::ShapeCastSettings settings;
         settings.mBackFaceModeTriangles = Physics::hitsBackfaces(options) ? JPH::EBackFaceMode::CollideWithBackFaces : JPH::EBackFaceMode::IgnoreBackFaces;
         const JPH::RVec3 baseOffset = start.GetTranslation();
-        const JPH::RShapeCast shapeCast(&shape, JPH::Vec3::sReplicate(1.0f), start, toJolt(direction * maxDistance));
+        const JPH::RShapeCast shapeCast(&shape, JPH::Vec3::sReplicate(1.0f), start, queryToJolt(direction * maxDistance));
 
         CastCollector collector;
         collector.scene = scene;
-        collector.start = fromJolt(JPH::Vec3(start.GetTranslation()));
+        collector.start = queryFromJolt(JPH::Vec3(start.GetTranslation()));
         collector.direction = direction;
         collector.maxDistance = maxDistance;
         collector.baseOffset = baseOffset;
@@ -310,7 +312,7 @@ namespace jasperengine::physicsqueries3d {
         collector.scene = scene;
         collector.out = out;
         collector.maxHits = options.maxHits;
-        physics->getNarrowPhaseQuery3D().CollidePoint(JPH::RVec3(toJolt(point)), collector, query.broadPhase, query.layers, query.bodies);
+        physics->getNarrowPhaseQuery3D().CollidePoint(JPH::RVec3(queryToJolt(point)), collector, query.broadPhase, query.layers, query.bodies);
         if (!out){
             return collector.any ? 1 : 0;
         }
@@ -319,7 +321,7 @@ namespace jasperengine::physicsqueries3d {
     }
 
     JPH::RMat44 poseAt(const Vector3& position, const Quaternion& rotation){
-        return JPH::RMat44::sRotationTranslation(toJolt(rotation), JPH::RVec3(toJolt(position)));
+        return JPH::RMat44::sRotationTranslation(queryToJolt(rotation), JPH::RVec3(queryToJolt(position)));
     }
 
     // A capsule between two points as Jolt's Y-aligned capsule and its pose; a sphere when the
@@ -343,8 +345,8 @@ namespace jasperengine::physicsqueries3d {
                 return;
             }
             shape = &capsule;
-            const JPH::Quat rotation = JPH::Quat::sFromTo(JPH::Vec3::sAxisY(), toJolt(axis / length));
-            pose = JPH::RMat44::sRotationTranslation(rotation, JPH::RVec3(toJolt(center)));
+            const JPH::Quat rotation = JPH::Quat::sFromTo(JPH::Vec3::sAxisY(), queryToJolt(axis / length));
+            pose = JPH::RMat44::sRotationTranslation(rotation, JPH::RVec3(queryToJolt(center)));
         }
     };
 
@@ -439,7 +441,7 @@ RayReturn PhysicsQueries3D::boxCast(Scene* scene, Vector3 center, Vector3 halfEx
         return Ray::NO_HIT;
     }
     // no convex radius: the cast box has sharp corners, as Unity's
-    JPH::BoxShape box(toJolt(halfExtents), 0.0f);
+    JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
     return cast(scene, "Physics.boxCast", box, poseAt(center, orientation), direction, maxDistance, options, NULL_ENTITY, nullptr);
 }
@@ -468,7 +470,7 @@ size_t PhysicsQueries3D::boxCastAll(Scene* scene, Vector3 center, Vector3 halfEx
     if (!validBox("Physics.boxCastAll", center, halfExtents)){
         return 0;
     }
-    JPH::BoxShape box(toJolt(halfExtents), 0.0f);
+    JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
     cast(scene, "Physics.boxCastAll", box, poseAt(center, orientation), direction, maxDistance, options, NULL_ENTITY, &hits);
     return hits.size();
@@ -499,7 +501,7 @@ size_t PhysicsQueries3D::overlapBox(Scene* scene, Vector3 center, Vector3 halfEx
     if (!validBox("Physics.overlapBox", center, halfExtents)){
         return 0;
     }
-    JPH::BoxShape box(toJolt(halfExtents), 0.0f);
+    JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
     return overlap(scene, box, poseAt(center, orientation), options, &colliders);
 }
@@ -535,7 +537,7 @@ bool PhysicsQueries3D::checkBox(Scene* scene, Vector3 center, Vector3 halfExtent
     if (!validBox("Physics.checkBox", center, halfExtents)){
         return false;
     }
-    JPH::BoxShape box(toJolt(halfExtents), 0.0f);
+    JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
     return overlap(scene, box, poseAt(center, orientation), options, nullptr) > 0;
 }
@@ -593,7 +595,7 @@ bool PhysicsQueries3D::closestPoint(Scene* scene, Vector3 point, const ColliderR
         }
         const JPH::ConvexShape* convex = static_cast<const JPH::ConvexShape*>(leaves.leaf.mShape.GetPtr());
         const JPH::RMat44 transform = leaves.leaf.GetCenterOfMassTransform();
-        const JPH::Vec3 local = JPH::Vec3(transform.InversedRotationTranslation() * JPH::RVec3(toJolt(point)));
+        const JPH::Vec3 local = JPH::Vec3(transform.InversedRotationTranslation() * JPH::RVec3(queryToJolt(point)));
         JPH::ConvexShape::SupportBuffer buffer;
         const JPH::ConvexShape::Support* support = convex->GetSupportFunction(JPH::ConvexShape::ESupportMode::IncludeConvexRadius, buffer, leaves.leaf.GetShapeScale());
         JPH::PointConvexSupport target{local};
@@ -603,7 +605,7 @@ bool PhysicsQueries3D::closestPoint(Scene* scene, Vector3 point, const ColliderR
         const float distanceSq = gjk.GetClosestPoints(*support, target, 1.0e-5f, FLT_MAX, v, onShape, onPoint);
         // 0: the point is inside (Unity returns it unchanged)
         if (distanceSq > 0.0f){
-            closest = fromJolt(JPH::Vec3(transform * JPH::RVec3(onShape)));
+            closest = queryFromJolt(JPH::Vec3(transform * JPH::RVec3(onShape)));
         }
         return true;
     }
