@@ -19,6 +19,8 @@
 #      its screen is compared with tools/fixtures/unified-lighting/golden/android/screen.png.
 #      The bundle goes through bundletool build-apks and install-apks and is compared the same way.
 #      A texture that fails to load fails the run: the picture would still look like a game.
+#      The debug project carries an HTML UI document over the scene, so the GLES log check and
+#      the golden cover a multisampled UI target next to the camera's single-sampled one.
 #
 #   tools/build.sh linux                                   # the editor install
 #   PLAYER_PLATFORM=android PLAYER_ANDROID_ABIS=x86_64 PLAYER_FLAVOURS=development tools/build.sh players
@@ -67,6 +69,31 @@ python3 tools/ci/freeze_unified_lighting.py "$OUT/debug"
 mkdir -p "$OUT/debug/assets/_Onboarding"
 echo '{"step": 1}' > "$OUT/debug/assets/_Onboarding/level.json"
 touch "$OUT/debug/assets/_Onboarding/.gitkeep"
+# an HTML UI document over the scene, above and below it: its targets are multisampled (4 samples by
+# default) and the camera's are not, which the emulator's GLES once failed as an incomplete framebuffer
+mkdir -p "$OUT/debug/assets/ui"
+cat > "$OUT/debug/assets/ui/packaging.html" <<'HTML'
+<html><head><style>
+body { width: 100%; height: 100%; margin: 0; }
+#panel { position: absolute; left: 6%; top: 6%; width: 88%; height: 18%; background-color: #e04030;
+         border-radius: 40px; border: 8px #ffffff; }
+#disc { position: absolute; left: 30%; top: 70%; width: 40%; height: 18%; background-color: #2080ffc0; border-radius: 50%; }
+</style></head><body><div id="panel"></div><div id="disc"></div></body></html>
+HTML
+cat >> "$OUT/debug/Main Scene.scene" <<'SCENE'
+  - type: Entity
+    entity: 1900
+    name: Packaging UI
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+      uidocument:
+        enabled: true
+        filename: ui/packaging.html
+SCENE
 # the emulator's renderer has no ASTC: without ETC2 cooks these textures fail to load there
 printf 'texture:\n  androidEtc2Fallback: true\n' >> "$OUT/debug/project.yaml"
 make_project release '  keystore:' "    path: ../release.jks" '    alias: game'
