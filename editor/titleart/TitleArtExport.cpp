@@ -11,6 +11,7 @@
 #include "util/ProjectChecks.h"
 
 #include <algorithm>
+#include <chrono>
 #include <map>
 #include <set>
 
@@ -89,12 +90,7 @@ TitleArtExport::Prepared TitleArtExport::prepare(Project* project, TitleStaleBak
         TitleBakeOptions options;
         options.outputs = notFresh;
         if (titleart::titleIsMultilingual(doc.root)) options.languages = staleLanguages;
-        const TitleBakeResult result = bakeTitleArt(project, document, doc, options);
-        if (result.ok) {
-            prepared.rebaked.push_back(line);
-        } else {
-            prepared.warnings.push_back("could not rebake " + line + ": " + result.error);
-        }
+        prepared.rebakes.emplace_back(line, std::make_shared<TitleArtBakeJob>(project, document, std::move(doc), options));
     }
     if (!failing.empty()) {
         prepared.ok = false;
@@ -103,4 +99,19 @@ TitleArtExport::Prepared TitleArtExport::prepare(Project* project, TitleStaleBak
         prepared.error += ". Bake them (export_title, or Bake in the Inspector) or change the setting.";
     }
     return prepared;
+}
+
+bool TitleArtExport::stepRebakes(Prepared& prepared, double budgetMs) {
+    const auto start = std::chrono::steady_clock::now();
+    while (!prepared.rebakes.empty()) {
+        const double spent = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        auto& [line, job] = prepared.rebakes.front();
+        if (!job->step(std::max(1.0, budgetMs - spent))) return false;
+        const TitleBakeResult& result = job->result();
+        if (result.ok) prepared.rebaked.push_back(line);
+        else prepared.warnings.push_back("could not rebake " + line + ": " + result.error);
+        prepared.rebakes.erase(prepared.rebakes.begin());
+        if (std::chrono::steady_clock::now() - start >= std::chrono::duration<double, std::milli>(budgetMs)) return prepared.rebakes.empty();
+    }
+    return true;
 }

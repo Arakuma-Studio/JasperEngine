@@ -14,11 +14,9 @@ run-name: ${{ inputs.advisory && format('Advisory tests of {0} at {1}', github.r
 #   advisory lanes the queue left out, one advisory run at a time, the newest waiting, each over what
 #   changed since the last one; its failures keep the advisory-red issue open.
 #   workflow_dispatch with full: everything, the whole MCP CI suite included, on any branch.
-#   workflow_dispatch with status: Check also as a commit status, which a ruleset counts: a branch the workflow
-#   token pushed gets no pull_request run (mcp-timings-refit.yml), and no dispatched job's check counts.
 # - The test lanes in ADVISORY_LANES report but do not fail Check until main is green through CI (D2, §14.1
-#   phase 7); the merge queue does not run them (tools/ci/plan_lanes.py --advisory). Lint and every platform
-#   build lane block.
+#   phase 7); Check does not wait for them (only report needs them) and the merge queue does not run them
+#   (tools/ci/plan_lanes.py --advisory). Lint and every platform build lane block.
 # - Caches (§10.2): PRs and the queue restore; push to main saves, and the caches job keeps one entry each.
 on:
   pull_request:
@@ -41,10 +39,6 @@ on:
         description: "Test the overflow runners: <job>=<je-mac|je-linux|je-win> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
         type: string
         default: ''
-      status:
-        description: Also report Check as a commit status on the head (GitHub counts no dispatched job's check toward a required one)
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -121,6 +115,7 @@ jobs:
       unit_run_editor: ${{ steps.plan.outputs.unit_run_editor }}
       unit_jobs: ${{ steps.plan.outputs.unit_jobs }}
       asan_jobs: ${{ steps.plan.outputs.asan_jobs }}
+      windows_parts: ${{ steps.plan.outputs.windows_parts }}
       asan_filter_core: ${{ steps.plan.outputs.asan_filter_core }}
       asan_filter_editor: ${{ steps.plan.outputs.asan_filter_editor }}
       unit_filter_core: ${{ steps.plan.outputs.unit_filter_core }}
@@ -128,6 +123,7 @@ jobs:
       htmlui_filter: ${{ steps.plan.outputs.htmlui_filter }}
       mcp_shards: ${{ steps.plan.outputs.mcp_shards }}
       build_only: ${{ steps.plan.outputs.build_only }}
+      macos_full: ${{ steps.plan.outputs.macos_full }}
       dispatch_advisory: ${{ steps.plan.outputs.dispatch_advisory }}
       runs_on: ${{ steps.plan.outputs.runs_on }}
     steps:
@@ -152,7 +148,7 @@ jobs:
           restore-keys: mcp-timings-
 
       # plan_lanes.py lists the MCP suite with run_tests.py --list, which runs under uv (64 tests are made at run time)
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
 
       - name: Plan the lanes
         id: plan
@@ -170,6 +166,8 @@ jobs:
           # the overflow runners (docs/testing.md "Overflow runners"): the ones taken out; a fork's pull
           # request never gets one. Their state is fetched below, as the plan starts
           RUNNER_DISABLED: ${{ vars.SELF_HOSTED_DISABLED }}
+          # off: a pull request runs its blocking lanes only, as the merge queue (docs/testing.md "What each event runs")
+          PR_ADVISORY: ${{ vars.PR_ADVISORY_LANES }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           SELF_HOSTED: ${{ inputs.self_hosted }}
         run: |
@@ -186,9 +184,8 @@ jobs:
           esac
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
                 --advisory "$ADVISORY_LANES" --runner-state "$RUNNER_TEMP/runner-state.json"
-                --runner-disabled "$RUNNER_DISABLED" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
-                --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --self-hosted "$SELF_HOSTED"
-                --planner "$RUNNER_NAME")
+                --runner-disabled "$RUNNER_DISABLED" --pr-advisory "${PR_ADVISORY:-on}" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
+                --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --run-id "$GITHUB_RUN_ID" --self-hosted "$SELF_HOSTED")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
           [[ -f build/ci-inputs/coverage-map.json ]] && args+=(--coverage-map build/ci-inputs/coverage-map.json)
           [[ -f build/ci-inputs/mcp-test-seconds.json ]] && args+=(--test-seconds build/ci-inputs/mcp-test-seconds.json)
@@ -607,6 +604,11 @@ jobs:
           [[ -n "$f" ]] || f="*"
           if [[ "$f" == *-* ]]; then f="$f:*GpuSlow*"; else f="$f-*GpuSlow*"; fi
           tools/ci/logged.sh "asan-$SUITE" "${BUILD_ONLY}SANITIZE=address,undefined UNIT_SUITE=$SUITE UNIT_TEST_ARGS=$(printf %q "--gtest_filter=$f") tools/build.sh unit-tests"
+      # the editor tests' binary is the largest we link: past 2 GiB from its first loaded section to its
+      # last, x86-64's 32-bit PC-relative relocations no longer reach and the link fails
+      - name: Relocation reach of the test binary
+        if: always() && matrix.suite == 'editor'
+        run: python3 tools/ci/reloc_reach.py build/linux/editor-tests-address-undefined/jasperengine-editor-tests | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: ./.github/actions/ccache-save
         if: always()
@@ -990,7 +992,9 @@ jobs:
   # MSVC through tools/ci/windows.sh, as parallel jobs (the lane takes as long as its longest one): the
   # editor with its CPU unit tests and the call CLI; the engine on each Windows backend, the OpenGL one
   # with the core tests; windows-compile, a Compile build of a fixture with the editor job's install (G2).
-  # Each job has its own ccache entry and report (windows-<part>, tools/ci/report.py WINDOWS_PARTS).
+  # Each job has its own ccache entry and report (windows-<part>, tools/ci/report.py WINDOWS_PARTS). The
+  # legs are the plan's (windows_parts): a pull request and the merge queue build engine-d3d11 and
+  # engine-vulkan only for their own inputs (tools/ci/plan_lanes.py windows_legs), the nightly every night
   windows:
     name: windows (${{ matrix.part }})
     needs: changes
@@ -1008,15 +1012,7 @@ jobs:
       # (0.9 GB working set). The engine legs build cold: the lane ends with its slowest leg, and D3D11 and
       # Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108)
       matrix:
-        include:
-          - part: editor
-            ccache: 0.95G
-          - part: engine-glcore
-            ccache: ''
-          - part: engine-d3d11
-            ccache: ''
-          - part: engine-vulkan
-            ccache: ''
+        part: ${{ fromJSON(needs.changes.outputs.windows_parts) }}
     env:
       JASPER_CI_REPRO: tools/ci/windows.sh
       PART: ${{ matrix.part }}
@@ -1051,10 +1047,10 @@ jobs:
         with:
           arch: x64
       - uses: ./.github/actions/ccache-restore
-        if: matrix.ccache != ''
+        if: matrix.part == 'editor'
         with:
           lane: windows-${{ matrix.part }}
-          max-size: ${{ matrix.ccache }}
+          max-size: 0.95G
 
       - name: Editor
         if: matrix.part == 'editor'
@@ -1062,6 +1058,18 @@ jobs:
       # reported apart (windows-editor-tests, in ADVISORY_LANES while the suite settles on Windows): the
       # leg's build gates, its test run is listed; a hang costs TEST_TIMEOUT, not the leg. While advisory
       # it runs in the advisory run, not in the merge queue; never on push (build_only)
+      # the version control tests' svn and svnadmin (the Linux image and the macOS job have them; the
+      # runner image does not): SlikSVN's command-line client, whose installer puts them in its bin
+      - name: Subversion
+        if: matrix.part == 'editor' && !contains(fromJSON(needs.changes.outputs.build_only), 'windows-editor-tests')
+        run: |
+          bin='C:\Program Files\SlikSvn\bin'
+          if ! command -v svnadmin > /dev/null; then
+              tools/ci/retry.sh choco install sliksvn --no-progress -y
+              echo "$bin" >> "$GITHUB_PATH"
+              PATH="$(cygpath -u "$bin"):$PATH"
+          fi
+          svn --version --quiet && svnadmin --version --quiet
       - name: Editor unit tests (CPU suites)
         id: editor-tests
         if: matrix.part == 'editor' && !contains(fromJSON(needs.changes.outputs.build_only), 'windows-editor-tests')
@@ -1102,7 +1110,7 @@ jobs:
         run: TEST_SUITES=core tools/ci/windows.sh tests glcore
 
       - uses: ./.github/actions/ccache-save
-        if: always() && matrix.ccache != ''
+        if: always() && matrix.part == 'editor'
         with:
           lane: windows-${{ matrix.part }}
           prune: 'true'
@@ -1183,14 +1191,14 @@ jobs:
       # 18 min cold on a hosted runner: a hung test fails here, not at the job's 300 min (a link-following
       # cleanup hung for 3 h on je-mac, merge-queue run of #162)
       - name: Unit tests (CPU suites)
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' || needs.changes.outputs.macos_full == 'true'
         timeout-minutes: 60
         run: tools/ci/macos.sh tests
       - name: Call CLI without an editor
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' || needs.changes.outputs.macos_full == 'true'
         run: tools/ci/macos.sh check-cli
       - name: Compile build of post-processing
-        if: ${{ !cancelled() && github.event_name != 'push' }}
+        if: ${{ !cancelled() && (github.event_name != 'push' || needs.changes.outputs.macos_full == 'true') }}
         run: tools/ci/macos.sh compile-smoke tools/fixtures/post-processing
 
       - uses: ./.github/actions/ccache-save
@@ -1358,7 +1366,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-      NEEDS: ${{ toJSON(needs) }}
+      # each needed job's result only: toJSON(needs) carries the changes job's filters, over Linux's 128 KiB
+      # limit on one environment string (MAX_ARG_STRLEN) when a plan selects every unit test (run 45088926257).
+      # One entry per job of needs (tools/ci/test_check_gate.py WorkflowEnv)
+      NEEDS: ${{ format('{{"changes":"{0}","lint":"{1}","linux":"{2}","unit":"{3}","asan":"{4}","htmlui":"{5}","mcp":"{6}","smoke":"{7}","web":"{8}","android":"{9}","windows":"{10}","windows-compile":"{11}","macos":"{12}","ios":"{13}","check":"{14}"}}', needs.changes.result, needs.lint.result, needs.linux.result, needs.unit.result, needs.asan.result, needs.htmlui.result, needs.mcp.result, needs.smoke.result, needs.web.result, needs.android.result, needs.windows.result, needs.windows-compile.result, needs.macos.result, needs.ios.result, needs.check.result) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1418,15 +1429,14 @@ jobs:
   # ---------------------------------------------------------------- Check ---
   # The one required status: every needed lane succeeded, or was skipped because changes said so, and no
   # test lane passed by running nothing (tools/ci/check_gate.py). always(): a cancelled run fails it too.
+  # It needs every lane of report's needs but the ADVISORY_LANES ones, which it would only list: waiting for
+  # them held Check 1-2 h past its blocking lanes (tools/ci/test_check_gate.py WorkflowEnv pins the set)
   check:
     name: Check
-    needs: [changes, lint, linux, unit, asan, htmlui, mcp, smoke, web, android, windows, windows-compile, macos, ios]
+    needs: [changes, lint, linux, web, android, windows, windows-compile, macos, ios]
     if: always()
     runs-on: ubuntu-slim
     timeout-minutes: 10
-    permissions:
-      contents: read
-      statuses: write  # workflow_dispatch with status: the verdict as a commit status
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1443,20 +1453,10 @@ jobs:
           name: plan
           path: plan
       - name: Gate
-        id: gate
         env:
-          NEEDS: ${{ toJSON(needs) }}
+          # each needed job's result only, as the report job's NEEDS
+          NEEDS: ${{ format('{{"changes":"{0}","lint":"{1}","linux":"{2}","web":"{3}","android":"{4}","windows":"{5}","windows-compile":"{6}","macos":"{7}","ios":"{8}"}}', needs.changes.result, needs.lint.result, needs.linux.result, needs.web.result, needs.android.result, needs.windows.result, needs.windows-compile.result, needs.macos.result, needs.ios.result) }}
         run: |
           printf '%s\n' "$NEEDS" > needs.json
           python3 tools/ci/check_gate.py --needs needs.json --lanes plan/lanes.json --reports reports \
               --advisory "$ADVISORY_LANES"
-      # a ruleset's required check counts a commit status of the GitHub Actions app, not this job's check
-      - name: Report Check as a commit status
-        if: always() && inputs.status
-        env:
-          GH_TOKEN: ${{ github.token }}
-          STATE: ${{ steps.gate.outcome == 'success' && 'success' || 'failure' }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state="$STATE" -f context=Check \
-              -f target_url="$RUN_URL" -f description="ci.yml dispatched on $GITHUB_REF_NAME: $STATE"

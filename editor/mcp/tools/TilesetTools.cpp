@@ -962,7 +962,7 @@ void importTilemapTool(const CallPtr& call) {
         return;
     }
 
-    const auto finish = [plan, target, sceneProject, project, fileArg](std::string& text, Json& data, Problem& error) {
+    const auto finish = [plan, target, sceneProject, fileArg](std::string& text, Json& data, Problem& error) {
         const ti::ImportResult result = ti::apply(*plan, target);
         if (!result.ok) {
             error = importProblem(result.problem);

@@ -470,7 +470,7 @@ bool editor::TerrainEditWindow::raycastTerrainStrokeSurface(const Ray& localRay,
 
 editor::TerrainEditWindow::TerrainEditWindow(Project* project){
     this->project = project;
-    foliagePanel = std::make_unique<TerrainFoliagePanel>(project, this);
+    foliagePanel = std::make_unique<TerrainFoliagePanel>(project);
     windowOpen = false;
     focusRequested = false;
     brushActive = false;

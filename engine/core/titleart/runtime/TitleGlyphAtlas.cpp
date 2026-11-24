@@ -771,23 +771,33 @@ std::vector<std::string> jasperengine::titleart::titleGlyphPrebakeStrings(const 
     return out;
 }
 
-bool jasperengine::titleart::prebakeTitleGlyphAtlas(TitleArtLive& live, const TitleJobFactory& factory, const TitleArtLiveState& state,
-                                                    const std::vector<FieldOverride>& overrides, const std::string& textLayer,
-                                                    const std::vector<std::string>& strings, size_t maxCells, std::string& error){
-    // this call steps the jobs itself and no frame commits meanwhile: spreading the first draws
-    // (TitleFirstDraws) would wait for a frame that never comes
+TitleGlyphPrebake::TitleGlyphPrebake(TitleArtLive& live, TitleJobFactory factory, TitleArtLiveState state, std::vector<FieldOverride> overrides,
+                                     std::string textLayer, std::vector<std::string> strings, size_t maxCells)
+    : live(live), factory(std::move(factory)), state(std::move(state)), overrides(std::move(overrides)), textLayer(std::move(textLayer)),
+      strings(std::move(strings)), maxCells(maxCells){
+}
+
+bool TitleGlyphPrebake::step(double budgetMs){
+    if (finished) return true;
+    // the steps run the jobs themselves and commit no frame: spreading the first draws
+    // (TitleFirstDraws) would wait for frames of their own
     TitleFirstDraws::SynchronousScope synchronous;
-    TitleLiveLimits limits;
-    double clock = 0.0;
-    for (const std::string& text : strings){
+    const auto sliceStart = std::chrono::steady_clock::now();
+    while (next < strings.size()){
         if (live.glyphAtlas() && live.glyphAtlas()->cellCount() >= maxCells) break;
-        std::vector<FieldOverride> values;
-        for (const FieldOverride& o : overrides)
-            if (!(o.layerId == textLayer && o.path == "text")) values.push_back(o);
-        values.push_back(FieldOverride{textLayer, "text", Json(text)});
-        live.setState(state, fnv1a64(text) + 1, values);
-        const auto start = std::chrono::steady_clock::now();
-        while (live.hasWork() && !live.status().failed && std::chrono::steady_clock::now() - start < std::chrono::seconds(60)){
+        const std::string& text = strings[next];
+        if (!started){
+            std::vector<FieldOverride> values;
+            for (const FieldOverride& o : overrides)
+                if (!(o.layerId == textLayer && o.path == "text")) values.push_back(o);
+            values.push_back(FieldOverride{textLayer, "text", Json(text)});
+            live.setState(state, fnv1a64(text) + 1, values);
+            started = true;
+            stringStart = std::chrono::steady_clock::now();
+        }
+        while (live.hasWork() && !live.status().failed){
+            if (std::chrono::steady_clock::now() - stringStart >= std::chrono::seconds(60)) break;
+            if (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - sliceStart).count() >= budgetMs) return false;
             // the GPU objects and programs it waits for are made between its steps
             SystemRender::updateGpuCreation();
             RuntimeShaderCompiler::beginFrame();
@@ -800,11 +810,25 @@ bool jasperengine::titleart::prebakeTitleGlyphAtlas(TitleArtLive& live, const Ti
             }
         }
         if (live.status().failed || live.hasWork()){
-            error = "\"" + text + "\": " + (live.status().failed ? live.status().error : std::string("did not finish within 60 s"));
-            return false;
+            failure = "\"" + text + "\": " + (live.status().failed ? live.status().error : std::string("did not finish within 60 s"));
+            finished = true;
+            return true;
         }
+        next++;
+        started = false;
     }
+    finished = true;
     return true;
+}
+
+bool jasperengine::titleart::prebakeTitleGlyphAtlas(TitleArtLive& live, const TitleJobFactory& factory, const TitleArtLiveState& state,
+                                                    const std::vector<FieldOverride>& overrides, const std::string& textLayer,
+                                                    const std::vector<std::string>& strings, size_t maxCells, std::string& error){
+    TitleGlyphPrebake prebake(live, factory, state, overrides, textLayer, strings, maxCells);
+    while (!prebake.step(1000.0)){
+    }
+    error = prebake.error();
+    return error.empty();
 }
 
 // ==================================================================== the job

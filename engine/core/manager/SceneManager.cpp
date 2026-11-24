@@ -639,7 +639,7 @@ void SceneManager::updatePreloads() {
             SoundPool::parseClipRef(*it, file, loadType);
             const SoundLoadResult result = SoundPool::loadClip(file, loadType);
             const std::string id = result.id;
-            auto release = [id]() { SoundPool::remove(id); };
+            auto release = [id]() { SoundPool::release(id); };
             it = finished(result, release) ? pending.sounds.erase(it) : it + 1;
             if (oneFile) return;
         }

@@ -99,7 +99,7 @@ void TilePaletteWindow::resetForProjectSwitch() {
 }
 
 void TilePaletteWindow::bindCommands(CommandCatalog& catalog) {
-    auto bind = [&catalog, this](const char* id, std::function<void()> action, std::function<bool()> enabled) {
+    auto bind = [&catalog](const char* id, std::function<void()> action, std::function<bool()> enabled) {
         const CommandDef* existing = catalog.find(id);
         if (!existing) return;
         CommandDef def = *existing;
@@ -107,7 +107,7 @@ void TilePaletteWindow::bindCommands(CommandCatalog& catalog) {
         def.enabled = std::move(enabled);
         // while the window has the keyboard, or a Scene tool is up: the Scene view's keys it shares
         // (L, [, ], Delete) belong to the tile tools then
-        def.keyGate = [this]() { return !ImGui::IsAnyItemActive(); };
+        def.keyGate = []() { return !ImGui::IsAnyItemActive(); };
         catalog.add(std::move(def));
     };
     const auto always = []() { return true; };

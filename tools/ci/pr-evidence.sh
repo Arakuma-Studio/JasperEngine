@@ -57,7 +57,9 @@ ensure_release() {
 }
 
 ensure_release
-(cd "$STAGE" && gh release upload "$TAG" --clobber "${NAMES[@]}") >/dev/null
+# by path from here, not from inside the staging dir: gh finds the repository from the working
+# directory's git remote, and the staging dir is not a checkout
+gh release upload "$TAG" --clobber "${NAMES[@]/#/$STAGE/}" >/dev/null
 
 ASSETS="$(gh release view "$TAG" --json assets --jq '.assets[] | "\(.name)\t\(.url)"')"
 status=0

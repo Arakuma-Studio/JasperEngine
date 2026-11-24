@@ -133,6 +133,11 @@ namespace {
                 value["submeshes"] = submeshes;
                 break;
             }
+            case editor::ComponentType::AudioSourceComponent:
+                // which Audio Source of its GameObject it is (S97 REQ-24): a slot stays a slot, the
+                // GameObject's own source stays its own
+                keep("slot");
+                break;
             case editor::ComponentType::UIComponent:
                 if (editor::Stream::isGeneratedUI(scene, scene->getSignature(entity))) {
                     for (const char* key : uiGeometryKeys) {
