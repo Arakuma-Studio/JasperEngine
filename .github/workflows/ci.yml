@@ -124,6 +124,7 @@ jobs:
       mcp_shards: ${{ steps.plan.outputs.mcp_shards }}
       build_only: ${{ steps.plan.outputs.build_only }}
       unbuilt: ${{ steps.plan.outputs.unbuilt }}
+      macos_full: ${{ steps.plan.outputs.macos_full }}
       dispatch_advisory: ${{ steps.plan.outputs.dispatch_advisory }}
       runs_on: ${{ steps.plan.outputs.runs_on }}
     steps:
@@ -1180,14 +1181,14 @@ jobs:
       # 18 min cold on a hosted runner: a hung test fails here, not at the job's 300 min (a link-following
       # cleanup hung for 3 h on je-mac, merge-queue run of #162)
       - name: Unit tests (CPU suites)
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' || needs.changes.outputs.macos_full == 'true'
         timeout-minutes: 60
         run: tools/ci/macos.sh tests
       - name: Call CLI without an editor
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' || needs.changes.outputs.macos_full == 'true'
         run: tools/ci/macos.sh check-cli
       - name: Compile build of post-processing
-        if: ${{ !cancelled() && github.event_name != 'push' }}
+        if: ${{ !cancelled() && (github.event_name != 'push' || needs.changes.outputs.macos_full == 'true') }}
         run: tools/ci/macos.sh compile-smoke tools/fixtures/post-processing
 
       - uses: ./.github/actions/ccache-save

@@ -358,7 +358,7 @@ class Rules(unittest.TestCase):
         self.assertEqual(keys, ["full", *[f"run_{n}" for n in pl.LANES], "unit_filter_core", "unit_filter_editor",
                                 "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "asan_filter_core",
                                 "asan_filter_editor", "htmlui_filter", "mcp_shards", "windows_parts",
-                                "build_only", "unbuilt", "dispatch_advisory", "runs_on"])
+                                "build_only", "unbuilt", "macos_full", "dispatch_advisory", "runs_on"])
         self.assertIn("dispatch_advisory=false", lines)
         self.assertIn('unbuilt=["windows-editor-tests"]',
                       pl.github_output(dict(doc, unbuilt=["windows-editor-tests"]), r["unit_run"]).splitlines())
@@ -459,6 +459,58 @@ class Rules(unittest.TestCase):
             for files in (["editor/App.cpp"], [".github/workflows/ci.yml"]):
                 self.assertTrue(decide("pull_request", plan(files), full_selection=True)["lanes"][name]["run"], (files, name))
         self.assertTrue(decide("push", plan(["editor/App.cpp"]))["lanes"]["macos"]["run"])
+
+    def test_the_queue_builds_macos_only_for_a_macos_only_input(self):
+        # macOS caps the queue (5 hosted runners and je-mac, a macos job a group)
+        for mac in ("", None):
+            r = decide("merge_group", plan(["editor/App.cpp"], unit="all"), macos_inputs=mac)
+            self.assertEqual(r["lanes"]["macos"]["run"], mac is None, mac)           # (None: not read: it runs)
+            self.assertEqual("macos" in r["queue_off"], mac == "")
+        for f in ("editor/util/ClipboardMac.mm", "engine/platform/mac/MacViewMetal.mm", "editor/platform/MacBundle.cpp",
+                  "editor/util/ApplePrivacy.cpp", "engine/libs/sokol/sokol_gfx.h", "editor/resources/macos/Info.plist",
+                  "engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj", "tools/ci/macos.sh",
+                  ".github/actions/ccache-save/trim.sh"):
+            r = decide("merge_group", plan([f, "editor/App.cpp"]), macos_inputs="")
+            self.assertTrue(r["lanes"]["macos"]["run"], f)
+            self.assertNotIn("macos", r["queue_off"])
+        for f in ("editor/StateMachine.cpp", "engine/core/Foo.cpp", "editor/App.cpp"):
+            self.assertFalse(decide("merge_group", plan([f]), macos_inputs="")["lanes"]["macos"]["run"], f)
+        r = decide("merge_group", plan(["engine/core/Engine.cpp"]), macos_inputs="engine/core/Engine.cpp (it names __APPLE__)")
+        self.assertIn("__APPLE__", r["lanes"]["macos"]["why"])
+        # a push: the whole lane when the queue left it out; its build only when the queue ran it
+        self.assertTrue(decide("push", plan(["editor/App.cpp"]), macos_inputs="")["macos_full"])
+        self.assertFalse(decide("push", plan(["editor/Mac.mm"]), macos_inputs="")["macos_full"])
+        self.assertFalse(decide("push", plan(["editor/App.cpp"]), macos_inputs="editor/App.cpp (it names __APPLE__)")["macos_full"])
+        # a pull request keeps its own rule, full runs and the nightly build it
+        self.assertFalse(decide("pull_request", plan(["engine/core/Engine.cpp"]), macos_inputs="x")["lanes"]["macos"]["run"])
+        for event in ("full", "nightly"):
+            self.assertTrue(decide(event, None)["lanes"]["macos"]["run"])
+        # ci.yml runs the push's tests then
+        text = (HERE.parent.parent / pl.WORKFLOW).read_text()
+        self.assertEqual(text.count("needs.changes.outputs.macos_full == 'true'"), 3)
+
+    def test_the_macos_inputs_are_read_from_the_change(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
+            def commit(path, text):
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_text(text)
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qm", path], check=True)
+                return subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+            cm = "cmake_minimum_required(VERSION 3.20)\n" + "".join(f"set(A{i} {i})\n" for i in range(40)) + \
+                 "if(APPLE)\n  set(MAC 1)\nendif()\n" + "".join(f"set(B{i} {i})\n" for i in range(40))
+            base = commit("CMakeLists.txt", cm)
+            commit("engine/core/Plain.cpp", "int a;\n")
+            commit("engine/core/Thread.cpp", "#if defined(__APPLE__)\nint b;\n#endif\n")
+            self.assertEqual(pl.macos_inputs(root, base, ["engine/core/Plain.cpp"]), "")
+            self.assertIn("names __APPLE__", pl.macos_inputs(root, base, ["engine/core/Thread.cpp"]))
+            # a CMake change near an Apple setting counts, one far from it does not
+            far = commit("CMakeLists.txt", cm.replace("set(A2 2)", "set(A2 3)"))
+            self.assertEqual(pl.macos_inputs(root, base, ["CMakeLists.txt"]), "")
+            near = commit("CMakeLists.txt", cm.replace("set(MAC 1)", "set(MAC 2)"))
+            self.assertIn("a change near APPLE", pl.macos_inputs(root, far, ["CMakeLists.txt"]))
 
     def test_the_queue_builds_ios_only_for_an_apple_only_input(self):
         # a compile check with the Apple compiler the queue's macos lane runs on every change; macOS runners
@@ -1028,11 +1080,16 @@ class Runs(unittest.TestCase):
                   "--runner-state", str(st), "--repo", REPO, "--head-repo", REPO)
         # the runner state as ci.yml fetches it, fresh: macOS saturated, je-mac idle
         st.write_text(json.dumps(dict(state(saturated=("macos",)), t=time.time() - 30)))
-        # (the merge queue: a PR without an Apple-only input runs neither macOS lane; the queue macos only)
+        # (the merge queue without a macOS-only input runs neither macOS lane)
         code, doc, out = self.run_main("--event", "merge_group", "--trigger", "merge_group", *common)
         self.assertEqual(code, 0, out)
-        self.assertEqual(overflowed(doc["runs_on"]), {"macos": "je-mac"}, doc["routing"])
-        self.assertEqual(doc["queue_off"], ["ios"])
+        self.assertEqual(overflowed(doc["runs_on"]), {}, doc["routing"])
+        self.assertEqual(doc["queue_off"], ["ios", "macos"])
+        # with one, macos runs there, on the Mac
+        head = self.commit("engine/platform/mac/Window.mm", "// mac\n")
+        common = ("--base", self.base, "--head", head, *common[4:])
+        code, doc, out = self.run_main("--event", "merge_group", "--trigger", "merge_group", *common)
+        self.assertEqual(overflowed(doc["runs_on"]).get("macos"), "je-mac", (doc["lanes"]["macos"], doc["routing"]))
         self.assertEqual(doc["runs_on"]["mcp-1"], "ubuntu-latest")
         self.assertIn("runner: macos on je-mac", out)
         self.assertIn('"macos":"je-mac"', [l for l in gh.read_text().splitlines() if l.startswith("runs_on=")][-1])
