@@ -1453,9 +1453,9 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "set_mesh_geometry";
         tool.title = "Set Mesh Geometry";
         tool.description =
-            "Replace a mesh's geometry with a generated primitive. Sizes: plane width/depth, wall width/height, box "
+            "Replace a mesh's geometry with a primitive. Sizes: plane width/depth, wall width/height, box "
             "width/height/depth, sphere radius, cylinder/capsule radius/top_radius/height, torus radius/ring_radius; "
-            "segments tiles, slices/stacks, sides/rings. Omitted values: defaults. Not for models or generated "
+            "segments tiles, slices/stacks, sides/rings. Omitted: defaults. Not for models or generated "
             "meshes. save_as: also a .mesh asset it then shows (alone: the current geometry).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
