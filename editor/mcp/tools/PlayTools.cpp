@@ -3699,8 +3699,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"max_width", maxWidth},
             {"keep_changes", stringEnum("stop: keep all or none of the play-time edits (absent: get_play_changes).",
                                         {"none", "all"})},
-            {"input", string("start: replay this .input.json.")},
-            {"data", withDefault(string("start: project, clean or a Tests/Data snapshot."), "project")}
+            {"input", string("start: replay a .input.json.")},
+            {"data", string("start: project, clean or a Tests/Data snapshot.")}
         }, {"action"});
         tool.handler = playTool;
         registry.addTool(std::move(tool));
@@ -3808,7 +3808,7 @@ void registerPlayTools(McpRegistry& registry) {
             "at stop. Stopped: refused unless allow_edit_mode (NOT undoable).";
         tool.inputSchema = object({
             {"code", string("Expression, or chunk with return.")},
-            {"command", string("A console command line instead of code (help lists them).")},
+            {"command", string("A console command instead of code (help lists them).")},
             {"scene", runtimeScene},
             {"allow_edit_mode", withDefault(boolean(""), false)},
             {"timeout_seconds", withDefault(number("", 0.1, 60), 5)},

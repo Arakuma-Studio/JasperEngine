@@ -1379,7 +1379,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "Asked to run a game's console command, agents wrapped DebugOverlay.executeCommand in eval_lua code and "
                          "read the console for what happened, missing the command's result (its lines and returned value).",
-        "text_at_issue": "eval_lua parameter command: 'A console command line instead of code (help lists them).'",
+        "text_at_issue": "eval_lua parameter command: 'A console command instead of code (help lists them).'",
         "source": "docs/specs/dev-console-for-agents.md R25, R30",
         "prompt": "The game is playing. Give the player 10 gold with the game's own `give` console command, and tell me the "
                   "player's new gold total that the command reports.",
