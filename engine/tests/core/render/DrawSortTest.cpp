@@ -17,7 +17,7 @@
 using namespace jasperengine;
 
 namespace {
-    std::vector<uint32_t> group(const std::vector<int>& priorities, const std::vector<uint64_t>& keys){
+    std::vector<uint32_t> drawSortGroup(const std::vector<int>& priorities, const std::vector<uint64_t>& keys){
         std::vector<uint32_t> order;
         VisibleList::groupBatches(priorities.data(), keys.data(), keys.size(), order);
         return order;
@@ -26,13 +26,13 @@ namespace {
 
 TEST(DrawSort, PriorityRunsKeepTheirPlace){
     // equal keys in two priorities stay in their own (stencil writers before their readers)
-    const std::vector<uint32_t> order = group({-1, -1, 0, 0, 0, 1}, {5, 6, 5, 6, 5, 5});
+    const std::vector<uint32_t> order = drawSortGroup({-1, -1, 0, 0, 0, 1}, {5, 6, 5, 6, 5, 5});
     EXPECT_EQ(order, (std::vector<uint32_t>{0, 1, 2, 4, 3, 5}));
 }
 
 TEST(DrawSort, UnbatchedDrawsStayInPlace){
     // key 0 batches with nothing: two of them never group
-    const std::vector<uint32_t> order = group({0, 0, 0, 0}, {0, 7, 0, 7});
+    const std::vector<uint32_t> order = drawSortGroup({0, 0, 0, 0}, {0, 7, 0, 7});
     EXPECT_EQ(order, (std::vector<uint32_t>{0, 1, 3, 2}));
 }
 
@@ -42,7 +42,7 @@ TEST(DrawSort, KeepsTheQueueOrderWithinABatch){
     std::vector<uint64_t> keys(100);
     for (size_t i = 0; i < keys.size(); i++)
         keys[i] = 1 + i % 4;
-    const std::vector<uint32_t> order = group(priorities, keys);
+    const std::vector<uint32_t> order = drawSortGroup(priorities, keys);
     ASSERT_EQ(order.size(), keys.size());
     std::vector<bool> seen(order.size(), false);
     for (size_t i = 0; i < order.size(); i++){

@@ -47,10 +47,10 @@ namespace jasperengine::pixelart {
 namespace jasperengine::pixelart {
 namespace {
 
-    using ErrorText = char[1024];
+    using PixelArtErrorText = char[1024];
 
-    void copyError(ErrorText& error, const std::string& text) {
-        std::snprintf(error, sizeof(ErrorText), "%s", text.c_str());
+    void copyError(PixelArtErrorText& error, const std::string& text) {
+        std::snprintf(error, sizeof(PixelArtErrorText), "%s", text.c_str());
     }
 
     const Palette& paletteOf(const LuaPalette& self) {
@@ -72,7 +72,7 @@ namespace {
     }
 
     // Palette.new({ "#000000", "#ff00ff", Vector4(1, 1, 1, 1), ... })
-    bool newPalette(lua_State* L, int index, LuaPalette& out, ErrorText& error) {
+    bool newPalette(lua_State* L, int index, LuaPalette& out, PixelArtErrorText& error) {
         if (!lua_istable(L, index)) {
             copyError(error, "Palette.new: give a table of colours (\"#rrggbb\", \"#rrggbbaa\" or Vector4)");
             return false;
@@ -113,7 +113,7 @@ namespace {
     }
 
     int paletteNew(lua_State* L) {
-        ErrorText error;
+        PixelArtErrorText error;
         bool ok;
         {
             LuaPalette created;
@@ -151,7 +151,7 @@ namespace {
     }
 
     // sprite.palette = "Team Blue" | 2 | "" | 0
-    bool applyPalette(MeshComponent& mesh, lua_State* L, int index, ErrorText& error) {
+    bool applyPalette(MeshComponent& mesh, lua_State* L, int index, PixelArtErrorText& error) {
         if (mesh.numSubmeshes == 0) return true;
         const std::vector<std::string> names = paletteRowNames(mesh.submeshes[0].material);
         int row = -1;
@@ -187,14 +187,14 @@ namespace {
 
     template<class T>
     int setPaletteName(lua_State* L) {
-        ErrorText error;
+        PixelArtErrorText error;
         bool ok = true;
         if (MeshComponent* mesh = meshOf<T>(L)) ok = applyPalette(*mesh, L, 2, error);
         if (!ok) return luaL_error(L, "%s", error);
         return 0;
     }
 
-    bool applyTarget(MeshComponent& mesh, lua_State* L, ErrorText& error) {
+    bool applyTarget(MeshComponent& mesh, lua_State* L, PixelArtErrorText& error) {
         const int row = (int)luaL_checkinteger(L, 2);
         std::string key;
         if (lua_type(L, 3) == LUA_TSTRING) {
@@ -217,7 +217,7 @@ namespace {
 
     template<class T>
     int setPaletteTargetOf(lua_State* L) {
-        ErrorText error;
+        PixelArtErrorText error;
         bool ok = true;
         if (MeshComponent* mesh = meshOf<T>(L)) ok = applyTarget(*mesh, L, error);
         if (!ok) return luaL_error(L, "%s", error);

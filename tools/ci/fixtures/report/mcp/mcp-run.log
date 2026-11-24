@@ -1,0 +1,20 @@
+run_tests: --suite ci runs 2 test file(s) and leaves out 1:
+  left out test_ecs.py: long-running: the nightly full suite runs it
+PASS test_tileset.py::test_paint (0.0s)
+FAIL test_tileset.py::test_undo_paint (0.0s)
+     Traceback (most recent call last):
+       File "/src/tools/mcp/run_tests.py", line 160, in _run_file
+         await asyncio.wait_for(fn(), timeout)
+       File "/usr/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+         return await fut
+                ^^^^^^^^^
+       File "/src/tools/mcp/tests/test_tileset.py", line 9, in test_undo_paint
+         assert tiles == 3, f"expected 3 tiles after undo, got {tiles}"
+                ^^^^^^^^^^
+     AssertionError: expected 3 tiles after undo, got 4
+SKIP test_tileset.py::test_web_latency (0.0s)  needs the mesh-raycast web build
+
+== summary
+FAIL test_tileset.py::test_undo_paint
+CRASH test_crashes.py (worker exit 3)
+1 passed, 1 failed, 1 skipped, 1 crashed in 2.4s (1 test file(s) left out by --suite ci)

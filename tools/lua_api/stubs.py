@@ -143,34 +143,40 @@ def doc_lines(lines, indent=''):
     return out
 
 
-def c_string_literals(text, max_part=12000):
-    """Split text into C string literal parts (each a sequence of adjacent literals)."""
+def c_string_literals(text, max_part=12000, max_literal=2000):
+    """Split text into C string literal parts (each a sequence of adjacent literals).
+
+    A line longer than max_literal bytes (the compact JSON is one) is cut into several literals:
+    MSVC 19.44 (Visual Studio 2022) refuses a literal over 16380 bytes (C2026)."""
     parts = []
     cur = []
     size = 0
     for line in text.splitlines(keepends=True):
-        esc = ''
-        for ch in line.encode('utf-8'):
-            if ch == 0x5C:
-                esc += '\\\\'
-            elif ch == 0x22:
-                esc += '\\"'
-            elif ch == 0x0A:
-                esc += '\\n'
-            elif ch == 0x09:
-                esc += '\\t'
-            elif ch == 0x3F:
-                esc += '\\?'  # no trigraphs
-            elif 0x20 <= ch < 0x7F:
-                esc += chr(ch)
-            else:
-                esc += '\\%03o' % ch
-        if size + len(line) > max_part and cur:
-            parts.append(cur)
-            cur = []
-            size = 0
-        cur.append(f'"{esc}"')
-        size += len(line)
+        raw = line.encode('utf-8')
+        for start in range(0, len(raw), max_literal):
+            piece = raw[start:start + max_literal]
+            esc = ''
+            for ch in piece:
+                if ch == 0x5C:
+                    esc += '\\\\'
+                elif ch == 0x22:
+                    esc += '\\"'
+                elif ch == 0x0A:
+                    esc += '\\n'
+                elif ch == 0x09:
+                    esc += '\\t'
+                elif ch == 0x3F:
+                    esc += '\\?'  # no trigraphs
+                elif 0x20 <= ch < 0x7F:
+                    esc += chr(ch)
+                else:
+                    esc += '\\%03o' % ch
+            if size + len(piece) > max_part and cur:
+                parts.append(cur)
+                cur = []
+                size = 0
+            cur.append(f'"{esc}"')
+            size += len(piece)
     if cur:
         parts.append(cur)
     return parts

@@ -61,6 +61,8 @@ namespace jasperengine::editor::test {
         fs::path svn = toolPath("svn");
         fs::path svnadmin = toolPath("svnadmin");
         std::vector<std::pair<std::string, std::string>> env;
+        // a hang guard, not a budget: what a git or svn call of the test may take before it fails
+        int processTimeoutMs = 60000;
 
         VcsSandbox() {
             const fs::path home = dir.path() / "home";
@@ -83,7 +85,7 @@ namespace jasperengine::editor::test {
             spec.args = std::move(args);
             spec.env = env;
             spec.stdinData = std::move(stdinData);
-            spec.timeoutMs = 60000;
+            spec.timeoutMs = processTimeoutMs;
             return runOffMain(spec);
         }
         // git in `cwd`; fails the test (with its output) when git does

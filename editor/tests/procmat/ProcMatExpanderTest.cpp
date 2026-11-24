@@ -31,7 +31,7 @@ namespace {
         std::string source;
     };
 
-    std::shared_ptr<const NodeLibrary> repositoryLibrary() {
+    std::shared_ptr<const NodeLibrary> procMatExpanderRepositoryLibrary() {
         std::string error;
         auto library = NodeLibrary::fromDirectory(std::filesystem::path(JASPER_TEST_REPO_DIR) / "editor/procmat/nodes", error);
         EXPECT_TRUE(library) << error;
@@ -42,7 +42,7 @@ namespace {
         return std::regex_replace(text, std::regex("[^A-Za-z0-9_.=-]+"), "_");
     }
 
-    Row rowOf(const std::string& name, const std::string& text, const PassBuilder& pass) {
+    Row procMatExpanderRowOf(const std::string& name, const std::string& text, const PassBuilder& pass) {
         std::vector<float> floats;
         for (double value : pass.values) floats.push_back((float)value);
         return {slugOf(name), fnv1a(text.data(), text.size()), fnv1a(floats.data(), floats.size() * sizeof(float)), text};
@@ -57,11 +57,11 @@ namespace {
             if (!done.insert({target.generator, target.port}).second) continue;
             PassBuilder pass;
             const std::string text = expander.shaderText(target, pass);
-            rows.push_back(rowOf(prefix + "." + label, text, pass));
+            rows.push_back(procMatExpanderRowOf(prefix + "." + label, text, pass));
             for (const PassBuilder::TextureUse& use : pass.textures) {
                 const std::string index = std::to_string(use.source->index());
                 if (const auto source = use.source->getSource(0)) queue.push_back({"p" + index + "in", *source});
-                if (use.source->kind() == TextureSource::Kind::Iterate) {
+                if (use.source->kind() == jasperengine::editor::procmat::TextureSource::Kind::Iterate) {
                     if (const auto loop = use.source->getSource(1)) queue.push_back({"p" + index + "loop", *loop});
                 }
             }
@@ -88,7 +88,7 @@ namespace {
             }
             PassBuilder pass;
             const std::string text = expander.shaderText(previous, pass);
-            rows.push_back(rowOf("chain" + std::to_string(size), text, pass));
+            rows.push_back(procMatExpanderRowOf("chain" + std::to_string(size), text, pass));
         }
     }
 
@@ -113,7 +113,7 @@ namespace {
 }
 
 TEST(ProcMatExpander, AgreesWithThePythonReferenceOnTheLibrary) {
-    const auto library = repositoryLibrary();
+    const auto library = procMatExpanderRepositoryLibrary();
     ASSERT_TRUE(library);
     const std::vector<Row> rows = expandLibrary(library);
 
@@ -150,14 +150,14 @@ TEST(ProcMatExpander, AgreesWithThePythonReferenceOnTheLibrary) {
 }
 
 TEST(ProcMatExpander, ANodeTheLibraryLacksIsAnError) {
-    const auto library = repositoryLibrary();
+    const auto library = procMatExpanderRepositoryLibrary();
     ASSERT_TRUE(library);
     Expander expander(library);
     EXPECT_THROW(expander.instantiate("not_a_node", Json::object()), ExpansionError);
 }
 
 TEST(ProcMatExpander, AnInputReadAsATextureNeedsABuffer) {
-    const auto library = repositoryLibrary();
+    const auto library = procMatExpanderRepositoryLibrary();
     ASSERT_TRUE(library);
     std::string nodeId;
     for (const auto& [id, descriptor] : library->descriptors()) {

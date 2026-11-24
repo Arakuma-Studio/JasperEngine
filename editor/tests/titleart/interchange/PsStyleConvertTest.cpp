@@ -22,7 +22,7 @@ using namespace jasperengine::editor::psd;
 
 namespace {
 
-    std::vector<uint8_t> fixture(const char* name) {
+    std::vector<uint8_t> psStyleConvertFixture(const char* name) {
         std::ifstream in(std::string(JASPER_TEST_REPO_DIR) + "/editor/tests/titleart/fixtures/psd/" + name, std::ios::binary);
         return std::vector<uint8_t>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
@@ -30,7 +30,7 @@ namespace {
     const PsStyleFile& library() {
         static PsStyleFile file = [] {
             PsStyleFile f;
-            const std::vector<uint8_t> bytes = fixture("styles.asl");
+            const std::vector<uint8_t> bytes = psStyleConvertFixture("styles.asl");
             std::string error;
             EXPECT_TRUE(readPsStyles(bytes.data(), bytes.size(), f, error)) << error;
             return f;
@@ -60,12 +60,12 @@ namespace {
         return out;
     }
 
-    bool contains(const std::vector<std::string>& list, const std::string& text) {
+    bool psStyleConvertContains(const std::vector<std::string>& list, const std::string& text) {
         for (const std::string& s : list) if (s.find(text) != std::string::npos) return true;
         return false;
     }
 
-    const Json* effectOf(const ConvertedPsStyle& c, const char* type, int nth = 0) {
+    const Json* psStyleConvertEffectOf(const ConvertedPsStyle& c, const char* type, int nth = 0) {
         for (const Json& e : c.effects) {
             if (e["type"] == type && nth-- == 0) return &e;
         }
@@ -85,7 +85,7 @@ namespace {
 TEST(PsStyleConvert, ReadsTheLibrary) {
     ASSERT_EQ(library().kind, "asl");
     EXPECT_EQ(library().styles.size(), 17u);
-    EXPECT_TRUE(contains(library().skipped, "Blending Only: no layer effects")) << "a style with blending options only is listed as skipped";
+    EXPECT_TRUE(psStyleConvertContains(library().skipped, "Blending Only: no layer effects")) << "a style with blending options only is listed as skipped";
     ASSERT_EQ(library().patterns.size(), 1u);
     EXPECT_EQ(library().patterns[0].name, "Swirl");
     EXPECT_EQ(library().patterns[0].width, 8);
@@ -106,7 +106,7 @@ TEST(PsStyleConvert, StrokesBecomeRims) {
     EXPECT_EQ(c.summary.front(), "2 rims");
     const ConvertedPsStyle literal = convert("Two Strokes", true);
     EXPECT_FALSE(literal.style["rims"][0]["material"].contains("opacity"));
-    EXPECT_TRUE(contains(literal.notes, "stroke opacity 60 % drawn opaque"));
+    EXPECT_TRUE(psStyleConvertContains(literal.notes, "stroke opacity 60 % drawn opaque"));
 }
 
 // Gradient overlay: the face gradient, PS angle (counter-clockwise) to clockwise; S87: opacity
@@ -118,7 +118,7 @@ TEST(PsStyleConvert, GradientOverlayKeepsAlphaAndMidpoints) {
     EXPECT_DOUBLE_EQ(fill["angle"].get<double>(), 270.0);
     EXPECT_TRUE(alphaAndMidKept(c));
     EXPECT_EQ(fill["gradient"]["stops"][0]["color"], "#ffe678");
-    EXPECT_FALSE(contains(c.notes, "transparency stops ignored"));
+    EXPECT_FALSE(psStyleConvertContains(c.notes, "transparency stops ignored"));
 }
 
 // AC16's red control: the Pachislop-literal conversion fails the alpha and `mid` assertions
@@ -126,7 +126,7 @@ TEST(PsStyleConvert, PachislopLiteralFailsTheImprovements) {
     const ConvertedPsStyle literal = convert("Gradient Face", true);
     EXPECT_FALSE(alphaAndMidKept(literal));
     EXPECT_EQ(literal.style["face"]["fill"]["gradient"]["stops"].size(), 4u) << "the 25 % midpoint became an extra mixed stop";
-    EXPECT_TRUE(contains(literal.notes, "transparency stops ignored"));
+    EXPECT_TRUE(psStyleConvertContains(literal.notes, "transparency stops ignored"));
 }
 
 // Colour overlay: a solid mixed over the base by opacity; Lab (D50) converted as psStyle.ts does
@@ -134,7 +134,7 @@ TEST(PsStyleConvert, ColorOverlayMixes) {
     const ConvertedPsStyle c = convert("Color Face");
     EXPECT_EQ(c.style["face"]["fill"]["kind"], "solid");
     EXPECT_NE(c.style["face"]["fill"]["color"], "#ffffff");
-    EXPECT_TRUE(contains(c.summary, "colour face"));
+    EXPECT_TRUE(psStyleConvertContains(c.summary, "colour face"));
 }
 
 // Pattern overlay: a procedural pattern by name; S87: an unmatched bitmap becomes `custom`
@@ -150,7 +150,7 @@ TEST(PsStyleConvert, PatternOverlays) {
     EXPECT_EQ(saved, std::vector<std::string>({"Swirl 8x8"}));
     const ConvertedPsStyle literal = convert("Bitmap Pattern", true);
     EXPECT_FALSE(literal.style["face"].contains("pattern"));
-    EXPECT_TRUE(contains(literal.notes, "bitmap patterns have no equivalent"));
+    EXPECT_TRUE(psStyleConvertContains(literal.notes, "bitmap patterns have no equivalent"));
 }
 
 // Bevel & Emboss: technique to profile (chisel soft noted), gloss contour by name, custom contour;
@@ -164,7 +164,7 @@ TEST(PsStyleConvert, Bevels) {
     EXPECT_EQ(bevel["gloss"], "ring");
     EXPECT_DOUBLE_EQ(bevel["size"].get<double>(), 10.0);
     EXPECT_DOUBLE_EQ(bevel["highlight_opacity"].get<double>(), 0.8);
-    EXPECT_TRUE(contains(down.notes, "Chisel Soft drawn as a chamfer"));
+    EXPECT_TRUE(psStyleConvertContains(down.notes, "Chisel Soft drawn as a chamfer"));
     const ConvertedPsStyle literal = convert("Bevel Down", true);
     EXPECT_DOUBLE_EQ(literal.style["face"]["bevel"]["light_angle"].get<double>(), 315.0);
     EXPECT_FALSE(literal.style["face"]["bevel"].contains("direction"));
@@ -177,15 +177,15 @@ TEST(PsStyleConvert, Bevels) {
 // noted); Stroke Emboss: every rim; Outer Bevel: the outermost rim
 TEST(PsStyleConvert, EmbossStylesAndRimBevels) {
     const ConvertedPsStyle emboss = convert("Emboss");
-    const Json* m = effectOf(emboss, "material");
+    const Json* m = psStyleConvertEffectOf(emboss, "material");
     ASSERT_NE(m, nullptr);
     EXPECT_EQ((*m)["params"]["color_mode"], "layer");
     EXPECT_TRUE((*m)["params"]["material"]["bevel"]["enabled"].get<bool>());
     EXPECT_FALSE(emboss.style["face"].contains("bevel"));
     const ConvertedPsStyle pillow = convert("Pillow");
-    ASSERT_NE(effectOf(pillow, "material"), nullptr);
-    EXPECT_EQ((*effectOf(pillow, "material"))["params"]["material"]["bevel"]["direction"], "down");
-    EXPECT_TRUE(contains(pillow.notes, "pillow emboss"));
+    ASSERT_NE(psStyleConvertEffectOf(pillow, "material"), nullptr);
+    EXPECT_EQ((*psStyleConvertEffectOf(pillow, "material"))["params"]["material"]["bevel"]["direction"], "down");
+    EXPECT_TRUE(psStyleConvertContains(pillow.notes, "pillow emboss"));
     const ConvertedPsStyle stroke = convert("Stroke Emboss");
     EXPECT_TRUE(stroke.style["rims"][0]["material"]["bevel"]["enabled"].get<bool>());
     const ConvertedPsStyle outer = convert("Outer Bevel");
@@ -206,7 +206,7 @@ TEST(PsStyleConvert, Satin) {
 // Inner Glow: S80's inner_glow effect with its source (Pachislop drew Center from the edge)
 TEST(PsStyleConvert, InnerGlowKeepsItsSource) {
     const ConvertedPsStyle c = convert("Center Glow");
-    const Json* glow = effectOf(c, "inner_glow");
+    const Json* glow = psStyleConvertEffectOf(c, "inner_glow");
     ASSERT_NE(glow, nullptr);
     EXPECT_EQ((*glow)["params"]["source"], "center");
     EXPECT_EQ((*glow)["params"]["color"], "#008000") << "HSB 120, 100 %, 50 %";
@@ -217,7 +217,7 @@ TEST(PsStyleConvert, InnerGlowKeepsItsSource) {
 // Outer Glow in a light blend: mode add
 TEST(PsStyleConvert, OuterGlow) {
     const ConvertedPsStyle c = convert("Screen Glow");
-    const Json* glow = effectOf(c, "outer_glow");
+    const Json* glow = psStyleConvertEffectOf(c, "outer_glow");
     ASSERT_NE(glow, nullptr);
     EXPECT_EQ((*glow)["params"]["mode"], "add");
     EXPECT_DOUBLE_EQ((*glow)["params"]["spread"].get<double>(), 0.2);
@@ -227,15 +227,15 @@ TEST(PsStyleConvert, OuterGlow) {
 // Drop and inner shadows: every instance of the lmfx list; the angle the shadow falls, clockwise
 TEST(PsStyleConvert, ShadowsKeepEveryInstance) {
     const ConvertedPsStyle c = convert("Shadows");
-    ASSERT_NE(effectOf(c, "drop_shadow", 0), nullptr);
-    ASSERT_NE(effectOf(c, "drop_shadow", 1), nullptr) << "both drop shadows of dropShadowMulti";
-    EXPECT_DOUBLE_EQ((*effectOf(c, "drop_shadow", 0))["params"]["angle"].get<double>(), 90.0) << "180 - 90 (the list's bottom first)";
-    EXPECT_DOUBLE_EQ((*effectOf(c, "drop_shadow", 1))["params"]["angle"].get<double>(), 60.0);
-    const Json* inner = effectOf(c, "inner_shadow");
+    ASSERT_NE(psStyleConvertEffectOf(c, "drop_shadow", 0), nullptr);
+    ASSERT_NE(psStyleConvertEffectOf(c, "drop_shadow", 1), nullptr) << "both drop shadows of dropShadowMulti";
+    EXPECT_DOUBLE_EQ((*psStyleConvertEffectOf(c, "drop_shadow", 0))["params"]["angle"].get<double>(), 90.0) << "180 - 90 (the list's bottom first)";
+    EXPECT_DOUBLE_EQ((*psStyleConvertEffectOf(c, "drop_shadow", 1))["params"]["angle"].get<double>(), 60.0);
+    const Json* inner = psStyleConvertEffectOf(c, "inner_shadow");
     ASSERT_NE(inner, nullptr);
     EXPECT_TRUE((*inner)["params"]["use_global_light"].get<bool>());
     EXPECT_DOUBLE_EQ((*inner)["params"]["angle"].get<double>(), 60.0) << "the global light 120: 180 - 120";
-    EXPECT_TRUE(contains(c.notes, "inner shadow: blend mode")) << "a non-Normal shadow blend is a note";
+    EXPECT_TRUE(psStyleConvertContains(c.notes, "inner shadow: blend mode")) << "a non-Normal shadow blend is a note";
 }
 
 // Scale Effects and units: 6 pt at 72 ppi x 200 % = 12 px of a 100 px reference
@@ -253,7 +253,7 @@ TEST(PsStyleConvert, ShapeBurstStroke) {
 
 // Fill opacity and knockout, a PS text layer's font size as the reference, its colour as the base
 TEST(PsStyleConvert, PsdLayerSources) {
-    const std::vector<uint8_t> bytes = fixture("layers8.psd");
+    const std::vector<uint8_t> bytes = psStyleConvertFixture("layers8.psd");
     PsStyleFile file;
     std::string error;
     ASSERT_TRUE(readPsStyles(bytes.data(), bytes.size(), file, error)) << error;
@@ -281,7 +281,7 @@ TEST(PsStyleConvert, PsdLayerSources) {
 
 // R47: truncated and mutated libraries fail with a message, never a crash
 TEST(PsStyleConvert, TruncatedFilesFail) {
-    const std::vector<uint8_t> bytes = fixture("styles.asl");
+    const std::vector<uint8_t> bytes = psStyleConvertFixture("styles.asl");
     for (size_t cut : {size_t(3), size_t(8), size_t(40), bytes.size() / 2, bytes.size() - 3}) {
         PsStyleFile f;
         std::string error;

@@ -35,12 +35,12 @@ namespace {
 
     // a smooth tileable pattern that repeats nowhere inside the image: three waves of whole periods, no
     // offset but the origin lines all three up again
-    uint8_t wave(int x, int y, int side) {
+    uint8_t proceduralChecksWave(int x, int y, int side) {
         const double t = 2.0 * 3.14159265358979323846 / side;
         return (uint8_t)std::lround(127.5 + 35.0 * std::sin(x * t) + 35.0 * std::cos(y * t) + 15.0 * std::sin((x + 2 * y) * t));
     }
 
-    const qa::Json& rowOf(const qa::Json& report, const std::string& id) {
+    const qa::Json& proceduralChecksRowOf(const qa::Json& report, const std::string& id) {
         for (const qa::Json& row : report["checks"]) {
             if (row.value("id", "") == id) return row;
         }
@@ -50,18 +50,18 @@ namespace {
     }
 
     std::string status(const qa::Json& report, const std::string& id) {
-        return rowOf(report, id).value("status", "");
+        return proceduralChecksRowOf(report, id).value("status", "");
     }
 
     // a dielectric stone: tileable colour, flat normal, varied roughness, no metal
     MaterialImages goodStone(int side = 64) {
         MaterialImages images;
         images.outputs["base_color"] = imageOf("base_color", side, [&](int x, int y) {
-            const uint8_t v = wave(x, y, side);
+            const uint8_t v = proceduralChecksWave(x, y, side);
             return std::array<uint8_t, 4>{v, (uint8_t)(v - 10), (uint8_t)(v - 20), 255};
         });
         images.outputs["normal"] = imageOf("normal", side, [](int, int) { return std::array<uint8_t, 4>{128, 128, 255, 255}; });
-        images.outputs["orm"] = imageOf("orm", side, [&](int x, int y) { return std::array<uint8_t, 4>{255, wave(x, y, side), 0, 255}; });
+        images.outputs["orm"] = imageOf("orm", side, [&](int x, int y) { return std::array<uint8_t, 4>{255, proceduralChecksWave(x, y, side), 0, 255}; });
         return images;
     }
 
@@ -75,7 +75,7 @@ TEST(ProceduralChecks, AGoodStonePassesAndEveryRowHasItsShape) {
             EXPECT_TRUE(row.contains(key)) << row.value("id", "") << " lacks " << key;
         }
     }
-    for (const char* id : {"tileability", "histogram", "base_color", "normal", "roughness", "metallic"}) EXPECT_EQ(status(report, id), "PASS") << id << ": " << rowOf(report, id).dump();
+    for (const char* id : {"tileability", "histogram", "base_color", "normal", "roughness", "metallic"}) EXPECT_EQ(status(report, id), "PASS") << id << ": " << proceduralChecksRowOf(report, id).dump();
     EXPECT_EQ(status(report, "height_8bit"), "SKIP") << "no height";
     EXPECT_TRUE(report["thresholds"]["changed"].empty());
     EXPECT_TRUE(report["metrics"]["cost"].contains("mobile_mb"));
@@ -86,8 +86,8 @@ TEST(ProceduralChecks, ASeamFailsTileability) {
     // a ramp across the image: its last column steps all the way back to its first
     images.outputs["base_color"] = imageOf("base_color", 64, [](int x, int) { return std::array<uint8_t, 4>{(uint8_t)(40 + x * 3), 90, 90, 255}; });
     const qa::Json report = ProceduralChecks::report(images, CheckRequest());
-    EXPECT_EQ(status(report, "tileability"), "FAIL") << rowOf(report, "tileability").dump();
-    EXPECT_NE(rowOf(report, "tileability")["limited_by"].get<std::string>().find("base_color"), std::string::npos);
+    EXPECT_EQ(status(report, "tileability"), "FAIL") << proceduralChecksRowOf(report, "tileability").dump();
+    EXPECT_NE(proceduralChecksRowOf(report, "tileability")["limited_by"].get<std::string>().find("base_color"), std::string::npos);
     EXPECT_EQ(report["verdict"], "FAIL");
 }
 
@@ -98,7 +98,7 @@ TEST(ProceduralChecks, ARepeatingPatternWarns) {
         return std::array<uint8_t, 4>{v, v, v, 255};
     });
     const qa::Json report = ProceduralChecks::report(images, CheckRequest());
-    EXPECT_EQ(status(report, "repetition"), "WARN") << rowOf(report, "repetition").dump();
+    EXPECT_EQ(status(report, "repetition"), "WARN") << proceduralChecksRowOf(report, "repetition").dump();
     EXPECT_EQ(status(ProceduralChecks::report(goodStone(), CheckRequest()), "repetition"), "PASS") << "one period of a wave repeats nowhere inside it";
 }
 
@@ -137,11 +137,11 @@ TEST(ProceduralChecks, ANormalFacingAwayFailsAndAFlippedGreenWarns) {
     };
     images.outputs["normal"] = normal(1.0);
     const qa::Json up = ProceduralChecks::report(images, CheckRequest());
-    EXPECT_EQ(status(up, "normal"), "PASS") << rowOf(up, "normal").dump();
+    EXPECT_EQ(status(up, "normal"), "PASS") << proceduralChecksRowOf(up, "normal").dump();
     EXPECT_GT(up["metrics"]["normal"]["green_slope_correlation"].get<double>(), 0.9);
     images.outputs["normal"] = normal(-1.0);
     const qa::Json down = ProceduralChecks::report(images, CheckRequest());
-    EXPECT_EQ(status(down, "normal"), "WARN") << rowOf(down, "normal").dump();
+    EXPECT_EQ(status(down, "normal"), "WARN") << proceduralChecksRowOf(down, "normal").dump();
 }
 
 TEST(ProceduralChecks, FlatRoughnessAndHalfMetalWarn) {
@@ -157,11 +157,11 @@ TEST(ProceduralChecks, AnEightBitHeightWarnsOnlyWhenAShaderSamplesIt) {
     images.outputs["height"] = imageOf("height", 64, [](int x, int) { const uint8_t v = (uint8_t)(x * 2); return std::array<uint8_t, 4>{v, v, v, 255}; });
     const qa::Json unused = ProceduralChecks::report(images, CheckRequest());
     EXPECT_EQ(status(unused, "height_8bit"), "PASS");
-    EXPECT_EQ(rowOf(unused, "height_8bit")["measured"]["levels"], 64);
+    EXPECT_EQ(proceduralChecksRowOf(unused, "height_8bit")["measured"]["levels"], 64);
     images.heightReader = "the shader texture u_height";
     const qa::Json sampled = ProceduralChecks::report(images, CheckRequest());
     EXPECT_EQ(status(sampled, "height_8bit"), "WARN");
-    EXPECT_NE(rowOf(sampled, "height_8bit")["limited_by"].get<std::string>().find("u_height"), std::string::npos);
+    EXPECT_NE(proceduralChecksRowOf(sampled, "height_8bit")["limited_by"].get<std::string>().find("u_height"), std::string::npos);
 }
 
 TEST(ProceduralChecks, AChangedThresholdIsReportedAndRoundsCount) {
@@ -181,7 +181,7 @@ TEST(ProceduralChecks, AChangedThresholdIsReportedAndRoundsCount) {
     request = CheckRequest();
     request.rounds = {{"tileability", 2}};
     const qa::Json third = ProceduralChecks::report(images, request);
-    EXPECT_EQ(rowOf(third, "tileability")["round"], 3);
+    EXPECT_EQ(proceduralChecksRowOf(third, "tileability")["round"], 3);
     EXPECT_TRUE(third["stop"].get<bool>()) << "past fix_rounds the agent stops";
     request.only = {"normal"};
     EXPECT_EQ(ProceduralChecks::report(images, request)["checks"].size(), 1u);

@@ -54,12 +54,13 @@
 #include "audio/WavWriter.h"
 #include "audio/TimelineAudioPreview.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <functional>
 #include <fstream>
@@ -166,7 +167,7 @@ namespace {
             fs::remove_all(headless().dir.parent_path(), ec);
         }
     };
-    [[maybe_unused]] ::testing::Environment* const tempProjectCleanup = ::testing::AddGlobalTestEnvironment(new TempProjectCleanup);
+    [[maybe_unused]] ::testing::Environment* const animationWindowClipTempProjectCleanup = ::testing::AddGlobalTestEnvironment(new TempProjectCleanup);
 
     std::string readAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
@@ -232,13 +233,16 @@ namespace {
         return nullptr;
     }
 
-    // the clip mode's draw budget for a large clip (I1 / I3); the sanitizers slow everything several
-    // times, where only the rest of the test means something
-#if defined(__SANITIZE_ADDRESS__)
-    const double DRAW_BUDGET_MS = 1e9;
-#else
+    // the clip mode's draw budget for a large clip (I1 / I3): a wall-clock budget, printed always
+    // and enforced where perfSlack() asks for it (the benchmark run, never under the sanitizers)
     const double DRAW_BUDGET_MS = 30.0;
-#endif
+
+    void expectDrawWithinBudget(double ms, const char* what) {
+        std::printf("[bench] %s draws in %.2f ms (moving average; budget %.0f)\n", what, ms, DRAW_BUDGET_MS);
+        if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
+            EXPECT_LT(ms, DRAW_BUDGET_MS * slack) << what << " draws in " << ms << " ms (moving average)";
+        }
+    }
 
     bool onGrid(float time, float fps) {
         return std::fabs(time * fps - std::round(time * fps)) < 1e-3f;
@@ -951,7 +955,7 @@ TEST_F(AnimationWindowClipTest, LargeClipStaysResponsive) {
     EXPECT_EQ(st["selection_count"], 36000) << "every key selected";
     frames(30);
     st = act({{"brief", true}});
-    EXPECT_LT(st["draw_ms"].get<double>(), DRAW_BUDGET_MS) << "the clip mode draws in " << st["draw_ms"] << " ms (moving average)";
+    expectDrawWithinBudget(st["draw_ms"].get<double>(), "the clip mode");
     // a drag of every key by one frame is one undo step
     act({{"drag", 1.0 / 60.0}, {"brief", true}});
     EXPECT_NEAR(clipFile("assets/anim/big.anim")["tracks"][0]["keys"][0][0].get<float>(), 1.0f / 60.0f, 1e-4f) << "moved by a frame";
@@ -962,7 +966,7 @@ TEST_F(AnimationWindowClipTest, LargeClipStaysResponsive) {
     frames(30);
     st = act({{"brief", true}});
     EXPECT_EQ(st["view"], "curves");
-    EXPECT_LT(st["draw_ms"].get<double>(), DRAW_BUDGET_MS) << "the curves view draws in " << st["draw_ms"] << " ms (moving average)";
+    expectDrawWithinBudget(st["draw_ms"].get<double>(), "the curves view");
     act({{"view", "dopesheet"}, {"state", "hero_clip"}});
 }
 

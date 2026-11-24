@@ -15,7 +15,7 @@
 #include "texture/Material.h"
 #include "texture/TextureCookQueue.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -60,7 +60,7 @@ namespace {
         return h;
     }
 
-    [[maybe_unused]] std::string readBytes(const fs::path& path) {
+    [[maybe_unused]] std::string projectAssetFilesReadBytes(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }

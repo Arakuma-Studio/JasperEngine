@@ -538,12 +538,15 @@ TEST_F(SharedMeshBuffersTest, StreamUploadsPastTheStagingBufferAreSkippedCounted
     EXPECT_EQ(pending, 0);
 }
 
-// A STREAM texture update past the stream staging buffer keeps the texture's content (the
-// update is dropped whole, not half-staged) and is counted; one that fits goes through.
+// A STREAM texture update past what is left of the frame's stream staging buffer keeps the
+// texture's content (the update is dropped whole, not half-staged) and is counted; one that fits
+// goes through. (An update larger than the whole buffer is not refused: it goes alone in a frame
+// of its own, S55 R6, StreamBudgetTest.)
 TEST_F(SharedMeshBuffersTest, StreamTextureUpdatePastTheStagingBufferKeepsTheTexture){
     const int size = 16;
-    TextureRender texture;
+    TextureRender texture, other;
     ASSERT_TRUE(texture.createDynamicTexture("stream-budget-texture", size, size, ColorFormat::RGBA, TextureFilter::NEAREST));
+    ASSERT_TRUE(other.createDynamicTexture("stream-budget-other", size, size, ColorFormat::RGBA, TextureFilter::NEAREST));
     std::vector<uint8_t> first(size * size * 4), second(size * size * 4);
     for (size_t i = 0; i < first.size(); i++){
         first[i] = uint8_t(i * 7);
@@ -555,8 +558,10 @@ TEST_F(SharedMeshBuffersTest, StreamTextureUpdatePastTheStagingBufferKeepsTheTex
 
     TestSystem::get().clearLogs();
     const uint64_t before = SystemRender::getStreamSkippedUploads();
-    SokolSystem::overrideBudget(SokolSystem::STREAM_BUDGET, first.size() - 1, true);
-    texture.updateTexture(second.data(), second.size());
+    // room for one update and a half: the other texture's update takes the frame's first one
+    SokolSystem::overrideBudget(SokolSystem::STREAM_BUDGET, first.size() + first.size() / 2, true);
+    ASSERT_TRUE(other.updateTexture(first.data(), first.size()));
+    EXPECT_FALSE(texture.updateTexture(second.data(), second.size()));
     GpuEnvironment::drawFrames(1);
     SokolSystem::restoreBudgets();
     EXPECT_EQ(SystemRender::getStreamSkippedUploads(), before + 1);
@@ -571,6 +576,7 @@ TEST_F(SharedMeshBuffersTest, StreamTextureUpdatePastTheStagingBufferKeepsTheTex
     ASSERT_TRUE(readTexturePixels(texture, size, size, 4, pixels));
     EXPECT_EQ(pixels, second);
     texture.destroyTexture();
+    other.destroyTexture();
 }
 
 // Draws past the uniform buffer (a limit of 0 for the test, enforced on any backend as on
@@ -722,8 +728,9 @@ TEST_F(SharedMeshBuffersTest, ReloadedModelFileReleasesAndRecreatesTheSharedBuff
         EXPECT_NE(sg_query_buffer_state(sg_buffer{id}), SG_RESOURCESTATE_VALID);
 }
 
-// Edits: a procedural mesh edited leaves an identical one alone, and a copy of a model whose
-// bytes are written gets a buffer of its own (copy on write) while the other copies keep the
+// Edits: a procedural mesh edited leaves an identical one alone (identical immutable bytes share
+// one buffer by their content; the edited bytes get the buffer of theirs), and a copy of a model
+// whose bytes are written gets a buffer of its own (copy on write) while the other copies keep the
 // shared one and draw unchanged
 TEST_F(SharedMeshBuffersTest, EditingOneMeshDoesNotAffectAnother){
     std::vector<std::unique_ptr<Model>> models; // (outlive the scene)
@@ -740,8 +747,9 @@ TEST_F(SharedMeshBuffersTest, EditingOneMeshDoesNotAffectAnother){
     ASSERT_TRUE(before.read());
     const InkBox bBefore = before.inkOnBackground(s.cell(1), 16);
     ASSERT_FALSE(bBefore.empty());
-    EXPECT_NE(a.getComponent<MeshComponent>().buffer.getRender()->backend.get().id,
-              b.getComponent<MeshComponent>().buffer.getRender()->backend.get().id) << "procedural meshes are not shared";
+    const uint32_t sharedWall = b.getComponent<MeshComponent>().buffer.getRender()->backend.get().id;
+    EXPECT_EQ(a.getComponent<MeshComponent>().buffer.getRender()->backend.get().id, sharedWall)
+        << "identical procedural meshes share their bytes' buffer";
 
     a.createWall(2.5f, 2.5f); // edited
     const std::string path = (tempDir() / "edited_quad.gltf").string();
@@ -750,6 +758,8 @@ TEST_F(SharedMeshBuffersTest, EditingOneMeshDoesNotAffectAnother){
     ASSERT_TRUE(s.settle());
     Screen edited;
     ASSERT_TRUE(edited.read());
+    EXPECT_NE(a.getComponent<MeshComponent>().buffer.getRender()->backend.get().id, sharedWall) << "the edited wall left the shared buffer";
+    EXPECT_EQ(b.getComponent<MeshComponent>().buffer.getRender()->backend.get().id, sharedWall) << "the other wall kept it";
     EXPECT_GT(edited.inkOnBackground(s.cell(0), 16).width(), before.inkOnBackground(s.cell(0), 16).width() + 4) << "the edited wall grew";
     const InkBox bAfter = edited.inkOnBackground(s.cell(1), 16);
     EXPECT_EQ(bAfter.x0, bBefore.x0);
@@ -788,7 +798,8 @@ TEST_F(SharedMeshBuffersTest, EditingOneMeshDoesNotAffectAnother){
     first.needReload = true;
     ASSERT_TRUE(s.settle());
 
-    EXPECT_FALSE(written.getRender()->isShared()) << "the written buffer has a GPU buffer of its own";
+    // (shared by its new bytes' content: no other buffer holds them)
+    EXPECT_TRUE(MeshBufferPool::holdsSource(*written.getRender(), written)) << "the written buffer has the GPU buffer of its new bytes";
     EXPECT_TRUE(second.eBuffers[positions].getRender()->isShared());
     EXPECT_NE(written.getRender()->backend.get().id, second.eBuffers[positions].getRender()->backend.get().id);
     Screen after;

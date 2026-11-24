@@ -13,6 +13,9 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
@@ -206,13 +209,16 @@ bool platform::patchExecutableResources(const fs::path& exe, const fs::path& ico
         return false;
     }
     const WORD language = MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL);
+    // RT_* are MAKEINTRESOURCE ids, the narrow kind outside UNICODE builds: the same integer ids
+    // as the wide ones
+    const auto wideType = [](auto type) { return reinterpret_cast<LPCWSTR>(type); };
     bool ok = true;
     if (icon) {
         for (size_t i = 0; ok && i < icons.size(); i++)
-            ok = UpdateResourceW(update, RT_ICON, MAKEINTRESOURCEW(i + 1), language, icons[i].data(), static_cast<DWORD>(icons[i].size()));
-        ok = ok && UpdateResourceW(update, RT_GROUP_ICON, MAKEINTRESOURCEW(1), language, group.data(), static_cast<DWORD>(group.size()));
+            ok = UpdateResourceW(update, wideType(RT_ICON), MAKEINTRESOURCEW(i + 1), language, icons[i].data(), static_cast<DWORD>(icons[i].size()));
+        ok = ok && UpdateResourceW(update, wideType(RT_GROUP_ICON), MAKEINTRESOURCEW(1), language, group.data(), static_cast<DWORD>(group.size()));
     }
-    ok = ok && UpdateResourceW(update, RT_VERSION, MAKEINTRESOURCEW(1), MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
+    ok = ok && UpdateResourceW(update, wideType(RT_VERSION), MAKEINTRESOURCEW(1), MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
                                const_cast<uint8_t*>(version.data()), static_cast<DWORD>(version.size()));
     if (!EndUpdateResourceW(update, ok ? FALSE : TRUE) || !ok) {
         error = "UpdateResourceW failed on " + exe.string() + " (" + std::to_string(GetLastError()) + ")";

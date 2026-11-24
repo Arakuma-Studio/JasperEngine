@@ -250,6 +250,9 @@ namespace jasperengine::editor{
         TilemapCollider2DComponent,
         // shows a .titleart through its Image or Sprite (S81 R1)
         TitleArtRendererComponent,
+        // S96 vehicles: Unity's WheelCollider, and an engine and gear box driving them
+        WheelColliderComponent,
+        VehicleDrivetrainComponent,
         // a place with its own fog look, blended by the camera's position (docs/specs/vapor.md R40)
         FogZoneComponent
     };
@@ -301,7 +304,16 @@ namespace jasperengine::editor{
         uint64_t updateFlags;
         void* def;
         void* ref;
+        // the bytes of the value at def and ref, from its table (TypeOps::size): an Enum's
+        // underlying type may be one or two bytes. 0 (a property made by hand): the type's own
+        uint32_t size = 0;
     };
+
+    // An Int, UInt or Enum property's value at `value` (its ref or def) as the integer it holds,
+    // read and written at the property's own width: an int written over an enum class : uint8_t
+    // would overwrite the three bytes after it
+    int64_t readPropertyInteger(const PropertyData& property, const void* value);
+    void writePropertyInteger(const PropertyData& property, void* value, int64_t integer);
 
     class Catalog{
     public:
@@ -484,6 +496,17 @@ namespace jasperengine::editor{
             return nullptr;
         }
 
+        // Scene property of a physics world setting (S96, physicsWorldSettingFields): a float, int
+        // or bool field of the scene's ScenePhysics2DSettings / ScenePhysics3DSettings
+        template<typename T>
+        static bool physicsWorldFieldMatches(const PhysicsWorldSettingField& field) {
+            using FT = PhysicsWorldSettingField::Type;
+            if constexpr (std::is_same_v<T, bool>) return field.type == FT::Bool;
+            else if constexpr (std::is_same_v<T, int>) return field.type == FT::Int;
+            else if constexpr (std::is_same_v<T, float>) return field.type == FT::Float;
+            else return false;
+        }
+
         // Scene property "post_processing.<snake name>": a PostProcessingSettings field (bool,
         // int (Int and Enum fields: the enum's value), float, Vector3, std::string), null for
         // any other name
@@ -550,6 +573,12 @@ namespace jasperengine::editor{
                 // Add other types as needed
             }
 
+            if (const PhysicsWorldSettingField* field = findPhysicsWorldSettingField(propertyName)) {
+                if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float>) {
+                    if (physicsWorldFieldMatches<T>(*field))
+                        return static_cast<T>(getPhysicsWorldSetting(*field, scene->getPhysics2DWorldSettings(), scene->getPhysics3DWorldSettings()));
+                }
+            }
             if (const PostProcessingSettings::Field* field = getPostProcessingField(propertyName)) {
                 if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||
                               std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
@@ -884,6 +913,12 @@ namespace jasperengine::editor{
         static T getScenePropertyDefault(const std::string& propertyName) {
             static const SceneSettings d;
 
+            if (const PhysicsWorldSettingField* field = findPhysicsWorldSettingField(propertyName)) {
+                if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float>) {
+                    if (physicsWorldFieldMatches<T>(*field))
+                        return static_cast<T>(getPhysicsWorldSetting(*field, d.physics2DWorld, d.physics3DWorld));
+                }
+            }
             if (const PostProcessingSettings::Field* field = getPostProcessingField(propertyName)) {
                 if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||
                               std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
@@ -1086,6 +1121,19 @@ namespace jasperengine::editor{
         template<typename T>
         static void setSceneProperty(Scene* scene, const std::string& propertyName, const T& value) {
             if (!scene) return;
+
+            if (const PhysicsWorldSettingField* field = findPhysicsWorldSettingField(propertyName)) {
+                if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float>) {
+                    if (physicsWorldFieldMatches<T>(*field)) {
+                        ScenePhysics2DSettings settings2D = scene->getPhysics2DWorldSettings();
+                        ScenePhysics3DSettings settings3D = scene->getPhysics3DWorldSettings();
+                        setPhysicsWorldSetting(*field, settings2D, settings3D, static_cast<double>(value));
+                        if (field->is3D) scene->setPhysics3DWorldSettings(settings3D);
+                        else scene->setPhysics2DWorldSettings(settings2D);
+                    }
+                }
+                return;
+            }
 
             if (const PostProcessingSettings::Field* field = getPostProcessingField(propertyName)) {
                 if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||

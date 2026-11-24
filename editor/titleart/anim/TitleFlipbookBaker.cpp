@@ -357,8 +357,10 @@ bool TitleFlipbookBakeJob::renderOne(){
     request.companion = false;      // title-live tracks play on the companion over the frames
     TitleAnimFrame frame;
     std::string error;
+    const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
     if (!renderer->render(request, frame, error)){
-        fail("render_failed", "frame " + std::to_string(frameIndex) + " of '" + w.animation->name + "': " + error);
+        notReady = TitleArtRenderHost::editor().notReadyCount() != waits;
+        if (!notReady) fail("render_failed", "frame " + std::to_string(frameIndex) + " of '" + w.animation->name + "': " + error);
         return false;
     }
     if (w.frames.empty()) w.report.frame = frame.frame;
@@ -381,6 +383,8 @@ bool TitleFlipbookBakeJob::step(double budgetMs){
             return true;
         }
         if (finished) return true;
+        // the frames build the program it met: this frame renders again on a later step
+        if (notReady) break;
         const double spent = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         if (spent >= budgetMs) break;
     }

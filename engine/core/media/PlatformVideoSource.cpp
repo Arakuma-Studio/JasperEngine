@@ -597,7 +597,7 @@ void PlatformVideoSource::openNow(){
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 continue;
             }
-            if (result == PlatformDecoderBackend::Step::ERROR){
+            if (result == PlatformDecoderBackend::Step::FAILURE){
                 std::lock_guard<std::mutex> lock(mutex);
                 failLocked(failure.code == MediaErrorCode::NONE ? MediaErrorCode::DECODE : failure.code, "'" + path + "': " + failure.message);
                 return;
@@ -738,7 +738,7 @@ PlatformVideoSource::Work PlatformVideoSource::decodeVideo(std::unique_lock<std:
     switch (result){
         case PlatformDecoderBackend::Step::AGAIN:
             return Work::IDLE;
-        case PlatformDecoderBackend::Step::ERROR:
+        case PlatformDecoderBackend::Step::FAILURE:
             failLocked(failure.code == MediaErrorCode::NONE ? MediaErrorCode::DECODE : failure.code, "'" + bytes->path() + "': " + failure.message);
             return Work::DONE;
         case PlatformDecoderBackend::Step::END:
@@ -813,7 +813,7 @@ PlatformVideoSource::Work PlatformVideoSource::decodeAudio(std::unique_lock<std:
             return Work::IDLE;
         case PlatformDecoderBackend::Step::FRAME:
             return Work::DONE;
-        case PlatformDecoderBackend::Step::ERROR:
+        case PlatformDecoderBackend::Step::FAILURE:
             Log::warn("[Video] '%s': audio stopped: %s", bytes->path().c_str(), failure.message.c_str());
             audioEnd = true;
             return Work::DONE;

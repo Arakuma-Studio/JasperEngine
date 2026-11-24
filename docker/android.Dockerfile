@@ -4,6 +4,9 @@ FROM eclipse-temurin:21-jdk-jammy
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CMDLINE_TOOLS=9862592
 
+# apt retries a one-off network failure (apt-retries.conf); wget and sdkmanager below have their own
+COPY apt-retries.conf /etc/apt/apt.conf.d/80-retries
+
 # nasm: dav1d's asm for the x86_64 ABI (the NDK assembles the arm .S files itself)
 RUN apt-get update && apt-get install -y --no-install-recommends unzip wget git ccache nasm \
     && rm -rf /var/lib/apt/lists/* \
@@ -14,12 +17,17 @@ ENV ANDROID_SDK_ROOT=/opt/android-sdk
 ENV PATH=$PATH:/opt/android-sdk/cmdline-tools/latest/bin
 
 RUN mkdir -p $ANDROID_HOME/cmdline-tools \
-    && wget -q https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS}_latest.zip -O /tmp/tools.zip \
+    && wget --tries=5 --waitretry=10 --timeout=60 --retry-connrefused --retry-on-http-error=429,500,502,503,504 -q \
+        https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS}_latest.zip -O /tmp/tools.zip \
     && unzip -q /tmp/tools.zip -d $ANDROID_HOME/cmdline-tools \
     && mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest \
     && rm /tmp/tools.zip \
     && yes | sdkmanager --licenses >/dev/null \
-    && sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" >/dev/null \
+    # (sdkmanager has no retry of its own: up to 5 tries, pausing 10 s longer each time)
+    && for try in 1 2 3 4 5; do \
+        sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" >/dev/null && break; \
+        [ "$try" -lt 5 ] || exit 1; echo "sdkmanager failed (try $try of 5); retrying" >&2; sleep $((try * 10)); \
+    done \
     # The build runs as the host user; AGP installs any missing NDK/CMake here.
     && chmod -R a+rwX $ANDROID_HOME
 

@@ -18,7 +18,7 @@ using namespace jasperengine;
 namespace {
 
     // runs a chunk; "" on success, else the error message
-    std::string runLua(const std::string& code){
+    std::string runMathLua(const std::string& code){
         lua_State* L = LuaBinding::getLuaState();
         if (luaL_loadstring(L, code.c_str()) != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK){
             std::string error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "(error)";
@@ -32,7 +32,7 @@ namespace {
 
 TEST(LuaMath, AabbGetCornersReturnsEight){
     ASSERT_NE(LuaBinding::getLuaState(), nullptr);
-    EXPECT_EQ(runLua(R"(
+    EXPECT_EQ(runMathLua(R"(
         local box = AABB(Vector3(-1, -2, -3), Vector3(1, 2, 3))
         local corners = box:getCorners()
         assert(type(corners) == "table", "a table, got " .. type(corners))
@@ -50,7 +50,7 @@ TEST(LuaMath, AabbGetCornersReturnsEight){
 
 TEST(LuaMath, BoxGetCornersEmptyWhenNullOrInfinite){
     ASSERT_NE(LuaBinding::getLuaState(), nullptr);
-    EXPECT_EQ(runLua(R"(
+    EXPECT_EQ(runMathLua(R"(
         assert(#AABB():getCorners() == 0, "a null AABB has no corners")
         local infinite = AABB()
         infinite:setInfinite()
@@ -61,7 +61,7 @@ TEST(LuaMath, BoxGetCornersEmptyWhenNullOrInfinite){
 
 TEST(LuaMath, ObbGetCornersReturnsEight){
     ASSERT_NE(LuaBinding::getLuaState(), nullptr);
-    EXPECT_EQ(runLua(R"(
+    EXPECT_EQ(runMathLua(R"(
         local box = OBB(Vector3(1, 1, 1), Vector3(1, 2, 3))
         local corners = box:getCorners()
         assert(#corners == 8, "8 corners, got " .. #corners)
@@ -73,7 +73,7 @@ TEST(LuaMath, ObbGetCornersReturnsEight){
 
 TEST(LuaMath, VectorMoveTowardsAndLerp){
     ASSERT_NE(LuaBinding::getLuaState(), nullptr);
-    EXPECT_EQ(runLua(R"(
+    EXPECT_EQ(runMathLua(R"(
         local a, b = Vector3(0, 0, 0), Vector3(10, 0, 0)
         assert(a:moveTowards(b, 3) == Vector3(3, 0, 0), "Vector3 moveTowards")
         assert(a:moveTowards(b, 30) == b, "no overshoot")

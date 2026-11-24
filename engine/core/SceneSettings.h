@@ -4,6 +4,7 @@
 #ifndef SCENESETTINGS_H
 #define SCENESETTINGS_H
 
+#include "Export.h"
 #include "render/Render.h"
 #include "shader/ShaderUniforms.h"
 #include "texture/Texture.h"
@@ -12,6 +13,7 @@
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "util/CanvasScaler.h"
+#include "physics/WorldSettings.h"
 #include <string>
 #include <vector>
 
@@ -159,7 +161,7 @@ namespace jasperengine{
     // pass, which then takes the grade, vignette and dither too; T2 (bloom, blur) adds a small
     // quarter-resolution chain composited by the uber pass. Colours are sRGB (as the colour
     // pickers show them). RenderSystem::getPostProcessingTiers tells what a set turns on.
-    struct PostProcessingSettings {
+    struct JASPERENGINE_API PostProcessingSettings {
         // colour (T0): exposure in stops (0 = none), then the tone mapping curve
         float exposure = 0.0f;
         TonemapMode tonemap = TonemapMode::NONE;
@@ -368,7 +370,7 @@ namespace jasperengine{
     // u_depthTexture, u_gbufferTexture, u_ssaoTexture and its own textures. Uniforms are keyed by
     // the name reflected from the shader's u_fs_postParams block, so a renamed or removed member
     // just drops and an unset one takes the manifest's default (zero without one).
-    struct PostProcessPass {
+    struct JASPERENGINE_API PostProcessPass {
         // a project fork base path, "library:<name>" (a library post-process shader,
         // @shader postprocess), or empty: the built-in passthrough
         ShaderRef shader;
@@ -495,6 +497,10 @@ namespace jasperengine{
         bool physicsInterpolation = true;
         // Box2D sub-steps of each fixed step, 1..16 (more: stiffer joint chains and stacks)
         int physics2DSubSteps = 4;
+        // the 2D world's units, rotation cap and tuning and the 3D solver (owned by PhysicsSystem
+        // as gravity; saved as flat keys, physicsWorldSettingFields)
+        ScenePhysics2DSettings physics2DWorld;
+        ScenePhysics3DSettings physics3DWorld;
 
         // fixed game resolution: when enabled and this scene is the Engine main scene, the main
         // camera renders into an offscreen framebuffer of this size, upscaled to the view rect

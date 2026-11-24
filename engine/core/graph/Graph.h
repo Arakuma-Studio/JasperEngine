@@ -100,7 +100,7 @@ namespace jasperengine::graph {
         Json passthrough = Json::object();
     };
 
-    struct Graph {
+    struct JASPERENGINE_API Graph {
         int formatVersion = FORMAT_VERSION;
         std::string kind;
         int kindVersion = 1;

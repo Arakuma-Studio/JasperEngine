@@ -24,7 +24,7 @@ using titleart::TitleArtDoc;
 
 namespace {
 
-    TitleArtDoc document(Json layers, int width = 512, int height = 256) {
+    TitleArtDoc svgWriterDocument(Json layers, int width = 512, int height = 256) {
         TitleArtDoc doc = titleart::makeNewTitleArt();
         doc.root["canvas"]["width"] = width;
         doc.root["canvas"]["height"] = height;
@@ -42,7 +42,7 @@ namespace {
                                                          {"material", {{"fill", {{"kind", "solid"}, {"color", "#000000"}}}}}}})}}}};
     }
 
-    int count(const std::string& text, const std::string& what) {
+    int svgWriterCount(const std::string& text, const std::string& what) {
         int n = 0;
         for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + 1)) n++;
         return n;
@@ -55,7 +55,7 @@ namespace {
 TEST(SvgWriter, StructureAndIds) {
     Json group = {{"id", "000000a1"}, {"type", "group"}, {"name", "Logo Group"}, {"opacity", 0.5}, {"blend", "screen"},
                   {"children", Json::array({star("000000b1", "Star"), star("000000c1", "Star")})}};
-    const TitleArtDoc doc = document(Json::array({group}));
+    const TitleArtDoc doc = svgWriterDocument(Json::array({group}));
     const TitleSvgResult r = writeTitleSvg(doc, {100, 20, 300, 200}, {}, nullptr);
     ASSERT_TRUE(r.ok) << r.error;
     EXPECT_NE(r.text.find("viewBox=\"100 20 300 200\""), std::string::npos) << "the frame in canvas pixels";
@@ -74,7 +74,7 @@ TEST(SvgWriter, StructureAndIds) {
 
 // the SVG raster of a moved and scaled star with a round rim covers what the geometry covers
 TEST(SvgWriter, TransformsAndRimsMatchTheGeometry) {
-    const TitleArtDoc doc = document(Json::array({star("000000b1", "Star")}));
+    const TitleArtDoc doc = svgWriterDocument(Json::array({star("000000b1", "Star")}));
     const TitleSvgResult r = writeTitleSvg(doc, CANVAS, {}, nullptr);
     ASSERT_TRUE(r.ok) << r.error;
     // the rim's stroke: 2 x its width (8 % of 120) x the layer scale 1.5
@@ -126,7 +126,7 @@ TEST(SvgWriter, TransformsAndRimsMatchTheGeometry) {
 TEST(SvgWriter, RotationAndYDown) {
     Json bar = {{"id", "000000d1"}, {"type", "shape"}, {"name", "Bar"}, {"shape", "rect"}, {"size", 40}, {"aspect", 4},
                 {"transform", {{"position", {0, 20}}, {"rotation", 90}}}};
-    const TitleArtDoc doc = document(Json::array({bar}));
+    const TitleArtDoc doc = svgWriterDocument(Json::array({bar}));
     const TitleSvgResult r = writeTitleSvg(doc, CANVAS, {}, nullptr);
     ASSERT_TRUE(r.ok);
     std::vector<uint8_t> px;
@@ -160,10 +160,10 @@ TEST(SvgWriter, GradientsWithAlphaAndMidpoints) {
     reflected["style"]["face"]["fill"] = {{"kind", "reflected"}};
     Json angle = star("000000f1", "Angle");
     angle["style"]["face"]["fill"] = {{"kind", "angle"}};
-    const TitleSvgResult r = writeTitleSvg(document(Json::array({layer, radial, reflected, angle})), CANVAS, {}, nullptr);
+    const TitleSvgResult r = writeTitleSvg(svgWriterDocument(Json::array({layer, radial, reflected, angle})), CANVAS, {}, nullptr);
     ASSERT_TRUE(r.ok);
-    EXPECT_EQ(count(r.text, "<linearGradient"), 2);
-    EXPECT_EQ(count(r.text, "<radialGradient"), 1);
+    EXPECT_EQ(svgWriterCount(r.text, "<linearGradient"), 2);
+    EXPECT_EQ(svgWriterCount(r.text, "<radialGradient"), 1);
     EXPECT_NE(r.text.find("gradientUnits=\"userSpaceOnUse\""), std::string::npos);
     EXPECT_NE(r.text.find("stop-opacity=\"0.25\""), std::string::npos) << "stop alpha";
     // the midpoint at 0.3 as its own stop with the halfway colour (#800080) and alpha
@@ -184,10 +184,10 @@ TEST(SvgWriter, MasksAndClips) {
                                           Json{{"id", "000000d4"}, {"type", "image"}}})}};
     Json plain = {{"id", "000000e1"}, {"type", "shape"}, {"name", "Plain"}};
     Json onPlain = {{"id", "000000e2"}, {"type", "shape"}, {"name", "On Plain"}, {"clip", true}};
-    const TitleSvgResult r = writeTitleSvg(document(Json::array({base, clipped, masked, plain, onPlain})), CANVAS, {}, nullptr);
+    const TitleSvgResult r = writeTitleSvg(svgWriterDocument(Json::array({base, clipped, masked, plain, onPlain})), CANVAS, {}, nullptr);
     ASSERT_TRUE(r.ok);
-    EXPECT_EQ(count(r.text, "<mask id="), 3) << "the clip to a rimmed base and two masks";
-    EXPECT_EQ(count(r.text, "<clipPath"), 1) << "a face-only base clips with a clip path";
+    EXPECT_EQ(svgWriterCount(r.text, "<mask id="), 3) << "the clip to a rimmed base and two masks";
+    EXPECT_EQ(svgWriterCount(r.text, "<clipPath"), 1) << "a face-only base clips with a clip path";
     EXPECT_NE(r.text.find("fill-opacity=\"0.5\""), std::string::npos) << "density over an inverted shape";
     std::vector<std::string> expected = {"Masked: gradient mask feather drawn hard", "Masked: image mask left out"};
     for (const std::string& e : expected) EXPECT_NE(std::find(r.warnings.begin(), r.warnings.end(), e), r.warnings.end()) << e;
@@ -201,10 +201,10 @@ TEST(SvgWriter, LeftOutStrictAndEmbedded) {
     Json gen = {{"id", "000000d1"}, {"type", "generator"}, {"name", "Rays"}, {"generator", {{"type", "fill"}}}};
     Json hidden = {{"id", "000000e1"}, {"type", "image"}, {"name", "Hidden"}, {"visible", false}};
     Json overlay = {{"id", "000000f1"}, {"type", "shape"}, {"name", "Burn"}, {"blend", "linear_burn"}};
-    const TitleArtDoc doc = document(Json::array({text, image, gen, hidden, overlay}));
+    const TitleArtDoc doc = svgWriterDocument(Json::array({text, image, gen, hidden, overlay}));
     TitleSvgResult r = writeTitleSvg(doc, CANVAS, {}, nullptr);
     ASSERT_TRUE(r.ok);
-    EXPECT_GT(count(r.text, "<path"), 0) << "the text's outlines";
+    EXPECT_GT(svgWriterCount(r.text, "<path"), 0) << "the text's outlines";
     for (const char* line : {"Title: outer_glow effect left out", "Title: face bevel left out", "Photo: image layer left out",
                              "Rays: generator layer left out"}) {
         EXPECT_NE(std::find(r.leftOut.begin(), r.leftOut.end(), line), r.leftOut.end()) << line;

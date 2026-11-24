@@ -10,6 +10,7 @@
 // JASPERENGINE_INTERNAL (UIDocumentSystem holds HtmlUIScriptState; a hidden type there would
 // make GCC warn wherever both are visible). Classes deriving from RmlUi types are internal.
 
+#include "Export.h"
 #include "UIElementInternal.h"
 #include "UIDataModel.h"
 #include "UIEvent.h"
@@ -74,7 +75,7 @@ namespace jasperengine{
 
     // a Lua function kept in the registry (counted by HtmlUIScriptState::liveLuaRefs), with the
     // main thread of the state (LuaBinding::mainThread), whatever thread made it
-    struct HtmlUILuaRef {
+    struct JASPERENGINE_API HtmlUILuaRef {
         lua_State* L = nullptr;
         int ref = -2;   // LUA_NOREF
 

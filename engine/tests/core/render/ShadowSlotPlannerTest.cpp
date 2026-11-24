@@ -16,7 +16,7 @@ using namespace jasperengine;
 
 namespace {
 
-    ShadowLightRequest light(uint32_t id, ShadowLightKind kind, float importance, unsigned int resolution, bool wantsStatic = false){
+    ShadowLightRequest shadowSlotPlannerLight(uint32_t id, ShadowLightKind kind, float importance, unsigned int resolution, bool wantsStatic = false){
         ShadowLightRequest r;
         r.id = id;
         r.kind = kind;
@@ -86,9 +86,9 @@ TEST(ShadowSlotPlanner, GivesSlotsByImportanceSunFirst){
     ShadowSlotPlanner::Limits limits;
     std::vector<ShadowLightRequest> requests;
     for (uint32_t i = 0; i < 8; i++){
-        requests.push_back(light(100 + i, ShadowLightKind::SPOT, 1.0f + (float)i, 512));
+        requests.push_back(shadowSlotPlannerLight(100 + i, ShadowLightKind::SPOT, 1.0f + (float)i, 512));
     }
-    requests.push_back(light(1, ShadowLightKind::DIRECTIONAL, 0.1f, 2048));
+    requests.push_back(shadowSlotPlannerLight(1, ShadowLightKind::DIRECTIONAL, 0.1f, 2048));
     const ShadowPlan& plan = planner.plan(requests, limits, 0);
     // the sun takes 4 slots, the 5 most important spots the other 5
     EXPECT_EQ(plan.lights[8].firstSlot, 0);
@@ -107,11 +107,11 @@ TEST(ShadowSlotPlanner, SlotsAreStickyWithMarginAndCooldown){
     ShadowSlotPlanner planner;
     ShadowSlotPlanner::Limits limits;
     limits.projectiveSlots = 1;
-    std::vector<ShadowLightRequest> requests = {light(1, ShadowLightKind::SPOT, 1.0f, 512)};
+    std::vector<ShadowLightRequest> requests = {shadowSlotPlannerLight(1, ShadowLightKind::SPOT, 1.0f, 512)};
     EXPECT_EQ(planner.plan(requests, limits, 0).lights[0].firstSlot, 0);
 
     // a challenger 20 % stronger does not take it, a 30 % stronger one only after the cooldown
-    requests.push_back(light(2, ShadowLightKind::SPOT, 1.2f, 512));
+    requests.push_back(shadowSlotPlannerLight(2, ShadowLightKind::SPOT, 1.2f, 512));
     EXPECT_EQ(planner.plan(requests, limits, 1).lights[0].firstSlot, 0);
     requests[1].importance = 1.3f;
     EXPECT_EQ(planner.plan(requests, limits, 10).lights[0].firstSlot, 0);
@@ -128,7 +128,7 @@ TEST(ShadowSlotPlanner, PointLightsTakeAlignedFaceGroups){
     ShadowSlotPlanner::Limits limits;
     std::vector<ShadowLightRequest> requests;
     for (uint32_t i = 0; i < 5; i++){
-        requests.push_back(light(10 + i, ShadowLightKind::POINT, 1.0f + (float)i, 256));
+        requests.push_back(shadowSlotPlannerLight(10 + i, ShadowLightKind::POINT, 1.0f + (float)i, 256));
     }
     const ShadowPlan& plan = planner.plan(requests, limits, 0);
     int assigned = 0;
@@ -153,13 +153,13 @@ TEST(ShadowSlotPlanner, MemoryBudgetDropsStaticLayersThenHalves){
         limits.maxResolution = settings.slotResolution;
         limits.memoryBytes = settings.memoryBytes;
         std::vector<ShadowLightRequest> requests;
-        ShadowLightRequest sun = light(1, ShadowLightKind::DIRECTIONAL, 3.0f, settings.slotResolution, true);
+        ShadowLightRequest sun = shadowSlotPlannerLight(1, ShadowLightKind::DIRECTIONAL, 3.0f, settings.slotResolution, true);
         sun.slots = settings.maxCascades;
         requests.push_back(sun);
         for (uint32_t i = 0; i < 4; i++)
-            requests.push_back(light(10 + i, ShadowLightKind::SPOT, 1.0f + (float)i, settings.spotResolution, true));
+            requests.push_back(shadowSlotPlannerLight(10 + i, ShadowLightKind::SPOT, 1.0f + (float)i, settings.spotResolution, true));
         for (uint32_t i = 0; i < 2; i++)
-            requests.push_back(light(20 + i, ShadowLightKind::POINT, 1.0f + (float)i, settings.pointResolution, true));
+            requests.push_back(shadowSlotPlannerLight(20 + i, ShadowLightKind::POINT, 1.0f + (float)i, settings.pointResolution, true));
         const ShadowPlan& plan = planner.plan(requests, limits, 0);
         EXPECT_LE(plan.memoryBytes, settings.memoryBytes) << ShadowTiers::getName(tier);
         for (const ShadowLightAssignment& a : plan.lights){
@@ -178,8 +178,8 @@ TEST(ShadowSlotPlanner, MemoryBudgetDropsStaticLayersThenHalves){
     ShadowSlotPlanner::Limits limits;
     limits.memoryBytes = 2ull * 1024 * 1024 * 4 - 1;
     std::vector<ShadowLightRequest> requests = {
-        light(1, ShadowLightKind::SPOT, 2.0f, 1024, true),
-        light(2, ShadowLightKind::SPOT, 1.0f, 1024, true)};
+        shadowSlotPlannerLight(1, ShadowLightKind::SPOT, 2.0f, 1024, true),
+        shadowSlotPlannerLight(2, ShadowLightKind::SPOT, 1.0f, 1024, true)};
     const ShadowPlan& plan = planner.plan(requests, limits, 0);
     EXPECT_LE(plan.memoryBytes, limits.memoryBytes);
     EXPECT_EQ(plan.lights[0].resolution[0], 1024u);

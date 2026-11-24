@@ -35,7 +35,7 @@ namespace {
         return gizmo;
     }
 
-    float distance(ImVec2 a, ImVec2 b) {
+    float titleLetterGizmoDistance(ImVec2 a, ImVec2 b) {
         return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
     }
 
@@ -62,7 +62,7 @@ TEST(TitleLetterGizmoTest, RotateTurnsEverySelectedCharacter) {
     const ImVec2 c = gizmo.centreOf(0), k = gizmo.knobOf(0);
     gizmo.begin(gizmo.hitTest(k), k);
     ASSERT_TRUE(gizmo.dragging());
-    const Json v = gizmo.values(ImVec2(c.x + distance(c, k), c.y), false);
+    const Json v = gizmo.values(ImVec2(c.x + titleLetterGizmoDistance(c, k), c.y), false);
     EXPECT_NEAR(v["chars.1.rotation"].get<double>(), 90.0, 1e-3);
     EXPECT_NEAR(v["chars.2.rotation"].get<double>(), 100.0, 1e-3);
     EXPECT_EQ(gizmo.stepName(), "Rotate Letters");
@@ -76,7 +76,7 @@ TEST(TitleLetterGizmoTest, MirroredLayerTurnsTheOtherWay) {
     TitleLetterGizmo gizmo = twoLetters(Affine2::scale(-1.0, 1.0));
     const ImVec2 c = gizmo.centreOf(0), k = gizmo.knobOf(0);
     gizmo.begin(gizmo.hitTest(k), k);
-    const Json v = gizmo.values(ImVec2(c.x + distance(c, k), c.y), false);
+    const Json v = gizmo.values(ImVec2(c.x + titleLetterGizmoDistance(c, k), c.y), false);
     EXPECT_NEAR(v["chars.1.rotation"].get<double>(), -90.0, 1e-3);
 }
 

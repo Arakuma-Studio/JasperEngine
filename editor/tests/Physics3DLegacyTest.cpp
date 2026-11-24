@@ -32,13 +32,13 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    const float legacyStep = 1.0f / 60.0f;
+    const float physics3DLegacyStep = 1.0f / 60.0f;
 
-    std::string fixturePath() {
+    std::string physics3DLegacyFixturePath() {
         return std::string(JASPER_EDITOR_TEST_FIXTURES) + "/physics3d/legacy_run.csv";
     }
 
-    Entity legacyEntity(Scene& scene, const Vector3& position, const Quaternion& rotation = Quaternion::IDENTITY) {
+    Entity physics3DLegacyEntity(Scene& scene, const Vector3& position, const Quaternion& rotation = Quaternion::IDENTITY) {
         Entity entity = scene.createEntity();
         Transform transform;
         transform.position = position;
@@ -48,7 +48,7 @@ namespace {
     }
 
     // a collider block as the editor wrote it before (no isTrigger, material, receiver)
-    std::string legacyCollider(const std::string& type, const std::string& position, float width, float height, float depth,
+    std::string physics3DLegacyCollider(const std::string& type, const std::string& position, float width, float height, float depth,
                                float radius, float halfHeight, float density, const std::string& source = "none",
                                const std::string& vertices = "[]", const std::string& indices = "[]") {
         std::ostringstream yaml;
@@ -71,7 +71,7 @@ namespace {
         return yaml.str();
     }
 
-    std::string legacyBody(const std::string& type, const std::vector<std::string>& colliders, float friction = 0.2f,
+    std::string physics3DLegacyBody(const std::string& type, const std::vector<std::string>& colliders, float friction = 0.2f,
                            float restitution = 0.0f, float gravityFactor = 1.0f, const std::string& motionQuality = "discrete") {
         std::ostringstream yaml;
         yaml << "enabled: true\n"
@@ -91,7 +91,7 @@ namespace {
         return yaml.str();
     }
 
-    std::string legacyJoint(const std::string& type, Entity bodyA, Entity bodyB, const std::string& extra) {
+    std::string physics3DLegacyJoint(const std::string& type, Entity bodyA, Entity bodyB, const std::string& extra) {
         std::ostringstream yaml;
         yaml << "enabled: true\n"
              << "type: " << type << "\n"
@@ -124,15 +124,15 @@ namespace {
         return out.str();
     }
 
-    void addBody(Scene& scene, Entity entity, const std::string& yaml) {
+    void physics3DLegacyAddBody(Scene& scene, Entity entity, const std::string& yaml) {
         scene.addComponent<RigidbodyComponent>(entity, Stream::decodeRigidbodyComponent(YAML::Load(yaml)));
     }
 
-    void addJoint(Scene& scene, Entity entity, const std::string& yaml) {
+    void physics3DLegacyAddJoint(Scene& scene, Entity entity, const std::string& yaml) {
         scene.addComponent<Joint3DComponent>(entity, Stream::decodeJoint3DComponent(YAML::Load(yaml)));
     }
 
-    void resolveTransforms(Scene& scene) {
+    void physics3DLegacyResolveTransforms(Scene& scene) {
         auto transforms = scene.getComponentArray<Transform>();
         for (size_t i = 0; i < transforms->size(); i++) {
             Transform& transform = transforms->getComponentFromIndex(i);
@@ -143,7 +143,7 @@ namespace {
         }
     }
 
-    Quaternion degreesAbout(float degrees, const Vector3& axis) {
+    Quaternion physics3DLegacyDegreesAbout(float degrees, const Vector3& axis) {
         return Quaternion(Angle::degToDefault(degrees), axis);
     }
 
@@ -152,95 +152,95 @@ namespace {
     // hinge pendulum, a limited slider, a distance rope, a point-joint chain, a swing-twist arm,
     // an unconstrained six-DOF pair and a welded pair, all with world anchors. Returns, every 10
     // steps, the pose of each dynamic body: "step,body,x,y,z,qw,qx,qy,qz".
-    std::vector<std::string> runLegacyScene() {
+    std::vector<std::string> physics3DLegacyRunLegacyScene() {
         Scene scene;
         scene.setPhysicsInterpolation(false);
 
-        const Entity ground = legacyEntity(scene, Vector3(0, -0.5f, 0));
-        addBody(scene, ground, legacyBody("static", {legacyCollider("box", "[0, 0, 0]", 60, 1, 60, 0.5f, 0.5f, 1000)}));
+        const Entity ground = physics3DLegacyEntity(scene, Vector3(0, -0.5f, 0));
+        physics3DLegacyAddBody(scene, ground, physics3DLegacyBody("static", {physics3DLegacyCollider("box", "[0, 0, 0]", 60, 1, 60, 0.5f, 0.5f, 1000)}));
 
         // a ramp: two triangles of a raw mesh, uint16 indices
-        const Entity ramp = legacyEntity(scene, Vector3(10, 0, 0));
-        addBody(scene, ramp, legacyBody("static", {legacyCollider("mesh", "[0, 0, 0]", 1, 1, 1, 0.5f, 0.5f, 1000, "raw_mesh",
+        const Entity ramp = physics3DLegacyEntity(scene, Vector3(10, 0, 0));
+        physics3DLegacyAddBody(scene, ramp, physics3DLegacyBody("static", {physics3DLegacyCollider("mesh", "[0, 0, 0]", 1, 1, 1, 0.5f, 0.5f, 1000, "raw_mesh",
             "[[-3, 0, -3], [3, 3, -3], [3, 3, 3], [-3, 0, 3]]", "[0, 1, 2, 0, 2, 3]")}, 0.4f));
 
-        const Entity crate = legacyEntity(scene, Vector3(0, 3, 0), degreesAbout(20.0f, Vector3(0, 0, 1)));
-        addBody(scene, crate, legacyBody("dynamic", {legacyCollider("box", "[0, 0, 0]", 1, 1, 1, 0.5f, 0.5f, 1000)}, 0.2f, 0.3f));
+        const Entity crate = physics3DLegacyEntity(scene, Vector3(0, 3, 0), physics3DLegacyDegreesAbout(20.0f, Vector3(0, 0, 1)));
+        physics3DLegacyAddBody(scene, crate, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("box", "[0, 0, 0]", 1, 1, 1, 0.5f, 0.5f, 1000)}, 0.2f, 0.3f));
 
-        const Entity ball = legacyEntity(scene, Vector3(2, 4, 1));
-        addBody(scene, ball, legacyBody("dynamic", {legacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.5f, 0.5f, 500)}, 0.5f));
+        const Entity ball = physics3DLegacyEntity(scene, Vector3(2, 4, 1));
+        physics3DLegacyAddBody(scene, ball, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.5f, 0.5f, 500)}, 0.5f));
 
-        const Entity compound = legacyEntity(scene, Vector3(-2, 3, 0), degreesAbout(35.0f, Vector3(1, 0, 0)));
-        addBody(scene, compound, legacyBody("dynamic", {
-            legacyCollider("box", "[0, 0, 0]", 1.5f, 0.5f, 0.5f, 0.5f, 0.5f, 1000),
-            legacyCollider("sphere", "[0.75, 0.25, 0]", 1, 1, 1, 0.35f, 0.5f, 2000)}, 0.3f));
+        const Entity compound = physics3DLegacyEntity(scene, Vector3(-2, 3, 0), physics3DLegacyDegreesAbout(35.0f, Vector3(1, 0, 0)));
+        physics3DLegacyAddBody(scene, compound, physics3DLegacyBody("dynamic", {
+            physics3DLegacyCollider("box", "[0, 0, 0]", 1.5f, 0.5f, 0.5f, 0.5f, 0.5f, 1000),
+            physics3DLegacyCollider("sphere", "[0.75, 0.25, 0]", 1, 1, 1, 0.35f, 0.5f, 2000)}, 0.3f));
 
-        const Entity hull = legacyEntity(scene, Vector3(10, 6, 0), degreesAbout(15.0f, Vector3(0, 1, 0)));
-        addBody(scene, hull, legacyBody("dynamic", {legacyCollider("convex_hull", "[0, 0, 0]", 1, 1, 1, 0.5f, 0.5f, 800, "raw_vertices",
+        const Entity hull = physics3DLegacyEntity(scene, Vector3(10, 6, 0), physics3DLegacyDegreesAbout(15.0f, Vector3(0, 1, 0)));
+        physics3DLegacyAddBody(scene, hull, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("convex_hull", "[0, 0, 0]", 1, 1, 1, 0.5f, 0.5f, 800, "raw_vertices",
             "[[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0, -0.5, 0.6], [0, 0.6, 0]]")}, 0.6f));
 
-        const Entity capsule = legacyEntity(scene, Vector3(4, 2, -3), degreesAbout(80.0f, Vector3(0, 0, 1)));
-        addBody(scene, capsule, legacyBody("dynamic", {legacyCollider("capsule", "[0, 0, 0]", 1, 1, 1, 0.3f, 0.6f, 1000)},
+        const Entity capsule = physics3DLegacyEntity(scene, Vector3(4, 2, -3), physics3DLegacyDegreesAbout(80.0f, Vector3(0, 0, 1)));
+        physics3DLegacyAddBody(scene, capsule, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("capsule", "[0, 0, 0]", 1, 1, 1, 0.3f, 0.6f, 1000)},
             0.2f, 0.0f, 0.8f, "linear_cast"));
 
         // a hinge pendulum about z at a world point
-        const Entity pivot = legacyEntity(scene, Vector3(-6, 6, 0));
-        addBody(scene, pivot, legacyBody("static", {legacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.1f, 0.5f, 1000)}));
-        const Entity bob = legacyEntity(scene, Vector3(-4.5f, 6, 0));
-        addBody(scene, bob, legacyBody("dynamic", {legacyCollider("box", "[0, 0, 0]", 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 1000)}));
-        addJoint(scene, legacyEntity(scene, Vector3(0, 0, 0)), legacyJoint("hinge", pivot, bob,
+        const Entity pivot = physics3DLegacyEntity(scene, Vector3(-6, 6, 0));
+        physics3DLegacyAddBody(scene, pivot, physics3DLegacyBody("static", {physics3DLegacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.1f, 0.5f, 1000)}));
+        const Entity bob = physics3DLegacyEntity(scene, Vector3(-4.5f, 6, 0));
+        physics3DLegacyAddBody(scene, bob, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("box", "[0, 0, 0]", 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 1000)}));
+        physics3DLegacyAddJoint(scene, physics3DLegacyEntity(scene, Vector3(0, 0, 0)), physics3DLegacyJoint("hinge", pivot, bob,
             "{anchor: [-6, 6, 0], axis: [0, 0, 1], normal: [1, 0, 0]}"));
 
         // a slider along y with limits containing 0
-        const Entity rail = legacyEntity(scene, Vector3(-10, 6, 0));
-        addBody(scene, rail, legacyBody("static", {legacyCollider("box", "[0, 0, 0]", 0.2f, 0.2f, 0.2f, 0.5f, 0.5f, 1000)}));
-        const Entity carriage = legacyEntity(scene, Vector3(-10, 6, 1));
-        addBody(scene, carriage, legacyBody("dynamic", {legacyCollider("box", "[0, 0, 0]", 0.4f, 0.4f, 0.4f, 0.5f, 0.5f, 1000)}));
-        addJoint(scene, legacyEntity(scene, Vector3(0, 0, 0)), legacyJoint("prismatic", rail, carriage,
+        const Entity rail = physics3DLegacyEntity(scene, Vector3(-10, 6, 0));
+        physics3DLegacyAddBody(scene, rail, physics3DLegacyBody("static", {physics3DLegacyCollider("box", "[0, 0, 0]", 0.2f, 0.2f, 0.2f, 0.5f, 0.5f, 1000)}));
+        const Entity carriage = physics3DLegacyEntity(scene, Vector3(-10, 6, 1));
+        physics3DLegacyAddBody(scene, carriage, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("box", "[0, 0, 0]", 0.4f, 0.4f, 0.4f, 0.5f, 0.5f, 1000)}));
+        physics3DLegacyAddJoint(scene, physics3DLegacyEntity(scene, Vector3(0, 0, 0)), physics3DLegacyJoint("prismatic", rail, carriage,
             "{axis: [0, 1, 0], limitsMin: -1.5, limitsMax: 2}"));
 
         // a rope from a hook with world anchors
-        const Entity hook = legacyEntity(scene, Vector3(6, 8, 4));
-        addBody(scene, hook, legacyBody("static", {legacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.1f, 0.5f, 1000)}));
-        const Entity weight = legacyEntity(scene, Vector3(7.5f, 7, 4));
-        addBody(scene, weight, legacyBody("dynamic", {legacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.25f, 0.5f, 1000)}, 0.2f, 0.2f));
-        addJoint(scene, legacyEntity(scene, Vector3(0, 0, 0)), legacyJoint("distance", hook, weight,
+        const Entity hook = physics3DLegacyEntity(scene, Vector3(6, 8, 4));
+        physics3DLegacyAddBody(scene, hook, physics3DLegacyBody("static", {physics3DLegacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.1f, 0.5f, 1000)}));
+        const Entity weight = physics3DLegacyEntity(scene, Vector3(7.5f, 7, 4));
+        physics3DLegacyAddBody(scene, weight, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.25f, 0.5f, 1000)}, 0.2f, 0.2f));
+        physics3DLegacyAddJoint(scene, physics3DLegacyEntity(scene, Vector3(0, 0, 0)), physics3DLegacyJoint("distance", hook, weight,
             "{anchorA: [6, 8, 4], anchorB: [7.5, 7, 4], autoAnchors: false}"));
 
         // a chain of two links on point joints
-        const Entity anchorBody = legacyEntity(scene, Vector3(0, 9, -6));
-        addBody(scene, anchorBody, legacyBody("static", {legacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.1f, 0.5f, 1000)}));
-        const Entity link1 = legacyEntity(scene, Vector3(0.6f, 9, -6));
-        addBody(scene, link1, legacyBody("dynamic", {legacyCollider("box", "[0, 0, 0]", 1, 0.2f, 0.2f, 0.5f, 0.5f, 1000)}));
-        const Entity link2 = legacyEntity(scene, Vector3(1.8f, 9, -6));
-        addBody(scene, link2, legacyBody("dynamic", {legacyCollider("box", "[0, 0, 0]", 1, 0.2f, 0.2f, 0.5f, 0.5f, 1000)}));
-        addJoint(scene, legacyEntity(scene, Vector3(0, 0, 0)), legacyJoint("point", anchorBody, link1, "{anchor: [0, 9, -6]}"));
-        addJoint(scene, legacyEntity(scene, Vector3(0, 0, 0)), legacyJoint("point", link1, link2, "{anchor: [1.2, 9, -6]}"));
+        const Entity anchorBody = physics3DLegacyEntity(scene, Vector3(0, 9, -6));
+        physics3DLegacyAddBody(scene, anchorBody, physics3DLegacyBody("static", {physics3DLegacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.1f, 0.5f, 1000)}));
+        const Entity link1 = physics3DLegacyEntity(scene, Vector3(0.6f, 9, -6));
+        physics3DLegacyAddBody(scene, link1, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("box", "[0, 0, 0]", 1, 0.2f, 0.2f, 0.5f, 0.5f, 1000)}));
+        const Entity link2 = physics3DLegacyEntity(scene, Vector3(1.8f, 9, -6));
+        physics3DLegacyAddBody(scene, link2, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("box", "[0, 0, 0]", 1, 0.2f, 0.2f, 0.5f, 0.5f, 1000)}));
+        physics3DLegacyAddJoint(scene, physics3DLegacyEntity(scene, Vector3(0, 0, 0)), physics3DLegacyJoint("point", anchorBody, link1, "{anchor: [0, 9, -6]}"));
+        physics3DLegacyAddJoint(scene, physics3DLegacyEntity(scene, Vector3(0, 0, 0)), physics3DLegacyJoint("point", link1, link2, "{anchor: [1.2, 9, -6]}"));
 
         // a swing-twist arm with its default limits
-        const Entity shoulder = legacyEntity(scene, Vector3(-6, 8, -6));
-        addBody(scene, shoulder, legacyBody("static", {legacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.1f, 0.5f, 1000)}));
-        const Entity arm = legacyEntity(scene, Vector3(-5, 8, -6), degreesAbout(90.0f, Vector3(0, 0, 1)));
-        addBody(scene, arm, legacyBody("dynamic", {legacyCollider("capsule", "[0, 0, 0]", 1, 1, 1, 0.15f, 0.7f, 1000)}));
-        addJoint(scene, legacyEntity(scene, Vector3(0, 0, 0)), legacyJoint("swingtwist", shoulder, arm,
+        const Entity shoulder = physics3DLegacyEntity(scene, Vector3(-6, 8, -6));
+        physics3DLegacyAddBody(scene, shoulder, physics3DLegacyBody("static", {physics3DLegacyCollider("sphere", "[0, 0, 0]", 1, 1, 1, 0.1f, 0.5f, 1000)}));
+        const Entity arm = physics3DLegacyEntity(scene, Vector3(-5, 8, -6), physics3DLegacyDegreesAbout(90.0f, Vector3(0, 0, 1)));
+        physics3DLegacyAddBody(scene, arm, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("capsule", "[0, 0, 0]", 1, 1, 1, 0.15f, 0.7f, 1000)}));
+        physics3DLegacyAddJoint(scene, physics3DLegacyEntity(scene, Vector3(0, 0, 0)), physics3DLegacyJoint("swingtwist", shoulder, arm,
             "{anchor: [-6, 8, -6], twistAxis: [1, 0, 0], planeAxis: [0, 1, 0], normalHalfConeAngle: 30, planeHalfConeAngle: 20, twistMinAngle: -10, twistMaxAngle: 10}"));
 
         // a six-DOF pair with every axis free (Jolt's defaults), so it falls freely
-        const Entity freeA = legacyEntity(scene, Vector3(6, 3, -6));
-        addBody(scene, freeA, legacyBody("dynamic", {legacyCollider("box", "[0, 0, 0]", 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 1000)}));
-        const Entity freeB = legacyEntity(scene, Vector3(6, 4.5f, -6));
-        addBody(scene, freeB, legacyBody("dynamic", {legacyCollider("box", "[0, 0, 0]", 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 1000)}));
-        addJoint(scene, legacyEntity(scene, Vector3(0, 0, 0)), legacyJoint("sixdof", freeA, freeB,
+        const Entity freeA = physics3DLegacyEntity(scene, Vector3(6, 3, -6));
+        physics3DLegacyAddBody(scene, freeA, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("box", "[0, 0, 0]", 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 1000)}));
+        const Entity freeB = physics3DLegacyEntity(scene, Vector3(6, 4.5f, -6));
+        physics3DLegacyAddBody(scene, freeB, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("box", "[0, 0, 0]", 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 1000)}));
+        physics3DLegacyAddJoint(scene, physics3DLegacyEntity(scene, Vector3(0, 0, 0)), physics3DLegacyJoint("sixdof", freeA, freeB,
             "{anchorA: [6, 3.5, -6], anchorB: [6, 4, -6], axisX: [1, 0, 0], axisY: [0, 1, 0]}"));
 
         // a welded pair: an L dropped on its corner
-        const Entity weldA = legacyEntity(scene, Vector3(-3, 5, 5));
-        addBody(scene, weldA, legacyBody("dynamic", {legacyCollider("box", "[0, 0, 0]", 1, 0.3f, 0.3f, 0.5f, 0.5f, 1000)}));
-        const Entity weldB = legacyEntity(scene, Vector3(-2.35f, 5.65f, 5));
-        addBody(scene, weldB, legacyBody("dynamic", {legacyCollider("box", "[0, 0, 0]", 0.3f, 1, 0.3f, 0.5f, 0.5f, 1000)}));
-        addJoint(scene, legacyEntity(scene, Vector3(0, 0, 0)), legacyJoint("fixed", weldA, weldB, "{}"));
+        const Entity weldA = physics3DLegacyEntity(scene, Vector3(-3, 5, 5));
+        physics3DLegacyAddBody(scene, weldA, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("box", "[0, 0, 0]", 1, 0.3f, 0.3f, 0.5f, 0.5f, 1000)}));
+        const Entity weldB = physics3DLegacyEntity(scene, Vector3(-2.35f, 5.65f, 5));
+        physics3DLegacyAddBody(scene, weldB, physics3DLegacyBody("dynamic", {physics3DLegacyCollider("box", "[0, 0, 0]", 0.3f, 1, 0.3f, 0.5f, 0.5f, 1000)}));
+        physics3DLegacyAddJoint(scene, physics3DLegacyEntity(scene, Vector3(0, 0, 0)), physics3DLegacyJoint("fixed", weldA, weldB, "{}"));
 
-        resolveTransforms(scene);
+        physics3DLegacyResolveTransforms(scene);
         scene.getSystem<PhysicsSystem>()->load();
 
         const std::vector<std::pair<std::string, Entity>> dynamics = {
@@ -250,8 +250,8 @@ namespace {
 
         std::vector<std::string> rows;
         for (int stepIndex = 1; stepIndex <= 120; stepIndex++) {
-            scene.getSystem<PhysicsSystem>()->fixedUpdate(legacyStep);
-            resolveTransforms(scene);
+            scene.getSystem<PhysicsSystem>()->fixedUpdate(physics3DLegacyStep);
+            physics3DLegacyResolveTransforms(scene);
             if (stepIndex % 10 != 0) continue;
             for (const auto& [name, entity] : dynamics) {
                 Rigidbody body(&scene, entity);
@@ -271,18 +271,18 @@ namespace {
 }
 
 TEST(Physics3DLegacy, OldSceneSimulatesAsRecordedBeforeTheFeature) {
-    const std::vector<std::string> rows = runLegacyScene();
+    const std::vector<std::string> rows = physics3DLegacyRunLegacyScene();
 
     if (const char* record = std::getenv("JASPER_RECORD_PHYSICS3D_FIXTURE"); record && std::string(record) == "1") {
-        std::ofstream out(fixturePath());
-        ASSERT_TRUE(out.good()) << fixturePath();
+        std::ofstream out(physics3DLegacyFixturePath());
+        ASSERT_TRUE(out.good()) << physics3DLegacyFixturePath();
         out << "step,body,x,y,z,qw,qx,qy,qz\n";
         for (const std::string& row : rows) out << row << "\n";
-        GTEST_SKIP() << "recorded " << fixturePath();
+        GTEST_SKIP() << "recorded " << physics3DLegacyFixturePath();
     }
 
-    std::ifstream in(fixturePath());
-    ASSERT_TRUE(in.good()) << "missing fixture " << fixturePath();
+    std::ifstream in(physics3DLegacyFixturePath());
+    ASSERT_TRUE(in.good()) << "missing fixture " << physics3DLegacyFixturePath();
     std::string line;
     std::getline(in, line); // header
     size_t index = 0;

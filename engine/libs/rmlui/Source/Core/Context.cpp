@@ -35,10 +35,6 @@ static constexpr float UNIT_SCROLL_LENGTH = 80.f;   // [dp]
 static constexpr float SCROLL_INERTIA_DELAY = 0.1f;
 static constexpr float TOUCH_MOVEMENT_DECAY_RATE = 5.0f;
 static constexpr float TOUCH_CLICK_MAX_DISTANCE = DOUBLE_CLICK_MAX_DIST; // [dp]
-// Fork (P7-H): on touch, a draggable element inside a scroll container starts its drag after a press this long
-// that moved at most this far; a touch that moves further first scrolls the container instead.
-static constexpr float TOUCH_LONG_PRESS_TIME = 0.4f;    // [s]
-static constexpr float TOUCH_LONG_PRESS_DISTANCE = 8.f; // [dp]
 
 static void DebugVerifyLocaleSetting()
 {

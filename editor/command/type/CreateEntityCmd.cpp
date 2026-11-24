@@ -923,7 +923,11 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::AUDIO_SOURCE){
 
-        scene->addComponent<AudioSourceComponent>(entity, AudioMixerDocument::newAudioSource());
+        // a GameObject that plays 2D (S97 REQ-21): it can be parented and made persistent
+        scene->addComponent<Transform>(entity, {});
+        AudioSourceComponent audio = AudioMixerDocument::newAudioSource();
+        audio.spatialBlend = 0.0f;
+        scene->addComponent<AudioSourceComponent>(entity, audio);
 
     }else if (type == EntityCreationType::AUDIO_SOURCE_3D){
 

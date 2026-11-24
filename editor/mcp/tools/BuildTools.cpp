@@ -176,6 +176,30 @@ bool platformBackends(const std::string& platform, std::set<ShaderBackend>& out)
     return true;
 }
 
+const BuildPlatform allBuildPlatforms[] = {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS, BuildPlatform::Android,
+                                           BuildPlatform::IOS, BuildPlatform::Web};
+
+// Project Settings > Player > Target Platforms, in BuildPlatform order
+std::vector<std::string> targetPlatformNames(const Project* project) {
+    std::vector<std::string> names;
+    for (BuildPlatform platform : allBuildPlatforms)
+        if (project->isTargetPlatform(platform)) names.push_back(buildPlatformName(platform));
+    return names;
+}
+
+// a source export with no graphics APIs picked: this computer's presets while it is a target (every
+// project before Target Platforms), else the presets of the platforms the game ships on
+std::set<ShaderBackend> targetPlatformsBackends(const Project* project) {
+    if (project->isTargetPlatform(hostBuildPlatform())) return sourceExportBackends(hostBuildPlatform());
+    std::set<ShaderBackend> backends;
+    for (BuildPlatform platform : allBuildPlatforms) {
+        if (!project->isTargetPlatform(platform)) continue;
+        const std::set<ShaderBackend> preset = sourceExportBackends(platform);
+        backends.insert(preset.begin(), preset.end());
+    }
+    return backends;
+}
+
 std::string backendToken(ShaderBackend backend) {
     return ShaderPool::getShaderBackendCliToken(backend);
 }
@@ -477,6 +501,7 @@ struct BuildRun {
     LogFile logFile;
     fs::path logPath;
     ExportResult result;                  // a player build's report (taken before the exporter goes)
+    std::string next;                     // the success result's next: a platform the game does not target
     Json unreadableScenes = Json::array();  // generate_shaders: the scenes its list could not read (R4)
 };
 
@@ -631,6 +656,7 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         }
         if (r.warningCount) message += " " + std::to_string(r.warningCount) + " compiler warning(s).";
         if (!r.result.warnings.empty()) message += " " + std::to_string(r.result.warnings.size()) + " build warning(s): see warnings.";
+        if (!r.next.empty()) result["next"] = r.next;
         r.job->succeed(message, result);
     } else if (r.job->cancelRequested()) {
         r.job->markCancelled("Build cancelled.");
@@ -756,6 +782,11 @@ ToolResult buildResult(const McpJob& job) {
         return ToolResult::error(text, data);
     }
     if (job.status() == JobStatus::Cancelled) return ToolResult::error(text, data);
+    // where a client shows it: structuredContent's own next
+    if (data.contains("result") && data["result"].is_object() && data["result"].contains("next")) {
+        data["next"] = data["result"]["next"];
+        data["result"].erase("next");
+    }
     return ToolResult::success(text, data);
 }
 
@@ -782,8 +813,12 @@ void buildProjectTool(const CallPtr& call) {
     }
     if (busy(call)) return;
 
-    // ---- mode
-    const std::string modeText = lowerText(args.value("mode", "desktop"));
+    // ---- mode: omitted, the project's default platform (Project::defaultBuildPlatform: this computer's
+    // when it is a target), or the platform named
+    const bool platformGiven = args.contains("platform") && args["platform"].is_string();
+    const BuildPlatform defaultPlatform = project->defaultBuildPlatform();
+    const std::string modeText = args.contains("mode") && args["mode"].is_string() ? lowerText(args["mode"].get<std::string>())
+                               : platformGiven || defaultPlatform != hostBuildPlatform() ? "player" : "desktop";
     ExportMode mode;
     // desktop and web are player builds for this computer and for the web (S30 R32)
     BuildPlatform platform = hostBuildPlatform();
@@ -791,7 +826,8 @@ void buildProjectTool(const CallPtr& call) {
     else if (modeText == "player" || modeText == "desktop" || modeText == "web") {
         mode = ExportMode::Player;
         if (modeText == "web") platform = BuildPlatform::Web;
-        if (modeText == "player" && args.contains("platform") && args["platform"].is_string() &&
+        if (modeText == "player") platform = defaultPlatform;
+        if (modeText == "player" && platformGiven &&
             !parseBuildPlatform(lowerText(args["platform"].get<std::string>()), platform)) {
             call->fail("platform must be windows, macos, linux, android, ios or web.");
             return;
@@ -901,7 +937,7 @@ void buildProjectTool(const CallPtr& call) {
                    !project->getSourceCodeExportSettings().graphicBackends.empty()) {
             config.selectedBackends = project->getSourceCodeExportSettings().graphicBackends;
         } else {
-            platformBackends(hostPlatformName(), config.selectedBackends);
+            config.selectedBackends = targetPlatformsBackends(project);
         }
     } else if (mode == ExportMode::Player) {
         config.platform = platform;
@@ -1070,6 +1106,11 @@ void buildProjectTool(const CallPtr& call) {
     run->mode = mode;
     run->config = config;
     run->projectPath = project->getProjectPath();
+    if (mode == ExportMode::Player && !project->isTargetPlatform(platform)) {
+        std::string targets;
+        for (const std::string& name : targetPlatformNames(project)) targets += (targets.empty() ? "" : ", ") + name;
+        run->next = std::string(buildPlatformName(platform)) + " is not a target (player.target_platforms: " + targets + ")";
+    }
     run->executableName = executableName(project);
     run->exporter = std::make_unique<Exporter>();
     run->logCursor = Out::lastLogId();
@@ -1325,7 +1366,7 @@ void getBuildInfoTool(const CallPtr& call) {
     const auto& sourceSettings = project->getSourceCodeExportSettings();
     std::set<ShaderBackend> sourceBackends;
     if (sourceSettings.graphicBackendsConfigured && !sourceSettings.graphicBackends.empty()) sourceBackends = sourceSettings.graphicBackends;
-    else platformBackends(hostPlatformName(), sourceBackends);
+    else sourceBackends = targetPlatformsBackends(project);
     data["source"] = {
         {"available", true},
         {"backends", backendList(sourceBackends)},
@@ -1369,7 +1410,8 @@ void getBuildInfoTool(const CallPtr& call) {
         const std::optional<PlayerInfo> runtime =
             PlayerRuntimes::find(Exporter::playerIdFor(config, project->isDevelopmentBuild()), {}, false, findError);
         const BuildMethodChoice choice = Exporter::chooseBuildMethod(project, config, runtime ? &*runtime : nullptr);
-        platforms[buildPlatformName(target)] = {{"method", buildMethodName(choice.method)},
+        platforms[buildPlatformName(target)] = {{"target", project->isTargetPlatform(target)},
+                                                {"method", buildMethodName(choice.method)},
                                                 {"compile_reasons", choice.reasons},
                                                 {"carried", choice.method == BuildMethod::Prebuilt ? choice.carried : std::vector<std::string>{}},
                                                 {"tools_missing", missingTools},
@@ -1377,6 +1419,8 @@ void getBuildInfoTool(const CallPtr& call) {
     }
     data["players"] = players;
     data["platforms"] = platforms;
+    data["target_platforms"] = targetPlatformNames(project);
+    data["default_platform"] = buildPlatformName(project->defaultBuildPlatform());
     data["build_method"] = project->getBuildMethod();
     data["editor_version"] = PlayerRuntimes::editorVersion();
 
@@ -2362,10 +2406,10 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Build Project";
         tool.description =
             "File > Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled if it needs "
-            "native code); desktop/web: this computer/web; source: a CMake project. Saves scenes first. Past "
-            "timeout_seconds: {job_id} (get_job). Result: output_dir, artifacts, executable, errors, warnings, log_file.";
+            "native code); desktop/web: this computer/web; source: a CMake project; omitted: the project's default platform "
+            "(get_build_info). Saves scenes first. Past timeout_seconds: {job_id} (get_job).";
         tool.inputSchema = object({
-            {"mode", withDefault(stringEnum("", {"player", "desktop", "web", "source"}), "desktop")},
+            {"mode", stringEnum("", {"player", "desktop", "web", "source"})},
             {"output_dir", string("Absolute, outside the project.")},
             {"overwrite", withDefault(boolean("source: allow a non-empty output_dir."), false)},
             {"start_scene", sceneRef("Also becomes the start scene.")},

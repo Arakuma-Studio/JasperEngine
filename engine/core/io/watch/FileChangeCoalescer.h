@@ -20,9 +20,10 @@ namespace jasperengine {
     // Per path, inside the quiet window: Added+Modified* = Added, Modified+ = Modified,
     // Added..Removed = nothing, Removed..Added = Modified, Moved(A->B)+Modified(B) = Moved +
     // Modified(B), Moved(A->B)+Moved(B->C) = Moved(A->C). A removal is held for the delete
-    // hold (a safe-save replaces the file right after), and a removal plus an addition of one
-    // file identity are one Moved. A rename from a path that appeared inside the window (the
-    // temp file of a safe-save) is a change of the target, and the temporaries never come out.
+    // hold (a safe-save replaces the file right after), under polling also until the next
+    // completed scan, and a removal plus an addition of one file identity are one Moved. A
+    // rename from a path that appeared inside the window (the temp file of a safe-save) is a
+    // change of the target, and the temporaries never come out.
     //
     // A file is settled once it had no event for the quiet window and two stats `settleGap`
     // apart agree on size and mtime; one still growing comes out anyway after `growCap`.
@@ -47,6 +48,7 @@ namespace jasperengine {
             std::chrono::milliseconds deleteHold{200};  // a removal waits at least this long
             std::chrono::milliseconds settleGap{50};    // between the two settle stats
             std::chrono::milliseconds growCap{5000};    // a growing file comes out after this
+            bool removalWaitsForScan = false;           // setRemovalsWaitForScan
         };
 
         explicit FileChangeCoalescer(Environment& environment);
@@ -57,7 +59,10 @@ namespace jasperengine {
         // (flush): everything pending, with one stat and no windows.
         std::vector<FileChange> take(Clock::time_point now, bool force = false);
         // When take() may return something next; time_point::max() when nothing is pending
+        // or only removals waiting for a scan are
         Clock::time_point nextDeadline() const;
+        // A removal waits for a ScanDone (setRemovalsWaitForScan)
+        bool awaitingScan() const;
 
         size_t pendingCount() const;
         // Raw events folded into an earlier one of the same path
@@ -65,9 +70,11 @@ namespace jasperengine {
         void clear();
 
         void setQuietWindow(std::chrono::milliseconds quiet);
-        // At least 200 ms. A polling watcher holds a removal for one poll more: the save that
-        // deletes and writes the file again is seen by two scans, an interval apart
-        void setDeleteHold(std::chrono::milliseconds hold);
+        // A polling watcher sees a save that deletes and writes a file again in two scans: a
+        // removal also waits until a scan that began after it was seen has ended (the second
+        // ScanDone of its source: the first ends the scan that reported it), however late that
+        // scan comes. A ScanDone dropped when nothing waited only makes the wait longer.
+        void setRemovalsWaitForScan(bool wait);
         const Settings& getSettings() const { return settings; }
 
     private:
@@ -91,6 +98,8 @@ namespace jasperengine {
             watch::PathStat sample;
             Clock::time_point sampledAt{};
             Clock::time_point first{};
+            uint32_t source = 0;            // the backend of its last event
+            uint64_t scanAtRemoval = 0;     // its source's ScanDone count when it became Removed
         };
 
         Environment& env;
@@ -99,6 +108,12 @@ namespace jasperengine {
         std::vector<std::string> rescans;
         uint64_t nextOrder = 1;
         uint64_t coalesced = 0;
+        std::map<uint32_t, uint64_t> scansDone;   // ScanDone events per source
+        uint32_t eventSource = 0;                 // the source of the event add() handles
+
+        // An entry became Removed: the scans it waits for count from now
+        void holdRemoval(Entry& entry);
+        bool waitsForScan(const Entry& entry) const;
 
         Entry& fresh(const std::string& key, State state, Clock::time_point now);
         void touch(Entry& entry, Clock::time_point now);

@@ -137,6 +137,8 @@ namespace jasperengine::editor{
         // Title Art Renderer (setTitleArt: its asset, at the bake's native size)
         TITLE_ART_UI,
         TITLE_ART_SPRITE,
+        // not a GameObject: the Hierarchy's "3D Object > Vehicle..." makes the rig (VehicleRig.h, S96)
+        VEHICLE_RIG,
         // GameObject > Effects > Fog Zone (docs/specs/vapor.md R27): a Transform and a Fog Zone
         FOG_ZONE
     };

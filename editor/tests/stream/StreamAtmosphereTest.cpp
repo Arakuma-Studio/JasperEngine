@@ -32,7 +32,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    std::set<std::string> keys(const YAML::Node& node){
+    std::set<std::string> streamAtmosphereKeys(const YAML::Node& node){
         std::set<std::string> out;
         for (auto it = node.begin(); it != node.end(); ++it)
             out.insert(it->first.as<std::string>());
@@ -95,7 +95,7 @@ TEST(StreamAtmosphere, SerializeDistanceFogWritesItsOldKeys){
     FogComponent fog;
     fog.type = FogType::EXPONENTIAL;
     fog.density = 0.05f;
-    const std::set<std::string> written = keys(reflect::encodeValue(ComponentType::FogComponent, &fog));
+    const std::set<std::string> written = streamAtmosphereKeys(reflect::encodeValue(ComponentType::FogComponent, &fog));
     EXPECT_EQ(written, (std::set<std::string>{"type", "color", "density", "linearStart", "linearEnd"}));
 }
 
@@ -265,7 +265,7 @@ TEST(StreamAtmosphere, FogProfileFieldsOmitIfDefault){
     ASSERT_NE(desc, nullptr);
     EXPECT_EQ(desc->type, ComponentType::FogZoneComponent);
     FogZoneComponent zone;
-    EXPECT_EQ(keys(reflect::encodeValue(ComponentType::FogZoneComponent, &zone)),
+    EXPECT_EQ(streamAtmosphereKeys(reflect::encodeValue(ComponentType::FogZoneComponent, &zone)),
               (std::set<std::string>{"shape", "size", "blendDistance", "priority", "weight"}));
     zone.shape = FogZoneShape::SPHERE;
     zone.size = Vector3(4.0f, 5.0f, 6.0f);

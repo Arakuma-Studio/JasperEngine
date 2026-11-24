@@ -65,10 +65,12 @@ TEST(VcsStatusPoller, BurstOfWakesCollapsesIntoAtMostTwoPolls) {
     poller.setIntervalSeconds(kNeverSeconds);
     poller.start("je-vcs-test", [&polls] { ++polls; });
     ASSERT_TRUE(waitForPolls(polls, 1));
-    // AC4: 20 wakes within 100 ms
+    // AC4: 20 wakes within 100 ms (each at its own time: a host whose sleeps overrun would
+    // otherwise spread them past the cooldown)
+    const auto burst = std::chrono::steady_clock::now();
     for (int i = 0; i < 20; ++i) {
         poller.wake();
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::this_thread::sleep_until(burst + std::chrono::milliseconds(5 * (i + 1)));
     }
     std::this_thread::sleep_for(kSettleTime);
     // the immediate poll, then at most one more after the cooldown

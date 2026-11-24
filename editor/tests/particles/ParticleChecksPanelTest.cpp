@@ -23,7 +23,8 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
-#include <unistd.h>
+#include "support/PosixCompat.h"
+#include "support/EditorTestSupport.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -31,16 +32,16 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Headless {
+    struct ParticleChecksPanelHeadless {
         fs::path dir;
         bool ready = false;
         std::unique_ptr<Project> project;
         std::unique_ptr<editor::Platform> platform;
     };
 
-    Headless& headless(){
-        static Headless h = [](){
-            Headless out;
+    ParticleChecksPanelHeadless& particleChecksPanelHeadless(){
+        static ParticleChecksPanelHeadless h = [](){
+            ParticleChecksPanelHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-particle-checks-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -55,6 +56,7 @@ namespace {
   {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 600}]}]})";
             AppSettings::initialize();
             out.project.reset(new Project());
+            editor::test::releaseAtExit(out.project.get());
             out.platform.reset(new editor::Platform(out.project.get()));
             headlesssystem::use(out.platform.get());
             Engine::pauseGameEvents(true);
@@ -85,7 +87,7 @@ namespace {
 }
 
 TEST(ParticleChecksPanel, RowsMatchTheToolsChecks){
-    Headless& h = headless();
+    ParticleChecksPanelHeadless& h = particleChecksPanelHeadless();
     ASSERT_TRUE(h.ready);
     ParticleQaSettings qa;
     qa.overdrawMobile = 6.0f;   // the project's thresholds reach both
@@ -116,8 +118,9 @@ TEST(ParticleChecksPanel, RowsMatchTheToolsChecks){
     const std::vector<ParticleChecksPanel::Row> rows = ParticleChecksPanel::rowsOf(windowReport);
     ASSERT_EQ(rows.size(), toolReport["checks"].size());
     for (size_t k = 0; k < rows.size(); k++){
-        EXPECT_EQ(rows[k].id, toolReport["checks"][k]["id"]);
-        EXPECT_EQ(rows[k].status, toolReport["checks"][k]["status"]);
+        // as strings: libc++ has no std::string == json overload gtest can use
+        EXPECT_EQ(rows[k].id, toolReport["checks"][k]["id"].get<std::string>());
+        EXPECT_EQ(rows[k].status, toolReport["checks"][k]["status"].get<std::string>());
     }
     EXPECT_EQ(rows[0].id, "capacity_hit");
     EXPECT_EQ(rows[0].status, "FAIL");
@@ -134,7 +137,7 @@ TEST(ParticleChecksPanel, RowsMatchTheToolsChecks){
 // S91 AC15 in the window: the Particle Effect window hosts the panel on the effect it shows, with its
 // seed, and the hosted rows are the tool's
 TEST(ParticleChecksPanel, TheWindowsHostedRowsAreTheTools){
-    Headless& h = headless();
+    ParticleChecksPanelHeadless& h = particleChecksPanelHeadless();
     ASSERT_TRUE(h.ready);
     const std::string scope = "assets/fx/burst.particles";
     ParticleEffectWindow window(h.project.get());

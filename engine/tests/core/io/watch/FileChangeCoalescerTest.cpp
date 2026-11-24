@@ -14,8 +14,8 @@ using namespace jasperengine;
 
 namespace {
 
-    using Clock = FileChangeCoalescer::Clock;
-    using ms = std::chrono::milliseconds;
+    using FileChangeCoalescerClock = FileChangeCoalescer::Clock;
+    using fileChangeCoalescerMs = std::chrono::milliseconds;
     using Type = watch::RawEvent::Type;
 
     class FakeEnvironment : public FileChangeCoalescer::Environment {
@@ -62,12 +62,12 @@ namespace {
     protected:
         FakeEnvironment env;
         FileChangeCoalescer coalescer{env};
-        Clock::time_point now = Clock::time_point() + std::chrono::hours(1);
+        FileChangeCoalescerClock::time_point now = FileChangeCoalescerClock::time_point() + std::chrono::hours(1);
 
         void raw(Type type, const std::string& path, const std::string& oldPath = {}, bool directory = false) {
             coalescer.add(watch::RawEvent{type, path, oldPath, directory}, now);
         }
-        void advance(int milliseconds) { now += ms(milliseconds); }
+        void advance(int milliseconds) { now += fileChangeCoalescerMs(milliseconds); }
         // takes every 10 ms for `span` ms; everything that came out
         std::vector<FileChange> run(int span = 1000) {
             std::vector<FileChange> out;
@@ -239,6 +239,30 @@ TEST_F(FileChangeCoalescerTests, RemovalWaitsForTheDeleteHold) {
     EXPECT_EQ(kinds(coalescer.take(now)), "removed:/p/a.png");
 }
 
+TEST_F(FileChangeCoalescerTests, UnderPollingARemovalWaitsForTheNextScanOfItsBackend) {
+    coalescer.setRemovalsWaitForScan(true);
+    env.existing("/p/a.png", 10, 100, 7);
+    env.existing("/p/b.png", 10, 100, 9);
+    env.disk.erase("/p/a.png");
+    env.disk.erase("/p/b.png");
+    // the project's scan 1 reports both gone, then ends
+    raw(Type::Removed, "/p/a.png");
+    raw(Type::Removed, "/p/b.png");
+    raw(Type::ScanDone, "");
+    EXPECT_EQ(kinds(run(2000)), "") << "no time lets a removal go";
+    EXPECT_EQ(coalescer.nextDeadline(), FileChangeCoalescerClock::time_point::max());
+    EXPECT_TRUE(coalescer.awaitingScan());
+    // a linked folder's scan is not the project's
+    coalescer.add(watch::RawEvent{Type::ScanDone, {}, {}, false, 1}, now);
+    EXPECT_EQ(kinds(run()), "");
+    // scan 2 sees a.png back
+    env.disk["/p/a.png"] = FakeEnvironment::file(12, 500, 8);
+    raw(Type::Created, "/p/a.png");
+    raw(Type::ScanDone, "");
+    EXPECT_EQ(kinds(run()), "removed:/p/b.png,modified:/p/a.png");
+    EXPECT_FALSE(coalescer.awaitingScan());
+}
+
 TEST_F(FileChangeCoalescerTests, NothingBeforeTheQuietWindowThenTwoStats) {
     env.existing("/p/a.png", 10, 100, 7);
     env.disk["/p/a.png"] = FakeEnvironment::file(20, 200, 7);
@@ -346,7 +370,7 @@ TEST_F(FileChangeCoalescerTests, ForceTakesEverythingWithoutWindows) {
 TEST_F(FileChangeCoalescerTests, RescanPassesThroughAtOnce) {
     raw(Type::Rescan, "/p");
     raw(Type::Rescan, "/p");
-    EXPECT_EQ(coalescer.nextDeadline(), Clock::time_point::min());
+    EXPECT_EQ(coalescer.nextDeadline(), FileChangeCoalescerClock::time_point::min());
     EXPECT_EQ(kinds(coalescer.take(now)), "rescan:/p");
 }
 
@@ -365,6 +389,6 @@ TEST_F(FileChangeCoalescerTests, FolderRenameCarriesPendingChangesAlong) {
 }
 
 TEST_F(FileChangeCoalescerTests, IdleHasNoDeadline) {
-    EXPECT_EQ(coalescer.nextDeadline(), Clock::time_point::max());
+    EXPECT_EQ(coalescer.nextDeadline(), FileChangeCoalescerClock::time_point::max());
     EXPECT_EQ(env.stats, 0);
 }

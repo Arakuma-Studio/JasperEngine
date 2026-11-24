@@ -10,10 +10,11 @@ endif()
 project(jasperengine-editor)
 
 # Build options of our own targets (docs/testing.md), shared with the standalone engine tree:
-# sanitizers (before any target: they apply to the whole tree), warnings (on here; off in
-# engine/, which exported games build), warnings as errors, unity builds
+# sanitizers and the debug information level (before any target: they apply to the whole tree),
+# warnings (on here; off in engine/, which exported games build), warnings as errors, unity builds
 option(JASPERENGINE_WARNINGS "Warnings on the engine, editor and test targets" ON)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperSanitizers.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperDebugInfo.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperUnityBuild.cmake)
 # precompiled headers and the linker of development and test builds (docs/testing.md "Build speed")
@@ -152,10 +153,12 @@ include(${JASPERENGINE_ROOT}/cmake/JasperEngineToolchain.cmake)
 jasperengine_check_cxx_toolchain()
 
 # Warnings from vendored code are not ours to fix and only hide our own
+# The compiled languages only: an assembler handed /w takes it for a second input file (dav1d's NASM
+# on MSVC). Objective-C++ too: ImGui's macOS backend is a .mm
 if(MSVC)
-    set(EXTERNAL_WARNING_FLAG /w)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/w>)
 else()
-    set(EXTERNAL_WARNING_FLAG -w)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-w>)
 endif()
 
 # Icon and version resource for one binary. Each target needs its own so
@@ -881,6 +884,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
     ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
     ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
+    ${EDITOR_DIR}/reflect/components/VehicleReflect.cpp
     ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
     ${EDITOR_DIR}/reflect/components/SplinesReflect.cpp
     ${EDITOR_DIR}/reflect/components/VoxelReflect.cpp
@@ -1004,6 +1008,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PhysicsQueryTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
@@ -1093,6 +1098,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/LuaApiData.cpp
     ${EDITOR_DIR}/util/NumericExpression.cpp
     ${EDITOR_DIR}/util/LineDiff.cpp
+    ${EDITOR_DIR}/util/ThreadCpuTime.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/ShaderGlobalsJson.cpp
     ${EDITOR_DIR}/util/ShaderGlobalsUsage.cpp
@@ -1100,9 +1106,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ProjectFileWrites.cpp
     ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
     ${EDITOR_DIR}/util/RagdollWizard.cpp
+    ${EDITOR_DIR}/util/VehicleRig.cpp
     ${EDITOR_DIR}/window/dialog/RagdollWizardDialog.cpp
     ${EDITOR_DIR}/window/dialog/CreateTerrainDialog.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
+    ${EDITOR_DIR}/util/FileUtils.cpp
     ${EDITOR_DIR}/util/BuiltPlayers.cpp
     ${EDITOR_DIR}/util/NormalMapTilt.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
@@ -1294,6 +1302,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorUpstream.cpp
     ${EDITOR_DIR}/window/InspectorButton.cpp
     ${EDITOR_DIR}/window/InspectorPhysics.cpp
+    ${EDITOR_DIR}/window/InspectorVehicle.cpp
     ${EDITOR_DIR}/window/InspectorAnimation.cpp
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
     ${EDITOR_DIR}/window/InspectorLattice.cpp
@@ -1477,6 +1486,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
     ${EDITOR_DIR}/command/type/RemovePreservedComponentCmd.cpp
     ${EDITOR_DIR}/command/type/CreateEntityCmd.cpp
+    ${EDITOR_DIR}/command/type/AudioSourceSlotCmd.cpp
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
     ${EDITOR_DIR}/command/type/AddActionFrameCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
@@ -1489,6 +1499,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ObjectTransformCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveChildSceneCmd.cpp
     ${EDITOR_DIR}/command/type/SetChildSceneStartActiveCmd.cpp
+    ${EDITOR_DIR}/command/type/DecomposeColliderCmd.cpp
     ${EDITOR_DIR}/command/type/EntityNameCmd.cpp
     ${EDITOR_DIR}/command/type/ImportPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveEntityFromPrefabCmd.cpp
@@ -1505,6 +1516,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/window/InspectorAudioEffects.cpp
+    ${EDITOR_DIR}/audio/SourceEffectEdit.cpp
     ${EDITOR_DIR}/window/AudioCapturesWindow.cpp
     ${EDITOR_DIR}/window/SoundBrowserWindow.cpp
     ${EDITOR_DIR}/audio/SoundDrop.cpp

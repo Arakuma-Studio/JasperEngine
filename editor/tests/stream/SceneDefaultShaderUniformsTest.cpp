@@ -21,7 +21,7 @@
 
 #include <gtest/gtest.h>
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 #include <filesystem>
 #include <fstream>
 #include <memory>

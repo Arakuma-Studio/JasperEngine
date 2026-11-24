@@ -56,7 +56,7 @@ namespace {
         return pack;
     }
 
-    std::string asString(const std::vector<uint8_t>& bytes) {
+    std::string jPakAsString(const std::vector<uint8_t>& bytes) {
         return std::string(bytes.begin(), bytes.end());
     }
 
@@ -78,7 +78,7 @@ TEST(JPak, ReadsEntriesFromMemoryAndFile) {
     for (const auto& [path, data] : files) {
         std::vector<uint8_t> out;
         ASSERT_TRUE(memoryPack.read(path, out, &error)) << path << ": " << error;
-        EXPECT_EQ(asString(out), data);
+        EXPECT_EQ(jPakAsString(out), data);
         std::span<const uint8_t> view;
         ASSERT_TRUE(memoryPack.view(path, view, &error)) << error;
         EXPECT_EQ(std::string(view.begin(), view.end()), data);
@@ -86,12 +86,12 @@ TEST(JPak, ReadsEntriesFromMemoryAndFile) {
     for (const JPak::Entry& entry : memoryPack.entries()) EXPECT_EQ(entry.offset % JPak::ALIGNMENT, 0u);
 
     test::TempDir dir;
-    const auto path = dir.write("content.jpak", asString(bytes));
+    const auto path = dir.write("content.jpak", jPakAsString(bytes));
     JPak filePack;
     ASSERT_TRUE(filePack.openFile(path, &error)) << error;
     std::vector<uint8_t> out;
     ASSERT_TRUE(filePack.read("assets/images/logo.png", out, &error)) << error;
-    EXPECT_EQ(asString(out), files[1].second);
+    EXPECT_EQ(jPakAsString(out), files[1].second);
     EXPECT_FALSE(filePack.read("assets/missing.png", out, &error));
     EXPECT_NE(error.find("assets/missing.png"), std::string::npos);
 }

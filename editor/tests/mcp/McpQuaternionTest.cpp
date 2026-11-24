@@ -18,7 +18,7 @@ using namespace jasperengine::editor::mcp;
 
 namespace {
 
-    float length(const Quaternion& q){
+    float mcpQuaternionLength(const Quaternion& q){
         return std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
     }
 
@@ -36,7 +36,7 @@ TEST(McpQuaternion, EulerDegreesAsAQuaternionAreRefused){
 TEST(McpQuaternion, NearUnitIsNormalized){
     Quaternion q;
     ASSERT_TRUE(McpValues::parseQuaternion(Json::parse("[0, 0, 0.71, 0.71]"), q));
-    EXPECT_NEAR(length(q), 1.0f, 1e-6f);
+    EXPECT_NEAR(mcpQuaternionLength(q), 1.0f, 1e-6f);
     EXPECT_NEAR(q.z, std::sqrt(0.5f), 1e-5f);
     ASSERT_TRUE(McpValues::parseQuaternion(Json::parse("{\"x\": 0, \"y\": 0, \"z\": 0, \"w\": 1}"), q));
     EXPECT_EQ(q, Quaternion::IDENTITY);
@@ -75,7 +75,7 @@ TEST(McpQuaternion, StoredOffUnitWritesBackAsRead){
     Quaternion written = stored;
     std::string why;
     ASSERT_TRUE(McpValues::parseQuaternion(read, written, &why)) << why;
-    EXPECT_NEAR(length(written), 1.0f, 1e-5f);
+    EXPECT_NEAR(mcpQuaternionLength(written), 1.0f, 1e-5f);
     // the quat alone, as read, is a unit quaternion too
     written = stored;
     ASSERT_TRUE(McpValues::parseQuaternion(Json{{"quat", read["quat"]}}, written, &why)) << why;

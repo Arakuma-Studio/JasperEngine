@@ -25,7 +25,8 @@ namespace ev = jasperengine::editor::vat;
 
 namespace{
 
-    constexpr double PI = 3.14159265358979323846;
+    // a full turn in radians (not PI: a unity batch also holds UnityParticleImport.cpp's float PI)
+    constexpr double FULL_TURN = 2.0 * 3.14159265358979323846;
 
     // splitmix64: the same numbers on every platform and compiler
     struct Random{
@@ -104,7 +105,7 @@ ev::CrowdLayout ev::layoutCrowd(const CrowdSettings& settings, const std::functi
             const double u = random.unit(), v = random.unit();
             if (settings.area == CrowdArea::Disc){
                 const double radius = halfWidth * std::sqrt(u);
-                const double angle = 2.0 * PI * v;
+                const double angle = FULL_TURN * v;
                 x = radius * std::cos(angle);
                 z = radius * std::sin(angle);
             }else{
@@ -115,7 +116,7 @@ ev::CrowdLayout ev::layoutCrowd(const CrowdSettings& settings, const std::functi
         }
         // every instance draws the same numbers whether it is placed or not: one skipped instance
         // never changes the others
-        const double yaw = random.range(0.0, 2.0 * PI);
+        const double yaw = random.range(0.0, FULL_TURN);
         const double scale = random.range(settings.scaleMin, settings.scaleMax);
         const double pick = random.unit();
         const double speed = random.range(settings.speedMin, settings.speedMax);

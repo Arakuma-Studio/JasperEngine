@@ -136,8 +136,8 @@
             "reason": "grandfathered by S31: 1977 chars when the limits were set, +5%"
         },
         "build_project": {
-            "limit": 1972,
-            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%"
+            "limit": 1933,
+            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list"
         },
         "send_input": {
             "limit": 1990,

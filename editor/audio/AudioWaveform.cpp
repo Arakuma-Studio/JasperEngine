@@ -50,7 +50,7 @@ int16_t toInt16(float sample) {
     return (int16_t)std::lround(clamped * 32767.0);
 }
 
-bool readBytes(const fs::path& file, std::string& bytes) {
+bool readWaveformBytes(const fs::path& file, std::string& bytes) {
     std::ifstream in(file, std::ios::binary | std::ios::ate);
     const std::streamoff size = in ? (std::streamoff)in.tellg() : -1;
     if (size < 0) return false;
@@ -107,7 +107,7 @@ fs::path AudioWaveform::cacheFile(const fs::path& cacheDirectory, const std::str
 bool AudioWaveform::read(const fs::path& cacheDirectory, const std::string& sha1, Data& out) {
     if (cacheDirectory.empty() || sha1.size() != 40) return false;
     std::string bytes;
-    if (!readBytes(cacheFile(cacheDirectory, sha1), bytes) || bytes.size() < HEADER_BYTES) return false;
+    if (!readWaveformBytes(cacheFile(cacheDirectory, sha1), bytes) || bytes.size() < HEADER_BYTES) return false;
     if (std::memcmp(bytes.data(), MAGIC, 4) != 0 || getLE(bytes, 4, 4) != (uint64_t)VERSION) return false;
     Data data;
     data.channels = (unsigned int)getLE(bytes, 8, 4);
@@ -175,7 +175,7 @@ bool AudioWaveform::ofFile(const fs::path& file, const fs::path& cacheDirectory,
         }
     }
     std::string bytes;
-    if (!readBytes(file, bytes)) {
+    if (!readWaveformBytes(file, bytes)) {
         error = "the file can't be read";
         return false;
     }

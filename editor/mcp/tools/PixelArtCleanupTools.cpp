@@ -51,10 +51,12 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <cmath>
 #include <memory>
 #include <optional>
+#include <thread>
 
 namespace jasperengine::editor::mcp {
 
@@ -277,7 +279,6 @@ ApplyOutcome applyPngOutput(Project* project, SceneProject* sp, Entity entity, c
     multi->addCommand(std::unique_ptr<Command>(textureCommand));
     const SpriteComponent& sprite = sp->scene->getComponent<SpriteComponent>(entity);
     const ComponentType cp = ComponentType::SpriteComponent;
-    int frames = 0;
     const std::vector<cleanup::AtlasClip> clips = result.animation ? cleanup::atlasClips(*result.animation) : std::vector<cleanup::AtlasClip>();
     cleanup::Atlas atlas;
     int width = 0, height = 0;
@@ -295,7 +296,6 @@ ApplyOutcome applyPngOutput(Project* project, SceneProject* sp, Entity entity, c
             const std::string prefix = "framesRect[" + std::to_string(i) + "]";
             multi->addPropertyCmd<std::string>(project, sceneId, entity, cp, prefix + ".name", clips[r.clip].name + "-" + std::to_string(r.frame));
             multi->addPropertyCmd<Vector4>(project, sceneId, entity, cp, prefix + ".rect", Vector4((float)r.x, (float)r.y, (float)r.w, (float)r.h));
-            frames++;
         }
         multi->addPropertyCmd<unsigned int>(project, sceneId, entity, cp, "numFramesRect", (unsigned int)atlas.rects.size());
     }
@@ -446,6 +446,8 @@ void finishFix(const std::shared_ptr<FixState>& state, McpContext& ctx, const st
         const std::string png = preview.encodePng();
         state->images.push_back({Base64::encode(reinterpret_cast<const uint8_t*>(png.data()), png.size()), "image/png"});
         data["image"] = {{"kind", cleanup::previewKindName(state->image)}, {"width", preview.width()}, {"height", preview.height()}};
+        // a reply past the call's 1 s wait is a job_id: get_job then returns the preview (S46 R37)
+        job->setImages(state->images);
     }
     if (state->prepared.spec.output.importStep) {
         Problem problem;
@@ -639,6 +641,12 @@ void fixPixelArtTool(const CallPtr& call) {
     state->watch = watch;
     getEditorHost().enqueueMainThreadTask([watch]() { (*watch)(); });
     jobs::submit([state, context, origin]() {
+        // Test hook: the run is held this long, so the reply outlasts the call's wait and the
+        // preview reaches the agent through get_job (test_fix_pixel_art.py), not left to a slow host
+        if (const char* delay = std::getenv("JASPER_TEST_FIX_PIXEL_ART_DELAY_MS")) {
+            const long ms = std::strtol(delay, nullptr, 10);
+            if (ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(std::min(ms, 60000L)));
+        }
         bool ok = true;
         try {
             state->result = cleanup::run(state->prepared, nullptr, state->cancel.get());

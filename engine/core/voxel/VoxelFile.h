@@ -59,7 +59,7 @@ namespace jasperengine::voxel {
         static TerrainCutRuns fromMask(const uint8_t* mask, int width, int height);
     };
 
-    struct VoxelFileInfo {
+    struct JASPERENGINE_API VoxelFileInfo {
         uint16_t version = 0;
         uint32_t flags = 0;
         Int3 blocks;

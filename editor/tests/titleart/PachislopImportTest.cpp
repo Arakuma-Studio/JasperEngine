@@ -38,7 +38,7 @@ namespace {
     const fs::path FONTS = fs::path(JASPER_TEST_REPO_DIR) / "engine" / "tests" / "core" / "titleart" / "fonts";
     const char* FIXED_GUID = "00000000000000000000000000000087";
 
-    std::string readText(const fs::path& path) {
+    std::string pachislopImportReadText(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
         std::stringstream s;
         s << in.rdbuf();
@@ -119,13 +119,13 @@ namespace {
     }
 
     // the seeded items of each fixture (make_pachislop_fixtures.py's docstrings)
-    struct Fixture {
+    struct PachislopImportFixture {
         const char* name;
         std::vector<std::string> notes;
     };
 
-    const std::vector<Fixture>& fixtures() {
-        static const std::vector<Fixture> list = {
+    const std::vector<PachislopImportFixture>& fixtures() {
+        static const std::vector<PachislopImportFixture> list = {
             {"v4_text_rims", {"approximated:style.face.reflection.map", "dropped:solo", "note:"}},
             {"v4_text_rims_v11", {"approximated:style.face.reflection.map", "dropped:solo"}},
             {"v6_groups_masks_clip", {"mask_layer_missing", "note:"}},
@@ -142,7 +142,7 @@ namespace {
 
 TEST_F(PachislopImportTest, MatchesGolden) {
     const bool update = std::getenv("JASPER_TEST_UPDATE_GOLDEN") != nullptr;
-    for (const Fixture& f : fixtures()) {
+    for (const PachislopImportFixture& f : fixtures()) {
         SCOPED_TRACE(f.name);
         const TitleCreateResult r = import(FIXTURES / (std::string(f.name) + ".pslot.json"), f.name);
         const std::string text = titleart::writeTitleArt(r.doc);
@@ -150,7 +150,7 @@ TEST_F(PachislopImportTest, MatchesGolden) {
         if (update) {
             std::ofstream(golden, std::ios::binary) << text;
         } else {
-            EXPECT_EQ(text, readText(golden)) << "the import of " << f.name << " changed: JASPER_TEST_UPDATE_GOLDEN=1 rewrites the golden";
+            EXPECT_EQ(text, pachislopImportReadText(golden)) << "the import of " << f.name << " changed: JASPER_TEST_UPDATE_GOLDEN=1 rewrites the golden";
         }
         EXPECT_EQ(noteKeys(r), f.notes) << r.notes.dump(1);
         // the document keeps the report's lines

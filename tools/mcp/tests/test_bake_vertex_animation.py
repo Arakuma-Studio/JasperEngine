@@ -898,7 +898,9 @@ def check_job_error(state: dict, kinds: tuple, out: Path, what: str) -> None:
 
 async def vanish_scene(ed: Editor, name: str, entities: tuple) -> int:
     """A saved scene with GameObjects of the hero model, its model loaded (a small preview of Probe bakes:
-    the call waits for the model's meshes)"""
+    the call waits for the model's meshes). The hero's 5 clips are its entity Animations: a new project's
+    Animation Entities (Auto, S77 R38) would place it with none, and nothing to bake"""
+    await ed.call("set_project_settings", values={"animation.animation_entities": "always"})
     made = await ed.call("create_scene", name=name, type="3D", path=f"scenes/{name}")
     sid = made["scene"]["id"]
     await ed.call("select_scene", scene=sid)

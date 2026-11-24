@@ -43,7 +43,7 @@ namespace {
     constexpr int FRAME_WIDTH = 320;
     constexpr int FRAME_HEIGHT = 180;
     constexpr int TILE_QUADS = 64;
-    constexpr float MAX_HEIGHT = 40.0f;
+    constexpr float TERRAIN_WORLD_MAX_HEIGHT = 40.0f;
 
     // bumps that differ between LOD levels, so a missing skirt opens a visible gap
     uint16_t bumpySample(int sx, int sz) {
@@ -51,7 +51,7 @@ namespace {
         return static_cast<uint16_t>(std::lround(std::fmin(std::fmax(value, 0.0), 1.0) * 65535.0));
     }
 
-    void writeBytes(const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
+    void terrainWorldWriteBytes(const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
         std::filesystem::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary);
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
@@ -67,7 +67,7 @@ namespace {
         manifest.guid = "7d3a1b2c4e5f60718293a4b5c6d7e8f9";
         manifest.lattice.tileQuads = TILE_QUADS;
         manifest.lattice.spacing = 1.0f;
-        manifest.maps.maxHeight = MAX_HEIGHT;
+        manifest.maps.maxHeight = TERRAIN_WORLD_MAX_HEIGHT;
         manifest.maps.densityMaps = density ? 1 : 0;
         WorldOverview overview;
         initOverview(overview, manifest.lattice, TileCoord(low, low), TileCoord(high, high), 0);
@@ -86,7 +86,7 @@ namespace {
                 buildDerived(tile, manifest.lattice, colour, 0);
                 std::vector<uint8_t> bytes;
                 ASSERT_TRUE(encodeTile(tile, TileCodec{}, TileEncodeOptions{}, bytes));
-                writeBytes(folder / ("tiles/" + std::to_string(x) + "_" + std::to_string(z) + ".jtile"), bytes);
+                terrainWorldWriteBytes(folder / ("tiles/" + std::to_string(x) + "_" + std::to_string(z) + ".jtile"), bytes);
                 setOverviewPatch(overview, tile);
                 const TileMinMax whole = tileNodeMinMax(tile, manifest.lattice, manifest.lattice.tileLevel(), 0, 0);
                 manifest.tiles.push_back(WorldTileInfo{TileCoord(x, z), whole.min, whole.max});
@@ -95,9 +95,9 @@ namespace {
         }
         std::vector<uint8_t> bytes;
         ASSERT_TRUE(encodeOverview(overview, manifest.lattice, TileCodec{}, 0, bytes, nullptr));
-        writeBytes(folder / "overview.jtile", bytes);
+        terrainWorldWriteBytes(folder / "overview.jtile", bytes);
         encodeWorldBin(manifest, bytes);
-        writeBytes(folder / "world.bin", bytes);
+        terrainWorldWriteBytes(folder / "world.bin", bytes);
     }
 
     class TerrainWorldGpu : public ::testing::Test {

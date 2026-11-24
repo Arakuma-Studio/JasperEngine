@@ -133,6 +133,20 @@ namespace jasperengine::editor{
             return write;
         }
 
+        // an int or unsigned goes in at the property's own width (an Enum may be one byte), every
+        // other T as itself
+        static constexpr bool integerValue = std::is_same_v<T, int> || std::is_same_v<T, unsigned int>;
+
+        static T readValue(const PropertyData& prop){
+            if constexpr (integerValue) return static_cast<T>(readPropertyInteger(prop, prop.ref));
+            else return *static_cast<T*>(prop.ref);
+        }
+
+        static void writeValue(const PropertyData& prop, const T& value){
+            if constexpr (integerValue) writePropertyInteger(prop, prop.ref, value);
+            else *static_cast<T*>(prop.ref) = value;
+        }
+
         void notifyAfterWrite(bool undoing){
             ClipRecordHooks::ExplicitWriteScope scope(explicitWrite(undoing));
             for (const auto& entry : values) ClipRecordHooks::afterComponentWrite(sceneId, entry.first, type, propertyName);
@@ -247,8 +261,7 @@ namespace jasperengine::editor{
                         *valueRef = value.newValue;
                     }
                 } else {
-                    T* valueRef = static_cast<T*>(prop.ref);
-                    value.oldValue = T(*valueRef);
+                    value.oldValue = readValue(prop);
                     if constexpr (std::is_same_v<T, Vector3>) {
                         auto it = shown.find(entity);
                         if (it != shown.end()){
@@ -259,7 +272,7 @@ namespace jasperengine::editor{
                         }
                     }
                     prefabUndo.capture(project, sceneId, entity);
-                    *valueRef = value.newValue;
+                    writeValue(prop, value.newValue);
                 }
 
                 // Read before the no-op check below: a command merging into this one adopts this
@@ -323,7 +336,7 @@ namespace jasperengine::editor{
                         *static_cast<std::string*>(prop.ref) = value.oldValue;
                     }
                 } else {
-                    *static_cast<T*>(prop.ref) = value.oldValue;
+                    writeValue(prop, value.oldValue);
                 }
 
                 // Mirrors execute: restored whether or not the value moved.
@@ -409,7 +422,7 @@ namespace jasperengine::editor{
                 if (!prop.ref){
                     continue;
                 }
-                const T current = *static_cast<T*>(prop.ref);
+                const T current = readValue(prop);
                 KeepRow row;
                 row.kind = KeepRow::Kind::Property;
                 row.entity = entity;
@@ -428,7 +441,7 @@ namespace jasperengine::editor{
                 row.readEditValue = [target, id, edited, component, name]() -> std::string {
                     SceneProject* restored = target->getScene(id);
                     PropertyData now = restored ? Catalog::findProperty(restored->scene, edited, component, name) : PropertyData{};
-                    return now.ref ? KeepContext::text(*static_cast<T*>(now.ref)) : std::string("(none)");
+                    return now.ref ? KeepContext::text(readValue(now)) : std::string("(none)");
                 };
                 context.add(std::move(row));
             }

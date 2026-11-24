@@ -23,13 +23,13 @@ using namespace jasperengine::titleart::test;
 
 namespace {
 
-    TitleArtDoc docOf(Json layer, Json scene = nullptr) {
+    TitleArtDoc title3DDocumentDocOf(Json layer, Json scene = nullptr) {
         Json root = Json{{"format", TITLE_ART_FORMAT}, {"version", TITLE_ART_VERSION}, {"layers", Json::array({layer})}};
         if (!scene.is_null()) root["scene_3d"] = scene;
         return parseTitleArtJson(root).doc;
     }
 
-    TitleMeshRequest requestOf(const TitleArtDoc& doc, const TestAssetResolver& assets) {
+    TitleMeshRequest title3DDocumentRequestOf(const TitleArtDoc& doc, const TestAssetResolver& assets) {
         TitleMeshRequest r;
         r.source = sourceOf(doc, 0, assets);
         r.style = decodeStyle3D(doc.layers()[0]);
@@ -48,7 +48,7 @@ TEST(Title3DDocumentTest, A2DDocumentWritesNoStyle) {
 }
 
 TEST(Title3DDocumentTest, DefaultsAndUnknownIds) {
-    const TitleArtDoc doc = docOf({{"type", "text"},
+    const TitleArtDoc doc = title3DDocumentDocOf({{"type", "text"},
                                    {"dimension", "3d"},
                                    {"style_3d", {{"face", {{"preset", "unobtainium"}}}, {"bevel", {{"profile", "wavy"}}},
                                                  {"lighting", {{"environment", {{"preset", "moon"}}}}}}}});
@@ -62,7 +62,7 @@ TEST(Title3DDocumentTest, DefaultsAndUnknownIds) {
     // a face given in part takes the material's own defaults for the rest
     EXPECT_EQ(s["face"]["color"], "#ffffff");
     // without one, the plain face
-    const TitleArtDoc plain = docOf({{"type", "text"}, {"dimension", "3d"}, {"style_3d", Json::object()}});
+    const TitleArtDoc plain = title3DDocumentDocOf({{"type", "text"}, {"dimension", "3d"}, {"style_3d", Json::object()}});
     EXPECT_EQ(plain.layers()[0]["style_3d"]["face"]["color"], "#c0c0c0");
     EXPECT_DOUBLE_EQ(plain.layers()[0]["style_3d"]["face"]["env_multiplier"].get<double>(), 0.5);
     // the lighting override is sparse: only what was set
@@ -82,7 +82,7 @@ TEST(Title3DDocumentTest, FirstSwitchDerivesFromThe2DStyle) {
                   {"style", {{"face", {{"fill", {{"kind", "solid"}, {"color", "#ff0000"}}}}},
                              {"rims", Json::array({{{"width", 4}, {"join", "bevel"}, {"material", {{"fill", {{"color", "#00ff00"}}}}}},
                                                    {{"width", 2}, {"fill_counters", true}}})}}}};
-    const TitleArtDoc doc = docOf(layer);
+    const TitleArtDoc doc = title3DDocumentDocOf(layer);
     const Json derived = deriveStyle3D(doc.layers()[0]);
     EXPECT_EQ(derived["face"]["color"], "#ff0000");
     EXPECT_DOUBLE_EQ(derived["face"]["roughness"].get<double>(), 0.35);
@@ -94,18 +94,18 @@ TEST(Title3DDocumentTest, FirstSwitchDerivesFromThe2DStyle) {
     EXPECT_TRUE(derived["bands"][1]["fill_counters"].get<bool>());
     EXPECT_EQ(derived["side"]["color"], "#800000");
     // a default 2D style gets the plain 3D style
-    const TitleArtDoc plain = docOf({{"type", "text"}});
+    const TitleArtDoc plain = title3DDocumentDocOf({{"type", "text"}});
     EXPECT_EQ(deriveStyle3D(plain.layers()[0]), plainStyle3D());
     // a 3D layer without style_3d decodes as the derivation
     Json threeD = layer;
     threeD["dimension"] = "3d";
-    const Title3D decoded = decodeStyle3D(docOf(threeD).layers()[0]);
+    const Title3D decoded = decodeStyle3D(title3DDocumentDocOf(threeD).layers()[0]);
     EXPECT_TRUE(decoded.derived);
     EXPECT_EQ(decoded.bands.size(), 2u);
 }
 
 TEST(Title3DDocumentTest, LightingInheritsValueByValue) {
-    const TitleArtDoc doc = docOf({{"type", "text"},
+    const TitleArtDoc doc = title3DDocumentDocOf({{"type", "text"},
                                    {"dimension", "3d"},
                                    {"style_3d", {{"lighting", {{"environment", {{"rotation", 30}}}, {"tone_mapping", "punch"}}},
                                                  {"face", {{"environment", {{"preset", "city"}}}}}}}},
@@ -209,11 +209,11 @@ TEST(TitleTierBudgetTest, BigBonusMeshesFitTheirTiers) {
     Json bands = Json::array({{{"grow", 2}, {"bevel", {{"width", 1}, {"depth", 1}, {"profile", "chamfer"}}}},
                               {{"grow", 2}, {"bevel", {{"width", 1}, {"depth", 1}, {"profile", "step"}}}},
                               {{"grow", 4}}});
-    const TitleArtDoc doc = docOf(textLayer3D("BIG BONUS", DELA_GOTHIC, 200,
+    const TitleArtDoc doc = title3DDocumentDocOf(textLayer3D("BIG BONUS", DELA_GOTHIC, 200,
                                               {{"face", {{"preset", "gold"}}}, {"bevel", {{"width", 2.5}, {"depth", 2.5}}}, {"bands", bands}}));
     for (TitleTier tier : {TitleTier::High, TitleTier::Medium, TitleTier::Low}) {
         TitleMesher mesher;
-        TitleMeshRequest r = requestOf(doc, assets);
+        TitleMeshRequest r = title3DDocumentRequestOf(doc, assets);
         r.tier = tier;
         const auto mesh = mesher.build(r);
         const TitleTierLimits l = titleTierLimits(tier);
@@ -226,9 +226,9 @@ TEST(TitleTierBudgetTest, BigBonusMeshesFitTheirTiers) {
 
 TEST(TitleMeshFileTest, RoundTripIsByteIdenticalAndNewerIsRefused) {
     TestAssetResolver assets;
-    const TitleArtDoc doc = docOf(textLayer3D("Ab", DELA_GOTHIC, 200, {{"bevel", {{"width", 2}, {"depth", 2}}}}));
+    const TitleArtDoc doc = title3DDocumentDocOf(textLayer3D("Ab", DELA_GOTHIC, 200, {{"bevel", {{"width", 2}, {"depth", 2}}}}));
     TitleMesher mesher;
-    const auto mesh = mesher.build(requestOf(doc, assets));
+    const auto mesh = mesher.build(title3DDocumentRequestOf(doc, assets));
     const std::vector<uint8_t> bytes = writeTitleMesh(*mesh);
     std::string error;
     const auto back = readTitleMesh(bytes, &error);
@@ -247,8 +247,8 @@ TEST(TitleRigTest, TiltsAndMaterialsNeverRebuildGeometry) {
     TestAssetResolver assets;
     Json layer = textLayer3D("AB", DELA_GOTHIC, 200, {{"bands", Json::array({{{"grow", 2}}})}});
     layer["chars"] = {{"1", {{"rig", true}}}};
-    const TitleArtDoc doc = docOf(layer);
-    const TitleMeshRequest base = requestOf(doc, assets);
+    const TitleArtDoc doc = title3DDocumentDocOf(layer);
+    const TitleMeshRequest base = title3DDocumentRequestOf(doc, assets);
     const uint64_t key = titleGeometryKey(base);
     // a tilt of the rigged letter, a material and a lighting edit: the same geometry key
     Json tilted = doc.layers()[0];
@@ -256,8 +256,8 @@ TEST(TitleRigTest, TiltsAndMaterialsNeverRebuildGeometry) {
     tilted["chars"]["1"]["dz"] = 10;
     tilted["style_3d"]["face"]["roughness"] = 0.9;
     tilted["style_3d"]["lighting"]["environment"]["rotation"] = 45;
-    const TitleArtDoc edited = docOf(tilted);
-    EXPECT_EQ(titleGeometryKey(requestOf(edited, assets)), key);
+    const TitleArtDoc edited = title3DDocumentDocOf(tilted);
+    EXPECT_EQ(titleGeometryKey(title3DDocumentRequestOf(edited, assets)), key);
     // the rigged letter is a part of its own whose band stack carries its rig
     TitleMesher mesher;
     const auto mesh = mesher.build(base);
@@ -273,11 +273,11 @@ TEST(TitleRigTest, TiltsAndMaterialsNeverRebuildGeometry) {
     }
     EXPECT_TRUE(rigBand);
     // the cache serves the edited request without a build
-    mesher.build(requestOf(edited, assets));
+    mesher.build(title3DDocumentRequestOf(edited, assets));
     EXPECT_EQ(mesher.meshBuilds(), 1u);
     // a geometry edit rebuilds
     Json deeper = doc.layers()[0];
     deeper["style_3d"]["depth"] = 30;
-    mesher.build(requestOf(docOf(deeper), assets));
+    mesher.build(title3DDocumentRequestOf(title3DDocumentDocOf(deeper), assets));
     EXPECT_EQ(mesher.meshBuilds(), 2u);
 }

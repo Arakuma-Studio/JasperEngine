@@ -32,7 +32,7 @@ using namespace jasperengine::pixelart;
 
 namespace {
 
-    constexpr double kDt = 1.0 / 60.0;
+    constexpr double kPixelFxPlayerDt = 1.0 / 60.0;
     constexpr int kSide = 16;
 
     float valueOf(const std::vector<PixelFxValue>& values, const char* member, int component = 0){
@@ -206,7 +206,7 @@ TEST_F(PixelFxPlayerScene, EmbersOnFront){
     size_t total = 0;
     while (!handle.isDone() && frames < 100){
         emitted.clear();
-        PixelFxPlayer::update(kDt, kDt);
+        PixelFxPlayer::update(kPixelFxPlayerDt, kPixelFxPlayerDt);
         frames++;
         const float progress = param(e, "dissolveProgress").x;
         const std::vector<PixelFxTexel> expected = PixelFxPlayer::emberTexels(frame, dissolve, previous, progress);
@@ -246,16 +246,16 @@ TEST_F(PixelFxPlayerScene, RunsOnGameTimeAndEndsAtNeutral){
     EXPECT_FLOAT_EQ(param(e, "flashAmount").x, 1.0f);
     // frozen: a hit-stop holds it
     HitStop::play(1.0f);
-    HitStop::beginFrame(kDt, kDt);
-    PixelFxPlayer::update(0.0, kDt);
+    HitStop::beginFrame(kPixelFxPlayerDt, kPixelFxPlayerDt);
+    PixelFxPlayer::update(0.0, kPixelFxPlayerDt);
     EXPECT_FLOAT_EQ(handle.getProgress(), 0.0f);
     // exempt: it runs on the unfrozen delta
     scene.addComponent<HitStopExemptComponent>(e, HitStopExemptComponent());
-    HitStop::beginFrame(kDt, kDt);
-    PixelFxPlayer::update(0.0, kDt);
-    EXPECT_NEAR(handle.getProgress(), (float)(kDt / 0.1), 1e-4f);
+    HitStop::beginFrame(kPixelFxPlayerDt, kPixelFxPlayerDt);
+    PixelFxPlayer::update(0.0, kPixelFxPlayerDt);
+    EXPECT_NEAR(handle.getProgress(), (float)(kPixelFxPlayerDt / 0.1), 1e-4f);
     HitStop::reset();
-    for (int i = 0; i < 10; i++) PixelFxPlayer::update(kDt, kDt);
+    for (int i = 0; i < 10; i++) PixelFxPlayer::update(kPixelFxPlayerDt, kPixelFxPlayerDt);
     EXPECT_TRUE(handle.isDone());
     EXPECT_EQ(finished, 1);
     EXPECT_FLOAT_EQ(param(e, "flashAmount").x, 0.0f);
@@ -320,12 +320,12 @@ TEST_F(PixelFxPlayerScene, MissingFeatureWaitsForItsVariant){
     ASSERT_TRUE(handle.isValid());
     EXPECT_TRUE(hasFeature(e, "DITHER_FADE"));
     EXPECT_TRUE(scene.getComponent<MeshComponent>(e).needReload);
-    for (int i = 0; i < 5; i++) PixelFxPlayer::update(kDt, kDt);
+    for (int i = 0; i < 5; i++) PixelFxPlayer::update(kPixelFxPlayerDt, kPixelFxPlayerDt);
     EXPECT_FLOAT_EQ(handle.getProgress(), 0.0f) << "waits while the variant builds";
     loadVariant(e);
-    PixelFxPlayer::update(kDt, kDt);   // ready: counts from zero
-    PixelFxPlayer::update(kDt, kDt);
-    EXPECT_NEAR(handle.getProgress(), (float)(kDt / 0.2), 1e-4f);
+    PixelFxPlayer::update(kPixelFxPlayerDt, kPixelFxPlayerDt);   // ready: counts from zero
+    PixelFxPlayer::update(kPixelFxPlayerDt, kPixelFxPlayerDt);
+    EXPECT_NEAR(handle.getProgress(), (float)(kPixelFxPlayerDt / 0.2), 1e-4f);
 }
 
 // one effect per feature: a new one replaces the running one (no onFinished); stop() ends at 0;

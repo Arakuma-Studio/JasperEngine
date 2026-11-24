@@ -66,7 +66,7 @@ namespace {
         event.add(kTag, [](Args...) { return Ret(); });
     }
 
-    struct Named {
+    struct ComponentEventsNamed {
         std::string name;
         size_t (*size)(Scene& scene, Entity entity);
     };
@@ -77,7 +77,7 @@ namespace {
     }
 
     // every event of every component with events, by name
-    std::vector<Named> subscribeEverything(Scene& scene, Entity entity) {
+    std::vector<ComponentEventsNamed> subscribeEverything(Scene& scene, Entity entity) {
         scene.addComponent<ActionComponent>(entity, {});
         scene.addComponent<AnimationPlayerComponent>(entity, {});
         scene.addComponent<AnimatorComponent>(entity, {});
@@ -100,7 +100,7 @@ namespace {
         scene.addComponent<VertexAnimatorComponent>(entity, {});
         scene.addComponent<VideoPlayerComponent>(entity, {});
 
-        std::vector<Named> named;
+        std::vector<ComponentEventsNamed> named;
 #define JE_EVENT(COMPONENT, EVENT) \
         subscribe(component<COMPONENT>(scene, entity).EVENT); \
         named.push_back({#COMPONENT "." #EVENT, [](Scene& s, Entity e) { return component<COMPONENT>(s, e).EVENT.size(); }});
@@ -142,15 +142,15 @@ namespace {
         return named;
     }
 
-    std::vector<std::string> stillSubscribed(Scene& scene, Entity entity, const std::vector<Named>& named) {
+    std::vector<std::string> stillSubscribed(Scene& scene, Entity entity, const std::vector<ComponentEventsNamed>& named) {
         std::vector<std::string> left;
-        for (const Named& event : named) {
+        for (const ComponentEventsNamed& event : named) {
             if (event.size(scene, entity) != 0) left.push_back(event.name);
         }
         return left;
     }
 
-    std::string joined(const std::vector<std::string>& names) {
+    std::string componentEventsJoined(const std::vector<std::string>& names) {
         std::string text;
         for (const std::string& name : names) text += (text.empty() ? "" : ", ") + name;
         return text;
@@ -161,22 +161,22 @@ namespace {
 TEST(ComponentEventsTest, ClearReachesEveryEvent) {
     Scene scene;
     const Entity entity = scene.createEntity();
-    const std::vector<Named> named = subscribeEverything(scene, entity);
+    const std::vector<ComponentEventsNamed> named = subscribeEverything(scene, entity);
     ASSERT_TRUE(stillSubscribed(scene, entity, named).size() == named.size());
 
     Engine::clearComponentSubscriptions(&scene);
     EXPECT_TRUE(stillSubscribed(scene, entity, named).empty())
-        << "left after the clear at Stop: " << joined(stillSubscribed(scene, entity, named));
+        << "left after the clear at Stop: " << componentEventsJoined(stillSubscribed(scene, entity, named));
 }
 
 TEST(ComponentEventsTest, RemoveByTagReachesEveryEvent) {
     Scene scene;
     const Entity entity = scene.createEntity();
-    const std::vector<Named> named = subscribeEverything(scene, entity);
+    const std::vector<ComponentEventsNamed> named = subscribeEverything(scene, entity);
 
     scene.removeSubscriptionsByTag("ScriptX_");
     EXPECT_TRUE(stillSubscribed(scene, entity, named).empty())
-        << "left after the removal by tag: " << joined(stillSubscribed(scene, entity, named));
+        << "left after the removal by tag: " << componentEventsJoined(stillSubscribed(scene, entity, named));
 }
 
 // a C++ script's tween ease (TweenComponent::function) is code of its library: the clear at Stop

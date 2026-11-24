@@ -69,7 +69,7 @@ namespace {
     }
 
     // a view looking down -Z from the origin: x and y within 50 m, 0 to 100 m deep
-    void boxFrustum(Plane planes[6]){
+    void atmosphereMathBoxFrustum(Plane planes[6]){
         planes[FRUSTUM_PLANE_NEAR] = Plane(0.0f, 0.0f, -1.0f, 0.0f);
         planes[FRUSTUM_PLANE_FAR] = Plane(0.0f, 0.0f, 1.0f, 100.0f);
         planes[FRUSTUM_PLANE_LEFT] = Plane(1.0f, 0.0f, 0.0f, 50.0f);
@@ -266,7 +266,7 @@ TEST(AtmosphereMath, FogVolumeDensityFadesOverTheBlendDistance){
 
 TEST(Atmosphere, VolumeSelection){
     Plane planes[6];
-    boxFrustum(planes);
+    atmosphereMathBoxFrustum(planes);
     std::vector<FogVolumeData> volumes;
     // ten volumes in view at rising distances (listed far to near), one behind the camera, one
     // past the volumetric distance
@@ -302,7 +302,7 @@ TEST(Atmosphere, VolumeSelection){
 // why each volume was left out (docs/specs/vapor.md R17's volume_culled)
 TEST(Atmosphere, VolumeSelectionReasons){
     Plane planes[6];
-    boxFrustum(planes);
+    atmosphereMathBoxFrustum(planes);
     std::vector<FogVolumeData> volumes = {
         boxVolume(1, Vector3(0.0f, 0.0f, -10.0f), Vector3(2.0f, 2.0f, 2.0f)),   // used
         boxVolume(2, Vector3(0.0f, 0.0f, -20.0f), Vector3(2.0f, 2.0f, 2.0f)),   // past the cap of 1

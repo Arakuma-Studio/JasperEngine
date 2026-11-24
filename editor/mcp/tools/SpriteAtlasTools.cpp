@@ -427,7 +427,7 @@ void getSpriteAtlasTool(const CallPtr& call) {
         jobs::SubmitOptions options;
         options.lane = jobs::Lane::Background;
         options.name = "sprite-atlas-preview";
-        jobs::submit([job, input, base, search, limit, page, includePages, project]() {
+        jobs::submit([job, input, base, search, limit, page, includePages]() {
             struct Wake {
                 ~Wake() { getEditorHost().enqueueMainThreadTask([]() {}); }
             } wake;

@@ -57,4 +57,7 @@ shader-deblocking samples, the build files.
     time; `pack_astc_block()` builds the ASTC block in two words (`astc_block_bits`) and
     `astc_set_bits()` ORs a field from one shifted word; `unpack_uastc()` divides the trit / quint
     bundles by the constants 3 and 5 and inverts a one-subset block's weights in one loop.
-- Otherwise no source file is changed; `encoder/*` is byte for byte the tag's.
+  - `encoder/basisu_astc_ldr_fencode.h` includes `<bit>` for its `std::popcount`, which the tag
+    calls when `__cpp_lib_bitops` is defined without including the header (MSVC's library defines
+    the macro in every header).
+- Otherwise no source file is changed: the rest of `encoder/*` is byte for byte the tag's.

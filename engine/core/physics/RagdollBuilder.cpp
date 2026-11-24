@@ -507,9 +507,22 @@ RagdollBuildResult RagdollBuilder::build(Scene* scene, Entity root, const Ragdol
     return result;
 }
 
-bool RagdollBuilder::apply(Scene* scene, Entity root, const RagdollBuildResult& result){
+bool RagdollBuilder::apply(Scene* scene, Entity root, const RagdollBuildResult& result, std::string* error){
     if (!result.ok || !scene || !scene->isEntityCreated(root)){
+        if (error) *error = result.ok ? "no such GameObject" : result.error;
         return false;
+    }
+    // a removal waits for the deferring scope to close while an add is immediate: replacing
+    // there would fail half way, so it is refused before anything changes
+    if (scene->isStructuralDeferActive()){
+        bool replaces = scene->findComponent<RagdollComponent>(root) != nullptr;
+        for (const RagdollBuiltPart& part : result.parts){
+            replaces = replaces || scene->findComponent<RigidbodyComponent>(part.entity) || scene->findComponent<Joint3DComponent>(part.entity);
+        }
+        if (replaces){
+            if (error) *error = "a bone already has a Rigidbody or Joint 3D (or the root a Ragdoll), which cannot be replaced inside a UI event handler: do it from onUpdate";
+            return false;
+        }
     }
     for (const RagdollBuiltPart& part : result.parts){
         if (scene->findComponent<Joint3DComponent>(part.entity)){

@@ -46,7 +46,7 @@ namespace {
         return text;
     }
 
-    std::string readText(const std::filesystem::path& path) {
+    std::string terrainGoldenReadText(const std::filesystem::path& path) {
         std::ifstream file(path);
         std::stringstream text;
         text << file.rdbuf();
@@ -92,7 +92,7 @@ TEST(TerrainGolden, Hashes) {
         return;
     }
 
-    const std::string text = readText(hashesPath());
+    const std::string text = terrainGoldenReadText(hashesPath());
     ASSERT_FALSE(text.empty()) << hashesPath();
     std::map<std::string, std::string> pinned;
     const std::regex row("\"([a-z0-9_]+)\": \"([0-9a-f]{16})\"");
@@ -105,7 +105,7 @@ TEST(TerrainGolden, Hashes) {
     }
 
     // What the wasm gate compares is this same list's digest
-    EXPECT_NE(readText(gatePath()).find("[gate] terrain-edit " + hexOf(digestOf(hashes))), std::string::npos) << gatePath();
+    EXPECT_NE(terrainGoldenReadText(gatePath()).find("[gate] terrain-edit " + hexOf(digestOf(hashes))), std::string::npos) << gatePath();
 }
 
 TEST(TerrainGolden, EverySequenceDoesSomething) {

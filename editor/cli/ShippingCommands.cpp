@@ -31,6 +31,9 @@
 #include <vector>
 
 #if defined(_WIN32)
+    #ifndef NOMINMAX
+    #define NOMINMAX
+    #endif
     #include <windows.h>
     #include <fcntl.h>
     #include <io.h>
@@ -103,7 +106,11 @@ namespace {
     };
 
     struct EngineRuntimeGuard {
+        Project& project;
         ~EngineRuntimeGuard() {
+            // the project's scenes and their renders go while the engine runs: ~Project, which
+            // comes after this guard, leaves them to the process exit
+            project.releaseScenes();
             ShaderPool::setShaderBuilder(nullptr);
             ShaderBuilder::requestShutdown();
             Engine::systemShutdown();
@@ -259,7 +266,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         Project project;
         auto platform = std::make_unique<Platform>(&project);
         Engine::systemInit(argc, argv, platform.get());
-        EngineRuntimeGuard engineRuntime;
+        EngineRuntimeGuard engineRuntime{project};
         Engine::pauseGameEvents(true);
         Engine::setAsyncLoading(true);
         ShaderPool::setShaderBuilder([projectPtr = &project](ShaderKey shaderKey) -> ShaderBuildResult {

@@ -104,6 +104,8 @@ TEST(HangWatchdog, InjectedStallReports) {
         recovered.notify_all();
     };
     watchdog::start(config);
+    // (Windows: the stack names its frames once the symbols loaded beside the watchdog)
+    ASSERT_TRUE(watchdog::detail::waitForSymbolsForTest(std::chrono::seconds(120)));
     for (int i = 0; i < 4; i++) {
         heartbeat();
         std::this_thread::sleep_for(std::chrono::milliseconds(30));

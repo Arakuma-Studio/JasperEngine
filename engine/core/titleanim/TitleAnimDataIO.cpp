@@ -13,7 +13,8 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::titleanim;
+
+namespace jasperengine::titleanim {
 
 namespace {
 
@@ -161,7 +162,7 @@ std::string TitleAnimWarning::toString() const{
 
 // ==================================================================== values and keys
 
-double titleanim::roundToFloat(double value){
+double roundToFloat(double value){
     if (!std::isfinite(value)) return 0.0;
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%.7g", (double)(float)value);
@@ -169,7 +170,7 @@ double titleanim::roundToFloat(double value){
     return out == 0.0 ? 0.0 : out;     // -0 as 0
 }
 
-bool titleanim::parseHexColor(std::string_view text, float* rgb){
+bool parseHexColor(std::string_view text, float* rgb){
     if (text.size() != 4 && text.size() != 7) return false;
     if (text[0] != '#') return false;
     auto hex = [](char c) -> int{
@@ -191,14 +192,14 @@ bool titleanim::parseHexColor(std::string_view text, float* rgb){
     return true;
 }
 
-std::string titleanim::formatHexColor(const float* rgb){
+std::string formatHexColor(const float* rgb){
     char buf[8];
     auto channel = [](float c){ return (int)std::lround(std::min(1.0f, std::max(0.0f, c)) * 255.0f); };
     std::snprintf(buf, sizeof(buf), "#%02x%02x%02x", channel(rgb[0]), channel(rgb[1]), channel(rgb[2]));
     return buf;
 }
 
-bool titleanim::numericFromJson(const AnimJson& value, float* out, size_t& width){
+bool numericFromJson(const AnimJson& value, float* out, size_t& width){
     if (value.is_number()){
         const double v = value.get<double>();
         if (!std::isfinite(v)) return false;
@@ -222,7 +223,7 @@ bool titleanim::numericFromJson(const AnimJson& value, float* out, size_t& width
     return false;
 }
 
-AnimJson titleanim::keyValueJson(const TitleKey& key){
+AnimJson keyValueJson(const TitleKey& key){
     if (!key.stepped.empty()){
         AnimJson v = AnimJson::parse(key.stepped, nullptr, false);
         if (!v.is_discarded()) return v;
@@ -231,7 +232,7 @@ AnimJson titleanim::keyValueJson(const TitleKey& key){
     return floatArray(key.key.value);
 }
 
-bool titleanim::decodeKey(const AnimJson& value, TitleKey& out, std::string& error){
+bool decodeKey(const AnimJson& value, TitleKey& out, std::string& error){
     out = TitleKey();
     const AnimJson* time = nullptr;
     const AnimJson* v = nullptr;
@@ -314,7 +315,7 @@ bool titleanim::decodeKey(const AnimJson& value, TitleKey& out, std::string& err
     return true;
 }
 
-AnimJson titleanim::encodeKey(const TitleKey& key){
+AnimJson encodeKey(const TitleKey& key){
     const bool object = key.key.hasTangents() || key.key.tangentMode != ClipTangentMode::None;
     if (!object){
         AnimJson a = AnimJson::array({roundToFloat(key.key.time), keyValueJson(key)});
@@ -335,21 +336,21 @@ AnimJson titleanim::encodeKey(const TitleKey& key){
 
 // ==================================================================== the authoring form
 
-bool titleanim::isAnimationName(std::string_view name){
+bool isAnimationName(std::string_view name){
     const size_t n = utf8Count(name);
     if (n == 0 || n > TITLE_ANIM_MAX_NAME) return false;
     for (unsigned char c : name) if (c == '/' || c < 0x20 || c == 0x7f) return false;
     return true;
 }
 
-void titleanim::sortMarkers(std::vector<TitleMarker>& markers){
+void sortMarkers(std::vector<TitleMarker>& markers){
     std::stable_sort(markers.begin(), markers.end(), [](const TitleMarker& a, const TitleMarker& b){
         if (a.time != b.time) return a.time < b.time;
         return a.name < b.name;
     });
 }
 
-bool titleanim::decodeStagger(const AnimJson& value, const std::string& path, TitleStagger& out, std::vector<TitleAnimWarning>* w){
+bool decodeStagger(const AnimJson& value, const std::string& path, TitleStagger& out, std::vector<TitleAnimWarning>* w){
     out = TitleStagger();
     if (!value.is_object()){
         warn(w, path, "expected {each | over, order, unit, seed, ease}, stagger dropped");
@@ -370,7 +371,7 @@ bool titleanim::decodeStagger(const AnimJson& value, const std::string& path, Ti
     return true;
 }
 
-AnimJson titleanim::encodeStagger(const TitleStagger& s){
+AnimJson encodeStagger(const TitleStagger& s){
     AnimJson o = AnimJson::object();
     if (s.over >= 0.0f) o["over"] = roundToFloat(s.over);
     else o["each"] = roundToFloat(s.each);
@@ -381,7 +382,7 @@ AnimJson titleanim::encodeStagger(const TitleStagger& s){
     return o;
 }
 
-bool titleanim::decodeDrive(const AnimJson& value, const std::string& path, TitleDrive& out, std::vector<TitleAnimWarning>* w){
+bool decodeDrive(const AnimJson& value, const std::string& path, TitleDrive& out, std::vector<TitleAnimWarning>* w){
     out = TitleDrive();
     if (!value.is_object()){
         warn(w, path, "expected {from, to, cycles | rate, ease, wrap}");
@@ -428,7 +429,7 @@ bool titleanim::decodeDrive(const AnimJson& value, const std::string& path, Titl
     return true;
 }
 
-AnimJson titleanim::encodeDrive(const TitleDrive& d){
+AnimJson encodeDrive(const TitleDrive& d){
     auto value = [](const std::vector<float>& v) -> AnimJson{
         if (v.size() == 1) return roundToFloat(v[0]);
         return floatArray(v);
@@ -443,7 +444,7 @@ AnimJson titleanim::encodeDrive(const TitleDrive& d){
     return o;
 }
 
-bool titleanim::decodeTrack(const AnimJson& value, const std::string& path, TitleTrack& out, std::vector<TitleAnimWarning>* w){
+bool decodeTrack(const AnimJson& value, const std::string& path, TitleTrack& out, std::vector<TitleAnimWarning>* w){
     out = TitleTrack();
     if (!value.is_object()){
         warn(w, path, "expected a track object, track dropped");
@@ -520,7 +521,7 @@ bool titleanim::decodeTrack(const AnimJson& value, const std::string& path, Titl
     return true;
 }
 
-AnimJson titleanim::encodeTrack(const TitleTrack& t){
+AnimJson encodeTrack(const TitleTrack& t){
     AnimJson o = AnimJson::object();
     o["layer"] = t.layer;
     o["field"] = t.field;
@@ -542,7 +543,7 @@ AnimJson titleanim::encodeTrack(const TitleTrack& t){
     return o;
 }
 
-bool titleanim::decodeMarker(const AnimJson& value, const std::string& path, TitleMarker& out, std::vector<TitleAnimWarning>* w){
+bool decodeMarker(const AnimJson& value, const std::string& path, TitleMarker& out, std::vector<TitleAnimWarning>* w){
     out = TitleMarker();
     if (!value.is_object()){
         warn(w, path, "expected a marker object, marker dropped");
@@ -584,7 +585,7 @@ bool titleanim::decodeMarker(const AnimJson& value, const std::string& path, Tit
     return true;
 }
 
-AnimJson titleanim::encodeMarker(const TitleMarker& m){
+AnimJson encodeMarker(const TitleMarker& m){
     AnimJson o = AnimJson::object();
     o["time"] = roundToFloat(m.time);
     o["name"] = m.name;
@@ -602,7 +603,7 @@ AnimJson titleanim::encodeMarker(const TitleMarker& m){
     return o;
 }
 
-bool titleanim::decodeAnimation(const AnimJson& value, const std::string& path, TitleAnimation& out, std::vector<TitleAnimWarning>* w){
+bool decodeAnimation(const AnimJson& value, const std::string& path, TitleAnimation& out, std::vector<TitleAnimWarning>* w){
     out = TitleAnimation();
     if (!value.is_object()){
         warn(w, path, "expected an animation object, animation dropped");
@@ -709,7 +710,7 @@ bool titleanim::decodeAnimation(const AnimJson& value, const std::string& path, 
     return true;
 }
 
-AnimJson titleanim::encodeAnimation(const TitleAnimation& a){
+AnimJson encodeAnimation(const TitleAnimation& a){
     AnimJson o = AnimJson::object();
     o["id"] = a.id;
     o["name"] = a.name;
@@ -738,7 +739,7 @@ AnimJson titleanim::encodeAnimation(const TitleAnimation& a){
     return o;
 }
 
-void titleanim::decodeAnimationSet(const AnimJson& value, const std::string& path, TitleAnimationSet& out, std::vector<TitleAnimWarning>* w){
+void decodeAnimationSet(const AnimJson& value, const std::string& path, TitleAnimationSet& out, std::vector<TitleAnimWarning>* w){
     out = TitleAnimationSet();
     if (value.is_null()) return;
     if (!value.is_object()){
@@ -775,7 +776,7 @@ void titleanim::decodeAnimationSet(const AnimJson& value, const std::string& pat
     out.unknown = unknownOf(value, {"fps", "default", "animations"});
 }
 
-AnimJson titleanim::encodeAnimationSet(const TitleAnimationSet& set){
+AnimJson encodeAnimationSet(const TitleAnimationSet& set){
     AnimJson o = AnimJson::object();
     o["fps"] = set.fps;
     o["default"] = set.defaultName;
@@ -788,7 +789,7 @@ AnimJson titleanim::encodeAnimationSet(const TitleAnimationSet& set){
 
 // ==================================================================== title-live tracks
 
-bool titleanim::splitComponent(std::string_view field, std::string& base, int& component){
+bool splitComponent(std::string_view field, std::string& base, int& component){
     base = std::string(field);
     component = -1;
     const size_t dot = field.rfind('.');
@@ -804,7 +805,7 @@ bool titleanim::splitComponent(std::string_view field, std::string& base, int& c
     return true;
 }
 
-bool titleanim::compileTitleTrack(const TitleTrack& track, CompiledTitleTrack& out, std::string* error){
+bool compileTitleTrack(const TitleTrack& track, CompiledTitleTrack& out, std::string* error){
     out = CompiledTitleTrack();
     out.layer = track.layer;
     out.field = track.field;
@@ -871,7 +872,7 @@ bool titleanim::compileTitleTrack(const TitleTrack& track, CompiledTitleTrack& o
     return true;
 }
 
-double titleanim::resolveDuration(const TitleAnimation& animation, const CompiledTitleAnimation& compiled){
+double resolveDuration(const TitleAnimation& animation, const CompiledTitleAnimation& compiled){
     if (animation.duration > 0.0f) return std::max(TITLE_ANIM_MIN_DURATION, (double)animation.duration);
     double end = 0.0;
     for (const CompiledTitleTrack& t : compiled.tracks) if (!t.orphan) end = std::max(end, t.endTime());
@@ -881,7 +882,7 @@ double titleanim::resolveDuration(const TitleAnimation& animation, const Compile
     return std::min(TITLE_ANIM_MAX_DURATION, std::max(TITLE_ANIM_MIN_DURATION, end));
 }
 
-void titleanim::compileMarkers(const TitleAnimation& animation, CompiledTitleAnimation& out){
+void compileMarkers(const TitleAnimation& animation, CompiledTitleAnimation& out){
     out.markers.clear();
     for (const TitleMarker& m : animation.markers){
         CompiledMarker c;
@@ -899,7 +900,7 @@ void titleanim::compileMarkers(const TitleAnimation& animation, CompiledTitleAni
     });
 }
 
-void titleanim::compileTitleOnly(const TitleAnimation& animation, CompiledTitleAnimation& out, std::vector<TitleAnimWarning>* warnings){
+void compileTitleOnly(const TitleAnimation& animation, CompiledTitleAnimation& out, std::vector<TitleAnimWarning>* warnings){
     CompiledFlipbook flipbook = std::move(out.flipbook);
     BakedCost cost = out.bakedCost;
     out = CompiledTitleAnimation();
@@ -1037,7 +1038,7 @@ namespace {
 
 }
 
-bool titleanim::readAnimData(std::string_view text, TitleAnimData& out, std::vector<std::string>* warnings, std::string* error){
+bool readAnimData(std::string_view text, TitleAnimData& out, std::vector<std::string>* warnings, std::string* error){
     out = TitleAnimData();
     AnimJson root = AnimJson::parse(text.begin(), text.end(), nullptr, false);
     auto fail = [&](const std::string& m){
@@ -1094,7 +1095,7 @@ bool titleanim::readAnimData(std::string_view text, TitleAnimData& out, std::vec
     return true;
 }
 
-bool titleanim::loadAnimData(const std::string& path, TitleAnimData& out, std::vector<std::string>* warnings, std::string* error){
+bool loadAnimData(const std::string& path, TitleAnimData& out, std::vector<std::string>* warnings, std::string* error){
     Data data;
     if (data.open(path.c_str()) != FileErrors::FILEDATA_OK){
         if (error) *error = "cannot read " + path;
@@ -1104,7 +1105,7 @@ bool titleanim::loadAnimData(const std::string& path, TitleAnimData& out, std::v
     return readAnimData(text, out, warnings, error);
 }
 
-std::string titleanim::writeAnimData(const TitleAnimData& data){
+std::string writeAnimData(const TitleAnimData& data){
     AnimJson root = AnimJson::object();
     root["format"] = TITLE_ANIM_DATA_FORMAT;
     root["version"] = TITLE_ANIM_DATA_VERSION;
@@ -1144,12 +1145,14 @@ std::string titleanim::writeAnimData(const TitleAnimData& data){
     return root.dump(1) + "\n";
 }
 
-std::string titleanim::titleAnimDataPath(const std::string& titlePath){
+std::string titleAnimDataPath(const std::string& titlePath){
     return titlePath + TITLE_ANIM_DATA_SUFFIX;
 }
 
-std::string titleanim::titleFlipbookPageFile(const std::string& titlePath, const std::string& animationId, int page){
+std::string titleFlipbookPageFile(const std::string& titlePath, const std::string& animationId, int page){
     const size_t slash = titlePath.find_last_of('/');
     const std::string file = slash == std::string::npos ? titlePath : titlePath.substr(slash + 1);
     return file + "." + animationId + ".flip" + std::to_string(page) + ".png";
 }
+
+}  // namespace jasperengine::titleanim

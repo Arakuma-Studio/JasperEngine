@@ -33,7 +33,7 @@ using namespace jasperengine::titleart::test;
 
 namespace {
 
-    std::string runLua(lua_State* L, const std::string& code) {
+    std::string titleArt3DLuaRunLua(lua_State* L, const std::string& code) {
         if (luaL_loadstring(L, code.c_str()) != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK) {
             std::string error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "(error)";
             lua_pop(L, 1);
@@ -52,7 +52,7 @@ namespace {
         return makeDoc({{"canvas", canvas(512, 256)}, {"layers", Json::array({layer})}, {"exposed", exposed}, {"scene_3d", {{"supersample", 1}}}});
     }
 
-    TitleArtOverride number(const char* name, float value) {
+    TitleArtOverride titleArt3DLuaNumber(const char* name, float value) {
         TitleArtOverride o;
         o.name = name;
         o.type = "number";
@@ -115,7 +115,7 @@ TEST(TitleArt3DLua, QualityTierAndMeshStats) {
     lua_setglobal(L, "REALTIME");
     lua_pushinteger(L, baked);
     lua_setglobal(L, "BAKED");
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(titleArt3DLuaRunLua(L, R"(
         local t = TitleArt(titleScene, REALTIME)
         assert(t.qualityTier == "auto", "auto by default")
         t.qualityTier = "low"
@@ -187,13 +187,13 @@ TEST_F(TitleArt3DLiveGpu, MeshStatsAndASpinWithoutAMesh) {
     const Title3DStats& counters = static_cast<const Title3DRenderer*>(held.get())->stats();
     const uint64_t uploads = counters.meshUploads;
     const uint64_t renders = counters.renders;
-    setState(live, {number("spin", 35.0f)}, "high");
+    setState(live, {titleArt3DLuaNumber("spin", 35.0f)}, "high");
     runFrames(live, factory);
     EXPECT_TRUE(live.status().ready);
     EXPECT_GT(counters.renders, renders) << "the spin re-renders";
     EXPECT_EQ(counters.meshUploads, uploads) << "with the mesh it had";
     // red control: a geometry parameter makes a new mesh
-    setState(live, {number("spin", 35.0f), number("depth", 30.0f)}, "high");
+    setState(live, {titleArt3DLuaNumber("spin", 35.0f), titleArt3DLuaNumber("depth", 30.0f)}, "high");
     runFrames(live, factory);
     EXPECT_GT(counters.meshUploads, uploads);
 }

@@ -28,7 +28,7 @@ namespace {
         return ShaderPool::getShaderKey(ShaderType::MESH, properties);
     }
 
-    const ShaderStage* fragmentOf(const ShaderData& data){
+    const ShaderStage* shadowDataLayoutFragmentOf(const ShaderData& data){
         for (const ShaderStage& stage : data.stages){
             if (stage.type == ShaderStageType::FRAGMENT)
                 return &stage;
@@ -61,7 +61,7 @@ namespace {
         return false;
     }
 
-    ShaderData compiled(ShaderKey key, ShaderBackend backend){
+    ShaderData shadowDataLayoutCompiled(ShaderKey key, ShaderBackend backend){
         ShaderData data;
         std::string error, log;
         EXPECT_TRUE(ShaderVariantCompiler::compile(key, backend, nullptr, data, &error, &log)) << error << "\n" << log;
@@ -72,8 +72,8 @@ namespace {
 
 TEST(ShadowDataLayout, BlocksMatchTheShader){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable());
-    const ShaderData data = compiled(litKey(true), ShaderBackend::Vulkan);
-    const ShaderStage* fragment = fragmentOf(data);
+    const ShaderData data = shadowDataLayoutCompiled(litKey(true), ShaderBackend::Vulkan);
+    const ShaderStage* fragment = shadowDataLayoutFragmentOf(data);
     ASSERT_NE(fragment, nullptr);
 
     const ShaderUniformBlock* shadow = blockOf(*fragment, "u_fs_shadow_data");
@@ -107,15 +107,15 @@ TEST(ShadowDataLayout, BlocksMatchTheShader){
 
 TEST(ShadowDataLayout, HighFiltersAddTheRawDepthView){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable());
-    const ShaderData high = compiled(litKey(true), ShaderBackend::GLCore);
-    const ShaderData medium = compiled(litKey(false), ShaderBackend::GLCore);
-    const ShaderData gles = compiled(litKey(true), ShaderBackend::GLES3);
-    ASSERT_NE(fragmentOf(high), nullptr);
-    ASSERT_NE(fragmentOf(medium), nullptr);
-    ASSERT_NE(fragmentOf(gles), nullptr);
-    EXPECT_TRUE(hasTexture(*fragmentOf(high), "u_shadowAtlasRaw"));
-    EXPECT_FALSE(hasTexture(*fragmentOf(medium), "u_shadowAtlasRaw"));
-    EXPECT_TRUE(hasTexture(*fragmentOf(gles), "u_shadowAtlasRaw")) << "GLES3 has the texture units for it";
-    EXPECT_TRUE(hasTexture(*fragmentOf(medium), "u_shadowAtlas"));
-    EXPECT_TRUE(hasTexture(*fragmentOf(medium), "u_shadowPointAtlas"));
+    const ShaderData high = shadowDataLayoutCompiled(litKey(true), ShaderBackend::GLCore);
+    const ShaderData medium = shadowDataLayoutCompiled(litKey(false), ShaderBackend::GLCore);
+    const ShaderData gles = shadowDataLayoutCompiled(litKey(true), ShaderBackend::GLES3);
+    ASSERT_NE(shadowDataLayoutFragmentOf(high), nullptr);
+    ASSERT_NE(shadowDataLayoutFragmentOf(medium), nullptr);
+    ASSERT_NE(shadowDataLayoutFragmentOf(gles), nullptr);
+    EXPECT_TRUE(hasTexture(*shadowDataLayoutFragmentOf(high), "u_shadowAtlasRaw"));
+    EXPECT_FALSE(hasTexture(*shadowDataLayoutFragmentOf(medium), "u_shadowAtlasRaw"));
+    EXPECT_TRUE(hasTexture(*shadowDataLayoutFragmentOf(gles), "u_shadowAtlasRaw")) << "GLES3 has the texture units for it";
+    EXPECT_TRUE(hasTexture(*shadowDataLayoutFragmentOf(medium), "u_shadowAtlas"));
+    EXPECT_TRUE(hasTexture(*shadowDataLayoutFragmentOf(medium), "u_shadowPointAtlas"));
 }

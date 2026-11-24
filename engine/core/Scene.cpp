@@ -740,6 +740,202 @@ int Scene::getPhysics2DSubSteps() const{
 #endif
 }
 
+const ScenePhysics2DSettings& Scene::getPhysics2DWorldSettings() const{
+    return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->getWorldSettings2D();
+}
+
+void Scene::setPhysics2DWorldSettings(const ScenePhysics2DSettings& settings){
+    getSystem<PhysicsSystem>()->setWorldSettings2D(settings);
+}
+
+const ScenePhysics3DSettings& Scene::getPhysics3DWorldSettings() const{
+    return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->getWorldSettings3D();
+}
+
+void Scene::setPhysics3DWorldSettings(const ScenePhysics3DSettings& settings){
+    getSystem<PhysicsSystem>()->setWorldSettings3D(settings);
+}
+
+void Scene::setPhysics2DPointsPerMeter(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.pointsPerMeter = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DPointsPerMeter() const{
+    return getPhysics2DWorldSettings().pointsPerMeter;
+}
+
+void Scene::setPhysics2DMaxRotation(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.maxRotation = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DMaxRotation() const{
+    return getPhysics2DWorldSettings().maxRotation;
+}
+
+void Scene::setPhysics2DContactHertz(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.contactHertz = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DContactHertz() const{
+    return getPhysics2DWorldSettings().contactHertz;
+}
+
+void Scene::setPhysics2DContactDampingRatio(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.contactDampingRatio = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DContactDampingRatio() const{
+    return getPhysics2DWorldSettings().contactDampingRatio;
+}
+
+void Scene::setPhysics2DContactPushSpeed(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.contactPushSpeed = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DContactPushSpeed() const{
+    return getPhysics2DWorldSettings().contactPushSpeed;
+}
+
+void Scene::setPhysics2DJointHertz(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.jointHertz = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DJointHertz() const{
+    return getPhysics2DWorldSettings().jointHertz;
+}
+
+void Scene::setPhysics2DJointDampingRatio(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.jointDampingRatio = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DJointDampingRatio() const{
+    return getPhysics2DWorldSettings().jointDampingRatio;
+}
+
+void Scene::setPhysics2DBounceThreshold(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.bounceThreshold = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DBounceThreshold() const{
+    return getPhysics2DWorldSettings().bounceThreshold;
+}
+
+void Scene::setPhysics2DMaxLinearSpeed(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.maxLinearSpeed = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DMaxLinearSpeed() const{
+    return getPhysics2DWorldSettings().maxLinearSpeed;
+}
+
+void Scene::setPhysics2DWarmStarting(bool value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.warmStarting = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+bool Scene::isPhysics2DWarmStarting() const{
+    return getPhysics2DWorldSettings().warmStarting;
+}
+
+void Scene::setPhysics2DContinuous(bool value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.continuous = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+bool Scene::isPhysics2DContinuous() const{
+    return getPhysics2DWorldSettings().continuous;
+}
+
+void Scene::setPhysics2DSleep(bool value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.sleep = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+bool Scene::isPhysics2DSleep() const{
+    return getPhysics2DWorldSettings().sleep;
+}
+
+void Scene::setPhysics3DVelocityIterations(int value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.velocityIterations = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+int Scene::getPhysics3DVelocityIterations() const{
+    return getPhysics3DWorldSettings().velocityIterations;
+}
+
+void Scene::setPhysics3DPositionIterations(int value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.positionIterations = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+int Scene::getPhysics3DPositionIterations() const{
+    return getPhysics3DWorldSettings().positionIterations;
+}
+
+void Scene::setPhysics3DBounceThreshold(float value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.bounceThreshold = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+float Scene::getPhysics3DBounceThreshold() const{
+    return getPhysics3DWorldSettings().bounceThreshold;
+}
+
+void Scene::setPhysics3DSleepThreshold(float value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.sleepThreshold = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+float Scene::getPhysics3DSleepThreshold() const{
+    return getPhysics3DWorldSettings().sleepThreshold;
+}
+
+void Scene::setPhysics3DSpeculativeDistance(float value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.speculativeDistance = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+float Scene::getPhysics3DSpeculativeDistance() const{
+    return getPhysics3DWorldSettings().speculativeDistance;
+}
+
+void Scene::setPhysics3DCollisionSteps(int value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.collisionSteps = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+int Scene::getPhysics3DCollisionSteps() const{
+    return getPhysics3DWorldSettings().collisionSteps;
+}
+
 void Scene::setDefaultMeshShader(const std::string& path){
     if (settings.defaultMeshShader != path){
         settings.defaultMeshShader = path;

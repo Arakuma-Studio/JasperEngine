@@ -155,6 +155,7 @@
 #include "util/Util.h"
 
 #include "EditorVersion.h"
+#include "RepositoryUrl.h"
 #include "Out.h"
 #include "window/HumanoidConvertDialog.h"
 #include "AppSettings.h"
@@ -199,6 +200,8 @@
 #include <limits>
 #include <utility>
 #include <iostream>
+#include <map>
+#include <mutex>
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -207,6 +210,9 @@
 #include <cstdio>
 
 #if defined(_WIN32)
+  #ifndef NOMINMAX
+  #define NOMINMAX
+  #endif
   #include <windows.h>
   #include <shlobj.h>
 #endif
@@ -295,7 +301,7 @@ editor::App::App(){
     pixelArtCheckWindow = new PixelArtCheckWindow(&project, projectWindow);
     pixelArtCleanupWindow = new PixelArtCleanupWindow(&project);
     tilePaletteWindow = new tilemap::TilePaletteWindow(&project);
-    tilesetEditorWindow = new tilemap::TilesetEditorWindow(&project, projectWindow);
+    tilesetEditorWindow = new tilemap::TilesetEditorWindow(&project);
     // S42 R19, R25: the window checks again after imports; a Console summary opens it on its finding
     pixelart::PixelArtMode::get().setAssetsListener([this]() { pixelArtCheckWindow->assetsChanged(); });
     pixelart::PixelArtMode::get().setOpenAction([this](const std::string& key) { pixelArtCheckWindow->focusFinding(key); });
@@ -1564,10 +1570,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::Documentation:
         case AppMenuCommand::ReportIssue: {
-            const char* url = action == AppMenuCommand::Documentation
-                ? "https://github.com/JasperRaccoon/JasperEngine" : "https://github.com/JasperRaccoon/JasperEngine/issues";
+            const std::string url = std::string(REPOSITORY_URL) + (action == AppMenuCommand::Documentation ? "" : "/issues");
             auto openInShell = ImGui::GetPlatformIO().Platform_OpenInShellFn;
-            if (!openInShell || !openInShell(ImGui::GetCurrentContext(), url)) {
+            if (!openInShell || !openInShell(ImGui::GetCurrentContext(), url.c_str())) {
                 registerAlert("Open in Browser", std::string("Could not open your browser. Visit:\n") + url);
             }
             break;
@@ -3312,7 +3317,6 @@ void editor::App::reportLoadingProgress(const std::string& status) {
     const auto now = std::chrono::steady_clock::now();
     if (lastLoadingFrame.time_since_epoch().count() != 0 &&
         now - lastLoadingFrame < std::chrono::milliseconds(33)) return;
-    lastLoadingFrame = now;
 
     // Project loading stays on the main thread. Pump only native events and the
     // loading UI here; editor tasks must wait until the project is complete.
@@ -3324,6 +3328,8 @@ void editor::App::reportLoadingProgress(const std::string& status) {
         throw;
     }
     pumpingLoading = false;
+    // Leave time for loading work even when rendering one frame exceeds the interval.
+    lastLoadingFrame = std::chrono::steady_clock::now();
 }
 
 static std::string jsonEscape(const std::string& text) {
@@ -3555,8 +3561,30 @@ void editor::App::engineInit(int argc, char** argv) {
     // the clip editor's history timeline (undo routing, R5b) after the listeners above
     AnimationClipController::installHistoryTimeline(&project);
 
+    // Test hook: a Title Art program builds only once `delay:<n>` main-loop iterations passed since
+    // it was first asked for, or never (`fail`), so a render meeting a program still being built, or
+    // one that cannot be built, is not left to a slow host (test_title_art_programs.py)
+    struct TitleProgramTestBuild {
+        long delayBeats = 0;
+        bool fail = false;
+        std::mutex lock;
+        std::map<jasperengine::ShaderKey, uint64_t> asked;
+    };
+    static TitleProgramTestBuild titleProgramTest;
+    if (const char* value = std::getenv("JASPER_TEST_TITLE_PROGRAM_BUILD")) {
+        const std::string spec = value;
+        if (spec == "fail") titleProgramTest.fail = true;
+        else if (spec.rfind("delay:", 0) == 0) titleProgramTest.delayBeats = std::max(0L, std::strtol(spec.c_str() + 6, nullptr, 10));
+    }
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
+        if ((titleProgramTest.fail || titleProgramTest.delayBeats > 0) && ShaderPool::getShaderTypeFromKey(shaderKey) == ShaderType::TITLE_ART) {
+            if (titleProgramTest.fail) return jasperengine::ShaderBuildResult(jasperengine::ShaderData(), ResourceLoadState::Failed);
+            std::lock_guard<std::mutex> guard(titleProgramTest.lock);
+            const uint64_t now = diag::heartbeats();
+            const uint64_t first = titleProgramTest.asked.emplace(shaderKey, now).first->second;
+            if (now - first < static_cast<uint64_t>(titleProgramTest.delayBeats)) return jasperengine::ShaderBuildResult(jasperengine::ShaderData(), ResourceLoadState::Loading);
+        }
         return builder.buildShader(shaderKey, &project);
     }, &jasperengine::editor::ShaderBuilder::getRunningBuildCount);
     // a project UI effect's .frag changed (hot reload, phase 5): its compiled variants go from

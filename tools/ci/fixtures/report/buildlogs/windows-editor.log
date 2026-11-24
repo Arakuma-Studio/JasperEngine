@@ -1,0 +1,16 @@
+-- Configuring done (14.2s)
+-- Generating done (1.1s)
+[812/2210] Building CXX object editor\CMakeFiles\jasperengine-editor.dir\window\InspectorTerrain.cpp.obj
+FAILED: editor/CMakeFiles/jasperengine-editor.dir/window/InspectorTerrain.cpp.obj
+C:\PROGRA~1\MICROS~2\2022\ENTERP~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe  /nologo /TP -DJASPERENGINE_EDITOR /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++20 -MD /showIncludes /Foeditor\CMakeFiles\jasperengine-editor.dir\window\InspectorTerrain.cpp.obj /Fdeditor\CMakeFiles\jasperengine-editor.dir\ /FS -c D:\a\JasperEngine\JasperEngine\editor\window\InspectorTerrain.cpp
+D:\a\JasperEngine\JasperEngine\editor\window\InspectorTerrain.cpp(412): error C2027: use of undefined type 'jasperengine::Transform'
+D:\a\JasperEngine\JasperEngine\engine\core\ecs\ComponentFwd.h(31): note: see declaration of 'jasperengine::Transform'
+D:\a\JasperEngine\JasperEngine\editor\window\InspectorTerrain.cpp(413,9): error C2039: 'position': is not a member of 'jasperengine::Transform'
+[813/2210] Building CXX object editor\CMakeFiles\jasperengine-editor.dir\window\InspectorLight.cpp.obj
+D:\a\JasperEngine\JasperEngine\editor\window\InspectorLight.cpp(7): fatal error C1083: Cannot open include file: 'engine/core/component/NoSuchLight.h': No such file or directory
+[2209/2210] Linking CXX executable bin\jasperengine-editor.exe
+FAILED: bin/jasperengine-editor.exe
+InspectorTerrain.cpp.obj : error LNK2019: unresolved external symbol "public: void __cdecl jasperengine::Terrain::rebuild(void)" (?rebuild@Terrain@jasperengine@@QEAAXXZ) referenced in function "public: void __cdecl jasperengine::InspectorTerrain::draw(void)" (?draw@InspectorTerrain@jasperengine@@QEAAXXZ)
+bin\jasperengine-editor.exe : fatal error LNK1120: 1 unresolved externals
+LINK : fatal error LNK1104: cannot open file 'jasperengine-core.lib'
+ninja: build stopped: subcommand failed.
