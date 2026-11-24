@@ -942,7 +942,8 @@ the next source:
   (`pixelart::RgbaImage` and `pixelart::cleanup::RgbaImage`). Which of them a unit has seen depends
   on its neighbours' includes, so a batch of other sizes finds what 16 does not.
 
-`tools/check_unity_scope.py` (the lint lane) checks the first two rules and the include guards; its
+`tools/unity_wrap.py [file...]` puts a test source in that layout (`--check` lists what it would
+wrap). `tools/check_unity_scope.py` (the lint lane) checks the first two rules and the include guards; its
 `NOT_UNITY` list names the trees that are never unity-built. The others need a compiler: the nightly
 builds `tools/build.sh linux` and both `unit-tests` trees with `UNITY=1`, and a build at another
 batch size (`UNITY=1 UNITY_BATCH=23`) moves every boundary.

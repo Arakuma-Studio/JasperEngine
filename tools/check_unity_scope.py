@@ -502,7 +502,8 @@ def main():
     if problems:
         for problem in problems:
             print(problem, file=sys.stderr)
-        print("%d file-scope leak(s) across unity batches (docs/testing.md, \"Unity build\")" % len(problems), file=sys.stderr)
+        print("%d file-scope leak(s) across unity batches (docs/testing.md, \"Unity build\"); "
+              "python3 tools/unity_wrap.py wraps the test sources among them" % len(problems), file=sys.stderr)
         return 1
     print("check_unity_scope: nothing at file scope reaches the next source of a unity batch")
     return 0
