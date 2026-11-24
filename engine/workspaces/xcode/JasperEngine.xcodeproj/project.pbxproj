@@ -5035,6 +5035,15 @@
 		4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C03036C6074531C9 /* WorldSettings.h */; };
 		4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */; };
 		4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */; };
+		4A534E53C050D64462615275 /* AnimSvg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53F9B236ED8B40BC80 /* AnimSvg.cpp */; };
+		4A534E53860A6CEE6548AF71 /* AnimSvgPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53595883CFC4CDDE43 /* AnimSvgPath.cpp */; };
+		4A534E53ABEBB65DD27B05AC /* AnimText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53528C50B8603EC720 /* AnimText.cpp */; };
+		4A534E53E47DDE86E2F50228 /* AnimSvg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53F9B236ED8B40BC80 /* AnimSvg.cpp */; };
+		4A534E53F6131B8E27491D48 /* AnimSvgPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53595883CFC4CDDE43 /* AnimSvgPath.cpp */; };
+		4A534E5316E56EDFF11E2091 /* AnimText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53528C50B8603EC720 /* AnimText.cpp */; };
+		4A534E4703756F290D4A4345 /* AnimSvg.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476F4078D26169F423 /* AnimSvg.h */; };
+		4A534E47249655C2E9EFCFAD /* AnimSvgPath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ABD65217C8875602 /* AnimSvgPath.h */; };
+		4A534E47A92F799C23F48FBD /* AnimText.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C15278D6615B6CB /* AnimText.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9682,6 +9691,12 @@
 		4A534E47C03036C6074531C9 /* WorldSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldSettings.h; sourceTree = "<group>"; };
 		4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueriesLua.h; sourceTree = "<group>"; };
 		4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VehicleSystem.h; sourceTree = "<group>"; };
+		4A534E53F9B236ED8B40BC80 /* AnimSvg.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimSvg.cpp; sourceTree = "<group>"; };
+		4A534E53595883CFC4CDDE43 /* AnimSvgPath.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimSvgPath.cpp; sourceTree = "<group>"; };
+		4A534E53528C50B8603EC720 /* AnimText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimText.cpp; sourceTree = "<group>"; };
+		4A534E476F4078D26169F423 /* AnimSvg.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimSvg.h; sourceTree = "<group>"; };
+		4A534E47ABD65217C8875602 /* AnimSvgPath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimSvgPath.h; sourceTree = "<group>"; };
+		4A534E476C15278D6615B6CB /* AnimText.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimText.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -14260,6 +14275,12 @@
 				414E494D450000000000003B /* AnimUtils.cpp */,
 				414E494D450000000000003E /* AnimValue.cpp */,
 				414E494D4500000000000041 /* Anime.cpp */,
+				4A534E53F9B236ED8B40BC80 /* AnimSvg.cpp */,
+				4A534E53595883CFC4CDDE43 /* AnimSvgPath.cpp */,
+				4A534E53528C50B8603EC720 /* AnimText.cpp */,
+				4A534E476F4078D26169F423 /* AnimSvg.h */,
+				4A534E47ABD65217C8875602 /* AnimSvgPath.h */,
+				4A534E476C15278D6615B6CB /* AnimText.h */,
 			);
 			path = anim;
 			sourceTree = "<group>";
@@ -17139,6 +17160,9 @@
 				4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */,
 				4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */,
 				4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */,
+				4A534E4703756F290D4A4345 /* AnimSvg.h in Headers */,
+				4A534E47249655C2E9EFCFAD /* AnimSvgPath.h in Headers */,
+				4A534E47A92F799C23F48FBD /* AnimText.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19857,6 +19881,9 @@
 				4A534E478AA5B63EAA52315B /* VehicleDrivetrain.cpp in Sources */,
 				4A534E4757409C2B8884C336 /* VehicleClassesLua.cpp in Sources */,
 				4A534E47706936990B8552E9 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E53E47DDE86E2F50228 /* AnimSvg.cpp in Sources */,
+				4A534E53F6131B8E27491D48 /* AnimSvgPath.cpp in Sources */,
+				4A534E5316E56EDFF11E2091 /* AnimText.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20866,6 +20893,9 @@
 				4A534E4745EC5F61B6962A54 /* VehicleDrivetrain.cpp in Sources */,
 				4A534E47BE01B38E98FA2F1E /* VehicleClassesLua.cpp in Sources */,
 				4A534E47C8BC5AC830F6D577 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E53C050D64462615275 /* AnimSvg.cpp in Sources */,
+				4A534E53860A6CEE6548AF71 /* AnimSvgPath.cpp in Sources */,
+				4A534E53ABEBB65DD27B05AC /* AnimText.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
