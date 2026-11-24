@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -128,20 +129,21 @@ class Rules(unittest.TestCase):
     def test_merge_group_runs_every_lane_unfiltered_and_plans_mcp(self):
         r = decide("merge_group", plan(["editor/App.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": []},
                                        mcp=["test_b.py"]))
-        self.assertEqual(runs(r), set(pl.LANES))
+        # (ios: only for an Apple-only input, test_the_queue_builds_ios_only_for_an_apple_only_input)
+        self.assertEqual(runs(r), set(pl.LANES) - {"ios"})
         self.assertEqual((r["unit_filter"], r["htmlui_filter"]), ({"core": "", "editor": ""}, ""))
         self.assertEqual(r["unit_run"], {"core": True, "editor": True})
         self.assertEqual(r["mcp"]["files"], ["tools/mcp/tests/test_b.py"])
         # no MCP file planned: the lane stays off, every other runs
         r = decide("merge_group", plan(["editor/App.cpp"]))
-        self.assertEqual(runs(r), set(pl.LANES) - {"mcp"})
+        self.assertEqual(runs(r), set(pl.LANES) - {"mcp", "ios"})
 
     def test_merge_group_leaves_the_advisory_lanes_out(self):
         # an advisory lane cannot block a merge, so the queue does not wait hours for it (queue runs
         # of #124-#126: 217-276 min, ASan the longest, the slowest blocking job 96-137)
         p = plan(["editor/App.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": []}, mcp=["test_b.py"])
         r = decide("merge_group", p, advisory=ADVISORY)
-        self.assertEqual(runs(r), {"changes", "lint", *pl.PLATFORM_LANES})
+        self.assertEqual(runs(r), {"changes", "lint", *pl.PLATFORM_LANES} - {"ios"})
         self.assertEqual(r["advisory_off"], ["unit", "asan", "htmlui", "mcp", "smoke", "windows-editor-tests"])
         # the windows editor leg still builds, without its advisory test run
         self.assertEqual(r["build_only"], ["windows-editor-tests"])
@@ -150,19 +152,19 @@ class Rules(unittest.TestCase):
         self.assertEqual(r["mcp"], {"mode": "none", "files": [], "not_in_ci": []})
         # it follows the list: a lane taken off it runs in the queue again
         r = decide("merge_group", p, advisory=("unit", "htmlui", "mcp", "smoke"))
-        self.assertEqual(runs(r), set(pl.LANES) - {"unit", "htmlui", "mcp", "smoke"})
+        self.assertEqual(runs(r), set(pl.LANES) - {"unit", "htmlui", "mcp", "smoke", "ios"})
         self.assertEqual((r["advisory_off"], r["build_only"]), (["unit", "htmlui", "mcp", "smoke"], []))
         self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
         self.assertEqual(decide("merge_group", p, advisory=()), decide("merge_group", p))
-        self.assertEqual(runs(decide("merge_group", p)), set(pl.LANES))
+        self.assertEqual(runs(decide("merge_group", p)), set(pl.LANES) - {"ios"})
         # only the lanes the push to main runs instead: lint and the platform builds stay in the queue
         r = decide("merge_group", p, advisory=("lint", "linux", "windows", "mcp"))
-        self.assertEqual(runs(r), set(pl.LANES) - {"mcp"})
+        self.assertEqual(runs(r), set(pl.LANES) - {"mcp", "ios"})
         self.assertEqual(r["advisory_off"], ["mcp"])
-        # however the queue widened: a .github change, no plan
-        for q in (plan([".github/workflows/ci.yml"], builds=()), None):
+        # however the queue widened: a .github change (no Apple-only input: no ios), no plan (fail open: ios too)
+        for q, ios in ((plan([".github/workflows/ci.yml"], builds=()), False), (None, True)):
             r = decide("merge_group", q, "exit 2", advisory=ADVISORY)
-            self.assertEqual(runs(r), {"changes", "lint", *pl.PLATFORM_LANES}, q)
+            self.assertEqual(runs(r), {"changes", "lint", *pl.PLATFORM_LANES} - ({"ios"} if not ios else set()), q)
         # a group nothing reads runs nothing, and leaves nothing out for being advisory
         r = decide("merge_group", plan(["README.md"], builds=()), advisory=ADVISORY)
         self.assertEqual((runs(r), r["advisory_off"], r["build_only"]), ({"changes"}, [], []))
@@ -335,7 +337,7 @@ class Rules(unittest.TestCase):
         keys = [line.split("=", 1)[0] for line in lines]
         self.assertEqual(keys, ["full", *[f"run_{n}" for n in pl.LANES], "unit_filter_core", "unit_filter_editor",
                                 "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "asan_filter_core",
-                                "asan_filter_editor", "htmlui_filter", "mcp_shards",
+                                "asan_filter_editor", "htmlui_filter", "mcp_shards", "windows_parts",
                                 "build_only", "dispatch_advisory", "runs_on"])
         self.assertIn("dispatch_advisory=false", lines)
         self.assertIn('runs_on={"macos":"je-mac"}', pl.github_output(dict(doc, runs_on={"macos": "je-mac"}), r["unit_run"]).splitlines())
@@ -350,6 +352,10 @@ class Rules(unittest.TestCase):
         self.assertIn("asan_filter_core=Foo.*:*/Foo.*:Foo/*.*", lines)
         doc["mcp"]["shards"] = []
         self.assertIn("mcp_shards=[]", pl.github_output(doc, r["unit_run"]).splitlines())
+        # the windows matrix (fromJSON in ci.yml: a list even when the lane does not run)
+        self.assertIn("windows_parts=[]", pl.github_output(doc, r["unit_run"]).splitlines())
+        self.assertIn('windows_parts=["editor","engine-glcore"]',
+                      pl.github_output(dict(doc, windows_parts=["editor", "engine-glcore"]), r["unit_run"]).splitlines())
         # the jobs that build but skip a test run (fromJSON in ci.yml: a list even when empty)
         self.assertIn("build_only=[]", pl.github_output(doc, r["unit_run"]).splitlines())
         self.assertIn('build_only=["windows-editor-tests"]',
@@ -422,15 +428,61 @@ class Rules(unittest.TestCase):
             for name in pl.APPLE_LANES:
                 self.assertTrue(r["lanes"][name]["run"], (f, name))
                 self.assertIn(f, r["lanes"][name]["why"])
-        # the merge queue, a full run, the nightly and the rollback build them for any change that builds; a
-        # push builds macos (its cache)
+        # the merge queue builds macos for any change that builds (ios: below); a full run, the nightly and
+        # the rollback both; a push macos (its cache)
+        self.assertTrue(decide("merge_group", plan(["editor/App.cpp"]))["lanes"]["macos"]["run"])
         for name in pl.APPLE_LANES:
-            self.assertTrue(decide("merge_group", plan(["editor/App.cpp"]))["lanes"][name]["run"], name)
             self.assertTrue(decide("full", None)["lanes"][name]["run"], name)
             self.assertTrue(decide("nightly", None)["lanes"][name]["run"], name)
             for files in (["editor/App.cpp"], [".github/workflows/ci.yml"]):
                 self.assertTrue(decide("pull_request", plan(files), full_selection=True)["lanes"][name]["run"], (files, name))
         self.assertTrue(decide("push", plan(["editor/App.cpp"]))["lanes"]["macos"]["run"])
+
+    def test_the_queue_builds_ios_only_for_an_apple_only_input(self):
+        # a compile check with the Apple compiler the queue's macos lane runs on every change; macOS runners
+        # are the bottleneck, and the nightly builds the Xcode project for iOS every night
+        for files in (["editor/App.cpp"], ["engine/core/Foo.cpp", "engine/shaderlib/lit.glsl"], [".github/workflows/ci.yml"]):
+            r = decide("merge_group", plan(files, unit="all"))
+            self.assertFalse(r["lanes"]["ios"]["run"], files)
+            self.assertIn("nightly", r["lanes"]["ios"]["why"])
+            self.assertEqual(r["queue_off"], ["ios"])
+            self.assertTrue(r["lanes"]["macos"]["run"], files)
+        for f in ("engine/platform/apple/Renderer.mm", "engine/workspaces/xcode/ios/Info.plist", "tools/ci/macos.sh"):
+            r = decide("merge_group", plan([f, "editor/App.cpp"]))
+            self.assertTrue(r["lanes"]["ios"]["run"] and r["lanes"]["macos"]["run"], f)
+            self.assertEqual(r["queue_off"], [])
+        # push keeps no ios (no cache); full and nightly build it; the rollback runs everything
+        self.assertFalse(decide("push", plan(["editor/App.cpp"]))["lanes"]["ios"]["run"])
+        for event in ("full", "nightly"):
+            self.assertTrue(decide(event, None)["lanes"]["ios"]["run"], event)
+        r = decide("merge_group", plan(["editor/App.cpp"]), full_selection=True)
+        self.assertTrue(r["lanes"]["ios"]["run"])
+        self.assertEqual(r["queue_off"], [])
+        # nightly.yml builds the Xcode project for iOS every night, whatever changed
+        nightly = (HERE.parent.parent / ".github/workflows/nightly.yml").read_text()
+        start = nightly.index("\n  ios:\n")
+        end = re.search(r"\n  [A-Za-z0-9_-]+:\n", nightly[start + 1:])
+        job = nightly[start:start + 1 + end.start()] if end else nightly[start:]
+        self.assertIn("run: tools/ci/macos.sh xcode ios", job)
+        self.assertNotIn("if:", job.split("steps:")[0])
+
+    def test_a_pr_runs_its_blocking_lanes_only_while_the_variable_is_off(self):
+        # PR_ADVISORY_LANES=off while GitHub's 60 concurrent jobs are the bottleneck: as the merge queue,
+        # the advisory test lanes are left to main's advisory run
+        p = plan(["engine/core/Foo.cpp", "engine/platform/apple/Renderer.mm"], unit="all", mcp=["test_a.py"])
+        on = decide("pull_request", p, advisory=ADVISORY)
+        self.assertTrue(all(on["lanes"][n]["run"] for n in ("unit", "asan", "htmlui", "mcp", "smoke")))
+        off = decide("pull_request", p, advisory=ADVISORY, pr_advisory=False)
+        self.assertEqual(runs(off), {"changes", "lint", *pl.PLATFORM_LANES})
+        self.assertEqual(off["advisory_off"], ["unit", "asan", "htmlui", "mcp", "smoke", "windows-editor-tests"])
+        self.assertEqual(off["build_only"], ["windows-editor-tests"])
+        self.assertIn(pl.PR_ADVISORY_VARIABLE, off["lanes"]["unit"]["why"])
+        self.assertEqual(off["mcp"]["mode"], "none")
+        # only a pull request: the queue, a push, the advisory run and full runs as before
+        for event in ("merge_group", "push", "advisory", "full"):
+            self.assertEqual(decide(event, p, advisory=ADVISORY, pr_advisory=False), decide(event, p, advisory=ADVISORY), event)
+        # a lane taken off ADVISORY_LANES blocks, so it runs
+        self.assertTrue(decide("pull_request", p, advisory=("mcp",), pr_advisory=False)["lanes"]["unit"]["run"])
 
     def test_the_queue_the_advisory_run_and_the_rollback_keep_asan(self):
         p = plan(["tools/ci/report.py"], unit="all")
@@ -447,6 +499,92 @@ class Rules(unittest.TestCase):
         self.assertTrue(decide("pull_request", p, full_selection=True)["lanes"]["asan"]["run"])
         self.assertTrue(decide("pull_request", None, "exit 2")["lanes"]["asan"]["run"])
         self.assertTrue(decide("pull_request", plan([".github/workflows/ci.yml"], builds=()), full_selection=True)["lanes"]["asan"]["run"])
+
+    def test_the_windows_backend_legs_build_only_for_their_inputs(self):
+        # engine-d3d11 and engine-vulkan (60-97 min each) set the merge queue's floor, and only catch code that
+        # compiles for their backend alone: a PR, a dispatch, the queue and the advisory run build them for
+        # their own inputs; the nightly builds both every night
+        both, glcore = list(pl.WINDOWS_PARTS), ["editor", "engine-glcore"]
+        tmp = Path(tempfile.mkdtemp(prefix="plan-lanes-windows-"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        texts = {"engine/core/Guarded.cpp": "#if defined(SOKOL_GLCORE)\nint a;\n#else\nint b;\n#endif\n",
+                 "engine/core/render/Readback.cpp": "ID3D11Texture2D* staging;\n",
+                 "engine/core/texture/Formats.h": "VkFormat format = VK_FORMAT_R8_UNORM;\n",
+                 "engine/tests/support/Context.cpp": "// the lavapipe Vulkan device\n",
+                 "editor/procmat/Device.cpp": "#ifdef SOKOL_D3D11\n#endif\n",
+                 "engine/core/Generic.cpp": "int generic; // sg_make_buffer\n",
+                 "engine/platform/mac/View.mm": "#if defined(SOKOL_METAL)\n#endif\n",
+                 "engine/platform/linux/Window.cpp": "#if defined(SOKOL_VULKAN)\n#endif\n",
+                 "editor/backend/BackendWin.cpp": "ID3D11Device* device;\n",
+                 "engine/core/Notes.md": "D3D11 and Vulkan\n",
+                 "engine/CMakeLists.txt": "if(WIN32)\n  add_definitions(-DSOKOL_D3D11)\nendif()\n",
+                 "engine/tests/core/CMakeLists.txt": "add_executable(core-tests a.cpp)\n"}
+        for rel, text in texts.items():
+            (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+            (tmp / rel).write_text(text)
+
+        def legs(event, files, definition="", **extra):
+            p = plan(files, unit="all") if files is not None else None
+            # (the advisory run: for windows-editor-tests)
+            r = decide(event, p, "exit 2", advisory=ADVISORY)
+            return pl.windows_legs(event, p, r, pl.windows_inputs(tmp, files or [], definition), **extra), r
+
+        for event in pl.WINDOWS_SCOPED:
+            for files in (["editor/App.cpp"], ["engine/core/Generic.cpp", "engine/core/Gone.cpp"], ["engine/platform/mac/View.mm"],
+                          ["engine/platform/linux/Window.cpp"], ["editor/backend/BackendWin.cpp"], ["engine/core/Notes.md"],
+                          ["engine/core/render/LightingTiers.cpp", "engine/core/ecs/World.cpp", "tools/ci/macos.sh"],
+                          [".github/workflows/nightly.yml"], ["engine/tests/core/CMakeLists.txt"]):
+                parts, r = legs(event, files)
+                self.assertEqual(parts, glcore, (event, files))
+                self.assertIn("not engine-d3d11 or engine-vulkan", r["lanes"]["windows"]["why"])
+                self.assertIn("nightly", r["lanes"]["windows"]["why"])
+        # their inputs: every backend's, then each one's own
+        for files, expect in ((["engine/renders/sokol/SokolSystem.cpp"], both), (["engine/libs/sokol/sokol_gfx.h"], both),
+                              (["engine/libs/shadercompiler/libs/spirv-cross/spirv_hlsl.cpp"], both),
+                              (["engine/shaderlib/lit.frag"], both), (["engine/shaders/hlsl5.h"], both),
+                              (["engine/core/shader/ShaderVariantCompiler.cpp"], both), (["engine/core/pool/ShaderPool.cpp"], both),
+                              (["engine/platform/win/D3D11Context.cpp"], both), (["engine/CMakePresets.json"], both),
+                              # (a CMake file without a diff: every line of it)
+                              (["engine/CMakeLists.txt"], both),
+                              (["engine/cmake/JasperWarnings.cmake"], both), (["tools/ci/windows.sh"], both),
+                              (["tools/ci/platform-common.sh"], both), ([".github/actions/report/action.yml"], both),
+                              (["engine/platform/common/VulkanContext.cpp"], [*glcore, "engine-vulkan"]),
+                              # what a changed file's code says
+                              (["engine/core/Guarded.cpp"], both), (["editor/procmat/Device.cpp"], both),
+                              (["engine/core/render/Readback.cpp"], [*glcore, "engine-d3d11"]),
+                              (["engine/core/texture/Formats.h", "editor/App.cpp"], [*glcore, "engine-vulkan"]),
+                              (["engine/tests/support/Context.cpp"], [*glcore, "engine-vulkan"])):
+            for event in ("pull_request", "merge_group"):
+                parts, r = legs(event, files)
+                self.assertEqual(parts, expect, (event, files))
+                self.assertIn(files[0], r["lanes"]["windows"]["why"])
+        # the windows job or the workflow's env (definition_change)
+        parts, r = legs("merge_group", [pl.WORKFLOW], f"{pl.WORKFLOW} (the windows job or the workflow's env)")
+        self.assertEqual(parts, both)
+        # every leg: a push (the Vulkan SDK's cache), a full run, the nightly, no plan, the rollback
+        for event, files in (("push", ["editor/App.cpp"]), ("full", None), ("nightly", None), ("pull_request", None),
+                             ("merge_group", None)):
+            self.assertEqual(legs(event, files)[0], both, (event, files))
+        self.assertEqual(legs("merge_group", ["editor/App.cpp"], full_selection=True)[0], both)
+        # a dispatch that forces a leg onto a runner builds it
+        self.assertEqual(legs("workflow_dispatch", ["editor/App.cpp"], forced={"windows-engine-d3d11": "je-win"})[0],
+                         [*glcore, "engine-d3d11"])
+        # no lane, no legs
+        self.assertEqual(legs("pull_request", ["docs/specs/S1.md"])[0], [])
+
+    def test_the_backend_markers_find_the_real_backend_code(self):
+        # this tree's backend-specific files are found by their text, and a generic one is not
+        root = HERE.parent.parent
+        for f, legs in (("engine/core/Engine.cpp", ("engine-d3d11", "engine-vulkan")),
+                        ("engine/core/render/FrameReadback.cpp", ("engine-d3d11", "engine-vulkan")),
+                        ("engine/core/render/VulkanRobustness.h", ("engine-vulkan",)),
+                        ("engine/core/render/FramebufferRender.cpp", ("engine-d3d11",)),
+                        ("engine/tests/support/HeadlessContext.cpp", ("engine-d3d11", "engine-vulkan")),
+                        ("editor/procmat/ProceduralGpuEvaluator.cpp", ("engine-vulkan",)),
+                        ("engine/core/component/Transform.h", ())):
+            self.assertTrue((root / f).is_file(), f)
+            found = pl.windows_inputs(root, [f])
+            self.assertEqual(tuple(leg for leg in pl.WINDOWS_BACKEND_LEGS if found[leg]), legs, (f, found))
 
     def test_unit_jobs(self):
         # the editor tests' build is most of their lane (CI runs 43737549764: 110 of 123 min), so two
@@ -502,8 +640,9 @@ JOBS = {"lint": "linux", "linux": "linux", "unit-core": "linux", "unit-editor-1"
         "windows-engine-vulkan": "windows", "windows-compile": "windows", "macos": "macos", "ios": "macos"}
 
 
-def route(st, trigger="pull_request", head=REPO, attempt=1, disabled="", force=None, jobs=JOBS):
-    return pl.route(jobs, st, NOW, trigger, head, REPO, attempt, disabled, force)
+def route(st, trigger="pull_request", head=REPO, attempt=1, disabled="", force=None, jobs=JOBS, run_id="42", blacksmith="off"):
+    # (the paid tier off unless a test turns it on: the free tiers' rules alone)
+    return pl.route(jobs, st, NOW, trigger, head, REPO, attempt, disabled, force, run_id=run_id, blacksmith=blacksmith)
 
 
 def overflowed(runs_on):
@@ -551,13 +690,54 @@ class Routing(unittest.TestCase):
             self.assertEqual(runs_on["macos"], "macos-latest", why)
             self.assertTrue(any(why in n for n in notes), (why, notes))
         self.assertEqual(overflowed(route(state(), disabled="all")[0]), {})
-        # busy with this very plan (changes on je-linux): free once it ends
-        jobs = {"linux": "linux"}
-        self.assertEqual(overflowed(pl.route(jobs, state(je_linux={"busy": True}), NOW, "pull_request", REPO, REPO, 1,
-                                             planner="je-linux")[0]), {"linux": "je-linux"})
-        self.assertEqual(overflowed(pl.route(jobs, state(je_linux={"busy": True}), NOW, "pull_request", REPO, REPO, 1,
-                                             planner="GitHub Actions 1000007164")[0]), {})
         self.assertTrue(route(state(je_mac={"busy": True}))[0]["linux"] == "je-linux")
+
+    def test_the_paid_tier_takes_what_github_and_the_users_machines_cannot(self):
+        BM, BL = pl.BLACKSMITH["macos"], pl.BLACKSMITH["linux"]
+        jobs = {"macos": "macos", "ios": "macos", "linux": "linux", "web": "linux", "windows-editor": "windows"}
+
+        def deep(**runners):
+            st = state(**runners)
+            st["os"]["linux"]["queued"] = pl.BLACKSMITH_MIN_QUEUED["linux"]
+            return st
+        # the user's machines idle: they take theirs, Blacksmith the Linux job je-linux has no room for
+        runs_on, notes = route(deep(), trigger="merge_group", jobs=jobs, blacksmith="")
+        self.assertEqual(overflowed(runs_on), {"macos": "je-mac", "ios": "je-mac", "linux": "je-linux", "web": BL})
+        self.assertEqual(runs_on["windows-editor"], "windows-latest")      # no Windows tier
+        # je-mac busy, offline, unfit or off: macOS there too
+        for st, disabled in ((deep(je_mac={"busy": True}), ""), (deep(je_mac={"online": False}), ""),
+                             (deep(je_mac={"fit": False}), ""), (deep(), "je-mac"), (deep(), "all")):
+            runs_on, notes = route(st, trigger="merge_group", jobs=jobs, disabled=disabled, blacksmith="")
+            self.assertEqual((runs_on["macos"], runs_on["ios"]), (BM, BM), (st["runners"]["je-mac"], disabled))
+            self.assertTrue(any("the paid tier" in n for n in notes), notes)
+        busy = deep(je_mac={"busy": True}, je_linux={"busy": True})
+        self.assertEqual(overflowed(route(busy, trigger="push", jobs=jobs, blacksmith="")[0]),
+                         {"macos": BM, "ios": BM, "linux": BL, "web": BL})
+        # the backlog does not warrant it: fewer waiting than its OS's minimum, or hosted not saturated
+        thin = deep(je_mac={"busy": True}, je_linux={"busy": True})
+        thin["os"]["macos"]["queued"] = pl.BLACKSMITH_MIN_QUEUED["macos"] - 1
+        thin["os"]["linux"]["queued"] = pl.BLACKSMITH_MIN_QUEUED["linux"] - 1
+        for st in (thin, state(saturated=(), je_mac={"busy": True}, je_linux={"busy": True})):
+            runs_on, notes = route(st, trigger="merge_group", jobs=jobs, blacksmith="")
+            self.assertEqual(overflowed(runs_on), {})
+            self.assertTrue(any("not needed" in n for n in notes), notes)
+        # never: the kill switch, a pull request (its own repository's too) or a dispatch, a fork, a held
+        # rerun, a stale state, or while the dispatcher has it paused (a job waited there: the spend limit)
+        for st, kw in ((busy, {"blacksmith": "off"}), (busy, {"blacksmith": "OFF"}), (busy, {"trigger": "pull_request"}),
+                       (busy, {"trigger": "workflow_dispatch"}), (busy, {"head": "someone/JasperEngine", "trigger": "pull_request"}),
+                       (dict(busy, hosted_only=["42"]), {"attempt": 2}), (dict(busy, t=NOW - 3600), {}),
+                       (dict(busy, blacksmith={"ok": False, "why": "a job waited 10 min"}), {})):
+            args = {**dict(trigger="merge_group", jobs=jobs, blacksmith=""), **kw}
+            runs_on, notes = route(st, **args)
+            self.assertFalse(set(runs_on.values()) & set(pl.BLACKSMITH.values()), kw)
+        self.assertTrue(any("paused (a job waited 10 min)" in n for n in
+                            route(dict(busy, blacksmith={"ok": False, "why": "a job waited 10 min"}), trigger="merge_group",
+                                  jobs=jobs, blacksmith="")[1]))
+        # a dispatch may force it, a job of its OS only
+        force, bad = pl.parse_force(f"macos={BM} linux={BL} web={BM}")
+        self.assertEqual(bad, [])
+        runs_on, notes = route(None, trigger="workflow_dispatch", jobs=jobs, force=force)
+        self.assertEqual((runs_on["macos"], runs_on["linux"], runs_on["web"]), (BM, BL, "ubuntu-latest"))
 
     def test_a_stale_or_missing_state_means_no_overflow_runner(self):
         for st, why in ((None, "no runner state"), ({}, "no runner state"), ("garbage", "no runner state"),
@@ -578,12 +758,17 @@ class Routing(unittest.TestCase):
         # a fork cannot force one either
         self.assertEqual(overflowed(route(state(), head="someone/JasperEngine", force={"macos": "je-mac"})[0]), {})
 
-    def test_a_rerun_stays_hosted(self):
-        # the watchdog reruns a run whose runner went away: the rerun must not wait for it again
-        for force in (None, {"macos": "je-mac"}):
-            runs_on, notes = route(state(), trigger="workflow_dispatch", attempt=2, force=force)
-            self.assertEqual(overflowed(runs_on), {})
+    def test_a_rerun_after_a_runner_went_away_stays_hosted(self):
+        # the watchdog reruns a run whose runner went away and lists it in the state's hosted_only: the
+        # rerun must not wait for it again; a forced dispatch's rerun, or a rerun of an unknown run, neither
+        held = dict(state(), hosted_only=["42", 7])
+        for st, force, run_id in ((held, None, "42"), (held, None, "7"), (state(), {"macos": "je-mac"}, "42"), (state(), None, "")):
+            runs_on, notes = route(st, trigger="workflow_dispatch", attempt=2, force=force, run_id=run_id)
+            self.assertEqual(overflowed(runs_on), {}, (force, run_id))
             self.assertIn("attempt 2", notes[0])
+        # its rerun to reach an idle runner (the watchdog's other reroute) routes as a first attempt does
+        runs_on, notes = route(held, trigger="workflow_dispatch", attempt=2, run_id="43")
+        self.assertEqual(overflowed(runs_on)["macos"], "je-mac")
 
     def test_a_dispatch_forces_a_runner_whatever_the_state(self):
         force, bad = pl.parse_force("macos=je-mac, lint=je-linux windows-engine-glcore=je-win ios=je-pi linux")
@@ -606,7 +791,8 @@ class Routing(unittest.TestCase):
         self.assertEqual((r["mcp"]["mode"], r["unit_run"], r["asan_run"]["core"]), ("none", {"core": False, "editor": False}, False))
 
     def test_the_planned_jobs_are_ci_yml_s_jobs(self):
-        r = decide("merge_group", plan(["engine/core/Foo.cpp"], unit="all", mcp=["test_a.py"]))
+        r = decide("merge_group", plan(["engine/core/Foo.cpp", "engine/platform/apple/Renderer.mm"], unit="all",
+                                       mcp=["test_a.py"]))
         doc = dict(r, unit_jobs=pl.unit_job_names(r["unit_run"]), asan_jobs=pl.asan_job_names(r["asan_run"]),
                    mcp=dict(r["mcp"], shards=["1", "2"]))
         jobs = pl.planned_jobs(doc)
@@ -614,12 +800,20 @@ class Routing(unittest.TestCase):
                                      "unit-editor-2", "asan-core", "asan-editor", "mcp-1", "mcp-2", "windows-editor",
                                      "windows-engine-glcore", "windows-engine-d3d11", "windows-engine-vulkan",
                                      "windows-compile", "macos", "ios"})
+        # the windows legs the plan builds (windows_parts), and windows-compile
+        jobs_without = pl.planned_jobs(dict(doc, windows_parts=["editor", "engine-glcore"]))
+        self.assertEqual(set(jobs) - set(jobs_without), {"windows-engine-d3d11", "windows-engine-vulkan"})
+        self.assertIn("windows-compile", jobs_without)
         # every job an overflow runner may take is one of them, on its OS
         for label, (os_, order) in pl.OVERFLOW.items():
             for job in order:
                 self.assertEqual(jobs.get(job), os_, (label, job))
         # and ci.yml reads runs_on by these names, with the hosted label as its fallback
         text = (HERE.parent.parent / pl.WORKFLOW).read_text()
+        # the plan gets the PR switch and its run's id (the state's hosted_only)
+        self.assertIn('--pr-advisory "${PR_ADVISORY:-on}"', text)
+        self.assertIn("PR_ADVISORY: ${{ vars.PR_ADVISORY_LANES }}", text)
+        self.assertIn('--run-attempt "$GITHUB_RUN_ATTEMPT" --run-id "$GITHUB_RUN_ID"', text)
         # the planner: never a push, a fork's pull request or a rerun
         changes = text[text.index("\n  changes:"):text.index("\n  lint:")]
         for guard in ("github.event_name != 'push'", "github.run_attempt == 1",
@@ -628,6 +822,18 @@ class Routing(unittest.TestCase):
         for key in ("'linux'", "'macos'", "'ios'", "format('unit-{0}', matrix.job)", "format('asan-{0}', matrix.job)",
                     "format('mcp-{0}', matrix.shard)", "format('windows-{0}', matrix.part)", "'windows-compile'"):
             self.assertIn(f"fromJSON(needs.changes.outputs.runs_on)[{key}] ||", text, key)
+        # the windows matrix is the plan's legs
+        windows = text[text.index("\n  windows:"):text.index("\n  windows-compile:")]
+        self.assertIn("part: ${{ fromJSON(needs.changes.outputs.windows_parts) }}", windows)
+        self.assertIn("windows_parts: ${{ steps.plan.outputs.windows_parts }}", changes)
+        # and the nightly builds both backend legs every night, as the lane's command
+        nightly = (HERE.parent.parent / ".github/workflows/nightly.yml").read_text()
+        job = nightly[nightly.index("\n  windows-engine:\n"):]
+        job = job[:job.index("\n  # ---")]
+        self.assertIn("backend: [d3d11, vulkan]", job)
+        self.assertIn('run: tools/ci/windows.sh engine "$BACKEND"', job)
+        self.assertNotIn("\n    if:", job)
+        self.assertIn("windows-engine,", nightly[nightly.index("\n  report:"):])
 
 
 class Selection(unittest.TestCase):
@@ -800,10 +1006,11 @@ class Runs(unittest.TestCase):
                   "--runner-state", str(st), "--repo", REPO, "--head-repo", REPO)
         # the runner state as ci.yml fetches it, fresh: macOS saturated, je-mac idle
         st.write_text(json.dumps(dict(state(saturated=("macos",)), t=time.time() - 30)))
-        # (the merge queue: a PR without an Apple-only input runs neither macOS lane)
+        # (the merge queue: a PR without an Apple-only input runs neither macOS lane; the queue macos only)
         code, doc, out = self.run_main("--event", "merge_group", "--trigger", "merge_group", *common)
         self.assertEqual(code, 0, out)
-        self.assertEqual(overflowed(doc["runs_on"]), {"macos": "je-mac", "ios": "je-mac"}, doc["routing"])
+        self.assertEqual(overflowed(doc["runs_on"]), {"macos": "je-mac"}, doc["routing"])
+        self.assertEqual(doc["queue_off"], ["ios"])
         self.assertEqual(doc["runs_on"]["mcp-1"], "ubuntu-latest")
         self.assertIn("runner: macos on je-mac", out)
         self.assertIn('"macos":"je-mac"', [l for l in gh.read_text().splitlines() if l.startswith("runs_on=")][-1])
@@ -971,6 +1178,53 @@ class Runs(unittest.TestCase):
         head = self.commit("tools/ci/macos.sh", "#!/bin/sh\n")
         code, doc, out = self.run_main("--event", "pull_request", "--base", base, "--head", head, "--out-dir", str(self.tmp / "out"))
         self.assertTrue(doc["lanes"]["macos"]["run"] and doc["lanes"]["ios"]["run"], out)
+
+    def test_the_windows_backend_legs_in_a_whole_run(self):
+        workflow = ("name: CI\nenv:\n  KEEP_GOING: 1\n\njobs:\n  linux:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n      - run: tools/build.sh linux\n\n  windows:\n    runs-on: windows-latest\n"
+                    "    steps:\n      - run: tools/ci/windows.sh engine\n\n  windows-compile:\n    runs-on: windows-latest\n"
+                    "    steps:\n      - run: tools/ci/windows.sh compile-smoke\n")
+        base = self.commit(pl.WORKFLOW, workflow)
+        gh = self.tmp / "gh.txt"
+        for rel, text, legs in (("engine/core/Foo.cpp", "int foo2;\n", ["editor", "engine-glcore"]),
+                                ("engine/core/Foo.cpp", "#ifdef SOKOL_VULKAN\nint foo3;\n#endif\n", list(pl.WINDOWS_PARTS)),
+                                (pl.WORKFLOW, workflow.replace("compile-smoke", "compile-smoke x"), ["editor", "engine-glcore"]),
+                                (pl.WORKFLOW, workflow.replace("windows.sh engine", "windows.sh engine d3d11"), list(pl.WINDOWS_PARTS)),
+                                (pl.WORKFLOW, workflow.replace("KEEP_GOING: 1", "KEEP_GOING: 0"), list(pl.WINDOWS_PARTS))):
+            head = self.commit(rel, text)
+            for event in ("pull_request", "merge_group"):
+                gh.write_text("")
+                code, doc, out = self.run_main("--event", event, "--base", base, "--head", head,
+                                               "--out-dir", str(self.tmp / "out"), "--github-output", str(gh))
+                self.assertEqual(code, 0, out)
+                self.assertEqual(doc["windows_parts"], legs, (rel, text, event, doc["lanes"]["windows"]["why"]))
+                self.assertIn(f"windows_parts={json.dumps(legs, separators=(',', ':'))}", gh.read_text().splitlines())
+            base = head
+
+    def test_a_cmake_change_reaches_the_backend_legs_only_in_backend_or_windows_code(self):
+        # engine/CMakeLists.txt's source lists change with most features, the same for every backend
+        cmake = ("set(CORE_SOURCES\n    core/A.cpp\n    core/B.cpp\n)\n"
+                 "if(GRAPHIC_BACKEND STREQUAL \"vulkan\")\n    list(APPEND PLATFORM_SOURCES\n        platform/common/Ctx.cpp\n"
+                 "    )\nelseif(GRAPHIC_BACKEND STREQUAL \"glcore\")\n    set(GL ON)\nelse()\n    set(OTHER ON)\nendif()\n"
+                 "if(WIN32)\n    set(WIN_LIBS ws2_32)\nendif()\n"
+                 "macro(find_sdk option)\n    find_package(SDK QUIET)\nendmacro()\n"
+                 "if(APPLE)\n    set(APPLE_LIBS x)\nendif()\n")
+        base = self.commit("engine/CMakeLists.txt", cmake)
+        both, glcore = list(pl.WINDOWS_PARTS), ["editor", "engine-glcore"]
+        for old, new, legs in (("    core/B.cpp\n", "    core/B.cpp\n    core/C.cpp\n", glcore),
+                               ("    core/A.cpp\n", "", glcore),
+                               ("set(APPLE_LIBS x)", "set(APPLE_LIBS y)", glcore),
+                               ("        platform/common/Ctx.cpp\n", "        platform/common/Ctx.cpp\n        platform/common/Ctx2.cpp\n", both),
+                               ("    set(OTHER ON)\n", "", both),
+                               ("ws2_32", "ws2_32 dbghelp", both),
+                               ("find_package(SDK QUIET)", "find_package(SDK REQUIRED)", both)):
+            head = self.commit("engine/CMakeLists.txt", cmake.replace(old, new))
+            code, doc, out = self.run_main("--event", "merge_group", "--base", base, "--head", head, "--out-dir", str(self.tmp / "out"))
+            self.assertEqual(code, 0, out)
+            self.assertEqual(doc["windows_parts"], legs, (old, new, doc["lanes"]["windows"]["why"]))
+            base = head
+        self.assertEqual(pl.cmake_scopes("if(A)\nx\nelse()\ny\nendif()\nz\n"), ["A) if(A)", "A) x", "A) ) else()", "A) ) y",
+                                                                                   "A) ) endif()", "z"])
 
     def test_the_queue_reads_the_advisory_lanes(self):
         head = self.commit("tools/mcp/tests/test_a.py", TEST_FILE.format(extra="# changed"))

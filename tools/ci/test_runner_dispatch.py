@@ -99,10 +99,18 @@ class Planner(unittest.TestCase):
         s = rd.compute_state(RUNNERS, busy, {}, NOW)
         self.assertEqual(rd.planner(s, ""), "je-linux")
         self.assertEqual(rd.planner(s, "je-linux"), "")
+        # only while idle: a run created while it plans (or builds) plans hosted
+        self.assertEqual(rd.planner(rd.compute_state([runner("je-mac"), runner("je-linux", busy=True), runner("je-win")],
+                                                     busy, {}, NOW), ""), "")
+        self.assertEqual(rd.planner(rd.compute_state(RUNNERS, busy + [job("je-linux", ago=10, name="changes")], {}, NOW), ""), "")
         self.assertEqual(rd.planner(s, "all"), "")
         self.assertEqual(rd.planner(rd.compute_state(RUNNERS, busy[:10], {}, NOW), ""), "")
         self.assertEqual(rd.planner(rd.compute_state([runner("je-linux", "offline")], busy, {}, NOW), ""), "")
         self.assertEqual(rd.planner(rd.compute_state(RUNNERS, busy, {"je-linux": {"alive": True, "ok": False}}, NOW), ""), "")
+        # while it plans it takes no lane (plan_lanes.route: unfit)
+        rd.reserve(s, "je-linux")
+        self.assertEqual((s["runners"]["je-linux"]["fit"], s["runners"]["je-mac"]["fit"]), (False, True))
+        rd.reserve(s, "")
 
 
 class Stuck(unittest.TestCase):
@@ -114,6 +122,32 @@ class Stuck(unittest.TestCase):
         self.assertEqual(rd.stuck({}, [job("je-mac", ago=3600)], {"je-mac": {"online": True}}, {}, NOW), "")
         # gone (unregistered)
         self.assertIn("offline", rd.stuck({}, [job("je-win", ago=3600)], {}, {}, NOW))
+
+    def test_a_job_blacksmith_does_not_take_goes_hosted_and_pauses_it(self):
+        # (past the spend limit Blacksmith takes no job: it would wait forever)
+        label = rd.BLACKSMITH["linux"]
+        self.assertEqual(rd.os_of([label]), ("linux", label))
+        why = rd.stuck({}, [job(label, ago=rd.QUEUED_LIMIT, name="linux")], {}, {}, NOW)
+        self.assertIn("Blacksmith took no job", why)
+        self.assertEqual(rd.stuck({}, [job(label, ago=60, name="linux")], {}, {}, NOW), "")
+        # not a hosted job: it neither saturates nor counts
+        s = rd.compute_state(RUNNERS, [job(label, ago=600)], {}, NOW)
+        self.assertEqual(s["os"]["linux"]["queued"], 0)
+        self.assertEqual(rd.paused({}, NOW), {"ok": True})
+        p = rd.paused({"blacksmith_paused_until": NOW + 60, "blacksmith_paused_why": "12:00"}, NOW)
+        self.assertFalse(p["ok"])
+        self.assertIn("12:00", p["why"])
+        self.assertEqual(rd.paused({"blacksmith_paused_until": NOW - 1}, NOW), {"ok": True})
+
+    def test_a_planner_behind_a_busy_runner_goes_hosted(self):
+        busy = {"je-linux": {"online": True, "busy": True}}
+        planner = job("je-linux", ago=rd.PLANNER_WAIT, name="changes")
+        self.assertIn("changes queued 5 min for je-linux, which is busy", rd.stuck({"event": "pull_request"}, [planner], busy, {}, NOW))
+        self.assertIn("busy", rd.stuck({"event": "push"}, [planner], busy, {}, NOW))
+        # not sooner, not a merge-queue run's (a cancel fails its group), not a lane job (it waits its turn)
+        self.assertEqual(rd.stuck({"event": "pull_request"}, [job("je-linux", ago=rd.PLANNER_WAIT - 30, name="changes")], busy, {}, NOW), "")
+        self.assertEqual(rd.stuck({"event": "merge_group"}, [planner], busy, {}, NOW), "")
+        self.assertEqual(rd.stuck({"event": "pull_request"}, [job("je-linux", ago=3600, name="linux")], busy, {}, NOW), "")
 
     def test_running_on_a_runner_that_went_away(self):
         j = job("je-mac", "in_progress", runner="je-mac")
@@ -130,6 +164,46 @@ class Stuck(unittest.TestCase):
         self.assertIn("lost communication", rd.lost([job("je-mac", "completed", conclusion="failure", id_=7)], notes.get))
         self.assertEqual(rd.lost([job("je-mac", "completed", conclusion="failure", id_=8)], notes.get), "")
         self.assertEqual(rd.lost([job("macos-latest", "completed", conclusion="failure", id_=7)], notes.get), "")
+
+
+class Idle(unittest.TestCase):
+    RUNNERS = {"je-mac": {"online": True, "busy": False, "fit": True}, "je-win": {"online": True, "busy": False, "fit": True},
+               "je-linux": {"online": True, "busy": False, "fit": False}}
+
+    def make_run(self, event="merge_group", head="Arakuma-Studio/JasperEngine"):
+        return {"id": 5, "event": event, "repository": {"full_name": "Arakuma-Studio/JasperEngine"},
+                "head_repository": {"full_name": head}}
+
+    def test_a_job_waiting_for_hosted_while_its_overflow_runner_is_idle(self):
+        jobs = [job("macos-latest", ago=rd.IDLE_REROUTE_WAIT, name="macos")]
+        why, label = rd.waiting_for_idle(self.make_run(), jobs, self.RUNNERS, "", NOW, set())
+        self.assertEqual(label, "je-mac")
+        self.assertIn("macos waited 15 min for a hosted macos runner while je-mac is idle", why)
+        jobs = [job("windows-latest", ago=3600, name="windows (engine-d3d11)")]
+        self.assertEqual(rd.waiting_for_idle(self.make_run(), jobs, self.RUNNERS, "", NOW, set())[1], "je-win")
+
+    def test_no_reroute_when_it_cannot_take_it_or_should_not(self):
+        mac = [job("macos-latest", ago=3600, name="macos")]
+        cases = (
+            (self.make_run(), [job("macos-latest", ago=rd.IDLE_REROUTE_WAIT - 60, name="macos")], self.RUNNERS, ""),   # not long
+            (self.make_run(), [job("windows-latest", ago=3600, name="windows (editor)")], self.RUNNERS, ""),          # not its job
+            (self.make_run(), [job("ubuntu-latest", ago=3600, name="linux")], self.RUNNERS, ""),                      # je-linux unfit
+            (self.make_run(), mac, dict(self.RUNNERS, **{"je-mac": {"online": True, "busy": True, "fit": True}}), ""),
+            (self.make_run(), mac, dict(self.RUNNERS, **{"je-mac": {"online": False, "busy": False, "fit": True}}), ""),
+            (self.make_run(), mac, self.RUNNERS, "je-mac"),
+            (self.make_run(), mac, self.RUNNERS, "all"),
+            (self.make_run(), [job("macos-latest", "in_progress", ago=3600, name="macos")], self.RUNNERS, ""),
+            (self.make_run(), [job("je-mac", ago=3600, name="macos")], self.RUNNERS, ""),                           # routed already
+            (self.make_run("pull_request", "someone/JasperEngine"), mac, self.RUNNERS, ""),                          # a fork
+            (self.make_run("pull_request", ""), mac, self.RUNNERS, ""),
+            (self.make_run("schedule"), mac, self.RUNNERS, ""),
+        )
+        for run, jobs, runners, disabled in cases:
+            self.assertEqual(rd.waiting_for_idle(run, jobs, runners, disabled, NOW, set()), ("", ""), (run["event"], jobs[0]["name"], disabled))
+        # one run per idle runner a minute
+        self.assertEqual(rd.waiting_for_idle(self.make_run(), mac, self.RUNNERS, "", NOW, {"je-mac"}), ("", ""))
+        # a same-repository pull request may
+        self.assertEqual(rd.waiting_for_idle(self.make_run("pull_request"), mac, self.RUNNERS, "", NOW, set())[1], "je-mac")
 
 
 class FakeGh:
@@ -189,7 +263,27 @@ class Watchdog(unittest.TestCase):
         dog.handle(r, "why", finished=False)
         dog.finish(r, "why")
         self.assertEqual(gh.calls, [("cancel", 12), ("enqueue", 152)])
-        self.assertIn("#152 back in the merge queue", self.lines[-1])
+        self.assertIn("#152 back at the front of the merge queue", self.lines[-1])
+
+    def test_an_idle_runner_reroute_then_a_lost_runner_reroute_then_nothing(self):
+        # (each kind once; the lost one is held hosted-only, and no idle reroute after it: never a loop)
+        gh = FakeGh()
+        dog = self.dog(gh)
+        self.assertTrue(dog.handle(run_(), "macos waited 20 min while je-mac is idle", finished=False, kind="idle"))
+        self.assertFalse(dog.handle(run_(), "again", finished=False, kind="idle"))
+        dog.finish(run_(), "macos waited")
+        self.assertEqual(dog.held(), [])                     # its rerun plans again
+        self.assertFalse(dog.handle(run_(), "idle again", finished=False, kind="idle"))
+        self.assertTrue(dog.handle(run_(), "macos queued 10 min for je-mac, which is offline", finished=False))
+        dog.finish(run_(), "offline")
+        self.assertEqual(dog.held(), ["11"])                 # its rerun stays hosted
+        for kind in ("idle", "lost"):
+            self.assertFalse(dog.handle(run_(), "more", finished=True, kind=kind))
+        self.assertEqual(gh.calls, [("cancel", 11), ("rerun", 11), ("cancel", 11), ("rerun", 11)])
+        # an older record without kinds counts as a lost one
+        self.memory["acted"]["12"] = {"t": NOW, "stage": "rerun", "why": "old"}
+        self.assertIn("12", dog.held())
+        self.assertFalse(dog.handle(run_(12), "idle", finished=False, kind="idle"))
 
     def test_a_superseded_pull_request_run_is_not_rerun(self):
         # a rerun would cancel the newer push's run (cancel-in-progress)

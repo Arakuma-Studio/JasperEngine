@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -345,6 +346,15 @@ class GateTest(unittest.TestCase):
         status, out = self.gate(needs_for(p), p, reports_for(p))
         self.assertEqual(status, 1, out)
         self.assertRegex(out, r"(?m)^asan\s+skipped\s+FAIL: the merge queue skips no lane$")
+        # ios without an Apple-only input: planned off by rule (queue_off), which the gate reads
+        p = dict(plan(event="merge_group", off=("ios",)), queue_off=["ios"])
+        status, out = self.gate(needs_for(p), p, reports_for(p))
+        self.assertEqual(status, 0, out)
+        p = plan(event="merge_group", off=("ios",))
+        self.assertEqual(self.gate(needs_for(p), p, reports_for(p))[0], 1)
+        # (a lane the queue may skip only when the plan said so: not macos)
+        p = dict(plan(event="merge_group", off=("macos",)), queue_off=["ios"])
+        self.assertEqual(self.gate(needs_for(p), p, reports_for(p))[0], 1)
         # a group nothing reads runs nothing (D3)
         p = plan(event="merge_group", off=tuple(n for n in LANES if n != "changes"))
         status, out = self.gate(needs_for(p), p, reports_for(p))
@@ -417,6 +427,18 @@ class GateTest(unittest.TestCase):
         self.assertEqual(status, 0, out)
         self.assertIn("warning: lanes.json plans ios, which Check does not need", out)
 
+    def test_advisory_lanes_left_out_of_needs(self):
+        # ci.yml's Check does not need the advisory lanes (it would not wait for them): no warning, and a
+        # blocking lane still fails
+        p = plan()
+        advisory = "unit asan htmlui mcp smoke windows-editor-tests"
+        needs = {n: "success" for n in LANES if n not in advisory.split()}
+        rc, text = self.gate(needs, p, reports_for(p), advisory=advisory)
+        self.assertEqual(rc, 0, text)
+        self.assertNotIn("which Check does not need", text)
+        rc, text = self.gate(dict(needs, linux="failure"), p, reports_for(p), advisory=advisory)
+        self.assertEqual(rc, 1, text)
+
     def test_cli_exit_codes(self):
         p = plan()
         (self.dir / "needs.json").write_text(json.dumps(needs_for(p, linux="failure")))
@@ -426,6 +448,108 @@ class GateTest(unittest.TestCase):
         self.assertEqual(subprocess.run(cmd, capture_output=True).returncode, 1)
         (self.dir / "needs.json").write_text("not json")
         self.assertEqual(subprocess.run(cmd, capture_output=True).returncode, 2)
+
+    def test_results_only_needs(self):
+        # ci.yml passes {"<job>": "<result>"}, not toJSON(needs)
+        p = plan()
+        needs = {n: "success" for n in LANES}
+        rc, text = self.gate(needs, p, reports_for(p))
+        self.assertEqual(rc, 0, text)
+        rc, text = self.gate(dict(needs, web="failure"), p, reports_for(p))
+        self.assertEqual(rc, 1, text)
+
+
+MAX_ARG_STRLEN = 131072   # Linux: one environment string or argument (32 pages)
+CI_YML = HERE.parent.parent / ".github" / "workflows" / "ci.yml"
+EXPR = re.compile(r"\$\{\{(.*?)\}\}")
+
+
+def workflow_jobs(text: str) -> dict[str, str]:
+    body = text[text.index("\njobs:\n"):]
+    parts = re.split(r"^  ([\w-]+):\n", body, flags=re.M)
+    return dict(zip(parts[1::2], parts[2::2]))
+
+
+def env_entries(block: str):
+    """(key, value) of every entry of every env: map in a YAML block."""
+    env_indent = None
+    for line in block.splitlines():
+        indent = len(line) - len(line.lstrip())
+        if env_indent is not None and line.strip() and indent <= env_indent:
+            env_indent = None
+        if re.fullmatch(r"\s*env:\s*", line):
+            env_indent = indent
+        elif env_indent is not None and (m := re.fullmatch(r"\s*([A-Za-z_][\w]*): (.*)", line)):
+            yield m.group(1), m.group(2)
+
+
+class WorkflowEnvTest(unittest.TestCase):
+    """Every environment value of ci.yml fits one environment string when the changes job's outputs are
+    their largest (each filter FILTER_LIMIT long: a plan selecting every unit test, run 45088926257)."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(HERE))
+        import plan_lanes
+        cls.filter_limit = plan_lanes.FILTER_LIMIT
+        cls.text = CI_YML.read_text(encoding="utf-8")
+        cls.jobs = workflow_jobs(cls.text)
+        outputs = re.search(r"^    outputs:\n((?:      .*\n)+)", cls.jobs["changes"], re.M).group(1)
+        cls.outputs = {name: "x" * (cls.filter_limit if "filter" in name else 4096)
+                       for name in re.findall(r"^      (\w+):", outputs, re.M)}
+
+    def needs_of(self, job: str) -> list[str]:
+        m = re.search(r"^    needs: (\[.*\]|[\w-]+)$", self.jobs[job], re.M)
+        return [n.strip() for n in m.group(1).strip("[]").split(",")] if m else []
+
+    def bound(self, job: str, expr: str) -> int:
+        """An upper bound of the expression's value's length."""
+        if re.search(r"toJSON\(\s*needs\s*\)", expr):
+            # the runner's toJSON indents by 2
+            return len(json.dumps({n: {"result": "cancelled", "outputs": self.outputs if n == "changes" else {}}
+                                   for n in self.needs_of(job)}, indent=2))
+        size = len(expr)
+        for ref in re.findall(r"\b(?:needs|steps|github|inputs|vars|env|matrix|secrets)\.[\w.-]+", expr):
+            m = re.fullmatch(r"needs\.changes\.outputs\.(\w+)", ref)
+            size += len(self.outputs.get(m.group(1), "")) if m else 9 if ref.endswith(".result") else 1024
+        return size
+
+    def test_every_env_value_fits_one_environment_string(self):
+        blocks = {"(workflow)": self.text[:self.text.index("\njobs:\n")], **self.jobs}
+        checked = 0
+        for job, block in blocks.items():
+            for key, value in env_entries(block):
+                size = len(EXPR.sub("", value)) + sum(self.bound(job, e) for e in EXPR.findall(value))
+                checked += 1
+                self.assertLess(size, MAX_ARG_STRLEN, f"{job}: env {key} can reach {size} bytes ({value[:80]})")
+        self.assertGreater(checked, 50)
+
+    def test_needs_maps_name_every_needed_job(self):
+        # the gate and the report see only the jobs NEEDS names: a job added to needs must be added there
+        for job in ("check", "report"):
+            values = [v for k, v in env_entries(self.jobs[job]) if k == "NEEDS"]
+            self.assertEqual(len(values), 1, job)
+            m = re.fullmatch(r"\$\{\{ format\('\{\{(.*)\}\}', (.*)\) \}\}", values[0])
+            self.assertTrue(m, f"{job}: NEEDS is not format('{{{{...}}}}', needs.<job>.result, ...)")
+            keys = re.findall(r'"([\w-]+)":"\{(\d+)\}"', m.group(1))
+            args = [a.strip() for a in m.group(2).split(",")]
+            self.assertEqual([int(i) for _, i in keys], list(range(len(keys))), job)
+            self.assertEqual(args, [f"needs.{k}.result" for k, _ in keys], job)
+            self.assertEqual([k for k, _ in keys], self.needs_of(job), job)
+
+    def test_check_needs_every_lane_but_the_advisory_ones(self):
+        # Check waits only for what can fail it; a lane taken off ADVISORY_LANES must join its needs
+        advisory = re.search(r"^  ADVISORY_LANES: \"([a-z0-9 _-]*)\"$", self.text, re.M).group(1).split()
+        lanes = [n for n in self.needs_of("report") if n != "check"]
+        import plan_lanes
+        self.assertLessEqual(set(plan_lanes.LANES), set(lanes), "report must need every lane")
+        self.assertEqual(self.needs_of("check"), [n for n in lanes if n not in advisory],
+                         "check's needs: report's needs (but check) without ADVISORY_LANES, in that order")
+
+    def test_filter_limit_fits_one_argument(self):
+        # the unit, asan and HTML UI steps pass `printf %q` of --gtest_filter=<filter> in one argument:
+        # %q at most doubles it
+        self.assertLess(2 * (self.filter_limit + len("UNIT_TEST_ARGS=--gtest_filter=")) + 4096, MAX_ARG_STRLEN)
 
 
 if __name__ == "__main__":
