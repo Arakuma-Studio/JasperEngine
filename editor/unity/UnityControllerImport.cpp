@@ -48,7 +48,7 @@ namespace {
     }
 
     // the Unity project path of a file ("Assets/Anim/Walk.anim"), else its name
-    std::string unityRelative(const Project* unityProject, const fs::path& file) {
+    std::string unityRelative(const jasperengine::editor::unity::Project* unityProject, const fs::path& file) {
         if (unityProject && !unityProject->root().empty()) {
             const std::string relative = unityProject->relative(file);
             if (!relative.empty() && relative.rfind("..", 0) != 0) return relative;
@@ -64,7 +64,7 @@ namespace {
     // what this import writes and references, shared by the controller and its dependencies
     struct ImportSession {
         const AssetImportOptions& options;
-        Project unity;
+        jasperengine::editor::unity::Project unity;
         bool hasUnity = false;
         AssetImportResult& result;
         Json clips = Json::array();
@@ -407,7 +407,7 @@ namespace {
                 out.tree.push_back(std::move(def));
                 return;
             }
-            if (Project::isBuiltinGuid(ref.guid)) {
+            if (jasperengine::editor::unity::Project::isBuiltinGuid(ref.guid)) {
                 session.miss(where, "a Unity built-in motion");
                 return;
             }
@@ -639,9 +639,9 @@ bool jasperengine::editor::unity::isUnityAnimationAsset(const fs::path& file) {
 }
 
 AnimImportResult jasperengine::editor::unity::importUnityClip(const fs::path& file, bool mirrorX) {
-    Project unity;
+    jasperengine::editor::unity::Project unity;
     std::string error;
-    const fs::path root = Project::findRoot(file);
+    const fs::path root = jasperengine::editor::unity::Project::findRoot(file);
     const bool hasUnity = !root.empty() && unity.open(root, error);
     AnimImportOptions options;
     options.mirrorX = mirrorX;
@@ -689,7 +689,7 @@ AssetImportResult jasperengine::editor::unity::importUnityAnimationAsset(const A
         return result;
     }
     ImportSession session(options, result);
-    const fs::path root = options.unityProject.empty() ? Project::findRoot(options.file) : options.unityProject;
+    const fs::path root = options.unityProject.empty() ? jasperengine::editor::unity::Project::findRoot(options.file) : options.unityProject;
     std::string error;
     session.hasUnity = !root.empty() && session.unity.open(root, error);
     const std::string unityPath = unityRelative(session.hasUnity ? &session.unity : nullptr, options.file);
