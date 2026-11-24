@@ -155,6 +155,26 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
+# Every later batch of 16 moves by one source per test file added before it, and moved batches meet
+# file-scope using-directives of other tests (HitStopTest's fixture beside a pixelart test's
+# using-directive): V1's tests stay out of the batches, as S97's editor tests do
+jasperengine_skip_unity_build(
+    REASON "V1's tests: compiled alone so the batches of the core tests after them do not move"
+    SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/component/VertexColorsComponentTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/VertexColorGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/VertexColorRenderGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorBakeTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorFileTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorLuaTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorMeshTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorOpsJsonTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorOpsTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorRuntimeTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorSceneTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorSelectTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorSplitTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vertexcolor/VertexColorTypesTest.cpp)
 
 # The noise suites compile kernels' arithmetic in their own units and compare it with the library's, so
 # they take the same flag. The golden cases are shared with tools/noise/golden, and the presets are

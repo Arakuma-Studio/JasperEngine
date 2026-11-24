@@ -106,6 +106,15 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_LIST_DIR}/engine/pool/SoundPoolLifetimeTest.cpp
         ${CMAKE_CURRENT_LIST_DIR}/engine/subsystem/AudioSourceEffectsTest.cpp
         ${CMAKE_CURRENT_LIST_DIR}/engine/subsystem/AudioSpatialBlendTest.cpp)
+# the same for V1's tests
+jasperengine_skip_unity_build(
+    REASON "V1's tests: compiled alone so the batches of the editor tests after them do not move"
+    SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/shader/VertexColorVariantsTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/vertexcolor/VertexColorEditingTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/vertexcolor/VertexColorOutputTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/vertexcolor/VertexColorsComponentTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/vertexcolor/VertexPaintToolTest.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
     # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose
