@@ -741,8 +741,9 @@ TEST_F(RenderRendererGpu, ImageDecodeIsAsync){
     // 80-300 ms in a fresh process (5 ms on a repeat) while the image cache's upload took 5 ms of it
     if (const double slack = compat::benchmarkPerfSlack(); slack > 0.0){
         EXPECT_LE(firstMs - idleMs, 3.0 * slack);
-        if (!GpuEnvironment::isReferenceRenderer())
+        if (!GpuEnvironment::isReferenceRenderer()){
             EXPECT_LE(uploadMs, 4.0 * slack);
+        }
         EXPECT_LE(visibleMs, 500.0 * slack);
     }
     test.context->UnloadDocument(document);
