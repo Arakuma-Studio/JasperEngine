@@ -2582,11 +2582,10 @@ far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`,
 `rotatePosition(a)`, `elevateView(a)`, `elevatePosition(a)`, `walkForward(d)`, `zoom(d)`,
 `slide(d)`, `slideForward(d)`, `slideUp(d)`, `getViewMatrix()`, `getProjectionMatrix()`,
 `getViewProjectionMatrix()`, `getDistanceFromTarget()`, `updateCamera()`.
-`Camera(scene)` aims with the GameObject's rotation (`useTarget` false), as Unity and the editor's
-GameObject > Camera do: forward is `rotation * Vector3(0, 0, -1)`. `setTarget(...)` or assigning
-`target` turns target mode on (`useTarget` true): the view is a look-at of the target and the
-rotation is ignored until `useTarget = false` (`disableTarget()`). A script that relied on a new
-camera looking at the origin without a target sets `cam.useTarget = true` (or `setTarget(0, 0, 0)`).
+`Camera(scene)` starts in target mode (`useTarget` true): the view is a look-at of `target` (the
+origin until set) and the rotation is ignored. Set `cam.useTarget = false` (`disableTarget()`) to aim
+it with the GameObject's rotation, as Unity and the editor's GameObject > Camera do: forward is
+`rotation * Vector3(0, 0, -1)`. `setTarget(...)` or assigning `target` turns target mode on again.
 Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch), cos(pitch)cos(yaw)) * distance, then
 `setTarget(target)`.
 `camera:getPixelPerfectCamera()` returns its Pixel Perfect Camera, nil without one (4.9.2).

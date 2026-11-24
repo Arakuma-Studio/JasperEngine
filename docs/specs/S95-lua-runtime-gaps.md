@@ -477,7 +477,7 @@ test goes" says. MCP tests are `CI = True`.
 | AC-9 | REQ-33 | Bench `LateTransformPassBench` in `engine/tests/core/bench`, thresholds in `tools/perf/bench-thresholds.json`: idle late pass ≤ 1 µs per scene, and the one-camera case ≤ 10% of the main pass |
 | AC-10 | REQ-6 | `LuaHierarchyTest.WorldPoseFreshAfterParentMove`: move the parent in `onUpdate`, read the child's world position, rotation, scale and `modelMatrix` the same frame. They equal the values after propagation, bit for bit. Red: last frame's values |
 | AC-11 | REQ-7 | `LuaReloadTest.HandlerLookedUpAtCallTime`: replace `self.onUpdate` after registering; the next frame calls the new one. Set it to nil: no call, one warning. Bench `LuaBindingBenchTest` dispatch within REQ-34. Red: the old function runs |
-| AC-12 | REQ-11 | `LuaHierarchyTest.CameraConstructorUsesRotation`: `Camera(scene).useTarget == false`, and the view follows the Transform rotation; `setTarget` turns it on. Red: true before |
+| AC-12 | REQ-11 | `LuaHierarchyTest.CameraUseTargetSwitchesToRotation` (see Deviations, Lua compatibility): `Camera(scene).useTarget == true` as before; `useTarget = false` makes the view follow the Transform rotation; `setTarget` turns it on. Red: `useTarget` is nil before |
 | AC-13 | REQ-12 | `test_input.py::test_simulate_touch_from_mouse`: with the setting on, a `send_input` mouse click gives `onTouchStart` in Play. The prebuilt-player `game.json` carries it (unit test of `ExporterPrebuilt`). Red: no touch |
 | AC-14 | REQ-13, D-7 | `EngineTimeSettingsTest` (editor tests): project 1/50 applied at Play start. A script sets 1/120; Play stop restores; the next Play starts at 1/50. Scene C's override of 1/400 applies on load; a load from C to the menu (no override) restores 1/50; a load from the menu to D (no override) keeps a script value. MCP `test_time_settings.py` (new) sets and reads both keys. Red: the step leaks across Plays before |
 | AC-15 | REQ-14 | `EngineCanvasTest.InitSeesFirstLayout`: FITHEIGHT, preferred 1920×1080, screen 2400×1080 known before start. The script's `init` reads 2400×1080. Without a screen size it reads 1920×1080, and `onCanvasChanged` precedes the first `onUpdate`. Red: `init` reads 1920×1080 with a known screen |
@@ -587,6 +587,16 @@ Per package, before merging:
 
 ### WP-1 Lua API correctness
 
+- **Lua compatibility (lead decision at the main merge).** Existing Lua forms keep working as
+  they did; the new forms sit beside them. REQ-1's removal of the `(x, y, z, RotationOrder)`
+  constructor is undone: it is registered again after `(w, x, y, z)`, so four numbers still pick
+  the raw form, as on every release (the guide documents `Quaternion.euler` for an order). REQ-11's
+  constructor change is undone: `Camera(scene)` (Lua and C++) starts in target mode as before, and
+  the new read-write `useTarget` is the way to rotation mode (`cam.useTarget = false`, as the
+  editor's GameObject > Camera). AC-12 is `LuaHierarchyTest.CameraUseTargetSwitchesToRotation`.
+  REQ-3 (nil instead of an engine error and a raise) and REQ-6 (current world poses) stay: no call
+  that worked before gives another result, except a world getter read before the transform pass,
+  which now gives the pose `updateTransform()` would have given.
 - **D-2's form.** Only the Lua bindings changed: they test `findComponent<Transform>` and return
   `nil` (getters) or raise (setters, `parent`/`setParent`). The C++ `GameObject` getters keep their
   behaviour for C++ callers. `localMatrix`, `modelMatrix` and `normalMatrix` follow the getters'

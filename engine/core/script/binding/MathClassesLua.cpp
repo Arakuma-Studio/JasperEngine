@@ -804,13 +804,14 @@ void LuaBinding::registerMathClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<Quaternion>("Quaternion")
-        // no Euler form with an order: four numbers are always (w, x, y, z), a RotationOrder being
-        // a number in Lua (Quaternion.euler takes the order), and no form reading Vector3s from a
-        // pointer (S95 REQ-1, REQ-2)
+        // four numbers are always (w, x, y, z): a RotationOrder is a number in Lua, so the
+        // (x, y, z, order) form after it is kept for old scripts but never chosen (Quaternion.euler
+        // takes the order); no form reads Vector3s from a pointer (S95 REQ-1, REQ-2)
         .addConstructor<
             void(), 
             void(const float, const float, const float, const float), 
             void(const float, const float, const float),
+            void(const float, const float, const float, const RotationOrder&),
             void(const Vector3&, const Vector3&, const Vector3&),
             void(const float, const Vector3&),
             void(const Matrix3&),

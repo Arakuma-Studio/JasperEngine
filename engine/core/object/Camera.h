@@ -70,8 +70,8 @@ namespace jasperengine{
         void setType(CameraType type);
         CameraType getType() const;
 
-        // Camera(scene) starts in rotation mode; setTarget() turns target mode on. While it
-        // is on the view matrix is lookAt(worldPosition, worldTarget, worldUp) and the
+        // Target mode is ON by default and setTarget() turns it back on. While it is
+        // on the view matrix is lookAt(worldPosition, worldTarget, worldUp) and the
         // entity's Transform rotation is ignored, so setRotation() followed by
         // setTarget() leaves the rotation with no effect on the view.
         void setTarget(Vector3 target);

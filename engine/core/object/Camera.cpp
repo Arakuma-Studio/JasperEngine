@@ -18,8 +18,6 @@ Camera::Camera(Scene* scene): GameObject(scene){
     applyPerspectiveDefaults(cameraComponent);
     // default CameraComponent is CAMERA_UI
     cameraComponent.type = CameraType::CAMERA_PERSPECTIVE;
-    // as the editor's GameObject > Camera: the Transform rotation aims it until setTarget (Unity)
-    cameraComponent.useTarget = false;
 
     Transform& transform = getComponent<Transform>();
     transform.position = Vector3(0.0, 0.0, 1.0);

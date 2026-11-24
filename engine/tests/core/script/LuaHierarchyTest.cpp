@@ -331,9 +331,10 @@ TEST(LuaHierarchy, WorldPoseFreshAfterParentMove){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// S95 REQ-11: Camera(scene) aims with its Transform rotation, as the editor's GameObject > Camera;
-// setTarget and assigning target turn target mode on, useTarget switches it either way
-TEST(LuaHierarchy, CameraConstructorUsesRotation){
+// S95 REQ-11: Camera(scene) keeps target mode, as before (old scripts that look at the origin keep
+// their view); useTarget = false aims it with its Transform rotation, as the editor's
+// GameObject > Camera; setTarget and assigning target turn target mode on again
+TEST(LuaHierarchy, CameraUseTargetSwitchesToRotation){
     lua_State* L = LuaBinding::getLuaState();
     ASSERT_NE(L, nullptr);
 
@@ -341,8 +342,10 @@ TEST(LuaHierarchy, CameraConstructorUsesRotation){
     luabridge::setGlobal(L, &scene, "cameraTestScene");
     ASSERT_EQ(runHierarchyLua(L, R"(
         cameraTest = Camera(cameraTestScene)
-        assert(cameraTest.useTarget == false, "a new camera aims with its rotation")
-        assert(cameraTest:isUsingTarget() == false)
+        assert(cameraTest.useTarget == true, "a new camera keeps target mode, as before")
+        assert(cameraTest:isUsingTarget() == true)
+        cameraTest.useTarget = false
+        assert(cameraTest:isUsingTarget() == false, "useTarget = false aims it with its rotation")
         cameraTest.position = Vector3(0, 0, 5)
         cameraTest.rotation = Quaternion(90, Vector3(0, 1, 0))
         cameraTestEntity = cameraTest.entity
