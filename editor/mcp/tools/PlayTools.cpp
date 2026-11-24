@@ -71,7 +71,7 @@
 #include "object/physics/Rigidbody2D.h"
 #include "subsystem/NavigationSystem.h"
 #include "subsystem/PhysicsSystem.h"
-#include "subsystem/TransformPropagation.h"
+#include "object/GameObject.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptScheduler.h"
 #include "script/ScriptRuntime.h"
@@ -2618,15 +2618,19 @@ void getRuntimeEntityTool(const CallPtr& call) {
             // the world pose as a script's getWorldPosition() reads it now (S95 REQ-6), not the last
             // transform pass's: what eval_lua or set_runtime_property moved since shows
             if (type == ComponentType::Transform) {
-                TransformPose pose = computeWorldPose(*sp->scene, entity);
+                // (through GameObject: Transform.h here would rebuild one editor unit too many, check_fanout)
+                const GameObject object(sp->scene, entity);
+                Vector3 position = object.getWorldPosition();
+                Quaternion rotation = object.getWorldRotation();
+                Vector3 scale = object.getWorldScale();
                 auto world = [&](const char* name, PropertyType kind, void* value) {
                     if (!onlyProps.empty() && !onlyProps.count(name)) return;
                     PropertyData data{kind, 0, nullptr, value};
                     props[name] = McpValues::readProperty(ctx, name, data);
                 };
-                world("worldPosition", PropertyType::Vector3, &pose.position);
-                world("worldRotation", PropertyType::Quat, &pose.rotation);
-                world("worldScale", PropertyType::Vector3, &pose.scale);
+                world("worldPosition", PropertyType::Vector3, &position);
+                world("worldRotation", PropertyType::Quat, &rotation);
+                world("worldScale", PropertyType::Vector3, &scale);
             }
         }
         if (type == ComponentType::CameraShakerComponent) {
@@ -4592,8 +4596,7 @@ void registerPlayTools(McpRegistry& registry) {
             "value\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
             "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|view_lost|view_restored|orientation "
             "(+orientation)\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
-            "down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + "
-            "frames_after only).";
+            "down holds until up/release_all/stop. auto_pause: runs only events + frames_after.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},

@@ -54,7 +54,7 @@ namespace jasperengine {
         DataAsset = 35              // a .dataasset Data Asset (S95 REQ-21; its GUID in its .meta)
     };
     // the highest value present (a sibling's reserved value below it may still be missing)
-    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::TitleArt);
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::DataAsset);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
