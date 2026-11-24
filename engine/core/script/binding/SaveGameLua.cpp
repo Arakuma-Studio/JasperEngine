@@ -286,6 +286,24 @@ namespace {
     }
 
     // Pushes data, info (or nil, err) for `nameSpace` of a slot the store returned
+    // The store's migrator: a write at a newer version from C++ (the dialogue save hooks) or MCP
+    // (user_settings set in Play) migrates the slot's other namespaces as SaveGame.write does
+    SaveError migrateForStore(const std::string& slot, savegame::SlotData& data, uint32_t version){
+        lua_State* L = LuaBinding::getLuaState();
+        if (!L){
+            return savegame::makeError(SaveErrorCode::Migration, "slot \"" + slot + "\" is version " + std::to_string(data.info.version) +
+                " and this write is version " + std::to_string(version) + ", but no game is running to migrate its other namespaces: "
+                "write it in Play, or write every namespace (replaceAll)");
+        }
+        if (version != savegame::gameDataVersion()){
+            return savegame::makeError(SaveErrorCode::Migration, "slot \"" + slot + "\" is version " + std::to_string(data.info.version) +
+                " and this write is version " + std::to_string(version) + ", but the game's migrations go to SaveGame.version " +
+                std::to_string(savegame::gameDataVersion()) + ": write it at that version");
+        }
+        uint32_t migratedFrom = 0;
+        return migrate(L, slot, data, migratedFrom, false);
+    }
+
     int pushRead(lua_State* L, const std::string& slot, const std::string& nameSpace, savegame::SlotData& data){
         const uint32_t target = savegame::gameDataVersion();
         if (data.info.version > target){
@@ -685,6 +703,7 @@ void LuaBinding::registerSaveGameClasses(lua_State* L){
     };
     // a new state (Play started again) starts at version 1 with no migrations
     savegame::setGameDataVersion(1);
+    savegame::setMigrator(migrateForStore);
     luaL_newlib(L, functions);
     lua_createtable(L, 0, 2);
     lua_pushcfunction(L, luaIndex);

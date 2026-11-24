@@ -14,18 +14,26 @@
 #include "command/CommandHistory.h"
 #include "command/type/SaveGameSettingsCmd.h"
 #include "command/type/SaveSlotCmd.h"
+#include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
 #include "player/PlayerConfig.h"
 #include "save/SaveGameStore.h"
+#include "window/SavedDataWindow.h"
 
 #include "TempDir.h"
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -57,6 +65,8 @@ namespace {
         savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
         SavesOnTempDir() { store.setFolder(dir.path() / "saves"); }
         ~SavesOnTempDir() {
+            savegame::setFileFaultInjector(nullptr);
+            io::setAtomicFileFaultInjector(nullptr);
             store.flush();
             jobs::drainMainQueue();
             store.setFolder({});
@@ -167,4 +177,95 @@ TEST(SavedDataWindow, SettingsRoundTripAndOmitDefaults) {
     ASSERT_TRUE(history.undo());
     EXPECT_EQ(project.getSaveGameSettings().maxSlotMiB, 8);
     project.setSaveGameSettings(SaveGameSettings());
+}
+
+// Showing a slot reads it, never repairs it: a damaged newest generation stays where it is (the
+// game's own read sets it aside)
+TEST(SavedDataWindow, ViewingASlotChangesNoFile) {
+    SavesOnTempDir env;
+    for (int i = 1; i <= 3; i++) writeSlot(env.store, "slot1", "{\"i\":" + std::to_string(i) + "}");
+    env.store.unload();
+    std::ofstream(env.saves() / "slot1.g3.jsave", std::ios::binary | std::ios::trunc) << "damaged";
+    const auto before = savedFiles(env.saves());
+    SavedDataWindow window(nullptr);
+    window.select("slot1");
+    window.refresh(true);
+    EXPECT_EQ(savedFiles(env.saves()), before);
+}
+
+// The window's refreshes read no save file while nothing changed (it did every generation in
+// full once a second)
+TEST(SavedDataWindow, RefreshWithoutChangesReadsNoSaveFile) {
+    SavesOnTempDir env;
+    for (int i = 1; i <= 3; i++) writeSlot(env.store, "slot1", "{\"i\":" + std::to_string(i) + "}");
+    SavedDataWindow window(nullptr);
+    window.select("slot1");
+    const size_t reads = savegame::SaveGameStore::fileReads();
+    for (int i = 0; i < 3; i++) window.refresh(true);
+    EXPECT_EQ(savegame::SaveGameStore::fileReads(), reads);
+}
+
+// Clear All Saves that deletes one slot and fails on the next stays in the history: undo brings
+// back what it deleted
+TEST(SavedDataWindow, PartlyFailedClearAllStaysUndoable) {
+    SavesOnTempDir env;
+    writeSlot(env.store, "slot1", R"({"a":1})");
+    writeSlot(env.store, "slot2", R"({"b":2})");
+    const auto original = savedFiles(env.saves());
+    auto first = std::make_shared<std::string>();
+    savegame::setFileFaultInjector([first](std::string_view step, const fs::path& path) -> std::error_code {
+        if (step != "remove") return {};
+        const std::string name = path.filename().string();
+        const std::string slot = name.substr(0, name.find('.'));
+        if (first->empty()) *first = slot;
+        return slot == *first ? std::error_code() : std::make_error_code(std::errc::permission_denied);
+    });
+    CommandHistory history;
+    const bool added = history.addCommand(new SaveSlotCmd(SaveSlotCmd::Action::ClearAll, ""));
+    savegame::setFileFaultInjector(nullptr);
+    EXPECT_TRUE(added) << "one slot was deleted: the step is in the history";
+    ASSERT_TRUE(history.undo());
+    EXPECT_EQ(savedFiles(env.saves()), original);
+}
+
+// A step that can't wait for the game's write on its way (it outlasts the flush limit) is refused
+// before it changes anything: the restore it would have queued never lands after the refusal
+TEST(SavedDataWindowSlow, RestoreWhileTheGameWritesIsRefused) {
+    SavesOnTempDir env;
+    writeSlot(env.store, "slot1", R"({"i":1})");
+    writeSlot(env.store, "slot1", R"({"i":2})");
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool entered = false, release = false;
+    io::setAtomicFileFaultInjector([&](std::string_view step, const fs::path& path) -> std::error_code {
+        if (step != "write" || path.filename().string().find("slot1.g3") == std::string::npos) return {};
+        std::unique_lock<std::mutex> lock(mutex);
+        entered = true;
+        changed.notify_all();
+        changed.wait_for(lock, std::chrono::seconds(30), [&] { return release; });
+        return {};
+    });
+    std::string payload;
+    savegame::SaveError encodeError;
+    ASSERT_TRUE(savegame::fromJson(nlohmann::json::parse(R"({"i":3})"), payload, encodeError));
+    ASSERT_TRUE(env.store.write("slot1", "main", payload, savegame::WriteOptions(), nullptr).ok());
+    {
+        // the game's write is on a worker, stopped inside its file write
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(changed.wait_for(lock, std::chrono::seconds(10), [&] { return entered; }));
+    }
+    CommandHistory history;
+    const bool added = history.addCommand(new SaveSlotCmd(SaveSlotCmd::Action::Restore, "slot1", 1));
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release = true;
+    }
+    changed.notify_all();
+    ASSERT_TRUE(env.store.flush("slot1", std::chrono::seconds(10)).ok());
+    jobs::drainMainQueue();
+    io::setAtomicFileFaultInjector(nullptr);
+    EXPECT_FALSE(added);
+    std::vector<std::string> names;
+    for (const auto& file : savedFiles(env.saves())) names.push_back(file.first);
+    EXPECT_EQ(names, (std::vector<std::string>{"slot1.g1.jsave", "slot1.g2.jsave", "slot1.g3.jsave"}));
 }

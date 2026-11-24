@@ -10,7 +10,10 @@
 // writes it as a new generation file `<slot>.g<N>.jsave` (writeFileAtomic, Document) and prunes
 // the generations beyond Backups Kept + 1. Per slot at most one write is in flight and one waits
 // (a later write replaces the waiting snapshot). A read uses the newest generation that parses,
-// checks and decodes; an invalid newer one is renamed `.corrupt`.
+// checks and decodes; an invalid newer one is renamed `.corrupt`. A file that can't be read now
+// (not damage) fails the read and is left alone. A write at a newer data version migrates the
+// slot's other namespaces first (setMigrator). Opening a folder deletes the temporary files a
+// killed write left.
 //
 // Main thread only, but the jobs. Nothing exists before the first instance() call: the engine's
 // pause, shutdown and Play-stop hooks test existing().
@@ -28,6 +31,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 namespace jasperengine::jobs { class SerialQueue; }
@@ -117,6 +121,38 @@ namespace jasperengine::savegame {
 
     using WriteCallback = std::function<void(const SaveError&)>;
 
+    // The web's IndexedDB syncs (FS.syncfs) and the writes waiting for one: a landed write is
+    // confirmed by the result of a sync that started after it landed (each sync takes the files
+    // as they are when it starts), so a later sync's QuotaExceededError reaches its own writes
+    struct JASPERENGINE_API SyncWaiters {
+        struct Delivery {
+            std::vector<WriteCallback> callbacks;
+            SaveError error;
+        };
+        // A write reached the in-memory file system with `result` (ok)
+        void landed(std::vector<WriteCallback> callbacks, const SaveError& result);
+        // A sync started: it covers every write landed until now
+        void started(uint64_t sync);
+        // That sync ended: the callbacks it covered, with its result
+        std::vector<Delivery> finished(uint64_t sync, bool ok, std::string_view errorName, std::string_view message);
+        void clear();
+        size_t waiting() const;
+
+    private:
+        std::vector<Delivery> unsynced;
+        std::map<uint64_t, std::vector<Delivery>> syncing;
+    };
+
+    // Runs the game's migrations on a slot's namespaces (data.info.version) up to `version`,
+    // leaving the migrated sections in data.sections (the Lua binding registers SaveGame.addMigration's)
+    using Migrator = std::function<SaveError(const std::string& slot, SlotData& data, uint32_t version)>;
+    JASPERENGINE_API void setMigrator(Migrator migrator);
+
+    // Test seam: called before the store reads ("read") or deletes ("remove") a file of the saves
+    // folder; a non-empty error code makes that step fail with it. Empty function: no-op
+    using FileFaultInjector = std::function<std::error_code(std::string_view step, const std::filesystem::path& path)>;
+    JASPERENGINE_API void setFileFaultInjector(FileFaultInjector injector);
+
     class JASPERENGINE_API SaveGameStore {
     public:
         static constexpr size_t MEMORY_LIMIT = 32u * 1024u * 1024u;
@@ -139,6 +175,10 @@ namespace jasperengine::savegame {
         SaveError read(std::string_view slot, std::string_view nameSpace, std::string& payload, ReadInfo& info);
         // Every namespace; generation 0: the slot's current data, else that generation's file
         SaveError readSlot(std::string_view slot, SlotData& out, uint64_t generation = 0);
+        // Read only (the Saved Data window's view): the slot's image when loaded, else its newest
+        // valid generation on disk with the skipped ones in info.problems; nothing is installed,
+        // set aside or deleted
+        SaveError peekSlot(std::string_view slot, SlotData& out);
         // The file read and checksum on the queue, `done` on the main thread
         void readSlotAsync(std::string_view slot, std::function<void(const SaveError&, const SlotData&)> done);
         // The image takes migrated sections at `version`; the files change at the next write (R9)
@@ -148,8 +188,8 @@ namespace jasperengine::savegame {
         std::vector<SlotInfo> list();
         SaveError info(std::string_view slot, SlotInfo& out);
         bool exists(std::string_view slot);
-        // Every generation and set-aside file of the slot
-        SaveError remove(std::string_view slot);
+        // Every generation and set-aside file of the slot, after its queued writes landed (`limit`)
+        SaveError remove(std::string_view slot, std::chrono::milliseconds limit = std::chrono::seconds(2));
         SaveError backups(std::string_view slot, std::vector<BackupInfo>& out);
         // That generation's sections, metadata and version written as a new newest generation
         SaveError restore(std::string_view slot, uint64_t generation, WriteCallback onComplete);
@@ -171,19 +211,26 @@ namespace jasperengine::savegame {
         std::vector<std::filesystem::path> slotFiles(std::string_view slot);
         // The highest generation number on disk, 0 when none
         uint64_t newestGeneration(std::string_view slot);
+        // The generation the slot's queued writes will publish, 0 when none is queued
+        uint64_t pendingGeneration(std::string_view slot);
+        // Changes when a file of the slot does (names, sizes, times; no file is read)
+        uint64_t slotSignature(std::string_view slot);
         // Bumped by every change of what list() shows (the Saved Data window refreshes on it)
         uint64_t changeCount() const { return changes.load(); }
 
         StorageInfo storage();
         // The web layer: navigator.storage.estimate()
         void setStorageEstimate(int64_t used, int64_t quota);
-        // The web layer: the IndexedDB sync that followed queued writes ended
-        void fileSystemSynced(bool ok, std::string_view errorName, std::string_view message);
+        // The web layer: an IndexedDB sync started, and that sync ended
+        void fileSystemSyncStarted(uint64_t sync);
+        void fileSystemSynced(uint64_t sync, bool ok, std::string_view errorName, std::string_view message);
 
         // Tests: while held, queued writes wait before they start (flush still writes them)
         void setHold(bool held);
         // Generation files written by this store
         size_t fileWrites() const { return writes.load(); }
+        // Whole save files read (any store; header reads are not counted)
+        static size_t fileReads();
         // Bytes of the images in memory
         size_t memoryBytes() const;
 

@@ -162,7 +162,20 @@ bool SavedDataWindow::run(SaveSlotCmd::Action action, const std::string& slot, u
         return false;
     }
     seenChanges = UINT64_MAX;
+    loadedChanges = UINT64_MAX;
+    // stopped partway: what it changed is in the history (the store's message is in the Console)
+    if (!command->partialFailure().empty()) {
+        const std::string message = command->partialFailure() + " What changed can be undone (Edit > Undo).";
+        StatusBar::setTransientMessage(message, 6.0);
+        if (error) *error = message;
+        return false;
+    }
     return true;
+}
+
+void SavedDataWindow::select(const std::string& slot) {
+    selected = slot;
+    loadSelected();
 }
 
 void SavedDataWindow::refresh(bool force) {
@@ -173,7 +186,9 @@ void SavedDataWindow::refresh(bool force) {
     seenChanges = store.changeCount();
     lastRefresh = now;
     slots = store.list();
-    loadSelected();
+    // the selected slot is read again only when it may differ (once a second it read every
+    // generation in full)
+    if (!selected.empty() && (store.changeCount() != loadedChanges || store.slotSignature(selected) != loadedSignature)) loadSelected();
 }
 
 void SavedDataWindow::loadSelected() {
@@ -182,8 +197,11 @@ void SavedDataWindow::loadSelected() {
     backups.clear();
     if (selected.empty()) return;
     savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
+    loadedChanges = store.changeCount();
+    loadedSignature = store.slotSignature(selected);
     savegame::SlotData data;
-    const savegame::SaveError error = store.readSlot(selected, data);
+    // read only: viewing a slot repairs nothing (the game's own read sets a damaged file aside)
+    const savegame::SaveError error = store.peekSlot(selected, data);
     if (!error.ok()) {
         selectedProblem = error.message;
     } else {
@@ -268,8 +286,7 @@ void SavedDataWindow::drawSlots() {
             // a dot: written in this Play session
             const std::string label = (info.writtenThisSession ? "\xE2\x97\x8F " : "") + info.slot;
             if (ImGui::Selectable(label.c_str(), selected == info.slot, ImGuiSelectableFlags_SpanAllColumns)) {
-                selected = info.slot;
-                loadSelected();
+                select(info.slot);
             }
             ImGui::TableSetColumnIndex(1);
             ImGui::Text("%u", info.version);

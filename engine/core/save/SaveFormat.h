@@ -11,7 +11,8 @@
 //   sections name length u16, name, payload length u32, payload (one JLV1 value)
 //   footer   XXH3-64 (seed 0) of every byte before it, then "JSAVEND\n"
 // Readers check every length against the bytes left before they allocate, and the footer before
-// they parse. A format above FORMAT_VERSION reads as NewerFormat and is never rewritten.
+// they parse. A format above FORMAT_VERSION whose footer checks reads as NewerFormat and is never
+// rewritten (every format keeps the footer: with a damaged one it is Corrupt).
 
 #include "Export.h"
 #include "save/SaveValue.h"

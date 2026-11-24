@@ -176,7 +176,9 @@ TEST(SaveGameFormat, RejectsDamage){
 
 TEST(SaveGameFormat, NewerFormatIsReportedNotRead){
     std::string bytes = savegame::buildSaveFile(saveGoldenFile());
+    // a newer engine's file: its footer checks
     bytes[8] = 2;
+    resealSave(bytes);
     savegame::SaveFile out;
     savegame::SaveError error;
     EXPECT_FALSE(savegame::parseSaveFile(bytes, out, error));
@@ -184,4 +186,16 @@ TEST(SaveGameFormat, NewerFormatIsReportedNotRead){
     EXPECT_STREQ(savegame::errorCodeName(error.code), "newer_format");
     EXPECT_FALSE(savegame::parseSaveHeader(bytes, out, error));
     EXPECT_EQ(error.code, savegame::SaveErrorCode::NewerFormat);
+}
+
+// The footer is checked before the format field: a format byte damaged in a format-1 file reads
+// as damage, so a read recovers from an older generation instead of reporting a newer engine
+TEST(SaveGameFormat, DamagedFormatFieldIsCorrupt){
+    std::string bytes = savegame::buildSaveFile(saveGoldenFile());
+    bytes[8] = 2;
+    savegame::SaveFile out;
+    savegame::SaveError error;
+    EXPECT_FALSE(savegame::parseSaveFile(bytes, out, error));
+    EXPECT_EQ(error.code, savegame::SaveErrorCode::Corrupt) << error.message;
+    EXPECT_EQ(error.message, "checksum mismatch");
 }

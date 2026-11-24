@@ -98,6 +98,11 @@ bool runSlotCommand(const CallPtr& call, SaveSlotCmd::Action action, const std::
         call->fail(history->lastRefusal().empty() ? "The saved data could not be changed (see read_console)." : history->lastRefusal());
         return false;
     }
+    // stopped partway: what it changed is one undo step
+    if (!command->partialFailure().empty()) {
+        call->fail(command->partialFailure() + " What changed is one undo step: undo {scope: \"project\"} puts it back.");
+        return false;
+    }
     return true;
 }
 
@@ -222,8 +227,25 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
         }
         savegame::WriteOptions options;
         const bool playing = project && project->isAnyScenePlaying();
-        if (args.contains("version") && args["version"].is_number_integer()) {
-            options.version = static_cast<uint32_t>(args["version"].get<uint64_t>());
+        if (args.contains("version")) {
+            // the listed schema's bounds are not enforced before the handler: 0, a negative or a
+            // huge number would wrap into another version
+            const Json& version = args["version"];
+            long long value = 0;
+            bool valid = false;
+            if (version.is_number_unsigned()) {
+                const uint64_t number = version.get<uint64_t>();
+                valid = number >= 1 && number <= 2147483647u;
+                value = static_cast<long long>(valid ? number : 0);
+            } else if (version.is_number_integer()) {
+                value = version.get<long long>();
+                valid = value >= 1 && value <= 2147483647;
+            }
+            if (!valid) {
+                call->fail("set: version must be an integer from 1 to 2147483647 (got " + version.dump() + ").");
+                return;
+            }
+            options.version = static_cast<uint32_t>(value);
         } else if (playing) {
             options.version = savegame::gameDataVersion();
         } else {
