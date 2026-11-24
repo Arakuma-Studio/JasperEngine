@@ -140,8 +140,8 @@
             "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list"
         },
         "send_input": {
-            "limit": 2014,
-            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide); +24 measured for the app actions view_lost|view_restored (S95 REQ-18, eval case bad_app_view_lost)"
+            "limit": 1981,
+            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide); +24 measured for the app actions view_lost|view_restored (S95 REQ-18, eval case bad_app_view_lost); 1981 measured once the description dropped its result list"
         },
         "create_particles": {
             "limit": 1888,
