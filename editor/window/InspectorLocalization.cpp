@@ -125,7 +125,7 @@ void editor::InspectorWindow::drawTextLocalizationRows(ComponentType cpType, Sce
 void editor::InspectorWindow::drawUIDocumentLocalization(SceneProject* sceneProject, Entity entity) {
     if (!project->isAnyScenePlaying() || !Localization::isActive()) return;
     if (!ImGui::CollapsingHeader("Localization##uidocument_l10n")) return;
-    const htmlui::HtmlL10n::DocumentReport report = htmlui::HtmlL10n::reportOf(sceneProject->scene, entity);
+    const jasperengine::htmlui::HtmlL10n::DocumentReport report = jasperengine::htmlui::HtmlL10n::reportOf(sceneProject->scene, entity);
     ImGui::Text("Language %s: %zu keyed elements, %zu literal texts, %zu misses", report.language.c_str(), report.keyed, report.literal.size(),
                 report.missing.size());
     const ImVec4 warning(0.95f, 0.70f, 0.20f, 1.0f);

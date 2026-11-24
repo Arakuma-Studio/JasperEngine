@@ -35,16 +35,16 @@ namespace {
     const char* const OPTION_NAMES = "namespace, meta, requires, replaceAll, force, onComplete, owner";
 
     // Lua is built as C: lua_error longjmps over C++ destructors. The *Impl functions return
-    // RAISE with the message pushed once their own locals are gone; the lua_CFunction raises.
-    constexpr int RAISE = -1;
+    // SAVE_RAISE with the message pushed once their own locals are gone; the lua_CFunction raises.
+    constexpr int SAVE_RAISE = -1;
 
     int pushRaise(lua_State* L, const std::string& message){
         lua_pushlstring(L, message.data(), message.size());
-        return RAISE;
+        return SAVE_RAISE;
     }
 
-    int finish(lua_State* L, int results){
-        if (results == RAISE) return lua_error(L);
+    int saveFinish(lua_State* L, int results){
+        if (results == SAVE_RAISE) return lua_error(L);
         return results;
     }
 
@@ -477,7 +477,7 @@ namespace {
         std::string slot, raise;
         if (!slotArgument(L, 1, "read", slot, raise)) return pushRaise(L, raise);
         ReadOptions options;
-        if (readOptions(L, 2, "read", options) == RAISE) return RAISE;
+        if (readOptions(L, 2, "read", options) == SAVE_RAISE) return SAVE_RAISE;
         savegame::SlotData data;
         const SaveError error = savegame::SaveGameStore::instance().readSlot(slot, data);
         if (!error.ok()) return pushNilFailure(L, error);
@@ -500,7 +500,7 @@ namespace {
         if (!slotArgument(L, 1, "readAsync", slot, raise)) return pushRaise(L, raise);
         if (lua_type(L, 2) != LUA_TFUNCTION) return pushRaise(L, std::string("SaveGame.readAsync: the callback must be a function(data, info), got ") + luaL_typename(L, 2));
         ReadOptions options;
-        if (readOptions(L, 3, "readAsync", options) == RAISE) return RAISE;
+        if (readOptions(L, 3, "readAsync", options) == SAVE_RAISE) return SAVE_RAISE;
         auto callback = std::make_shared<ReadCallback>();
         callback->fn.set(L, 2);
         callback->owner = options.owner;
@@ -645,19 +645,19 @@ namespace {
         return 0;
     }
 
-    int luaWrite(lua_State* L){ return finish(L, writeImpl(L)); }
-    int luaRead(lua_State* L){ return finish(L, readImpl(L)); }
-    int luaReadAsync(lua_State* L){ return finish(L, readAsyncImpl(L)); }
-    int luaList(lua_State* L){ return finish(L, listImpl(L)); }
-    int luaInfo(lua_State* L){ return finish(L, infoImpl(L)); }
-    int luaExists(lua_State* L){ return finish(L, existsImpl(L)); }
-    int luaDelete(lua_State* L){ return finish(L, deleteImpl(L)); }
-    int luaFlush(lua_State* L){ return finish(L, flushImpl(L)); }
-    int luaGetBackups(lua_State* L){ return finish(L, getBackupsImpl(L)); }
-    int luaRestoreBackup(lua_State* L){ return finish(L, restoreBackupImpl(L)); }
-    int luaUnload(lua_State* L){ return finish(L, unloadImpl(L)); }
-    int luaStorage(lua_State* L){ return finish(L, storageImpl(L)); }
-    int luaAddMigration(lua_State* L){ return finish(L, addMigrationImpl(L)); }
+    int luaWrite(lua_State* L){ return saveFinish(L, writeImpl(L)); }
+    int luaRead(lua_State* L){ return saveFinish(L, readImpl(L)); }
+    int luaReadAsync(lua_State* L){ return saveFinish(L, readAsyncImpl(L)); }
+    int luaList(lua_State* L){ return saveFinish(L, listImpl(L)); }
+    int luaInfo(lua_State* L){ return saveFinish(L, infoImpl(L)); }
+    int luaExists(lua_State* L){ return saveFinish(L, existsImpl(L)); }
+    int luaDelete(lua_State* L){ return saveFinish(L, deleteImpl(L)); }
+    int luaFlush(lua_State* L){ return saveFinish(L, flushImpl(L)); }
+    int luaGetBackups(lua_State* L){ return saveFinish(L, getBackupsImpl(L)); }
+    int luaRestoreBackup(lua_State* L){ return saveFinish(L, restoreBackupImpl(L)); }
+    int luaUnload(lua_State* L){ return saveFinish(L, unloadImpl(L)); }
+    int luaStorage(lua_State* L){ return saveFinish(L, storageImpl(L)); }
+    int luaAddMigration(lua_State* L){ return saveFinish(L, addMigrationImpl(L)); }
 
     // SaveGame.version lives in the engine (the store and the tools read it)
     int luaIndex(lua_State* L){

@@ -189,9 +189,9 @@ namespace {
 
 }
 
-Json gametests::compareCapture(const fs::path& projectDir, const fs::path& root, const std::string& caseId, const std::string& name,
+auto gametests::compareCapture(const fs::path& projectDir, const fs::path& root, const std::string& caseId, const std::string& name,
                                const texsynth::Image& actual, const std::string& platform, const std::string& backend,
-                               const gametest::ImageTolerance& tolerance, const Json& options) {
+                               const gametest::ImageTolerance& tolerance, const Json& options) -> Json {
     Json capture = {{"name", name}};
     const fs::path actualPath = captureActualPath(projectDir, caseId, name);
     std::string error;
@@ -382,7 +382,7 @@ bool gametests::exportTests(const fs::path& projectDir, bool development, bool i
     return true;
 }
 
-Json gametests::revisionOf(Project* project, const fs::path& root, const std::string& file) {
+auto gametests::revisionOf(Project* project, const fs::path& root, const std::string& file) -> Json {
     if (project) {
         const vcs::VcsService& vcs = project->getVcs();
         if (vcs.active() && vcs.snapshot() && !vcs.snapshot()->branch.headOid.empty()) {

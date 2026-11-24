@@ -602,7 +602,7 @@ TEST(ShaderNeutralApi, TitleArtExportIncludesLocalizedShaderPlans) {
         }]
     })");
     ASSERT_TRUE(parsed.ok);
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     dir.write("localized.titleart", titleart::writeTitleArt(parsed.doc));
 
     titleart::TitleArtRenderer renderer;

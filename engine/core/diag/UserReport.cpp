@@ -58,7 +58,7 @@ namespace je_user_report {
         std::string error;
     };
 
-    UserReportState& state() {
+    UserReportState& userReportState() {
         static UserReportState* s = new UserReportState();
         return *s;
     }
@@ -162,7 +162,7 @@ namespace je_user_report {
 
     // The content of a report: what needs the main thread (the draft, the device) gathered now
     crash::UserReportContent contentOf(const userreport::Options& options) {
-        UserReportState& s = state();
+        UserReportState& s = userReportState();
         crash::UserReportContent content;
         content.note = options.note;
         content.category = options.category.empty() ? std::string("other") : options.category;
@@ -196,7 +196,7 @@ namespace jasperengine::diag::userreport {
     using namespace je_user_report;
 
     void begin(Callback fn, int maxWidth, size_t maxBytes) {
-        UserReportState& s = state();
+        UserReportState& s = userReportState();
         if (s.phase == Phase::Capturing || s.phase == Phase::EncodePending || s.phase == Phase::Encoding) {
             s.callback = std::move(fn);
             return;
@@ -214,7 +214,7 @@ namespace jasperengine::diag::userreport {
     }
 
     void cancel() {
-        UserReportState& s = state();
+        UserReportState& s = userReportState();
         s.generation++;
         s.phase = Phase::Idle;
         s.callback = nullptr;
@@ -230,15 +230,15 @@ namespace jasperengine::diag::userreport {
     }
 
     bool wantsCapture() {
-        return state().phase == Phase::Capturing;
+        return userReportState().phase == Phase::Capturing;
     }
 
     void beforeCaptureFrame() {
-        state().idleAtFrameStart = creationIdle();
+        userReportState().idleAtFrameStart = creationIdle();
     }
 
     void frameDrawn(FrameReader reader) {
-        UserReportState& s = state();
+        UserReportState& s = userReportState();
         if (s.phase != Phase::Capturing) return;
         // a stand-in or a skipped draw would be in the image: the next frame is read instead
         if (!s.idleAtFrameStart || !creationIdle()) {
@@ -271,7 +271,7 @@ namespace jasperengine::diag::userreport {
         jobs::enqueueDetached([pixels = std::move(rgba), width, height, maxWidth, maxBytes, generation]() mutable {
             Encoded encoded = encode(std::move(pixels), width, height, maxWidth, maxBytes);
             jobs::postToMain([encoded = std::move(encoded), generation]() mutable {
-                UserReportState& current = state();
+                UserReportState& current = userReportState();
                 if (current.generation != generation || current.phase != Phase::Encoding) return;
                 applyEncoded(current, std::move(encoded));
             });
@@ -279,7 +279,7 @@ namespace jasperengine::diag::userreport {
     }
 
     void update() {
-        UserReportState& s = state();
+        UserReportState& s = userReportState();
         if (s.phase == Phase::EncodePending) {
             Encoded encoded = encode(std::move(s.pendingRgba), s.pendingWidth, s.pendingHeight, s.maxWidth, s.maxBytes);
             s.pendingRgba.clear();
@@ -295,11 +295,11 @@ namespace jasperengine::diag::userreport {
     }
 
     bool hasDraft() {
-        return state().draft;
+        return userReportState().draft;
     }
 
     bool draftHasScreenshot() {
-        return state().draft && !state().jpeg.empty();
+        return userReportState().draft && !userReportState().jpeg.empty();
     }
 
     std::string validate(const Options& options) {
