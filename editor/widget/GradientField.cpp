@@ -169,8 +169,8 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
             // a palette set: its ramp kept when it has one of that name, else its first
             auto setPalette = [&](const std::string& palette){
                 std::string current;
-                pixelart::parsePaletteRampPath(value.ramp, nullptr, &current);
-                std::shared_ptr<const pixelart::Palette> read = palette.empty() ? nullptr : pixelart::PaletteLibrary::get(palette);
+                ::jasperengine::pixelart::parsePaletteRampPath(value.ramp, nullptr, &current);
+                std::shared_ptr<const ::jasperengine::pixelart::Palette> read = palette.empty() ? nullptr : ::jasperengine::pixelart::PaletteLibrary::get(palette);
                 if (read && !read->ramps.empty() && read->findRamp(current) == nullptr) current = read->ramps.front().name;
                 value.ramp = palette.empty() ? std::string() : palette + "#ramp:" + current;
                 value.rampColors.clear();
@@ -197,7 +197,7 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
             if (clicked) ImGui::OpenPopup("##rampEdit");
             if (ImGui::BeginPopup("##rampEdit")){
                 std::string palette, rampName;
-                pixelart::parsePaletteRampPath(value.ramp, &palette, &rampName);
+                ::jasperengine::pixelart::parsePaletteRampPath(value.ramp, &palette, &rampName);
                 // the palette: an asset field (the project's palettes, or one dropped on it)
                 ImGui::SetNextItemWidth(Theme::dpi(240.0f));
                 if (ImGui::BeginCombo("Palette", palette.empty() ? "None (inline colours)" : palette.c_str())){
@@ -213,7 +213,7 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
                     ImGui::EndDragDropTarget();
                 }
                 ImGui::SetItemTooltip("A .palette asset: pick one, or drop one from the Project window");
-                if (std::shared_ptr<const pixelart::Palette> read = palette.empty() ? nullptr : pixelart::PaletteLibrary::get(palette)){
+                if (std::shared_ptr<const ::jasperengine::pixelart::Palette> read = palette.empty() ? nullptr : ::jasperengine::pixelart::PaletteLibrary::get(palette)){
                     // the ramps, each with its strip
                     const float strip = Theme::dpi(96.0f), height = ImGui::GetTextLineHeight();
                     auto drawStrip = [&](ImVec2 at, const ::jasperengine::pixelart::PaletteRamp& ramp){

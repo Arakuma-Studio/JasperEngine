@@ -506,7 +506,7 @@ TEST_F(HotReloadServiceTests, DialogueEditInPlayKeepsTheRunner) {
     EXPECT_EQ(runner.getCurrentNode(), "n2");
 
     std::vector<std::string> warnings;
-    const LogListenerId listener = Log::addListener([&](const LogEntry& entry) {
+    const LogListenerId listener = Log::addListener([&](const jasperengine::LogEntry& entry) {
         if (entry.level == LogLevel::Warn && entry.message.find("n2") != std::string::npos) warnings.push_back(entry.message);
     });
     std::string ended = "-";

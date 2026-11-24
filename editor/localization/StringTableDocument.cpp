@@ -22,6 +22,8 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::l10n;
 namespace mf = jasperengine::l10n;
+// the documents' JSON by its own name: a unity batch can hold another Json (gametest::Json)
+namespace l10ndoc = jasperengine::editor::l10n;
 namespace fs = std::filesystem;
 
 namespace {
@@ -32,8 +34,8 @@ namespace {
     }
 
     // the top-level checks both formats share
-    bool readHeader(const std::string& text, const char* format, Json& root, ParseError* error) {
-        root = Json::parse(text, nullptr, false);
+    bool readHeader(const std::string& text, const char* format, l10ndoc::Json& root, ParseError* error) {
+        root = l10ndoc::Json::parse(text, nullptr, false);
         if (root.is_discarded() || !root.is_object()) return setError(error, "not_json", "not a JSON object");
         if (!root.contains("format") || !root["format"].is_string() || root["format"].get<std::string>() != format) {
             return setError(error, "wrong_format", std::string("not a ") + format + " file");
@@ -49,12 +51,12 @@ namespace {
         return true;
     }
 
-    std::string str(const Json& object, const char* key) {
+    std::string str(const l10ndoc::Json& object, const char* key) {
         const auto it = object.find(key);
         return it != object.end() && it->is_string() ? it->get<std::string>() : std::string();
     }
 
-    std::string dump(const Json& root) {
+    std::string dump(const l10ndoc::Json& root) {
         return root.dump(2) + "\n";
     }
 
@@ -108,14 +110,14 @@ TableEntry* StringTableDoc::find(const std::string& key) {
 
 bool editor::l10n::parseStringTable(const std::string& text, StringTableDoc& out, ParseError* error) {
     out = StringTableDoc();
-    Json root;
+    l10ndoc::Json root;
     if (!readHeader(text, STRINGTABLE_FORMAT, root, error)) return false;
     out.guid = str(root, "guid");
     out.ns = str(root, "namespace");
     out.sourceLanguage = str(root, "source_language");
     if (out.sourceLanguage.empty()) out.sourceLanguage = "en";
     if (root.contains("entries") && !root["entries"].is_array()) return setError(error, "bad_member", "`entries` is not a list");
-    for (const Json& row : root.value("entries", Json::array())) {
+    for (const l10ndoc::Json& row : root.value("entries", l10ndoc::Json::array())) {
         if (!row.is_object() || !row.contains("key") || !row["key"].is_string()) return setError(error, "bad_member", "an entry has no `key`");
         TableEntry entry;
         for (auto it = row.begin(); it != row.end(); ++it) {
@@ -135,15 +137,15 @@ bool editor::l10n::parseStringTable(const std::string& text, StringTableDoc& out
 }
 
 std::string editor::l10n::saveStringTable(const StringTableDoc& doc) {
-    Json root;
+    l10ndoc::Json root;
     root["format"] = STRINGTABLE_FORMAT;
     root["version"] = STRINGTABLE_VERSION;
     root["guid"] = doc.guid;
     root["namespace"] = doc.ns;
     root["source_language"] = doc.sourceLanguage;
-    Json entries = Json::array();
+    l10ndoc::Json entries = l10ndoc::Json::array();
     for (const TableEntry& entry : doc.entries) {
-        Json row;
+        l10ndoc::Json row;
         row["key"] = entry.key;
         row["text"] = entry.text;
         if (!entry.context.empty()) row["context"] = entry.context;
@@ -158,7 +160,7 @@ std::string editor::l10n::saveStringTable(const StringTableDoc& doc) {
 
 bool editor::l10n::parseTranslation(const std::string& text, TranslationDoc& out, ParseError* error) {
     out = TranslationDoc();
-    Json root;
+    l10ndoc::Json root;
     if (!readHeader(text, TRANSLATION_FORMAT, root, error)) return false;
     out.guid = str(root, "guid");
     out.language = str(root, "language");
@@ -170,7 +172,7 @@ bool editor::l10n::parseTranslation(const std::string& text, TranslationDoc& out
         }
     }
     if (root.contains("entries") && !root["entries"].is_object()) return setError(error, "bad_member", "`entries` is not an object");
-    const Json entries = root.value("entries", Json::object());
+    const l10ndoc::Json entries = root.value("entries", l10ndoc::Json::object());
     for (auto it = entries.begin(); it != entries.end(); ++it) {
         if (!it->is_object()) return setError(error, "bad_member", "the entry `" + it.key() + "` is not an object");
         TranslationEntry entry;
@@ -190,19 +192,19 @@ bool editor::l10n::parseTranslation(const std::string& text, TranslationDoc& out
 }
 
 std::string editor::l10n::saveTranslation(const TranslationDoc& doc) {
-    Json root;
+    l10ndoc::Json root;
     root["format"] = TRANSLATION_FORMAT;
     root["version"] = STRINGTABLE_VERSION;
     root["guid"] = doc.guid;
-    Json owner;
+    l10ndoc::Json owner;
     owner["guid"] = doc.ownerGuid;
     owner["path"] = doc.ownerPath;
     for (auto it = doc.ownerExtra.begin(); it != doc.ownerExtra.end(); ++it) owner[it.key()] = *it;
     root["owner"] = std::move(owner);
     root["language"] = doc.language;
-    Json entries = Json::object();
+    l10ndoc::Json entries = l10ndoc::Json::object();
     for (const auto& [key, entry] : doc.entries) {
-        Json row;
+        l10ndoc::Json row;
         row["text"] = entry.text;
         row["status"] = entry.status;
         row["source_hash"] = entry.sourceHash;
@@ -341,7 +343,7 @@ bool editor::l10n::loadSet(const fs::path& projectPath, const fs::path& owner, S
         if (auto language = file.metadata.find("source_language"); language != file.metadata.end() && language->is_string() && !language->get<std::string>().empty()) {
             out.table.sourceLanguage = language->get<std::string>();
         }
-        for (const dialogue::SourceEntry& entry : dialogue::sourceEntries(file)) out.table.entries.push_back({entry.key, entry.text, "", 0, Json::object()});
+        for (const dialogue::SourceEntry& entry : dialogue::sourceEntries(file)) out.table.entries.push_back({entry.key, entry.text, "", 0, l10ndoc::Json::object()});
     } else if (!parseStringTable(text, out.table, &parse)) {
         error = out.ownerRelative + ": " + parse.message;
         return false;
@@ -416,7 +418,7 @@ std::string editor::l10n::namespaceOwner(const fs::path& projectPath, const std:
         if (it->path().extension() != ".titleart" || !it->is_regular_file(ec)) continue;
         std::string text;
         if (!ProjectChecks::readFile(it->path(), text)) continue;
-        const Json root = Json::parse(text, nullptr, false);
+        const l10ndoc::Json root = l10ndoc::Json::parse(text, nullptr, false);
         if (root.is_object() && str(root, "string_namespace") == ns) return relativeTo(projectPath, it->path());
     }
     return {};
@@ -449,14 +451,14 @@ bool editor::l10n::createTable(const fs::path& projectPath, const fs::path& owne
     return true;
 }
 
-bool editor::l10n::applyOps(StringTableSet& set, const Json& ops, std::string& error, std::vector<std::string>* notes) {
+bool editor::l10n::applyOps(StringTableSet& set, const l10ndoc::Json& ops, std::string& error, std::vector<std::string>* notes) {
     if (!ops.is_array()) {
         error = "ops is a list of {op, ...}";
         return false;
     }
     StringTableSet work = set;
     size_t index = 0;
-    for (const Json& op : ops) {
+    for (const l10ndoc::Json& op : ops) {
         const std::string name = op.is_object() ? str(op, "op") : std::string();
         const std::string key = op.is_object() ? str(op, "key") : std::string();
         const std::string language = op.is_object() && !str(op, "language").empty() ? TitleArtLanguage::canonicalize(str(op, "language")) : std::string();
@@ -474,7 +476,7 @@ bool editor::l10n::applyOps(StringTableSet& set, const Json& ops, std::string& e
                 if (!isValidKey(key)) return fail(error, index, name, "the key \"" + key + "\" is not [a-z0-9_.-]{1,64}");
                 TableEntry* entry = work.table.find(key);
                 if (!entry) {
-                    work.table.entries.push_back({key, text, "", 0, Json::object()});
+                    work.table.entries.push_back({key, text, "", 0, l10ndoc::Json::object()});
                     entry = &work.table.entries.back();
                 }
                 if (entry->text != text) {

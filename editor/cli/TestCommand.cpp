@@ -25,7 +25,7 @@ namespace {
     constexpr int TEST_EXIT_CANNOT_RUN = 2;
     constexpr int TEST_EXIT_NO_MATCH = 3;
 
-    void printUsage(const std::string& exe) {
+    void printTestUsage(const std::string& exe) {
         std::cout
             << "Usage:\n"
             << "  " << exe << " test --project <dir> [--filter F] [--mode all|edit|play] [--target editor|desktop]\n"
@@ -70,7 +70,7 @@ int jasperengine::editor::cli::TestCommand::run(int argc, char** argv, const cha
         };
         std::string text;
         if (arg == "-h" || arg == "--help") {
-            printUsage(exe);
+            printTestUsage(exe);
             return TEST_EXIT_PASSED;
         } else if (arg == "--project") {
             if (!value(project)) return usage("--project needs a directory");

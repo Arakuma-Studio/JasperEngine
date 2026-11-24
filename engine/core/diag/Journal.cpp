@@ -536,7 +536,7 @@ namespace jasperengine::diag::journal {
             out += std::string("product: ") + s.product + "\n";
             out += std::string("version: ") + s.version + "\n";
             out += std::string("session: ") + s.session + "\n";
-            out += "started: " + isoUtc(s.startedWall) + "\n";
+            out += "started: " + je_journal::isoUtc(s.startedWall) + "\n";
             out += "capacity: " + std::to_string(s.capacity.load(std::memory_order_relaxed)) + "\n";
             return out;
         }

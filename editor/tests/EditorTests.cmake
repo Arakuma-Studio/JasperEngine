@@ -102,10 +102,10 @@ file(GLOB JASPERENGINE_PIXELART_NAMESPACE_TESTS ${CMAKE_CURRENT_LIST_DIR}/pixela
 jasperengine_skip_unity_build(
     REASON "the Aseprite and pixel cleanup tests use the namespaces aseprite and cleanup, which declare RgbaImage, Dither, BlendMode and PropertyType as pixelart, the engine and the editor do"
     SOURCES ${JASPERENGINE_PIXELART_NAMESPACE_TESTS})
+file(GLOB_RECURSE JASPERENGINE_TITLE_ART_TESTS ${CMAKE_CURRENT_LIST_DIR}/titleart/*.cpp)
 jasperengine_skip_unity_build(
-    REASON "using titleart::Json beside using namespace jasperengine::editor, whose Json some editor headers declare (mcp::Json: BuildReport.h, ModelAudit.h)"
-    SOURCES ${CMAKE_CURRENT_LIST_DIR}/titleart/LibraryChecksTest.cpp ${CMAKE_CURRENT_LIST_DIR}/titleart/PachislopFxMapTest.cpp
-            ${CMAKE_CURRENT_LIST_DIR}/titleart/PachislopGeneratorMapTest.cpp ${CMAKE_CURRENT_LIST_DIR}/titleart/PachislopImportTest.cpp)
+    REASON "the Title Art tests: using titleart::Json beside using namespace jasperengine::editor, whose Json several editor headers declare (mcp::Json: BuildReport.h, HotReloadService.h, ModelAudit.h); which pairs collide depends on the batch"
+    SOURCES ${JASPERENGINE_TITLE_ART_TESTS})
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
     # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose
