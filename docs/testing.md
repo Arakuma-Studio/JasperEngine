@@ -1471,47 +1471,6 @@ a service that starts with the machine (macOS: with the user's login) and reconn
 
 The `changes` job's summary and `lanes.json` (`routing`) say where each job went and why.
 
-**The paid tier: Blacksmith.** After GitHub's runners and the user's machines, a Linux or macOS job may
-go to Blacksmith, whose GitHub App is installed on the organization; its runner groups already allow
-public repositories. Its jobs do not count toward GitHub's 60 concurrent jobs, so Linux there frees
-hosted slots for the queue's macOS jobs. Linux goes first: GitHub's cap fills with Linux jobs.
-
-| OS | Label | Like | Price |
-|---|---|---|---|
-| Linux | `blacksmith-4vcpu-ubuntu-2404` | `ubuntu-latest` (4 vCPU) | $0.008 a minute |
-| macOS | `blacksmith-6vcpu-macos-26` | an M4, macOS 26, Xcode 26.6 selected | $0.08 a minute |
-
-Windows has no tier. The plan (`tools/ci/plan_lanes.py` `BLACKSMITH`) routes a job there only when
-all of these hold:
-
-- it is a job of the merge queue or a push to `main` (`BLACKSMITH_EVENTS`: the critical path; a pull
-  request never pays);
-- it is a first attempt, or a rerun the watchdog did not hold (as above);
-- the runner state is fresh and says the hosted runners of its OS are saturated, with at least
-  `BLACKSMITH_MIN_QUEUED` jobs of that OS waiting (Linux 10, macOS 3);
-- no machine of the user's takes it (busy, offline, unfit, disabled, or past what it takes of one
-  plan);
-- the state does not have it paused.
-
-- **Kill switch**: `gh variable set BLACKSMITH_OVERFLOW --body off` stops it from the next run on;
-  `gh variable delete BLACKSMITH_OVERFLOW` lets it run again.
-- **Spend limit**: $20 a month, set in the Blacksmith dashboard. Past it Blacksmith takes no job. A
-  job queued 10 min on a Blacksmith label gets its run cancelled and rerun on GitHub's runners (the
-  state's `hosted_only`, as for a lost runner), and the dispatcher pauses the tier for 6 h
-  (`blacksmith.ok` false in the state, said in the plan's routing notes), so the next runs do not
-  wait there either.
-- **Safety**: the same routing rules as the self-hosted tier (never a fork's pull request, the state
-  from `ci-runner-state`), and `free-disk` does nothing on a self-hosted-environment runner, which a
-  Blacksmith VM is. A Blacksmith VM runs none of the machines' hooks. What keeps a fork's own
-  `ci.yml` from asking for its label is GitHub's approval of every outside contributor's run, and the
-  spend limit.
-- **Caches**: a Blacksmith VM restores no GitHub cache entry (its `actions/cache` is its own store,
-  inferred from "Cache not found"), so its builds are cold until a push to `main` there saves one.
-  Only a `je-*` machine keeps a ccache of its own.
-- **Measured**: the `macos` lane took 43.4 min there, about $3.47 (run 45229221354, cold). The Linux
-  lane took 57.2 min, about $0.46 (run 45248117157, cold: no cache entry; the image pulled in 9 s).
-- **Testing it**: `gh workflow run ci.yml --ref <branch> -f self_hosted='linux=blacksmith-4vcpu-ubuntu-2404 macos=blacksmith-6vcpu-macos-26'`.
-
 **The planner overflows too.** `changes` cannot route itself, and on 2026-11-23 it waited up to an
 hour for a hosted Linux runner (79 Linux jobs queued, the oldest for 4 h), so no plan ran at all. The
 dispatcher sets the repository variable `SELF_HOSTED_PLANNER` to `je-linux` while hosted Linux is
