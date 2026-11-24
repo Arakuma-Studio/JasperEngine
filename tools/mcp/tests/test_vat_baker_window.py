@@ -21,14 +21,12 @@ Covered here, where the App's wiring, focus and real input matter:
 
 from __future__ import annotations
 
-import asyncio
 import json
-import os
 import shutil
-import subprocess
 
 import harness
 from harness import Editor
+import ui_input
 
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation", "xvfb": "harness", "ui_probe": True}
 CI = True
@@ -43,22 +41,23 @@ S: dict = {}
 
 # ---------------------------------------------------------------------------- helpers
 
-def xdo(ed: Editor, *args: str) -> str:
+def ui(ed: Editor) -> ui_input.Ui:
+    """The editor's real input: xdotool in the harness' Xvfb, every step paced by editor frames
+    (ui_input: a press and its release, a chord's keys, each wheel notch in frames of their own)."""
     if not getattr(ed, "_xvfb", None) or not ed._xvfb.display:
         harness.skip("needs the harness' Xvfb (xvfb='harness')")
     if not shutil.which("xdotool"):
         raise harness.TestFailure("xdotool is not installed: the baker window's real-input tests need it with the "
                                   "harness' Xvfb (install xdotool, e.g. apt install xdotool)")
-    env = dict(os.environ, DISPLAY=ed._xvfb.display)
-    return subprocess.run(["xdotool", *args], env=env, capture_output=True, text=True, timeout=20).stdout
+    return ui_input.for_editor(ed)
 
 
 async def focus_x(ed: Editor, window: str = "vertex_animation_baker") -> None:
     await ed.call("focus_window", window=window)
-    ids = xdo(ed, "search", "--onlyvisible", "--name", "JasperEngine").split()
+    ids = ui(ed).xdo("search", "--onlyvisible", "--name", "JasperEngine").split()
     ed.check(ids, "the editor's X window")
-    xdo(ed, "windowfocus", "--sync", ids[-1])
-    await ed.call("wait", frames=6)
+    ui(ed).xdo("windowfocus", "--sync", ids[-1])
+    await ui(ed).frames(6)
 
 
 def center(rect):
@@ -66,28 +65,18 @@ def center(rect):
 
 
 async def click(ed: Editor, rect, shift: bool = False) -> None:
-    x, y = center(rect)
-    xdo(ed, "mousemove", str(int(x)), str(int(y)))
-    await asyncio.sleep(0.3)
-    if shift:
-        xdo(ed, "keydown", "shift")
-        await ed.call("wait", frames=3)
-    xdo(ed, "click", "1")
-    if shift:
-        await ed.call("wait", frames=3)
-        xdo(ed, "keyup", "shift")
-    await ed.call("wait", frames=6)
+    await ui(ed).click(ui(ed).at(center(rect)), modifier="shift" if shift else None)
+    await ui(ed).frames(4)
 
 
 async def type_into(ed: Editor, rect, text: str, enter: bool = True) -> None:
     """Click a text field, replace its text by `text` (real keys), Return."""
     await click(ed, rect)
-    xdo(ed, "key", "ctrl+a")
-    xdo(ed, "key", "BackSpace")
-    xdo(ed, "type", "--delay", "20", text)
+    await ui(ed).key("ctrl+a", "BackSpace")
+    await ui(ed).type(text)
     if enter:
-        xdo(ed, "key", "Return")
-    await ed.call("wait", frames=10)
+        await ui(ed).key("Return")
+    await ui(ed).frames(4)
 
 
 async def rect_of(ed: Editor, name: str, what: str, panel: str = "vatbaker"):
@@ -97,25 +86,23 @@ async def rect_of(ed: Editor, name: str, what: str, panel: str = "vatbaker"):
         return rect
     area = await ed.ui_rect(panel, timeout=10.0)
     ed.check(area, f"the {panel} panel is drawn: {sorted(ed.ui_items())[:80]}")
-    at = center(area)
-    xdo(ed, "mousemove", str(int(at[0])), str(int(at[1])))
-    await asyncio.sleep(0.2)
-    for down in (False, True):
+    at = ui(ed).at(center(area))
+    for notches in (-1, 1):
         for _ in range(40):
-            await ed.call("wait", frames=3)
+            await ui(ed).frames(2)
             rect = ed.ui_items().get(name)
             if rect:
                 return rect
-            xdo(ed, "click", "5" if down else "4")
+            await ui(ed).wheel(at, notches)
     ed.fail(f"{what} ({name}) is never drawn: {sorted(ed.ui_items())[:80]}")
 
 
-async def wait_for(ed: Editor, predicate, what: str, seconds: float = 120.0) -> None:
-    for _ in range(int(seconds * 4)):
+async def wait_for(ed: Editor, predicate, what: str, frames: int = 2400) -> None:
+    """Until predicate() holds, editor frames apart; `frames` only guards against a hang."""
+    for _ in range(frames // 4):
         if predicate():
             return
         await ed.call("wait", frames=4)
-        await asyncio.sleep(0.25)
     ed.fail(f"timed out waiting for {what}")
 
 
@@ -164,7 +151,7 @@ async def test_fix_button_applies(ed: Editor):
     """output_exists: its "Overwrite it" button, clicked for real, sets overwrite (the row goes)."""
     await focus_x(ed)
     await type_into(ed, await rect_of(ed, "vatbaker.output", "the Output field"), TAKEN, enter=False)
-    xdo(ed, "key", "Tab")
+    await ui(ed).key("Tab")
     await ed.call("wait", frames=30)
     fix = None
     for _ in range(40):
