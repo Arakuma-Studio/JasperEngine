@@ -5,7 +5,17 @@
 #include "AudioFilters.h"
 #include "TruePeak.h"
 
+#include "soloud_biquadresonantfilter.h"
+#include "soloud_echofilter.h"
+#include "soloud_freeverbfilter.h"
+#include "soloud_eqfilter.h"
+#include "soloud_waveshaperfilter.h"
+#include "soloud_flangerfilter.h"
+#include "soloud_lofifilter.h"
+#include "soloud_bassboostfilter.h"
+
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -78,12 +88,12 @@ namespace {
         table.push_back({AudioEffectType::Duck, "duck", "Duck", "Lowers this group while the side-chain group plays", false, {
             {"level", "Level", "", 0.5f, 0.0f, 1.0f, C::Linear, DUCK_LEVEL},
             {"attack", "Attack", "s", 0.1f, 0.0f, 5.0f, C::Linear, DUCK_ONRAMP},
-            {"release", "Release", "s", 0.5f, 0.0f, 5.0f, C::Linear, DUCK_OFFRAMP}}});
+            {"release", "Release", "s", 0.5f, 0.0f, 5.0f, C::Linear, DUCK_OFFRAMP}}, false});
         table.push_back({AudioEffectType::Limiter, "limiter", "Limiter", "Keeps the peaks under the threshold", false, {
             {"threshold", "Threshold", "dB", -1.0f, -30.0f, 0.0f, C::Linear, LimiterFilter::THRESHOLD},
             {"release", "Release", "s", 0.1f, 0.001f, 2.0f, C::Linear, LimiterFilter::RELEASE},
             {"lookahead", "Lookahead", "ms", 0.0f, 0.0f, 5.0f, C::Linear, LimiterFilter::LOOKAHEAD},
-            {"truePeak", "True Peak", "", 0.0f, 0.0f, 1.0f, C::Switch, LimiterFilter::TRUE_PEAK}}});
+            {"truePeak", "True Peak", "", 0.0f, 0.0f, 1.0f, C::Switch, LimiterFilter::TRUE_PEAK}}, false});
         return table;
     }
 
@@ -137,6 +147,19 @@ const AudioEffectParamInfo* AudioEffects::findParam(AudioEffectType type, const 
     return nullptr;
 }
 
+const AudioEffectInfo* AudioEffects::findPerSource(const std::string& name) {
+    const AudioEffectInfo* info = find(name);
+    return info && info->perSource ? info : nullptr;
+}
+
+std::string AudioEffects::perSourceNames() {
+    std::string out;
+    for (const AudioEffectInfo& info : all()) {
+        if (info.perSource) out += (out.empty() ? "" : ", ") + std::string(info.name);
+    }
+    return out;
+}
+
 const AudioEffectParamInfo& AudioEffects::wetParam() {
     return wetInfo;
 }
@@ -150,6 +173,117 @@ std::string AudioEffects::paramNames(AudioEffectType type) {
     }
     if (type == AudioEffectType::Duck) out += "sidechainGroup, ";
     return out + "wet";
+}
+
+// ---------------------------------------------------------------- EffectFilters
+
+namespace {
+
+    std::atomic<unsigned int> filterBuildCount{0};
+
+}
+
+std::unique_ptr<SoLoud::Filter> EffectFilters::make(AudioEffectType type, const ParamValue& value, float sampleRate) {
+    auto param = [type, &value](const char* name) {
+        const AudioEffectParamInfo* info = AudioEffects::findParam(type, name);
+        return info ? value(*info) : 0.0f;
+    };
+    switch (type) {
+        case AudioEffectType::LowPass:
+        case AudioEffectType::HighPass:
+        case AudioEffectType::BandPass: {
+            auto filter = std::make_unique<SoLoud::BiquadResonantFilter>();
+            const int kind = type == AudioEffectType::LowPass ? SoLoud::BiquadResonantFilter::LOWPASS :
+                             type == AudioEffectType::HighPass ? SoLoud::BiquadResonantFilter::HIGHPASS :
+                             SoLoud::BiquadResonantFilter::BANDPASS;
+            filter->setParams(kind, std::clamp(param("cutoff"), 10.0f, 0.45f * sampleRate), std::max(0.1f, param("resonance")));
+            return filter;
+        }
+        case AudioEffectType::Echo: {
+            auto filter = std::make_unique<SoLoud::EchoFilter>();
+            filter->setParams(std::max(0.01f, param("delay")), std::clamp(param("decay"), 0.001f, 1.0f), std::clamp(param("filter"), 0.0f, 0.99f));
+            return filter;
+        }
+        case AudioEffectType::Reverb: {
+            auto filter = std::make_unique<SoLoud::FreeverbFilter>();
+            filter->setParams(param("freeze"), param("roomSize"), param("damp"), param("width"));
+            return filter;
+        }
+        case AudioEffectType::Equalizer:
+            return std::make_unique<SoLoud::EqFilter>();
+        case AudioEffectType::Distortion: {
+            auto filter = std::make_unique<SoLoud::WaveShaperFilter>();
+            filter->setParams(std::clamp(param("amount"), -1.0f, 1.0f));
+            return filter;
+        }
+        case AudioEffectType::Flanger: {
+            auto filter = std::make_unique<SoLoud::FlangerFilter>();
+            filter->setParams(std::max(0.001f, param("delay")), std::max(0.01f, param("frequency")));
+            return filter;
+        }
+        case AudioEffectType::Lofi: {
+            auto filter = std::make_unique<SoLoud::LofiFilter>();
+            filter->setParams(std::max(100.0f, param("sampleRate")), std::max(0.5f, param("bitDepth")));
+            return filter;
+        }
+        case AudioEffectType::BassBoost: {
+            auto filter = std::make_unique<SoLoud::BassboostFilter>();
+            filter->setParams(param("boost"));
+            return filter;
+        }
+        case AudioEffectType::Duck:
+        case AudioEffectType::Limiter:
+        case AudioEffectType::Unknown:
+            break;
+    }
+    return nullptr;
+}
+
+bool EffectFilters::atOffValue(AudioEffectType type, const ParamValue& value, float sampleRate) {
+    if (type != AudioEffectType::LowPass && type != AudioEffectType::HighPass) return false;
+    const AudioEffectParamInfo* cutoff = AudioEffects::findParam(type, "cutoff");
+    const float hz = std::clamp(value(*cutoff), cutoff->minValue, cutoff->maxValue);
+    return type == AudioEffectType::LowPass ? hz >= AudioEffects::lowPassBypassRatio * sampleRate : hz <= AudioEffects::highPassBypassHz;
+}
+
+std::vector<float> EffectFilters::attributes(AudioEffectType type, const ParamValue& value, float wet, float sampleRate) {
+    const AudioEffectInfo* info = AudioEffects::find(type);
+    if (!info) return {};
+    int count = 1;
+    for (const AudioEffectParamInfo& param : info->params) count = std::max(count, param.attribute + 1);
+    std::vector<float> attrs(count, 0.0f);
+    for (const AudioEffectParamInfo& param : info->params) {
+        float v = std::clamp(value(param), param.minValue, param.maxValue);
+        if (std::string(param.name) == "cutoff") {
+            const float bypassAt = AudioEffects::lowPassBypassRatio * sampleRate;
+            if (type == AudioEffectType::LowPass && v >= bypassAt) {
+                // Unity's 22000 Hz "off": no biquad near Nyquist; the filter keeps running
+                // close to it, so going under the threshold does not click
+                v = bypassAt;
+                wet = 0.0f;
+            } else if (type == AudioEffectType::HighPass && v <= AudioEffects::highPassBypassHz) {
+                v = AudioEffects::highPassBypassHz;
+                wet = 0.0f;
+            }
+            v = std::clamp(v, 10.0f, 0.49f * sampleRate);
+        }
+        attrs[param.attribute] = v;
+    }
+    attrs[0] = std::clamp(wet, 0.0f, 1.0f);
+    if (type == AudioEffectType::Limiter) attrs.resize(LimiterFilter::ATTRIBUTE_COUNT, 0.0f);
+    if (type == AudioEffectType::Reverb) {
+        // freeze is a switch
+        attrs[1] = attrs[1] >= 0.5f ? 1.0f : 0.0f;
+    }
+    return attrs;
+}
+
+void EffectFilters::countBuild() {
+    filterBuildCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+unsigned int EffectFilters::builds() {
+    return filterBuildCount.load(std::memory_order_relaxed);
 }
 
 // ---------------------------------------------------------------- LimiterFilter

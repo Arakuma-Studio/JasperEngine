@@ -419,7 +419,8 @@ async def test_export_stale_policy(ed: Editor):
 
 async def test_render_title(ed: Editor):
     """AC35: try sheets leave the file untouched; compare rev:n is 0 for a no-op and > 0 for a colour
-    change; crop and backgrounds change the image only; save_path keeps real alpha."""
+    change; crop and backgrounds change the image only; save_path keeps real alpha. wait: false's job
+    returns the image through get_job."""
     await setup(ed)
     path = "assets/titles/render.titleart"
     await create(ed, path)
@@ -429,6 +430,16 @@ async def test_render_title(ed: Editor):
     ed.check(not first.is_error and first.images, f"an image: {first.text[:300]}")
     rev = first.structured["rev"]
     ed.check_eq(len(first.structured["cells"]), 2, "one cell per background")
+    # wait: false answers with the job; the finished job's get_job returns the call's image
+    queued = await ed.call_raw("render_title", {"path": path, "backgrounds": ["checker", "black"], "wait": False})
+    ed.check(not queued.is_error and queued.structured.get("job_id"), f"a job: {queued.text[:300]}")
+    for _ in range(600):
+        done = await ed.call_raw("get_job", {"job_id": queued.structured["job_id"]})
+        if done.structured["status"] != "running":
+            break
+        await asyncio.sleep(0.2)
+    ed.check_eq(done.structured["status"], "succeeded", done.text[:300])
+    ed.check(done.images and len(done.images) == len(first.images), f"get_job returns the render's image: {len(done.images)}")
     sheet = await ed.call_raw("render_title", {"path": path, "try": [
         {"label": "red", "ops": [{"op": "set", "layer": "Title", "values": {"face.fill.color": "#ff0000"}}]},
         {"label": "big", "ops": [{"op": "set", "layer": "Title", "values": {"size": 320}}]},

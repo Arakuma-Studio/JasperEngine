@@ -12,6 +12,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "component/PrefabComponent.h"
 #include "fluid/FluidSimulator.h"
+#include "object/sound/AudioSourceSlots.h"
 
 #include <algorithm>
 #include <cstring>
@@ -331,6 +332,9 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
         setError(error, "corrupt scene settings: " + settings.error());
         return false;
     }
+    // the cook writes the editor's scene as it is, edits since its load included: broken Audio
+    // Source slots load as the editor's decode leaves them (S97 REQ-29)
+    AudioSourceSlots::repair(scene);
     return true;
 }
 

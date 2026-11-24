@@ -128,6 +128,7 @@ async def test_all_paths_or_none(ed: Editor):
     ed.check("licence" in text, f"provenance keys: {text}")
     text = await ed.call("set_audio_import_settings", paths=[CLIP], expect_error=True)
     ed.check("settings" in text, f"nothing to set: {text}")
+    await ed.check_error("set_audio_import_settings", {"settings": {"gain_db": 1}}, contains="paths: pass a list")
     ed.check_eq((meta_of(ed).read_text(), meta_of(ed, other).read_text()), (a, b), "a refused call writes nothing")
 
 
@@ -189,3 +190,35 @@ async def test_group_is_hidden_until_enabled(ed: Editor):
     ed.check("set_audio_import_settings" not in listed and "analyze_audio" not in listed, "group audio is not in a new session's list")
     every = {t.name for t in await ed.tools()}
     ed.check({"set_audio_import_settings", "analyze_audio"} <= every, "listed once group audio is on")
+
+
+async def test_load_type_key(ed: Editor):
+    """S97 AC16 (REQ-16, REQ-39): load_type round-trips through the .meta, undo restores it, and Play holds
+    the clip of an Auto source as the clip says"""
+    await tone(ed)
+    before = meta_of(ed).read_text()
+    r = await ed.call("set_audio_import_settings", paths=[CLIP], settings={"load_type": "streaming"})
+    ed.check_eq(r["items"][0]["settings"].get("load_type"), "streaming", "the reply")
+    ed.check_eq(yaml.safe_load(meta_of(ed).read_text())["import"]["audioImporter"], {"version": 1, "load_type": "streaming"}, "the section")
+    bad = await ed.call_raw("set_audio_import_settings", {"paths": [CLIP], "settings": {"load_type": "fast"}})
+    ed.check(bad.is_error and "decompress_on_load" in bad.text, f"the error names the values: {bad.text[:300]}")
+
+    scene = (await ed.call("create_scene", name="LoadType", type="2D", path="scenes/LoadType.scene"))["scene"]["id"]
+    await ed.call("save_scene", scene=scene)
+    await ed.call("play", action="start", scene=scene, fixed_fps=60, auto_pause=True)
+    try:
+        await ed.call("wait", frames=2)
+        got = (await ed.call("eval_lua", code=f"""
+            local auto = AudioSource(scene)
+            auto:loadSound('{CLIP}')
+            local own = AudioSource(scene)
+            own.loadType = AudioLoadType.DecompressOnLoad
+            own:loadSound('{CLIP}')
+            return {{auto:getResolvedLoadType(), own:getResolvedLoadType(), AudioLoadType.Streaming, AudioLoadType.DecompressOnLoad}}"""))["values"][0]
+        ed.check_eq(got[0], got[2], "an Auto source streams the clip, as its import settings say")
+        ed.check_eq(got[1], got[3], "a source's own Load Type wins")
+    finally:
+        await ed.call("play", action="stop")
+
+    await ed.call("undo", scope="project")
+    ed.check_eq(meta_of(ed).read_text(), before, "one undo restores the file")

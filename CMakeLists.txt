@@ -153,11 +153,12 @@ include(${JASPERENGINE_ROOT}/cmake/JasperEngineToolchain.cmake)
 jasperengine_check_cxx_toolchain()
 
 # Warnings from vendored code are not ours to fix and only hide our own
-# C and C++ only: an assembler handed /w takes it for a second input file (dav1d's NASM on MSVC)
+# The compiled languages only: an assembler handed /w takes it for a second input file (dav1d's NASM
+# on MSVC). Objective-C++ too: ImGui's macOS backend is a .mm
 if(MSVC)
     set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/w>)
 else()
-    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:-w>)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-w>)
 endif()
 
 # Icon and version resource for one binary. Each target needs its own so
@@ -1478,6 +1479,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
     ${EDITOR_DIR}/command/type/RemovePreservedComponentCmd.cpp
     ${EDITOR_DIR}/command/type/CreateEntityCmd.cpp
+    ${EDITOR_DIR}/command/type/AudioSourceSlotCmd.cpp
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
     ${EDITOR_DIR}/command/type/AddActionFrameCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
@@ -1506,6 +1508,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/window/InspectorAudioEffects.cpp
+    ${EDITOR_DIR}/audio/SourceEffectEdit.cpp
     ${EDITOR_DIR}/window/AudioCapturesWindow.cpp
     ${EDITOR_DIR}/window/SoundBrowserWindow.cpp
     ${EDITOR_DIR}/audio/SoundDrop.cpp

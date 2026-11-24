@@ -179,7 +179,11 @@ struct ShaderCliOptions {
 };
 
 struct EngineRuntimeGuard {
+    Project& project;
     ~EngineRuntimeGuard() {
+        // the project's scenes and their renders go while the engine runs: ~Project, which
+        // comes after this guard, leaves them to the process exit
+        project.releaseScenes();
         ShaderPool::setShaderBuilder(nullptr);
         ShaderBuilder::requestShutdown();
         Engine::systemShutdown();
@@ -692,7 +696,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(true);
 
@@ -853,7 +857,7 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(true);
 
@@ -1799,7 +1803,7 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
@@ -2020,7 +2024,7 @@ static int runAssets(int argc, char** argv, const std::string& commandName) {
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
@@ -2111,7 +2115,7 @@ static int runCookTextures(int argc, char** argv, const std::string& commandName
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
@@ -3291,7 +3295,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
@@ -3887,7 +3891,7 @@ int CommandLine::bakeProceduralMaterialOnCpu(int argc, char** argv, const fs::pa
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
     // no editor came up, so none holds the project; every file below is written all or nothing

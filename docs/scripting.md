@@ -352,3 +352,11 @@ reference (MCP doc `lua-api-reference`) are all produced from it. Each project g
 `.jasperengine/engine-api/lua-api.json`. MCP serves it as `jasper://lua-api` (one class:
 `jasper://lua-api?class=Vector3`). `python3 -m lua_api doctest` (run from `tools/`) checks the
 ```` ```lua ```` blocks of the docs against it.
+
+## Changes
+
+- S97 (audio): `AudioSource(scene)` makes a GameObject (an entity with a Transform) whose
+  `spatialBlend` is 0, where it made a bare entity; it sounds the same. `getGameObject()` works on
+  it instead of throwing, and `sound3D = false` keeps the Transform. A script that counted on the
+  missing Transform (`findComponent` of a Transform, `sound3D` as "has a Transform") reads
+  `spatialBlend` instead (`docs/mcp/guide/audio.md` section 7).
