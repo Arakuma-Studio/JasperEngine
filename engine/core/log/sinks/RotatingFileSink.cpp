@@ -88,7 +88,7 @@ bool RotatingFileSink::isOpen() const {
 
 bool RotatingFileSink::openFile() {
 #if defined(_WIN32)
-    HANDLE file = CreateFileW(widen(options.path).c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+    HANDLE file = CreateFileW(je_file_sink::widen(options.path).c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                               nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) return false;
     LARGE_INTEGER size{};
