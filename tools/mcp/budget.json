@@ -128,8 +128,8 @@
             "reason": "grandfathered by S31: 2067 chars when the limits were set, +5% (tighter than its HTML UI cap 2400)"
         },
         "create_entity": {
-            "limit": 2192,
-            "reason": "grandfathered by S31: 1984 chars when the limits were set, +5%; 2196 measured on the upstream sync (upstream's types water, fluid_simulation, lattice); 2192 with Vapor's fog_zone and a trimmed description"
+            "limit": 2188,
+            "reason": "grandfathered by S31: 1984 chars when the limits were set, +5%; 2196 measured on the upstream sync (upstream's types water, fluid_simulation, lattice); 2188 with Vapor's fog_zone and a trimmed description"
         },
         "set_sprite_frames": {
             "limit": 2075,
