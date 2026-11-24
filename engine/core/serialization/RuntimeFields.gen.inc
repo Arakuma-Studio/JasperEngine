@@ -2886,6 +2886,7 @@ const FieldEntry kBody_VehicleDrivetrainComponent_fields[] = {
 };
 const StructTable kBody_VehicleDrivetrainComponent{"vehicledrivetrain", kBody_VehicleDrivetrainComponent_fields, std::size(kBody_VehicleDrivetrainComponent_fields)};
 #endif // JASPERENGINE_PHYSICS_3D
+
 const FieldEntry kBody_FogZoneComponent_fields[] = {
     JE_RF(FogZoneComponent, shape, 0x1862110au, Enum),
     JE_RF(FogZoneComponent, size, 0xc3d4c9e8u, Vector3),
