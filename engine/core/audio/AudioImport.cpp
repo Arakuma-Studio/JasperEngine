@@ -32,7 +32,8 @@ bool ClipImportSettings::operator==(const ClipImportSettings& other) const{
            loopEndFrame == other.loopEndFrame &&
            bpm == other.bpm &&
            beatsPerBar == other.beatsPerBar &&
-           firstBeatFrame == other.firstBeatFrame;
+           firstBeatFrame == other.firstBeatFrame &&
+           loadType == other.loadType;
 }
 
 bool ClipImportSettings::isDefault() const{
@@ -126,6 +127,9 @@ bool AudioImportTable::parse(const std::string& text, std::string* error){
         settings.bpm = clip.value("bpm", 0.0f);
         settings.beatsPerBar = clip.value("beats_per_bar", 4);
         settings.firstBeatFrame = clip.value("first_beat_frame", (int64_t)0);
+        // an unknown name (a later engine's type) plays as Auto
+        AudioLoadType loadType = AudioLoadType::Auto;
+        if (SoundPool::loadTypeFromName(clip.value("load_type", std::string("auto")), loadType)) settings.loadType = loadType;
         parsed[it.key()] = settings;
     }
     std::lock_guard<std::mutex> lock(importTableMutex);

@@ -11,6 +11,7 @@
 #include "Scene.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
+#include "jobs/JobSystem.h"
 #include "object/Camera.h"
 #include "object/TerrainEdit.h"
 #include "subsystem/FoliageSystem.h"
@@ -130,11 +131,13 @@ namespace foliagetest {
             foliage->update(dt);
         }
 
-        // A missing mesh fails on the IO thread: its answer takes as long as it takes
+        // A missing mesh fails on the IO thread: its answer takes as long as it takes. Without
+        // workers the jobs run only in the pump, as the Engine's frame runs them.
         void settle() {
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(120);
             while (std::chrono::steady_clock::now() < deadline) {
                 frame();
+                jobs::pump(4.0);
                 if (!foliage->hasPendingUpdates()) return;
                 foliage->waitForJobs();
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));

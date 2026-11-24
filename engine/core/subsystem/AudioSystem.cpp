@@ -12,6 +12,7 @@
 #include "audio/AudioClock.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioTap.h"
+#include "audio/SourceEffects.h"
 #include "audio/MusicPlayer.h"
 #include "audio/SoundEvent.h"
 #if JASPERENGINE_SOUND_LAYER
@@ -102,6 +103,8 @@ namespace {
         Vector3 position = Vector3(0, 0, 0);
         bool is3D = false;
         bool wants3D = false;
+        // a clip's voice loops until stopped (S97 REQ-22; a Sound Event keeps its own loop)
+        bool loop = false;
         Scene* targetScene = nullptr;
         Entity target = NULL_ENTITY;
         bool paused = false;
@@ -165,8 +168,11 @@ namespace {
 
     void releaseFreePlay(FreePlay& play) {
         const uint32_t generation = play.generation + 1;
+        const bool heldSamples = !play.voices.empty();
         play = FreePlay();
         play.generation = generation;
+        // its clips may be unused now: the pool keeps them within its budget (S97 REQ-8)
+        if (heldSamples) SoundPool::trimUnused();
     }
 
     // a voice of it still valid; the entry goes when none is and it is not about to start
@@ -434,7 +440,15 @@ namespace {
 
     constexpr double oneShotLoadWait = 0.25;
 
-    enum EventKind { EventStart, EventPause, EventStop };
+    enum EventKind { EventStart, EventPause, EventStop, EventLoaded, EventLoadFailed };
+
+    // a load asked for (loadSound, the scene's preload) is over: onLoad is due in the next update
+    void finishLoad(AudioSourceComponent& audio, bool ok) {
+        if (!audio.loadRequested) return;
+        audio.loadRequested = false;
+        audio.loadEventPending = true;
+        audio.loadEventOk = ok;
+    }
 
     // Where a scene's camera hears from, in its own world: its position (a perspective camera), or
     // the centre of its view (an orthographic or UI camera, whose view spans [leftClip, rightClip]
@@ -497,6 +511,79 @@ namespace {
         const Vector3 offset = position - own.position;
         return listener.position + listener.right * own.right.dotProduct(offset) +
                listener.up * own.up.dotProduct(offset) + listener.forward * own.forward.dotProduct(offset);
+    }
+
+    // SoLoud's distance attenuation (soloud_core_3d.cpp), for a voice the engine pans itself; never
+    // negative, and 1 where SoLoud's formula has no value (a zero distance range)
+    float distanceGain(AudioSourceAttenuation model, float distance, float minDistance, float maxDistance, float rolloff) {
+        const float clamped = std::min(std::max(distance, minDistance), maxDistance);
+        float gain = 1.0f;
+        if (model == AudioSourceAttenuation::INVERSE_DISTANCE) {
+            gain = minDistance / (minDistance + rolloff * (clamped - minDistance));
+        } else if (model == AudioSourceAttenuation::LINEAR_DISTANCE) {
+            gain = 1.0f - rolloff * (clamped - minDistance) / (maxDistance - minDistance);
+        } else if (model == AudioSourceAttenuation::EXPONENTIAL_DISTANCE) {
+            gain = std::pow(clamped / minDistance, -rolloff);
+        }
+        return std::isfinite(gain) ? std::max(0.0f, gain) : 1.0f;
+    }
+
+    // What SoLoud's 3D would give a voice heard at `position`, as a 2D voice's gain and pan (Spatial
+    // Blend between 0 and 1, S97 REQ-18 and D7): the attenuation, and the pan whose 2D law gives its
+    // front speakers' balance (each speaker (dot(direction, speaker) + 1) / 2, as update3dVoices)
+    struct SpatialMix {
+        float gain = 1.0f;
+        float pan = 0.0f;
+    };
+
+    SpatialMix spatialMix(const AudioSourceComponent& audio, const SoundEventSpatial* spatial, const Vector3& position, const CameraPose& listener) {
+        SpatialMix mix;
+        const Vector3 offset = position - listener.position;
+        const float distance = offset.length();
+        mix.gain = distanceGain(spatial ? spatial->attenuation : audio.attenuationModel, distance,
+                                spatial ? spatial->minDistance : audio.minDistance, spatial ? spatial->maxDistance : audio.maxDistance,
+                                spatial ? spatial->rolloff : audio.attenuationRolloffFactor);
+        if (!(distance > 0.0f)) return mix;
+        // SoLoud's listener space (lookatRH(view, up)): x is up x view, the listener's left
+        const Vector3 direction = offset / distance;
+        const float x = -listener.right.dotProduct(direction);
+        const float y = listener.up.dotProduct(direction);
+        const float z = listener.forward.dotProduct(direction);
+        const float* speakers = AudioSystem::getSoloud().m3dSpeakerPosition;
+        float channel[2];
+        for (int i = 0; i < 2; i++) {
+            const Vector3 speaker(speakers[3 * i], speakers[3 * i + 1], speakers[3 * i + 2]);
+            const float length = speaker.length();
+            channel[i] = length > 0.0f ? (speaker.dotProduct(Vector3(x, y, z)) / length + 1.0f) * 0.5f : 1.0f;
+        }
+        // SoLoud's 2D pan law: left cos, right sin of (pan + 1) pi / 4
+        if (channel[0] > 0.0f || channel[1] > 0.0f) {
+            mix.pan = std::clamp((float)(std::atan2(channel[1], channel[0]) * 4.0 / 3.14159265358979323846) - 1.0f, -1.0f, 1.0f);
+        }
+        return mix;
+    }
+
+    // A playing voice crosses Spatial Blend 1: SoLoud fixes a voice's 3D at play3d, so its 3D flag is
+    // switched here. Off, its 3D gain, Doppler and inaudible state go (the engine pans it next); on,
+    // the next update3dAudio places it.
+    void switchVoice3d(unsigned int handle, bool on) {
+        SoLoud::Soloud& soloud = AudioSystem::getSoloud();
+        soloud.lockAudioMutex_internal();
+        const int voice = soloud.getVoiceFromHandle_internal(handle);
+        if (voice >= 0 && soloud.mVoice[voice]) {
+            SoLoud::AudioSourceInstance* instance = soloud.mVoice[voice];
+            if (on) {
+                soloud.m3dData[voice].mHandle = handle;
+                instance->mFlags |= SoLoud::AudioSourceInstance::PROCESS_3D;
+            } else {
+                instance->mFlags &= ~(SoLoud::AudioSourceInstance::PROCESS_3D | SoLoud::AudioSourceInstance::INAUDIBLE);
+                soloud.m3dData[voice].m3dVolume = 1.0f;
+                soloud.m3dData[voice].mDopplerValue = 1.0f;
+                soloud.updateVoiceVolume_internal(voice);
+                soloud.updateVoiceRelativePlaySpeed_internal(voice);
+            }
+        }
+        soloud.unlockAudioMutex_internal();
     }
 
     // 0 for a voice that could not start
@@ -906,6 +993,8 @@ void AudioSystem::moveSourceVoices(Scene* from, AudioSourceComponent& source, Sc
     target.startTrigger = source.startTrigger;
     target.pauseTrigger = source.pauseTrigger;
     target.stopTrigger = source.stopTrigger;
+    // its voices' effects go with them (S97)
+    target.effectRuntime = std::move(source.effectRuntime);
 
     // the source keeps nothing that could stop them
     source.handle = 0;
@@ -947,6 +1036,8 @@ bool AudioSystem::loadSoundSample(AudioSourceComponent& audio){
     }
 
     if (!audio.sample){
+        // (a clip that failed is not asked for again until the file changes or loadSound)
+        if (!audio.loaded && !audio.loadFailed) audio.loadRequested = true;
         SoundLoadResult result = SoundPool::loadClip(audio.filename, audio.loadType);
         if (result.state == ResourceLoadState::Loading) {
             return false;
@@ -959,6 +1050,7 @@ bool AudioSystem::loadSoundSample(AudioSourceComponent& audio){
             audio.state = AudioSourceState::Stopped;
             audio.sample.reset();
             audio.pendingOneShots.clear();
+            finishLoad(audio, false);
             return false;
         }
 
@@ -974,6 +1066,7 @@ bool AudioSystem::loadSoundSample(AudioSourceComponent& audio){
     audio.length = SoundPool::getLength(audio.sample.get());
     audio.loaded = true;
     audio.loadFailed = false;
+    finishLoad(audio, true);
 
     return true;
 }
@@ -989,18 +1082,36 @@ bool AudioSystem::loadSound(AudioSourceComponent& audio){
 bool AudioSystem::preload(const std::string& filename, AudioLoadType loadType){
     SoundLoadResult result = SoundPool::loadClip(filename, loadType);
     if (result.state == ResourceLoadState::Failed) return false;
-    if (result.data) SoundPool::pin(result.id);
-    // async loading: the pool finishes it; the next call (or the first play) holds it
+    // (a load on its way is pinned when it arrives)
+    SoundPool::pin(result.id);
     return true;
 }
 
+int AudioSystem::unload(const std::string& filename, const AudioLoadType* loadType){
+    return SoundPool::unload(filename, loadType);
+}
+
+AudioLoadState AudioSystem::getLoadState(const std::string& filename, AudioLoadType loadType){
+    return SoundPool::getLoadState(filename, loadType);
+}
+
+AudioLoadState AudioSystem::getLoadState(const AudioSourceComponent& audio){
+    if (audio.loadFailed) return AudioLoadState::Failed;
+    if (audio.loaded && audio.sample) return AudioLoadState::Loaded;
+    if (audio.loadRequested) return AudioLoadState::Loading;
+    return AudioLoadState::Unloaded;
+}
+
+// The source lets its clip go: unused, the pool keeps it within its budget, so switching back
+// decodes nothing (S97 REQ-9); AudioSource.destroySound drops it
 void AudioSystem::releaseSample(AudioSourceComponent& audio){
     audio.loaded = false;
     audio.loadFailed = false;
+    audio.loadRequested = false;
     audio.length = 0;
     audio.sample.reset();
     if (!audio.sampleKey.empty()) {
-        SoundPool::remove(audio.sampleKey);
+        SoundPool::release(audio.sampleKey);
         audio.sampleKey.clear();
     }
 }
@@ -1024,7 +1135,8 @@ void AudioSystem::preloadSoundAssets(){
             continue;
         }
 
-        if (!audio.loaded) {
+        // (a loadSound of the clip already loaded, before the view: its onLoad is due too)
+        if (!audio.loaded || audio.loadRequested) {
             loadSoundSample(audio);
         }
     }
@@ -1305,7 +1417,7 @@ void AudioSystem::applyVoiceParameters(AudioSourceComponent& audio, unsigned int
     // a 3D voice's pan is SoLoud's (play3d, update3dAudio): a 2D pan here would centre its channel
     // volumes until the frame's 3D pass, and a block mixed in between ramps it toward the centre
     if (!use3D) {
-        soloud.setPan(handle, audio.pan);
+        soloud.setPan(handle, audio.blended ? audio.blendPan : audio.pan);
     }
     if (mainVoice) {
         soloud.setLooping(handle, audio.looping || eventLoop);
@@ -1324,6 +1436,8 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
 
     const int priority = extras.priority >= 0 ? extras.priority : audio.priority;
     const std::string& groupId = extras.groupId ? *extras.groupId : audio.resolvedGroup;
+    // a Spatial Blend between 0 and 1: the engine's attenuation (S97 REQ-18)
+    if (!use3D && audio.blended) volume *= audio.blendGain;
 
     // the global budget (spec A11): past maxVoices the least important voice goes, the oldest
     // of them first; a new voice less important than all of them does not start
@@ -1364,9 +1478,17 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
     // a delay is SoLoud's delay of a voice not started yet; a clocked play has its own. On the
     // deterministic driver every start of a frame is queued before that frame's mix, at its first sample
     const bool clocked = mainVoice && audio.enableClocked && extras.delayFrames == 0 && !deterministicDriver;
+    // ---- S97 WP-B: the source's own effects (REQ-2, REQ-4): its voices play through its wrapper
+    // of the sample, or the sample itself while no effect is on
+    SoLoud::AudioSource* played = &sample;
+    if (!audio.effects.empty() && extras.sampleRef) {
+        if (SoLoud::AudioSource* wrapped = SourceEffects::wrap(audio, *extras.sampleRef)) played = wrapped;
+    }
     // the game time it was played at: SoLoud delays it from the first clocked start of the buffer
-    unsigned int handle = AudioMixer::play(groupId, sample, use3D, position, volume, clocked, AudioMixer::getClockTime());
+    unsigned int handle = AudioMixer::play(groupId, *played, use3D, position, volume, clocked, AudioMixer::getClockTime());
     if (handle == 0) return 0;
+    if (played != &sample) SourceEffects::started(audio, *played, handle);
+    // ---- end S97 WP-B
 
     applyVoiceParameters(audio, handle, mainVoice, use3D, extras.speedScale, extras.eventLoop, &sample);
     if (use3D) {
@@ -1396,7 +1518,7 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
         line.impactSpeed = extras.impactSpeed;
         line.gain = volume;
         line.pitch = audio.speed * extras.speedScale;
-        line.pan = audio.pan;
+        line.pan = !use3D && audio.blended ? audio.blendPan : audio.pan;
         line.looping = (mainVoice && audio.looping) || extras.eventLoop;
         line.spatial = use3D;
         line.position = position;
@@ -1618,6 +1740,7 @@ AudioSystem::StartedPlay AudioSystem::startEvent(const SoundEventAsset& event, c
         extras.variation = index;
         extras.layer = (int)layer;
         extras.instance = instance;
+        extras.sampleRef = &loaded.data;
         const unsigned int handle = startVoice(audio, *loaded.data, (float)audio.volume * volumeScale, play.use3D, play.position, !oneShot, extras);
         if (handle == 0) continue;
 
@@ -1780,6 +1903,7 @@ void AudioSystem::startPendingOneShots(AudioSourceComponent& audio, Entity entit
         extras.loadDelay = (uint32_t)std::llround(shot.waited * deterministicRate);
         extras.entity = entity;
         extras.clip = shot.filename.c_str();
+        extras.sampleRef = &result.data;
         unsigned int handle = startVoice(audio, *result.data, volume, use3D, position, false, extras);
         if (handle == 0) continue;
         AudioOneShot oneShot;
@@ -2087,7 +2211,7 @@ void AudioSystem::update(double dt){
         bool playing3D = false;
         for (int i = 0; i < audios->size() && !playing3D; i++){
             const AudioSourceComponent& audio = audios->getComponentFromIndex(i);
-            playing3D = audio.enabled && audio.state == AudioSourceState::Playing &&
+            playing3D = audio.enabled && audio.state == AudioSourceState::Playing && !(audio.spatialBlend < 1.0f) &&
                         scene->getSignature(audios->getEntity(i)).test(scene->getComponentId<Transform>());
         }
         if (playing3D){
@@ -2104,6 +2228,12 @@ void AudioSystem::update(double dt){
 
         Entity entity = audios->getEntity(i);
 
+        // a load that ended since the last update: onLoad after the loop, never inside loadSound
+        if (audio.loadEventPending) {
+            audio.loadEventPending = false;
+            events.push_back({entity, audio.loadEventOk ? EventLoaded : EventLoadFailed});
+        }
+
         // only what a source needs is subscribed; a scene without flags pays this one test
         if ((audio.playOn | audio.boundPlayOn) != 0) {
             const uint32_t desired = audio.enabled && scene->isEntityActiveInHierarchy(entity) ? (audio.playOn & AudioPlayOn_All) : 0u;
@@ -2111,21 +2241,46 @@ void AudioSystem::update(double dt){
             syncUiTriggers(audio, entity, desired);
         }
         Signature signature = scene->getSignature(entity);
-        bool use3DAudio = hasListener && signature.test(scene->getComponentId<Transform>());
+        const bool hasTransform = signature.test(scene->getComponentId<Transform>());
+        // Spatial Blend (S97 REQ-18): 0 plays 2D; 1 through SoLoud's 3D, as before it existed; between
+        // them a 2D voice the engine attenuates and pans (D7). Without a Transform it is 2D.
+        const float blend = std::isfinite(audio.spatialBlend) ? std::clamp(audio.spatialBlend, 0.0f, 1.0f) : 1.0f;
 
         // where the listener hears it (its world position, or mapped from a layer's camera)
+        bool placed = false;
         Vector3 worldPosition = Vector3(0, 0, 0);
-        if (use3DAudio){
+        if (hasListener && blend > 0.0f && hasTransform){
             Transform& transform = scene->getComponent<Transform>(entity);
 
+            placed = true;
             worldPosition = heard(transform.worldPosition);
-        }else if (hasListener && audio.timelineTarget != NULL_ENTITY && audio.attenuationModel != AudioSourceAttenuation::NO_ATTENUATION){
+        }else if (hasListener && blend > 0.0f && audio.timelineTarget != NULL_ENTITY && audio.attenuationModel != AudioSourceAttenuation::NO_ATTENUATION){
             // an audio action with 3D settings and no Transform: at its animation's target (S40 R17)
             if (Transform* target = scene->isEntityCreated(audio.timelineTarget) ? scene->findComponent<Transform>(audio.timelineTarget) : nullptr){
-                use3DAudio = true;
+                placed = true;
                 worldPosition = heard(target->worldPosition);
             }
         }
+        const bool use3DAudio = placed && blend >= 1.0f;
+
+        // a blend between 0 and 1: what its 2D voices get this frame, before any of them starts (the
+        // listener moves too, so every frame); at 0 and 1 nothing is computed
+        const bool wasBlended = audio.blended;
+        const float gainBefore = audio.blendGain;
+        const float panBefore = audio.blendPan;
+        audio.blended = placed && blend < 1.0f;
+        if (audio.blended) {
+            const SpatialMix mix = spatialMix(audio, audio.mainEvent && audio.mainEvent->spatial ? &*audio.mainEvent->spatial : nullptr,
+                                              worldPosition, listenerPose);
+            audio.blendGain = 1.0f + (mix.gain - 1.0f) * blend;
+            audio.blendPan = audio.pan + (mix.pan - audio.pan) * blend;
+        } else {
+            audio.blendGain = 1.0f;
+            audio.blendPan = audio.pan;
+        }
+        // the voices take the new gain with the volume, and the new pan below
+        if (audio.blended != wasBlended || audio.blendGain != gainBefore) audio.lastVolumeApplied = -1;
+        const bool repan = audio.blended != wasBlended || audio.blendPan != panBefore;
 
         // set, the event is what the source plays: its clip is ignored, with no fallback
         const bool eventMode = JASPERENGINE_SOUND_LAYER && !audio.event.empty();
@@ -2278,7 +2433,7 @@ void AudioSystem::update(double dt){
                         audio.sampleKey = fresh.id;
                         audio.sampleGeneration = SoundPool::generation(audio.filename);
                         audio.length = SoundPool::getLength(audio.sample.get());
-                        if (previousKey != fresh.id) SoundPool::remove(previousKey);
+                        if (previousKey != fresh.id) SoundPool::release(previousKey);
                     }
                 }
 
@@ -2318,6 +2473,7 @@ void AudioSystem::update(double dt){
                         extras.cause = cause;
                         extras.entity = entity;
                         extras.clip = audio.filename.c_str();
+                        extras.sampleRef = &audio.sample;
                         audio.handle = startVoice(audio, *audio.sample, (float)audio.volume * audio.mainVolumeScale, use3DAudio, worldPosition, true, extras);
                     }
                     audio.timelineStart = false;
@@ -2336,6 +2492,8 @@ void AudioSystem::update(double dt){
             }
         }
         startPendingOneShots(audio, entity, use3DAudio, worldPosition, unscaledDt);
+        // S97 WP-B: timed effect changes and new values reach its voices (only while it has an effect runtime)
+        if (audio.effectRuntime) SourceEffects::update(audio, dt, unscaledDt);
 
         // the group changed (the mixer was edited, outputGroup set): the voices move to its bus
         if (inited && groupBefore != audio.resolvedGroup) {
@@ -2360,11 +2518,26 @@ void AudioSystem::update(double dt){
             }
         }
 
-        updateFade(audio, dt, unscaledDt, events, entity);
+        // a fade of a start still waiting for its clip begins with the voice (S97 REQ-14)
+        const bool waitingForClip = hasClip && !audio.loaded && audio.handle == 0 &&
+                                    (audio.startTrigger || audio.state == AudioSourceState::Playing);
+        if (!waitingForClip) updateFade(audio, dt, unscaledDt, events, entity);
         applyPause(audio);
 
         if (!inited) continue;
         SoLoud::Soloud& soloud = getSoloud();
+
+        // the blend crossed 1 while it plays: its voices go from SoLoud's 3D to the engine's pan, or
+        // back (with no camera they stay as they are, as before)
+        const bool fullBlend = blend >= 1.0f;
+        if (fullBlend != audio.voicesFullBlend && (!fullBlend || use3DAudio)) {
+            auto each = [&](unsigned int handle) { if (handle != 0) switchVoice3d(handle, fullBlend); };
+            each(audio.handle);
+            for (const AudioOneShot& layer : audio.mainLayers) each(layer.handle);
+            for (const AudioOneShot& shot : audio.oneShots) each(shot.handle);
+            audio.voicesFullBlend = fullBlend;
+            audio.needUpdate = true;
+        }
 
         const bool hasVoices = audio.handle != 0 || !audio.oneShots.empty();
         if (!hasVoices) {
@@ -2382,8 +2555,10 @@ void AudioSystem::update(double dt){
         if (audio.volume != audio.lastVolumeApplied) {
             const double frame = std::max(0.0, unscaledDt);
             const bool smooth = audio.fade.active && frame > 0.0;
+            // (a moving blended source: its gain glides over the frame too)
             auto write = [&](unsigned int handle, float volume) {
-                if (smooth) soloud.fadeVolume(handle, volume, frame);
+                volume *= audio.blendGain;
+                if (smooth || (audio.blended && frame > 0.0)) soloud.fadeVolume(handle, volume, frame);
                 else soloud.setVolume(handle, volume);
             };
             if (audio.handle != 0) write(audio.handle, (float)audio.volume * audio.mainVolumeScale);
@@ -2392,6 +2567,11 @@ void AudioSystem::update(double dt){
             audio.lastVolumeApplied = audio.volume;
         }
 
+        if (repan && !audio.needUpdate && !use3DAudio) {
+            if (audio.handle != 0) soloud.setPan(audio.handle, audio.blendPan);
+            for (const AudioOneShot& layer : audio.mainLayers) soloud.setPan(layer.handle, audio.blendPan);
+            for (const AudioOneShot& shot : audio.oneShots) soloud.setPan(shot.handle, audio.blendPan);
+        }
         if (audio.needUpdate) {
             if (audio.handle != 0) applyVoiceParameters(audio, audio.handle, true, use3DAudio, audio.mainSpeedScale, audio.mainEvent && audio.mainEvent->loop, audio.mainEventSample.get());
             for (const AudioOneShot& layer : audio.mainLayers) applyVoiceParameters(audio, layer.handle, true, use3DAudio, layer.speedScale, layer.event && layer.event->loop, layer.sample.get());
@@ -2438,6 +2618,8 @@ void AudioSystem::update(double dt){
         if (!audio) continue;
         if (kind == EventStart) audio->onStart.call();
         else if (kind == EventPause) audio->onPause.call();
+        else if (kind == EventLoaded) audio->onLoad.call(true);
+        else if (kind == EventLoadFailed) audio->onLoad.call(false);
         else audio->onStop.call();
     }
 }
@@ -2758,6 +2940,7 @@ SoundHandle AudioSystem::playFree(const std::string& eventOrClip, const PlayOpti
     play.targetScene = options.targetScene;
     play.target = options.target;
     play.wants3D = options.target != NULL_ENTITY || options.position.has_value();
+    play.loop = options.loop;
     if (options.position) play.position = *options.position;
     const SoundHandle handle(slot + 1, play.generation);
     const uint32_t generation = play.generation;
@@ -2867,6 +3050,8 @@ bool AudioSystem::startFree(uint32_t slot){
         extras.cause = play.cause;
         extras.clip = play.name.c_str();
         extras.delayFrames = play.delayFrames;
+        // looped as an event's voice: from the clip's loop start, until stopped
+        extras.eventLoop = play.loop;
         const unsigned int handle = startVoice(defaults, *loaded.data, play.volume, play.is3D, position, false, extras);
         if (handle != 0) {
             FreeVoice free;

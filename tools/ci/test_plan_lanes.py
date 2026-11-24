@@ -338,7 +338,7 @@ class Rules(unittest.TestCase):
         self.assertEqual(keys, ["full", *[f"run_{n}" for n in pl.LANES], "unit_filter_core", "unit_filter_editor",
                                 "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "asan_filter_core",
                                 "asan_filter_editor", "htmlui_filter", "mcp_shards", "windows_parts",
-                                "build_only", "dispatch_advisory", "runs_on"])
+                                "build_only", "macos_full", "dispatch_advisory", "runs_on"])
         self.assertIn("dispatch_advisory=false", lines)
         self.assertIn('runs_on={"macos":"je-mac"}', pl.github_output(dict(doc, runs_on={"macos": "je-mac"}), r["unit_run"]).splitlines())
         self.assertIn("dispatch_advisory=true", pl.github_output(dict(doc, dispatch_advisory=True), r["unit_run"]).splitlines())
@@ -437,6 +437,59 @@ class Rules(unittest.TestCase):
             for files in (["editor/App.cpp"], [".github/workflows/ci.yml"]):
                 self.assertTrue(decide("pull_request", plan(files), full_selection=True)["lanes"][name]["run"], (files, name))
         self.assertTrue(decide("push", plan(["editor/App.cpp"]))["lanes"]["macos"]["run"])
+
+    def test_the_queue_builds_macos_only_for_a_macos_only_input(self):
+        # macOS caps the queue (5 hosted runners and je-mac, a macos job a group)
+        for mac in ("", None):
+            r = decide("merge_group", plan(["editor/App.cpp"], unit="all"), macos_inputs=mac)
+            self.assertEqual(r["lanes"]["macos"]["run"], mac is None, mac)           # (None: not read: it runs)
+            self.assertEqual("macos" in r["queue_off"], mac == "")
+        for f in ("editor/util/ClipboardMac.mm", "engine/platform/mac/MacViewMetal.mm", "editor/platform/MacBundle.cpp",
+                  "editor/util/ApplePrivacy.cpp", "engine/libs/sokol/sokol_gfx.h", "editor/resources/macos/Info.plist",
+                  "engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj", "tools/ci/macos.sh",
+                  ".github/actions/ccache-save/trim.sh"):
+            r = decide("merge_group", plan([f, "editor/App.cpp"]), macos_inputs="")
+            self.assertTrue(r["lanes"]["macos"]["run"], f)
+            self.assertNotIn("macos", r["queue_off"])
+        for f in ("editor/StateMachine.cpp", "engine/core/Foo.cpp", "editor/App.cpp"):
+            self.assertFalse(decide("merge_group", plan([f]), macos_inputs="")["lanes"]["macos"]["run"], f)
+        r = decide("merge_group", plan(["engine/core/Engine.cpp"]), macos_inputs="engine/core/Engine.cpp (it names __APPLE__)")
+        self.assertIn("__APPLE__", r["lanes"]["macos"]["why"])
+        # a push: the whole lane when the queue left it out; its build only when the queue ran it
+        self.assertTrue(decide("push", plan(["editor/App.cpp"]), macos_inputs="")["macos_full"])
+        self.assertFalse(decide("push", plan(["editor/Mac.mm"]), macos_inputs="")["macos_full"])
+        self.assertFalse(decide("push", plan(["editor/App.cpp"]), macos_inputs="editor/App.cpp (it names __APPLE__)")["macos_full"])
+        # a pull request keeps its own rule, full runs and the nightly build it
+        self.assertFalse(decide("pull_request", plan(["engine/core/Engine.cpp"]), macos_inputs="x")["lanes"]["macos"]["run"])
+        for event in ("full", "nightly"):
+            self.assertTrue(decide(event, None)["lanes"]["macos"]["run"])
+        # ci.yml runs the push's tests and the call CLI then (its Compile build on every push: the macos
+        # ccache entry holds its objects)
+        text = (HERE.parent.parent / pl.WORKFLOW).read_text()
+        self.assertEqual(text.count("needs.changes.outputs.macos_full == 'true'"), 2)
+
+    def test_the_macos_inputs_are_read_from_the_change(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
+            def commit(path, text):
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_text(text)
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qm", path], check=True)
+                return subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+            cm = "cmake_minimum_required(VERSION 3.20)\n" + "".join(f"set(A{i} {i})\n" for i in range(40)) + \
+                 "if(APPLE)\n  set(MAC 1)\nendif()\n" + "".join(f"set(B{i} {i})\n" for i in range(40))
+            base = commit("CMakeLists.txt", cm)
+            commit("engine/core/Plain.cpp", "int a;\n")
+            commit("engine/core/Thread.cpp", "#if defined(__APPLE__)\nint b;\n#endif\n")
+            self.assertEqual(pl.macos_inputs(root, base, ["engine/core/Plain.cpp"]), "")
+            self.assertIn("names __APPLE__", pl.macos_inputs(root, base, ["engine/core/Thread.cpp"]))
+            # a CMake change near an Apple setting counts, one far from it does not
+            far = commit("CMakeLists.txt", cm.replace("set(A2 2)", "set(A2 3)"))
+            self.assertEqual(pl.macos_inputs(root, base, ["CMakeLists.txt"]), "")
+            near = commit("CMakeLists.txt", cm.replace("set(MAC 1)", "set(MAC 2)"))
+            self.assertIn("a change near APPLE", pl.macos_inputs(root, far, ["CMakeLists.txt"]))
 
     def test_the_queue_builds_ios_only_for_an_apple_only_input(self):
         # a compile check with the Apple compiler the queue's macos lane runs on every change; macOS runners
@@ -640,9 +693,8 @@ JOBS = {"lint": "linux", "linux": "linux", "unit-core": "linux", "unit-editor-1"
         "windows-engine-vulkan": "windows", "windows-compile": "windows", "macos": "macos", "ios": "macos"}
 
 
-def route(st, trigger="pull_request", head=REPO, attempt=1, disabled="", force=None, jobs=JOBS, run_id="42", blacksmith="off"):
-    # (the paid tier off unless a test turns it on: the free tiers' rules alone)
-    return pl.route(jobs, st, NOW, trigger, head, REPO, attempt, disabled, force, run_id=run_id, blacksmith=blacksmith)
+def route(st, trigger="pull_request", head=REPO, attempt=1, disabled="", force=None, jobs=JOBS, run_id="42"):
+    return pl.route(jobs, st, NOW, trigger, head, REPO, attempt, disabled, force, run_id=run_id)
 
 
 def overflowed(runs_on):
@@ -692,52 +744,18 @@ class Routing(unittest.TestCase):
         self.assertEqual(overflowed(route(state(), disabled="all")[0]), {})
         self.assertTrue(route(state(je_mac={"busy": True}))[0]["linux"] == "je-linux")
 
-    def test_the_paid_tier_takes_what_github_and_the_users_machines_cannot(self):
-        BM, BL = pl.BLACKSMITH["macos"], pl.BLACKSMITH["linux"]
-        jobs = {"macos": "macos", "ios": "macos", "linux": "linux", "web": "linux", "windows-editor": "windows"}
-
-        def deep(**runners):
-            st = state(**runners)
-            st["os"]["linux"]["queued"] = pl.BLACKSMITH_MIN_QUEUED["linux"]
-            return st
-        # the user's machines idle: they take theirs, Blacksmith the Linux job je-linux has no room for
-        runs_on, notes = route(deep(), trigger="merge_group", jobs=jobs, blacksmith="")
-        self.assertEqual(overflowed(runs_on), {"macos": "je-mac", "ios": "je-mac", "linux": "je-linux", "web": BL})
-        self.assertEqual(runs_on["windows-editor"], "windows-latest")      # no Windows tier
-        # je-mac busy, offline, unfit or off: macOS there too
-        for st, disabled in ((deep(je_mac={"busy": True}), ""), (deep(je_mac={"online": False}), ""),
-                             (deep(je_mac={"fit": False}), ""), (deep(), "je-mac"), (deep(), "all")):
-            runs_on, notes = route(st, trigger="merge_group", jobs=jobs, disabled=disabled, blacksmith="")
-            self.assertEqual((runs_on["macos"], runs_on["ios"]), (BM, BM), (st["runners"]["je-mac"], disabled))
-            self.assertTrue(any("the paid tier" in n for n in notes), notes)
-        busy = deep(je_mac={"busy": True}, je_linux={"busy": True})
-        self.assertEqual(overflowed(route(busy, trigger="push", jobs=jobs, blacksmith="")[0]),
-                         {"macos": BM, "ios": BM, "linux": BL, "web": BL})
-        # the backlog does not warrant it: fewer waiting than its OS's minimum, or hosted not saturated
-        thin = deep(je_mac={"busy": True}, je_linux={"busy": True})
-        thin["os"]["macos"]["queued"] = pl.BLACKSMITH_MIN_QUEUED["macos"] - 1
-        thin["os"]["linux"]["queued"] = pl.BLACKSMITH_MIN_QUEUED["linux"] - 1
-        for st in (thin, state(saturated=(), je_mac={"busy": True}, je_linux={"busy": True})):
-            runs_on, notes = route(st, trigger="merge_group", jobs=jobs, blacksmith="")
-            self.assertEqual(overflowed(runs_on), {})
-            self.assertTrue(any("not needed" in n for n in notes), notes)
-        # never: the kill switch, a pull request (its own repository's too) or a dispatch, a fork, a held
-        # rerun, a stale state, or while the dispatcher has it paused (a job waited there: the spend limit)
-        for st, kw in ((busy, {"blacksmith": "off"}), (busy, {"blacksmith": "OFF"}), (busy, {"trigger": "pull_request"}),
-                       (busy, {"trigger": "workflow_dispatch"}), (busy, {"head": "someone/JasperEngine", "trigger": "pull_request"}),
-                       (dict(busy, hosted_only=["42"]), {"attempt": 2}), (dict(busy, t=NOW - 3600), {}),
-                       (dict(busy, blacksmith={"ok": False, "why": "a job waited 10 min"}), {})):
-            args = {**dict(trigger="merge_group", jobs=jobs, blacksmith=""), **kw}
-            runs_on, notes = route(st, **args)
-            self.assertFalse(set(runs_on.values()) & set(pl.BLACKSMITH.values()), kw)
-        self.assertTrue(any("paused (a job waited 10 min)" in n for n in
-                            route(dict(busy, blacksmith={"ok": False, "why": "a job waited 10 min"}), trigger="merge_group",
-                                  jobs=jobs, blacksmith="")[1]))
-        # a dispatch may force it, a job of its OS only
-        force, bad = pl.parse_force(f"macos={BM} linux={BL} web={BM}")
-        self.assertEqual(bad, [])
-        runs_on, notes = route(None, trigger="workflow_dispatch", jobs=jobs, force=force)
-        self.assertEqual((runs_on["macos"], runs_on["linux"], runs_on["web"]), (BM, BL, "ubuntu-latest"))
+    def test_nothing_paid_github_first_then_the_users_machines(self):
+        # (the Blacksmith tier was removed: a deep backlog with every machine busy still waits for GitHub)
+        st = state(je_mac={"busy": True}, je_linux={"busy": True}, je_win={"busy": True})
+        for o in st["os"].values():
+            o.update(queued=500, running=60)
+        for trigger in ("merge_group", "push", "pull_request", "workflow_dispatch"):
+            runs_on, notes = route(st, trigger=trigger)
+            self.assertEqual(set(runs_on.values()) - set(pl.HOSTED.values()), set(), trigger)
+        allowed = set(pl.HOSTED.values()) | set(pl.OVERFLOW)
+        self.assertTrue(set(route(state(), trigger="merge_group")[0].values()) <= allowed)
+        force, bad = pl.parse_force("macos=blacksmith-6vcpu-macos-26 linux=blacksmith-4vcpu-ubuntu-2404")
+        self.assertEqual((force, len(bad)), ({}, 2))
 
     def test_a_stale_or_missing_state_means_no_overflow_runner(self):
         for st, why in ((None, "no runner state"), ({}, "no runner state"), ("garbage", "no runner state"),
@@ -1006,11 +1024,16 @@ class Runs(unittest.TestCase):
                   "--runner-state", str(st), "--repo", REPO, "--head-repo", REPO)
         # the runner state as ci.yml fetches it, fresh: macOS saturated, je-mac idle
         st.write_text(json.dumps(dict(state(saturated=("macos",)), t=time.time() - 30)))
-        # (the merge queue: a PR without an Apple-only input runs neither macOS lane; the queue macos only)
+        # (the merge queue without a macOS-only input runs neither macOS lane)
         code, doc, out = self.run_main("--event", "merge_group", "--trigger", "merge_group", *common)
         self.assertEqual(code, 0, out)
-        self.assertEqual(overflowed(doc["runs_on"]), {"macos": "je-mac"}, doc["routing"])
-        self.assertEqual(doc["queue_off"], ["ios"])
+        self.assertEqual(overflowed(doc["runs_on"]), {}, doc["routing"])
+        self.assertEqual(doc["queue_off"], ["ios", "macos"])
+        # with one, macos runs there, on the Mac
+        head = self.commit("engine/platform/mac/Window.mm", "// mac\n")
+        common = ("--base", self.base, "--head", head, *common[4:])
+        code, doc, out = self.run_main("--event", "merge_group", "--trigger", "merge_group", *common)
+        self.assertEqual(overflowed(doc["runs_on"]).get("macos"), "je-mac", (doc["lanes"]["macos"], doc["routing"]))
         self.assertEqual(doc["runs_on"]["mcp-1"], "ubuntu-latest")
         self.assertIn("runner: macos on je-mac", out)
         self.assertIn('"macos":"je-mac"', [l for l in gh.read_text().splitlines() if l.startswith("runs_on=")][-1])

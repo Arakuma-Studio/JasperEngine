@@ -36,7 +36,7 @@ on:
         type: boolean
         default: false
       self_hosted:
-        description: "Test the overflow runners: <job>=<je-mac|je-linux|je-win|blacksmith-6vcpu-macos-26> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
+        description: "Test the overflow runners: <job>=<je-mac|je-linux|je-win> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
         type: string
         default: ''
 
@@ -123,6 +123,7 @@ jobs:
       htmlui_filter: ${{ steps.plan.outputs.htmlui_filter }}
       mcp_shards: ${{ steps.plan.outputs.mcp_shards }}
       build_only: ${{ steps.plan.outputs.build_only }}
+      macos_full: ${{ steps.plan.outputs.macos_full }}
       dispatch_advisory: ${{ steps.plan.outputs.dispatch_advisory }}
       runs_on: ${{ steps.plan.outputs.runs_on }}
     steps:
@@ -165,8 +166,6 @@ jobs:
           # the overflow runners (docs/testing.md "Overflow runners"): the ones taken out; a fork's pull
           # request never gets one. Their state is fetched below, as the plan starts
           RUNNER_DISABLED: ${{ vars.SELF_HOSTED_DISABLED }}
-          # the paid tier (Blacksmith) after GitHub's runners and the user's machines: off stops it
-          BLACKSMITH: ${{ vars.BLACKSMITH_OVERFLOW }}
           # off: a pull request runs its blocking lanes only, as the merge queue (docs/testing.md "What each event runs")
           PR_ADVISORY: ${{ vars.PR_ADVISORY_LANES }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -185,7 +184,7 @@ jobs:
           esac
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
                 --advisory "$ADVISORY_LANES" --runner-state "$RUNNER_TEMP/runner-state.json"
-                --runner-disabled "$RUNNER_DISABLED" --blacksmith "$BLACKSMITH" --pr-advisory "${PR_ADVISORY:-on}" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
+                --runner-disabled "$RUNNER_DISABLED" --pr-advisory "${PR_ADVISORY:-on}" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
                 --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --run-id "$GITHUB_RUN_ID" --self-hosted "$SELF_HOSTED")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
           [[ -f build/ci-inputs/coverage-map.json ]] && args+=(--coverage-map build/ci-inputs/coverage-map.json)
@@ -1213,14 +1212,14 @@ jobs:
       # 18 min cold on a hosted runner: a hung test fails here, not at the job's 300 min (a link-following
       # cleanup hung for 3 h on je-mac, merge-queue run of #162)
       - name: Unit tests (CPU suites)
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' || needs.changes.outputs.macos_full == 'true'
         timeout-minutes: 60
         run: tools/ci/macos.sh tests
       - name: Call CLI without an editor
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' || needs.changes.outputs.macos_full == 'true'
         run: tools/ci/macos.sh check-cli
-      # on push too, so its objects are in the saved entry (0.81 GB with them): without, it missed all its
-      # 884 compiles in a run whose editor and engine hit 6,291 of 6,320 (PR run 45075106333)
+      # on every push, macos_full or not, so its objects are in the saved entry (0.81 GB with them): without,
+      # it missed all its 884 compiles in a run whose editor and engine hit 6,291 of 6,320 (PR run 45075106333)
       - name: Compile build of post-processing
         if: ${{ !cancelled() }}
         run: tools/ci/macos.sh compile-smoke tools/fixtures/post-processing

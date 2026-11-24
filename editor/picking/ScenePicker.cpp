@@ -13,6 +13,7 @@
 #include "component/MeshComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "component/CameraComponent.h"
 #include "IconPicker.h"
 
@@ -176,11 +177,14 @@ PickFilter ScenePicker::makeFilter(const SceneProject* layerScene, const ScenePr
     std::shared_ptr<SplineSystem> splines = layerScene->scene ? layerScene->scene->findSystem<SplineSystem>() : nullptr;
     // ... and a Voxel Volume's chunks as the volume (T6 R53)
     std::shared_ptr<VoxelSystem> voxels = layerScene->scene ? layerScene->scene->findSystem<VoxelSystem>() : nullptr;
-    filter.accept = [pickable, splines, voxels](Entity entity){
+    Scene* scene = layerScene->scene;
+    filter.accept = [pickable, splines, voxels, scene](Entity entity){
         if (pickable->count(entity) > 0){
             return true;
         }
-        Entity owner = splines ? splines->getGeneratedOwner(entity) : NULL_ENTITY;
+        // an Audio Source slot as its GameObject (S97 REQ-25)
+        Entity owner = AudioSourceSlots::ownerOf(scene, entity);
+        if (owner == NULL_ENTITY && splines) owner = splines->getGeneratedOwner(entity);
         if (owner == NULL_ENTITY && voxels){
             owner = voxels->getGeneratedOwner(entity);
         }
@@ -190,6 +194,10 @@ PickFilter ScenePicker::makeFilter(const SceneProject* layerScene, const ScenePr
 }
 
 Entity ScenePicker::pickedEntity(Scene* scene, Entity hit){
+    const Entity slotOwner = AudioSourceSlots::ownerOf(scene, hit);
+    if (slotOwner != NULL_ENTITY){
+        return slotOwner;
+    }
     std::shared_ptr<SplineSystem> splines = scene ? scene->findSystem<SplineSystem>() : nullptr;
     Entity owner = splines ? splines->getGeneratedOwner(hit) : NULL_ENTITY;
     if (owner == NULL_ENTITY){
@@ -288,7 +296,10 @@ ScenePickResult ScenePicker::pick(uint32_t viewSceneId, const ScenePickRequest& 
         auto pickable = std::make_shared<std::unordered_set<Entity>>();
         const std::vector<Entity> entities = project->getPickableEntities(viewScene);
         pickable->insert(entities.begin(), entities.end());
-        iconFilter.accept = [pickable](Entity entity){ return pickable->count(entity) > 0; };
+        Scene* iconScene = viewScene->scene;
+        iconFilter.accept = [pickable, iconScene](Entity entity){
+            return pickable->count(entity) > 0 || pickable->count(AudioSourceSlots::ownerOf(iconScene, entity)) > 0;
+        };
         std::vector<IconHit> icons;
         pickIcons(viewScene->scene, sceneRender->getCamera()->getViewProjectionMatrix(), (float)sceneRender->getViewWidth(),
                   (float)sceneRender->getViewHeight(), request.x, request.y, request.iconRadius, iconFilter, icons);
@@ -296,7 +307,11 @@ ScenePickResult ScenePicker::pick(uint32_t viewSceneId, const ScenePickRequest& 
         for (const IconHit& icon : icons){
             ScenePickEntry entry;
             entry.sceneId = viewSceneId;
-            entry.entity = icon.entity;
+            entry.entity = pickedEntity(viewScene->scene, icon.entity);
+            // a slot's icon is its GameObject's, drawn at the same place
+            if (std::any_of(result.hits.begin(), result.hits.end(), [&entry](const ScenePickEntry& e){ return e.entity == entry.entity; })){
+                continue;
+            }
             entry.hit.entity = icon.entity;
             entry.hit.kind = PickKind::ICON;
             if (const Transform* transform = viewScene->scene->findComponent<Transform>(icon.entity)){

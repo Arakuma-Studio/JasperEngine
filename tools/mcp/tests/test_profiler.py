@@ -154,6 +154,7 @@ async def test_capture_pass_output(ed: Editor):
         s = await ed.call("capture_pass_output", **{"pass": swap[0]["index"]})
         ed.check(s.get("preview_unavailable") is True and "swapchain" in s["reason"], f"swapchain: {s}")
     await ed.check_error("capture_pass_output", {"pass": 100000})
+    await ed.check_error("capture_pass_output", {}, contains="No such pass")
 
 
 async def test_capture_profile(ed: Editor):

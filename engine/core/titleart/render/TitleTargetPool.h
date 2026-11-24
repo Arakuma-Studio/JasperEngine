@@ -9,7 +9,9 @@
 // - Rules: contents are undefined on acquire (a pass that needs a clear clears). A target unused
 //   for TITLE_TARGET_IDLE_RENDERS complete renders is freed (endRender() counts them). The pool
 //   never exceeds its byte limit: an acquire beyond it frees idle targets first (least recently
-//   used), then fails (problem `out_of_target_memory`), never exhausting the engine's GPU pools.
+//   used), then has the reclaim hook give back lent targets their holder can do without (the node
+//   cache's results kept across renders, least recently used first), then fails (problem
+//   `out_of_target_memory`), never exhausting the engine's GPU pools.
 //   clear() drops every target (device loss: SystemRender::getContextId() changed); a TargetRef
 //   held across it reads null and returns nothing. The 2D passes request neither depth nor
 //   MSAA; S86's 3D passes request them under their own keys and hand plain colour targets back
@@ -24,6 +26,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -136,6 +139,9 @@ namespace jasperengine::titleart {
         void clear();
 
         void setMaxBytes(size_t bytes) { limit = bytes; }
+        // what an acquire the limit refuses asks to give back a lent target (TitleRenderServices:
+        // the node cache's least recently used entry); it returns false once it has nothing to give
+        void setReclaim(std::function<bool()> giveBack) { reclaim = std::move(giveBack); }
         size_t maxBytes() const { return limit; }
         const TitleTargetPoolStats& stats() const { return counters; }
         void resetPeak() { counters.peakBytes = counters.bytesLive; }
@@ -152,6 +158,7 @@ namespace jasperengine::titleart {
         };
         TitleTargetAllocator& allocator;
         size_t limit = 0;
+        std::function<bool()> reclaim;
         std::vector<Slot> slots;
         std::vector<size_t> freeSlots;
         uint64_t generation = 1;
