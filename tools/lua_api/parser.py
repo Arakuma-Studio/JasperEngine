@@ -1976,11 +1976,6 @@ OVERRIDES = {
     },
 }
 
-# Mesh Space Rotation (docs/specs/mesh-space-rotation.md R14): read from the stack so that
-# `enabled` is required and the layer is an index or a name
-OVERRIDES[('Animator', 'setLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string'), ('enabled', 'boolean')], '')]}
-OVERRIDES[('Animator', 'getLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string')], 'boolean')]}
-
 # T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
 OVERRIDES[('TerrainWorld', 'waitForArea')] = {
     'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
@@ -2088,6 +2083,11 @@ OVERRIDES.update({
                 "(at the next safe point, with its running state). False (logged) when the scene is not loaded."],
         'overloads': [([('obj', 'EntityHandle|ScriptInstance'), ('scene', 'Scene')], 'boolean')]},
 })
+
+# Mesh Space Rotation (docs/specs/mesh-space-rotation.md R14): read from the stack so that
+# `enabled` is required and the layer is an index or a name
+OVERRIDES[('Animator', 'setLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string'), ('enabled', 'boolean')], '')]}
+OVERRIDES[('Animator', 'getLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string')], 'boolean')]}
 
 # Line and Trail Renderers (lines and trails spec 6.6): the points by 0-based index (Unity's
 # SetPosition / GetPosition); an index out of range raises an error naming positionCount.
