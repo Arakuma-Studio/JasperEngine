@@ -1980,6 +1980,12 @@ OVERRIDES = {
 OVERRIDES[('Quaternion', 'euler')] = {
     'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('order?', 'RotationOrder')], 'Quaternion')]}
 
+# S95 REQ-3: GameObject's transform members are nil only on an entity without a Transform (an
+# action, a tween); typed as before, so a script reading go.position needs no nil check
+for _name, _type in (('getWorldPosition', 'Vector3'), ('getWorldRotation', 'Quaternion'), ('getWorldScale', 'Vector3')):
+    OVERRIDES[('GameObject', _name)] = {'doc': ['Current (composed when it moved since the last transform pass); nil without a Transform.'],
+                                        'overloads': [([], _type)]}
+
 # S96 REQ-29: the Ragdoll wizard at run time, its arguments read by hand (LuaRef)
 OVERRIDES[('Ragdoll', 'create')] = {
     'doc': ["Unity's Ragdoll Wizard on a live character: bodies, colliders and joints on its bones, all made before",
@@ -2867,6 +2873,10 @@ PROPERTY_OVERRIDES = {
         'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
         'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'collision', 'trails',
         'customData', 'externalForces', 'renderer', 'pixelArt')},
+    # S95 REQ-3: typed as before (nil only without a Transform), copies as before
+    **{('GameObject', _m): (_t, True) for _m, _t in (
+        ('position', 'Vector3'), ('rotation', 'Quaternion'), ('scale', 'Vector3'), ('localMatrix', 'Matrix4'),
+        ('modelMatrix', 'Matrix4'), ('normalMatrix', 'Matrix4'))},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
     # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
