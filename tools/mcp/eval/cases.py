@@ -5668,6 +5668,35 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
+    # ---- S94 F42: an older project keeps the old FBX submesh order (the project migration)
+    {
+        "id": "guard_fbx_submesh_order_setting",
+        "kind": "guard",
+        "what_happened": "New text (S94 F42): projects made before submeshes followed the FBX material slots keep "
+                         "mesh.fbx_submesh_order used_materials; an agent porting a Unity model whose submeshes come out "
+                         "shifted (an empty slot) switches the setting instead of reordering the materials by hand.",
+        "text_at_issue": "get_project_settings describe: mesh.fbx_submesh_order 'An FBX mesh's submeshes: material_slots "
+                         "(submesh i is material slot i, Unity's order; new projects) or used_materials (the used slots in "
+                         "order, projects made before; a change reimports every FBX).'",
+        "source": "S94 F42 and the lead's old-projects rule (new setting text); no failure on record",
+        "prompt": "This project is older. In Unity, submesh 1 of assets/models/robot.fbx is the eyes (its material slot 0 "
+                  "is unused), but here the eyes are submesh 0. Make every FBX's submeshes follow Unity's material slots.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "mesh.fbx_submesh_order = used_materials (enum: material_slots, used_materials): An FBX mesh's submeshes: "
+                "material_slots (submesh i is material slot i, Unity's order; new projects) or used_materials (the used "
+                "slots in order, projects made before; a change reimports every FBX).",
+                {"mesh.fbx_submesh_order": "used_materials"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["mesh.fbx_submesh_order"]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "mesh.fbx_submesh_order = material_slots", {"mesh.fbx_submesh_order": "material_slots"})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"mesh.fbx_submesh_order": "material_slots"}}}],
+                   "must_not_call": ["set_properties", "link_material", "set_model_import_settings"],
+                   "edits_must_not": [r"project\.yaml$", r"\.meta$"]},
+        "max_turns": 10,
+    },
     # ---- S94 P2: Property Overrides (MaterialPropertyBlock) and the shadowed Mesh value
     {
         "id": "guard_property_override_per_object_colour",
