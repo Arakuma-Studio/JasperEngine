@@ -517,6 +517,7 @@ void editor::InspectorWindow::drawNavMeshAgentComponent(ComponentType cpType, Sc
         propertyRow(RowPropertyType::FloatPositive, cpType, "stuckTimeout", "Stuck After (s)", sceneProject, entities, settingsTimeout);
         propertyRow(RowPropertyType::Bool, cpType, "repathWhenStuck", "Repath When Stuck", sceneProject, entities, settingsRepath);
         endTable();
+        endFoldout();
     }
 
     // what the crowd says, while the scene plays (R32)

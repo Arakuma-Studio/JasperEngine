@@ -168,7 +168,8 @@ TEST_F(Title3DRendererGpu, TheBendChangesTheRampRedControl) {
     EXPECT_GT((double)changed / covered, 0.02) << "gradient_bend 0 changes the bevels' ramp";
 }
 
-TEST_F(Title3DRendererGpu, CompressedLightAgreesWithFloat) {
+// (its forced render builds the 1024 environment on the CPU twin: 6 min under ASan on 4 cores)
+TEST_F(Title3DFallbackGpuSlow, CompressedLightAgreesWithFloat) {
     if (!SystemRender::getFeatures().renderRGBA16F || !SystemRender::getFeatures().msaaRGBA16F) GTEST_SKIP() << "no float MSAA here";
     auto renderer = geometryRenderer();
     const Pixels floats = render(*renderer, title3DRendererRequestOf(doc3D(plate3D())));

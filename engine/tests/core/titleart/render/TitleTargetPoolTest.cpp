@@ -3,8 +3,11 @@
 
 #include <gtest/gtest.h>
 
+#include "titleart/render/TitleRenderServices.h"
 #include "titleart/render/TitleTargetPool.h"
 
+#include <memory>
+#include <string>
 #include <vector>
 
 using namespace jasperengine;
@@ -147,4 +150,37 @@ TEST_F(TitleTargetPoolTest, ClearInvalidatesLentRefs) {
     EXPECT_FALSE(b);
     EXPECT_TRUE(moved);
     EXPECT_EQ(pool.stats().peakBytes, targetBytes(colour(64, 64)));
+}
+
+TEST_F(TitleTargetPoolTest, TheNodeCacheGivesWayBeforeAnAcquireFails) {
+    // the results the node cache keeps across renders are lent targets: an acquire the limit refuses
+    // takes them back, least recently used first, before it fails (the title library gate's renders
+    // failed out_of_target_memory needing 1 to 4 MB while 120 MB of earlier results stayed cached)
+    FakeAllocator allocator;
+    const size_t one = targetBytes(colour(256, 256));
+    TitleTargetPool pool(allocator, 3 * one);
+    TitleRenderCache cache(16 * one);
+    pool.setReclaim([&cache]() { return cache.evictOldest(); });
+    for (uint64_t key = 1; key <= 3; key++) {
+        auto entry = std::make_shared<TitleCacheEntry>();
+        entry->key = key;
+        entry->target = pool.acquire(colour(256, 256));
+        ASSERT_TRUE(entry->target);
+        cache.insert(entry);
+    }
+    std::string error;
+    TargetRef fresh = pool.acquire(colour(128, 128), &error);
+    ASSERT_TRUE(fresh) << error;
+    EXPECT_EQ(cache.find(1), nullptr) << "the least recently used result went";
+    EXPECT_NE(cache.find(3), nullptr) << "only as many as the acquire needed";
+    EXPECT_LE(pool.stats().bytesLive + pool.stats().bytesIdle, pool.maxBytes());
+
+    // a result a job still holds is not the pool's to take: with nothing else cached the acquire fails
+    std::shared_ptr<TitleCacheEntry> held = cache.find(3);
+    ASSERT_NE(held, nullptr);
+    TargetRef big = pool.acquire(colour(256, 512), &error);
+    EXPECT_FALSE(big);
+    EXPECT_NE(error.find("out_of_target_memory"), std::string::npos) << error;
+    EXPECT_EQ(cache.size(), 0u) << "the cache gave everything it had";
+    EXPECT_TRUE(held->target) << "the held result is still the job's";
 }
