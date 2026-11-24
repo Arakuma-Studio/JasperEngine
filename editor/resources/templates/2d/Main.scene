@@ -1,6 +1,6 @@
 formatVersion: 8
-guid: 98fcc787aa96cf696a44381431b4de3c
-id: 2813437644
+guid: 5d4c8474e1a9269d354f5031acf808b2
+id: 3111187337
 name: Main
 scene:
   backgroundColor: [0.231, 0.298, 0.475, 1]
@@ -14,6 +14,7 @@ scene:
   litQuality: high
   ambientLight2DIntensity: 1
   ambientLight2DColor: [1, 1, 1]
+  ambientLight2DWithoutLights: true
   shadow2DQuality: low
   ssaoEnabled: false
   ssaoRadius: 0.5
