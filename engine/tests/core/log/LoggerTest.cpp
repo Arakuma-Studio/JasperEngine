@@ -10,6 +10,7 @@
 #include "util/StringUtils.h"
 #include "script/LuaBinding.h"
 #include "lua.hpp"
+#include "jobs/detail/TimedWait.h"
 
 #include <gtest/gtest.h>
 
@@ -44,7 +45,7 @@ namespace {
         heldSweep.taken = true;
         heldSweep.changed.notify_all();
         // long enough for a flush that does not wait for this sweep to return without its summary
-        heldSweep.changed.wait_for(lock, std::chrono::milliseconds(300), []() { return heldSweep.released; });
+        jobs::detail::timedWait(heldSweep.changed, lock, std::chrono::milliseconds(300), []() { return heldSweep.released; });
     }
 
     int loggerSideEffects = 0;
@@ -363,7 +364,7 @@ TEST(LoggerTest, FlushWaitsForTheSummaryTheDrainThreadIsLogging) {
     bool taken = false;
     {
         std::unique_lock<std::mutex> lock(heldSweep.mutex);
-        taken = heldSweep.changed.wait_for(lock, std::chrono::seconds(10), []() { return heldSweep.taken; });
+        taken = jobs::detail::timedWait(heldSweep.changed, lock, std::chrono::seconds(10), []() { return heldSweep.taken; });
     }
     if (taken) Logger::flush();
     const size_t summaries = sink->containing("suppressed 50 similar messages: \"drain sweep\"").size();
