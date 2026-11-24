@@ -283,24 +283,36 @@ class Watchdog:
         return True
 
     def finish(self, run: dict, why: str) -> None:
+        """Rerun a stopped run, or put its pull request back in the queue: one try (a failure is logged
+        and left), within the hourly limit."""
         key = str(run["id"])
         kinds = self.kinds(key)
+        if not self.allowed():
+            return  # (still pending: the next hour's budget takes it)
         if run.get("event") == "merge_group":
             m = QUEUE_REF.match(run.get("head_branch") or "")
-            if m and self.act("re-enqueue the pull request of", run, f"#{m.group(1)} back at the front of the merge queue: {why}",
-                              lambda: self.gh.enqueue(int(m.group(1)))):
-                self.record(key, "requeued", why, kinds)
-            elif not m:
+            if not m:
                 self.log(f"run {run['id']}: a merge-queue run without a pull request in {run.get('head_branch')}: left")
                 self.record(key, "left", why, kinds)
+                return
+            pr = int(m.group(1))
+            queued = self.gh.queue_state(pr)
+            if queued:
+                self.log(f"run {run['id']}: #{pr} is {queued} already: nothing to do ({why})")
+                self.record(key, "requeued", why, kinds)
+                return
+            ok = self.act("re-enqueue the pull request of", run, f"#{pr} back at the front of the merge queue: {why}",
+                          lambda: self.gh.enqueue(pr))
+            self.record(key, "requeued" if ok else "left", why, kinds)
             return
         # (a pull request's newer push has a run of its own: a rerun of this one would cancel it)
         newest = self.gh.newest_run(run) if run.get("event") == "pull_request" else run["id"]
         if newest != run["id"]:
             self.log(f"run {run['id']}: superseded by run {newest} of {run.get('head_branch')}: not rerun ({why})")
             self.record(key, "left", why, kinds)
-        elif self.act("rerun", run, why, lambda: self.gh.rerun(run["id"])):
-            self.record(key, "rerun", why, kinds)
+        else:
+            ok = self.act("rerun", run, why, lambda: self.gh.rerun(run["id"]))
+            self.record(key, "rerun" if ok else "left", why, kinds)
 
     def pending(self) -> list[str]:
         """Runs it cancelled and has not rerun yet."""
@@ -418,6 +430,19 @@ class Gh:
 
     def rerun(self, run_id) -> bool:
         return self._cli("run", "rerun", str(run_id))
+
+    def queue_state(self, pr: int) -> str:
+        """Why the pull request needs no enqueue: "in the merge queue" or "closed", else ""."""
+        self.calls += 1
+        owner, name = self.repo.split("/")
+        r = subprocess.run(["gh", "api", "graphql", "-f", "query=query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n)"
+                            "{pullRequest(number:$p){state mergeQueueEntry{state}}}}", "-F", f"o={owner}", "-F", f"n={name}",
+                            "-F", f"p={pr}", "--jq", ".data.repository.pullRequest | [.state, (.mergeQueueEntry.state // \"\")] | @tsv"],
+                           capture_output=True, text=True, timeout=60)
+        state, _, entry = r.stdout.strip().partition("\t")
+        if r.returncode != 0 or not state:
+            return ""
+        return "in the merge queue" if entry else ("" if state == "OPEN" else state.lower())
 
     def enqueue(self, pr: int) -> bool:
         """Back in the merge queue, at its front (it was building there when the watchdog stopped it)."""

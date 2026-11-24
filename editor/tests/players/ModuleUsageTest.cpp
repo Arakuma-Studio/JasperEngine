@@ -9,6 +9,11 @@
 #include "players/ShaderNeutralApi.h"
 #include "players/PlayerRuntimes.h"
 #include "util/LuaApiData.h"
+#include "titleart/TitleArtIO.h"
+#include "titleart/render/TitleArtCaps.h"
+#include "titleart/render/TitleArtRenderer.h"
+#include "titleart/runtime/TitleArtExportKeys.h"
+#include "TempDir.h"
 #include "player/PlayerModules.h"
 
 #include "Scene.h"
@@ -37,6 +42,7 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <memory>
 #include <set>
 #include <string>
 
@@ -522,6 +528,48 @@ TEST(ShaderNeutralApi, NeutralClassesAreTheReviewedOnes) {
             for (const mcp::Json& member : cls[key]) members.insert(member.value("name", ""));
         for (const std::string& member : neutral) EXPECT_TRUE(members.count(member)) << name << "." << member << " is not bound";
     }
+}
+
+TEST(ShaderNeutralApi, TitleArtExportIncludesLocalizedShaderPlans) {
+    const titleart::TitleArtParseResult parsed = titleart::parseTitleArt(R"({
+        "format": "jasperengine.titleart", "version": 1,
+        "canvas": {"width": 128, "height": 128},
+        "source_language": "en", "languages": [{"code": "ja"}],
+        "layers": [{
+            "id": "00000001", "type": "shape", "name": "Japanese badge",
+            "shape": "rect", "size": 64, "only_languages": ["ja"],
+            "style": {
+                "face": {"fill": {"kind": "solid", "color": "#ffffff"}},
+                "rims": [{"id": "00000002", "width": 4,
+                    "material": {"fill": {"kind": "solid", "color": "#ffcc00"}}}]
+            }
+        }]
+    })");
+    ASSERT_TRUE(parsed.ok);
+    test::TempDir dir;
+    dir.write("localized.titleart", titleart::writeTitleArt(parsed.doc));
+
+    titleart::TitleArtRenderer renderer;
+    titleart::RenderRequest request;
+    request.doc = std::make_shared<const titleart::TitleArtDoc>(parsed.doc);
+    request.testFlags = titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS;
+    const auto source = renderer.begin(request);
+    ASSERT_TRUE(source);
+    const auto sourcePrograms = source->shaderKeys();
+    const std::set<ShaderKey> sourceKeys(sourcePrograms.begin(), sourcePrograms.end());
+    request.language = "ja";
+    const auto localized = renderer.begin(request);
+    ASSERT_TRUE(localized);
+    const auto localizedKeys = localized->shaderKeys();
+    bool hasLocalizedProgram = false;
+    for (const ShaderKey& key : localizedKeys) hasLocalizedProgram = hasLocalizedProgram || !sourceKeys.count(key);
+    ASSERT_TRUE(hasLocalizedProgram) << "the translated badge must use a shader absent from the source language";
+
+    std::set<ShaderKey> collected;
+    std::string error;
+    ASSERT_TRUE(addTitleArtRenderKeys(dir.path(), "localized.titleart", collected, &error)) << error;
+    for (const ShaderKey& key : localizedKeys)
+        EXPECT_TRUE(collected.count(key)) << "an authored language's shader must be cooked before Lua selects that language";
 }
 
 TEST(ShaderNeutralApi, NeutralMembersGiveNoDrawingObject) {
