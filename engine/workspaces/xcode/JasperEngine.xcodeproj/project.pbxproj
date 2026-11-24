@@ -4991,16 +4991,16 @@
 		4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */; };
 		4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
 		4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
-		4A534E473C3F3FAB6431E070 /* GameRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702453DBB311CF515 /* GameRunner.cpp */; };
-		4A534E4752B2DFA7EE1A4622 /* GameRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702453DBB311CF515 /* GameRunner.cpp */; };
-		4A534E47AED253F50FD5B635 /* StrippedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A46D102198AF060B /* StrippedAssets.cpp */; };
-		4A534E47ECB526055E579D5A /* StrippedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A46D102198AF060B /* StrippedAssets.cpp */; };
-		4A534E47370533C6085BB91A /* MeshAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */; };
-		4A534E47FD2BD71465E394EE /* MeshAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */; };
-		4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47315BA78BA4D638EE /* StrippedAssets.h */; };
-		4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D91AB01B3A49CD25 /* MeshAsset.h */; };
-		4A534E473F514FDB62D83E2C /* GameRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4709862CF7780A4732 /* GameRunner.h */; };
 		4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477CE603833084E5A8 /* PortableMath.h */; };
+		4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
+		4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
+		4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */; };
+		4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */; };
+		4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */; };
+		4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */; };
+		4A534E470B4DE35C16A95940 /* SourceEffects.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474EF3A626395839CB /* SourceEffects.h */; };
+		4A534E4790C4382A59538EAB /* AudioSourceEffect.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478EC1864DF63D273D /* AudioSourceEffect.h */; };
+		4A534E4729EC20A3DF0CF8E6 /* AudioSourceSlots.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474DECF4105CE3068D /* AudioSourceSlots.h */; };
 		4A534E477CA16A548FA924E8 /* AttachedColliders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */; };
 		4A534E47B86E79A06AA0DD68 /* AttachedColliders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */; };
 		4A534E47FC8CBCD2B88E40BD /* PhysicsQueries2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */; };
@@ -5035,15 +5035,15 @@
 		4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C03036C6074531C9 /* WorldSettings.h */; };
 		4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */; };
 		4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */; };
-		4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
-		4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
-		4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */; };
-		4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */; };
-		4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */; };
-		4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */; };
-		4A534E470B4DE35C16A95940 /* SourceEffects.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474EF3A626395839CB /* SourceEffects.h */; };
-		4A534E4790C4382A59538EAB /* AudioSourceEffect.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478EC1864DF63D273D /* AudioSourceEffect.h */; };
-		4A534E4729EC20A3DF0CF8E6 /* AudioSourceSlots.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474DECF4105CE3068D /* AudioSourceSlots.h */; };
+		4A534E473C3F3FAB6431E070 /* GameRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702453DBB311CF515 /* GameRunner.cpp */; };
+		4A534E4752B2DFA7EE1A4622 /* GameRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702453DBB311CF515 /* GameRunner.cpp */; };
+		4A534E47AED253F50FD5B635 /* StrippedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A46D102198AF060B /* StrippedAssets.cpp */; };
+		4A534E47ECB526055E579D5A /* StrippedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A46D102198AF060B /* StrippedAssets.cpp */; };
+		4A534E47370533C6085BB91A /* MeshAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */; };
+		4A534E47FD2BD71465E394EE /* MeshAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */; };
+		4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47315BA78BA4D638EE /* StrippedAssets.h */; };
+		4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D91AB01B3A49CD25 /* MeshAsset.h */; };
+		4A534E473F514FDB62D83E2C /* GameRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4709862CF7780A4732 /* GameRunner.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9661,13 +9661,13 @@
 		4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.offset.cpp; sourceTree = "<group>"; };
 		4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.rectclip.cpp; sourceTree = "<group>"; };
 		4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.triangulation.cpp; sourceTree = "<group>"; };
-		4A534E4702453DBB311CF515 /* GameRunner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GameRunner.cpp; sourceTree = "<group>"; };
-		4A534E47A46D102198AF060B /* StrippedAssets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StrippedAssets.cpp; sourceTree = "<group>"; };
-		4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshAsset.cpp; sourceTree = "<group>"; };
-		4A534E47315BA78BA4D638EE /* StrippedAssets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StrippedAssets.h; sourceTree = "<group>"; };
-		4A534E47D91AB01B3A49CD25 /* MeshAsset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshAsset.h; sourceTree = "<group>"; };
-		4A534E4709862CF7780A4732 /* GameRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GameRunner.h; sourceTree = "<group>"; };
 		4A534E477CE603833084E5A8 /* PortableMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PortableMath.h; sourceTree = "<group>"; };
+		4A534E472C361D2083EA2902 /* SourceEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SourceEffects.cpp; sourceTree = "<group>"; };
+		4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceSlots.cpp; sourceTree = "<group>"; };
+		4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceEffect.cpp; sourceTree = "<group>"; };
+		4A534E474EF3A626395839CB /* SourceEffects.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SourceEffects.h; sourceTree = "<group>"; };
+		4A534E478EC1864DF63D273D /* AudioSourceEffect.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSourceEffect.h; sourceTree = "<group>"; };
+		4A534E474DECF4105CE3068D /* AudioSourceSlots.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSourceSlots.h; sourceTree = "<group>"; };
 		4A534E47E43C14B51CACB006 /* AttachedColliders.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AttachedColliders.cpp; sourceTree = "<group>"; };
 		4A534E47CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueries2D.cpp; sourceTree = "<group>"; };
 		4A534E47CB4D8FF50BF0CC66 /* PhysicsQueries3D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueries3D.cpp; sourceTree = "<group>"; };
@@ -9691,12 +9691,12 @@
 		4A534E47C03036C6074531C9 /* WorldSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldSettings.h; sourceTree = "<group>"; };
 		4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueriesLua.h; sourceTree = "<group>"; };
 		4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VehicleSystem.h; sourceTree = "<group>"; };
-		4A534E472C361D2083EA2902 /* SourceEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SourceEffects.cpp; sourceTree = "<group>"; };
-		4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceSlots.cpp; sourceTree = "<group>"; };
-		4A534E470203A42B99F7D165 /* AudioSourceEffect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceEffect.cpp; sourceTree = "<group>"; };
-		4A534E474EF3A626395839CB /* SourceEffects.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SourceEffects.h; sourceTree = "<group>"; };
-		4A534E478EC1864DF63D273D /* AudioSourceEffect.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSourceEffect.h; sourceTree = "<group>"; };
-		4A534E474DECF4105CE3068D /* AudioSourceSlots.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSourceSlots.h; sourceTree = "<group>"; };
+		4A534E4702453DBB311CF515 /* GameRunner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GameRunner.cpp; sourceTree = "<group>"; };
+		4A534E47A46D102198AF060B /* StrippedAssets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StrippedAssets.cpp; sourceTree = "<group>"; };
+		4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshAsset.cpp; sourceTree = "<group>"; };
+		4A534E47315BA78BA4D638EE /* StrippedAssets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StrippedAssets.h; sourceTree = "<group>"; };
+		4A534E47D91AB01B3A49CD25 /* MeshAsset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshAsset.h; sourceTree = "<group>"; };
+		4A534E4709862CF7780A4732 /* GameRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GameRunner.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -17144,10 +17144,10 @@
 				4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */,
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
-				4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */,
-				4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */,
-				4A534E473F514FDB62D83E2C /* GameRunner.h in Headers */,
 				4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */,
+				4A534E470B4DE35C16A95940 /* SourceEffects.h in Headers */,
+				4A534E4790C4382A59538EAB /* AudioSourceEffect.h in Headers */,
+				4A534E4729EC20A3DF0CF8E6 /* AudioSourceSlots.h in Headers */,
 				4A534E47946C68330BA202BD /* VehicleDrivetrainComponent.h in Headers */,
 				4A534E47EED28576C5085AC2 /* WheelColliderComponent.h in Headers */,
 				4A534E470D50327A4342A2AF /* VehicleDrivetrain.h in Headers */,
@@ -17160,9 +17160,9 @@
 				4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */,
 				4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */,
 				4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */,
-				4A534E470B4DE35C16A95940 /* SourceEffects.h in Headers */,
-				4A534E4790C4382A59538EAB /* AudioSourceEffect.h in Headers */,
-				4A534E4729EC20A3DF0CF8E6 /* AudioSourceSlots.h in Headers */,
+				4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */,
+				4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */,
+				4A534E473F514FDB62D83E2C /* GameRunner.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19867,9 +19867,9 @@
 				4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */,
 				4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */,
 				4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */,
-				4A534E473C3F3FAB6431E070 /* GameRunner.cpp in Sources */,
-				4A534E47AED253F50FD5B635 /* StrippedAssets.cpp in Sources */,
-				4A534E47370533C6085BB91A /* MeshAsset.cpp in Sources */,
+				4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */,
+				4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */,
+				4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */,
 				4A534E477CA16A548FA924E8 /* AttachedColliders.cpp in Sources */,
 				4A534E47FC8CBCD2B88E40BD /* PhysicsQueries2D.cpp in Sources */,
 				4A534E476E579B2C1F79BEA7 /* PhysicsQueries3D.cpp in Sources */,
@@ -19881,9 +19881,9 @@
 				4A534E478AA5B63EAA52315B /* VehicleDrivetrain.cpp in Sources */,
 				4A534E4757409C2B8884C336 /* VehicleClassesLua.cpp in Sources */,
 				4A534E47706936990B8552E9 /* PhysicsSystemWorldSettings.cpp in Sources */,
-				4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */,
-				4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */,
-				4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */,
+				4A534E473C3F3FAB6431E070 /* GameRunner.cpp in Sources */,
+				4A534E47AED253F50FD5B635 /* StrippedAssets.cpp in Sources */,
+				4A534E47370533C6085BB91A /* MeshAsset.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20879,9 +20879,9 @@
 				4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */,
 				4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */,
 				4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */,
-				4A534E4752B2DFA7EE1A4622 /* GameRunner.cpp in Sources */,
-				4A534E47ECB526055E579D5A /* StrippedAssets.cpp in Sources */,
-				4A534E47FD2BD71465E394EE /* MeshAsset.cpp in Sources */,
+				4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */,
+				4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */,
+				4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */,
 				4A534E47B86E79A06AA0DD68 /* AttachedColliders.cpp in Sources */,
 				4A534E473BBFA78FB6C0C915 /* PhysicsQueries2D.cpp in Sources */,
 				4A534E47D29CEE5B8C15A3A9 /* PhysicsQueries3D.cpp in Sources */,
@@ -20893,9 +20893,9 @@
 				4A534E4745EC5F61B6962A54 /* VehicleDrivetrain.cpp in Sources */,
 				4A534E47BE01B38E98FA2F1E /* VehicleClassesLua.cpp in Sources */,
 				4A534E47C8BC5AC830F6D577 /* PhysicsSystemWorldSettings.cpp in Sources */,
-				4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */,
-				4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */,
-				4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */,
+				4A534E4752B2DFA7EE1A4622 /* GameRunner.cpp in Sources */,
+				4A534E47ECB526055E579D5A /* StrippedAssets.cpp in Sources */,
+				4A534E47FD2BD71465E394EE /* MeshAsset.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

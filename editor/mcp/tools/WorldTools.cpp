@@ -6674,7 +6674,7 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- physics
     add("edit_colliders", "Edit Colliders",
-        "Add/update/remove/decompose a Rigidbody (2D)'s colliders, creating a missing body (no edits: list). "
+        "Add/update/remove/decompose a Rigidbody (2D)'s colliders, making a missing body (no edits: list). "
         "2D: box, circle, capsule, segment, polygon, chain; 3D: box, sphere, capsule, cylinder, tapered_capsule, "
         "convex_hull, mesh, heightfield. New shapes fit the drawn object unless fit: false. Fields: jasper://docs/physics.",
         object({
