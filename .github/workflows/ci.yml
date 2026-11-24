@@ -1055,7 +1055,7 @@ jobs:
         if: env.COMPILES == 'true'
         with:
           lane: windows-${{ matrix.part }}
-          max-size: ${{ fromJSON('{"editor":"0.95G","engine-glcore":"2.0G","engine-d3d11":"1.5G","engine-vulkan":"1.5G"}')[matrix.part] }}
+          max-size: ${{ fromJSON('{"editor":"0.95G","engine-glcore":"1.6G","engine-d3d11":"0.4G","engine-vulkan":"0.4G"}')[matrix.part] }}
 
       - name: Editor
         if: matrix.part == 'editor'
@@ -1112,8 +1112,10 @@ jobs:
         if: matrix.part == 'engine-glcore' && env.MAIN_STAGE != 'true'
         run: TEST_SUITES=core tools/ci/windows.sh tests glcore
 
+      # not a cancelled job's: what it had not reached yet would be evicted from the entry it saved (a
+      # glcore leg cancelled 12 min in saved 259 MB over a whole build's 1.2 GB, PR 176's run 45312125810)
       - uses: ./.github/actions/ccache-save
-        if: always() && env.COMPILES == 'true'
+        if: ${{ !cancelled() && env.COMPILES == 'true' }}
         with:
           lane: windows-${{ matrix.part }}
           prune: 'true'
@@ -1207,8 +1209,9 @@ jobs:
         if: ${{ !cancelled() }}
         run: tools/ci/macos.sh compile-smoke tools/fixtures/post-processing
 
+      # (not a cancelled job's, as windows')
       - uses: ./.github/actions/ccache-save
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           lane: macos
           prune: 'true'

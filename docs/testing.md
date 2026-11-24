@@ -1226,19 +1226,21 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   | htmlui | 0.78 (2,176 compiles, Release) | 1.66 | 0.85G | yes |
   | macOS | 0.81 with the Compile build, which a push makes for it (PR run 45075106333) | 1.30-1.37 | 0.9G | yes |
   | Windows editor | 0.92 (MSVC: `/Z7` as before) | 0.91 | 0.95G | yes |
-  | Windows OpenGL | 1.4 (`/Z7`: its core tests' reports name frames) | | 1.5G | yes |
-  | Windows D3D11, Vulkan | not measured on a hosted runner yet (Release, no debug information) | | 0.8G each | yes |
-  | Windows Compile | not measured | | | no: the budget holds the engine legs', which shorten the lane more (each leg 54-109 min cold, the Compile build 17-33) |
+  | Windows OpenGL | 1.50 (1.4 GiB; `/Z7`: its core tests' reports name frames), 1.29 recompressed; PR 176's run 45274919394 | | 1.6G | yes |
+  | Windows D3D11, Vulkan | 0.35 each (337 MiB; Release, no debug information), 0.31 recompressed; same run | | 0.4G each | yes |
+  | Windows Compile | 0.45 (425 MiB), 0.38 recompressed; same run | | | no: the budget holds the engine legs', which shorten the lane more (each leg 54-109 min cold, the Compile build 17-33) |
   | iOS and macOS Xcode (`xcode-cas`, Xcode's compilation cache, no debug symbols) | 1.14-1.23 raw, 0.35-0.38 compressed (both SDKs, five builds of two commits 36 apart, on the Mac); saved by the nightly's `ios` job on `main` (a push would take a macOS runner for a lane the queue mostly leaves out), and it only grows, so a nightly that restores over 2 GB starts it afresh (`COMPILATION_CACHE_LIMIT_SIZE=1600M` held it at 1.78 GB with 92 % hits on a commit seen before, against 100 % without) | iOS alone 0.89 compressed | 2 GB raw (`fresh-over`) | yes |
   | Android | 0.27 | 0.63 | 0.3G | yes |
   | web | 0.24 | 0.48 | 0.3G | yes |
   | smoke | 1.93 (the player runtime and two Compile builds, which share nothing: each its own directory) | 3.5 | 0.5G | yes, the last-used part: the second Compile build |
   | Gradle, Vulkan SDK, MCP timings, uv | 0.73, 0.21, under 0.01 each | | | yes |
 
-  At most 9.0 GB of caps plus 0.96 GB of the rest, 9.96 GB in ccache's sizes; GitHub counts the saved
-  archives, about 0.96 of those (asan-editor: 1,526 MB for its 1.59 GB), and a cut entry holds about
-  92 % of its cap, so full caps would hold about 9.2 GB (8.9 GB at these working sets, smoke cut to
-  its cap). A cap a few percent above its working set still cuts it: ccache 4.5 (the image's) empties
+  The caps add up to 11.4 GB in ccache's sizes; a saved entry is recompressed to about 0.86 of its
+  working set (the Windows engine legs: 0.86-0.89), and GitHub counts the saved archives, about 0.96
+  of that again (asan-editor: 1,526 MB for its 1.59 GB). At these working sets the ccache entries
+  come to about 8.2 GB and the rest (Gradle, the Vulkan SDK, `xcode-cas`, MCP timings, uv) to 1.3 GB,
+  9.5 GB of the 10; caps full everywhere would pass it, so a lane whose working set grows near its cap
+  needs another lane's room first. A cap a few percent above its working set still cuts it: ccache 4.5 (the image's) empties
   each of its 16 subdirectories that is over a sixteenth of the cap down to 80 % of that
   (`limit_multiple`), whatever the total, and the largest subdirectory runs about a quarter above the
   mean. asan-editor's whole build (1.58 GB, the largest subdirectory 123 MB) lost 415 of its 7,721
@@ -1249,7 +1251,8 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   same way. Smoke,
   last in line (the slowest cold lanes that run on every PR came first: unit-editor, then ASan),
   takes what is left and keeps its last-used part. A cache with no entry builds cold, its job still
-  reusing what an earlier step of the same job compiled. A lane that
+  reusing what an earlier step of the same job compiled. A cancelled job saves nothing (the Windows
+  and macOS lanes): its working set lacks what it had not reached. A lane that
   gives its entry up has its prefix in the `caches` job's second list, so its last entry goes at
   once instead of holding the budget for 7 days.
 - **Full run on any branch**: `gh workflow run ci.yml --ref <branch> -f full=true`.
