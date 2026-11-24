@@ -23,7 +23,7 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
-namespace rt = jasperengine::dialogue;
+namespace dlg = jasperengine::dialogue;
 
 namespace {
 
@@ -63,7 +63,7 @@ namespace {
         State& s = state();
         std::set<fs::path> seen;
         for (const fs::path& owner : editor::l10n::findOwners(project->getProjectPath())) {
-            if (owner.extension() != rt::FILE_EXTENSION) continue;
+            if (owner.extension() != dlg::FILE_EXTENSION) continue;
             const fs::path file = owner.lexically_normal();
             seen.insert(file);
             std::error_code ec;
@@ -76,7 +76,7 @@ namespace {
             if (ProjectChecks::readFile(file, text)) {
                 graph::LoadReport report;
                 const graph::Graph g = graph::load(text, report);
-                if (report.ok && g.kind == rt::KIND_ID) {
+                if (report.ok && g.kind == dlg::KIND_ID) {
                     if (auto guid = g.passthrough.find("guid"); guid != g.passthrough.end() && guid->is_string()) facts.guid = guid->get<std::string>();
                     for (const graph::Node& node : g.nodes) {
                         facts.nodes.insert(node.id);
@@ -102,7 +102,7 @@ namespace {
         graph::LoadReport report;
         const graph::Graph g = graph::load(text, report);
         if (!report.ok) return out;
-        for (const rt::SourceEntry& entry : rt::sourceEntries(g)) out[entry.key] = entry.text;
+        for (const dlg::SourceEntry& entry : dlg::sourceEntries(g)) out[entry.key] = entry.text;
         return out;
     }
 
@@ -110,7 +110,7 @@ namespace {
 
 void dialogues::install(Project* project) {
     uninstall();
-    rt::registerDialogueKind();
+    dlg::registerDialogueKind();
     State& s = state();
     s.project = project;
     GraphEditorHooks::KindEdits edits;
@@ -120,12 +120,12 @@ void dialogues::install(Project* project) {
         return out;
     };
     edits.created = [](Project* owner, const fs::path& file, graph::Graph& created) { prepareNew(owner, file, created, false); };
-    graphEditorHooks().kindEdits[rt::KIND_ID] = edits;
-    rt::setLintContextProvider([]() { return state().project ? lintContext(state().project) : nullptr; });
+    graphEditorHooks().kindEdits[dlg::KIND_ID] = edits;
+    dlg::setLintContextProvider([]() { return state().project ? lintContext(state().project) : nullptr; });
     // the editor's own writes: running conversations and the editor's Localization follow them
     s.graphListener = GraphEditCmd::addChangeListener([](const fs::path& file) {
-        if (file.extension() != rt::FILE_EXTENSION) return;
-        rt::Programs::fileChanged(file.string());
+        if (file.extension() != dlg::FILE_EXTENSION) return;
+        dlg::Programs::fileChanged(file.string());
         if (state().project) l10n::refreshEditorLocalization(state().project);
     });
 }
@@ -134,23 +134,23 @@ void dialogues::uninstall() {
     State& s = state();
     if (s.graphListener) GraphEditCmd::removeChangeListener(s.graphListener);
     s.graphListener = 0;
-    graphEditorHooks().kindEdits.erase(rt::KIND_ID);
-    rt::setLintContextProvider(nullptr);
+    graphEditorHooks().kindEdits.erase(dlg::KIND_ID);
+    dlg::setLintContextProvider(nullptr);
     s.project = nullptr;
     s.facts.clear();
 }
 
-std::vector<std::pair<std::string, rt::Value>> dialogues::projectDefaults(const DialogueSettings& settings) {
-    std::vector<std::pair<std::string, rt::Value>> out;
+std::vector<std::pair<std::string, dlg::Value>> dialogues::projectDefaults(const DialogueSettings& settings) {
+    std::vector<std::pair<std::string, dlg::Value>> out;
     for (const DialogueSettings::Variable& variable : settings.variables) {
         if (variable.name.empty()) continue;
         if (variable.type == "string") {
-            out.emplace_back(variable.name, rt::Value(variable.defaultValue));
+            out.emplace_back(variable.name, dlg::Value(variable.defaultValue));
         } else if (variable.type == "bool") {
-            out.emplace_back(variable.name, rt::Value(variable.defaultValue == "true" || variable.defaultValue == "1"));
+            out.emplace_back(variable.name, dlg::Value(variable.defaultValue == "true" || variable.defaultValue == "1"));
         } else {
             const nlohmann::json number = nlohmann::json::parse(variable.defaultValue, nullptr, false);
-            out.emplace_back(variable.name, rt::Value(number.is_number() ? number.get<double>() : 0.0));
+            out.emplace_back(variable.name, dlg::Value(number.is_number() ? number.get<double>() : 0.0));
         }
     }
     return out;
@@ -164,14 +164,14 @@ std::string dialogues::settingsFileText(const DialogueSettings& settings) {
         else if (value.isNumber()) variables[name] = value.asNumber();
         else variables[name] = value.toText();
     }
-    const nlohmann::ordered_json file = {{"format", rt::Variables::SETTINGS_FORMAT}, {"version", 1}, {"variables", variables}};
+    const nlohmann::ordered_json file = {{"format", dlg::Variables::SETTINGS_FORMAT}, {"version", 1}, {"variables", variables}};
     return file.dump(2) + "\n";
 }
 
 void dialogues::preparePlay(Project* project) {
-    rt::Variables::reset();
-    rt::Variables::setProjectDefaults(projectDefaults(project->getDialogueSettings()));
-    rt::Programs::clear();
+    dlg::Variables::reset();
+    dlg::Variables::setProjectDefaults(projectDefaults(project->getDialogueSettings()));
+    dlg::Programs::clear();
 }
 
 std::unique_ptr<Command> dialogues::reviewStep(Project* project, const fs::path& file, const std::string& before, const std::string& after) {
@@ -209,7 +209,7 @@ std::unique_ptr<Command> dialogues::reviewStep(Project* project, const fs::path&
 void dialogues::prepareNew(Project* project, const fs::path& file, graph::Graph& g, bool starter) {
     if (!g.passthrough.contains("guid")) g.passthrough["guid"] = AssetDatabase::generateGuid();
     if (!g.metadata.contains("namespace")) {
-        const std::string stem = rt::namespaceFromStem(file.stem().string());
+        const std::string stem = dlg::namespaceFromStem(file.stem().string());
         std::string ns = stem;
         for (int n = 2; project && !l10n::namespaceOwner(project->getProjectPath(), ns, file).empty(); n++) ns = stem + "_" + std::to_string(n);
         g.metadata["namespace"] = ns;
@@ -223,8 +223,8 @@ void dialogues::prepareNew(Project* project, const fs::path& file, graph::Graph&
     graph::apply(g, graph::opFromJson({{"op", "connect"}, {"from", {{"node", g.nodes[0].id}, {"port", "next"}}}, {"to", {{"node", g.nodes[1].id}, {"port", "in"}}}}));
 }
 
-std::shared_ptr<const rt::LintContext> dialogues::lintContext(Project* project) {
-    auto context = std::make_shared<rt::LintContext>();
+std::shared_ptr<const dlg::LintContext> dialogues::lintContext(Project* project) {
+    auto context = std::make_shared<dlg::LintContext>();
     const DialogueSettings& settings = project->getDialogueSettings();
     for (const DialogueSettings::Prefix& prefix : settings.actionPrefixes) context->actionPrefixes.insert(prefix.name);
     for (const DialogueSettings::Prefix& prefix : settings.conditionPrefixes) context->conditionPrefixes.insert(prefix.name);

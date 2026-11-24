@@ -290,7 +290,7 @@ namespace {
     }
 
     // Profiler.enabled, read and written through the table's metatable
-    int luaIndex(lua_State* L){
+    int luaPerformanceIndex(lua_State* L){
         const char* key = lua_tostring(L, 2);
         if (key && std::strcmp(key, "enabled") == 0){
 #if JASPERENGINE_PROFILER
@@ -304,7 +304,7 @@ namespace {
         return 1;
     }
 
-    int luaNewIndex(lua_State* L){
+    int luaPerformanceNewIndex(lua_State* L){
         const char* key = lua_tostring(L, 2);
         if (key && std::strcmp(key, "enabled") == 0){
 #if JASPERENGINE_PROFILER
@@ -330,9 +330,9 @@ void LuaBinding::registerProfilerClasses(lua_State* L){
     };
     luaL_newlib(L, functions);
     lua_createtable(L, 0, 2);
-    lua_pushcfunction(L, luaIndex);
+    lua_pushcfunction(L, luaPerformanceIndex);
     lua_setfield(L, -2, "__index");
-    lua_pushcfunction(L, luaNewIndex);
+    lua_pushcfunction(L, luaPerformanceNewIndex);
     lua_setfield(L, -2, "__newindex");
     lua_setmetatable(L, -2);
     lua_setglobal(L, "Profiler");

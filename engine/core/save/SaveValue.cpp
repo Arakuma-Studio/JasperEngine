@@ -51,7 +51,7 @@ namespace {
         return static_cast<int64_t>(v >> 1) ^ -static_cast<int64_t>(v & 1);
     }
 
-    void putLE(std::string& out, uint64_t v, int bytes){
+    void saveValuePutLE(std::string& out, uint64_t v, int bytes){
         for (int i = 0; i < bytes; i++) out.push_back(static_cast<char>((v >> (8 * i)) & 0xFF));
     }
 
@@ -59,13 +59,13 @@ namespace {
         uint64_t bits = 0;
         std::memcpy(&bits, &d, sizeof(bits));
         out.push_back(static_cast<char>(TagFloat));
-        putLE(out, bits, 8);
+        saveValuePutLE(out, bits, 8);
     }
 
     void putFloat32(std::string& out, float f){
         uint32_t bits;
         std::memcpy(&bits, &f, sizeof(bits));
-        putLE(out, bits, 4);
+        saveValuePutLE(out, bits, 4);
     }
 
     void putInteger(std::string& out, int64_t v){

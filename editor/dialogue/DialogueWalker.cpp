@@ -12,7 +12,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-namespace rt = jasperengine::dialogue;
+namespace dlg = jasperengine::dialogue;
 
 namespace {
 
@@ -20,9 +20,9 @@ namespace {
     class Sandbox {
     public:
         Sandbox(const dialogues::WalkOptions& options): keep(options.keepStore) {
-            saved = rt::Variables::toJson();
-            if (!keep) rt::Variables::reset();
-            for (const auto& [name, value] : options.variables) rt::Variables::set(name, value);
+            saved = dlg::Variables::toJson();
+            if (!keep) dlg::Variables::reset();
+            for (const auto& [name, value] : options.variables) dlg::Variables::set(name, value);
             if (!options.language.empty() && options.language != TitleArtLanguage::global()) {
                 language = TitleArtLanguage::global();
                 changedLanguage = TitleArtLanguage::setGlobal(options.language);
@@ -30,7 +30,7 @@ namespace {
         }
         ~Sandbox() {
             if (changedLanguage) TitleArtLanguage::setGlobal(language);
-            if (!keep) rt::Variables::fromJson(saved, nullptr, false);
+            if (!keep) dlg::Variables::fromJson(saved, nullptr, false);
         }
         Sandbox(const Sandbox&) = delete;
         Sandbox& operator=(const Sandbox&) = delete;
@@ -51,38 +51,38 @@ namespace {
     };
 
     std::string variablesKey() {
-        nlohmann::ordered_json values = rt::Variables::toJson()["variables"];
+        nlohmann::ordered_json values = dlg::Variables::toJson()["variables"];
         return values.dump();
     }
 
-    Run runOnce(const std::shared_ptr<const rt::Program>& program, const dialogues::WalkOptions& options, const std::map<std::string, bool>& assumed) {
+    Run runOnce(const std::shared_ptr<const dlg::Program>& program, const dialogues::WalkOptions& options, const std::map<std::string, bool>& assumed) {
         Run run;
         dialogues::WalkResult& out = run.result;
         Sandbox sandbox(options);
-        rt::Runner runner;
+        dlg::Runner runner;
         runner.setSeed(options.seed);
         runner.setRecording(true);
-        auto overrides = std::make_shared<rt::Runner::Overrides>();
+        auto overrides = std::make_shared<dlg::Runner::Overrides>();
         std::vector<std::string>* undecided = &run.undecided;
-        overrides->condition = [&options, &assumed, undecided](std::string_view call, std::span<const rt::Value> args) -> std::optional<rt::Value> {
-            const std::string described = rt::describeCall(call, args);
+        overrides->condition = [&options, &assumed, undecided](std::string_view call, std::span<const dlg::Value> args) -> std::optional<dlg::Value> {
+            const std::string described = dlg::describeCall(call, args);
             const std::string name(call);
             if (auto it = options.conditions.find(described); it != options.conditions.end()) return it->second;
             if (auto it = options.conditions.find(name); it != options.conditions.end()) return it->second;
             if (auto it = options.conditions.find(name.substr(0, name.find('.')) + ".*"); it != options.conditions.end()) return it->second;
-            if (auto it = assumed.find(described); it != assumed.end()) return rt::Value(it->second);
+            if (auto it = assumed.find(described); it != assumed.end()) return dlg::Value(it->second);
             if (std::find(undecided->begin(), undecided->end(), described) == undecided->end()) undecided->push_back(described);
             return std::nullopt;
         };
-        overrides->action = [](std::string_view, std::span<const rt::Value>) {};
+        overrides->action = [](std::string_view, std::span<const dlg::Value>) {};
         runner.setOverrides(overrides);
         runner.setDialogue(program);
-        auto absorb = [&](const rt::Runner::StepRecord& step) {
+        auto absorb = [&](const dlg::Runner::StepRecord& step) {
             out.nodes.insert(out.nodes.end(), step.nodes.begin(), step.nodes.end());
         };
         if (!runner.start(options.entry)) {
             out.error = runner.getError();
-            out.state = rt::stateName(runner.getState());
+            out.state = dlg::stateName(runner.getState());
             return run;
         }
         size_t choice = 0;
@@ -90,7 +90,7 @@ namespace {
         int resumes = 0;
         while (true) {
             absorb(runner.lastStep());
-            if (runner.getState() == rt::RunnerState::Waiting) {
+            if (runner.getState() == dlg::RunnerState::Waiting) {
                 // an action node that waits: the walk goes on as a resume() would
                 if (++resumes > options.maxSteps) {
                     out.truncated = true;
@@ -99,8 +99,8 @@ namespace {
                 runner.resume();
                 continue;
             }
-            if (runner.getState() != rt::RunnerState::Line) break;
-            const rt::Line& line = *runner.getCurrentLine();
+            if (runner.getState() != dlg::RunnerState::Line) break;
+            const dlg::Line& line = *runner.getCurrentLine();
             dialogues::WalkStep step;
             step.node = line.node;
             step.speaker = line.speakerName;
@@ -116,7 +116,7 @@ namespace {
                 break;
             }
             bool anyEnabled = false;
-            for (const rt::Option& option : line.options) anyEnabled = anyEnabled || option.enabled;
+            for (const dlg::Option& option : line.options) anyEnabled = anyEnabled || option.enabled;
             if (options.stepwise) {
                 if (choice >= options.steps.size()) {
                     run.atMenu = anyEnabled;
@@ -143,7 +143,7 @@ namespace {
             }
             if (choice >= options.choices.size()) {
                 run.atMenu = true;
-                for (const rt::Option& option : line.options) {
+                for (const dlg::Option& option : line.options) {
                     if (option.enabled) run.enabledOptions.push_back(option.index);
                 }
                 run.menuKey = line.node + "|" + variablesKey();
@@ -157,24 +157,24 @@ namespace {
                 break;
             }
         }
-        out.state = rt::stateName(runner.getState());
+        out.state = dlg::stateName(runner.getState());
         if (out.state == std::string("idle")) out.state = "ended";
         out.node = runner.getCurrentNode();
         out.result = runner.getResult();
-        if (runner.getState() == rt::RunnerState::Ended) out.endActions = runner.lastStep().actions;
+        if (runner.getState() == dlg::RunnerState::Ended) out.endActions = runner.lastStep().actions;
         if (out.error.empty()) out.error = runner.getError();
         out.unknownCalls = run.undecided;
-        out.variables = rt::Variables::all();
+        out.variables = dlg::Variables::all();
         return run;
     }
 
 }
 
-dialogues::WalkResult dialogues::walk(const std::shared_ptr<const rt::Program>& program, const WalkOptions& options) {
+dialogues::WalkResult dialogues::walk(const std::shared_ptr<const dlg::Program>& program, const WalkOptions& options) {
     return runOnce(program, options, {}).result;
 }
 
-dialogues::ExploreResult dialogues::explore(const std::shared_ptr<const rt::Program>& program, const WalkOptions& options, int maxPaths) {
+dialogues::ExploreResult dialogues::explore(const std::shared_ptr<const dlg::Program>& program, const WalkOptions& options, int maxPaths) {
     ExploreResult out;
     struct Item {
         std::vector<int> choices;
@@ -286,12 +286,12 @@ dialogues::ExploreResult dialogues::explore(const std::shared_ptr<const rt::Prog
         const std::string id(program->nodeId(static_cast<int>(i)));
         if (covered.count(id)) out.covered++;
         else out.uncovered.push_back(id);
-        if (program->nodes[i].kind == rt::NodeKind::Line && !shown.count(id)) out.linesNeverShown.push_back(id);
+        if (program->nodes[i].kind == dlg::NodeKind::Line && !shown.count(id)) out.linesNeverShown.push_back(id);
     }
     return out;
 }
 
-nlohmann::json dialogues::toJson(const rt::Value& value) {
+nlohmann::json dialogues::toJson(const dlg::Value& value) {
     if (value.isBool()) return value.asBool();
     if (value.isNumber()) return value.asNumber();
     if (value.isString()) return value.asString();
@@ -300,9 +300,9 @@ nlohmann::json dialogues::toJson(const rt::Value& value) {
 
 namespace {
 
-    nlohmann::json optionsJson(const std::vector<rt::Option>& options) {
+    nlohmann::json optionsJson(const std::vector<dlg::Option>& options) {
         nlohmann::json list = nlohmann::json::array();
-        for (const rt::Option& option : options) {
+        for (const dlg::Option& option : options) {
             nlohmann::json item = {{"index", option.index}, {"id", option.id}, {"text", option.text}, {"key", option.key}};
             if (!option.enabled) item["enabled"] = false;
             if (!option.style.empty()) item["style"] = option.style;

@@ -122,7 +122,7 @@ namespace {
         return 1;
     }
 
-    int luaIndex(lua_State* L) {
+    int luaLocalizationIndex(lua_State* L) {
         const std::string_view field = luaL_checkstring(L, 2);
         if (field == "language") {
             pushString(L, Localization::getLanguage());
@@ -146,7 +146,7 @@ namespace {
     }
 
     // Localization.onLanguageChanged = function(code) ... end
-    int luaNewIndex(lua_State* L) {
+    int luaLocalizationNewIndex(lua_State* L) {
         const char* field = luaL_checkstring(L, 2);
         if (std::string_view(field) == "onLanguageChanged") {
             luaL_checktype(L, 3, LUA_TFUNCTION);
@@ -188,9 +188,9 @@ void LuaBinding::registerLocalizationClasses(lua_State* L){
     };
     luaL_newlib(L, functions);
     lua_createtable(L, 0, 2);
-    lua_pushcfunction(L, luaIndex);
+    lua_pushcfunction(L, luaLocalizationIndex);
     lua_setfield(L, -2, "__index");
-    lua_pushcfunction(L, luaNewIndex);
+    lua_pushcfunction(L, luaLocalizationNewIndex);
     lua_setfield(L, -2, "__newindex");
     lua_setmetatable(L, -2);
     lua_setglobal(L, "Localization");

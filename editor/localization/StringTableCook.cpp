@@ -18,7 +18,7 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
-namespace rt = jasperengine::l10n;
+namespace l10nrt = jasperengine::l10n;
 
 namespace {
 
@@ -136,17 +136,17 @@ editor::l10n::CookResult editor::l10n::cookLocalization(const fs::path& projectP
         LocalizationNamespace ns;
         ns.name = set.table.ns;
         ns.sourceLanguage = set.table.sourceLanguage;
-        std::vector<rt::StringTable::Entry> source;
+        std::vector<l10nrt::StringTable::Entry> source;
         for (const TableEntry& entry : set.table.entries) {
             knownKeys.insert(set.table.ns + "." + entry.key);
             source.push_back({entry.key, entry.text, false});
-            rt::MessageError problem;
-            if (!rt::MessageFormat::validate(entry.text, &problem)) {
+            l10nrt::MessageError problem;
+            if (!l10nrt::MessageFormat::validate(entry.text, &problem)) {
                 result.warnings.push_back("W-L10N-BAD-MESSAGE: " + set.ownerRelative + " " + entry.key + " (" + set.table.sourceLanguage +
                                           "): " + problem.message + "; the game shows it as written");
             }
         }
-        std::vector<std::pair<std::string, std::vector<rt::StringTable::Entry>>> languages;
+        std::vector<std::pair<std::string, std::vector<l10nrt::StringTable::Entry>>> languages;
         languages.emplace_back(set.table.sourceLanguage, std::move(source));
         for (const auto& [code, doc] : set.translations) {
             if (!listed(manifest.languages, code)) {
@@ -154,7 +154,7 @@ editor::l10n::CookResult editor::l10n::cookLocalization(const fs::path& projectP
                                           " is not in localization.languages and is left out");
                 continue;
             }
-            std::vector<rt::StringTable::Entry> entries;
+            std::vector<l10nrt::StringTable::Entry> entries;
             for (const TableEntry& entry : set.table.entries) {
                 const auto found = doc.entries.find(entry.key);
                 if (found == doc.entries.end() || found->second.text.empty()) {
@@ -163,8 +163,8 @@ editor::l10n::CookResult editor::l10n::cookLocalization(const fs::path& projectP
                 }
                 const bool review = found->second.status == "needs_review" || found->second.sourceHash != sourceHash(entry.text);
                 if (review) stale[code]++;
-                rt::MessageError problem;
-                if (!rt::MessageFormat::validate(found->second.text, &problem)) {
+                l10nrt::MessageError problem;
+                if (!l10nrt::MessageFormat::validate(found->second.text, &problem)) {
                     result.warnings.push_back("W-L10N-BAD-MESSAGE: " + set.ownerRelative + " " + entry.key + " (" + code + "): " +
                                               problem.message + "; the game shows it as written");
                 }
@@ -180,7 +180,7 @@ editor::l10n::CookResult editor::l10n::cookLocalization(const fs::path& projectP
         for (const auto& [code, entries] : languages) {
             std::string bytes;
             std::string error;
-            if (!rt::StringTable::cook(code, entries, bytes, &error, seed)) {
+            if (!l10nrt::StringTable::cook(code, entries, bytes, &error, seed)) {
                 result.ok = false;
                 result.error = "Cannot export the String Table " + set.ownerRelative + " (" + code + "): " + error;
                 return result;
@@ -274,19 +274,19 @@ editor::l10n::StringsCheck editor::l10n::checkStrings(const fs::path& projectPat
             if (!seen.insert(entry.key).second)
                 add("error", set.ownerRelative, 0, "L10N-DUPLICATE-KEY", "key \"" + entry.key + "\" is in the table twice; the game reads the first",
                     "remove or rename one of them");
-            rt::MessageError problem;
-            if (!rt::MessageFormat::validate(entry.text, &problem))
+            l10nrt::MessageError problem;
+            if (!l10nrt::MessageFormat::validate(entry.text, &problem))
                 add("error", set.ownerRelative, 0, "L10N-BAD-MESSAGE",
                     entry.key + " (" + set.table.sourceLanguage + "): " + problem.message + " at column " +
-                        std::to_string(rt::MessageFormat::column(entry.text, problem.offset)),
+                        std::to_string(l10nrt::MessageFormat::column(entry.text, problem.offset)),
                     "fix the ICU message; the game shows it as written");
         }
         for (const auto& [code, doc] : set.translations) {
             for (const auto& [key, translation] : doc.entries) {
-                rt::MessageError problem;
-                if (!rt::MessageFormat::validate(translation.text, &problem))
+                l10nrt::MessageError problem;
+                if (!l10nrt::MessageFormat::validate(translation.text, &problem))
                     add("error", translationPathFor(set.owner, code).lexically_relative(projectPath).generic_string(), 0, "L10N-BAD-MESSAGE",
-                        key + " (" + code + "): " + problem.message + " at column " + std::to_string(rt::MessageFormat::column(translation.text, problem.offset)),
+                        key + " (" + code + "): " + problem.message + " at column " + std::to_string(l10nrt::MessageFormat::column(translation.text, problem.offset)),
                         "fix the ICU message; the game shows it as written");
             }
         }

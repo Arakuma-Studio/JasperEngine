@@ -68,7 +68,7 @@ namespace {
         return text;
     }
 
-    std::string pathText(const fs::path& path){
+    std::string saveStorePathText(const fs::path& path){
         return path.generic_string();
     }
 
@@ -303,7 +303,7 @@ namespace jasperengine::savegame {
             for (const fs::path& path : leftovers){
                 std::error_code removeError;
                 if (!removeSaveFile(path, removeError))
-                    Log::warn("SaveGame: could not delete the leftover %s: %s", pathText(path).c_str(), removeError.message().c_str());
+                    Log::warn("SaveGame: could not delete the leftover %s: %s", saveStorePathText(path).c_str(), removeError.message().c_str());
             }
         }
 
@@ -455,7 +455,7 @@ namespace jasperengine::savegame {
                     fs::path target = invalid[i];
                     target += ".corrupt";
                     if (!io::renameWithRetry(invalid[i], target, ec))
-                        Log::warn("SaveGame: could not set aside %s: %s", pathText(invalid[i]).c_str(), ec.message().c_str());
+                        Log::warn("SaveGame: could not set aside %s: %s", saveStorePathText(invalid[i]).c_str(), ec.message().c_str());
                 } else {
                     fs::remove(invalid[i], ec);
                 }

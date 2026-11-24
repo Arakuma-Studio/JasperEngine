@@ -16,11 +16,11 @@ namespace {
     const char MAGIC[8] = {'J', 'S', 'A', 'V', '\r', '\n', '\x1A', '\n'};
     const char END_MARKER[8] = {'J', 'S', 'A', 'V', 'E', 'N', 'D', '\n'};
 
-    void putLE(std::string& out, uint64_t v, int bytes){
+    void saveFormatPutLE(std::string& out, uint64_t v, int bytes){
         for (int i = 0; i < bytes; i++) out.push_back(static_cast<char>((v >> (8 * i)) & 0xFF));
     }
 
-    uint64_t getLE(std::string_view bytes, size_t offset, int count){
+    uint64_t saveFormatGetLE(std::string_view bytes, size_t offset, int count){
         uint64_t v = 0;
         for (int i = 0; i < count; i++)
             v |= static_cast<uint64_t>(static_cast<unsigned char>(bytes[offset + i])) << (8 * i);
@@ -38,7 +38,7 @@ namespace {
         if (bytes.size() < 12) return fail(error, "file of " + std::to_string(bytes.size()) + " bytes is too short", 0);
         if (std::memcmp(bytes.data(), MAGIC, sizeof(MAGIC)) != 0)
             return fail(error, "bad magic (not a save file, or a copy that changed its line ends)", 0);
-        const uint16_t format = static_cast<uint16_t>(getLE(bytes, 8, 2));
+        const uint16_t format = static_cast<uint16_t>(saveFormatGetLE(bytes, 8, 2));
         if (format > FORMAT_VERSION){
             error = makeError(SaveErrorCode::NewerFormat, "written in save format " + std::to_string(format) +
                               " by a newer engine; this one reads format " + std::to_string(FORMAT_VERSION));
@@ -46,19 +46,19 @@ namespace {
         }
         if (format == 0) return fail(error, "bad format version 0", 8);
         if (bytes.size() < HEADER_FIXED_BYTES) return fail(error, "header cut short", bytes.size());
-        const uint16_t flags = static_cast<uint16_t>(getLE(bytes, 10, 2));
+        const uint16_t flags = static_cast<uint16_t>(saveFormatGetLE(bytes, 10, 2));
         if (flags != 0) return fail(error, "unknown flags " + std::to_string(flags), 10);
-        headerSize = static_cast<size_t>(getLE(bytes, 12, 4));
+        headerSize = static_cast<size_t>(saveFormatGetLE(bytes, 12, 4));
         if (headerSize < HEADER_FIXED_BYTES || headerSize > MAX_HEADER_BYTES)
             return fail(error, "bad header size " + std::to_string(headerSize), 12);
         if (headerSize > limit) return fail(error, "header size " + std::to_string(headerSize) + " beyond the file", 12);
         out.format = format;
-        out.generation = getLE(bytes, 16, 8);
-        out.savedAtMs = static_cast<int64_t>(getLE(bytes, 24, 8));
-        out.dataVersion = static_cast<uint32_t>(getLE(bytes, 32, 4));
-        const uint32_t sectionCount = static_cast<uint32_t>(getLE(bytes, 36, 4));
+        out.generation = saveFormatGetLE(bytes, 16, 8);
+        out.savedAtMs = static_cast<int64_t>(saveFormatGetLE(bytes, 24, 8));
+        out.dataVersion = static_cast<uint32_t>(saveFormatGetLE(bytes, 32, 4));
+        const uint32_t sectionCount = static_cast<uint32_t>(saveFormatGetLE(bytes, 36, 4));
         if (sectionCount > MAX_SECTIONS) return fail(error, "bad section count " + std::to_string(sectionCount), 36);
-        const size_t metadataSize = static_cast<size_t>(getLE(bytes, 40, 4));
+        const size_t metadataSize = static_cast<size_t>(saveFormatGetLE(bytes, 40, 4));
         if (metadataSize > MAX_METADATA_BYTES || HEADER_FIXED_BYTES + metadataSize != headerSize)
             return fail(error, "bad metadata size " + std::to_string(metadataSize), 40);
         const std::string_view metadata = bytes.substr(HEADER_FIXED_BYTES, metadataSize);
@@ -108,23 +108,23 @@ std::string savegame::buildSaveFile(const SaveFile& file){
     std::string out;
     out.reserve(total);
     out.append(MAGIC, sizeof(MAGIC));
-    putLE(out, file.format, 2);
-    putLE(out, 0, 2);
-    putLE(out, HEADER_FIXED_BYTES + file.metadata.size(), 4);
-    putLE(out, file.generation, 8);
-    putLE(out, static_cast<uint64_t>(file.savedAtMs), 8);
-    putLE(out, file.dataVersion, 4);
-    putLE(out, file.sections.size(), 4);
-    putLE(out, file.metadata.size(), 4);
+    saveFormatPutLE(out, file.format, 2);
+    saveFormatPutLE(out, 0, 2);
+    saveFormatPutLE(out, HEADER_FIXED_BYTES + file.metadata.size(), 4);
+    saveFormatPutLE(out, file.generation, 8);
+    saveFormatPutLE(out, static_cast<uint64_t>(file.savedAtMs), 8);
+    saveFormatPutLE(out, file.dataVersion, 4);
+    saveFormatPutLE(out, file.sections.size(), 4);
+    saveFormatPutLE(out, file.metadata.size(), 4);
     out += file.metadata;
     for (const SaveSection& section : file.sections){
-        putLE(out, section.name.size(), 2);
+        saveFormatPutLE(out, section.name.size(), 2);
         out += section.name;
         const size_t size = section.payload ? section.payload->size() : 0;
-        putLE(out, size, 4);
+        saveFormatPutLE(out, size, 4);
         if (section.payload) out += *section.payload;
     }
-    putLE(out, hashContent64(out.data(), out.size(), 0), 8);
+    saveFormatPutLE(out, hashContent64(out.data(), out.size(), 0), 8);
     out.append(END_MARKER, sizeof(END_MARKER));
     return out;
 }
@@ -146,7 +146,7 @@ bool savegame::parseSaveFile(std::string_view bytes, SaveFile& out, SaveError& e
     const size_t body = bytes.size() - FOOTER_BYTES;
     if (std::memcmp(bytes.data() + body + 8, END_MARKER, sizeof(END_MARKER)) != 0)
         return fail(error, "no end marker (the file is cut short)", body + 8);
-    if (getLE(bytes, body, 8) != hashContent64(bytes.data(), body, 0)){
+    if (saveFormatGetLE(bytes, body, 8) != hashContent64(bytes.data(), body, 0)){
         error = makeError(SaveErrorCode::Corrupt, "checksum mismatch");
         return false;
     }
@@ -155,7 +155,7 @@ bool savegame::parseSaveFile(std::string_view bytes, SaveFile& out, SaveError& e
     std::set<std::string_view> names;
     for (SaveSection& section : out.sections){
         if (body - pos < 2) return fail(error, "section cut short", pos);
-        const size_t nameLength = static_cast<size_t>(getLE(bytes, pos, 2));
+        const size_t nameLength = static_cast<size_t>(saveFormatGetLE(bytes, pos, 2));
         if (nameLength == 0 || nameLength > MAX_SECTION_NAME || nameLength > body - pos - 2)
             return fail(error, "bad section name length " + std::to_string(nameLength), pos);
         const std::string_view name = bytes.substr(pos + 2, nameLength);
@@ -163,7 +163,7 @@ bool savegame::parseSaveFile(std::string_view bytes, SaveFile& out, SaveError& e
         if (!names.insert(name).second) return fail(error, "section \"" + std::string(name) + "\" given twice", pos + 2);
         pos += 2 + nameLength;
         if (body - pos < 4) return fail(error, "section cut short", pos);
-        const uint64_t payloadLength = getLE(bytes, pos, 4);
+        const uint64_t payloadLength = saveFormatGetLE(bytes, pos, 4);
         if (payloadLength > body - pos - 4) return fail(error, "bad section length " + std::to_string(payloadLength), pos);
         const std::string_view payload = bytes.substr(pos + 4, static_cast<size_t>(payloadLength));
         SaveError valueError;

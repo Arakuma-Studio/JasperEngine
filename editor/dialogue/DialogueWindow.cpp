@@ -29,7 +29,7 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
-namespace rt = jasperengine::dialogue;
+namespace dlg = jasperengine::dialogue;
 using GraphJson = graph::Json;
 
 namespace {
@@ -103,8 +103,8 @@ namespace {
 
 }
 
-DialogueWindow::DialogueWindow(Project* project): GraphEditorWindow(project, WINDOW_NAME, rt::KIND_ID){
-    rt::registerDialogueKind();
+DialogueWindow::DialogueWindow(Project* project): GraphEditorWindow(project, WINDOW_NAME, dlg::KIND_ID){
+    dlg::registerDialogueKind();
     current() = this;
     // a translation edited anywhere (the Localization Tables window, edit_string_table) shows on the cards
     translationsListener = StringTableEditCmd::addChangeListener([this](const std::vector<fs::path>&) { loadTranslations(); });
@@ -314,7 +314,7 @@ void DialogueWindow::collectProblems(std::vector<Problem>& problems) const{
                     *projectIssuesSettings != project->getDialogueSettings())) {
         projectIssues.clear();
         std::vector<graph::Issue> fresh;
-        rt::lint(getDocument()->graph(), fresh);
+        dlg::lint(getDocument()->graph(), fresh);
         for (graph::Issue& issue : fresh) {
             if (projectCodes.count(issue.code)) projectIssues.push_back(std::move(issue));
         }
@@ -384,20 +384,20 @@ void DialogueWindow::documentClosed(){
 void DialogueWindow::replay(){
     if (!getDocument()) return;
     const std::string path = project ? project->normalizeToAssetsRelative(getDocument()->absolutePath()).generic_string() : getDocument()->projectPath();
-    const std::shared_ptr<const rt::Program> program = rt::Program::compile(getDocument()->graph(), path);
+    const std::shared_ptr<const dlg::Program> program = dlg::Program::compile(getDocument()->graph(), path);
     dialogues::WalkOptions options;
     options.entry = entry;
     options.stepwise = true;
     options.steps = steps;
     for (const auto& [name, value] : startValues) options.variables.emplace_back(name, value);
     for (const auto& [prefix, mode] : conditionModes) {
-        if (mode == "true" || mode == "false") options.conditions[prefix + ".*"] = rt::Value(mode == "true");
+        if (mode == "true" || mode == "false") options.conditions[prefix + ".*"] = dlg::Value(mode == "true");
     }
-    for (const auto& [call, value] : answered) options.conditions[call] = rt::Value(value);
+    for (const auto& [call, value] : answered) options.conditions[call] = dlg::Value(value);
     if (!language_.empty()) options.language = language_;
     if (project) {
         // the project's declared defaults, as Play has them
-        rt::Variables::setProjectDefaults(dialogues::projectDefaults(project->getDialogueSettings()));
+        dlg::Variables::setProjectDefaults(dialogues::projectDefaults(project->getDialogueSettings()));
     }
     preview = dialogues::walk(program, options);
     walked = std::set<std::string>(preview.nodes.begin(), preview.nodes.end());
@@ -447,7 +447,7 @@ void DialogueWindow::previewRestart(){
     replay();
 }
 
-void DialogueWindow::setPreviewVariable(const std::string& name, const rt::Value& value){
+void DialogueWindow::setPreviewVariable(const std::string& name, const dlg::Value& value){
     startValues[name] = value;
     if (previewActive) replay();
 }
@@ -495,7 +495,7 @@ void DialogueWindow::drawPreviewPane(){
         ImGui::TextWrapped("%s", line.text.c_str());
         bool anyEnabled = false;
         const graph::Node* node = getDocument()->graph().findNode(line.node);
-        for (const rt::Option& option : line.options) {
+        for (const dlg::Option& option : line.options) {
             anyEnabled = anyEnabled || option.enabled;
             ImGui::PushID(option.index);
             ImGui::BeginDisabled(!option.enabled);
@@ -519,7 +519,7 @@ void DialogueWindow::drawPreviewPane(){
     if (!preview.error.empty()) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", preview.error.c_str());
 
     if (ImGui::CollapsingHeader("Variables", ImGuiTreeNodeFlags_DefaultOpen)) {
-        std::map<std::string, rt::Value> now;
+        std::map<std::string, dlg::Value> now;
         for (const auto& [name, value] : preview.variables) now[name] = value;
         std::set<std::string> names;
         for (const graph::Variable& variable : getDocument()->graph().variables) names.insert(variable.name);
@@ -535,13 +535,13 @@ void DialogueWindow::drawPreviewPane(){
                 ImGui::Text("$%s", name.c_str());
                 ImGui::TableNextColumn();
                 auto start = startValues.find(name);
-                const rt::Value shown = start != startValues.end() ? start->second : (now.count(name) ? now[name] : rt::Value());
+                const dlg::Value shown = start != startValues.end() ? start->second : (now.count(name) ? now[name] : dlg::Value());
                 std::string typed;
                 if (textField("var." + name, "##start", shown.toText(), typed)) {
                     const nlohmann::json parsed = nlohmann::json::parse(typed, nullptr, false);
-                    if (parsed.is_boolean()) setPreviewVariable(name, rt::Value(parsed.get<bool>()));
-                    else if (parsed.is_number()) setPreviewVariable(name, rt::Value(parsed.get<double>()));
-                    else setPreviewVariable(name, rt::Value(typed));
+                    if (parsed.is_boolean()) setPreviewVariable(name, dlg::Value(parsed.get<bool>()));
+                    else if (parsed.is_number()) setPreviewVariable(name, dlg::Value(parsed.get<double>()));
+                    else setPreviewVariable(name, dlg::Value(typed));
                 }
                 ImGui::TableNextColumn();
                 ImGui::TextDisabled("%s", now.count(name) ? now[name].describe().c_str() : "-");
@@ -552,8 +552,8 @@ void DialogueWindow::drawPreviewPane(){
     }
     if (ImGui::CollapsingHeader("Conditions", ImGuiTreeNodeFlags_DefaultOpen)) {
         std::set<std::string> prefixes;
-        const std::shared_ptr<const rt::Program> program = rt::Program::compile(getDocument()->graph(), getDocument()->projectPath());
-        for (const rt::CallSite& call : program->exprs.calls) prefixes.insert(call.prefix);
+        const std::shared_ptr<const dlg::Program> program = dlg::Program::compile(getDocument()->graph(), getDocument()->projectPath());
+        for (const dlg::CallSite& call : program->exprs.calls) prefixes.insert(call.prefix);
         static const char* modes[] = {"false", "true", "ask"};
         for (const std::string& prefix : prefixes) {
             ImGui::PushID(prefix.c_str());
@@ -739,10 +739,10 @@ void DialogueWindow::expressionField(const graph::Node& node, const char* param,
     std::string typed;
     if (textField(node.id + "." + param, "##expr", value, typed)) setParam(node.id, param, typed);
     const std::string shown = buffers.count(node.id + "." + param) ? buffers[node.id + "." + param] : value;
-    rt::ExprPool pool;
-    rt::Expr expr;
-    rt::ParseError error;
-    if (!shown.empty() && !rt::compileExpr(shown, statements ? rt::ExprMode::Statements : rt::ExprMode::Condition, pool, expr, &error)) {
+    dlg::ExprPool pool;
+    dlg::Expr expr;
+    dlg::ParseError error;
+    if (!shown.empty() && !dlg::compileExpr(shown, statements ? dlg::ExprMode::Statements : dlg::ExprMode::Condition, pool, expr, &error)) {
         ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "column %d: %s", error.column, error.message.c_str());
     }
     // completion: what the word being typed can become
