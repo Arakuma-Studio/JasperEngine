@@ -167,9 +167,9 @@ TEST(PlayerInstall, APlayerOfAnOlderContentMinorIsNotUsed) {
     EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "major", true, error).has_value());
 }
 
-// Content of a build without a Build Profile is laid out as before Build Profiles (1.5): game.json's
-// buildProfile and defines are the only thing content 1.6 adds. A player runtime of 1.5 (every one
-// released before Build Profiles) still serves such a build
+// Content of a build without a Build Profile is laid out as the cooked files' minor (FORMAT_MINOR):
+// game.json's buildProfile and defines are the only thing BUILD_PROFILE_MINOR adds. A player runtime
+// of that layout (every one released before Build Profiles) still serves such a build
 TEST(PlayerInstall, APlayerOfTheContentBeforeBuildProfilesServesABuildWithoutOne) {
     TestTempDir dir("players");
     const std::vector<PlayerArchiveHash> none;
@@ -177,7 +177,8 @@ TEST(PlayerInstall, APlayerOfTheContentBeforeBuildProfilesServesABuildWithoutOne
     std::vector<std::string> warnings;
     PlayerInfo before = info(sha256Hex(BINARY));
     before.contentFormatVersion = jasperengine::cook::buildContentFormatVersion(false);
-    ASSERT_EQ(before.contentFormatVersion, "1.5");
+    const std::string layout = std::to_string(jasperengine::cook::FORMAT_MAJOR) + "." + std::to_string(jasperengine::cook::FORMAT_MINOR);
+    ASSERT_EQ(before.contentFormatVersion, layout);
     ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "before.zip", BINARY, before), dir / "before", installed, warnings, error, &none)) << error;
     EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "before", false, error).has_value()) << error;
     EXPECT_EQ(PlayerRuntimes::findVariants(ID, dir / "before", false).size(), 1u);
@@ -187,7 +188,7 @@ TEST(PlayerInstall, APlayerOfTheContentBeforeBuildProfilesServesABuildWithoutOne
     const std::string profile = jasperengine::cook::buildContentFormatVersion(true);
     for (bool allowMismatch : {false, true}) {
         EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "before", allowMismatch, error, profile).has_value());
-        EXPECT_NE(error.find("reads content format 1.5, older than the " + profile +
+        EXPECT_NE(error.find("reads content format " + layout + ", older than the " + profile +
                              " a Build Profile's build needs (its game.json's profile and defines): update the player runtime"),
                   std::string::npos)
             << error;
