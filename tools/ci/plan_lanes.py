@@ -27,8 +27,9 @@ applies CI's stricter rules:
   the test lanes and test runs --advisory names (ci.yml's ADVISORY_LANES): they cannot block a merge,
   so the queue does not wait for them (listed under advisory_off; a test run of a job that still
   builds, under build_only too). Lint and the platform builds stay whatever the list says;
-- push: the build lanes (caches and plan inputs; ios for its Xcode compilation cache), and smoke when a
-  game's export reads the change, so its Compile builds' ccache stays warm; the test lanes build only (build_only; ASan's two binaries too, each keeping a
+- push: the build lanes (caches and plan inputs), and smoke when a game's export reads the change, so its
+  Compile builds' ccache stays warm; not ios, which keeps no cache entry (on push it would take a macOS
+  runner for nothing); the test lanes build only (build_only; ASan's two binaries too, each keeping a
   ccache entry). When --advisory names a test lane, dispatch_advisory asks ci.yml to dispatch the
   advisory run, which runs those tests. A push run waits ci.yml's admission delay first, and steps aside
   (no lane) when main moved on by then with a path that builds (--newest: main's head after the delay;
@@ -478,6 +479,7 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         smoke = [f for f in files if cc.match(f, SMOKE_PATHS)] if files is not None else ["(no diff)"]
         lane("smoke", bool(smoke), f"push to main: the games' builds keep the smoke cache warm ({smoke[0]} changed)"
              if smoke else "push to main: no path a game's export reads changed")
+        lane("ios", False, "push to main: keeps no cache entry, so a build would warm nothing; the merge queue ran it")
         result["unit_run"] = {"core": True, "editor": True}
         result["asan_run"] = {"core": True, "editor": True}
         return result

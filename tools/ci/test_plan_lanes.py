@@ -179,7 +179,7 @@ class Rules(unittest.TestCase):
 
     def test_push_runs_the_builds_only(self):
         r = decide("push", plan(["engine/core/Foo.cpp"], mcp=["test_a.py"]))
-        self.assertEqual(runs(r), {"changes", "unit", "asan", "htmlui", "smoke", *pl.PLATFORM_LANES})
+        self.assertEqual(runs(r), {"changes", "unit", "asan", "htmlui", "smoke", *pl.PLATFORM_LANES} - {"ios"})
         self.assertIn("build only", r["lanes"]["unit"]["why"])
         self.assertEqual(r["mcp"]["mode"], "none")
         # ASan keeps a ccache entry per binary (line tables only fit them in the budget), which only main saves
@@ -194,7 +194,7 @@ class Rules(unittest.TestCase):
         p = plan(["editor/window/InspectorX.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": ["Css"]},
                  mcp=["test_a.py"])
         r = decide("push", p, advisory=ADVISORY)
-        self.assertEqual(runs(r), {"changes", "unit", "asan", "htmlui", *pl.PLATFORM_LANES})
+        self.assertEqual(runs(r), {"changes", "unit", "asan", "htmlui", *pl.PLATFORM_LANES} - {"ios"})
         self.assertEqual((r["build_only"], r["advisory_off"]), (["unit", "asan", "htmlui", "windows-editor-tests"], []))
         self.assertEqual(r["mcp"]["mode"], "none")
         self.assertIn("build only", r["lanes"]["unit"]["why"])
@@ -267,13 +267,13 @@ class Rules(unittest.TestCase):
         for event in ("pull_request", "merge_group", "workflow_dispatch", "full"):
             self.assertEqual(decide(event, p, superseded_by=("c" * 40, "a")), decide(event, p), event)
 
-    def test_push_builds_every_platform_lane_for_its_cache(self):
-        # a push run is for the caches PRs restore: ios too, for its Xcode compilation cache entry
+    def test_push_runs_no_lane_that_keeps_no_cache(self):
+        # a push run is for the caches PRs restore: ios keeps no entry, so on push it would take a macOS
+        # runner (of 5) for nothing; the merge queue ran it
         for files in (["engine/core/Foo.cpp"], ["editor/window/InspectorX.cpp"]):
             r = decide("push", plan(files, mcp=["test_a.py"]))
-            for name in pl.PLATFORM_LANES:
-                self.assertTrue(r["lanes"][name]["run"], (name, files))
-                self.assertIn("cache", r["lanes"][name]["why"], name)
+            self.assertFalse(r["lanes"]["ios"]["run"], files)
+            self.assertIn("no cache", r["lanes"]["ios"]["why"])
 
     def test_push_warms_the_smoke_cache_when_an_export_reads_the_change(self):
         # only main saves caches, so a smoke lane that never runs on push never warms its ccache
