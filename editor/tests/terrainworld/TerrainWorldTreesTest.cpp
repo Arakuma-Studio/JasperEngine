@@ -118,7 +118,7 @@ namespace {
             prototype.id = 7;
             scene->scene->getComponent<TerrainComponent>(world).treePrototypes.push_back(prototype);
             ASSERT_NE(runtime(), nullptr);
-            panel = std::make_unique<TerrainFoliagePanel>(project.get(), nullptr);
+            panel = std::make_unique<TerrainFoliagePanel>(project.get());
         }
 
         void TearDown() override {

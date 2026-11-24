@@ -2314,7 +2314,18 @@ rest of S82 lands in 6B.
     on a loaded server, the first `check_title` of a 3D look (`gems/amethyst-crystal-3d`, the gate's
     arguments) took 18-20 s with the blocking wait and 22-33 s now (its 3D variants are met one per
     pass, about ten passes); a restart of the whole pass per frame without the cache, the idle wait
-    and the 1 s slice took 46-61 s. Not changed: the
-    Glyph Atlas prebake (`prebakeTitleGlyphAtlas`) still steps its own frames for up to 60 s per
-    string, and a synchronous bake (`bakeTitleArt`: `edit_title`'s `bake`, the export's rebake of
-    stale outputs) still steps its job to the end in one call.
+    and the 1 s slice took 46-61 s. The export's Glyph Atlas prebake (`TitleGlyphPrebake`) works
+    20 ms per call of the export's worker and resumes on later frames (each string keeps its 60 s
+    guard), and the bakes that ran to the end in one call (`edit_title`'s `bake`, the export's rebake
+    of stale outputs) are `TitleArtBakeJob`s stepped from the frames, as `export_title`'s and Auto
+    Bake's were: on the main thread in one call they never saw a delayed program built (their red
+    runs hung the editor; the glyph prebake's waited 60 s and shipped no atlas).
+62. **Implementation: the node cache gives way to a render's targets.** The cache's results are
+    targets lent from the renderer's pool, kept across renders up to its 128 MB, and the pool's
+    limit freed only idle targets before it failed. The title library gate's eighth part (104
+    template renders in one editor) so failed `metal_range` with `out_of_target_memory` for 1 to
+    4 MB while about 120 MB of earlier results stayed cached (an instrumented run: 516 MB lent at
+    the failure, 120 MB of it in the cache, a preview's render and the check's own render the rest).
+    Now an acquire the limit refuses has the pool's reclaim hook drop the cache's least recently
+    used entries (a target a job still holds stays the job's) before it fails. Test:
+    `TitleTargetPoolTest.TheNodeCacheGivesWayBeforeAnAcquireFails`.

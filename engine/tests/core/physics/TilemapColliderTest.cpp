@@ -13,6 +13,8 @@
 #include <cmath>
 #include <vector>
 
+namespace TilemapColliderTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -268,3 +270,5 @@ TEST(TilemapColliderSensors, FireEventsOnABodyPassingThrough) {
     EXPECT_GT(begun, 0);
     (void)box;
 }
+
+}  // namespace TilemapColliderTest_cpp

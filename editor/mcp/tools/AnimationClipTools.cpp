@@ -10,6 +10,7 @@
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
 #include "AnimationKeys.h"
+#include "LatticeShared.h"
 
 #include "mcp/McpContext.h"
 #include "mcp/McpRefs.h"
@@ -2546,6 +2547,9 @@ anim::ClipReport clipStats(const std::string& reference) {
     return anim::analyzeClip(request);
 }
 
+// how long get_animation {root} waits for the root's models to load before answering with what there is
+constexpr int MODEL_LOAD_WAIT_MS = 60000;
+
 // ", Memory 31 KB, 2,340 keys" of a tool's summary
 std::string statsText(const anim::ClipReport& report) {
     if (!report.ok) return std::string();
@@ -2555,7 +2559,13 @@ std::string statsText(const anim::ClipReport& report) {
 
 } // namespace
 
+void getClip(const CallPtr& call, bool waitedForModels);
+
 void getClip(const CallPtr& call) {
+    getClip(call, false);
+}
+
+void getClip(const CallPtr& call, bool waitedForModels) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     std::string relative, error;
@@ -2570,6 +2580,15 @@ void getClip(const CallPtr& call) {
     // `entity` names the root too (get_animation's own argument)
     if (!resolveRoot(project, args, has(args, "root") ? "root" : "entity", scene, root, error)) {
         call->fail(error);
+        return;
+    }
+    // a model on or under the root that is still loading (the scene's models load in the
+    // background after a project opens) has its bones but not its skin yet: the rig realised on
+    // then is grounded otherwise than the one that plays, so the answer waits for the load
+    if (!waitedForModels && scene && root != NULL_ENTITY && lattice_mcp::targetsPending(project, scene->id, {root})) {
+        const uint32_t sceneId = scene->id;
+        call->waitUntil([project, sceneId, root]() { return !lattice_mcp::targetsPending(project, sceneId, {root}); },
+                        MODEL_LOAD_WAIT_MS, [call](bool) { getClip(call, true); });
         return;
     }
     std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project, relative, &error);

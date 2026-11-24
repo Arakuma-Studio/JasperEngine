@@ -333,6 +333,26 @@ std::vector<FileChange> ProjectFileIndex::diff(const fs::path& dir, const std::a
     return out;
 }
 
+ProjectFileIndex ProjectFileIndex::pollingBaseline(const fs::path& dir, const fs::path& as) const {
+    ProjectFileIndex out;
+    out.reset(as);
+    std::string key;
+    if (!keyOf(dir, key)) return out;
+    const std::string prefix = key.empty() ? std::string() : key + "/";
+    std::vector<std::string> entered;   // "link/" of each link entered below `dir`
+    for (const auto& [link, real] : linkedRoots) {
+        if (link != key && link.compare(0, prefix.size(), prefix) == 0) entered.push_back(link + "/");
+    }
+    auto range = subtree(entries, key);
+    for (auto it = range.first; it != range.second; ++it) {
+        const bool linked = std::any_of(entered.begin(), entered.end(), [&](const std::string& link) {
+            return it->first.compare(0, link.size(), link) == 0;
+        });
+        if (!linked) out.entries.emplace_hint(out.entries.end(), it->first.substr(prefix.size()), it->second);
+    }
+    return out;
+}
+
 bool ProjectFileIndex::matchesDisk() const {
     std::map<std::string, Entry> disk;
     std::optional<LinkWalk> links;

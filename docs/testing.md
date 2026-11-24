@@ -72,7 +72,8 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
 
 Picking (S26): `JASPER_PICK_SIMD=scalar|avx2|neon` forces the mesh BVH's slab test path; `MeshPose.MatchesGpuSkinning` is a GPU suite (the
 CPU pose against the skinned shaders, glcore and Vulkan). `JASPER_PICK_BUILD_DELAY_MS=<ms>` holds
-every background mesh BVH build pending that long: the MCP tests use it to see the Scene view's
+every background mesh BVH build pending that long (the wait runs on a blocking thread, so it holds no
+Background gate slot other loads queue for): the MCP tests use it to see the Scene view's
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 `JASPER_TEXTURE_LOAD_DELAY_MS=<ms>` holds every async texture decode that long: a screenshot must
 then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
@@ -1009,13 +1010,13 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `lint` | the repository's and the workflows' lints |
 | `linux` | `WERROR=1 tools/build.sh linux`; its editor install feeds `mcp` and `smoke` |
 | `unit` (one job per test binary: `core`; `editor-1`, `editor-2`) | `UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun (core); each editor part with `UNIT_SHARD=<k>/2`, after compiling half the objects (`UNIT_BUILD_PART=<k>/2`) and taking the other half from the other part (below) |
-| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter (on a PR: below) without the `*GpuSlow*` suites (the nightly runs them under ASan) |
+| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter (on a PR: below) without the `*GpuSlow*` suites (the nightly runs them under ASan); the editor job prints how much of x86-64's 2 GiB relocation reach its test binary uses (`tools/ci/reloc_reach.py`) |
 | `htmlui` | `JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests` |
 | `mcp` (one job per shard) | `tools/ci/mcp_shard.sh <k> build/ci-plan`: the CI suite's planned files, `-j 2`, without the fixture project |
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
 | `web` | `tools/build.sh web && tools/build.sh web-gate` |
 | `android` | `tools/build.sh android` (`ANDROID_ABIS=arm64-v8a` on a PR) |
-| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`); then a Compile build of a fixture with the editor job's install |
+| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`), the D3D11 and Vulkan legs on a PR and in the queue only for their inputs (below); then a Compile build of a fixture with the editor job's install |
 | `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `xcode ios` for iOS |
 | `report` | writes the PR comment (below) |
 | `check` | the one required status, `Check` (`tools/ci/check_gate.py`): green only when every lane that had to run passed |
@@ -1042,13 +1043,14 @@ on every change a game's build reads.
 
 **Advisory lanes during rollout.** `ci.yml`'s `ADVISORY_LANES` holds `unit asan htmlui mcp smoke`
 until `main` is green through CI, and `windows-editor-tests` (the Windows editor job's test run,
-reported apart from the job, until the suite passes on Windows): `Check` ignores their failures, and
-the report shows them first, marked advisory. Lint and the platform builds always block, the
+reported apart from the job, until the suite passes on Windows): `Check` ignores their failures and
+does not wait for them (its `needs` are `report`'s without them, which `tools/ci/test_check_gate.py`
+checks), and the report, which waits for every lane, shows them first, marked advisory. Lint and the platform builds always block, the
 Windows jobs' builds and the core tests' run included. Since an advisory lane cannot block a merge,
 the merge queue does not run it (`tools/ci/plan_lanes.py --advisory "$ADVISORY_LANES"`): of `unit`
 (every job of it), `asan`, `htmlui`, `mcp`, `smoke` and `windows-editor-tests` (the editor leg still
-builds), the ones the list names; taking a lane off the list puts it back in the queue with no other
-edit. Lint and the platform lanes run in the queue whatever the list says. The advisory run a push to
+builds), the ones the list names; taking a lane off the list puts it back in the queue, and the lane
+(a job) must join `check`'s `needs` too. Lint and the platform lanes run in the queue whatever the list says. The advisory run a push to
 `main` dispatches runs what the queue left out instead, as the queue would have (below), so every
 merged change still gets their results, in that run's report and the `advisory-red` issue.
 
@@ -1072,11 +1074,10 @@ first. The lane ends with its slowest shard, so the times have to be right:
   nothing from a single sample, and a new value only outside 25 % (at least 15 s) of the committed one.
   When an entry moved, it force-pushes `ci/mcp-timings-refit` and opens or updates its pull request
   (`tools/mcp/ci-timings.json` is on `CI_NOTHING_READS`: its PR runs only `changes` and `Check`).
-  GitHub Actions may not open pull requests here and its token's push starts no pull_request run:
-  with the secret `MCP_TIMINGS_TOKEN` it does both, without it the job dispatches `ci.yml` on the branch
-  with `status` and fails until the PR exists. A ruleset counts no check of a dispatched job, so that
-  run's `Check` job also sets the commit status `Check` on the head, which it counts. Then the job
-  turns on auto-merge and the merge queue lands the PR.
+  The GitHub App `jasper-ci-bot` (secrets `CI_BOT_APP_ID`, `CI_BOT_APP_PRIVATE_KEY`) pushes, opens
+  the PR and turns on auto-merge: the workflow token may not open pull requests here, its push starts
+  no pull_request run (whose `Check` the ruleset requires) and its auto-merge does not enqueue. The
+  App's push runs CI as any PR's, and the merge queue lands the PR once `Check` is green.
 - **The shard count**: the fewest shards that no larger count (up to 8 on a PR and in the queue) beats
   by more than the 4 min of setup each added shard costs (checkout, image, editor install: median
   236 s over 46 shards). Once the longest chunk sets the length, more shards save nothing.
@@ -1095,8 +1096,9 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 | `changes`, `Check` | yes | yes | yes | yes | yes |
 | `lint` | unless every path is one nothing reads | same | no | no | yes |
 | `linux`, `web`, `android`, `windows` | when anything that builds changed | yes | yes, to warm the caches (`windows`: the editor leg's build only) | `linux` when `mcp` or `smoke` runs (their editor install); `windows` for `windows-editor-tests` (the editor leg only) | yes |
+| `windows (engine-d3d11)`, `windows (engine-vulkan)` | with `windows`, when one of their inputs changed (below) | the same; the nightly builds both every night | yes (no build; `engine-vulkan` saves the Vulkan SDK's cache) | the same as the queue | yes |
 | `macos` | when an Apple-only input changed (below) | yes | yes, to warm its cache | no | yes |
-| `ios` | when an Apple-only input changed (below) | yes | no (no cache) | no | yes |
+| `ios` | when an Apple-only input changed (below) | the same; the nightly builds it every night | no (no cache) | no | yes |
 | `unit`, `htmlui` | the suites the plan selects | all, unfiltered; not while advisory | build only (the caches, the deps dumps) | while advisory all, unfiltered | all |
 | `asan` | the unit lane's suites when a path the sanitizers see changed; every test when the lane's settings did; else no (below) | all, unfiltered; not while advisory | build only (each binary's cache) | while advisory all | all |
 | `mcp` | the planned CI-suite files | the planned files, over the group's diff against `main`; not while advisory | no | while advisory the planned files, over the diff since the last advisory run | the whole CI suite |
@@ -1108,6 +1110,14 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   `tools/mcp/ci-timings.json` runs only `changes` and `Check`, on a PR and in the queue. The rest of `docs/` counts as building:
   the editor embeds the MCP guide, and tests read other docs.
 - **Ledgers** ride in the PR of the work they record, so they cost no run of their own.
+- **Blocking lanes only, while GitHub's runners are the bottleneck**: with the repository variable
+  `PR_ADVISORY_LANES` set to `off`, a pull request plans as the merge queue does: its advisory test
+  lanes and test runs (`ADVISORY_LANES`: unit, ASan, HTML UI, MCP, smoke, the Windows editor tests) are
+  planned off (`advisory_off`; the editor leg still builds), and its `Check` waits for lint and the
+  platform builds only. They run on `main` after the merge, in the advisory run a push dispatches, as
+  for the queue. The default (`on`, or no variable) runs them. Set it while the organization's 60
+  concurrent hosted jobs are saturated, delete it when the backlog clears:
+  `gh variable set PR_ADVISORY_LANES --body off`, `gh variable delete PR_ADVISORY_LANES`.
 - **Stricter than check-changed**: any building change runs every platform lane, Web and Android
   included; a `.github/` change runs everything (ASan as below); a plan error, a missing deps dump or a missing or
   stale coverage map widens that lane to everything, and the report says why.
@@ -1128,12 +1138,55 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   `retry.sh`, the report action). A `ci.yml` change alone does not count, even one to their own jobs.
   The reason is capacity: the organization has 5 macOS runners, and on 2026-11-23 macOS jobs waited a
   median of 2 h (up to 10) while the merge queue stalled behind them. The queue is the gate: it, a push
-  to `main`, full runs and the nightly build both lanes for every change that builds, so an Apple-only
-  break still stops the merge, one queue run later than a PR would have shown it. There are no iOS
+  to `main`, full runs and the nightly build `macos` for every change that builds, so a macOS break
+  still stops the merge, one queue run later than a PR would have shown it.
+- **macOS in the merge queue** builds only for a macOS-only input. macOS is what caps the queue: 5
+  hosted runners and `je-mac`, a `macos` job a group. Its inputs, wider than a pull request's (the queue
+  is the last gate), are:
+  - `APPLE_INPUTS`, plus Objective-C sources (`*.mm`, `*.m`), Mac and Apple named sources and
+    resources (`*/Mac[A-Z]*`, `*Mac.cpp`, `*/Apple*`, `editor/resources/macos/`), the vendored sokol
+    (its Metal backend), `tools/ci/macos.sh` and the ccache actions it runs;
+  - a C/C++ source whose text, before or after, names `__APPLE__`, `TARGET_OS_`, `SOKOL_METAL` or
+    `__OBJC__`;
+  - a CMake file whose changed lines or their 10 lines of context name an Apple setting (`APPLE`,
+    `IOS`, `CMAKE_OSX`, `Darwin`, `XCODE`, macOS, Metal);
+  - `ci.yml`'s `macos` job or `env` (`tools/ci/plan_lanes.py` `MACOS_PATHS`, `macos_inputs`).
+
+  Without one, the lane is planned off (`queue_off`), so a mac-only break (a compile error or a CPU
+  test) shows on `main` right after the merge, not in the queue. The push to `main` runs the whole lane
+  then (`macos_full`: its CPU tests, the call CLI and the compile smoke, which a push otherwise skips
+  because the queue ran them), and the nightly builds it every night. Replayed over the 40 merges up
+  to #181 (38 that build), the queue would have built `macos` for 13 (34%) and left it out for 25;
+  today's mix was CI-heavy.
+- **iOS in the merge queue** follows the same rule (`lanes.json` `queue_off`, which `Check` accepts as
+  a planned skip). `ios` is a compile check of the Xcode project with the same Apple Clang the queue's
+  `macos` lane builds every change with, and macOS capacity is the bottleneck. `nightly.yml`'s `ios`
+  job builds the project for iOS and macOS every night, whatever changed, so an iOS-only break shows
+  there within a day; the nightly's report opens or updates its issue. Full runs build it, a push
+  does not (it keeps no cache). There are no iOS
   CMake toolchain files: `ios` builds the Xcode project, not CMake.
 - **MCP in the merge queue** is planned from the coverage map, not the whole suite: a regression the
   map misses is the nightly's to find. A planned file outside the CI suite (it needs the fixture
   project, or is `CI_EXCLUDED`) is listed under "not run in CI"; `MCP_SUITE=all` locally covers it.
+- **The Windows D3D11 and Vulkan legs** (56-97 min each in merge-queue runs 45115998605 to 45216542055,
+  and `windows-compile` waits for every leg, so they set the queue's floor) build on a PR, a dispatch,
+  in the merge queue and the advisory run only when one of their inputs changed (`tools/ci/plan_lanes.py`
+  `windows_legs`, `lanes.json` `windows_parts`, the `windows` matrix): the sokol renderer
+  (`engine/renders/`) and its vendored library (`engine/libs/sokol/`), the shaders (`engine/shaderlib/`,
+  their stubs in `engine/shaders/`), the shader compilers and translators (`engine/libs/shadercompiler/`:
+  glslang, SPIRV-Cross), the shader data, variants and pools (`engine/core/shader/`, `ShaderPool`,
+  `ShaderRender`), the Windows platform code (`engine/platform/win/`; `VulkanContext` for Vulkan), the
+  engine's presets and CMake modules, `tools/ci/windows.sh`, `platform-common.sh`, the report action, and
+  `ci.yml`'s `windows` job or the workflow's `env`. Also a changed C/C++ file the legs compile (the engine,
+  `editor/procmat/`) whose text has backend code: a `SOKOL_<backend>` guard, D3D11 or DXGI for D3D11,
+  Vulkan, SPIR-V or the `vk` API for Vulkan; and a changed CMake line that names a backend or Windows, or
+  sits in an `if()`, `function()` or `macro()` that does (a source list's line is every backend's). The
+  reason: the two legs compile the engine and its core tests as `engine-glcore` does, with the same MSVC,
+  for one more backend, and run no test (no GPU on the runner), so all they catch is code that compiles
+  for that backend alone. Generic engine code rarely breaks one backend alone; backend and shader paths
+  still trigger them; and `nightly.yml`'s `windows-engine` builds both every night, whatever changed, so
+  a break the rule missed shows within a day in the `nightly` issue. A push, full runs and the rollback
+  (`CI_FULL_SELECTION`) keep every leg. `windows (engine-glcore)` runs whenever the lane does.
 - **Push to `main`** builds what keeps a cache and nothing else (`tools/ci/plan_lanes.py` `build_only`
   lists what builds without its tests): it saves the caches (ccache per lane), and a PR restores what
   `main` saved, never what the queue did; and it publishes the deps dumps `changes` plans from (below,
@@ -1166,8 +1219,10 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **ccache in CI**: a build runs with no size limit (a cleanup in the middle of a build evicts the
   restored entries it has not reached yet, and each miss then evicts more: a PR that changed one test
   file hit 5 of 5,279 compiles). `ccache-save` then evicts every entry the run neither used nor wrote
-  and prints the rest, the lane's working set, on every run; on `main` it cuts that to the lane's cap
-  (`max-size` in `ci.yml`), oldest-used first, saves it and deletes the lane's older entry (`prune`;
+  and prints the rest, the lane's working set, on every run; on `main` it cuts a working set over the
+  lane's cap (`max-size` in `ci.yml`) to it, oldest-used first, and keeps one under it whole (ccache's
+  cleanup evicts from each of its 16 subdirectories past a 16th of the cap, so under the cap it still
+  cost the next linux build 238 of 5,284 compiles), saves it and deletes the lane's older entry (`prune`;
   the `caches` job, after every lane, deletes them again). Each lane's old and new entries would
   otherwise both live until the push's slowest lane ended, and past the 10 GB GitHub evicts the least
   recently used entries of any lane: during push run 44629653601 the repository held 11.7 GB, two
@@ -1291,7 +1346,8 @@ it; the next run's `changes` reads it.
 - **Nightly** (`nightly.yml`, 03:17 UTC, or dispatched): the slow configurations (HTML UI on Vulkan
   and under ASan, TSan, texture formats on lavapipe, the unity builds of the editor, the engine and
   both unit-test trees, every fixture's smoke on OpenGL, GLES3 and Vulkan through
-  `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt player parity) and the whole MCP CI suite, which also refreshes the coverage map (below, "Plan
+  `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt player parity, the Windows engine and its core tests built on
+  D3D11 and Vulkan, `windows-engine`) and the whole MCP CI suite, which also refreshes the coverage map (below, "Plan
   inputs") and the nightly's own shard timings (the `mcp-timings` cache). A failure opens or updates the issue
   labelled `nightly`. When `main` moved, it publishes the prerelease `nightly-YYYYMMDD` (the newest 14
   are kept); the slow lanes do not hold it back.
@@ -1415,8 +1471,9 @@ a service that starts with the machine (macOS: with the user's login) and reconn
 
 - the run may use one: a push, the merge queue, a dispatch, or a pull request whose head repository is
   this one, never a fork's;
-- it is the run's first attempt: a rerun stays on GitHub's runners, so the watchdog's rerun (below)
-  never waits for the same machine again;
+- it is not the rerun of a run the watchdog moved off a runner that went away (the state's
+  `hosted_only`, below), nor of a forced dispatch: those stay on GitHub's runners, so they never wait
+  for the same machine again. A rerun for an idle runner (below) routes as a first attempt does;
 - the runner state (`state.json` of the data branch `ci-runner-state`, fetched as the plan starts; not a
   repository variable, which a run reads as it is created, up to an hour before `changes` gets a
   runner) is under 5 min old (`STATE_MAX_AGE`), and says the hosted
@@ -1429,20 +1486,24 @@ a service that starts with the machine (macOS: with the user's login) and reconn
   (`TAKES`, one by default): `je-mac` takes `macos` and `ios` (it builds `ios` in 12 min, run
   45104498209), one after the other; `je-linux` `linux` (the MCP and smoke lanes wait for it), else the
   longest build; `je-win` the D3D11 or OpenGL engine leg. The Windows editor leg's MSVC build does not
-  fit in 7 GB in its time. `je-win` is out (`SELF_HOSTED_DISABLED=je-win`) since the box reset itself
-  19 min into the D3D11 leg (run 45104498209; Kernel-Power 41, its sixth such reset in two days, five of
-  them before it ran CI).
+  fit in 7 GB in its time. The box reset itself 19 min into the D3D11 leg once (run 45104498209;
+  Kernel-Power 41, its sixth such reset in two days, five of them before it ran CI); the watchdog
+  reroutes a job it loses that way.
 
 The `changes` job's summary and `lanes.json` (`routing`) say where each job went and why.
 
 **The planner overflows too.** `changes` cannot route itself, and on 2026-11-23 it waited up to an
 hour for a hosted Linux runner (79 Linux jobs queued, the oldest for 4 h), so no plan ran at all. The
 dispatcher sets the repository variable `SELF_HOSTED_PLANNER` to `je-linux` while hosted Linux is
-saturated and `je-linux` is online, fit and not disabled, and deletes it otherwise. A run reads
+saturated and `je-linux` is online, fit, idle (no job running or queued for it) and not disabled, and
+deletes it otherwise: runs created while it plans go hosted, so planners never queue behind each other
+or a build. A run reads
 `vars` as it is created, which is when its `changes` job is queued, so the value is current where it
 is used. `changes` runs there on a first attempt of a trusted event other than a push (a push waits
-`ADMISSION_SECONDS` first), and treats `je-linux` as free for the jobs it plans (`--planner`): only
-this job holds it. If the runner goes away, the watchdog reroutes the run as below, and the rerun
+`ADMISSION_SECONDS` first). While it plans, `je-linux` takes no lane (the state marks it unfit,
+"reserved for `changes`"): every run's `changes` would otherwise queue behind a build. A non-queue run's `changes`
+queued 5 min for a busy runner anyway (`PLANNER_WAIT`) is rerouted as for a lost runner: cancelled and
+rerun on GitHub's runners. A merge-queue run's is not (a cancel fails its group). If the runner goes away, the watchdog reroutes the run as below, and the rerun
 plans on GitHub's runners.
 
 **The state and the watchdog** (`tools/ci/runner_dispatch.py`): a cron job runs it every minute on an
@@ -1453,10 +1514,29 @@ runs, and force-pushes the state to `ci-runner-state` as one parentless commit. 
 touches a run it did not route): a job queued 10 min for a runner that is offline or gone, or running
 on one offline for 3 min, or failed because its runner went away ("lost communication", "shutdown
 signal", read as soon as the job ends), gets its run cancelled and, once stopped, rerun whole (`gh run rerun`): the rerun plans on
-GitHub's runners only. A merge-queue run is cancelled and its pull request put back in the queue (the
-queue removed the group, so a rerun would build nothing); a pull request's run that a newer push
-superseded is not rerun. Each run is acted on once, at most 6 actions an hour, each logged to the
-host's `je-runner-dispatch.log`. With no state for 5 min (the host, `gh` or the cron is down) every
+GitHub's runners only. A pull request's run that a newer push superseded is not rerun.
+
+**A merge-queue run is cancelled only when its job cannot finish.** A cancel fails its `Check`: the
+queue removes the pull request, and every group behind it restarts (run 45310250691, #153's group:
+about 2 h lost for a job that would have waited). So the dispatcher cancels a queue run only:
+
+- when one of its jobs already failed because its runner went away (the group is red anyway);
+- or when a job has been queued for a runner gone 30 min (`QUEUE_OFFLINE_LIMIT`), not 10.
+
+It does not cancel one for a runner that went offline mid-job, since GitHub fails that job itself
+and the first case follows. It never cancels one for an idle runner, a busy planner or anything that
+only makes it wait. After such a cancel the pull request goes back to the front of the queue
+(`enqueuePullRequest` with `jump: true`, unless it is queued already): a rerun of a removed group
+builds nothing.
+
+**Re-routing a waiting job.** A plan routes once, so a job queued on a hosted label stays there even
+when an overflow runner becomes idle. When a trusted run's job has waited 15 min
+(`IDLE_REROUTE_WAIT`) for a hosted runner while an overflow runner that would take it (`OVERFLOW`) is
+online, idle, fit and not disabled, the dispatcher cancels the run and reruns it, so its plan routes
+it there, one run per idle runner a minute. Never a merge-queue run's (above). The runs moved off a runner that went away are listed in the state's `hosted_only` for a day,
+and their reruns plan hosted only. Each run gets at most one reroute of each kind, and none for an idle
+runner after one for a lost runner: never a loop. All of it shares the limit of 6 actions an hour, each
+logged to the host's `je-runner-dispatch.log`. With no state for 5 min (the host, `gh` or the cron is down) every
 job goes hosted, so an offline machine never holds a run.
 
 **Taking a machine out**: `gh variable set SELF_HOSTED_DISABLED --body je-win` (labels, or `all`);

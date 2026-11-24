@@ -11,6 +11,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace TitleArtMigrationsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 namespace fs = std::filesystem;
@@ -107,7 +109,7 @@ TEST_F(TitleArtMigrationsTest, TheTitleArtTableIsTheCurrentVersion) {
 }
 
 TEST_F(TitleArtMigrationsTest, EveryFixtureLoads) {
-    const fs::path fixtures = fs::path(test::testPaths().sourceDir) / "titleart" / "fixtures";
+    const fs::path fixtures = fs::path(jasperengine::test::testPaths().sourceDir) / "titleart" / "fixtures";
     size_t loaded = 0;
     for (const auto& versionDir : fs::directory_iterator(fixtures)) {
         if (!versionDir.is_directory()) continue;
@@ -124,3 +126,5 @@ TEST_F(TitleArtMigrationsTest, EveryFixtureLoads) {
     }
     EXPECT_GE(loaded, 3u);
 }
+
+}  // namespace TitleArtMigrationsTest_cpp

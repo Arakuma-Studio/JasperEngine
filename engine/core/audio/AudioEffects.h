@@ -51,6 +51,8 @@ namespace jasperengine {
         const char* description; // one line for the editor and the guide
         bool costly;             // the editor shows "cost: high" (reverb, equalizer)
         std::vector<AudioEffectParamInfo> params;   // without wet (every effect has it, attribute 0)
+        // an Audio Source's own chain can hold it (S97 D1, D3): duck and limiter stay on groups
+        bool perSource = true;
     };
 
     class JASPERENGINE_API AudioEffects {
@@ -73,6 +75,12 @@ namespace jasperengine {
         static constexpr float lowPassBypassRatio = 0.45f;
         static constexpr float highPassBypassHz = 10.0f;
         static constexpr int maxEffectsPerGroup = 8;
+
+        // ---- an Audio Source's own effects (docs/specs/S97-audio-gaps.md REQ-1)
+        // a type a source can hold, by name as find(name); null for duck, limiter and unknown names
+        static const AudioEffectInfo* findPerSource(const std::string& name);
+        // their file names, for messages ("lowpass, highpass, ..., bassboost")
+        static std::string perSourceNames();
     };
 
 }
