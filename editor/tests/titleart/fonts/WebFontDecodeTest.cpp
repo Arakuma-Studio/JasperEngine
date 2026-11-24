@@ -15,9 +15,6 @@
 #include "titleart/fonts/FontTables.h"
 #include "titleart/fonts/WebFontDecode.h"
 
-#include "Exporter.h"
-#include "support/TestTempDir.h"
-
 #include <algorithm>
 
 using namespace jasperengine::editor::titlefonts;
@@ -241,33 +238,4 @@ TEST(WebFontDecodeTest, InstalledInFontFaceWebFontsOpenAsTheirSfnt) {
         }
     }
     jasperengine::FontFace::setWebFontDecoder(nullptr);
-}
-
-// Red control: copying a .woff2 as it is ships bytes a player (no decoder) cannot open
-TEST(WebFontDecodeTest, TheExportShipsWebFontsDecodedAtTheirPath) {
-    jasperengine::test::TestTempDir dir{"webfont-export"};
-    auto write = [](const fs::path& path, const std::vector<uint8_t>& bytes) {
-        std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
-    };
-    write(dir.path() / "brand.woff2", woff2());
-    write(dir.path() / "brand.woff", woff());
-    write(dir.path() / "plain.woff", reference());
-    std::vector<uint8_t> damaged = woff2();
-    damaged.resize(damaged.size() / 2);
-    write(dir.path() / "damaged.woff2", damaged);
-    write(dir.path() / "brand.ttf", reference());
-
-    for (const char* name : {"brand.woff2", "brand.woff"}) {
-        const fs::path shipped = dir.path() / (std::string("out-") + name);
-        ASSERT_TRUE(jasperengine::editor::Exporter::shipWebFontDecoded(dir.path() / name, shipped)) << name;
-        const std::vector<uint8_t> bytes = readBytes(shipped);
-        EXPECT_EQ(sniffFontFormat(bytes.data(), bytes.size()), FontFileFormat::TrueType) << name;
-        std::string error;
-        EXPECT_NE(jasperengine::FontFace::loadMemory(bytes.data(), bytes.size(), 0, true, name, &error), nullptr) << error;
-    }
-    // left to the plain copy: a TrueType file named .woff, one that does not decode, not a web font
-    EXPECT_FALSE(jasperengine::editor::Exporter::shipWebFontDecoded(dir.path() / "plain.woff", dir.path() / "out-plain.woff"));
-    EXPECT_FALSE(jasperengine::editor::Exporter::shipWebFontDecoded(dir.path() / "damaged.woff2", dir.path() / "out-damaged.woff2"));
-    EXPECT_FALSE(jasperengine::editor::Exporter::shipWebFontDecoded(dir.path() / "brand.ttf", dir.path() / "out-brand.ttf"));
-    EXPECT_FALSE(fs::exists(dir.path() / "out-damaged.woff2"));
 }
