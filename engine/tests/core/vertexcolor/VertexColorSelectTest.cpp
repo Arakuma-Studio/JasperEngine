@@ -8,10 +8,11 @@
 #include "vertexcolor/VertexColorSelect.h"
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
-using namespace jasperengine::vertexcolor::test;
 
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_select_test {
+    using namespace jasperengine::vertexcolor;
+    using namespace jasperengine::vertexcolor::test;
 
     Selection make(ElementKind kind, std::vector<uint32_t> ids) {
         Selection s;
@@ -28,8 +29,6 @@ namespace {
         mesh.indices = {0, 3, 1, 1, 3, 2, 4, 7, 5, 5, 7, 6};
         return built(mesh);
     }
-
-}
 
 TEST(VertexColorSelect, AllInvertAndSetOperations) {
     const MeshView mesh = cube();
@@ -144,3 +143,5 @@ TEST(VertexColorSelect, AverageValueAndTarget) {
     EXPECT_EQ(target.ids, std::vector<uint32_t>({1, 2}));
     EXPECT_EQ(toTarget(make(ElementKind::Vertex, {})).kind, TargetKind::Vertices);
 }
+
+} // namespace vertex_color_select_test

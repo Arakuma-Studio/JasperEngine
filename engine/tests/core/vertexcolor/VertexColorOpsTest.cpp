@@ -13,10 +13,11 @@
 #include <memory>
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
-using namespace jasperengine::vertexcolor::test;
 
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_ops_test {
+    using namespace jasperengine::vertexcolor;
+    using namespace jasperengine::vertexcolor::test;
 
     const Vector4 kRed(1, 0, 0, 1);
     const Vector4 kGreen(0, 1, 0, 1);
@@ -50,8 +51,6 @@ namespace {
         op.value = value;
         return op;
     }
-
-}
 
 // ---- R3, R4, R24: elements and overrides
 
@@ -1178,3 +1177,5 @@ TEST(VertexColorOps, EveryOpMatchesItsGoldenHash) {
     };
     EXPECT_EQ(hashes, expected);
 }
+
+} // namespace vertex_color_ops_test

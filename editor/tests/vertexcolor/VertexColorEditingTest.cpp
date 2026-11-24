@@ -19,9 +19,10 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolortest;
 
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_editing_test {
+    using namespace jasperengine::editor::vertexcolortest;
 
     const Vector4 kRed(1.0f, 0.0f, 0.0f, 1.0f);
     const Vector4 kBlue(0.0f, 0.0f, 1.0f, 1.0f);
@@ -87,8 +88,6 @@ namespace {
         }
         return op;
     }
-
-}
 
 TEST_F(VertexColorEditing, FirstEditMakesComponentAndFileInOneUndoStep) {
     const Entity box = addBox();
@@ -490,3 +489,5 @@ TEST_F(VertexColorEditing, LiftedStrokeSweepsNoCapsuleAcrossTheGap) {
         stroke.cancel();
     }
 }
+
+} // namespace vertex_color_editing_test

@@ -21,9 +21,10 @@
 #include <system_error>
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
 
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_file_test {
+    using namespace jasperengine::vertexcolor;
 
     // the editor's compressor (editor/vertexcolor/VertexColorCompressor.cpp): the engine links only
     // zstd's decoder, these tests link the encoder too
@@ -131,8 +132,6 @@ namespace {
 
     constexpr size_t HEADER = 12;
     constexpr size_t TARGET_FIXED = 12 + 24;   // key + fingerprint
-
-}
 
 TEST(VertexColorFile, RoundTrip) {
     for (const Format format : {Format::RGBA8, Format::RGBA16F}) {
@@ -441,3 +440,5 @@ TEST(VertexColorFile, WriteFileIsAtomic) {
     EXPECT_FALSE(readFile(dir.file("missing.vcolors"), out, error));
     EXPECT_NE(error.find("cannot open"), std::string::npos) << error;
 }
+
+} // namespace vertex_color_file_test

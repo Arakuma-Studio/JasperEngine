@@ -9,11 +9,12 @@
 #include "vertexcolor/VertexColorOpsJson.h"
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
-using namespace jasperengine::vertexcolor::test;
 using Json = nlohmann::json;
 
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_ops_json_test {
+    using namespace jasperengine::vertexcolor;
+    using namespace jasperengine::vertexcolor::test;
 
     bool parseOne(const std::string& text, Op& op, std::string& error, OpJsonHooks hooks = OpJsonHooks()) {
         OpJsonParser parser(std::move(hooks));
@@ -61,8 +62,6 @@ namespace {
         };
         return hooks;
     }
-
-}
 
 TEST(VertexColorOpsJson, ParsesSetFillAndTheirChannels) {
     Op op = parsed(R"({"op": "set", "target": {"kind": "faces", "ids": [3, 1]}, "value": [1, 0, 0]})");
@@ -352,3 +351,5 @@ TEST(VertexColorOpsJson, ValuesAndChannelsHaveOneSpelling) {
     EXPECT_EQ(channelsName(CHANNEL_R | CHANNEL_B), "rb");
     EXPECT_EQ(channelsName(CHANNELS_RGBA), "rgba");
 }
+
+} // namespace vertex_color_ops_json_test

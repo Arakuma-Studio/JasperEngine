@@ -14,9 +14,9 @@
 #include <limits>
 #include <span>
 
-using namespace vctest;
-
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_bake_test {
+    using namespace vctest;
 
     std::shared_ptr<Image> checker2x2() {
         auto image = std::make_shared<Image>();
@@ -136,8 +136,6 @@ namespace {
         return state >> 8;
     }
     float randomIn(uint32_t& state, float lo, float hi) { return lo + (hi - lo) * (float)nextRandom(state) / 16777216.0f; }
-
-}
 
 TEST(VertexColorBake, ImageSampleIsBilinear) {
     const std::shared_ptr<Image> image = checker2x2();
@@ -573,3 +571,5 @@ TEST(VertexColorBake, TransferRefusesInconsistentSources) {
     EXPECT_FALSE(bake::transfer(m, transferOp(source), ApplyOptions(), field, result, error));
     EXPECT_NE(error.find("past its 81 positions"), std::string::npos) << error;
 }
+
+} // namespace vertex_color_bake_test

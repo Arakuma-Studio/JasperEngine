@@ -8,9 +8,9 @@
 
 #include <gtest/gtest.h>
 
-using namespace vctest;
-
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_runtime_test {
+    using namespace vctest;
 
     const Vector4 WHITE(1.0f, 1.0f, 1.0f, 1.0f);
     const Vector4 RED(1.0f, 0.0f, 0.0f, 1.0f);
@@ -38,8 +38,6 @@ namespace {
         p.fade = fade;
         return p;
     }
-
-}
 
 TEST(VertexColorRuntime, HoldThenFadeBackToTheAuthoredValue) {
     const MeshView m = line();
@@ -172,3 +170,5 @@ TEST(VertexColorRuntime, ClearDropsTheLayer) {
     EXPECT_FALSE(layer.update(1.0));
     EXPECT_EQ(layer.paint(m, Vector3(10, 0, 0), redDot(1.0f, 1.0f), 2.0), 0u);
 }
+
+} // namespace vertex_color_runtime_test

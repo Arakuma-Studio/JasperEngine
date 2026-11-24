@@ -22,9 +22,10 @@
 #include <gtest/gtest.h>
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
 
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_scene_test {
+    using namespace jasperengine::vertexcolor;
 
     TargetKey nodeKey(int node, int primitive) {
         TargetKey key;
@@ -53,8 +54,6 @@ namespace {
         vctest::GltfNode moss{"Moss", {left, right}, 5.0f};
         return {rock, moss};
     }
-
-}
 
 TEST(VertexColorScene, PrimitiveHasOneSubmeshTarget) {
     Scene scene;
@@ -219,3 +218,5 @@ TEST(VertexColorScene, FingerprintsAndChangeMarks) {
     EXPECT_EQ(component.revision, revision + 1);
     EXPECT_EQ(boundSplitVertices(&scene, entity, submeshKey(0)), 0u) << "nothing bound without a view";
 }
+
+} // namespace vertex_color_scene_test

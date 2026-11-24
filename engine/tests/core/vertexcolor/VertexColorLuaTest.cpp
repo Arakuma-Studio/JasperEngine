@@ -28,9 +28,10 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
 
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_lua_test {
+    using namespace jasperengine::vertexcolor;
 
     class VertexColorLua : public ::testing::Test {
     protected:
@@ -94,8 +95,6 @@ namespace {
             return scene.getComponent<VertexColorsComponent>(box.getEntity());
         }
     };
-
-}
 
 TEST_F(VertexColorLua, PropertiesAndTargets) {
     run(R"(
@@ -268,3 +267,5 @@ TEST(VertexColorRuntimeBench, PaintOnTenThousandVertices) {
         EXPECT_LE(median, 0.3 * testsupport::perfSlack());
     }
 }
+
+} // namespace vertex_color_lua_test

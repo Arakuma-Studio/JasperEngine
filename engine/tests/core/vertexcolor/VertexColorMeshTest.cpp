@@ -9,8 +9,11 @@
 #include <algorithm>
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
-using namespace jasperengine::vertexcolor::test;
+
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_mesh_test {
+    using namespace jasperengine::vertexcolor;
+    using namespace jasperengine::vertexcolor::test;
 
 TEST(VertexColorMesh, WeldsCubeSeamsIntoEightLogicalVertices) {
     const MeshView mesh = cube();
@@ -154,3 +157,5 @@ TEST(VertexColorMesh, ValueAtInterpolatesTheCornerValues) {
     EXPECT_EQ(valueAt(data, mesh, 0, Vector3(0, 1, 0)), Vector4(0, 0, 0, 0));
     EXPECT_EQ(valueAt(data, mesh, 1, Vector3(0, 1, 0)), Vector4(1, 1, 1, 1));
 }
+
+} // namespace vertex_color_mesh_test

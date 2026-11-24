@@ -16,7 +16,7 @@ using namespace jasperengine::editor::vertexcolor;
 
 namespace {
 
-    constexpr float PI_F = 3.14159265358979f;
+    constexpr float BRUSH_PI = 3.14159265358979f;
 
     // the corner point of a corner selection: a quarter of the way from its vertex to the face's centroid,
     // so a box around one corner of a face picks that face's corner, not its neighbours'
@@ -360,15 +360,15 @@ void editor::vertexcolor::buildCursor(const Vector3& center, const Vector3& norm
             previous = next;
         }
     };
-    ring(radius, 0.0f, 2.0f * PI_F, SEGMENTS, tint);
+    ring(radius, 0.0f, 2.0f * BRUSH_PI, SEGMENTS, tint);
     const float inner = radius * std::clamp(hardness, 0.0f, 1.0f);
     if (inner > radius * 0.02f && inner < radius * 0.98f) {
-        ring(inner, 0.0f, 2.0f * PI_F, SEGMENTS, Vector4(tint.x * 0.8f, tint.y * 0.8f, tint.z * 0.8f, tint.w * 0.75f));
+        ring(inner, 0.0f, 2.0f * BRUSH_PI, SEGMENTS, Vector4(tint.x * 0.8f, tint.y * 0.8f, tint.z * 0.8f, tint.w * 0.75f));
     }
     const float s = std::clamp(strength, 0.0f, 1.0f);
     const int arcSegments = std::max(1, (int)std::ceil(SEGMENTS * s));
     // from the top of the ring, clockwise, as a gauge reads
-    if (s > 0.0f) ring(radius * 1.08f, PI_F * 0.5f, PI_F * 0.5f - 2.0f * PI_F * s, arcSegments, Vector4(tint.x, tint.y, tint.z, tint.w));
+    if (s > 0.0f) ring(radius * 1.08f, BRUSH_PI * 0.5f, BRUSH_PI * 0.5f - 2.0f * BRUSH_PI * s, arcSegments, Vector4(tint.x, tint.y, tint.z, tint.w));
     // the centre tick along the normal: which way the surface faces
     out.points.push_back(center);
     out.points.push_back(center + n * (radius * 0.25f));

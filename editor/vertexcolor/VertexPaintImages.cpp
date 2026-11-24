@@ -26,7 +26,7 @@ using namespace jasperengine::editor::vertexcolor;
 namespace {
 
     // 8-bit pixels as the op engine's linear floats
-    std::shared_ptr<vc::Image> imageOf(TextureData& data, bool colorData) {
+    std::shared_ptr<vc::Image> paintImageOf(TextureData& data, bool colorData) {
         const int width = data.getWidth();
         const int height = data.getHeight();
         const unsigned char* bytes = static_cast<const unsigned char*>(data.getData());
@@ -56,7 +56,7 @@ namespace {
         return image;
     }
 
-    std::filesystem::path resolve(Project* project, const std::string& path) {
+    std::filesystem::path paintFileOf(Project* project, const std::string& path) {
         const std::filesystem::path given = FileUtils::pathFromUtf8(path);
         if (given.is_absolute()) return given;
         std::error_code ec;
@@ -134,13 +134,13 @@ std::shared_ptr<const vc::Image> editor::vertexcolor::loadPaintImage(Project* pr
         if (error) *error = "Choose a texture.";
         return nullptr;
     }
-    const std::filesystem::path file = resolve(project, assetPath);
+    const std::filesystem::path file = paintFileOf(project, assetPath);
     TextureData data;
     if (!data.loadTextureFromFile(FileUtils::pathToUtf8(file).c_str())) {
         if (error) *error = assetPath + " could not be read as an image.";
         return nullptr;
     }
-    std::shared_ptr<vc::Image> image = imageOf(data, colorData.has_value() ? *colorData : importedAsColor(file));
+    std::shared_ptr<vc::Image> image = paintImageOf(data, colorData.has_value() ? *colorData : importedAsColor(file));
     if (!image && error) *error = assetPath + " is not an 8-bit RGBA or grayscale image.";
     return image;
 }
@@ -208,10 +208,10 @@ std::shared_ptr<const vc::Image> editor::vertexcolor::materialImage(Project* pro
         }
         if (texCoord) *texCoord = std::clamp(uv, 0, 1);
         const std::string path = texture->empty() ? std::string() : texture->getPath();
-        const bool color = colorData.has_value() ? *colorData : (!path.empty() && importedAsColor(resolve(project, path)));
+        const bool color = colorData.has_value() ? *colorData : (!path.empty() && importedAsColor(paintFileOf(project, path)));
         std::shared_ptr<vc::Image> image;
         // the pixels the editor still holds, else the file again
-        if (texture->hasData() && texture->getData().getData()) image = imageOf(texture->getData(), color);
+        if (texture->hasData() && texture->getData().getData()) image = paintImageOf(texture->getData(), color);
         if (!image && !texture->empty()) image = gltfImage(scene, target, slot, color);
         if (!image && !path.empty()) {
             std::string why;

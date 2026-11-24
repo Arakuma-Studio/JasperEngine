@@ -50,18 +50,19 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::test;
 
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_gpu_test {
+    using namespace jasperengine::test;
 
-    bool isGoldenBackend(){
+    bool vcGpuIsGoldenBackend(){
         return std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0;
     }
 
     // glcore against its own goldens: exact; another backend: the cross-backend bound
-    CompareOptions exactOnGolden(){
+    CompareOptions vcGpuExactOnGolden(){
         CompareOptions options;
-        if (isGoldenBackend()){
+        if (vcGpuIsGoldenBackend()){
             options.pixelThreshold = 0;
             options.maxBadFraction = 0.0;
             options.maxMeanDiff = 0.0;
@@ -232,14 +233,12 @@ namespace {
         }
 
         void expectGolden(const std::string& name){
-            const CompareResult result = compareTargetWithGolden(name, exactOnGolden());
+            const CompareResult result = compareTargetWithGolden(name, vcGpuExactOnGolden());
             std::printf("[gpu] %s on %s: largest difference %d, %zu pixels over the threshold, mean %.4f\n",
                         name.c_str(), HeadlessContext::getBackendName(), result.maxDiff, result.badPixels, result.meanDiff);
             EXPECT_TRUE(result.passed) << result.message;
         }
     };
-
-}
 
 TEST_F(VertexColorGpu, DrawModeShowsTheRawColours){
     JASPER_REQUIRE_GPU();
@@ -342,3 +341,5 @@ TEST_F(VertexColorGpu, VertexBlendFiveLayers){
     expectGolden("vertex_blend_five_layers");
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+} // namespace vertex_color_gpu_test

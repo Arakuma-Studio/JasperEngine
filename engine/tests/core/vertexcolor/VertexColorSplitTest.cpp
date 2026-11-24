@@ -11,9 +11,9 @@
 #include <cmath>
 #include <limits>
 
-using namespace vctest;
-
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_split_test {
+    using namespace vctest;
 
     const Vector4 WHITE(1.0f, 1.0f, 1.0f, 1.0f);
     const Vector4 RED(1.0f, 0.0f, 0.0f, 1.0f);
@@ -35,8 +35,6 @@ namespace {
     }
 
     std::vector<uint32_t> list(std::initializer_list<uint32_t> v) { return std::vector<uint32_t>(v); }
-
-}
 
 TEST(VertexColorSplit, NoOverridesKeepsTheSharedGeometry) {
     const MeshView m = fold();
@@ -167,3 +165,5 @@ TEST(VertexColorSplit, PackValuesBytes) {
     EXPECT_EQ(packValues(hdr, Format::RGBA16F), (std::vector<uint8_t>{0x00, 0x3C, 0x00, 0x38, 0x00, 0xC0, 0xFF, 0x7B}));
     EXPECT_TRUE(packValues({}, Format::RGBA8).empty());
 }
+
+} // namespace vertex_color_split_test

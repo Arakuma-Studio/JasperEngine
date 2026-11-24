@@ -38,7 +38,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::test;
 namespace fs = std::filesystem;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -97,7 +96,8 @@ namespace vertex_colors_component_test {
 
 }
 
-using namespace vertex_colors_component_test;
+namespace vertex_colors_component_test {
+    using namespace jasperengine::editor::test;
 
 TEST(VertexColorsScene, DefaultsAreNotWritten) {
     const reflect::ComponentDesc* desc = reflect::find(VC);
@@ -354,3 +354,5 @@ TEST(AssetTypes, VertexColorsValueIs35) {
     EXPECT_TRUE(reference.found());
     EXPECT_EQ(reference.guid, guid);
 }
+
+} // namespace vertex_colors_component_test

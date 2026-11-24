@@ -12,7 +12,10 @@
 #include <limits>
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
+
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_types_test {
+    using namespace jasperengine::vertexcolor;
 
 TEST(VertexColorTypes, DescribeNamesNodeAndPrimitiveOrSubmesh) {
     TargetKey model;
@@ -110,3 +113,5 @@ TEST(VertexColorTypes, InitialValueIsNeverTransparentBlack) {
     EXPECT_EQ(initialValueFor(InitialValue::Black, custom, &asset), Vector4(0, 0, 0, 1));
     EXPECT_EQ(initialValueFor(InitialValue::Custom, custom, &asset), custom);
 }
+
+} // namespace vertex_color_types_test

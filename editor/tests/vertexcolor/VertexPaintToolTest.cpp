@@ -38,7 +38,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
 namespace fs = std::filesystem;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -135,7 +134,8 @@ namespace vertex_paint_tool_test {
 
 }
 
-using namespace vertex_paint_tool_test;
+namespace vertex_paint_tool_test {
+    using namespace jasperengine::editor::vertexcolor;
 
 [[maybe_unused]] static ::testing::Environment* const vertexPaintCleanup = ::testing::AddGlobalTestEnvironment(new TempCleanup);
 
@@ -583,3 +583,5 @@ TEST_F(VertexPaint, WindowAndDialogsDrawInAFrame) {
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous);
 }
+
+} // namespace vertex_paint_tool_test

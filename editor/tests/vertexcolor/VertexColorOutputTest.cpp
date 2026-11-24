@@ -33,9 +33,10 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolortest;
 
-namespace {
+// (a named namespace, tests included: a unity build merges the test sources)
+namespace vertex_color_output_test {
+    using namespace jasperengine::editor::vertexcolortest;
 
     // two static mesh nodes, A (grid primitives of 2 and 3 quads a side) and B (4 quads, moved):
     // what Merge Static Meshes merges, each primitive with its own vertex count
@@ -113,8 +114,6 @@ namespace {
         settings.meshCompression = compression;
         return settings;
     }
-
-}
 
 // ---- the cook (R9, D11)
 
@@ -552,3 +551,5 @@ TEST_F(VertexColorOutput, InspectorRowsAreUnityLabelsOnRealFields) {
     EXPECT_EQ(colorsOf(box)->format, vc::Format::RGBA8);
     EXPECT_EQ(colorsOf(box)->loaded->format, vc::Format::RGBA8);
 }
+
+} // namespace vertex_color_output_test
