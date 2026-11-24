@@ -1015,7 +1015,7 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
 | `web` | `tools/build.sh web && tools/build.sh web-gate` |
 | `android` | `tools/build.sh android` (`ANDROID_ABIS=arm64-v8a` on a PR) |
-| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`); then a Compile build of a fixture with the editor job's install. Each job keeps its own ccache entry |
+| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`); then a Compile build of a fixture with the editor job's install. The editor and engine jobs each keep a ccache entry |
 | `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `XCODE_CAS=build/.cache/xcode-cas tools/ci/macos.sh xcode ios` (and `macos`) for the Xcode project, through Xcode's compilation cache |
 | `report` | writes the PR comment (below) |
 | `check` | the one required status, `Check` (`tools/ci/check_gate.py`): green only when every lane that had to run passed |
@@ -1139,8 +1139,8 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   `main` saved, never what the queue did; and it publishes the deps dumps `changes` plans from (below,
   "Plan inputs"). The queue built and tested the same commit, so a push runs no check, nor any step
   the queue ran (`MAIN_STAGE` in `ci.yml`). ASan builds both binaries for their entries, the Windows
-  engine legs build without their tests, `windows (compile)` and macOS make their Compile builds and
-  `ios` its two Xcode builds, for theirs, and `smoke` runs when a game-building path changed, for its
+  engine legs build without their tests, macOS makes its Compile build and `ios` its two Xcode
+  builds, for theirs, and `smoke` runs when a game-building path changed, for its
   entry.
 - **One push run at a time.** Merge-queue groups land one push each, some minutes apart (2026-11-15
   to 20: 21 pushes, gaps of 62 s, 3 and 4 min among 20). Push runs share one concurrency group without
@@ -1195,7 +1195,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   | Windows editor | 0.92 (MSVC: `/Z7` as before) | 0.91 | 0.95G | yes |
   | Windows OpenGL | 1.4 (`/Z7`: its core tests' reports name frames) | | 1.5G | yes |
   | Windows D3D11, Vulkan | not measured on a hosted runner yet (Release, no debug information) | | 0.8G each | yes |
-  | Windows Compile | not measured yet | | 1.0G | yes |
+  | Windows Compile | not measured | | | no: the budget holds the engine legs', which shorten the lane more (each leg 54-109 min cold, the Compile build 17-33) |
   | iOS and macOS Xcode (`xcode-cas`, Xcode's compilation cache, no debug symbols) | 1.14-1.23 raw, 0.35-0.38 compressed (both SDKs, five builds of two commits 36 apart, on the Mac); it only grows, so a push that restores over 2 GB starts it afresh (`COMPILATION_CACHE_LIMIT_SIZE=1600M` held it at 1.78 GB with 92 % hits on a commit seen before, against 100 % without) | iOS alone 0.89 compressed | 2 GB raw | yes |
   | Android | 0.27 | 0.63 | 0.3G | yes |
   | web | 0.24 | 0.48 | 0.3G | yes |
