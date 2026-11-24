@@ -29,7 +29,7 @@
 using namespace jasperengine;
 using namespace jasperengine::editor::unity;
 namespace fs = std::filesystem;
-using Json = nlohmann::json;
+using UnityAnimJson = nlohmann::json;
 
 namespace {
 
@@ -180,7 +180,7 @@ TEST(UnityAnimImportTest, TransformAndFloatCurves) {
     EXPECT_NEAR(rootMotion.rotationOffset, 10.0f, 1e-6f);
     EXPECT_EQ(rootMotion.positionYBasedUpon, anim::RootPositionYBasis::Original);
     EXPECT_EQ(rootMotion.positionXZBasedUpon, anim::RootPositionXZBasis::CenterOfMass);
-    const Json& report = result.report;
+    const UnityAnimJson& report = result.report;
     EXPECT_EQ(report["root_motion"]["rotation_based_upon"], "body_orientation");
     EXPECT_NEAR(report["root_motion"]["rotation_offset"].get<double>(), 10.0, 1e-6);
     EXPECT_EQ(report["root_motion"]["position_y_based_upon"], "original");
@@ -318,7 +318,7 @@ TEST(UnityControllerImportTest, StatesTransitionsBlendTrees) {
     }
     // the model clip is reported with its name
     bool jumpReported = false;
-    for (const Json& miss : result.report["unmapped"]) jumpReported = jumpReported || miss["reason"].get<std::string>().find("\"Jump\"") != std::string::npos;
+    for (const UnityAnimJson& miss : result.report["unmapped"]) jumpReported = jumpReported || miss["reason"].get<std::string>().find("\"Jump\"") != std::string::npos;
     EXPECT_TRUE(jumpReported) << result.report.dump(2);
 
     // a second import beside the first reuses its clips and mask
@@ -329,7 +329,7 @@ TEST(UnityControllerImportTest, StatesTransitionsBlendTrees) {
     const AssetImportResult again = importUnityAnimationAsset(options);
     ASSERT_TRUE(again.ok) << again.error;
     EXPECT_EQ(again.files.size(), 1u) << again.report.dump(2);
-    for (const Json& c : again.report["clips"]) {
+    for (const UnityAnimJson& c : again.report["clips"]) {
         EXPECT_TRUE(c["reused"].get<bool>()) << c.dump();
     }
     const anim::ControllerParseResult second = anim::parseController(again.files.front().second);
@@ -364,6 +364,6 @@ TEST(UnityMaskImportTest, BodyPartsAndPaths) {
     EXPECT_GE(mask.findPath("Armature/Hips/Spine"), 0);
     EXPECT_LT(mask.findPath("Armature/Hips"), 0);
     bool noted = false;
-    for (const Json& note : result.report["notes"]) noted = noted || note["code"] == "transforms-and-body-parts";
+    for (const UnityAnimJson& note : result.report["notes"]) noted = noted || note["code"] == "transforms-and-body-parts";
     EXPECT_TRUE(noted) << result.report.dump(2);
 }

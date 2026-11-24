@@ -329,7 +329,7 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
 // its alignment (false: the old defaults, Bottom and Left, so an instance's override keeps its
 // value), children and prefab instance overrides included, the overridden names renamed
 TEST(StreamMigrations, SceneV8TextPivotsBecomeAlignment){
-    YAML::Node root = YAML::Load(test::readText(test::fixture("migrations/scene-v8-text.scene")));
+    YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/scene-v8-text.scene")));
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     ASSERT_TRUE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 9);
@@ -362,7 +362,7 @@ TEST(StreamMigrations, SceneV8TextPivotsBecomeAlignment){
 }
 
 TEST(StreamMigrations, PrefabV9TextPivotsBecomeAlignment){
-    YAML::Node root = YAML::Load(test::readText(test::fixture("migrations/prefab-v9-text.prefab")));
+    YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/prefab-v9-text.prefab")));
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     ASSERT_TRUE(result.migrated());
     EXPECT_EQ(root["version"].as<int>(), 10);
@@ -377,7 +377,7 @@ TEST(StreamMigrations, PrefabV9TextPivotsBecomeAlignment){
 // with (legacyRootDrift); one with Apply Root Motion on and an instance's overrides are left as they
 // are; a component written now has none
 TEST(StreamMigrations, SceneV8AnimatorsKeepTheirRootDrift){
-    YAML::Node root = YAML::Load(test::readText(test::fixture("migrations/scene-v8-root-motion.scene")));
+    YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/scene-v8-root-motion.scene")));
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     ASSERT_TRUE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 9);
@@ -407,7 +407,7 @@ TEST(StreamMigrations, SceneV8AnimatorsKeepTheirRootDrift){
 }
 
 TEST(StreamMigrations, PrefabV9AnimationPlayersKeepTheirRootDrift){
-    YAML::Node root = YAML::Load(test::readText(test::fixture("migrations/prefab-v9-root-motion.prefab")));
+    YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/prefab-v9-root-motion.prefab")));
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     ASSERT_TRUE(result.migrated());
     EXPECT_EQ(root["version"].as<int>(), 10);
@@ -426,7 +426,7 @@ TEST(StreamMigrations, PrefabV9AnimationPlayersKeepTheirRootDrift){
 // slots in order: it keeps FBX Submesh Order Used Materials beside its other Mesh settings, and a
 // project of format 2 without the key follows the material slots
 TEST(StreamMigrations, ProjectV1KeepsPerspectiveSort){
-    YAML::Node root = YAML::LoadFile(test::fixture("migrations/project-v1-sort.yaml").string());
+    YAML::Node root = YAML::LoadFile(jasperengine::editor::test::fixture("migrations/project-v1-sort.yaml").string());
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Project, root);
     EXPECT_EQ(result.versionRead, 1);
     EXPECT_EQ(result.versionCurrent, 2);
