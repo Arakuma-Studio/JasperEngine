@@ -48,6 +48,8 @@
 #include <thread>
 #include <vector>
 
+namespace AsyncCreateTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -1015,7 +1017,7 @@ TEST_F(AsyncCreateGpu, AScreenshotWaitsForAVariantCompilingAtRuntime){
     EXPECT_TRUE(SystemRender::isGpuCreationIdle()) << "nothing is being created on the GPU meanwhile";
     EXPECT_FALSE(ShaderPool::isCreationIdle()) << "the compile is counted";
 
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     player::LaunchOptions options;
     options.screenshotFrame = 1;
     options.screenshot = dir.path() / "compiled.png";
@@ -1050,3 +1052,5 @@ TEST_F(AsyncCreateGpu, AScreenshotWaitsForAVariantCompilingAtRuntime){
     EXPECT_EQ(player::RunControl::finish(), player::EXIT_OK);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace AsyncCreateTest_cpp

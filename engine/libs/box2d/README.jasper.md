@@ -21,3 +21,21 @@ combine modes of `PhysicsMaterial` (`engine/core/physics/PhysicsMaterial.h`, phy
 
 With no callback set and no surface changed at run time Box2D behaves exactly as unpatched. When updating Box2D, drop the hunks that
 upstream already has (3.1 upstream keeps `userMaterialId` inside `b2SurfaceMaterial`).
+
+## Local patch: max rotation
+
+Every hunk is marked `// JASPER PATCH: max rotation`. Box2D 3.1 caps a body's rotation per step at
+the compile-time `B2_MAX_ROTATION` (0.25 pi) unless the body allows fast rotation, and has no way to
+change that flag on a live body. The engine's scene settings `physics2DMaxRotation` (Unity's Physics
+2D "Max Rotation Speed") and the Rigidbody 2D's `allowFastRotation` need both (docs/specs/S96-physics-gaps.md
+REQ-32, REQ-33):
+
+- `types.h` / `types.c`: `float maximumRotation` in `b2WorldDef`, default `B2_MAX_ROTATION`.
+- `world.h` / `world.c`: the world's `maxRotation`, made from the def; `b2World_SetMaximumRotation`,
+  `b2World_GetMaximumRotation`.
+- `solver.c`: the velocity integration caps the angular speed at the world's value instead of the constant.
+- `box2d.h` / `body.c`: `b2Body_SetAllowFastRotation` (3.1 has only the body def's field).
+
+With the default the solver computes exactly what unpatched 3.1 does (the same float). When updating
+Box2D, carry the hunks over unless upstream has a world setting and a body setter for the same (check
+the velocity integration in `solver.c`).

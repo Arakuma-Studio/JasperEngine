@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ComponentAddDialog.h"
+#include "audio/SourceEffectEdit.h"
 #include "component/ScriptComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
@@ -101,6 +102,8 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
             {ComponentType::CharacterControllerComponent, "A capsule moved by script that climbs steps and slopes"},
+            {ComponentType::WheelColliderComponent, "A car wheel with suspension and tire friction, below a dynamic Rigidbody"},
+            {ComponentType::VehicleDrivetrainComponent, "An engine, gear box and differentials driving the body's Wheel Colliders"},
             {ComponentType::WaterVolumeComponent, "A body of water: what has a Buoyancy floats in it"},
             {ComponentType::WaterExcluderComponent, "Keeps water out of a boat or a dry space: no surface inside, no underwater fade, cargo stays dry"},
             {ComponentType::WaterWakeComponent, "Foam and waves behind it while it moves through water"},
@@ -244,6 +247,7 @@ void ComponentAddDialog::open(
     m_onNewScript = onNewScript;
     m_scripts.clear();
     m_onScript = nullptr;
+    m_onAudioFilter = nullptr;
     m_anchorMin = anchorMin;
     m_anchorMax = anchorMax;
 }
@@ -251,6 +255,10 @@ void ComponentAddDialog::open(
 void ComponentAddDialog::setScripts(std::vector<ScriptCandidate> scripts, std::function<void(const ScriptCandidate&)> onScript) {
     m_scripts = std::move(scripts);
     m_onScript = std::move(onScript);
+}
+
+void ComponentAddDialog::setAudioFilters(std::function<void(const std::string& effect)> onAudioFilter) {
+    m_onAudioFilter = std::move(onAudioFilter);
 }
 
 void ComponentAddDialog::finish(bool cancelled) {
@@ -314,8 +322,8 @@ void ComponentAddDialog::show() {
 
     // Rows of the current page
     struct Row {
-        enum Kind { Category, Component, Script, NewScript } kind;
-        int index;          // category index (a script row: its index in m_scripts)
+        enum Kind { Category, Component, Script, NewScript, AudioFilter } kind;
+        int index;          // category index (a script row: its index in m_scripts; a filter: in filterAliases)
         ComponentType type; // component rows
         const char* description;
         bool enabled;
@@ -336,6 +344,15 @@ void ComponentAddDialog::show() {
             }
             rows.push_back({Row::Component, match.category, match.type, description, true});
         }
+        if (m_onAudioFilter) {
+            const std::string query = search::normalize(m_searchBuffer);
+            const auto& filters = SourceEffectEdit::filterAliases();
+            for (int i = 0; i < (int)filters.size(); i++) {
+                if (search::fuzzyScore(query, search::normalize(filters[i].name)) >= 0) {
+                    rows.push_back({Row::AudioFilter, i, ComponentType::AudioSourceComponent, filters[i].description, true});
+                }
+            }
+        }
         if (m_onScript) {
             const std::string query = search::normalize(m_searchBuffer);
             for (int i = 0; i < (int)m_scripts.size(); i++) {
@@ -355,6 +372,12 @@ void ComponentAddDialog::show() {
     } else {
         for (const ComponentEntry& entry : m_categories[m_category].entries) {
             rows.push_back({Row::Component, m_category, entry.type, entry.description, canAdd(entry.type)});
+        }
+        if (m_onAudioFilter && std::string(m_categories[m_category].name) == "Audio") {
+            const auto& filters = SourceEffectEdit::filterAliases();
+            for (int i = 0; i < (int)filters.size(); i++) {
+                rows.push_back({Row::AudioFilter, i, ComponentType::AudioSourceComponent, filters[i].description, true});
+            }
         }
         if (m_onScript && std::string(m_categories[m_category].name) == "Scripts") {
             for (int i = 0; i < (int)m_scripts.size(); i++) {
@@ -444,6 +467,9 @@ void ComponentAddDialog::show() {
         } else if (row.kind == Row::Component) {
             icon = Catalog::getComponentIcon(row.type);
             label = Catalog::getComponentDisplayName(row.type);
+        } else if (row.kind == Row::AudioFilter) {
+            icon = Catalog::getComponentIcon(ComponentType::AudioSourceComponent);
+            label = SourceEffectEdit::filterAliases()[row.index].name;
         } else if (row.kind == Row::Script) {
             icon = ICON_FA_FILE_CODE;
             label = m_scripts[row.index].name + (m_scripts[row.index].type == ScriptType::LUA ? " (Lua script)" : " (C++ script)");
@@ -501,6 +527,11 @@ void ComponentAddDialog::show() {
         } else if (row.kind == Row::Component) {
             if (m_onAdd) m_onAdd(row.type);
             finish(false);
+        } else if (row.kind == Row::AudioFilter) {
+            std::function<void(const std::string&)> onAudioFilter = m_onAudioFilter;
+            const std::string effect = SourceEffectEdit::filterAliases()[row.index].effect;
+            finish(false);
+            if (onAudioFilter) onAudioFilter(effect);
         } else if (row.kind == Row::Script) {
             const ScriptCandidate script = m_scripts[row.index];
             std::function<void(const ScriptCandidate&)> onScript = m_onScript;

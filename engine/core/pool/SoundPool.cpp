@@ -24,6 +24,7 @@
 #include "soloud_wav.h"
 #include "soloud_wavstream.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <vector>
@@ -35,6 +36,17 @@ std::unordered_set<std::string> SoundPool::failedBuilds;
 std::mutex SoundPool::cacheMutex;
 std::atomic<bool> SoundPool::shutdownRequested{false};
 
+namespace {
+
+    // every sample made from a file (load jobs count too)
+    std::atomic<uint64_t> decodeCounter{0};
+    std::atomic<bool> loadsHeld{false};
+    // main thread, as the rest of the bookkeeping
+    uint64_t unusedBudgetBytes = SoundPool::defaultUnusedBudget;
+    uint64_t stampCounter = 0;
+
+}
+
 sounds_t& SoundPool::getMap(){
     //To prevent similar problem of static init fiasco but on deinitialization
     //https://isocpp.org/wiki/faq/ctors#static-init-order-on-first-use
@@ -45,6 +57,175 @@ sounds_t& SoundPool::getMap(){
 std::unordered_map<std::string, uint32_t>& SoundPool::getGenerations(){
     static auto* generations = new std::unordered_map<std::string, uint32_t>();
     return *generations;
+}
+
+std::unordered_map<std::string, SoundPool::EntryInfo>& SoundPool::getInfo(){
+    static auto* info = new std::unordered_map<std::string, EntryInfo>();
+    return *info;
+}
+
+std::unordered_set<std::string>& SoundPool::getPendingPins(){
+    static auto* pins = new std::unordered_set<std::string>();
+    return *pins;
+}
+
+std::unordered_set<std::string>& SoundPool::getDropOnRelease(){
+    static auto* ids = new std::unordered_set<std::string>();
+    return *ids;
+}
+
+size_t SoundPool::sampleBytes(SoLoud::AudioSource* sample){
+    // what the clip holds is its sample's: the wrapper adds a voice's state, no bytes
+    SoLoud::AudioSource* held = sample;
+#if JASPERENGINE_SOUND_LAYER
+    if (auto* clip = dynamic_cast<AudioClipSource*>(held)) held = clip->getSample().get();
+#endif
+    if (auto* wav = dynamic_cast<SoLoud::Wav*>(held)) {
+        return (size_t)wav->mSampleCount * wav->mChannels * sizeof(float);
+    }
+    if (auto* stream = dynamic_cast<SoLoud::WavStream*>(held)) {
+        return stream->mMemFile ? stream->mMemFile->length() : 0;
+    }
+    return 0;
+}
+
+void SoundPool::touch(const std::string& id){
+    getInfo()[id].stamp = ++stampCounter;
+}
+
+void SoundPool::cached(const std::string& id){
+    auto it = getMap().find(id);
+    if (it == getMap().end() || !it->second) return;
+    EntryInfo& info = getInfo()[id];
+    info.bytes = sampleBytes(it->second.get());
+    info.stamp = ++stampCounter;
+    if (getPendingPins().erase(id)) getPinned()[id] = it->second;
+    trimUnused();
+}
+
+void SoundPool::trimUnused(){
+    struct Candidate {
+        const std::string* id;
+        uint64_t stamp;
+        size_t bytes;
+    };
+    std::vector<Candidate> unused;
+    std::vector<std::string> unloaded;
+    size_t total = 0;
+    for (const auto& [id, sample] : getMap()) {
+        // (a null entry is a load on its way or one that failed)
+        if (!sample || sample.use_count() > 1) continue;
+        if (getDropOnRelease().count(id)) {
+            unloaded.push_back(id);
+            continue;
+        }
+        const EntryInfo& info = getInfo()[id];
+        unused.push_back({&id, info.stamp, info.bytes});
+        total += info.bytes;
+    }
+    for (const std::string& id : unloaded) {
+        getMap().erase(id);
+        getInfo().erase(id);
+        getDropOnRelease().erase(id);
+    }
+    const uint64_t budget = unusedBudgetBytes;
+    auto fits = [&]() { return budget > 0 && total <= budget && unused.size() <= maxUnusedEntries; };
+    if (fits()) return;
+    std::sort(unused.begin(), unused.end(), [](const Candidate& a, const Candidate& b) { return a.stamp < b.stamp; });
+    std::vector<std::string> dropped;
+    size_t count = unused.size();
+    for (const Candidate& candidate : unused) {
+        if (budget > 0 && total <= budget && count <= maxUnusedEntries) break;
+        dropped.push_back(*candidate.id);
+        total -= candidate.bytes;
+        count--;
+    }
+    for (const std::string& id : dropped) {
+        getMap().erase(id);
+        getInfo().erase(id);
+    }
+}
+
+void SoundPool::setUnusedBudget(uint64_t bytes){
+    unusedBudgetBytes = bytes;
+    trimUnused();
+}
+
+uint64_t SoundPool::getUnusedBudget(){
+    return unusedBudgetBytes;
+}
+
+void SoundPool::release(const std::string& id){
+    auto it = getMap().find(id);
+    if (it == getMap().end() || !it->second || it->second.use_count() > 1) return;
+    touch(id);
+    trimUnused();
+}
+
+uint64_t SoundPool::getDecodeCount(){
+    return decodeCounter.load();
+}
+
+size_t SoundPool::getUnusedBytes(){
+    size_t total = 0;
+    for (const auto& [id, sample] : getMap()) {
+        if (!sample || sample.use_count() > 1) continue;
+        auto info = getInfo().find(id);
+        total += info != getInfo().end() ? info->second.bytes : sampleBytes(sample.get());
+    }
+    return total;
+}
+
+size_t SoundPool::getLoadingCount(){
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    return pendingBuilds.size();
+}
+
+void SoundPool::holdLoads(bool hold){
+    loadsHeld = hold;
+}
+
+AudioLoadState SoundPool::getLoadState(const std::string& filename, AudioLoadType requested){
+    const std::string id = key(filename, resolveLoadType(filename, requested));
+    if (get(id)) return AudioLoadState::Loaded;
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    if (pendingBuilds.count(id)) return AudioLoadState::Loading;
+    if (failedBuilds.count(id)) return AudioLoadState::Failed;
+    return AudioLoadState::Unloaded;
+}
+
+int SoundPool::unload(const std::string& filename, const AudioLoadType* requested){
+    std::vector<std::string> ids;
+    if (requested) {
+        ids.push_back(key(filename, resolveLoadType(filename, *requested)));
+    } else {
+        auto ofFile = [&filename](const std::string& id) {
+            std::string file;
+            AudioLoadType type;
+            parseClipRef(id, file, type);
+            return file == filename;
+        };
+        for (const auto& [id, sample] : getMap()) if (ofFile(id)) ids.push_back(id);
+        for (const auto& [id, sample] : getPinned()) if (ofFile(id)) ids.push_back(id);
+        for (const std::string& id : getPendingPins()) if (ofFile(id)) ids.push_back(id);
+        std::sort(ids.begin(), ids.end());
+        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    }
+    int dropped = 0;
+    for (const std::string& id : ids) {
+        getPinned().erase(id);
+        getPendingPins().erase(id);
+        auto it = getMap().find(id);
+        if (it == getMap().end() || !it->second) continue;
+        if (it->second.use_count() <= 1) {
+            getMap().erase(it);
+            getInfo().erase(id);
+            dropped++;
+        } else {
+            getDropOnRelease().insert(id);
+        }
+    }
+    return dropped;
 }
 
 std::shared_ptr<SoLoud::AudioSource> SoundPool::get(const std::string& id){
@@ -72,8 +253,11 @@ void SoundPool::replace(const std::string& id, std::shared_ptr<SoLoud::AudioSour
     parseClipRef(id, file, type);
     getMap()[id] = std::move(sound);
     getGenerations()[file]++;
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    failedBuilds.erase(id);
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        failedBuilds.erase(id);
+    }
+    cached(id);
 }
 
 uint32_t SoundPool::generation(const std::string& filename){
@@ -87,9 +271,11 @@ void SoundPool::invalidate(const std::string& filename){
 
 namespace {
 
+#if JASPERENGINE_SOUND_LAYER
     // the head of an Ogg file, enough to reach its first audio page (AudioClipSource's look at whether
     // its seeks can trust the stream's sample positions)
     constexpr size_t OGG_HEAD_BYTES = 256 * 1024;
+#endif
 
     // the sample with the clip's import settings, when they change its samples
     std::shared_ptr<SoLoud::AudioSource> withImportSettings(std::shared_ptr<SoLoud::AudioSource> sample, const std::string& filename,
@@ -148,6 +334,9 @@ SoundLoadResult SoundPool::loadClip(const std::string& filename, AudioLoadType r
     if (shared){
         result.state = ResourceLoadState::Finished;
         result.data = shared;
+        touch(id);
+        // wanted again after an unload: cached as usual
+        getDropOnRelease().erase(id);
         return result;
     }
 
@@ -170,17 +359,14 @@ SoundLoadResult SoundPool::loadClip(const std::string& filename, AudioLoadType r
         auto it = pendingBuilds.find(id);
         if (it != pendingBuilds.end()) {
             jobs::Task<std::shared_ptr<SoLoud::AudioSource>>& task = it->second;
-            if (!task.isReady()) {
+            if (!task.isReady() || loadsHeld.load()) {
                 result.state = ResourceLoadState::Loading;
                 return result;
             }
+            std::shared_ptr<SoLoud::AudioSource> sample;
             try {
-                shared = task.get();
+                sample = task.get();
                 pendingBuilds.erase(it);
-
-                result.state = ResourceLoadState::Finished;
-                result.data = shared;
-                return result;
             } catch (const std::exception& e) {
                 pendingBuilds.erase(it);
                 failedBuilds.insert(id);
@@ -189,6 +375,12 @@ SoundLoadResult SoundPool::loadClip(const std::string& filename, AudioLoadType r
                 result.errorMessage = e.what();
                 return result;
             }
+            // (cached takes no lock of the pool's)
+            shared = sample;
+            result.state = ResourceLoadState::Finished;
+            result.data = shared;
+            cached(id);
+            return result;
         }
 
         std::string soundName = std::filesystem::path(filename).filename().string();
@@ -228,6 +420,7 @@ SoundLoadResult SoundPool::loadClip(const std::string& filename, AudioLoadType r
 
             result.state = ResourceLoadState::Finished;
             result.data = shared;
+            cached(id);
             return result;
         } catch (const std::exception& e) {
             {
@@ -253,6 +446,7 @@ SoundLoadResult SoundPool::loadClipNow(const std::string& filename, AudioLoadTyp
         getMap()[result.id] = sample;
         result.state = ResourceLoadState::Finished;
         result.data = sample;
+        cached(result.id);
     } catch (const std::exception& e) {
         result.state = ResourceLoadState::Failed;
         result.errorMessage = e.what();
@@ -331,6 +525,7 @@ std::shared_ptr<SoLoud::AudioSource> SoundPool::loadSoundInternal(const std::str
     // shared by every source playing the file: voices of one sample overlap (spec A9)
     sound->setSingleInstance(false);
     sound->setVolume(1.0);
+    decodeCounter++;
 
     if (trackProgress) {
         checkShutdown();
@@ -398,6 +593,7 @@ std::shared_ptr<SoLoud::AudioSource> SoundPool::decodeSound(const std::string& i
     // shared by every source playing the file: voices of one sample overlap (spec A9)
     sound->setSingleInstance(false);
     sound->setVolume(1.0);
+    decodeCounter++;
 
     if (trackProgress) {
         checkShutdown();
@@ -448,6 +644,12 @@ uint64_t SoundPool::fileSize(const std::string& filename){
 
 AudioLoadType SoundPool::resolveLoadType(const std::string& filename, AudioLoadType requested){
     AudioLoadType type = requested;
+#if JASPERENGINE_SOUND_LAYER
+    // the source's own choice first, then the clip's import settings, then Auto (S97 D9)
+    if (type == AudioLoadType::Auto) {
+        if (const std::optional<ClipImportSettings> settings = AudioImportTable::find(filename)) type = settings->loadType;
+    }
+#endif
     if (type == AudioLoadType::Auto) {
         type = fileSize(filename) >= streamingThreshold ? AudioLoadType::Streaming : AudioLoadType::DecompressOnLoad;
     }
@@ -547,16 +749,10 @@ std::vector<SoundPoolEntry> SoundPool::getEntries(){
         entry.id = id;
         parseClipRef(id, entry.file, entry.loadType);
         entry.length = getLength(sample.get());
-        // what the clip holds is its sample's: the wrapper adds a voice's state, no bytes
-        SoLoud::AudioSource* held = sample.get();
-#if JASPERENGINE_SOUND_LAYER
-        if (auto* clip = dynamic_cast<AudioClipSource*>(held)) held = clip->getSample().get();
-#endif
-        if (auto* wav = dynamic_cast<SoLoud::Wav*>(held)) {
-            entry.memoryBytes = (size_t)wav->mSampleCount * wav->mChannels * sizeof(float);
-        } else if (auto* stream = dynamic_cast<SoLoud::WavStream*>(held)) {
-            entry.memoryBytes = stream->mMemFile ? stream->mMemFile->length() : 0;
-        }
+        entry.memoryBytes = sampleBytes(sample.get());
+        // (the pool's own reference is no holder; a pin is one)
+        entry.holders = (int)sample.use_count() - 1;
+        entry.unused = entry.holders == 0;
         entries.push_back(entry);
     }
     return entries;
@@ -601,6 +797,8 @@ void SoundPool::remove(const std::string& id){
     if (it != getMap().end()){
         if (!it->second || it->second.use_count() <= 1){
             getMap().erase(it);
+            getInfo().erase(id);
+            getDropOnRelease().erase(id);
         }
     }else if (!removedPending){
         if (Engine::isViewLoaded()){
@@ -617,6 +815,7 @@ sounds_t& SoundPool::getPinned(){
 void SoundPool::pin(const std::string& id){
     auto it = getMap().find(id);
     if (it != getMap().end() && it->second) getPinned()[id] = it->second;
+    else getPendingPins().insert(id);
 }
 
 void SoundPool::clear(){
@@ -626,7 +825,10 @@ void SoundPool::clear(){
         failedBuilds.clear();
     }
     getPinned().clear();
+    getPendingPins().clear();
+    getDropOnRelease().clear();
     getMap().clear();
+    getInfo().clear();
     std::lock_guard<std::mutex> lock(sizeMutex());
     fileSizes().clear();
 }

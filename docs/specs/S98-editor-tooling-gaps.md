@@ -739,7 +739,7 @@ Avoiding conflicts:
     (the counts a load gives, not what a frame set), so the same geometry is the same file. Readers
     refuse another major. Materials, shaders, the skin's palette and the component's settings stay
     on the Mesh Renderer, as on Unity's MeshRenderer.
-  - **Identity and reference.** `AssetType::Mesh = 37` (35 and 36 are S95's), a `.meta` sidecar
+  - **Identity and reference.** `AssetType::Mesh = 35` (the next free value when it landed), a `.meta` sidecar
     GUID (S04), `AssetKind::Mesh`. `MeshComponent::meshAsset` (an `AssetRef`, Inspector label
     "Mesh", saved as `meshAsset` / `meshAssetGuid`, omitted when empty). A mesh showing a file saves
     neither its buffers nor the bounds and vertex counts they give, so a save does not depend on
@@ -1030,6 +1030,11 @@ Avoiding conflicts:
   `test_asset_stripping_player.py` into `test_asset_stripping.py`. That file stays new: it needs a
   project with a new project's real layout (`JASPER_TEST_FLAT_NEW_PROJECT=0`), which no existing
   file's tests are written for. `test_build_parity.py` stays new and out of the CI suite.
+- **Numbers taken in merge order.** Landing right after S96 (#8), S98 takes the next free values
+  then: cooked format 1.7 (S96 has 1.6: its physics world settings and its scene hierarchy record,
+  whose writer and reader S98 keeps instead of its own), scene 9, prefab 10 and `AssetType::Mesh =
+  35` (it had been 37, beside S95's reserved 35 and 36; the lead's rule gives a stored number to the
+  PR that lands first, and the branches after it renumber).
 - **`JASPER_TEST_FLAT_NEW_PROJECT` stays, as a test hook.** It follows main's `JASPER_TEST_*`
   hooks (about fifteen, e.g. `JASPER_TEST_EXPORT_HOLD`, `JASPER_TEST_SCENE_SAVE_DELAY_MS`). It only
   picks the layout `createProjectInDirectory` gives a new folder, and the flat layout it keeps is a

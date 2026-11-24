@@ -11,6 +11,8 @@
 #include "component/AudioSourceComponent.h"
 #include "component/CameraComponent.h"
 
+#include <cmath>
+
 namespace jasperengine::editor::reflect {
 
 namespace {
@@ -155,6 +157,65 @@ namespace {
     }
     constexpr TypeOps kAudioPlayOnOps = audioPlayOnOps();
 
+    // ---------------------------------------------------------------- a source's effects (S97 REQ-1)
+
+    using AudioEffectParams = std::map<std::string, float>;
+
+    // the parameters an effect sets, {cutoff: 500}: any name is kept (an unknown one does nothing)
+    YAML::Node effectParamsToYaml(const FieldDesc& field, const void* value, const EncodeContext& ctx) {
+        YAML::Node node(YAML::NodeType::Map);
+        node.SetStyle(YAML::EmitterStyle::Flow);
+        for (const auto& [name, param] : *static_cast<const AudioEffectParams*>(value)) {
+            node[name] = detail::floatToYaml(field, &param, ctx);
+        }
+        return node;
+    }
+
+    bool effectParamsFromYaml(const FieldDesc& field, const YAML::Node& node, void* value, const DecodeContext& ctx, std::string& reason) {
+        if (!node.IsMap()) {
+            reason = "expected a map of parameter names to numbers ({cutoff: 500})";
+            return false;
+        }
+        AudioEffectParams params;
+        for (auto it = node.begin(); it != node.end(); ++it) {
+            float param = 0.0f;
+            std::string why;
+            // a value that does not read, or is not finite, is left out: the effect's default plays
+            if (!it->first.IsScalar() || !detail::floatFromYaml(field, it->second, &param, ctx, why) || !std::isfinite(param)) continue;
+            params[it->first.Scalar()] = param;
+        }
+        *static_cast<AudioEffectParams*>(value) = std::move(params);
+        return true;
+    }
+
+    Json effectParamsSchema(const FieldDesc&) {
+        return Json{{"type", "object"}, {"additionalProperties", Json{{"type", "number"}}}};
+    }
+
+    constexpr TypeOps kEffectParamsOps{"AudioEffectParams", Kind::Custom, PropertyType::Custom, sizeof(AudioEffectParams),
+        &detail::construct<AudioEffectParams>, &detail::destroy<AudioEffectParams>, &detail::copy<AudioEffectParams>,
+        &detail::equalByOperator<AudioEffectParams>, &effectParamsToYaml, &effectParamsFromYaml, nullptr, nullptr, nullptr, false,
+        &effectParamsSchema};
+
+    constexpr FieldDesc kAudioSourceEffectFields[] = {
+        JE_FIELD(AudioSourceEffectDef, type, .updateFlags = kAudio,
+                 .tooltip = "A mixer effect: lowpass, highpass, bandpass, echo, reverb, equalizer, distortion, flanger, lofi or bassboost."),
+        JE_FIELD(AudioSourceEffectDef, bypass, .flags = OmitIfDefault, .updateFlags = kAudio),
+        JE_FIELD(AudioSourceEffectDef, wet, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite,
+                 .updateFlags = kAudio, .min = 0.0f, .max = 1.0f, .step = 0.01f, .format = "%.2f"),
+        JE_FIELD(AudioSourceEffectDef, params, .ops = &kEffectParamsOps, .flags = OmitIfDefault, .updateFlags = kAudio,
+                 .tooltip = "The parameters it sets; a missing one is the effect's default."),
+    };
+
+    constexpr TypeOps kAudioSourceEffectListOps = ops::Array<AudioSourceEffectDef>;
+
+}
+
+JE_REFLECT_STRUCT_TRAITS(AudioSourceEffectDef, kAudioSourceEffectStruct);
+const StructDesc kAudioSourceEffectStruct = JE_STRUCT_DESC(AudioSourceEffectDef, "AudioSourceEffectDef", kAudioSourceEffectFields);
+
+namespace {
+
     bool audioHasCollisionFlag(const void* audio) {
         return static_cast<const AudioSourceComponent*>(audio)->playOn & (AudioPlayOn_Collision2D | AudioPlayOn_Collision3D);
     }
@@ -217,6 +278,13 @@ namespace {
                  .min = 0.0f, .max = 24.0f, .step = 0.1f, .format = "%.2f", .label = "Random Pitch", .tooltip = "Each start: +- this many semitones (clip mode)", .group = "Variation", .visibleIf = &audioClipMode),
         JE_FIELD(AudioSourceComponent, volumeRandomDb, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite, .updateFlags = kAudio,
                  .unit = Unit::Decibels, .min = 0.0f, .max = 60.0f, .step = 0.1f, .format = "%.2f", .label = "Random Volume", .tooltip = "Each start: -this .. 0 dB, never louder (clip mode)", .group = "Variation", .visibleIf = &audioClipMode),
+        // S97 (docs/specs/S97-audio-gaps.md), after the earlier fields: written only when set
+        JE_FIELD(AudioSourceComponent, effects, .ops = &kAudioSourceEffectListOps, .flags = OmitIfDefault | ListWhole | ListTemplate,
+                 .updateFlags = kAudio, .tooltip = "Up to 4 effects on this source's voices, in order, before its output group."),
+        JE_FIELD(AudioSourceComponent, spatialBlend, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite,
+                 .updateFlags = kAudio, .min = 0.0f, .max = 1.0f, .step = 0.01f, .format = "%.2f", .tooltip = "0 = 2D, 1 = 3D"),
+        JE_FIELD(AudioSourceComponent, slot, .flags = OmitIfDefault | Hidden, .updateFlags = kAudio, .min = 0.0f,
+                 .tooltip = "A further Audio Source of its parent GameObject (1, 2, ...); 0 = the GameObject's own."),
         JE_FIELD(AudioSourceComponent, length, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
         JE_FIELD(AudioSourceComponent, playingTime, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
     };
@@ -253,7 +321,7 @@ namespace {
                                       old->loadType == audio.loadType;
         if (!keepLoadedSample && old && !old->sampleKey.empty()) {
             audio.sample.reset();
-            SoundPool::remove(old->sampleKey);
+            SoundPool::release(old->sampleKey);
         }
         if (!keepLoadedSample) {
             audio.sample.reset();

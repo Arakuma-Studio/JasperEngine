@@ -5,6 +5,7 @@
 #include "pixelart/PixelColor.h"
 
 #include "audio/AudioMixer.h"
+#include "pool/SoundPool.h"
 #include "subsystem/AudioSystem.h"
 
 #include <algorithm>
@@ -185,7 +186,7 @@ json PlayerConfig::toJson() const {
                     {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
-                    {"musicGroup", audioMusicGroup}};
+                    {"musicGroup", audioMusicGroup}, {"unusedClipCacheMb", audioUnusedClipCacheMb}};
     if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
     if (!nativePlatformOnlyByTarget.empty()) out["nativePlatformOnlyByTarget"] = nativePlatformOnlyByTarget;
     if (hasPlayerSettings) {
@@ -437,6 +438,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioOutputStage = audio->value("outputStage", config.audioOutputStage);
             config.audioIosSession = audio->value("iosSessionCategory", config.audioIosSession);
             config.audioMusicGroup = audio->value("musicGroup", config.audioMusicGroup);
+            config.audioUnusedClipCacheMb = audio->value("unusedClipCacheMb", config.audioUnusedClipCacheMb);
         }
         // absent: no native plugin of the project is for other platforms only
         if (const auto native = in.find("nativePlatformOnly"); native != in.end() && native->is_object()) {
@@ -550,6 +552,9 @@ void jasperengine::player::applyAudio(const PlayerConfig& game) {
         game.audioSeed != (int)defaults.seed || game.audioMusicGroup != defaults.musicGroup) {
         AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate, stage, session, (uint32_t)game.audioSeed,
                                 game.audioMusicGroup});
+    }
+    if (game.audioUnusedClipCacheMb >= 0 && (uint64_t)game.audioUnusedClipCacheMb * 1024 * 1024 != SoundPool::defaultUnusedBudget) {
+        SoundPool::setUnusedBudget((uint64_t)game.audioUnusedClipCacheMb * 1024 * 1024);
     }
     if (!game.audioMixer.empty()) {
         AudioMixer::load(game.audioMixer);
