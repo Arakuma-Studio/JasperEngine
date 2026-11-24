@@ -481,8 +481,9 @@ namespace jasperengine{
 		bool fog = false;
 		bool lights2D = false;
 		bool shadows2D = false;         // a shadow-casting 2D light and an occluder
-		// no Light 2D, and the scene's Ambient Light 2D tints (isAmbient2DTinted): the unlit
-		// variants take the 2D light path with no lights, so the ambient multiplies them (S78 R6)
+		// no Light 2D, Ambient Without Lights on and the scene's Ambient Light 2D tints
+		// (isAmbient2DTinted): the unlit variants take the 2D light path with no lights, so the
+		// ambient multiplies them (S78 R6)
 		bool ambient2D = false;
 		// the scene's Light Steps are on: the 2D-lit variants take 'Lst' (S78 R3)
 		bool light2DSteps = false;

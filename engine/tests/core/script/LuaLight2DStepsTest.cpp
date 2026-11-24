@@ -1,7 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S78 R1: the scene's Light Steps in Lua, Scene.light2DSteps (a property, 0 = off, clamped to 16).
+// S78 R1: the scene's Light Steps in Lua, Scene.light2DSteps (a property, 0 = off, clamped to 16), and
+// R6's Scene.ambientLight2DWithoutLights.
 
 #include "Scene.h"
 #include "script/LuaBinding.h"
@@ -42,4 +43,10 @@ TEST(LuaLight2DSteps, SceneProperty){
     EXPECT_EQ(scene.getLight2DSteps(), 16);
     scene.setLight2DSteps(3);
     EXPECT_EQ(runLightStepsLua(L, "assert(stepsScene.light2DSteps == 3)\n"), "");
+    // Ambient Without Lights (on in a new scene)
+    EXPECT_EQ(runLightStepsLua(L,
+        "assert(stepsScene.ambientLight2DWithoutLights == true)\n"
+        "stepsScene.ambientLight2DWithoutLights = false\n"
+        "assert(stepsScene.ambientLight2DWithoutLights == false)\n"), "");
+    EXPECT_FALSE(scene.isAmbientLight2DWithoutLights());
 }

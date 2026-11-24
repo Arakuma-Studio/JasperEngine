@@ -336,4 +336,23 @@ TEST_F(Light2DStepsGpu, NeutralAmbientWithoutLightsDrawsTheImageOfBefore){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// R7 (old scenes keep their look): a scene saved before S78 has Ambient Without Lights off, and its
+// dark ambient with no Light 2D draws the variant and the image of before; turned on, it tints
+TEST_F(Light2DStepsGpu, AmbientWithoutLightsOffDrawsTheImageOfBefore){
+    scene.setAmbientLight2DWithoutLights(false);
+    scene.setAmbientLight2D(1.0f, Vector3(0.3f, 0.3f, 0.4f));
+    addSprite(0.0f, true);
+    ASSERT_TRUE(settle());
+    EXPECT_EQ(spriteProperties() & kLight2DBit, 0u);
+    EXPECT_GOLDEN("light2d_ambient_neutral");
+
+    scene.setAmbientLight2DWithoutLights(true);
+    ASSERT_TRUE(settle());
+    EXPECT_NE(spriteProperties() & kLight2DBit, 0u);
+    const std::vector<uint8_t> tinted = read();
+    EXPECT_NEAR(at(tinted, kWidth / 2, kHeight / 2)[0], 77, 3);
+    EXPECT_NEAR(at(tinted, kWidth / 2, kHeight / 2)[2], 102, 3);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 } // namespace light2d_steps_gpu_test

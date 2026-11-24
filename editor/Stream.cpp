@@ -5124,6 +5124,10 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     // Light Steps (S78 R1): written only when on, so scenes saved before them re-save unchanged
     if (scene->getLight2DSteps() != SceneSettings().light2DSteps)
         sceneNode["light2DSteps"] = scene->getLight2DSteps();
+    // the 2D ambient without a Light 2D (S78 R6, R7): a scene without the key is off (it was drawn so
+    // before S78); new scenes are on, which is written
+    if (scene->isAmbientLight2DWithoutLights())
+        sceneNode["ambientLight2DWithoutLights"] = true;
     sceneNode["shadow2DQuality"] = shadowQualityToString(scene->getShadow2DQuality());
     sceneNode["ssaoEnabled"] = scene->isSSAOEnabled();
     sceneNode["ssaoRadius"] = scene->getSSAORadius();
@@ -5294,6 +5298,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setAmbientLight2D(decodeVector3(node["ambientLight2DColor"]));
     }
     scene->setLight2DSteps(node["light2DSteps"] ? YamlNumbers::as<int>(node["light2DSteps"]) : SceneSettings().light2DSteps);
+    scene->setAmbientLight2DWithoutLights(node["ambientLight2DWithoutLights"] && YamlNumbers::as<bool>(node["ambientLight2DWithoutLights"]));
 
     if (node["shadow2DQuality"]) {
         scene->setShadow2DQuality(decodeEnum(node, "shadow2DQuality", StreamSchema::shadowQuality()));

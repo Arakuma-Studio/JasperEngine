@@ -5287,6 +5287,40 @@ CASES = [
                    "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(frag|glsl)$"}}]},
         "max_turns": 10,
     },
+    # S78 R7 at the main merge (old scenes keep their look)
+    {
+        "id": "guard_ambient_2d_without_lights",
+        "kind": "guard",
+        "what_happened": "New setting (S78): a scene saved before S78 keeps ambient_light_2d_without_lights off, so its dark "
+                         "2D ambient leaves unlit sprites untinted while it has no Light 2D; turning it on is the fix. Without "
+                         "the setting's text agents add a Light 2D out of range or tint every sprite's material instead.",
+        "text_at_issue": "get_scene_settings (ambient_light_2d_without_lights: 'the 2D ambient tints unlit 2D objects with no "
+                         "Light 2D in the scene too (on in new scenes; off in scenes saved before it, as they were drawn)')",
+        "source": "docs/specs/S78-sprite-normals-improvements.md Deviations, R7 (new setting text); no failure on record",
+        "prompt": "In our old 2D level I set a dark blue 2D ambient for a night look, but the sprites still draw at full "
+                  "brightness. The level has no 2D lights and shouldn't get any. Make the ambient darken the sprites.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_without_lights = true",
+                {"scene_id": 1, "settings": {"ambient_light_2d_without_lights": True}})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_color = [0.3, 0.3, 0.4] (2D ambient light color [r,g,b] (sRGB))\n"
+                "ambient_light_2d_intensity = 1 (2D ambient light intensity)\n"
+                "light_2d_steps = 0 (Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth))\n"
+                "ambient_light_2d_without_lights = false (the 2D ambient tints unlit 2D objects with no Light 2D in the scene "
+                "too (on in new scenes; off in scenes saved before it, as they were drawn))\n"
+                "shadows_2d_quality = low (2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high))",
+                {"scene_id": 1, "settings": {"ambient_light_2d_color": [0.3, 0.3, 0.4], "ambient_light_2d_intensity": 1.0,
+                                             "light_2d_steps": 0, "ambient_light_2d_without_lights": False,
+                                             "shadows_2d_quality": "low"}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["ambient_light_2d_without_lights"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Level\" (scenes/Level.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_light_2d_without_lights": True}}}],
+                   "must_not_call": [{"tool": "create_entity", "args": {"type": "light_2d"}}]},
+        "max_turns": 10,
+    },
     # -- S48 Pixel FX: the "Other areas" entry and capture_contact_sheet's lint and preview-then-write ----------------
     {
         "id": "guard_contact_sheet_lint",

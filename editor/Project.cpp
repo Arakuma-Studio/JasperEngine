@@ -4711,8 +4711,9 @@ bool editor::Project::scriptsSetShadowQuality() const {
 }
 
 bool editor::Project::scriptsSetLight2D() const {
-    // scene.ambientLight2DColor / ambientLight2DIntensity / light2DSteps (Lua) or
-    // Scene::setAmbientLight2D / setLight2DSteps (C++)
+    // scene.ambientLight2DColor / ambientLight2DIntensity / ambientLight2DWithoutLights /
+    // light2DSteps (Lua) or Scene::setAmbientLight2D / setAmbientLight2DWithoutLights /
+    // setLight2DSteps (C++)
     return scriptsMention("mbientLight2D") || scriptsMention("ight2DSteps");
 }
 

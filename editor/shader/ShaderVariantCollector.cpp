@@ -255,7 +255,7 @@ namespace {
         environment.shadows2D = (facts & FACT_SHADOW_LIGHTS_2D) && (facts & FACT_OCCLUDERS_2D);
         // RenderSystem::checkLightsAndShadow: the 2D ambient of a scene without a Light 2D (S78
         // R6), and the scene's Light Steps
-        environment.ambient2D = !environment.lights2D &&
+        environment.ambient2D = !environment.lights2D && scene->isAmbientLight2DWithoutLights() &&
                                 RenderSystem::isAmbient2DTinted(scene->getAmbientLight2DColorLinear(), scene->getAmbientLight2DIntensity());
         environment.light2DSteps = scene->getLight2DSteps() > 0;
         environment.ssao = QualityResolver::ssao(scene->isSSAOEnabled());

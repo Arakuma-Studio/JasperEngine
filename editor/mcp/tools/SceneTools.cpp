@@ -845,6 +845,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"ambient_light_2d_color", SettingKind::Vector3, "2D ambient light color [r,g,b] (sRGB)"},
         {"ambient_light_2d_intensity", SettingKind::Float, "2D ambient light intensity"},
         {"light_2d_steps", SettingKind::Int, "Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth)"},
+        {"ambient_light_2d_without_lights", SettingKind::Bool,
+         "the 2D ambient tints unlit 2D objects with no Light 2D in the scene too (on in new scenes; off in scenes saved before it, as they were drawn)"},
         {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high)"},
         {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},

@@ -475,6 +475,10 @@ namespace jasperengine{
         // Light Steps (S78 R1, R2): each Light 2D's light quantized into this many bands, 0..16;
         // 0 is off (smooth light, the variants of before)
         int light2DSteps = 0;
+        // a tinting Ambient Light 2D multiplies the unlit 2D-lit materials of a scene without a
+        // Light 2D too (S78 R6); new scenes have it on, a scene file without the key (and a cooked
+        // record before 1.6) is off, as it was drawn before S78
+        bool ambientLight2DWithoutLights = true;
         ShadowQuality shadow2DQuality = ShadowQuality::LOW;
 
         bool ssaoEnabled = false;

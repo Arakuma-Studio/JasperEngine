@@ -13842,7 +13842,7 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Ambient Light (2D)");
 
                 if (ImGui::BeginTable("scene_ambient2d_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Light Steps"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Without Lights"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     drawScenePropertyRow<Vector3>(sceneProject, "ambient_light_2d_color", "Color", ScenePropertyInputType::ColorRGB);
@@ -13850,6 +13850,9 @@ void editor::InspectorWindow::show(){
                     drawScenePropertyRow<int>(sceneProject, "light_2d_steps", "Light Steps", ScenePropertyInputType::DragInt, 6 * ImGui::GetFontSize(), 0.0f, 16.0f,
                         "Draws each 2D light in this many hard bands, the stepped look of pixel-art lighting (6 is a common choice). "
                         "Off keeps the light smooth. The ambient is not banded.");
+                    drawScenePropertyRow<bool>(sceneProject, "ambient_light_2d_without_lights", "Without Lights", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+                        "Tints unlit 2D objects with the ambient even when the scene has no Light 2D. "
+                        "On in new scenes; scenes saved before it have it off, so they look as they did.");
 
                     ImGui::EndTable();
                 }

@@ -10,6 +10,7 @@
 #include "component/LightComponent.h"
 #include "component/Transform.h"
 #include "Stream.h"
+#include "support/EditorTestSupport.h"
 
 #include "LogCapture.h"
 
@@ -347,4 +348,33 @@ TEST(StreamScene, LightStepsSetting){
     edited["light2DSteps"] = 99;
     Stream::decodeScene(&read, edited);
     EXPECT_EQ(read.getLight2DSteps(), 16);
+}
+
+// S78 R6, R7 (the lead's decision at the main merge): a scene saved before S78 (no key) reads Ambient
+// Without Lights off, so its 2D ambient still leaves it untinted without a Light 2D, and re-saves as it
+// was; a new scene has it on and writes it, and each value reads back
+TEST(StreamScene, AmbientWithoutLightsOffInScenesFromBefore){
+    const std::filesystem::path path = editor::test::fixture("migrations/scene-v8-ambient2d.scene");
+    const std::string original = editor::test::readText(path);
+    ASSERT_FALSE(YAML::Load(original)["scene"]["ambientLight2DWithoutLights"]) << "a scene from before S78";
+    editor::test::DecodedScene old = editor::test::decodeSceneFile(path);
+    ASSERT_TRUE(old.scene);
+    EXPECT_FALSE(old.scene->scene->isAmbientLight2DWithoutLights());
+    EXPECT_EQ(editor::test::encodeSceneText(old).find("ambientLight2DWithoutLights"), std::string::npos) << "re-saved as it was";
+
+    // a new scene: on, written; off is not
+    Scene fresh;
+    EXPECT_TRUE(fresh.isAmbientLight2DWithoutLights());
+    const std::string freshYaml = dumpScene(&fresh);
+    EXPECT_NE(freshYaml.find("ambientLight2DWithoutLights: true"), std::string::npos) << freshYaml;
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(freshYaml));
+    EXPECT_TRUE(read.isAmbientLight2DWithoutLights());
+    EXPECT_EQ(dumpScene(&read), freshYaml);
+    Scene off;
+    off.setAmbientLight2DWithoutLights(false);
+    const std::string offYaml = dumpScene(&off);
+    EXPECT_EQ(offYaml.find("ambientLight2DWithoutLights"), std::string::npos) << offYaml;
+    Stream::decodeScene(&read, YAML::Load(offYaml));
+    EXPECT_FALSE(read.isAmbientLight2DWithoutLights());
 }

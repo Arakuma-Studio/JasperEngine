@@ -146,11 +146,14 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.u8(static_cast<uint8_t>(scene.getWaterWakeResolution()));
     w.f32(scene.getWaterWakeArea());
     w.f32(scene.getWaterWakeFade());
-    // format 1.6 (S78): the Light Steps
+    // format 1.6 (S78): the Light Steps, the 2D ambient without a Light 2D
     w.svarint(scene.getLight2DSteps());
+    w.boolean(scene.isAmbientLight2DWithoutLights());
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
+    // a record before 1.6 was cooked from a scene whose 2D ambient never tinted without a Light 2D
+    scene.setAmbientLight2DWithoutLights(false);
     Vector4 backgroundColor;
     read(r, backgroundColor);
     scene.setBackgroundColor(backgroundColor);
@@ -256,7 +259,9 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
         scene.setWaterWakeResolution(static_cast<WaterWakeResolution>(wakeResolution));
     scene.setWaterWakeArea(r.f32());
     scene.setWaterWakeFade(r.f32());
-    // a 1.5 record ends here: the Light Steps are off (format 1.6)
+    // a 1.5 record ends here: the Light Steps are off and the 2D ambient leaves a scene without a
+    // Light 2D as it was drawn (format 1.6)
     if (r.atEnd()) return;
     scene.setLight2DSteps(static_cast<int>(r.svarint()));
+    scene.setAmbientLight2DWithoutLights(r.boolean());
 }

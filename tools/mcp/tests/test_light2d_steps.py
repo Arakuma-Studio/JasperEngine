@@ -1,7 +1,9 @@
 """S78 Light Steps and the 2D ambient without lights in the real editor (docs/specs/S78-sprite-normals-improvements.md
 R1-R7): get_scene_settings / set_scene_settings light_2d_steps (0 by default, 0-16, an integer, one undo step), saved
 as light2DSteps only when on and read back; a normal-mapped sprite under one Light 2D draws at most 7 light
-levels at 6 steps and its smooth light at 0; with no Light 2D a dark 2D ambient tints the sprite."""
+levels at 6 steps and its smooth light at 0; with no Light 2D a dark 2D ambient tints the sprite, unless
+ambient_light_2d_without_lights is off (on in a new scene, written; off in a scene saved before S78, which keeps
+its untinted look and re-saves without the key)."""
 
 from __future__ import annotations
 
@@ -142,3 +144,39 @@ async def test_ambient_tints_without_lights(ed: Editor):
     await ed.call("set_scene_settings", scene=sid, settings={"ambient_light_2d_color": [1.0, 1.0, 1.0]})
     white = Counter(await sprite_pixels(ed, sid, "neutral"))
     ed.check(all(c >= 250 for c in white.most_common(1)[0][0]), f"a neutral ambient draws it white: {white.most_common(4)}")
+
+
+async def without_lights(ed: Editor, sid) -> bool:
+    names = ["ambient_light_2d_without_lights"]
+    return (await ed.call("get_scene_settings", scene=sid, names=names))["settings"]["ambient_light_2d_without_lights"]
+
+
+def is_white(pixels: list[tuple[int, int, int]]) -> bool:
+    return all(c >= 250 for c in Counter(pixels).most_common(1)[0][0])
+
+
+async def test_a_scene_from_before_keeps_its_look(ed: Editor):
+    sid = S["scene"]
+    await ed.call("set_scene_settings", scene=sid, settings={"ambient_light_2d_color": [0.3, 0.3, 0.4]})
+    ed.check(await without_lights(ed, sid) is True, "on in a new scene")
+    ed.check(not is_white(await sprite_pixels(ed, sid, "on")), "on: the ambient tints the sprite")
+    await ed.call("set_scene_settings", scene=sid, settings={"ambient_light_2d_without_lights": False})
+    ed.check(is_white(await sprite_pixels(ed, sid, "off-set")), "off: the sprite as before S78")
+    await ed.call("undo", scene=sid)
+    ed.check(await without_lights(ed, sid) is True, "one undo step")
+    await ed.call("save_scene", scene=sid)
+    path = ed.project / "scenes/Steps.scene"
+    text = path.read_text()
+    ed.check("ambientLight2DWithoutLights: true" in text, "on is written")
+
+    # the same scene as an editor before S78 saved it (no key): it opens off and draws as it did
+    await ed.call("close_scene", scene=sid, unsaved="discard")
+    path.write_text(text.replace("  ambientLight2DWithoutLights: true\n", ""))
+    await ed.call("sync_files", paths=["scenes/Steps.scene"])
+    opened = await ed.call("open_scene", scene="scenes/Steps.scene")
+    sid = S["scene"] = opened["scene"]["id"]
+    ed.check(await without_lights(ed, sid) is False, "a scene from before: off")
+    await ed.call("select_scene", scene=sid)
+    ed.check(is_white(await sprite_pixels(ed, sid, "before")), "a scene from before keeps its untinted look")
+    await ed.call("save_scene", scene=sid)
+    ed.check("ambientLight2DWithoutLights" not in path.read_text(), "re-saved without the key")

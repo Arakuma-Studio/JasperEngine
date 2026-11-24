@@ -692,6 +692,14 @@ int Scene::getLight2DSteps() const{
     return settings.light2DSteps;
 }
 
+void Scene::setAmbientLight2DWithoutLights(bool enabled){
+    settings.ambientLight2DWithoutLights = enabled;
+}
+
+bool Scene::isAmbientLight2DWithoutLights() const{
+    return settings.ambientLight2DWithoutLights;
+}
+
 void Scene::setShadow2DQuality(ShadowQuality quality){
     settings.shadow2DQuality = quality;
 }

@@ -244,3 +244,14 @@ article's *look* and its pitfalls caught early:
   (red controls `guard_light_2d_bright_ambient_next` 2/2, `guard_light_2d_height_large_sprite_guide` 2/2):
   agents read a white 2D ambient from `get_scene_settings` and darken it, and raise a low light once they
   see it. AGENTS.md cuts text no case needs; `light_low` (red 0/2 without it) carries the large-sprite advice.
+- **R7, R26, R27 (lead's decision at the main merge): old scenes keep their look.** The ambient without a
+  Light 2D is the scene setting Ambient Without Lights (`ambientLight2DWithoutLights`, bool; Lua
+  `Scene.ambientLight2DWithoutLights`, MCP `ambient_light_2d_without_lights`, Inspector "Without Lights"
+  under Ambient Light (2D), undoable). As Lit Quality (S11): new scenes have it on and write it; a scene
+  file without the key reads off, so a scene saved before S78 with a tinting 2D ambient and no Light 2D
+  draws as it did, also when a script changes the ambient later, and re-saves unchanged. No value changes
+  meaning, so the scene format keeps its version (a migration that wrote the key into every older scene
+  broke the data-safety corpus: a re-save may change only the version line). Cooked format 1.6 carries it
+  after the Light Steps; a record before 1.6 reads off.
+- **AC6:** `SpriteNormalsGapsTest.cpp` is in `jasperengine-editor-tests` (`editor/tests/`), not
+  `jasperengine-spritenormals-tests`: that target does not link and no CI lane builds it.

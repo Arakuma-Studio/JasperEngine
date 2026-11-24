@@ -161,5 +161,9 @@ TEST_F(Light2DStepsVariantKeys, AmbientWithoutLightsShipsL2dOnlyWhileItTints){
         sprite.setSize(16, 16);
         const Light2DStepsKeyCounts keys = light2DStepsVariantsCollect(dark);
         EXPECT_GT(keys.light2D, 0u) << "the dark ambient tints the sprite:" << keys.names;
+        // a scene saved before S78 (Ambient Without Lights off) ships what it drew
+        dark.setAmbientLight2DWithoutLights(false);
+        const Light2DStepsKeyCounts before = light2DStepsVariantsCollect(dark);
+        EXPECT_EQ(before.light2D, 0u) << "Ambient Without Lights off:" << before.names;
     }
 }

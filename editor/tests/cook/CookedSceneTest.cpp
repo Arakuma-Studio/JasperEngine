@@ -454,11 +454,12 @@ namespace {
         return tail.data().size();
     }
 
-    // the bytes format 1.6 appends after them (S78's Light Steps)
+    // the bytes format 1.6 appends after them (S78's Light Steps and Ambient Without Lights)
     size_t lightStepsTailBytes(const Scene& scene) {
         jasperengine::cook::StringTable none;
         jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
         tail.svarint(scene.getLight2DSteps());
+        tail.boolean(scene.isAmbientLight2DWithoutLights());
         return tail.data().size();
     }
 }
@@ -766,6 +767,8 @@ TEST(CookedScene, ReadsAnOlderMinorsContent) {
     ASSERT_EQ(v14.size(), bytes.size() - cut);
 
     DecodedScene loaded = emptyScene();
+    // (a scene the loader fills: on, as a new one, so the record's own reading shows)
+    loaded.scene->scene->setAmbientLight2DWithoutLights(true);
     std::string error;
     ASSERT_TRUE(CookedSceneLoader::loadScene(loaded.scene->scene, std::span<const uint8_t>(v14.data(), v14.size()), &error)) << error;
     const SceneSettings defaults;
@@ -773,16 +776,20 @@ TEST(CookedScene, ReadsAnOlderMinorsContent) {
     EXPECT_EQ(loaded.scene->scene->getWaterWakeResolution(), defaults.waterWakeResolution);
     EXPECT_FLOAT_EQ(loaded.scene->scene->getWaterWakeArea(), defaults.waterWakeArea);
     EXPECT_EQ(loaded.scene->scene->getLight2DSteps(), 0);
+    EXPECT_FALSE(loaded.scene->scene->isAmbientLight2DWithoutLights()) << "cooked before S78: drawn as it was";
     EXPECT_EQ(jasperengine::test::LogCapture::sinceTestStart().count(D_LOG_WARN, "newer editor"), 0u);
 }
 
-// S78 R1, R26: the scene's Light Steps survive a cook (format 1.6, after the Water Wakes' map); a
-// 1.5 record (without them) is off
+// S78 R1, R26: the scene's Light Steps and Ambient Without Lights survive a cook (format 1.6, after
+// the Water Wakes' map); a 1.5 record (without them) has the steps off and draws its 2D ambient as
+// before S78 (Ambient Without Lights off)
 TEST(CookedScene, SceneSettingsKeepLightSteps) {
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setWaterWakeArea(32.0f);
     scene->setLight2DSteps(6);
+    // (emptyScene is a file without the key, which reads off: on, as a new scene)
+    scene->setAmbientLight2DWithoutLights(true);
 
     jasperengine::cook::StringTable strings;
     jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
@@ -796,21 +803,31 @@ TEST(CookedScene, SceneSettingsKeepLightSteps) {
     ASSERT_FALSE(r.failed()) << r.error();
     EXPECT_TRUE(r.atEnd());
     EXPECT_EQ(loaded.scene->scene->getLight2DSteps(), 6);
+    EXPECT_TRUE(loaded.scene->scene->isAmbientLight2DWithoutLights());
 
     // the prebuilt player's path: the whole scene cooked and loaded by CookedSceneLoader
     DecodedScene player;
     std::string error;
     ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
     EXPECT_EQ(player.scene->scene->getLight2DSteps(), 6);
+    EXPECT_TRUE(player.scene->scene->isAmbientLight2DWithoutLights());
+    // off (a scene saved before S78) is kept
+    scene->setAmbientLight2DWithoutLights(false);
+    DecodedScene migrated;
+    ASSERT_TRUE(roundTrip(scene, {}, migrated, error)) << error;
+    EXPECT_FALSE(migrated.scene->scene->isAmbientLight2DWithoutLights());
+    scene->setAmbientLight2DWithoutLights(true);
 
     // the 1.5 record: the same bytes without the steps; the Water Wakes still read
     DecodedScene older = emptyScene();
+    older.scene->scene->setAmbientLight2DWithoutLights(true);
     jasperengine::cook::Reader r15(std::span<const uint8_t>(bytes.data(), bytes.size() - lightStepsTailBytes(*scene)),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r15, *older.scene->scene);
     ASSERT_FALSE(r15.failed()) << r15.error();
     EXPECT_FLOAT_EQ(older.scene->scene->getWaterWakeArea(), 32.0f);
     EXPECT_EQ(older.scene->scene->getLight2DSteps(), 0);
+    EXPECT_FALSE(older.scene->scene->isAmbientLight2DWithoutLights());
 }
 
 TEST(RuntimeFields, Generated) {

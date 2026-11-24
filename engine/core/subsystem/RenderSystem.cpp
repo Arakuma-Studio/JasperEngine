@@ -1482,8 +1482,10 @@ int RenderSystem::checkLightsAndShadow(){
     if (numLights2D > 0)
         hasLights2D = true;
     // a scene without a Light 2D: its 2D ambient still multiplies the unlit 2D surfaces (as with
-    // one Light 2D out of range), unless it is (1, 1, 1), which draws as before
-    hasAmbient2D = !hasLights2D && isAmbient2DTinted(scene->getAmbientLight2DColorLinear(), scene->getAmbientLight2DIntensity());
+    // one Light 2D out of range), unless it is (1, 1, 1), which draws as before, or the scene was
+    // saved before S78 (Ambient Without Lights off: it draws as it did)
+    hasAmbient2D = !hasLights2D && scene->isAmbientLight2DWithoutLights() &&
+                   isAmbient2DTinted(scene->getAmbientLight2DColorLinear(), scene->getAmbientLight2DIntensity());
 
     return numLights;
 }
