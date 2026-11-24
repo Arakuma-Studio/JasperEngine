@@ -36,6 +36,7 @@
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AnimatorSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "support/AllocationCounter.h"
 
 #include <algorithm>
 #include <chrono>
@@ -867,8 +868,11 @@ TEST_F(HumanoidModel, PerformanceBudget){
     const double convertMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     std::printf("convert a 3 s clip: %.2f ms\n", convertMs);
 #ifdef NDEBUG
-    // timings hold in optimized builds only (the sanitizer builds are Debug)
-    EXPECT_LT(convertMs, 5.0);
+    // timings hold in optimized builds only (the sanitizer builds are Debug); a wall-clock
+    // budget: enforced where perfSlack() asks for it (the benchmark run)
+    if (const double slack = testsupport::perfSlack(); slack > 0.0){
+        EXPECT_LT(convertMs, 5.0 * slack);
+    }
 #endif
 
     // 30 characters with one humanoid state each and Foot IK: the realisation per frame
@@ -894,6 +898,8 @@ TEST_F(HumanoidModel, PerformanceBudget){
     }
     std::printf("30 humanoid states with Foot IK: %.3f ms per frame\n", best);
 #ifdef NDEBUG
-    EXPECT_LT(best, 0.3);
+    if (const double slack = testsupport::perfSlack(); slack > 0.0){
+        EXPECT_LT(best, 0.3 * slack);
+    }
 #endif
 }
