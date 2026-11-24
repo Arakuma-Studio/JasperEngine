@@ -25064,6 +25064,103 @@
    "type": 105,
    "type_of_key": 105,
    "type_of_name": 105
+  },
+  {
+   "display_name": "Fog Zone",
+   "enum_options": {
+    "shape": [
+     [
+      0,
+      "box",
+      "Box"
+     ],
+     [
+      1,
+      "sphere",
+      "Sphere"
+     ]
+    ]
+   },
+   "has_enabled": false,
+   "icon": "ef9d9f",
+   "key": "fogzone",
+   "known_keys": [
+    "blendDistance",
+    "priority",
+    "profile",
+    "shape",
+    "size",
+    "weight"
+   ],
+   "name": "FogZoneComponent",
+   "properties_of_default": {
+    "blendDistance": [
+     2,
+     0,
+     true
+    ],
+    "priority": [
+     8,
+     0,
+     true
+    ],
+    "profile": [
+     18,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "weight": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "blendDistance": [
+     2,
+     0,
+     true
+    ],
+    "priority": [
+     8,
+     0,
+     true
+    ],
+    "profile": [
+     18,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "weight": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 106,
+   "type_of_key": 106,
+   "type_of_name": 106
   }
  ],
  "ease_options": [
