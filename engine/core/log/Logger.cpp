@@ -341,6 +341,7 @@ namespace je_logger {
         std::array<std::mutex, kValveStripes> valveMutexes;
         std::array<ValveSlot, kValveSlots> valve;
         std::atomic<int64_t> nextValveSweepMs{0};
+        std::atomic<void (*)()> sweepHook{nullptr};
         std::atomic<uint64_t> suppressed{0};
     };
 
@@ -730,6 +731,9 @@ namespace je_logger {
             }
         }
         s.nextValveSweepMs.store(nowMs + kValveWindowMs / 4, std::memory_order_relaxed);
+        if (count > 0) {
+            if (void (*hook)() = s.sweepHook.load(std::memory_order_acquire)) hook();
+        }
         emitSummaries(summaries, count);
         return count;
     }
@@ -1554,6 +1558,10 @@ void Logger::flushSummaries() {
     if (!s.initialized.load(std::memory_order_acquire)) return;
     while (sweepValve(s, logMonotonicMs(), true) > 0) {}
     flush();
+}
+
+void Logger::setSweepHookForTesting(void (*hook)()) {
+    logState().sweepHook.store(hook, std::memory_order_release);
 }
 
 bool Logger::flushForCrash(std::chrono::milliseconds timeout, uint64_t* unwritten) noexcept {
