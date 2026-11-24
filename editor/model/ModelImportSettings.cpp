@@ -58,6 +58,8 @@ namespace {
         {ScriptMeshData::Release, "release", "Release"}};
     const EnumName<AnimationEntitiesMode> animationEntitiesNames[] = {
         {AnimationEntitiesMode::Always, "always", "Always"}, {AnimationEntitiesMode::Auto, "auto", "Auto"}};
+    const EnumName<FbxSubmeshOrder> submeshOrderNames[] = {
+        {FbxSubmeshOrder::MaterialSlots, "material_slots", "Material Slots"}, {FbxSubmeshOrder::UsedMaterials, "used_materials", "Used Materials"}};
 
     template<class E, size_t N>
     const EnumName<E>& entryOf(const EnumName<E> (&table)[N], E value){
@@ -237,6 +239,9 @@ const char* editor::generateLodsName(GenerateLods value){ return entryOf(lodsNam
 const char* editor::lodReductionName(LodReduction value){ return entryOf(reductionNames, value).name; }
 const char* editor::scriptMeshDataName(ScriptMeshData value){ return entryOf(scriptNames, value).name; }
 const char* editor::animationEntitiesModeName(AnimationEntitiesMode value){ return entryOf(animationEntitiesNames, value).name; }
+const char* editor::fbxSubmeshOrderName(FbxSubmeshOrder value){ return entryOf(submeshOrderNames, value).name; }
+const char* editor::fbxSubmeshOrderLabel(FbxSubmeshOrder value){ return entryOf(submeshOrderNames, value).label; }
+bool editor::fbxSubmeshOrderFromName(const std::string& name, FbxSubmeshOrder& value){ return valueOf(submeshOrderNames, name, value); }
 const char* editor::optimizeMeshLabel(OptimizeMesh value){ return entryOf(optimizeNames, value).label; }
 const char* editor::meshCompressionLabel(MeshCompression value){ return entryOf(compressionNames, value).label; }
 const char* editor::indexFormatLabel(IndexFormat value){ return entryOf(indexNames, value).label; }
@@ -457,6 +462,8 @@ YAML::Node editor::encodeModelProjectSettings(const ModelProjectSettings& settin
         node["animationEntities"] = animationEntitiesModeName(settings.animationEntities);
     if (settings.preserveHierarchyForNewModels != defaults.preserveHierarchyForNewModels)
         node["preserveHierarchyForNewModels"] = settings.preserveHierarchyForNewModels;
+    if (settings.fbxSubmeshOrder != defaults.fbxSubmeshOrder)
+        node["fbxSubmeshOrder"] = fbxSubmeshOrderName(settings.fbxSubmeshOrder);
     YAML::Node budgets(YAML::NodeType::Map);
     for (size_t f = 0; f < kModelFamilyCount; f++){
         const RenderBudget& b = settings.renderBudgets[f];
@@ -535,6 +542,13 @@ void editor::decodeModelProjectSettings(const YAML::Node& node, ModelProjectSett
         if (node["preserveHierarchyForNewModels"])
             settings.preserveHierarchyForNewModels = node["preserveHierarchyForNewModels"].as<bool>();
     }catch (...){}
+    if (node["fbxSubmeshOrder"]){
+        FbxSubmeshOrder value;
+        std::string name;
+        try { name = node["fbxSubmeshOrder"].Scalar(); } catch (...) { name.clear(); }
+        if (valueOf(submeshOrderNames, name, value))
+            settings.fbxSubmeshOrder = value;
+    }
     if (const YAML::Node budgets = node["renderBudgets"]; budgets && budgets.IsMap()){
         for (size_t f = 0; f < kModelFamilyCount; f++){
             const YAML::Node block = budgets[modelFamilyName((ModelFamily)f)];

@@ -1008,6 +1008,12 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     RowSettings rootSettings;
     rootSettings.help = "The base layer's clips' root motion moves the GameObject. Off, a clip with Root Transform settings plays in place.";
     propertyRow(RowPropertyType::Bool, cpType, "applyRootMotion", "Apply Root Motion", sceneProject, entities, rootSettings);
+    // an Animation Player migrated from before S94 (unticking it gives Unity's in-place play)
+    if (sceneProject->scene->getComponent<AnimationPlayerComponent>(entities[0]).legacyRootDrift){
+        RowSettings driftSettings;
+        driftSettings.help = "Apply Root Motion off: a clip with Root Transform settings keeps its root's drift, as scenes saved before this version played it. Untick to play it in place, as Unity does.";
+        propertyRow(RowPropertyType::Bool, cpType, "legacyRootDrift", "Legacy Root Drift", sceneProject, entities, driftSettings);
+    }
     endTable();
 
     if (entities.size() != 1){

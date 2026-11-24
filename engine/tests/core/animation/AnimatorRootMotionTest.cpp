@@ -150,6 +150,21 @@ TEST_F(AnimatorRootMotionTest, ApplyOffDiscardsUnbakedMotion){
     EXPECT_LT(position(root).length(), 1e-6f) << "Apply Root Motion off: the GameObject stays";
 }
 
+// an Animator saved before that rule (Legacy Root Drift, set by the scene and prefab migrations)
+// plays the same clip as it did: Apply Root Motion off keeps the drift in the pose
+TEST_F(AnimatorRootMotionTest, LegacyRootDriftKeepsTheDrift){
+    ClipData data;
+    data.wrap = ClipWrapMode::Once;
+    data.tracks = {track("Hips", ClipChannel::Position, {key(0, {0, 1, 0}), key(1, {0, 1, 2})})};
+    data.unknownKeys.push_back({"root_motion", "{}"});
+    AnimatorComponent& component = animator(controllerFile("c", controller({}, {state("Walk", clip("walk", data))})));
+    component.legacyRootDrift = true;
+    step(0.0);
+    step(0.25, 2);
+    EXPECT_NEAR(position(hips).z, 1.0f, 1e-4f) << "the drift stays in the pose";
+    EXPECT_LT(position(root).length(), 1e-6f) << "and the GameObject stays";
+}
+
 // a clip without a root_motion block plays as before with Apply Root Motion off: its drift stays
 TEST_F(AnimatorRootMotionTest, ApplyOffWithoutBlockKeepsTheDrift){
     ClipData data;

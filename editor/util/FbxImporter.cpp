@@ -361,11 +361,15 @@ std::string FbxImporter::Options::canonical() const {
     if (smoothingGroups) {
         out += "smoothingGroups;";
     }
+    if (usedMaterialsOrder) {
+        out += "submeshOrder=used_materials;";
+    }
     return out;
 }
 
-FbxImporter::Options FbxImporter::readOptions(const fs::path& fbxPath) {
+FbxImporter::Options FbxImporter::readOptions(const fs::path& fbxPath, bool usedMaterialsOrder) {
     Options options;
+    options.usedMaterialsOrder = usedMaterialsOrder;
     ModelImportSettings settings;
     const YAML::Node section = SetAssetMetaCmd::read(fbxPath, ModelImportSettings::metaKey);
     // a malformed section imports with the defaults (its error is the Inspector's and the audit's)
@@ -387,14 +391,14 @@ bool FbxImporter::isFbxFile(const fs::path& path) {
     return ext == ".fbx";
 }
 
-FbxImporter::State FbxImporter::getState(const fs::path& fbxPath, const fs::path& glbPath, const fs::path& assetsRoot) {
+FbxImporter::State FbxImporter::getState(const fs::path& fbxPath, const fs::path& glbPath, const fs::path& assetsRoot, bool usedMaterialsOrder) {
     std::error_code ec;
     if (!fs::exists(glbPath, ec)) {
         return State::Missing;
     }
 
     const ImportInfo info = readImportInfo(glbPath);
-    if (info.files.empty() || info.version != IMPORTER_VERSION || info.options != readOptions(fbxPath).canonical()) {
+    if (info.files.empty() || info.version != IMPORTER_VERSION || info.options != readOptions(fbxPath, usedMaterialsOrder).canonical()) {
         return State::Stale;
     }
     for (const Dependency& file : info.files) {
@@ -414,8 +418,8 @@ FbxImporter::State FbxImporter::getState(const fs::path& fbxPath, const fs::path
     return State::UpToDate;
 }
 
-std::string FbxImporter::getSourceId(const fs::path& fbxPath) {
-    return makeSourceId(hashFile(fbxPath), readOptions(fbxPath).canonical());
+std::string FbxImporter::getSourceId(const fs::path& fbxPath, bool usedMaterialsOrder) {
+    return makeSourceId(hashFile(fbxPath), readOptions(fbxPath, usedMaterialsOrder).canonical());
 }
 
 std::string FbxImporter::getImportId(const tinygltf::Model& model) {
@@ -445,17 +449,18 @@ std::vector<fs::path> FbxImporter::findMissingLinkedFiles(const fs::path& fbxPat
     return missing;
 }
 
-FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path& glbPath, const fs::path& assetsRoot, bool force) {
+FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path& glbPath, const fs::path& assetsRoot, bool force,
+                                        bool usedMaterialsOrder) {
     std::lock_guard<std::mutex> lock(importMutex);
 
     Result result;
     // Another thread may have imported it while this one waited for the lock
-    if (!force && getState(fbxPath, glbPath, assetsRoot) == State::UpToDate) {
+    if (!force && getState(fbxPath, glbPath, assetsRoot, usedMaterialsOrder) == State::UpToDate) {
         result.success = true;
         return result;
     }
 
-    const Options importOptions = readOptions(fbxPath);
+    const Options importOptions = readOptions(fbxPath, usedMaterialsOrder);
     ufbx_load_opts options = {};
     options.target_axes = ufbx_axes_right_handed_y_up;
     options.target_unit_meters = 1.0;
@@ -497,6 +502,7 @@ FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path&
     buildOptions.smoothingGroups = importOptions.smoothingGroups;
     buildOptions.firstFrameRestPose = importOptions.firstFrameRestPose;
     buildOptions.restPoseTake = importOptions.restPoseTake;
+    buildOptions.usedMaterialsOrder = importOptions.usedMaterialsOrder;
 
     // what the last import drew, by mesh and submesh
     Json previous;
@@ -525,8 +531,9 @@ FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path&
         result.error = "the glTF data could not be encoded";
         return result;
     }
-    // Submeshes follow the FBX material slots since importer version 2: a mesh whose order moved
-    // is named, so a material set on a submesh by its index can be checked (spec S94 F42)
+    // Submeshes follow the FBX material slots since importer version 2 (unless the project keeps
+    // Used Materials): a mesh whose order moved is named, so a material set on a submesh by its
+    // index can be checked (spec S94 F42)
     Json current;
     if (previous.is_object() && glbJsonOf(glb, current)) {
         const auto before = submeshMaterials(previous);

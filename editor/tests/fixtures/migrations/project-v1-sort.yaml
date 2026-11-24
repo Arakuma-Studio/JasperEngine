@@ -8,3 +8,5 @@ sortingLayers:
     name: Default
   - id: 1
     name: Foreground
+mesh:
+  cacheSizeMB: 4096

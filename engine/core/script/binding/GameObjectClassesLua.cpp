@@ -4455,6 +4455,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("poseFrameRate", &AnimationPlayer::getPoseFrameRate, &AnimationPlayer::setPoseFrameRate)
         // Unity's Apply Root Motion: the base layer's clip root motion moves the GameObject
         .addProperty("applyRootMotion", &AnimationPlayer::getApplyRootMotion, &AnimationPlayer::setApplyRootMotion)
+        .addProperty("legacyRootDrift", &AnimationPlayer::getLegacyRootDrift, &AnimationPlayer::setLegacyRootDrift)
         .addProperty("defaultClip", &AnimationPlayer::getDefaultClip, &AnimationPlayer::setDefaultClip)
         .addProperty("defaultFadeTime", &AnimationPlayer::getDefaultFadeTime, &AnimationPlayer::setDefaultFadeTime)
         .addProperty("playAutomatically", &AnimationPlayer::isPlayAutomatically, &AnimationPlayer::setPlayAutomatically)
@@ -4768,6 +4769,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // step too; root motion and events stay at the true time
         .addProperty("poseFrameRate", &Animator::getPoseFrameRate, &Animator::setPoseFrameRate)
         .addProperty("applyRootMotion", &Animator::isApplyRootMotion, &Animator::setApplyRootMotion)
+        .addProperty("legacyRootDrift", &Animator::isLegacyRootDrift, &Animator::setLegacyRootDrift)
         .addFunction("getDeltaPosition", &Animator::getDeltaPosition)
         .addFunction("getDeltaRotation", &Animator::getDeltaRotation)
         .addFunction("isHumanoid", &Animator::isHumanoid)

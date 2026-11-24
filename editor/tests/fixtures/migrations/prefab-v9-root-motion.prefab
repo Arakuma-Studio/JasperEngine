@@ -1,0 +1,23 @@
+type: Prefab
+version: 9
+guid: 2d0c8b1f5e3e4d4c9b7f6e5d4c3b2a19
+nextEntity: 1002
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Walker
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      animationplayer:
+        enabled: true
+        clips:
+          - name: Walk
+            clip: anim/walk.anim
+        defaultClip: Walk
+        playAutomatically: true
+        speed: 1
+        defaultFadeTime: 0.25

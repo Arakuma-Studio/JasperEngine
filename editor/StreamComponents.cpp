@@ -3178,6 +3178,7 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
     if (player.poseFrameRate != 0.0f) encodeFinite(node, "poseFrameRate", player.poseFrameRate);
     // S94 F34: written only when set
     if (player.applyRootMotion) node["applyRootMotion"] = YamlNumbers::text(player.applyRootMotion);
+    if (player.legacyRootDrift) node["legacyRootDrift"] = YamlNumbers::text(player.legacyRootDrift);
     return node;
 }
 
@@ -3319,6 +3320,7 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     player.defaultFadeTime = given("defaultFadeTime") ? std::max(0.0f, decodeFinite(node["defaultFadeTime"], defaults.defaultFadeTime)) : defaults.defaultFadeTime;
     player.poseFrameRate = given("poseFrameRate") ? std::max(0.0f, decodeFinite(node["poseFrameRate"], defaults.poseFrameRate)) : defaults.poseFrameRate;
     player.applyRootMotion = boolean("applyRootMotion", defaults.applyRootMotion);
+    player.legacyRootDrift = boolean("legacyRootDrift", defaults.legacyRootDrift);
 
     if (oldPlayer && (oldPlayer->clips != player.clips || oldPlayer->layers != player.layers)) {
         player.needsLoad = true;

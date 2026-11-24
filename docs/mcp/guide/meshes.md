@@ -63,7 +63,8 @@ models.
 - `first_frame_differs` lists clips whose root or hips start away from the file's nodes.
 - An FBX of a skeleton and takes only (Unity's `Model@Clip.fbx`) imports as a clip source:
   `"<model>.fbx#<take>"`.
-- Submesh `i` is the FBX node's material slot `i`. An empty slot keeps its index.
+- Submesh `i` is the FBX node's material slot `i`. An empty slot keeps its index. Older projects keep
+  `mesh.fbx_submesh_order` `used_materials`: the used slots in order.
 
 ### What changes the image
 

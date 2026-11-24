@@ -900,7 +900,8 @@ void GlbBuilder::buildGeometry(const ufbx_mesh* mesh) {
     geometry.name = meshName;
     const std::vector<uint32_t> smoothing = options.smoothingGroups ? smoothingGroupsOf(mesh) : std::vector<uint32_t>();
     // Primitive i is material slot i (Unity's submesh order): an empty slot before the last one
-    // that draws keeps its index with a placeholder, so later submeshes do not shift (spec S94 F42)
+    // that draws keeps its index with a placeholder, so later submeshes do not shift (spec S94 F42).
+    // Used Materials skips every empty slot, as the importer did before.
     uint32_t lastDrawnSlot = 0;
     uint32_t firstCorner = UINT32_MAX;
     for (const ufbx_mesh_part& part : mesh->material_parts) {
@@ -978,7 +979,7 @@ void GlbBuilder::buildGeometry(const ufbx_mesh* mesh) {
             }
         }
         // the placeholder: one degenerate triangle on a corner of the mesh, with every attribute
-        const bool reserved = vertices.empty() && part.index < lastDrawnSlot && firstCorner != UINT32_MAX;
+        const bool reserved = !options.usedMaterialsOrder && vertices.empty() && part.index < lastDrawnSlot && firstCorner != UINT32_MAX;
         if (reserved) {
             for (int i = 0; i < 3; i++) {
                 addCorner(firstCorner);

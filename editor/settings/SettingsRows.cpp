@@ -2185,6 +2185,17 @@ std::vector<Setting> mcpSettingsTable() {
                             e = "\"" + name + "\" is not one of automatic, keep, release";
                             return false;
                         }, {"automatic", "keep", "release"});
+            meshSetting("mesh.fbx_submesh_order", "enum",
+                        "An FBX mesh's submeshes: material_slots (submesh i is material slot i, Unity's order; new projects) or "
+                        "used_materials (the used slots in order, projects made before; a change reimports every FBX).",
+                        [](const ModelProjectSettings& m) { return Json(fbxSubmeshOrderName(m.fbxSubmeshOrder)); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            std::string name;
+                            if (!readString(v, name, e)) return false;
+                            if (fbxSubmeshOrderFromName(name, m.fbxSubmeshOrder)) return true;
+                            e = "\"" + name + "\" is not one of material_slots, used_materials";
+                            return false;
+                        }, {"material_slots", "used_materials"});
             meshSetting("mesh.preserve_hierarchy_for_new_models", "bool",
                         "Models made in the editor start with Preserve Hierarchy on (every glTF node its own GameObject; "
                         "on in new projects).",

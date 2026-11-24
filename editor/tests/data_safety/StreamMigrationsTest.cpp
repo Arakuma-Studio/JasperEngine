@@ -6,10 +6,13 @@
 
 #include "StreamMigrations.h"
 #include "Stream.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/AnimatorComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "pool/ShaderPool.h"
 #include "support/EditorTestSupport.h"
 #include "component/TextComponent.h"
+#include "model/ModelImportSettings.h"
 #include "reflect/Reflect.h"
 #include "registry/SortingLayers.h"
 
@@ -367,9 +370,59 @@ TEST(StreamMigrations, PrefabV9TextPivotsBecomeAlignment){
     EXPECT_FALSE(sign["pivotBaseline"]);
 }
 
-// S94 F5 (AC5): a project written before Transparency Sort Mode Default followed the projection
+// S94 F33, F34: with Apply Root Motion off a clip with a root_motion block plays in place now. An
+// Animator or Animation Player of scene 8 or prefab 9 (children included) keeps the drift it played
+// with (legacyRootDrift); one with Apply Root Motion on and an instance's overrides are left as they
+// are; a component written now has none
+TEST(StreamMigrations, SceneV8AnimatorsKeepTheirRootDrift){
+    YAML::Node root = YAML::Load(test::readText(test::fixture("migrations/scene-v8-root-motion.scene")));
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
+    ASSERT_TRUE(result.migrated());
+    EXPECT_EQ(root["formatVersion"].as<int>(), 9);
+    ASSERT_EQ(result.log.lines.size(), 1u);
+    EXPECT_NE(result.log.lines[0].find("2 Animators and Animation Players keep"), std::string::npos) << result.log.lines[0];
+
+    const YAML::Node hero = root["entities"][0]["components"]["animator"];
+    ASSERT_TRUE(hero["legacyRootDrift"]);
+    EXPECT_TRUE(hero["legacyRootDrift"].as<bool>());
+    AnimatorComponent animator;
+    reflect::decodeInto(ComponentType::AnimatorComponent, hero, &animator, nullptr);
+    EXPECT_TRUE(animator.legacyRootDrift);
+    EXPECT_FALSE(animator.applyRootMotion);
+
+    const YAML::Node dancer = root["entities"][0]["children"][0]["components"]["animationplayer"];
+    ASSERT_TRUE(dancer["legacyRootDrift"]);
+    EXPECT_TRUE(Stream::decodeAnimationPlayerComponent(dancer).legacyRootDrift);
+
+    EXPECT_FALSE(root["entities"][1]["components"]["animator"]["legacyRootDrift"]) << "Apply Root Motion on: nothing changed";
+    const YAML::Node overrides = root["entities"][2]["prefabInstance"]["overrides"][0];
+    EXPECT_FALSE(overrides["components"]["animator"]["legacyRootDrift"]) << "an override follows its prefab";
+    EXPECT_EQ(overrides["properties"]["animator"].size(), 1u);
+
+    // written back only when set
+    EXPECT_FALSE(Stream::encodeAnimationPlayerComponent(AnimationPlayerComponent())["legacyRootDrift"]);
+    EXPECT_TRUE(Stream::encodeAnimationPlayerComponent(Stream::decodeAnimationPlayerComponent(dancer))["legacyRootDrift"].as<bool>());
+}
+
+TEST(StreamMigrations, PrefabV9AnimationPlayersKeepTheirRootDrift){
+    YAML::Node root = YAML::Load(test::readText(test::fixture("migrations/prefab-v9-root-motion.prefab")));
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
+    ASSERT_TRUE(result.migrated());
+    EXPECT_EQ(root["version"].as<int>(), 10);
+    const YAML::Node walker = root["members"][0]["components"]["animationplayer"];
+    ASSERT_TRUE(walker["legacyRootDrift"]);
+    EXPECT_TRUE(Stream::decodeAnimationPlayerComponent(walker).legacyRootDrift);
+
+    YAML::Node current = YAML::Load("{type: Prefab, version: 10, members: [{type: Entity, entity: 1001, components: {animator: {enabled: true}}}]}");
+    EXPECT_FALSE(StreamMigrations::migrate(DocumentKind::Prefab, current).migrated());
+    EXPECT_FALSE(current["members"][0]["components"]["animator"]["legacyRootDrift"]);
+}
+
+// S94 F5 (AC5), F42: a project written before Transparency Sort Mode Default followed the projection
 // sorted every camera by the distance: it loads as Perspective; one that named a mode keeps it,
-// and a project of format 2 without the key is Default
+// and a project of format 2 without the key is Default. Its FBX submeshes were the used material
+// slots in order: it keeps FBX Submesh Order Used Materials beside its other Mesh settings, and a
+// project of format 2 without the key follows the material slots
 TEST(StreamMigrations, ProjectV1KeepsPerspectiveSort){
     YAML::Node root = YAML::LoadFile(test::fixture("migrations/project-v1-sort.yaml").string());
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Project, root);
@@ -382,13 +435,25 @@ TEST(StreamMigrations, ProjectV1KeepsPerspectiveSort){
     EXPECT_TRUE(SortingLayers::transparencySortModeFromToken(root["transparencySortMode"].as<std::string>(), mode));
     EXPECT_EQ(mode, TransparencySortMode::PERSPECTIVE);
     EXPECT_EQ(root["sortingLayers"].size(), 2u);
-    EXPECT_FALSE(result.log.lines.empty());
+    EXPECT_EQ(result.log.lines.size(), 2u);
+    ASSERT_TRUE(root["mesh"]["fbxSubmeshOrder"]);
+    ModelProjectSettings meshSettings;
+    decodeModelProjectSettings(root["mesh"], meshSettings);
+    EXPECT_EQ(meshSettings.fbxSubmeshOrder, FbxSubmeshOrder::UsedMaterials);
+    EXPECT_EQ(meshSettings.cacheSizeMB, 4096) << "the other Mesh settings stay";
+    EXPECT_EQ(encodeModelProjectSettings(meshSettings)["fbxSubmeshOrder"].as<std::string>(), "used_materials");
 
     YAML::Node axis = YAML::Load("{formatVersion: 1, name: A, transparencySortMode: custom_axis}");
     StreamMigrations::migrate(DocumentKind::Project, axis);
     EXPECT_EQ(axis["transparencySortMode"].as<std::string>(), "custom_axis");
 
+    EXPECT_EQ(axis["mesh"]["fbxSubmeshOrder"].as<std::string>(), "used_materials");
+
     YAML::Node current = YAML::Load("{formatVersion: 2, name: B}");
     EXPECT_FALSE(StreamMigrations::migrate(DocumentKind::Project, current).migrated());
     EXPECT_FALSE(current["transparencySortMode"]);
+    EXPECT_FALSE(current["mesh"]);
+    decodeModelProjectSettings(current["mesh"], meshSettings);
+    EXPECT_EQ(meshSettings.fbxSubmeshOrder, FbxSubmeshOrder::MaterialSlots);
+    EXPECT_FALSE(encodeModelProjectSettings(meshSettings)["fbxSubmeshOrder"]) << "the default is not written";
 }

@@ -96,6 +96,17 @@ TEST_F(AnimationPlayerRootMotionTest, ApplyOffWithoutBlockKeepsTheDrift){
     EXPECT_LT(position(root).length(), 1e-6f);
 }
 
+// a player saved before root motion (Legacy Root Drift, set by the scene and prefab migrations)
+// plays a clip with a root_motion block as it did: the drift stays in the pose
+TEST_F(AnimationPlayerRootMotionTest, LegacyRootDriftKeepsTheDrift){
+    AnimationPlayer player = play(walk("{}"), false);
+    player.setLegacyRootDrift(true);
+    scene.getSystem<ActionSystem>()->update(0.0);
+    frames(16);
+    EXPECT_NEAR(position(hips).z, 0.5f, 1e-3f) << "the drift stays in the pose";
+    EXPECT_LT(position(root).length(), 1e-6f);
+}
+
 // bake_position_xz: the horizontal motion stays in the pose, the GameObject does not move
 TEST_F(AnimationPlayerRootMotionTest, BakeIntoPoseKeepsTheMotionInThePose){
     play(walk("{\"bake_position_xz\": true}"), true);

@@ -128,7 +128,8 @@ events also call the scripts' methods of the same name (`sendEventsToScripts`).
 ## Component settings
 
 `speed`, `applyRootMotion` (the clips' root motion moves the GameObject, or its Character
-Controller), `rootMotionBone`, `updateMode` (normal, animate_physics, unscaled_time),
+Controller), `legacyRootDrift` (true on Animators saved before off meant in place: they keep the
+drift), `rootMotionBone`, `updateMode` (normal, animate_physics, unscaled_time),
 `cullingMode` (always_animate, cull_update_transforms, cull_completely), `writeBones` (all,
 exposed + `exposedBones`), `eventMode` (leader_only, all), `retarget` (auto, off), `clipOverrides`
 ([{original, replacement}]: the same controller with other clips) and `ik` (two_bone, fabrik,

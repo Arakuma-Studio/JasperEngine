@@ -2601,6 +2601,15 @@ void ProjectSettingsWindow::drawMeshSettings() {
                            "and a lone mesh is never merged into the Model's own. New projects start with it on; models already "
                            "placed keep theirs.");
         }
+        if (settingsui::beginRow("mesh.fbx_submesh_order")) {
+            static const char* const orderLabels[] = {"Material Slots", "Used Materials"};
+            int value = (int)m.fbxSubmeshOrder;
+            drawComboSetting("FBX Submesh Order", "##MeshFbxSubmeshOrder", orderLabels, 2, value, 0,
+                             "Material Slots: an FBX mesh's submesh i is its node's material slot i, as in Unity. Used Materials: "
+                             "the used slots in order, so an empty slot moves the next ones up (projects made before Material Slots "
+                             "keep it, so their per-submesh materials stay where they are). A change reimports every FBX.");
+            m.fbxSubmeshOrder = (FbxSubmeshOrder)value;
+        }
         if (settingsui::beginRow("mesh.keep_cpu_data_for_scripts")) {
             static const char* const scriptLabels[] = {"Automatic", "Keep", "Release"};
             int value = (int)m.scriptMeshData;

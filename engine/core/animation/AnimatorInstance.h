@@ -472,9 +472,10 @@ namespace jasperengine::anim{
                             std::shared_ptr<const RetargetSource>& source, std::string* error) const;
         void removeRootMotion(const AnimatorClipSlot& slot, Pose& out) const;
         // the slot's unbaked root motion leaves the pose: Apply Root Motion, or a clip with a
-        // root_motion block (Unity discards it when Apply Root Motion is off, S94 F33)
+        // root_motion block (Unity discards it when Apply Root Motion is off, S94 F33) unless the
+        // Animator keeps the drift it had before (legacyRootDrift)
         bool removesRootMotion(const AnimatorClipSlot& slot, const AnimatorComponent& component) const{
-            return slot.rootBone >= 0 && (component.applyRootMotion || slot.rootMotion.present);
+            return slot.rootBone >= 0 && (component.applyRootMotion || (slot.rootMotion.present && !component.legacyRootDrift));
         }
         // the root's basis (RootMotion.h) at `clipTime`, the body sampled when the slot reads it
         RootBasisSample rootBasisAt(const AnimatorClipSlot& slot, float clipTime) const;

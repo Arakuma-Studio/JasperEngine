@@ -162,9 +162,9 @@ Animator; the Console says so once.
 ### Changes
 
 - Clips with a `root_motion` block on an Animator (or Animation Player) with Apply Root Motion off
-  now play in place, as in Unity: before, their root bone kept its drift in the pose. To keep the
-  drift, tick Bake Into Pose for Position (XZ) (and Rotation), or remove the clip's Root Motion
-  settings.
+  now play in place, as in Unity: before, their root bone kept its drift in the pose. Animators and
+  Animation Players saved before keep the drift: they load with **Legacy Root Drift** ticked
+  (Lua `legacyRootDrift`), which shows in their Inspector until it is unticked.
 
 ## IK
 

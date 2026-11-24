@@ -558,6 +558,14 @@ bool AnimationPlayer::getApplyRootMotion() const{
     return getComponent<AnimationPlayerComponent>().applyRootMotion;
 }
 
+void AnimationPlayer::setLegacyRootDrift(bool keep){
+    getComponent<AnimationPlayerComponent>().legacyRootDrift = keep;
+}
+
+bool AnimationPlayer::getLegacyRootDrift() const{
+    return getComponent<AnimationPlayerComponent>().legacyRootDrift;
+}
+
 void AnimationPlayer::setDefaultClip(const std::string& name){
     getComponent<AnimationPlayerComponent>().defaultClip = name;
 }

@@ -292,6 +292,8 @@ void ActionSystem::stepPlayerRootMotion(Entity entity, AnimationPlayerComponent&
     runtime.rootDelta = Vector3(0, 0, 0);
     runtime.rootYaw = 0.0f;
     runtime.rootState = -1;
+    // a player saved before S94 kept every clip's drift with Apply Root Motion off
+    if (!player.applyRootMotion && player.legacyRootDrift) return;
     Vector3 sum(0, 0, 0);
     float yawSum = 0.0f;
     float weightSum = 0.0f;

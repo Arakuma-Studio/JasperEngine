@@ -30,15 +30,26 @@ namespace {
     void materialV0ToV1(YAML::Node&, MigrationLog&){
     }
 
-    // Project 1 -> 2 (S94 F5): Transparency Sort Mode Default now sorts an orthographic camera's
-    // transparent draws by depth along its view axis (Unity's rule). A project written before
-    // sorted every camera by the distance, which is Perspective now: it keeps that look.
+    // Project 1 -> 2 (S94 F5, F42): Transparency Sort Mode Default now sorts an orthographic
+    // camera's transparent draws by depth along its view axis (Unity's rule). A project written
+    // before sorted every camera by the distance, which is Perspective now: it keeps that look.
+    // An FBX's submesh i is its material slot i now; such a project's scenes and prefabs hold
+    // per-submesh values (materials, Property Overrides) by the old order, the used slots in order:
+    // it keeps FBX Submesh Order Used Materials.
     void projectV1ToV2(YAML::Node& root, MigrationLog& log){
-        if (root["transparencySortMode"])
-            return;
-        root["transparencySortMode"] = "perspective";
-        log.info("Transparency Sort Mode: Perspective, the distance sort this project drew with (Default now sorts an "
-                 "orthographic camera along its view axis; set it in Project Settings > Graphics)");
+        if (!root["transparencySortMode"]){
+            root["transparencySortMode"] = "perspective";
+            log.info("Transparency Sort Mode: Perspective, the distance sort this project drew with (Default now sorts an "
+                     "orthographic camera along its view axis; set it in Project Settings > Graphics)");
+        }
+        if (!root["mesh"])
+            root["mesh"] = YAML::Node(YAML::NodeType::Map);
+        YAML::Node mesh = root["mesh"];
+        if (mesh.IsMap() && !mesh["fbxSubmeshOrder"]){
+            mesh["fbxSubmeshOrder"] = "used_materials";
+            log.info("FBX Submesh Order: Used Materials, the submesh order this project's models imported with (new "
+                     "projects follow the FBX material slots, as Unity does; set it in Project Settings > Mesh)");
+        }
     }
 
     // Every light component below node (scenes nest entities in children; prefabs list their
@@ -772,14 +783,55 @@ namespace {
         }
     }
 
-    // Scene 8 -> 9 (S94 F24): Text alignment replaces the two pivot booleans
+    // ---------------------------------------------------------------- Root motion off (S94 F33, F34)
+
+    // Every Animator and Animation Player below node (a GameObject's components map, in entities,
+    // children and prefab members; not an instance's overrides): with Apply Root Motion off, a
+    // clip with a root_motion block now plays in place, where it kept its root's drift before (an
+    // Animation Player had no root motion at all). legacyRootDrift keeps the old play.
+    int keepRootDrift(YAML::Node node){
+        int kept = 0;
+        if (node.IsMap()){
+            for (auto it = node.begin(); it != node.end(); ++it){
+                YAML::Node value = it->second;
+                if (it->first.IsScalar() && it->first.Scalar() == "components" && value.IsMap()){
+                    for (const char* key : {"animator", "animationplayer"}){
+                        YAML::Node component = value[key];
+                        if (component && component.IsMap() && !yamlTrue(component["applyRootMotion"]) && !component["legacyRootDrift"]){
+                            component["legacyRootDrift"] = true;
+                            kept++;
+                        }
+                    }
+                }
+                // an instance's overrides follow its prefab (migrated with it)
+                if (!(it->first.IsScalar() && it->first.Scalar() == "prefabInstance"))
+                    kept += keepRootDrift(value);
+            }
+        }else if (node.IsSequence()){
+            for (YAML::Node child : node)
+                kept += keepRootDrift(child);
+        }
+        return kept;
+    }
+
+    void logRootDrift(int kept, MigrationLog& log){
+        if (kept > 0){
+            log.info(std::to_string(kept) + (kept == 1 ? " Animator or Animation Player keeps" : " Animators and Animation Players keep") +
+                     " its clips' root drift with Apply Root Motion off (Legacy Root Drift; untick it to play them in place)");
+        }
+    }
+
+    // Scene 8 -> 9 (S94 F24, F33): Text alignment replaces the two pivot booleans; Animators and
+    // Animation Players keep their clips' root drift
     void sceneV8ToV9(YAML::Node& root, MigrationLog& log){
         logTextPivots(migrateTextPivots(root["entities"]), log);
+        logRootDrift(keepRootDrift(root["entities"]), log);
     }
 
     // Prefab 9 -> 10: the same for its members
     void prefabV9ToV10(YAML::Node& root, MigrationLog& log){
         logTextPivots(migrateTextPivots(root["members"]), log);
+        logRootDrift(keepRootDrift(root["members"]), log);
     }
 
 }
@@ -835,11 +887,11 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {5, 6, "Animation Player controllers to Animators", sceneV5ToV6},
         {6, 7, "Line and Trail Renderer curves and gradients in the editor's curve form", sceneV6ToV7},
         {7, 8, "sprite sheets (identity: an older scene has none)", sheetSpritesIdentity},
-        {8, 9, "Text pivots to Text alignment", sceneV8ToV9},
+        {8, 9, "Text pivots to Text alignment; Animators keep their root drift", sceneV8ToV9},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
-        {1, 2, "Transparency Sort Mode Perspective for a project without one", projectV1ToV2},
+        {1, 2, "Transparency Sort Mode Perspective and FBX Submesh Order Used Materials for a project without them", projectV1ToV2},
     };
     static const std::vector<Migration> material = {
         {0, 1, "stamp the material format version", materialV0ToV1},
@@ -852,7 +904,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {6, 7, "Animation Player controllers to Animators", prefabV6ToV7},
         {7, 8, "Line and Trail Renderer curves and gradients in the editor's curve form", prefabV7ToV8},
         {8, 9, "sprite sheets (identity: an older prefab has none)", sheetSpritesIdentity},
-        {9, 10, "Text pivots to Text alignment", prefabV9ToV10},
+        {9, 10, "Text pivots to Text alignment; Animators keep their root drift", prefabV9ToV10},
     };
 
     switch (kind){

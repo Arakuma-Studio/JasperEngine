@@ -128,6 +128,16 @@ namespace jasperengine::editor {
     // Animator). A missing key is Always, so an older project keeps its behaviour.
     enum class AnimationEntitiesMode : uint8_t { Always, Auto };
     const char* animationEntitiesModeName(AnimationEntitiesMode value);    // "always", "auto"
+
+    // Project Settings > Mesh > FBX Submesh Order (spec S94 F42): Material Slots makes submesh i the
+    // FBX node's material slot i (Unity's order), Used Materials the used slots in order, an empty
+    // slot shifting the next ones (the importer before S94). New projects take Material Slots; the
+    // project migration keeps an older project on Used Materials, so its saved per-submesh values
+    // stay on their submeshes.
+    enum class FbxSubmeshOrder : uint8_t { MaterialSlots, UsedMaterials };
+    const char* fbxSubmeshOrderName(FbxSubmeshOrder value);     // "material_slots", "used_materials"
+    const char* fbxSubmeshOrderLabel(FbxSubmeshOrder value);    // "Material Slots", "Used Materials"
+    bool fbxSubmeshOrderFromName(const std::string& name, FbxSubmeshOrder& value);
     inline constexpr int kAutoAnimationEntitiesClips = 5;
 
     // A platform's render budget (R25): 0 is no limit for that metric
@@ -154,6 +164,7 @@ namespace jasperengine::editor {
         // the editor starts with ModelComponent::preserveHierarchy on. On in new projects; a missing
         // key is off, so an older project places models as it did.
         bool preserveHierarchyForNewModels = false;
+        FbxSubmeshOrder fbxSubmeshOrder = FbxSubmeshOrder::MaterialSlots;
 
         bool operator==(const ModelProjectSettings&) const = default;
     };

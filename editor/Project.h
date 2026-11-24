@@ -2303,6 +2303,8 @@ namespace jasperengine::editor{
         const ModelProjectSettings& getModelSettings() const;
         // stores them; the model cook queue re-keys every model
         void setModelSettings(const ModelProjectSettings& settings);
+        // FBX Submesh Order Used Materials (S94 F42): what FbxImporter converts this project's FBX with
+        bool isFbxUsedMaterialsOrder() const;
         // The Physics Placement panel's settings, per user (workspace.yaml)
         PhysicsPlacementSettings& getPhysicsPlacementSettings();
         const PhysicsPlacementSettings& getPhysicsPlacementSettings() const;

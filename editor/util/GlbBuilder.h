@@ -41,6 +41,9 @@ namespace jasperengine::editor {
             // Smoothness Source From / Prefer Smoothing Groups: each vertex records the smoothing group
             // of its corner (a custom attribute the model cook reads and drops), for meshes that have them
             bool smoothingGroups = false;
+            // FBX Submesh Order Used Materials (projects made before S94 F42): an empty material
+            // slot makes no primitive, so the next ones move up; else primitive i is slot i
+            bool usedMaterialsOrder = false;
         };
 
         // The custom vertex attribute that numbers the corners that share a smoothed normal

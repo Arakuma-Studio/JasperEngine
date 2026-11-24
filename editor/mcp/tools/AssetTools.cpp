@@ -984,7 +984,7 @@ void getAssetInfoTool(const CallPtr& call) {
                 error = "Outside the assets directory, so never converted.";
             } else {
                 const fs::path glbPath = project->getImportedModelPath(file);
-                const FbxImporter::State state = FbxImporter::getState(file, glbPath, project->getAssetsPath());
+                const FbxImporter::State state = FbxImporter::getState(file, glbPath, project->getAssetsPath(), project->isFbxUsedMaterialsOrder());
                 data["fbx_import"] = {{"path", projectRelative(project, glbPath)},
                     {"state", state == FbxImporter::State::UpToDate ? "current" : state == FbxImporter::State::Stale ? "stale" : "missing"}};
                 if (state == FbxImporter::State::Missing) {

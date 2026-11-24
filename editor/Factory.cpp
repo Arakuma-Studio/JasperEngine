@@ -2794,6 +2794,7 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
     code << ind << "animationplayer.defaultFadeTime = " << formatFloat(player.defaultFadeTime) << ";\n";
     if (player.poseFrameRate != 0.0f) code << ind << "animationplayer.poseFrameRate = " << formatFloat(player.poseFrameRate) << ";\n";
     if (player.applyRootMotion) code << ind << "animationplayer.applyRootMotion = true;\n";
+    if (player.legacyRootDrift) code << ind << "animationplayer.legacyRootDrift = true;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "AnimationPlayerComponent", "animationplayer", assignExisting);
     return code.str();
 }

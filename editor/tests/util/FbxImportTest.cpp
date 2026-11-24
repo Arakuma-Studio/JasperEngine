@@ -571,6 +571,27 @@ TEST(FbxImport, SubmeshOrderFollowsMaterialSlots) {
     EXPECT_EQ(model.accessors[static_cast<size_t>(primitives[1].indices)].count, 18u);
     EXPECT_EQ(model.accessors[static_cast<size_t>(primitives[2].indices)].count, 18u);
     EXPECT_FALSE(primitives[1].extras.Has("fbxEmptySlot"));
+
+    // a project made before (FBX Submesh Order Used Materials, set by its migration) keeps the old
+    // order, the used slots only, so its saved submesh values stay put; the order is part of the
+    // import, so switching it reimports
+    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets, true), FbxImporter::State::Stale);
+    EXPECT_NE(FbxImporter::getSourceId(project.fbx, true), FbxImporter::getSourceId(project.fbx));
+    const FbxImporter::Result legacy = FbxImporter::import(project.fbx, project.glb, project.assets, false, true);
+    ASSERT_TRUE(legacy.success) << legacy.error;
+    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets, true), FbxImporter::State::UpToDate);
+    tinygltf::Model used;
+    ASSERT_TRUE(project.load(used));
+    ASSERT_EQ(used.meshes.size(), 1u);
+    const std::vector<tinygltf::Primitive>& usedPrimitives = used.meshes[0].primitives;
+    ASSERT_EQ(usedPrimitives.size(), 2u) << "the empty slot 0 makes no submesh";
+    const char* usedNames[] = {"Body", "Eyes"};
+    for (int i = 0; i < 2; i++) {
+        ASSERT_GE(usedPrimitives[i].material, 0);
+        EXPECT_EQ(used.materials[static_cast<size_t>(usedPrimitives[i].material)].name, usedNames[i]);
+        EXPECT_FALSE(usedPrimitives[i].extras.Has("fbxEmptySlot"));
+    }
+    EXPECT_EQ(FbxImporter::getImportId(used), FbxImporter::getSourceId(project.fbx, true));
 }
 
 TEST(FbxImport, SkinnedGeometricTransform) {

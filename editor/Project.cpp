@@ -1141,12 +1141,14 @@ void editor::Project::applyLinkedMaterialFile(const std::string& relativePath, c
 }
 
 // Imports an FBX when its .glb is missing or stale, or always when forced; without canReplace only
-// a missing one is created. False when there is no .glb to load.
-static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs::path& assetsRoot, bool force, bool canReplace, bool& written) {
+// a missing one is created. False when there is no .glb to load. usedMaterialsOrder: the project's
+// FBX Submesh Order is Used Materials.
+static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs::path& assetsRoot, bool force, bool canReplace,
+                      bool usedMaterialsOrder, bool& written) {
     written = false;
     const std::string fbxName = editor::FileUtils::pathToUtf8(fbxPath.filename());
 
-    const editor::FbxImporter::State state = editor::FbxImporter::getState(fbxPath, glbPath, assetsRoot);
+    const editor::FbxImporter::State state = editor::FbxImporter::getState(fbxPath, glbPath, assetsRoot, usedMaterialsOrder);
     if (state == editor::FbxImporter::State::UpToDate && !force) {
         return true;
     }
@@ -1161,7 +1163,7 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
     // the converted glTF goes to the editor's import cache (.jasperengine/imported), which an MCP
     // call's deny-by-default guard refuses: the editor names the one file it writes (util/SafeWrite.h)
     jasperengine::editor::safewrite::EditorInternal ownImport(glbPath);
-    const editor::FbxImporter::Result result = editor::FbxImporter::import(fbxPath, glbPath, assetsRoot, force);
+    const editor::FbxImporter::Result result = editor::FbxImporter::import(fbxPath, glbPath, assetsRoot, force, usedMaterialsOrder);
     for (const std::string& warning : result.warnings) {
         editor::Out::warning("%s: %s", fbxName.c_str(), warning.c_str());
     }
@@ -1199,7 +1201,7 @@ bool editor::Project::importFbxModel(const fs::path& fbxPath, bool force) {
         exported = exportedImports.count(fbxPath.lexically_normal()) > 0;
     }
     bool written = false;
-    const bool loadable = importFbx(fbxPath, getImportedModelPath(fbxPath), getAssetsPath(), force, !exported, written);
+    const bool loadable = importFbx(fbxPath, getImportedModelPath(fbxPath), getAssetsPath(), force, !exported, isFbxUsedMaterialsOrder(), written);
     if (written) {
         queueModelReload(fbxPath);
     }
@@ -1422,7 +1424,7 @@ bool editor::Project::prepareFbxModelsForExport(std::string& error) {
         }
 
         // A scene that cannot reload keeps the model parts saved with it, which must come from this FBX
-        const std::string sourceId = FbxImporter::getSourceId(fbxPath);
+        const std::string sourceId = FbxImporter::getSourceId(fbxPath, isFbxUsedMaterialsOrder());
         std::string outdatedScenes;
         for (const SceneProject* sceneProject : unloadedScenes) {
             auto saved = sceneProject->imports.find(key);
@@ -1437,9 +1439,9 @@ bool editor::Project::prepareFbxModelsForExport(std::string& error) {
         }
 
         const fs::path glbPath = getImportedModelPath(fbxPath);
-        if (FbxImporter::getState(fbxPath, glbPath, assetsRoot) != FbxImporter::State::UpToDate) {
+        if (FbxImporter::getState(fbxPath, glbPath, assetsRoot, isFbxUsedMaterialsOrder()) != FbxImporter::State::UpToDate) {
             bool written = false;
-            importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
+            importFbx(fbxPath, glbPath, assetsRoot, false, true, isFbxUsedMaterialsOrder(), written);
             if (!written) {
                 error = "Cannot export: " + fbxName + " could not be imported";
                 return false;
@@ -1496,7 +1498,8 @@ void editor::Project::refreshFbxImports() {
     options.gate = jobs::GateClass::Heavy;
     options.name = "fbx-import-scan";
     fbxImportScan = jobs::submit(
-        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports, writeRoot = safewrite::Scope::currentRoots(), writeStrict = safewrite::Scope::currentStrict()]() {
+        [this, files, assetsRoot = getAssetsPath(), usedMaterialsOrder = isFbxUsedMaterialsOrder(), known = failedFbxImports,
+         writeRoot = safewrite::Scope::currentRoots(), writeStrict = safewrite::Scope::currentStrict()]() {
             // the conversions write in the write scope of the thread that started the scan
             safewrite::Scope scope(writeRoot, writeStrict);
             std::map<fs::path, FbxImportFailure> failures;
@@ -1514,7 +1517,7 @@ void editor::Project::refreshFbxImports() {
                     continue;
                 }
                 // A missing .glb (a fresh clone, or a cleared cache) is built like a changed one
-                const FbxImporter::State state = FbxImporter::getState(fbxPath, glbPath, assetsRoot);
+                const FbxImporter::State state = FbxImporter::getState(fbxPath, glbPath, assetsRoot, usedMaterialsOrder);
                 if (state == FbxImporter::State::UpToDate) {
                     continue;
                 }
@@ -1522,11 +1525,11 @@ void editor::Project::refreshFbxImports() {
                 {
                     // One import of a file at a time, with importFbxModel (Play startup, a drop...)
                     std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
-                    importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
+                    importFbx(fbxPath, glbPath, assetsRoot, false, true, usedMaterialsOrder, written);
                 }
                 if (written) {
                     queueModelReload(fbxPath);
-                } else if (FbxImporter::getState(fbxPath, glbPath, assetsRoot) != FbxImporter::State::UpToDate) {
+                } else if (FbxImporter::getState(fbxPath, glbPath, assetsRoot, usedMaterialsOrder) != FbxImporter::State::UpToDate) {
                     failures[fbxPath] = stamp;
                 }
             }
@@ -4035,6 +4038,10 @@ void editor::Project::setTextureSettings(const TextureProjectSettings& settings)
 
 const editor::ModelProjectSettings& editor::Project::getModelSettings() const{
     return modelSettings;
+}
+
+bool editor::Project::isFbxUsedMaterialsOrder() const{
+    return modelSettings.fbxSubmeshOrder == FbxSubmeshOrder::UsedMaterials;
 }
 
 void editor::Project::setModelSettings(const ModelProjectSettings& settings){

@@ -2260,6 +2260,7 @@ to play a sound from code use `Audio.play`, and react to clip events as below.
 | `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
 | `poseFrameRate` | rw, fps (0 = smooth): every track holds on whole steps from its previous key (each key shows at its time), fades step too; events fire at their true times |
 | `applyRootMotion` | rw bool (Unity's Apply Root Motion): the base layer's clip root motion moves the GameObject; off, a clip with a `root_motion` block plays in place |
+| `legacyRootDrift` | rw bool: with `applyRootMotion` off, clips with a `root_motion` block keep their drift instead of playing in place (set on players saved before that rule) |
 | `isLoaded()` | every clip loaded and bound |
 | `getAnimatedProperties(name)` | the state's bound property tracks, `{"path:component.property", ...}` (debugging; empty while its clip loads). A clip animating a script field sets `self.<field>` (read it in `onUpdate`; a write of yours there is overwritten by the clip in the same frame, as in Unity) |
 | `onEvent` | rw, a function called with ONE `AnimationEvent` (below) per clip event |
@@ -2479,6 +2480,7 @@ controller does not have warn once and do nothing.
 | `setIKSoften(constraint, soften)`, `setIKHingeAxis(constraint, axis)`, `setIKTwist(constraint, degrees)`, `setIKAimOffset(constraint, offset)` | the constraint's fields: `soften` 0..1 (0: a hard limit), `axis` the middle bone's local hinge (`Vector3(0, 0, 0)`: auto), `offset` the eyes from the last bone |
 | `hasBone(slotOrPath)`, `getBonePosition(slotOrPath)`, `getBoneRotation(slotOrPath)` | world space, from the last evaluated pose; humanoid slots (`"left_hand"`) or paths |
 | `speed`, `applyRootMotion` | rw |
+| `legacyRootDrift` | rw bool: with `applyRootMotion` off, clips with a `root_motion` block keep their drift instead of playing in place (set on Animators saved before that rule) |
 | `getDeltaPosition()`, `getDeltaRotation()` | the last update's root motion (world space) |
 | `isHumanoid()`, `isLoaded()` | |
 | `onEvent` | a function called with one `AnimationEvent` per clip or montage event (leader clip per layer, or all with `eventMode = all`); then the scripts' methods named like the event |

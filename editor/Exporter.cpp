@@ -3837,7 +3837,7 @@ bool editor::Exporter::copyAssets() {
             const fs::path glbPath = project->getImportedModelPath(fbxPath);
             // Scripts may load any of them, so none can be left out or outdated
             if (!project->importFbxModel(fbxPath) ||
-                    FbxImporter::getState(fbxPath, glbPath, project->getAssetsPath()) != FbxImporter::State::UpToDate) {
+                    FbxImporter::getState(fbxPath, glbPath, project->getAssetsPath(), project->isFbxUsedMaterialsOrder()) != FbxImporter::State::UpToDate) {
                 setError("Cannot export: " + relPath.generic_string() + " could not be imported");
                 return stop();
             }
