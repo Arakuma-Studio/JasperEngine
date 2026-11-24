@@ -30,10 +30,12 @@ REPO = Path(__file__).resolve().parents[3]
 
 
 def content_format() -> str:
-    """The cooked format this tree's editor writes (a runtime that reads less is refused), as
-    tools/players/package_player.py reads it."""
+    """The newest content format this tree's player reads (CONTENT_MINOR: a Build Profile's build needs
+    more than the cooked files' FORMAT_MINOR), as tools/players/package_player.py stamps a runtime."""
     text = (REPO / "engine/core/serialization/CookedScene.h").read_text(encoding="utf-8")
-    return ".".join(re.search(rf"FORMAT_{part} = (\d+)", text).group(1) for part in ("MAJOR", "MINOR"))
+    major = re.search(r"FORMAT_MAJOR = (\d+)", text).group(1)
+    minor = re.search(r"CONTENT_MINOR = (\d+)", text).group(1)
+    return f"{major}.{minor}"
 
 
 def png_bytes(width: int, height: int, rgb=(200, 40, 40)) -> bytes:
