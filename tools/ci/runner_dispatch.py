@@ -50,6 +50,12 @@ HOSTED_LIMITS = {"macos": 5}
 TOTAL_LIMIT = 60
 SATURATED_WAIT = 300        # a hosted job queued this long (s): its OS's runners are taken, whatever the count
 PLANNER_WAIT = 300          # a `changes` job queued this long (s) for a busy overflow runner is rerouted
+# A merge-queue run is cancelled only when its job truly cannot finish: a cancel fails its Check, the queue
+# removes the pull request and every group behind it restarts (run 45310250691, #153's group, 2026-11-24:
+# about 2 h lost for a job that would have waited). So never for an idle runner or a runner that went
+# offline mid-job (GitHub fails that job itself, and LOST then puts the pull request back), and for a job
+# queued for an offline runner only once that runner has been gone QUEUE_OFFLINE_LIMIT
+QUEUE_OFFLINE_LIMIT = 1800
 QUEUED_LIMIT = 600          # a job queued for an offline overflow runner this long (s) is rerouted
 OFFLINE_LIMIT = 180         # a running job's overflow runner offline this long (s): rerouted
 LOOKBACK = 6 * 3600         # finished runs looked at for a job its runner's loss failed
@@ -175,9 +181,11 @@ def stuck(run: dict, jobs: list[dict], runners: dict, offline_since: dict, now: 
         runner = runners.get(label) or {}
         online = runner.get("online", False)
         status = job.get("status")
+        queue = run.get("event") == "merge_group"
         if status in ("queued", "waiting", "pending", "requested") and not online:
             waited = now - (epoch(job.get("created_at")) or now)
-            if waited >= QUEUED_LIMIT:
+            gone = now - offline_since.get(label, now)
+            if waited >= QUEUED_LIMIT and (not queue or gone >= QUEUE_OFFLINE_LIMIT):
                 return f"{job.get('name')} queued {waited / 60:.0f} min for {label}, which is offline"
         # the planner behind a busy runner: every lane of its run waits on it. Not a merge-queue run's (a
         # cancel fails its group): the planner is named only while its runner is idle (planner)
@@ -186,7 +194,7 @@ def stuck(run: dict, jobs: list[dict], runners: dict, offline_since: dict, now: 
             waited = now - (epoch(job.get("created_at")) or now)
             if waited >= PLANNER_WAIT:
                 return f"changes queued {waited / 60:.0f} min for {label}, which is busy"
-        if status == "in_progress" and not online and job.get("runner_name") == label:
+        if status == "in_progress" and not online and job.get("runner_name") == label and not queue:
             gone = now - offline_since.get(label, now)
             if gone >= OFFLINE_LIMIT:
                 return f"{job.get('name')} running on {label}, offline for {gone / 60:.0f} min"
@@ -322,7 +330,8 @@ def job_key(name: str) -> str:
 def waiting_for_idle(run: dict, jobs: list[dict], runners: dict, disabled: str, now: float, taken: set[str]) -> tuple[str, str]:
     """(why, label) when a trusted run's job has waited IDLE_REROUTE_WAIT for a hosted runner while an
     overflow runner that would take it (OVERFLOW) is online, idle and fit; else ("", "")."""
-    if not trusted_run(run):
+    # (never a merge-queue run: its cancel fails the group and restarts every group behind it)
+    if not trusted_run(run) or run.get("event") == "merge_group":
         return "", ""
     off = set(disabled.replace(",", " ").split())
     for label, (os_, order) in OVERFLOW.items():

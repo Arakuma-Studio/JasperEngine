@@ -154,7 +154,7 @@ class Idle(unittest.TestCase):
     RUNNERS = {"je-mac": {"online": True, "busy": False, "fit": True}, "je-win": {"online": True, "busy": False, "fit": True},
                "je-linux": {"online": True, "busy": False, "fit": False}}
 
-    def make_run(self, event="merge_group", head="Arakuma-Studio/JasperEngine"):
+    def make_run(self, event="push", head="Arakuma-Studio/JasperEngine"):
         return {"id": 5, "event": event, "repository": {"full_name": "Arakuma-Studio/JasperEngine"},
                 "head_repository": {"full_name": head}}
 
@@ -188,6 +188,25 @@ class Idle(unittest.TestCase):
         self.assertEqual(rd.waiting_for_idle(self.make_run(), mac, self.RUNNERS, "", NOW, {"je-mac"}), ("", ""))
         # a same-repository pull request may
         self.assertEqual(rd.waiting_for_idle(self.make_run("pull_request"), mac, self.RUNNERS, "", NOW, set())[1], "je-mac")
+
+    def test_a_merge_queue_run_is_cancelled_only_when_its_job_cannot_finish(self):
+        # (run 45310250691, #153's group: an idle reroute cancelled it, failed its Check, removed the pull
+        # request and restarted every group behind it, about 2 h)
+        mac = [job("macos-latest", ago=3600, name="macos")]
+        self.assertEqual(rd.waiting_for_idle(self.make_run("merge_group"), mac, self.RUNNERS, "", NOW, set()), ("", ""))
+        queue = {"event": "merge_group"}
+        offline = {"je-mac": {"online": False}}
+        queued = [job("je-mac", ago=3600, name="macos")]
+        # queued for an offline runner: only once it has been gone QUEUE_OFFLINE_LIMIT (it may come back)
+        self.assertEqual(rd.stuck(queue, queued, offline, {"je-mac": NOW - rd.QUEUE_OFFLINE_LIMIT + 60}, NOW), "")
+        self.assertIn("offline", rd.stuck(queue, queued, offline, {"je-mac": NOW - rd.QUEUE_OFFLINE_LIMIT}, NOW))
+        self.assertIn("offline", rd.stuck({"event": "push"}, queued, offline, {"je-mac": NOW - 60}, NOW))
+        # running on a runner that went away: GitHub fails the job itself; the lost path then re-enqueues
+        running = [job("je-mac", "in_progress", runner="je-mac", name="macos")]
+        self.assertEqual(rd.stuck(queue, running, offline, {"je-mac": NOW - 7200}, NOW), "")
+        self.assertIn("offline for", rd.stuck({"event": "push"}, running, offline, {"je-mac": NOW - rd.OFFLINE_LIMIT}, NOW))
+        notes = {7: ["The self-hosted runner: je-mac lost communication with the server."]}
+        self.assertIn("lost communication", rd.lost([job("je-mac", "completed", conclusion="failure", id_=7)], notes.get))
 
 
 class FakeGh:

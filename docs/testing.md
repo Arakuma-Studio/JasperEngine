@@ -1493,17 +1493,26 @@ runs, and force-pushes the state to `ci-runner-state` as one parentless commit. 
 touches a run it did not route): a job queued 10 min for a runner that is offline or gone, or running
 on one offline for 3 min, or failed because its runner went away ("lost communication", "shutdown
 signal", read as soon as the job ends), gets its run cancelled and, once stopped, rerun whole (`gh run rerun`): the rerun plans on
-GitHub's runners only. A merge-queue run is cancelled and its pull request put back in the queue (the
-queue removed the group, so a rerun would build nothing); a pull request's run that a newer push
-superseded is not rerun.
+GitHub's runners only. A pull request's run that a newer push superseded is not rerun.
+
+**A merge-queue run is cancelled only when its job cannot finish.** A cancel fails its `Check`: the
+queue removes the pull request, and every group behind it restarts (run 45310250691, #153's group:
+about 2 h lost for a job that would have waited). So the dispatcher cancels a queue run only:
+
+- when one of its jobs already failed because its runner went away (the group is red anyway);
+- or when a job has been queued for a runner gone 30 min (`QUEUE_OFFLINE_LIMIT`), not 10.
+
+It does not cancel one for a runner that went offline mid-job, since GitHub fails that job itself
+and the first case follows. It never cancels one for an idle runner, a busy planner or anything that
+only makes it wait. After such a cancel the pull request goes back to the front of the queue
+(`enqueuePullRequest` with `jump: true`, unless it is queued already): a rerun of a removed group
+builds nothing.
 
 **Re-routing a waiting job.** A plan routes once, so a job queued on a hosted label stays there even
 when an overflow runner becomes idle. When a trusted run's job has waited 15 min
 (`IDLE_REROUTE_WAIT`) for a hosted runner while an overflow runner that would take it (`OVERFLOW`) is
 online, idle, fit and not disabled, the dispatcher cancels the run and reruns it, so its plan routes
-it there; the merge queue's runs first, one run per idle runner a minute. A merge-queue run's pull
-request goes back to the front of the queue (`enqueuePullRequest` with `jump: true`): it was building
-there. The runs moved off a runner that went away are listed in the state's `hosted_only` for a day,
+it there, one run per idle runner a minute. Never a merge-queue run's (above). The runs moved off a runner that went away are listed in the state's `hosted_only` for a day,
 and their reruns plan hosted only. Each run gets at most one reroute of each kind, and none for an idle
 runner after one for a lost runner: never a loop. All of it shares the limit of 6 actions an hour, each
 logged to the host's `je-runner-dispatch.log`. With no state for 5 min (the host, `gh` or the cron is down) every
