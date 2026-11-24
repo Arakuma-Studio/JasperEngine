@@ -1505,9 +1505,19 @@ all of these hold:
   Blacksmith VM is. A Blacksmith VM runs none of the machines' hooks. What keeps a fork's own
   `ci.yml` from asking for its label is GitHub's approval of every outside contributor's run, and the
   spend limit.
-- **Caches**: a Blacksmith VM restores no GitHub cache entry (its `actions/cache` is its own store,
-  inferred from "Cache not found"), so its builds are cold until a push to `main` there saves one.
+- **Caches**: a Blacksmith VM reads and writes Blacksmith's own cache store (its "transparent cache"
+  for `actions/cache`), which GitHub's runners never fill. Without an entry there, Blacksmith builds
+  ran cold (run 45291101229: "Cache not found", 52 min). So `ccache-save` and the Gradle cache save the
+  lane's entry from a Blacksmith job on `main`, whatever the event: a push, or the seeding dispatch
+  below. The entry is cut to the lane's cap as on `main`. A job of another branch only restores,
+  because the store scopes entries by branch as GitHub's does, so only `main`'s reach every branch,
+  the merge queue's included. The prune step never runs there: it lists GitHub's cache, and on `main`
+  it would delete the hosted lane's live entry. The store is free: 25 GB a repository, and entries
+  unused for 7 days are evicted. `blacksmith cache list --repo Arakuma-Studio/JasperEngine` lists them.
   Only a `je-*` machine keeps a ccache of its own.
+- **Seeding** (after a toolchain or image change, or 7 days without a Blacksmith job):
+  `gh workflow run ci.yml --ref main -f self_hosted='linux=blacksmith-4vcpu-ubuntu-2404 web=blacksmith-4vcpu-ubuntu-2404 android=blacksmith-4vcpu-ubuntu-2404 macos=blacksmith-6vcpu-macos-26'`
+  builds those lanes there once, cold, about $4.50, and saves their entries.
 - **Measured**: the `macos` lane took 43.4 min there, about $3.47 (run 45229221354, cold). The Linux
   lane took 57.2 min, about $0.46 (run 45248117157, cold: no cache entry; the image pulled in 9 s).
 - **Testing it**: `gh workflow run ci.yml --ref <branch> -f self_hosted='linux=blacksmith-4vcpu-ubuntu-2404 macos=blacksmith-6vcpu-macos-26'`.

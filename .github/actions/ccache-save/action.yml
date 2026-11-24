@@ -1,8 +1,9 @@
 name: Save ccache
 description: >
   Evicts what the run neither used nor wrote from build/.cache/ccache (trim.sh) and saves the rest, cut to
-  the lane's cap, as the lane's entry (the key ccache-restore set), on push to main or a schedule only, and
-  only when the run added objects. Prints the run's statistics and working set on every event. ci.yml's
+  the lane's cap, as the lane's entry (the key ccache-restore set), on push to main or a schedule, or on a
+  Blacksmith runner on main whatever the event (its own cache store, which GitHub's runners never fill),
+  and only when the run added objects. Prints the run's statistics and working set on every event. ci.yml's
   caches job then deletes the lane's older entries, so each lane keeps one live copy
   (docs/superpowers/specs/2026-11-12-ci-design.md §10.2); prune: true does that here instead, for a job that
   has actions: write.
@@ -33,8 +34,10 @@ runs:
         path: build/.cache/ccache
         key: ${{ env.JASPER_CCACHE_KEY }}
 
+    # (GitHub's cache only: a Blacksmith job saved to Blacksmith's store, and listing GitHub's main entries
+    # there would delete the hosted lane's live one)
     - name: Delete the older entries
-      if: steps.check.outputs.save == 'true' && inputs.prune == 'true'
+      if: steps.check.outputs.save == 'true' && inputs.prune == 'true' && !startsWith(runner.name, 'blacksmith-')
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}

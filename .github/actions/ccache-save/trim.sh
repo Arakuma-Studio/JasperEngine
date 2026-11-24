@@ -41,12 +41,21 @@ run_ccache() {
     fi
 }
 
+# A Blacksmith VM reads and writes Blacksmith's own cache store (its transparent cache), which GitHub's
+# runners never fill, so its builds stayed cold (run 45291101229: "Cache not found", 52 min). It saves the
+# lane's entry there on main whatever the event (a push, or a dispatch that seeds it): the store scopes
+# entries by branch as GitHub's does, so only main's reach every other branch's jobs
+blacksmith=false
+[[ "${RUNNER_NAME:-}" == blacksmith-* ]] && blacksmith=true
 save=false
-if [[ "$EVENT" == schedule || ( "$EVENT" == push && "$REF" == refs/heads/main ) ]]; then
+if [[ "$EVENT" == schedule || ( "$EVENT" == push && "$REF" == refs/heads/main ) \
+      || ( "$blacksmith" == true && "$REF" == refs/heads/main ) ]]; then
     # an object or manifest written since the restore (ccache rewrites its stats files on every hit)
     new="$(find "$DIR" -type f -newer "$JASPER_CCACHE_MARKER" ! -name stats ! -name '*.lock' \
         ! -name ccache.conf ! -path '*/tmp/*' -print -quit 2> /dev/null || true)"
     if [[ -n "$new" ]]; then save=true; else echo "ccache-save: nothing new since the restore"; fi
+elif [[ "$blacksmith" == true ]]; then
+    echo "ccache-save: a Blacksmith job of $REF restores only (its store scopes entries by branch: main's reach every branch)"
 else
     echo "ccache-save: $EVENT runs restore only"
 fi
