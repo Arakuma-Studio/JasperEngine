@@ -138,6 +138,26 @@ class Rules(unittest.TestCase):
         r = decide("merge_group", plan(["editor/App.cpp"]))
         self.assertEqual(runs(r), set(pl.LANES) - {"mcp", "ios"})
 
+    def test_the_queue_builds_no_editor_tests_binary_on_windows(self):
+        # their run is advisory in the queue, and the binary was a quarter of the editor leg's 110 min (run
+        # 45291112468); a pull request, a push to main, the advisory run and full runs build it
+        p = plan(["editor/App.cpp"], unit="all", mcp=["test_b.py"])
+        r = decide("merge_group", p, advisory=ADVISORY)
+        self.assertEqual(r["unbuilt"], ["windows-editor-tests"])
+        self.assertTrue(r["lanes"]["windows"]["run"])
+        for event, kw in (("pull_request", {}), ("pull_request", {"pr_advisory": False}), ("push", {}), ("advisory", {}),
+                          ("full", {}), ("workflow_dispatch", {})):
+            self.assertEqual(decide(event, p, advisory=ADVISORY, **kw)["unbuilt"], [], (event, kw))
+        # a test run taken off ADVISORY_LANES blocks the queue: it is built and run there again
+        r = decide("merge_group", p, advisory=("unit", "mcp"))
+        self.assertEqual((r["unbuilt"], r["build_only"]), ([], []))
+        # ci.yml's editor step reads it; windows.sh builds the same tree without the binary
+        text = (HERE.parent.parent / pl.WORKFLOW).read_text()
+        self.assertIn("EDITOR_TESTS_BUILD: ${{ contains(fromJSON(needs.changes.outputs.unbuilt || '[]'), 'windows-editor-tests') && '0' || '1' }}", text)
+        self.assertIn("unbuilt: ${{ steps.plan.outputs.unbuilt }}", text)
+        script = (HERE / "windows.sh").read_text()
+        self.assertIn('elif [[ "${EDITOR_TESTS_BUILD:-1}" != 0 ]]; then\n        targets+=(jasperengine-editor-tests)', script)
+
     def test_merge_group_leaves_the_advisory_lanes_out(self):
         # an advisory lane cannot block a merge, so the queue does not wait hours for it (queue runs
         # of #124-#126: 217-276 min, ASan the longest, the slowest blocking job 96-137)
@@ -338,8 +358,10 @@ class Rules(unittest.TestCase):
         self.assertEqual(keys, ["full", *[f"run_{n}" for n in pl.LANES], "unit_filter_core", "unit_filter_editor",
                                 "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "asan_filter_core",
                                 "asan_filter_editor", "htmlui_filter", "mcp_shards", "windows_parts",
-                                "build_only", "dispatch_advisory", "runs_on"])
+                                "build_only", "unbuilt", "dispatch_advisory", "runs_on"])
         self.assertIn("dispatch_advisory=false", lines)
+        self.assertIn('unbuilt=["windows-editor-tests"]',
+                      pl.github_output(dict(doc, unbuilt=["windows-editor-tests"]), r["unit_run"]).splitlines())
         self.assertIn('runs_on={"macos":"je-mac"}', pl.github_output(dict(doc, runs_on={"macos": "je-mac"}), r["unit_run"]).splitlines())
         self.assertIn("dispatch_advisory=true", pl.github_output(dict(doc, dispatch_advisory=True), r["unit_run"]).splitlines())
         self.assertIn("unit_filter_core=Foo.*:*/Foo.*:Foo/*.*", lines)

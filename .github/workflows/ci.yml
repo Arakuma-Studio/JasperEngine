@@ -123,6 +123,7 @@ jobs:
       htmlui_filter: ${{ steps.plan.outputs.htmlui_filter }}
       mcp_shards: ${{ steps.plan.outputs.mcp_shards }}
       build_only: ${{ steps.plan.outputs.build_only }}
+      unbuilt: ${{ steps.plan.outputs.unbuilt }}
       dispatch_advisory: ${{ steps.plan.outputs.dispatch_advisory }}
       runs_on: ${{ steps.plan.outputs.runs_on }}
     steps:
@@ -1048,8 +1049,12 @@ jobs:
           lane: windows-${{ matrix.part }}
           max-size: 0.95G
 
+      # the merge queue builds no editor-tests binary (lanes.json unbuilt): their run is advisory there, and
+      # the binary was a quarter of the step's 110 min (run 45291112468); the advisory run on main builds it
       - name: Editor
         if: matrix.part == 'editor'
+        env:
+          EDITOR_TESTS_BUILD: ${{ contains(fromJSON(needs.changes.outputs.unbuilt || '[]'), 'windows-editor-tests') && '0' || '1' }}
         run: tools/ci/windows.sh editor
       # reported apart (windows-editor-tests, in ADVISORY_LANES while the suite settles on Windows): the
       # leg's build gates, its test run is listed; a hang costs TEST_TIMEOUT, not the leg. While advisory

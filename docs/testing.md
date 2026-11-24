@@ -1139,6 +1139,13 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   median of 2 h (up to 10) while the merge queue stalled behind them. The queue is the gate: it, a push
   to `main`, full runs and the nightly build `macos` for every change that builds, so a macOS break
   still stops the merge, one queue run later than a PR would have shown it.
+- **The Windows editor leg in the merge queue** builds the editor and its call CLI (what `windows
+  (compile)` and the CLI check use), not the editor-tests binary: its test run is advisory there
+  (`lanes.json` `unbuilt`; `tools/ci/windows.sh editor` with `EDITOR_TESTS_BUILD=0`). The tree is
+  still configured with its tests, so every object is the one the ccache entry holds. The binary was
+  558 of the step's 3,957 build steps, about a quarter of its 110 min (run 45291112468). A pull
+  request, a push to `main`, the advisory run and full runs build it. An MSVC-only compile error in an
+  editor test therefore shows on `main` after the merge, in the advisory run, not in the queue.
 - **iOS in the merge queue** follows the same rule (`lanes.json` `queue_off`, which `Check` accepts as
   a planned skip). `ios` is a compile check of the Xcode project with the same Apple Clang the queue's
   `macos` lane builds every change with, and macOS capacity is the bottleneck. `nightly.yml`'s `ios`
