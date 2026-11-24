@@ -536,6 +536,38 @@ TEST(FileWatcherBackends, APollingBaselineGivenIsItsFirstLook) {
     EXPECT_FALSE(std::any_of(sink.events.begin(), sink.events.end(), [&](const watch::RawEvent& e) { return e.path == dir.path / "kept.txt"; }));
 }
 
+// The service starts its backend on its dispatcher thread, and a flush asks only the backend's own
+// thread. ReadDirectoryChangesW binds a read to the thread that issued it: a first read issued by
+// start()'s caller completed only once that caller ran (JournalCursorsAndPause/Native missed the
+// first change on a loaded Windows runner) and was cancelled when it exited, which this test makes
+// certain
+TEST(FileWatcherBackends, ANativeWatchOutlivesTheThreadThatStartedIt) {
+    if (!FileWatcher::hasNative()) GTEST_SKIP() << "no native backend here";
+    struct EventSink : watch::WatchSink {
+        std::mutex mutex;
+        std::vector<watch::RawEvent> events;
+        void onRawEvents(std::vector<watch::RawEvent>&& batch) override {
+            std::lock_guard<std::mutex> lock(mutex);
+            events.insert(events.end(), batch.begin(), batch.end());
+        }
+        void onBackendFailed(const std::string&) override {}
+    };
+    WatchTempDir dir;
+    EventSink sink;
+    std::unique_ptr<FileWatcher> watcher = FileWatcher::createNative();
+    std::string error;
+    bool started = false;
+    std::thread starter([&]() { started = watcher->start(dir.path, sink, error); });
+    starter.join();
+    ASSERT_TRUE(started) << error;
+    const fs::path file = dir.path / "after.txt";
+    writeText(file, "x");
+    EXPECT_TRUE(watcher->flush(timeLimit(fileWatcherMs(2000)))) << watcher->name();
+    watcher->stop();
+    EXPECT_TRUE(std::any_of(sink.events.begin(), sink.events.end(), [&](const watch::RawEvent& e) { return e.path == file; }))
+        << watcher->name() << ": " << sink.events.size() << " events";
+}
+
 #if defined(JASPERENGINE_WATCH_FSEVENTS)
 // On macOS 26 some new streams are never served: start() replaces them (S05, macOS native run)
 namespace {
