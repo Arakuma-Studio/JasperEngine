@@ -98,14 +98,6 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "uses the namespace recordinput, whose Settings the Recorder's tests' namespace recorder also declares"
     SOURCES ${CMAKE_CURRENT_LIST_DIR}/recorder/RecordInputTest.cpp)
-file(GLOB JASPERENGINE_PIXELART_NAMESPACE_TESTS ${CMAKE_CURRENT_LIST_DIR}/pixelart/Aseprite*Test.cpp ${CMAKE_CURRENT_LIST_DIR}/pixelart/Cleanup*Test.cpp)
-jasperengine_skip_unity_build(
-    REASON "the Aseprite and pixel cleanup tests use the namespaces aseprite and cleanup, which declare RgbaImage, Dither, BlendMode and PropertyType as pixelart, the engine and the editor do"
-    SOURCES ${JASPERENGINE_PIXELART_NAMESPACE_TESTS})
-file(GLOB_RECURSE JASPERENGINE_TITLE_ART_TESTS ${CMAKE_CURRENT_LIST_DIR}/titleart/*.cpp)
-jasperengine_skip_unity_build(
-    REASON "the Title Art tests: using titleart::Json beside using namespace jasperengine::editor, whose Json several editor headers declare (mcp::Json: BuildReport.h, HotReloadService.h, ModelAudit.h); which pairs collide depends on the batch"
-    SOURCES ${JASPERENGINE_TITLE_ART_TESTS})
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
     # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose

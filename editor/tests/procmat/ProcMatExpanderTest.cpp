@@ -49,7 +49,7 @@ namespace {
     }
 
     void expandPasses(Expander& expander, const std::string& prefix, const SourceRef& root, std::vector<Row>& rows) {
-        std::set<std::pair<jasperengine::editor::procmat::Generator*, int>> done;
+        std::set<std::pair<Generator*, int>> done;
         std::vector<std::pair<std::string, SourceRef>> queue = {{"out", root}};
         while (!queue.empty()) {
             const auto [label, target] = queue.back();
