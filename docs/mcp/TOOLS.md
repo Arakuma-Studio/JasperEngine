@@ -3789,16 +3789,17 @@ Bake animation into a Vertex Animation (.vat + .vat.glb: GPU crowds, Vertex Anim
 
 Group: `animation` (listed once `tool_groups` enables it, callable either way). Hints: read-only
 
-What clips cost and how good they are, measured through the runtime sampler: Memory, keys, Loop Match, root motion, error against compare_to. Empty clips: the project, largest first. ok false is a successful call with findings. Writes nothing. Guide: jasper://docs/animation.
+What clips cost and how good they are, measured through the runtime sampler: Memory, keys, Loop Match, root motion, error against compare_to; layer_blend {layer}: how far a masked Animator layer turns the torso off its own clip. Empty clips: the project, largest first. ok false is a successful call with findings. Writes nothing. Guide: jasper://docs/animation.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `checks` | array of `"stats"` \| `"loop_seam"` \| `"root_motion"` \| `"foot_sliding"` \| `"transition"` |  |  |
+| `checks` | array of `"stats"` \| `"loop_seam"` \| `"root_motion"` \| `"foot_sliding"` \| `"transition"` \| `"layer_blend"` |  |  |
 | `clips` | array of string |  | .anim, model#Clip, or a model (all its clips). |
 | `compare_to` | string |  |  |
 | `entity` | string or integer |  |  |
 | `feet` | array of string |  |  |
-| `limits` | object {error_mm, foot_slide_mm, pop_mm, root_drift_mm} |  |  |
+| `layer_blend` | object |  |  |
+| `limits` | object {error_mm, foot_slide_mm, layer_twist_deg, pop_mm, root_drift_mm} |  |  |
 | `move_speed` | number |  | m/s |
 | `record_seconds` | number |  |  |
 | `scene` | integer or string |  |  |
@@ -3940,7 +3941,7 @@ controller (.controller): parameters, layers, states (motion: clip or blend_tree
 
 Group: `animation` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-World position and rotation [x,y,z,w] of an Animator's bones in its evaluated pose. Edit mode: state, parameters and time (seconds) choose the pose and the scene is restored after; play mode: the live pose. bones: paths or humanoid slots (left_hand); default every slot (humanoid) or every bone.
+World position and rotation [x,y,z,w] of an Animator's bones in its evaluated pose. Edit mode: state, parameters and time (seconds) choose the pose and the scene is restored after; play mode: the live pose. bones: paths or humanoid slots (left_hand); default every slot (humanoid) or every bone. space model: relative to the Animator's GameObject. solo_layer: that layer's pose alone, unmasked.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -3949,6 +3950,8 @@ World position and rotation [x,y,z,w] of an Animator's bones in its evaluated po
 | `layer` | integer |  |  |
 | `parameters` | object |  |  |
 | `scene` | integer or string |  |  |
+| `solo_layer` | string |  |  |
+| `space` | `"world"` \| `"model"` |  | Default: `"world"`. |
 | `state` | string |  |  |
 | `time` | number (0..600) |  |  |
 

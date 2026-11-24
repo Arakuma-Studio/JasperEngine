@@ -15383,6 +15383,11 @@
      8796093022208,
      true
     ],
+    "layers[].meshSpaceRotation": [
+     0,
+     8796093022208,
+     true
+    ],
     "layers[].name": [
      1,
      8796093022208,

@@ -1501,10 +1501,12 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     }
 
     // Gizmos > Animation (S77 R49): with every toggle off the pass takes no snapshot and draws nothing
-    const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails};
+    // (Torso Direction: the selected Animators only)
+    const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails,
+                                                   displaySettings.showTorsoDirection};
     animatorOverlay->update(scene, entities, animatorFlags, [&](Entity, const std::vector<anim::AnimatorOverlayLine>& drawn){
         for (const anim::AnimatorOverlayLine& line : drawn) animatorLines.addLine(line.a, line.b, line.color);
-    });
+    }, selEntities);
 
     // the edge caches of bodies that are gone
     for (auto itBody = bodyObjects.begin(); itBody != bodyObjects.end();) {

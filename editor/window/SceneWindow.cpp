@@ -2819,7 +2819,8 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
-    // every Animator's live IK, root motion and feet (S77 R49): view state, saved with the workspace
+    // every Animator's live IK, root motion and feet (S77 R49), the selected one's torso direction
+    // (mesh-space-rotation R30): view state, saved with the workspace
     if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Animation")) {
         drawSettingRow(ICON_FA_ROUTE " Root Motion", sceneProject.displaySettings.showRootMotion);
         ImGui::SetItemTooltip("Each Animator's root: its last %.0f s in red, where its speed and turn lead in green", anim::kAnimatorTrailSeconds);
@@ -2827,6 +2828,8 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::SetItemTooltip("Targets (green reached, red not), chains, poles, Foot IK rays and hits, locked feet");
         drawSettingRow(ICON_FA_SHOE_PRINTS " Foot Trails", sceneProject.displaySettings.showFootTrails);
         ImGui::SetItemTooltip("Foot IK and Foot Lock feet, %.0f s: green planted, yellow to red sliding", anim::kAnimatorTrailSeconds);
+        drawSettingRow(ICON_FA_COMPASS " Torso Direction", sceneProject.displaySettings.showTorsoDirection);
+        ImGui::SetItemTooltip("The selected Animator's Mesh Space Rotation bones: where they face in green, where they would face without it in red");
         ImGui::EndTable();
     }
 

@@ -25,6 +25,7 @@
 #include "component/ModelComponent.h"
 #include "model/ModelAudit.h"
 #include "model/ModelSettingsEdit.h"
+#include "pose/PoseRigProvider.h"
 #include "util/FileUtils.h"
 #include "util/FbxImporter.h"
 #include "window/ProjectWindow.h"
@@ -469,6 +470,8 @@ void reimportModelsTool(const CallPtr& call) {
         }
         if (families.empty()) families = {ModelFamily::Desktop};
         for (const std::string& path : paths) {
+            // an explicit reimport: the model takes the current humanoid naming rules
+            PoseRigProvider::adoptNameRules(project, project->getAssetsPath() / FileUtils::pathFromUtf8(path));
             queue.invalidate(path);
             for (ModelFamily family : families) queue.request(path, family, ModelCookQueue::Selected);
         }

@@ -80,6 +80,10 @@ namespace {
         JE_FIELD(AnimationPlayerLayer, mask, .flags = OmitIfDefault, .updateFlags = kPlayerReload, .asset = AssetKind::AvatarMask,
                  .tooltip = "An Avatar Mask (.mask): which GameObjects the layer animates, and how much."),
         JE_FIELD(AnimationPlayerLayer, maskGuid, .flags = OmitIfDefault, .updateFlags = kPlayerReload, .label = "Mask GUID"),
+        // mesh-space-rotation spec R15, R44: written when true; ignored on layer 0 and Additive layers
+        JE_FIELD(AnimationPlayerLayer, meshSpaceRotation, .flags = OmitIfDefault, .updateFlags = kPlayerReload,
+                 .tooltip = "Bones where the mask starts or stops keep this layer's direction relative to the character, instead of following "
+                            "their parent."),
     };
 
 }

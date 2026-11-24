@@ -74,6 +74,13 @@ namespace jasperengine::editor{
         // set (generic: not written), one project undo step. False + error when the sidecar
         // cannot be read or the write fails; true without a write when it is that type already.
         static bool setAnimationType(Project* project, const std::filesystem::path& model, pose::AnimationType type, std::string& error);
+        // A new import or an explicit reimport of a model file (absolute path): its sidecar takes
+        // the current auto-detect naming rules (name_rules) when they map its bones otherwise than
+        // the rules it has (a model imported before keeps its status until then). The skeleton is
+        // read from the glTF JSON (an FBX's converted .glb): no model is loaded. Not an undo step.
+        // True when the sidecar was written; a sidecar that cannot be read or written is warned in
+        // the console. An FBX whose conversion is queued is read once it is done (false now).
+        static bool adoptNameRules(Project* project, const std::filesystem::path& model);
     };
 
 }

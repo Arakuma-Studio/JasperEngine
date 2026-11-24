@@ -21,6 +21,7 @@
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "pose/PoseRigProvider.h"
 #include "pixelart/aseprite/AsepriteEditorHooks.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "sprite/SpriteSheetPool.h"
@@ -2660,6 +2661,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     if (ImGui::MenuItem(ICON_FA_ROTATE " Reimport")) {
                         // converted on the import queue's job: the editor keeps drawing (S98 REQ-32)
                         project->requestModelImport(currentPath / file.name, true);
+                        PoseRigProvider::adoptNameRules(project, currentPath / file.name);
                         if (ModelCookQueue::get().getProject() == project && project->isInsideAssetsPath(currentPath / file.name)) {
                             const std::string assetPath = project->normalizeToAssetsRelative(currentPath / file.name).generic_string();
                             ModelCookQueue::get().invalidate(assetPath);
@@ -2681,11 +2683,14 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         for (const fs::path& path : chosen) {
                             if (!project->isInsideAssetsPath(path) || !isModelSource(path.filename().string())) continue;
                             const std::string assetPath = project->normalizeToAssetsRelative(path).generic_string();
+                            PoseRigProvider::adoptNameRules(project, path);
                             ModelCookQueue::get().invalidate(assetPath);
                             ModelCookQueue::get().request(assetPath, ModelFamily::Desktop, ModelCookQueue::Selected);
                         }
                     }
                     if (reimportAll) {
+                        for (const std::string& assetPath : projectModelSources(*project))
+                            PoseRigProvider::adoptNameRules(project, project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath));
                         ModelCookQueue::get().invalidateAll();
                         ModelCookQueue::get().requestAll({ModelFamily::Desktop});
                     }
