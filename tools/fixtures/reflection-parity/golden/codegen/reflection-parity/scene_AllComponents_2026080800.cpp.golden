@@ -114,7 +114,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1104);
     scene->recreateEntity(1105);
     scene->recreateEntity(1106);
-    scene->setLastEntity(1106);
+    scene->recreateEntity(1107);
+    scene->setLastEntity(1107);
 
     {
         // Entity 1001 (Transform)
@@ -3599,6 +3600,32 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         vehicleDrivetrain.maxPitchRollAngle = 60.000000f;
         scene->addComponent<VehicleDrivetrainComponent>(1106, vehicleDrivetrain);
 #endif // JASPERENGINE_PHYSICS_3D
+    }
+
+    {
+        // Entity 1107 (FogZoneComponent)
+        scene->setEntityName(1107, "FogZoneComponent");
+
+        // Entity components initialization
+        FogZoneComponent fogzone;
+        fogzone.shape = FogZoneShape::SPHERE;
+        fogzone.size = Vector3(2.500000f, 6.100000f, 3.300000f);
+        fogzone.blendDistance = 7.200000f;
+        fogzone.priority = 4;
+        fogzone.weight = 0.600000f;
+        scene->addComponent<FogZoneComponent>(1107, fogzone);
+
+        Transform transform;
+        transform.position = Vector3(106.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1107, transform);
     }
 
     // Default Camera 1

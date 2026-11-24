@@ -2175,6 +2175,14 @@
   {
    "component": "fog",
    "group": "",
+   "kind": "Asset",
+   "label": "Profile",
+   "path": "profile",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
    "kind": "Enum",
    "label": "Type",
    "path": "type",
@@ -2217,6 +2225,14 @@
   {
    "component": "fog",
    "group": "",
+   "kind": "Asset",
+   "label": "Profile",
+   "path": "profile",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
    "kind": "Enum",
    "label": "Type",
    "path": "type",
@@ -2248,6 +2264,14 @@
   }
  ],
  "fog#2": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Asset",
+   "label": "Profile",
+   "path": "profile",
+   "read_only": false
+  },
   {
    "component": "fog",
    "group": "",
@@ -2290,6 +2314,14 @@
   }
  ],
  "fog#3": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Asset",
+   "label": "Profile",
+   "path": "profile",
+   "read_only": false
+  },
   {
    "component": "fog",
    "group": "",
@@ -2452,6 +2484,14 @@
   }
  ],
  "fog#4": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Asset",
+   "label": "Profile",
+   "path": "profile",
+   "read_only": false
+  },
   {
    "component": "fog",
    "group": "",
