@@ -24,6 +24,7 @@
 #include "render/FramebufferRender.h"
 #include "component/PixelPerfectCameraComponent.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
@@ -431,15 +432,19 @@ TEST_F(HtmlUIScene, UiCameraPannedFillsViewport){
 
 // R15 is Screen Space - Overlay's: a Screen Space - Camera scene (an older scene, which its
 // migration gives that mode) keeps the placement it had before S92 in a game view, the canvas
-// through its UI camera, so a camera panned by (200, 120) moves the documents by (-200, -120)
+// through its UI camera, so a camera panned by (200, 120) shows 440 x 240 px of the 640 x 360
+// document, not all of it at screen pixels
 TEST_F(HtmlUIScene, CameraModeKeepsTheDocumentsInTheCanvasOfItsCamera){
-    // the bottom-right mark (#br, 20 x 20 px of pure green): its top-left corner, or (-1, -1)
-    auto greenMark = [](const Screen& screen){
+    // the bounding box of the document's background (#3060c0) on the screen: width and height
+    auto background = [](const Screen& screen){
+        int x0 = screen.width, y0 = screen.height, x1 = -1, y1 = -1;
         for (int y = 0; y < screen.height; y++)
             for (int x = 0; x < screen.width; x++)
-                if (screen.is(x, y, 0, 255, 0, 2))
-                    return std::pair<int, int>(x, y);
-        return std::pair<int, int>(-1, -1);
+                if (screen.is(x, y, 0x30, 0x60, 0xc0, 2)){
+                    x0 = std::min(x0, x); y0 = std::min(y0, y);
+                    x1 = std::max(x1, x); y1 = std::max(y1, y);
+                }
+        return x1 < 0 ? std::pair<int, int>(0, 0) : std::pair<int, int>(x1 - x0 + 1, y1 - y0 + 1);
     };
     SceneFixture fixture;
     fixture.getScene().setHtmlUiRenderMode(UIRenderMode::CAMERA);
@@ -447,20 +452,23 @@ TEST_F(HtmlUIScene, CameraModeKeepsTheDocumentsInTheCanvasOfItsCamera){
     ASSERT_TRUE(fixture.waitUntilLoaded());
     Screen still;
     ASSERT_TRUE(capture(still));
-    const std::pair<int, int> before = greenMark(still);
-    ASSERT_EQ(before, std::make_pair(620, 340)) << "the canvas the unmoved camera shows is the view";
+    ASSERT_EQ(background(still), std::make_pair(640, 360)) << "the canvas the unmoved camera shows is the view";
 
-    fixture.getCamera().setPosition(200.0f, 120.0f, fixture.getCamera().getPosition().z);
+    // a pan: the position and the target move together
+    Camera& camera = fixture.getCamera();
+    const Vector3 position = camera.getPosition(), target = camera.getTarget();
+    camera.setPosition(position.x + 200.0f, position.y + 120.0f, position.z);
+    camera.setTarget(target.x + 200.0f, target.y + 120.0f, target.z);
     Screen panned;
     ASSERT_TRUE(capture(panned, 2));
-    EXPECT_EQ(greenMark(panned), std::make_pair(420, 220)) << "the documents did not move with the camera";
-    EXPECT_FALSE(panned.is(0, 0, 255, 0, 0, 0)) << "the documents filled the viewport (R15, Overlay only)";
+    EXPECT_EQ(background(panned), std::make_pair(440, 240)) << "the documents did not move with the camera (R15 filled the viewport)";
 
     // the same camera in Screen Space - Overlay: the viewport (UiCameraPannedFillsViewport)
     fixture.getScene().setHtmlUiRenderMode(UIRenderMode::OVERLAY);
     Screen overlay;
     ASSERT_TRUE(capture(overlay, 2));
-    EXPECT_EQ(greenMark(overlay), std::make_pair(620, 340));
+    EXPECT_EQ(background(overlay), std::make_pair(640, 360));
+    expectOverlayDetail(overlay);
 }
 
 // R17-R19: the scene's MSAA count drives its screen context; a texture-mode document's own
