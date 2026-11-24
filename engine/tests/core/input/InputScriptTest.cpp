@@ -311,7 +311,7 @@ TEST_F(InputScriptPlayerTest, SpacesLandOnTheCanvas){
         {"type": "mouse", "action": "move", "x": 64, "y": 36}
     ])", R"(, "gap_frames": 1)"));
     ScriptPlayer player(script, PlayerHost(), PlayOptions());
-    const Rect safe = Screen::getSafeArea();
+    const jasperengine::Rect safe = Screen::getSafeArea();
     runFrame(player, 0);
     EXPECT_NEAR(Input::getMousePosition().x, safe.getX() + 0.5f * safe.getWidth(), 1e-2f);
     EXPECT_NEAR(Input::getMousePosition().y, 40.0f, 1e-2f);

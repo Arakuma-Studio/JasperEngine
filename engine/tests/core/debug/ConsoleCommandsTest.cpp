@@ -44,7 +44,7 @@ namespace {
         }
     };
 
-    ArgSpec arg(const char* name, ArgType type, bool optional = false){
+    ArgSpec consoleArg(const char* name, ArgType type, bool optional = false){
         ArgSpec spec;
         spec.name = name;
         spec.type = type;
@@ -75,9 +75,9 @@ namespace {
     }
 
     void addGive(Recorder& recorder){
-        ArgSpec item = arg("item", ArgType::Enum);
+        ArgSpec item = consoleArg("item", ArgType::Enum);
         item.choices = {"gold", "gem", "key"};
-        ArgSpec count = arg("count", ArgType::Int, true);
+        ArgSpec count = consoleArg("count", ArgType::Int, true);
         count.defaultValue = "1";
         count.min = 1;
         count.max = 999;
@@ -140,7 +140,7 @@ TEST_F(ConsoleCommands, TypedArgumentsParseOrNameTheFix){
     EXPECT_EQ(give.runs, 3) << "no usage error runs the command";
 
     Recorder num;
-    ASSERT_TRUE(addRecorded("num", {arg("n", ArgType::Int)}, num));
+    ASSERT_TRUE(addRecorded("num", {consoleArg("n", ArgType::Int)}, num));
     EXPECT_TRUE(console::execute("num -5").ok());
     EXPECT_EQ(num.args[0].i, -5);
     EXPECT_TRUE(console::execute("num 9223372036854775807").ok());
@@ -149,7 +149,7 @@ TEST_F(ConsoleCommands, TypedArgumentsParseOrNameTheFix){
     EXPECT_EQ(console::execute("num 1.5").status, Status::Usage);
 
     Recorder flt;
-    ArgSpec x = arg("x", ArgType::Float);
+    ArgSpec x = consoleArg("x", ArgType::Float);
     x.min = 0;
     x.max = 100;
     ASSERT_TRUE(addRecorded("flt", {x}, flt));
@@ -159,7 +159,7 @@ TEST_F(ConsoleCommands, TypedArgumentsParseOrNameTheFix){
     EXPECT_EQ(console::execute("flt 101").status, Status::Usage);
 
     Recorder flag;
-    ASSERT_TRUE(addRecorded("flag", {arg("on", ArgType::Bool)}, flag));
+    ASSERT_TRUE(addRecorded("flag", {consoleArg("on", ArgType::Bool)}, flag));
     EXPECT_TRUE(console::execute("flag YES").ok());
     EXPECT_TRUE(flag.args[0].b);
     EXPECT_TRUE(console::execute("flag 0").ok());
@@ -167,13 +167,13 @@ TEST_F(ConsoleCommands, TypedArgumentsParseOrNameTheFix){
     EXPECT_EQ(console::execute("flag maybe").error, "flag: on must be true or false (on/off, yes/no, 1/0) (got \"maybe\").");
 
     Recorder pos;
-    ASSERT_TRUE(addRecorded("pos", {arg("p", ArgType::Vector3)}, pos));
+    ASSERT_TRUE(addRecorded("pos", {consoleArg("p", ArgType::Vector3)}, pos));
     EXPECT_TRUE(console::execute("pos 1,2.5,-3").ok());
     EXPECT_EQ(pos.args[0].v, Vector3(1.0f, 2.5f, -3.0f));
     EXPECT_EQ(console::execute("pos 1,2").error, "pos: p must be x,y,z (three numbers, as 1,0,-2.5) (got \"1,2\").");
 
     Recorder tp;
-    ASSERT_TRUE(addRecorded("tp", {arg("target", ArgType::GameObject)}, tp));
+    ASSERT_TRUE(addRecorded("tp", {consoleArg("target", ArgType::GameObject)}, tp));
     EXPECT_TRUE(console::execute("tp Hero").ok());
     EXPECT_EQ(tp.args[0].entity, hero);
     EXPECT_EQ(tp.args[0].scene, &scene);
@@ -190,7 +190,7 @@ TEST_F(ConsoleCommands, TypedArgumentsParseOrNameTheFix){
     EXPECT_EQ(console::execute("tp Hero").status, Status::Usage) << "active GameObjects only";
 
     Recorder say;
-    ASSERT_TRUE(addRecorded("say", {arg("who", ArgType::String), arg("text", ArgType::Rest)}, say));
+    ASSERT_TRUE(addRecorded("say", {consoleArg("who", ArgType::String), consoleArg("text", ArgType::Rest)}, say));
     EXPECT_TRUE(console::execute("say bob \"hello \\\"there\\\"\"  again  ").ok());
     EXPECT_EQ(say.args[0].text, "bob");
     EXPECT_EQ(say.args[1].text, "\"hello \\\"there\\\"\"  again") << "the rest of the line verbatim";
@@ -294,8 +294,8 @@ TEST_F(ConsoleCommands, ResultCarriesLinesLogAndValue){
 TEST_F(ConsoleCommands, GameCommandShadowsBuiltInAndUnshadows){
     LogCapture log;
     Recorder scene;
-    ASSERT_TRUE(addRecorded("scene", {arg("level", ArgType::String)}, scene));
-    ASSERT_TRUE(addRecorded("scene", {arg("level", ArgType::String)}, scene)) << "replaced";
+    ASSERT_TRUE(addRecorded("scene", {consoleArg("level", ArgType::String)}, scene));
+    ASSERT_TRUE(addRecorded("scene", {consoleArg("level", ArgType::String)}, scene)) << "replaced";
     EXPECT_EQ(log.count(D_LOG_WARN, "console: 'scene' now runs the game's command; the built-in returns when it is removed"), 1u);
     EXPECT_TRUE(console::execute("scene two").ok());
     EXPECT_EQ(scene.runs, 1);
@@ -363,8 +363,8 @@ TEST_F(ConsoleCommands, HelpListsAndDescribes){
 TEST_F(ConsoleCommands, CompletionOfNamesArgsAndCustom){
     Recorder give, flag, tp, many;
     addGive(give);
-    ASSERT_TRUE(addRecorded("flag", {arg("on", ArgType::Bool)}, flag));
-    ASSERT_TRUE(addRecorded("tp", {arg("target", ArgType::GameObject)}, tp));
+    ASSERT_TRUE(addRecorded("flag", {consoleArg("on", ArgType::Bool)}, flag));
+    ASSERT_TRUE(addRecorded("tp", {consoleArg("target", ArgType::GameObject)}, tp));
 
     Completion c = console::complete("tim", 3);
     EXPECT_EQ(c.candidates, (std::vector<std::string>{"timescale"}));
@@ -410,7 +410,7 @@ TEST_F(ConsoleCommands, CompletionOfNamesArgsAndCustom){
 
     CommandSpec pick;
     pick.name = "pick";
-    pick.args = {arg("first", ArgType::String), arg("fruit", ArgType::String)};
+    pick.args = {consoleArg("first", ArgType::String), consoleArg("fruit", ArgType::String)};
     int askedIndex = -1;
     std::vector<std::string> askedWords;
     pick.complete = [&askedIndex, &askedWords](int argIndex, const std::string&, const std::vector<std::string>& words){

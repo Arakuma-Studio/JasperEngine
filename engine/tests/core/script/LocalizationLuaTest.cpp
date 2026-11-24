@@ -26,7 +26,7 @@ using namespace jasperengine;
 
 namespace {
 
-    std::string runLua(lua_State* L, const std::string& code) {
+    std::string l10nRunLua(lua_State* L, const std::string& code) {
         if (luaL_loadstring(L, code.c_str()) != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK) {
             std::string error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "(error)";
             lua_pop(L, 1);
@@ -58,7 +58,7 @@ namespace {
         void TearDown() override {
             Localization::resetForTesting();
             TitleArtLanguage::resetForTesting();
-            runLua(LuaBinding::getLuaState(), "localizationEvents = nil");
+            l10nRunLua(LuaBinding::getLuaState(), "localizationEvents = nil");
         }
     };
 
@@ -83,9 +83,9 @@ TEST_F(LocalizationLua, ApiMatchesStubs) {
     for (std::sregex_iterator it(fields.begin(), fields.end(), field), end; it != end; ++it) members.insert((*it)[1]);
     EXPECT_EQ(members.size(), 10u);
     for (const std::string& member : members) {
-        EXPECT_EQ(runLua(L, "assert(Localization." + member + " ~= nil, '" + member + "')"), "") << member;
+        EXPECT_EQ(l10nRunLua(L, "assert(Localization." + member + " ~= nil, '" + member + "')"), "") << member;
     }
-    EXPECT_EQ(runLua(L,
+    EXPECT_EQ(l10nRunLua(L,
         "assert(Localization.get('ui.play') == 'Play')\n"
         "assert(Localization.get('ui.coins', {n = 2}) == '2 coins')\n"
         "assert(Localization.get('ui.nope', nil, 'Fallback') == 'Fallback')\n"
@@ -102,33 +102,33 @@ TEST_F(LocalizationLua, ApiMatchesStubs) {
 
 TEST_F(LocalizationLua, OnLanguageChangedFiresOnce) {
     lua_State* L = LuaBinding::getLuaState();
-    ASSERT_EQ(runLua(L,
+    ASSERT_EQ(l10nRunLua(L,
         "localizationEvents = {}\n"
         "Localization.onLanguageChanged = function(code) table.insert(localizationEvents, code) end\n"
         "Localization.setLanguage('de')\n"
         "Localization.setLanguage('de')\n"), "");
     ASSERT_TRUE(TitleArtLanguage::setGlobal("en"));
-    EXPECT_EQ(runLua(L, "assert(#localizationEvents == 2, #localizationEvents)\n"
+    EXPECT_EQ(l10nRunLua(L, "assert(#localizationEvents == 2, #localizationEvents)\n"
                         "assert(localizationEvents[1] == 'de' and localizationEvents[2] == 'en')\n"), "");
 }
 
 TEST_F(LocalizationLua, EventIsClearedAtStop) {
     lua_State* L = LuaBinding::getLuaState();
-    ASSERT_EQ(runLua(L,
+    ASSERT_EQ(l10nRunLua(L,
         "localizationEvents = {}\n"
         "Localization.onLanguageChanged = function(code) table.insert(localizationEvents, code) end\n"), "");
     EXPECT_TRUE(Localization::onLanguageChanged.hasSubscribers());
     Engine::clearAllSubscriptions(false);
     EXPECT_FALSE(Localization::onLanguageChanged.hasSubscribers());
     ASSERT_TRUE(Localization::setLanguage("de"));
-    EXPECT_EQ(runLua(L, "assert(#localizationEvents == 0)"), "");
+    EXPECT_EQ(l10nRunLua(L, "assert(#localizationEvents == 0)"), "");
 }
 
 // D-15 (from S95): Localization.language is writable as Unity's SelectedLocale, a bad tag raises
 // and changes nothing, a list part fills {0} {1}, and a key without a namespace reads the Default Table
 TEST_F(LocalizationLua, LanguageIsWritableListArgumentsArePositionalAndBareKeysUseTheDefaultTable) {
     lua_State* L = LuaBinding::getLuaState();
-    EXPECT_EQ(runLua(L,
+    EXPECT_EQ(l10nRunLua(L,
         "Localization.language = 'de'\n"
         "assert(Localization.language == 'de' and Localization.get('ui.play') == 'Spielen')\n"
         "assert(not pcall(function() Localization.language = 'bad tag!' end))\n"

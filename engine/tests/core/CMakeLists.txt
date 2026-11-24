@@ -157,6 +157,10 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
+file(GLOB JASPERENGINE_DIALOGUE_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/dialogue/*.cpp)
+jasperengine_skip_unity_build(
+    REASON "the dialogue tests use the namespace dialogue, whose Value another test of a batch declares for itself (ComponentArrayTest)"
+    SOURCES ${JASPERENGINE_DIALOGUE_TESTS})
 
 # The noise suites compile kernels' arithmetic in their own units and compare it with the library's, so
 # they take the same flag. The golden cases are shared with tools/noise/golden, and the presets are
