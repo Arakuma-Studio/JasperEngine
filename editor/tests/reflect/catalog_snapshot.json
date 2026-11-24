@@ -10682,6 +10682,7 @@
     "font",
     "fontGuid",
     "fontSize",
+    "localizationKey",
     "maxTextSize",
     "multiline",
     "outlineColor",
@@ -10695,7 +10696,6 @@
     "shadowOffset",
     "shadowSoftness",
     "text",
-    "textKey",
     "visibleCharacters"
    ],
    "name": "TextComponent",
@@ -10718,6 +10718,11 @@
     "fontSize": [
      9,
      65536,
+     true
+    ],
+    "localizationKey": [
+     1,
+     32768,
      true
     ],
     "maxTextSize": [
@@ -10781,11 +10786,6 @@
      true
     ],
     "text": [
-     1,
-     32768,
-     true
-    ],
-    "textKey": [
      1,
      32768,
      true
@@ -10817,6 +10817,11 @@
      65536,
      true
     ],
+    "localizationKey": [
+     1,
+     32768,
+     true
+    ],
     "maxTextSize": [
      9,
      32768,
@@ -10878,11 +10883,6 @@
      true
     ],
     "text": [
-     1,
-     32768,
-     true
-    ],
-    "textKey": [
      1,
      32768,
      true
@@ -32059,6 +32059,11 @@
     65536,
     true
    ],
+   "localizationKey": [
+    1,
+    32768,
+    true
+   ],
    "maxTextSize": [
     9,
     32768,
@@ -32120,11 +32125,6 @@
     true
    ],
    "text": [
-    1,
-    32768,
-    true
-   ],
-   "textKey": [
     1,
     32768,
     true
