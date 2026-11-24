@@ -1226,6 +1226,9 @@ jobs:
     if: needs.changes.outputs.run_ios == 'true'
     runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['ios'] || 'macos-latest' }}
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write  # TEMPORARY (reverted before merge): xcode-cache-save on this PR
     env:
       JASPER_CI_REPRO: tools/ci/macos.sh xcode ios
     steps:
@@ -1241,6 +1244,9 @@ jobs:
       - name: Xcode project (macOS)
         if: ${{ !cancelled() }}
         run: tools/ci/macos.sh xcode macos
+      # TEMPORARY (reverted before merge): this PR's run saves the entry, to measure a warm run
+      - uses: ./.github/actions/xcode-cache-save
+        if: success() && github.head_ref == 'ci/windows-macos-ccache'
       - uses: ./.github/actions/report
         if: always()
         with:
