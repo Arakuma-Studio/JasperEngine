@@ -17,7 +17,7 @@
 #define SPRITE_SHEET_SOURCES_H
 
 #include "Export.h"
-#include "component/SpriteComponent.h"
+#include "sprite/PivotPreset.h"
 #include "math/Rect.h"
 #include "math/Vector2.h"
 #include "math/Vector4.h"

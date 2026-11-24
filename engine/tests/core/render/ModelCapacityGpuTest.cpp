@@ -48,7 +48,7 @@ namespace {
         return std::string(JASPER_TEST_REPO_DIR "/engine/tests/render/assets/khronos/") + sample + "/glTF-Binary/" + sample + ".glb";
     }
 
-    std::vector<uint8_t> readTarget(){
+    std::vector<uint8_t> readModelCapacityTarget(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -133,7 +133,7 @@ namespace {
         Engine::removeScene(&frames);
     }
 
-    class ManyNodeModel : public ::testing::TestWithParam<const char*> {};
+    class ManyNodeModelGpu : public ::testing::TestWithParam<const char*> {};
 
     // `count` plates in a row, each of its own position, normal, UV and index buffer views
     std::string writePlates(TempDir& dir, const std::string& name, int count){
@@ -197,7 +197,7 @@ namespace {
         const MeshComponent& mesh = scene.getComponent<MeshComponent>(model.getEntity());
         submeshes = mesh.numSubmeshes;
         expectWholePrimitives(mesh, file);
-        std::vector<uint8_t> frame = readTarget();
+        std::vector<uint8_t> frame = readModelCapacityTarget();
         Engine::removeScene(&scene);
         return frame;
     }
@@ -205,7 +205,7 @@ namespace {
 }
 
 // the preview of a model of many nodes: no error, whole primitives, and it draws
-TEST_P(ManyNodeModel, APreviewOffTheMainThreadLogsNoErrorAndDraws){
+TEST_P(ManyNodeModelGpu, APreviewOffTheMainThreadLogsNoErrorAndDraws){
     JASPER_REQUIRE_GPU();
     const std::string sample = GetParam();
     const int unfed = ObjectRender::getUnfedVertexInputLoads();
@@ -230,7 +230,7 @@ TEST_P(ManyNodeModel, APreviewOffTheMainThreadLogsNoErrorAndDraws){
 }
 
 // the same model in a scene on the main thread: a mesh a node, every primitive of the file, no error
-TEST_P(ManyNodeModel, InASceneEveryPrimitiveLoads){
+TEST_P(ManyNodeModelGpu, InASceneEveryPrimitiveLoads){
     JASPER_REQUIRE_GPU();
     const std::string sample = GetParam();
     const int unfed = ObjectRender::getUnfedVertexInputLoads();
@@ -261,7 +261,7 @@ TEST_P(ManyNodeModel, InASceneEveryPrimitiveLoads){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-INSTANTIATE_TEST_SUITE_P(Khronos, ManyNodeModel, ::testing::Values("SpecularTest", "AnisotropyRotationTest", "AnisotropyStrengthTest"));
+INSTANTIATE_TEST_SUITE_P(Khronos, ManyNodeModelGpu, ::testing::Values("SpecularTest", "AnisotropyRotationTest", "AnisotropyStrengthTest"));
 
 // A model of more primitives and buffers than any fixed capacity held (40 plates: 40 submeshes,
 // 160 buffers) loads whole on the main thread, without an error
@@ -311,7 +311,7 @@ namespace {
     // cross it at z = 0, seen from a camera in the plane x = its target's x
     int platesOnTheMiddleRow(){
         Framebuffer& target = GpuEnvironment::target();
-        const std::vector<uint8_t> rgba = readTarget();
+        const std::vector<uint8_t> rgba = readModelCapacityTarget();
         const int width = (int)target.getWidth();
         const int row = (int)target.getHeight() / 2;
         if (rgba.size() < (size_t)(row + 1) * width * 4)

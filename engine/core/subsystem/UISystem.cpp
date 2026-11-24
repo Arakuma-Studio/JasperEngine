@@ -334,14 +334,15 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransform
     if (pixelart::isBitmapFontPath(text.font[0]))
         return loadBitmapFont(text, ui);
 
-    // Only undo the sampler state forced by a previously loaded bitmap font.
-    if (ui.pixelOriginSnap &&
-        (ui.texture.getMinFilter() == TextureFilter::NEAREST || ui.texture.getMagFilter() == TextureFilter::NEAREST)){
+    // back from a bitmap font (only its path snaps the origin): coverage sampled filtered, as
+    // before; a vector font's authored sampler (Nearest in the Inspector, a saved scene) is kept
+    const bool fromBitmapFont = ui.pixelOriginSnap;
+    ui.textRgba = false;
+    ui.pixelOriginSnap = false;
+    if (fromBitmapFont && (ui.texture.getMinFilter() == TextureFilter::NEAREST || ui.texture.getMagFilter() == TextureFilter::NEAREST)){
         ui.texture.setMinFilter(TextureFilter::LINEAR);
         ui.texture.setMagFilter(TextureFilter::LINEAR);
     }
-    ui.textRgba = false;
-    ui.pixelOriginSnap = false;
 
     const STBTextOptions options = getTextOptions(text);
     std::string fontId = getFontId(text, options);

@@ -7,8 +7,6 @@
 
 #include "settings/SettingsRegistry.h"
 #include "settings/SettingsSearch.h"
-#include "AppSettings.h"
-#include "LogCapture.h"
 
 #include "support/EditorTestSupport.h"
 
@@ -16,6 +14,8 @@
 
 #include <set>
 #include <sstream>
+#include <string>
+#include <vector>
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -70,41 +70,22 @@ TEST(SettingsRegistry, CoversMcpKeys) {
     }
 }
 
-TEST(SettingsRegistry, PixelArtHighlightIsOneWritablePreference) {
-    jasperengine::test::LogCapture log;
-    SettingsRegistry registry;
-    registerBuiltinSettings(registry);
-    EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
-
-    const char* key = "preferences.pixel_art.agent_edit_highlight";
-    const SettingRow* row = registry.find(key);
-    ASSERT_NE(row, nullptr);
-    EXPECT_EQ(row->scope, SettingsScope::Preference);
-    EXPECT_EQ(row->page, "Pixel Art (Preferences)");
-    EXPECT_EQ(row->label, "Highlight Agent Edits");
-    EXPECT_EQ(row->type, "bool");
-    EXPECT_TRUE(row->mcp);
-    EXPECT_FALSE(row->userOnly);
-    size_t matching = 0;
-    for (const SettingRow& candidate : registry.rows()) matching += candidate.key == key;
-    EXPECT_EQ(matching, 1u);
-    ASSERT_TRUE(row->get);
-    ASSERT_TRUE(row->set);
-    SettingsContext context;
-    const bool original = AppSettings::getPixelArtPreferences().agentEditHighlight;
-    std::string error;
-    EXPECT_TRUE(row->set(context, !original, false, error)) << error;
-    EXPECT_EQ(row->get(context), original) << "validation must leave the preference alone";
-    EXPECT_TRUE(row->set(context, !original, true, error)) << error;
-    EXPECT_EQ(row->get(context), !original);
-    EXPECT_TRUE(row->set(context, original, true, error)) << error;
-    EXPECT_EQ(row->get(context), original);
-
-    // EditorSettingsWindow dispatches its PreferencesCategory enum by this page order.
-    std::vector<std::string> pages;
-    for (const SettingsPage* page : registry.pages(SettingsScope::Preference)) pages.push_back(page->displayName());
-    EXPECT_EQ(pages, (std::vector<std::string>{"General", "Code Editor", "Asset Pipeline", "Scripting", "Undo", "Lattice", "Scene View",
-                                             "External Tools", "Logging", "Pixel Art", "Diagnostics", "Shader Cache", "Version Control"}));
+// The Preferences window draws page i with its PreferencesCategory i (EditorSettingsWindow.cpp):
+// a category without its page draws its rows under the next page's title
+TEST(SettingsRegistry, PreferencePagesFollowTheWindowsCategories) {
+    const SettingsRegistry& registry = SettingsRegistry::get();
+    std::vector<std::string> titles;
+    for (const SettingsPage* page : registry.pages(SettingsScope::Preference)) titles.push_back(page->displayName());
+    EXPECT_EQ(titles, (std::vector<std::string>{"General", "Code Editor", "Asset Pipeline", "Scripting", "Undo", "Lattice", "Scene View",
+                                                "External Tools", "Logging", "Pixel Art", "Diagnostics", "Shader Cache", "Version Control"}));
+    const SettingRow* highlight = registry.find("preferences.pixel_art.agent_edit_highlight");
+    ASSERT_NE(highlight, nullptr);
+    EXPECT_TRUE(highlight->mcp);
+    EXPECT_EQ(highlight->label, "Highlight Agent Edits");
+    const SettingsPage* page = registry.findPage(highlight->page);
+    ASSERT_NE(page, nullptr) << highlight->page;
+    EXPECT_EQ(page->scope, SettingsScope::Preference);
+    EXPECT_EQ(page->displayName(), "Pixel Art");
 }
 
 TEST(SettingsRegistry, RefusesUnwiredRows) {

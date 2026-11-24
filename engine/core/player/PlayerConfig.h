@@ -46,7 +46,7 @@ namespace jasperengine::player {
         std::string file;                  // "prefabs/<id>.jpfb"
     };
 
-    struct PlayerConfig {
+    struct JASPERENGINE_API PlayerConfig {
         static constexpr int SCHEMA_VERSION = 1;
 
         std::string name;
@@ -150,6 +150,8 @@ namespace jasperengine::player {
         std::string audioIosSession = "default";
         // the group music plays through when nothing names one ("" = Master)
         std::string audioMusicGroup;
+        // MiB unused clips stay cached (SoundPool::setUnusedBudget)
+        int audioUnusedClipCacheMb = 16;
 
         // the project's native plugins with code for other platforms only (the Compile build's
         // NativeBridge::setPlatformOnlyPlugins): a call to one fails with "unavailable", and its

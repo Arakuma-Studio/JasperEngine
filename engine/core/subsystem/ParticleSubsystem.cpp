@@ -23,15 +23,13 @@
 #include "registry/PhysicsLayers.h"
 #include "script/ScriptBase.h"
 #include "script/ScriptMessages.h"
+#include "object/sound/Audio.h"
 #include "render/SystemRender.h"
 #include "object/TerrainEdit.h"
+#include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
-#if JASPERENGINE_SOUND_LAYER
-#include "object/sound/Audio.h"
-#include "subsystem/AudioSystem.h"
-#endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
 #endif
@@ -826,7 +824,12 @@ bool ParticleSubsystem::castWorldRay(const void* context, const float from[3], c
         return false;
     // extended by the radius: the contact is a radius before the surface
     direction = direction * ((length + radius) / length);
-    const RayReturn result = Physics::raycast(self->scene, Ray(point(from), direction), layers);
+    // a particle inside a collider still collides with it (before Physics.raycast took Unity's
+    // start-inside rule, S96 REQ-14)
+    QueryOptions options;
+    options.layerMask = layers;
+    options.hitFromInside = true;
+    const RayReturn result = Physics::raycast(self->scene, Ray(point(from), direction), options);
     if (!result.hit)
         return false;
     hit.position[0] = result.point.x; hit.position[1] = result.point.y; hit.position[2] = result.point.z;
@@ -938,12 +941,12 @@ float ParticleSubsystem::significanceOf(const ParticleSystemState& state, float&
 }
 
 void ParticleSubsystem::playSounds(EmitterRuntime& runtime, const Vector3& emitterPosition){
-#if JASPERENGINE_SOUND_LAYER
     // the tree's: a child's bursts are in its own document, its entries' in its parent's
     for (size_t c = 0; c < runtime.childCount(); c++){
         if (EmitterRuntime* child = runtime.child(c))
             playSounds(*child, emitterPosition);
     }
+#if JASPERENGINE_SOUND_LAYER
     // free voices live in the sound layer (S34's soundlayer module): a build without it drops the events
     const CompiledEffect* effect = runtime.effect();
     if (runtime.soundEvents().empty() || !effect)
@@ -970,11 +973,8 @@ void ParticleSubsystem::playSounds(EmitterRuntime& runtime, const Vector3& emitt
         options.position = event.atEmitter ? emitterPosition : Vector3(event.position[0], event.position[1], event.position[2]);
         AudioSystem::playFree(guid->empty() ? *path : *guid, options, "particles");
     }
-    runtime.takeSoundEvents();
-#else
-    (void)runtime;
-    (void)emitterPosition;
 #endif
+    runtime.takeSoundEvents();
 }
 
 void ParticleSubsystem::dispatchEvents(ParticleSystemComponent& particles){
@@ -1117,9 +1117,7 @@ void ParticleSubsystem::update(double dt){
             // paused by its culling (or a time scale of 0): nothing to simulate this frame (R15: a
             // culled emitter is nearly free); what a trigger asked to play plays now
             state.ticks = 0;
-#if JASPERENGINE_SOUND_LAYER
             playSounds(state.runtime, transform->worldPosition);
-#endif
             continue;
         }
         prepareInput(entity, particles, *transform, task.input);
@@ -1135,12 +1133,10 @@ void ParticleSubsystem::update(double dt){
     // world collisions query Jolt from the workers: never while it steps
     if (scene->getSystem<PhysicsSystem>()->isSteppingWorld3D()){
         Log::error("[Particles] the physics world is stepping: the particle simulation waits for the next frame");
-#if JASPERENGINE_SOUND_LAYER
         for (size_t t = 0; t < tasks.size(); t++){
             ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(taskEntities[t]);
             playSounds(particles.state->runtime, scene->getComponent<Transform>(taskEntities[t]).worldPosition);
         }
-#endif
         return;
     }
 #endif
@@ -1160,9 +1156,7 @@ void ParticleSubsystem::update(double dt){
         frameAlive += state.runtime.totalCount();
         updateBounds(state);
         dispatchEvents(particles);
-#if JASPERENGINE_SOUND_LAYER
         playSounds(state.runtime, scene->getComponent<Transform>(entity).worldPosition);
-#endif
     }
     checkStopActions();
 }

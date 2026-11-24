@@ -42,7 +42,7 @@ namespace jasperengine {
 
 namespace {
 
-    MediaCacheState& state(){
+    MediaCacheState& mediaCacheState(){
         static MediaCacheState value;
         return value;
     }
@@ -197,7 +197,7 @@ namespace {
     }
 
     bool inUse(const std::string& file){
-        for (const auto& [url, download] : state().downloads){
+        for (const auto& [url, download] : mediaCacheState().downloads){
             if (download->getFilePath() == file && (download->users > 0 || download->getStatus() == MediaDownload::Status::DOWNLOADING))
                 return true;
         }
@@ -205,15 +205,15 @@ namespace {
     }
 
     void forget(const std::shared_ptr<MediaDownload>& download){
-        auto it = state().downloads.find(download->getUrl());
-        if (it != state().downloads.end() && it->second == download)
-            state().downloads.erase(it);
+        auto it = mediaCacheState().downloads.find(download->getUrl());
+        if (it != mediaCacheState().downloads.end() && it->second == download)
+            mediaCacheState().downloads.erase(it);
     }
 
     void startDownload(const std::shared_ptr<MediaDownload>& download, bool resume);
 
     void finish(const std::shared_ptr<MediaDownload>& download, const HttpResponse& response, uint64_t generation, bool resumed){
-        if (generation != state().generation || download->getStatus() != MediaDownload::Status::DOWNLOADING)
+        if (generation != mediaCacheState().generation || download->getStatus() != MediaDownload::Status::DOWNLOADING)
             return;
         MediaDownload& d = *download;
         if (response.ok){
@@ -262,7 +262,7 @@ namespace {
         // a video can be long: no total limit, the connection one stays
         desc.timeout = 0.0;
         d.resumed = resume;
-        const uint64_t generation = state().generation;
+        const uint64_t generation = mediaCacheState().generation;
         std::weak_ptr<MediaDownload> weak = download;
         d.request = Http::send(desc,
             [weak, generation, resume](const HttpResponse& response){
@@ -271,7 +271,7 @@ namespace {
             },
             [weak, generation](uint64_t received, int64_t total){
                 std::shared_ptr<MediaDownload> live = weak.lock();
-                if (!live || generation != state().generation || live->getStatus() != MediaDownload::Status::DOWNLOADING)
+                if (!live || generation != mediaCacheState().generation || live->getStatus() != MediaDownload::Status::DOWNLOADING)
                     return;
                 live->received = received;
                 live->total = total;
@@ -294,11 +294,11 @@ namespace {
         if (desc.headers.empty())
             return;     // nothing to compare with: the copy is kept as it is
         desc.timeout = 0.0;
-        const uint64_t generation = state().generation;
+        const uint64_t generation = mediaCacheState().generation;
         std::weak_ptr<MediaDownload> weak = download;
         d.revalidation = Http::send(desc, [weak, generation](const HttpResponse& response){
             std::shared_ptr<MediaDownload> live = weak.lock();
-            if (!live || generation != state().generation)
+            if (!live || generation != mediaCacheState().generation)
                 return;
             live->revalidation.reset();
             // 304 (or offline, or anything else): the cached copy stays; it is no error
@@ -340,7 +340,7 @@ std::string MediaCache::pathFor(const std::string& url){
 }
 
 std::shared_ptr<MediaDownload> MediaCache::acquire(const std::string& url){
-    MediaCacheState& s = state();
+    MediaCacheState& s = mediaCacheState();
     auto it = s.downloads.find(url);
     if (it != s.downloads.end() && it->second->getStatus() != MediaDownload::Status::FAILED){
         it->second->users++;
@@ -445,11 +445,11 @@ int MediaCache::clear(const std::string& url){
 }
 
 uint64_t MediaCache::getLimit(){
-    return state().limit;
+    return mediaCacheState().limit;
 }
 
 void MediaCache::setLimit(uint64_t bytes){
-    state().limit = bytes;
+    mediaCacheState().limit = bytes;
     evict();
 }
 
@@ -500,14 +500,14 @@ void MediaCache::evict(){
             item.used = time;
         total += size;
     }
-    if (total <= state().limit)
+    if (total <= mediaCacheState().limit)
         return;
     std::vector<Item> order;
     for (const auto& [base, item] : items)
         order.push_back(item);
     std::sort(order.begin(), order.end(), [](const Item& a, const Item& b){ return a.used < b.used; });
     for (const Item& item : order){
-        if (total <= state().limit)
+        if (total <= mediaCacheState().limit)
             break;
         if (inUse(item.base))
             continue;
@@ -518,7 +518,7 @@ void MediaCache::evict(){
 }
 
 void MediaCache::shutdown(){
-    MediaCacheState& s = state();
+    MediaCacheState& s = mediaCacheState();
     s.generation++;
     for (auto& [url, download] : s.downloads){
         if (download->status == MediaDownload::Status::DOWNLOADING){
@@ -535,7 +535,7 @@ void MediaCache::shutdown(){
 
 int MediaCache::getActiveDownloads(){
     int count = 0;
-    for (const auto& [url, download] : state().downloads){
+    for (const auto& [url, download] : mediaCacheState().downloads){
         if (download->getStatus() == MediaDownload::Status::DOWNLOADING)
             count++;
     }

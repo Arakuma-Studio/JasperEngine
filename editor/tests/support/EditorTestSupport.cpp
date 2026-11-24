@@ -210,3 +210,50 @@ YAML::Node editor::test::withoutKey(const YAML::Node& map, const std::string& ke
     }
     return copy;
 }
+
+int editor::test::compileSyntaxAgainstEngine(const fs::path& compiler, const fs::path& flagsFile, const fs::path& source, std::string& output) {
+    // a response-file argument, quoted (backslashes and quotes escaped, as GCC and Clang read it;
+    // cl reads forward slashes in paths, so none reach it)
+    auto quoted = [](const std::string& text) {
+        std::string out = "\"";
+        for (char c : text) {
+            if (c == '\\' || c == '"') out += '\\';
+            out += c;
+        }
+        return out + "\"";
+    };
+#ifdef _MSC_VER
+    std::string arguments = "/nologo /std:c++20 /EHsc /utf-8 /Zc:__cplusplus /bigobj /Zs";
+    const char* includeFlag = " /I";
+    const char* defineFlag = " /D";
+#else
+    std::string arguments = "-std=gnu++20 -fsyntax-only";
+    const char* includeFlag = " -isystem ";
+    const char* defineFlag = " -D";
+#endif
+    std::ifstream flags(flagsFile);
+    std::string line;
+    bool defines = false;
+    while (std::getline(flags, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        if (line == "#defines") {
+            defines = true;
+            continue;
+        }
+        arguments += (defines ? defineFlag : includeFlag) + quoted(defines ? line : fs::path(line).generic_string());
+    }
+    arguments += " " + quoted(source.generic_string()) + "\n";
+    const fs::path responseFile = source.parent_path() / "compile.rsp";
+    const fs::path log = source.parent_path() / "compile.log";
+    std::ofstream(responseFile, std::ios::binary) << arguments;
+#ifdef _WIN32
+    // cmd.exe /c drops the outermost quotes of a line that holds more than two
+    const std::string command = "\"\"" + compiler.string() + "\" @\"" + responseFile.string() + "\" > \"" + log.string() + "\" 2>&1\"";
+#else
+    const std::string command = "'" + compiler.string() + "' @'" + responseFile.string() + "' > '" + log.string() + "' 2>&1";
+#endif
+    const int status = std::system(command.c_str());
+    output = readText(log);
+    return status;
+}

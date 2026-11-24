@@ -7,6 +7,7 @@
 // (Unregister*, remove/has, the Event class); reserved members.
 
 #include "ScriptTestHarness.h"
+#include "support/EditorTestSupport.h"
 
 #include "script/ScriptBase.h"
 #include "script/ScriptMessages.h"
@@ -25,19 +26,19 @@ namespace {
 
     // ---- C++ scripts, filled in by hand as the generated factory does ----
 
-    std::vector<std::string> cppLog;
+    std::vector<std::string> scriptLifecycleCppLog;
 
     class CppLogger : public ScriptBase {
     public:
         CppLogger(Scene* scene, Entity entity) : ScriptBase(scene, entity) {}
         std::string tag() const { return scene->getEntityName(entity) + suffix; }
         std::string suffix = "1";
-        void init() override { cppLog.push_back("init" + tag()); }
-        void start() override { cppLog.push_back("start" + tag()); }
-        void onEnable() override { cppLog.push_back("enable" + tag()); }
-        void onDisable() override { cppLog.push_back("disable" + tag()); }
-        void onDestroy() override { cppLog.push_back("destroy" + tag()); }
-        void onApplicationQuit() override { cppLog.push_back("quit" + tag()); }
+        void init() override { scriptLifecycleCppLog.push_back("init" + tag()); }
+        void start() override { scriptLifecycleCppLog.push_back("start" + tag()); }
+        void onEnable() override { scriptLifecycleCppLog.push_back("enable" + tag()); }
+        void onDisable() override { scriptLifecycleCppLog.push_back("disable" + tag()); }
+        void onDestroy() override { scriptLifecycleCppLog.push_back("destroy" + tag()); }
+        void onApplicationQuit() override { scriptLifecycleCppLog.push_back("quit" + tag()); }
     };
 
     class CppPlain : public ScriptBase {
@@ -65,7 +66,7 @@ namespace {
     static_assert(ScriptMessages::cppMask<CppPlain>() & scriptMessageBit(ScriptMessage::Init), "a candidate");
     static_assert(ScriptMessages::cppMask<CppWrapper>() == 0, "not a ScriptBase: no messages");
 
-    std::string joined(const std::vector<std::string>& lines) {
+    std::string scriptLifecycleJoined(const std::vector<std::string>& lines) {
         std::string text;
         for (const std::string& line : lines) text += (text.empty() ? "" : " ") + line;
         return text;
@@ -91,7 +92,7 @@ namespace {
         return script;
     }
 
-    void deleteCppScripts(Scene* scene) {
+    void scriptLifecycleDeleteCppScripts(Scene* scene) {
         auto scripts = scene->getComponentArray<ScriptComponent>();
         for (size_t i = 0; i < scripts->size(); i++) {
             for (ScriptEntry& entry : scripts->getComponentFromIndex(i).scripts) {
@@ -722,7 +723,7 @@ TEST_F(ScriptLifecycleTest, ReentrantActivationKeepsPairs) {
 
 // 15. C++ ScriptBase scripts: the same passes and order as Lua (test 1)
 TEST_F(ScriptLifecycleTest, CppScriptsSameOrder) {
-    cppLog.clear();
+    scriptLifecycleCppLog.clear();
     Scene* scene = newScene();
     const Entity a = entity(scene, "A");
     const Entity b = entity(scene, "B", a);
@@ -733,11 +734,11 @@ TEST_F(ScriptLifecycleTest, CppScriptsSameOrder) {
     CppPlain* plain = addCppScript<CppPlain>(scene, b, "CppPlain");
 
     ScriptRuntime::awakeScene(scene);
-    EXPECT_EQ(joined(cppLog), "initA1 initA2 initB1 initB2 enableA1 enableA2 enableB1 enableB2");
-    cppLog.clear();
+    EXPECT_EQ(scriptLifecycleJoined(scriptLifecycleCppLog), "initA1 initA2 initB1 initB2 enableA1 enableA2 enableB1 enableB2");
+    scriptLifecycleCppLog.clear();
     frame();
-    EXPECT_EQ(joined(cppLog), "startA1 startA2 startB1 startB2");
-    cppLog.clear();
+    EXPECT_EQ(scriptLifecycleJoined(scriptLifecycleCppLog), "startA1 startA2 startB1 startB2");
+    scriptLifecycleCppLog.clear();
 
     EXPECT_TRUE(plain->isEnabled());
     plain->setEnabled(false);
@@ -750,11 +751,11 @@ TEST_F(ScriptLifecycleTest, CppScriptsSameOrder) {
     CppLogger* first = static_cast<CppLogger*>(scene->getComponent<ScriptComponent>(a).scripts[0].cppScript);
     first->setEnabled(false);
     first->setEnabled(true);
-    EXPECT_EQ(joined(cppLog), "disableA1 enableA1");
-    cppLog.clear();
+    EXPECT_EQ(scriptLifecycleJoined(scriptLifecycleCppLog), "disableA1 enableA1");
+    scriptLifecycleCppLog.clear();
     ScriptRuntime::quitAll();
-    EXPECT_EQ(joined(cppLog), "quitA1 quitA2 quitB1 quitB2 disableA1 disableA2 disableB1 disableB2 destroyA1 destroyA2 destroyB1 destroyB2");
-    deleteCppScripts(scene);
+    EXPECT_EQ(scriptLifecycleJoined(scriptLifecycleCppLog), "quitA1 quitA2 quitB1 quitB2 disableA1 disableA2 disableB1 disableB2 destroyA1 destroyA2 destroyB1 destroyB2");
+    scriptLifecycleDeleteCppScripts(scene);
 }
 
 // 16. reserved members: a property named enabled stops the script; enabled takes booleans only
@@ -944,16 +945,16 @@ namespace {
     public:
         CppUpdater(Scene* scene, Entity entity) : ScriptBase(scene, entity) { REGISTER_ENGINE_EVENT(onUpdate); }
         ~CppUpdater() override { UNREGISTER_ENGINE_EVENT(onUpdate); }
-        void onEnable() override { cppLog.push_back("enable"); }
-        void start() override { cppLog.push_back("start"); }
-        void onUpdate() { if (!updated) { updated = true; cppLog.push_back("update"); } }
+        void onEnable() override { scriptLifecycleCppLog.push_back("enable"); }
+        void start() override { scriptLifecycleCppLog.push_back("start"); }
+        void onUpdate() { if (!updated) { updated = true; scriptLifecycleCppLog.push_back("update"); } }
         bool updated = false;
     };
 }
 
 // the same for C++ engine events (REGISTER_ENGINE_EVENT)
 TEST_F(ScriptLifecycleTest, CppEnabledMidFrameStartsBeforeItsFirstUpdate) {
-    cppLog.clear();
+    scriptLifecycleCppLog.clear();
     Scene* scene = newScene();
     const Entity x = entity(scene, "X");
     CppUpdater* updater = nullptr;
@@ -963,13 +964,13 @@ TEST_F(ScriptLifecycleTest, CppEnabledMidFrameStartsBeforeItsFirstUpdate) {
     updater = addCppScript<CppUpdater>(scene, x, "CppUpdater", false);
     ScriptRuntime::awakeScene(scene);
     frame();
-    EXPECT_EQ(joined(cppLog), "enable");
+    EXPECT_EQ(scriptLifecycleJoined(scriptLifecycleCppLog), "enable");
     frame();
-    EXPECT_EQ(joined(cppLog), "enable start update");
+    EXPECT_EQ(scriptLifecycleJoined(scriptLifecycleCppLog), "enable start update");
     EXPECT_TRUE(updater->isActiveAndEnabled());
     Engine::onUpdate.remove("lifecycle-test-enabler");
     ScriptRuntime::unloadScenes({scene});
-    deleteCppScripts(scene);
+    scriptLifecycleDeleteCppScripts(scene);
 }
 
 // onDestroy (and onDisable) still find the GameObject's other scripts: they go after it
@@ -1117,9 +1118,13 @@ TEST_F(ScriptLifecycleTest, InstanceLookupsStayTableLookups) {
     const std::string ratios = lua("return GameObject(testScene, " + std::to_string(x) + "):getScript('P1'):bench(1000000)");
     double method = 0, missing = 0;
     ASSERT_EQ(std::sscanf(ratios.c_str(), "%lf %lf", &method, &missing), 2) << ratios;
+    // a timing ratio: printed always, enforced where perfSlack() asks for it (the benchmark run); a
+    // loaded runner swings it (macOS read 1.63 for the missing field, merge-queue run 44487933891)
     std::printf("[lookup cost vs a plain table] method call %.2fx, missing field %.2fx\n", method, missing);
-    EXPECT_LT(method, 1.5) << ratios;
-    EXPECT_LT(missing, 1.5) << ratios;
+    if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(method, 1.5 * slack) << ratios;
+        EXPECT_LT(missing, 1.5 * slack) << ratios;
+    }
 }
 
 // a C++ script that does not override a message is learned to the first time it is sent (its base
@@ -1140,5 +1145,5 @@ TEST_F(ScriptLifecycleTest, CppOverridesLearnedWhenSent) {
                                    [](ScriptBase& script) { script.onApplicationQuit(); }), 0) << "not overridden: not counted";
     EXPECT_FALSE(ScriptMessages::receivers(scene, p) & scriptMessageBit(ScriptMessage::ApplicationQuit));
     ScriptRuntime::unloadScenes({scene});
-    deleteCppScripts(scene);
+    scriptLifecycleDeleteCppScripts(scene);
 }

@@ -12,7 +12,12 @@
 #include <iterator>
 #include <system_error>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
 #include <sys/stat.h>
 #endif
 
@@ -29,6 +34,16 @@ namespace jasperengine::editor::builtplayers {
 #ifdef _WIN32
         f.size = static_cast<std::uint64_t>(fs::file_size(f.resolved, ec));
         f.mtime = static_cast<std::int64_t>(fs::last_write_time(f.resolved, ec).time_since_epoch().count());
+        // the file's identity, as st_dev / st_ino: its volume and its file index on it
+        const HANDLE file = CreateFileW(f.resolved.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        if (file == INVALID_HANDLE_VALUE) return f;
+        BY_HANDLE_FILE_INFORMATION info{};
+        const bool identified = GetFileInformationByHandle(file, &info) != FALSE;
+        CloseHandle(file);
+        if (!identified) return f;
+        f.dev = info.dwVolumeSerialNumber;
+        f.ino = (static_cast<std::uint64_t>(info.nFileIndexHigh) << 32) | info.nFileIndexLow;
 #else
         struct stat st{};
         if (::stat(f.resolved.c_str(), &st) != 0) return f;
@@ -121,7 +136,13 @@ namespace jasperengine::editor::builtplayers {
         const Fingerprint was = recorded(internalDir, now.resolved);
         if (!was.valid) return "it was not built by this editor for this project";
         if (was.size != now.size || was.sha256 != now.sha256) return "its contents changed since it was built";
-        if (was.dev != now.dev || was.ino != now.ino) return "it is not the file that was built (replaced since)";
+#ifdef _WIN32
+        // a record of an editor that kept no identity on Windows (0, 0): the other fields decide
+        const bool identityRecorded = was.dev != 0 || was.ino != 0;
+#else
+        const bool identityRecorded = true;
+#endif
+        if (identityRecorded && (was.dev != now.dev || was.ino != now.ino)) return "it is not the file that was built (replaced since)";
         if (was.mtime != now.mtime) return "it was modified since it was built";
         return std::string();
     }

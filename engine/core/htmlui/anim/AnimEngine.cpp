@@ -42,6 +42,9 @@ namespace {
 
 }
 
+AnimEngine::AnimEngine() = default;
+AnimEngine::~AnimEngine() = default;
+
 AnimEngine& AnimEngine::instance(){
     // leaked: timers held by scripts can outlive static destruction
     static AnimEngine* engine = new AnimEngine();

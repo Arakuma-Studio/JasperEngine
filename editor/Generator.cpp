@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Generator.h"
+#include "RepositoryUrl.h"
 #include "object/FluidSimulation.h"
 #include "component/PrefabComponent.h"
 #include "util/NativePlugins.h"
@@ -48,6 +49,9 @@
 #include <set>
 
 #ifdef _WIN32
+    #ifndef NOMINMAX
+    #define NOMINMAX
+    #endif
     #include <windows.h>
     #include <io.h>
 #else
@@ -1267,7 +1271,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR})\n";
     cmakeContent += "set(INTERNAL_DIR ${PROJECT_ROOT}/.jasperengine)\n\n";
     cmakeContent += "# JasperEngine runtime API headers for this project come from ${INTERNAL_DIR}/engine-api.\n";
-    cmakeContent += "# Full engine + editor source (including YAML serialization for *.scene/*.prefab/project.yaml): https://github.com/JasperRaccoon/JasperEngine\n\n";
+    cmakeContent += std::string("# Full engine + editor source (including YAML serialization for *.scene/*.prefab/project.yaml): ") + REPOSITORY_URL + "\n\n";
 
     cmakeContent += "set(JASPERENGINE_API_DIR " + engineApiPathStr + ")\n\n";
 
@@ -1743,12 +1747,17 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "- Models ship cooked (settings in their `.meta`): `inspect_models` finds costly ones, `check_render_budgets` checks "
                      "`quality.render_budgets` (tool group `meshes`).\n";
     agentsContent += "- An editor key is rebound with `set_shortcut` (tool group `editor_ux`), not in the editor's source.\n\n";
+    agentsContent += "## Target platforms\n\n";
+    agentsContent += "This game ships on Project Settings > Player > Target Platforms (`player.target_platforms`; `get_build_info` "
+                     "lists them). Test, budget and export for those only; ask before adding one. Prove a change: `check --project .`, "
+                     "`play` it (`read_console`, `screenshot`), then `build_project` for each target this computer can build. Name any "
+                     "you could not (iOS needs a Mac).\n\n";
     agentsContent += "## HTML/CSS UI\n\n";
     agentsContent += "Standard HTML and CSS with Lua logic (no JavaScript), one UI Document per GameObject (`create_ui_document`), under "
                      "`assets/ui/`; `check --ui` reports what the engine drops or rewrites. Supported CSS: `jasper://docs/html-ui-support`; "
                      "guide: `jasper://docs/html-ui`; examples: `" + api + "/html-ui-examples/`.\n\n";
     agentsContent += "## Source\n\n";
-    agentsContent += "Engine and editor: https://github.com/JasperRaccoon/JasperEngine at the editor version above; its `editor/` "
+    agentsContent += std::string("Engine and editor: ") + REPOSITORY_URL + " at the editor version above; its `editor/` "
                      "defines the `.scene`, `.prefab` and `project.yaml` formats.\n\n";
     agentsContent += "## Generated files\n\n";
     agentsContent += "Regenerated on play and build, never edited: the root `CMakeLists.txt`, `" + internal + "/LocalPaths.cmake`, `" +
@@ -1775,8 +1784,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "`GameObject.destroy`). A prefab loaded only by path (`PrefabAsset::load`) must be in `standalonePrefabs` "
                      "(Assets > Prefabs) or the build lacks it.\n\n";
     agentsContent += "## Physics backends\n\n";
-    agentsContent += "Project Settings > Build > 2D/3D Physics only changes the export, which drops a disabled backend: code that must "
-                     "build either way guards on `JASPERENGINE_PHYSICS_2D` / `JASPERENGINE_PHYSICS_3D`.\n";
+    agentsContent += "Project Settings > Physics > 3D Physics and Physics 2D > 2D Physics only change the export, which drops a disabled "
+                     "backend: code that must build either way guards on `JASPERENGINE_PHYSICS_2D` / `JASPERENGINE_PHYSICS_3D`.\n";
 
     FileUtils::writeIfChanged(agentsFile, agentsContent);
     writeClaudeFile(projectPath);
@@ -2988,6 +2997,9 @@ std::string editor::Generator::audioInitSource(const AudioSettings& audioSetting
     if (audioSettings.musicGroup != defaults.musicGroup) {
         source += "    { AudioConfig audioConfig = AudioSystem::getConfig(); audioConfig.musicGroup = " + Factory::formatString(audioSettings.musicGroup) +
                   "; AudioSystem::configure(audioConfig); }\n";
+    }
+    if (audioSettings.unusedClipCacheMb != defaults.unusedClipCacheMb) {
+        source += "    SoundPool::setUnusedBudget(" + std::to_string(audioSettings.unusedClipCacheMb) + "ull * 1024 * 1024);\n";
     }
     return source;
 }

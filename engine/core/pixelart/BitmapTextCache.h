@@ -57,6 +57,13 @@ namespace jasperengine::pixelart {
 
     class JASPERENGINE_API BitmapTextCache {
     public:
+        // (out of line, where GlyphAtlas is complete: MSVC defines an exported class's members
+        // where the class ends; not copyable, its pages own their atlases)
+        BitmapTextCache();
+        ~BitmapTextCache();
+        BitmapTextCache(const BitmapTextCache&) = delete;
+        BitmapTextCache& operator=(const BitmapTextCache&) = delete;
+
         static BitmapTextCache& get();
 
         // the page holding every glyph of `codepoints` (kCacheFallbackGlyph for the fallback) in

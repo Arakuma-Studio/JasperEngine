@@ -61,7 +61,7 @@ namespace {
         }
     };
 
-    std::string roundTrip(const std::string& text){
+    std::string inputManagerMapRoundTrip(const std::string& text){
         InputActionAssetDesc asset;
         std::string error;
         EXPECT_TRUE(InputActionAssetDesc::parse(text, asset, error)) << error;
@@ -114,7 +114,7 @@ TEST_F(InputManagerMapTest, TheAssetKeepsTheInputManagerFields){
   ]
 }
 )";
-    EXPECT_EQ(roundTrip(text), text);
+    EXPECT_EQ(inputManagerMapRoundTrip(text), text);
     InputActionAssetDesc asset;
     std::string error;
     ASSERT_TRUE(InputActionAssetDesc::parse(text, asset, error)) << error;

@@ -50,7 +50,7 @@ namespace {
     }
 
     // one row per line, the highest row first, '.' empty, the tile id's digit otherwise
-    std::string render(const TileCells& cells, const CellRect& rect) {
+    std::string tilemapBrushRender(const TileCells& cells, const CellRect& rect) {
         std::string out;
         for (int64_t y = rect.maxY; y >= rect.minY; y--) {
             if (y != rect.maxY) out += '\n';
@@ -93,7 +93,7 @@ TEST(TilemapBrush, StampKeepsOffsetsFromTheAnchorOnEveryLayout) {
         BrushStamp stamp;
         stamp.cells = {{0, 0, 1, 0}, {1, 0, 2, 0}, {0, 1, 0, 0}};
         ASSERT_TRUE(paintStamp(target, stamp, CellCoord{1, 1}, PaintOptions{}, edit));
-        EXPECT_EQ(render(cells, rectOf(0, 0, 3, 3)), "....\n.0..\n.12.\n....") << (int)layout;
+        EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 3, 3)), "....\n.0..\n.12.\n....") << (int)layout;
         EXPECT_EQ(edit.patch.changes().size(), 3u);
     }
 }
@@ -144,7 +144,7 @@ TEST(TilemapBrush, BoxFillRepeatsTheStampFromTheBottomLeftCell) {
         BrushStamp stamp;
         stamp.cells = {{0, 0, 1, 0}, {1, 0, 2, 0}};
         ASSERT_TRUE(boxFill(target, stamp, rectOf(1, 1, 4, 2), PaintOptions{}, edit));
-        EXPECT_EQ(render(cells, rectOf(0, 0, 5, 3)), "......\n.1212.\n.1212.\n......") << (int)layout;
+        EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 5, 3)), "......\n.1212.\n.1212.\n......") << (int)layout;
     }
 }
 
@@ -198,7 +198,7 @@ TEST(TilemapBrush, LineFollowsEachLayout) {
         BrushTarget target{cells, &tileset, layoutSpec(c.layout)};
         BrushEdit edit;
         ASSERT_TRUE(paintLine(target, BrushStamp::single(1), CellCoord{0, 0}, c.to, PaintOptions{}, edit));
-        EXPECT_EQ(render(cells, c.region), c.golden) << (int)c.layout;
+        EXPECT_EQ(tilemapBrushRender(cells, c.region), c.golden) << (int)c.layout;
     }
 }
 
@@ -210,7 +210,7 @@ TEST(TilemapBrush, EraseFollowsEachLayoutLine) {
     BrushEdit edit;
     ASSERT_TRUE(boxFill(target, BrushStamp::single(1), rectOf(0, 0, 1, 3), PaintOptions{}, edit));
     ASSERT_TRUE(eraseLine(target, CellCoord{0, 0}, CellCoord{1, 3}, edit));
-    EXPECT_EQ(render(cells, rectOf(0, 0, 1, 3)), "1.\n1.\n.1\n.1");
+    EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 1, 3)), "1.\n1.\n.1\n.1");
 }
 
 TEST(TilemapBrush, FloodConnectsThroughEachLayoutsSides) {
@@ -237,7 +237,7 @@ TEST(TilemapBrush, FloodConnectsThroughEachLayoutsSides) {
         cells.setTile(CellCoord{1, 1}, 0);
         BrushEdit edit;
         ASSERT_TRUE(floodFill(target, BrushStamp::single(1), CellCoord{0, 0}, FloodScope::Contiguous, PaintOptions{}, edit));
-        EXPECT_EQ(render(cells, rectOf(-1, -1, 1, 1)), c.golden) << (int)c.layout;
+        EXPECT_EQ(tilemapBrushRender(cells, rectOf(-1, -1, 1, 1)), c.golden) << (int)c.layout;
     }
 }
 
@@ -250,7 +250,7 @@ TEST(TilemapBrush, FloodEveryEqualCoversTheUsedRect) {
     cells.setTile(CellCoord{2, 2}, 2);
     BrushEdit edit;
     ASSERT_TRUE(floodFill(target, BrushStamp::single(1), CellCoord{0, 0}, FloodScope::EveryEqual, PaintOptions{}, edit));
-    EXPECT_EQ(render(cells, rectOf(0, 0, 3, 2)), "..21\n....\n1...");
+    EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 3, 2)), "..21\n....\n1...");
 }
 
 TEST(TilemapBrush, FloodComparesTransformBits) {
@@ -261,7 +261,7 @@ TEST(TilemapBrush, FloodComparesTransformBits) {
     cells.setTile(CellCoord{1, 0}, 0, TILE_FLIP_X);
     BrushEdit edit;
     ASSERT_TRUE(floodFill(target, BrushStamp::single(2), CellCoord{0, 0}, FloodScope::Contiguous, PaintOptions{}, edit));
-    EXPECT_EQ(render(cells, rectOf(0, 0, 1, 0)), "20");
+    EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 1, 0)), "20");
 }
 
 TEST(TilemapBrush, FloodEveryEqualOverTheLimitIsTyped) {
@@ -295,7 +295,7 @@ TEST(TilemapBrush, EraseVariantsEmptyTheirCells) {
     ASSERT_TRUE(eraseCell(target, CellCoord{0, 0}, edit));
     ASSERT_TRUE(eraseBox(target, rectOf(3, 0, 4, 1), edit));
     ASSERT_TRUE(eraseFlood(target, CellCoord{0, 2}, FloodScope::Contiguous, edit));
-    EXPECT_EQ(render(cells, rectOf(0, 0, 4, 2)), ".....\n.....\n.....");
+    EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 4, 2)), ".....\n.....\n.....");
 }
 
 TEST(TilemapBrush, PickGivesAOneCellStampWithoutTheLock) {
@@ -345,7 +345,7 @@ TEST(TilemapBrush, TerrainPaintSelectsTilesOnEveryLayout) {
         BrushEdit edit;
         const CellCoord painted[2] = {{0, 0}, {1, 0}};
         ASSERT_TRUE(paintTerrain(target, painted, 0, edit)) << edit.error.message;
-        EXPECT_EQ(render(cells, rectOf(0, 0, 1, 0)), "00") << (int)layout;
+        EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 1, 0)), "00") << (int)layout;
         EXPECT_EQ(cells.getTerrain(CellCoord{1, 0}), 0);
     }
 }
@@ -369,7 +369,7 @@ TEST(TilemapBrush, DualGridTakesLogicalCellsForTerrainAndDisplayCellsForTiles) {
     ASSERT_TRUE(paintTerrain(target, std::span<const CellCoord>(&logical, 1), 0, edit)) << edit.error.message;
     // the plane holds the logical cell; the display tiles fall on the four cells around it
     EXPECT_EQ(cells.getTerrain(logical), 0);
-    EXPECT_EQ(render(cells, rectOf(0, 0, 1, 1)), "00\n00");
+    EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 1, 1)), "00\n00");
     // a manual tile addresses a display cell and leaves the logical plane alone
     BrushEdit manual;
     ASSERT_TRUE(paintStamp(target, BrushStamp::single(0, TILE_FLIP_X), CellCoord{5, 5}, PaintOptions{}, manual));
@@ -386,7 +386,7 @@ TEST(TilemapBrush, ManualTilesOverTerrainFollowR26) {
     BrushEdit terrainEdit;
     const CellCoord painted[3] = {{0, 0}, {1, 0}, {2, 0}};
     ASSERT_TRUE(paintTerrain(target, painted, 0, terrainEdit));
-    ASSERT_EQ(render(cells, rectOf(0, 0, 2, 0)), "000");
+    ASSERT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 2, 0)), "000");
 
     BrushEdit clearing;
     ASSERT_TRUE(paintStamp(target, BrushStamp::single(0, TILE_FLIP_Y), CellCoord{1, 0}, PaintOptions{}, clearing));
@@ -433,15 +433,15 @@ TEST(TilemapBrush, CopyDeleteAndMoveASelection) {
     // the copy pastes at a new anchor with its hole left alone
     BrushEdit paste;
     ASSERT_TRUE(paintStamp(target, copied, CellCoord{4, 0}, PaintOptions{}, paste));
-    EXPECT_EQ(render(cells, rectOf(0, 0, 5, 2)), "..0...\n.12..0\n....12");
+    EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 5, 2)), "..0...\n.12..0\n....12");
 
     BrushEdit move;
     ASSERT_TRUE(moveRect(target, rectOf(1, 1, 2, 2), CellCoord{0, 1}, move));
-    EXPECT_EQ(render(cells, rectOf(0, 0, 5, 3)), "..0...\n.12...\n.....0\n....12");
+    EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 5, 3)), "..0...\n.12...\n.....0\n....12");
 
     BrushEdit erased;
     ASSERT_TRUE(deleteRect(target, rectOf(1, 2, 2, 3), erased));
-    EXPECT_EQ(render(cells, rectOf(0, 0, 5, 3)), "......\n......\n.....0\n....12");
+    EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 5, 3)), "......\n......\n.....0\n....12");
 }
 
 TEST(TilemapBrush, MoveCarriesTheTerrainPlaneAndRefreshesAround) {
@@ -455,7 +455,7 @@ TEST(TilemapBrush, MoveCarriesTheTerrainPlaneAndRefreshesAround) {
     ASSERT_TRUE(moveRect(target, rectOf(0, 0, 0, 0), CellCoord{3, 0}, move));
     EXPECT_EQ(cells.getTerrain(CellCoord{3, 0}), 0);
     EXPECT_EQ(cells.getTerrain(CellCoord{0, 0}), NO_TERRAIN);
-    EXPECT_EQ(render(cells, rectOf(0, 0, 3, 0)), "...0");
+    EXPECT_EQ(tilemapBrushRender(cells, rectOf(0, 0, 3, 0)), "...0");
 }
 
 TEST(TilemapBrush, LockedLinkedErrorNamesTheFix) {

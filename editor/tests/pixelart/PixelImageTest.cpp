@@ -21,7 +21,7 @@ namespace {
         0, 0, 255, 255,     // 3 (transparent below)
     };
 
-    PixelImage indexed() {
+    PixelImage pixelImageIndexed() {
         std::vector<uint8_t> idx = {0, 1, 2, 3, 1, 1, 3, 0, 2, 2, 2, 2};
         return PixelImage::fromIndices(4, 3, idx, kPalette, 3);
     }
@@ -42,7 +42,7 @@ namespace {
 }
 
 TEST(PixelImageTest, IndicesAreThePaletteLookup) {
-    const PixelImage image = indexed();
+    const PixelImage image = pixelImageIndexed();
     ASSERT_TRUE(image.hasIndices());
     EXPECT_EQ(image.at(1, 0), (PixelRgba{255, 0, 0, 255}));
     EXPECT_EQ(image.at(3, 0), (PixelRgba{0, 0, 0, 0}));   // the transparent index
@@ -53,7 +53,7 @@ TEST(PixelImageTest, IndicesAreThePaletteLookup) {
 }
 
 TEST(PixelImageTest, OperationsKeepOrDropThePlane) {
-    PixelImage image = indexed();
+    PixelImage image = pixelImageIndexed();
     // crop inside keeps it; crop past the edge keeps it with the transparent index outside
     PixelImage inside = image.crop({1, 1, 2, 2});
     EXPECT_TRUE(inside.hasIndices());
@@ -78,7 +78,7 @@ TEST(PixelImageTest, OperationsKeepOrDropThePlane) {
     EXPECT_TRUE(consistent(flipped));
 
     // blit of an indexed image keeps it; of an RGBA one drops it (and says so)
-    PixelImage target = indexed();
+    PixelImage target = pixelImageIndexed();
     EXPECT_TRUE(target.blit(inside, 0, 0));
     EXPECT_TRUE(target.hasIndices());
     EXPECT_TRUE(consistent(target));
@@ -87,23 +87,23 @@ TEST(PixelImageTest, OperationsKeepOrDropThePlane) {
     EXPECT_FALSE(target.hasIndices());
 
     // set drops it and returns that it did; a second set has nothing left to drop
-    PixelImage edited = indexed();
+    PixelImage edited = pixelImageIndexed();
     EXPECT_TRUE(edited.set(0, 0, {9, 9, 9, 255}));
     EXPECT_FALSE(edited.hasIndices());
     EXPECT_FALSE(edited.set(1, 0, {9, 9, 9, 255}));
     EXPECT_EQ(edited.at(0, 0), (PixelRgba{9, 9, 9, 255}));
 
     // setIndex keeps it
-    PixelImage byIndex = indexed();
+    PixelImage byIndex = pixelImageIndexed();
     EXPECT_TRUE(byIndex.setIndex(0, 0, 1, {255, 0, 0, 255}));
     EXPECT_TRUE(consistent(byIndex));
     // blending drops it
-    PixelImage blended = indexed();
+    PixelImage blended = pixelImageIndexed();
     EXPECT_TRUE(blended.blendOver(rgba, 0, 0, 255));
     EXPECT_FALSE(blended.hasIndices());
     // editing the bytes drops it
     bool dropped = false;
-    PixelImage bytes = indexed();
+    PixelImage bytes = pixelImageIndexed();
     bytes.editPixels(&dropped);
     EXPECT_TRUE(dropped);
 }
@@ -129,10 +129,10 @@ TEST(PixelImageTest, OpaqueBounds) {
 }
 
 TEST(PixelImageTest, HashIsStableAndCoversThePlane) {
-    const PixelImage image = indexed();
+    const PixelImage image = pixelImageIndexed();
     // a fixed value: the same on every platform and run (XXH64 of size, RGBA and indices)
     const uint64_t h = image.hash();
-    EXPECT_EQ(h, indexed().hash());
+    EXPECT_EQ(h, pixelImageIndexed().hash());
     PixelImage rgbaOnly = image;
     rgbaOnly.dropIndices();
     EXPECT_NE(rgbaOnly.hash(), h);

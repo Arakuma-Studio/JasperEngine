@@ -32,7 +32,7 @@ namespace {
     }
 
     // a zlib stream of stored blocks: no compressor needed to write a valid IDAT
-    std::vector<uint8_t> stored(const std::vector<uint8_t>& raw) {
+    std::vector<uint8_t> spriteImportFramesStored(const std::vector<uint8_t>& raw) {
         std::vector<uint8_t> out = {0x78, 0x01};
         out.push_back(1);   // BFINAL, stored
         const uint16_t len = static_cast<uint16_t>(raw.size());
@@ -87,11 +87,11 @@ TEST(SpriteImportFrames, AnimatedPngFramesDelaysAndDisposeBackground) {
         return d;
     };
     pngChunk(file, "fcTL", fctl(0, 25, 100, 1, 0));   // 250 ms, dispose to background
-    pngChunk(file, "IDAT", stored(rawRow({255, 0, 0, 255, 0, 0, 0, 0})));
+    pngChunk(file, "IDAT", spriteImportFramesStored(rawRow({255, 0, 0, 255, 0, 0, 0, 0})));
     pngChunk(file, "fcTL", fctl(1, 5, 100, 0, 1));    // 50 ms, blend over what is left
     std::vector<uint8_t> fdat;
     be32(fdat, 2);
-    const std::vector<uint8_t> z = stored(rawRow({0, 0, 0, 0, 0, 255, 0, 255}));
+    const std::vector<uint8_t> z = spriteImportFramesStored(rawRow({0, 0, 0, 0, 0, 255, 0, 255}));
     fdat.insert(fdat.end(), z.begin(), z.end());
     pngChunk(file, "fdAT", fdat);
     pngChunk(file, "IEND", {});
@@ -155,11 +155,11 @@ namespace {
             std::vector<uint8_t> raw = {0};
             raw.insert(raw.end(), rgba.begin(), rgba.end());
             if (i == 0) {
-                pngChunk(file, "IDAT", stored(raw));
+                pngChunk(file, "IDAT", spriteImportFramesStored(raw));
             } else {
                 std::vector<uint8_t> fdat;
                 be32(fdat, seq++);
-                const std::vector<uint8_t> z = stored(raw);
+                const std::vector<uint8_t> z = spriteImportFramesStored(raw);
                 fdat.insert(fdat.end(), z.begin(), z.end());
                 pngChunk(file, "fdAT", fdat);
             }
@@ -168,7 +168,7 @@ namespace {
         return file;
     }
 
-    bool readBytes(const std::vector<uint8_t>& file, ImportedFrames& frames, PixelProblem& problem) {
+    bool spriteImportFramesReadBytes(const std::vector<uint8_t>& file, ImportedFrames& frames, PixelProblem& problem) {
         const std::filesystem::path path = std::filesystem::temp_directory_path() / "s47-apng-blend-test.png";
         {
             std::ofstream out(path, std::ios::binary);
@@ -186,7 +186,7 @@ TEST(SpriteImportFrames, BlendComposesOverWhatFrameOneLeft) {
     // keep (dispose 0), then an over-blended frame with a transparent left pixel: the first frame shows through
     ImportedFrames frames;
     PixelProblem problem;
-    ASSERT_TRUE(readBytes(apngOf(2, {{0, 0, {255, 0, 0, 255, 0, 0, 0, 0}}, {0, 1, {0, 0, 0, 0, 0, 255, 0, 255}}}), frames, problem)) << problem.message;
+    ASSERT_TRUE(spriteImportFramesReadBytes(apngOf(2, {{0, 0, {255, 0, 0, 255, 0, 0, 0, 0}}, {0, 1, {0, 0, 0, 0, 0, 255, 0, 255}}}), frames, problem)) << problem.message;
     ASSERT_EQ(frames.frames.size(), 2u);
     EXPECT_EQ(frames.frames[1].at(0, 0), (PixelRgba{255, 0, 0, 255})) << "blend over keeps what is under a clear pixel";
     EXPECT_EQ(frames.frames[1].at(1, 0), (PixelRgba{0, 255, 0, 255}));
@@ -195,7 +195,7 @@ TEST(SpriteImportFrames, BlendComposesOverWhatFrameOneLeft) {
 TEST(SpriteImportFrames, DisposePreviousRestoresTheCanvas) {
     ImportedFrames frames;
     PixelProblem problem;
-    ASSERT_TRUE(readBytes(apngOf(3, {{0, 0, {255, 0, 0, 255, 0, 0, 0, 0}},
+    ASSERT_TRUE(spriteImportFramesReadBytes(apngOf(3, {{0, 0, {255, 0, 0, 255, 0, 0, 0, 0}},
                                      {2, 1, {0, 0, 0, 0, 0, 255, 0, 255}},
                                      {0, 1, {0, 0, 0, 0, 0, 0, 255, 255}}}), frames, problem)) << problem.message;
     ASSERT_EQ(frames.frames.size(), 3u);
@@ -207,7 +207,7 @@ TEST(SpriteImportFrames, HeaderIsCheckedBeforeDecoding) {
     ImportedFrames frames;
     PixelProblem problem;
     // an APNG claiming 300 frames, whose data is only one
-    ASSERT_FALSE(readBytes(apngOf(300, {{0, 0, {1, 2, 3, 255, 4, 5, 6, 255}}}), frames, problem));
+    ASSERT_FALSE(spriteImportFramesReadBytes(apngOf(300, {{0, 0, {1, 2, 3, 255, 4, 5, 6, 255}}}), frames, problem));
     EXPECT_EQ(problem.kind, "bad_op_field");
     EXPECT_NE(problem.message.find("300"), std::string::npos) << problem.message;
 }

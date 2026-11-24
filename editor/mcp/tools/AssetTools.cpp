@@ -72,6 +72,7 @@
 #include "texture/TextureData.h"
 #include "util/Base64.h"
 #include "texsynth/SynthImage.h"
+#include "titleart/TitleArtRenderHost.h"
 #include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
 #include "model/ModelAudit.h"
@@ -1204,22 +1205,42 @@ void viewAssetTool(const CallPtr& call) {
         return;
     }
     if (Util::isTitleArtFile(rel)) {
-        // its fresh main output, else a render (S80 R59)
-        texsynth::Image image;
-        std::string label, error;
-        if (!titleArtViewImage(project, file, maxSize, image, label, error)) {
-            call->fail(rel + ": " + error);
+        // its fresh main output, else a render (S80 R59), once the programs the render binds are built:
+        // the frames build them while the call waits (S80 Deviation 61)
+        struct View {
+            texsynth::Image image;
+            std::string label, error;
+            bool ready = false, ok = false;
+        };
+        auto view = std::make_shared<View>();
+        auto attempt = [call, file, maxSize, view]() {
+            const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
+            view->error.clear();
+            view->ok = titleArtViewImage(call->ctx().project(), file, maxSize, view->image, view->label, view->error);
+            view->ready = view->ok || TitleArtRenderHost::editor().notReadyCount() == waits;
+            return view->ready;
+        };
+        auto reply = [call, rel, view](bool) {
+            if (!view->ok) {
+                call->fail(rel + ": " + view->error + (view->ready ? "" : " Call view_asset again."));
+                return;
+            }
+            std::vector<uint8_t> png;
+            if (!texsynth::encodePng(view->image, png)) {
+                call->fail("Can't encode the preview of " + rel + ".");
+                return;
+            }
+            ToolResult result = ToolResult::success(rel + ": " + view->label + " (" + std::to_string(view->image.width) + "x" + std::to_string(view->image.height) + ").",
+                                                    Json{{"preview_width", view->image.width}, {"preview_height", view->image.height}, {"shows", view->label}});
+            result.images.push_back({Base64::encode(png.data(), png.size()), "image/png"});
+            call->reply(std::move(result));
+        };
+        if (attempt()) {
+            reply(false);
             return;
         }
-        std::vector<uint8_t> png;
-        if (!texsynth::encodePng(image, png)) {
-            call->fail("Can't encode the preview of " + rel + ".");
-            return;
-        }
-        ToolResult result = ToolResult::success(rel + ": " + label + " (" + std::to_string(image.width) + "x" + std::to_string(image.height) + ").",
-                                                Json{{"preview_width", image.width}, {"preview_height", image.height}, {"shows", label}});
-        result.images.push_back({Base64::encode(png.data(), png.size()), "image/png"});
-        call->reply(std::move(result));
+        // the deadline only guards against a hang: a program is built or fails to build
+        call->waitUntil(attempt, 120000, reply);
         return;
     }
     if (SpriteSheetPool::isAsepritePath(rel)) {
@@ -5106,7 +5127,8 @@ void reimportTexturesTool(const CallPtr& call) {
             const std::vector<std::string> problems = TextureCookReport::problems(rows);
             int failed = 0;
             for (const TextureReportRow& row : rows)
-                for (const auto& [family, state] : row.families) failed += state.status == TextureCookStatus::Failed ? 1 : 0;
+                // (no structured binding: MSVC took the inner `state` for a capture of this lambda, C3493)
+                for (const auto& entry : row.families) failed += entry.second.status == TextureCookStatus::Failed ? 1 : 0;
             const std::string text = timedOut ? "Some cooks are still running (timed_out); get_texture_cook_report shows them later."
                                               : "Reimported " + std::to_string(rows.size()) + " texture(s)" +
                                                     (failed ? ", " + std::to_string(failed) + " cook(s) failed." : ".");

@@ -417,9 +417,9 @@ async def close_window(ed: Editor, window: str) -> None:
 
 async def test_tileset_editor_fields_commit_once(ed: Editor):
     """R67, R70: the fields read the document every frame; one held across frames (a drag, a
-    slider, typing) shows its edited value until it is let go, then writes the file once, one undo
-    step (a drag never wrote; a slider, a colour or a keystroke wrote the file every frame, which
-    the undo history merged into one step)"""
+    slider, typing, the Color window open on a colour field) shows its edited value until it is
+    let go, then writes the file once, one undo step (a drag never wrote; a slider, a colour or a
+    keystroke wrote the file every frame, which the undo history merged into one step)"""
     path = ed.project / TILESET
     doc = json.loads(path.read_text())
     doc["property_schema"] = [{"name": "speed", "type": "float"}, {"name": "tint", "type": "color", "default": "#808080ff"}]
@@ -482,14 +482,32 @@ async def test_tileset_editor_fields_commit_once(ed: Editor):
         speed = tile_doc(ed, 2).get("properties", {}).get("speed", 0.0)
         expect(speed > 10.0, f"the drag wrote the float property: {tile_doc(ed, 2)}")
         expect((n := await project_steps(ed, "Set Tile Property") - before) == 1, f"one undo step for the float drag: {n}")
+        # the Color property is the editor's colour field (S27): its swatch opens the Color window,
+        # whose edits the field holds until the window closes
         x0, y0, x1, y1 = await probe(ed, "tilesetEditor.tint##prop")
-        start = ui(ed).at([x0 + (x1 - x0) * 0.04, (y0 + y1) / 2])
-        writes = await drag_held(ed, start, (start[0] + 40, start[1]))
-        await ui_input.frames(ed, 4)
-        expect(writes == 0, f"the colour drag wrote the file {writes} time(s) while held")
+        await ui(ed).click(ui(ed).at([(x0 + x1) / 2, (y0 + y1) / 2]))
+        hexes: list = []
+        for _ in range(30):
+            # "##hex" also finds the Copy##hex button beside the field
+            hexes = [i for i in (await ed.call("find_ui_item", label="##hex", window="Color"))["items"] if i["label"] == "##hex" and i["visible"]]
+            if hexes:
+                break
+            await ui_input.frames(ed, 2)
+        expect(bool(hexes), "the colour swatch opens the Color window")
+        if hexes:
+            seen = path.read_bytes()
+            await ui(ed).click(ui(ed).centre(hexes[0]["rect"]))
+            await ui(ed).key("ctrl+a")
+            await ui(ed).type("20C040FF")
+            # Tab leaves the field, which applies the hex to the field held open
+            await ui(ed).key("Tab")
+            await ui_input.frames(ed, 4)
+            expect(path.read_bytes() == seen, "the Color window's change wrote the file while it was open")
+            await ui(ed).click_item("#CLOSE", "Color")
+            await ui_input.frames(ed, 4)
         tint = tile_doc(ed, 2).get("properties", {}).get("tint", "#808080ff")
-        expect(tint.lower() != "#808080ff", f"the drag wrote the colour: {tile_doc(ed, 2)}")
-        expect((n := await project_steps(ed, "Set Tile Property") - before) == 2, f"one undo step for the colour drag: {n}")
+        expect(tint.lower() == "#20c040ff", f"closing the Color window wrote the colour: {tile_doc(ed, 2)}")
+        expect((n := await project_steps(ed, "Set Tile Property") - before) == 2, f"one undo step for the colour: {n}")
         await shot(ed, "tileset-editor-fields")
         ed.check(not wrong, f"fields that did not commit once: {wrong}; tile 2: {tile_doc(ed, 2)}")
     finally:

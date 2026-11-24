@@ -1615,7 +1615,7 @@ struct PlacementWorld::Impl {
                 if (!TerrainWorldCollision::chunkSamplesNow(*runtime, tile, quads, cx, cz, samples)) continue;
                 JPH::HeightFieldShapeSettings field(samples.data(), JPH::Vec3::sZero(), JPH::Vec3(lattice.spacing, 1.0f, lattice.spacing),
                                                     static_cast<JPH::uint32>(quads + 1));
-                field.mBitsPerSample = std::min<JPH::uint32>(8u, std::max<JPH::uint32>(1u, field.CalculateBitsPerSampleForError(TerrainWorldCollision::CHUNK_MAX_ERROR)));
+                field.mBitsPerSample = TerrainWorldCollision::CHUNK_BITS_PER_SAMPLE;
                 JPH::ShapeSettings::ShapeResult result = field.Create();
                 if (!result.IsValid()) continue;
                 const Vector3 at(origin.x + static_cast<float>(gx) * chunkSize, origin.y, origin.z + static_cast<float>(gz) * chunkSize);

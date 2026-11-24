@@ -30,7 +30,7 @@ namespace {
 
     namespace fs = std::filesystem;
 
-    std::string readFile(const fs::path& path) {
+    std::string paletteSwapCacheReadFile(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
         std::ostringstream text;
         text << in.rdbuf();
@@ -41,7 +41,7 @@ namespace {
         return fs::path(JASPER_TEST_REPO_DIR);
     }
 
-    const Diagnostic* findKind(const std::vector<Diagnostic>& diagnostics, const std::string& kind) {
+    const Diagnostic* swapCacheFindKind(const std::vector<Diagnostic>& diagnostics, const std::string& kind) {
         for (const Diagnostic& diagnostic : diagnostics) {
             if (diagnostic.kind == kind) return &diagnostic;
         }
@@ -64,19 +64,19 @@ TEST(PaletteSwapCache, EveryBuiltinBindsWithoutOverflow) {
         if (entry.path().extension() != ".palette") continue;
         Palette palette;
         std::vector<Diagnostic> diagnostics;
-        ASSERT_TRUE(PaletteCodec::read(readFile(entry.path()), palette, diagnostics)) << entry.path();
+        ASSERT_TRUE(PaletteCodec::read(paletteSwapCacheReadFile(entry.path()), palette, diagnostics)) << entry.path();
         if (palette.count() > kSwapMaxSourceColors) continue;   // not a swap source (R14)
         PaletteSwapData data;
         diagnostics.clear();
         EXPECT_TRUE(buildPaletteSwapData(palette, {}, data, diagnostics)) << entry.path();
-        EXPECT_EQ(findKind(diagnostics, "palette_cell_overflow"), nullptr) << entry.path();
+        EXPECT_EQ(swapCacheFindKind(diagnostics, "palette_cell_overflow"), nullptr) << entry.path();
         count++;
     }
     EXPECT_GE(count, 37);
 }
 
 TEST(PaletteSwapCache, FourHundredLospecPalettesBindWithoutOverflow) {
-    nlohmann::json root = nlohmann::json::parse(readFile(repo() / "editor/tests/fixtures/palettes/lospec-400.json"), nullptr, false);
+    nlohmann::json root = nlohmann::json::parse(paletteSwapCacheReadFile(repo() / "editor/tests/fixtures/palettes/lospec-400.json"), nullptr, false);
     ASSERT_TRUE(root.is_object());
     const nlohmann::json& palettes = root["palettes"];
     ASSERT_EQ(palettes.size(), 400u);
@@ -91,7 +91,7 @@ TEST(PaletteSwapCache, FourHundredLospecPalettesBindWithoutOverflow) {
         PaletteSwapData data;
         std::vector<Diagnostic> diagnostics;
         EXPECT_TRUE(buildPaletteSwapData(palette, {}, data, diagnostics)) << palette.name;
-        EXPECT_EQ(findKind(diagnostics, "palette_cell_overflow"), nullptr) << palette.name;
+        EXPECT_EQ(swapCacheFindKind(diagnostics, "palette_cell_overflow"), nullptr) << palette.name;
         // every colour of it swaps from itself (the first of exact duplicates)
         for (int i = 0; i < palette.count(); i++) {
             EXPECT_EQ(data.sourceIndex(palette.colors[i]), palette.indexOf(palette.colors[i])) << palette.name << " " << i;
@@ -104,7 +104,7 @@ TEST(PaletteSwapCache, AFiveColourClusterOverflowsNamingTheColours) {
     PaletteSwapData data;
     std::vector<Diagnostic> diagnostics;
     EXPECT_FALSE(buildPaletteSwapData(palette, {}, data, diagnostics));
-    const Diagnostic* overflow = findKind(diagnostics, "palette_cell_overflow");
+    const Diagnostic* overflow = swapCacheFindKind(diagnostics, "palette_cell_overflow");
     ASSERT_NE(overflow, nullptr);
     EXPECT_EQ(overflow->severity, Diagnostic::Severity::Error);
     for (const char* hex : {"#080808", "#090808", "#0a0908", "#0b080f", "#0c0e08"}) {
@@ -122,7 +122,7 @@ TEST(PaletteSwapCache, MoreThan255ColoursIsTooLarge) {
     PaletteSwapData data;
     std::vector<Diagnostic> diagnostics;
     EXPECT_FALSE(buildPaletteSwapData(paletteOf(colors), {}, data, diagnostics));
-    EXPECT_NE(findKind(diagnostics, "palette_too_large"), nullptr);
+    EXPECT_NE(swapCacheFindKind(diagnostics, "palette_too_large"), nullptr);
 }
 
 TEST(PaletteSwapCache, SwapRowsAlphaAndUntouchedTexels) {
@@ -134,7 +134,7 @@ TEST(PaletteSwapCache, SwapRowsAlphaAndUntouchedTexels) {
     PaletteSwapData data;
     std::vector<Diagnostic> diagnostics;
     ASSERT_TRUE(buildPaletteSwapData(source, targets, data, diagnostics));
-    EXPECT_NE(findKind(diagnostics, "duplicate_color"), nullptr);
+    EXPECT_NE(swapCacheFindKind(diagnostics, "duplicate_color"), nullptr);
     EXPECT_EQ(data.rowCount, 3);
     EXPECT_EQ(data.rowNames, (std::vector<std::string>{"", "blue", "hidden"}));
 
@@ -202,7 +202,7 @@ TEST(PaletteSwapCache, RowsResolveVariantsThenTargets) {
     EXPECT_EQ(rows[2].name, "Night");
     EXPECT_EQ(rows[2].colors, (std::vector<Rgba8>{{1, 1, 1}, {2, 2, 2}, {3, 3, 3}}));
     EXPECT_EQ(rows[3].colors, hero.colors);
-    EXPECT_NE(findKind(diagnostics, "palette_target_missing"), nullptr);
+    EXPECT_NE(swapCacheFindKind(diagnostics, "palette_target_missing"), nullptr);
 
     binding.useVariants = false;
     diagnostics.clear();
@@ -238,7 +238,7 @@ TEST(PaletteSwapCache, RuntimeTargetLivesWithTheMaterial) {
     const std::vector<PaletteSwapRow> rows = resolvePaletteRows(paletteOf({{10, 10, 10}, {20, 20, 20}}), *held, diagnostics);
     ASSERT_EQ(rows.size(), 1u);   // the rows after row 0: the target alone
     EXPECT_EQ(rows[0].colors, (std::vector<Rgba8>{{200, 0, 0}, {0, 200, 0}}));
-    EXPECT_EQ(findKind(diagnostics, "palette_target_missing"), nullptr);
+    EXPECT_EQ(swapCacheFindKind(diagnostics, "palette_target_missing"), nullptr);
     // a copy of the material (Play's copy of the scene) keeps it too; the last one lets it go
     {
         Material copy = material;

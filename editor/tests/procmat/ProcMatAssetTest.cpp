@@ -22,8 +22,8 @@ namespace {
     const char* GRAPH = R"({"formatVersion": 1, "kind": "procedural_material", "kindVersion": 1, "nextId": 2,
         "nodes": [{"id": "n1", "type": "perlin", "position": [0, 0]}], "anUnknownKey": 1})";
 
-    const std::string guidA = "0123456789abcdef0123456789abcdef";
-    const std::string guidB = "fedcba9876543210fedcba9876543210";
+    const std::string procMatAssetGuidA = "0123456789abcdef0123456789abcdef";
+    const std::string procMatAssetGuidB = "fedcba9876543210fedcba9876543210";
 
 }
 
@@ -48,8 +48,8 @@ TEST(ProcMatAsset, TheTableTracksItWithItsGuidInTheFile) {
 TEST(ProcMatAsset, TheDatabaseWritesItsIdentityIntoTheGraph) {
     TempDir dir;
     dir.write("wood.procmat", GRAPH);
-    const Guid current = Guid::parse(guidA);
-    const std::vector<Guid> former = {Guid::parse(guidB)};
+    const Guid current = Guid::parse(procMatAssetGuidA);
+    const std::vector<Guid> former = {Guid::parse(procMatAssetGuidB)};
     ASSERT_TRUE(AssetDatabase::writeInFileIdentity(dir.file("wood.procmat"), current, former));
 
     Guid read;
@@ -72,7 +72,7 @@ TEST(ProcMatAsset, TheDatabaseWritesItsIdentityIntoTheGraph) {
 TEST(ProcMatAsset, ABrokenFileIsLeftAlone) {
     TempDir dir;
     dir.write("broken.procmat", "{ not json");
-    EXPECT_FALSE(AssetDatabase::writeInFileIdentity(dir.file("broken.procmat"), Guid::parse(guidA), {}));
+    EXPECT_FALSE(AssetDatabase::writeInFileIdentity(dir.file("broken.procmat"), Guid::parse(procMatAssetGuidA), {}));
     EXPECT_EQ(dir.read("broken.procmat"), "{ not json") << "its error must keep its line";
 }
 

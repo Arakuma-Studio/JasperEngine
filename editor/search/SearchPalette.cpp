@@ -11,6 +11,7 @@
 #include "window/ProjectWindow.h"
 
 #include "audio/BuiltinSoundImport.h"
+#include "audio/SourceEffectEdit.h"
 #include "audio/SoundEssentials.h"
 #include "audio/SoundLibrary.h"
 #include "util/ProjectFileWrites.h"
@@ -86,13 +87,15 @@ namespace {
         {"Color Picker", "window.colorPicker"},
         {"Terrain", "window.terrain"}, {"Noise Graph", "window.noiseGraph"}, {"Voxel Volume", "window.voxelVolume"}, {"Voxel Slice", "window.voxelSlice"},
         {"Input Actions", "window.inputActions"}, {"Navigation", "window.navigation"},
-        {"Texture Synthesis", "window.textureSynthesis"}, {"Sprite Normal Map", "window.spriteNormals"}, {"Pixel Art Cleanup", "window.pixelArtCleanup"}, {"Physics Placement", "window.physicsPlacement"},
+        {"Texture Synthesis", "window.textureSynthesis"}, {"Sprite Normal Map", "window.spriteNormals"}, {"Pixel Art Cleanup", "window.pixelArtCleanup"},
+        {"Pixel Art Check", "window.pixelArtCheck"}, {"Physics Placement", "window.physicsPlacement"},
         {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},
         {"Undo History", "window.undoHistory"}, {"Play Mode Changes", "window.playModeChanges"},
         {"Missing Assets", "window.missingAssets"}, {"Graph Editor", "window.graphEditor"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},
         {"Frame Debugger", "window.frameDebugger"}, {"Systems", "window.systems"}, {"Jobs & Memory", "window.jobsMemory"},
         {"Mesh Optimization Audit", "window.meshAudit"}, {"Build Report", "window.buildReport"}, {"Animation Statistics", "window.animationStatistics"},
-        {"Sprite Preview", "window.spritePreview"}, {"Palette", "window.palette"},
+        {"Sprite Preview", "window.spritePreview"}, {"Palette", "window.palette"}, {"Tile Palette", "window.tilePalette"},
+        {"Tileset Editor", "window.tilesetEditor"}, {"Title Designer", "window.titleDesigner"},
     };
 
     // A label drawn with the matched ranges highlighted
@@ -264,6 +267,18 @@ std::shared_ptr<SearchSnapshot> SearchPalette::buildSnapshot(const std::vector<S
                 out->entries.push_back(std::move(entry));
             }
         }
+        // Unity's audio filters: an effect on the selection's Audio Sources (S97 REQ-5)
+        for (const SourceEffectEdit::FilterAlias& alias : SourceEffectEdit::filterAliases()) {
+            SearchEntry entry;
+            entry.kind = SearchKind::Component;
+            entry.label = alias.name;
+            entry.detail = "Add Component > Audio";
+            entry.searchText = std::string("Audio ") + alias.description;
+            entry.key = std::string("component:filter:") + alias.effect;
+            entry.enabled = !project->isAnyScenePlaying();
+            entry.payload = std::string("filter:") + alias.effect;
+            out->entries.push_back(std::move(entry));
+        }
     }
 
     if (want(SearchKind::Asset)) {
@@ -359,6 +374,11 @@ bool SearchPalette::run(const SearchEntry& entry, bool alternate, CommandSource 
             break;
         }
         case SearchKind::Component: {
+            if (entry.payload.compare(0, 7, "filter:") == 0) {
+                std::string why;
+                if (!app->getInspectorWindow()->addAudioEffectToSelection(entry.payload.substr(7), &why)) return fail(why);
+                break;
+            }
             const auto type = static_cast<ComponentType>(std::strtol(entry.payload.c_str(), nullptr, 10));
             std::string why;
             if (!app->getInspectorWindow()->addComponentToSelection(type, &why)) return fail(why);

@@ -82,6 +82,10 @@ namespace{
     // a half-written or renamed file is retried for this long (S05 hot reload)
     constexpr double kRetryWindowMs = 200.0;
     constexpr int kRetrySleepMs = 10;
+    // the test hooks (setRetryHookForTesting, setRetryWindowForTesting): read on the retry path only
+    std::mutex retryHookMutex;
+    std::function<void(const std::string&)> retryHook;
+    std::atomic<int> retryWindowForTestingMs{0};
 
     jobs::detail::Scheduler* schedulerOf(jobs::JobSystem* system){
         return system->getScheduler();
@@ -626,8 +630,25 @@ bool AssetIOService::readFile(const std::string& path, uint64_t offset, uint32_t
             error = "Failed to read file: " + path;
         }
         const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-        if (elapsed >= kRetryWindowMs)
+        const int windowForTesting = retryWindowForTestingMs.load(std::memory_order_relaxed);
+        if (elapsed >= (windowForTesting > 0 ? (double)windowForTesting : kRetryWindowMs))
             return false;
+        std::function<void(const std::string&)> hook;
+        {
+            std::lock_guard<std::mutex> lock(retryHookMutex);
+            hook = retryHook;
+        }
+        if (hook)
+            hook(path);
         std::this_thread::sleep_for(std::chrono::milliseconds(kRetrySleepMs));
     }
+}
+
+void AssetIOService::setRetryHookForTesting(std::function<void(const std::string& path)> hook){
+    std::lock_guard<std::mutex> lock(retryHookMutex);
+    retryHook = std::move(hook);
+}
+
+void AssetIOService::setRetryWindowForTesting(int windowMs){
+    retryWindowForTestingMs.store(std::max(windowMs, 0), std::memory_order_relaxed);
 }

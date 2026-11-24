@@ -21,12 +21,7 @@
 #include <system_error>
 #include <vector>
 
-#ifdef _WIN32
-    #ifndef NOMINMAX
-        #define NOMINMAX
-    #endif
-    #include <windows.h>
-#elif defined(__APPLE__)
+#if defined(__APPLE__)
     #include <mach-o/dyld.h>
 #elif defined(__FreeBSD__)
     #include <sys/types.h>
@@ -52,17 +47,9 @@ public:
         fs::path executablePath;
 
 #ifdef _WIN32
-        std::vector<wchar_t> buffer(MAX_PATH);
-        while (true) {
-            const DWORD size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-            if (size == 0) {
-                return {};
-            }
-            if (size < buffer.size()) {
-                executablePath = std::wstring(buffer.data(), size);
-                break;
-            }
-            buffer.resize(buffer.size() * 2);
+        executablePath = windowsModulePath();
+        if (executablePath.empty()) {
+            return {};
         }
 #elif defined(__APPLE__)
         std::vector<char> buffer(1024);
@@ -378,37 +365,7 @@ public:
     // followed). errno tells why (EEXIST when something was there).
     static bool writeNewFile(const std::filesystem::path& path, const char* data, size_t size) {
 #ifdef _WIN32
-        // FILE_FLAG_OPEN_REPARSE_POINT: a reparse point already at the name (a symlink, a
-        // junction) is the entry itself, so CREATE_NEW fails with ERROR_FILE_EXISTS instead of
-        // following it
-        const HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-                                        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
-        if (file == INVALID_HANDLE_VALUE) {
-            const DWORD code = GetLastError();
-            errno = (code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS) ? EEXIST
-                  : code == ERROR_ACCESS_DENIED ? EACCES
-                  : (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND) ? ENOENT
-                  : code == ERROR_SHARING_VIOLATION ? EBUSY
-                  : code == ERROR_INVALID_NAME ? EINVAL : EIO;
-            return false;
-        }
-        size_t done = 0;
-        bool ok = true;
-        while (ok && done < size) {
-            const DWORD chunk = static_cast<DWORD>(std::min<size_t>(size - done, 1u << 30));
-            DWORD wrote = 0;
-            ok = WriteFile(file, data + done, chunk, &wrote, nullptr) && wrote > 0;
-            if (!ok) {
-                const DWORD code = GetLastError();
-                errno = (code == ERROR_DISK_FULL || code == ERROR_HANDLE_DISK_FULL) ? ENOSPC : EIO;
-            }
-            done += wrote;
-        }
-        if (!CloseHandle(file) && ok) {
-            errno = EIO;
-            ok = false;
-        }
-        return ok;
+        return windowsWriteNewFile(path, data, size);
 #else
         const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
         if (fd < 0) {
@@ -461,21 +418,46 @@ public:
     }
 
     // path's UTF-8 conversions in C++20: u8string() returns std::u8string and u8path() is
-    // deprecated. These keep the call sites on std::string.
+    // deprecated. These keep the call sites on std::string. They never throw: on POSIX a name's
+    // bytes pass as they are, valid UTF-8 or not; on Windows (UTF-16 names) see wideFromUtf8.
     static std::filesystem::path pathFromUtf8(std::string_view text) {
+#ifdef _WIN32
+        return std::filesystem::path(wideFromUtf8(text));
+#else
         return std::filesystem::path(std::u8string(text.begin(), text.end()));
+#endif
     }
 
     static std::string pathToUtf8(const std::filesystem::path& path) {
+#ifdef _WIN32
+        return utf8FromWide(path.native());
+#else
         const std::u8string utf8 = path.u8string();
         return std::string(utf8.begin(), utf8.end());
+#endif
     }
 
     // generic_string() in UTF-8: '/' separators on every platform
     static std::string pathToGenericUtf8(const std::filesystem::path& path) {
+#ifdef _WIN32
+        return utf8FromWide(path.generic_wstring());
+#else
         const std::u8string utf8 = path.generic_u8string();
         return std::string(utf8.begin(), utf8.end());
+#endif
     }
+
+#ifdef _WIN32
+    // UTF-8 to UTF-16 as the standard conversion does, except that it never throws: a byte that is
+    // not part of valid UTF-8 (a Latin-1 name from a recipe or an archive) travels as the lone
+    // surrogate U+DC80 + byte, and utf8FromWide gives the byte back (Python's surrogateescape), so
+    // such a name round-trips and still reads as not UTF-8 where it is checked, as on POSIX. A lone
+    // surrogate's three-byte form (WTF-8, what utf8FromWide makes of one) decodes to it.
+    static std::wstring wideFromUtf8(std::string_view text);
+    // UTF-16 to UTF-8, never throwing: a lone surrogate (NTFS allows them) of U+DC80 to U+DCFF is
+    // the byte it stands for (wideFromUtf8), any other its three-byte form
+    static std::string utf8FromWide(std::wstring_view text);
+#endif
 
     // A project-relative path as project files store it: '/' between names on every platform,
     // a backslash read as a separator (Unity's rule). A sub-asset's key, as in
@@ -489,6 +471,14 @@ public:
         std::replace(path.begin(), path.end(), '\\', '/');
         return path;
     }
+
+#ifdef _WIN32
+private:
+    // Win32 halves of getExecutablePath and writeNewFile (FileUtils.cpp), which keep <windows.h>
+    // and its macros out of every source that includes this header
+    static std::filesystem::path windowsModulePath();
+    static bool windowsWriteNewFile(const std::filesystem::path& path, const char* data, size_t size);
+#endif
 };
 
 } // namespace jasperengine::editor

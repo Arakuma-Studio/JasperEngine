@@ -19,7 +19,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    const char* callbackTag = "core-tests-input-frame-loop";
+    const char* inputFrameLoopCallbackTag = "core-tests-input-frame-loop";
 
     class InputFrameLoopGpu : public ::testing::Test {
     protected:
@@ -31,8 +31,8 @@ namespace {
         }
 
         void TearDown() override{
-            Engine::onUpdate.remove(callbackTag);
-            Engine::onFixedUpdate.remove(callbackTag);
+            Engine::onUpdate.remove(inputFrameLoopCallbackTag);
+            Engine::onFixedUpdate.remove(inputFrameLoopCallbackTag);
             Engine::setFixedDeltatime(0.0);
             Engine::setUpdateTime(updateTime);
             Engine::setSimulationHeld(false);
@@ -47,7 +47,7 @@ namespace {
 TEST_F(InputFrameLoopGpu, PausedFramesKeepPending){
     JASPER_REQUIRE_GPU();
     std::vector<bool> downs;
-    Engine::onUpdate.add(callbackTag, std::function<void()>([&](){ downs.push_back(Input::getKeyDown(D_KEY_P)); }));
+    Engine::onUpdate.add(inputFrameLoopCallbackTag, std::function<void()>([&](){ downs.push_back(Input::getKeyDown(D_KEY_P)); }));
     GpuEnvironment::drawFrames(1);
 
     Engine::systemPause();
@@ -75,7 +75,7 @@ TEST_F(InputFrameLoopGpu, FixedStepsSeeEachEdgeOnce){
     Engine::setFixedDeltatime(1.0 / 60.0);
     int stepsThisFrame = 0;
     int seenInSteps = 0;
-    Engine::onFixedUpdate.add(callbackTag, std::function<void()>([&](){
+    Engine::onFixedUpdate.add(inputFrameLoopCallbackTag, std::function<void()>([&](){
         stepsThisFrame++;
         if (Input::getKeyDown(D_KEY_SPACE)) seenInSteps++;
     }));

@@ -62,6 +62,12 @@ class GradeTest(unittest.TestCase):
         self.assertTrue(grade.check({"calls": [{"tool": "play", "args": {"action": "stop"}}]}, self.trace))
         self.assertEqual(grade.check({"calls": [{"tool": "play", "args": {"action": "re:^st"}}]}, self.trace), [])
 
+    def test_regex_on_an_id_number(self):
+        self.assertTrue(grade.args_match({"entity": "re:^(12|Sparks)$"}, {"entity": 12}))
+        self.assertTrue(grade.args_match({"entity": "re:^(12|Sparks)$"}, {"entity": "Sparks"}))
+        self.assertFalse(grade.args_match({"entity": "re:^(12|Sparks)$"}, {"entity": 13}))
+        self.assertFalse(grade.args_match({"flag": "re:True"}, {"flag": True}), "a boolean is not a number's text")
+
     def test_must_not_order_max_last(self):
         self.assertTrue(grade.check({"must_not_call": ["play"]}, self.trace))
         self.assertEqual(grade.check({"order": [["editor_status", "play"]]}, self.trace), [])
@@ -144,6 +150,9 @@ class StubTest(unittest.TestCase):
         self.assertEqual(second["structuredContent"], {"state": "playing"}, "a recorded result keeps its structuredContent")
         hand = self.stub([{"tool": "play", "result": {"text": "t", "structured": {"x": 1}}}]).call("play", {"action": "x"})
         self.assertNotIn("structuredContent", hand, "a hand-written result sends its text")
+        hinted = self.stub([{"tool": "play", "result": {"text": "Played.", "structured": {"next": "wait, then screenshot"}}}])
+        self.assertEqual(hinted.call("play", {"action": "x"})["content"][0]["text"], "Played.\nwait, then screenshot",
+                         "its next follows the text, as structuredContent would show it")
 
     def test_mock_after_error(self):
         s = self.stub([{"tool": "play", "args": {"action": "bad"}, "result": {"text": "no", "is_error": True}},
@@ -159,6 +168,28 @@ class StubTest(unittest.TestCase):
         self.assertEqual(s.call("play", {"action": "start"})["content"][0]["text"], "early")
         s.call("tool_groups", {})
         self.assertEqual(s.call("play", {"action": "start"})["content"][0]["text"], "late")
+
+    def test_mock_after_a_call_with_args(self):
+        s = self.stub([{"tool": "play", "after": {"tool": "play", "args": {"action": "stop"}}, "result": {"text": "stopped"}},
+                       {"tool": "play", "result": {"text": "running"}}])
+        self.assertEqual(s.call("play", {"action": "start"})["content"][0]["text"], "running")
+        self.assertEqual(s.call("play", {"action": "start"})["content"][0]["text"], "running", "another call is not the one named")
+        s.call("play", {"action": "stop"})
+        self.assertEqual(s.call("play", {"action": "start"})["content"][0]["text"], "stopped")
+
+    def test_read_file_serves_the_recorded_docs(self):
+        surface = dict(SURFACE, tools=SURFACE["tools"] + [{"name": "read_file", "inputSchema": {"type": "object", "properties": {
+            "path": {}, "start_line": {}, "max_lines": {}}, "required": ["path"]}}],
+                       resource_contents={"jasper://docs/x": "# X\none\ntwo\n"})
+        s = stub_server.Stub(surface, {}, None)
+        self.assertEqual(s.call("read_file", {"path": "jasper://docs/x"})["content"][0]["text"],
+                         "jasper://docs/x lines 1-3 of 3:\n# X\none\ntwo\n")
+        self.assertEqual(s.call("read_file", {"path": "jasper://docs/x", "start_line": 2, "max_lines": 1})["content"][0]["text"],
+                         "jasper://docs/x lines 2-2 of 3:\none\n")
+        missing = s.call("read_file", {"path": "jasper://docs/nope"})
+        self.assertTrue(missing["isError"])
+        self.assertIn("read_file jasper://docs", missing["content"][0]["text"])
+        self.assertTrue(s.call("read_file", {"path": "scripts/a.lua"})["isError"], "a project file still needs a mock")
 
     def test_unmocked_is_logged(self):
         with tempfile.TemporaryDirectory() as tmp:

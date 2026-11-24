@@ -22,6 +22,10 @@
 #include <sstream>
 
 #ifdef _WIN32
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
     #include <io.h>
 #else
     #include <signal.h>
@@ -159,7 +163,7 @@ std::string editor::CommandRunner::findVcvarsall() {
     return "";
 }
 
-fs::path editor::CommandRunner::findVisualStudioNinja() {
+std::filesystem::path editor::CommandRunner::findVisualStudioNinja() {
     // every install (Build Tools included), newest first; vswhere writes UTF-8 (-utf8)
     std::istringstream installs(vswhere({"-products", "*", "-sort", "-property", "installationPath"}));
     for (std::string install; std::getline(installs, install);) {

@@ -617,7 +617,7 @@ namespace {
         }
     };
 
-    std::filesystem::path scratch(const char* name) {
+    std::filesystem::path editorModalScratch(const char* name) {
         std::filesystem::path folder = std::filesystem::temp_directory_path() /
             ("je_picker_" + std::string(name) + "_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(folder);
@@ -676,7 +676,7 @@ TEST(EditorFilePickerTest, RoutesOfAHost) {
 }
 
 TEST(EditorFilePickerTest, AnAgentAnswersWithAPathItChecks) {
-    const std::filesystem::path folder = scratch("answer");
+    const std::filesystem::path folder = editorModalScratch("answer");
     { std::ofstream(folder / "a.png") << "x"; }
     { std::ofstream(folder / "b.txt") << "x"; }
     PickerHost host(EditorFilePicker::Route::Agent, folder.string());
@@ -717,7 +717,7 @@ TEST(EditorFilePickerTest, AnAgentAnswersWithAPathItChecks) {
 }
 
 TEST(EditorFilePickerTest, FolderAndSaveModes) {
-    const std::filesystem::path folder = scratch("modes");
+    const std::filesystem::path folder = editorModalScratch("modes");
     PickerHost host(EditorFilePicker::Route::Agent, folder.string());
     std::string error;
     {

@@ -28,7 +28,7 @@ using Json = nlohmann::json;
 
 namespace {
 
-    bool fail(std::string* error, const std::string& message) {
+    bool mixerFail(std::string* error, const std::string& message) {
         if (error) *error = message;
         return false;
     }
@@ -71,33 +71,33 @@ namespace {
 
     AudioMixerGroupDef* group(AudioMixerDef& def, const Json& op, const char* key, std::string* error, const std::string& where) {
         if (!op.contains(key) || !op[key].is_string()) {
-            fail(error, where + ": `" + key + "` (a group name) is required. Groups: " + joinNames(groupNames(def)) + ".");
+            mixerFail(error, where + ": `" + key + "` (a group name) is required. Groups: " + joinNames(groupNames(def)) + ".");
             return nullptr;
         }
         const std::string name = op[key].get<std::string>();
         AudioMixerGroupDef* found = def.findGroup(name);
-        if (!found) fail(error, where + ": no group '" + name + "'. Groups: " + joinNames(groupNames(def)) + ".");
+        if (!found) mixerFail(error, where + ": no group '" + name + "'. Groups: " + joinNames(groupNames(def)) + ".");
         return found;
     }
 
     // params {name: number, sidechainGroup: name} into an effect
     bool setParams(AudioMixerDef& def, AudioMixerEffectDef& effect, const Json& params, std::string* error, const std::string& where) {
-        if (!params.is_object()) return fail(error, where + ": `params` must be an object {name: value}");
+        if (!params.is_object()) return mixerFail(error, where + ": `params` must be an object {name: value}");
         for (auto it = params.begin(); it != params.end(); ++it) {
             if (it.key() == "sidechainGroup" && effect.type == AudioEffectType::Duck) {
                 if (!it.value().is_string() || !def.findGroupByName(it.value().get<std::string>())) {
-                    return fail(error, where + ": params.sidechainGroup must name a group (" + joinNames(groupNames(def)) + ")");
+                    return mixerFail(error, where + ": params.sidechainGroup must name a group (" + joinNames(groupNames(def)) + ")");
                 }
                 effect.sidechainGroup = it.value().get<std::string>();
                 continue;
             }
             const AudioEffectParamInfo* param = AudioEffects::findParam(effect.type, it.key());
             if (!param) {
-                return fail(error, where + ": " + AudioEffects::typeName(effect.type) + " has no parameter '" + it.key() + "' (" +
+                return mixerFail(error, where + ": " + AudioEffects::typeName(effect.type) + " has no parameter '" + it.key() + "' (" +
                                    AudioEffects::paramNames(effect.type) + ")");
             }
             float value = 0.0f;
-            if (!number(it.value(), value)) return fail(error, where + ": params." + it.key() + " must be a number");
+            if (!number(it.value(), value)) return mixerFail(error, where + ": params." + it.key() + " must be a number");
             value = std::clamp(value, param->minValue, param->maxValue);
             if (std::string(param->name) == "wet") effect.wet = value;
             else effect.params[param->name] = value;
@@ -113,7 +113,7 @@ namespace {
         else if (op.contains("type")) which = op["type"];
         const int index = AudioMixerDocument::findEffect(group, which);
         if (index < 0) {
-            fail(error, where + ": no such effect in '" + group.name + "' (give `index` 0-based or `type`). Effects: " +
+            mixerFail(error, where + ": no such effect in '" + group.name + "' (give `index` 0-based or `type`). Effects: " +
                         joinNames(effectNames(group)) + ".");
         }
         return index;
@@ -155,14 +155,14 @@ AudioSourceComponent AudioMixerDocument::newAudioSource() {
 
 bool AudioMixerDocument::read(const fs::path& file, AudioMixerDef& def, std::string* error, std::vector<std::string>* warnings) {
     std::ifstream in(file, std::ios::binary);
-    if (!in) return fail(error, "cannot open " + FileUtils::pathToGenericUtf8(file));
+    if (!in) return mixerFail(error, "cannot open " + FileUtils::pathToGenericUtf8(file));
     const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     return AudioMixerIO::parse(text, def, error, warnings);
 }
 
 bool AudioMixerDocument::ensureProjectMixer(Project* project, fs::path& file, std::string* error, bool* created) {
     if (created) *created = false;
-    if (!project) return fail(error, "no project is open");
+    if (!project) return mixerFail(error, "no project is open");
     AudioSettings settings = project->getAudioSettings();
     if (settings.mixer.empty()) {
         settings.mixer = Project::defaultAudioMixerPath;
@@ -202,7 +202,7 @@ bool AudioMixerDocument::writeNewProjectMixer(const fs::path& assetsDir, std::st
     std::error_code ec;
     fs::create_directories(file.parent_path(), ec);
     const io::WriteResult result = io::writeFileAtomic(file, AudioMixerIO::write(newProjectMixer()));
-    if (!result.ok()) return fail(error, result.message);
+    if (!result.ok()) return mixerFail(error, result.message);
     return true;
 }
 
@@ -212,7 +212,7 @@ bool AudioMixerDocument::writeNewProjectAudio(const fs::path& projectDir, std::s
     try {
         root = YAML::LoadFile(yamlFile.string());
     } catch (const std::exception& e) {
-        return fail(error, "cannot read " + yamlFile.string() + ": " + e.what());
+        return mixerFail(error, "cannot read " + yamlFile.string() + ": " + e.what());
     }
     if (root["audio"]) return true;
     const std::string assets = root["assetsDir"] ? root["assetsDir"].as<std::string>() : std::string(".");
@@ -226,14 +226,14 @@ bool AudioMixerDocument::writeNewProjectAudio(const fs::path& projectDir, std::s
     YAML::Emitter out;
     out << root;
     const io::WriteResult result = io::writeFileAtomic(yamlFile, std::string(out.c_str()) + "\n");
-    if (!result.ok()) return fail(error, result.message);
+    if (!result.ok()) return mixerFail(error, result.message);
     return true;
 }
 
 bool AudioMixerDocument::commit(Project* project, const fs::path& file, const AudioMixerDef& def, const std::string& mergeKey, std::string* error) {
-    if (!project) return fail(error, "no project is open");
+    if (!project) return mixerFail(error, "no project is open");
     const std::string invalid = AudioMixerIO::validate(def);
-    if (!invalid.empty()) return fail(error, invalid);
+    if (!invalid.empty()) return mixerFail(error, invalid);
     const std::string text = AudioMixerIO::write(def);
 
     std::error_code ec;
@@ -251,7 +251,7 @@ bool AudioMixerDocument::commit(Project* project, const fs::path& file, const Au
     auto failure = std::make_shared<std::string>();
     command->reportFailureTo(failure);
     if (!project->getProjectCommandHistory()->addCommand(command)) {
-        return fail(error, "writing " + FileUtils::pathToGenericUtf8(file) + " failed" + (failure->empty() ? "" : ": " + *failure));
+        return mixerFail(error, "writing " + FileUtils::pathToGenericUtf8(file) + " failed" + (failure->empty() ? "" : ": " + *failure));
     }
     return true;
 }
@@ -366,23 +366,23 @@ std::string AudioMixerDocument::resolveKey(const AudioMixerDef& def, const std::
 // ---------------------------------------------------------------- ops
 
 bool AudioMixerDocument::applyOps(AudioMixerDef& def, const Json& ops, std::string* error, std::vector<std::string>* notes) {
-    if (!ops.is_array() || ops.empty()) return fail(error, "`ops` must be a non-empty array of {op: ...}");
+    if (!ops.is_array() || ops.empty()) return mixerFail(error, "`ops` must be a non-empty array of {op: ...}");
     AudioMixerDef work = def;
     for (size_t i = 0; i < ops.size(); i++) {
         std::string opError;
         if (!applyOp(work, ops[i], &opError, notes)) {
-            return fail(error, "ops[" + std::to_string(i) + "] " + (ops[i].is_object() ? ops[i].value("op", std::string("?")) : std::string("?")) +
+            return mixerFail(error, "ops[" + std::to_string(i) + "] " + (ops[i].is_object() ? ops[i].value("op", std::string("?")) : std::string("?")) +
                                ": " + opError + (i > 0 ? " (nothing was changed)" : ""));
         }
     }
     const std::string invalid = AudioMixerIO::validate(work);
-    if (!invalid.empty()) return fail(error, invalid + " (nothing was changed)");
+    if (!invalid.empty()) return mixerFail(error, invalid + " (nothing was changed)");
     def = std::move(work);
     return true;
 }
 
 bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string* error, std::vector<std::string>* notes) {
-    if (!op.is_object() || !op.contains("op") || !op["op"].is_string()) return fail(error, "each op is an object with `op`");
+    if (!op.is_object() || !op.contains("op") || !op["op"].is_string()) return mixerFail(error, "each op is an object with `op`");
     const std::string kind = op["op"].get<std::string>();
     auto note = [notes](const std::string& text) {
         if (notes) notes->push_back(text);
@@ -390,14 +390,14 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
 
     if (kind == "add_group") {
         if (!op.contains("name") || !op["name"].is_string() || !validName(op["name"].get<std::string>())) {
-            return fail(error, "`name` (1-64 characters, no '/') is required");
+            return mixerFail(error, "`name` (1-64 characters, no '/') is required");
         }
         const std::string name = op["name"].get<std::string>();
-        if (def.findGroupByName(name)) return fail(error, "a group named '" + name + "' exists (names are unique)");
+        if (def.findGroupByName(name)) return mixerFail(error, "a group named '" + name + "' exists (names are unique)");
         const AudioMixerGroupDef* parent = def.master();
         if (op.contains("parent")) {
             if (!op["parent"].is_string() || !(parent = def.findGroup(op["parent"].get<std::string>()))) {
-                return fail(error, "no parent group '" + op.value("parent", std::string()) + "'. Groups: " + joinNames(groupNames(def)) + ".");
+                return mixerFail(error, "no parent group '" + op.value("parent", std::string()) + "'. Groups: " + joinNames(groupNames(def)) + ".");
             }
         }
         AudioMixerGroupDef group;
@@ -406,7 +406,7 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
         group.parentId = parent->id;
         float volume = 0.0f;
         if (op.contains("volume")) {
-            if (!number(op["volume"], volume)) return fail(error, "`volume` must be a number (dB)");
+            if (!number(op["volume"], volume)) return mixerFail(error, "`volume` must be a number (dB)");
             group.volumeDb = std::clamp(volume, AudioMath::minDb, AudioMath::maxDb);
         }
         def.groups.push_back(group);
@@ -416,7 +416,7 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
     if (kind == "remove_group") {
         AudioMixerGroupDef* found = group(def, op, "name", error, "remove_group");
         if (!found) return false;
-        if (found->parentId.empty()) return fail(error, "Master cannot be removed");
+        if (found->parentId.empty()) return mixerFail(error, "Master cannot be removed");
         const std::vector<std::string> ids = subtree(def, found->id);
         if (ids.size() > 1) note("removed '" + found->name + "' and its " + std::to_string(ids.size() - 1) + " subgroup(s)");
         removeGroup(def, found->id);
@@ -428,28 +428,28 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
         if (!found) return false;
         if (op.contains("volume")) {
             float volume = 0.0f;
-            if (!number(op["volume"], volume)) return fail(error, "`volume` must be a number (dB, -80..20)");
+            if (!number(op["volume"], volume)) return mixerFail(error, "`volume` must be a number (dB, -80..20)");
             found->volumeDb = std::clamp(volume, AudioMath::minDb, AudioMath::maxDb);
         }
         for (const char* key : {"mute", "solo", "bypass", "bypassEffects"}) {
             if (!op.contains(key)) continue;
-            if (!op[key].is_boolean()) return fail(error, std::string("`") + key + "` must be true or false");
+            if (!op[key].is_boolean()) return mixerFail(error, std::string("`") + key + "` must be true or false");
             const bool value = op[key].get<bool>();
             if (std::string(key) == "mute") found->mute = value;
             else if (std::string(key) == "solo") found->solo = value;
             else found->bypassEffects = value;
         }
         if (op.contains("parent")) {
-            if (found->parentId.empty()) return fail(error, "Master has no parent");
+            if (found->parentId.empty()) return mixerFail(error, "Master has no parent");
             const AudioMixerGroupDef* parent = op["parent"].is_string() ? def.findGroup(op["parent"].get<std::string>()) : nullptr;
-            if (!parent) return fail(error, "no parent group '" + op.value("parent", std::string()) + "'");
-            if (def.isUnder(parent->id, found->id)) return fail(error, "'" + parent->name + "' is inside '" + found->name + "'");
+            if (!parent) return mixerFail(error, "no parent group '" + op.value("parent", std::string()) + "'");
+            if (def.isUnder(parent->id, found->id)) return mixerFail(error, "'" + parent->name + "' is inside '" + found->name + "'");
             found->parentId = parent->id;
         }
         if (op.contains("new_name")) {
-            if (!op["new_name"].is_string() || !validName(op["new_name"].get<std::string>())) return fail(error, "`new_name` must be 1-64 characters, no '/'");
+            if (!op["new_name"].is_string() || !validName(op["new_name"].get<std::string>())) return mixerFail(error, "`new_name` must be 1-64 characters, no '/'");
             const std::string newName = op["new_name"].get<std::string>();
-            if (newName != found->name && def.findGroupByName(newName)) return fail(error, "a group named '" + newName + "' exists");
+            if (newName != found->name && def.findGroupByName(newName)) return mixerFail(error, "a group named '" + newName + "' exists");
             // ducks that listen to it follow
             for (AudioMixerGroupDef& other : def.groups) {
                 for (AudioMixerEffectDef& effect : other.effects) {
@@ -466,9 +466,9 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
         if (!found) return false;
         const std::string typeName = op.value("type", std::string());
         const AudioEffectInfo* info = AudioEffects::find(typeName);
-        if (!info) return fail(error, "`type` must be one of: " + typeNames());
+        if (!info) return mixerFail(error, "`type` must be one of: " + typeNames());
         if (found->effects.size() >= (size_t)AudioEffects::maxEffectsPerGroup) {
-            return fail(error, "'" + found->name + "' has " + std::to_string(AudioEffects::maxEffectsPerGroup) + " effects, the most a group holds");
+            return mixerFail(error, "'" + found->name + "' has " + std::to_string(AudioEffects::maxEffectsPerGroup) + " effects, the most a group holds");
         }
         AudioMixerEffectDef effect;
         effect.id = AudioMixerIO::newId(def);
@@ -477,16 +477,16 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
         if (op.contains("params") && !setParams(def, effect, op["params"], error, "add_effect")) return false;
         if (op.contains("wet")) {
             float wet = 1.0f;
-            if (!number(op["wet"], wet)) return fail(error, "`wet` must be a number 0..1");
+            if (!number(op["wet"], wet)) return mixerFail(error, "`wet` must be a number 0..1");
             effect.wet = std::clamp(wet, 0.0f, 1.0f);
         }
         if (op.contains("bypass")) {
-            if (!op["bypass"].is_boolean()) return fail(error, "`bypass` must be true or false");
+            if (!op["bypass"].is_boolean()) return mixerFail(error, "`bypass` must be true or false");
             effect.bypass = op["bypass"].get<bool>();
         }
         size_t index = found->effects.size();
         if (op.contains("index")) {
-            if (!op["index"].is_number_integer()) return fail(error, "`index` must be an integer (0-based)");
+            if (!op["index"].is_number_integer()) return mixerFail(error, "`index` must be an integer (0-based)");
             index = (size_t)std::clamp(op["index"].get<int>(), 0, (int)found->effects.size());
         }
         found->effects.insert(found->effects.begin() + (long)index, effect);
@@ -506,19 +506,19 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
             return true;
         }
         AudioMixerEffectDef& effect = found->effects[index];
-        if (effect.type == AudioEffectType::Unknown) return fail(error, "the effect type '" + effect.typeName + "' is unknown here (kept, not edited)");
+        if (effect.type == AudioEffectType::Unknown) return mixerFail(error, "the effect type '" + effect.typeName + "' is unknown here (kept, not edited)");
         if (op.contains("params") && !setParams(def, effect, op["params"], error, kind)) return false;
         if (op.contains("wet")) {
             float wet = 1.0f;
-            if (!number(op["wet"], wet)) return fail(error, "`wet` must be a number 0..1");
+            if (!number(op["wet"], wet)) return mixerFail(error, "`wet` must be a number 0..1");
             effect.wet = std::clamp(wet, 0.0f, 1.0f);
         }
         if (op.contains("bypass")) {
-            if (!op["bypass"].is_boolean()) return fail(error, "`bypass` must be true or false");
+            if (!op["bypass"].is_boolean()) return mixerFail(error, "`bypass` must be true or false");
             effect.bypass = op["bypass"].get<bool>();
         }
         if (op.contains("move_to")) {
-            if (!op["move_to"].is_number_integer()) return fail(error, "`move_to` must be an index (0-based)");
+            if (!op["move_to"].is_number_integer()) return mixerFail(error, "`move_to` must be an index (0-based)");
             const int to = std::clamp(op["move_to"].get<int>(), 0, (int)found->effects.size() - 1);
             AudioMixerEffectDef moved = effect;
             found->effects.erase(found->effects.begin() + index);
@@ -529,7 +529,7 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
 
     if (kind == "expose") {
         if (!op.contains("name") || !op["name"].is_string() || op["name"].get<std::string>().empty()) {
-            return fail(error, "`name` (what AudioMixer.setFloat takes) is required");
+            return mixerFail(error, "`name` (what AudioMixer.setFloat takes) is required");
         }
         const std::string name = op["name"].get<std::string>();
         AudioMixerGroupDef* found = group(def, op, "group", error, "expose");
@@ -539,7 +539,7 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
         if (volume) {
             target = AudioMixerIO::volumeTarget(found->id);
         } else {
-            if (!op["param"].is_string()) return fail(error, "`param` (an effect parameter name) or `volume: true` is required");
+            if (!op["param"].is_string()) return mixerFail(error, "`param` (an effect parameter name) or `volume: true` is required");
             const std::string param = op["param"].get<std::string>();
             int index = -1;
             if (op.contains("effect") || op.contains("index") || op.contains("type")) {
@@ -549,15 +549,15 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
                 // the one effect of the group with that parameter
                 for (size_t i = 0; i < found->effects.size(); i++) {
                     if (AudioEffects::findParam(found->effects[i].type, param) && param != "wet") {
-                        if (index >= 0) return fail(error, "two effects of '" + found->name + "' have '" + param + "': give `effect` (index or type)");
+                        if (index >= 0) return mixerFail(error, "two effects of '" + found->name + "' have '" + param + "': give `effect` (index or type)");
                         index = (int)i;
                     }
                 }
-                if (index < 0) return fail(error, "no effect of '" + found->name + "' has '" + param + "'. Effects: " + joinNames(effectNames(*found)) + ".");
+                if (index < 0) return mixerFail(error, "no effect of '" + found->name + "' has '" + param + "'. Effects: " + joinNames(effectNames(*found)) + ".");
             }
             const AudioMixerEffectDef& effect = found->effects[index];
             const AudioEffectParamInfo* info = AudioEffects::findParam(effect.type, param);
-            if (!info) return fail(error, AudioEffects::typeName(effect.type) + " has no parameter '" + param + "' (" + AudioEffects::paramNames(effect.type) + ")");
+            if (!info) return mixerFail(error, AudioEffects::typeName(effect.type) + " has no parameter '" + param + "' (" + AudioEffects::paramNames(effect.type) + ")");
             target = AudioMixerIO::paramTarget(effect.id, info->name);
         }
         const bool remember = op.value("remember", false);
@@ -582,7 +582,7 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
         if (it == def.exposed.end()) {
             std::vector<std::string> names;
             for (const AudioMixerExposedDef& exposed : def.exposed) names.push_back(exposed.name);
-            return fail(error, "no exposed parameter '" + name + "'. Exposed: " + joinNames(names) + ".");
+            return mixerFail(error, "no exposed parameter '" + name + "'. Exposed: " + joinNames(names) + ".");
         }
         def.exposed.erase(it);
         return true;
@@ -591,15 +591,15 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
     if (kind == "set_exposed") {
         const std::string name = op.value("name", std::string());
         auto it = std::find_if(def.exposed.begin(), def.exposed.end(), [&](const AudioMixerExposedDef& e) { return e.name == name; });
-        if (it == def.exposed.end()) return fail(error, "no exposed parameter '" + name + "'");
+        if (it == def.exposed.end()) return mixerFail(error, "no exposed parameter '" + name + "'");
         if (op.contains("remember")) {
-            if (!op["remember"].is_boolean()) return fail(error, "`remember` must be true or false");
+            if (!op["remember"].is_boolean()) return mixerFail(error, "`remember` must be true or false");
             it->remember = op["remember"].get<bool>();
         }
         if (op.contains("new_name")) {
             const std::string newName = op["new_name"].is_string() ? op["new_name"].get<std::string>() : "";
-            if (newName.empty()) return fail(error, "`new_name` must be a non-empty string");
-            if (newName != name && def.findExposed(newName)) return fail(error, "'" + newName + "' is exposed already");
+            if (newName.empty()) return mixerFail(error, "`new_name` must be a non-empty string");
+            if (newName != name && def.findExposed(newName)) return mixerFail(error, "'" + newName + "' is exposed already");
             it->name = newName;
         }
         return true;
@@ -618,14 +618,14 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
     };
     // values {key: number}: exposed names, targets, "<group>/volume", "<group>/<effect>/<param>"
     auto readValues = [&def, error](const Json& values, std::map<std::string, float>& out) {
-        if (!values.is_object()) return fail(error, "`values` must be an object {parameter: value}");
+        if (!values.is_object()) return mixerFail(error, "`values` must be an object {parameter: value}");
         for (auto it = values.begin(); it != values.end(); ++it) {
             const std::string target = resolveKey(def, it.key());
             if (target.empty()) {
-                return fail(error, "'" + it.key() + "' is not a parameter: an exposed name, \"<group>/volume\" or \"<group>/<effect type or index>/<param>\"");
+                return mixerFail(error, "'" + it.key() + "' is not a parameter: an exposed name, \"<group>/volume\" or \"<group>/<effect type or index>/<param>\"");
             }
             float value = 0.0f;
-            if (!number(it.value(), value)) return fail(error, "values." + it.key() + " must be a number");
+            if (!number(it.value(), value)) return mixerFail(error, "values." + it.key() + " must be a number");
             out[target] = AudioMixerIO::clampValue(def, target, value);
         }
         return true;
@@ -633,8 +633,8 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
 
     if (kind == "add_snapshot") {
         const std::string name = op.value("name", std::string());
-        if (name.empty()) return fail(error, "`name` is required");
-        if (snapshotIndex(name) >= 0) return fail(error, "a snapshot named '" + name + "' exists");
+        if (name.empty()) return mixerFail(error, "`name` is required");
+        if (snapshotIndex(name) >= 0) return mixerFail(error, "a snapshot named '" + name + "' exists");
         AudioMixerSnapshotDef snapshot;
         snapshot.name = name;
         // every parameter as the mixer has it now (the asset's values; in Play the ones heard)
@@ -652,14 +652,14 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
 
     if (kind == "set_snapshot") {
         const int index = snapshotIndex(op.value("name", std::string()));
-        if (index < 0) return fail(error, "no snapshot '" + op.value("name", std::string()) + "'. Snapshots: " + snapshotNames() + ".");
+        if (index < 0) return mixerFail(error, "no snapshot '" + op.value("name", std::string()) + "'. Snapshots: " + snapshotNames() + ".");
         AudioMixerSnapshotDef& snapshot = def.snapshots[index];
         if (op.value("capture", false)) snapshot.values = captureValues(def, false);
         if (op.contains("values") && !readValues(op["values"], snapshot.values)) return false;
         if (op.contains("new_name")) {
             const std::string newName = op["new_name"].is_string() ? op["new_name"].get<std::string>() : "";
-            if (newName.empty()) return fail(error, "`new_name` must be a non-empty string");
-            if (newName != snapshot.name && snapshotIndex(newName) >= 0) return fail(error, "a snapshot named '" + newName + "' exists");
+            if (newName.empty()) return mixerFail(error, "`new_name` must be a non-empty string");
+            if (newName != snapshot.name && snapshotIndex(newName) >= 0) return mixerFail(error, "a snapshot named '" + newName + "' exists");
             if (def.startSnapshot == snapshot.name) def.startSnapshot = newName;
             snapshot.name = newName;
         }
@@ -668,7 +668,7 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
 
     if (kind == "remove_snapshot") {
         const int index = snapshotIndex(op.value("name", std::string()));
-        if (index < 0) return fail(error, "no snapshot '" + op.value("name", std::string()) + "'. Snapshots: " + snapshotNames() + ".");
+        if (index < 0) return mixerFail(error, "no snapshot '" + op.value("name", std::string()) + "'. Snapshots: " + snapshotNames() + ".");
         if (def.startSnapshot == def.snapshots[index].name) def.startSnapshot.clear();
         def.snapshots.erase(def.snapshots.begin() + index);
         return true;
@@ -676,7 +676,7 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
 
     if (kind == "set_start_snapshot") {
         const std::string name = op.contains("name") && op["name"].is_string() ? op["name"].get<std::string>() : "";
-        if (!name.empty() && snapshotIndex(name) < 0) return fail(error, "no snapshot '" + name + "'. Snapshots: " + snapshotNames() + ".");
+        if (!name.empty() && snapshotIndex(name) < 0) return mixerFail(error, "no snapshot '" + name + "'. Snapshots: " + snapshotNames() + ".");
         def.startSnapshot = name;
         return true;
     }
@@ -686,12 +686,12 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
             const Json& mode = op.contains("updateMode") ? op["updateMode"] : op["update_mode"];
             if (mode == "scaled") def.unscaled = false;
             else if (mode == "unscaled") def.unscaled = true;
-            else return fail(error, "update_mode must be \"scaled\" or \"unscaled\"");
+            else return mixerFail(error, "update_mode must be \"scaled\" or \"unscaled\"");
         }
         return true;
     }
 
-    return fail(error, "unknown op '" + kind + "' (add_group, remove_group, set_group, add_effect, set_effect, remove_effect, "
+    return mixerFail(error, "unknown op '" + kind + "' (add_group, remove_group, set_group, add_effect, set_effect, remove_effect, "
                        "expose, unexpose, set_exposed, add_snapshot, set_snapshot, remove_snapshot, set_start_snapshot, set_mixer)");
 }
 

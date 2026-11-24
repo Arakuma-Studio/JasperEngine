@@ -243,9 +243,21 @@ namespace jasperengine{
         // play(), pause(), setLoop(), isPlaying() and getDuration() above serve <video> too. Logs an
         // error on other elements (once per method and tag), as the Lottie control does ---
 
-        static constexpr int HAVE_NOTHING = 0, HAVE_METADATA = 1, HAVE_CURRENT_DATA = 2, HAVE_FUTURE_DATA = 3, HAVE_ENOUGH_DATA = 4;
-        static constexpr int NETWORK_EMPTY = 0, NETWORK_IDLE = 1, NETWORK_LOADING = 2, NETWORK_NO_SOURCE = 3;
-        static constexpr int MEDIA_ERR_ABORTED = 1, MEDIA_ERR_NETWORK = 2, MEDIA_ERR_DECODE = 3, MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
+        // (one declarator each: MSVC refuses the later declarators of one declaration in a dllexport
+        // class, C2487)
+        static constexpr int HAVE_NOTHING = 0;
+        static constexpr int HAVE_METADATA = 1;
+        static constexpr int HAVE_CURRENT_DATA = 2;
+        static constexpr int HAVE_FUTURE_DATA = 3;
+        static constexpr int HAVE_ENOUGH_DATA = 4;
+        static constexpr int NETWORK_EMPTY = 0;
+        static constexpr int NETWORK_IDLE = 1;
+        static constexpr int NETWORK_LOADING = 2;
+        static constexpr int NETWORK_NO_SOURCE = 3;
+        static constexpr int MEDIA_ERR_ABORTED = 1;
+        static constexpr int MEDIA_ERR_NETWORK = 2;
+        static constexpr int MEDIA_ERR_DECODE = 3;
+        static constexpr int MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 
         void load();
         std::string canPlayType(const std::string& type) const;     // "probably", "maybe" or ""

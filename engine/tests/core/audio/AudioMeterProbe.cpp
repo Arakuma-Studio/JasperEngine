@@ -60,7 +60,7 @@ static bool readFloatWav(const char* path, std::vector<float>& samples, unsigned
     return false;
 }
 
-static std::string number(const std::optional<double>& value){
+static std::string audioMeterProbeNumber(const std::optional<double>& value){
     if (!value) {
         return "null";
     }
@@ -80,8 +80,8 @@ int main(int argc, char** argv){
         }
         const LoudnessResult r = AudioMeter::measure(samples.data(), samples.size() / channels, rate, channels);
         std::printf("{\"integrated\": %s, \"momentary_max\": %s, \"short_term_max\": %s, \"lra\": %s, \"true_peak\": %s, \"frames\": %llu}\n",
-                    number(r.integrated).c_str(), number(r.momentaryMax).c_str(), number(r.shortTermMax).c_str(),
-                    number(r.lra).c_str(), number(r.truePeakDb).c_str(), (unsigned long long)r.frames);
+                    audioMeterProbeNumber(r.integrated).c_str(), audioMeterProbeNumber(r.momentaryMax).c_str(), audioMeterProbeNumber(r.shortTermMax).c_str(),
+                    audioMeterProbeNumber(r.lra).c_str(), audioMeterProbeNumber(r.truePeakDb).c_str(), (unsigned long long)r.frames);
     }
     return 0;
 }

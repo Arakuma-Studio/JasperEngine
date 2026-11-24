@@ -58,7 +58,7 @@ namespace {
                          {"left_lower_leg.bend", 100}, {"right_lower_leg.bend", 100}});
     }
 
-    std::vector<const PoseRig*> everyRig(){
+    std::vector<const PoseRig*> poseFrameGroundingEveryRig(){
         std::vector<const PoseRig*> rigs;
         for (const TestRig* t : allRigs()){
             rigs.push_back(t->rig.get());
@@ -73,7 +73,7 @@ TEST(PoseFrameGrounding, CrouchToStandStaysOnTheFloor){
     // both keys grounded: every frame (holds and the springy segment) touches the floor exactly,
     // without and with humanize (in-betweens, follow-through, limits come before the correction)
     // and with choppiness
-    for (const PoseRig* rig : everyRig()){
+    for (const PoseRig* rig : poseFrameGroundingEveryRig()){
         for (int variant = 0; variant < 3; variant++){
             const bool humanize = variant >= 1;
             const float stepRate = variant == 2 ? 12.0f : 0.0f;   // choppy: frames on the step grid
@@ -107,7 +107,7 @@ TEST(PoseFrameGrounding, JumpNeverPenetratesAndKeepsTheFlight){
     // are on it, the airborne key's hold is untouched (ground weight 0, above the floor), no
     // frame is raised above its uncorrected height unless it was below the floor, and the flight
     // reaches its uncorrected height
-    for (const PoseRig* rig : everyRig()){
+    for (const PoseRig* rig : poseFrameGroundingEveryRig()){
         PoseAnimationData data = springy({bendPose(), tuckPose(), bendPose()}, false);
         data.poses[1].grounded = false;
         data.poses[1].lift = 0.3f;
@@ -214,7 +214,7 @@ TEST(PoseFrameGrounding, FollowThroughFollowsTheCorrectedHips){
     // the correction runs before follow-through, so the torso and head tilts are those of the
     // corrected hips path; a final pass re-grounds the frames follow-through changed
     int compared = 0;
-    for (const PoseRig* rig : everyRig()){
+    for (const PoseRig* rig : poseFrameGroundingEveryRig()){
         PoseAnimationData data = springy({bendPose(), tuckPose(), bendPose()}, false);
         data.poses[1].grounded = false;
         data.poses[1].lift = 0.3f;

@@ -24,7 +24,7 @@ namespace {
         return std::any_of(side.passes.begin(), side.passes.end(), [&](const PostProcessingCostPass& pass) { return pass.label == label; });
     }
 
-    bool contains(const std::vector<std::string>& list, const std::string& text) {
+    bool postProcessingPresetsContains(const std::vector<std::string>& list, const std::string& text) {
         return std::any_of(list.begin(), list.end(), [&](const std::string& item) { return item.find(text) != std::string::npos; });
     }
 
@@ -113,7 +113,7 @@ TEST(PostProcessingPresets, CostCountsHalationAndListsS13Effects) {
     EXPECT_TRUE(hasPass(cost.engine, "halation prefilter"));
     EXPECT_TRUE(hasPass(cost.engine, "halation down"));
     EXPECT_TRUE(cost.chain);
-    EXPECT_TRUE(contains(cost.urpCustom, "halation"));
+    EXPECT_TRUE(postProcessingPresetsContains(cost.urpCustom, "halation"));
     const int alone = cost.engine.passCount;
 
     // with bloom: bloom's levels, no pass of its own
@@ -129,18 +129,18 @@ TEST(PostProcessingPresets, CostCountsHalationAndListsS13Effects) {
     stylised.vhsEnabled = true;
     stylised.filmDamageEnabled = true;
     cost = estimatePostProcessingCost(stylised, {}, false);
-    EXPECT_TRUE(contains(cost.urpCustom, "VHS"));
-    EXPECT_TRUE(contains(cost.urpCustom, "film damage"));
+    EXPECT_TRUE(postProcessingPresetsContains(cost.urpCustom, "VHS"));
+    EXPECT_TRUE(postProcessingPresetsContains(cost.urpCustom, "film damage"));
     EXPECT_EQ(cost.engine.passCount, 1);        // the uber pass alone
 
     PostProcessingSettings graded;
     graded.colorGradingEnabled = true;
     graded.lutTexture = "luts/look.cube";
-    EXPECT_TRUE(contains(estimatePostProcessingCost(graded, {}, false).notes, "Color Lookup"));
+    EXPECT_TRUE(postProcessingPresetsContains(estimatePostProcessingCost(graded, {}, false).notes, "Color Lookup"));
 
     PostProcessingSettings adaptive;
     adaptive.dynamicResolutionEnabled = true;
-    EXPECT_TRUE(contains(estimatePostProcessingCost(adaptive, {}, false).notes, "min^2 and max^2"));
+    EXPECT_TRUE(postProcessingPresetsContains(estimatePostProcessingCost(adaptive, {}, false).notes, "min^2 and max^2"));
 }
 
 TEST(PostProcessingPresets, DynamicResolutionReadout) {

@@ -863,6 +863,8 @@ CASES = [
         "files": {"assets/sprites/hero.aseprite": "binary placeholder"},
         "prompt": "Add assets/sprites/hero.aseprite to the scene as an animated character that plays its idle animation.",
         "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(40|hero)$"}, "result": ok("Hero [40] components: sprite transform; sprite: no sheet", {"id": 40, "name": "Hero"})},
+            {"tool": "create_entity", "result": ok("Created GameObject 40 \"Hero\" (sprite) in scene 1 \"Main\".", {"entity": {"id": 40, "path": "Hero"}})},
             {"tool": "get_asset_info", "args": {"path": "re:hero\\.aseprite"}, "result": ok(
                 "assets/sprites/hero.aseprite (Aseprite, RGBA 32x32): 12 frames, 3 layers, tags idle (0-3), walk (4-11); "
                 "imported: 1 page 128x96, clips assets/sprites/hero.aseprite#idle, #walk.",
@@ -880,7 +882,7 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}}],
                    "must_not_call": [{"tool": "set_sprite_frames", "args": {"slice": "*"}},
-                                     {"tool": "set_sprite_animation"}],
+                                     {"tool": "set_sprite_animation", "args": {"frames": "*"}}],
                    "shell_must_not": [r"aseprite\s+(-b|--batch)", r"--sheet"]},
         "max_turns": 10,
     },
@@ -899,7 +901,6 @@ CASES = [
                   "assets/items/gem.png": "binary placeholder"},
         "prompt": "The item icons in assets/items each cost a draw call. Pack them into one atlas so they batch.",
         "mocks": [
-            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
             {"tool": "edit_sprite_atlas", "args": {"output": True}, "result": ok(
                 "Created assets/items.spriteatlas: 1 page \u00b7 3 frames \u00b7 81 % used \u00b7 0.0 MB VRAM (desktop).",
                 {"written": True, "path": "assets/items.spriteatlas", "frame_count": 3, "usage_percent": 81,
@@ -953,7 +954,6 @@ CASES = [
         "files": {"assets/items/sword.png": "binary placeholder", "assets/items/shield.png": "binary placeholder"},
         "prompt": "Pack the item icons in assets/items into one sprite atlas.",
         "mocks": [
-            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
             {"tool": "edit_sprite_atlas", "args": {"output": True}, "result": ok(
                 "Created assets/items.spriteatlas; not built: the project's Sprite Atlas mode is Disabled.",
                 {"path": "assets/items.spriteatlas", "written": True, "built": False, "mode": "disabled",
@@ -983,15 +983,16 @@ CASES = [
         "files": {"assets/hero.aseprite": "binary placeholder"},
         "prompt": "On the third frame of assets/hero.aseprite, set pixel (2,2) to palette colour 4.",
         "mocks": [
-            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "read_sprite_pixels", "after": "edit_sprite", "result": ok("hero.aseprite frame 3, layer 1, rect [0, 0, 5, 5]:\n.....\n.....\n..4..\n.....\n.....",
+                {"frames": [{"frame": 3, "rows": [".....", ".....", "..4..", ".....", "....."]}]})},
             {"tool": "get_sprite", "args": {}, "result": ok(
                 "hero.aseprite: 16x16 indexed, 4 frames, 1 layer. Revision abc123abc123.",
                 {"path": "assets/hero.aseprite", "revision": "abc123abc123", "size": [16, 16], "mode": "indexed"})},
             {"tool": "edit_sprite", "args": {}, "result": ok(
                 "hero.aseprite: 1 op(s), 1 pixel(s) in 1 rect(s).", {"revision": "def456def456", "applied": 1, "changed": {"pixels": 1}})},
         ],
-        "checks": {"any_of": [{"calls": [{"tool": "edit_sprite", "args": {"frame": 3}}]},
-                               {"calls": [{"tool": "edit_sprite", "args": {"ops": [{"frame": 3}]}}]}]},
+        "checks": {"any_of": [{"calls": [{"tool": "edit_sprite", "args": {"frame": f}}]} for f in (3, "3", [3])] +
+                             [{"calls": [{"tool": "edit_sprite", "args": {"ops": [{"frame": f}]}}]} for f in (3, "3", [3])]},
         "max_turns": 8,
     },
     {
@@ -1004,7 +1005,6 @@ CASES = [
         "files": {"assets/hero.aseprite": "binary placeholder"},
         "prompt": "Set pixel (1,1) of assets/hero.aseprite to palette colour 2.",
         "mocks": [
-            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
             {"tool": "get_sprite", "args": {}, "result": ok("hero.aseprite: 16x16 indexed. Revision aaa111aaa111.", {"revision": "aaa111aaa111", "size": [16, 16]})},
             {"tool": "edit_sprite", "args": {"expect_revision": "bbb222bbb222"}, "result": ok(
                 "hero.aseprite: 1 op(s), 1 pixel(s).", {"revision": "ccc333ccc333", "applied": 1})},
@@ -1027,7 +1027,6 @@ CASES = [
         "files": {"assets/hero.aseprite": "binary placeholder"},
         "prompt": "Paste a 2x1 grid at (0,0) in assets/hero.aseprite: the first pixel palette index 1, the second palette index 10.",
         "mocks": [
-            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
             {"tool": "get_sprite", "args": {}, "result": ok("hero.aseprite: 16x16 indexed. Revision aaa111aaa111.", {"revision": "aaa111aaa111", "size": [16, 16]})},
             {"tool": "edit_sprite", "args": {}, "result": ok("hero.aseprite: 1 op(s), 2 pixel(s).", {"revision": "d1", "applied": 1, "changed": {"pixels": 2}})},
         ],
@@ -1043,7 +1042,6 @@ CASES = [
         "files": {},
         "prompt": "Create assets/sprites/knight.aseprite, 32x32, with two layers: 'back' drawn behind 'front'.",
         "mocks": [
-            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
             {"tool": "create_sprite", "args": {}, "result": ok(
                 "Created knight.aseprite: 32x32 indexed, 1 frame, 2 layers. Revision abcabcabcabc.",
                 {"path": "assets/sprites/knight.aseprite", "revision": "abcabcabcabc", "size": [32, 32], "mode": "indexed"})},
@@ -1061,7 +1059,6 @@ CASES = [
         "files": {"assets/hero.aseprite": "binary placeholder"},
         "prompt": "I just edited assets/hero.aseprite with edit_sprite. Render it so I can see exactly which pixels my last edit changed.",
         "mocks": [
-            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
             {"tool": "render_sprite", "args": {}, "result": ok("hero.aseprite: 1 frame(s) at 8x.", {"scale": 8, "layout": []})},
         ],
         "checks": {"calls": [{"tool": "render_sprite", "args": {"highlight": "last_edit"}}]},
@@ -1077,16 +1074,33 @@ CASES = [
         "files": {"assets/hero.aseprite": "binary placeholder"},
         "prompt": "My last edit changed frame 1 of assets/hero.aseprite. Apply exactly the same change to frame 2.",
         "mocks": [
-            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.aseprite$"}, "result": ok(
+                "assets/hero.aseprite (Aseprite, indexed 16x16): 4 frames, 1 layer, no tags.",
+                {"path": "assets/hero.aseprite", "type": "aseprite_sprite", "frames": 4})},
+            {"tool": "read_sprite_pixels", "args": {"frame": "re:^1$"}, "result": ok("hero.aseprite frame 1, layer 1, rect [2, 2, 5, 2]:\n2----\n----3",
+                {"frames": [{"frame": 1, "rect": [2, 2, 5, 2], "rows": ["2----", "----3"]}]})},
+            {"tool": "read_sprite_pixels", "after": "edit_sprite", "result": ok("hero.aseprite frame 2, layer 1, rect [2, 2, 5, 2]:\n2----\n----3",
+                {"frames": [{"frame": 2, "rect": [2, 2, 5, 2], "rows": ["2----", "----3"]}]})},
+            {"tool": "get_sprite", "result": ok("hero.aseprite: 16x16 indexed, 4 frames, 1 layer, no tags. Revision d0d0d0d0d0d0.",
+                {"path": "assets/hero.aseprite", "revision": "d0d0d0d0d0d0", "size": [16, 16], "frames": 4})},
+            {"tool": "read_sprite_pixels", "result": ok("hero.aseprite frame 2, layer 1, rect [2, 2, 5, 2]:\n.....\n.....",
+                {"frames": [{"frame": 2, "rect": [2, 2, 5, 2], "rows": [".....", "....."]}]})},
             {"tool": "diff_sprite", "args": {}, "result": ok(
                 "hero.aseprite: 2 pixel(s) differ.",
                 {"same": False, "changed": 2, "palette_same": True, "structure_changes": [],
-                 "frames": [{"frame": 1, "changed": 2, "bbox": [2, 2, 5, 2], "encoding": "chars", "rows": ["2----", "----3"]}]})},
+                 "frames": [{"frame": 1, "changed": 2, "bbox": [2, 2, 5, 2], "encoding": "chars", "rows": ["2----", "----3"]}]}) | {"real": True}},
             {"tool": "edit_sprite", "args": {}, "result": ok("hero.aseprite: 1 op(s), 2 pixel(s).", {"revision": "d1", "applied": 1, "changed": {"pixels": 2}})},
         ],
         "checks": {"calls": [{"tool": "diff_sprite"}],
-                   "any_of": [{"calls": [{"tool": "edit_sprite", "args": {"ops": [{"op": "paste", "rows": ["2----", "----3"], "at": [2, 2]}]}}]}]},
-        "max_turns": 8,
+                   # the same two pixels: the rows pasted, or pixel ops in either form, on frame 2 however it is written
+                   "any_of": [{"calls": [{"tool": "edit_sprite", "args": {"ops": [{"op": "paste", "rows": ["2----", "----3"], "at": [2, 2]}]}}]}] +
+                             [{"calls": [{"tool": "edit_sprite", "args": {"frame": f, "ops": ops}}]} for f in (2, "2", [2]) for ops in (
+                                 [{"op": "pixel", "x": 2, "y": 2, "color": 2}, {"op": "pixel", "x": 6, "y": 3, "color": 3}],
+                                 [{"op": "pixel", "points": [[2, 2]], "color": 2}, {"op": "pixel", "points": [[6, 3]], "color": 3}])] +
+                             [{"calls": [{"tool": "edit_sprite", "args": {"ops": ops}}]} for f in (2, "2") for ops in (
+                                 [{"op": "pixel", "x": 2, "y": 2, "color": 2, "frame": f}, {"op": "pixel", "x": 6, "y": 3, "color": 3, "frame": f}],
+                                 [{"op": "pixel", "points": [[2, 2]], "color": 2, "frame": f}, {"op": "pixel", "points": [[6, 3]], "color": 3, "frame": f}])]},
+        "max_turns": 16,
     },
 
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
@@ -1284,6 +1298,91 @@ CASES = [
                                      {"tool": "edit_colliders", "args": {"add": [{"half_extents": [1, 1, 1]}]}},
                                      {"tool": "add_component", "args": {"values": {"rigidbody": {"colliders": [
                                          {"half_extents": [1, 1, 1]}]}}}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_physics_overlap_query",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "S96 REQ-17/REQ-47 added query_physics (physics group): an agent asked what is near a GameObject "
+                         "in the running game overlaps the colliders once instead of casting a fan of rays from eval_lua.",
+        "text_at_issue": "query_physics description ('ray/sphere/box/capsule/point cast, cast_all, overlap or check'); the "
+                         "physics group's line ('physics queries in Play'); docs/mcp/guide/physics.md 'Shape casts and overlaps'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-47 (new tool; the port's scripts cast ray fans for proximity)",
+        "prompt": "The game is playing. Is anything within 2 m of the Player right now? Check the physics colliders and "
+                  "name what you find.",
+        "mocks": [
+            {"tool": "query_physics", "args": {"mode": "overlap", "shape": "sphere"}, "result": ok(
+                "2 collider(s) overlap.",
+                {"dimension": "3d", "shape": "sphere", "mode": "overlap",
+                 "hits": [{"entity": 12, "name": "Player", "collider": 0}, {"entity": 15, "name": "Crate", "collider": 0}]})},
+            {"tool": "query_physics", "result": ok(
+                "1 hit(s), nearest Crate at 1.4.",
+                {"dimension": "3d", "shape": "ray", "mode": "cast", "hits": [{"entity": 15, "name": "Crate", "collider": 0,
+                 "point": [1.4, 0.5, 0], "normal": [-1, 0, 0], "distance": 1.4}]})},
+            {"tool": "get_runtime_entity", "result": ok(
+                "GameObject 12 \"Player\" (playing): transform position [0, 0.5, 0], rigidbody dynamic.",
+                {"id": 12, "components": {"transform": {"position": [0, 0.5, 0]}}})},
+            {"tool": "list_runtime_entities", "result": ok(
+                "5 GameObjects: 10 Camera, 11 Ground, 12 Player, 14 Enemy, 15 Crate.",
+                {"entities": [{"id": 12, "name": "Player", "path": "Player"}, {"id": 15, "name": "Crate", "path": "Crate"}]})},
+        ],
+        "checks": {"any_of": [
+                       {"calls": [{"tool": "query_physics", "args": {"mode": "overlap", "shape": "sphere", "radius": 2}}]},
+                       {"calls": [{"tool": "query_physics", "args": {"mode": "overlap"}}]},
+                       {"calls": [{"tool": "eval_lua", "args": {"code": "re:overlapSphere|checkSphere"}}]}],
+                   "must_not_call": [{"tool": "eval_lua", "args": {"code": "re:raycast"}}],
+                   "reply_must": [r"Crate"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_decompose_mesh_collider",
+        "kind": "guard",
+        "what_happened": "S96 REQ-20/REQ-47: Jolt moves no mesh collider. Told a dynamic body with a Mesh collider will not "
+                         "move, an agent asked to keep its shape decomposes the mesh into convex hulls (edit_colliders "
+                         "decompose) instead of one convex hull or a box that changes the shape.",
+        "text_at_issue": "edit_colliders 'Add/update/remove/decompose' and its `decompose` parameter ('mesh to hulls'); "
+                         "the static-only error naming Decompose Into Convex Hulls; docs/mcp/guide/physics.md '3D bodies'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-20, REQ-47 (the port converted concave meshes to static bodies)",
+        "prompt": "The Rock in scene 1 should fall and tumble, but Play logs: Rigidbody 'Rock' cannot be dynamic: its "
+                  "collider 0 (Mesh) is static-only. Fix its collider so it can be dynamic, keeping its concave shape "
+                  "as close as you can.",
+        "mocks": [
+            {"tool": "edit_colliders", "args": {"decompose": {}}, "result": ok(
+                "Decomposed into 7 convex hull collider(s) (undo: Decompose Collider (Rock)).",
+                {"job_id": "3", "status": "succeeded", "hulls": 7, "undo_name": "Decompose Collider (Rock)",
+                 "colliders": [{"shape": "convex_hull", "center": [0, 0, 0], "rotation": [0, 0, 0, 1], "density": 1000, "vertices": 48}]})},
+            {"tool": "edit_colliders", "result": ok(
+                "\"Rock\" has 1 collider(s).",
+                {"entity": {"id": 9, "name": "Rock", "path": "Rock"}, "dimension": "3d", "body_type": "dynamic",
+                 "colliders": [{"shape": "mesh", "center": [0, 0, 0], "rotation": [0, 0, 0, 1], "density": 1000,
+                                "source": {"id": 9, "name": "Rock", "path": "Rock"}}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_colliders", "args": {"decompose": {"index": 0}}}]}],
+                   "must_not_call": [{"tool": "edit_colliders", "args": {"update": [{"shape": "convex_hull"}]}},
+                                     {"tool": "edit_colliders", "args": {"add": [{"shape": "box"}]}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_query_physics_needs_play",
+        "kind": "guard",
+        "groups_enabled": ["physics"],
+        "what_happened": "S96 REQ-17: query_physics reads the bodies the running game built (none exist at edit time); its "
+                         "error names play, so the agent starts Play and asks again instead of giving up or guessing from "
+                         "the Transforms.",
+        "text_at_issue": "query_physics error: 'query_physics reads the running physics world: start Play first (play).'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-17, AC-16 (new tool; no failure on record)",
+        "prompt": "Using the physics colliders, tell me which GameObject a ray straight down from (0, 10, 0) hits first.",
+        "mocks": [
+            {"tool": "query_physics", "after": "play", "result": ok(
+                "1 hit(s), nearest Ground at 10.",
+                {"dimension": "3d", "shape": "ray", "mode": "cast", "hits": [{"entity": 11, "name": "Ground", "collider": 0,
+                 "point": [0, 0, 0], "normal": [0, 1, 0], "distance": 10.0}]})},
+            {"tool": "query_physics", "result": err("query_physics reads the running physics world: start Play first (play).")},
+            {"tool": "play", "result": ok("Playing scene 1 \"Main\".", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"order": [[{"tool": "play", "args": {"action": "start"}}, {"tool": "query_physics", "args": {"shape": "ray"}}]],
+                   "reply_must": [r"Ground"]},
         "max_turns": 12,
     },
     {
@@ -1499,10 +1598,19 @@ CASES = [
         "text_at_issue": "fix_pixel_art: 'Without output it previews (image, nothing written); the same arguments plus output:true write it'; "
                          "its result's `next`",
         "source": "S46 R44 (new tool text); no failure on record",
+        "files": {"assets/art/hero.png": "binary placeholder"},
         "prompt": "assets/art/hero.png is an AI image that only looks like pixel art (fake big pixels, blurred). Clean it into real pixel "
                   "art and keep the result as a new file next to it.",
         "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": "re:(?i)\\.png$"}, "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Wrote assets/art/hero_clean.png as one undo step.",
+                {"verdict": "fixable", "written": [{"role": "png", "path": "assets/art/hero_clean.png"}]})},
+            {"tool": "list_assets", "result": ok("1 asset in assets/art: hero.png (texture, 256x256).", {"assets": [{"path": "assets/art/hero.png"}]})},
             {"tool": "fix_pixel_art", "args": {"output": True}, "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Wrote assets/art/hero_clean.png as one undo step.",
+                {"verdict": "fixable", "written": [{"role": "png", "path": "assets/art/hero_clean.png"}],
+                 "undo": {"id": 14, "name": "agent: Pixel Art Cleanup (hero_clean.png)"}})},
+            {"tool": "fix_pixel_art", "args": {"output": "re:^true$"}, "result": ok(
                 "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Wrote assets/art/hero_clean.png as one undo step.",
                 {"verdict": "fixable", "written": [{"role": "png", "path": "assets/art/hero_clean.png"}],
                  "undo": {"id": 14, "name": "agent: Pixel Art Cleanup (hero_clean.png)"}})},
@@ -1512,8 +1620,10 @@ CASES = [
                  "next": "Preview only, nothing written: look at the image, adjust recipe if it is wrong, then the same arguments plus "
                          "output: true write exactly these pixels."})},
         ],
-        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png"}},
-                             {"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png", "output": True}}],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png"}}],
+                   "any_of": [{"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png", "output": True}}]},
+                              {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png", "output": "re:(?i)\\.png$"}}]},
+                              {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png", "output": "re:^true$"}}]}],
                    "must_not_call": ["apply_palette", "write_file"], "edits_must_not": [r"\.png$"],
                    "shell_must_not": [r"(?i)\bPIL\b|from PIL|magick|convert\s"]},
         "max_turns": 12,
@@ -1551,8 +1661,10 @@ CASES = [
         "text_at_issue": "fix_pixel_art's `next`: 'needs_person: look at the guards and the image; set recipe.grid or palette and preview "
                          "again. output: true is refused without force: true.'; the refusal's Fix naming force as the last option",
         "source": "S46 R30 (new tool text); no failure on record",
+        "files": {"assets/art/photo.jpg": "binary placeholder"},
         "prompt": "Turn assets/art/photo.jpg into pixel art and save the result next to it.",
         "mocks": [
+            {"tool": "list_assets", "result": ok("1 asset in assets/art: photo.jpg (texture, 1024x768).", {"assets": [{"path": "assets/art/photo.jpg"}]})},
             {"tool": "fix_pixel_art", "args": {"output": True}, "result": err(
                 "needs_person: assets/art/photo.jpg is needs_person (low_fit, low_confidence): Unsure of the grid: look at the preview, "
                 "or set the grid by hand. Nothing was written. Fix: set recipe.grid or recipe.palette and preview again, or pass force: "
@@ -1565,8 +1677,9 @@ CASES = [
                          "output: true is refused without force: true."})},
         ],
         "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/photo.jpg"}}],
-                   "must_not_call": ["write_file"], "max_calls": {"fix_pixel_art": 2},
-                   "reply_must": [r"(?i)needs? (a )?person|low.?(fit|confidence)|guard"]},
+                   # setting recipe.grid and previewing again is what next says; forcing the write is the misuse
+                   "must_not_call": ["write_file", {"tool": "fix_pixel_art", "args": {"force": True}}], "max_calls": {"fix_pixel_art": 4},
+                   "reply_must": [r"(?i)needs?[ _](a )?person|low.?(fit|confidence)|guard"]},
         "max_turns": 8,
     },
     {
@@ -1578,10 +1691,20 @@ CASES = [
         "text_at_issue": "fix_pixel_art's timeout_seconds: 'Seconds the run may take (default 60); past 1 s the call answers with the "
                          "job.'; the guide's 'Past 1 s ...' line",
         "source": "S46 R37 (new tool text); no failure on record",
+        "files": {"assets/art/big.png": "binary placeholder"},
         "prompt": "assets/art/big.png is a 4096x4096 AI image that only looks like pixel art. Clean it into real pixel art and write "
                   "the result next to it. It is big, so let the cleanup run for up to five minutes.",
         "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": "re:(?i)\\.png$"}, "result": ok(
+                "Job j7 (Pixel Art Cleanup) is still running. Poll get_job with job_id \"j7\" until its status is succeeded, failed or "
+                "cancelled; cancel_job stops it.",
+                {"id": "j7", "kind": "fix_pixel_art", "title": "Pixel Art Cleanup", "status": "running", "job_id": "j7"})},
+            {"tool": "list_assets", "result": ok("1 asset in assets/art: big.png (texture, 4096x4096).", {"assets": [{"path": "assets/art/big.png"}]})},
             {"tool": "fix_pixel_art", "args": {"output": True}, "result": ok(
+                "Job j7 (Pixel Art Cleanup) is still running. Poll get_job with job_id \"j7\" until its status is succeeded, failed or "
+                "cancelled; cancel_job stops it.",
+                {"id": "j7", "kind": "fix_pixel_art", "title": "Pixel Art Cleanup", "status": "running", "job_id": "j7"})},
+            {"tool": "fix_pixel_art", "args": {"output": "re:^true$"}, "result": ok(
                 "Job j7 (Pixel Art Cleanup) is still running. Poll get_job with job_id \"j7\" until its status is succeeded, failed or "
                 "cancelled; cancel_job stops it.",
                 {"id": "j7", "kind": "fix_pixel_art", "title": "Pixel Art Cleanup", "status": "running", "job_id": "j7"})},
@@ -1594,7 +1717,10 @@ CASES = [
                 "Pixel Art Cleanup: succeeded - fixable: Upscaled pixel art: fixes to 256x256, 16 colors. Wrote assets/art/big_clean.png as one undo step.",
                 {"id": "j7", "status": "succeeded", "result": {"verdict": "fixable", "written": [{"role": "png", "path": "assets/art/big_clean.png"}]}})},
         ],
-        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"output": True, "timeout_seconds": 300}}, {"tool": "get_job"}],
+        "checks": {"calls": [{"tool": "get_job"}],
+                   "any_of": [{"calls": [{"tool": "fix_pixel_art", "args": {"output": True, "timeout_seconds": 300}}]},
+                              {"calls": [{"tool": "fix_pixel_art", "args": {"output": "re:(?i)\\.png$", "timeout_seconds": 300}}]},
+                              {"calls": [{"tool": "fix_pixel_art", "args": {"output": "re:^true$", "timeout_seconds": 300}}]}],
                    "must_not_call": ["write_file"], "max_calls": {"fix_pixel_art": 3}},
         "max_turns": 12,
     },
@@ -1624,10 +1750,26 @@ CASES = [
         "text_at_issue": "Guide 'Other areas': 'palettes (edit_palette, apply_palette)'; apply_palette: 'palette: path, "
                          "builtin:<id> or [hex]'; 'A preview until output: true overwrites the texture'",
         "source": "S43 R40 (new tool text); no failure on record",
+        "files": {"assets/sprites/hero.png": "binary placeholder"},
         "prompt": "Our pixel-art hero sprite assets/sprites/hero.png has to use only the PICO-8 colours. Recolour it onto "
                   "that palette and keep the result in the same file.",
         "mocks": [
+            {"tool": "edit_palette", "args": {}, "result": ok(
+                "0 project palettes. Built-ins: builtin:pico-8 (PICO-8, 16), builtin:sweetie-16 (16), builtin:endesga-32 (32), builtin:db32 (32).",
+                {"palettes": [], "builtins": [{"id": "pico-8", "name": "PICO-8", "count": 16}]})},
             {"tool": "apply_palette", "args": {"output": True}, "result": ok(
+                "Apply Palette PICO-8 (built-in) on assets/sprites/hero.png: fixable. Colours 41 -> 12, 380 pixels changed, "
+                "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Wrote assets/sprites/hero.png as one undo step (undo "
+                "with scope project).",
+                {"path": "assets/sprites/hero.png", "verdict": "fixable", "written": "assets/sprites/hero.png",
+                 "undo": {"id": 12, "name": "Write File hero.png"}})},
+            {"tool": "apply_palette", "args": {"output": "re:^true$"}, "result": ok(
+                "Apply Palette PICO-8 (built-in) on assets/sprites/hero.png: fixable. Colours 41 -> 12, 380 pixels changed, "
+                "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Wrote assets/sprites/hero.png as one undo step (undo "
+                "with scope project).",
+                {"path": "assets/sprites/hero.png", "verdict": "fixable", "written": "assets/sprites/hero.png",
+                 "undo": {"id": 12, "name": "Write File hero.png"}})},
+            {"tool": "apply_palette", "args": {"output": "re:^assets/sprites/hero\\.png$"}, "result": ok(
                 "Apply Palette PICO-8 (built-in) on assets/sprites/hero.png: fixable. Colours 41 -> 12, 380 pixels changed, "
                 "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Wrote assets/sprites/hero.png as one undo step (undo "
                 "with scope project).",
@@ -1641,7 +1783,9 @@ CASES = [
                  "next": "Preview only, nothing written: call again with the same arguments plus output: true (overwrite "
                          "assets/sprites/hero.png) or output: \"<new .png path>\"."})},
         ],
-        "checks": {"calls": [{"tool": "apply_palette", "args": {"palette": "re:(?i)pico", "output": True}}],
+        "checks": {"any_of": [{"calls": [{"tool": "apply_palette", "args": {"palette": "re:(?i)pico", "output": True}}]},
+                              {"calls": [{"tool": "apply_palette", "args": {"palette": "re:(?i)pico", "output": "re:^true$"}}]},
+                              {"calls": [{"tool": "apply_palette", "args": {"palette": "re:(?i)pico", "output": "re:^assets/sprites/hero\\.png$"}}]}],
                    "must_not_call": ["fork_shader", "write_file"], "edits_must_not": [r"\.png$"],
                    "shell_must_not": [r"(?i)\bPIL\b|from PIL|magick|convert\s"]},
         "max_turns": 14,
@@ -1681,9 +1825,13 @@ CASES = [
         "text_at_issue": "apply_palette: 'measure_only only checks', 'verdict clean|fixable|needs_person'; edit_palette: "
                          "'texture counts its colours'",
         "source": "S43 R40, R43 (new tool text); no failure on record",
+        "files": {"assets/sprites/tiles.png": "binary placeholder", "assets/Palettes/level.palette": "binary placeholder"},
         "prompt": "Does assets/sprites/tiles.png use only colours of assets/Palettes/level.palette? Don't change any file, "
                   "just tell me.",
         "mocks": [
+            {"tool": "lint_pixel_art", "result": ok(
+                "Lint assets/sprites/tiles.png against assets/Palettes/level.palette: fixable. WARN off_palette: 37 pixels in 2 colours.",
+                {"verdict": "fixable", "lints": [{"id": "off_palette", "status": "WARN", "measured": 37}]})},
             {"tool": "apply_palette", "args": {"output": True}, "result": err("apply_palette must not write in this case")},
             {"tool": "apply_palette", "result": ok(
                 "Apply Palette assets/Palettes/level.palette on assets/sprites/tiles.png: fixable. Colours 18 -> 16, 37 "
@@ -1696,7 +1844,8 @@ CASES = [
                 {"path": "assets/Palettes/level.palette", "usage": {"texture": "assets/sprites/tiles.png", "off_palette_pixels": 37,
                                                                    "off_palette_colors": 2}})},
         ],
-        "checks": {"any_of": [{"calls": ["apply_palette"]}, {"calls": [{"tool": "edit_palette", "args": {"texture": "*"}}]}],
+        "checks": {"any_of": [{"calls": ["apply_palette"]}, {"calls": [{"tool": "edit_palette", "args": {"texture": "*"}}]},
+                              {"calls": [{"tool": "lint_pixel_art", "args": {"palette": "re:level"}}]}],
                    "must_not_call": [{"tool": "apply_palette", "args": {"output": True}},
                                      {"tool": "apply_palette", "args": {"output": "re:\\.png$"}},
                                      {"tool": "edit_palette", "args": {"output": True}}],
@@ -1716,6 +1865,13 @@ CASES = [
                   "pixel look, put it on the Particle System 'Sparks' (entity 12) and check it for pixel-art problems over "
                   "its life.",
         "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:^(12|Sparks)$"}, "result": ok(
+                "Sparks [12] components: particles transform; particles: effect none, playing false", {"id": 12, "name": "Sparks"})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nSparks [12] particles transform", {"entities": [{"id": 12, "path": "Sparks"}]})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (2D, 3 GameObjects).\nMain Camera [10] camera\nPlayer [11] sprite\nSparks [12] particles\n", {"scene_id": 1})},
+            {"tool": "capture_contact_sheet", "args": {"target": {"particles": "*"}}, "result": ok(
+                "Captured 8 frames of assets/fx/hit_spark.particles (isolated) at scale 4: a 803x256 sheet of 100x100 frames. Checks PASS, verdict clean:\n"
+                "PASS off_grid: 0.0\nPASS one_shot_end: 0.0", {"verdict": "clean", "checks": [{"id": "off_grid", "status": "PASS"}]})},
             {"tool": "create_particle_effect", "result": ok(
                 "Created assets/fx/hit_spark.particles (pixel_spark) as one undo step (undo with scope project).",
                 {"path": "assets/fx/hit_spark.particles", "diagnostics": [], "undo": {"id": 3, "name": "Create File hit_spark.particles"},
@@ -1736,7 +1892,9 @@ CASES = [
                  "checks": [{"id": "off_grid", "status": "SKIP", "limited_by": "Measured on the pixel view's cells: run with view pixel."}]})},
         ],
         "checks": {"calls": [{"tool": "create_particle_effect", "args": {"preset": "pixel_spark"}},
-                             {"tool": "preview_particle_effect", "args": {"view": "pixel"}}],
+                             {"tool": "set_particle_effect"}],
+                   "any_of": [{"calls": [{"tool": "preview_particle_effect", "args": {"view": "pixel"}}]},
+                              {"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"particles": "re:hit_spark"}, "lint": "*"}}]}],
                    "must_not_call": ["write_file"], "edits_must_not": [r"\.particles$"]},
         "max_turns": 14,
     },
@@ -2341,6 +2499,44 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_muffle_one_source_with_a_group",
+        "kind": "bad",
+        "what_happened": "S97: muffling one sound (a radio, a voice behind a door) took a new mixer group with a low-pass and "
+                         "a reroute, since sources had no effects; that group's filter then catches every other source sent "
+                         "to it. A source now holds its own effects (Unity's Audio Low Pass Filter).",
+        "text_at_issue": "docs/mcp/guide/audio.md 7: 'Effects on one source' (to muffle one source, its own effects)",
+        "source": "S97 REQ-43 (a), spec-first",
+        "groups_enabled": ["audio"],
+        "prompt": "The Radio GameObject plays a song through its Audio Source, on the Music group with the level's music. "
+                  "Make the radio sound muffled, as if it were in the next room. The level's music must stay clear.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok(
+                "Radio (entity 7): Transform, AudioSource {filename: music/radio.ogg, outputGroup: Music, looping: true}",
+                {"entity": 7, "name": "Radio", "components": {"transform": {}, "audiosource": {
+                    "filename": "music/radio.ogg", "outputGroup": "Music", "looping": True, "volume": 1}}})},
+            {"tool": "audio_mixer", "args": {"action": "get"}, "result": ok(
+                "audio/Main.mixer (the project's mixer). Groups: Master, Music, SFX. Exposed: none. Snapshots: none.",
+                {"mixer": "audio/Main.mixer", "groups": [{"name": "Master", "effects": [{"type": "limiter"}]},
+                                                         {"name": "Music", "effects": []}, {"name": "SFX", "effects": []}]})},
+            {"tool": "set_properties", "result": ok(
+                "Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"entity": 7, "name": "Radio"}]})},
+            {"tool": "add_component", "result": ok(
+                "Added 1 component(s) (one undo step).",
+                {"added": [{"entity": 7, "component": "audiosource", "effect": "lowpass"}], "skipped": []})},
+        ],
+        # the source's own effects, by any spelling of the component (set_properties' values or changes), or
+        # Unity's filter by name; never a group edit
+        "checks": {"any_of": [
+            *[{"calls": [{"tool": "set_properties", "args": {"values": {key: {"effects": "*"}}}}],
+               "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]}
+              for key in ("audiosource", "AudioSource", "AudioSourceComponent", "audio_source", "Audio Source")],
+            {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:^effects"}]}}],
+             "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]},
+            {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)low ?pass"}}],
+             "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]}]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_sound_too_quiet_no_measure",
         "groups_enabled": ["audio"],
         "files": {"assets/sfx/jump.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
@@ -2394,6 +2590,62 @@ CASES = [
         "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"music": "*"}}}],
                    "must_not_call": ["write_file"]},
         "max_turns": 8,
+    },
+    {
+        "id": "bad_small_loop_streams_by_clip_load_type",
+        "groups_enabled": ["audio"],
+        "files": {"assets/ambience/rain.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "S97 AU2: a clip's Load Type was per Audio Source only, so agents asked to stream a sub-1-MiB loop set "
+                         "loadType on one source (others kept decoding it) or wrote the .meta by hand; the clip's own Load Type is "
+                         "the load_type import settings key.",
+        "text_at_issue": "set_audio_import_settings' description and settings key list (load_type); jasper://docs/sound's import settings table",
+        "source": "S97 REQ-16, REQ-43 (b) (spec-first)",
+        "prompt": "assets/ambience/rain.wav is a 700 KB loop several sources and Audio.play use. Make it stream from disk "
+                  "everywhere instead of being decoded into memory.",
+        "mocks": [
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/ambience/rain.wav: -24.0 LUFS, 4.000 s",
+                {"items": [{"n": 1, "path": "assets/ambience/rain.wav", "settings": {"load_type": "streaming"},
+                            "resolved": {"sample_rate": 44100, "frames": 176400}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"load_type": "streaming"}}}],
+                   "must_not_call": ["write_file", "set_properties"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_second_audio_source_by_slot_id",
+        "kind": "bad",
+        "what_happened": "S97 AU4: a GameObject held one Audio Source, add_component skipped a second, so agents asked for an engine "
+                         "and a horn on one car made a child GameObject for the horn or overwrote the engine's clip; a second "
+                         "add_component AudioSource now adds a slot and returns its entity to set its values on.",
+        "text_at_issue": "add_component's description (AudioSource adds another); its result's added[].audio_source and next",
+        "source": "S97 REQ-28, REQ-43 (c) (spec-first)",
+        "prompt": "The Car GameObject (id 12) in the open scene needs two sounds playing from it: an engine loop "
+                  "(sounds/engine.wav, looping) and a horn (sounds/horn.wav, not looping). Set both up.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok("Car [12] components: Transform Mesh",
+                                                {"id": 12, "name": "Car", "components": {"Transform": {}, "Mesh": {}}})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\n12 Car",
+                                                   {"count": 1, "entities": [{"id": 12, "name": "Car", "path": "Car"}]})},
+            {"tool": "add_component", "once": True, "result": ok(
+                "Added 1 component(s) (one undo step).",
+                {"scene_id": 1, "added": [{"entity": 12, "component": "AudioSource"}], "skipped": []})},
+            {"tool": "add_component", "after": "add_component", "result": ok(
+                "Added 1 component(s) (one undo step). Each further Audio Source is its own entity (31), hidden in the scene tree: "
+                "pass that id as entity to set_properties, get_entity and remove_component.",
+                {"scene_id": 1, "added": [{"entity": 12, "component": "AudioSource", "audio_source": 31, "slot": 1}], "skipped": [],
+                 "next": "Each further Audio Source is its own entity (31), hidden in the scene tree: pass that id as entity to "
+                         "set_properties, get_entity and remove_component."})},
+            {"tool": "set_properties", "result": ok("Set 2 propertie(s) (one undo step).", {"scene_id": 1, "values": {}})},
+            {"tool": "create_entity", "result": ok("Created GameObject \"Horn\" [40] under Car.", {"entity_id": 40})},
+        ],
+        "checks": {"min_calls": {"add_component": 2},
+                   "any_of": [{"calls": [{"tool": "set_properties", "args": {"entity": "re:^31$"}}]},
+                              {"calls": [{"tool": "add_component", "args": {"values": "*"}}],
+                               "must_not_call": [{"tool": "set_properties", "args": {"entity": "re:^12$"}}]}],
+                   "must_not_call": ["create_entity"]},
+        "max_turns": 10,
     },
     {
         "id": "guard_placeholder_coin_finds_the_group",
@@ -2550,6 +2802,42 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "build_project", "args": {"platform": "ios", "ios_simulator": True}}]},
         "max_turns": 8,
+    },
+    {
+        "id": "bad_build_check_on_the_host_not_the_targets",
+        "kind": "bad",
+        "what_happened": "In a game that ships on Android and iOS only, an agent proved a change by building for Linux, the "
+                         "machine it ran on: no setting, description or result said where the game ships, and build_project "
+                         "with no mode built this computer's player.",
+        "text_at_issue": "build_project mode (default desktop) 'desktop/web: this computer/web'; get_build_info without "
+                         "target_platforms/default_platform; the game AGENTS.md without a Target platforms section",
+        "source": "docs/superpowers/specs/2026-11-12-target-platforms-design.md 1, 5.5",
+        "files": GAME_FILES,
+        "prompt": "I raised the player's speed in scripts/player.lua. Make sure the game still builds after this change.",
+        "mocks": [
+            # recorded with player.target_platforms = [android, ios] (dump_surface.py RECORD_WORLD)
+            {"tool": "get_build_info", "result": {"recorded": "build_info_mobile"}},
+            {"tool": "get_project_settings", "args": {"keys": ["player.target_platforms"]}, "result": {"recorded": "targets_mobile_get"}},
+            {"tool": "get_project_settings", "result": {"recorded": "project_settings_mobile"}},
+            {"tool": "build_project", "args": {"platform": "re:^(android|ios)$"}, "result": ok(
+                "Build android (Release): succeeded - Built android (prebuilt player android-universal-gles3-release) in "
+                "/work/space-dodge-android.",
+                {"job_id": "job-3", "status": "succeeded", "result": {
+                    "mode": "player", "platform": "android", "method_used": "prebuilt", "output_dir": "/work/space-dodge-android",
+                    "artifacts": ["SpaceDodge.aab"], "errors": [], "warnings": [], "error_count": 0, "warning_count": 0}})},
+            {"tool": "build_project", "result": ok(
+                "Build Desktop player (Release): succeeded - Built the Desktop player /work/space-dodge-desktop/SpaceDodge. "
+                "Try it with run_build.",
+                {"job_id": "job-3", "status": "succeeded", "result": {
+                    "mode": "desktop", "output_dir": "/work/space-dodge-desktop", "executable": "/work/space-dodge-desktop/SpaceDodge",
+                    "errors": [], "warnings": [], "error_count": 0, "warning_count": 0}})},
+        ],
+        "shell": [{"match": r"jasperengine-editor\s+check", "output": "No problems found.\n"},
+                  {"match": r"git (diff|status|log)", "output": ""}],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "re:^(android|ios)$"}}],
+                   "must_not_call": [{"tool": "build_project", "args": {"mode": "re:^(desktop|web)$"}},
+                                     {"tool": "build_project", "args": {"platform": "re:^(windows|linux|macos|web)$"}}]},
+        "max_turns": 14,
     },
     {
         "id": "guard_build_output_inside_project",
@@ -4487,11 +4775,15 @@ CASES = [
                 "10, baseline 7.",
                 {"path": "assets/fonts/hud.bitmapfont", "created": True, "font": {"glyphs": 95, "native_size": 9,
                  "missing_ascii": "", "partial_alpha_share": 0.0}})},
-            {"tool": "read_file", "result": ok("# Pixel fonts ...", {})},
+            {"tool": "get_asset_info", "args": {"path": "re:\\.bitmapfont$"}, "result": ok(
+                "assets/fonts/hud.bitmapfont: font, a bitmap font: 95 glyphs, 9 px (line 10, baseline 7); no import errors.",
+                {"path": "assets/fonts/hud.bitmapfont", "type": "font", "font": {"kind": "bitmap", "glyphs": 95, "native_size": 9}})},
+            {"tool": "get_asset_info", "result": ok("assets/fonts/hud@6x9.png: texture 96x54, RGBA.", {"path": "assets/fonts/hud@6x9.png", "type": "texture"})},
+            {"tool": "preview_font", "result": ok("Preview of assets/fonts/hud.bitmapfont at scale 1: 0 missing characters.", {"missing": []})},
         ],
         "checks": {"calls": [{"tool": "write_file", "args": {"path": "re:\\.bitmapfont$"}}],
                    "shell_must_not": [r"python", r"convert\s"], "reply_must": [r"95|clean|glyph"]},
-        "max_turns": 8,
+        "max_turns": 12,
     },
     {
         "id": "guard_font_metrics_info",
@@ -4505,13 +4797,13 @@ CASES = [
         "prompt": "What is the native pixel size and baseline of assets/fonts/hud.fnt, and does it have antialiased pixels?",
         "mocks": [
             {"tool": "get_asset_info", "args": {"path": "re:hud\\.fnt"}, "result": ok(
-                "assets/fonts/hud.fnt: font, a bitmap font: 95 glyphs, 9 px (line 10, baseline 7).",
+                "assets/fonts/hud.fnt: font, a bitmap font: 95 glyphs, 9 px (line 10, baseline 7). Pixel report: not antialiased (0% partial alpha).",
                 {"path": "assets/fonts/hud.fnt", "type": "font", "font": {"kind": "bitmap", "native_size": 9, "baseline": 7},
                  "pixel_report": {"antialiased": False, "partial_alpha_share": 0.0, "native_size": 9}})},
         ],
         "checks": {"calls": [{"tool": "get_asset_info", "args": {"path": "re:hud\\.fnt"}}],
                    "must_not_call": ["read_file", "view_asset", "preview_font"], "reply_must": [r"9", r"7"]},
-        "max_turns": 6,
+        "max_turns": 10,
     },
     {
         "id": "guard_game_view_pixel_scale",
@@ -4547,6 +4839,11 @@ CASES = [
         "prompt": "Our pixel-art game looks blurry and some sprite columns are wider than others on a 1366x768 laptop. "
                   "Find what is wrong with the pixel-art setup and fix all of it.",
         "mocks": [
+            {"tool": "check_pixel_art", "after": {"tool": "check_pixel_art", "args": {"output": True}}, "result": ok(
+                "Pixel art check: clean, 0 FAIL, 0 WARN (13 rules).", {"verdict": "clean", "counts": {"fail": 0, "warn": 0}})},
+            {"tool": "get_project_settings", "after": {"tool": "check_pixel_art", "args": {"output": True}}, "result": ok(
+                "pixel_art.enabled: true; pixel_art.upscale_mode: integer; graphics.default_filter_mode: point; graphics.scaling_mode: fit",
+                {"settings": {"pixel_art.enabled": True, "pixel_art.upscale_mode": "integer", "graphics.default_filter_mode": "point"}})},
             {"tool": "check_pixel_art", "args": {"fix": ["all"], "output": True}, "result": ok(
                 "Pixel art check: fixable, 2 FAIL, 1 WARN (13 rules). Applied 3 fix(es) as \"Fix Pixel Art (3)\"; after: "
                 "clean, 0 FAIL, 0 WARN.",
@@ -4612,6 +4909,12 @@ CASES = [
         "prompt": "In our 2D scene the Tree GameObjects draw behind the Player sprite. Make every tree draw in front of the "
                   "player, using a proper foreground layer.",
         "mocks": [
+            {"tool": "find_entities", "args": {"name": "re:(?i)player"}, "result": ok("1 GameObject(s) match:\nPlayer [20] sprite transform",
+                                                  {"entities": [{"id": 20, "name": "Player"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(12|13|14|tree.*)$"}, "result": ok(
+                "Tree [12] components: sprite transform; sprite: texture assets/sprites/tree.png; mesh: sortingLayer Default, sortingOrder 0", {"id": 12, "name": "Tree"})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(20|player)$"}, "result": ok(
+                "Player [20] components: sprite transform; sprite: texture assets/sprites/ship.png; mesh: sortingLayer Default, sortingOrder 0", {"id": 20, "name": "Player"})},
             {"tool": "read_file", "args": {"path": "re:rendering-2d"}, "result": ok(
                 "# 2D draw order and Sprite Batch\n\nA 2D camera draws renderers by Sorting Layer (its place in "
                 "tags_and_layers.sorting_layers, first drawn first), then Order in Layer, then the Hierarchy. Add layers with "
@@ -4642,6 +4945,8 @@ CASES = [
         "source": "S52 R34 (new error text); paraphrased from the design review",
         "prompt": "Put the Clouds sprite (GameObject 21) on a Sorting Layer named Foreground.",
         "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(21|clouds)$"}, "result": ok(
+                "Clouds [21] components: sprite transform; sprite: texture assets/sprites/clouds.png; mesh: sortingLayer Default, sortingOrder 0", {"id": 21, "name": "Clouds"})},
             {"tool": "set_properties", "after": "set_project_settings", "result": ok(
                 "Set 1 property on GameObject 21 \"Clouds\".", {"entity": {"id": 21}})},
             {"tool": "set_properties", "result": err(
@@ -4652,8 +4957,9 @@ CASES = [
             {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
                                                          {"changed": ["tags_and_layers.sorting_layers"]})},
         ],
-        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"tags_and_layers.sorting_layers": "re:Foreground"}}},
-                             {"tool": "set_properties"}],
+        "checks": {"calls": [{"tool": "set_properties"}],
+                   "any_of": [{"calls": [{"tool": "set_project_settings", "args": {"values": {"tags_and_layers.sorting_layers": ["*", "Foreground"]}}}]},
+                              {"calls": [{"tool": "set_project_settings", "args": {"values": {"tags_and_layers.sorting_layers": ["*", {"name": "Foreground"}]}}}]}],
                    "must_not_call": [{"tool": "set_properties", "args": {"values": {"mesh": {"sortingOrder": "*"}}}}]},
         "max_turns": 10,
     },
@@ -4669,6 +4975,11 @@ CASES = [
         "prompt": "Our boss (GameObject 30, which has a Bullet sprite child, GameObject 31) should fire a ring of 2000 bullets "
                   "that move outwards every frame. Write it in scripts/spawner.lua.",
         "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(30|boss)$"}, "result": ok(
+                "Boss [30] components: sprite transform; children: Bullet [31]", {"id": 30, "name": "Boss"})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(31|bullet|boss/bullet)$"}, "result": ok(
+                "Bullet [31] components: sprite transform; sprite: texture assets/sprites/bullet.png, 8x8", {"id": 31, "name": "Bullet"})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (2D, 3 GameObjects).\nMain Camera [10] camera\nBoss [30] sprite\n  Bullet [31] sprite\n", {"scene_id": 1})},
             {"tool": "read_file", "args": {"path": "re:rendering-2d"}, "result": ok(
                 "## Sprite Batch\nUse a Sprite Batch for many copies of one Sprite's frames (bullets, coins). 1. add_component "
                 "spritebatch on a GameObject with a Sprite. 2. Fill it from a script: SpriteBatch(scene, entity), "
@@ -4677,8 +4988,8 @@ CASES = [
             {"tool": "write_file", "result": ok("Wrote scripts/spawner.lua.", {"path": "scripts/spawner.lua"})},
             {"tool": "check_script", "result": ok("scripts/spawner.lua: no errors.", {"ok": True})},
         ],
-        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)sprite.?batch"}}],
-                   "max_calls": {"create_entity": 2},
+        # add_component spritebatch, or the script's SpriteBatch(scene, entity), which adds the component (SpriteBatch.cpp)
+        "checks": {"max_calls": {"create_entity": 2},
                    "any_of": [{"file_must": {"scripts/spawner.lua": [r"SpriteBatch", r"setPositions"]}},
                               {"calls": [{"tool": "write_file", "args": {"content": "re:(?s)SpriteBatch.*setPositions"}}]}]},
         "max_turns": 14,
@@ -4692,9 +5003,19 @@ CASES = [
         "text_at_issue": "jasper://docs/profiling Dynamic Batching table: 'sort_bucket: another Sorting Layer, Order in Layer or "
                          "Sorting Group: put sprites that may batch in one'",
         "source": "S52 R35 (new guide rows); no failure on record",
-        "prompt": "The coins in our 2D level draw in 40 draw calls even though they share one sprite sheet. Find out why and fix "
+        "prompt": "The coins in the open scene (our 2D level) draw in 40 draw calls even though they share one sprite sheet. Find out why and fix "
                   "it so they batch.",
         "mocks": [
+            {"tool": "set_properties", "args": {"changes": [{"component": "sprite", "property": "sortingOrder"}]}, "result": err(
+                "Unknown property \"sortingOrder\" of sprite on GameObject 50 \"Coin\". Properties: texture, width, height, pivot, flipX, "
+                "flipY, frame, frames, color (custom ones also by their scene-file keys, see get_entity detail=\"yaml\").")},
+            {"tool": "set_properties", "args": {"values": {"sprite": {"sortingOrder": "*"}}}, "result": err(
+                "Unknown property \"sortingOrder\" of sprite on GameObject 50 \"Coin\". Properties: texture, width, height, pivot, flipX, "
+                "flipY, frame, frames, color (custom ones also by their scene-file keys, see get_entity detail=\"yaml\").")},
+            {"tool": "get_entity", "args": {"entity": "re:^(5[0-9]|[6-8][0-9]|coin.*)$"}, "result": ok(
+                "Coin [50] components: sprite transform; sprite: texture assets/sprites/coins.png (frame coin_0); mesh: sortingLayer Default, "
+                "sortingOrder 0 (each Coin has its own: 0-39)", {"id": 50, "name": "Coin"})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (2D, 42 GameObjects).\nMain Camera [10] camera\nPlayer [20] sprite\nCoin [50] sprite\n... Coin [89] sprite\n", {"scene_id": 1})},
             {"tool": "get_render_stats", "result": ok(
                 "Game view: 46 draws, batching 3 batches (saved 2); breaks: sort_bucket 38, texture 1.",
                 {"draw_calls": 46, "batching": {"batches": 3, "saved_by_batching": 2,
@@ -4706,7 +5027,8 @@ CASES = [
                                                   {"entities": [{"id": 50 + i, "name": "Coin"} for i in range(40)]})},
             {"tool": "set_properties", "result": ok("Set 1 property on 40 GameObjects.", {"entities": [{"id": 50}]})},
         ],
-        "checks": {"calls": [{"tool": "set_properties", "args": {"values": {"mesh": {"sortingOrder": "*"}}}}],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"mesh": {"sortingOrder": "*"}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"component": "mesh", "property": "sortingOrder"}]}}]}],
                    "must_not_call": ["fork_shader", {"tool": "edit_sprite_atlas"}]},
         "max_turns": 14,
     },
@@ -4745,6 +5067,9 @@ CASES = [
         "source": "S52 R1, R34 (review finding: a rename by names moved renderers to Default)",
         "prompt": "Rename the Sorting Layer \"Front\" to \"Foreground\". Sprites already on it must stay on it.",
         "mocks": [
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "tags_and_layers.sorting_layers: [{\"id\": 0, \"name\": \"Default\"}, {\"id\": 3, \"name\": \"Foreground\"}]",
+                {"values": {"tags_and_layers.sorting_layers": [{"id": 0, "name": "Default"}, {"id": 3, "name": "Foreground"}]}})},
             {"tool": "get_project_settings", "result": ok(
                 "tags_and_layers.sorting_layers: [{\"id\": 0, \"name\": \"Default\"}, {\"id\": 3, \"name\": \"Front\"}] "
                 "(Sorting Layers in draw order, first drawn first, as [{id, name}]; must include \"Default\". Pass the complete "
@@ -4755,7 +5080,7 @@ CASES = [
                                                          {"changed": ["tags_and_layers.sorting_layers"]})},
         ],
         "checks": {"calls": [{"tool": "set_project_settings",
-                              "args": {"values": {"tags_and_layers.sorting_layers": "re:(?s)3.*Foreground|Foreground.*3"}}}]},
+                              "args": {"values": {"tags_and_layers.sorting_layers": ["*", {"id": 3, "name": "Foreground"}]}}}]},
         "max_turns": 8,
     },
     {
@@ -4769,6 +5094,10 @@ CASES = [
         "prompt": "In the open scene, the Tilemap Layer 12 uses assets/Tilesets/overworld.tileset, which has a terrain named "
                   "Water with its edge tiles set up. Paint a lake of Water from cell (2, 2) to (8, 6), with proper shores.",
         "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nGrid/Tilemap Layer [12] tilemaplayer transform", {"entities": [{"id": 12, "path": "Grid/Tilemap Layer"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(12|.*tilemap layer.*)$"}, "result": ok(
+                "Tilemap Layer [12] components: tilemaplayer transform; tilemaplayer: tileset assets/Tilesets/overworld.tileset, 0 cells", {"id": 12, "name": "Tilemap Layer"})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (2D, 3 GameObjects).\nMain Camera [10] camera\nGrid [11] grid\n  Tilemap Layer [12] tilemaplayer\n", {"scene_id": 1})},
             {"tool": "get_tilemap", "result": ok("Layer \"Tilemap\": 0 cells.", {"layers": [{"name": "Tilemap"}], "tiles": 0})},
             {"tool": "edit_tilemap", "result": ok("Layer \"Tilemap\": 35 cells, 35 changed (one undo step).", {"changed_cells": 35, "warnings": []})},
         ],
@@ -4785,6 +5114,10 @@ CASES = [
         "prompt": "Show me what filling Tilemap Layer 12 from (0, 0) to (3, 3) with the tile grass would look like, without "
                   "changing the scene.",
         "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nGrid/Tilemap Layer [12] tilemaplayer transform", {"entities": [{"id": 12, "path": "Grid/Tilemap Layer"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(12|.*tilemap layer.*)$"}, "result": ok(
+                "Tilemap Layer [12] components: tilemaplayer transform; tilemaplayer: tileset assets/Tilesets/overworld.tileset, 0 cells", {"id": 12, "name": "Tilemap Layer"})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (2D, 3 GameObjects).\nMain Camera [10] camera\nGrid [11] grid\n  Tilemap Layer [12] tilemaplayer\n", {"scene_id": 1})},
             {"tool": "get_tilemap", "result": ok("Layer \"Tilemap\": 0 cells.", {"layers": [{"name": "Tilemap"}], "tiles": 0})},
             {"tool": "edit_tilemap", "result": ok("Preview only (nothing written). Layer \"Tilemap\": 16 cells, 16 changed.", {"preview": True, "changed_cells": 16})},
         ],
@@ -4797,10 +5130,13 @@ CASES = [
         "what_happened": "edit_tileset check: true returns the terrain coverage report (the masks without a tile) and "
                          "writes nothing; asked which masks a tileset lacks, agents should use it rather than read the "
                          ".tileset JSON and work the masks out themselves, or take a preview's contact sheet (S50 R77). "
-                         "The prompt names neither checking nor leaving the file alone: the description is what "
-                         "tells the agent the call exists and is safe.",
-        "text_at_issue": "edit_tileset description: 'check: true returns only the coverage report.'",
-        "source": "S50 R77; S50 review (the earlier prompt said 'Don't change anything', which the check parameter's name answers)",
+                         "The prompt names neither checking nor leaving the file alone. Agents read the file the prompt "
+                         "names before any call, so no result can say it: only the guide's Code line, inside the 4096 "
+                         "characters Claude Code keeps (0/2 without it; 2/4 as an Other areas pointer, past the cut).",
+        "text_at_issue": "Guide 'Code': 'but a .tileset's masks or coverage: edit_tileset check, not its JSON'; edit_tileset "
+                         "description: 'check: true returns only the coverage report.'",
+        "source": "S50 R77; S50 review (the earlier prompt said 'Don't change anything', which the check parameter's name answers); "
+                  "eval runs s50-1, s50-p4 and th-code-short",
         "prompt": "Which terrain masks of assets/Tilesets/overworld.tileset have no tile yet?",
         "files": {"assets/Tilesets/overworld.tileset": '{\n  "version": 1,\n  "name": "Overworld",\n  "tile_size": [16, 16],\n'
                   '  "sources": [{"id": 0, "kind": "texture", "texture": {"path": "Tilesets/overworld.png"}, "tile_size": [16, 16]}],\n'
@@ -4834,6 +5170,14 @@ CASES = [
         "prompt": "Make a tileset from assets/art/bricks.png with 16x16 tiles. The Wall material uses the same image: tell me "
                   "whether anything about it changes.",
         "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:(bricks\\.tileset|Wall\\.material)$"}, "after": "edit_tileset", "result": ok(
+                "assets/art/bricks.tileset: tileset, 8 tiles of 16x16 from assets/art/bricks.png (imported as a pixel-art Sprite: no mips, point, uncompressed).",
+                {"type": "tileset"})},
+            {"tool": "get_asset_info", "args": {"path": "re:bricks\\.png$"}, "result": ok(
+                "assets/art/bricks.png: texture 128x16 RGBA, imported as Default (mips, bilinear, compressed); used by assets/materials/Wall.material (baseColorTexture).",
+                {"path": "assets/art/bricks.png", "type": "texture"})},
+            {"tool": "list_assets", "result": ok("2 assets: assets/art/bricks.png (texture), assets/materials/Wall.material (material).",
+                {"assets": [{"path": "assets/art/bricks.png"}, {"path": "assets/materials/Wall.material"}]})},
             {"tool": "edit_tileset",
              "result": ok("Wrote assets/art/bricks.tileset: 8 tiles (PASS, one undo step).",
                           {"path": "assets/art/bricks.tileset", "created": True, "tiles": 8, "sources": 1,
@@ -4843,7 +5187,7 @@ CASES = [
                                    "assets/materials/Wall.material, which now reads it as a Sprite too."})},
         ],
         "checks": {"calls": ["edit_tileset"], "reply_must": [r"sprite|mip|point|filter|compress"]},
-        "max_turns": 8,
+        "max_turns": 12,
     },
     {
         "id": "guard_import_tilemap_preview_first",
@@ -4866,7 +5210,7 @@ CASES = [
         ],
         "checks": {"must_not_call": [{"tool": "import_tilemap", "args": {"output": True}}],
                    "calls": [{"tool": "import_tilemap"}]},
-        "max_turns": 6,
+        "max_turns": 10,
     },
     {
         "id": "control_tilemap_trigger_word_is_not_edit",
@@ -4909,12 +5253,32 @@ CASES = [
         "what_happened": "New area (S48): checking that an effect ends empty and stays in its bounds is capture_contact_sheet "
                          "with lint in the pixel_art group; without the guide's index entry an agent takes screenshots in Play "
                          "and judges them by eye.",
-        "text_at_issue": "Guide 'Other areas': 'pixel-fx (capture_contact_sheet)'; capture_contact_sheet: 'lint: effect "
-                         "checks and a verdict'",
+        "text_at_issue": "Guide 'Other areas': 'pixel-fx (capture_contact_sheet)'; capture_contact_sheet: 'lint: checks (spill, "
+                         "one_shot_end, ...) and a verdict'",
         "source": "S48 R27, R28 (new tool text); no failure on record",
         "prompt": "The Explosion GameObject in the Main scene is a one-shot pixel-art burst. Check that it ends with nothing "
                   "left on screen and that nothing flies outside its area, and tell me what you find.",
         "mocks": [
+            {"tool": "preview_particle_effect", "args": {"view": "pixel"}, "result": ok(
+                "Explosion: 96 ticks of 0.008333 s (0.8 s), peak 40 particles. Verdict WARN.\nWARN spill: 14 px drawn outside the bounds plus "
+                "margin (seed 3, frame 5): lower the speed, spread, lifetime or size that throws it out.\nPASS one_shot_end: 0.\nPASS off_grid: 0.",
+                {"verdict": "WARN", "checks": [{"id": "spill", "status": "WARN", "measured": 14}, {"id": "one_shot_end", "status": "PASS"}]})},
+            {"tool": "preview_particle_effect", "result": ok(
+                "Explosion: three-quarter view. Verdict PASS.\nPASS never_ends: 0.\nSKIP spill: Measured on the pixel view's cells: run with view pixel.",
+                {"verdict": "PASS", "checks": [{"id": "spill", "status": "SKIP", "limited_by": "Measured on the pixel view's cells: run with view pixel."}]})},
+            {"tool": "read_file", "args": {"path": "re:explosion\\.particles$"}, "result": ok(
+                "assets/fx/explosion.particles lines 1-9 of 9:\n{\"format\": \"jasperengine.particles\", \"version\": 3, \"duration\": 0.8, "
+                "\"loop\": false,\n \"emitters\": [{\"burst\": 40, \"lifetime\": [0.4, 0.8], \"speed\": [30, 60], \"shape\": \"circle\", "
+                "\"renderMode\": \"pixel\"}]}", {"path": "assets/fx/explosion.particles"})},
+            {"tool": "get_asset_info", "args": {"path": "re:explosion\\.particles$"}, "result": ok(
+                "assets/fx/explosion.particles: particle effect, 1 emitter, one-shot, duration 0.8 s.", {"path": "assets/fx/explosion.particles", "type": "particles"})},
+            {"tool": "list_assets", "result": ok("1 asset: assets/fx/explosion.particles (particles).", {"assets": [{"path": "assets/fx/explosion.particles"}]})},
+            {"tool": "get_particle_effect", "result": ok("assets/fx/explosion.particles: 1 emitter, burst 40, lifetime 0.4-0.8 s, speed 30-60, "
+                "one-shot, duration 0.8 s, Render Mode Pixel.", {"path": "assets/fx/explosion.particles"})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nExplosion [40] particles transform", {"entities": [{"id": 40, "path": "Explosion"}]})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (2D, 3 GameObjects).\nMain Camera [10] camera\nPlayer [12] sprite\nExplosion [40] particles\n", {"scene_id": 1})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(40|Explosion)$"}, "result": ok("Explosion [40] components: particles transform; particles: effect assets/fx/explosion.particles (one-shot, 0.8 s), "
+                "playOnAwake true, loop false, sortingLayer Default", {"id": 40, "name": "Explosion"})},
             {"tool": "capture_contact_sheet", "args": {"lint": "*"}, "result": ok(
                 "Captured 8 frames of Explosion (isolated) at scale 4: a 803x256 sheet of 100x100 frames. Checks WARN, verdict "
                 "fixable:\nWARN spill: 14.0. 14 px drawn outside the 4x4 bounds + 24 px margin (seed 3, frame 5) keep it inside "
@@ -4931,10 +5295,13 @@ CASES = [
                 {"target": "Explosion", "mode": "isolated", "scale": 4,
                  "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
         ],
-        "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"entity": "re:(?i)explosion"}, "lint": "*"}}],
+        # the particle preview's pixel view runs the same S48 checks (jasper://docs/particles): a second documented route
+        "checks": {"any_of": [{"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"entity": "re:(?i)^(explosion|40)$"}, "lint": "*"}}]},
+                              {"calls": [{"tool": "preview_particle_effect", "args": {"entity": "re:(?i)^(explosion|40)$", "view": "pixel"}}]},
+                              {"calls": [{"tool": "preview_particle_effect", "args": {"path": "re:explosion\\.particles$", "view": "pixel"}}]}],
                    "must_not_call": [{"tool": "play", "args": {"action": "start"}}, "record_game"],
                    "reply_must": [r"(?i)spill|outside"]},
-        "max_turns": 10,
+        "max_turns": 14,
     },
     {
         "id": "guard_contact_sheet_write",
@@ -4983,7 +5350,7 @@ CASES = [
                 {"target": "Enemy"})},
         ],
         "checks": {"calls": [{"tool": "capture_contact_sheet",
-                              "args": {"target": {"entity": "re:(?i)enemy", "effect": "dissolve"}}}],
+                              "args": {"target": {"effect": "dissolve"}}}],
                    "must_not_call": [{"tool": "play", "args": {"action": "start"}}, "record_game", "screenshot"]},
         "max_turns": 10,
     },
@@ -4995,8 +5362,11 @@ CASES = [
                          "one width, an agent captures it with that lint instead of playing the game and judging screenshots.",
         "text_at_issue": "capture_contact_sheet: '... a .particles asset or a screen transition at N times'; target.transition",
         "source": "S48 R27, R28 (new tool text); no failure on record",
-        "prompt": "Check that the iris screen transition's coloured rim stays the same width all along its edge while it closes.",
+        "prompt": "Check that the engine's built-in iris screen transition's coloured rim stays the same width all along its edge while it closes.",
         "mocks": [
+            # the editor's own answers (a new project), so a search finds what the real one finds
+            {"tool": "search_engine_api", "args": {"query": "re:(?i)iris|transition"}, "result": ok("API symbols for \"iris transition\":\n- TransitionKind.IRIS [EnumMember]\n- AnimationPlayer:isInTransition() -> bool [Method]\n- Animator:isInTransition() -> bool [Method]\n- AudioMixer.transitionTo(string snapshot, number seconds, AudioTimeOptions opts) -> boolean [Function]\n- AudioMixer.transitionToSnapshots(string[] snapshots, number[] weights, number seconds, AudioTimeOptions opts) -> boolean [Function]\n- AudioMixer::isTransitioning() -> bool [CppMethod] (C++ scripts only; not callable from Lua. Look for a bound property on AudioMixer instead.)\n- Button.transition [Property]\n- Button::getTransition() -> ButtonTransition [CppMethod] (C++ scripts only; not callable from Lua. Use the bound property Button.transition instead.)\n- Button::setTransition(ButtonTransition transition) [CppMethod] (C++ scripts only; not callable from Lua. Use the bound property Button.transition instead.)\n- ButtonComponent.transition [Property]\n- Mesh.fadeTransitionWidth [Property]\n- Mesh::getLodFadeTransitionWidth() -> float [CppMethod] (C++ scripts only; not callable from Lua. Look for a bound property on Mesh instead.)\n- Mesh::setLodFadeTransitionWidth(float width) [CppMethod] (C++ scripts only; not callable from Lua. Look for a bound property on Mesh instead.)\n- UISystem::transitionWritesColor(ButtonTransition transition) -> bool [CppMethod] (C++ scripts only; not callable from Lua. Look for a bound property on UISystem instead.)\n- UISystem::transitionWritesTexture(ButtonTransition transition) -> bool [CppMethod] (C++ scripts only; not callable from Lua. Look for a bound property on UISystem instead.)\n- class Transition [Class]\nIn the reference docs:\n- jasper://docs/html-ui-effects (HTML UI effect catalogue, line 107): | [`iris-wipe`](#iris-wipe) | filter | transition | low | Wipes the content away with a circle growing from a centre |\n- jasper://docs/lua-api/2-8-1-transition-static-screen-transitio (2.8.1 Transition (static): screen transitions, line 5): kind and option). Kinds are names or `TransitionKind` values (`IRIS`, `BLINDS`, `SLASH`,\n- jasper://docs/lua-api-reference/transition (Transition, line 16): - `Transition.loadScene(scene: string, kind?: TransitionKindName|integer, duration?: number, options?: TransitionOptions) -> TransitionHandle`: Covers, calls `options.onCovered`, loads the scene stack (SceneManager.loadScene), holds while it loads and reveals once the new scenes drew a frame; a load ...\n- jasper://docs/lua-api-reference/enums (Enums, line 179): - **TransitionKind**: The screen transitions' kinds (Transition.play's first argument; a name works as well) (`IRIS` = 0, `BLINDS` = 1, `SLASH` = 2, `PIXEL_DISSOLVE` = 3, `CRT_OFF` = 4, `BURN_AWAY` = 5, `FADE` = 6)\n- jasper://docs/pixel-fx (Screen transitions, line 63): Transition.cover(TransitionKind.IRIS, 0.4, {shape = \"diamond\"})\n- jasper://docs/pixel-fx (Screen transitions, line 64): Transition.reveal(\"iris\", 0.4)\n- jasper://docs/pixel-fx (Screen transitions, line 66): Transition.loadScene(\"Level2\", \"iris\", 0.8, {shape = \"diamond\", ramp = \"Palettes/ui.palette#ramp:gold\"})\n- jasper://docs/pixel-fx (Screen transitions, line 43): | `iris` | a hole closes on the centre | `shape` circle, diamond or square; `center` (Vector2, normalized from the top-left) or `centerObject` (a GameObject) |")},
+            {"tool": "search_engine_source", "args": {"query": "re:(?i)iris"}, "result": ok("40 match(es) (truncated).\ncore/device/GpuTiersData.cpp:190: {\"platform\":\"apple\",\"kind\":\"name\",\"vendor\":\"intel\",\"name\":\"intel iris graphics 540\",\"devices\":[\"0x1926\",\"0x1927\"],\"tier\":\"medium\",\"from\":\"forge low\"},\ncore/device/GpuTiersData.cpp:191: {\"platform\":\"apple\",\"kind\":\"name\",\"vendor\":\"intel\",\"name\":\"intel iris graphics 6100\",\"devices\":[\"0x162b\"],\"tier\":\"low\",\"from\":\"forge verylow\"},\ncore/device/GpuTiersData.cpp:193: R\"JEGPU(    {\"platform\":\"apple\",\"kind\":\"name\",\"vendor\":\"intel\",\"name\":\"intel iris plus graphics\",\"devices\":[\"0x3ea2\",\"0x3ea5\",\"0x3ea6\",\"0x3ea7\",\"0x3ea8\"],\"tier\":\"high\",\"from\":\"forge medium\"},")},
             {"tool": "capture_contact_sheet", "args": {"target": {"transition": "iris"}, "lint": "*"}, "result": ok(
                 "Captured 8 frames of transition iris (isolated) at scale 2: a 1288x356 sheet of 160x90 frames. Checks PASS, "
                 "verdict clean:\nPASS transition_edges: 0.0",
@@ -5009,7 +5379,7 @@ CASES = [
         "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"transition": "iris"}, "lint": "*"}}],
                    "must_not_call": [{"tool": "play", "args": {"action": "start"}}, "record_game", "screenshot"],
                    "reply_must": [r"(?i)rim|width|edge"]},
-        "max_turns": 10,
+        "max_turns": 14,
     },
     {
         "id": "guard_contact_sheet_too_large",
@@ -5032,8 +5402,7 @@ CASES = [
                  "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
         ],
         "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"transition": "iris"}}}],
-                   "min_calls": {"capture_contact_sheet": 2},
-                   "reply_must": [r"(?i)smaller|lower|too large|limit|cap"]},
+                   "reply_must": [r"(?i)too large|limit|cap|at most", r"(?i)smaller|lower|fewer|reduce|pixel.?size"]},
         "max_turns": 10,
     },
     {
@@ -5046,6 +5415,9 @@ CASES = [
         "source": "S48 review, finding 12 (new error text); no failure on record",
         "prompt": "Capture a contact sheet of the Explosion GameObject and tell me its size.",
         "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nExplosion [40] particles transform", {"entities": [{"id": 40, "path": "Explosion"}]})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (2D, 3 GameObjects).\nMain Camera [10] camera\nPlayer [12] sprite\nExplosion [40] particles\n", {"scene_id": 1})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(40|Explosion)$"}, "result": ok("Explosion [40] components: particles transform", {"id": 40, "name": "Explosion"})},
             {"tool": "capture_contact_sheet", "once": True, "result": err(
                 "Can't capture the contact sheet:\n- capture_running: another capture is still running (job job_7) Fix: wait for "
                 "job job_7 with get_job, or cancel_job it, then call again")},
@@ -5065,21 +5437,28 @@ CASES = [
         "what_happened": "New result text (S48 review): capture_contact_sheet's determinism check in Play reloads the played "
                          "scene; the result's next says the game restarted, so the agent reports it instead of assuming the "
                          "game's state is unchanged.",
-        "text_at_issue": "capture_contact_sheet next: 'The determinism check reloaded the played scene for its two fresh captures, "
-                         "so the game's state restarted.'",
+        "text_at_issue": "capture_contact_sheet: 'lint: checks (..., determinism, ...)' (without the check names agents compared "
+                         "two plain captures by hand: 0 of 6 samples); its next: 'The determinism check reloaded the played scene "
+                         "for its two fresh captures, so the game's state restarted.'",
         "source": "S48 review, finding 10 (new result text); no failure on record",
         "prompt": "While the game is playing, check with a contact sheet that the Random GameObject's frames are deterministic, "
                   "and tell me anything I need to know about the state of the game afterwards.",
         "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nRandom [41] script sprite transform", {"entities": [{"id": 41, "path": "Random"}]})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (2D, 3 GameObjects).\nMain Camera [10] camera\nPlayer [12] sprite\nRandom [41] script sprite\n", {"scene_id": 1})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(41|Random)$"}, "result": ok("Random [41] components: script sprite transform", {"id": 41, "name": "Random"})},
             {"tool": "play", "result": ok("Playing the Main scene.", {"state": "playing"})},
             {"tool": "get_play_state", "result": ok("Playing.", {"state": "playing"})},
-            {"tool": "capture_contact_sheet", "result": ok(
+            {"tool": "capture_contact_sheet", "args": {"lint": "*"}, "result": ok(
                 "Captured 3 frames of Random (scene) at scale 1: a 322x116 sheet of 320x180 frames. Checks FAIL, verdict "
                 "needs_person:\nFAIL determinism: 14.0",
                 {"target": "Random", "mode": "scene", "verdict": "needs_person", "check_status": "FAIL",
                  "checks": [{"id": "determinism", "kind": "effect", "status": "FAIL", "measured": 14, "threshold": 0}],
                  "next": "The determinism check reloaded the played scene for its two fresh captures, so the game's state restarted. "
                          "Look at the sheet as well as the checks: they measure mistakes, not taste."})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of Random (scene) at scale 1: a 2570x182 sheet of 320x180 frames.",
+                {"target": "Random", "mode": "scene", "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
         ],
         "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"lint": "*"}}],
                    "reply_must": [r"(?i)reload|restart"]},
@@ -5119,5 +5498,41 @@ CASES = [
         "checks": {"calls": [{"tool": "apply_material_preset", "args": {"preset": "selout_outline"}}],
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_drivable_car_wheel_colliders",
+        "kind": "guard",
+        "what_happened": "A drivable car is a dynamic body with a Wheel Collider on a child at each wheel (suspension and "
+                         "tire friction on Jolt's vehicle constraint), not four wheel bodies on hinge joints, which bounce and "
+                         "slide sideways.",
+        "text_at_issue": "component Wheel Collider 'A car wheel with suspension and tire friction, below a dynamic Rigidbody'; "
+                         "physics guide 'Vehicles (Wheel Collider)': 'A drivable car is a dynamic Rigidbody ... with a Wheel "
+                         "Collider ... on a child GameObject at each wheel: not four bodies on hinge joints'",
+        "source": "S96 REQ-47 (WP-A); no failure on record",
+        "prompt": "The Kart in the current scene is just a box mesh. Make it a drivable car with four wheels.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject: 21 Kart (mesh)", {"entities": [{"id": 21, "path": "Kart"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 21 \"Kart\": transform, mesh (cube, scale 2 1 4).", {"id": 21})},
+            {"tool": "list_component_types", "result": ok(
+                "... Rigidbody (rigidbody): Rigidbody with colliders, simulated by Jolt; Joint 3D (joint3d): Connects two "
+                "Rigidbodies; Character Controller (charactercontroller): A capsule moved by script that climbs steps and "
+                "slopes; Wheel Collider (wheelcollider): A car wheel with suspension and tire friction, below a dynamic "
+                "Rigidbody; Vehicle Drivetrain (vehicledrivetrain): An engine, gear box and differentials driving the body's "
+                "Wheel Colliders ...",
+                {"components": [{"key": "rigidbody", "name": "Rigidbody"}, {"key": "joint3d", "name": "Joint 3D"},
+                                {"key": "wheelcollider", "name": "Wheel Collider"},
+                                {"key": "vehicledrivetrain", "name": "Vehicle Drivetrain"}]})},
+            {"tool": "edit_colliders", "result": ok("Kart: dynamic body, 1 collider (box 2 x 1 x 4).", {"entity": {"id": 21}})},
+            {"tool": "create_entity", "result": ok("Created GameObject 30 \"Wheel\" under 21 \"Kart\".",
+                                                   {"entity_id": 30, "entity": {"id": 30}})},
+            {"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}, "result": ok(
+                "Added Wheel Collider to GameObject 30 \"Wheel\".", {"entity": {"id": 30}})},
+            {"tool": "run_command", "result": ok("Ran GameObject > 3D Object > Vehicle...", {"ran": "gameobject.create.3DObject.vehicle"})},
+            {"tool": "set_properties", "result": ok("Set 1 property.", {"entity": {"id": 21}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}}]},
+                              {"calls": [{"tool": "run_command", "args": {"id": "gameobject.create.3DObject.vehicle"}}]}],
+                   "must_not_call": [{"tool": "add_component", "args": {"component": "re:(?i)joint"}}, "set_joint"]},
+        "max_turns": 16,
     },
 ]

@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    std::string readText(const fs::path& path) {
+    std::string portablePathsReadText(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
         std::stringstream text;
         text << in.rdbuf();
@@ -123,7 +123,7 @@ TEST(PortablePaths, MaterialFileStoresPicksWithSlashes) {
     const fs::path file = fs::path("Wood.material");
     ASSERT_EQ(project.writeMaterialFile(file, material), SaveResult::Saved);
 
-    const std::string text = readText(project.getProjectPath() / file);
+    const std::string text = portablePathsReadText(project.getProjectPath() / file);
     EXPECT_NE(text.find("textures/wood.png"), std::string::npos) << text;
     EXPECT_EQ(text.find('\\'), std::string::npos) << text;
     const YAML::Node texture = YAML::Load(text)["baseColorTexture"];

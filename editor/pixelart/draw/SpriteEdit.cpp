@@ -9,6 +9,7 @@
 #include "pixelart/PixelColor.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -388,6 +389,13 @@ namespace jasperengine::editor::pixelart::draw {
         }
 
         int EditState::parseFrame(const Json& value, const std::string& field) {
+            // a frame number sent as text ("3"): the schema also takes tag names, so models often quote it
+            if (value.is_string()) {
+                const std::string text = value.get<std::string>();
+                if (!text.empty() && text.size() <= 6 && std::all_of(text.begin(), text.end(), [](unsigned char c) { return std::isdigit(c) != 0; })) {
+                    return parseFrame(Json(std::stoi(text)), field);
+                }
+            }
             if (!value.is_number_integer() || value.get<int>() < 1 || value.get<int>() > doc.frameCount()) {
                 fail("no_frame", field, field + " " + value.dump() + " is not a frame of this sprite", frameRange());
             }
@@ -412,6 +420,10 @@ namespace jasperengine::editor::pixelart::draw {
                     const ase::Tag* tag = nullptr;
                     for (const ase::Tag& t : doc.tags) {
                         if (t.name == name) tag = &t;
+                    }
+                    if (!tag && !name.empty() && std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isdigit(c) != 0; })) {
+                        out.push_back(parseFrame(value, field));  // a frame number as text, when no tag has that name
+                        return out;
                     }
                     if (!tag) fail("no_tag", field, "the sprite has no tag \"" + name + "\"", frameRange());
                     for (int f = tag->from; f <= tag->to && f < doc.frameCount(); f++) out.push_back(f);

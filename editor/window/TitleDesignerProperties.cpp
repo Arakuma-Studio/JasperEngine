@@ -9,6 +9,7 @@
 
 #include "TitleDesignerWindow.h"
 
+#include "Backend.h"
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
 #include "profiler/Profile.h"
@@ -499,7 +500,15 @@ void TitleDesignerWindow::refreshLint(bool pixels) {
         // document checks run by themselves; pixel checks only when asked (Check Rendered)
         if (def->kind == TitleCheckKind::Document || (pixels && def->kind != TitleCheckKind::Estimate)) checks.push_back(def);
     }
+    const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
     const TitleCheckReport report = TitleArtChecks::run(checks, context);
+    // a render met a program still being built: the popup runs the pixel checks again on a later
+    // frame, as the frames build it (S80 Deviation 61)
+    pixelChecksWaiting = pixels && TitleArtRenderHost::editor().notReadyCount() != waits;
+    if (pixelChecksWaiting) {
+        Backend::getApp().requestRedraw();
+        return;
+    }
     checksRun = report.checks.size();
     for (const TitleCheckResult& result : report.checks) {
         if (result.status != TitleCheckStatus::Warn && result.status != TitleCheckStatus::Fail) continue;
@@ -572,8 +581,9 @@ void TitleDesignerWindow::drawLintPopup() {
         lintDirtyAt = now() - 1.0;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Check Rendered")) refreshLint(true);
+    if (ImGui::Button("Check Rendered") || pixelChecksWaiting) refreshLint(true);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Run the pixel checks too (contrast, legibility at the Device's height, clipping)");
+    if (pixelChecksWaiting) ImGui::TextDisabled("Waiting for shaders to compile...");
     ImGui::TextDisabled("%s", TitleArtChecks::guidance());
     ImGui::EndPopup();
 }

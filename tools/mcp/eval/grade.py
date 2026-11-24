@@ -96,7 +96,7 @@ def parse_stream(lines) -> Trace:
 
 
 def args_match(expected, actual) -> bool:
-    """Partial match: expected dict keys recursively; a string starting with "re:" is a regex."""
+    """Partial match: expected dict keys recursively; a string starting with "re:" is a regex (on a number, its text)."""
     if isinstance(expected, dict):
         return isinstance(actual, dict) and all(k in actual and args_match(v, actual[k]) for k, v in expected.items())
     if isinstance(expected, list):
@@ -105,6 +105,8 @@ def args_match(expected, actual) -> bool:
     if expected == "*":
         return True
     if isinstance(expected, str) and expected.startswith("re:"):
+        if isinstance(actual, (int, float)) and not isinstance(actual, bool):
+            actual = str(actual)  # an id the schema takes as integer or string
         return isinstance(actual, str) and re.search(expected[3:], actual) is not None
     return expected == actual
 

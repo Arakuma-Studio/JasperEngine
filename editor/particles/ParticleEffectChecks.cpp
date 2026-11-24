@@ -19,7 +19,7 @@ namespace {
         return std::round(value * 1000.0) / 1000.0;
     }
 
-    double particleEffectCheckRound2(double value){
+    double checkRound2(double value){
         return std::round(value * 100.0) / 100.0;
     }
 
@@ -94,8 +94,8 @@ namespace {
         row["method"] = "analytic: the particles' quads summed over a 64 x 64 grid of the frame, the peak cell's layers";
         row["threshold"] = {{"warn", warn}, {"fail", warn * 2.0}};
         row["threshold_source"] = "particles.qa.overdraw_" + request.platform;
-        row["measured"] = {{"peak_layers", particleEffectCheckRound2(m.peakLayers)}, {"avg_layers", particleEffectCheckRound2(m.avgLayers)}};
-        if (m.heat) row["measured"]["heat_peak_layers"] = particleEffectCheckRound2(m.heatPeakLayers);
+        row["measured"] = {{"peak_layers", checkRound2(m.peakLayers)}, {"avg_layers", checkRound2(m.avgLayers)}};
+        if (m.heat) row["measured"]["heat_peak_layers"] = checkRound2(m.heatPeakLayers);
         row["status"] = m.peakLayers > warn * 2.0 ? "FAIL" : m.peakLayers > warn ? "WARN" : "PASS";
         if (row["status"] != "PASS"){
             row["limited_by"] = m.overdrawEmitter + " stacks " + fixed(m.peakLayers, 1) + " layers at its densest (" + request.platform + " warns over " +
@@ -158,7 +158,7 @@ namespace {
             return row;
         }
         row["method"] = "covered pixels of the cells on black whose red, green and blue are all 250 or more (additive effects)";
-        row["measured"] = particleEffectCheckRound2(m.clippedPercent);
+        row["measured"] = checkRound2(m.clippedPercent);
         row["status"] = m.clippedPercent > request.qa.blownOutPercent ? "WARN" : "PASS";
         if (row["status"] == "WARN"){
             row["limited_by"] = fixed(m.clippedPercent, 0) + "% of the covered pixels are clipped to white: additive layers saturate.";
@@ -173,7 +173,7 @@ namespace {
         row["method"] = "per tick and emitter of 20 particles or more: the share dying that tick with alpha 0.25 or more";
         row["threshold"] = request.qa.popPercent;
         row["threshold_source"] = "particles.qa.pop_percent";
-        row["measured"] = particleEffectCheckRound2(m.popPercent);
+        row["measured"] = checkRound2(m.popPercent);
         row["status"] = m.popPercent > request.qa.popPercent ? "WARN" : "PASS";
         if (row["status"] == "WARN"){
             row["limited_by"] = fixed(m.popPercent, 0) + "% of " + m.popEmitter + "'s particles vanish in one tick while visible.";
@@ -354,7 +354,7 @@ qa::Json ParticleEffectChecks::cost(const ParticleMeasurements& m, const std::st
     const double prepMs = ((double)m.peak * row.prepUs + (double)m.emitters * row.emitterPrepUs) / 1000.0;
     return {{"method", "estimate_from_bench_table"}, {"note", "estimate, not measured on a device"}, {"platform", row.platform},
             {"basis", row.basis}, {"sim_ms", round3(simMs)}, {"prep_ms", round3(prepMs)}, {"peak", m.peak}, {"emitters", m.emitters},
-            {"noise", m.noise}, {"ticks_per_frame", particleEffectCheckRound2(ticksPerFrame)}};
+            {"noise", m.noise}, {"ticks_per_frame", checkRound2(ticksPerFrame)}};
 }
 
 qa::Json ParticleEffectChecks::rows(const ParticleMeasurements& m, const ParticleCheckRequest& request){
@@ -386,10 +386,10 @@ qa::Json ParticleEffectChecks::metrics(const ParticleMeasurements& m, const std:
                   {"size", {round3(m.boundsMax[0] - m.boundsMin[0]), round3(m.boundsMax[1] - m.boundsMin[1]), round3(m.boundsMax[2] - m.boundsMin[2])}},
                   {"largest_size", round3(m.largestSize)}, {"largest_at", round3(m.largestAt)}};
     }
-    Json overdraw = {{"method", "cpu_analytic"}, {"avg_layers", particleEffectCheckRound2(m.avgLayers)}, {"peak_layers", particleEffectCheckRound2(m.peakLayers)},
+    Json overdraw = {{"method", "cpu_analytic"}, {"avg_layers", checkRound2(m.avgLayers)}, {"peak_layers", checkRound2(m.peakLayers)},
                      {"peak_at", round3(m.overdrawAt)}, {"fill_mpix", round3(m.fillMpix)}};
     if (m.heat){
-        overdraw["heat"] = {{"method", "gpu_additive_heat_row"}, {"avg_layers", particleEffectCheckRound2(m.heatAvgLayers)}, {"peak_layers", particleEffectCheckRound2(m.heatPeakLayers)}};
+        overdraw["heat"] = {{"method", "gpu_additive_heat_row"}, {"avg_layers", checkRound2(m.heatAvgLayers)}, {"peak_layers", checkRound2(m.heatPeakLayers)}};
     }
     // at most 32 samples of the coverage
     Json coverage = Json::array();
@@ -400,9 +400,9 @@ qa::Json ParticleEffectChecks::metrics(const ParticleMeasurements& m, const std:
     }
     Json visibility = {{"method", m.visibilityFromImages ? "cells" : "analytic"}, {"coverage", coverage}, {"max_coverage", round3(m.maxCoverage)},
                        {"analytic_max_coverage", round3(m.analyticMaxCoverage)}, {"mean_alpha", round3(m.meanAlpha)}};
-    if (m.visibilityFromImages) visibility["clipped_percent"] = particleEffectCheckRound2(m.clippedPercent);
+    if (m.visibilityFromImages) visibility["clipped_percent"] = checkRound2(m.clippedPercent);
     Json temporal = {{"coverage_jump", round3(m.coverageJump)}, {"coverage_jump_at", round3(m.coverageJumpAt)},
-                     {"pop_percent", particleEffectCheckRound2(m.popPercent)}};
+                     {"pop_percent", checkRound2(m.popPercent)}};
     if (m.looping && m.loopSeam >= 0.0) temporal["loop_seam"] = round3(m.loopSeam);
     // the private scene simulates the effect alone
     Json sceneContext = {{"collision_world", "skipped"}, {"force_fields", "skipped"}, {"world_budget", "not_applied"}, {"triggers", "none_sent"}};

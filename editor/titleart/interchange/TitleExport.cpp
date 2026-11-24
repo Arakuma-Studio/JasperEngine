@@ -178,6 +178,11 @@ void TitleExportContext::then(std::function<bool()> step) {
     added.push_back(std::move(s));
 }
 
+bool TitleExportContext::later() {
+    retry = true;
+    return true;
+}
+
 bool TitleExportContext::fail(const std::string& code, const std::string& message) {
     if (!failed) {
         result.ok = false;
@@ -289,7 +294,7 @@ void TitleExportContext::measure(std::shared_ptr<const titleart::TitleArtDoc> do
     r.language = language;
     r.outputBitDepth = 8;
     const int threshold = image.alphaThreshold;
-    render(std::move(r), [this, done, reach, measureScale, threshold](TitleRenderedImage& img) {
+    render(std::move(r), [done, reach, measureScale, threshold](TitleRenderedImage& img) {
         if (img.frame.empty()) img.frame = reach;
         img.pxScale = (float)measureScale;
         const TitleRectI b = thresholdBounds(img.image, threshold);
@@ -527,6 +532,13 @@ bool TitleExportJob::step(double budgetMs) {
             continue;
         }
         const bool ok = current.cpu();
+        if (ctx->retry) {
+            // the step runs whole again on a later frame
+            ctx->retry = false;
+            ctx->added.clear();
+            ctx->queue.push_front(std::move(current));
+            return false;
+        }
         for (auto it = ctx->added.rbegin(); it != ctx->added.rend(); ++it) ctx->queue.push_front(std::move(*it));
         ctx->added.clear();
         if (!ok && !ctx->failed) ctx->fail("export_failed", "the export stopped");

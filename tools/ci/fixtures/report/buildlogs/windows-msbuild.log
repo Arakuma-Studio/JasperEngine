@@ -1,0 +1,2 @@
+  InspectorTerrain.cpp
+D:\a\JasperEngine\JasperEngine\editor\window\InspectorTerrain.cpp(412,20): error C2027: use of undefined type 'jasperengine::Transform' [D:\a\JasperEngine\JasperEngine\build\windows\editor\jasperengine-editor.vcxproj]

@@ -57,7 +57,7 @@ namespace {
     }
 
     // Where two texts first differ, a few lines of each
-    std::string firstDifference(const std::string& a, const std::string& b) {
+    std::string compatFirstDifference(const std::string& a, const std::string& b) {
         std::istringstream ia(a), ib(b);
         std::string la, lb;
         for (int line = 1;; line++) {
@@ -147,7 +147,10 @@ namespace {
     // authored camera's clips, a plain Mesh's vertex counts and bounds, a UI's bounds and vertex
     // count, ranges set by hand) is compared.
     void removeComputedValues(YAML::Node components) {
-        const CameraComponent cameraDefaults{};
+        CameraComponent cameraDefaults{};
+        // outside a registry nothing deletes the framebuffer a camera's initialiser allocates
+        delete cameraDefaults.framebuffer;
+        cameraDefaults.framebuffer = nullptr;
         const TerrainComponent terrainDefaults{};
         YAML::Node camera = components["camera"];
         if (camera && camera.IsMap() && flagOr(camera, "autoResize", cameraDefaults.autoResize) &&
@@ -296,7 +299,7 @@ TEST(Compat, CorpusRoundTrip) {
                                    (original.find("particlesystem:") == std::string::npos || original.find("inlineEffect:") != std::string::npos);
         if (editorWritten) {
             const std::string difference =
-                firstDifference(withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first))))),
+                compatFirstDifference(withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first))))),
                                 withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original))))));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";

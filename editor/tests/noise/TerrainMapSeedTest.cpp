@@ -19,7 +19,7 @@
 #include "mcp/TerrainMaps.h"
 #include "object/TerrainEdit.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <filesystem>
 #include <fstream>

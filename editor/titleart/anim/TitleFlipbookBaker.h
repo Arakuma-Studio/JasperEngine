@@ -116,6 +116,7 @@ namespace jasperengine::editor {
         std::vector<std::unique_ptr<Work>> work;
         size_t current = 0, frameIndex = 0;
         bool started = false, finished = false, cancelled = false;
+        bool notReady = false;          // the last frame met a program still being built: tried again next step
         TitleFlipbookResult outcome;
         bool begin();
         bool renderOne();

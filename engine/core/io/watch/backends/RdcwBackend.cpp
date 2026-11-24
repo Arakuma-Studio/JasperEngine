@@ -17,7 +17,9 @@
 #endif
 #include <windows.h>
 
+#include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -89,14 +91,18 @@ namespace jasperengine::watch {
         WatchSink* sink = nullptr;
         HANDLE directory = INVALID_HANDLE_VALUE;
         HANDLE stopEvent = nullptr;
+        HANDLE flushEvent = nullptr;
         OVERLAPPED overlapped{};
         std::vector<BYTE> buffer;
         bool readPending = false;
         std::thread thread;
         std::atomic<bool> running{false};
 
-        // the completion handling (the thread and flush())
+        // the completion handling (the thread; flush() asks it)
         std::mutex readMutex;
+        // flush requests, and the last one the thread has served (its events handed to the sink)
+        std::condition_variable flushedCv;
+        uint64_t flushRequested = 0, flushServed = 0;
         fs::path pendingOldName;
         bool hasPendingOldName = false;
         ULONGLONG pendingOldNameAt = 0;
@@ -127,8 +133,9 @@ bool RdcwBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::string& 
     overlapped = OVERLAPPED{};
     overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     stopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    flushEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     buffer.assign(BUFFER_SIZE, 0);
-    if (!overlapped.hEvent || !stopEvent) {
+    if (!overlapped.hEvent || !stopEvent || !flushEvent) {
         error = "CreateEvent failed (error " + std::to_string(GetLastError()) + ")";
         stop();
         return false;
@@ -171,7 +178,11 @@ void RdcwBackend::stop() {
     overlapped = OVERLAPPED{};
     if (stopEvent) CloseHandle(stopEvent);
     stopEvent = nullptr;
+    if (flushEvent) CloseHandle(flushEvent);
+    flushEvent = nullptr;
     hasPendingOldName = false;
+    flushServed = flushRequested;
+    flushedCv.notify_all();
 }
 
 bool RdcwBackend::issueReadLocked() {
@@ -283,43 +294,58 @@ void RdcwBackend::deliver(std::vector<RawEvent>&& events) {
     sink->onRawEvents(std::move(events));
 }
 
+// Only this thread issues the reads (a read is cancelled when the thread that issued it exits) and
+// so only this thread completes them: a completed read's event is set in the issuing thread's
+// context, after the write that completed it may have returned. A flush therefore asks this thread
+// to drain: once it runs again, the completion of every change made before the request is in.
 void RdcwBackend::run() {
-    HANDLE handles[2] = {overlapped.hEvent, stopEvent};
+    HANDLE handles[3] = {overlapped.hEvent, stopEvent, flushEvent};
     while (running) {
         DWORD timeout = INFINITE;   // idle: no wakeup (S05 R21)
         {
             std::lock_guard<std::mutex> lock(readMutex);
             if (hasPendingOldName) timeout = RENAME_HOLD_MS;
         }
-        const DWORD wait = WaitForMultipleObjects(2, handles, FALSE, timeout);
+        const DWORD wait = WaitForMultipleObjects(3, handles, FALSE, timeout);
         if (!running || wait == WAIT_OBJECT_0 + 1) break;
         if (wait == WAIT_FAILED) break;
         std::vector<RawEvent> events;
+        bool alive = true;
+        uint64_t serving = 0;
         {
             std::lock_guard<std::mutex> lock(readMutex);
-            if (wait == WAIT_OBJECT_0) completeLocked(events);
-            flushOldNameLocked(false, events);
-            if (!readPending) {
-                deliver(std::move(events));
-                break;
+            serving = flushRequested;
+            const bool flushing = serving != flushServed;
+            // the completions that are there, re-issuing after each (S05 R7)
+            for (int i = 0; i < 64 && WaitForSingleObject(overlapped.hEvent, 0) == WAIT_OBJECT_0; i++) {
+                if (!completeLocked(events)) break;
             }
+            flushOldNameLocked(flushing, events);
+            alive = readPending;
         }
         deliver(std::move(events));
+        {
+            std::lock_guard<std::mutex> lock(readMutex);
+            if (serving > flushServed) flushServed = serving;
+        }
+        flushedCv.notify_all();
+        if (!alive) break;
     }
+    // a flush waiting on a thread that ended: answered (false), never left to its timeout
+    std::lock_guard<std::mutex> lock(readMutex);
+    flushServed = flushRequested;
+    flushedCv.notify_all();
 }
 
 bool RdcwBackend::flush(std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
     if (!lockWithin(readMutex, timeout)) return false;
     std::unique_lock<std::mutex> lock(readMutex, std::adopt_lock);
-    if (directory == INVALID_HANDLE_VALUE) return false;
-    // drain the completions that are there (zero timeout), re-issuing after each (S05 R7)
-    std::vector<RawEvent> events;
-    for (int i = 0; i < 64 && WaitForSingleObject(overlapped.hEvent, 0) == WAIT_OBJECT_0; i++) {
-        if (!completeLocked(events)) break;
-    }
-    flushOldNameLocked(true, events);
-    deliver(std::move(events));
-    return true;
+    if (directory == INVALID_HANDLE_VALUE || !running || !readPending) return false;
+    const uint64_t request = ++flushRequested;
+    SetEvent(flushEvent);
+    if (!flushedCv.wait_until(lock, deadline, [&]() { return flushServed >= request; })) return false;
+    return running && readPending;
 }
 
 void RdcwBackend::injectOverflowForTesting() {

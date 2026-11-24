@@ -69,7 +69,7 @@ namespace {
             std::ifstream file(it->path(), std::ios::binary);
             std::ostringstream bytes;
             bytes << file.rdbuf();
-            out[FileUtils::pathToUtf8(it->path().lexically_relative(folder))] = bytes.str();
+            out[FileUtils::pathToGenericUtf8(it->path().lexically_relative(folder))] = bytes.str();
         }
         return out;
     }
@@ -118,7 +118,7 @@ namespace {
             prototype.id = 7;
             scene->scene->getComponent<TerrainComponent>(world).treePrototypes.push_back(prototype);
             ASSERT_NE(runtime(), nullptr);
-            panel = std::make_unique<TerrainFoliagePanel>(project.get(), nullptr);
+            panel = std::make_unique<TerrainFoliagePanel>(project.get());
         }
 
         void TearDown() override {

@@ -9,6 +9,10 @@
 
 #include "System.h"
 
+// (vulkan_win32.h includes <windows.h>)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <vulkan/vulkan.h>
 
 namespace jasperengine {

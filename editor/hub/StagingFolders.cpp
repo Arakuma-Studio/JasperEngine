@@ -122,9 +122,12 @@ namespace {
                 if (change && !io::isProcessRunning(io::temporarySiblingWriter(fileName))) journalRemoveFile(file);
                 continue;
             }
-            std::ifstream in(file, std::ios::binary);
             std::string line;
-            std::getline(in, line);
+            {
+                // closed before the entry may be removed below (Windows refuses to remove an open file)
+                std::ifstream in(file, std::ios::binary);
+                std::getline(in, line);
+            }
             const fs::path folder = FileUtils::pathFromUtf8(line);
             const bool usable = folder.is_absolute() && isStagingName(FileUtils::pathToUtf8(folder.filename()));
             if (usable && (fs::exists(fs::symlink_status(folder, ec)) || fs::exists(fs::symlink_status(markerOf(folder), ec)))) {

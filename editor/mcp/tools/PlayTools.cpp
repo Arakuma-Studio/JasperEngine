@@ -51,6 +51,7 @@
 #include "audio/AudioSessionReader.h"
 #include "jobs/JobSystem.h"
 #include "audio/LoudnessMonitor.h"
+#include "pool/SoundPool.h"
 #include "subsystem/AudioSystem.h"
 #include "Project.h"
 #include "recorder/RecorderSession.h"
@@ -679,6 +680,20 @@ Json playAudioJson() {
     if (music.playing) {
         out["music"] = {{"track", music.track}, {"section", music.section}, {"time_s", std::round(music.timeSeconds * 1000.0) / 1000.0},
                         {"bar", music.bar}, {"beat", music.beat}, {"bpm", music.bpm}};
+    }
+    // the clips in memory (S97 REQ-15): what the cache holds, and the biggest five
+    {
+        std::vector<SoundPoolEntry> entries = SoundPool::getEntries();
+        size_t bytes = 0;
+        for (const SoundPoolEntry& entry : entries) bytes += entry.memoryBytes;
+        std::stable_sort(entries.begin(), entries.end(), [](const SoundPoolEntry& a, const SoundPoolEntry& b) { return a.memoryBytes > b.memoryBytes; });
+        Json largest = Json::array();
+        for (size_t i = 0; i < entries.size() && i < 5; i++) {
+            largest.push_back({{"path", entries[i].file}, {"load_type", SoundPool::loadTypeName(entries[i].loadType)},
+                               {"bytes", entries[i].memoryBytes}, {"holders", entries[i].holders}});
+        }
+        out["clips"] = {{"count", entries.size()}, {"bytes", bytes}, {"unused_bytes", SoundPool::getUnusedBytes()},
+                        {"loading", SoundPool::getLoadingCount()}, {"largest", largest}};
     }
     // from the first read until Stop: a first read's value is null, the next ones measure
     LoudnessMonitor::get().requestByAgent();
@@ -1699,6 +1714,8 @@ void playStop(const CallPtr& call, std::function<void()> after) {
         Json data = w3::playStateJson(c);
         data["problems"] = problemsSince(last.startLogId, 30);
         data["next_cursor"] = Out::lastLogId();
+        // the Stop's own main-thread CPU, without the frames drawn while it ran (S71's gate)
+        data["stop_cpu_ms"] = std::round(c.project()->getLastStopCpuMs() * 10.0) / 10.0;
         if (!kept.is_null()) data["kept_changes"] = kept;
         std::string text = "Stopped. " + sessionSummaryText(last) + " The scene is back to its edit-time state." + keepNote;
         if (!data["problems"].empty()) text += "\nProblems during the session:\n" + w3::formatConsoleText(data["problems"], 4000);

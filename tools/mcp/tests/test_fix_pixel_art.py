@@ -9,7 +9,7 @@ photo fixture:
 - rerun gives byte-identical bytes; editing the source flips stale; a re-run over an edited output fails output_edited;
 - an unknown recipe key fails bad_recipe naming the valid keys; output_exists; a needs_person write without force
   fails and writes nothing (directory listing unchanged), with force it is written and recorded as forced;
-- a cancelled job writes nothing;
+- a cancelled job writes nothing; a preview that answers with a job: the finished job's get_job returns its image;
 - apply on a Sprite sets its texture as a second, scene undo step.
 """
 
@@ -134,6 +134,21 @@ async def fix(ed: Editor, args: dict) -> dict:
     return await finished(ed, await ed.call("fix_pixel_art", args))
 
 
+async def finished_raw(ed: Editor, reply):
+    """The raw reply that holds the result: the call's own, else the finished job's get_job (which
+    carries the preview image too)."""
+    if reply.is_error or (reply.structured or {}).get("status") != "running":
+        return reply
+    for _ in range(1500):
+        job = await ed.call_raw("get_job", {"job_id": reply.structured["job_id"]})
+        ed.check(not job.is_error, job.text[:300])
+        if job.structured["status"] != "running":
+            ed.check_eq(job.structured["status"], "succeeded", job.text[:400])
+            return job
+        await asyncio.sleep(0.2)
+    ed.fail(f"job {reply.structured['job_id']} still running")
+
+
 def big_png() -> bytes:
     """4,000 px square of flat 3 px cells: bent grid lines on it run for seconds."""
     width = height = 4000
@@ -160,9 +175,9 @@ async def test_preview_then_write_then_rerun(ed: Editor):
     write_hero(ed)
     await enable(ed)
     before = files_in(ed.project)
-    r = await ed.call_raw("fix_pixel_art", {"source": HERO})
+    r = await finished_raw(ed, await ed.call_raw("fix_pixel_art", {"source": HERO}))
     ed.check(not r.is_error, f"preview: {r.text[:300]}")
-    v = r.structured
+    v = r.structured.get("result", r.structured)
     ed.check_eq(files_in(ed.project), before, "a preview writes nothing")
     ed.check_eq(len(r.images), 1, "a preview returns one image")
     ed.check_eq(v["default_output"], HERO_CLEAN)
@@ -214,6 +229,26 @@ async def test_preview_then_write_then_rerun(ed: Editor):
     ed.check(not (ed.project / HERO_CLEAN).exists(), "undo removes the written file")
 
 
+async def test_slow_preview_image_through_get_job(ed: Editor):
+    """A preview past the call's 1 s wait answers with a job (S46 R37); the finished job's get_job
+    returns the preview image, as the call itself would have. The run is held 3 s
+    (JASPER_TEST_FIX_PIXEL_ART_DELAY_MS), so the job path is taken on any host."""
+    async with Editor(create=True, name="FixPixelArtSlow", env={"JASPER_TEST_FIX_PIXEL_ART_DELAY_MS": "3000"}) as slow:
+        write_hero(slow)
+        await enable(slow)
+        r = await slow.call_raw("fix_pixel_art", {"source": HERO})
+        ed.check(not r.is_error, f"preview: {r.text[:300]}")
+        ed.check_eq(r.structured.get("status"), "running", f"the held run answers with its job: {r.text[:300]}")
+        ed.check_eq(len(r.images), 0, "the running reply has no image yet")
+        done = await finished_raw(slow, r)
+        ed.check_eq(len(done.images), 1, f"get_job returns the preview image: {done.text[:300]}")
+        width, height, _ = pngdiff.decode(done.images[0][0])
+        result = done.structured["result"]
+        ed.check_eq((width, height), (result["image"]["width"], result["image"]["height"]), "the image is the one the result describes")
+        ed.check_eq(result["default_output"], HERO_CLEAN)
+        ed.check("output: true" in result["next"], f"the next step: {result['next']}")
+
+
 async def test_bad_arguments_and_existing_output(ed: Editor):
     reset_art(ed)
     write_hero(ed)
@@ -228,6 +263,18 @@ async def test_bad_arguments_and_existing_output(ed: Editor):
     await ed.call("fix_pixel_art", {"source": HERO, "output": True, "overwrite": True})
     await ed.check_error("fix_pixel_art", {"source": HERO, "output": HERO, "overwrite": True}, contains="output_is_source")
     await ed.check_error("fix_pixel_art", {"source": HERO, "output": "../outside.png"}, contains="output_outside_assets")
+
+
+async def test_output_true_as_a_string(ed: Editor):
+    """output takes a path too, so a model sends output: true as "true" (the MCP eval's samples): it writes like true."""
+    reset_art(ed)
+    write_hero(ed)
+    await enable(ed)
+    preview = await fix(ed, {"source": HERO, "output": "false"})
+    ed.check(not (ed.project / HERO_CLEAN).exists(), f"output \"false\" previews: {preview.get('summary')}")
+    written = await fix(ed, {"source": HERO, "output": "true"})
+    ed.check((ed.project / HERO_CLEAN).is_file(), f"output \"true\" writes {HERO_CLEAN}: {written.get('summary')}")
+    ed.check(not (ed.project / ART / "true").exists() and not (ed.project / ART / "true.png").exists(), "no file named true")
 
 
 async def test_needs_person_is_refused_then_forced(ed: Editor):

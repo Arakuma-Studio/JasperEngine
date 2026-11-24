@@ -15,10 +15,12 @@
 #include "TagManager.h"
 #include <memory>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 // Every component for code outside the engine (a game's scripts have always had them through Scene.h).
 // The engine's and the editor's own sources include the ones they use (tools/check_fanout.py): an
@@ -103,6 +105,8 @@
 #include "component/Joint2DComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterWakeComponent.h"

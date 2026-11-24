@@ -3,7 +3,7 @@
 A palette is a `.palette` asset (UTF-8 JSON, `docs/palettes.md` has the format): up to 256 exact sRGB colours,
 names, locked colours, a transparent index, named ramps (optionally colour-cycling) and up to 15 variants (team
 colours, a hurt flash) aligned index by index with the colours. Both tools are in the `pixel_art` group
-(`tool_groups {"enable": ["pixel_art"]}`; callable by name either way). Humans have Window > 2D > Palette, the
+(enable it before calling: `tool_groups {"enable": ["pixel_art"]}`). Humans have Window > 2D > Palette, the
 Project window's Apply Palette... / Reduce Colours..., and the material and post-processing inspectors.
 
 ## Naming a palette

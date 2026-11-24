@@ -2,7 +2,7 @@
 
 Sprite effects, screen transitions, glitch, game feel and the contact sheets that check them
 (user docs: `docs/pixel-fx.md`). `capture_contact_sheet` is in the `pixel_art` group
-(`tool_groups {"enable": ["pixel_art"]}`; callable by name either way). Humans have the Game view's
+(enable it before calling: `tool_groups {"enable": ["pixel_art"]}`). Humans have the Game view's
 Contact Sheet... button.
 
 ## Sprite effects

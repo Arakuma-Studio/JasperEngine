@@ -1449,6 +1449,41 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         };
+        {
+            Setting s;
+            s.key = "player.target_platforms";
+            s.type = "list";
+            s.values = {"windows", "linux", "macos", "android", "ios", "web"};
+            s.description = "Target Platforms: the platforms this game ships on; Build Settings, build_project and get_build_info "
+                            "default to them. Non-empty.";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (BuildPlatform platform : {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS, BuildPlatform::Android,
+                                               BuildPlatform::IOS, BuildPlatform::Web}) {
+                    if (ctx.project()->isTargetPlatform(platform)) list.push_back(buildPlatformName(platform));
+                }
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                const char* fix = "must be a non-empty list of windows, linux, macos, android, ios, web";
+                if (!value.is_array() || value.empty()) {
+                    error = fix;
+                    return false;
+                }
+                uint8_t targets = 0;
+                for (const Json& item : value) {
+                    BuildPlatform platform;
+                    if (!item.is_string() || !parseBuildPlatform(item.get<std::string>(), platform)) {
+                        error = fix;
+                        return false;
+                    }
+                    targets |= Project::targetPlatformBit(platform);
+                }
+                if (apply) ctx.project()->setTargetPlatforms(targets);
+                return true;
+            };
+            add(s);
+        }
         nameChoice("player.build_method", "Build Settings > Build Method: auto (a prebuilt player unless the project needs native code), prebuilt or compile.",
                    {"auto", "prebuilt", "compile"}, [](Project& p) { return p.getBuildMethod(); },
                    [](Project& p, const std::string& v) { p.setBuildMethod(v); });
@@ -3230,6 +3265,8 @@ std::vector<Setting> mcpSettingsTable() {
             };
         }
         audioInt("audio.max_voices", "Voices playing at all (default 256); past it the least important (AudioSource priority) stops.", 1, 1000, &AudioSettings::maxVoices);
+        audioInt("audio.unused_clip_cache", "MiB of clips nothing plays that stay loaded (default 16), the least recently used dropped first; "
+                 "0 drops a clip when its last source or voice lets it go.", 0, 4096, &AudioSettings::unusedClipCacheMb);
         audioInt("audio.seed", "The seed of Sound Event picks in a run without a device (default 1), so it repeats. A run with a device draws its own.", 0, 2147483647LL, &AudioSettings::seed);
         audioInt("audio.capture_max_seconds", "Seconds of audio a Play's capture keeps (default 120); its events go on being logged after them.", 1, 3600, &AudioSettings::captureMaxSeconds);
         audioInt("audio.capture_keep", "Capture sessions kept in the project (default 3); the oldest goes first.", 1, 20, &AudioSettings::captureKeep);
@@ -4274,6 +4311,8 @@ const Placement placements[] = {
     {"player.threading.io_threads", "Player", "Threading", "Asset I/O Threads", "io loading threads"},
     {"player.threading.web_pump_budget_ms", "Player", "Threading", "Web Pump Budget", "web jobs"},
     {"player.threading.web_multithreaded", "Player", "Threading", "Web: Multithreaded", "pthreads cross origin isolated"},
+    {"player.target_platforms", "Player", "Publishing Settings", "Target Platforms",
+     "platforms targets ship export mobile desktop android ios web windows linux macos"},
     {"player.development_build", "Player", "Publishing Settings", "Development Build", "profiler"},
     {"player.pack_native_resources", "Player", "Publishing Settings", "Native Resource Pack", "resources pak"},
     {"player.build_method", "Player", "Publishing Settings", "Build Method", "prebuilt compile player"},
@@ -4437,6 +4476,7 @@ const Placement placements[] = {
     {"audio.music_group", "Audio", "", "Music Group", "mixer group music track playlist playMusic stinger"},
     {"audio.max_real_voices", "Audio", "", "Max Real Voices", "voices virtual virtualised polyphony"},
     {"audio.max_voices", "Audio", "", "Max Voices", "voices polyphony priority"},
+    {"audio.unused_clip_cache", "Audio", "", "Unused Clip Cache (MiB)", "memory cache clips unload decode budget"},
     {"audio.sample_rate", "Audio", "", "Sample Rate", "hz 22050 44100 48000 output frequency"},
     {"audio.seed", "Audio", "", "Random Seed", "seed sound event random shuffle deterministic repeat"},
     {"audio.capture_max_seconds", "Audio", "Capture and QA", "Capture Max Seconds", "capture session length truncate"},
@@ -4505,8 +4545,8 @@ const Placement placements[] = {
     {"preferences.clear_on_play", "General", "Console", "Clear on Play", "console"},
     {"preferences.error_pause", "General", "Console", "Error Pause", "console"},
     {"preferences.simulate_touch", "General", "Game View", "Simulate Touch", "game view mouse finger"},
-    {"preferences.pixel_art.agent_edit_highlight", "Pixel Art (Preferences)", "", "Highlight Agent Edits", "sprite preview agent mcp outline changed pixels"},
     {"preferences.network.offline", "General", "Network", "Offline", "network internet offline proxy lospec download http"},
+    {"preferences.pixel_art.agent_edit_highlight", "Pixel Art", "", "Highlight Agent Edits", "sprite preview agent mcp outline changed pixels"},
     {"preferences.default_export_dir", "General", "", "Default Build Directory", "output export"},
     {"preferences.sound_browser_autoplay", "General", "Sound Browser", "Auto-play", "sound browser audition select play"},
     {"preferences.sound_browser_match_loudness", "General", "Sound Browser", "Match Loudness", "sound browser audition loudness lufs"},
@@ -4732,7 +4772,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Scene View", SettingsScope::Preference, 6, "picking pick drop surface rulers animation preview particles"},
         {"External Tools", SettingsScope::Preference, 7, "cmake compiler emscripten ffmpeg"},
         {"Logging", SettingsScope::Preference, 8, "log levels"},
-        {"Pixel Art", SettingsScope::Preference, 9, "pixel art sprite preview agent edits highlight"},
+        {"Pixel Art", SettingsScope::Preference, 9, "sprite preview agent edits highlight"},
         {"Diagnostics", SettingsScope::Preference, 10, "crash hang watchdog freeze not responding reports"},
         {"Shader Cache", SettingsScope::Preference, 11, "shaders cache clear"},
         {"Version Control", SettingsScope::Preference, 12, "git svn subversion lfs lock commit merge"},
@@ -4775,7 +4815,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             row.page = setting.preference ? "General" : "Editor";
             row.label = titleCase(setting.key);
         }
-        if (setting.preference && row.page == "Scripting") row.page = "Scripting (Preferences)";
+        if (setting.preference && (row.page == "Scripting" || row.page == "Pixel Art")) row.page += " (Preferences)";
         addOrAbort(registry, std::move(row));
     }
 

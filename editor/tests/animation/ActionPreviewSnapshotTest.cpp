@@ -24,13 +24,13 @@ namespace {
 
     constexpr uint32_t kSceneId = 7;
 
-    Entity transformEntity(Scene& scene) {
+    Entity actionPreviewSnapshotTransformEntity(Scene& scene) {
         const Entity entity = scene.createEntity();
         scene.addComponent<Transform>(entity, Transform());
         return entity;
     }
 
-    Transform& transformOf(Scene& scene, Entity entity) {
+    Transform& actionPreviewSnapshotTransformOf(Scene& scene, Entity entity) {
         return scene.getComponent<Transform>(entity);
     }
 
@@ -46,73 +46,73 @@ namespace {
 
 TEST(ActionPreviewSnapshotTest, RestoreKeepsAWrittenProperty) {
     Scene scene;
-    const Entity target = transformEntity(scene);
+    const Entity target = actionPreviewSnapshotTransformEntity(scene);
     ActionPreviewSnapshot snapshot;
     snapshot.add(kSceneId, &scene, target);
 
-    transformOf(scene, target).position = Vector3(5, 0, 0);   // the preview's pose
-    commandWrite(target, ComponentType::Transform, "scale", [&]() { transformOf(scene, target).scale = Vector3(2, 2, 2); });
+    actionPreviewSnapshotTransformOf(scene, target).position = Vector3(5, 0, 0);   // the preview's pose
+    commandWrite(target, ComponentType::Transform, "scale", [&]() { actionPreviewSnapshotTransformOf(scene, target).scale = Vector3(2, 2, 2); });
     EXPECT_TRUE(snapshot.takeChanged());
     EXPECT_FALSE(snapshot.takeChanged());
 
     snapshot.restore(&scene);
-    EXPECT_EQ(transformOf(scene, target).position, Vector3(0, 0, 0)) << "the preview's pose goes";
-    EXPECT_EQ(transformOf(scene, target).scale, Vector3(2, 2, 2)) << "the edit made during the preview stays";
+    EXPECT_EQ(actionPreviewSnapshotTransformOf(scene, target).position, Vector3(0, 0, 0)) << "the preview's pose goes";
+    EXPECT_EQ(actionPreviewSnapshotTransformOf(scene, target).scale, Vector3(2, 2, 2)) << "the edit made during the preview stays";
 }
 
 TEST(ActionPreviewSnapshotTest, BeforeWritePutsTheAuthoredValueBack) {
     Scene scene;
-    const Entity target = transformEntity(scene);
+    const Entity target = actionPreviewSnapshotTransformEntity(scene);
     ActionPreviewSnapshot snapshot;
     snapshot.add(kSceneId, &scene, target);
 
-    transformOf(scene, target).position = Vector3(5, 0, 0);
+    actionPreviewSnapshotTransformOf(scene, target).position = Vector3(5, 0, 0);
     Vector3 recorded;
     commandWrite(target, ComponentType::Transform, "position", [&]() {
-        recorded = transformOf(scene, target).position;   // what a command keeps for its undo
-        transformOf(scene, target).position = Vector3(1, 2, 3);
+        recorded = actionPreviewSnapshotTransformOf(scene, target).position;   // what a command keeps for its undo
+        actionPreviewSnapshotTransformOf(scene, target).position = Vector3(1, 2, 3);
     });
     EXPECT_EQ(recorded, Vector3(0, 0, 0)) << "the command records the authored value, not the preview's";
 
-    transformOf(scene, target).position = Vector3(9, 9, 9);   // the preview shows its pose again
+    actionPreviewSnapshotTransformOf(scene, target).position = Vector3(9, 9, 9);   // the preview shows its pose again
     snapshot.restore(&scene);
-    EXPECT_EQ(transformOf(scene, target).position, Vector3(1, 2, 3));
+    EXPECT_EQ(actionPreviewSnapshotTransformOf(scene, target).position, Vector3(1, 2, 3));
 }
 
 TEST(ActionPreviewSnapshotTest, WholeComponentWriteIsKept) {
     Scene scene;
-    const Entity target = transformEntity(scene);
+    const Entity target = actionPreviewSnapshotTransformEntity(scene);
     ActionPreviewSnapshot snapshot;
     snapshot.add(kSceneId, &scene, target);
 
-    transformOf(scene, target).position = Vector3(5, 0, 0);
+    actionPreviewSnapshotTransformOf(scene, target).position = Vector3(5, 0, 0);
     Vector3 recorded;
     commandWrite(target, ComponentType::Transform, "", [&]() {
-        recorded = transformOf(scene, target).position;
-        transformOf(scene, target).scale = Vector3(3, 3, 3);   // a gizmo scale drag writes the whole Transform
+        recorded = actionPreviewSnapshotTransformOf(scene, target).position;
+        actionPreviewSnapshotTransformOf(scene, target).scale = Vector3(3, 3, 3);   // a gizmo scale drag writes the whole Transform
     });
     EXPECT_EQ(recorded, Vector3(0, 0, 0)) << "the whole component was put back before the write";
 
-    transformOf(scene, target).position = Vector3(5, 0, 0);
+    actionPreviewSnapshotTransformOf(scene, target).position = Vector3(5, 0, 0);
     snapshot.restore(&scene);
-    EXPECT_EQ(transformOf(scene, target).scale, Vector3(3, 3, 3));
-    EXPECT_EQ(transformOf(scene, target).position, Vector3(0, 0, 0)) << "the preview's pose was not taken with it";
+    EXPECT_EQ(actionPreviewSnapshotTransformOf(scene, target).scale, Vector3(3, 3, 3));
+    EXPECT_EQ(actionPreviewSnapshotTransformOf(scene, target).position, Vector3(0, 0, 0)) << "the preview's pose was not taken with it";
 }
 
 TEST(ActionPreviewSnapshotTest, LastWriteWins) {
     Scene scene;
-    const Entity target = transformEntity(scene);
+    const Entity target = actionPreviewSnapshotTransformEntity(scene);
     ActionPreviewSnapshot snapshot;
     snapshot.add(kSceneId, &scene, target);
 
-    commandWrite(target, ComponentType::Transform, "position", [&]() { transformOf(scene, target).position = Vector3(1, 0, 0); });
-    commandWrite(target, ComponentType::Transform, "position", [&]() { transformOf(scene, target).position = Vector3(2, 0, 0); });
+    commandWrite(target, ComponentType::Transform, "position", [&]() { actionPreviewSnapshotTransformOf(scene, target).position = Vector3(1, 0, 0); });
+    commandWrite(target, ComponentType::Transform, "position", [&]() { actionPreviewSnapshotTransformOf(scene, target).position = Vector3(2, 0, 0); });
     // an undo writes the value back the same way
-    commandWrite(target, ComponentType::Transform, "position", [&]() { transformOf(scene, target).position = Vector3(1, 0, 0); });
+    commandWrite(target, ComponentType::Transform, "position", [&]() { actionPreviewSnapshotTransformOf(scene, target).position = Vector3(1, 0, 0); });
 
-    transformOf(scene, target).position = Vector3(7, 7, 7);
+    actionPreviewSnapshotTransformOf(scene, target).position = Vector3(7, 7, 7);
     snapshot.restore(&scene);
-    EXPECT_EQ(transformOf(scene, target).position, Vector3(1, 0, 0));
+    EXPECT_EQ(actionPreviewSnapshotTransformOf(scene, target).position, Vector3(1, 0, 0));
 }
 
 TEST(ActionPreviewSnapshotTest, SettingsPathWriteKeepsThePreviewRunning) {
@@ -142,37 +142,37 @@ TEST(ActionPreviewSnapshotTest, SettingsPathWriteKeepsThePreviewRunning) {
 
 TEST(ActionPreviewSnapshotTest, WritesOutsideTheSnapshotAreIgnored) {
     Scene scene;
-    const Entity target = transformEntity(scene);
-    const Entity other = transformEntity(scene);
+    const Entity target = actionPreviewSnapshotTransformEntity(scene);
+    const Entity other = actionPreviewSnapshotTransformEntity(scene);
     ActionPreviewSnapshot snapshot;
     snapshot.add(kSceneId, &scene, target);
 
-    commandWrite(other, ComponentType::Transform, "position", [&]() { transformOf(scene, other).position = Vector3(4, 0, 0); });
-    commandWrite(target, ComponentType::Transform, "position", [&]() { transformOf(scene, target).position = Vector3(4, 0, 0); },
+    commandWrite(other, ComponentType::Transform, "position", [&]() { actionPreviewSnapshotTransformOf(scene, other).position = Vector3(4, 0, 0); });
+    commandWrite(target, ComponentType::Transform, "position", [&]() { actionPreviewSnapshotTransformOf(scene, target).position = Vector3(4, 0, 0); },
                  kSceneId + 1);
     EXPECT_FALSE(snapshot.takeChanged()) << "another GameObject, another scene";
 
     snapshot.restore(&scene);
-    EXPECT_EQ(transformOf(scene, target).position, Vector3(0, 0, 0));
-    EXPECT_EQ(transformOf(scene, other).position, Vector3(4, 0, 0)) << "the restore leaves what it did not take";
+    EXPECT_EQ(actionPreviewSnapshotTransformOf(scene, target).position, Vector3(0, 0, 0));
+    EXPECT_EQ(actionPreviewSnapshotTransformOf(scene, other).position, Vector3(4, 0, 0)) << "the restore leaves what it did not take";
 }
 
 TEST(ActionPreviewSnapshotTest, ClearStopsListening) {
     Scene scene;
-    const Entity target = transformEntity(scene);
+    const Entity target = actionPreviewSnapshotTransformEntity(scene);
     {
         ActionPreviewSnapshot snapshot;
         snapshot.add(kSceneId, &scene, target);
         EXPECT_TRUE(snapshot.contains(target));
         snapshot.clear();
         EXPECT_FALSE(snapshot.contains(target));
-        commandWrite(target, ComponentType::Transform, "position", [&]() { transformOf(scene, target).position = Vector3(4, 0, 0); });
+        commandWrite(target, ComponentType::Transform, "position", [&]() { actionPreviewSnapshotTransformOf(scene, target).position = Vector3(4, 0, 0); });
         EXPECT_FALSE(snapshot.takeChanged());
         snapshot.add(kSceneId, &scene, target);
     }
     // the destroyed snapshot listens no more
-    commandWrite(target, ComponentType::Transform, "position", [&]() { transformOf(scene, target).position = Vector3(5, 0, 0); });
-    EXPECT_EQ(transformOf(scene, target).position, Vector3(5, 0, 0));
+    commandWrite(target, ComponentType::Transform, "position", [&]() { actionPreviewSnapshotTransformOf(scene, target).position = Vector3(5, 0, 0); });
+    EXPECT_EQ(actionPreviewSnapshotTransformOf(scene, target).position, Vector3(5, 0, 0));
 }
 
 // the key data is left out of the snapshot (keys authored while a scrub preview is paused stay), but

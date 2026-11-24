@@ -15,7 +15,7 @@ using namespace jasperengine::editor;
 
 namespace {
 
-const double PI = 3.14159265358979323846;
+const double SOUND_FIT_PI = 3.14159265358979323846;
 
 AudioAnalysis::Signal tone(double hz, double seconds, double amplitude, double decay = 0.0) {
     AudioAnalysis::Signal signal;
@@ -25,7 +25,7 @@ AudioAnalysis::Signal tone(double hz, double seconds, double amplitude, double d
     signal.samples.resize(signal.frames);
     for (size_t i = 0; i < signal.frames; i++) {
         const double t = (double)i / 48000.0;
-        signal.samples[i] = (float)(amplitude * std::sin(2.0 * PI * hz * t) * std::exp(-decay * t));
+        signal.samples[i] = (float)(amplitude * std::sin(2.0 * SOUND_FIT_PI * hz * t) * std::exp(-decay * t));
     }
     return signal;
 }

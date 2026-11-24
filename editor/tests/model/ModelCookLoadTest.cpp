@@ -41,7 +41,7 @@ using GJson = GltfDocument::Json;
 
 namespace {
 
-    ResolvedModelSettings settingsOf(OptimizeMesh optimize, MeshCompression compression, GenerateLods lods = GenerateLods::Automatic){
+    ResolvedModelSettings modelCookLoadSettingsOf(OptimizeMesh optimize, MeshCompression compression, GenerateLods lods = GenerateLods::Automatic){
         ResolvedModelSettings settings;
         settings.optimizeMesh = optimize;
         settings.meshCompression = compression;
@@ -126,7 +126,7 @@ TEST_P(ModelCookLoadFixtures, LoadsAsItsSourceWithoutEditorDecoders){
         for (ModelFamily family : {ModelFamily::Desktop, ModelFamily::Web}){
             std::vector<uint8_t> glb;
             ModelCookRecord record;
-            ASSERT_TRUE(cookFile(source, settingsOf(OptimizeMesh::Everything, compression), family, glb, record, error))
+            ASSERT_TRUE(cookFile(source, modelCookLoadSettingsOf(OptimizeMesh::Everything, compression), family, glb, record, error))
                 << name << " " << meshCompressionName(compression) << ": " << error;
             tinygltf::Model cooked;
             GltfNormalizeResult result;
@@ -158,7 +158,7 @@ TEST(ModelCookLoad, DracoAndWebpAreTranscodedAndSaySo){
     std::string error;
     std::vector<uint8_t> glb;
     ModelCookRecord record;
-    ASSERT_TRUE(cookFile(s41Fixture("draco.glb"), settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless), ModelFamily::Desktop,
+    ASSERT_TRUE(cookFile(s41Fixture("draco.glb"), modelCookLoadSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless), ModelFamily::Desktop,
                          glb, record, error)) << error;
     EXPECT_EQ(record.transcoded, std::vector<std::string>{"KHR_draco_mesh_compression"});
     EXPECT_TRUE(std::any_of(record.diagnostics.begin(), record.diagnostics.end(), [](const GltfDiagnostic& d){
@@ -166,7 +166,7 @@ TEST(ModelCookLoad, DracoAndWebpAreTranscodedAndSaySo){
     })) << "the record keeps the loader's finding about the source";
     EXPECT_GT(record.after.triangles, 0);
 
-    ASSERT_TRUE(cookFile(s41Fixture("webp.glb"), settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless), ModelFamily::Mobile,
+    ASSERT_TRUE(cookFile(s41Fixture("webp.glb"), modelCookLoadSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless), ModelFamily::Mobile,
                          glb, record, error)) << error;
     EXPECT_EQ(record.transcoded, std::vector<std::string>{"EXT_texture_webp"});
     GltfDocument doc;
@@ -195,7 +195,7 @@ TEST(ModelCookLoad, MsftLodLevelsBecomeTheBaseMeshesBakedLevels){
     ASSERT_EQ(lod["ids"].size(), 2u);
     std::vector<uint8_t> glb;
     ModelCookRecord record;
-    ASSERT_TRUE(cookFile(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless), ModelFamily::Desktop, glb, record, error)) << error;
+    ASSERT_TRUE(cookFile(source, modelCookLoadSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless), ModelFamily::Desktop, glb, record, error)) << error;
     EXPECT_EQ(record.authoredLodPrimitives, 1);
     GltfDocument cooked;
     ASSERT_TRUE(cooked.loadMemory(glb, source.parent_path(), "cooked.glb", error)) << error;
@@ -245,7 +245,7 @@ TEST(ModelCookLoad, MsftLodLevelsBecomeTheBaseMeshesBakedLevels){
         EXPECT_FALSE(root["accessors"][authoredIndices].contains("bufferView")) << "no bytes for what nothing reads";
     }
     // Generate LODs Off: no levels
-    ASSERT_TRUE(cookFile(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless, GenerateLods::Off), ModelFamily::Desktop,
+    ASSERT_TRUE(cookFile(source, modelCookLoadSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless, GenerateLods::Off), ModelFamily::Desktop,
                          glb, record, error)) << error;
     EXPECT_EQ(record.authoredLodPrimitives, 0);
     EXPECT_TRUE(record.lods.empty());
@@ -257,7 +257,7 @@ TEST(ModelCookLoad, TheMediumFixtureIsTheCookOfTheSource){
     std::string error;
     std::vector<uint8_t> glb;
     ModelCookRecord record;
-    ASSERT_TRUE(cookFile(s41Fixture("source.glb"), settingsOf(OptimizeMesh::Everything, MeshCompression::Medium), ModelFamily::Desktop,
+    ASSERT_TRUE(cookFile(s41Fixture("source.glb"), modelCookLoadSettingsOf(OptimizeMesh::Everything, MeshCompression::Medium), ModelFamily::Desktop,
                          glb, record, error)) << error;
     const fs::path fixture = s41Fixture("cooked_medium.glb");
     if (std::getenv("JASPER_TEST_UPDATE_GOLDEN"))
@@ -273,7 +273,7 @@ TEST(ModelCookLoad, TheEditorLoadsTheCookedFileThroughItsRedirect){
     std::string error;
     std::vector<uint8_t> glb;
     ModelCookRecord record;
-    ASSERT_TRUE(cookFile(s41Fixture("draco.glb"), settingsOf(OptimizeMesh::Everything, MeshCompression::Medium), ModelFamily::Desktop,
+    ASSERT_TRUE(cookFile(s41Fixture("draco.glb"), modelCookLoadSettingsOf(OptimizeMesh::Everything, MeshCompression::Medium), ModelFamily::Desktop,
                          glb, record, error)) << error;
     const fs::path cookedFile = scratch.path / "cooked.glb";
     std::ofstream(cookedFile, std::ios::binary).write(reinterpret_cast<const char*>(glb.data()), (std::streamsize)glb.size());

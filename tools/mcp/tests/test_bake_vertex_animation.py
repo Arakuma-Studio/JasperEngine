@@ -897,21 +897,15 @@ def check_job_error(state: dict, kinds: tuple, out: Path, what: str) -> None:
 
 
 async def vanish_scene(ed: Editor, name: str, entities: tuple) -> int:
-    """A saved scene with hero Animation Players, their models loaded (Probe's preview waits for them)."""
+    """A saved scene with GameObjects of the hero model, its model loaded (a small preview of Probe bakes:
+    the call waits for the model's meshes). The hero's 5 clips are its entity Animations: a new project's
+    Animation Entities (Auto, S77 R38) would place it with none, and nothing to bake"""
+    await ed.call("set_project_settings", values={"animation.animation_entities": "always"})
     made = await ed.call("create_scene", name=name, type="3D", path=f"scenes/{name}")
     sid = made["scene"]["id"]
     await ed.call("select_scene", scene=sid)
-    clips = (await ed.call("get_asset_info", path=HERO))["model"]["animations"]
-    names = [clip["name"] for clip in clips]
-    check("Walk" in names, f"the hero fixture has its Walk clip: {names}")
-    states = [{"clip": f"{HERO}#{clip}", "name": clip} for clip in names]
     for entity in (*entities, "Probe"):
-        # New projects' Auto mode omits Animation entities on models with five or more clips.
-        # These GameObject bakes need authored states, independently of that import preference.
-        await ed.call("create_entity", type="model", name=entity, model=HERO, scene=sid,
-                      components=["animationplayer"], values={"animationplayer": {"clips": states}})
-        player = (await ed.call("get_animation", scene=sid, entity=entity))["players"][0]
-        check([state["name"] for state in player["states"]] == names, f"{entity} plays the fixture's clips: {player}")
+        await ed.call("create_entity", type="model", name=entity, model=HERO, scene=sid)
     await ed.call("save_scene", scene=sid)
     r = await ed.call_raw("bake_vertex_animation", {"source": "Probe", "scene": sid, "fps": 5}, timeout=600)
     check(not r.is_error, f"the GameObject bakes: {r.text}")

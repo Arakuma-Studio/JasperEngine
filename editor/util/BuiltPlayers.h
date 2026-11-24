@@ -11,7 +11,7 @@ namespace jasperengine::editor::builtplayers {
 
     // The identity of a built player: run_build runs only a file that still matches what the editor
     // recorded right after building it. Every field must match: the resolved path, the device and
-    // inode (POSIX; 0 on Windows), the size, the modification time (POSIX: st_mtim in nanoseconds;
+    // inode (Windows: the volume serial number and the file index), the size, the modification time (POSIX: st_mtim in nanoseconds;
     // Windows: last_write_time ticks) and the SHA-256 of the bytes.
     struct Fingerprint {
         std::filesystem::path resolved;

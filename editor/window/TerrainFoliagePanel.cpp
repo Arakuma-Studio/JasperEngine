@@ -27,7 +27,6 @@
 #include "widget/ColorPickerWindow.h"
 #include "window/EditorModal.h"
 #include "window/ProjectWindow.h"
-#include "window/TerrainEditWindow.h"
 
 #include "imgui.h"
 
@@ -169,7 +168,7 @@ namespace {
 
 }
 
-editor::TerrainFoliagePanel::TerrainFoliagePanel(Project* project, TerrainEditWindow* window): project(project), window(window) {
+editor::TerrainFoliagePanel::TerrainFoliagePanel(Project* project): project(project) {
     registerFoliageOverlays();
 }
 

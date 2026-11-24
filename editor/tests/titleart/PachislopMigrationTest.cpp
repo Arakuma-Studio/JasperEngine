@@ -85,17 +85,17 @@ namespace {
                     {"layers", Json::array({bg, t3, t2, img})}};
     }
 
-    Json migrated(const Json& project) {
+    Json pachislopMigrationMigrated(const Json& project) {
         Json out;
         std::string error;
         EXPECT_TRUE(migrateProject(project, out, error)) << error;
         return out;
     }
 
-    const Json& layerOf(const Json& p, size_t i) { return p["layers"][i]; }
+    const Json& pachislopMigrationLayerOf(const Json& p, size_t i) { return p["layers"][i]; }
 
     // a v10 project with one 3D text title in the v4-v10 shape
-    Json stored(Json style, Json chars = Json::object(), Json partEffects = Json::object()) {
+    Json pachislopMigrationStored(Json style, Json chars = Json::object(), Json partEffects = Json::object()) {
         Json s = Json{{"face", mat3("gold", "#ffcc33")}, {"depth", 10}, {"bevelPosition", "outside"}, {"bands", Json::array()}, {"backplates", Json::array()},
                       {"mode", "extrude"}};
         for (auto it = style.begin(); it != style.end(); ++it) s[it.key()] = it.value();
@@ -134,10 +134,10 @@ TEST(PachislopMigrationTest, AV4OrV5ProjectGainsEveryCurrentFieldWithTheOldBehav
                                   "\"dpi\"", "\"erode\"", "\"plate\"", "\"weight\""}) {
             EXPECT_EQ(text.find(newer), std::string::npos) << "the sample has none of the newer fields: " << newer;
         }
-        const Json got = migrated(old);
+        const Json got = pachislopMigrationMigrated(old);
         EXPECT_EQ(got["version"], 11);
         EXPECT_EQ(old.dump(), text) << "the input is not modified";
-        const Json& t2 = layerOf(got, 2);
+        const Json& t2 = pachislopMigrationLayerOf(got, 2);
         EXPECT_EQ(t2["style"]["face"]["bevel"]["useGlobalLight"], false) << "a v4 bevel keeps its own light";
         EXPECT_EQ(t2["style"]["face"]["satin"]["useGlobalLight"], false);
         EXPECT_EQ(t2["effects"][0]["params"]["useGlobalLight"], false) << "a v4 shadow keeps its angle";
@@ -149,21 +149,21 @@ TEST(PachislopMigrationTest, AV4OrV5ProjectGainsEveryCurrentFieldWithTheOldBehav
         EXPECT_EQ(t2["weight"], 0);
         EXPECT_EQ(got["comp"]["dpi"], 72);
         EXPECT_EQ(got["comp"]["globalLight"]["angle"], 120);
-        EXPECT_EQ(layerOf(got, 3)["source"]["trace"]["threshold"], 128);
+        EXPECT_EQ(pachislopMigrationLayerOf(got, 3)["source"]["trace"]["threshold"], 128);
         // the 3D title's v4 style converted to the letter and its bands
-        const Json& s3 = layerOf(got, 1)["style3d"];
+        const Json& s3 = pachislopMigrationLayerOf(got, 1)["style3d"];
         EXPECT_FALSE(s3.contains("backplates"));
         EXPECT_EQ(s3["bevelPosition"], "inside") << "files from before bevelPosition cut their bands inward";
         EXPECT_EQ(s3["face"]["gradientAxis"], "xy");
         EXPECT_EQ(s3["face"]["surface"]["kind"], "none");
         // migrating twice equals once
-        EXPECT_TRUE(same(migrated(got), got));
+        EXPECT_TRUE(same(pachislopMigrationMigrated(got), got));
     }
 }
 
 TEST(PachislopMigrationTest, KeepsPerCharacterOffsetsAndScalesAsStored) {
-    const Json got = migrated(v4Project(4));
-    const Json& c = layerOf(got, 2)["source"]["chars"]["2"];
+    const Json got = pachislopMigrationMigrated(v4Project(4));
+    const Json& c = pachislopMigrationLayerOf(got, 2)["source"]["chars"]["2"];
     EXPECT_EQ(c["dx"], 5);
     EXPECT_EQ(c["dy"], -3);
     EXPECT_EQ(c["scale"], 0.8);
@@ -171,11 +171,11 @@ TEST(PachislopMigrationTest, KeepsPerCharacterOffsetsAndScalesAsStored) {
 }
 
 TEST(PachislopMigrationTest, AV6FileFromBeforeImageTracingAndFaceImagesGetsThem) {
-    Json old = migrated(v4Project(4));
+    Json old = pachislopMigrationMigrated(v4Project(4));
     old["version"] = 6;
     old["layers"][3]["source"].erase("trace");
     old["layers"][1]["style3d"].erase("faceImage");
-    const Json got = migrated(old);
+    const Json got = pachislopMigrationMigrated(old);
     EXPECT_TRUE(same(got["layers"][3]["source"]["trace"], Json{{"threshold", 128}, {"smooth", 0.5}, {"despeckle", 0.05}}));
     EXPECT_EQ(got["layers"][1]["style3d"]["faceImage"], 1);
 }
@@ -190,30 +190,30 @@ TEST(PachislopMigrationTest, KeepsValuesThatArePresentInsteadOfOverwritingThem) 
     old["layers"][1]["style3d"]["bevelPosition"] = "outside";
     old["layers"][1]["style3d"]["face"]["surface"] = Json{{"kind", "brushed"}};
     old["layers"][2]["clip"] = true;
-    const Json got = migrated(old);
+    const Json got = pachislopMigrationMigrated(old);
     EXPECT_TRUE(same(got["comp"]["globalLight"], Json{{"angle", 45}, {"altitude", 30}}));
     EXPECT_EQ(got["comp"]["dpi"], 300);
-    EXPECT_EQ(layerOf(got, 2)["style"]["face"]["bevel"]["useGlobalLight"], true);
-    EXPECT_EQ(layerOf(got, 2)["source"]["tateChuYoko"], true);
-    EXPECT_EQ(layerOf(got, 2)["effects"][0]["params"]["useGlobalLight"], true);
-    EXPECT_EQ(layerOf(got, 2)["clip"], true);
-    EXPECT_EQ(layerOf(got, 1)["style3d"]["bevelPosition"], "outside");
-    EXPECT_TRUE(same(layerOf(got, 1)["style3d"]["face"]["surface"], Json{{"kind", "brushed"}, {"amount", 0.5}, {"scale", 20}, {"seed", 1}}))
+    EXPECT_EQ(pachislopMigrationLayerOf(got, 2)["style"]["face"]["bevel"]["useGlobalLight"], true);
+    EXPECT_EQ(pachislopMigrationLayerOf(got, 2)["source"]["tateChuYoko"], true);
+    EXPECT_EQ(pachislopMigrationLayerOf(got, 2)["effects"][0]["params"]["useGlobalLight"], true);
+    EXPECT_EQ(pachislopMigrationLayerOf(got, 2)["clip"], true);
+    EXPECT_EQ(pachislopMigrationLayerOf(got, 1)["style3d"]["bevelPosition"], "outside");
+    EXPECT_TRUE(same(pachislopMigrationLayerOf(got, 1)["style3d"]["face"]["surface"], Json{{"kind", "brushed"}, {"amount", 0.5}, {"scale", 20}, {"seed", 1}}))
         << "a partial nested object keeps its fields and gets the rest";
 }
 
 TEST(PachislopMigrationTest, IsIdempotentCurrentDataPassesThroughUnchanged) {
-    const Json once = migrated(v4Project(4));
-    EXPECT_TRUE(same(migrated(once), once));
+    const Json once = pachislopMigrationMigrated(v4Project(4));
+    EXPECT_TRUE(same(pachislopMigrationMigrated(once), once));
     const Json current = Json{{"version", 11}, {"name", "Untitled"}, {"comp", once["comp"]}, {"layers", Json::array()}};
-    EXPECT_TRUE(same(migrated(current), current));
+    EXPECT_TRUE(same(pachislopMigrationMigrated(current), current));
 }
 
 TEST(PachislopMigrationTest, MigratesPartEffectsOfV6Titles) {
-    Json p = migrated(v4Project(4));
+    Json p = pachislopMigrationMigrated(v4Project(4));
     p["layers"][2]["partEffects"] = Json{{"face", Json::array({fx("dropShadow", Json{{"angle", 30}})})}};
     p["version"] = 6;
-    EXPECT_EQ(migrated(p)["layers"][2]["partEffects"]["face"][0]["params"]["useGlobalLight"], false);
+    EXPECT_EQ(pachislopMigrationMigrated(p)["layers"][2]["partEffects"]["face"][0]["params"]["useGlobalLight"], false);
 }
 
 TEST(PachislopMigrationTest, RefusesVersion1To3NamingTheVersionAndTheSupportedOnes) {
@@ -253,7 +253,7 @@ TEST(PachislopMigrationTest, RefusesNonProjects) {
 namespace {
 
     Json withChars(int version, Json chars) {
-        Json p = stored(Json::object(), std::move(chars));
+        Json p = pachislopMigrationStored(Json::object(), std::move(chars));
         p["version"] = version;
         p["layers"][0]["style3d"]["bands"] = Json::array();
         p["layers"][0]["style3d"].erase("backplates");
@@ -264,7 +264,7 @@ namespace {
 }
 
 TEST(PachislopMigrationTest, NegatesAV8GlyphsTiltYAndKeepsItsOther3DAdjustments) {
-    const Json got = migrated(withChars(8, Json{{"0", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"tiltX", 12}, {"tiltY", 20}, {"dz", 5}}}}));
+    const Json got = pachislopMigrationMigrated(withChars(8, Json{{"0", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"tiltX", 12}, {"tiltY", 20}, {"dz", 5}}}}));
     EXPECT_EQ(got["version"], 11);
     const Json& c = got["layers"][0]["source"]["chars"]["0"];
     EXPECT_EQ(c["tiltX"], 12);
@@ -273,16 +273,16 @@ TEST(PachislopMigrationTest, NegatesAV8GlyphsTiltYAndKeepsItsOther3DAdjustments)
 }
 
 TEST(PachislopMigrationTest, LeavesAGlyphWithoutTiltYWithoutIt) {
-    const Json got = migrated(withChars(8, Json{{"1", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"tiltX", 12}}}}));
+    const Json got = pachislopMigrationMigrated(withChars(8, Json{{"1", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"tiltX", 12}}}}));
     EXPECT_FALSE(got["layers"][0]["source"]["chars"]["1"].contains("tiltY"));
     EXPECT_EQ(got["layers"][0]["source"]["chars"]["1"]["tiltX"], 12);
 }
 
 TEST(PachislopMigrationTest, PassesV9DataUnchangedMigratingTwiceEqualsOnce) {
-    const Json v9 = migrated(withChars(9, Json{{"0", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"tiltY", 20}}}}));
+    const Json v9 = pachislopMigrationMigrated(withChars(9, Json{{"0", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"tiltY", 20}}}}));
     EXPECT_EQ(v9["layers"][0]["source"]["chars"]["0"]["tiltY"], 20);
-    const Json once = migrated(withChars(8, Json{{"0", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"tiltY", 20}}}}));
-    EXPECT_TRUE(same(migrated(once), once));
+    const Json once = pachislopMigrationMigrated(withChars(8, Json{{"0", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"tiltY", 20}}}}));
+    EXPECT_TRUE(same(pachislopMigrationMigrated(once), once));
 }
 
 // ==================================================================== project.test.ts: v10 -> v11 bands
@@ -291,7 +291,7 @@ TEST(PachislopMigrationTest, BackplatesBecomeBandsExactly) {
     const Json p1 = plate("p1");
     const Json p2 = plate("p2", Json{{"enabled", false}, {"grow", 2}, {"join", "miter"}, {"fillCounters", false}, {"zGap", -3},
                                      {"face", mat3("chrome", "#dddddd")}, {"side", mat3("redMetal", "#aa0000")}});
-    const Json s = migrated(stored(Json{{"backplates", Json::array({p1, p2})}}))["layers"][0]["style3d"];
+    const Json s = pachislopMigrationMigrated(pachislopMigrationStored(Json{{"backplates", Json::array({p1, p2})}}))["layers"][0]["style3d"];
     EXPECT_EQ(s["bevel"]["width"], 0);
     EXPECT_EQ(s["depth"], 10);
     const auto asBand = [](const Json& p) {
@@ -308,10 +308,10 @@ TEST(PachislopMigrationTest, BackplatesBecomeBandsExactly) {
 TEST(PachislopMigrationTest, TheFirstRingInTheFacesMaterialFoldsIntoTheLetter) {
     Json goldLinked = mat3("gold", "#ffcc33");
     goldLinked["link"] = "g";
-    const Json old = stored(Json{{"bands", Json::array({ring("r1", 1.6, 1.6, goldLinked, "chamfer"), ring("r2", 0.3, 0.6, DARK, "step"),
+    const Json old = pachislopMigrationStored(Json{{"bands", Json::array({ring("r1", 1.6, 1.6, goldLinked, "chamfer"), ring("r2", 0.3, 0.6, DARK, "step"),
                                                         ring("r3", 1, 1.2, mat3("redMetal", "#aa0000"))})},
                                  {"backplates", Json::array({plate("p1")})}});
-    const Json s = migrated(old)["layers"][0]["style3d"];
+    const Json s = pachislopMigrationMigrated(old)["layers"][0]["style3d"];
     EXPECT_TRUE(same(s["bevel"], Json{{"width", 1.6}, {"depth", 1.6}, {"profile", "chamfer"}, {"segments", 6}, {"curve", 0}}));
     EXPECT_EQ(s["bevelPosition"], "outside");
     EXPECT_NEAR(s["depth"].get<double>(), 10 + 0.6 + 1.2, 1e-9) << "the old back: 10 behind the rings' end";
@@ -337,17 +337,17 @@ TEST(PachislopMigrationTest, TheFirstRingInTheFacesMaterialFoldsIntoTheLetter) {
 
 TEST(PachislopMigrationTest, TheOldSideWallGoesOntoTheOutermostConvertedBandOrTheLetter) {
     const Json red = mat3("redMetal", "#aa0000");
-    const Json banded = migrated(stored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33")), ring("r2", 0.5, 0.5, DARK)})},
+    const Json banded = pachislopMigrationMigrated(pachislopMigrationStored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33")), ring("r2", 0.5, 0.5, DARK)})},
                                              {"side", red}}))["layers"][0]["style3d"];
     EXPECT_TRUE(same(banded["bands"][0]["side"], red));
     EXPECT_FALSE(banded.contains("side"));
-    const Json bare = migrated(stored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33"))})}, {"side", red}}))["layers"][0]["style3d"];
+    const Json bare = pachislopMigrationMigrated(pachislopMigrationStored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33"))})}, {"side", red}}))["layers"][0]["style3d"];
     EXPECT_TRUE(same(bare["side"], red));
     EXPECT_TRUE(bare["bands"].empty());
 }
 
 TEST(PachislopMigrationTest, AFirstRingUnlikeTheFaceBecomesABandToo) {
-    const Json s = migrated(stored(Json{{"bands", Json::array({ring("r1", 0.3, 0.4, mat3("whiteGloss", "#ffffff")),
+    const Json s = pachislopMigrationMigrated(pachislopMigrationStored(Json{{"bands", Json::array({ring("r1", 0.3, 0.4, mat3("whiteGloss", "#ffffff")),
                                                                ring("r2", 1.6, 1.6, mat3("gold", "#ffcc33"))})}}))["layers"][0]["style3d"];
     EXPECT_EQ(s["bevel"]["width"], 0);
     ASSERT_EQ(s["bands"].size(), 2u);
@@ -358,7 +358,7 @@ TEST(PachislopMigrationTest, AFirstRingUnlikeTheFaceBecomesABandToo) {
 }
 
 TEST(PachislopMigrationTest, InsideRingsTakeTheClosestPositionAndPlatesKeepTheirOuterEdge) {
-    const Json s = migrated(stored(Json{{"bevelPosition", "inside"},
+    const Json s = pachislopMigrationMigrated(pachislopMigrationStored(Json{{"bevelPosition", "inside"},
                                         {"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33")), ring("r2", 0.5, 0.5, DARK)})},
                                         {"backplates", Json::array({plate("p1", Json{{"grow", 2}})})}}))["layers"][0]["style3d"];
     EXPECT_EQ(s["bevelPosition"], "inside");
@@ -366,7 +366,7 @@ TEST(PachislopMigrationTest, InsideRingsTakeTheClosestPositionAndPlatesKeepTheir
 }
 
 TEST(PachislopMigrationTest, InInflateModeTheRingsPastTheBevelBecomeBandsSwitchedOff) {
-    const Json s = migrated(stored(Json{{"mode", "inflate"}, {"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33")), ring("r2", 0.5, 0.5, DARK)})},
+    const Json s = pachislopMigrationMigrated(pachislopMigrationStored(Json{{"mode", "inflate"}, {"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33")), ring("r2", 0.5, 0.5, DARK)})},
                                         {"backplates", Json::array({plate("p1")})}}))["layers"][0]["style3d"];
     EXPECT_EQ(s["bevel"]["width"], 1);
     EXPECT_EQ(s["depth"], 10);
@@ -380,10 +380,10 @@ TEST(PachislopMigrationTest, InInflateModeTheRingsPastTheBevelBecomeBandsSwitche
 
 TEST(PachislopMigrationTest, PartEffectsFollowTheirParts) {
     const auto glows = [](int n) { return Json::array({fx("outerGlow", Json{{"size", n}})}); };
-    const Json old = stored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33")), ring("r2", 0.5, 0.5, DARK)})},
+    const Json old = pachislopMigrationStored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33")), ring("r2", 0.5, 0.5, DARK)})},
                                  {"backplates", Json::array({plate("p1")})}},
                             Json::object(), Json{{"face", glows(1)}, {"band:r1", glows(2)}, {"band:r2", glows(3)}, {"side", glows(4)}, {"plate:p1", glows(5)}});
-    const Json got = migrated(old)["layers"][0]["partEffects"];
+    const Json got = pachislopMigrationMigrated(old)["layers"][0]["partEffects"];
     std::vector<std::string> keys;
     for (auto it = got.begin(); it != got.end(); ++it) keys.push_back(it.key());
     std::sort(keys.begin(), keys.end());
@@ -403,30 +403,30 @@ TEST(PachislopMigrationTest, LettersKeepTheirRingOverridesOnTheConvertedBands) {
     const Json chars = Json{{"0", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"face3d", white}, {"bands3d", Json::array({white, white})}}},
                             {"1", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"side3d", red}}}};
     const Json rings = Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33")), ring("r2", 0.5, 0.5, DARK)});
-    const Json got = migrated(stored(Json{{"bands", rings}, {"backplates", Json::array({plate("p1")})}}, chars));
+    const Json got = pachislopMigrationMigrated(pachislopMigrationStored(Json{{"bands", rings}, {"backplates", Json::array({plate("p1")})}}, chars));
     const Json& s = got["layers"][0]["style3d"];
     const Json& c = got["layers"][0]["source"]["chars"];
     EXPECT_EQ(s["bevel"]["width"], 1) << "0's first ring is its face: the ring folds";
     EXPECT_TRUE(same(c["0"]["bands3d"], Json::array({white})));
     EXPECT_FALSE(c["0"].contains("side3d"));
     EXPECT_FALSE(c["1"].contains("side3d")) << "1's own wall is inside band 0 now: it has nowhere to show";
-    const Json bare = migrated(stored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33"))})}}, chars));
+    const Json bare = pachislopMigrationMigrated(pachislopMigrationStored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33"))})}}, chars));
     EXPECT_TRUE(same(bare["layers"][0]["source"]["chars"]["1"]["side3d"], red)) << "without converted rings a letter keeps its own wall";
     EXPECT_FALSE(bare["layers"][0]["style3d"].contains("side")) << "the side resolves to the gold face";
 }
 
 TEST(PachislopMigrationTest, ARingOverriddenUnlikeTheFaceOnSomeLetterDoesNotFold) {
     const Json chars = Json{{"0", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"bands3d", Json::array({mat3("redMetal", "#aa0000")})}}}};
-    const Json got = migrated(stored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33"))})}}, chars));
+    const Json got = pachislopMigrationMigrated(pachislopMigrationStored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33"))})}}, chars));
     EXPECT_EQ(got["layers"][0]["style3d"]["bevel"]["width"], 0);
     EXPECT_TRUE(same(got["layers"][0]["source"]["chars"]["0"]["bands3d"], Json::array({mat3("redMetal", "#aa0000")})));
 }
 
 TEST(PachislopMigrationTest, BandsMigratingTwiceEqualsOnce) {
-    const Json once = migrated(stored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33")), ring("r2", 0.5, 0.5, DARK)})},
+    const Json once = pachislopMigrationMigrated(pachislopMigrationStored(Json{{"bands", Json::array({ring("r1", 1, 1, mat3("gold", "#ffcc33")), ring("r2", 0.5, 0.5, DARK)})},
                                            {"backplates", Json::array({plate("p1")})}, {"side", mat3("redMetal", "#aa0000")}},
                                       Json{{"0", Json{{"dx", 0}, {"dy", 0}, {"scale", 1}, {"rotate", 0}, {"bands3d", Json::array({Json(), mat3("chrome", "#dddddd")})}}}}));
-    EXPECT_TRUE(same(migrated(once), once));
+    EXPECT_TRUE(same(pachislopMigrationMigrated(once), once));
 }
 
 // ==================================================================== project.test.ts: migrateEffects
@@ -864,13 +864,13 @@ TEST(PachislopMigrationTest, MaterialRunsOverEveryLayerAndPartStackOfAProject) {
 
 namespace {
 
-    Json title(const std::string& id, const std::string& name, Json effects) {
+    Json pachislopMigrationTitle(const std::string& id, const std::string& name, Json effects) {
         return Json{{"id", id}, {"name", name}, {"kind", "title2d"}, {"visible", true}, {"guide", false}, {"blend", "normal"}, {"clip", false},
                     {"transform", Json{{"x", 0}, {"y", 0}, {"rotZ", 0}, {"scale", 1}, {"opacity", 1}}}, {"effects", std::move(effects)},
                     {"masks", Json::array()}, {"partEffects", Json::object()}};
     }
 
-    std::vector<std::string> shape(const Json& p) {
+    std::vector<std::string> pachislopMigrationShape(const Json& p) {
         std::vector<std::string> out;
         for (const Json& l : p["layers"]) {
             const std::string kind = l["kind"];
@@ -889,9 +889,9 @@ namespace {
 
 TEST(PachislopMigrationTest, ContentE1SparklesE2BecomesAGroupCarryingE2AndAGlintsCompanion) {
     IdMint ids;
-    const Json t = title("t", "確定", Json::array({fx("outerGlow"), fx("sparkles", Json{{"placement", "hero"}, {"size", 52}}), fx("dropShadow")}));
+    const Json t = pachislopMigrationTitle("t", "確定", Json::array({fx("outerGlow"), fx("sparkles", Json{{"placement", "hero"}, {"size", 52}}), fx("dropShadow")}));
     const Json out = contentEffects(projectOf({t}), ids);
-    EXPECT_EQ(shape(out), std::vector<std::string>({"確定", "glints", "[確定]"}));
+    EXPECT_EQ(pachislopMigrationShape(out), std::vector<std::string>({"確定", "glints", "[確定]"}));
     const Json &layer = out["layers"][0], &glints = out["layers"][1], &group = out["layers"][2];
     ASSERT_EQ(layer["effects"].size(), 1u);
     EXPECT_EQ(layer["effects"][0]["type"], "outerGlow");
@@ -908,9 +908,9 @@ TEST(PachislopMigrationTest, ContentE1SparklesE2BecomesAGroupCarryingE2AndAGlint
 
 TEST(PachislopMigrationTest, ConsecutiveContentEffectsAreSiblingsTheNextRunFollowsTheGroup) {
     IdMint ids;
-    const Json t = title("t", "激", Json::array({fx("fire"), fx("smoke"), fx("lightning"), fx("deepGlow"), fx("sparkles")}));
+    const Json t = pachislopMigrationTitle("t", "激", Json::array({fx("fire"), fx("smoke"), fx("lightning"), fx("deepGlow"), fx("sparkles")}));
     const Json out = contentEffects(projectOf({t}), ids);
-    EXPECT_EQ(shape(out), std::vector<std::string>({"smoke", "fire", "激", "lightning", "[激]", "glints", "[激]"}));
+    EXPECT_EQ(pachislopMigrationShape(out), std::vector<std::string>({"smoke", "fire", "激", "lightning", "[激]", "glints", "[激]"}));
     const Json& inner = out["layers"][4];
     ASSERT_EQ(inner["effects"].size(), 1u);
     EXPECT_EQ(inner["effects"][0]["type"], "deepGlow");
@@ -922,9 +922,9 @@ TEST(PachislopMigrationTest, ConsecutiveContentEffectsAreSiblingsTheNextRunFollo
 
 TEST(PachislopMigrationTest, KeepsAFreeLensFlareFreeHidesDisabledCompanionsBurstRaysBehindGoBelow) {
     IdMint ids;
-    const Json t = title("t", "A", Json::array({fx("lensFlare", Json{{"x", 10}}), fx("starGlint", Json::object(), false), fx("burstRays", Json{{"placement", "behind"}})}));
+    const Json t = pachislopMigrationTitle("t", "A", Json::array({fx("lensFlare", Json{{"x", 10}}), fx("starGlint", Json::object(), false), fx("burstRays", Json{{"placement", "behind"}})}));
     const Json out = contentEffects(projectOf({t}), ids);
-    EXPECT_EQ(shape(out), std::vector<std::string>({"sunburst", "A", "lensFlare", "glints", "[A]"}));
+    EXPECT_EQ(pachislopMigrationShape(out), std::vector<std::string>({"sunburst", "A", "lensFlare", "glints", "[A]"}));
     EXPECT_EQ((*generatorOf(out, "lensFlare"))["generator"]["params"]["follow"], "");
     EXPECT_EQ((*generatorOf(out, "glints"))["visible"], false);
     const Json& rays = (*generatorOf(out, "sunburst"))["generator"]["params"];
@@ -936,8 +936,8 @@ TEST(PachislopMigrationTest, KeepsAFreeLensFlareFreeHidesDisabledCompanionsBurst
 
 TEST(PachislopMigrationTest, ParticleBurstInFrontAndBehindTwoParticlesLayers) {
     IdMint ids;
-    const Json out = contentEffects(projectOf({title("t", "A", Json::array({fx("particleBurst", Json{{"glow", 0}})}))}), ids);
-    EXPECT_EQ(shape(out), std::vector<std::string>({"particles", "A", "particles", "[A]"}));
+    const Json out = contentEffects(projectOf({pachislopMigrationTitle("t", "A", Json::array({fx("particleBurst", Json{{"glow", 0}})}))}), ids);
+    EXPECT_EQ(pachislopMigrationShape(out), std::vector<std::string>({"particles", "A", "particles", "[A]"}));
     const Json &back = out["layers"][0], &front = out["layers"][2];
     EXPECT_EQ(back["generator"]["params"]["emitter"], "layer");
     EXPECT_EQ(back["generator"]["params"]["split"], "back");
@@ -949,15 +949,15 @@ TEST(PachislopMigrationTest, ParticleBurstInFrontAndBehindTwoParticlesLayers) {
 
 TEST(PachislopMigrationTest, TakesOverTheLayersPlaceClippingBlendAndOpacityGoToTheGroup) {
     IdMint ids;
-    const Json base = title("base", "base", Json::array());
-    Json t = title("t", "A", Json::array({fx("sparkles")}));
+    const Json base = pachislopMigrationTitle("base", "base", Json::array());
+    Json t = pachislopMigrationTitle("t", "A", Json::array({fx("sparkles")}));
     t["clip"] = true;
     t["blend"] = "screen";
     t["transform"]["opacity"] = 0.6;
     const Json g = Json{{"id", "g"}, {"name", "G"}, {"kind", "group"}, {"visible", true}, {"guide", false}, {"blend", "normal"}, {"clip", false},
                         {"transform", Json{{"x", 0}, {"y", 0}, {"rotZ", 0}, {"scale", 1}, {"opacity", 1}}}, {"effects", Json::array({fx("fire")})},
                         {"masks", Json::array()}, {"collapsed", false}};
-    Json member = title("m", "m", Json::array());
+    Json member = pachislopMigrationTitle("m", "m", Json::array());
     member["parentId"] = "g";
     const Json out = contentEffects(projectOf({base, t, member, g}), ids);
     const Json* wrap = nullptr;
@@ -981,9 +981,9 @@ TEST(PachislopMigrationTest, TakesOverTheLayersPlaceClippingBlendAndOpacityGoToT
 
 TEST(PachislopMigrationTest, ContentIsIdempotentAndLeavesProjectsWithoutContentEffectsAlone) {
     IdMint ids;
-    const Json plain = projectOf({title("t", "A", Json::array({fx("outerGlow")}))});
+    const Json plain = projectOf({pachislopMigrationTitle("t", "A", Json::array({fx("outerGlow")}))});
     EXPECT_TRUE(same(contentEffects(plain, ids)["layers"], plain["layers"]));
-    const Json once = contentEffects(projectOf({title("t", "A", Json::array({fx("sparkles")}))}), ids);
+    const Json once = contentEffects(projectOf({pachislopMigrationTitle("t", "A", Json::array({fx("sparkles")}))}), ids);
     EXPECT_TRUE(same(contentEffects(once, ids)["layers"], once["layers"]));
 }
 

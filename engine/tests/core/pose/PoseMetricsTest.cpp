@@ -17,7 +17,7 @@ using H = HumanBone;
 
 namespace {
 
-    std::vector<const PoseRig*> everyRig(){
+    std::vector<const PoseRig*> poseMetricsEveryRig(){
         std::vector<const PoseRig*> rigs;
         for (const TestRig* t : allRigs()){
             rigs.push_back(t->rig.get());
@@ -49,7 +49,7 @@ namespace {
 }
 
 TEST(PoseMetrics, NeutralStandsBalancedOnBothFeet){
-    for (const PoseRig* rig : everyRig()){
+    for (const PoseRig* rig : poseMetricsEveryRig()){
         const PoseMetrics m = metricsOf(*rig, BodyPose());
         EXPECT_TRUE(m.left.contact && m.right.contact);
         EXPECT_NEAR(m.left.height, 0.0f, 0.005f);
@@ -101,7 +101,7 @@ TEST(PoseMetrics, OneFootStance){
 }
 
 TEST(PoseMetrics, AirbornePose){
-    for (const PoseRig* rig : everyRig()){
+    for (const PoseRig* rig : poseMetricsEveryRig()){
         const PoseMetrics m = metricsOf(*rig, BodyPose(), false, 0.5f);
         EXPECT_FALSE(m.left.contact || m.right.contact);
         EXPECT_NEAR(m.lowest, 0.5f, 1e-3f);

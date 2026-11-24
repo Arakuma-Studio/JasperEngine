@@ -77,8 +77,9 @@ private:
     static bool writeJob(const std::string& path, const Job& job);
     void startWorkerLocked();
     void retryFailedLocked(const std::string& path);
-    void drainInlineIfAlone(std::unique_lock<std::mutex>& lock);
-    // writes the queued jobs, then ends (the drain job's body)
+    // Writes the queued jobs until none is left, unless another thread is writing them (false)
+    bool drainLocked(std::unique_lock<std::mutex>& lock);
+    // the drain job's body
     void run();
 
     std::mutex mutex;
@@ -86,6 +87,8 @@ private:
     std::map<std::string, Job> jobs;
     std::map<std::string, Job> failedJobs;
     std::string writingPath;
+    // a thread is in drainLocked's loop
+    bool draining = false;
     // the drain on the io-write channel, while workerRunning
     jobs::Task<void> drainTask;
     bool workerRunning = false;

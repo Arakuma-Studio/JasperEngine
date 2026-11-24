@@ -29,7 +29,7 @@ namespace jasperengine::player {
         uint64_t entries = 0;
     };
 
-    struct ContentManifest {
+    struct JASPERENGINE_API ContentManifest {
         static constexpr int SCHEMA_VERSION = 1;
 
         std::string engineVersion;

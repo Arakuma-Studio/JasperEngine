@@ -49,7 +49,7 @@ using nav::GridCell;
 namespace {
 
     template <typename T>
-    void expectStable(const T& component, std::function<YAML::Node(const T&)> encode, std::function<T(const YAML::Node&)> decode) {
+    void navigationExpectStable(const T& component, std::function<YAML::Node(const T&)> encode, std::function<T(const YAML::Node&)> decode) {
         const YAML::Node first = encode(component);
         ASSERT_TRUE(first.IsDefined());
         const T decoded = decode(YAML::Load(YAML::Dump(first)));
@@ -62,7 +62,7 @@ namespace {
     TEST(NavigationStream, Type##ReEncodesIdentically){ \
         Type component{}; \
         __VA_ARGS__; \
-        expectStable<Type>(component, [](const Type& c){ return Stream::encode##Type(c); }, \
+        navigationExpectStable<Type>(component, [](const Type& c){ return Stream::encode##Type(c); }, \
                            [](const YAML::Node& node){ return Stream::decode##Type(node); }); \
         EXPECT_NO_ENGINE_ERRORS(); \
     }

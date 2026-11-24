@@ -51,7 +51,7 @@ namespace {
     }
 
     template<typename Fn>
-    double medianMs(int runs, Fn&& fn){
+    double splineBenchMedianMs(int runs, Fn&& fn){
         std::vector<double> samples;
         for (int r = 0; r < runs; r++){
             const auto start = bench::Clock::now();
@@ -61,7 +61,7 @@ namespace {
         return bench::percentile(samples, 0.5);
     }
 
-    volatile float sink = 0.0f;
+    volatile float splineBenchSink = 0.0f;
 
 }
 
@@ -86,45 +86,45 @@ int main(int argc, char** argv){
             distances[size_t(q)] = length * static_cast<float>(q) / queries;
             params[size_t(q)] = static_cast<float>(q) / queries;
         }
-        const double evalMs = medianMs(9, [&](){
+        const double evalMs = splineBenchMedianMs(9, [&](){
             float acc = 0.0f;
             for (int q = 0; q < queries; q++){
                 acc += spline::evaluateAtDistance(data, distances[size_t(q)]).position.x;
             }
-            sink = acc;
+            splineBenchSink = acc;
         });
         results.add("evaluate_at_distance_ns", evalMs * 1.0e6 / queries, "ns");
         // its two halves: the distance to (segment, u), and the frame there
-        const double locateMs = medianMs(9, [&](){
+        const double locateMs = splineBenchMedianMs(9, [&](){
             float acc = 0.0f;
             for (int q = 0; q < queries; q++){
                 acc += spline::distanceToT(data, distances[size_t(q)]);
             }
-            sink = acc;
+            splineBenchSink = acc;
         });
         results.add("distance_to_t_ns", locateMs * 1.0e6 / queries, "ns");
-        const double frameMs = medianMs(9, [&](){
+        const double frameMs = splineBenchMedianMs(9, [&](){
             float acc = 0.0f;
             for (int q = 0; q < queries; q++){
                 acc += spline::evaluate(data, params[size_t(q)]).position.x;
             }
-            sink = acc;
+            splineBenchSink = acc;
         });
         results.add("evaluate_t_ns", frameMs * 1.0e6 / queries, "ns");
 
         constexpr int closest = 20000;
-        const double closestMs = medianMs(9, [&](){
+        const double closestMs = splineBenchMedianMs(9, [&](){
             float acc = 0.0f;
             for (int q = 0; q < closest; q++){
                 const float x = 1000.0f * static_cast<float>(q) / closest;
                 acc += spline::closestPoint(data, Vector3(x, 3.0f, 20.0f * std::cos(x * 0.05f))).distance;
             }
-            sink = acc;
+            splineBenchSink = acc;
         });
         results.add("closest_point_100_knots_us", closestMs * 1.0e3 / closest, "us");
 
         constexpr int rebuilds = 2000;
-        const double rebuildMs = medianMs(9, [&](){
+        const double rebuildMs = splineBenchMedianMs(9, [&](){
             for (int r = 0; r < rebuilds; r++){
                 data.markDirty();
                 data.ensureCache();
@@ -152,7 +152,7 @@ int main(int argc, char** argv){
         std::vector<spline::SplineStation> stations;
         spline::SplineStripMesh mesh;
         size_t vertices = 0;
-        const double roadMs = medianMs(15, [&](){
+        const double roadMs = splineBenchMedianMs(15, [&](){
             spline::SplineStationOptions options;
             options.stationSpacing = 1.0f;
             spline::buildStations(road, options, stations);
@@ -180,7 +180,7 @@ int main(int argc, char** argv){
         std::vector<spline::SplineCenterSample> center;
         const spline::SplinePiece piece = spline::makeSplinePiece(0, AABB(Vector3(-0.3f, 0.0f, -0.3f), Vector3(0.3f, 1.0f, 0.3f)));
         std::vector<spline::SplinePiecePose> poses;
-        const double placeMs = medianMs(15, [&](){
+        const double placeMs = splineBenchMedianMs(15, [&](){
             spline::centerlineFromStations(stations, center);
             spline::SplineTileLayoutParams params;
             params.mode = spline::SplineTileMode::Spacing;
@@ -222,7 +222,7 @@ int main(int argc, char** argv){
         spline::SplineStationOptions options;
         spline::buildStations(river, options, stations);
         size_t vertices = 0;
-        const double fillMs = medianMs(9, [&](){
+        const double fillMs = splineBenchMedianMs(9, [&](){
             spline::SplineFillParams params;
             params.maxHalfWidth = 12.0f;
             const spline::SplineFillResult field = spline::buildSplineFillField(stations, ground, params);

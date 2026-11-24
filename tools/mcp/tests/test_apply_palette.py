@@ -144,6 +144,23 @@ async def test_output_and_undo(ed: Editor):
         ed.check_eq(meta.read_bytes(), meta_before, "the texture's .meta (its GUID) is untouched")
 
 
+async def test_output_true_as_a_string(ed: Editor):
+    """output takes a path too, so a model sends output: true as "true" (the MCP eval's samples): the texture
+    itself is written, never a file named true.png; "false" previews."""
+    file = ed.project / FIXABLE
+    before = sha(file)
+    r = await apply(ed, path=FIXABLE, palette="builtin:pico-8", output="false")
+    ed.check(not r.is_error, f"output \"false\": {r.text[:500]}")
+    ed.check_eq(sha(file), before, "output \"false\" previews")
+    r = await apply(ed, path=FIXABLE, palette="builtin:pico-8", output="true")
+    ed.check(not r.is_error, f"output \"true\": {r.text[:500]}")
+    ed.check_eq(r.value["written"], FIXABLE)
+    ed.check(sha(file) != before, "output \"true\" overwrites the texture")
+    ed.check(not (ed.project / "true.png").exists() and not (ed.project / SPR / "true.png").exists(), "no file named true.png")
+    await ed.call("undo", scope="project")
+    ed.check_eq(sha(file), before, "undo restores the original bytes")
+
+
 async def test_job_result_names_the_step(ed: Editor):
     """An apply past about 1 s of work (2048x2048) runs as a job: its own result (get_job) names the undo step as the
     reply does."""
