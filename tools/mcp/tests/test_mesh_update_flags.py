@@ -11,7 +11,7 @@ load cancels.
 
 from __future__ import annotations
 
-from harness import Editor
+from harness import Editor, over_budget
 
 TIMEOUT = 2400
 CI = True
@@ -82,5 +82,7 @@ async def test_stop_on_600_boxes_costs_what_it_should(ed: Editor):
     await ed.call("save_scene", scene=sid)
     ed.check((ed.project / rel).read_bytes() == saved, "the scene saves after Stop as before Play (the Meshes' worldAABB included)")
 
-    ed.check(changed < 3.2, f"Stop decoding changed Meshes costs less than 3.2 times rebuilding the boxes: {changed}")
-    ed.check(moved < 2.5, f"Stop after a Play that only moved the boxes costs less than 2.5 times rebuilding them: {moved}")
+    # budgets of CPU time: a busy machine's other threads move these ratios too, so the benchmark run enforces them
+    over = over_budget("S71 Stop decoding changed Meshes, against rebuilding the boxes", {"changed": changed}, 3.2, "x")
+    over |= over_budget("S71 Stop after a Play that only moved the boxes, against rebuilding them", {"moved": moved}, 2.5, "x")
+    ed.check(not over, f"Stop costs what it should against rebuilding the boxes: {over}")

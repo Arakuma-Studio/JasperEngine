@@ -284,18 +284,17 @@ async def test_reading_closed_scenes_makes_no_gpu_resources():
         await build_info(ed)
 
         async def alive() -> dict:
-            """The device's resources once the open scene's own lazy work is done: a screenshot waits
-            for every shader being built (the Box's LOD cross-fade variant is built in the background
-            and its pipeline made at the next draw: a slow runner read it after five frames), and
-            the counts are read until two in a row agree."""
+            """once the device settled: no shader or pipeline being made (one the editor was still
+            making at the first count would count as made by the read) and two equal reads in a row"""
             last = None
-            for _ in range(10):
-                await ed.call("screenshot", view="scene", max_width=64, timeout_seconds=300)
+            for _ in range(60):
                 await ed.call("wait", frames=5, timeout_seconds=300)
-                counts = (await ed.call("get_render_stats"))["alive"]
-                if counts == last:
-                    return counts
-                last = counts
+                stats = await ed.call("get_render_stats")
+                creation = stats["shader_creation"]
+                idle = not (creation["pending_shaders"] or creation["pending_pipelines"] or creation["pending_warm_draws"])
+                if idle and stats["alive"] == last:
+                    return last
+                last = stats["alive"] if idle else None
             return last
 
         before = await alive()

@@ -4155,7 +4155,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         // Player > Target Platforms; missing: all six (every project before it). Unknown names are
         // dropped, and a list left empty targets all six, each with a warning
         uint8_t targets = Project::allTargetPlatforms;
-        const YAML::Node targetsNode = node["export"] && node["export"].IsMap() ? node["export"]["targetPlatforms"] : YAML::Node();
+        // without an export map the key is missing: YAML::Node() is a defined null, read as "not a list"
+        const YAML::Node targetsNode = node["export"] && node["export"].IsMap() ? node["export"]["targetPlatforms"]
+                                                                                : YAML::Node(YAML::NodeType::Undefined);
         if (targetsNode && targetsNode.IsSequence()) {
             targets = 0;
             for (const YAML::Node& entry : targetsNode) {
