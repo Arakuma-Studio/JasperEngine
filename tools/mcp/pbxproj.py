@@ -118,6 +118,20 @@ def target_sources(root: dict, name: str) -> list[str]:
     return paths
 
 
+def target_resources(root: dict, name: str) -> list[str]:
+    """Paths (as their file references hold them) the target's Resources phase copies."""
+    objects = root["objects"]
+    paths = []
+    for phase_id in target(root, name)["buildPhases"]:
+        phase = objects[phase_id]
+        if phase.get("isa") != "PBXResourcesBuildPhase":
+            continue
+        for build_id in phase.get("files", []):
+            ref = objects[objects[build_id]["fileRef"]]
+            paths.append(ref.get("path", ""))
+    return paths
+
+
 def target_settings(root: dict, name: str) -> list[dict]:
     """The buildSettings of each configuration of the target."""
     objects = root["objects"]

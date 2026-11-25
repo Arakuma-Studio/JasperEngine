@@ -37,6 +37,7 @@ Model import and cook settings, detail levels (LOD) and render budgets: the `mes
 | `generate_lods` | automatic, on, off | automatic |
 | `lod_count`, `lod_reduction` | 1-3; preserve_detail, balanced, smallest (used when `generate_lods` is on) | 3, balanced |
 | `ship_source` | true, false | false |
+| `material_creation_mode` | import, none (FBX only, every platform: no `platform`) | the project's `mesh.material_creation_mode`, import |
 
 With `platform` (desktop, mobile, web) the settings are that platform's override. `reset: [...]`
 puts settings back to their defaults. They live in the model's `.meta` under
@@ -60,6 +61,12 @@ status is `failed` and exports stop until it is exported again without it), `glt
 `gltf-cook-transcodes` (Draco, WebP: the cook removes them, nothing to do). A record's
 `transcoded` lists what the cook decoded; `authored_lod_primitives` counts the primitives whose
 levels are the file's own `MSFT_lod`.
+
+An FBX import logs one Console warning per model that counts what it could not carry over
+("Hall.fbx: 3 textures not found (Wall.psd, Floor.png, +1); tiling/offset not imported on 2
+textures"); `inspect_models` lists each as an `fbx-import-warning` issue. When the scene's own
+materials replace the FBX's, `material_creation_mode: none` imports none: no texture is looked for or
+warned about, and every submesh draws with the default material.
 
 ### Budgets
 
@@ -140,3 +147,18 @@ cross-fade with a dither for `mesh_lod_cross_fade_duration` seconds (0.5) when
 
 Lua: `scene:getRenderStats()` gives the same counters (camelCase: `mainDrawCalls`,
 `shadowTriangles`, `instancedDraws`...).
+
+## Mesh assets (S98 F1)
+
+A `.mesh` holds one mesh's geometry; a Mesh Renderer shows it through `meshAsset`.
+
+| To | Call |
+|---|---|
+| save a GameObject's geometry as a reusable asset | `set_mesh_geometry {entity, save_as: "assets/meshes/rock.mesh"}` (with `shape`: the new primitive) |
+| show an existing `.mesh` | `set_properties {entity, values: {mesh: {meshAsset: "assets/meshes/rock.mesh"}}}` |
+| read a `.mesh` (vertices, submeshes, bounds, who shows it) | `get_asset_info {path}` |
+
+- A scene save moves geometry over 4 KB (spheres, cylinders, capsules, tori, custom meshes) into
+  `<scene folder>/<scene name>/<GameObject>.mesh`: the scene file then holds `meshAsset`, not
+  `buffer`. Read the geometry with `get_asset_info`, never from the YAML.
+- `set_mesh_geometry` without `save_as` makes the geometry the mesh's own again.

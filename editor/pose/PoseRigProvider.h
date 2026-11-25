@@ -79,7 +79,7 @@ namespace jasperengine::editor{
         // the rules it has (a model imported before keeps its status until then). The skeleton is
         // read from the glTF JSON (an FBX's converted .glb): no model is loaded. Not an undo step.
         // True when the sidecar was written; a sidecar that cannot be read or written is warned in
-        // the console.
+        // the console. An FBX whose conversion is queued is read once it is done (false now).
         static bool adoptNameRules(Project* project, const std::filesystem::path& model);
     };
 

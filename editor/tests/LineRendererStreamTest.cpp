@@ -11,7 +11,6 @@
 #include <gtest/gtest.h>
 
 #include "Catalog.h"
-#include "Factory.h"
 #include "Scene.h"
 #include "Stream.h"
 #include "component/LineRendererComponent.h"
@@ -22,7 +21,6 @@
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 #include "util/Color.h"
-#include "support/EditorTestSupport.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -322,50 +320,6 @@ TEST(LineRendererStreamTest, LineCatalogPositionsAndFlags){
     EXPECT_EQ(scene.getComponent<LineRendererComponent>(other).positions, lines.positions);
 }
 
-TEST(LineRendererStreamTest, FactoryEmitsCurvesGradientsAndFields){
-    // S27's literals (stream/CurveCodec): the keys with their modes, a lambda for the wraps; a
-    // step tangent is INFINITY
-    const Curve curve = lineRendererStreamCurveOf({CurveKey{0.0f, 1.0f, 0.0f, std::numeric_limits<float>::infinity()}, CurveKey{1.0f, 0.0f}},
-                                CurveWrapMode::PingPong, CurveWrapMode::Loop);
-    EXPECT_EQ(Factory::formatCurve(curve),
-              "[]{ Curve c = Curve({CurveKey{0.0f, 1.0f, 0.0f, INFINITY, 0}, CurveKey{1.0f, 0.0f, 0.0f, 0.0f, 0}}); "
-              "c.preWrapMode = CurveWrapMode::PingPong; c.postWrapMode = CurveWrapMode::Loop; return c; }()");
-    const Gradient gradient = lineRendererStreamGradientOf({GradientColorKey{0.0f, Vector3(1, 0, 0)}}, {GradientAlphaKey{0.0f, 1.0f}, GradientAlphaKey{1.0f, 0.0f}}, GradientMode::Fixed);
-    EXPECT_EQ(Factory::formatGradient(gradient),
-              "[]{ Gradient g; g.colorKeys = {GradientColorKey{0.0f, Vector3(1.0f, 0.0f, 0.0f)}}; "
-              "g.alphaKeys = {GradientAlphaKey{0.0f, 1.0f}, GradientAlphaKey{1.0f, 0.0f}}; g.mode = GradientMode::Fixed; return g; }()");
-
-    Scene scene;
-    const Entity entity = scene.createUserEntity();
-    scene.addComponent<Transform>(entity, {});
-    scene.addComponent<LineRendererComponent>(entity, authoredLines());
-    TrailRendererComponent trail;
-    trail.time = 0.3f;
-    trail.colorGradient = gradient;
-    scene.addComponent<TrailRendererComponent>(entity, trail);
-
-    const std::string lines = Factory::createComponent(0, &scene, entity, ComponentType::LineRendererComponent, "", "scene", "entity");
-    for (const char* expected : {"linescomp.mode = LineRendererMode::Polyline;", "linescomp.positions = {Vector3(",
-                                 "linescomp.loop = true;", "linescomp.useWorldSpace = true;", "linescomp.widthMultiplier = 0.350000f;",
-                                 "linescomp.widthCurve = []{ Curve c = Curve({", "linescomp.widthUnit = LineWidthUnit::Pixels;",
-                                 "linescomp.colorGradient = []{ Gradient g;", "linescomp.numCornerVertices = 4;", "linescomp.numCapVertices = 6;",
-                                 "linescomp.alignment = LineAlignment::TransformZ;", "linescomp.textureMode = LineTextureMode::Tile;",
-                                 "linescomp.textureScale = Vector2(2.000000f, 0.500000f);", "linescomp.sortPriority = -3;"}){
-        EXPECT_NE(lines.find(expected), std::string::npos) << expected << "\n" << lines;
-    }
-    // an old Line Renderer's code is as it was
-    scene.getComponent<LineRendererComponent>(entity) = LineRendererComponent();
-    const std::string plain = Factory::createComponent(0, &scene, entity, ComponentType::LineRendererComponent, "", "scene", "entity");
-    EXPECT_EQ(plain.find("widthMultiplier"), std::string::npos) << plain;
-    EXPECT_EQ(plain.find("mode"), std::string::npos) << plain;
-
-    const std::string trailCode = Factory::createComponent(0, &scene, entity, ComponentType::TrailRendererComponent, "", "scene", "entity");
-    EXPECT_NE(trailCode.find("TrailRendererComponent trailcomp;"), std::string::npos) << trailCode;
-    EXPECT_NE(trailCode.find("trailcomp.time = 0.300000f;"), std::string::npos) << trailCode;
-    EXPECT_NE(trailCode.find("trailcomp.colorGradient = []{ Gradient g;"), std::string::npos) << trailCode;
-    EXPECT_EQ(trailCode.find("minVertexDistance"), std::string::npos) << "defaults are not written";
-}
-
 TEST(LineRendererStreamTest, RibbonVariantProperties){
     Scene scene;
     LineRendererComponent lines;
@@ -390,45 +344,6 @@ TEST(LineRendererStreamTest, RibbonVariantProperties){
 
     TrailRendererComponent trail;
     EXPECT_EQ(RenderSystem::getTrailVariantProperties(&scene, trail), (uint64_t)(0x2 | 0x8));
-}
-
-// The exported build's code for both components compiles against the engine headers (the C++
-// Factory writes into a game's generated scene sources)
-TEST(LineRendererStreamTest, FactoryCodeCompiles){
-#if defined(JASPER_EDITOR_TEST_ENGINE_FLAGS) && defined(JASPER_EDITOR_TEST_CXX)
-    if (!std::ifstream(JASPER_EDITOR_TEST_ENGINE_FLAGS)){
-        GTEST_SKIP() << "no engine flags file " << JASPER_EDITOR_TEST_ENGINE_FLAGS;
-    }
-
-    Scene scene;
-    const Entity entity = scene.createUserEntity();
-    scene.addComponent<Transform>(entity, {});
-    scene.addComponent<LineRendererComponent>(entity, authoredLines());
-    TrailRendererComponent trail;
-    trail.time = 0.3f;
-    trail.widthCurve = lineRendererStreamCurveOf({CurveKey{0.0f, 1.0f, 0.0f, std::numeric_limits<float>::infinity()}, CurveKey{1.0f, 0.0f}});
-    trail.colorGradient = twoColorsLinear(Vector4(1, 0, 0, 1), Vector4(0, 0, 1, 0));
-    trail.shaderGlobalBindings = {{"tint", "_Tint"}};
-    trail.customShader = "library:line_flipbook";
-    scene.addComponent<TrailRendererComponent>(entity, trail);
-
-    std::ostringstream source;
-    source << "#include \"Scene.h\"\n#include \"component/Transform.h\"\nusing namespace jasperengine;\n"
-           << "void generatedLines(Scene* scene, Entity entity){\n"
-           << "{\n" << Factory::createComponent(4, &scene, entity, ComponentType::LineRendererComponent, "", "scene", "entity") << "}\n"
-           << "{\n" << Factory::createComponent(4, &scene, entity, ComponentType::TrailRendererComponent, "", "scene", "entity") << "}\n"
-           << "}\n";
-    const std::filesystem::path dir = std::filesystem::temp_directory_path() / ("jasper-lines-factory-" + std::to_string(::getpid()));
-    std::filesystem::create_directories(dir);
-    const std::filesystem::path file = dir / "generated.cpp";
-    std::ofstream(file) << source.str();
-    std::string output;
-    const int status = editor::test::compileSyntaxAgainstEngine(JASPER_EDITOR_TEST_CXX, JASPER_EDITOR_TEST_ENGINE_FLAGS, file, output);
-    EXPECT_EQ(status, 0) << output << "\n" << source.str();
-    std::filesystem::remove_all(dir);
-#else
-    GTEST_SKIP() << "built without the engine flags";
-#endif
 }
 
 TEST(LineRendererStreamTest, SetPositionOutOfRangeChangesNothing){

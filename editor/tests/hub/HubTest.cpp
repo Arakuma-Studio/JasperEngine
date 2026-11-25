@@ -454,7 +454,9 @@ TEST(ProjectTemplates, CatalogAndSaveAsTemplate) {
     const fs::path builtInMade = dir.path() / "From3D";
     ASSERT_TRUE(templates::materialize(*templates::find(list, "3d"), builtInMade, error)) << error;
     EXPECT_TRUE(fs::exists(builtInMade / "project.yaml"));
-    EXPECT_TRUE(fs::exists(builtInMade / "Main.scene"));
+    // a new project's layout (S98 REQ-36): the content under assets/ and scripts/
+    EXPECT_TRUE(fs::exists(builtInMade / "assets" / "scenes" / "Main.scene"));
+    EXPECT_TRUE(fs::exists(builtInMade / "scripts" / "Rotator.lua"));
 }
 
 // ---- S66: a copy killed in the middle (docs/specs/S66-crash-leftovers.md AC1)

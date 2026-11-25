@@ -9,7 +9,6 @@
 
 #include "support/EditorTestSupport.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "StreamMigrations.h"
 #include "component/SpriteComponent.h"
@@ -68,14 +67,6 @@ TEST(SpriteInlineFrames, ThreeHundredFramesLoadAndSave) {
     ASSERT_TRUE(savedSprite["framesRect"]);
     EXPECT_EQ(savedSprite["framesRect"].size(), 300u);
     EXPECT_EQ(savedSprite["framesRect"][299]["name"].as<std::string>(), "f299");
-
-    // the generated scene code sizes the list first, then writes every rect
-    const std::string code = Factory::createSpriteComponent(4, decoded.scene->scene, hero, "scene", "hero", false);
-    const size_t resize = code.find("sprite.framesRect.resize(300);");
-    ASSERT_NE(resize, std::string::npos) << code.substr(0, 400);
-    EXPECT_LT(resize, code.find("sprite.framesRect[0]"));
-    EXPECT_NE(code.find("sprite.framesRect[299].rect"), std::string::npos);
-    EXPECT_EQ(code.find("drawMode"), std::string::npos) << "a Simple sprite emits no draw mode";
 }
 
 TEST(SpriteInlineFrames, SlicedDrawModeIsAdditive) {
@@ -98,8 +89,6 @@ TEST(SpriteInlineFrames, SlicedDrawModeIsAdditive) {
     EXPECT_EQ(spriteNode(saved)["drawMode"].as<std::string>(), "sliced");
     // an optional key: the format version does not move for it
     EXPECT_EQ(saved["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
-    EXPECT_NE(Factory::createSpriteComponent(4, decoded.scene->scene, hero, "scene", "hero", false).find("sprite.drawMode = SpriteDrawMode::SLICED;"),
-              std::string::npos);
 
     // an editor that does not know the key (S03): it stays as unknown data, written back as it was
     YAML::Node unknown = root;

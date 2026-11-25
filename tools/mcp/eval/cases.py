@@ -5615,6 +5615,256 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S98 F1: .mesh assets
+    {
+        "id": "guard_mesh_save_as_asset",
+        "kind": "guard",
+        "what_happened": "New text (S98 F1): set_mesh_geometry's save_as writes a mesh's geometry to a .mesh asset the mesh "
+                         "then shows; an agent asked to make a GameObject's mesh reusable saves it there instead of exporting "
+                         "a model by hand, copying the scene YAML's buffers or writing the bytes from Lua.",
+        "text_at_issue": "set_mesh_geometry: 'save_as: also a .mesh asset it then shows (alone: the current geometry).'",
+        "source": "S98 F1 (new parameter); ledger E1 (scene files embed mesh buffers)",
+        "prompt": "Make the Rock GameObject's mesh a reusable asset at assets/meshes/rock.mesh so other scenes can use it. "
+                  "Keep its current shape.",
+        "mocks": [
+            {"tool": "set_mesh_geometry", "result": ok(
+                "Set the mesh of Rock to show assets/meshes/rock.mesh.",
+                {"entity": {"id": 12, "path": "Rock"}, "mesh_asset": "assets/meshes/rock.mesh", "local_size": [1.2, 0.8, 1.1],
+                 "local_center": [0, 0.4, 0]})},
+            {"tool": "find_entities", "result": ok("1 GameObject: 12 Rock (mesh)", {"entities": [{"id": 12, "path": "Rock"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Rock\": transform, mesh (612 vertices, its own geometry).",
+                                               {"id": 12})},
+            {"tool": "get_asset_info", "result": ok(
+                "assets/meshes/rock.mesh: mesh: 612 vertices, 3240 indices, 1 submesh(es), shown by 1 GameObject(s) of the open "
+                "scenes.", {"path": "assets/meshes/rock.mesh", "type": "mesh", "vertex_count": 612})},
+            {"tool": "save_scene", "result": ok("Saved scene Main.", {"scene_id": 1})},
+        ],
+        "checks": {"calls": [{"tool": "set_mesh_geometry", "args": {"save_as": "re:rock\\.mesh$"}}],
+                   "must_not_call": ["eval_lua", "write_file"]},
+        "max_turns": 10,
+    },
+    # ---- S98 WP-4: opening a scene leaves the build list alone (E8, REQ-28)
+    {
+        "id": "s98_open_scene_stays_out_of_build",
+        "kind": "bad",
+        "what_happened": "open_scene added every scene file it opened to project.yaml's build list, so the scenes an agent opened "
+                         "to look at shipped with the game (JasperArcade port, E8). Opening no longer lists a scene: asked to "
+                         "open one and ship it, the agent adds it with edit_build_scenes instead of taking the open for the add.",
+        "text_at_issue": "open_scene: 'an unlisted one stays out of the build (edit_build_scenes add).' (was: 'Opens a .scene file "
+                         "(adding it to the project if unlisted)')",
+        "source": "S98 REQ-28 (ENGINE_LIMITATIONS.md E8, paraphrased)",
+        "prompt": "Open scenes/Bonus.scene so I can work on it, and make sure it ships with the game.",
+        "mocks": [
+            {"tool": "open_scene", "args": {"scene": "re:Bonus"}, "result": ok(
+                "Opened scene 4 \"Bonus\" and selected it.",
+                {"scene": {"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene", "type": "3D", "opened": True, "modified": False,
+                           "selected": True, "start_scene": False, "entity_count": 3},
+                 "recovery": {"available": False, "autosaved_at": "", "status": "none", "applied": "none"},
+                 "load_report": {"skipped": 0, "preserved": 0, "dropped": 0}})},
+            {"tool": "edit_build_scenes", "args": {"action": "add", "scene": "re:Bonus|^4$"}, "result": ok(
+                "Added \"Bonus\". Scenes in build: 0=Main (scenes/Main.scene) 1=Bonus (scenes/Bonus.scene).",
+                {"scenes_in_build": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "index": 0, "start": True},
+                                     {"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene", "index": 1, "start": False}],
+                 "untitled_scenes": []})},
+            {"tool": "edit_build_scenes", "after": {"tool": "edit_build_scenes", "args": {"action": "add"}}, "result": ok(
+                "Scenes in build: 0=Main (scenes/Main.scene) 1=Bonus (scenes/Bonus.scene).",
+                {"scenes_in_build": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "index": 0, "start": True},
+                                     {"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene", "index": 1, "start": False}],
+                 "untitled_scenes": []})},
+            {"tool": "edit_build_scenes", "result": ok(
+                "Scenes in build: 0=Main (scenes/Main.scene). Open, not in the build (add puts one in): Bonus (scenes/Bonus.scene).",
+                {"scenes_in_build": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "index": 0, "start": True}],
+                 "untitled_scenes": [], "open_not_in_build": [{"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene"}]})},
+        ],
+        "checks": {"calls": [{"tool": "open_scene", "args": {"scene": "re:Bonus"}},
+                             {"tool": "edit_build_scenes", "args": {"action": "add", "scene": "re:Bonus|^4$"}}],
+                   "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 10,
+    },
+    # ---- S98 WP-3: MCP tool fixes (create_prefab overwrite, wait at time scale 0, eval_lua's timeout, Material Creation Mode)
+    {
+        "id": "bad_prefab_replace_by_delete_and_create",
+        "kind": "bad",
+        "what_happened": "E2 (JasperArcade port): create_prefab refused an existing path, so the agent deleted the .prefab and created "
+                         "it again; the new file had a new GUID and every scene that placed the prefab lost its instances.",
+        "text_at_issue": "create_prefab's overwrite parameter ('Replace the prefab at path; GUID and instances stay.') and its "
+                         "refusal naming overwrite",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E2; S98 REQ-21",
+        "prompt": "I edited the Enemy GameObject in this scene (new collider, bigger sprite). Save it over prefabs/Enemy.prefab: "
+                  "Level1 and Level2 place that prefab and must get the change.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nEnemy [14] sprite collider2d transform",
+                                                   {"entities": [{"id": 14, "path": "Enemy"}]})},
+            {"tool": "create_prefab", "args": {"overwrite": True}, "result": ok(
+                "Overwrote prefabs/Enemy.prefab with the GameObject: same GUID, every open instance updated with its overrides kept, "
+                "the GameObject is now an instance of it (one undo step).",
+                {"scene_id": 1, "prefabs": [{"path": "prefabs/Enemy.prefab", "guid": "6f1c0d6a2b3e4f50a1b2c3d4e5f60718",
+                                             "overwritten": True, "instance": {"id": 14, "name": "Enemy"}}]})},
+            {"tool": "create_prefab", "result": err(
+                "A file already exists at \"prefabs/Enemy.prefab\". Pass overwrite: true to replace its content (its GUID and instances "
+                "stay), or pick another path; to make an existing instance follow another prefab use replace_prefab.")},
+            {"tool": "get_prefab_info", "result": ok("prefabs/Enemy.prefab: 3 GameObjects, used by 2 scenes (Level1: 4, Level2: 2).",
+                                                     {"path": "prefabs/Enemy.prefab", "guid": "6f1c0d6a2b3e4f50a1b2c3d4e5f60718"})},
+            {"tool": "list_prefabs", "result": ok("1 prefab: prefabs/Enemy.prefab (6 instances in 2 scenes).",
+                                                  {"prefabs": [{"path": "prefabs/Enemy.prefab"}]})},
+        ],
+        "checks": {"calls": [{"tool": "create_prefab", "args": {"path": "re:Enemy", "overwrite": True}}],
+                   "must_not_call": [{"tool": "delete_asset"}, {"tool": "move_asset"}, {"tool": "write_file"}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_wait_game_seconds_paused_game",
+        "kind": "guard",
+        "what_happened": "E44 (JasperArcade port): a game paused itself with Engine.timeScale = 0 (its pause menu); wait {game_seconds} "
+                         "then ran 60 s and failed as stalled, and the agent restarted Play. Now the wait ends after 1 s with "
+                         "reason time_scale_zero and a next naming seconds, frames or unpausing.",
+        "text_at_issue": "wait's next on a time-scale-0 game: 'the time scale is 0: wait with seconds or frames, or unpause'",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E44; S98 REQ-23",
+        "playing": True,
+        "prompt": "The game is running. Let it play for 2 seconds of game time, then tell me whether the score went up "
+                  "(script('GameController').score).",
+        "mocks": [
+            {"tool": "wait", "args": {"game_seconds": "*"}, "result": ok(
+                "Waited 1.02 s, 61 frame(s), game time +0.000 s; the time scale is 0, so game time does not advance: wait with "
+                "seconds or frames, or unpause. No new console output.",
+                {"state": "playing", "reason": "time_scale_zero", "game_seconds": 0.0, "frames": 61,
+                 "next": "the time scale is 0: wait with seconds or frames, or unpause"})},
+            {"tool": "wait", "result": ok("Waited 2.0 s, 120 frame(s), game time +0.000 s. No new console output.",
+                                          {"state": "playing", "reason": "seconds", "game_seconds": 0.0, "frames": 120})},
+            {"tool": "eval_lua", "result": ok("0, \"paused\"", {"values": [0, "paused"]})},
+            {"tool": "get_play_state", "result": ok("Playing Main (time_scale 0).", {"state": "playing", "time_scale": 0})},
+        ],
+        "checks": {"must_not_call": [{"tool": "play", "args": {"action": "stop"}}, {"tool": "play", "args": {"action": "start"}}],
+                   "max_calls": {"wait": 3},
+                   "reply_must": [r"(?i)time.?scale|paused|pause menu"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_eval_lua_timeout_parameter",
+        "kind": "guard",
+        "what_happened": "E17/E43 (JasperArcade port): eval_lua stopped a slow call after 5 s with 'infinite loop?', and the agent "
+                         "split the work into many calls or gave up. The error now names timeout_seconds and its 60 s maximum.",
+        "text_at_issue": "eval_lua's timeout error: 'timed out after 5.0 s: pass timeout_seconds (up to 60); for longer work, run it "
+                         "as a coroutine in a script and wait with wait {until}'",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E17, E43; S98 REQ-24",
+        "playing": True,
+        "prompt": "In the running game, call LevelGen.rebuildAll() through eval_lua (it regenerates every level and takes about "
+                  "15 seconds) and tell me how many levels it returns.",
+        "mocks": [
+            {"tool": "eval_lua", "args": {"timeout_seconds": "*"}, "result": ok("12", {"values": [12]})},
+            {"tool": "eval_lua", "result": err(
+                "eval_lua: timed out after 5.0 s: pass timeout_seconds (up to 60); for longer work, run it as a coroutine in a "
+                "script and wait with wait {until}")},
+        ],
+        "checks": {"calls": [{"tool": "eval_lua", "args": {"timeout_seconds": "*"}}],
+                   "max_calls": {"eval_lua": 3},
+                   "reply_must": [r"\b12\b"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_fbx_texture_warnings_no_materials",
+        "kind": "bad",
+        "what_happened": "E39/E40 (JasperArcade port): FBX models whose materials the game replaced logged a 'Texture not found' "
+                         "line per texture on every import; with no import setting to skip materials, the agent edited the .meta "
+                         "by hand or stripped the textures from the FBX. Material Creation Mode None imports no materials.",
+        "text_at_issue": "set_model_import_settings' settings.material_creation_mode ('FBX: none imports no materials or textures.')",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E39, E40; S98 REQ-35",
+        "groups_enabled": ["meshes"],
+        "files": {"models/Hall.fbx": "binary placeholder"},
+        "prompt": "models/Hall.fbx floods the Console with 'Texture not found' warnings on every import. We put our own materials on "
+                  "it in the scene anyway, so it should not import any materials. Make that so.",
+        "mocks": [
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["models/Hall.fbx"], "unchanged": 0, "models": [{"path": "models/Hall.fbx", "status": "cooked", "issues": []}]})},
+            {"tool": "inspect_models", "result": ok(
+                "1 model: models/Hall.fbx cooked, 3 warning(s): Hall.fbx: Texture not found: Wall.psd ...",
+                {"models": [{"path": "models/Hall.fbx", "status": "cooked", "issues": [
+                    {"code": "fbx-import-warning", "severity": "warning", "message": "Hall.fbx: Texture not found: Wall.psd"}]}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_model_import_settings", "args": {"settings": {"material_creation_mode": "none"}}}],
+                   "must_not_call": [{"tool": "write_file"}], "edits_must_not": [r"\.(meta|fbx)$"]},
+        "max_turns": 10,
+    },
+    # ---- S98 WP-5: FBX imports never block the tool server; a pending import is no failure
+    {
+        "id": "guard_model_import_pending",
+        "kind": "guard",
+        "what_happened": "New result text (S98 REQ-33): the models of a fresh clone appear once their first FBX import lands. "
+                         "editor_status lists the model_import job with done/total and says the models appear when ready, so an "
+                         "agent asked why they are missing waits for the job (get_job) instead of importing or placing them again.",
+        "text_at_issue": "editor_status: jobs[] {kind: model_import, done, total} and 'Importing models: 1/3 (job 4); they appear "
+                         "when ready.'; edit_terrain_details note '<mesh> is importing (job N): its layer draws once the import lands.'",
+        "source": "docs/specs/S98-editor-tooling-gaps.md E15, E21 (the JasperArcade port: 'Model load failed' before the FBX "
+                  "import ends, tools blocked during the first import)",
+        "prompt": "I just cloned the project and opened scenes/Hall.scene, but the three statues in it are invisible. Find out why "
+                  "and fix whatever is broken.",
+        "mocks": [
+            {"tool": "editor_status", "result": ok(
+                "Project \"Space Dodge\" at the current directory. 1 scene(s), selected: 1 \"Hall\". Running jobs: 1. Importing "
+                "models: 1/3 (job 4); they appear when ready.",
+                {"project": {"name": "Space Dodge"}, "playing": False,
+                 "scenes": [{"id": 1, "name": "Hall", "path": "scenes/Hall.scene", "selected": True, "opened": True}],
+                 "jobs": [{"job_id": "4", "kind": "model_import", "title": "Importing FBX models", "status": "running",
+                           "message": "1/3 models imported", "progress": 0.3333, "elapsed_seconds": 12.5, "log_tail": [],
+                           "done": 1, "total": 3}]})},
+            {"tool": "get_job", "result": ok(
+                "Importing FBX models: succeeded - Imported 3/3 model(s).",
+                {"job_id": "4", "kind": "model_import", "status": "succeeded", "message": "Imported 3/3 model(s).",
+                 "result": {"done": 3, "total": 3, "failed": 0}})},
+            {"tool": "read_console", "result": ok(
+                "3 entries:\n[info] Importing 3 models (first open): they appear when ready\n[info] Importing Statue.fbx\n"
+                "[info] Importing Statue2.fbx",
+                {"entries": [{"id": 1, "type": "info", "message": "Importing 3 models (first open): they appear when ready"}]})},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Hall\" (3D, 4 GameObjects).\nMain Camera [10] camera\nStatue [11] model\nStatue2 [12] model\n"
+                "Statue3 [13] model\n", {"scene_id": 1, "entity_count": 4})},
+        ],
+        "checks": {"must_not_call": ["import_files", "set_model", "create_entity", "delete_entities", "set_model_import_settings"],
+                   "reply_must": [r"(?i)import"]},
+        "max_turns": 10,
+    },
+    # ---- S98 WP-6: what ships (Asset Stripping)
+    {
+        "id": "guard_build_stripped_computed_paths",
+        "kind": "guard",
+        "what_happened": "New result fields (S98 REQ-10): under Asset Stripping: Referenced Only a build leaves out assets "
+                         "nothing references; build_project gives stripped_count and stripped_bytes and its next names "
+                         "player.always_include, so an agent whose script loads files by a path it builds puts them there "
+                         "instead of reporting a finished build that cannot load its levels.",
+        "text_at_issue": "build_project result: 'stripped_count', 'stripped_bytes', 'build_report'; next: 'build_report lists "
+                         "each asset left out and why; a script that builds a path at runtime needs its file in "
+                         "player.always_include (set_project_settings)'",
+        "source": "S98 REQ-10, REQ-46 (new result fields); the JasperArcade port's E24 ledger item",
+        "prompt": "Build the desktop game into /work/dodge-build. Our level select loads assets/levels/level1.png, level2.png "
+                  "and so on by building the file name in Lua, so make sure the build can still load every level.",
+        "mocks": [
+            {"tool": "build_project", "after": "set_project_settings", "result": ok(
+                "Built the Desktop player /work/dodge-build/SpaceDodge. Try it with run_build.",
+                {"status": "succeeded", "result": {"output_dir": "/work/dodge-build", "errors": [], "warnings": [],
+                                                   "build_report": "/work/dodge-build/build-report.json",
+                                                   "stripped_count": 0, "stripped_bytes": 0}})},
+            {"tool": "build_project", "result": ok(
+                "Built the Desktop player /work/dodge-build/SpaceDodge. Try it with run_build.",
+                {"status": "succeeded", "result": {"output_dir": "/work/dodge-build", "errors": [], "warnings": [],
+                                                   "build_report": "/work/dodge-build/build-report.json",
+                                                   "stripped_count": 3, "stripped_bytes": 412310,
+                                                   "next": "build_report lists each asset left out and why; a script that builds a "
+                                                           "path at runtime needs its file in player.always_include (set_project_settings)"}})},
+            {"tool": "get_project_settings", "result": ok(
+                "player.asset_stripping: referenced_only\nplayer.always_include: []\nplayer.exclude_from_build: []",
+                {"settings": {"player.asset_stripping": "referenced_only", "player.always_include": [], "player.exclude_from_build": []}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 setting(s); saved to project.yaml.",
+                                                          {"applied": ["player.always_include"]})},
+        ],
+        "shell": [{"match": r"build-report\.json", "output": json.dumps({"stripped": [
+            {"path": "assets/levels/level2.png", "bytes": 140211, "reason": "unreferenced"},
+            {"path": "assets/levels/level3.png", "bytes": 139870, "reason": "unreferenced"},
+            {"path": "assets/textures/old_logo.png", "bytes": 132229, "reason": "unreferenced"}]})}],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"player.always_include": "*"}}}],
+                   "max_calls": {"build_project": 3}},
+        "max_turns": 12,
+    },
     {
         "id": "guard_drivable_car_wheel_colliders",
         "kind": "guard",

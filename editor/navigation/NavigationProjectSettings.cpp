@@ -3,7 +3,6 @@
 
 #include "NavigationProjectSettings.h"
 
-#include "Factory.h"
 
 #include <algorithm>
 #include <cmath>
@@ -52,21 +51,6 @@ namespace {
         } catch (const YAML::Exception&) {
             return fallback;
         }
-    }
-
-    std::string quoted(const std::string& text) {
-        std::string out = "\"";
-        for (char c : text) {
-            if (c == '"' || c == '\\') {
-                out += '\\';
-                out += c;
-            } else if (c == '\n') {
-                out += "\\n";
-            } else {
-                out += c;
-            }
-        }
-        return out + "\"";
     }
 
 }
@@ -151,30 +135,3 @@ NavigationProjectSettings editor::decodeNavigationProjectSettings(const YAML::No
     return project;
 }
 
-std::string editor::generateNavigationSettingsCode(const nav::NavigationSettings& settings, const std::string& indent) {
-    if (settings == nav::NavigationSettings()) return "";
-    const std::string in = indent + "    ";
-    std::string code = indent + "{\n";
-    code += in + "nav::NavigationSettings navigation;\n";
-    code += in + "navigation.crowdMaxAgents = " + std::to_string(settings.crowdMaxAgents) + ";\n";
-    code += in + "navigation.webBakeBudgetMs = " + Factory::formatFloat(settings.webBakeBudgetMs) + ";\n";
-    code += in + "navigation.maxGridSolvesPerTick = " + std::to_string(settings.maxGridSolvesPerTick) + ";\n";
-    if (settings.carveTilesPerTick != 0) code += in + "navigation.carveTilesPerTick = " + std::to_string(settings.carveTilesPerTick) + ";\n";
-    code += in + "navigation.agentTypes.clear();\n";
-    for (const nav::AgentTypeSettings& agent : settings.agentTypes) {
-        code += in + "navigation.agentTypes.push_back({" + std::to_string(agent.id) + ", " + quoted(agent.name) + ", " +
-                Factory::formatFloat(agent.radius) + ", " + Factory::formatFloat(agent.height) + ", " +
-                Factory::formatFloat(agent.stepHeight) + ", " + Factory::formatFloat(agent.maxSlope) + "});\n";
-    }
-    const nav::NavigationSettings defaults;
-    for (int i = 0; i < nav::AREA_COUNT; i++) {
-        const nav::AreaSettings& area = settings.areas[(size_t)i];
-        if (area == defaults.areas[(size_t)i]) continue;
-        code += in + "navigation.areas[" + std::to_string(i) + "] = {" + quoted(area.name) + ", " + Factory::formatFloat(area.cost) +
-                ", Vector4(" + Factory::formatFloat(area.color.x) + ", " + Factory::formatFloat(area.color.y) + ", " +
-                Factory::formatFloat(area.color.z) + ", " + Factory::formatFloat(area.color.w) + ")};\n";
-    }
-    code += in + "nav::setSettings(navigation);\n";
-    code += indent + "}\n";
-    return code;
-}

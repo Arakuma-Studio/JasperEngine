@@ -19,6 +19,7 @@
 #include <mutex>
 #include <set>
 #include <sstream>
+#include <tuple>
 #include <utility>
 
 using namespace jasperengine;
@@ -198,24 +199,42 @@ namespace {
         return true;
     }
 
+    // shaders by key (numerically: the hex text without leading zeros, shorter first) and custom name
+    bool shaderBefore(const WarmShader& a, const WarmShader& b){
+        if (a.key.size() != b.key.size())
+            return a.key.size() < b.key.size();
+        if (a.key != b.key)
+            return a.key < b.key;
+        return a.custom < b.custom;
+    }
+
     std::string writeList(const State& s, const std::vector<bool>* keepShader){
         json root;
         root["version"] = WARMUP_VERSION;
         root["engine"] = "jasperengine";
+        // sorted, so a list that gained nothing writes the same bytes whatever order its entries
+        // were found in (a committed ShaderWarmup.json changes only with a new entry)
+        std::vector<size_t> order;
+        for (size_t i = 0; i < s.shaders.size(); i++){
+            if (!keepShader || (*keepShader)[i])
+                order.push_back(i);
+        }
+        std::sort(order.begin(), order.end(), [&s](size_t a, size_t b){ return shaderBefore(s.shaders[a], s.shaders[b]); });
         json shaders = json::array();
         std::vector<long long> remap(s.shaders.size(), -1);
-        for (size_t i = 0; i < s.shaders.size(); i++){
-            if (keepShader && !(*keepShader)[i])
-                continue;
-            remap[i] = (long long)shaders.size();
-            shaders.push_back(json{{"key", s.shaders[i].key}, {"custom", s.shaders[i].custom}});
+        for (size_t index : order){
+            remap[index] = (long long)shaders.size();
+            shaders.push_back(json{{"key", s.shaders[index].key}, {"custom", s.shaders[index].custom}});
         }
-        json pipelines = json::array();
+        std::vector<std::tuple<long long, std::string, std::string>> kept;
         for (const WarmPipeline& p : s.pipelines){
-            if (remap[p.shader] < 0)
-                continue;
-            pipelines.push_back(json{{"shader", remap[p.shader]}, {"family", p.family}, {"desc", json::parse(p.desc)}});
+            if (remap[p.shader] >= 0)
+                kept.emplace_back(remap[p.shader], p.family, p.desc);
         }
+        std::sort(kept.begin(), kept.end());
+        json pipelines = json::array();
+        for (const auto& [shader, family, desc] : kept)
+            pipelines.push_back(json{{"shader", shader}, {"family", family}, {"desc", json::parse(desc)}});
         root["shaders"] = shaders;
         root["pipelines"] = pipelines;
         return root.dump(1);
@@ -368,6 +387,22 @@ bool ShaderWarmup::save(const std::string& path, std::string* error){
 
 bool ShaderWarmup::mergeFromString(const std::string& text, std::string* error){
     return readInto(state(), text, error);
+}
+
+size_t ShaderWarmup::addShaderKeys(const std::vector<ShaderKey>& keys){
+    State& s = state();
+    size_t added = 0;
+    for (ShaderKey key : keys){
+        const ShaderKey normalized = ShaderPool::normalizeKey(key);
+        const std::string custom = ShaderPool::getCustomShaderName(normalized.customId);
+        // a fork this session has no name for would be listed as the built-in shader
+        if (normalized.customId != 0 && custom.empty())
+            continue;
+        const size_t before = s.shaders.size();
+        addShader(s, ShaderPool::getShaderKeyText(ShaderPool::getStorageKey(normalized)), custom);
+        added += s.shaders.size() - before;
+    }
+    return added;
 }
 
 void ShaderWarmup::clear(){

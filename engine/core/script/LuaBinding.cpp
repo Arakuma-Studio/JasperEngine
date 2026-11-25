@@ -1289,6 +1289,7 @@ void LuaBinding::cleanup(){
     DebugOverlay::removeOwnedCommands();
     // no coroutine thread or timer reference may outlive the state
     ScriptScheduler::clear();
+    releaseProfilerState();
     clearScriptChunks(luastate);
     lua_reload::clearGenerations();
     if (luastate) {

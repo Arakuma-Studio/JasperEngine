@@ -19,6 +19,7 @@
 #include "jobs/JobSystem.h"
 
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -254,6 +255,11 @@ namespace jasperengine{
         void reloadFoliageMesh(const std::string& filename);
         // Retries the failed loads of a file that appeared or changed on disk
         void retryFailedModelLoads(const std::string& filename);
+        // Reads the mesh's .mesh asset (MeshComponent::meshAsset) into its geometry now, as update
+        // does when the path changes; false (logged) when the file cannot be read
+        bool loadMeshAsset(MeshComponent& mesh);
+        // The meshes of this scene showing the .mesh at `path` read it again on the next update
+        void invalidateMeshAsset(const std::string& path);
 
         void createPlane(MeshComponent& mesh, float width=1, float depth=1, unsigned int tiles=1);
         // createPlane split into segments x segments quads (1..255), for a surface the vertex
@@ -426,6 +432,11 @@ namespace jasperengine{
         // Test hook: each asynchronous parse of a model file waits this long first, so a load is still
         // running when a test acts (0, the default: none)
         static void setModelLoadDelayForTest(int milliseconds);
+        // The editor's answer for an FBX model about to load: true while its import is queued or
+        // converting, so the load waits (no error) until retryFailedModelLoads runs it. None in a
+        // game, where the check costs nothing.
+        static void setModelImportGate(std::function<bool(const std::string& filename)> gate);
+        static bool isModelImportPending(const std::string& filename);
         void cancelAsyncModelLoads();
         static void cancelAllAsyncModelLoads();
         bool isAsyncModelLoadPending(Entity entity, const std::string& filename) const;
