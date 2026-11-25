@@ -11,7 +11,7 @@ foliageQuality:
   web: low
 pixelArt:
   enabled: true
-htmlUiMsaaSamples: 4
+htmlUiMsaaSamples: 0
 device:
   tiers:
     desktop:
@@ -52,7 +52,7 @@ versionControl:
   lfs: true
 export:
   assetStripping: referencedOnly
-startSceneId: 3106954995
+startSceneId: 3723081588
 mesh:
   animationEntities: auto
 audio:
@@ -61,4 +61,4 @@ audio:
   iosSessionCategory: ambient
 scenes:
   - filepath: assets/scenes/Main.scene
-    filepathGuid: 00500185018d7d0bb5b3d9da55f6326e
+    filepathGuid: 771f2120165e58a1e5a596d4c9d33285
