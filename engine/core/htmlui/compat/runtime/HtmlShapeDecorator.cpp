@@ -325,6 +325,118 @@ namespace {
 
 }
 
+namespace {
+
+    // A calc() that is a sum of lengths and percentages, each times a number (CSS Values 4: what a
+    // shape's coefficients interpolate as, unit by unit). min(), max() and clamp() are not linear:
+    // such a shape animates discretely.
+    struct ShapeLinearCalc {
+        std::string_view text;
+        size_t i = 0;
+        struct Term {
+            std::vector<Length> lengths;
+            float number = 0.0f;
+            bool isNumber = false;
+        };
+
+        void skip(){
+            while (i < text.size() && (text[i] == ' ' || text[i] == '\t' || text[i] == '\n')) i++;
+        }
+        bool eat(char c){
+            skip();
+            if (i < text.size() && text[i] == c){
+                i++;
+                return true;
+            }
+            return false;
+        }
+        static void scale(Term& term, float factor){
+            for (Length& length : term.lengths) length.value *= factor;
+            term.number *= factor;
+        }
+        static void add(Term& into, const Term& from, float sign){
+            for (const Length& length : from.lengths){
+                auto found = std::find_if(into.lengths.begin(), into.lengths.end(), [&](const Length& item){ return item.unit == length.unit; });
+                if (found == into.lengths.end()) into.lengths.push_back({length.value * sign, length.unit});
+                else found->value += length.value * sign;
+            }
+            into.number += from.number * sign;
+        }
+        bool factor(Term& out){
+            skip();
+            if (eat('-')){
+                if (!factor(out)) return false;
+                scale(out, -1.0f);
+                return true;
+            }
+            if (text.compare(i, 5, "calc(") == 0){
+                i += 4;
+            }
+            if (eat('(')) return sum(out) && eat(')');
+            const size_t start = i;
+            while (i < text.size() && text[i] != ' ' && text[i] != '\t' && text[i] != '\n' && text[i] != '(' && text[i] != ')' &&
+                   text[i] != '*' && text[i] != '/' && !(i > start && (text[i] == '+' || text[i] == '-') && text[i - 1] != 'e'))
+                i++;
+            const std::string_view token = text.substr(start, i - start);
+            if (token.empty()) return false;
+            out = Term();
+            Length length;
+            if (parseNumber(token, out.number) && token.find('%') == std::string_view::npos){
+                out.isNumber = true;
+                return true;
+            }
+            if (!parseLength(token, length) || length.isNumber()) return false;
+            out.lengths.push_back(length);
+            return true;
+        }
+        bool product(Term& out){
+            if (!factor(out)) return false;
+            for (;;){
+                const bool multiply = eat('*');
+                if (!multiply && !eat('/')) return true;
+                Term next;
+                if (!factor(next)) return false;
+                if (multiply && out.isNumber) std::swap(out, next);
+                if (!next.isNumber || (!multiply && next.number == 0.0f)) return false;
+                scale(out, multiply ? next.number : 1.0f / next.number);
+            }
+        }
+        bool sum(Term& out){
+            if (!product(out)) return false;
+            for (;;){
+                skip();
+                // + and - need white space around them in calc()
+                if (i + 1 >= text.size() || (text[i] != '+' && text[i] != '-') || text[i + 1] != ' ') return true;
+                const float sign = text[i] == '+' ? 1.0f : -1.0f;
+                i++;
+                Term next;
+                if (!product(next) || next.isNumber != out.isNumber) return false;
+                add(out, next, sign);
+            }
+        }
+    };
+
+    // a coefficient: one length-percentage, or a linear calc() of them (unit by unit)
+    bool parseShapeCoefficient(const std::string& token, std::vector<Length>& out){
+        out.clear();
+        Length length;
+        if (parseLength(token, length)){
+            out.push_back(length);
+            return true;
+        }
+        if (token.compare(0, 5, "calc(") != 0) return false;
+        ShapeLinearCalc calc{token};
+        ShapeLinearCalc::Term term;
+        if (!calc.factor(term) || term.isNumber) return false;
+        calc.skip();
+        if (calc.i != token.size()) return false;
+        for (const Length& item : term.lengths)
+            if (item.value != 0.0f) out.push_back(item);
+        return true;
+    }
+
+}
+
 // ---------------------------------------------------------------- BasicShape
 
 struct BasicShape::AnimationComponents {
@@ -341,9 +453,9 @@ struct BasicShape::AnimationComponents {
         result->fillRule = parts.fillRule;
         for (const auto* list : {&parts.values, &parts.radii}){
             for (const auto& token : *list){
-                Length length;
-                if (!parseLength(token, length)) return nullptr;
-                result->values.push_back({length});
+                Component component;
+                if (!parseShapeCoefficient(token, component)) return nullptr;
+                result->values.push_back(std::move(component));
             }
         }
         if (parts.name == "circle" || parts.name == "ellipse"){

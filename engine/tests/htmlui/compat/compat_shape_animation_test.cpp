@@ -110,6 +110,22 @@ TEST(CompatBasicShape, InterpolatesPolygonAndResolvesPercentagesAgainstEachRefer
     EXPECT_NE(small.toSvg(200, 100).find("points=\"10,10 200,50 100,100\""), std::string::npos);
 }
 
+// Red control: coefficients read with parseLength only make a calc() shape discrete (interpolate false).
+// Built by text: S93's shape parser is what accepts calc(); the interpolation does not depend on it.
+TEST(CompatBasicShape, InterpolatesLinearCalcCoefficientsUnitByUnit){
+    BasicShape a, b, result;
+    a.text = "inset(10px)";
+    b.text = "inset(calc(20px + 10%) calc(2 * 10px) calc(50% - 10px / 2) 0)";
+    ASSERT_TRUE(a.interpolate(b, .5f, result));
+    EXPECT_EQ(result.text, "inset(calc(5% + 15px) 15px calc(25% + 2.5px) 5px round 0px 0px 0px 0px / 0px 0px 0px 0px)");
+    // at 200 x 100: top 15 + 5, right 15, bottom 2.5 + 25, left 5
+    EXPECT_NE(result.toSvg(200, 100).find("M5 20H185"), std::string::npos) << result.toSvg(200, 100);
+    // min(), max() and clamp() are not linear: discrete
+    BasicShape c;
+    c.text = "inset(min(10px, 5%))";
+    EXPECT_FALSE(a.interpolate(c, .5f, result));
+}
+
 TEST(CompatBasicShape, IncompatibleShapesAreDiscrete){
     const std::pair<const char*, const char*> pairs[] = {
         {"inset(0)", "circle(50%)"},
