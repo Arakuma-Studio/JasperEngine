@@ -930,7 +930,8 @@ ToolResult buildResult(const McpJob& job) {
 
 bool busy(const CallPtr& call) {
     std::lock_guard<std::mutex> lock(manager().mutex);
-    if (manager().active) {
+    // a finished job's watcher clears active just after it: its caller may already have the result
+    if (manager().active && manager().active->job->status() == JobStatus::Running) {
         call->fail("A build is already running (job " + manager().active->job->id() + "). Wait for it with get_job or stop it with cancel_job.",
                    manager().active->job->toJson(5));
         return true;
