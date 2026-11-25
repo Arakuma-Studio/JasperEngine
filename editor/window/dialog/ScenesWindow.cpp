@@ -24,12 +24,13 @@ void ScenesWindow::open(Project* project) {
         SceneEntry entry;
         entry.path = scenePath;
         entry.sceneId = project->findSceneByPath(scenePath);
-        entry.included = entry.sceneId != NULL_PROJECT_SCENE;
+        const SceneProject* sceneProject = project->getScene(entry.sceneId);
+        // open in a tab without being listed (S98 REQ-28): not included until checked
+        entry.included = sceneProject && sceneProject->inBuild;
         entry.wasIncluded = entry.included;
 
         if (entry.included) {
-            const SceneProject* sceneProject = project->getScene(entry.sceneId);
-            entry.opened = sceneProject && sceneProject->opened;
+            entry.opened = sceneProject->opened;
 
             for (const SceneProject& parent : project->getScenes()) {
                 if (project->hasChildScene(parent.id, entry.sceneId)) {
@@ -113,8 +114,11 @@ void ScenesWindow::drawScenes() {
         }
     }
 
-    // Scenes never saved to a file are not listed here
-    int plannedCount = static_cast<int>(m_project->getScenes().size());
+    // Scenes never saved to a file (and open ones out of the build) are not counted here
+    int plannedCount = 0;
+    for (const SceneProject& scene : m_project->getScenes()) {
+        if (scene.inBuild) plannedCount++;
+    }
     for (const SceneEntry& entry : m_entries) {
         if (entry.included && !entry.wasIncluded) plannedCount++;
         else if (!entry.included && entry.wasIncluded) plannedCount--;
@@ -156,6 +160,8 @@ void ScenesWindow::drawScenes() {
                     ImGui::Text("Child of %s", usedBy.c_str());
                 } else if (locked) {
                     ImGui::TextDisabled("%s", keptReason);
+                } else if (!entry.wasIncluded && entry.sceneId != NULL_PROJECT_SCENE) {
+                    ImGui::TextDisabled("Open, not in the build");
                 } else {
                     ImGui::TextDisabled("-");
                 }
@@ -206,6 +212,12 @@ void ScenesWindow::applyScenes() {
             continue;
         }
 
+        if (entry.sceneId != NULL_PROJECT_SCENE) {
+            // open without being listed: it joins the build as it is
+            m_project->addSceneToBuild(entry.sceneId);
+            changed = true;
+            continue;
+        }
         m_project->loadScene(entry.path, false, true, false);
 
         // loadScene only reports a broken file through the output

@@ -1431,6 +1431,7 @@ Json playerLayersToJson(Project* project, const std::vector<AnimationPlayerLayer
         Json item{{"name", layer.name}, {"weight", layer.weight}, {"blend", anim::layerBlendName(layer.blend)},
                   {"mask", layer.mask.empty() ? std::string() : McpValues::assetPathToJson(project, layer.mask)}};
         if (!layer.maskGuid.empty()) item["maskGuid"] = layer.maskGuid;
+        if (layer.meshSpaceRotation) item["meshSpaceRotation"] = true;
         list.push_back(item);
     }
     return list;
@@ -1626,7 +1627,7 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
 bool normalizePlayerLayers(Project* project, const AnimationPlayerComponent* current, YAML::Node value, std::string& error) {
     const YAML::Node& constValue = value;
     const YAML::Node layers = constValue["layers"];
-    const char* const shape = "layers must be a list of {name, weight, blend, mask}, e.g. [{\"name\": \"Base Layer\"}, "
+    const char* const shape = "layers must be a list of {name, weight, blend, mask, meshSpaceRotation}, e.g. [{\"name\": \"Base Layer\"}, "
                               "{\"name\": \"Holding\", \"weight\": 1, \"mask\": \"assets/anim/arm.mask\"}].";
     size_t count = 1;
     if (layers && !layers.IsNull()){
@@ -1645,9 +1646,20 @@ bool normalizePlayerLayers(Project* project, const AnimationPlayerComponent* cur
             } else if (item.IsMap()) {
                 for (auto it = item.begin(); it != item.end(); ++it) {
                     const std::string key = it->first.as<std::string>();
-                    if (key != "name" && key != "weight" && key != "blend" && key != "mask" && key != "maskGuid") {
-                        error = at + ": unknown key \"" + key + "\" (a layer is {name, weight, blend, mask}; its maskGuid follows the mask).";
+                    if (key != "name" && key != "weight" && key != "blend" && key != "mask" && key != "maskGuid" && key != "meshSpaceRotation") {
+                        error = at + ": unknown key \"" + key + "\" (a layer is {name, weight, blend, mask, meshSpaceRotation}; its maskGuid follows "
+                                "the mask).";
                         return false;
+                    }
+                    if (key == "meshSpaceRotation") {
+                        // mesh-space-rotation spec R39: kept (and ignored) on the base layer and on additive layers
+                        bool on = false;
+                        if (!it->second.IsScalar() || !YamlNumbers::readPlain(it->second.Scalar(), on)) {
+                            error = at + ".meshSpaceRotation must be true or false.";
+                            return false;
+                        }
+                        if (on) entry[key] = YamlNumbers::text(true);
+                        continue;
                     }
                     if (!it->second.IsScalar() && !it->second.IsNull()) {
                         error = at + "." + key + " must be a " + (key == "weight" ? "number" : "string") + ".";
@@ -3062,9 +3074,10 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 }
                 text = FileUtils::pathToGenericUtf8(found);
             }
-            // a foliage layer's FBX mesh loads from its import, created here the first time
+            // a foliage layer's FBX mesh loads from its import, queued here the first time: the layer
+            // draws once it lands (S98 REQ-32)
             if (component == ComponentType::TerrainComponent && endsWith(propertyName, "meshPath") &&
-                    FbxImporter::isFbxFile(text) && !project->prepareModelFile(text)) {
+                    FbxImporter::isFbxFile(text) && project->prepareModelFile(text) == Project::ModelImport::Failed) {
                 error = propertyName + ": " + text + " could not be imported (the console has details).";
                 return nullptr;
             }
@@ -3920,7 +3933,8 @@ static std::vector<McpValues::Change> withPlayerLayerList(Project* project, Scen
     auto isBaseField = [](const McpValues::Change& change) {
         return change.component == ComponentType::AnimationPlayerComponent && change.op == "set" &&
                (change.property == "layers[0].name" || change.property == "layers[0].weight" ||
-                change.property == "layers[0].blend" || change.property == "layers[0].mask");
+                change.property == "layers[0].blend" || change.property == "layers[0].mask" ||
+                change.property == "layers[0].meshSpaceRotation");
     };
     bool fields = false;
     for (const McpValues::Change& change : changes) {
@@ -3932,6 +3946,7 @@ static std::vector<McpValues::Change> withPlayerLayerList(Project* project, Scen
     for (const AnimationPlayerLayer& layer : anim::playerLayers(*player)) {
         Json item = {{"name", layer.name}, {"weight", layer.weight}, {"blend", anim::layerBlendName(layer.blend)}};
         if (!layer.mask.empty()) item["mask"] = McpValues::assetPathToJson(project, layer.mask);
+        if (layer.meshSpaceRotation) item["meshSpaceRotation"] = true;
         list.push_back(item);
     }
     std::vector<McpValues::Change> out;

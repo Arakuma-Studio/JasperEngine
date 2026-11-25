@@ -27,7 +27,7 @@ namespace {
         JE_FIELD(ShaderCreationProjectSettings, recordDuringPlay, .flags = OmitIfDefault, .label = "Record During Play",
                  .tooltip = "Play adds the shader variants and pipelines it creates to the warm-up list (ShaderWarmup.json)."),
         JE_FIELD(ShaderCreationProjectSettings, includeInBuilds, .flags = OmitIfDefault, .label = "Include in Builds",
-                 .tooltip = "Exports build the list's variants and ship the list, which the game creates at start."),
+                 .tooltip = "Exports ship the list, which the game creates at start. Its variants are built whatever this says."),
         JE_FIELD(ShaderCreationProjectSettings, holdFirstScene, .flags = OmitIfDefault, .label = "Hold First Scene",
                  .tooltip = "The game's scenes count as loaded only once the warm-up list is ready (the loading screen covers it)."),
     };

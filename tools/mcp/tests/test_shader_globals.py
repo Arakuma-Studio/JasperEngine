@@ -21,6 +21,7 @@ every frame by scripts/VertexLightsUpdater.lua, the port of VertexLightsUpdater.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -467,7 +468,9 @@ async def test_check_shader_reports_globals(ed: Editor):
     ed.check_eq(codes.count("global-undeclared"), 1, f"NotDeclared: {r['findings']}")
     ed.check_eq(codes.count("global-type-mismatch"), 2, f"vec3 TestColor, vec2 _LightRadius: {r['findings']}")
     ed.check(any("NotDeclared" in f["message"] for f in r["findings"]), f"named: {r['findings']}")
-    r = await ed.call("check_shader", shader="shaders/huge_globals", shader_type="mesh", timeout=300)
+    raw = await ed.call_raw("check_shader", {"shader": "shaders/huge_globals", "shader_type": "mesh"}, timeout=300)
+    ed.check(raw.is_error, f"a failed check is an error: {raw.text[:500]}")
+    r = raw.value
     ed.check_eq(r["failed"], 1, f"a block over 1024 bytes fails: {r}")
     ed.check(any(f.get("code") == "globals-block-too-large" for f in r["findings"]), f"{r['findings']}")
     # the forks of the fixture are clean
@@ -493,9 +496,9 @@ async def test_desktop_export_declares_the_globals(ed: Editor):
         await ed.call("wait", seconds=15)
         job = await ed.call("get_job", job_id=r["job_id"])
     ed.check_eq(job["status"], "succeeded", f"{job}")
-    main = next(Path(out).rglob("main.cpp"), None)
-    if main:
-        ed.check_in("ShaderGlobals::declare({", main.read_text(), "the generated main declares the globals")
+    # game.json declares them, for a prebuilt and a compiled game alike (S98 D1)
+    game = json.loads(next(Path(out).rglob("game.json")).read_text())
+    ed.check(game.get("shaderGlobals"), f"game.json declares the globals: {sorted(game)}")
     raw = await ed.call_raw("run_build", {"seconds": 8, "screenshot_after_seconds": 6})
     ed.check(not raw.is_error and raw.images, raw.text[:500])
     image = decode_png(raw.images[0][0])

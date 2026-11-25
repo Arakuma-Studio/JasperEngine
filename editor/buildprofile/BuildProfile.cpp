@@ -4,7 +4,7 @@
 #include "BuildProfile.h"
 
 #include "Exporter.h"
-#include "Factory.h"
+#include "util/CppIdentifier.h"
 #include "Out.h"
 #include "Project.h"
 #include "Workspace.h"
@@ -577,7 +577,7 @@ std::map<std::string, buildprofiles::ResolvedValue> buildprofiles::resolveIdenti
     const std::string nameKey = productNameKeys(profile.platform).front();
     const std::string idKey = identifierKeys(profile.platform).front();
     const std::string iconKey = iconKeys(profile.platform).front();
-    const std::string fallbackId = "com.jasperengine." + Factory::toIdentifier(projectName.empty() ? std::string("JasperEngine") : projectName);
+    const std::string fallbackId = "com.jasperengine." + toIdentifier(projectName.empty() ? std::string("JasperEngine") : projectName);
     std::string platformName, platformId, platformVersion, platformIcon;
     switch (profile.platform) {
         case BuildPlatform::Android: {

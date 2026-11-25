@@ -281,6 +281,9 @@ namespace {
             } else if (top == Frame::BudgetItem){
                 if (pending == "platform") budget.platform = std::move(value);
                 else if (pending == "category") budget.category = std::move(value);
+            } else if (top == Frame::StrippedItem){
+                if (pending == "path") strippedItem.path = std::move(value);
+                else if (pending == "reason") strippedItem.reason = std::move(value);
             }
         }
         // false: the scanner skips the object
@@ -298,6 +301,7 @@ namespace {
             else if (top == Frame::FileList){ next = Frame::FileItem; file = BuildReportFile(); fileHasCategory = fileHasAsset = false; }
             else if (top == Frame::LeftList){ next = Frame::LeftItem; left = BuildReportLeftOut(); }
             else if (top == Frame::BudgetList){ next = Frame::BudgetItem; budget = BuildReportBudget(); }
+            else if (top == Frame::StrippedList){ next = Frame::StrippedItem; strippedItem = BuildReportStripped(); }
             if (next == Frame::Skip) return false;
             frames.push_back(next);
             return true;
@@ -314,6 +318,8 @@ namespace {
                 report.leftOut.push_back(std::move(left));
             } else if (top == Frame::BudgetItem){
                 report.budgets.push_back(std::move(budget));
+            } else if (top == Frame::StrippedItem){
+                report.stripped.push_back(std::move(strippedItem));
             }
         }
         bool startArray(){
@@ -323,6 +329,7 @@ namespace {
             else if (top == Frame::Top && pending == "files"){ next = Frame::FileList; fileTarget = &report.files; report.hasFiles = true; }
             else if (top == Frame::Top && pending == "left_out" && !comparisonOnly) next = Frame::LeftList;
             else if (top == Frame::Top && pending == "budgets" && !comparisonOnly) next = Frame::BudgetList;
+            else if (top == Frame::Top && pending == "stripped" && !comparisonOnly) next = Frame::StrippedList;
             else if (top == Frame::ReachAssets){ next = Frame::ReachItem; reachAsset = std::move(pending); reachParts = 0; }
             if (next == Frame::Skip) return false;
             frames.push_back(next);
@@ -355,13 +362,15 @@ namespace {
             } else if (top == Frame::BudgetItem){
                 if (pending == "limit_bytes") budget.limitBytes = value;
                 else if (pending == "bytes") budget.bytes = value;
+            } else if (top == Frame::StrippedItem){
+                if (pending == "bytes") strippedItem.bytes = value;
             } else if (top == Frame::ReachItem){
                 reachParts = 100;   // not a string: the entry is dropped
             }
         }
 
     private:
-        enum class Frame { Top, Categories, FileList, FileItem, LeftList, LeftItem, Reach, ReachAssets, ReachItem, BudgetList, BudgetItem, Skip };
+        enum class Frame { Top, Categories, FileList, FileItem, LeftList, LeftItem, Reach, ReachAssets, ReachItem, BudgetList, BudgetItem, StrippedList, StrippedItem, Skip };
 
         BuildReport& report;
         bool comparisonOnly = false;
@@ -374,6 +383,7 @@ namespace {
         std::vector<BuildReportFile>* fileTarget = nullptr;
         BuildReportLeftOut left;
         BuildReportBudget budget;
+        BuildReportStripped strippedItem;
         std::string reachAsset;
         std::string reachPart[4];
         size_t reachParts = 0;
@@ -663,6 +673,20 @@ std::string BuildReport::toText() const{
             w.close(1, '}');
         }
     }
+    // S98 REQ-10: absent when nothing was stripped, so an old project's report is as it was
+    if (!stripped.empty()){
+        w.key("stripped", 1, first);
+        w.lines(stripped, [&w](const BuildReportStripped& item){
+            bool member = true;
+            w.out += '{';
+            w.member("bytes", member); w.number(item.bytes);
+            w.member("path", member); w.string(item.path);
+            w.member("reason", member); w.string(item.reason);
+            w.out += '}';
+        });
+        w.key("stripped_bytes", 1, first); w.number(strippedBytes());
+        w.key("stripped_count", 1, first); w.number(stripped.size());
+    }
     w.key("total_bytes", 1, first); w.number(totalBytes);
     w.key("version", 1, first); w.number(1);
     w.close(0, '}');
@@ -684,6 +708,12 @@ bool BuildReport::parse(const std::string& text, BuildReport& out, bool comparis
 uint64_t BuildReport::leftOutBytes() const{
     uint64_t bytes = 0;
     for (const BuildReportLeftOut& item : leftOut) bytes += item.bytes;
+    return bytes;
+}
+
+uint64_t BuildReport::strippedBytes() const{
+    uint64_t bytes = 0;
+    for (const BuildReportStripped& item : stripped) bytes += item.bytes;
     return bytes;
 }
 
@@ -909,7 +939,9 @@ std::string BuildReport::summary() const{
             continue;
         parts += (parts.empty() ? "" : ", ") + name + " " + formatBytes(it->second);
     }
-    return parts.empty() ? out : out + "; " + parts;
+    if (!parts.empty()) out += "; " + parts;
+    if (!stripped.empty()) out += "; " + std::to_string(stripped.size()) + " asset(s) left out (" + formatBytes(strippedBytes()) + ")";
+    return out;
 }
 
 void BuildReport::setLast(const fs::path& file){

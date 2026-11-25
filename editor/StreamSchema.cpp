@@ -83,7 +83,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             // Project Settings > Voxels (T6 R7)
             "voxel"}},
         {RootKind::Material, {}},
-        {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
+        {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped", "followMaterialFiles"}},
     };
     if (kind == RootKind::Material) {
         // a .material file is one encoded Material

@@ -173,8 +173,8 @@ craftsman-end-motor (a port reconstructed from a retail binary). Profiles are ge
   profile the scene still loads, with the warning
   "Scene 'Bonus' is not in Build Profile 'Demo': a build leaves it out".
 - **R6 Scripting Define Symbols.** Up to 64 symbols of `[A-Za-z_][A-Za-z0-9_]*`, at most 64
-  characters each, unique. A build ships them (`game.json` `defines`, the generated init of a Compile
-  build); Play with an active profile has them; without a profile the set is empty.
+  characters each, unique. A build ships them (`game.json` `defines`, which a Compile build reads
+  too); Play with an active profile has them; without a profile the set is empty.
 - **R7 Graphics API and Development Build.** `backend` must be one of
   `platformBackends(platform)` (`editor/ShippingTypes.h:39`); `development` selects the flavour as
   the Development Build checkbox does. A profile's values replace Build Settings' for its builds.
@@ -233,8 +233,8 @@ craftsman-end-motor (a port reconstructed from a retail binary). Profiles are ge
   is the single place to update them, each row citing its source in a comment, and
   `StoreLimits.*` tests pin it.
 - **R17 Where the profile is recorded.** `game.json` gains `buildProfile` (string) and `defines`
-  (list); `content-manifest.json` gains `buildProfile`. Both are omitted without a profile. A Compile
-  build's generated init sets the same through `System::setBuildInfo`.
+  (list); `content-manifest.json` gains `buildProfile`. Both are omitted without a profile. Every build,
+  Compile builds included, applies them through `System::setBuildInfo` (`player::applySettings`).
 
 ### Platform & backends
 
@@ -515,10 +515,10 @@ craftsman-end-motor (a port reconstructed from a retail binary). Profiles are ge
 - **A Scene List names scenes of the project's Scenes In Build**: the exporter loads, saves and cooks
   the project's scene list; a scene asset outside it is refused by validation ("add it there
   (edit_build_scenes)"). All project prefabs still ship (the prefab cook is not per scene).
-- **Compile builds** ship a main.cpp built from the profile's snapshot (`Project::buildMainSource`,
-  `Generator::mainSource`): its init, its Scene List's scenes registered and its start scene, while the
-  project's own `.jasperengine/generated/main.cpp` stays the editor's. The sources of the scenes a
-  profile leaves out are still compiled (nothing registers them).
+- **Compile builds** read the same `game.json` as a prebuilt player (S98 D1, `player::runGame`): the
+  profile's snapshot gives its settings, its Scene List's scenes and their involved scenes are the
+  ones cooked and listed, and its start scene is game.json's (`cook::GameConfigTarget::settings` and
+  `scenes`). Their main.cpp is the same for every build.
 - **Keys a profile does not override**: `player.product_name` (executable and save folder, section 2),
   `player.start_scene` and `player.target_platforms` (the profile's Scene List and platform),
   `player.development_build` (`development`). The refusals name the field to use.

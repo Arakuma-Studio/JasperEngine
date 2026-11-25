@@ -20,7 +20,6 @@
 #include "object/Camera.h"
 #include "Catalog.h"
 #include "Stream.h"
-#include "Factory.h"
 
 #include <cmath>
 #include <climits>
@@ -114,7 +113,6 @@ namespace {
 
         OnScreenStickComponent& stickOf(Entity e) { return scene->getComponent<OnScreenStickComponent>(e); }
     };
-
 }
 
 // two fingers press two Buttons; lifting one releases only its Button, and the legacy
@@ -737,25 +735,11 @@ TEST(OnScreenControlsEditor, CatalogStreamAndExport) {
     EXPECT_FLOAT_EQ(areaBack.sensitivity, 0.5f);
     EXPECT_TRUE(areaBack.invertY);
 
-    // the exported scene's code sets every field
-    Scene scene;
-    const Entity entity = scene.createUserEntity();
-    scene.addComponent<Transform>(entity, {});
-    scene.addComponent<OnScreenStickComponent>(entity, stick);
-    const std::string code = editor::Factory::createComponent(0, &scene, entity, ComponentType::OnScreenStickComponent, std::filesystem::temp_directory_path());
-    EXPECT_NE(code.find("OnScreenStickMode::DYNAMIC"), std::string::npos) << code;
-    EXPECT_NE(code.find("OnScreenStickAxes::HORIZONTAL"), std::string::npos);
-    EXPECT_NE(code.find("\"MoveX\""), std::string::npos);
-    EXPECT_NE(code.find("OnScreenVisibility::TOUCH_DEVICES_ONLY"), std::string::npos);
-
-    // Touch Scheme (input-device-awareness R16): stored touch_scheme, exported by its name
+    // Touch Scheme (input-device-awareness R16): stored touch_scheme
     stick.visibility = OnScreenVisibility::TOUCH_SCHEME;
     const YAML::Node schemeNode = editor::Stream::encodeOnScreenStickComponent(stick);
     EXPECT_EQ(schemeNode["visibility"].as<std::string>(), "touch_scheme");
     EXPECT_EQ(editor::Stream::decodeOnScreenStickComponent(schemeNode).visibility, OnScreenVisibility::TOUCH_SCHEME);
-    scene.getComponent<OnScreenStickComponent>(entity).visibility = OnScreenVisibility::TOUCH_SCHEME;
-    const std::string schemeCode = editor::Factory::createComponent(0, &scene, entity, ComponentType::OnScreenStickComponent, std::filesystem::temp_directory_path());
-    EXPECT_NE(schemeCode.find("OnScreenVisibility::TOUCH_SCHEME"), std::string::npos) << schemeCode;
 }
 
 // input-device-awareness AC17: Touch Scheme is an added value; what older scenes store reads and

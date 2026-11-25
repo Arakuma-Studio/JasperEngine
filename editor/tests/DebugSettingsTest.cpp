@@ -43,12 +43,6 @@ namespace {
         return debug;
     }
 
-    size_t debugSettingsCount(const std::string& text, const std::string& part) {
-        size_t n = 0;
-        for (size_t at = text.find(part); at != std::string::npos; at = text.find(part, at + 1)) n++;
-        return n;
-    }
-
 }
 
 TEST(DebugSettingsTest, DefaultsWriteNoNode) {
@@ -121,46 +115,9 @@ TEST(DebugSettingsTest, Names) {
     EXPECT_FALSE(DebugSettingsNames::isKeyName("notakey"));
 }
 
-// the generated init: the development flag from the build type, the log, DebugOverlay::configure
-TEST(DebugSettingsTest, GeneratedInit) {
-    const std::string defaults = Generator::debugInitSource(DebugSettings());
-    EXPECT_NE(defaults.find("#if JASPERENGINE_DEVELOPMENT_BUILD || defined(DEBUG)\n    Engine::setDevelopmentBuild(true);\n#endif"), std::string::npos) << defaults;
-    EXPECT_NE(defaults.find("debugOverlay.enabled = Engine::isDevelopmentBuild();"), std::string::npos) << defaults;
-    EXPECT_NE(defaults.find("debugOverlay.allowLua = Engine::isDevelopmentBuild();"), std::string::npos) << defaults;
-    EXPECT_NE(defaults.find("DebugOverlay::configure(debugOverlay);"), std::string::npos);
-    EXPECT_EQ(defaults.find("Log::setBufferSize"), std::string::npos);
-    EXPECT_EQ(defaults.find("toggleKey"), std::string::npos);
-
-    const std::string custom = Generator::debugInitSource(customSettings());
-    EXPECT_NE(custom.find("debugOverlay.enabled = true;"), std::string::npos) << custom;
-    EXPECT_NE(custom.find("debugOverlay.allowLua = false;"), std::string::npos);
-    EXPECT_NE(custom.find("Log::setBufferSize(2000);"), std::string::npos);
-    EXPECT_NE(custom.find("Log::setStackTraces(LogStackTraces::All);"), std::string::npos);
-    EXPECT_NE(custom.find("debugOverlay.toggleKey = \"f12\";"), std::string::npos);
-    EXPECT_NE(custom.find("debugOverlay.statsKey = \"\";"), std::string::npos);
-    EXPECT_NE(custom.find("debugOverlay.gesture = DebugOverlaySettings::Gesture::FourFingerTap;"), std::string::npos);
-    EXPECT_NE(custom.find("debugOverlay.popup = DebugOverlaySettings::Popup::AllDevices;"), std::string::npos);
-    EXPECT_NE(custom.find("debugOverlay.openOnError = true;"), std::string::npos);
-    EXPECT_NE(custom.find("debugOverlay.stats = DebugOverlaySettings::Stats::Full;"), std::string::npos);
-    EXPECT_NE(custom.find("debugOverlay.statsCorner = DebugOverlaySettings::Corner::BottomRight;"), std::string::npos);
-    EXPECT_EQ(debugSettingsCount(custom, "DebugOverlay::configure"), 1u);
-
-    DebugSettings never;
-    never.overlay = DebugSettings::Mode::Never;
-    EXPECT_NE(Generator::debugInitSource(never).find("debugOverlay.enabled = false;"), std::string::npos);
-}
-
-// Console Commands (dev-console-for-agents R32): the generated init sets the gate, "development"
-// following the build type at run time; a prebuilt player's game.json carries it
-TEST(DebugSettingsTest, GeneratedInitSetsConsoleCommands) {
-    EXPECT_NE(Generator::debugInitSource(DebugSettings()).find("debugOverlay.commands = Engine::isDevelopmentBuild();"), std::string::npos);
-    EXPECT_NE(Generator::debugInitSource(customSettings()).find("debugOverlay.commands = true;"), std::string::npos);
-    DebugSettings never;
-    never.consoleCommands = DebugSettings::AllowLua::Never;
-    const std::string source = Generator::debugInitSource(never);
-    EXPECT_NE(source.find("debugOverlay.commands = false;"), std::string::npos) << source;
-    EXPECT_LT(source.find("debugOverlay.commands"), source.find("DebugOverlay::configure(debugOverlay);"));
-
+// Console Commands (dev-console-for-agents R32): game.json carries the gate (every build reads it,
+// player::applySettings), "development" omitted, and an older game.json reads as development
+TEST(DebugSettingsTest, GameJsonCarriesConsoleCommands) {
     player::PlayerConfig game;
     EXPECT_FALSE(game.toJson().contains("consoleCommands")) << "omitted at development";
     game.consoleCommands = "never";

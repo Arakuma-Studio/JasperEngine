@@ -280,8 +280,8 @@ desktop / mobile / web as S19 §5; p95 per query)
 - **R32 Project settings.** project.yaml gains `physicsQueries: {hitTriggers3D, hitTriggers2D}`, written only
   when one is false; missing → true. No version bump (optional field with a default, AGENTS.md).
 - **R33 Players.** game.json (`PlayerConfig`) gains optional `queries_hit_triggers_3d` and
-  `queries_hit_triggers_2d` (absent → true; game.json stays v1: an optional key, inferred from how `PlayerConfig::fromJson` treats missing keys); a Compile
-  build's generated init calls the setters, next to the world capacity (`Generator.cpp:2812`).
+  `queries_hit_triggers_2d` (absent → true; game.json stays v1: an optional key, inferred from how `PlayerConfig::fromJson` treats missing keys); every
+  build, Compile builds included, calls the setters from it (`player::applySettings`, S98 D1).
 - **R34 Scripts.** Only functions are added; `raycast`'s extra optional argument changes nothing for
   existing calls. `RayReturn` is unchanged.
 - **R35 No scene data.** Nothing new is serialized in scenes or prefabs.

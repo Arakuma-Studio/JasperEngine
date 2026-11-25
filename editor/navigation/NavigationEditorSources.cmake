@@ -4,7 +4,6 @@
 
 list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/StreamNavigation.cpp
-    ${EDITOR_DIR}/FactoryNavigation.cpp
     ${EDITOR_DIR}/reflect/components/NavigationReflect.cpp
     ${EDITOR_DIR}/navigation/NavigationProjectSettings.cpp
     ${EDITOR_DIR}/navigation/NavigationSettingsCmd.cpp

@@ -55,6 +55,10 @@ namespace jasperengine::player {
         // publish prepare copies into the release's symbols/; empty for a prebuilt build, whose
         // player runtime holds its own
         std::string symbols;
+        // a Development Build's assets left out by Asset Stripping or Exclude From Build
+        // (asset-relative path -> "unreferenced" or "excluded: <glob>", S98 REQ-10): a load of one
+        // says so (StrippedAssets). Absent in a release build.
+        std::map<std::string, std::string> stripped;
         // the Build Profile of the build ("" none: absent from the file)
         std::string buildProfile;
         // Patch And Run (docs/specs/build-and-run-on-device.md R8): which patch of a development

@@ -12,6 +12,7 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "external/IconsFontAwesome6.h"
 #include "model/ModelSettingsEdit.h"
+#include "pose/PoseRigProvider.h"
 #include "render/LodFade.h"
 #include "texture/TextureCookQueue.h"
 #include "util/FbxImporter.h"
@@ -515,6 +516,7 @@ void ModelImporterView::drawIssues(){
         const bool transcode = issue.code == "gltf-cook-transcodes" && !cooked;
         const bool recook = issue.fix == ModelIssue::Fix::Reimport || transcode || (error && issue.code != "gltf-required-extension");
         if (recook && actionButton(transcode ? "Cook anyway" : "Reimport")){
+            PoseRigProvider::adoptNameRules(project, project->getAssetsPath() / FileUtils::pathFromUtf8(assetPaths[0]));
             ModelCookQueue::get().invalidate(assetPaths[0]);
             ModelCookQueue::get().request(assetPaths[0], shownFamily(), ModelCookQueue::Selected);
         }
@@ -678,6 +680,20 @@ bool ModelImporterView::draw(const std::vector<fs::path>& selection, const std::
     section("Level of Detail", [&]{ drawLevels(resolved); });
     if (tab > 0)
         ImGui::EndDisabled();
+    // the FBX import's, one value for every platform (S98 REQ-35): the Default tab only
+    if (tab == 0){
+        const bool fbx = std::all_of(assetPaths.begin(), assetPaths.end(), [](const std::string& path){ return FbxImporter::isFbxFile(path); });
+        section("Materials", [&]{
+            ImGui::BeginDisabled(!fbx);
+            // unset: the project's (Project Settings > Mesh)
+            const MaterialCreationMode mode = settings.materialCreationMode.value_or(project->getModelSettings().materialCreationMode);
+            form.comboField("Material Creation Mode", "materialCreationMode", modelEnumValues("materialCreationMode"), {"Import", "None"},
+                            materialCreationModeName(mode), fbx ? "Import makes the FBX's materials and looks for their textures. None makes no "
+                            "material, so nothing is looked for or warned about: every submesh draws with the default material."
+                            : "Applies to FBX models: a glTF carries its own materials.");
+            ImGui::EndDisabled();
+        });
+    }
 
     ImGui::Separator();
     if (assetPaths.size() == 1){

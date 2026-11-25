@@ -10,6 +10,7 @@
 #include "Stream.h"
 #include "buildprofile/BuildProfile.h"
 #include "command/type/EditBuildProfileCmd.h"
+#include "cook/GameConfig.h"
 #include "render/LightingTiers.h"
 #include "save/SaveGameStore.h"
 #include "render/shadow/ShadowTiers.h"
@@ -650,9 +651,9 @@ TEST(BuildProfileStore, AnUnreadableProfileDoesNotStopTheProject) {
 
 // ---------------------------------------------------------------- Compile builds
 
-// A Compile build's main.cpp of a profile: its Scene List (and the scenes they involve) registered, its
-// start scene loaded, and the init lines of its settings snapshot, not the open project's
-TEST(BuildProfileCompile, MainSourceRegistersTheSceneListAndTheProfilesSettings) {
+// A Compile build's game.json of a profile (every build reads it, player::runGame): its Scene List
+// (and the scenes they involve), its start scene, and its settings snapshot, not the open project's
+TEST(BuildProfileCompile, GameConfigHasTheSceneListAndTheProfilesSettings) {
     editor::test::ensureEngine();
     jasperengine::test::TestTempDir dir("build-profile-compile");
     Project project;
@@ -667,26 +668,29 @@ TEST(BuildProfileCompile, MainSourceRegistersTheSceneListAndTheProfilesSettings)
     const std::shared_ptr<Project> snapshot = Project::makeSettingsSnapshot(project);
     snapshot->setCanvasSize(320, 200);
     snapshot->setLightMode(LightMode::TILED);
-    auto registers = [](const std::string& source, uint32_t id, const std::string& name) {
-        return source.find("SceneManager::registerScene(" + std::to_string(id) + ", \"" + name + "\"") != std::string::npos;
-    };
+    const std::set<uint32_t> shipped = {level, hud};
+    cook::GameConfigTarget target;
+    target.startScene = level;
+    target.settings = snapshot.get();
+    target.scenes = &shipped;
 
-    const std::string profile = project.buildMainSource(*snapshot, {level, hud}, level);
-    EXPECT_TRUE(registers(profile, level, "Level1"));
-    EXPECT_TRUE(registers(profile, hud, "Hud")) << "the scene Level1 involves ships with it";
-    EXPECT_FALSE(registers(profile, menu, "Menu"));
-    EXPECT_FALSE(registers(profile, bonus, "Bonus"));
-    EXPECT_NE(profile.find("SceneManager::loadScene(\"Level1\");"), std::string::npos);
-    EXPECT_NE(profile.find("Engine::setCanvasSize(320, 200);"), std::string::npos);
-    EXPECT_NE(profile.find("LightingTiers::setLightMode(LightMode::TILED);"), std::string::npos);
+    const player::PlayerConfig profile = cook::makeGameConfig(project, target);
+    EXPECT_NE(profile.findScene(level), nullptr);
+    EXPECT_NE(profile.findScene(hud), nullptr) << "the scene Level1 involves ships with it";
+    EXPECT_EQ(profile.findScene(menu), nullptr);
+    EXPECT_EQ(profile.findScene(bonus), nullptr);
+    EXPECT_EQ(profile.startScene, level);
+    EXPECT_EQ(profile.canvasWidth, 320u);
+    EXPECT_EQ(profile.canvasHeight, 200u);
+    EXPECT_EQ(profile.lightMode, LightMode::TILED);
 
     // without a profile: every scene, the project's own settings
-    const std::string own = project.buildMainSource(project, {}, menu);
-    for (const auto& [id, name] : std::vector<std::pair<uint32_t, std::string>>{{menu, "Menu"}, {level, "Level1"}, {hud, "Hud"}, {bonus, "Bonus"}}) {
-        EXPECT_TRUE(registers(own, id, name)) << name;
-    }
-    EXPECT_NE(own.find("SceneManager::loadScene(\"Menu\");"), std::string::npos);
-    EXPECT_EQ(own.find("Engine::setCanvasSize(320, 200);"), std::string::npos);
-    EXPECT_EQ(own.find("LightMode::TILED"), std::string::npos);
+    cook::GameConfigTarget own;
+    own.startScene = menu;
+    const player::PlayerConfig game = cook::makeGameConfig(project, own);
+    for (uint32_t id : {menu, level, hud, bonus}) EXPECT_NE(game.findScene(id), nullptr) << id;
+    EXPECT_EQ(game.startScene, menu);
+    EXPECT_NE(game.canvasWidth, 320u);
+    EXPECT_NE(game.lightMode, LightMode::TILED);
     editor::test::closeProject(project);
 }

@@ -51,7 +51,8 @@ namespace jasperengine {
         VoxelVolume = 32,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
         NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
         TitleArt = 34,              // a .titleart Title Art document (S80; its GUID in its JSON)
-        StringTable = 36,           // (35: #18's Mesh) a .stringtable String Table and its .translation files (game-ui-localization.md R41; GUID in its JSON)
+        Mesh = 35,                  // a .mesh mesh asset (S98 F1; its GUID in its .meta)
+        StringTable = 36,           // a .stringtable String Table and its .translation files (game-ui-localization.md R41; GUID in its JSON)
         Dialogue = 37               // a .dialogue dialogue graph (dialogue-graphs.md R30; its GUID in its JSON)
     };
     // the highest value present (a sibling's reserved value below it may still be missing)
@@ -94,6 +95,7 @@ namespace jasperengine {
             case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::TitleArt: return "title_art";
+            case AssetType::Mesh: return "mesh";
             case AssetType::StringTable: return "stringtable";
             case AssetType::Dialogue: return "dialogue";
             case AssetType::Unknown: break;

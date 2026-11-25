@@ -40,6 +40,8 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
     EXPECT_EQ(assetTypeFromName("title_art"), AssetType::TitleArt);
     EXPECT_EQ(assetTypeFromName("sound_event"), AssetType::SoundEvent);
     EXPECT_EQ(static_cast<int>(AssetType::TitleArt), 34) << "the numbers are a file format: append only";
+    EXPECT_EQ(static_cast<int>(AssetType::Mesh), 35) << "the numbers are a file format: append only";
+    EXPECT_EQ(assetTypeFromName("mesh"), AssetType::Mesh);
     EXPECT_EQ(static_cast<int>(AssetType::StringTable), 36) << "the numbers are a file format: append only";
     EXPECT_EQ(assetTypeFromName("stringtable"), AssetType::StringTable);
     EXPECT_EQ(static_cast<int>(AssetType::Dialogue), 37) << "the numbers are a file format: append only";

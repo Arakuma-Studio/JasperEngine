@@ -3,7 +3,7 @@
 
 #include "BuildDevices.h"
 
-#include "Factory.h"
+#include "util/CppIdentifier.h"
 #include "Out.h"
 #include "Platform.h"
 #include "Project.h"
@@ -352,7 +352,7 @@ void builddevice::runBuildOnDevice(const CallPtr& call) {
     const bool quits = args.contains("quit_after");
     const int maxLines = std::clamp(args.value("log_lines", 80), 0, 2000);
     const bool headless = runHeadless();
-    const std::string app = project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(project->getName());
+    const std::string app = project->getName().empty() ? "jasperengine-project" : toIdentifier(project->getName());
     const std::map<BuildPlatform, std::string> appIds = {{BuildPlatform::Android, Exporter::applicationIdOf(*project, BuildPlatform::Android, app)},
                                                          {BuildPlatform::IOS, Exporter::applicationIdOf(*project, BuildPlatform::IOS, app)}};
 

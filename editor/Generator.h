@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "subsystem/GamepadCursor.h"
 #include "audio/AudioQaSettings.h"
 #include "render/GpuCreation.h"
 #include "registry/SortingLayers.h"
@@ -21,12 +20,10 @@
 #include "jobs/JobSystem.h"
 #include "Scene.h"
 #include "DebugSettings.h"
-#include "SaveGameSettings.h"
 #include "registry/TagManager.h"
 #include "util/Prefab.h"
 #include "util/BuildDiagnostics.h"
 #include "util/CommandRunner.h"
-#include "Factory.h"
 #include "io/watch/FileIdentity.h"
 #include "manager/SceneManager.h"
 #include "shader/ShaderGlobals.h"
@@ -50,17 +47,8 @@ namespace jasperengine::editor {
     };
 
 
-    struct SceneBuildInfo {
-        uint32_t id;
-        std::string name;
-        std::vector<uint32_t> involvedScenes; // IDs of all scenes involved in this stack (main + layers)
-        std::vector<uint32_t> activeScenes;   // IDs that should be added to Engine when the stack is loaded
-        bool isMain;
-    };
-
     struct PrefabSceneInfo {
         std::filesystem::path prefabPath; // relative path of the .prefab file
-        std::string functionName;         // generated C++ function name (e.g. create_prefab_X)
         std::string guid;                 // the prefab's asset GUID (the path follows it)
     };
 
@@ -108,8 +96,8 @@ namespace jasperengine::editor {
         bool asyncLoading = false;
     };
 
-    // Project Settings > Player > Threading (project.yaml `threading:`): baked into the
-    // generated main as Engine::setThreadingSettings. -1 is Auto.
+    // Project Settings > Player > Threading (project.yaml `threading:`): game.json's, which a game
+    // applies with Engine::setThreadingSettings. -1 is Auto.
     // Project Settings > Graphics > Shader Creation (spec S32): the engine's ShaderCreationSettings
     // and the editor's shader warm-up options, on a reflection table (editor/reflect/
     // ShaderCreationReflect.cpp: the project file's shaderCreation block, the settings rows)
@@ -228,23 +216,6 @@ namespace jasperengine::editor {
         return rows;
     }
 
-    // Project Settings > Tags and Layers, and the layer collision matrices of Physics and
-    // Physics 2D, baked into the generated init()
-    struct TagsAndLayers {
-        std::vector<std::string> tags;        // user tags
-        std::vector<std::string> layerNames;  // index = layer, empty when built-in or unnamed
-        LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
-        LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
-        // Project Settings > Physics > 3D World Capacity (PhysicsSystem::setWorldCapacity3D)
-        unsigned int maxBodies3D = 8192;
-        unsigned int maxBodyPairs3D = 8192;
-        unsigned int maxContactConstraints3D = 8192;
-        // Sorting Layers and Graphics > Transparency Sort (spec S52 R40)
-        std::vector<SortingLayerInfo> sortingLayers;
-        TransparencySortMode transparencySortMode = TransparencySortMode::DEFAULT;
-        Vector3 transparencySortAxis = Vector3(0.0f, 1.0f, 0.0f);
-    };
-
     // A script build's state, published by every Generator (Play, compile_scripts, C++ reload,
     // the C++ editor scripts) through Generator::buildEvents(), from the build's thread
     struct ScriptBuildEvent {
@@ -259,8 +230,8 @@ namespace jasperengine::editor {
         std::vector<std::string> output;     // Finished: the build's lines (diagnostics are read from them)
     };
 
-    // Player > Resolution and Presentation and the application, baked into the generated
-    // init() (Screen::initialize, Engine::setTargetFrameRate, System::setApplicationInfo)
+    // Player > Resolution and Presentation and the application, in game.json (player::applySettings:
+    // Screen::initialize, Engine::setTargetFrameRate, System::setApplicationInfo)
     struct PlayerSettings {
         ScreenOrientation defaultOrientation = ScreenOrientation::AutoRotation;
         uint8_t allowedOrientations = (1u << 1) | (1u << 3) | (1u << 4);
@@ -283,29 +254,6 @@ namespace jasperengine::editor {
     struct GeneratorTestAccess;
 
     class Generator {
-        std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
-        SaveGameSettings saveGameSettings;
-        std::array<FoliageQuality, 3> foliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
-        bool foliageQualityUncapped = true;
-        std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
-        // T3 R34: the terrain tiers the game ships, a mask of TerrainQuality bits (all three: no line)
-        uint32_t shippedTerrainTiers = 0x7u;
-        DrawSubmissionSettings drawSubmission;
-        // Project Settings > Graphics > Screen Transitions (S48)
-        jasperengine::pixelart::TransitionDefaults transitionDefaults;
-        // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
-        std::string inputActionsAsset;
-        float inputDeadzone = 0.15f;
-        GamepadCursorSettings gamepadCursorSettings;
-        // Project Settings > Navigation: the statements main.cpp runs (nav::setSettings), "" defaults
-        std::string navigationSettingsCode;
-        std::string voxelSettingsCode;
-        // Project Settings > Quality > Device Tiers and the rest (DeviceSettings::toJson)
-        std::string deviceSettingsJson = "{}";
-        // Project Settings > Texture per platform group (desktop, mobile, web; S14 R12)
-        std::array<int, 3> textureQuality = {0, 0, 0};
-        std::array<int, 3> textureBudgetMB = {0, 512, 384};
-        std::array<bool, 3> textureLowMemory = {false, false, true};
         friend struct GeneratorTestAccess;
     private:
         // what the build's events name (setStatusRow)
@@ -316,8 +264,6 @@ namespace jasperengine::editor {
             fs::path projectPath, projectInternalPath, assetsPath, luaPath;
             std::string libName;
             std::vector<SceneScriptSource> scriptFiles;
-            std::vector<SceneBuildInfo> scenes;
-            std::vector<PrefabSceneInfo> prefabs;
             bool vsyncEnabled = true;
             WindowSettings windowSettings;
             std::vector<fs::path> scriptDirs;
@@ -335,21 +281,6 @@ namespace jasperengine::editor {
         CommandRunner commandRunner;
         // the compiler and linker errors of the last C++ script build, repeated at its end
         BuildErrorLog buildErrors;
-        // the project's UI Scale, emitted by configure (setUIScale before it)
-        CanvasScalerSettings uiScale;
-        // the project's Pixels Per Unit (S41), emitted by configure when it is not 1
-        int pixelsPerUnit = 1;
-        // the project's Default Filter Mode is Point (S42 R3), emitted by configure
-        bool defaultFilterPoint = false;
-        // the styled bitmap glyph cache's MiB (S51), emitted when it is not 0
-        int bitmapTextCacheMiB = 0;
-        // Project Settings > Physics / Physics 2D > Queries Hit Triggers (set only when off)
-        bool queriesHitTriggers3D = true;
-        bool queriesHitTriggers2D = true;
-        // setBuildTiers: what mainSource writes instead of the engine's current tiers
-        int buildLightMode = -1;
-        std::vector<int> buildShadowTiers;
-        std::vector<int> buildTerrainTiers;
 
         static fs::path getGeneratedPath(const fs::path& projectInternalPath);
         static std::string getEditorPluginAbiCheck();
@@ -366,10 +297,10 @@ namespace jasperengine::editor {
         // usually because another program holds a lock on the build directory.
         bool cleanBuildDirectory(const fs::path& buildPath);
         std::string getPlatformCMakeConfig(bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& projectPath, const fs::path& assetsPath, const fs::path& luaPath);
-        std::string buildInitSceneScriptsSource(const std::vector<SceneScriptSource>& scriptFiles);
-        std::string buildCleanupSceneScriptsSource(const std::vector<SceneScriptSource>& scriptFiles);
+        static std::string buildInitSceneScriptsSource(const std::vector<SceneScriptSource>& scriptFiles);
+        static std::string buildCleanupSceneScriptsSource(const std::vector<SceneScriptSource>& scriptFiles);
 
-        void writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<SceneBuildInfo>& scenes, const std::vector<PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard);
+        void writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard);
 
     public:
         void setMacOSFrameworks(std::vector<std::string> frameworks) { macOSFrameworks = std::move(frameworks); }
@@ -432,74 +363,13 @@ namespace jasperengine::editor {
         // MSBuild's /m, how many projects build at once: both at `jobs` run up to jobs x jobs
         // compilers while the engine's libraries build side by side.
         static unsigned int buildStepParallelJobs(const fs::path& buildPath, unsigned int jobs);
-        // prefabGuid: the asset GUID of a prefab path, empty for a missing prefab (Factory::createPrefab).
-        // baked: each prefab's instance as the editor makes it (Project::bakePrefabsForExport),
-        // what its build_prefab_* source is generated from
-        std::vector<PrefabInstanceInfo> writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath,
-            const std::function<std::string(const fs::path&)>& prefabGuid, const std::map<fs::path, std::shared_ptr<BakedPrefab>>& baked);
-        void writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
-        void clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath);
-        bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
-
-        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings(), bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = {}, const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings(), uint32_t particleWorldBudget = 0);
-        // main.cpp's text: configure writes it; an export of a Build Profile builds its own from the
-        // profile's settings snapshot (Project::buildMainSource) without touching the project's files
-        std::string mainSource(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings(), bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = {}, const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings(), uint32_t particleWorldBudget = 0);
-        // The tiers main.cpp sets (a Build Profile's snapshot); unset (-1, empty), the editor's own
-        void setBuildTiers(int lightMode, std::vector<int> shadowTiers, std::vector<int> terrainTiers) {
-            buildLightMode = lightMode;
-            buildShadowTiers = std::move(shadowTiers);
-            buildTerrainTiers = std::move(terrainTiers);
-        }
-        // main.cpp's init lines of Project Settings > Input: the default deadzone (when not 0.15)
-        // and InputActions::loadDefault of the actions asset (none: the engine keeps Unity's
-        // Input Manager defaults)
-        // the Canvas Scaler project default the next configure() writes into the generated main
-        void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
-        void setPixelsPerUnit(int value) { pixelsPerUnit = value; }
-        void setDefaultFilterPoint(bool point) { defaultFilterPoint = point; }
-        void setBitmapTextCacheMiB(int value) { bitmapTextCacheMiB = value; }
-        void setPhysicsQueries(bool hitTriggers3D, bool hitTriggers2D) { queriesHitTriggers3D = hitTriggers3D; queriesHitTriggers2D = hitTriggers2D; }
-        static std::string inputSettingsInitSource(const std::string& actionsAsset, float deadzone);
-        // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
-        // (with their defaults) before any scene loads; "" when the project declares none
-        static std::string shaderGlobalsInitSource(const std::vector<ShaderGlobalDecl>& shaderGlobals);
-        // AudioSystem::configure / AudioMixer::load lines of main.cpp ("" for the defaults)
-        static std::string audioInitSource(const AudioSettings& audioSettings);
-        // The generated init's lines of Project Settings > Debug: the development build flag
-        // (JASPERENGINE_DEVELOPMENT_BUILD of a Debug-type export, DEBUG of Xcode's Debug
-        // configuration), the log buffer and stack traces, DebugOverlay::configure
-        static std::string debugInitSource(const DebugSettings& debugSettings);
-        // savegame::configure of Project Settings > Player > Saved Data ("" for the defaults)
-        static std::string saveGameInitSource(const SaveGameSettings& settings);
+        // main.cpp (the same for every project: player::runGame with the C++ scripts' hooks), the
+        // project's CMakeLists.txt and scene_scripts.cpp
+        void configure(std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings());
+        static std::string mainSource();
+        // scene_scripts.cpp: the C++ scripts' entry points main.cpp hands to player::runGame
+        static std::string sceneScriptsSource(const fs::path& projectPath, const std::vector<SceneScriptSource>& scriptFiles);
         void build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
-        // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
-        // starts with; set before configure()
-        void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
-        // Project Settings > Player > Saved Data; set before configure()
-        void setSaveGameSettings(const SaveGameSettings& settings) { saveGameSettings = settings; }
-        void setFoliageQuality(const std::array<FoliageQuality, 3>& quality, bool uncapped) { foliageQuality = quality; foliageQualityUncapped = uncapped; }
-        void setFoliageDistanceScale(const std::array<float, 3>& scale) { foliageDistanceScale = scale; }
-        // Project::getGeneratedTerrainTiers; set before configure()
-        void setShippedTerrainTiers(uint32_t mask) { shippedTerrainTiers = mask; }
-        void setDrawSubmission(const DrawSubmissionSettings& settings) { drawSubmission = settings; }
-        void setTransitionDefaults(const jasperengine::pixelart::TransitionDefaults& defaults) { transitionDefaults = defaults; }
-        // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
-        // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
-        void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
-        void setGamepadCursorSettings(const GamepadCursorSettings& settings) { gamepadCursorSettings = settings; }
-        // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()
-        void setNavigationSettingsCode(const std::string& code) { navigationSettingsCode = code; }
-        // what Project Settings > Voxels lowers (generateVoxelSettingsCode); set before configure()
-        void setVoxelSettingsCode(const std::string& code) { voxelSettingsCode = code; }
-        // the device settings the game applies its Device Tier with (DeviceSettings::toJson); set
-        // before configure()
-        void setDeviceSettingsJson(const std::string& json) { deviceSettingsJson = json; }
-        void setTextureDefaults(const std::array<int, 3>& quality, const std::array<int, 3>& budgetMB, const std::array<bool, 3>& lowMemory) {
-            textureQuality = quality;
-            textureBudgetMB = budgetMB;
-            textureLowMemory = lowMemory;
-        }
         // Configures and builds on the process channel; called from a channel job (the Play
         // startup), it builds on that thread instead and returns when done.
         void runBuild(const fs::path& projectPath, const fs::path& buildPath, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs);

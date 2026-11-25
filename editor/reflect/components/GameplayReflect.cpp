@@ -8,7 +8,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/BuoyancyComponent.h"
 #include "component/CharacterController2DComponent.h"
@@ -104,7 +103,7 @@ namespace {
         JE_FIELD(BuoyancyComponent, enabled),
         JE_FIELD(BuoyancyComponent, columns, .enumDesc = &enums::kBuoyancyColumns),
         // the columns' bottoms in local space, with the CUSTOM columns
-        JE_FIELD(BuoyancyComponent, customPoints, .ops = &ops::PushBackList<Vector3>, .flags = NoDefault | ListWhole),
+        JE_FIELD(BuoyancyComponent, customPoints, .ops = &ops::Array<Vector3>, .flags = NoDefault | ListWhole),
         JE_FIELD(BuoyancyComponent, volumeScale),
         JE_FIELD(BuoyancyComponent, dragScale),
     };
@@ -169,9 +168,9 @@ namespace {
         JE_FIELD(SimulationCullingComponent, cullAnimator, .label = "Animator", .tooltip = "Stops the Animator (as Cull Completely).", .group = "Cull"),
         JE_FIELD(SimulationCullingComponent, cullPhysics, .label = "Physics",
                  .tooltip = "Freezes dynamic Rigidbodies in place (kinematic, still collided with); they resume with their velocity.", .group = "Cull"),
-        JE_FIELD(SimulationCullingComponent, state, .enumDesc = &enums::kSimulationState, .flags = NoSave | ReadOnly | Hidden | NoCodegen | NoMcpWrite),
-        JE_FIELD(SimulationCullingComponent, reason, .enumDesc = &enums::kSimulationCullReason, .flags = NoSave | ReadOnly | Hidden | NoCodegen | NoMcpWrite),
-        JE_FIELD(SimulationCullingComponent, focusDistance, .flags = NoSave | ReadOnly | Hidden | NoCodegen | NoMcpWrite, .unit = Unit::Meters),
+        JE_FIELD(SimulationCullingComponent, state, .enumDesc = &enums::kSimulationState, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite),
+        JE_FIELD(SimulationCullingComponent, reason, .enumDesc = &enums::kSimulationCullReason, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite),
+        JE_FIELD(SimulationCullingComponent, focusDistance, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite, .unit = Unit::Meters),
     };
 
     // ---------------------------------------------------------------- Dialogue Runner
@@ -183,11 +182,11 @@ namespace {
                  .tooltip = "The entry start() begins at when none is given; empty: the entry named start, else the first."),
         JE_FIELD(DialogueRunnerComponent, autoStart, .tooltip = "Starts on Play or when instantiated, after every script's init of that frame."),
         JE_FIELD(DialogueRunnerComponent, seed, .tooltip = "Seeds the random variants, random() and chance(); 0: from the GameObject's id."),
-        JE_FIELD(DialogueRunnerComponent, view, .ops = &ops::Entity, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged,
+        JE_FIELD(DialogueRunnerComponent, view, .ops = &ops::Entity, .flags = OmitIfDefault | EmptyIsDefault,
                  .tooltip = "The GameObject whose UI Document shows the lines (the dialogue template's view); None: the game's own."),
-        JE_FIELD(DialogueRunnerComponent, isRunning, .flags = NoSave | ReadOnly | Hidden | NoCodegen | NoMcpWrite),
-        JE_FIELD(DialogueRunnerComponent, state, .flags = NoSave | ReadOnly | Hidden | NoCodegen | NoMcpWrite),
-        JE_FIELD(DialogueRunnerComponent, currentNode, .flags = NoSave | ReadOnly | Hidden | NoCodegen | NoMcpWrite),
+        JE_FIELD(DialogueRunnerComponent, isRunning, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite),
+        JE_FIELD(DialogueRunnerComponent, state, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite),
+        JE_FIELD(DialogueRunnerComponent, currentNode, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite),
     };
 
 }
@@ -199,9 +198,6 @@ const ComponentDesc kCharacterController2DDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(CharacterController2DComponent),
     .codec = &kCharacterController2DCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createCharacterController2DComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .codegenGuard = "JASPERENGINE_PHYSICS_2D",
     .extraKeys = kCharacterController2DKnownKeys,
 };
@@ -213,9 +209,6 @@ const ComponentDesc kCharacterControllerDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(CharacterControllerComponent),
     .codec = &kCharacterControllerCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createCharacterControllerComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .codegenGuard = "JASPERENGINE_PHYSICS_3D",
     .extraKeys = kCharacterControllerKnownKeys,
 };
@@ -227,9 +220,6 @@ const ComponentDesc kWaterVolumeDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterVolumeComponent),
     .codec = &kWaterVolumeCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createWaterVolumeComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .extraKeys = kWaterVolumeKnownKeys,
 };
 
@@ -238,7 +228,6 @@ const ComponentDesc kWaterExcluderDesc{
     .displayName = "Water Excluder", .icon = ICON_FA_SHIP,
     .body = JE_STRUCT_DESC(WaterExcluderComponent, "WaterExcluderComponent", kWaterExcluderFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterExcluderComponent),
-    .codegenVar = "waterExcluder",
 };
 
 const ComponentDesc kWaterWakeDesc{
@@ -246,7 +235,6 @@ const ComponentDesc kWaterWakeDesc{
     .displayName = "Water Wake", .icon = ICON_FA_WATER,
     .body = JE_STRUCT_DESC(WaterWakeComponent, "WaterWakeComponent", kWaterWakeFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterWakeComponent),
-    .codegenVar = "waterWake",
 };
 
 const ComponentDesc kBuoyancyDesc{
@@ -256,9 +244,6 @@ const ComponentDesc kBuoyancyDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(BuoyancyComponent),
     .codec = &kBuoyancyCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createBuoyancyComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .extraKeys = kBuoyancyKnownKeys,
 };
 
@@ -267,7 +252,6 @@ const ComponentDesc kSimulationCullingDesc{
     .displayName = "Simulation Culling", .icon = ICON_FA_EYE_SLASH,
     .body = JE_STRUCT_DESC(SimulationCullingComponent, "SimulationCullingComponent", kSimulationCullingFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SimulationCullingComponent),
-    .codegenVar = "simulationCulling",
 };
 
 const ComponentDesc kDialogueRunnerDesc{
@@ -275,7 +259,6 @@ const ComponentDesc kDialogueRunnerDesc{
     .displayName = "Dialogue Runner", .icon = ICON_FA_COMMENTS,
     .body = JE_STRUCT_DESC(DialogueRunnerComponent, "DialogueRunnerComponent", kDialogueRunnerFields),
     .structural = false, JE_COMPONENT_ACCESS(DialogueRunnerComponent),
-    .codegenVar = "dialogueRunner",
 };
 
 }

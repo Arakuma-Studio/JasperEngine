@@ -72,6 +72,14 @@ namespace jasperengine::editor {
         std::vector<BuildReportStep> chain;
     };
 
+    // An asset Asset Stripping left out (S98 REQ-10): project-relative, its bytes on disk, and why
+    // ("unreferenced" under Asset Stripping: Referenced Only, or "excluded: <glob>")
+    struct BuildReportStripped {
+        std::string path;
+        uint64_t bytes = 0;
+        std::string reason;
+    };
+
     class BuildReport {
     public:
         static constexpr const char* kFileName = "build-report.json";
@@ -91,6 +99,12 @@ namespace jasperengine::editor {
         // asset -> how it was reached; absent: the index was not ready or the report predates it
         std::optional<std::map<std::string, BuildReportReach>> reachability;
         std::vector<BuildReportBudget> budgets;
+        // S98 REQ-10: the assets Asset Stripping and Exclude From Build left out, in path order
+        std::vector<BuildReportStripped> stripped;
+
+        // the stripped ("unreferenced") and excluded totals
+        size_t strippedCount() const { return stripped.size(); }
+        uint64_t strippedBytes() const;
 
         // the categories in display order
         static const std::vector<std::string>& categoryNames();

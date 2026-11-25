@@ -71,6 +71,8 @@ namespace {
             {{AssetType::TerrainWorld, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".terrainworld"}},
             // Title Art documents (S80) keep their GUID in their JSON; their baked PNGs are Textures
             {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
+            // .mesh assets (S98 F1): binary, so their GUID is in a .meta
+            {{AssetType::Mesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".mesh"}},
             // String Tables and their translations (game-ui-localization.md R41): JSON with a top-level "guid"
             {{AssetType::StringTable, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".stringtable", ".translation"}},
             // dialogue graphs (dialogue-graphs.md R30): a graph file with a top-level "guid", as .procmat

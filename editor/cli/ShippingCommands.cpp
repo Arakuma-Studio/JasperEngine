@@ -430,6 +430,8 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
                 budgets.push_back({{"platform", budget.platform}, {"category", budget.category}, {"limit_bytes", budget.limitBytes},
                                    {"bytes", budget.bytes}, {"over_bytes", budget.overBytes()}});
             report["size_budgets"] = budgets;
+            report["stripped_count"] = result.strippedCount;
+            report["stripped_bytes"] = result.strippedBytes;
         }
         if (deploy) {
             report["device"] = deploy->device.id;

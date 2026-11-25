@@ -94,6 +94,8 @@ namespace jasperengine {
         static void registerUtilClasses(lua_State *L);
         static void registerThreadClasses(lua_State *L);
         static void registerProfilerClasses(lua_State *L);
+        // What the Profiler table holds for the state (Profiler.gpuTiming's GPU timing), let go
+        static void releaseProfilerState();
         static void registerGameplayClasses(lua_State *L);
         // S96: Physics / Physics2D shape queries, RaycastHit fields (PhysicsQueriesLua.cpp)
         static void registerPhysicsQueryClasses(lua_State *L);

@@ -7,7 +7,6 @@
 
 #include <gtest/gtest.h>
 
-#include "Generator.h"
 #include "Project.h"
 #include "Stream.h"
 #include "Workspace.h"
@@ -18,12 +17,7 @@
 
 #include "yaml-cpp/yaml.h"
 
-#include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <string>
-
-#include "support/PosixCompat.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -117,8 +111,8 @@ TEST(ProjectPhysicsSettings, QueriesHitTriggersRoundTrip) {
     EXPECT_TRUE(Physics2D::getQueriesHitTriggers());
 }
 
-// AC17 (R33): game.json carries them only when off; a game.json without them reads true; a
-// Compile build's generated init sets them only when off
+// AC17 (R33): game.json carries them only when off (every build reads it, player::applySettings);
+// a game.json without them reads true
 TEST(ProjectPhysicsSettings, GameJsonCarriesQueriesHitTriggers) {
     player::PlayerConfig game;
     std::string error;
@@ -138,27 +132,4 @@ TEST(ProjectPhysicsSettings, GameJsonCarriesQueriesHitTriggers) {
     ASSERT_TRUE(player::PlayerConfig::fromJson(off, read, error)) << error;
     EXPECT_FALSE(read.queriesHitTriggers3D);
     EXPECT_TRUE(read.queriesHitTriggers2D);
-
-    // the generated init of a Compile build
-    namespace fs = std::filesystem;
-    const fs::path project = fs::temp_directory_path() / ("jasper-generator-queries-" + std::to_string(::getpid()));
-    fs::remove_all(project);
-    fs::create_directories(project / "assets");
-    const fs::path internal = project / ".jasperengine";
-    auto generatedMain = [&](bool hitTriggers3D){
-        Generator generator;
-        generator.setPhysicsQueries(hitTriggers3D, true);
-        const std::vector<SceneBuildInfo> scenes = {SceneBuildInfo{1, "Level", {1}, {1}, true}};
-        generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17,
-                            Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(),
-                            TagsAndLayers(), 4, ThreadingProjectSettings(), HtmlUiRenderSettings(), PbrTier::REDUCED,
-                            ShaderCreationProjectSettings(), false, {}, PlayerSettings(), AudioSettings(), DebugSettings(), 0);
-        std::ifstream file(internal / "generated" / "main.cpp");
-        std::stringstream text;
-        text << file.rdbuf();
-        return text.str();
-    };
-    EXPECT_NE(generatedMain(false).find("Physics::setQueriesHitTriggers(false);"), std::string::npos);
-    EXPECT_EQ(generatedMain(true).find("setQueriesHitTriggers"), std::string::npos) << "the default costs a game nothing";
-    fs::remove_all(project);
 }

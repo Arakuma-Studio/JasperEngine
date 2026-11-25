@@ -834,6 +834,8 @@ android)
     # The NDK app/build.gradle pins, installed before Gradle when the SDK lacks it: the Android Gradle
     # plugin's own download of it has no retry (main's run 44404218432 failed on a Premature EOF)
     run bash -euo pipefail -c "
+        # the NDK and CMake the template pins are the image's (no download in a fresh container)
+        tools/ci/check_android_image.sh
         cd engine/workspaces/androidstudio
         ndk=\$(sed -n 's/^ *ndkVersion = \"\\(.*\\)\"\$/\\1/p' app/build.gradle)
         [[ -n \"\$ndk\" ]] || { echo 'no ndkVersion in app/build.gradle' >&2; exit 1; }

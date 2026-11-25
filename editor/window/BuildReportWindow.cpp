@@ -470,6 +470,35 @@ void BuildReportWindow::drawUnreferencedTab() {
 }
 
 void BuildReportWindow::drawLeftOutTab() {
+    // S98 REQ-10, REQ-45: what Asset Stripping (unreferenced) and Exclude From Build left out; the
+    // two lists share the height
+    if (!report.stripped.empty()) {
+        ImGui::TextDisabled("Left out of the build: %zu asset(s), %s (Project Settings > Player > Build)", report.strippedCount(),
+                            BuildReport::formatBytes(report.strippedBytes()).c_str());
+        if (ImGui::BeginTable("build_report_stripped", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+                                                             ImGuiTableFlags_SizingFixedFit, ImVec2(0.0f, ImGui::GetContentRegionAvail().y * 0.5f))) {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn("Asset", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+            ImGui::TableSetupColumn("Size");
+            ImGui::TableSetupColumn("Reason", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+            ImGui::TableHeadersRow();
+            int row = 0;
+            for (const BuildReportStripped& entry : report.stripped) {
+                ImGui::PushID(row++);
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                // a click shows it in the Inspector
+                if (ImGui::Selectable(entry.path.c_str())) project->setInspectedAssets({FileUtils::pathFromUtf8(entry.path)});
+                ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(BuildReport::formatBytes(entry.bytes).c_str());
+                ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(entry.reason.c_str());
+                if (entry.reason == "unreferenced" && ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Nothing the build ships references it. A script that loads it by a path it builds needs it in Always Include.");
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+        ImGui::Separator();
+    }
     ImGui::Text("%zu source(s), %s not shipped as themselves", report.leftOut.size(), BuildReport::formatBytes(report.leftOutBytes()).c_str());
     if (!ImGui::BeginTable("build_report_left_out", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
                                                           ImGuiTableFlags_SizingFixedFit))

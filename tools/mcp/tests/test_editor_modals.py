@@ -509,7 +509,8 @@ async def test_save_scene_dialog_completes(ed: Editor):
     r = await ed.call("respond_dialog", choice="ok", values={"name": "agent_saved", "folder": "scenes"})
     ed.check_eq(r["answered"], {"title": "Save Scene", "choice": "ok"}, f"answered: {r}")
     # the save is asynchronous, then a project in the temporary folder asks where it goes: reported the same way,
-    # in this reply when the save ended within the frames it waits, else by the next read
+    # in this reply when the save ended within the frames it waits (a save writes no scene code: S98 WP-1), else
+    # by the next read
     ed.check_eq(r.get("dialog", {}).get("title", "Save Project"), "Save Project", f"Save Scene completed: {r}")
     # until a frame drew it, a save dialog offers only its cancel (no fields yet)
     d = None

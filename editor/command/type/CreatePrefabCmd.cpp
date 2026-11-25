@@ -7,6 +7,10 @@
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "Stream.h"
+#include "component/PrefabComponent.h"
+
+#include <algorithm>
+#include <unordered_map>
 
 using namespace jasperengine;
 
@@ -94,8 +98,12 @@ bool editor::CreatePrefabCmd::execute(){
             editor::Out::error("Prefab filepath must be relative: %s", item.filepath.string().c_str());
             continue;
         }
-        if (project->getPrefab(item.filepath)) {
+        if (!item.overwrite && project->getPrefab(item.filepath)) {
             editor::Out::error("Prefab already exists at %s", item.filepath.string().c_str());
+            continue;
+        }
+        if (item.overwrite && !project->loadPrefabAsset(item.filepath)) {
+            editor::Out::error("No prefab to overwrite at %s", item.filepath.string().c_str());
             continue;
         }
 
@@ -120,6 +128,20 @@ bool editor::CreatePrefabCmd::execute(){
                 any = true;
             }
             continue;
+        }
+
+        // An instance of the prefab it overwrites: its GameObjects keep their registry ids whatever
+        // their names (taken before the unpack drops them)
+        std::unordered_map<Entity, Entity> knownIds;
+        if (item.overwrite) {
+            if (Prefab* target = project->getPrefab(item.filepath)) {
+                if (const Prefab::Instance* instance = target->getInstanceByRoot(sceneId, root)) {
+                    knownIds[root] = instance->rootRegistryEntity;
+                    for (const Prefab::EntityMember& member : instance->members) {
+                        knownIds[member.localEntity] = member.registryEntity;
+                    }
+                }
+            }
         }
 
         // A prefab instance root becomes the root of an original prefab: unpacked first, its
@@ -153,11 +175,17 @@ bool editor::CreatePrefabCmd::execute(){
             }
         }
 
-        if (project->createPrefab(sceneId, item.filepath, node, item.guid)) {
+        if (item.overwrite) {
+            // after the unpack: the selected instance root is no instance of it any more
+            item.overwritten = project->capturePrefabUndoState(sceneId, NULL_ENTITY, {item.filepath});
+            item.overwriteRoot = root;
+        }
+        if (item.overwrite ? project->overwritePrefab(sceneId, item.filepath, node, knownIds)
+                           : project->createPrefab(sceneId, item.filepath, node, item.guid)) {
             item.guid = project->getPrefabGuid(item.filepath);
             item.created = true;
             any = true;
-            editor::Out::info("Created Prefab at '%s'", item.filepath.string().c_str());
+            editor::Out::info(item.overwrite ? "Overwrote Prefab at '%s'" : "Created Prefab at '%s'", item.filepath.string().c_str());
         } else if (!item.unpacked.empty()) {
             project->repackPrefabInstances(sceneId, std::move(item.unpacked));
             item.unpacked.clear();
@@ -176,6 +204,12 @@ void editor::CreatePrefabCmd::undo(){
     for (auto it = items.rbegin(); it != items.rend(); ++it) {
         Item& item = *it;
         if (!item.created) {
+            continue;
+        }
+
+        if (item.overwrite) {
+            undoOverwrite(sceneProject, item);
+            item.created = false;
             continue;
         }
 
@@ -235,6 +269,50 @@ void editor::CreatePrefabCmd::undo(){
     sceneProject->isModified = wasModified;
 }
 
+void editor::CreatePrefabCmd::undoOverwrite(SceneProject* sceneProject, Item& item){
+    if (!item.guid.empty()) {
+        const fs::path current = project->resolvePrefabPath(item.guid, item.filepath);
+        if (!current.empty()) {
+            item.filepath = current;
+        }
+    }
+    // The GameObject is no instance of the prefab any more: its link goes, as removePrefab
+    // takes it from a created one
+    if (Prefab* prefab = project->getPrefab(item.filepath)) {
+        auto sceneIt = prefab->instances.find(sceneId);
+        if (sceneIt != prefab->instances.end()) {
+            std::vector<Prefab::Instance>& instances = sceneIt->second;
+            instances.erase(std::remove_if(instances.begin(), instances.end(), [&](const Prefab::Instance& instance) {
+                return instance.rootEntity == item.overwriteRoot;
+            }), instances.end());
+            if (instances.empty()) {
+                prefab->instances.erase(sceneIt);
+            }
+        }
+    }
+    Scene* scene = sceneProject->scene;
+    if (scene && scene->isEntityCreated(item.overwriteRoot) && scene->findComponent<PrefabComponent>(item.overwriteRoot)) {
+        scene->removeComponent<PrefabComponent>(item.overwriteRoot);
+    }
+    sceneProject->structureVersion++;
+
+    // The old content and every instance as it was, on disk too (the overwrite wrote it)
+    project->restorePrefabUndoState(item.overwritten);
+    if (project->savePrefabToDisk(item.filepath) != SaveResult::Saved) {
+        undoProblem += (undoProblem.empty() ? "" : "; ") + std::string("could not write ") + item.filepath.generic_string() + " back";
+    }
+
+    // The nested instances take back their overrides, the unpacked one its link
+    for (const auto& [nested, node] : item.nestedRoots) {
+        project->reimportPrefabInstance(sceneProject, nested, node);
+    }
+    if (!item.unpacked.empty()) {
+        project->repackPrefabInstances(sceneId, std::move(item.unpacked));
+        item.unpacked.clear();
+    }
+    project->refreshScenePrefabList(sceneId);
+}
+
 std::vector<editor::Command::Touched> editor::CreatePrefabCmd::touchedPaths(bool undo) const{
     std::vector<Touched> out;
     for (const Item& item : items){
@@ -246,8 +324,8 @@ std::vector<editor::Command::Touched> editor::CreatePrefabCmd::touchedPaths(bool
             if (!moved.empty()) current = moved;
         }
         const fs::path full = current.is_absolute() ? current : project->getProjectPath() / current;
-        // made again (a write) or removed (the entry)
-        out.push_back({full, undo});
+        // made again (a write) or removed (the entry); an overwrite writes both ways
+        out.push_back({full, undo && !item.overwrite});
     }
     return out;
 }

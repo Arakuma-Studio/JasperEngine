@@ -67,6 +67,14 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     YAML::Node node;
     node["enabled"] = YamlNumbers::text(mesh.enabled);
 
+    // S98 F1: the geometry of a .mesh asset is the file's, so neither its buffers nor what they
+    // give (bounds, vertex counts) are written: a save is the same whether the file was read yet
+    if (!mesh.meshAsset.empty()) {
+        encodeAssetRef(node, "meshAsset", mesh.meshAsset);
+        encodeBuffers = false;
+        encodeGeneratedValues = false;
+    }
+
     if (encodeBuffers){
         node["buffer"] = encodeInterleavedBuffer(mesh.buffer);
         node["indices"] = encodeIndexBuffer(mesh.indices);
@@ -185,6 +193,13 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     // Use old values as defaults if provided
     if (oldMesh) {
         mesh = *oldMesh;
+    }
+
+    // S98 F1 (omitted when none): another file, or none, is read again by MeshSystem
+    const std::string readAsset = mesh.meshAsset.path;
+    mesh.meshAsset = node["meshAsset"] ? decodeAssetRef(node, "meshAsset") : AssetRef();
+    if (mesh.meshAsset.empty() || mesh.meshAsset.path != readAsset) {
+        mesh.loadedMeshAsset.clear();
     }
 
     // Decode buffers using generic methods
@@ -3124,7 +3139,8 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
     // Layer (a missing key decodes to that default)
     const bool defaultLayers = player.layers.empty() ||
         (player.layers.size() == 1 && player.layers[0].name == anim::BASE_LAYER_NAME && player.layers[0].mask.empty() &&
-         player.layers[0].maskGuid.empty() && player.layers[0].weight == 1.0f && player.layers[0].blend == AnimationLayerBlend::Override);
+         player.layers[0].maskGuid.empty() && player.layers[0].weight == 1.0f && player.layers[0].blend == AnimationLayerBlend::Override &&
+         !player.layers[0].meshSpaceRotation);
     if (!defaultLayers) {
         YAML::Node layersNode(YAML::NodeType::Sequence);
         for (const AnimationPlayerLayer& layer : player.layers) {
@@ -3134,6 +3150,8 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
             if (layer.blend != AnimationLayerBlend::Override) layerNode["blend"] = anim::layerBlendName(layer.blend);
             if (!layer.mask.empty()) layerNode["mask"] = layer.mask;
             if (!layer.maskGuid.empty()) layerNode["maskGuid"] = layer.maskGuid;
+            // mesh-space-rotation spec R44: written only when set (an old scene re-saves byte for byte)
+            if (layer.meshSpaceRotation) layerNode["meshSpaceRotation"] = YamlNumbers::text(true);
             layersNode.push_back(layerNode);
         }
         node["layers"] = layersNode;
@@ -3260,6 +3278,14 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
                 }
                 layer.mask = text("mask");
                 layer.maskGuid = text("maskGuid");
+                const YAML::Node meshSpace = layerNode["meshSpaceRotation"];
+                if (meshSpace && meshSpace.IsScalar() && !meshSpace.Scalar().empty()) {
+                    try {
+                        layer.meshSpaceRotation = YamlNumbers::as<bool>(meshSpace);
+                    } catch (const YAML::Exception&) {
+                        layer.meshSpaceRotation = false;
+                    }
+                }
             } else {
                 continue;
             }

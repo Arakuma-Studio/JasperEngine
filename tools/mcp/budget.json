@@ -75,7 +75,7 @@
         "animation": {
             "chars": 16000,
             "tools": 13,
-            "spec": "S21's Animator tools, upstream's pose, Vertex Animation and lattice tools, and S77's check_animation and optimize_animation (R55): one tool more than the default count, so an agent reading clip quality need not enable two groups"
+            "spec": "S21's Animator tools, upstream's pose, Vertex Animation and lattice tools, and S77's check_animation and optimize_animation (R55): one tool more than the default count, so an agent reading clip quality need not enable two groups; mesh-space-rotation R34-R36 added fields, no tool (15,104 measured)"
         },
         "editor_ux": {
             "chars": 24000,
@@ -98,6 +98,10 @@
         "configure_game_view": {
             "limit": 1620,
             "reason": "input-device-awareness R27: its input_scheme (the Game view's Input Scheme menu: auto, or a scheme forced at Play start) on the toolbar tool that holds Simulate Touch; 1499 before, 1620 measured (eval case guard_input_scheme_forced)"
+        },
+        "check_animation": {
+            "limit": 1579,
+            "reason": "S77's tool (1382) plus mesh-space-rotation R36's layer_blend check: its enum entry, a free-form layer_blend (the handler checks its members, jasper://docs/animator names them), limits.layer_twist_deg and a sentence, instead of a 14th tool in the animation group (R40); 1579 measured"
         },
         "visualize_navigation": {
             "limit": 1725,
@@ -141,7 +145,7 @@
         },
         "build_project": {
             "limit": 1951,
-            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list; build-and-run-on-device added run_device and patch (core paid for them: run_build lost its result field list); 1951 measured after mcp-budget-trim cut the job sentence and what method already says (the craftsman merge took core over 99,000)"
+            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list; build-and-run-on-device added run_device and patch (core paid for them: run_build lost its result field list); 1951 measured after mcp-budget-trim cut the job sentence and what method already says (the craftsman merge took core over 99,000); S98 cut 'Saves scenes first' (a build saves nothing)"
         },
         "send_input": {
             "limit": 2000,

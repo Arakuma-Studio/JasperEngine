@@ -417,9 +417,8 @@ else. The web prefix `<storageId>/` matches what localStorage keys already do.
 **D10 No world snapshot, no compression, no encryption** (§2).
 
 **D11 Settings flow.** `SaveGameSettings {int backups = 2; int maxSlotMiB = 8;}` in `editor/` reflected
-like `DebugSettings` (`editor/DebugSettings.h:19-47`); the generated init and the prebuilt player's
-`init()` call `save::configure(settings)` before the first scene (as `DebugOverlay::configure`,
-`editor/Generator.cpp:2965`).
+like `DebugSettings` (`editor/DebugSettings.h:19-47`); game.json carries them and every build's
+`player::applySettings` (S98 D1) calls `savegame::configure(settings)` before the first scene.
 
 ### C++ sketch (`engine/core/save/`, namespace `jasperengine::save`)
 

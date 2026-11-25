@@ -7,6 +7,7 @@
 #include "PayloadValidator.h"
 
 #include "io/JPak.h"
+#include "platform/AndroidPackager.h"
 #include "platform/AndroidTools.h"
 #include "player/ContentManifest.h"
 #include "player/PlayerModules.h"
@@ -168,10 +169,13 @@ namespace {
             return;
         }
         const bool bundle = apk.extension() == ".aab";
-        const std::string assets = bundle ? "base/assets/game/" : "assets/game/";
         const std::string libs = bundle ? "base/lib/" : "lib/";
         std::set<std::string> names;
         for (const ZipEntryInfo& entry : zip.entries()) names.insert(entry.name);
+        // a bundle's content is its install-time asset pack (AndroidPackager), an older one's in the base
+        std::string assets = bundle ? "base/assets/game/" : "assets/game/";
+        if (bundle && names.count(std::string(platform::kAndroidContentPack) + "/manifest/AndroidManifest.xml"))
+            assets = std::string(platform::kAndroidContentPack) + "/assets/game/";
         size_t storedLibraries = 0, compressedLibraries = 0;
         for (const ZipEntryInfo& entry : zip.entries()) {
             if (entry.name.rfind(libs, 0) != 0 || fs::path(entry.name).extension() != ".so") continue;

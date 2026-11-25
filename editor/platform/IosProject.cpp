@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
+#include <utility>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -27,7 +28,8 @@ namespace {
         for (size_t at = text.find(marker); at != std::string::npos; at = text.find(marker, at + value.size())) text.replace(at, marker.size(), value);
     }
 
-    bool rewrite(const fs::path& path, const IosProjectSettings& settings, std::string& error) {
+    bool rewrite(const fs::path& path, const IosProjectSettings& settings, std::string& error,
+                 std::string (*fill)(std::string, const IosProjectSettings&) = fillIosTemplate) {
         std::ifstream in(path, std::ios::binary);
         if (!in) {
             error = "the iOS template has no " + path.filename().string();
@@ -35,7 +37,7 @@ namespace {
         }
         const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         in.close();
-        if (!io::writeFileAtomic(path, fillIosTemplate(text, settings)).ok()) {
+        if (!io::writeFileAtomic(path, fill(text, settings)).ok()) {
             error = "cannot write " + path.string();
             return false;
         }
@@ -121,6 +123,12 @@ std::string platform::fillIosTemplate(std::string text, const IosProjectSettings
     return text;
 }
 
+std::string platform::fillIosInfoPlist(std::string text, const IosProjectSettings& s) {
+    text = fillIosTemplate(std::move(text), s);
+    Exporter::applyIosOrientations(text, s.presentation);
+    return text;
+}
+
 bool platform::stageIosProject(const IosProjectSettings& settings, std::string& error) {
     std::error_code ec;
     const fs::path templateDir = settings.runtimeDir / "template";
@@ -137,7 +145,7 @@ bool platform::stageIosProject(const IosProjectSettings& settings, std::string& 
         return false;
     }
     const fs::path project = settings.projectDir / "JasperEnginePlayer.xcodeproj";
-    if (!rewrite(project / "project.pbxproj", settings, error) || !rewrite(settings.projectDir / "Info.plist", settings, error) ||
+    if (!rewrite(project / "project.pbxproj", settings, error) || !rewrite(settings.projectDir / "Info.plist", settings, error, fillIosInfoPlist) ||
         !rewrite(project / "xcshareddata" / "xcschemes" / "JasperEnginePlayer.xcscheme", settings, error))
         return false;
 

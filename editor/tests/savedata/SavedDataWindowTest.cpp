@@ -6,7 +6,6 @@
 // byte, undo refuses once the game saved the slot since, and the settings round-trip through
 // project.yaml and game.json leaving the defaults out.
 
-#include "Generator.h"
 #include "Project.h"
 #include "SaveGameSettings.h"
 #include "Stream.h"
@@ -164,9 +163,6 @@ TEST(SavedDataWindow, SettingsRoundTripAndOmitDefaults) {
     std::string error;
     ASSERT_TRUE(player::PlayerConfig::fromJson(config.toJson(), back, error)) << error;
     EXPECT_EQ(back.saveGame.backups, 5);
-
-    EXPECT_EQ(Generator::saveGameInitSource(SaveGameSettings()), "");
-    EXPECT_NE(Generator::saveGameInitSource(changed).find("saveSettings.backups = 5;"), std::string::npos);
 
     // the settings change is one undo step
     CommandHistory history;

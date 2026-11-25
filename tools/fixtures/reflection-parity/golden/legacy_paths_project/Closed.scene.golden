@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 9
 guid: 743bbd65bf2a44796f3a2c6886d66f02
 id: 2
 name: Closed
@@ -33,13 +33,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_3d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 2
-  maxSpriteFrames: 0
-  maxBones: 128
 shaderKeys:
   - type: mesh
     properties: 33554440
@@ -89,7 +82,6 @@ entities:
         enabled: true
         type: spot
         direction: [0, 0, 0]
-        worldDirection: [0, 0, 0]
         color: [1, 1, 1]
         range: 0
         intensity: 1
@@ -138,7 +130,6 @@ entities:
         enabled: true
         type: spot
         direction: [0, 0, 0]
-        worldDirection: [0, 0, 0]
         color: [1, 1, 1]
         range: 0
         intensity: 1
