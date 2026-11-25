@@ -52,7 +52,6 @@
 #include "lattice/LatticeTypes.h"
 #include "object/CameraFollow.h"
 #include "object/CameraShaker.h"
-#include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/MeshSystem.h"
@@ -3046,6 +3045,11 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
+        // S98 REQ-8: written only when set, so an old project's file stays as it was
+        const AssetStrippingSettings& stripping = project->getAssetStripping();
+        if (stripping.mode == AssetStrippingMode::ReferencedOnly) exportNode["assetStripping"] = "referencedOnly";
+        if (!stripping.alwaysInclude.empty()) exportNode["alwaysInclude"] = stripping.alwaysInclude;
+        if (!stripping.exclude.empty()) exportNode["exclude"] = stripping.exclude;
         // Player > Target Platforms: only when not all six, in BuildPlatform order
         if (project->getTargetPlatforms() != Project::allTargetPlatforms) {
             YAML::Node targetsNode(YAML::NodeType::Sequence);
@@ -3254,6 +3258,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             keystoreNode["alias"] = android.keystoreAlias;
             androidNode["keystore"] = keystoreNode;
         }
+        if (!android.debugPackageSuffix.empty()) androidNode["debugPackageSuffix"] = android.debugPackageSuffix;
         encodeStringList(androidNode, "gradleDependencies", android.gradleDependencies);
         encodeStringList(androidNode, "gradleRepositories", android.gradleRepositories);
         encodeStringList(androidNode, "gradleProperties", android.gradleProperties);
@@ -3444,7 +3449,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // one entry per file: two scenes on one file would each load and overwrite the other
         std::unordered_map<std::string, const SceneProject*> listedFiles;
         for (const auto& sceneProject : project->getScenes()) {
-            if (sceneProject.filepath.empty()) {
+            // untitled, or opened without joining the build (S98 REQ-28: the workspace has it)
+            if (sceneProject.filepath.empty() || !sceneProject.inBuild) {
                 continue;
             }
             const auto [listed, added] = listedFiles.emplace(project->sceneFileKey(sceneProject.filepath), &sceneProject);
@@ -4075,6 +4081,20 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setPackContent(exportNode["pack"] && exportNode["pack"].as<bool>());
         project->setStripEngineCode(!exportNode["stripEngineCode"] || exportNode["stripEngineCode"].as<bool>());
+        {
+            // S98 REQ-50: absent keys are Ship All Assets and empty lists
+            AssetStrippingSettings stripping;
+            const YAML::Node& mode = exportNode["assetStripping"];
+            if (mode && mode.IsScalar() && mode.as<std::string>() == "referencedOnly") stripping.mode = AssetStrippingMode::ReferencedOnly;
+            for (const char* key : {"alwaysInclude", "exclude"}) {
+                const YAML::Node& list = exportNode[key];
+                if (!list || !list.IsSequence()) continue;
+                std::vector<std::string>& globs = std::string(key) == "exclude" ? stripping.exclude : stripping.alwaysInclude;
+                for (const YAML::Node& item : list)
+                    if (item.IsScalar() && !item.as<std::string>().empty()) globs.push_back(item.as<std::string>());
+            }
+            project->setAssetStripping(stripping);
+        }
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
             const YAML::Node& desktopNode = exportNode["desktop"];
@@ -4281,6 +4301,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (androidNode["keystore"]["path"]) android.keystorePath = FileUtils::pathFromUtf8(portablePath(androidNode["keystore"]["path"].as<std::string>()));
             if (androidNode["keystore"]["alias"]) android.keystoreAlias = androidNode["keystore"]["alias"].as<std::string>();
         }
+        if (androidNode["debugPackageSuffix"]) android.debugPackageSuffix = androidNode["debugPackageSuffix"].as<std::string>();
         android.gradleDependencies = decodeStringList(androidNode["gradleDependencies"]);
         android.gradleRepositories = decodeStringList(androidNode["gradleRepositories"]);
         android.gradleProperties = decodeStringList(androidNode["gradleProperties"]);
@@ -4542,6 +4563,27 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
             if (loadedScene.sceneType == SceneType::SCENE_3D) {
                 static_cast<SceneRender3D*>(loadedScene.sceneRender)->setWalkSpeedOffset(walkSpeedOffset);
+            }
+        }
+    }
+
+    // The tabs of scene files project.yaml does not list: opened out of the build (S98 REQ-28),
+    // as they were when the project closed
+    if (hasTabs) {
+        for (const TabEntry& tab : workspace.getTabs()) {
+            if (tab.type != TabType::SCENE || tab.filepath.empty() || fs::path(tab.filepath).extension() != ".scene" ||
+                listedFiles.count(project->sceneFileKey(tab.filepath))) {
+                continue;
+            }
+            const fs::path scenePath = project->getProjectPath() / tab.filepath;
+            std::error_code ec;
+            if (!fs::is_regular_file(scenePath, ec) || project->findSceneByPath(scenePath) != NULL_PROJECT_SCENE) {
+                continue;
+            }
+            if (project->loadScene(scenePath, true, true, true)) {
+                if (SceneProject* opened = project->getScene(project->findSceneByPath(scenePath))) {
+                    opened->inBuild = false;
+                }
             }
         }
     }
@@ -4871,7 +4913,6 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
             } else {
                 info.prefabPath = pathNode.as<std::string>();
             }
-            info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
         }
     }

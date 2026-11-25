@@ -77,23 +77,6 @@ TEST(StreamProjectHtmlUiRender, CommandIsUndoable) {
     EXPECT_TRUE(project.getHtmlUiRenderSettings() == before);
 }
 
-TEST(StreamProjectHtmlUiRender, ExportCarriesThem) {
-    jasperengine::test::TempDir dir;
-    Generator generator;
-    HtmlUiRenderSettings settings;
-    settings.glyphAtlasMiB = 24;
-    settings.sdfPrimitives = false;
-    settings.transformAwareText = true;
-    generator.configure({}, "game", {}, {}, dir.path(), dir.path() / ".jasperengine", dir.path() / "assets", dir.path() / "lua", {}, 20,
-                        Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(), TagsAndLayers(), 4,
-                        ThreadingProjectSettings(), settings);
-    std::ifstream in(dir.path() / ".jasperengine" / "generated" / "main.cpp");
-    ASSERT_TRUE(in.good());
-    std::stringstream text;
-    text << in.rdbuf();
-    EXPECT_NE(text.str().find("UIDocumentSystem::setHtmlUiRenderOptions(24, false, true);"), std::string::npos);
-}
-
 // S93 R19, R48, R56: htmlUiImageCacheMiB, the image cache's budget of released images
 TEST(StreamProjectHtmlUiRender, ImageCacheMiB) {
     // a project saved before it: the platform's default (-1)
@@ -126,23 +109,4 @@ TEST(StreamProjectHtmlUiRender, ImageCacheMiB) {
     EXPECT_EQ(project.getHtmlUiRenderSettings().imageCacheMiB, 128);
     command.undo();
     EXPECT_EQ(project.getHtmlUiRenderSettings().imageCacheMiB, 0);
-}
-
-TEST(StreamProjectHtmlUiRender, ExportCarriesTheImageCacheBudget) {
-    auto mainOf = [](const HtmlUiRenderSettings& settings) {
-        jasperengine::test::TempDir dir;
-        Generator generator;
-        generator.configure({}, "game", {}, {}, dir.path(), dir.path() / ".jasperengine", dir.path() / "assets", dir.path() / "lua", {}, 20,
-                            Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(), TagsAndLayers(), 4,
-                            ThreadingProjectSettings(), settings);
-        std::ifstream in(dir.path() / ".jasperengine" / "generated" / "main.cpp");
-        std::stringstream text;
-        text << in.rdbuf();
-        return text.str();
-    };
-    HtmlUiRenderSettings settings;
-    settings.imageCacheMiB = 16;
-    EXPECT_NE(mainOf(settings).find("UIDocumentSystem::setHtmlUiImageCacheMiB(16);"), std::string::npos);
-    // the platform's default: nothing written
-    EXPECT_EQ(mainOf(HtmlUiRenderSettings()).find("setHtmlUiImageCacheMiB"), std::string::npos);
 }

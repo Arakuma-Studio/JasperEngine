@@ -9,7 +9,6 @@
 #include "reflect/components/MaterialReflect.h"
 #include "reflect/components/TerrainLayerReflect.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/InstancedMeshComponent.h"
 #include "subsystem/TitleArtSystem.h"
@@ -219,6 +218,9 @@ namespace {
 
     constexpr FieldDesc kMeshFields[] = {
         JE_FIELD(MeshComponent, enabled),
+        // S98 F1: the .mesh asset the geometry comes from (MeshSystem reads it when it changes);
+        // none: the geometry is the mesh's own
+        JE_FIELD(MeshComponent, meshAsset, .ops = &ops::AssetRefIfSet, .updateFlags = kMeshReload, .asset = AssetKind::Mesh, .label = "Mesh"),
         JE_FIELD(MeshComponent, receiveLights, .updateFlags = kMeshReload),
         JE_FIELD(MeshComponent, receiveIBL, .updateFlags = kMeshReload, .label = "Receive IBL"),
         JE_FIELD(MeshComponent, castShadows, .updateFlags = kMeshReload),
@@ -228,8 +230,8 @@ namespace {
         JE_FIELD(MeshComponent, lodBias, .min = 0.0f, .label = "LOD Bias"),
         JE_FIELD(MeshComponent, allowGpuInstancing, .updateFlags = kMeshReload, .label = "Allow GPU Instancing"),
         // S52: the 2D draw order and the transparent queue's first keys (a layer id: SortingLayers)
-        JE_FIELD(MeshComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
-        JE_FIELD(MeshComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
+        JE_FIELD(MeshComponent, sortingLayer, .flags = OmitIfDefault, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
+        JE_FIELD(MeshComponent, sortingOrder, .flags = OmitIfDefault, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
         // a mesh that may fade loads its fade shaders with the mesh (spec S54 R10)
         JE_FIELD(MeshComponent, lodFadeMode, .enumDesc = &enums::kLodFadeMode, .updateFlags = kMeshReload, .label = "Fade Mode"),
         JE_FIELD(MeshComponent, lodAnimateCrossFading, .label = "Animate Cross-fading"),
@@ -246,7 +248,7 @@ namespace {
         JE_FIELD(MeshComponent, submeshes, .flags = ListTemplate, .updateFlags = kSubmeshAll, .assetCount = JE_COUNT(MeshComponent, numSubmeshes)),
         // one blend shape weight each ("morphWeights[2]"), so a prefab instance overrides weights
         // one by one (the Inspector's Blend Shapes rows, animation clips T3c); read every frame
-        JE_FIELD(MeshComponent, morphWeights, .flags = ListElements | ListTemplate | NoCodegen),
+        JE_FIELD(MeshComponent, morphWeights, .flags = ListElements | ListTemplate),
     };
 
     // A mesh's geometry regenerated from a model file, sprite, tilemap, polygon or terrain is not
@@ -346,8 +348,8 @@ namespace {
         JE_FIELD(PointsComponent, enabled),
         JE_FIELD(PointsComponent, maxPoints, .min = 1.0f),
         // S52: the 2D draw order and the transparent queue's first keys (a layer id: SortingLayers)
-        JE_FIELD(PointsComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
-        JE_FIELD(PointsComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
+        JE_FIELD(PointsComponent, sortingLayer, .flags = OmitIfDefault, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
+        JE_FIELD(PointsComponent, sortingOrder, .flags = OmitIfDefault, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
         JE_FIELD(PointsComponent, transparent),
         JE_FIELD(PointsComponent, autoTransparency),
         JE_FIELD(PointsComponent, texture, .updateFlags = UpdateFlags_Points_Texture),
@@ -369,8 +371,8 @@ namespace {
         JE_FIELD(LineRendererComponent, enabled),
         JE_FIELD(LineRendererComponent, maxLines, .updateFlags = UpdateFlags_Lines_Reload, .min = 1.0f),
         // S52: the 2D draw order and the transparent queue's first keys (a layer id: SortingLayers)
-        JE_FIELD(LineRendererComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
-        JE_FIELD(LineRendererComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
+        JE_FIELD(LineRendererComponent, sortingLayer, .flags = OmitIfDefault, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
+        JE_FIELD(LineRendererComponent, sortingOrder, .flags = OmitIfDefault, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
         JE_FIELD(LineRendererComponent, customShader, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(LineRendererComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
@@ -383,7 +385,7 @@ namespace {
         JE_FIELD(LineRendererComponent, lines, .flags = ListWhole, .updateFlags = kLines),
         // upstream (lines and trails): the polyline and its ribbon (S27's Curve and Gradient)
         JE_FIELD(LineRendererComponent, mode, .enumDesc = &enums::kLineRendererMode, .updateFlags = kLines),
-        JE_FIELD(LineRendererComponent, positions, .ops = &ops::PushBackList<Vector3>, .flags = NoDefault | ListWhole | ListElements, .updateFlags = kLines),
+        JE_FIELD(LineRendererComponent, positions, .ops = &ops::Array<Vector3>, .flags = NoDefault | ListWhole | ListElements, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, loop, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, useWorldSpace, .updateFlags = kLines),
         JE_FIELD(LineRendererComponent, widthMultiplier, .updateFlags = kLines, .min = 0.0f),
@@ -496,13 +498,13 @@ namespace {
         // S45 R6: Simple or Sliced (9-slice from the frame's border)
         JE_FIELD(SpriteComponent, drawMode, .enumDesc = &enums::kSpriteDrawMode, .updateFlags = kSprite, .label = "Draw Mode"),
         // S41: texels per world unit (0: the project's) and the rotation policy under a Pixel Perfect Camera
-        JE_FIELD(SpriteComponent, pixelsPerUnit, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kSprite, .min = 0.0f, .max = 4096.0f,
+        JE_FIELD(SpriteComponent, pixelsPerUnit, .flags = OmitIfDefault, .updateFlags = kSprite, .min = 0.0f, .max = 4096.0f,
                  .label = "Pixels Per Unit", .tooltip = "Texels per world unit. 0: the Sprite Sheet's, else the project's Pixels Per Unit."),
-        JE_FIELD(SpriteComponent, pixelRotation, .enumDesc = &enums::kPixelRotation, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(SpriteComponent, pixelRotation, .enumDesc = &enums::kPixelRotation, .flags = OmitIfDefault,
                  .label = "Pixel Rotation",
                  .tooltip = "Under a Pixel Perfect Camera: the camera's rotation policy, 90 Degree Steps or Rotate On Grid."),
         // S52 R2: what Custom Axis sorting measures
-        JE_FIELD(SpriteComponent, spriteSortPoint, .enumDesc = &enums::kSpriteSortPoint, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(SpriteComponent, spriteSortPoint, .enumDesc = &enums::kSpriteSortPoint, .flags = OmitIfDefault,
                  .label = "Sprite Sort Point"),
         // frame definitions are animation metadata: they do not change the quad
         JE_FIELD(SpriteComponent, numFramesRect),
@@ -517,7 +519,7 @@ namespace {
         JE_FIELD(TilemapComponent, flipY, .updateFlags = kTilemap),
         JE_FIELD(TilemapComponent, textureScaleFactor, .updateFlags = kTilemap, .min = 0.0f),
         // S41: texels per world unit (0: the project's)
-        JE_FIELD(TilemapComponent, pixelsPerUnit, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTilemap, .min = 0.0f,
+        JE_FIELD(TilemapComponent, pixelsPerUnit, .flags = OmitIfDefault, .updateFlags = kTilemap, .min = 0.0f,
                  .max = 4096.0f, .label = "Pixels Per Unit", .tooltip = "Texels per world unit. 0: the project's Pixels Per Unit."),
         JE_FIELD(TilemapComponent, reserveTiles, .updateFlags = kTilemap),
         JE_FIELD(TilemapComponent, numTilesRect, .updateFlags = kTilemap),
@@ -545,7 +547,7 @@ namespace {
     // the scripts' entries (their properties are listed one by one, scriptExtraProperties)
     constexpr TypeOps kScriptEntriesOps{"std::vector<ScriptEntry>", Kind::Custom, PropertyType::Custom, sizeof(std::vector<ScriptEntry>),
         &detail::construct<std::vector<ScriptEntry>>, &detail::destroy<std::vector<ScriptEntry>>, &detail::copy<std::vector<ScriptEntry>>,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::customSchema};
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, &detail::customSchema};
 
     constexpr FieldDesc kScriptFields[] = {
         // an enabled change runs onEnable / onDisable in Play (Catalog::updateEntity: UpdateFlags_Script_Enabled, as upstream's Catalog)
@@ -636,18 +638,13 @@ namespace {
     const ComponentCodec kScriptCodec = JE_STREAM_CODEC(ScriptComponent, encodeScriptComponent, decodeScriptComponent);
     const ComponentCodec kPrefabCodec = JE_STREAM_CODEC(PrefabComponent, encodePrefabComponent, decodePrefabComponent);
 
-    // the exported code holds no prefab component: the instances are built by their prefab's code
-    std::string noCodegen(EntityRegistry*, Entity, const CodegenContext&) {
-        return std::string();
-    }
-
     constexpr const char* kPolygonExtraKeys[] = {"points"};
 
     // the keys its codec reads
     constexpr const char* kMeshKnownKeys[] = {"aabb", "allowGpuInstancing", "autoTransparency", "bonesMatrix", "buffer", "castShadows",
                                               "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices",
                                               "lodAnimateCrossFading", "lodBias", "lodCullBelow", "lodEnabled", "lodFadeMode",
-                                              "lodFadeTransitionWidth", "mirroredWinding", "morphTargetCount", "morphWeights", "normAdjustJoint",
+                                              "lodFadeTransitionWidth", "meshAsset", "meshAssetGuid", "mirroredWinding", "morphTargetCount", "morphWeights", "normAdjustJoint",
                                               "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes",
                                               "shaderUniforms", "shadowsBillboard", "sortingLayer", "sortingOrder", "staticShadowCaster",
                                               "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
@@ -659,7 +656,6 @@ const ComponentDesc kMeshDesc{
     .body = JE_STRUCT_DESC(MeshComponent, "MeshComponent", kMeshFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(MeshComponent),
     .codec = &kMeshCodec,
-    .codegen = JE_FACTORY_CODEGEN_PATH(createMeshComponent),
     .extraKeys = kMeshKnownKeys,
 };
 
@@ -675,7 +671,6 @@ const ComponentDesc kModelDesc{
     .body = JE_STRUCT_DESC(ModelComponent, "ModelComponent", kModelFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(ModelComponent),
     .codec = &kModelCodec,
-    .codegen = JE_FACTORY_CODEGEN(createModelComponent),
     .extraKeys = kModelKnownKeys,
     .extraProperties = &modelExtraProperties,
     .extraUpdateFlags = UpdateFlags_None,
@@ -696,7 +691,6 @@ const ComponentDesc kPointsDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(PointsComponent),
     .codec = &kPointsCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN_PATH(createPointsComponent),
     .extraKeys = kPointsKnownKeys,
 };
 
@@ -732,7 +726,6 @@ const ComponentDesc kLineRendererDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(LineRendererComponent),
     .codec = &kLineRendererCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createLineRendererComponent),
     .extraKeys = kLineRendererKnownKeys,
     .extraProperties = &lineExtraProperties,
 };
@@ -750,7 +743,6 @@ const ComponentDesc kInstancedMeshDesc{
     .body = JE_STRUCT_DESC(InstancedMeshComponent, "InstancedMeshComponent", kInstancedMeshFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(InstancedMeshComponent),
     .codec = &kInstancedMeshCodec,
-    .codegen = JE_FACTORY_CODEGEN(createInstancedMeshComponent),
     .extraKeys = kInstancedMeshKnownKeys,
 };
 
@@ -769,7 +761,6 @@ const ComponentDesc kTerrainDesc{
     .body = JE_STRUCT_DESC(TerrainComponent, "TerrainComponent", kTerrainFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(TerrainComponent),
     .codec = &kTerrainCodec,
-    .codegen = JE_FACTORY_CODEGEN_PATH(createTerrainComponent),
     .extraKeys = kTerrainKnownKeys,
     .legacyTextureKeys = kTerrainLegacyTextureKeys,
 };
@@ -788,7 +779,6 @@ const ComponentDesc kSpriteDesc{
     .body = JE_STRUCT_DESC(SpriteComponent, "SpriteComponent", kSpriteFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SpriteComponent),
     .codec = &kSpriteCodec,
-    .codegen = JE_FACTORY_CODEGEN(createSpriteComponent),
     .extraKeys = kSpriteKnownKeys,
 };
 
@@ -805,7 +795,6 @@ const ComponentDesc kTilemapDesc{
     .body = JE_STRUCT_DESC(TilemapComponent, "TilemapComponent", kTilemapFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(TilemapComponent),
     .codec = &kTilemapCodec,
-    .codegen = JE_FACTORY_CODEGEN(createTilemapComponent),
     .extraKeys = kTilemapKnownKeys,
 };
 
@@ -823,7 +812,6 @@ const ComponentDesc kMeshPolygonDesc{
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(MeshPolygonComponent),
     .codec = &kMeshPolygonCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createMeshPolygonComponent),
     .extraKeys = kMeshPolygonKnownKeys,
 };
 
@@ -833,7 +821,6 @@ const ComponentDesc kPolygonDesc{
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(PolygonComponent),
     .codec = &kPolygonCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createPolygonComponent),
     .extraKeys = kPolygonExtraKeys,
 };
 
@@ -849,7 +836,6 @@ const ComponentDesc kScriptDesc{
     .body = JE_STRUCT_DESC(ScriptComponent, "ScriptComponent", kScriptFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ScriptComponent),
     .codec = &kScriptCodec,
-    .codegen = JE_FACTORY_CODEGEN(createScriptComponent),
     .extraKeys = kScriptKnownKeys,
     .extraProperty = &scriptExtraProperty,
     .extraProperties = &scriptExtraProperties,
@@ -868,7 +854,6 @@ const ComponentDesc kPrefabDesc{
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(PrefabComponent),
     .codec = &kPrefabCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = &noCodegen,
     .extraKeys = kPrefabKnownKeys,
 };
 

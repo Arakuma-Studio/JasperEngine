@@ -54,7 +54,8 @@ namespace jasperengine::editor::reflect {
         TreeData,       // a .jetrees file of a Terrain's trees (T5 R22)
         TerrainWorld,   // a Name.terrainworld folder (T4 R48)
         Tileset,        // a .tileset (S50)
-        TitleArt        // a .titleart (S81's Title Art Renderer)
+        TitleArt,       // a .titleart (S81's Title Art Renderer)
+        Mesh            // a .mesh (S98 F1: a Mesh Renderer's geometry)
     };
 
     // How a field holds an asset reference (editor/asset/AssetRefSchema generates its table from the
@@ -79,7 +80,6 @@ namespace jasperengine::editor::reflect {
         ReadOnly         = 1u << 1,   // drawn disabled; MCP refuses writes
         NoSave           = 1u << 2,   // runtime state: not written, not read
         NoMcpWrite       = 1u << 3,   // MCP refuses writes
-        NoCodegen        = 1u << 4,   // not in the exported code
         OmitIfDefault    = 1u << 5,   // written only away from its default; absent reads as the default
         OmitIfNonFinite  = 1u << 6,   // a non-finite value is not written; one read keeps the base value
         Structural       = 1u << 7,   // an edit changes what the Hierarchy shows (component default otherwise)
@@ -92,12 +92,10 @@ namespace jasperengine::editor::reflect {
         // additions of the implementation (docs/specs/S08-reflection.md, Deviations)
         NoDefault        = 1u << 14,  // no meaningful default: no reset arrow, no default in MCP
         NonStructural    = 1u << 15,  // an edit never changes what the Hierarchy shows (component default otherwise)
-        CodegenIfChanged = 1u << 16,  // exported only away from its default
         Transient        = 1u << 17,  // a property (Catalog, MCP) that is neither saved nor drawn
         EmptyIsDefault   = 1u << 18,  // a null or empty scalar reads as absent (the clipboard writes those)
         ListWhole        = 1u << 19,  // a struct listed as a property itself besides its members
         NullIfEmpty      = 1u << 20,  // an empty array is written as null ("~"), not as "[]"
-        CodegenRuntime   = 1u << 21,  // runtime state the exported code sets anyway (a NoSave field exported)
         NotListed        = 1u << 22,  // a property reached by its path but left out of the component's property list
         ListElements     = 1u << 23,  // an array of values whose elements are listed as properties too ("pathPoints[2]")
         ListEachElement  = 1u << 24,  // each element of an array of structs is listed itself besides its members ("colliders[1]")
@@ -167,18 +165,6 @@ namespace jasperengine::editor::reflect {
         DecodeReport* report = nullptr;
     };
 
-    struct CodegenContext {
-        int indentSpaces = 0;
-        std::string variable;            // "light"
-        std::filesystem::path projectPath;
-        // where the component goes (Factory::addComponentCode)
-        std::string sceneName;
-        std::string entityName;
-        bool assignExisting = false;
-        // the variables of the GameObjects an Entity field may name (Factory::formatEntity)
-        const std::unordered_map<Entity, std::string>* entityVarNames = nullptr;
-    };
-
     // How a field's values are stored, compared, written and read. Deduced from the member type
     // (ReflectTraits, Field.h); a field may name other ops for a quirk of its own encoding.
     struct TypeOps {
@@ -204,18 +190,12 @@ namespace jasperengine::editor::reflect {
         bool (*skip)(const FieldDesc& field, const void* value) = nullptr;
         // true: fromYaml is called for an absent key too (with an undefined node)
         bool decodeWhenAbsent = false;
-        // the C++ expression of a value for the exported code; null: the field is not exported
-        std::string (*cppLiteral)(const FieldDesc& field, const void* value, const CodegenContext& ctx) = nullptr;
         // the value's JSON Schema (type, items, enum...) without description
         Json (*schema)(const FieldDesc& field) = nullptr;
         // a value is finite (float kinds; null for the others)
         bool (*finite)(const void* value) = nullptr;
         // the scalar text of a value written as one plain scalar (assigned without building a node)
         std::string (*scalar)(const FieldDesc& field, const void* value) = nullptr;
-        // the exported code of a value that is not one assignment (a texture's setters, a list's
-        // push_backs), appended to out for `target`; replaces cppLiteral when set
-        void (*cppStatements)(const FieldDesc& field, const void* value, const std::string& target, const CodegenContext& ctx,
-                              std::string& out) = nullptr;
         // a copy constructed in place (null: construct, then copy); a component whose default
         // constructor allocates (a camera's framebuffer) is copied without allocating
         void (*copyConstruct)(void* at, const void* src) = nullptr;
@@ -328,19 +308,17 @@ namespace jasperengine::editor::reflect {
         void (*add)(EntityRegistry* registry, Entity entity, void* value);   // moves value in
         void (*remove)(EntityRegistry* registry, Entity entity);
         ComponentId (*componentId)(const EntityRegistry* registry);
+        // made at `at` (body.ops->size bytes) as `T value;` makes it, no value-initialisation: what
+        // a decode into a local starts from, which the builds' determinism guard checks (S98 REQ-5)
+        void (*defaultInitialise)(void* at) = nullptr;
         const ComponentCodec* codec = nullptr;   // null: the generic YAML codec
         void (*postDecode)(void* comp, const DecodeContext& ctx) = nullptr;
         std::span<const Migration> migrations = {};
         std::span<const char* const> keyAliases = {};
         uint64_t structuralUpdateFlags = 0;      // run when it is added or removed
         DecodeApply decodeApply = DecodeApply::UpdateFlags;
-        // the exported code: the variable, the fields in its order (empty: table order), and
-        // lines after them; codegen replaces it all (components the table does not describe)
-        const char* codegenVar = nullptr;
-        std::span<const char* const> codegenOrder = {};
-        void (*codegenExtra)(const void* comp, const CodegenContext& ctx, std::string& out) = nullptr;
-        std::string (*codegen)(EntityRegistry* registry, Entity entity, const CodegenContext& ctx) = nullptr;
-        // the macro an export without that physics backend leaves undefined ("JASPERENGINE_PHYSICS_2D")
+        // the macro a build without that physics backend leaves undefined ("JASPERENGINE_PHYSICS_2D"):
+        // its runtime field table is compiled under it (RuntimeFields.gen.inc)
         const char* codegenGuard = nullptr;
         // keys of the YAML node the decode reads that are no fields (legacy keys); with a codec
         // of its own, every key it reads
@@ -537,11 +515,6 @@ namespace jasperengine::editor::reflect {
     Json fieldMetadata(const FieldDesc& field);
     // jasper://reflection: every component and enum, with schemas and the format version
     Json reflectionDocument();
-
-    // ---- exported code ------------------------------------------------------------------
-
-    // `var.field = <literal>;` per exported field (codegenOrder, then codegenExtra)
-    std::string cppAssignments(const ComponentDesc& desc, const void* comp, const CodegenContext& ctx);
 
     // ---- asset references (S04) ---------------------------------------------------------
 

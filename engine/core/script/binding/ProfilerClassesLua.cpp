@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Lua's Profiler table (spec S15 R37, docs/mcp/guide/lua-api.md): samples, counters, the
-// recording switch and the last frame's statistics. Bound with the Lua C API (enabled is a
-// property of the table), so its stub is hand-written (stubs/Profiler.lua). In a build without
-// the profiler every function exists and does nothing, enabled stays false, and frameStats still
-// works.
+// recording switch, GPU timing (S98 REQ-26) and the last frame's statistics. Bound with the Lua C
+// API (enabled and gpuTiming are properties of the table), so its stub is hand-written
+// (stubs/Profiler.lua). In a build without the profiler every function exists and does nothing,
+// enabled and gpuTiming stay false, and frameStats still works.
 
 #include "LuaBinding.h"
 #include "lua.hpp"
@@ -14,6 +14,7 @@
 #include "Log.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/Profile.h"
+#include "render/SystemRender.h"
 
 #include <cstring>
 #include <vector>
@@ -21,6 +22,32 @@
 using namespace jasperengine;
 
 namespace {
+
+    // Profiler.gpuTiming holds one GPU timing consumer (the lease get_gpu_passes takes) while true
+    bool luaGpuTiming = false;
+
+    void setLuaGpuTiming(bool on){
+        if (on == luaGpuTiming)
+            return;
+        if (!on){
+            luaGpuTiming = false;
+            SystemRender::releaseGpuTiming();
+            return;
+        }
+#if JASPERENGINE_PROFILER
+        const GpuTimingState state = SystemRender::getGpuTimingState();
+        if (!state.available){
+            static bool logged = false;
+            if (!logged){
+                logged = true;
+                Log::warn("Profiler.gpuTiming stays false: GPU timing is unavailable here (%s; logged once)", state.reason.c_str());
+            }
+            return;
+        }
+        luaGpuTiming = true;
+        SystemRender::acquireGpuTiming();
+#endif
+    }
 
 #if JASPERENGINE_PROFILER
     // the open beginSample calls of the main thread (Lua runs there), and whether each recorded
@@ -118,6 +145,25 @@ namespace {
                 break;
             }
         }
+        // with Profiler.gpuTiming: the passes of the newest frame whose GPU times all arrived
+        if (luaGpuTiming){
+            const PassList list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, true);
+            if (list.gpuFrameValid){
+                lua_createtable(L, (int)list.passes.size(), 0);
+                lua_Integer n = 0;
+                for (const PassRecord& pass : list.passes){
+                    if (!pass.gpuValid)
+                        continue;
+                    lua_createtable(L, 0, 2);
+                    lua_pushstring(L, pass.label);
+                    lua_setfield(L, -2, "name");
+                    lua_pushnumber(L, pass.gpuMs);
+                    lua_setfield(L, -2, "ms");
+                    lua_rawseti(L, -2, ++n);
+                }
+                lua_setfield(L, -2, "gpuPasses");
+            }
+        }
         return 1;
     }
 
@@ -132,6 +178,10 @@ namespace {
 #endif
             return 1;
         }
+        if (key && std::strcmp(key, "gpuTiming") == 0){
+            lua_pushboolean(L, luaGpuTiming);
+            return 1;
+        }
         lua_pushnil(L);
         return 1;
     }
@@ -144,10 +194,19 @@ namespace {
 #endif
             return 0;
         }
+        if (key && std::strcmp(key, "gpuTiming") == 0){
+            setLuaGpuTiming(lua_toboolean(L, 3) != 0);
+            return 0;
+        }
         lua_rawset(L, 1);
         return 0;
     }
 
+}
+
+void LuaBinding::releaseProfilerState(){
+    // a closed state's scripts no longer want GPU timing
+    setLuaGpuTiming(false);
 }
 
 void LuaBinding::registerProfilerClasses(lua_State* L){

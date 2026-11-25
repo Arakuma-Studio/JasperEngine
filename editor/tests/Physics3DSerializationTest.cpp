@@ -9,7 +9,6 @@
 
 #include "Physics3DTestWorld.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/RagdollComponent.h"
 #include "yaml-cpp/yaml.h"
@@ -73,23 +72,6 @@ TEST(Physics3DSerialization, EveryBodyAndColliderFieldRoundTrips) {
     EXPECT_EQ(decoded.colliders[0].receiver, 12u);
     EXPECT_EQ(decoded.colliders[1].vertices.size(), 100u);
     EXPECT_EQ(decoded.colliders[1].indices.size(), mesh.indices.size());
-
-    // the exported-build code: every non-default field, no caps
-    Scene scene;
-    const Entity e = scene.createEntity();
-    scene.addComponent<RigidbodyComponent>(e, body);
-    const std::string code = Factory::createRigidbodyComponent(4, &scene, e, "scene", "entity", false, nullptr);
-    for (const char* expected : {"rigidbody.material = \"physics/body.physicsmaterial\";", "rigidbody.linearDamping = 0.500000f;",
-                                 "rigidbody.automaticMass = false;", "rigidbody.mass = 3.500000f;", "rigidbody.automaticCenterOfMass = false;",
-                                 "rigidbody.inertiaTensor = Vector3(1.000000f, 100.000000f, 2.000000f);", "rigidbody.allowSleeping = false;",
-                                 "rigidbody.collideKinematicVsNonDynamic = true;", "rigidbody.interpolation = RigidbodyInterpolation::EXTRAPOLATE;",
-                                 "rigidbody.colliders.resize(2);", "rigidbody.colliders[0].isTrigger = true;",
-                                 "rigidbody.colliders[0].material = \"physics/ice.physicsmaterial\";", "rigidbody.colliders[1].vertices = {",
-                                 "rigidbody.colliders[1].indices = {"}) {
-        EXPECT_NE(code.find(expected), std::string::npos) << expected;
-    }
-    EXPECT_EQ(code.find("numColliders"), std::string::npos);
-    EXPECT_EQ(code.find("MAX_COLLIDER"), std::string::npos);
 }
 
 TEST(Physics3DSerialization, OldBodyFilesReadWithTheOldValues) {
@@ -170,18 +152,6 @@ TEST(Physics3DSerialization, EveryJointFieldRoundTripsAndOldJointsAreWorld) {
     EXPECT_TRUE(std::isinf(hinge.breakForce));
     const Joint3DComponent slider = Stream::decodeJoint3DComponent(YAML::Load("type: prismatic\nbodyA: 1\nbodyB: 2\nlimitsMin: -1\nlimitsMax: 1\n"));
     EXPECT_TRUE(slider.useLimits);
-
-    Scene scene;
-    const Entity e = scene.createEntity();
-    scene.addComponent<Joint3DComponent>(e, joint);
-    const std::string code = Factory::createComponent(4, &scene, e, ComponentType::Joint3DComponent, std::filesystem::path(), "scene", "entity");
-    for (const char* expected : {"joint3d.anchorSpace = JointAnchorSpace::LOCAL;", "joint3d.enableCollision = true;",
-                                 "joint3d.breakForce = 500.000000f;", "joint3d.breakAction = JointBreakAction::CALLBACK_ONLY;",
-                                 "joint3d.useMotor = true;", "joint3d.swingType = JointSwingType::PYRAMID;",
-                                 "joint3d.yMotion = JointMotion::LIMITED;", "joint3d.useDrive = true;", "joint3d.coneHalfAngle = "}) {
-        EXPECT_NE(code.find(expected), std::string::npos) << expected;
-    }
-    EXPECT_EQ(code.find("inf"), std::string::npos) << "infinite values are left at the default";
 }
 
 TEST(Physics3DSerialization, RagdollRoundTrips) {
@@ -203,11 +173,4 @@ TEST(Physics3DSerialization, RagdollRoundTrips) {
     EXPECT_FALSE(decoded.selfCollision);
     EXPECT_FLOAT_EQ(decoded.totalMass, 70.0f);
     EXPECT_FALSE(decoded.enabled);
-
-    Scene scene;
-    const Entity e = scene.createEntity();
-    scene.addComponent<RagdollComponent>(e, ragdoll);
-    const std::string code = Factory::createComponent(4, &scene, e, ComponentType::RagdollComponent, std::filesystem::path(), "scene", "entity");
-    EXPECT_NE(code.find("ragdoll.simulated = true;"), std::string::npos);
-    EXPECT_NE(code.find("ragdoll.totalMass = 70.000000f;"), std::string::npos);
 }

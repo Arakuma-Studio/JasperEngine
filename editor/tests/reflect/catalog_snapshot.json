@@ -191,6 +191,8 @@
     "lodEnabled",
     "lodFadeMode",
     "lodFadeTransitionWidth",
+    "meshAsset",
+    "meshAssetGuid",
     "mirroredWinding",
     "morphTargetCount",
     "morphWeights",
@@ -276,6 +278,11 @@
     "lodFadeTransitionWidth": [
      2,
      0,
+     true
+    ],
+    "meshAsset": [
+     18,
+     8,
      true
     ],
     "morphWeights[0]": [
@@ -433,6 +440,11 @@
     "lodFadeTransitionWidth": [
      2,
      0,
+     true
+    ],
+    "meshAsset": [
+     18,
+     8,
      true
     ],
     "morphWeights[]": [
@@ -28535,6 +28547,11 @@
    "lodFadeTransitionWidth": [
     2,
     0,
+    true
+   ],
+   "meshAsset": [
+    18,
+    8,
     true
    ],
    "morphWeights[N]": [

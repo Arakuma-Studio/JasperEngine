@@ -6,7 +6,6 @@
 
 #include "reflect/components/MaterialReflect.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/ButtonComponent.h"
 #include "component/UISelectable.h"
@@ -65,9 +64,9 @@ namespace {
                  .uiOrder = 3),
         JE_FIELD(RectTransformComponent, usingAnchors, .label = "Use Anchors", .uiOrder = 2),
         // the layout's own bookkeeping: saved, not edited
-        JE_FIELD(RectTransformComponent, panel, .ops = &ops::Entity, .flags = Derived | Hidden | NoCodegen),
-        JE_FIELD(RectTransformComponent, containerBoxIndex, .flags = Derived | Hidden | NoCodegen),
-        JE_FIELD(RectTransformComponent, scissor, .flags = Derived | Hidden | NoCodegen | NotWritten),
+        JE_FIELD(RectTransformComponent, panel, .ops = &ops::Entity, .flags = Derived | Hidden),
+        JE_FIELD(RectTransformComponent, containerBoxIndex, .flags = Derived | Hidden),
+        JE_FIELD(RectTransformComponent, scissor, .flags = Derived | Hidden | NotWritten),
         JE_FIELD(RectTransformComponent, ignoreScissor, .uiOrder = 14),
         JE_FIELD(RectTransformComponent, ignoreEvents, .uiOrder = 15),
     };
@@ -346,44 +345,39 @@ namespace {
     constexpr uint64_t kDocumentReload = UpdateFlags_UIDocument_Reload;
 
     constexpr FieldDesc kUIDocumentFields[] = {
-        JE_FIELD(UIDocumentComponent, enabled, .flags = NonStructural | CodegenIfChanged),
+        JE_FIELD(UIDocumentComponent, enabled, .flags = NonStructural),
         // written when empty too: decoding over a component with a file must clear it
         JE_FIELD(UIDocumentComponent, filename, .updateFlags = kDocumentReload, .asset = AssetKind::UIDocument, .label = "Source",
                  .tooltip = "HTML file of the document, relative to the assets folder (e.g. ui/menu.html)."),
         JE_FIELD(UIDocumentComponent, sortOrder, .flags = NonStructural,
                  .tooltip = "Documents with a higher sort order draw on top of the scene's other documents."),
         // phase 1: only what differs from the defaults; an empty value is the default too
-        JE_FIELD(UIDocumentComponent, interactive, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged,
+        JE_FIELD(UIDocumentComponent, interactive, .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
                  .tooltip = "Receives pointer, keyboard and text input. Off: the game gets every event."),
         JE_FIELD(UIDocumentComponent, renderMode, .enumDesc = &enums::kUIDocumentRenderMode,
-                 .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged, .updateFlags = kDocumentReload,
+                 .flags = OmitIfDefault | EmptyIsDefault, .updateFlags = kDocumentReload,
                  .tooltip = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows. "
                             "World Space: drawn as a quad at this GameObject, hidden behind what is in front of it."),
-        JE_FIELD(UIDocumentComponent, textureWidth, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged | Clamped,
+        JE_FIELD(UIDocumentComponent, textureWidth, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | Clamped,
                  .updateFlags = kDocumentReload, .unit = Unit::Pixels, .min = 1.0f, .max = 8192.0f, .visibleIf = &documentInTexture),
-        JE_FIELD(UIDocumentComponent, textureHeight, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged | Clamped,
+        JE_FIELD(UIDocumentComponent, textureHeight, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | Clamped,
                  .updateFlags = kDocumentReload, .unit = Unit::Pixels, .min = 1.0f, .max = 8192.0f, .visibleIf = &documentInTexture),
-        JE_FIELD(UIDocumentComponent, inputSurface, .ops = &ops::Entity, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged,
+        JE_FIELD(UIDocumentComponent, inputSurface, .ops = &ops::Entity, .flags = OmitIfDefault | EmptyIsDefault,
                  .tooltip = "Mesh whose surface receives the pointer (hit test on its UVs). None: this GameObject's own mesh.",
                  .visibleIf = &documentOnMesh),
         JE_FIELD(UIDocumentComponent, pixelRatio, .ops = &ops::NonNegativeFiniteFloat,
-                 .flags = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | NonStructural | CodegenIfChanged, .updateFlags = kDocumentReload,
+                 .flags = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | NonStructural, .updateFlags = kDocumentReload,
                  .min = 0.0f, .tooltip = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode)."),
         // S93: optional, the defaults keep the old behaviour
         JE_FIELD(UIDocumentComponent, updateMode, .enumDesc = &enums::kUIDocumentUpdateMode,
-                 .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged,
+                 .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
                  .tooltip = "Unscaled Time: animations run while the game is paused or slowed. Game Time: they follow Time Scale and stop with the game."),
         JE_FIELD(UIDocumentComponent, pixelsPerUnit, .ops = &ops::FiniteFloat,
-                 .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged, .min = 0.01f,
+                 .flags = OmitIfDefault | EmptyIsDefault | NonStructural, .min = 0.01f,
                  .label = "Pixels Per Unit", .tooltip = "Texture pixels per world unit: the quad is Texture Width x Height / Pixels Per Unit.",
                  .visibleIf = &documentInWorld),
-        JE_FIELD(UIDocumentComponent, billboard, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged,
+        JE_FIELD(UIDocumentComponent, billboard, .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
                  .tooltip = "Turns the quad to the camera.", .visibleIf = &documentInWorld),
-    };
-
-    constexpr const char* kUIDocumentCodegenOrder[] = {
-        "filename", "sortOrder", "enabled", "interactive", "renderMode", "textureWidth", "textureHeight", "inputSurface", "pixelRatio",
-        "updateMode", "pixelsPerUnit", "billboard"
     };
 
     // the old one's runtime state (its loaded document) stays while the file and render settings do
@@ -432,11 +426,6 @@ namespace {
         JE_FIELD(UIComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
     };
 
-    std::string uiCodegen(EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createUIComponent(ctx.indentSpaces, registry, entity, ctx.projectPath, ctx.sceneName, ctx.entityName,
-                                          ctx.assignExisting, ctx.entityVarNames);
-    }
-
     constexpr const char* kUIExtraKeys[] = {"buffer", "indices", "minBufferCount", "minIndicesCount", "primitiveType", "vertexCount", "aabb",
         "worldAABB", "texture", "color", "automaticFlipY", "flipY", "pointerMoved", "focused", "customShader", "shaderUniforms", "shaderTextures",
         "shaderFeatures", "shaderGlobalBindings", "blendMode", "depthWrite", "stencil", "colorWrite", "enabled"};
@@ -448,14 +437,13 @@ const ComponentDesc kRectTransformDesc{
     .displayName = "Rect Transform", .icon = ICON_FA_VECTOR_SQUARE,
     .body = JE_STRUCT_DESC(RectTransformComponent, "RectTransformComponent", kRectTransformFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(RectTransformComponent),
-    .codegenVar = "layout",
 };
 
 const ComponentDesc kButtonDesc{
     .type = ComponentType::ButtonComponent, .cppName = "ButtonComponent", .key = "button", .displayName = "Button", .icon = ICON_FA_SQUARE_CHECK,
     .body = JE_STRUCT_DESC(ButtonComponent, "ButtonComponent", kButtonFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ButtonComponent),
-    .codegenVar = "button", .edited = &markForUpdate<ButtonComponent, &ButtonComponent::needUpdateButton>,
+    .edited = &markForUpdate<ButtonComponent, &ButtonComponent::needUpdateButton>,
 };
 
 const ComponentDesc kScrollbarDesc{
@@ -464,7 +452,7 @@ const ComponentDesc kScrollbarDesc{
     .body = JE_STRUCT_DESC(ScrollbarComponent, "ScrollbarComponent", kScrollbarFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ScrollbarComponent),
     .postDecode = [](void* comp, const DecodeContext&) { static_cast<ScrollbarComponent*>(comp)->needUpdateScrollbar = true; },
-    .codegenVar = "scrollbar", .edited = &markForUpdate<ScrollbarComponent, &ScrollbarComponent::needUpdateScrollbar>,
+    .edited = &markForUpdate<ScrollbarComponent, &ScrollbarComponent::needUpdateScrollbar>,
 };
 
 const ComponentDesc kProgressbarDesc{
@@ -473,7 +461,7 @@ const ComponentDesc kProgressbarDesc{
     .body = JE_STRUCT_DESC(ProgressbarComponent, "ProgressbarComponent", kProgressbarFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ProgressbarComponent),
     .postDecode = [](void* comp, const DecodeContext&) { static_cast<ProgressbarComponent*>(comp)->needUpdateProgressbar = true; },
-    .codegenVar = "progressbar", .edited = &markForUpdate<ProgressbarComponent, &ProgressbarComponent::needUpdateProgressbar>,
+    .edited = &markForUpdate<ProgressbarComponent, &ProgressbarComponent::needUpdateProgressbar>,
 };
 
 const ComponentDesc kInputFieldDesc{
@@ -482,7 +470,7 @@ const ComponentDesc kInputFieldDesc{
     .body = JE_STRUCT_DESC(InputFieldComponent, "InputFieldComponent", kInputFieldFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(InputFieldComponent),
     .postDecode = [](void* comp, const DecodeContext&) { static_cast<InputFieldComponent*>(comp)->needUpdateInputField = true; },
-    .codegenVar = "inputfield", .edited = &markForUpdate<InputFieldComponent, &InputFieldComponent::needUpdateInputField>,
+    .edited = &markForUpdate<InputFieldComponent, &InputFieldComponent::needUpdateInputField>,
 };
 
 const ComponentDesc kPanelDesc{
@@ -490,7 +478,7 @@ const ComponentDesc kPanelDesc{
     .body = JE_STRUCT_DESC(PanelComponent, "PanelComponent", kPanelFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(PanelComponent),
     .postDecode = [](void* comp, const DecodeContext&) { static_cast<PanelComponent*>(comp)->needUpdatePanel = true; },
-    .codegenVar = "panel", .edited = &markForUpdate<PanelComponent, &PanelComponent::needUpdatePanel>,
+    .edited = &markForUpdate<PanelComponent, &PanelComponent::needUpdatePanel>,
 };
 
 const ComponentDesc kLayoutGroupDesc{
@@ -498,21 +486,18 @@ const ComponentDesc kLayoutGroupDesc{
     .icon = ICON_FA_TABLE_CELLS,
     .body = JE_STRUCT_DESC(LayoutGroupComponent, "LayoutGroupComponent", kLayoutGroupFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(LayoutGroupComponent),
-    .codegenVar = "container",
 };
 
 const ComponentDesc kTextDesc{
     .type = ComponentType::TextComponent, .cppName = "TextComponent", .key = "text", .displayName = "Text", .icon = ICON_FA_FONT,
     .body = JE_STRUCT_DESC(TextComponent, "TextComponent", kTextFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(TextComponent),
-    .codegenVar = "text",
 };
 
 const ComponentDesc kImageDesc{
     .type = ComponentType::ImageComponent, .cppName = "ImageComponent", .key = "image", .displayName = "Image", .icon = ICON_FA_IMAGE,
     .body = JE_STRUCT_DESC(ImageComponent, "ImageComponent", kImageFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ImageComponent),
-    .codegenVar = "image",
 };
 
 const ComponentDesc kUIDocumentDesc{
@@ -521,7 +506,6 @@ const ComponentDesc kUIDocumentDesc{
     .body = JE_STRUCT_DESC(UIDocumentComponent, "UIDocumentComponent", kUIDocumentFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(UIDocumentComponent),
     .postDecode = &uiDocumentPostDecode,
-    .codegenVar = "uidocument", .codegenOrder = kUIDocumentCodegenOrder,
 };
 
 const ComponentDesc kUIDesc{
@@ -529,9 +513,7 @@ const ComponentDesc kUIDesc{
     .body = JE_STRUCT_DESC(UIComponent, "UIComponent", kUIFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(UIComponent),
     .codec = &kUICodec,
-    .codegen = &uiCodegen,
     .extraKeys = kUIExtraKeys,
 };
-
 
 }
