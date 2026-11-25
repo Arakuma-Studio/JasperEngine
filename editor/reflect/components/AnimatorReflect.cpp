@@ -8,7 +8,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "component/AnimatorComponent.h"
 
 namespace jasperengine::editor::reflect {
@@ -83,82 +82,24 @@ namespace {
 
     bool exposes(const void* c) { return static_cast<const AnimatorComponent*>(c)->writeBones == AnimatorWriteBones::Exposed; }
 
-    constexpr TypeOps kExposedBonesOps = ops::PushBackList<std::string>;
-
     constexpr FieldDesc kAnimatorFields[] = {
         JE_FIELD(AnimatorComponent, enabled),
         JE_FIELD(AnimatorComponent, controller, .updateFlags = kReload, .asset = AssetKind::AnimatorController, .tooltip = "The Animator Controller (.controller) it plays."),
         JE_FIELD(AnimatorComponent, speed, .tooltip = "Multiplies every state's speed."),
-        JE_FIELD(AnimatorComponent, poseFrameRate, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
+        JE_FIELD(AnimatorComponent, poseFrameRate, .flags = OmitIfDefault, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
                  .tooltip = "Frames per second the poses hold on (0: smooth). Each track steps from its previous key, so every key shows; transitions step too. Root motion and events stay at the true time.", .drawer = "poseFrameRate"),
         JE_FIELD(AnimatorComponent, applyRootMotion, .tooltip = "The clips' root motion moves the GameObject (or its Character Controller)."),
         JE_FIELD(AnimatorComponent, rootMotionBone, .updateFlags = kReload, .tooltip = "Path or humanoid slot (empty: the clip's, the hips, the shallowest moving bone)."),
         JE_FIELD(AnimatorComponent, updateMode, .enumDesc = &enums::kAnimatorUpdateMode),
         JE_FIELD(AnimatorComponent, cullingMode, .enumDesc = &enums::kAnimatorCullingMode, .tooltip = "Cull Update Transforms: while no camera sees it, time, states, events and root motion advance; nothing is written."),
         JE_FIELD(AnimatorComponent, writeBones, .enumDesc = &enums::kAnimatorWriteBones, .updateFlags = kReload, .tooltip = "Exposed: only the listed bones and bones with attachments get their GameObject's transform (skins always follow)."),
-        JE_FIELD(AnimatorComponent, exposedBones, .ops = &kExposedBonesOps, .flags = ListWhole, .updateFlags = kReload, .visibleIf = &exposes),
+        JE_FIELD(AnimatorComponent, exposedBones, .ops = &ops::Array<std::string>, .flags = ListWhole, .updateFlags = kReload, .visibleIf = &exposes),
         JE_FIELD(AnimatorComponent, eventMode, .enumDesc = &enums::kAnimatorEventMode, .tooltip = "Leader Only: per layer the clip with the highest weight fires its events."),
         JE_FIELD(AnimatorComponent, sendEventsToScripts, .tooltip = "Also calls the scripts' methods named like the events."),
         JE_FIELD(AnimatorComponent, retarget, .enumDesc = &enums::kAnimatorRetarget, .updateFlags = kReload, .tooltip = "Auto: humanoid clips made on another humanoid model play retargeted."),
-        JE_FIELD(AnimatorComponent, clipOverrides, .flags = ListWhole | ListTemplate | NoCodegen, .updateFlags = kReload),
-        JE_FIELD(AnimatorComponent, ik, .flags = ListWhole | ListTemplate | NoCodegen, .updateFlags = kReload, .label = "IK"),
+        JE_FIELD(AnimatorComponent, clipOverrides, .flags = ListWhole | ListTemplate, .updateFlags = kReload),
+        JE_FIELD(AnimatorComponent, ik, .flags = ListWhole | ListTemplate, .updateFlags = kReload, .label = "IK"),
     };
-
-    std::string literal(const std::string& text){ return Factory::formatString(text); }
-
-    // the lists of structs as statements (the generic codegen writes scalar fields only)
-    void animatorCodegen(const void* comp, const CodegenContext& ctx, std::string& out){
-        const AnimatorComponent& animator = *static_cast<const AnimatorComponent*>(comp);
-        const std::string ind = Factory::indentation(ctx.indentSpaces);
-        const std::string& v = ctx.variable;
-        for (const AnimatorClipOverride& entry : animator.clipOverrides){
-            out += ind + v + ".clipOverrides.push_back({" + literal(entry.original) + ", " + literal(entry.replacement) + "});\n";
-        }
-        for (size_t i = 0; i < animator.ik.size(); i++){
-            const AnimatorIKConstraint& c = animator.ik[i];
-            const AnimatorIKConstraint d;
-            const std::string var = v + "_ik" + std::to_string(i);
-            out += ind + "{\n";
-            const std::string in = ind + "    ";
-            out += in + "AnimatorIKConstraint " + var + ";\n";
-            auto set = [&](const char* name, const std::string& value){ out += in + var + "." + name + " = " + value + ";\n"; };
-            set("name", literal(c.name));
-            const EnumItem* type = enumItem(enums::kAnimatorIKType, (int)c.type);
-            set("type", type ? type->cppName : "AnimatorIKType::TwoBone");
-            if (c.enabled != d.enabled) set("enabled", c.enabled ? "true" : "false");
-            if (c.weight != d.weight) set("weight", Factory::formatFloat(c.weight));
-            if (!c.weightParameter.empty()) set("weightParameter", literal(c.weightParameter));
-            for (const std::string& bone : c.bones) out += in + var + ".bones.push_back(" + literal(bone) + ");\n";
-            for (float w : c.boneWeights) out += in + var + ".boneWeights.push_back(" + Factory::formatFloat(w) + ");\n";
-            if (c.target != NULL_ENTITY) set("target", Factory::formatEntity(c.target, ctx.entityVarNames));
-            if (c.targetPosition != d.targetPosition) set("targetPosition", Factory::formatVector3(c.targetPosition));
-            if (c.useTargetRotation) set("useTargetRotation", "true");
-            if (c.pole != NULL_ENTITY) set("pole", Factory::formatEntity(c.pole, ctx.entityVarNames));
-            if (c.polePosition != d.polePosition) set("polePosition", Factory::formatVector3(c.polePosition));
-            if (c.usePole) set("usePole", "true");
-            if (c.soften != d.soften) set("soften", Factory::formatFloat(c.soften));
-            if (c.hingeAxis != d.hingeAxis) set("hingeAxis", Factory::formatVector3(c.hingeAxis));
-            if (c.twist != d.twist) set("twist", Factory::formatFloat(c.twist));
-            if (c.iterations != d.iterations) set("iterations", std::to_string(c.iterations));
-            if (c.tolerance != d.tolerance) set("tolerance", Factory::formatFloat(c.tolerance));
-            if (c.forwardAxis != d.forwardAxis) set("forwardAxis", Factory::formatVector3(c.forwardAxis));
-            if (c.clampAngle != d.clampAngle) set("clampAngle", Factory::formatFloat(c.clampAngle));
-            if (c.aimOffset != d.aimOffset) set("aimOffset", Factory::formatVector3(c.aimOffset));
-            if (!c.pelvis.empty()) set("pelvis", literal(c.pelvis));
-            if (c.footHeight != d.footHeight) set("footHeight", Factory::formatFloat(c.footHeight));
-            if (c.rayStart != d.rayStart) set("rayStart", Factory::formatFloat(c.rayStart));
-            if (c.rayLength != d.rayLength) set("rayLength", Factory::formatFloat(c.rayLength));
-            if (c.layerMask != d.layerMask) set("layerMask", std::to_string(c.layerMask) + "u");
-            if (c.maxFootAngle != d.maxFootAngle) set("maxFootAngle", Factory::formatFloat(c.maxFootAngle));
-            if (c.smoothing != d.smoothing) set("smoothing", Factory::formatFloat(c.smoothing));
-            if (!c.contactParameter.empty()) set("contactParameter", literal(c.contactParameter));
-            if (c.speedThreshold != d.speedThreshold) set("speedThreshold", Factory::formatFloat(c.speedThreshold));
-            if (c.releaseTime != d.releaseTime) set("releaseTime", Factory::formatFloat(c.releaseTime));
-            out += in + v + ".ik.push_back(" + var + ");\n";
-            out += ind + "}\n";
-        }
-        out += ind + v + ".needsLoad = true;\n";
-    }
 
     // what it played and its subscriptions are runtime: a decoded component starts afresh
     void animatorPostDecode(void* comp, const DecodeContext&){
@@ -175,8 +116,6 @@ const ComponentDesc kAnimatorDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(AnimatorComponent),
     .postDecode = &animatorPostDecode,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegenVar = "animator",
-    .codegenExtra = &animatorCodegen,
 };
 
 }

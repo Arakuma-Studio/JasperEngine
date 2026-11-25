@@ -7,7 +7,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/CapsuleShadowCasterComponent.h"
 #include "component/FogComponent.h"
@@ -44,11 +43,11 @@ namespace {
     constexpr uint64_t kShadowCamera = UpdateFlags_LightShadowCamera;
 
     constexpr FieldDesc kLightFields[] = {
-        JE_FIELD(LightComponent, enabled, .flags = CodegenIfChanged),
+        JE_FIELD(LightComponent, enabled),
         JE_FIELD(LightComponent, type, .enumDesc = &enums::kLightType, .flags = NoDefault,
                  .updateFlags = UpdateFlags_LightShadowMap | UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         JE_FIELD(LightComponent, direction, .updateFlags = UpdateFlags_Transform, .drawer = "direction", .visibleIf = &lightNotPoint),
-        JE_FIELD(LightComponent, worldDirection, .flags = Derived | Hidden | NoCodegen | NotWritten),
+        JE_FIELD(LightComponent, worldDirection, .flags = Derived | Hidden | NotWritten),
         JE_FIELD(LightComponent, color, .flags = ColorLinear),
         JE_FIELD(LightComponent, range, .updateFlags = kShadowCamera, .unit = Unit::Meters),
         JE_FIELD(LightComponent, intensity),
@@ -66,11 +65,11 @@ namespace {
         JE_FIELD(LightComponent, shadowBias, .min = 0.0f, .label = "Bias", .group = "Shadows"),
         JE_FIELD(LightComponent, mapResolution, .updateFlags = UpdateFlags_LightShadowMap | UpdateFlags_Scene_Mesh_Variant, .label = "Resolution",
                  .group = "Shadows", .drawer = "po2Slider"),
-        JE_FIELD(LightComponent, shadowCameraNearFar, .flags = Derived | Hidden | NoCodegen),
+        JE_FIELD(LightComponent, shadowCameraNearFar, .flags = Derived | Hidden),
         JE_FIELD(LightComponent, numShadowCascades, .updateFlags = kShadowCamera | UpdateFlags_Scene_Mesh_Variant, .label = "Cascade Count",
                  .group = "Shadows"),
         // read by RenderSystem when it picks each mesh's lights
-        JE_FIELD(LightComponent, shading, .enumDesc = &enums::kLightShading, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(LightComponent, shading, .enumDesc = &enums::kLightShading, .flags = OmitIfDefault,
                  .tooltip = "Where this light is evaluated on materials whose Lighting is Mixed: Per Pixel (specular, shadows, spot masks) "
                             "or Per Vertex (diffuse only, cheapest). Both leaves it to the material (per pixel under Mixed). Materials lit "
                             "Per Pixel or Per Vertex evaluate every light their own way."),
@@ -88,37 +87,37 @@ namespace {
                  .group = "Shadows"),
         JE_FIELD(LightComponent, shadowSourceRadius, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f, .label = "Source Radius",
                  .group = "Shadows"),
-        JE_FIELD(LightComponent, shadowUpdateMode, .enumDesc = &enums::kShadowUpdateMode, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(LightComponent, shadowUpdateMode, .enumDesc = &enums::kShadowUpdateMode, .flags = OmitIfDefault,
                  .label = "Update Mode", .group = "Shadows"),
         // contact shadows (S57 R3): a screen-space march towards a directional or spot light. The
         // render system finds the lights that ask for it each frame (no update flag)
-        JE_FIELD(LightComponent, contactShadows, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(LightComponent, contactShadows, .flags = OmitIfDefault,
                  .tooltip = "Screen-space shadows of small details the shadow map misses, from a directional or spot light with Shadows "
                             "on. A fullscreen pass after the depth pre-pass (which it turns on) marching 8-16 depth samples a pixel; "
                             "full resolution on High, half on Medium, off on Low.",
                  .group = "Shadows", .visibleIf = &lightCastsContactShadows),
-        JE_FIELD(LightComponent, contactShadowLength, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f,
+        JE_FIELD(LightComponent, contactShadowLength, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f,
                  .label = "Contact Length", .tooltip = "How far the march reaches towards the light.", .group = "Shadows",
                  .visibleIf = &lightCastsContactShadows),
-        JE_FIELD(LightComponent, contactShadowThickness, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f,
+        JE_FIELD(LightComponent, contactShadowThickness, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f,
                  .label = "Contact Thickness", .tooltip = "How thick a surface in the depth buffer is taken to be: thicker shadows more "
                                                          "behind thin objects.",
                  .group = "Shadows", .visibleIf = &lightCastsContactShadows),
-        JE_FIELD(LightComponent, contactShadowSampleCount, .flags = OmitIfDefault | CodegenIfChanged, .min = 8.0f, .max = 16.0f,
+        JE_FIELD(LightComponent, contactShadowSampleCount, .flags = OmitIfDefault, .min = 8.0f, .max = 16.0f,
                  .label = "Contact Sample Count", .tooltip = "Depth samples a pixel marches: more are smoother and cost more.",
                  .group = "Shadows", .visibleIf = &lightCastsContactShadows),
         // the volumetric fog's share of the light
-        JE_FIELD(LightComponent, volumetricIntensity, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f,
+        JE_FIELD(LightComponent, volumetricIntensity, .flags = OmitIfDefault, .min = 0.0f,
                  .tooltip = "How much of this light the volumetric fog scatters (the nearest 1, 2 or 4 point and spot lights in view, at "
                             "Low, Medium and High atmosphere quality). With its Shadows on, they reach the fog while the Fog's Light "
                             "Shafts is on. 0: none.",
                  .visibleIf = &lightNotDirectional),
         // photometric units and colour temperature (util/LightPhotometry.h), resolved on the CPU
-        JE_FIELD(LightComponent, intensityUnit, .enumDesc = &enums::kLightUnit, .flags = OmitIfDefault | CodegenIfChanged, .label = "Unit",
+        JE_FIELD(LightComponent, intensityUnit, .enumDesc = &enums::kLightUnit, .flags = OmitIfDefault, .label = "Unit",
                  .tooltip = "What Intensity is in: Engine (unitless), Lux (a directional light), Candela or Lumen (a point or spot light), "
                             "converted through the scene's Physical Light Exposure."),
-        JE_FIELD(LightComponent, useColorTemperature, .flags = OmitIfDefault | CodegenIfChanged, .label = "Use Temperature"),
-        JE_FIELD(LightComponent, colorTemperature, .ops = &ops::Kelvin, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Kelvin,
+        JE_FIELD(LightComponent, useColorTemperature, .flags = OmitIfDefault, .label = "Use Temperature"),
+        JE_FIELD(LightComponent, colorTemperature, .ops = &ops::Kelvin, .flags = OmitIfDefault, .unit = Unit::Kelvin,
                  .uiMin = 1000.0f, .uiMax = 20000.0f, .label = "Temperature"),
         JE_PROXY(LightComponent, "shadowCameraNear", shadowCameraNearFar.x, .flags = NoDefault, .updateFlags = kShadowCamera, .min = 0.0f,
                  .label = "Near Plane", .group = "Shadows"),
@@ -126,19 +125,10 @@ namespace {
                  .label = "Far Plane", .group = "Shadows"),
     };
 
-    constexpr const char* kLightCodegenOrder[] = {
-        "type", "direction", "shadows", "cullingMask", "intensity", "range", "color", "innerConeCos", "outerConeCos", "spotMask",
-        "shadowBias", "mapResolution", "automaticShadowCamera", "shadowCameraNear", "shadowCameraFar", "numShadowCascades", "softShadows",
-        "shadowStrength", "shadowNormalBias", "cascadeSplitMode", "cascadeSplits", "shadowDistance", "shadowAngularDiameter",
-        "shadowSourceRadius", "shadowUpdateMode", "contactShadows", "contactShadowLength", "contactShadowThickness",
-        "contactShadowSampleCount", "volumetricIntensity", "shading", "intensityUnit", "useColorTemperature", "colorTemperature",
-        "enabled"
-    };
-
     // ---------------------------------------------------------------- Light 2D
 
     constexpr FieldDesc kLight2DFields[] = {
-        JE_FIELD(Light2DComponent, enabled, .flags = CodegenIfChanged),
+        JE_FIELD(Light2DComponent, enabled),
         JE_FIELD(Light2DComponent, color, .flags = ColorLinear, .uiOrder = 4),
         JE_FIELD(Light2DComponent, intensity),
         JE_FIELD(Light2DComponent, range),
@@ -152,10 +142,6 @@ namespace {
         JE_FIELD(Light2DComponent, mapResolution, .group = "Shadow settings", .drawer = "po2Slider"),
     };
 
-    constexpr const char* kLight2DCodegenOrder[] = {
-        "color", "intensity", "range", "falloff", "height", "shadows", "shadowBias", "shadowSoftness", "mapResolution", "enabled"
-    };
-
     // ---------------------------------------------------------------- Shadow Caster 2D
 
     bool shadowCasterPolygon(const void* caster) {
@@ -167,14 +153,13 @@ namespace {
                  .tooltip = "Auto Quad derives the outline from this GameObject's mesh bounds; Polygon uses the point list below (local space)."),
         JE_FIELD(ShadowCaster2DComponent, closed, .visibleIf = &shadowCasterPolygon),
         JE_FIELD(ShadowCaster2DComponent, enabled),
-        JE_FIELD(ShadowCaster2DComponent, points, .ops = &ops::PushBackList<Vector2>, .flags = NoDefault | ListWhole, .visibleIf = &shadowCasterPolygon),
+        JE_FIELD(ShadowCaster2DComponent, points, .ops = &ops::Array<Vector2>, .flags = NoDefault | ListWhole, .visibleIf = &shadowCasterPolygon),
     };
 
     // ---------------------------------------------------------------- Capsule Shadow Caster (S57 R2)
 
-    // the members in declaration order: the exported code writes each capsule as an aggregate
-    // initializer (structPushBackStatements). The render system resolves the bones by name each
-    // frame (resolvedHash), so no field needs an update flag
+    // The render system resolves the bones by name each frame (resolvedHash), so no field needs
+    // an update flag
     constexpr FieldDesc kCapsuleShadowShapeFields[] = {
         JE_FIELD(CapsuleShadowShape, bone,
                  .tooltip = "The name of the bone (a GameObject under this one) the capsule follows. Empty: this GameObject."),
@@ -185,8 +170,6 @@ namespace {
         JE_FIELD(CapsuleShadowShape, direction, .enumDesc = &enums::kCapsuleDirection, .tooltip = "The bone axis the capsule lies along."),
     };
 
-    constexpr TypeOps kCapsuleListOps = detail::withStatements(ops::Array<CapsuleShadowShape>, &detail::structPushBackStatements);
-
 }
 
 JE_REFLECT_STRUCT_TRAITS(CapsuleShadowShape, kCapsuleShadowShapeStruct);
@@ -196,11 +179,11 @@ namespace {
 
     // the capsules: the whole list is what a prefab override holds (up to MAX_CAPSULES are drawn)
     constexpr FieldDesc kCapsuleShadowCasterFields[] = {
-        JE_FIELD(CapsuleShadowCasterComponent, enabled, .flags = CodegenIfChanged),
+        JE_FIELD(CapsuleShadowCasterComponent, enabled),
         JE_FIELD(CapsuleShadowCasterComponent, castShadows, .enumDesc = &enums::kCapsuleCastShadows,
                  .tooltip = "On: the meshes also cast their shadow-map shadows (their own Cast Shadows decides). Capsules Only: the "
                             "meshes leave the shadow maps, so a moving character keeps the static shadow cache valid."),
-        JE_FIELD(CapsuleShadowCasterComponent, capsules, .ops = &kCapsuleListOps, .flags = ListWhole | ListTemplate,
+        JE_FIELD(CapsuleShadowCasterComponent, capsules, .ops = &ops::Array<CapsuleShadowShape>, .flags = ListWhole | ListTemplate,
                  .tooltip = "Up to 8 capsules on the character's bones."),
     };
 
@@ -211,7 +194,7 @@ namespace {
                  .tooltip = "Linear, Exponential, Exponential Squared: fog by distance. Height: physically based fog, dense up to the Base "
                             "Height and thinning above it, lit by the sun, with an optional volumetric part."),
         // docs/specs/vapor.md R39: written only when set, so a Fog without one is as it was
-        JE_FIELD(FogComponent, profile, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault | CodegenIfChanged, .asset = AssetKind::FogProfile,
+        JE_FIELD(FogComponent, profile, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault, .asset = AssetKind::FogProfile,
                  .label = "Profile",
                  .tooltip = "A Fog Profile (.fogprofile): the look fields it sets come from it and are shared by every Fog and Fog Zone "
                             "using it; the others are this Fog's own."),
@@ -220,58 +203,58 @@ namespace {
         JE_FIELD(FogComponent, linearStart),
         JE_FIELD(FogComponent, linearEnd),
         // the height fog's fields, written only away from their defaults: a distance fog's file is as it was
-        JE_FIELD(FogComponent, colorMode, .enumDesc = &enums::kFogColorMode, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(FogComponent, colorMode, .enumDesc = &enums::kFogColorMode, .flags = OmitIfDefault,
                  .tooltip = "Constant Color: the fog takes its Color. Sky Color: the colour of the sky at the horizon (a cube map Skybox, or a "
                             "sky shader with a horizonColor property). Lit: the fog scatters the sun and the scene ambient by its Albedo, "
                             "so one look holds from day to night.",
                  .group = "Height Fog"),
-        JE_FIELD(FogComponent, albedo, .flags = ColorLinear | OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(FogComponent, albedo, .flags = ColorLinear | OmitIfDefault,
                  .tooltip = "Lit: the share of the light the fog scatters, per channel. Dark values absorb, white scatters everything.",
                  .group = "Height Fog"),
-        JE_FIELD(FogComponent, ambientMultiplier, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f,
+        JE_FIELD(FogComponent, ambientMultiplier, .flags = OmitIfDefault, .min = 0.0f,
                  .tooltip = "Lit: how much of the scene ambient the fog scatters. 0: lit by the sun alone.", .group = "Height Fog"),
-        JE_FIELD(FogComponent, emissive, .flags = ColorLinear | Hdr | OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(FogComponent, emissive, .flags = ColorLinear | Hdr | OmitIfDefault,
                  .tooltip = "Lit: light the fog gives off itself, whatever lights it (a glowing, toxic or infernal fog).",
                  .group = "Height Fog"),
-        JE_FIELD(FogComponent, attenuationDistance, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f,
+        JE_FIELD(FogComponent, attenuationDistance, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f,
                  .tooltip = "The distance light travels in the fog below the Base Height before 63% of it is absorbed. Smaller: denser fog.",
                  .group = "Height Fog"),
-        JE_FIELD(FogComponent, baseHeight, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters,
+        JE_FIELD(FogComponent, baseHeight, .flags = OmitIfDefault, .unit = Unit::Meters,
                  .tooltip = "The fog is uniform below this height and thins above it.", .group = "Height Fog"),
-        JE_FIELD(FogComponent, maximumHeight, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters,
+        JE_FIELD(FogComponent, maximumHeight, .flags = OmitIfDefault, .unit = Unit::Meters,
                  .tooltip = "The height where the fog has thinned to a thousandth of its density.", .group = "Height Fog"),
-        JE_FIELD(FogComponent, startDistance, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f,
+        JE_FIELD(FogComponent, startDistance, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f,
                  .tooltip = "No fog nearer the camera than this.", .group = "Height Fog"),
-        JE_FIELD(FogComponent, maxFogDistance, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f,
+        JE_FIELD(FogComponent, maxFogDistance, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f,
                  .tooltip = "No more fog past this distance from the camera.", .group = "Height Fog"),
-        JE_FIELD(FogComponent, maxOpacity, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .max = 1.0f,
+        JE_FIELD(FogComponent, maxOpacity, .flags = OmitIfDefault, .min = 0.0f, .max = 1.0f,
                  .tooltip = "The most the fog hides of what is behind it.", .group = "Height Fog"),
-        JE_FIELD(FogComponent, directionalInscattering, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Intensity",
+        JE_FIELD(FogComponent, directionalInscattering, .flags = OmitIfDefault, .min = 0.0f, .label = "Intensity",
                  .tooltip = "How much of the main directional light the fog scatters towards the camera.", .group = "Directional Inscattering"),
-        JE_FIELD(FogComponent, anisotropy, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(FogComponent, anisotropy, .flags = OmitIfDefault,
                  .tooltip = "-1 scatters the light back towards the sun, 0 evenly, 1 forward (a glow around the sun).",
                  .group = "Directional Inscattering"),
-        JE_FIELD(FogComponent, skyFill, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(FogComponent, skyFill, .flags = OmitIfDefault,
                  .tooltip = "The sky takes the fog's colour near the horizon, so the fogged ground meets it without a seam.", .group = "Sky"),
-        JE_FIELD(FogComponent, skyFillAngle, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Degrees, .min = 0.0f,
+        JE_FIELD(FogComponent, skyFillAngle, .flags = OmitIfDefault, .unit = Unit::Degrees, .min = 0.0f,
                  .tooltip = "How far above the horizon the sky fill reaches.", .group = "Sky"),
-        JE_FIELD(FogComponent, volumetric, .flags = OmitIfDefault | CodegenIfChanged, .label = "Enabled",
+        JE_FIELD(FogComponent, volumetric, .flags = OmitIfDefault, .label = "Enabled",
                  .tooltip = "Raymarches the fog near the camera, with the sun's shadows (light shafts), Local Volumetric Fog volumes and a "
                             "density noise. The main camera only; off at Atmosphere Quality Off.",
                  .group = "Volumetric Fog"),
-        JE_FIELD(FogComponent, volumetricDistance, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f, .label = "Distance",
+        JE_FIELD(FogComponent, volumetricDistance, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f, .label = "Distance",
                  .tooltip = "How far from the camera the fog is raymarched; the analytic fog continues beyond.", .group = "Volumetric Fog"),
-        JE_FIELD(FogComponent, lightShafts, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(FogComponent, lightShafts, .flags = OmitIfDefault,
                  .tooltip = "Shadows darken the fog behind objects (light shafts): the main directional light's and those of the point "
                             "and spot lights the fog scatters. Each light needs its shadows on.",
                  .group = "Volumetric Fog"),
-        JE_FIELD(FogComponent, noiseIntensity, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .max = 1.0f,
+        JE_FIELD(FogComponent, noiseIntensity, .flags = OmitIfDefault, .min = 0.0f, .max = 1.0f,
                  .tooltip = "How much a 3D noise varies the fog's density, fading out towards the Distance.", .group = "Volumetric Fog"),
-        JE_FIELD(FogComponent, noiseScale, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f,
+        JE_FIELD(FogComponent, noiseScale, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f,
                  .tooltip = "The size of the noise's features.", .group = "Volumetric Fog"),
-        JE_FIELD(FogComponent, wind, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::MetersPerSecond,
+        JE_FIELD(FogComponent, wind, .flags = OmitIfDefault, .unit = Unit::MetersPerSecond,
                  .tooltip = "The speed the noise drifts at.", .group = "Volumetric Fog"),
-        JE_FIELD(FogComponent, qualityOverride, .enumDesc = &enums::kAtmosphereQualityOverride, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(FogComponent, qualityOverride, .enumDesc = &enums::kAtmosphereQualityOverride, .flags = OmitIfDefault,
                  .tooltip = "Caps this fog's tier below the project's Atmosphere Quality (never raises it).", .group = "Volumetric Fog"),
     };
 
@@ -311,7 +294,7 @@ namespace {
                  .tooltip = "Zones apply in ascending priority over the scene's fog: a higher one wins where they overlap."),
         JE_FIELD(FogZoneComponent, weight, .min = 0.0f, .max = 1.0f,
                  .tooltip = "How much of the zone's look applies inside it (0..1)."),
-        JE_FIELD(FogZoneComponent, profile, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault | CodegenIfChanged, .asset = AssetKind::FogProfile,
+        JE_FIELD(FogZoneComponent, profile, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault, .asset = AssetKind::FogProfile,
                  .label = "Profile",
                  .tooltip = "The Fog Profile whose set fields blend over the scene's fog while the camera is in the zone. None: no effect."),
     };
@@ -391,11 +374,6 @@ namespace {
 
     const ComponentCodec kSkyboxCodec = JE_STREAM_CODEC(SkyboxComponent, encodeSkyboxComponent, decodeSkyboxComponent);
 
-    std::string skyboxCodegen(EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createSkyboxComponent(ctx.indentSpaces, registry, entity, ctx.projectPath, ctx.sceneName, ctx.entityName,
-                                              ctx.assignExisting, ctx.entityVarNames);
-    }
-
 }
 
 const ComponentDesc kLightDesc{
@@ -403,7 +381,6 @@ const ComponentDesc kLightDesc{
     .body = JE_STRUCT_DESC(LightComponent, "LightComponent", kLightFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(LightComponent),
     .structuralUpdateFlags = UpdateFlags_Scene_Mesh_Variant,
-    .codegenVar = "light", .codegenOrder = kLightCodegenOrder,
 };
 
 const ComponentDesc kLight2DDesc{
@@ -412,7 +389,6 @@ const ComponentDesc kLight2DDesc{
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(Light2DComponent),
     // adding/removing a 2D light toggles the USE_LIGHT2D shader variant
     .structuralUpdateFlags = UpdateFlags_Scene_Mesh_Variant,
-    .codegenVar = "light2d", .codegenOrder = kLight2DCodegenOrder,
 };
 
 const ComponentDesc kShadowCaster2DDesc{
@@ -420,7 +396,6 @@ const ComponentDesc kShadowCaster2DDesc{
     .displayName = "Shadow Caster 2D", .icon = ICON_FA_CIRCLE_HALF_STROKE,
     .body = JE_STRUCT_DESC(ShadowCaster2DComponent, "ShadowCaster2DComponent", kShadowCaster2DFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(ShadowCaster2DComponent),
-    .codegenVar = "shadowcaster2d",
 };
 
 const ComponentDesc kCapsuleShadowCasterDesc{
@@ -428,7 +403,6 @@ const ComponentDesc kCapsuleShadowCasterDesc{
     .displayName = "Capsule Shadow Caster", .icon = ICON_FA_CAPSULES,
     .body = JE_STRUCT_DESC(CapsuleShadowCasterComponent, "CapsuleShadowCasterComponent", kCapsuleShadowCasterFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(CapsuleShadowCasterComponent),
-    .codegenVar = "capsuleshadowcaster",
 };
 
 const ComponentDesc kFogDesc{
@@ -436,7 +410,6 @@ const ComponentDesc kFogDesc{
     .body = JE_STRUCT_DESC(FogComponent, "FogComponent", kFogFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(FogComponent),
     .structuralUpdateFlags = UpdateFlags_Scene_Mesh_Variant,
-    .codegenVar = "fog",
 };
 
 const ComponentDesc kLocalVolumetricFogDesc{
@@ -444,7 +417,6 @@ const ComponentDesc kLocalVolumetricFogDesc{
     .displayName = "Local Volumetric Fog", .icon = ICON_FA_SMOG,
     .body = JE_STRUCT_DESC(LocalVolumetricFogComponent, "LocalVolumetricFogComponent", kLocalVolumetricFogFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(LocalVolumetricFogComponent),
-    .codegenVar = "volume",
 };
 
 const ComponentDesc kFogZoneDesc{
@@ -459,7 +431,6 @@ const ComponentDesc kVolumetricCloudsDesc{
     .displayName = "Volumetric Clouds", .icon = ICON_FA_CLOUD,
     .body = JE_STRUCT_DESC(VolumetricCloudsComponent, "VolumetricCloudsComponent", kVolumetricCloudsFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(VolumetricCloudsComponent),
-    .codegenVar = "clouds",
 };
 
 const ComponentDesc kMirrorDesc{
@@ -468,7 +439,6 @@ const ComponentDesc kMirrorDesc{
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(MirrorComponent),
     // adding/removing a mirror toggles the inverted-culling pipeline baked into meshes
     .structuralUpdateFlags = UpdateFlags_Scene_Mesh_Reload,
-    .codegenVar = "mirror",
 };
 
 const ComponentDesc kReflectionProbeDesc{
@@ -478,7 +448,6 @@ const ComponentDesc kReflectionProbeDesc{
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ReflectionProbeComponent),
     .postDecode = &reflectionProbePostDecode,
     .structuralUpdateFlags = UpdateFlags_Scene_Mesh_Variant,
-    .codegenVar = "probe",
 };
 
 // the keys its codec reads
@@ -490,7 +459,6 @@ const ComponentDesc kSkyboxDesc{
     .body = JE_STRUCT_DESC(SkyboxComponent, "SkyboxComponent", kSkyboxFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(SkyboxComponent),
     .codec = &kSkyboxCodec,
-    .codegen = &skyboxCodegen,
     .extraKeys = kSkyboxExtraKeys,
 };
 

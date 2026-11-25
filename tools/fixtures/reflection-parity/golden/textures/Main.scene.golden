@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 9
 guid: 0a0a075220cf4d05f700ac24562aab37
 id: 1
 name: Main
@@ -33,13 +33,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_3d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 5
-  maxSpriteFrames: 0
-  maxBones: 128
 shaderKeys:
   - type: blit
   - type: blit
@@ -62,7 +55,6 @@ entities:
         enabled: true
         type: spot
         direction: [0, 0, 0]
-        worldDirection: [0, 0, 0]
         color: [1, 1, 1]
         range: 0
         intensity: 1

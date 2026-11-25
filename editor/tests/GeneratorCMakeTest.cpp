@@ -36,10 +36,8 @@ namespace {
         fs::create_directories(project / ".jasperengine" / "generated");
         WindowSettings window;
         window.title = title;
-        const std::vector<SceneBuildInfo> scenes = {SceneBuildInfo{1, "Level", {1}, {1}, true}};
         Generator generator;
-        generator.configure(scenes, "test", {}, {}, project, project / ".jasperengine", project / "assets", project / "lua", {}, 20,
-                            Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, window);
+        generator.configure("test", {}, project, project / ".jasperengine", project / "assets", project / "lua", {}, 20, true, window);
         return generatorCMakeRead(project / "CMakeLists.txt");
     }
 

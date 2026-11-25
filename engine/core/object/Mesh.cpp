@@ -681,6 +681,22 @@ bool Mesh::isAutoTransparency() const{
     return getFirstMesh().mesh->autoTransparency;
 }
 
+void Mesh::setMeshAsset(const std::string& path){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+    mesh.meshAsset = path;
+    // read now, so the vertex count and the bounds answer before the next update
+    std::shared_ptr<MeshSystem> meshSystem = scene->findSystem<MeshSystem>();
+    if (meshSystem)
+        meshSystem->loadMeshAsset(mesh);
+    else
+        mesh.loadedMeshAsset.clear();
+    scene->markChanged<MeshComponent>(entity);
+}
+
+std::string Mesh::getMeshAsset() const{
+    return getComponent<MeshComponent>().meshAsset.path;
+}
+
 void Mesh::setCustomShader(const std::string& path){
     setOnAll(getTargetMeshes(), &MeshComponent::customShader, path, true);
 }

@@ -156,7 +156,7 @@ std::vector<std::string> AssetQuery::typeNamesFor(const std::string& value) {
         {"texture2d", {"texture"}}, {"texture", {"texture"}}, {"sprite", {"texture"}}, {"image", {"texture"}},
         {"material", {"material"}}, {"scene", {"scene"}}, {"sceneasset", {"scene"}},
         {"prefab", {"prefab"}}, {"gameobject", {"prefab"}},
-        {"model", {"model"}}, {"mesh", {"model", "sub_asset"}},
+        {"model", {"model"}}, {"mesh", {"model", "sub_asset", "mesh"}},
         {"audioclip", {"audio"}}, {"audio", {"audio"}},
         {"font", {"font"}}, {"shader", {"shader"}},
         {"script", {"script"}}, {"monoscript", {"script"}},

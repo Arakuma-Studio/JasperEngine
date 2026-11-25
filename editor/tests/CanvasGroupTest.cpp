@@ -34,7 +34,6 @@
 #include "component/TextComponent.h"
 #include "Input.h"
 #include "Stream.h"
-#include "Factory.h"
 #include "Catalog.h"
 #include "shader/ShaderVariantCollector.h"
 #include "pool/ShaderPool.h"
@@ -710,22 +709,6 @@ TEST_F(CanvasGroupTest, OldTweensEncodeUnchanged){
                     reflect::DecodeContext{}, report);
     EXPECT_EQ(alphaBack.alphaTarget, AlphaTweenTarget::CANVAS_GROUP);
     EXPECT_TRUE(tweenBack.useUnscaledTime);
-}
-
-TEST_F(CanvasGroupTest, FactoryEmitsTheGroup){
-    Entity root = container(NULL_ENTITY);
-    CanvasGroupComponent& g = addGroup(root, 0.5f);
-    g.interactable = false;
-    g.renderMode = CanvasGroupRenderMode::FLATTEN;
-    // the S08 tables' code (Factory::createComponent)
-    const std::string code = Factory::createComponent(4, &scene, root, ComponentType::CanvasGroupComponent, std::filesystem::path(), "scene", "entity");
-    EXPECT_NE(code.find("CanvasGroupComponent canvasgroup;"), std::string::npos) << code;
-    EXPECT_NE(code.find("canvasgroup.alpha = 0.5"), std::string::npos) << code;
-    EXPECT_NE(code.find("canvasgroup.interactable = false;"), std::string::npos) << code;
-    EXPECT_NE(code.find("canvasgroup.renderMode = CanvasGroupRenderMode::FLATTEN;"), std::string::npos) << code;
-    EXPECT_NE(code.find("CanvasGroupComponent"), std::string::npos);
-    // the generic dispatch reaches it
-    EXPECT_EQ(Factory::createComponent(4, &scene, root, ComponentType::CanvasGroupComponent, std::filesystem::path(), "scene", "entity"), code);
 }
 
 // ---- 11. tweens
