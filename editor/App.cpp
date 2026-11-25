@@ -6197,9 +6197,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (BLIT 'Gli' 20) and the screen transition program.
     // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
-    // v69: S94 P3 (S93 holds v66, S92 v67): the Radii vignette (post_color.glsl, uber.frag) and
-    //      library:panoramic_sky's VERTEX_MAPPING (sky_vs.glsl SKY_SPHERE_UV).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v69";
+    // v72: S94 (after #3's v66, #10's v69, #149's v70, #140's v71 in the landing order): the Radii
+    //      vignette (post_color.glsl, uber.frag), library:panoramic_sky's VERTEX_MAPPING (sky_vs.glsl
+    //      SKY_SPHERE_UV), the Outline passes and Sprite Skin.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v72";
 }
 
 void editor::App::pushTabNotificationStyle(){

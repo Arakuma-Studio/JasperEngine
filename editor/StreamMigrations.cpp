@@ -864,7 +864,12 @@ namespace {
         }
     }
 
-    // Scene 9 -> 10 (S94 F24, F33): Text alignment replaces the two pivot booleans; Animators and
+    // Scene 9 -> 10: S92's (#10, htmlUiRenderMode) lands first in the landing order; until it is on
+    // main this branch steps over it, so its own 10 -> 11 runs (replaced by S92's when main has it)
+    void sceneV9ToV10BeforeS92(YAML::Node&, MigrationLog&){
+    }
+
+    // Scene 10 -> 11 (S94 F24, F33): Text alignment replaces the two pivot booleans; Animators and
     // Animation Players keep their clips' root drift
     void sceneTextAlignmentAndRootDrift(YAML::Node& root, MigrationLog& log){
         logTextPivots(migrateTextPivots(root["entities"]), log);
@@ -885,7 +890,7 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 10;
+        case DocumentKind::Scene: return 11;
         case DocumentKind::Project: return 2;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
@@ -931,7 +936,8 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {6, 7, "Line and Trail Renderer curves and gradients in the editor's curve form", sceneV6ToV7},
         {7, 8, "sprite sheets (identity: an older scene has none)", sheetSpritesIdentity},
         {8, 9, "mesh assets (identity: an older scene holds its meshes' buffers)", meshAssetsIdentity},
-        {9, 10, "Text pivots to Text alignment; Animators keep their root drift", sceneTextAlignmentAndRootDrift},
+        {9, 10, "S92's HTML UI render mode (on main before this; identity here)", sceneV9ToV10BeforeS92},
+        {10, 11, "Text pivots to Text alignment; Animators keep their root drift", sceneTextAlignmentAndRootDrift},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},

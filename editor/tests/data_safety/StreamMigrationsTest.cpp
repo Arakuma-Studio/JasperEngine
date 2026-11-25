@@ -120,8 +120,9 @@ TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
     // 1 -> 2, then 2 -> 3 (S20's particle systems: none here), 3 -> 4 (S29's derived transform
     // values: none here), 4 -> 5 (S18's splines: identity), 5 -> 6 (S21's Animation Player
     // controllers: none here), 6 -> 7 (S27's curve form: no lines), 7 -> 8 (S44's sheet sprites:
-    // identity), 8 -> 9 (S98's mesh assets: identity) and 9 -> 10 (S94's Text alignment: no texts)
-    ASSERT_EQ(result.applied.size(), 9u);
+    // identity), 8 -> 9 (S98's mesh assets: identity), 9 -> 10 (S92's) and 10 -> 11 (S94's Text
+    // alignment: no texts)
+    ASSERT_EQ(result.applied.size(), 10u);
     EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     EXPECT_EQ(root["scene"]["shadowQuality"].as<std::string>(), "auto");
     EXPECT_FLOAT_EQ(root["entities"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
@@ -176,8 +177,8 @@ TEST(StreamMigrations, SceneV2ToV3ParticleSystemsMoveToTheirTargets){
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 2);
     // 2 -> 3, then S29's 3 -> 4, S18's identity 4 -> 5, S21's 5 -> 6, S27's curve form 6 -> 7, the
-    // identities 7 -> 8 (S44) and 8 -> 9 (S98), and S94's 9 -> 10
-    ASSERT_EQ(result.applied.size(), 8u);
+    // identities 7 -> 8 (S44) and 8 -> 9 (S98), S92's 9 -> 10 and S94's 10 -> 11
+    ASSERT_EQ(result.applied.size(), 9u);
     EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
 
     const YAML::Node fire = root["entities"][0]["components"];
@@ -280,7 +281,7 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
         " components: {animationplayer: {controller: anim/other.controller, controllerGuid: 0000111122223333444455556666aaaa}}}]}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 5);
-    ASSERT_EQ(result.applied.size(), 5u) << "5 -> 6, S27's curve form 6 -> 7 (no lines), S44's sheet sprites 7 -> 8, S98's mesh assets 8 -> 9, then S94's 9 -> 10";
+    ASSERT_EQ(result.applied.size(), 6u) << "5 -> 6, S27's curve form 6 -> 7 (no lines), S44's sheet sprites 7 -> 8, S98's mesh assets 8 -> 9, S92's 9 -> 10, then S94's 10 -> 11";
     EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
 
     const YAML::Node granjero = root["entities"][0]["components"];
@@ -312,7 +313,7 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
     EXPECT_TRUE(enabledOverride);
     EXPECT_FALSE(controllerOverride);
     EXPECT_FALSE(entry["components"]["animationplayer"]["enabled"].as<bool>());
-    // then S94's 8 -> 9: the two Animators keep their root drift (a deliberate addition, S94 F33)
+    // then S94's 10 -> 11: the two Animators keep their root drift (a deliberate addition, S94 F33)
     ASSERT_EQ(result.log.lines.size(), 2u);
     EXPECT_NE(result.log.lines[0].find("2 players got an Animator"), std::string::npos) << result.log.lines[0];
     EXPECT_NE(result.log.lines[1].find("keep"), std::string::npos) << result.log.lines[1];

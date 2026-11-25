@@ -124,8 +124,9 @@ TEST(Stream, DerivedTransformNotWritten) {
     // the format version moved on, with the migration that drops them (then S18's identity 4 -> 5
     // and the Animation Player controllers' move to Animators, 5 -> 6 / prefab 6 -> 7, and the
     // upstream curve form 6 -> 7 / prefab 7 -> 8, the sprite sheets' identity 7 -> 8 / prefab 8 -> 9,
-    // the mesh assets' identity 8 -> 9 / prefab 9 -> 10 and S94's Text alignment 9 -> 10 / prefab 10 -> 11)
-    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 10);
+    // the mesh assets' identity 8 -> 9 / prefab 9 -> 10, S92's 9 -> 10 and S94's Text alignment 10 -> 11 /
+    // prefab 10 -> 11)
+    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 11);
     EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), 11);
     EXPECT_EQ(Prefab::FILE_VERSION, 11);
     YAML::Node root = YAML::Load(old);

@@ -708,7 +708,7 @@ void editor::mcp::registerMeshTools(McpRegistry& registry) {
                 {"normals", stringEnum("", {"import", "calculate", "none"})},
                 {"smoothing_angle", number("", 0, 180)},
                 {"normals_weighting", stringEnum("", {"area_and_angle", "area"})},
-                {"smoothness_source", stringEnum("", {"from_angle", "from_smoothing_groups", "prefer_smoothing_groups"})},
+                {"smoothness_source", string("")},
                 {"tangents", stringEnum("", {"import", "calculate", "none"})},
                 {"generate_lods", stringEnum("", {"automatic", "on", "off"})},
                 {"lod_count", integer("", 1, 3)},
