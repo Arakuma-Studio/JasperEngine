@@ -5044,11 +5044,14 @@ std::vector<std::string> editor::Project::scriptsPostProcessingFields() const {
         if (file)
             contents.emplace_back((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
-    for (const std::string& field : ShaderVariantCollector::getScriptableEffectFields()) {
-        for (const std::string& content : contents) {
-            if (content.find(field) != std::string::npos) {
-                named.push_back(field);
-                break;
+    for (const std::vector<std::string>* fields : {&ShaderVariantCollector::getScriptableEffectFields(),
+                                                   &ShaderVariantCollector::getScriptableCavityFields()}) {
+        for (const std::string& field : *fields) {
+            for (const std::string& content : contents) {
+                if (content.find(field) != std::string::npos) {
+                    named.push_back(field);
+                    break;
+                }
             }
         }
     }

@@ -1160,6 +1160,27 @@ TEST(CookedScene, BrokenAudioSourceSlotsLoadRepaired) {
     EXPECT_EQ(log.count(D_LOG_WARN, "'Stray'"), 1u) << "named in a warning";
 }
 
+// S100: Cavity's post-processing fields reach a build in its cooked scene (the field table's records,
+// keyed by name hash): a Compile build loads the same cooked scene, no scene code is generated (S98 D1)
+TEST(CookedScene, SceneSettingsKeepCavity) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    PostProcessingSettings settings;
+    settings.cavityEnabled = true;
+    settings.cavityType = CavityType::WORLD;
+    settings.cavityScreenWidth = 3.0f;
+    settings.cavityWorldRadius = 0.5f;
+    settings.cavityWorldSamples = 16;
+    settings.cavityMaxPixelRadius = 0.0f;
+    settings.cavityDebug = true;
+    scene->setPostProcessing(settings);
+
+    DecodedScene player;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
+    EXPECT_TRUE(player.scene->scene->getPostProcessing() == settings);
+}
+
 // A newer minor adds only length-prefixed fields: a player reads its content without them and warns
 // once; another major is refused, naming the fix
 // S98 F1 (format 1.7): a mesh showing a .mesh asset ships the reference, not the buffers, and the

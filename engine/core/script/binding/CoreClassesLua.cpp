@@ -2636,6 +2636,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("CavityType")
+        .addVariable("SCREEN", CavityType::SCREEN)
+        .addVariable("WORLD", CavityType::WORLD)
+        .addVariable("BOTH", CavityType::BOTH)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("LutInputEncoding")
         .addVariable("AUTO", LutInputEncoding::AUTO)
         .addVariable("SRGB", LutInputEncoding::SRGB)
@@ -3120,6 +3127,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("edgeDetectThreshold", &PostProcessingSettings::edgeDetectThreshold, &PostProcessingSettings::edgeDetectThreshold)
         .addProperty("edgeDetectIntensity", &PostProcessingSettings::edgeDetectIntensity, &PostProcessingSettings::edgeDetectIntensity)
         .addProperty("edgeDetectColor", &PostProcessingSettings::edgeDetectColor, &PostProcessingSettings::edgeDetectColor)
+        .addProperty("cavityEnabled", &PostProcessingSettings::cavityEnabled, &PostProcessingSettings::cavityEnabled)
+        .addProperty("cavityType", &PostProcessingSettings::cavityType, &PostProcessingSettings::cavityType)
+        .addProperty("cavityScreenRidge", &PostProcessingSettings::cavityScreenRidge, &PostProcessingSettings::cavityScreenRidge)
+        .addProperty("cavityScreenValley", &PostProcessingSettings::cavityScreenValley, &PostProcessingSettings::cavityScreenValley)
+        .addProperty("cavityScreenWidth", &PostProcessingSettings::cavityScreenWidth, &PostProcessingSettings::cavityScreenWidth)
+        .addProperty("cavityWorldRadius", &PostProcessingSettings::cavityWorldRadius, &PostProcessingSettings::cavityWorldRadius)
+        .addProperty("cavityWorldRidge", &PostProcessingSettings::cavityWorldRidge, &PostProcessingSettings::cavityWorldRidge)
+        .addProperty("cavityWorldValley", &PostProcessingSettings::cavityWorldValley, &PostProcessingSettings::cavityWorldValley)
+        .addProperty("cavityWorldSamples", &PostProcessingSettings::cavityWorldSamples, &PostProcessingSettings::cavityWorldSamples)
+        .addProperty("cavityMaxPixelRadius", &PostProcessingSettings::cavityMaxPixelRadius, &PostProcessingSettings::cavityMaxPixelRadius)
+        .addProperty("cavityDebug", &PostProcessingSettings::cavityDebug, &PostProcessingSettings::cavityDebug)
         .addProperty("filmGrainEnabled", &PostProcessingSettings::filmGrainEnabled, &PostProcessingSettings::filmGrainEnabled)
         .addProperty("filmGrainIntensity", &PostProcessingSettings::filmGrainIntensity, &PostProcessingSettings::filmGrainIntensity)
         .addProperty("filmGrainResponse", &PostProcessingSettings::filmGrainResponse, &PostProcessingSettings::filmGrainResponse)

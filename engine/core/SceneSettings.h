@@ -131,6 +131,15 @@ namespace jasperengine{
         FILMIC      // a 5x5 lattice of grain particles (desktop / high-end)
     };
 
+    // What Cavity computes (PostProcessingSettings::cavityType, S100): Screen is Blender's
+    // "curvature" (thin lines from neighbouring normals), World its "cavity" (a soft bevel from
+    // depth samples within a world radius), Both multiplies the two
+    enum class CavityType : int {
+        SCREEN,
+        WORLD,
+        BOTH
+    };
+
     // Palette Quantize (S43 R19, PostProcessingSettings::palette*): the ordered dither of the
     // pick between a cell's two palette colours, the distance the table is baked by, and its
     // grid (32^3 cells, or 64^3: slower to bake, for palettes of many close shades)
@@ -247,6 +256,22 @@ namespace jasperengine{
         float edgeDetectThreshold = 0.1f;           // 0..1 luma gradient where edges start
         float edgeDetectIntensity = 1.0f;           // 0..1 mix of the edge colour
         Vector3 edgeDetectColor = Vector3(0.0f, 0.0f, 0.0f);
+
+        // Cavity (S100): lightens convex edges (ridges) and darkens creases (valleys) of the opaque
+        // 3D scene, like Blender's viewport Cavity; one multiply draw in the colour pass after the
+        // opaque queue, reading the scene depth and view-space normals (not a T0-T2 tier).
+        // Widths in pixels are at a 1080-pixel-high target and scale with the target's height
+        bool cavityEnabled = false;
+        CavityType cavityType = CavityType::BOTH;
+        float cavityScreenRidge = 1.0f;             // 0..2 brightening of convex edges (lines)
+        float cavityScreenValley = 1.0f;            // 0..2 darkening of creases (lines)
+        float cavityScreenWidth = 1.0f;             // 1..4 line width, pixels at 1080p
+        float cavityWorldRadius = 0.25f;            // 0.01..5 world-space width of the soft bevel
+        float cavityWorldRidge = 1.0f;              // 0..2.5 brightening of convex edges (bevel)
+        float cavityWorldValley = 1.0f;             // 0..2.5 darkening of creases (bevel)
+        int cavityWorldSamples = 8;                 // 4, 8 or 16 depth samples per pixel
+        float cavityMaxPixelRadius = 24.0f;         // 0..64 cap of the bevel's on-screen radius, pixels at 1080p (0: none)
+        bool cavityDebug = false;                   // shows the cavity factor alone as grey (0.5 neutral)
 
         bool filmGrainEnabled = false;
         float filmGrainIntensity = 0.2f;            // 0..1

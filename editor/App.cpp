@@ -6362,7 +6362,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v70: S99's Area Lights and IES Profiles (after S78's v66 and S92's v69): the built-in Lit's
     //      USE_AREA_LIGHTS ('Ar') and USE_IES ('Ie') defines (includes/area_lights.glsl, u_lightProfiles in
     //      includes/lights.glsl).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v70";
+    // v71: S100's Cavity (after S78's v66, S92's v69 and S99's v70): DEPTH 'Cvn' 26 (DEPTH_NORMALS:
+    //      includes/depth_normals.glsl, depth.vert, includes/surface_depth_vs.glsl and the wrapped
+    //      fragment stage) and the CAVITY type.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v71";
 }
 
 void editor::App::pushTabNotificationStyle(){

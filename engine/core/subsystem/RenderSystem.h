@@ -331,6 +331,20 @@ namespace jasperengine{
 		Vector4 noiseScale; // screenSize/noiseSize in .xy
 	} fs_ssao_t;
 
+	// u_fs_cavity of cavity.frag (S100 Cavity)
+	typedef struct fs_cavity_t {
+		Matrix4 projection;
+		Matrix4 invProjection;
+		Matrix4 view;         // the pre-pass's normals are world-space
+		Vector4 screen;       // x Ridge, y Valley, z tap distance (pixels), w depth step margin
+		Vector4 world;        // x Radius, y Ridge, z Valley, w samples
+		Vector4 worldLimits;  // x most on-screen radius (pixels, 0: none), y attenuation, z gain
+		Vector4 texel;        // the colour pass's size, 1 / size
+		Vector4 depthTexel;   // the depth target's size, 1 / size
+		Vector4 flags;        // x flip Y, y G-buffer normals, z debug view
+		Vector4 fog;          // x type (< 0: none), y density, z start, w end
+	} fs_cavity_t;
+
 	typedef struct fs_ssao_blur_t {
 		Vector4 texelSize; // 1.0/textureSize in .xy
 	} fs_ssao_blur_t;
@@ -533,6 +547,10 @@ namespace jasperengine{
 		// a camera of the scene draws through a Pixel Perfect Camera that snaps (S41): sprites,
 		// tilemaps (and their depth programs) take the 'Pxs' variants
 		bool pixelSnap = false;
+		// the scene has Cavity on (S100 R2): every opaque mesh has a depth program, and it writes the
+		// view-space normal too (DEPTH 'Cvn'), so the depth pre-pass gives Cavity normals that match
+		// its depth
+		bool cavityNormals = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -606,6 +624,17 @@ namespace jasperengine{
 		bool ineffective = false;      // the scale buys too little for the content (GPU law)
 		uint32_t acceptedChanges = 0;
 		float probeSeconds = 0.0f;     // frame law: seconds until it probes one rung up (0: none)
+	};
+
+	// Cavity (S100) as the main camera drew it last frame (RenderSystem::getCavityStatus, MCP
+	// get_post_processing_status): what the device tier resolved and where the normals came from
+	struct CavityStatus {
+		bool active = false;               // drawn last frame (enabled, a 3D main camera with depth)
+		CavityType type = CavityType::BOTH;    // as drawn
+		int worldSamples = 0;              // after the device tier's cap (0 when World is not drawn)
+		const char* normals = "none";      // "gbuffer" (SSR's), "prepass" or "none"
+		bool addedPrepass = false;         // Cavity alone asked for the sampled depth pre-pass
+		uint32_t draws = 0;                // its full-screen draws last frame (0 or 1)
 	};
 
 	// What the shader variant of a submesh depends on in its mesh and GameObject
@@ -1331,6 +1360,7 @@ namespace jasperengine{
 		struct SceneInputTarget{
 			Framebuffer framebuffer;
 			bool color = false;
+			bool normals = false;  // a depth target with Cavity's normals attachment (S100)
 			unsigned int width = 0;
 			unsigned int height = 0;
 			uint64_t lastUsed = 0; // drawCount
@@ -2077,6 +2107,27 @@ namespace jasperengine{
 		int ssaoSlotParams;
 		int ssaoBlurSlotParams;
 
+		// Cavity (S100; RenderSystem.cpp, "Cavity"): one fullscreen multiply in the main camera's
+		// colour pass, reading the depth and normals of one pass (SSR's G-buffer, or the depth
+		// pre-pass with the 'Cvn' programs' normals attachment)
+		bool cavityNormalPrograms = false;   // the meshes load 'Cvn' depth programs (MeshShaderEnvironment::cavityNormals)
+		bool cavityNormalsPending = false;   // since that switched on, until every loaded mesh has them
+		std::shared_ptr<ShaderRender> cavityShader;
+		uint64_t cavityProperties = 0;       // of cavityShader ('Scr', 'Wld')
+		ObjectRender cavityRender;
+		bool cavityLoaded = false;           // cavityRender holds cavityShader's draw
+		bool cavityHeld = false;             // since Cavity last ran: its program, draw, targets or status may exist
+		int cavitySlotParams = -1;
+		std::pair<int, int> cavityDepthSlot = {-1, -1};
+		std::pair<int, int> cavityNormalSlot = {-1, -1};
+		std::pair<int, int> cavityNormalFineSlot = {-1, -1};
+		fs_cavity_t fs_cavity;
+		// the camera pass's depth pre-passes write Cavity's normals (their targets have the second
+		// attachment), and the depth and normals the last of them drew (null: none this pass)
+		bool passPrepassNormals = false;
+		TextureRender* passNormalsDepth = nullptr;
+		TextureRender* passNormalsTexture = nullptr;
+
 		// engine-written custom uniforms: seconds since startup and the scene clock
 		// (Scene::getSceneTime), sampled once per draw(), and the size of the target being
 		// drawn (shadow slot, SSAO depth or camera color)
@@ -2308,6 +2359,8 @@ namespace jasperengine{
 		// the game's events were paused at the last tick: the editor's edit mode (and Pause), where
 		// the controller does not run and a pinned scale does not apply
 		bool dynamicResolutionEditPaused = false;
+		// Cavity as the main camera drew it last frame (getCavityStatus)
+		CavityStatus cavityStatus;
 		// why the controller did not run this frame ("" when it did), DynamicResolutionStatus::idle
 		const char* dynamicResolutionIdle = "off";
 		float dynamicResolutionScale = 1.0f;
@@ -2974,7 +3027,7 @@ namespace jasperengine{
 		                                const SubmeshShaderVariant& variant, const std::string& meshShaderSrc,
 		                                const std::string& depthShaderSrc);
 		void loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submesh, uint16_t pipelines, const RenderState& colorState,
-		                              uint16_t depthPipelines, const RenderState& depthState, bool allDepthAttributes, int msaaSamples,
+		                              uint32_t depthPipelines, const RenderState& depthState, bool allDepthAttributes, int msaaSamples,
 		                              BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride, bool& pending);
 		void releaseSubmeshBatchVariants(Submesh& submesh, bool keepShaders);
 		// the bounds of the vertices a submesh draws (Submesh::localBounds), from its float
@@ -3445,6 +3498,7 @@ namespace jasperengine{
 		void loadSSAO();
 		void destroySSAO();
 		bool ensureSSAOFramebuffers(unsigned int width, unsigned int height);
+		void createSSAODepthFramebuffer(unsigned int width, unsigned int height);
 		// sharedDepth != null reuses an existing packed-depth texture (the SSR G-buffer),
 		// skipping the SSAO depth pre-pass; null runs the pre-pass
 		// fixedResolution: the color pass it feeds renders at the scene's fixed size
@@ -3461,8 +3515,25 @@ namespace jasperengine{
 		// the opaque meshes' packed depth (PIP_DEPTH) of a camera into target: the SSAO,
 		// post-process and scene depth pre-passes. perCameraTransform: the camera's, when the
 		// pass makes its own per-object matrices (renderCameraPass's perCameraMVP), else null
+		// A target with a second colour attachment (passPrepassNormals) also takes the 'Cvn'
+		// programs' normals (PIP_DEPTH_NORMALS) and becomes passNormalsDepth / passNormalsTexture
 		void renderOpaqueDepth(CameraComponent& camera, Framebuffer& target, unsigned int width, unsigned int height,
 		                       int instanceView, const LodView* lodView, Transform* perCameraTransform);
+
+		// Cavity (S100)
+		// per update: the 'Cvn' programs follow the scene's setting, the draw's variant its type
+		void updateCavity();
+		bool loadCavity();
+		void destroyCavity();
+		// every loaded mesh draws with the depth programs cavityNormalPrograms asks for
+		bool cavityNormalProgramsReady();
+		// the multiply over the opaque scene, inside the colour pass (depth: the packed depth
+		// normals came with; normalsFine: the G-buffer's second half, else unused); false when
+		// it drew nothing (its variant still waits)
+		bool drawCavity(const CameraComponent& camera, PipelineType colorPip, int passMsaa, TextureRender* depth, TextureRender* normals,
+		                TextureRender* normalsFine, bool gbufferNormals, unsigned int width, unsigned int height, bool flipped);
+		// the normals pre-pass targets of a view go (Cavity off for it)
+		void releaseCavityTargets(RenderView& view);
 
 		// scene inputs (phase 3)
 		// records what a loaded mesh or points component reads of the scene (0: nothing)
@@ -3539,7 +3610,8 @@ namespace jasperengine{
 		// the scene inputs the visible draws of a camera pass require
 		uint32_t findPassSceneInputs(CameraComponent& camera, int instanceView);
 		// a depth or colour target of the view being drawn, made or reused
-		SceneInputTarget* ensureSceneInputTarget(bool color, unsigned int width, unsigned int height);
+		// (normals: a depth target with Cavity's normals attachment, passPrepassNormals)
+		SceneInputTarget* ensureSceneInputTarget(bool color, unsigned int width, unsigned int height, bool normals = false);
 		// frees the targets of a view unused for a while (all: every one)
 		void releaseSceneInputTargets(RenderView& view, bool all);
 		bool ensureSceneColorRedirect(unsigned int width, unsigned int height);
@@ -3924,6 +3996,7 @@ namespace jasperengine{
 		// one, else the settings'), whether the controller runs, and its state
 		float getAppliedRenderScale() const;
 		DynamicResolutionStatus getDynamicResolutionStatus() const;
+		CavityStatus getCavityStatus() const { return cavityStatus; }
 		bool isDynamicResolutionRunning() const { return dynamicResolutionRunning; }
 		const DynamicResolutionController& getDynamicResolution() const { return dynamicResolution; }
 		// pins the applied scale (0.5..1) while the uber pass runs; 0 or below releases it

@@ -257,6 +257,7 @@ namespace luabridge
     template<> struct Stack<jasperengine::MonochromeMode> : EnumWrapper<jasperengine::MonochromeMode>{};
     template<> struct Stack<jasperengine::FilmGrainType> : EnumWrapper<jasperengine::FilmGrainType>{};
     template<> struct Stack<jasperengine::FilmGateMask> : EnumWrapper<jasperengine::FilmGateMask>{};
+    template<> struct Stack<jasperengine::CavityType> : EnumWrapper<jasperengine::CavityType>{};
     template<> struct Stack<jasperengine::PaletteDither> : EnumWrapper<jasperengine::PaletteDither>{};
     template<> struct Stack<jasperengine::PaletteDistance> : EnumWrapper<jasperengine::PaletteDistance>{};
     template<> struct Stack<jasperengine::PalettePrecision> : EnumWrapper<jasperengine::PalettePrecision>{};

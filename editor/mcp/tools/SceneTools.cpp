@@ -6,6 +6,7 @@
 #include "registry/TagManager.h"
 #include "McpTools.h"
 #include "component/CameraComponent.h"
+#include "device/QualityResolver.h"
 #include "shader/ShaderGlobals.h"
 
 #include "mcp/McpCall.h"
@@ -2013,6 +2014,16 @@ void getPostProcessingStatusTool(const CallPtr& call) {
                 {"uber_features", features}, {"render_scale", McpValues::number(tiers.renderScale)},
                 {"render_scale_applied", McpValues::number(applied)}, {"passes", passes}, {"passes_estimate", true},
                 {"dynamic_resolution", dynamicResolutionToJson(status)}};
+    // Cavity (S100) as the main camera drew it last frame; until it draws, the type and samples the
+    // settings resolve to on this device tier
+    static const char* const cavityTypes[] = {"screen", "world", "both"};
+    const CavityStatus cavity = render ? render->getCavityStatus() : CavityStatus();
+    const CavityType cavityType = cavity.active ? cavity.type : settings.cavityType;
+    const int cavitySamples = cavity.active ? cavity.worldSamples
+        : (cavityType == CavityType::SCREEN ? 0 : QualityResolver::cavityWorldSamples(settings.cavityWorldSamples));
+    out["cavity"] = {{"enabled", settings.cavityEnabled}, {"drawn", cavity.active}, {"type", cavityTypes[(int)cavityType]},
+                     {"world_samples", cavitySamples}, {"normals", cavity.normals}, {"added_prepass", cavity.addedPrepass},
+                     {"draws", cavity.draws}};
     if (render) out["debug"] = postDebugJson(*render);
     char text[256];
     std::snprintf(text, sizeof(text), "\"%s\": %s, uber pass %s, render scale %.2f applied", scene->name.c_str(),
@@ -2023,6 +2034,13 @@ void getPostProcessingStatusTool(const CallPtr& call) {
         std::snprintf(text, sizeof(text), "; dynamic resolution %s (%s, %.2f, %.1f / %.1f ms)", status.running ? "running" : "idle",
                       status.source, status.scale, status.smoothedMs, status.targetMs);
         message += text;
+    }
+    if (settings.cavityEnabled || cavity.active) {
+        std::snprintf(text, sizeof(text), "; cavity %s (%s", cavity.active ? "drawn" : "not drawn yet", cavityTypes[(int)cavityType]);
+        message += text;
+        if (cavitySamples > 0) message += ", " + std::to_string(cavitySamples) + " samples";
+        if (cavity.active) message += std::string(", normals ") + cavity.normals + (cavity.addedPrepass ? ", added pre-pass" : "");
+        message += ")";
     }
     call->ok(message + ".", out);
 }
