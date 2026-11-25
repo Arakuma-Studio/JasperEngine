@@ -10917,19 +10917,7 @@
   {
    "display_name": "Text",
    "enum_options": {
-    "fontSizeUnit": [
-     [
-      0,
-      "pixel_height",
-      "Pixel Height"
-     ],
-     [
-      1,
-      "em",
-      "Em"
-     ]
-    ],
-    "horizontalAlignment": [
+    "anchorHorizontal": [
      [
       0,
       "left",
@@ -10946,7 +10934,7 @@
       "Right"
      ]
     ],
-    "verticalAlignment": [
+    "anchorVertical": [
      [
       3,
       "top",
@@ -10977,19 +10965,32 @@
       "midline",
       "Midline"
      ]
+    ],
+    "fontSizeUnit": [
+     [
+      0,
+      "pixel_height",
+      "Pixel Height"
+     ],
+     [
+      1,
+      "em",
+      "Em"
+     ]
     ]
    },
    "has_enabled": false,
    "icon": "ef80b1",
    "key": "text",
    "known_keys": [
+    "anchorHorizontal",
+    "anchorVertical",
     "fixedHeight",
     "fixedWidth",
     "font",
     "fontGuid",
     "fontSize",
     "fontSizeUnit",
-    "horizontalAlignment",
     "maxTextSize",
     "multiline",
     "outlineColor",
@@ -11001,11 +11002,20 @@
     "shadowOffset",
     "shadowSoftness",
     "text",
-    "verticalAlignment",
     "visibleCharacters"
    ],
    "name": "TextComponent",
    "properties_of_default": {
+    "anchorHorizontal": [
+     13,
+     32768,
+     true
+    ],
+    "anchorVertical": [
+     13,
+     32768,
+     true
+    ],
     "fixedHeight": [
      0,
      32768,
@@ -11029,11 +11039,6 @@
     "fontSizeUnit": [
      13,
      65536,
-     true
-    ],
-    "horizontalAlignment": [
-     13,
-     32768,
      true
     ],
     "maxTextSize": [
@@ -11088,11 +11093,6 @@
     ],
     "text": [
      1,
-     32768,
-     true
-    ],
-    "verticalAlignment": [
-     13,
      32768,
      true
     ],
@@ -11103,6 +11103,16 @@
     ]
    },
    "properties_without_component": {
+    "anchorHorizontal": [
+     13,
+     32768,
+     true
+    ],
+    "anchorVertical": [
+     13,
+     32768,
+     true
+    ],
     "fixedHeight": [
      0,
      32768,
@@ -11126,11 +11136,6 @@
     "fontSizeUnit": [
      13,
      65536,
-     true
-    ],
-    "horizontalAlignment": [
-     13,
-     32768,
      true
     ],
     "maxTextSize": [
@@ -11185,11 +11190,6 @@
     ],
     "text": [
      1,
-     32768,
-     true
-    ],
-    "verticalAlignment": [
-     13,
      32768,
      true
     ],
@@ -32957,6 +32957,16 @@
    ]
   },
   "TextComponent": {
+   "anchorHorizontal": [
+    13,
+    32768,
+    true
+   ],
+   "anchorVertical": [
+    13,
+    32768,
+    true
+   ],
    "fixedHeight": [
     0,
     32768,
@@ -32980,11 +32990,6 @@
    "fontSizeUnit": [
     13,
     65536,
-    true
-   ],
-   "horizontalAlignment": [
-    13,
-    32768,
     true
    ],
    "maxTextSize": [
@@ -33039,11 +33044,6 @@
    ],
    "text": [
     1,
-    32768,
-    true
-   ],
-   "verticalAlignment": [
-    13,
     32768,
     true
    ],

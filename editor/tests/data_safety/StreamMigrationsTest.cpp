@@ -418,7 +418,8 @@ TEST(StreamMigrations, PrefabV9AnimationPlayersKeepTheirRootDrift){
     ASSERT_TRUE(walker["legacyRootDrift"]);
     EXPECT_TRUE(Stream::decodeAnimationPlayerComponent(walker).legacyRootDrift);
 
-    YAML::Node current = YAML::Load("{type: Prefab, version: 10, members: [{type: Entity, entity: 1001, components: {animator: {enabled: true}}}]}");
+    YAML::Node current = YAML::Load("{type: Prefab, version: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Prefab)) +
+                                    ", members: [{type: Entity, entity: 1001, components: {animator: {enabled: true}}}]}");
     EXPECT_FALSE(StreamMigrations::migrate(DocumentKind::Prefab, current).migrated());
     EXPECT_FALSE(current["members"][0]["components"]["animator"]["legacyRootDrift"]);
 }

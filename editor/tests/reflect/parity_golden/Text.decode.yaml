@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest e07b820eb0a07ce4
+digest 06a81b6e4fc22e85
 --- 0
 font: []
 text: "multi\nline"
@@ -9,7 +9,7 @@ maxTextSize: 2177
 fixedWidth: true
 fixedHeight: false
 anchorHorizontal: center
-anchorVertical: capline
+anchorVertical: top
 fontSizeUnit: em
 outlineColor: [8061.4214, 3e+38, 0, 9289.217]
 shadowEnabled: true
@@ -25,7 +25,7 @@ maxTextSize: 4618
 fixedWidth: true
 fixedHeight: true
 anchorHorizontal: center
-anchorVertical: top
+anchorVertical: bottom
 visibleCharacters: 0
 --- 2
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf]
@@ -35,8 +35,8 @@ multiline: false
 maxTextSize: 3760
 fixedWidth: false
 fixedHeight: true
-anchorHorizontal: left
-anchorVertical: middle
+anchorHorizontal: right
+anchorVertical: midline
 outlineWidth: 16
 outlineColor: [0.16723287, 76, 1.7142857, 0]
 shadowEnabled: true
@@ -52,8 +52,8 @@ multiline: false
 maxTextSize: 4294967295
 fixedWidth: false
 fixedHeight: true
-anchorHorizontal: left
-anchorVertical: capline
+anchorHorizontal: right
+anchorVertical: bottom
 shadowOffset: [0.84386736, 2192.981]
 --- 4
 font: []
@@ -63,8 +63,8 @@ multiline: false
 maxTextSize: 33
 fixedWidth: false
 fixedHeight: true
-anchorHorizontal: center
-anchorVertical: baseline
+anchorHorizontal: left
+anchorVertical: capline
 outlineWidth: 3e+38
 outlineColor: [0, 0, 82, 136.42857]
 shadowEnabled: true
@@ -79,8 +79,8 @@ multiline: true
 maxTextSize: 1303
 fixedWidth: false
 fixedHeight: true
-anchorHorizontal: center
-anchorVertical: baseline
+anchorHorizontal: right
+anchorVertical: midline
 outlineColor: [3e+38, -0, 5256.1304, -22.714285]
 shadowEnabled: true
 shadowColor: [-94.57143, -102.28571, 0, 23]
@@ -93,8 +93,8 @@ multiline: true
 maxTextSize: 1703
 fixedWidth: false
 fixedHeight: false
-anchorHorizontal: left
-anchorVertical: top
+anchorHorizontal: center
+anchorVertical: bottom
 outlineColor: [-55, 3957.2656, -16, 10.142858]
 shadowColor: [-0.3379538, -0.805099, -0.9656368, 3e+38]
 shadowOffset: [-0.16696316, 0.9542685]
@@ -108,8 +108,8 @@ multiline: true
 maxTextSize: 1284
 fixedWidth: true
 fixedHeight: true
-anchorHorizontal: right
-anchorVertical: capline
+anchorHorizontal: center
+anchorVertical: bottom
 outlineWidth: 0.44957882
 shadowEnabled: true
 shadowColor: [3e+38, 0, 0, 4453.748]

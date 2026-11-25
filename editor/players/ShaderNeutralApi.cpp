@@ -98,11 +98,11 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         // constraint's shape and its last solve, bones only; mesh-space-rotation's
         // setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a layer's rotation space
         // where its mask starts or stops, bones only; S94's legacyRootDrift reviewed: where the root goes)
-        {"Animator", 0xc0f7cb88u},
+        {"Animator", 0x687702ccu},
         // (S94 applyRootMotion and legacyRootDrift reviewed: where the root goes, never what it draws with;
         // mesh-space-rotation's setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a
         // layer's rotation space where its mask starts or stops, bones only)
-        {"AnimationPlayer", 0xc917096bu},
+        {"AnimationPlayer", 0x55468727u},
         {"PoseAnimator", 0x9efa391cu},
         {"AnimationEvent", 0x3191cc4eu},
         {"AnimationState", 0xd696bd82u},
