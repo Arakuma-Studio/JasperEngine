@@ -43,7 +43,8 @@ namespace {
         Json layers = Json::array();
         for (size_t i = 0; i < rows; i++) {
             char id[9];
-            std::snprintf(id, sizeof(id), "%08zx", i + 1);
+            // 32 bits: at most 8 hex digits, which -Wformat-truncation can see fit
+            std::snprintf(id, sizeof(id), "%08x", static_cast<unsigned>(i + 1));
             layers.push_back(Json{{"id", id}, {"type", "text"}, {"name", "Line " + std::to_string(i)}, {"text", "Line number " + std::to_string(i)},
                                   {"text_key", "line_" + std::to_string(i)},
                                   {"translations", Json{{"de", Json{{"text", "Zeile " + std::to_string(i)}}}, {"ja", Json{{"text", "\xe8\xa1\x8c " + std::to_string(i)}}}}}});

@@ -57,6 +57,27 @@ exact: a GameObject's Transform is drawn between the last two fixed steps (physi
 as far as the frame's leftover time, which a frame spent loading changes. That is so on origin/main
 too.
 
+### Physics.raycast from inside a collider (S96)
+
+`Physics.raycast` and `Physics.raycastAll` in 3D (Lua and C++) follow Unity: a collider that
+contains the ray's origin is not hit. On origin/main such a ray hit that collider at distance 0
+(a ground check cast from a body's centre hit the body itself). A script that wants the old
+result passes `{hitFromInside = true}` as the options after the layer mask
+(`Physics.raycast(scene, origin, direction, maxDistance, mask, {hitFromInside = true})`, C++
+`QueryOptions::hitFromInside`). `Ray:intersects(scene, ...)`, 2D rays (which never hit from
+inside) and the engine's own rays (particle collision, Foot IK) are unchanged.
+
+### Fixed steps in a long frame (S96)
+
+The old limit of 100 fixed steps a frame, which logged "Dropping fixed-update steps" every time a
+frame reached it, is now as many as `Time.maximumDeltaTime` lets through:
+`ceil(maximumDeltaTime / fixedDeltaTime) + 1`, 16 at the default 60 Hz and 0.25 s (S96). A time scale
+does not raise it, as in Unity. At time scale 1 a frame never drops a step, and one with a step of 400 Hz
+or more no longer drops steps in a long frame. A frame whose scaled time passes `maximumDeltaTime`
+(time scale 20 at 60 fps, or time scale 2 in a 0.25 s frame) now drops the steps past the cap, logged once
+and counted in `Time.droppedFixedSteps`: raise `Time.maximumDeltaTime` to run them.
+`Time.maximumFixedStepsPerFrame` only lowers the cap.
+
 ### IK solvers (S77)
 
 Three Animator IK fixes apply to existing scenes with no opt-in: poses change where the old ones
@@ -81,6 +102,14 @@ behaviour and are not written while at their defaults.
 
 **Soften** stays off by default, because it changes where feet land.
 
+### Humanoid rigs named `B-` (Mesh Space Rotation)
+
+- Rigs whose bones are named with a `B-` prefix (`B-hips`, `B-spine`, `B-upperArm.L`) are detected as humanoids
+  with no `.humanoid` map when they are imported from now on, and a bone named `proxy` is never mapped. A model
+  already in the project keeps what it was (a `B-` rig: not a humanoid, its masks' body parts fall back to their
+  default weight) until you reimport it (Project window > Reimport); its Avatar notes say so. The import writes
+  `"name_rules": 2` into the model's `.humanoid` file; commit it with the model.
+
 ## Fixed for the upgrade
 
 The upgrade test found these, fixed in this editor (each with a test that failed before):
@@ -104,6 +133,10 @@ The upgrade test found these, fixed in this editor (each with a test that failed
   test's balls fell past the end of the ground). It also left out a 2D collider's collision filter
   (category, mask, group) and a 3D body's allowed degrees of freedom and mesh collider indices; all
   are cooked now.
+- **A prebuilt player flattened the scene hierarchy** (S96). A cooked scene carried no parent links,
+  so in a prebuilt player every child GameObject was a root and its local position, rotation and
+  scale were taken as world values (an exported car's Wheel Colliders found no Rigidbody above
+  them). Cooked scenes now keep the hierarchy; a game built before must be built again.
 
 ## Known, as on origin/main
 
@@ -138,6 +171,13 @@ Old scripts keep running; a few old names print a one-time deprecation warning w
   `setTarget()`. **Change:** `ps:isPaused()` is the property `ps.isPaused` now (calling it fails with
   "attempt to call a boolean value"). Particle counts and positions come from the new simulation: a
   script must not depend on the exact particles.
+- **Joints made from Lua** (S96). `Joint2D(scene)` / `Joint3D(scene)` make a GameObject named
+  "Joint 2D" / "Joint 3D". Once its bodyA is set (`bodyA`, `set*Joint`), the joint goes under bodyA
+  (world pose kept) and the handle stops owning it (`entityOwned` false): it outlives the handle and
+  goes when bodyA's GameObject goes, as editor-made joints do. **Change:** dropping the handle no
+  longer removes a joint that has a bodyA (before, the next garbage collection did); remove it with
+  `joint:destroy()` or `GameObject.destroy(joint)`. A joint never given a bodyA still goes with its
+  handle.
 
 ## Rendering
 

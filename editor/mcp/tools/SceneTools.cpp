@@ -909,6 +909,13 @@ const std::vector<SceneSetting>& sceneSettings() {
     };
     static const std::vector<SceneSetting> all = [](){
         std::vector<SceneSetting> list = settings;
+        // S96: the physics world settings, after the other physics ones
+        auto physicsAt = std::find_if(list.begin(), list.end(), [](const SceneSetting& s) { return s.name == "physics_2d_sub_steps"; }) + 1;
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            const SettingKind kind = field.type == PhysicsWorldSettingField::Type::Bool ? SettingKind::Bool
+                                   : field.type == PhysicsWorldSettingField::Type::Int ? SettingKind::Int : SettingKind::Float;
+            physicsAt = list.insert(physicsAt, SceneSetting{field.snakeName, kind, field.help}) + 1;
+        }
         for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
             SceneSetting setting{std::string("post_processing.") + field.snakeName, SettingKind::PostProcessingField, field.help, false, &field};
             list.push_back(setting);
@@ -1310,6 +1317,10 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             return new ScenePropertyCmd<bool>(project, id, name, value.get<bool>());
         case SettingKind::Int:
             if (!value.is_number_integer()) return expect("an integer");
+            if (const PhysicsWorldSettingField* field = findPhysicsWorldSettingField(name);
+                field && (value.get<double>() < field->minValue || value.get<double>() > field->maxValue)) {
+                return expect(std::to_string((int)field->minValue) + " to " + std::to_string((int)field->maxValue));
+            }
             if (name.rfind("fixed_resolution_", 0) == 0 && value.get<int>() < 1) return expect("at least 1");
             if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             if (name == "physics_2d_sub_steps" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
@@ -1318,6 +1329,11 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");
+            if (const PhysicsWorldSettingField* field = findPhysicsWorldSettingField(name);
+                field && (value.get<double>() < field->minValue || value.get<double>() > field->maxValue)) {
+                return expect("a number from " + Json(McpValues::number(field->minValue)).dump() + " to " +
+                              Json(McpValues::number(field->maxValue)).dump());
+            }
             if (name == "physical_light_ev100" && (value.get<float>() < -6.0f || value.get<float>() > 24.0f)) return expect("-6 to 24");
             if (name == "capsule_shadow_intensity" && (value.get<float>() < 0.0f || value.get<float>() > 1.0f)) return expect("0 to 1");
             if (name == "capsule_shadow_softness" && (value.get<float>() < 0.0f || value.get<float>() > 2.0f)) return expect("0 to 2");

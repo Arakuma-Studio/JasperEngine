@@ -2,7 +2,7 @@
 docs/specs/S21-animation.md "Upstream absorption"): write_file of a .mask (upstream's version 1 read converted with
 its warnings, broken JSON with line:col, Unity YAML refused), edit_avatar_mask (version 2: default, fractional body
 parts, paths with children, root_hierarchy), set_properties / add_component of layers and
-entry layers with their refusals, get_animation {mask, root} coverage on Hero's humanoid rig, get_animation
+entry layers with their refusals (Mesh Space Rotation's field with its undo), get_animation {mask, root} coverage on Hero's humanoid rig, get_animation
 {entity} layers and mask_coverage, preview_animation over a base state, and the Garden farmer flow in play
 mode: eval_lua setLayerWeight, then get_runtime_entity on both forearms (the right one holds, the left one
 keeps the base pose). Runs on a scratch copy of tools/fixtures/pose-animation (Hero: Mixamo names)."""
@@ -164,6 +164,20 @@ async def test_layers_through_set_properties(ed: Editor):
                         ({"clips[1].layer": 7}, "add the layer first")):
         await refused(ed, "set_properties", {"entity": "Hero", "values": {"animationplayer": values}}, why)
 
+    # Mesh Space Rotation (mesh-space-rotation spec R39): one field, echoed by get_entity and get_animation; one undo step
+    await ed.call("set_properties", entity="Hero", values={"animationplayer": {"layers[1].meshSpaceRotation": True}})
+    layers = harness.find_key(await ed.call("get_entity", entity="Hero", components=["animationplayer"]), "layers")
+    ed.check_eq((layers[0].get("meshSpaceRotation"), layers[1].get("meshSpaceRotation")), (None, True), f"the field: {layers}")
+    shown = (await ed.call("get_animation", entity="Hero"))["players"][0]["layers"]
+    ed.check_eq([l["mesh_space_rotation"] for l in shown], [False, True], f"get_animation echoes it: {shown}")
+    await ed.call("undo")
+    layers = harness.find_key(await ed.call("get_entity", entity="Hero", components=["animationplayer"]), "layers")
+    ed.check("meshSpaceRotation" not in layers[1], f"undo turns it off: {layers}")
+    shown = (await ed.call("get_animation", entity="Hero"))["players"][0]["layers"]
+    ed.check_eq([l["mesh_space_rotation"] for l in shown], [False, False], f"get_animation after the undo: {shown}")
+    await refused(ed, "set_properties", {"entity": "Hero", "values": {"animationplayer": {
+        "layers": [{"name": "Base Layer"}, {"name": "Holding", "mask": MASK, "meshSpaceRotation": "yes"}]}}}, "true or false")
+
     # a player without layers: a field of layer 0 (its implicit Base Layer) makes the list explicit
     plain = await ed.call("create_entity", type="cube", name="Plain")
     plain_id = plain["entity"]["id"] if "entity" in plain else plain["id"]
@@ -180,6 +194,11 @@ async def test_layers_through_set_properties(ed: Editor):
     ed.check_eq(player["layers"][1]["blend"], "override", "blend")
     cov = player["mask_coverage"]
     ed.check_eq([(c["layer"], c["covered"], c["total"]) for c in cov], [("Holding", 1, 2)], f"the mask covers the right forearm only: {cov}")
+    # Mesh Space Rotation's boundary (the Inspector's Applies at line): the right arm part starts
+    # at the right shoulder, under the upper chest the mask leaves out
+    ed.check_eq(cov[0]["mesh_space_rotation"], False, f"the layer's option: {cov[0]}")
+    ed.check(any(p.endswith("mixamorig:RightShoulder") for p in cov[0]["boundary_bones"])
+             and not any("Left" in p for p in cov[0]["boundary_bones"]), f"the boundary starts at the right shoulder: {cov[0]}")
 
 
 async def test_preview_over(ed: Editor):

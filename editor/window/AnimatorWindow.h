@@ -28,6 +28,11 @@
 //   and redo); a selection whose item is gone or moved to another layer is dropped, so Delete
 //   never reaches another layer's item. The Problems strip lists validateController's findings;
 //   a click selects the item of the finding's JSON path.
+// - Mesh Space Rotation (docs/specs/mesh-space-rotation.md R25-R29, R31): the layer Inspector's
+//   checkbox under Mask (disabled on layer 0 and Additive layers) and where it applies on the
+//   bound Animator; the Problems strip adds the bound Animator's meshSpaceWarnings, each with a
+//   Fix (one undo step turning the option on) and a click that selects the layer; Preview's
+//   Compare shows the pose without the pass (a runtime flag: never saved, off when Preview stops).
 // - Thread-safety: main thread.
 
 #pragma once
@@ -45,6 +50,7 @@
 
 namespace jasperengine::anim{
     class AnimatorInstance;
+    struct MeshSpaceWarning;
 }
 
 namespace jasperengine::editor{
@@ -144,6 +150,16 @@ namespace jasperengine::editor{
         // play mode (or a preview): the running Animator's parameters, edited live (not saved)
         bool isLive() const { return liveInstance() != nullptr; }
         bool setLiveParameter(const std::string& name, float value);
+        // Preview's Compare: the previewed Animator without Mesh Space Rotation (false: not previewing)
+        bool setCompare(bool compare);
+        bool isComparing() const { return comparing && previewToken != 0; }
+        // the layer Inspector's line under Mesh Space Rotation: "Applies at: <GameObjects>" on the
+        // bound Animator, else "Applies where the mask starts or stops"
+        std::string meshSpaceAppliesText(int layer);
+        // the Problems strip's Mesh Space Rotation warnings (the bound Animator's), and their Fix:
+        // the layer's option on, one undo step
+        std::vector<anim::MeshSpaceWarning> meshSpaceProblems();
+        bool fixMeshSpaceProblem(int layer);
 
     private:
         enum class SelectionKind { None, State, SubMachine, Transition, Layer };
@@ -207,6 +223,7 @@ namespace jasperengine::editor{
         double previewClock = 0.0;
         double lastFrameTime = 0.0;
         bool previewPaused = false;
+        bool comparing = false;
         PreviewParticles particles;
         float transitionScrub = 0.0f;
         // an edit in progress (a drag): shown at once, committed as one step when no item is active
@@ -229,6 +246,8 @@ namespace jasperengine::editor{
         void flush();
         anim::StateMachineDef* machineOf(anim::ControllerDef& def);
         anim::AnimatorInstance* liveInstance() const;
+        // the window's Animator bound to the open controller (Play or Preview); null otherwise
+        anim::AnimatorInstance* boundInstance() const;
         bool editable() const;
 
         void drawToolbar();

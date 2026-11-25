@@ -15,6 +15,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <thread>
 
 using namespace jasperengine;
@@ -96,11 +97,14 @@ TEST(FoliageSystemCore, ApplyStaysWithinBudget) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     EXPECT_FALSE(fixture.foliage->hasPendingUpdates());
-    // one more cell may finish past the limit; a loaded host is reported, not failed, as every wall clock here
-    if (std::getenv("JASPER_PERF_SLACK") == nullptr) {
-        RecordProperty("worst_main_thread_ms", std::to_string(worst));
+    // R5's 0.5 ms cut, plus the one cell that may finish past it: 50 ms only catches a cut that
+    // does not work at all. A wall clock: printed always, enforced where perfSlack() asks for it
+    // (the benchmark run), since a loaded host or a sanitizer alone passes it (59.4 ms under ASan)
+    std::printf("[bench] foliage apply: worst main-thread frame %.2f ms in %d frames (budget 50)\n", worst, frames);
+    RecordProperty("worst_main_thread_ms", std::to_string(worst));
+    if (const double slack = testsupport::perfSlack(); slack > 0.0) {
+        EXPECT_LT(worst, 50.0 * slack) << "the budget cut does not work at all";
     }
-    EXPECT_LT(worst, 50.0) << "the budget cut does not work at all";
 }
 
 TEST(FoliageSystemCore, OneMeshLoadPerLayer) {

@@ -1254,6 +1254,7 @@ bool AnimationClipController::apply(){
             previewLayer.weight = 1.0f;
             previewLayer.blend = layer.blend;
             previewLayer.mask = layer.mask;
+            previewLayer.meshSpaceRotation = layer.meshSpaceRotation;
             preview.layers.push_back(previewLayer);
         }
         ActionSystem::PlayerPreviewState base;

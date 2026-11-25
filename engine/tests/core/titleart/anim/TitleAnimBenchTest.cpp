@@ -133,7 +133,10 @@ TEST(TitleAnimBench, Sample64){
     const double median = titleAnimBenchPercentile(samples, 0.5);
     std::printf("[title anim] Sample64: 40 tracks, 64 glyphs: median %.2f us, p95 %.2f us, %llu allocations over 600 frames (R35: 25 us median, 0)\n", median,
                 titleAnimBenchPercentile(samples, 0.95), (unsigned long long)allocations);
-    EXPECT_LT(median, 250.0);
+    // wall-clock budgets: enforced where perfSlack() asks for them (the benchmark run)
+    if (const double slack = testsupport::perfSlack(); slack > 0.0) {
+        EXPECT_LT(median, 250.0 * slack);
+    }
     if (testsupport::countsAllocations()) {
         EXPECT_EQ(allocations, 0u) << "sampling allocates nothing in steady state";
     }
@@ -209,5 +212,7 @@ TEST(TitleAnimBench, Scene30){
     }
     const double p95 = titleAnimBenchPercentile(samples, 0.95);
     std::printf("[title anim] Scene30: 30 titles, median %.1f us, p95 %.1f us a frame (R36: 500 us p95)\n", titleAnimBenchPercentile(samples, 0.5), p95);
-    EXPECT_LT(p95, 5000.0);
+    if (const double slack = testsupport::perfSlack(); slack > 0.0) {
+        EXPECT_LT(p95, 5000.0 * slack);
+    }
 }

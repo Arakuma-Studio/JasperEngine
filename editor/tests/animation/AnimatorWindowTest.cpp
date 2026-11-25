@@ -9,8 +9,10 @@
 // problems that select their item; the edit-mode preview on the bound Animator and play mode's
 // live parameters (the runtime, not the file); every panel drawn in a frame; 1D thresholds kept
 // in order with their motions; typed paths checked; Delete only with the window focused; layer
-// list changes dropping stale selections; the pinned Animator's controller field followed; and
-// parameter names (any name, a non-Lua one warned).
+// list changes dropping stale selections; the pinned Animator's controller field followed;
+// parameter names (any name, a non-Lua one warned); and Mesh Space Rotation
+// (docs/specs/mesh-space-rotation.md AC18-AC20): the checkbox under Mask, disabled on layer 0 and
+// Additive, one undo step; where it applies; the warning, its Fix and its click; Compare.
 
 #include <gtest/gtest.h>
 
@@ -25,17 +27,22 @@
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/AnimatorAssetDocument.h"
 #include "animation/AnimatorAssetIO.h"
+#include "animation/AnimatorDebug.h"
 #include "animation/AnimatorInstance.h"
 #include "command/CommandHistory.h"
 #include "component/AnimatorComponent.h"
 #include "component/Transform.h"
+#include "mcp/tools/AnimatorTools.h"
 #include "subsystem/AnimatorSystem.h"
+#include "util/UiItemLocator.h"
 #include "window/AnimatorWindow.h"
 
 #include "imgui.h"
 
 #include "support/PosixCompat.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -228,6 +235,142 @@ namespace {
             ImGui::End();
             if (extra) extra();
             ImGui::EndFrame();
+        }
+    };
+
+
+    // ---- Mesh Space Rotation (docs/specs/mesh-space-rotation.md) ----
+
+    Quaternion torsoTurn(float degrees, float x, float y, float z) {
+        const float half = degrees * 3.14159265358979f / 360.0f;
+        return Quaternion(std::cos(half), x * std::sin(half), y * std::sin(half), z * std::sin(half));
+    }
+
+    double torsoDegrees(const Quaternion& a, const Quaternion& b) {
+        const double d = (double)a.w * b.w + (double)a.x * b.x + (double)a.y * b.y + (double)a.z * b.z;
+        const double n = std::sqrt(((double)a.w * a.w + (double)a.x * a.x + (double)a.y * a.y + (double)a.z * a.z) *
+                                   ((double)b.w * b.w + (double)b.x * b.x + (double)b.y * b.y + (double)b.z * b.z));
+        return 2.0 * std::acos(std::min(1.0, std::fabs(d) / n)) * 180.0 / 3.14159265358979;
+    }
+
+    // bones held at rotations for a second, asset-relative
+    std::string writeRotations(const std::string& name, const std::vector<std::pair<std::string, Quaternion>>& rotations) {
+        ClipData data;
+        data.wrap = ClipWrapMode::Loop;
+        for (const auto& r : rotations) {
+            ClipTrackData track;
+            track.path = r.first;
+            track.channel = ClipChannel::Rotation;
+            ClipKey a;
+            a.time = 0.0f;
+            a.value = {r.second.x, r.second.y, r.second.z, r.second.w};
+            ClipKey b = a;
+            b.time = 1.0f;
+            track.keys = {a, b};
+            data.tracks.push_back(track);
+        }
+        animatorWindowWriteAll(animatorWindowAssets() / ("animator/" + name + ".anim"), anim::writeClip(data));
+        animatorWindowProject()->refreshAssetDatabase(true);
+        return "animator/" + name + ".anim";
+    }
+
+    // the spec's AC4 setup on the window's (fresh) document: the Base Layer's run turns the hips 90
+    // degrees; "Upper Body" (the option off) masks from Hips/Spine an attack that turns them -20 and
+    // tilts the spine 40
+    void upperBodyController(AnimatorWindow& window, const std::shared_ptr<AnimatorAssetDocument>& doc) {
+        const std::string run = writeRotations("torso_run", {{"Hips", torsoTurn(90, 0, 1, 0)}});
+        const std::string attack = writeRotations("torso_attack", {{"Hips", torsoTurn(-20, 0, 1, 0)}, {"Hips/Spine", torsoTurn(40, 1, 0, 0)}});
+        anim::AvatarMaskDef mask;
+        mask.defaultWeight = 0.0f;
+        mask.paths.push_back({"Hips/Spine", 1.0f, true});
+        animatorWindowWriteAll(animatorWindowAssets() / "animator/torso.mask", anim::writeMask(mask));
+        animatorWindowProject()->refreshAssetDatabase(true);
+        ASSERT_TRUE(window.addState("Run", ImVec2(300, 100), clipMotion(window, run)));
+        ASSERT_TRUE(window.addLayer("Upper Body"));
+        ASSERT_TRUE(window.addState("Attack", ImVec2(300, 100), clipMotion(window, attack)));
+        anim::ControllerDef def = doc->controller();
+        ASSERT_EQ(def.layers.size(), 2u);
+        ASSERT_TRUE(window.resolveTypedAsset("animator/torso.mask", false, def.layers[1].mask)) << window.getStatus();
+        std::string error;
+        ASSERT_TRUE(doc->commit(def, "Edit Layer Upper Body", "", &error)) << error;
+    }
+
+    // Granjero (an Animator playing `controller`) > Hips > Spine, Hips > Thigh
+    struct TorsoScene {
+        SceneProject* sceneProject = nullptr;
+        Entity root = NULL_ENTITY;
+        Scene* scene() const { return sceneProject->scene; }
+        AnimatorComponent& animator() const { return scene()->getComponent<AnimatorComponent>(root); }
+        // the Spine's rig-space rotation in the last evaluation
+        Quaternion spine() const {
+            const anim::AnimatorInstance* runtime = animator().runtime.get();
+            const int bone = runtime ? runtime->rig.findBone("Hips/Spine") : -1;
+            EXPECT_GE(bone, 0);
+            return bone >= 0 && (size_t)bone < runtime->rigRotations().size() ? runtime->rigRotations()[(size_t)bone] : Quaternion();
+        }
+    };
+
+    TorsoScene torsoScene(const std::string& controller) {
+        TorsoScene out;
+        AnimatorScene base = animatorScene(controller);
+        out.sceneProject = base.sceneProject;
+        out.root = base.root;
+        Scene* scene = out.scene();
+        auto child = [&](Entity parent, const std::string& name, const Vector3& position) {
+            const Entity entity = scene->createUserEntity();
+            scene->setEntityName(entity, name);
+            Transform transform;
+            transform.position = position;
+            scene->addComponent<Transform>(entity, transform);
+            scene->addEntityChild(parent, entity, false);
+            out.sceneProject->entities.push_back(entity);
+            return entity;
+        };
+        const Entity hips = child(out.root, "Hips", Vector3(0, 1, 0));
+        child(hips, "Spine", Vector3(0, 0.3f, 0));
+        child(hips, "Thigh", Vector3(0.1f, -0.5f, 0));
+        return out;
+    }
+
+    // The Inspector alone at a fixed place: its items found as find_ui_item finds them
+    // (UiItemLocator), clicked with the mouse
+    struct InspectorProbe : AnimatorWindowFrames {
+        void at(AnimatorWindow& window, float x, float y, bool down = false) {
+            ImGuiIO& io = ImGui::GetIO();
+            io.AddMousePosEvent(x, y);
+            io.AddMouseButtonEvent(0, down);
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0, 0));
+            ImGui::SetNextWindowSize(ImVec2(520, 860));
+            ImGui::Begin("Inspector");
+            window.drawSelectionInspector();
+            ImGui::End();
+            ImGui::EndFrame();
+        }
+
+        UiItemLocator::Item locate(AnimatorWindow& window, const std::string& label) {
+            UiItemLocator::start(label, "Inspector");
+            at(window, 0.0f, 0.0f);
+            const std::vector<UiItemLocator::Item> items = UiItemLocator::stop();
+            EXPECT_EQ(items.size(), 1u) << label;
+            return items.empty() ? UiItemLocator::Item() : items[0];
+        }
+
+        // the checkbox is the next row after Mask, before Montage Slot
+        void expectUnderMask(AnimatorWindow& window, const UiItemLocator::Item& box) {
+            const UiItemLocator::Item mask = locate(window, "Mask");
+            const UiItemLocator::Item slot = locate(window, "Montage Slot");
+            const float gap = box.y - (mask.y + mask.height);
+            EXPECT_GE(gap, 0.0f) << "under Mask";
+            EXPECT_LE(gap, ImGui::GetStyle().ItemSpacing.y + 1.0f) << "directly under Mask";
+            EXPECT_LT(box.y, slot.y) << "above Montage Slot";
+        }
+
+        void click(AnimatorWindow& window, const UiItemLocator::Item& item) {
+            const float x = item.x + item.width * 0.5f, y = item.y + item.height * 0.5f;
+            at(window, x, y);
+            at(window, x, y, true);
+            at(window, x, y, false);
         }
     };
 
@@ -901,4 +1044,179 @@ TEST(AnimatorWindow, ParameterNamesAreKeptAndNonLuaNamesWarned) {
     EXPECT_TRUE(warned);
     ASSERT_TRUE(window.renameParameter("Move Speed", "move_speed"));
     EXPECT_TRUE(window.getStatus().empty()) << window.getStatus();
+}
+
+// AC18 (R25, R26, R28): directly under Mask; a click is one project step "Edit Layer <name>" that
+// undo takes back to the same bytes; disabled (a click does nothing) on layer 0 and Additive layers
+TEST(AnimatorWindow, MeshSpaceRotationCheckboxUnderMaskIsOneUndoStep) {
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "meshspace");
+    ASSERT_TRUE(doc);
+    ASSERT_TRUE(window.addLayer("Upper Body"));
+    window.setOpen(true);
+    ASSERT_TRUE(window.inspect("layers[1]"));
+    const fs::path file = animatorWindowAssets() / "animator/meshspace.controller";
+    const std::string before = animatorWindowReadAll(file);
+
+    InspectorProbe probe;
+    probe.at(window, 0.0f, 0.0f);
+    UiItemLocator::Item box = probe.locate(window, "Mesh Space Rotation");
+    probe.expectUnderMask(window, box);
+    EXPECT_TRUE(box.enabled) << "an Override layer above 0";
+    const size_t start = animatorWindowHistory()->position();
+    probe.click(window, box);
+    ASSERT_TRUE(doc->controller().layers[1].meshSpaceRotation) << window.getStatus();
+    EXPECT_EQ(animatorWindowHistory()->position(), start + 1) << "one step";
+    ASSERT_TRUE(animatorWindowHistory()->top());
+    EXPECT_EQ(animatorWindowHistory()->top()->name(), "Edit Layer Upper Body");
+    const std::string after = animatorWindowReadAll(file);
+    EXPECT_NE(after.find("\"mesh_space_rotation\": true"), std::string::npos) << after;
+    EXPECT_EQ(window.meshSpaceAppliesText(1), "Applies where the mask starts or stops") << "no bound Animator";
+    ASSERT_TRUE(animatorWindowHistory()->undo());
+    EXPECT_EQ(animatorWindowReadAll(file), before) << "undo restores the file bytes";
+    ASSERT_TRUE(animatorWindowHistory()->redo());
+    EXPECT_EQ(animatorWindowReadAll(file), after);
+
+    // Additive: disabled, the value kept
+    anim::ControllerDef additive = doc->controller();
+    additive.layers[1].blending = AnimatorLayerBlending::Additive;
+    std::string error;
+    ASSERT_TRUE(doc->commit(additive, "Edit Layer Upper Body", "", &error)) << error;
+    box = probe.locate(window, "Mesh Space Rotation");
+    probe.expectUnderMask(window, box);
+    EXPECT_FALSE(box.enabled) << "an Additive layer";
+    const size_t additiveAt = animatorWindowHistory()->position();
+    probe.click(window, box);
+    EXPECT_EQ(animatorWindowHistory()->position(), additiveAt) << "a disabled checkbox edits nothing";
+    EXPECT_TRUE(doc->controller().layers[1].meshSpaceRotation) << "kept, and ignored by the runtime";
+
+    // the base layer: disabled
+    ASSERT_TRUE(window.inspect("layers[0]"));
+    box = probe.locate(window, "Mesh Space Rotation");
+    probe.expectUnderMask(window, box);
+    EXPECT_FALSE(box.enabled) << "layer 0";
+}
+
+// AC19 (R27, R29): on the bound Animator (Preview) the AC4 setup warns once, naming the spine;
+// the Problems strip's click selects the layer; Fix turns the option on as one undo step and the
+// warning clears; the line under the checkbox names the boundary bone; no warning for an
+// Additive layer, or at weight 0
+TEST(AnimatorWindow, MeshSpaceRotationWarningAndItsFix) {
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "torsowarn");
+    ASSERT_TRUE(doc);
+    upperBodyController(window, doc);
+    TorsoScene s = torsoScene("animator/torsowarn.controller");
+    window.openController("animator/torsowarn.controller", s.sceneProject->id, s.root);
+    EXPECT_TRUE(window.meshSpaceProblems().empty()) << "no bound Animator in edit mode";
+    ASSERT_TRUE(window.startPreview()) << window.getStatus();
+    ASSERT_TRUE(window.stepPreview(0.1f)) << window.getStatus();
+
+    std::vector<anim::MeshSpaceWarning> warnings = window.meshSpaceProblems();
+    ASSERT_EQ(warnings.size(), 1u);
+    EXPECT_EQ(warnings[0].layer, 1);
+    EXPECT_EQ(warnings[0].message, "Layer 'Upper Body': the mask starts at Spine, so the torso follows the base layer's hips. "
+                                   "Turn on Mesh Space Rotation to keep this layer's direction.");
+    EXPECT_EQ(window.meshSpaceAppliesText(1), "Applies at: Spine");
+    window.setLayer(0);
+    ASSERT_TRUE(window.inspect("layers[" + std::to_string(warnings[0].layer) + "]")) << "the strip's click";
+    EXPECT_EQ(window.getLayer(), 1);
+    EXPECT_EQ(window.describeSelection(), "layer");
+
+    const fs::path file = animatorWindowAssets() / "animator/torsowarn.controller";
+    const std::string before = animatorWindowReadAll(file);
+    const size_t start = animatorWindowHistory()->position();
+    ASSERT_TRUE(window.fixMeshSpaceProblem(warnings[0].layer)) << window.getStatus();
+    EXPECT_EQ(animatorWindowHistory()->position(), start + 1);
+    EXPECT_EQ(animatorWindowHistory()->top()->name(), "Edit Layer Upper Body");
+    EXPECT_TRUE(doc->controller().layers[1].meshSpaceRotation);
+    EXPECT_TRUE(window.meshSpaceProblems().empty()) << "the option on clears it";
+    ASSERT_TRUE(animatorWindowHistory()->undo());
+    EXPECT_EQ(animatorWindowReadAll(file), before);
+    EXPECT_EQ(window.meshSpaceProblems().size(), 1u) << "undone: the warning is back";
+
+    anim::ControllerDef changed = doc->controller();
+    changed.layers[1].blending = AnimatorLayerBlending::Additive;
+    std::string error;
+    ASSERT_TRUE(doc->commit(changed, "Edit Layer Upper Body", "", &error)) << error;
+    EXPECT_TRUE(window.meshSpaceProblems().empty()) << "never for an Additive layer";
+    ASSERT_TRUE(animatorWindowHistory()->undo());
+    anim::AnimatorInstance* runtime = s.animator().runtime.get();
+    ASSERT_TRUE(runtime);
+    runtime->setLayerWeight(1, 0.0f);
+    EXPECT_TRUE(window.meshSpaceProblems().empty()) << "weight 0";
+    window.stopPreview();
+    EXPECT_TRUE(window.meshSpaceProblems().empty());
+}
+
+// get_animation {entity} during the window's Preview reads the previewed runtime (its boundary
+// bones) and leaves it running: binding and restoring would end the person's preview
+TEST(AnimatorWindow, GetAnimationLeavesTheWindowsPreviewRunning) {
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "torsoquery");
+    ASSERT_TRUE(doc);
+    upperBodyController(window, doc);
+    TorsoScene s = torsoScene("animator/torsoquery.controller");
+    window.openController("animator/torsoquery.controller", s.sceneProject->id, s.root);
+    ASSERT_TRUE(window.startPreview()) << window.getStatus();
+    ASSERT_TRUE(window.stepPreview(0.25f)) << window.getStatus();
+    const anim::AnimatorInstance* runtime = s.animator().runtime.get();
+    ASSERT_TRUE(runtime);
+    const float time = runtime->layers[0].current.time;
+
+    const mcp::Json got = mcp::animator_tools::animatorLayers(animatorWindowProject(), s.sceneProject, s.root);
+    ASSERT_TRUE(got.contains("mask_coverage")) << got.dump();
+    EXPECT_EQ(got["mask_coverage"][0]["boundary_bones"], mcp::Json::array({"Hips/Spine"})) << got.dump();
+    EXPECT_TRUE(window.isPreviewing());
+    EXPECT_EQ(s.animator().runtime.get(), runtime) << "the preview's runtime, not a new bind";
+    ASSERT_TRUE(window.stepPreview(0.25f)) << window.getStatus();
+    EXPECT_EQ(s.animator().runtime.get(), runtime);
+    EXPECT_GT(runtime->layers[0].current.time, time) << "the preview goes on from where it was";
+    window.stopPreview();
+}
+
+// AC20 (R31): with the option on, Compare shows the pose without the pass while on; it is never
+// saved or a step, and it is off when Preview stops and starts again
+TEST(AnimatorWindow, CompareShowsThePoseWithoutMeshSpaceRotationUntilPreviewStops) {
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "torsocompare");
+    ASSERT_TRUE(doc);
+    upperBodyController(window, doc);
+    anim::ControllerDef on = doc->controller();
+    on.layers[1].meshSpaceRotation = true;
+    std::string error;
+    ASSERT_TRUE(doc->commit(on, "Edit Layer Upper Body", "", &error)) << error;
+    TorsoScene s = torsoScene("animator/torsocompare.controller");
+    window.openController("animator/torsocompare.controller", s.sceneProject->id, s.root);
+    EXPECT_FALSE(window.setCompare(true)) << "only in Preview";
+    EXPECT_FALSE(window.isComparing());
+
+    const Quaternion layer = torsoTurn(-20, 0, 1, 0) * torsoTurn(40, 1, 0, 0);
+    const fs::path file = animatorWindowAssets() / "animator/torsocompare.controller";
+    const std::string text = animatorWindowReadAll(file);
+    const size_t start = animatorWindowHistory()->position();
+    ASSERT_TRUE(window.startPreview()) << window.getStatus();
+    ASSERT_TRUE(window.stepPreview(0.1f)) << window.getStatus();
+    EXPECT_LT(torsoDegrees(s.spine(), layer), 0.05) << "the pass: the spine faces where the attack faces";
+    ASSERT_TRUE(window.setCompare(true));
+    EXPECT_TRUE(window.isComparing());
+    EXPECT_NEAR(torsoDegrees(s.spine(), layer), 110.0, 0.05) << "Compare: the spine follows the run's hips";
+    ASSERT_TRUE(window.stepPreview(0.1f));
+    EXPECT_NEAR(torsoDegrees(s.spine(), layer), 110.0, 0.05) << "while it is on";
+    ASSERT_TRUE(window.setCompare(false));
+    EXPECT_LT(torsoDegrees(s.spine(), layer), 0.05);
+    ASSERT_TRUE(window.setCompare(true));
+    window.stopPreview();
+    EXPECT_FALSE(window.isComparing()) << "off when Preview stops";
+    ASSERT_TRUE(window.startPreview()) << window.getStatus();
+    EXPECT_FALSE(window.isComparing());
+    ASSERT_TRUE(window.stepPreview(0.1f)) << window.getStatus();
+    EXPECT_LT(torsoDegrees(s.spine(), layer), 0.05) << "a new Preview runs the pass";
+    window.stopPreview();
+    EXPECT_EQ(animatorWindowReadAll(file), text) << "never saved";
+    EXPECT_EQ(animatorWindowHistory()->position(), start) << "no undo step";
 }
