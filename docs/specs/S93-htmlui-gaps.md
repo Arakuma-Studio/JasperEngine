@@ -1013,7 +1013,7 @@ Recorded by the packages and the integration. The code is what is true now.
   instead of comparing an image.
 - Behaviour changes: a fixed UI time also holds the game clock; anime `clock = "game"` stops while the editor
   is paused; `text-effect-time` defaults to `auto`; `world` is a valid render mode.
-- The built-in shader cache moved to `v66` (World Space keeps `htmlui.vert`'s depth); main is at `v65`.
+- The built-in shader cache moves to `v73` (World Space keeps `htmlui.vert`'s depth), the next free number after S94's `v72` in the landing order (#3 `v66`, S92 `v69`, S99 `v70`, S100 `v71`, S94 `v72`).
 - World Space documents draw in every camera pass; the UI Document Inspector shows two "Billboard" rows.
 
 **Integration**

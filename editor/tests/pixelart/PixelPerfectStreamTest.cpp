@@ -271,8 +271,10 @@ TEST(TilemapShaders, ShaderCacheVersionCoversTheTileClamp){
     EXPECT_GE(std::stoi(name.substr(1)), 65) << name;
 }
 
-// S93's World Space quad (htmlui.vert keeps its depth) is cached under v66 and later: an older cache
+// S93's World Space quad (htmlui.vert keeps its depth) is cached under v73 and later: an older cache
 // holds the HTMLUI program that draws it in front of everything
 TEST(HtmlUIShaders, ShaderCacheVersionCoversWorldSpaceDepth){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v66");
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 73) << name;
 }

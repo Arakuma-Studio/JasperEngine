@@ -6185,9 +6185,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (BLIT 'Gli' 20) and the screen transition program.
     // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
-    // v66: S93's World Space UI Documents (after S50's v65): htmlui.vert keeps the quad's depth when its
+    // v73: S93's World Space UI Documents (after S94's v72): htmlui.vert keeps the quad's depth when its
     //      translation.w asks (HTMLUI 'Tex'); an older cache draws the quad in front of everything.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v66";
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v73";
 }
 
 void editor::App::pushTabNotificationStyle(){
