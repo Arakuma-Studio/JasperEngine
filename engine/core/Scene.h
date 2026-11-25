@@ -252,6 +252,14 @@ namespace jasperengine{
         void setSceneColorScale(SceneColorScale scale);
         SceneColorScale getSceneColorScale() const;
 
+        // The screen HTML UI documents (SceneSettings, S92): read each frame, no reload. Samples:
+        // 0 = the project's, else 1, 2, 4 or 8 (another count goes to the one below it); a change
+        // makes the next frame recreate the document target
+        void setHtmlUiRenderMode(UIRenderMode mode);
+        UIRenderMode getHtmlUiRenderMode() const;
+        void setHtmlUiMsaaSamples(int samples);
+        int getHtmlUiMsaaSamples() const;
+
         // Planar reflections (SceneSettings): read each frame by RenderSystem, no reload
         void setPlanarReflectionResolution(PlanarReflectionResolution resolution);
         PlanarReflectionResolution getPlanarReflectionResolution() const;

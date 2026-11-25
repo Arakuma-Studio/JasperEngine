@@ -6220,6 +6220,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
     // v66: S78's Light Steps (after S50's v65): MESH 'Lst' 55 (LIGHT2D_STEPS in includes/lighting2d.glsl, the count
     //      in u_fs_lighting2d's atlasInfo.z, which held the 2D shadow atlas's width and no shader read).
+    // v67: S92's HTMLUI_PRIM gradients: up to 16 stops through the stop table (u_htmluiStops), the
+    //      conic and repeating functions, a single tile (a negative period). (S93's branch held v66
+    //      for its own sources at the time: a shared cache of either must not serve the other's programs.)
+    // v68: S92's HTMLUI_POST: a layer composite's rectangle clip in the passthrough (v_dst, params.w).
+    // v69: S92's u_fs_htmluiClip: a convex polygon (clip-path polygon(), includes/htmlui_sdf.glsl).
     // v70: S99's Area Lights and IES Profiles (after S78's v66 and S92's v69): the built-in Lit's
     //      USE_AREA_LIGHTS ('Ar') and USE_IES ('Ie') defines (includes/area_lights.glsl, u_lightProfiles in
     //      includes/lights.glsl).

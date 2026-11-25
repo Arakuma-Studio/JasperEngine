@@ -71,6 +71,15 @@ class CcacheTrim(unittest.TestCase):
         self.assertIn("--cleanup maxsize=0.95G", calls)
         self.assertIn("--zero-stats maxsize=0.95G", calls)
 
+    def test_a_saved_working_set_is_recompressed_after_the_cut(self):
+        # after the cut, which evicts by mtime: ccache 4.5's recompression gives each file a new one
+        calls = [c.split(" maxsize=")[0] for c in self.trim(1000 * 1024)]
+        self.assertIn("--recompress 9", calls)
+        self.assertLess(calls.index("--cleanup"), calls.index("--recompress 9"))
+        self.assertLess(calls.index("--recompress 9"), calls.index("--zero-stats"))
+        self.log.unlink()
+        self.assertIn("--recompress 9", [c.split(" maxsize=")[0] for c in self.trim(828 * 1024)])
+
     def test_binary_and_bare_caps(self):
         self.assertFalse([c for c in self.trim(1000 * 1024, cap="1Gi") if c.startswith("--cleanup")])
         self.log.unlink()
@@ -79,7 +88,7 @@ class CcacheTrim(unittest.TestCase):
 
     def test_a_pull_request_saves_nothing_and_cuts_nothing(self):
         calls = self.trim(5 * 1024 * 1024, event="pull_request")
-        self.assertFalse([c for c in calls if c.startswith(("--cleanup", "--zero-stats"))], calls)
+        self.assertFalse([c for c in calls if c.startswith(("--cleanup", "--recompress", "--zero-stats"))], calls)
         self.assertEqual(self.output.read_text(), "save=false\n")
 
 

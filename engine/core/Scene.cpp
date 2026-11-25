@@ -322,6 +322,24 @@ SceneColorScale Scene::getSceneColorScale() const{
     return settings.sceneColorScale;
 }
 
+void Scene::setHtmlUiRenderMode(UIRenderMode mode){
+    settings.htmlUiRenderMode = mode;
+}
+
+UIRenderMode Scene::getHtmlUiRenderMode() const{
+    return settings.htmlUiRenderMode;
+}
+
+void Scene::setHtmlUiMsaaSamples(int samples){
+    // UIDocumentSystem hands it to the screen context each frame; the context makes its target
+    // again when the count it resolves to changes
+    settings.htmlUiMsaaSamples = samples >= 8 ? 8 : samples >= 4 ? 4 : samples >= 2 ? 2 : samples >= 1 ? 1 : 0;
+}
+
+int Scene::getHtmlUiMsaaSamples() const{
+    return settings.htmlUiMsaaSamples;
+}
+
 void Scene::setPlanarReflectionResolution(PlanarReflectionResolution resolution){
     settings.planarReflectionResolution = resolution;
 }

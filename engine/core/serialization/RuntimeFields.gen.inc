@@ -1988,6 +1988,7 @@ const FieldEntry kBody_UIDocumentComponent_fields[] = {
     JE_RF(UIDocumentComponent, textureHeight, 0xe657e304u, Int),
     JE_RF_ENTITY(UIDocumentComponent, inputSurface, 0xdf0ce86fu, Entity),
     JE_RF(UIDocumentComponent, pixelRatio, 0x9ecbc5dbu, Float),
+    JE_RF(UIDocumentComponent, msaaSamples, 0x16930f21u, Int),
 };
 const StructTable kBody_UIDocumentComponent{"uidocument", kBody_UIDocumentComponent_fields, std::size(kBody_UIDocumentComponent_fields)};
 

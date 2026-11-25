@@ -2288,14 +2288,14 @@ std::vector<Setting> mcpSettingsTable() {
             Setting s;
             s.key = "graphics.html_ui_msaa_samples";
             s.type = "int";
-            s.description = "MSAA samples of the HTML/CSS UI documents' targets (1, 2, 4 or 8; default 4). Smoother "
-                            "rounded corners and rotated edges at more GPU memory; devices without MSAA use 1.";
+            s.description = "MSAA samples of the HTML/CSS UI documents' targets: 0 = Auto (1 sample on phones and the web, 4 on "
+                            "desktop; new projects), 1, 2, 4 or 8. A scene's html_ui_msaa_samples replaces it for its documents.";
             s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getHtmlUiMsaaSamples()); };
             s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                 long long v;
-                if (!readInt(value, 1, 8, v, error)) return false;
+                if (!readInt(value, 0, 8, v, error)) return false;
                 if (!Project::isValidHtmlUiMsaaSamples(static_cast<int>(v))) {
-                    error = "must be 1, 2, 4 or 8";
+                    error = "must be 0 (Auto), 1, 2, 4 or 8";
                     return false;
                 }
                 if (apply) ctx.project()->setHtmlUiMsaaSamples(static_cast<int>(v));

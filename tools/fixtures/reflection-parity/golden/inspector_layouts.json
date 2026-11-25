@@ -8823,6 +8823,14 @@
   {
    "component": "uidocument",
    "group": "",
+   "kind": "Enum",
+   "label": "Anti-aliasing (MSAA)",
+   "path": "msaaSamples",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
    "kind": "FloatPositive",
    "label": "Pixel Ratio",
    "path": "pixelRatio",

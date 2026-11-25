@@ -346,7 +346,6 @@ void HtmlUIContext::update(){
         htmlui::WidgetsRuntime::update(context);
         context->Update();
     }
-    markUpdated();
 }
 
 bool HtmlUIContext::processMouseMove(Rml::Vector2f position, int modifiers){

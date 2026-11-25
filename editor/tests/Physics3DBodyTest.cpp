@@ -648,7 +648,7 @@ TEST(Physics3DBody, MovePositionDynamicTeleports) {
     world.step();
     // placed before the step, its velocity kept (Unity)
     EXPECT_NEAR(world.rb(ball).getPosition().x, 5.0f, 1e-4f);
-    EXPECT_NEAR(world.rb(ball).getPosition().y, y + 2.0f * STEP, 1e-4f);
+    EXPECT_NEAR(world.rb(ball).getPosition().y, y + 2.0f * physics3dtest::STEP, 1e-4f);
     EXPECT_NEAR(world.rb(ball).getLinearVelocity().y, 2.0f, 1e-4f);
     EXPECT_NEAR(world.rb(ball).getLinearVelocity().x, 0.0f, 1e-4f);
 }

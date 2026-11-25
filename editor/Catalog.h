@@ -561,6 +561,7 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
+                if constexpr (std::is_same_v<T, UIRenderMode>) return UIRenderMode::OVERLAY;
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
                 if constexpr (std::is_same_v<T, WaterWakeResolution>) return WaterWakeResolution::AUTO;
                 if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
@@ -760,6 +761,12 @@ namespace jasperengine::editor{
                     return scene->getSceneColorScale();
                 }
             }
+            else if (propertyName == "html_ui_render_mode") {
+                if constexpr (std::is_same_v<T, UIRenderMode>) return scene->getHtmlUiRenderMode();
+            }
+            else if (propertyName == "html_ui_msaa_samples") {
+                if constexpr (std::is_same_v<T, int>) return scene->getHtmlUiMsaaSamples();
+            }
             else if (propertyName == "planar_reflection_resolution") {
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return scene->getPlanarReflectionResolution();
             }
@@ -918,6 +925,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
             if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
+            if constexpr (std::is_same_v<T, UIRenderMode>) return UIRenderMode::OVERLAY;
             if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
             if constexpr (std::is_same_v<T, AmbientMode>) return AmbientMode::COLOR;
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
@@ -1060,6 +1068,12 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "scene_color_scale") {
                 if constexpr (std::is_same_v<T, SceneColorScale>) return d.sceneColorScale;
+            }
+            else if (propertyName == "html_ui_render_mode") {
+                if constexpr (std::is_same_v<T, UIRenderMode>) return d.htmlUiRenderMode;
+            }
+            else if (propertyName == "html_ui_msaa_samples") {
+                if constexpr (std::is_same_v<T, int>) return d.htmlUiMsaaSamples;
             }
             else if (propertyName == "planar_reflection_resolution") {
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return d.planarReflectionResolution;
@@ -1367,6 +1381,12 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, SceneColorScale>) {
                     scene->setSceneColorScale(value);
                 }
+            }
+            else if (propertyName == "html_ui_render_mode") {
+                if constexpr (std::is_same_v<T, UIRenderMode>) scene->setHtmlUiRenderMode(value);
+            }
+            else if (propertyName == "html_ui_msaa_samples") {
+                if constexpr (std::is_same_v<T, int>) scene->setHtmlUiMsaaSamples(value);
             }
             else if (propertyName == "planar_reflection_resolution") {
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) scene->setPlanarReflectionResolution(value);

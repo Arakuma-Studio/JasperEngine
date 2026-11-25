@@ -177,6 +177,9 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     // format 1.8 (S78): the Light Steps, the 2D ambient without a Light 2D
     w.svarint(scene.getLight2DSteps());
     w.boolean(scene.isAmbientLight2DWithoutLights());
+    // format 1.9 (S92): the screen HTML UI documents' composite and MSAA samples
+    w.u8(static_cast<uint8_t>(scene.getHtmlUiRenderMode()));
+    w.u8(static_cast<uint8_t>(scene.getHtmlUiMsaaSamples()));
     // format 1.10 (S99 R30): Environment Lighting's ambientMode and the Gradient's colours (sRGB)
     w.u8(static_cast<uint8_t>(scene.getAmbientMode()));
     write(w, scene.getAmbientSkyColor());
@@ -259,6 +262,9 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     PostProcessingSettings postProcessing;
     read(r, postProcessing);
     if (postProcessing != PostProcessingSettings()) scene.setPostProcessing(postProcessing);
+    // a record older than 1.9 drew its screen documents in the camera pass, before S92's Screen
+    // Space - Overlay default; a 1.9 record reads its own mode below
+    scene.setHtmlUiRenderMode(UIRenderMode::CAMERA);
     // a 1.0 record ends here: the capsule shadows keep their defaults
     if (r.atEnd()) return;
     scene.setCapsuleShadowsEnabled(r.boolean());
@@ -333,6 +339,13 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     if (r.atEnd()) return;
     scene.setLight2DSteps(static_cast<int>(r.svarint()));
     scene.setAmbientLight2DWithoutLights(r.boolean());
+    // a 1.8 record ends here: the screen documents stay in the camera pass (above) and keep the
+    // default samples, the project's (format 1.9)
+    if (r.atEnd()) return;
+    const uint8_t uiRenderMode = r.u8();
+    if (uiRenderMode <= static_cast<uint8_t>(UIRenderMode::CAMERA))
+        scene.setHtmlUiRenderMode(static_cast<UIRenderMode>(uiRenderMode));
+    scene.setHtmlUiMsaaSamples(r.u8());
     // an older record ends here: the Color source and the default gradient (format 1.10)
     if (r.atEnd()) return;
     const uint8_t ambientMode = r.u8();

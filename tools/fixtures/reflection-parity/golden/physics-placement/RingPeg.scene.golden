@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 10
 guid: 1764175893ef58d47672ca9b1a13d6c6
 id: 1698906752
 name: RingPeg
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

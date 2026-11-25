@@ -654,6 +654,14 @@ const EnumOptions& waterWakeResolutionOptions() {
     return options;
 }
 
+const EnumOptions& uiRenderModeOptions() {
+    static const EnumOptions options = {
+        {(int)UIRenderMode::OVERLAY, "overlay", "Screen Space - Overlay"},
+        {(int)UIRenderMode::CAMERA, "camera", "Screen Space - Camera"}
+    };
+    return options;
+}
+
 const EnumOptions& sceneColorScaleOptions() {
     static const EnumOptions options = {
         {(int)SceneColorScale::FULL, "full", "Full"},
@@ -846,6 +854,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"shadow_debug_view", &shadowDebugViewOptions()},
         {"shadow_tier", &shadowTierOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
+        {"ui_render_mode", &uiRenderModeOptions()},
         {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
         {"water_wake_resolution", &waterWakeResolutionOptions()},
         {"lit_quality", &litQualityOptions()},

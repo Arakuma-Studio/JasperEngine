@@ -283,6 +283,7 @@ namespace jasperengine::editor {
         static const EnumTable<RigidbodyMotionQuality>& rigidbodyMotionQuality();
         static const EnumTable<Scaling>& scalingMode();
         static const EnumTable<SceneColorScale>& sceneColorScale();
+        static const EnumTable<UIRenderMode>& uiRenderMode();
         static const EnumTable<PlanarReflectionResolution>& planarReflectionResolution();
         static const EnumTable<WaterWakeResolution>& waterWakeResolution();
         static const EnumTable<SceneType>& sceneType();
