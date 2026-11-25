@@ -23,6 +23,7 @@
 #include "sprite/SpriteSheetPool.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
+#include "mcp/McpModelImport.h"
 #include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
@@ -1189,11 +1190,18 @@ void editTerrainDetailsTool(const CallPtr& call) {
     }
 
     if (editing) {
-        // an FBX draws from its import, made the first time (as the Terrain window does)
+        // an FBX draws from its import, queued the first time (as the Terrain window does): its
+        // layer draws once it lands (S98 REQ-32)
         for (const std::string& mesh : meshes) {
-            if (!project->prepareModelFile(mesh)) {
+            const Project::ModelImport state = project->prepareModelFile(mesh);
+            if (state == Project::ModelImport::Failed) {
                 call->fail("Could not import " + mesh + " (see the console). Nothing was changed.");
                 return;
+            }
+            if (state == Project::ModelImport::Pending) {
+                const JobPtr job = syncModelImportJob(call->ctx(), true);
+                notes.push_back(mesh + " is importing" + (job ? " (job " + job->id() + ")" : std::string()) +
+                                ": its layer draws once the import lands.");
             }
         }
         auto multi = std::make_unique<MultiPropertyCmd>();

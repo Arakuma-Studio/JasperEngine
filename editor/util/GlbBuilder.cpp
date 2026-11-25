@@ -224,7 +224,7 @@ struct GlbBuilder::Pixels {
 };
 
 GlbBuilder::GlbBuilder(const ufbx_scene* scene, const fs::path& fbxPath, const fs::path& assetsRoot, const Options& options)
-    : scene(scene), options(options), fbxPath(fbxPath), assetsRoot(assetsRoot) {
+    : scene(scene), options(options), fbxPath(fbxPath), assetsRoot(assetsRoot), createMaterials(options.createMaterials) {
     model.buffers.resize(1);
 }
 
@@ -419,7 +419,7 @@ bool GlbBuilder::resolveTexture(uint32_t fileIndex, std::vector<unsigned char>& 
     path = findTextureFile(texture, fbxPath, assetsRoot);
     textureLookups.emplace(fileIndex, TextureLookup{texture, path});
     if (path.empty()) {
-        warn("Texture not found: " + textureName(file));
+        warn(TEXTURE_NOT_FOUND + textureName(file));
         return false;
     }
     return true;
@@ -535,7 +535,7 @@ int GlbBuilder::textureFor(int image, const ufbx_texture* texture) {
     const int wrapS = texture && texture->wrap_u == UFBX_WRAP_CLAMP ? TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE : TINYGLTF_TEXTURE_WRAP_REPEAT;
     const int wrapT = texture && texture->wrap_v == UFBX_WRAP_CLAMP ? TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE : TINYGLTF_TEXTURE_WRAP_REPEAT;
     if (texture && texture->has_uv_transform) {
-        warn("Texture tiling/offset is not imported: " + toString(texture->name));
+        warn(TEXTURE_UV_TRANSFORM + toString(texture->name));
     }
 
     auto samplerIt = samplerIndices.find({wrapS, wrapT});
@@ -1108,7 +1108,7 @@ int GlbBuilder::meshFor(const ufbx_node* node) {
         const uint32_t slot = data.slots[i];
         // the FBX slot and material each submesh came from, for tools that map them (spec S94 F42)
         tinygltf::Value::Object extras{{"fbxMaterialSlot", tinygltf::Value(static_cast<int>(slot))}};
-        if (slot < slots.size() && slots[slot]) {
+        if (createMaterials && slot < slots.size() && slots[slot]) {
             out.primitives[i].material = materialFor(slots[slot], node->mesh);
             extras["fbxMaterial"] = tinygltf::Value(toString(slots[slot]->name));
         }

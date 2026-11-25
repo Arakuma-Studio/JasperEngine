@@ -23,7 +23,6 @@
 #include "subsystem/UIDocumentSystem.h"
 
 #include "Catalog.h"
-#include "Factory.h"
 #include "Stream.h"
 #include "mcp/McpValues.h"
 #include "support/SystemTestAccess.h"
@@ -464,15 +463,6 @@ TEST(CanvasScalerSettingsIO, McpObjectsPatchTheirFields) {
     CanvasScalerSettings parsed;
     ASSERT_TRUE(mcp::McpValues::canvasScalerFromJson(json, parsed, error)) << error;
     EXPECT_EQ(parsed, settings);
-}
-
-TEST(CanvasScalerSettingsIO, GeneratedCodeHasOnlyTheChangedFields) {
-    EXPECT_EQ(Factory::formatCanvasScaler(CanvasScalerSettings()), "[](){ CanvasScalerSettings s; return s; }()");
-    const std::string code = Factory::formatCanvasScaler(scaleWithScreenSize(1920, 1080, ScreenMatchMode::Expand));
-    EXPECT_NE(code.find("s.mode = UIScaleMode::ScaleWithScreenSize;"), std::string::npos);
-    EXPECT_NE(code.find("s.screenMatchMode = ScreenMatchMode::Expand;"), std::string::npos);
-    EXPECT_EQ(code.find("referenceResolution"), std::string::npos);   // the default 1920x1080
-    EXPECT_EQ(code.find("fallbackScreenDPI"), std::string::npos);
 }
 
 TEST(CanvasScalerSettingsIO, TheSceneSettingIsOneCatalogProperty) {

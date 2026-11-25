@@ -237,6 +237,12 @@ Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node, const std::strin
     // format either way: written again on the next save
     const bool legacyFile = header.version < ROOT_LAYOUT_VERSION;
     needsUpgrade = header.version < FILE_VERSION;
+    bool follow = true;
+    if (node && node.IsMap() && node["followMaterialFiles"] && YAML::convert<bool>::decode(node["followMaterialFiles"], follow)) {
+        followMaterialFiles = follow;
+    } else {
+        followMaterialFiles = true;
+    }
 
     // Stripped objects: references into the nested instances
     if (node && node.IsMap() && node["stripped"] && node["stripped"].IsSequence()) {

@@ -181,7 +181,6 @@ entities:
         enabled: true
         type: directional
         direction: [-0.4, -1, -0.6]
-        worldDirection: [-0.4, -1, -0.6]
         color: [1, 1, 1]
         range: 100
         intensity: 3
@@ -267,7 +266,6 @@ entities:
               blendMode: PREMULTIPLIED
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             overrideFields: 1114240
@@ -285,15 +283,6 @@ entities:
         normAdjustJoint: 1
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
-        aabb:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        verticesAABB:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        worldAABB:
-          min: [-6.7, 1.8499999, 0]
-          max: [-5.2, 3.35, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: true
@@ -361,7 +350,6 @@ entities:
               shaderFeatures: [OUTLINE]
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             overrideFields: 721024
@@ -379,15 +367,6 @@ entities:
         normAdjustJoint: 1
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
-        aabb:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        verticesAABB:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        worldAABB:
-          min: [-5, 1.8499999, 0]
-          max: [-3.5, 3.35, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: true
@@ -455,7 +434,6 @@ entities:
               shaderFeatures: [HUE_SHIFT]
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             overrideFields: 721024
@@ -473,15 +451,6 @@ entities:
         normAdjustJoint: 1
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
-        aabb:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        verticesAABB:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        worldAABB:
-          min: [-3.3, 1.8499999, 0]
-          max: [-1.8, 3.35, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: true
@@ -549,7 +518,6 @@ entities:
               shaderFeatures: [FLASH]
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             overrideFields: 721024
@@ -567,15 +535,6 @@ entities:
         normAdjustJoint: 1
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
-        aabb:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        verticesAABB:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        worldAABB:
-          min: [-1.6, 1.8499999, 0]
-          max: [-0.100000024, 3.35, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: true
@@ -642,7 +601,6 @@ entities:
               shaderFeatures: [GRAYSCALE]
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             overrideFields: 721024
@@ -660,15 +618,6 @@ entities:
         normAdjustJoint: 1
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
-        aabb:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        verticesAABB:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        worldAABB:
-          min: [0.100000024, 1.8499999, 0]
-          max: [1.6, 3.35, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: true
@@ -748,7 +697,6 @@ entities:
               shaderFeatures: [COLOR_REPLACE]
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             overrideFields: 983168
@@ -766,15 +714,6 @@ entities:
         normAdjustJoint: 1
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
-        aabb:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        verticesAABB:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        worldAABB:
-          min: [1.8, 1.8499999, 0]
-          max: [3.3, 3.35, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: true
@@ -854,7 +793,6 @@ entities:
               shaderFeatures: [OVERLAY]
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             overrideFields: 983168
@@ -872,15 +810,6 @@ entities:
         normAdjustJoint: 1
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
-        aabb:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        verticesAABB:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        worldAABB:
-          min: [3.5, 1.8499999, 0]
-          max: [5, 3.35, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: true
@@ -949,7 +878,6 @@ entities:
               shaderFeatures: [GLOW]
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             overrideFields: 721024
@@ -967,15 +895,6 @@ entities:
         normAdjustJoint: 1
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
-        aabb:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        verticesAABB:
-          min: [-32, -32, 0]
-          max: [32, 32, 0]
-        worldAABB:
-          min: [5.2, 1.8499999, 0]
-          max: [6.7, 3.35, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: true
@@ -1472,12 +1391,7 @@ entities:
         cullingMask: 4294967295
         target: [0, 1.4, 0]
         up: [0, 1, 0]
-        leftClip: <view>
-        rightClip: <view>
-        bottomClip: <view>
-        topClip: <view>
         yfov: 0.75
-        aspect: <view>
         nearClip: 0.2
         farClip: 200
         renderToTexture: false

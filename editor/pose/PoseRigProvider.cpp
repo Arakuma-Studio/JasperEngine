@@ -248,28 +248,37 @@ bool editor::PoseRigProvider::setAnimationType(Project* project, const fs::path&
 
 bool editor::PoseRigProvider::adoptNameRules(Project* project, const fs::path& model){
     const fs::path file = model.lexically_normal();
-    // an FBX is read through its converted .glb
+    // the rig of the model file, or of an FBX's converted .glb, against the current naming rules
+    auto adopt = [](Project* project, const fs::path& file, bool fbx) -> bool {
+        pose::Skeleton skeleton;
+        if (!gltfJsonSkeleton(fbx ? project->getImportedModelPath(file) : file, skeleton) || skeleton.bones.empty()) return false;
+        const fs::path sidecar = sidecarOf(file);
+        pose::HumanoidOverrides overrides;
+        std::vector<std::string> notes;
+        std::string error;
+        if (!readOverrides(project, sidecar, overrides, notes, error)){
+            Out::warning("%s", unreadableSidecarRefusal(error).c_str());
+            return false;
+        }
+        const int rules = overrides.detectNameRules();
+        if (rules >= pose::HUMANOID_NAME_RULES) return false;
+        // the rules agree on this rig: nothing to record, its sidecar stays as it is (or absent)
+        if (pose::autoDetectHumanoid(skeleton, nullptr, rules).bones == pose::autoDetectHumanoid(skeleton).bones) return false;
+        overrides.nameRules = pose::HUMANOID_NAME_RULES;
+        const io::WriteResult written = io::writeFileAtomic(sidecar, pose::writeHumanoidOverrides(overrides));
+        if (!written.ok()){
+            Out::warning("%s: %s", ProjectChecks::projectRelative(project->getProjectPath(), sidecar).c_str(), io::describeWriteError(written).c_str());
+            return false;
+        }
+        return true;
+    };
     const bool fbx = FbxImporter::isFbxFile(file);
     if (fbx && !project->importFbxModel(file)) return false;
-    pose::Skeleton skeleton;
-    if (!gltfJsonSkeleton(fbx ? project->getImportedModelPath(file) : file, skeleton) || skeleton.bones.empty()) return false;
-    const fs::path sidecar = sidecarOf(file);
-    pose::HumanoidOverrides overrides;
-    std::vector<std::string> notes;
-    std::string error;
-    if (!readOverrides(project, sidecar, overrides, notes, error)){
-        Out::warning("%s", unreadableSidecarRefusal(error).c_str());
+    // the main thread only queues the conversion (S98 REQ-32): the rig is read once it landed, without
+    // asking for the import again (a request queues even a current FBX)
+    if (fbx && project->isModelImportPending(file)) {
+        project->whenModelImported(file, [project, file, adopt]() { adopt(project, file, true); });
         return false;
     }
-    const int rules = overrides.detectNameRules();
-    if (rules >= pose::HUMANOID_NAME_RULES) return false;
-    // the rules agree on this rig: nothing to record, its sidecar stays as it is (or absent)
-    if (pose::autoDetectHumanoid(skeleton, nullptr, rules).bones == pose::autoDetectHumanoid(skeleton).bones) return false;
-    overrides.nameRules = pose::HUMANOID_NAME_RULES;
-    const io::WriteResult written = io::writeFileAtomic(sidecar, pose::writeHumanoidOverrides(overrides));
-    if (!written.ok()){
-        Out::warning("%s: %s", ProjectChecks::projectRelative(project->getProjectPath(), sidecar).c_str(), io::describeWriteError(written).c_str());
-        return false;
-    }
-    return true;
+    return adopt(project, file, fbx);
 }

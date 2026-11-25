@@ -83,7 +83,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             // Tags and Layers > Sorting Layers and Graphics > Transparency Sort Mode (S52, S94 F5)
             "sortingLayers", "sortingLayerNextId", "transparencySortMode", "transparencySortAxis"}},
         {RootKind::Material, {}},
-        {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
+        {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped", "followMaterialFiles"}},
     };
     if (kind == RootKind::Material) {
         // a .material file is one encoded Material

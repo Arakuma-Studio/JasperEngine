@@ -58,12 +58,12 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     YAML::Node root = YAML::Load("{name: Level1, entities: [{name: A}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 0);
-    EXPECT_EQ(result.versionCurrent, 9);
+    EXPECT_EQ(result.versionCurrent, StreamMigrations::currentVersion(DocumentKind::Scene));
     EXPECT_TRUE(result.migrated());
     EXPECT_FALSE(result.newer());
     ASSERT_TRUE(root.IsMap());
     EXPECT_EQ(root.begin()->first.Scalar(), "formatVersion");
-    EXPECT_EQ(root["formatVersion"].as<int>(), 9);
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     EXPECT_EQ(root["name"].as<std::string>(), "Level1");
     EXPECT_EQ(root["entities"][0]["name"].as<std::string>(), "A");
     EXPECT_EQ(root.size(), 3u);
@@ -71,7 +71,7 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     // current: nothing to do
     const MigrationResult again = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_FALSE(again.migrated());
-    EXPECT_EQ(again.versionRead, 9);
+    EXPECT_EQ(again.versionRead, StreamMigrations::currentVersion(DocumentKind::Scene));
 }
 
 TEST(StreamMigrations, NewerIsLeftUntouched){
@@ -80,8 +80,10 @@ TEST(StreamMigrations, NewerIsLeftUntouched){
     EXPECT_TRUE(result.newer());
     EXPECT_FALSE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 99);
-    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 10),
-            "Written by a newer JasperEngine (scene format 10; this editor writes 9).");
+    const int scene = StreamMigrations::currentVersion(DocumentKind::Scene);
+    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, scene + 1),
+            "Written by a newer JasperEngine (scene format " + std::to_string(scene + 1) + "; this editor writes " +
+            std::to_string(scene) + ").");
 }
 
 TEST(StreamMigrations, OldPrefabsAreLeftToThePrefabLoader){
@@ -117,10 +119,10 @@ TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
     EXPECT_EQ(result.versionRead, 1);
     // 1 -> 2, then 2 -> 3 (S20's particle systems: none here), 3 -> 4 (S29's derived transform
     // values: none here), 4 -> 5 (S18's splines: identity), 5 -> 6 (S21's Animation Player
-    // controllers: none here), 6 -> 7 (S27's curve form: no lines), 7 -> 8 (S44's sheet sprites) and
-    // 8 -> 9 (S94's Text alignment: no texts)
-    ASSERT_EQ(result.applied.size(), 8u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 9);
+    // controllers: none here), 6 -> 7 (S27's curve form: no lines), 7 -> 8 (S44's sheet sprites:
+    // identity), 8 -> 9 (S98's mesh assets: identity) and 9 -> 10 (S94's Text alignment: no texts)
+    ASSERT_EQ(result.applied.size(), 9u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     EXPECT_EQ(root["scene"]["shadowQuality"].as<std::string>(), "auto");
     EXPECT_FLOAT_EQ(root["entities"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][1]["children"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
@@ -141,7 +143,7 @@ TEST(StreamMigrations, PrefabV3ToV4ShadowBiasInTexels){
         "{type: Prefab, version: 3, members: [{type: Entity, entity: 1001, components: {light: {type: spot, shadowBias: 0.002}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 10);
+    EXPECT_EQ(root["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
     EXPECT_FLOAT_EQ(root["members"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
 }
 
@@ -173,10 +175,10 @@ TEST(StreamMigrations, SceneV2ToV3ParticleSystemsMoveToTheirTargets){
         "{type: Entity, entity: 1003, name: Lonely, components: {particlesystem: {rate: 3}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 2);
-    // 2 -> 3, then S29's 3 -> 4, S18's identity 4 -> 5, S21's 5 -> 6, S27's curve form 6 -> 7, S44's
-    // 7 -> 8 and S94's 8 -> 9
-    ASSERT_EQ(result.applied.size(), 7u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 9);
+    // 2 -> 3, then S29's 3 -> 4, S18's identity 4 -> 5, S21's 5 -> 6, S27's curve form 6 -> 7, the
+    // identities 7 -> 8 (S44) and 8 -> 9 (S98), and S94's 9 -> 10
+    ASSERT_EQ(result.applied.size(), 8u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
 
     const YAML::Node fire = root["entities"][0]["components"];
     ASSERT_TRUE(fire["particlesystem"]);
@@ -257,7 +259,7 @@ TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
         "{type: Entity, entity: 1002, name: Dust FX, components: {action: {target: 1001}, particlesystem: {rate: 9}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 10) << "migrated to the current version";
+    EXPECT_EQ(root["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab)) << "migrated to the current version";
     EXPECT_TRUE(root["members"][0]["components"]["particlesystem"]);
     EXPECT_FALSE(root["members"][1]["components"]["particlesystem"]);
 }
@@ -278,8 +280,8 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
         " components: {animationplayer: {controller: anim/other.controller, controllerGuid: 0000111122223333444455556666aaaa}}}]}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 5);
-    ASSERT_EQ(result.applied.size(), 4u) << "5 -> 6, S27's curve form 6 -> 7 (no lines), S44's sheet sprites 7 -> 8, then S94's Text alignment 8 -> 9";
-    EXPECT_EQ(root["formatVersion"].as<int>(), 9);
+    ASSERT_EQ(result.applied.size(), 5u) << "5 -> 6, S27's curve form 6 -> 7 (no lines), S44's sheet sprites 7 -> 8, S98's mesh assets 8 -> 9, then S94's 9 -> 10";
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
 
     const YAML::Node granjero = root["entities"][0]["components"];
     ASSERT_TRUE(granjero["animator"]);
@@ -320,7 +322,7 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
         "{type: Prefab, version: 6, members: [{type: Entity, entity: 1001, components: {animationplayer: {enabled: false, controller: anim/c.controller}}}]}");
     const MigrationResult prefabResult = StreamMigrations::migrate(DocumentKind::Prefab, prefab);
     EXPECT_TRUE(prefabResult.migrated());
-    EXPECT_EQ(prefab["version"].as<int>(), 10);
+    EXPECT_EQ(prefab["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
     EXPECT_EQ(prefab["members"][0]["components"]["animator"]["controller"].as<std::string>(), "anim/c.controller");
     EXPECT_FALSE(prefab["members"][0]["components"]["animator"]["enabled"].as<bool>()) << "a disabled player: a disabled Animator";
 }
@@ -332,7 +334,7 @@ TEST(StreamMigrations, SceneV8TextPivotsBecomeAlignment){
     YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/scene-v8-text.scene")));
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     ASSERT_TRUE(result.migrated());
-    EXPECT_EQ(root["formatVersion"].as<int>(), 9);
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     ASSERT_EQ(result.log.lines.size(), 1u);
     EXPECT_NE(result.log.lines[0].find("3 Texts'"), std::string::npos) << result.log.lines[0];
 
@@ -365,7 +367,7 @@ TEST(StreamMigrations, PrefabV9TextPivotsBecomeAlignment){
     YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/prefab-v9-text.prefab")));
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     ASSERT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 10);
+    EXPECT_EQ(root["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
     const YAML::Node sign = root["members"][0]["components"]["text"];
     EXPECT_EQ(sign["verticalAlignment"].as<std::string>(), "baseline");
     EXPECT_EQ(sign["horizontalAlignment"].as<std::string>(), "center");
@@ -380,7 +382,7 @@ TEST(StreamMigrations, SceneV8AnimatorsKeepTheirRootDrift){
     YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/scene-v8-root-motion.scene")));
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     ASSERT_TRUE(result.migrated());
-    EXPECT_EQ(root["formatVersion"].as<int>(), 9);
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     ASSERT_EQ(result.log.lines.size(), 1u);
     EXPECT_NE(result.log.lines[0].find("2 Animators and Animation Players keep"), std::string::npos) << result.log.lines[0];
 
@@ -410,7 +412,7 @@ TEST(StreamMigrations, PrefabV9AnimationPlayersKeepTheirRootDrift){
     YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/prefab-v9-root-motion.prefab")));
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     ASSERT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 10);
+    EXPECT_EQ(root["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
     const YAML::Node walker = root["members"][0]["components"]["animationplayer"];
     ASSERT_TRUE(walker["legacyRootDrift"]);
     EXPECT_TRUE(Stream::decodeAnimationPlayerComponent(walker).legacyRootDrift);

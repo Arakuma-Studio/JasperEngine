@@ -157,9 +157,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [1280, 720, 0]
-        worldAABB:
-          min: [0, 0, 0]
-          max: [1280, 720, 0]
         texture:
           textureType: 2D
           source: path
@@ -220,9 +217,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [80, 60, 0]
-          max: [340, 180, 0]
         texture:
           textureType: 2D
           source: path
@@ -284,9 +278,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [380, 60, 0]
-          max: [640, 180, 0]
         texture:
           textureType: 2D
           source: path
@@ -351,9 +342,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [680, 60, 0]
-          max: [940, 180, 0]
         texture:
           textureType: 2D
           source: path
@@ -419,9 +407,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [980, 60, 0]
-          max: [1240, 180, 0]
         texture:
           textureType: 2D
           source: path
@@ -487,9 +472,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [80, 260, 0]
-          max: [340, 380, 0]
         texture:
           textureType: 2D
           source: path
@@ -557,9 +539,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [380, 260, 0]
-          max: [640, 380, 0]
         texture:
           textureType: 2D
           source: path
@@ -625,9 +604,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [680, 260, 0]
-          max: [940, 380, 0]
         texture:
           textureType: 2D
           source: path
@@ -694,9 +670,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [980, 260, 0]
-          max: [1240, 380, 0]
         texture:
           textureType: 2D
           source: path
@@ -763,9 +736,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [80, 460, 0]
-          max: [340, 580, 0]
         texture:
           textureType: 2D
           source: path
@@ -832,9 +802,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [380, 460, 0]
-          max: [640, 580, 0]
         texture:
           textureType: 2D
           source: path
@@ -901,9 +868,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [260, 120, 0]
-        worldAABB:
-          min: [680, 460, 0]
-          max: [940, 580, 0]
         texture:
           textureType: 2D
           source: path

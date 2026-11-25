@@ -148,6 +148,11 @@ namespace jasperengine{
         void setAutoTransparency(bool autoTransparency);
         bool isAutoTransparency() const;
 
+        // the .mesh asset the geometry comes from (S98 F1), read at once; "" keeps the geometry
+        // as the mesh's own
+        void setMeshAsset(const std::string& path);
+        std::string getMeshAsset() const;
+
         void setCustomShader(const std::string& path);
         std::string getCustomShader() const;
 

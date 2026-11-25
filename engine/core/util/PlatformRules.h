@@ -131,6 +131,9 @@ namespace jasperengine {
         JASPERENGINE_API int iosInterfaceOrientation(ScreenOrientation orientation);
         // Info.plist names (UIInterfaceOrientationPortrait ...) of the allowed set, the default first
         JASPERENGINE_API std::vector<std::string> iosPlistOrientations(ScreenOrientation defaultOrientation, uint8_t allowedMask);
+        // UIRequiresFullScreen: iPad Split View ignores the supported orientations of an app that is
+        // not full screen, so it is on unless all four rotate (AutoRotation with every one allowed)
+        JASPERENGINE_API bool iosRequiresFullScreen(ScreenOrientation defaultOrientation, uint8_t allowedMask);
 
         // Unity's frame pacing (Application.targetFrameRate, QualitySettings.vSyncCount):
         // - Android, iOS: mobileFps = targetFrameRate (default 60), clamped to [1, refreshRate];

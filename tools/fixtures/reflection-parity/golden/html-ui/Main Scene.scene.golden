@@ -33,13 +33,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_2d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 0
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 0
 shaderKeys:
   - type: blit
   - type: blit

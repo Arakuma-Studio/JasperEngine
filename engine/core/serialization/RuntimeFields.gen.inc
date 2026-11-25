@@ -1106,6 +1106,7 @@ const StructTable kBody_ScriptComponent{"script", kBody_ScriptComponent_fields, 
 
 const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, enabled, 0x787b2403u, Bool),
+    JE_RF(MeshComponent, meshAsset, 0x4fad0fd9u, AssetPath),
     JE_RF(MeshComponent, receiveLights, 0x5fa69afau, Bool),
     JE_RF(MeshComponent, receiveIBL, 0x5ef87748u, Bool),
     JE_RF(MeshComponent, castShadows, 0x37e4a2feu, Bool),

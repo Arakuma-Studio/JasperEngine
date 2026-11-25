@@ -32,7 +32,11 @@ namespace jasperengine::editor {
             std::filesystem::path found;
         };
 
-        // What a model's import settings change in the conversion (spec S94 F40, F43)
+        // The texture warnings' prefixes: an import's summary counts them (FbxImporter::summarizeWarnings)
+        static constexpr const char* TEXTURE_NOT_FOUND = "Texture not found: ";
+        static constexpr const char* TEXTURE_UV_TRANSFORM = "Texture tiling/offset is not imported: ";
+
+        // What a model's import settings change in the conversion (spec S94 F40, F43, F42; S98 REQ-44)
         struct Options {
             // Rest Pose First Frame: the nodes take the first frame of the clip named restPoseTake,
             // else of the first clip (takes that animate nothing make no clip and are skipped)
@@ -44,13 +48,16 @@ namespace jasperengine::editor {
             // FBX Submesh Order Used Materials (projects made before S94 F42): an empty material
             // slot makes no primitive, so the next ones move up; else primitive i is slot i
             bool usedMaterialsOrder = false;
+            // false (Material Creation Mode None): no material and no texture is made or looked for,
+            // every primitive draws with the default material
+            bool createMaterials = true;
         };
 
         // The custom vertex attribute that numbers the corners that share a smoothed normal
         static constexpr const char* SMOOTHING_GROUP_ATTRIBUTE = "_SMOOTHING_GROUP";
 
         GlbBuilder(const ufbx_scene* scene, const std::filesystem::path& fbxPath, const std::filesystem::path& assetsRoot,
-                   const Options& options);
+                   const Options& options = {});
 
         bool build(std::string& error);
         // The .glb contents, with extras in its asset info; empty on failure
@@ -84,6 +91,7 @@ namespace jasperengine::editor {
         Options options;
         std::filesystem::path fbxPath;
         std::filesystem::path assetsRoot;
+        bool createMaterials = true;
         std::vector<std::string> warnings;
         std::set<std::string> warned;
 

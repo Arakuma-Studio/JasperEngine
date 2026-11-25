@@ -34,12 +34,12 @@ scene:
 sceneType: scene_3d
 mainCamera: 0
 maxValues:
-  maxSubmeshes: 1
+  maxSubmeshes: 0
   maxTilemapTilesRect: 0
   maxTilemapTiles: 0
   maxExternalBuffers: 0
   maxSpriteFrames: 0
-  maxBones: 128
+  maxBones: 0
   maxColliders2D: 0
   maxColliderPoints2D: 0
   maxColliders3D: 0
@@ -217,9 +217,6 @@ entities:
         verticesAABB:
           min: [0, 0, 0]
           max: [0, 0, 0]
-        worldAABB:
-          min: [2, 0, 0]
-          max: [2, 0, 0]
         receiveLights: false
         receiveIBL: true
         castShadows: false
@@ -273,7 +270,6 @@ entities:
         enabled: false
         type: spot
         direction: [1, 0.3, 8.3]
-        worldDirection: [1, 0.3, 8.3]
         color: [4.9, 6.8, 6.2]
         range: 3.7
         intensity: 4.8
@@ -472,9 +468,6 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [0, 0, 0]
-        worldAABB:
-          min: [9, 0, 0]
-          max: [9, 0, 0]
         texture:
           textureType: 2D
           source: path

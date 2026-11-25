@@ -575,11 +575,16 @@ TEST(FbxImport, SubmeshOrderFollowsMaterialSlots) {
     // a project made before (FBX Submesh Order Used Materials, set by its migration) keeps the old
     // order, the used slots only, so its saved submesh values stay put; the order is part of the
     // import, so switching it reimports
-    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets, true), FbxImporter::State::Stale);
-    EXPECT_NE(FbxImporter::getSourceId(project.fbx, true), FbxImporter::getSourceId(project.fbx));
-    const FbxImporter::Result legacy = FbxImporter::import(project.fbx, project.glb, project.assets, false, true);
+    const std::string slotsSource = FbxImporter::getSourceId(project.fbx);
+    FbxImporter::setDefaultUsedMaterialsOrder(true);
+    struct RestoreOrder {
+        ~RestoreOrder() { FbxImporter::setDefaultUsedMaterialsOrder(false); }
+    } restoreOrder;
+    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::Stale);
+    EXPECT_NE(FbxImporter::getSourceId(project.fbx), slotsSource);
+    const FbxImporter::Result legacy = FbxImporter::import(project.fbx, project.glb, project.assets);
     ASSERT_TRUE(legacy.success) << legacy.error;
-    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets, true), FbxImporter::State::UpToDate);
+    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::UpToDate);
     tinygltf::Model used;
     ASSERT_TRUE(project.load(used));
     ASSERT_EQ(used.meshes.size(), 1u);
@@ -591,7 +596,7 @@ TEST(FbxImport, SubmeshOrderFollowsMaterialSlots) {
         EXPECT_EQ(used.materials[static_cast<size_t>(usedPrimitives[i].material)].name, usedNames[i]);
         EXPECT_FALSE(usedPrimitives[i].extras.Has("fbxEmptySlot"));
     }
-    EXPECT_EQ(FbxImporter::getImportId(used), FbxImporter::getSourceId(project.fbx, true));
+    EXPECT_EQ(FbxImporter::getImportId(used), FbxImporter::getSourceId(project.fbx));
 }
 
 TEST(FbxImport, SkinnedGeometricTransform) {

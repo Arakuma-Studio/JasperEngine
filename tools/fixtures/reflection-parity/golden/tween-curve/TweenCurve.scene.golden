@@ -101,7 +101,6 @@ entities:
         enabled: true
         type: directional
         direction: [-0.2, -0.5, 0.3]
-        worldDirection: [-0.2, -0.5, 0.3]
         color: [1, 1, 1]
         range: 100
         intensity: 4
@@ -251,9 +250,6 @@ entities:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
         verticesAABB:
-          min: [-0.5, -0.5, -0.5]
-          max: [0.5, 0.5, 0.5]
-        worldAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
         receiveLights: true

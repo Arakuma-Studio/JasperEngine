@@ -45,6 +45,7 @@ namespace jasperengine::editor{
         PrefabEditUndo prefabUndo;
         bool isNewModel = false;
         // the file's clip count for Animation Entities: Auto (S77 R38), read on the first load
+        // (-1 until it can be read: an FBX's first import may still run)
         int autoClipCount = -1;
         // A reload that switches the model to the node-hierarchy layout (animation clips spec 9.R3),
         // decided on the first run (the old component a redo starts from no longer says how it was
@@ -158,7 +159,10 @@ namespace jasperengine::editor{
         void unparkEntities(SceneProject* sceneProject);
 
         bool tryLoad();
+        // Animation Entities: Auto for a first load, once the file (an FBX's import) can be read
+        void applyAutoAnimationEntities(ModelComponent& model);
         void finalizeLoad();
+        // the next try: on the next frame, or once the FBX's import lands (S98 REQ-33)
         void schedulePoll();
         void restoreTransform(Scene* scene);
 

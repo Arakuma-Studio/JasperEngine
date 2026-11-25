@@ -11,7 +11,6 @@
 #include <map>
 
 #include "EditorHost.h"
-#include "Factory.h"
 #include "Project.h"
 #include "Stream.h"
 #include "asset/AssetFileWrite.h"
@@ -32,6 +31,9 @@
 #include "window/dialog/SceneSaveDialog.h"
 
 #include <gtest/gtest.h>
+
+#include "cook/SceneCooker.h"
+#include "serialization/CookedScene.h"
 
 #include <filesystem>
 #include <fstream>
@@ -225,9 +227,9 @@ TEST(ProjectSaveDialog, CloseRunsCancelOnceAndReleasesTheClosures) {
     EXPECT_EQ(token.use_count(), 1);
 }
 
-// ---- generated scene code ------------------------------------------------------------------------
+// ---- cooked scenes ------------------------------------------------------------------------------
 
-TEST(GeneratedScenes, ParentsAreCreatedBeforeChildren) {
+TEST(CookedScenes, ParentsAreBuiltBeforeChildren) {
     Scene scene;
     const Entity parent = scene.createUserEntity();
     scene.addComponent<Transform>(parent, {});
@@ -238,13 +240,14 @@ TEST(GeneratedScenes, ParentsAreCreatedBeforeChildren) {
     scene.addEntityChild(parent, child, false);
 
     // the list a model import left: the child first
-    const std::string code = Factory::createScene(0, &scene, 77, "Order", {child, parent}, NULL_ENTITY, fs::path(), fs::path());
-    const size_t parentAt = code.find("OrderParent");
-    const size_t childAt = code.find("OrderChild");
-    ASSERT_NE(parentAt, std::string::npos) << code;
-    ASSERT_NE(childAt, std::string::npos) << code;
-    EXPECT_LT(parentAt, childAt) << code;
-    EXPECT_NE(std::string(Factory::sceneSourceHeader).find("scene source 4"), std::string::npos);
+    const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(&scene, 77, {child, parent}, NULL_ENTITY, SceneResources{});
+    Scene loaded;
+    std::string error;
+    ASSERT_TRUE(CookedSceneLoader::loadScene(&loaded, std::span<const uint8_t>(bytes.data(), bytes.size()), &error)) << error;
+    ASSERT_TRUE(loaded.isEntityCreated(child));
+    EXPECT_EQ(loaded.getComponent<Transform>(child).parent, parent);
+    const auto transforms = loaded.getComponentArray<Transform>();
+    EXPECT_LT(transforms->getIndex(parent), transforms->getIndex(child)) << "a parent's Transform comes before its children's";
 }
 
 // ---- one file per scene --------------------------------------------------------------------------

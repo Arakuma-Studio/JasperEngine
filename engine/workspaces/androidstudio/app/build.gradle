@@ -21,26 +21,122 @@ if (jasperBackend && jasperBackend != "gles3") {
 // -PjasperPlayerVariant=<name>: the release player variant (full when not given)
 def jasperPlayerVariant = project.findProperty("jasperPlayerVariant")
 
-// The assets the APK packs: the project's, without the cooked textures desktop and web load
-// (S14 R9: assets/je-cooked/<family>), synced into the build directory before every build
-def jasperengineAssetsDir = layout.buildDirectory.dir("jasperengine-assets").get().asFile.toString()
-tasks.register('jasperengineSyncAssets', Sync) {
-    from(projectSourceRootAbs + '/assets') {
-        exclude 'je-cooked/desktop/**', 'je-cooked/web/**'
+// The game's content: the project's assets, without the cooked textures desktop and web load
+// (S14 R9: assets/je-cooked/<family>), and its Lua, synced before every build into the base module
+// (jasperengine-assets) or the install-time asset pack game_content (Play Asset Delivery,
+// docs/specs/S98-editor-tooling-gaps.md F2: Google Play's base module holds 200 MB; the pack is
+// installed with the app, and AAssetManager reads it at the same paths). Android puts asset packs
+// in App Bundles only, so the pack holds the content when a run builds bundles and no APK
+// (bundleRelease, Android Studio's APK from app bundle); an APK in the same run keeps it in the
+// base module of both. The other folder is emptied.
+def jasperengineAssetsDir = layout.buildDirectory.dir("jasperengine-assets").get().asFile
+def jasperenginePackAssetsDir = file("../game_content/src/main/assets")
+def jasperContent = [inPack: false]
+gradle.taskGraph.whenReady { graph ->
+    def names = graph.allTasks.findAll { it.path.startsWith(':app:') }.collect { it.name }
+    def bundles = names.any { it ==~ /package\w*Bundle/ }
+    jasperContent.inPack = !jasperPlayer && bundles && !names.any { it ==~ /package(Debug|Release)/ }
+    if (!jasperPlayer && bundles && !jasperContent.inPack) {
+        logger.lifecycle("JasperEngine: this run builds an APK too, so the App Bundle keeps the game's content in its base module; " +
+                         "build the bundle in a Gradle run of its own for the install-time asset pack game_content")
     }
-    into jasperengineAssetsDir
 }
-tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn 'jasperengineSyncAssets' }
+// Android's asset filter: AGP's default without "<dir>_*", which leaves out every folder starting
+// with "_" (Unity names such as Textures/_Glows); hidden and VCS files stay out. The syncs apply it
+// too, so the asset pack and the content check below see what ships, and the names are said.
+def jasperIgnoreAssets = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+def jasperIgnored = { String name ->
+    def lower = name.toLowerCase()
+    jasperIgnoreAssets.split(':').any { token ->
+        def pattern = token.replaceFirst('^!', '').toLowerCase()
+        pattern.startsWith('*') ? lower.endsWith(pattern.substring(1)) :
+            pattern.endsWith('*') ? lower.startsWith(pattern.substring(0, pattern.length() - 1)) : lower == pattern
+    }
+}
+[jasperengineSyncAssets: false, jasperengineSyncAssetPack: true].each { taskName, pack ->
+    def destination = pack ? jasperenginePackAssetsDir : jasperengineAssetsDir
+    // a Sync of no files is skipped (NO-SOURCE) and would leave an earlier run's content there
+    def clear = tasks.register(taskName + 'Clear', Delete) {
+        delete destination
+        onlyIf { jasperContent.inPack != pack }
+        // an empty folder: the asset pack's collection fails on a missing one
+        doLast { destination.mkdirs() }
+    }
+    def leftOut = new TreeSet<String>()
+    tasks.register(taskName, Sync) {
+        dependsOn clear
+        from(projectSourceRootAbs + '/assets') {
+            exclude 'je-cooked/desktop/**', 'je-cooked/web/**'
+        }
+        from(projectSourceRootAbs + '/lua')
+        // game.json and the cooked scenes and prefabs, at the root beside them (S98 D1)
+        from(projectSourceRootAbs + '/content')
+        into destination
+        exclude { element ->
+            if (jasperContent.inPack != pack) return true
+            if (!jasperIgnored(element.name)) return false
+            leftOut << element.relativePath.pathString
+            return true
+        }
+        inputs.property("contentInPack", providers.provider { jasperContent.inPack })
+        // the export keeps the two trees apart: a path in both is a project error
+        duplicatesStrategy = DuplicatesStrategy.FAIL
+        doLast {
+            if (leftOut) logger.lifecycle("JasperEngine: Android packages leave out hidden and version control files: " + leftOut.join(", "))
+        }
+    }
+}
+if (!jasperPlayer) {
+    tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn 'jasperengineSyncAssets', 'jasperengineSyncAssetPack' }
+    // (the task that collects the asset packs' files reads game_content/src/main/assets)
+    tasks.matching { it.name ==~ /assetPack\w*PreBundleTask/ }.configureEach { dependsOn 'jasperengineSyncAssetPack' }
+}
+
+// Every file of the content is in the package (docs/specs/S98-editor-tooling-gaps.md REQ-13): an
+// asset filter drops names without a word, so a missing one fails the build and is named
+def jasperengineVerifyContent = { File archive, String prefix, File root ->
+    if (!root.isDirectory()) return
+    def entries = new java.util.zip.ZipFile(archive).withCloseable { zip -> zip.entries().collect { it.name } as Set }
+    def missing = []
+    root.eachFileRecurse(groovy.io.FileType.FILES) { f ->
+        def relative = root.toPath().relativize(f.toPath()).toString().replace(File.separatorChar, '/' as char)
+        if (!entries.contains(prefix + relative)) missing << relative
+    }
+    if (missing) {
+        throw new GradleException(archive.name + " lacks " + missing.size() + " file(s) of the game's content (" + prefix + "): " +
+                                  missing.take(20).join(", ") + (missing.size() > 20 ? " ..." : ""))
+    }
+}
+if (!jasperPlayer) {
+    tasks.matching { it.name ==~ /(assemble|bundle)(Debug|Release)/ }.configureEach { task ->
+        def bundle = task.name.startsWith('bundle')
+        def variant = task.name.substring(bundle ? 6 : 8).uncapitalize()
+        def outputs = layout.buildDirectory.dir("outputs/" + (bundle ? "bundle/" : "apk/") + variant).get().asFile
+        task.doLast {
+            outputs.listFiles()?.findAll { it.name.endsWith(bundle ? '.aab' : '.apk') }?.each { archive ->
+                if (!bundle) jasperengineVerifyContent(archive, 'assets/', jasperengineAssetsDir)
+                else if (jasperContent.inPack) jasperengineVerifyContent(archive, 'game_content/assets/', jasperenginePackAssetsDir)
+                else jasperengineVerifyContent(archive, 'base/assets/', jasperengineAssetsDir)
+            }
+        }
+    }
+}
 
 android {
     compileSdk 36
     // The NDK AGP 9.4.1 installs by default, pinned: its Clang (19) is above the C++20 floor
-    // (engine/cmake/JasperEngineToolchain.cmake), and exports keep this line
+    // (engine/cmake/JasperEngineToolchain.cmake), and exports keep this line. docker/android.Dockerfile
+    // installs it (tools/ci/check_android_image.sh)
     ndkVersion = "28.2.13676358"
     // videos stay uncompressed in the APK: the decoders open them by file descriptor
-    // (AAsset_openFileDescriptor64, docs/superpowers/specs/2026-10-31-video-mp4-design.md §6.8)
+    // (AAsset_openFileDescriptor64, docs/superpowers/specs/2026-10-31-video-mp4-design.md §6.8);
+    // the asset filter keeps folders starting with "_" (jasperIgnoreAssets)
     androidResources {
         noCompress 'mp4', 'm4v', 'mov', 'webm'
+        ignoreAssetsPattern = jasperIgnoreAssets
+    }
+    if (!jasperPlayer) {
+        assetPacks = [":game_content"]
     }
     defaultConfig {
         applicationId "com.yourcompany.project"
@@ -88,6 +184,15 @@ android {
     }
 
     buildTypes {
+        // a debug package plays at full speed: optimised native code with its symbols, a Development
+        // Build (the profiler, Engine.isDevelopmentBuild), as Unity's Development Build is compiled
+        debug {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DJASPERENGINE_DEVELOPMENT_BUILD=ON", "-DJASPERENGINE_HTMLUI_DEBUGGER=ON"
+                }
+            }
+        }
         release {
             debuggable false
             // the libraries ship stripped; their symbols go into the App Bundle for Google Play's
@@ -103,6 +208,8 @@ android {
     externalNativeBuild {
         cmake {
             path jasperengineRootAbs+"/CMakeLists.txt"
+            // the CMake docker/android.Dockerfile installs (tools/ci/check_android_image.sh)
+            version = "3.22.1"
         }
     }
 
@@ -118,8 +225,8 @@ android {
                 res.srcDir jasperengineRootAbs+'/platform/android/player/res'
                 assets.srcDirs = []
             } else {
-                // the project's assets without the cooked textures other platforms load (S14 R9)
-                assets.srcDirs = [jasperengineAssetsDir,projectSourceRootAbs+'/lua']
+                // the game's content when the base module holds it (jasperengineSyncAssets)
+                assets.srcDirs = [jasperengineAssetsDir]
             }
         }
     }

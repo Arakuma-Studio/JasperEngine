@@ -727,6 +727,49 @@ namespace {
     void sheetSpritesIdentity(YAML::Node&, MigrationLog&){
     }
 
+    // Scene 8 -> 9, prefab 9 -> 10 (S98 F1): a Mesh Renderer may show a .mesh asset (meshAsset)
+    // instead of holding its buffers, and a save moves large geometry into one. An older file holds
+    // its buffers, which still read; the version keeps an older editor from reading a mesh without them.
+    void meshAssetsIdentity(YAML::Node&, MigrationLog&){
+    }
+
+    // the submesh materials under `node` that name a .material file (Material::name)
+    int countLinkedMaterials(const YAML::Node& node){
+        int linked = 0;
+        if (node.IsMap()){
+            const YAML::Node submeshes = node["submeshes"];
+            if (submeshes && submeshes.IsSequence()){
+                for (const YAML::Node& submesh : submeshes){
+                    const YAML::Node material = submesh.IsMap() ? submesh["material"] : YAML::Node();
+                    const YAML::Node name = material && material.IsMap() ? material["name"] : YAML::Node();
+                    if (name && name.IsScalar() && !name.Scalar().empty()) linked++;
+                }
+            }
+            for (auto it = node.begin(); it != node.end(); ++it){
+                if (it->first.IsScalar() && it->first.Scalar() == "submeshes") continue;
+                linked += countLinkedMaterials(it->second);
+            }
+        }else if (node.IsSequence()){
+            for (const YAML::Node& child : node){
+                linked += countLinkedMaterials(child);
+            }
+        }
+        return linked;
+    }
+
+    // Prefab 9 -> 10 (S98 F1, REQ-29): mesh assets, as for scenes; and a submesh linked to a
+    // .material file now takes the file's values wherever the prefab is read, where an older prefab
+    // used the copy it embeds. An older prefab with a link keeps its copies (followMaterialFiles:
+    // false, which its saves keep); one without a link follows the links it gets from now on.
+    void prefabV9ToV10(YAML::Node& root, MigrationLog& log){
+        const int linked = countLinkedMaterials(root["members"]);
+        if (linked == 0) return;
+        root["followMaterialFiles"] = false;
+        log.info("This prefab keeps the material copies it embeds for its " + std::to_string(linked) +
+                 (linked == 1 ? " submesh" : " submeshes") + " linked to .material files, as before; a new prefab "
+                 "follows its .material files");
+    }
+
     // ---------------------------------------------------------------- Text alignment (S94 F24)
 
     bool yamlTrue(const YAML::Node& value){
@@ -821,15 +864,15 @@ namespace {
         }
     }
 
-    // Scene 8 -> 9 (S94 F24, F33): Text alignment replaces the two pivot booleans; Animators and
+    // Scene 9 -> 10 (S94 F24, F33): Text alignment replaces the two pivot booleans; Animators and
     // Animation Players keep their clips' root drift
-    void sceneV8ToV9(YAML::Node& root, MigrationLog& log){
+    void sceneTextAlignmentAndRootDrift(YAML::Node& root, MigrationLog& log){
         logTextPivots(migrateTextPivots(root["entities"]), log);
         logRootDrift(keepRootDrift(root["entities"]), log);
     }
 
-    // Prefab 9 -> 10: the same for its members
-    void prefabV9ToV10(YAML::Node& root, MigrationLog& log){
+    // Prefab 10 -> 11: the same for its members
+    void prefabTextAlignmentAndRootDrift(YAML::Node& root, MigrationLog& log){
         logTextPivots(migrateTextPivots(root["members"]), log);
         logRootDrift(keepRootDrift(root["members"]), log);
     }
@@ -842,11 +885,11 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 9;
+        case DocumentKind::Scene: return 10;
         case DocumentKind::Project: return 2;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
-        case DocumentKind::Prefab: return 10;
+        case DocumentKind::Prefab: return 11;
     }
     return 0;
 }
@@ -887,7 +930,8 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {5, 6, "Animation Player controllers to Animators", sceneV5ToV6},
         {6, 7, "Line and Trail Renderer curves and gradients in the editor's curve form", sceneV6ToV7},
         {7, 8, "sprite sheets (identity: an older scene has none)", sheetSpritesIdentity},
-        {8, 9, "Text pivots to Text alignment; Animators keep their root drift", sceneV8ToV9},
+        {8, 9, "mesh assets (identity: an older scene holds its meshes' buffers)", meshAssetsIdentity},
+        {9, 10, "Text pivots to Text alignment; Animators keep their root drift", sceneTextAlignmentAndRootDrift},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
@@ -904,7 +948,8 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {6, 7, "Animation Player controllers to Animators", prefabV6ToV7},
         {7, 8, "Line and Trail Renderer curves and gradients in the editor's curve form", prefabV7ToV8},
         {8, 9, "sprite sheets (identity: an older prefab has none)", sheetSpritesIdentity},
-        {9, 10, "Text pivots to Text alignment; Animators keep their root drift", prefabV9ToV10},
+        {9, 10, "mesh assets; linked materials keep the embedded copies", prefabV9ToV10},
+        {10, 11, "Text pivots to Text alignment; Animators keep their root drift", prefabTextAlignmentAndRootDrift},
     };
 
     switch (kind){

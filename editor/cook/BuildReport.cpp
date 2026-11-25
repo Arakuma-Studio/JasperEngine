@@ -142,7 +142,23 @@ Json BuildReport::toJson() const{
         }
         files.push_back(entry);
     }
-    return {{"version", 1}, {"platform", platform}, {"method", method}, {"total_bytes", totalBytes}, {"categories", categoryJson}, {"largest", files}};
+    Json out = {{"version", 1}, {"platform", platform}, {"method", method}, {"total_bytes", totalBytes}, {"categories", categoryJson}, {"largest", files}};
+    // absent when nothing was left out: an old project's report is as it was
+    if (!leftOut.empty()){
+        Json stripped = Json::array();
+        for (const BuildReportLeftOut& item : leftOut)
+            stripped.push_back({{"path", item.path}, {"bytes", item.bytes}, {"reason", item.reason}});
+        out["stripped"] = stripped;
+        out["stripped_count"] = leftOut.size();
+        out["stripped_bytes"] = leftOutBytes();
+    }
+    return out;
+}
+
+uint64_t BuildReport::leftOutBytes() const{
+    uint64_t total = 0;
+    for (const BuildReportLeftOut& item : leftOut) total += item.bytes;
+    return total;
 }
 
 bool BuildReport::fromJson(const Json& json, BuildReport& out){
@@ -164,6 +180,12 @@ bool BuildReport::fromJson(const Json& json, BuildReport& out){
             file.source = entry.value("source", std::string());
             file.sourceBytes = entry.value("source_bytes", (uint64_t)0);
             out.largest.push_back(file);
+        }
+    }
+    if (json.contains("stripped") && json["stripped"].is_array()){
+        for (const Json& entry : json["stripped"]){
+            if (!entry.is_object()) continue;
+            out.leftOut.push_back({entry.value("path", std::string()), entry.value("bytes", (uint64_t)0), entry.value("reason", std::string())});
         }
     }
     return true;
@@ -213,7 +235,9 @@ std::string BuildReport::summary() const{
             continue;
         parts += (parts.empty() ? "" : ", ") + name + " " + formatBytes(it->second);
     }
-    return parts.empty() ? out : out + "; " + parts;
+    if (!parts.empty()) out += "; " + parts;
+    if (!leftOut.empty()) out += "; " + std::to_string(leftOut.size()) + " asset(s) left out (" + formatBytes(leftOutBytes()) + ")";
+    return out;
 }
 
 void BuildReport::setLast(const fs::path& file){

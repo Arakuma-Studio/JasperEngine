@@ -86,19 +86,19 @@ async def test_manifest_rules(ed: Editor):
         # a UI shader cannot read the scene
         ui = FRAG.replace("// @shader mesh", "// @shader ui")
         await write_fork(ed, "shaders/soft_ui", ui)
-        r = await ed.call("check_shader", shader="shaders/soft_ui", shader_type="ui", timeout=300)
+        r = (await ed.call_raw("check_shader", {"shader": "shaders/soft_ui", "shader_type": "ui"}, timeout=300)).value
         ed.check(any("needs @shader mesh, points or particles" in m for m in messages(r)), f"ui refused: {r!r}")
 
         # opaque: drawn before the scene it reads
         opaque = FRAG.replace("// @state blend=alpha zwrite=off", "// @state blend=opaque")
         await write_fork(ed, "shaders/soft_opaque", opaque)
-        r = await ed.call("check_shader", shader="shaders/soft_opaque", shader_type="mesh", timeout=300)
+        r = (await ed.call_raw("check_shader", {"shader": "shaders/soft_opaque", "shader_type": "mesh"}, timeout=300)).value
         ed.check(any("transparent queue" in m for m in messages(r)), f"opaque state refused: {r!r}")
 
         # the engine's texture names are reserved
         reserved = FRAG.replace("// @property softness", "// @texture u_sceneColorTexture white\n// @property softness")
         await write_fork(ed, "shaders/soft_reserved", reserved)
-        r = await ed.call("check_shader", shader="shaders/soft_reserved", shader_type="mesh", timeout=300)
+        r = (await ed.call_raw("check_shader", {"shader": "shaders/soft_reserved", "shader_type": "mesh"}, timeout=300)).value
         ed.check(any("reserved" in m for m in messages(r)), f"reserved texture refused: {r!r}")
 
 
@@ -111,12 +111,14 @@ async def test_opaque_material_is_a_check_error(ed: Editor):
         ed.check(not [m for m in messages(r) if "opaque queue" in m], f"blended: no error: {r!r}")
 
         await ed.call("set_properties", entity=eid, values={"mesh": {M + "blendMode": "opaque"}})
-        r = await ed.call("check_shader", timeout=300)
+        raw = await ed.call_raw("check_shader", {}, timeout=300)
+        ed.check(raw.is_error, f"an error finding makes the check an error: {raw.text[:500]}")
+        r = raw.value
         errors = [f for f in r.get("findings", []) if "opaque queue" in f.get("message", "")]
         ed.check(errors and errors[0].get("severity") == "error", f"opaque material reported: {r!r}")
         # with TINT it reads the colour too
         await ed.call("set_properties", entity=eid, values={"mesh": {M + "shaderFeatures": ["TINT"]}})
-        r = await ed.call("check_shader", timeout=300)
+        r = (await ed.call_raw("check_shader", {}, timeout=300)).value
         errors = [f for f in r.get("findings", []) if "opaque queue" in f.get("message", "")]
         ed.check(errors and errors[0]["severity"] == "error", f"colour reader remains invalid in the opaque queue: {r!r}")
 

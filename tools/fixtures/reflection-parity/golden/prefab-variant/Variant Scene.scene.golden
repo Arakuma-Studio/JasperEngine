@@ -33,13 +33,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_2d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 128
 shaderKeys:
   - type: mesh
     properties: 3073
@@ -79,7 +72,6 @@ entities:
               name: ""
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             hasTexCoord1: true
@@ -95,15 +87,6 @@ entities:
             hasMorphTangent: false
         normAdjustJoint: 1
         normAdjustWeight: 1
-        aabb:
-          min: [-44, 0, 0]
-          max: [44, 73, 0]
-        verticesAABB:
-          min: [-44, 0, 0]
-          max: [44, 73, 0]
-        worldAABB:
-          min: [256, 300, 0]
-          max: [344, 373, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: false
@@ -157,7 +140,6 @@ entities:
                   name: ""
                 textureRect: [0, 0, 1, 1]
                 primitiveType: triangles
-                vertexCount: 6
                 faceCulling: false
                 textureShadow: true
                 hasTexCoord1: true
@@ -173,15 +155,6 @@ entities:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            aabb:
-              min: [-30, 0, 0]
-              max: [30, 120, 0]
-            verticesAABB:
-              min: [-30, 0, 0]
-              max: [30, 120, 0]
-            worldAABB:
-              min: [270, 240, 0]
-              max: [330, 360, 0]
             receiveLights: false
             receiveIBL: false
             castShadows: false
@@ -234,7 +207,6 @@ entities:
                   name: ""
                 textureRect: [0, 0, 1, 1]
                 primitiveType: triangles
-                vertexCount: 6
                 faceCulling: false
                 textureShadow: true
                 hasTexCoord1: true
@@ -250,15 +222,6 @@ entities:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            aabb:
-              min: [-80, 0, 0]
-              max: [80, 30, 0]
-            verticesAABB:
-              min: [-80, 0, 0]
-              max: [80, 30, 0]
-            worldAABB:
-              min: [220, 320, 0]
-              max: [380, 350, 0]
             receiveLights: false
             receiveIBL: false
             castShadows: false
@@ -312,7 +275,6 @@ entities:
                       name: ""
                     textureRect: [0, 0, 1, 1]
                     primitiveType: triangles
-                    vertexCount: 6
                     faceCulling: false
                     textureShadow: true
                     hasTexCoord1: true
@@ -328,15 +290,6 @@ entities:
                     hasMorphTangent: false
                 normAdjustJoint: 1
                 normAdjustWeight: 1
-                aabb:
-                  min: [-10, 0, 0]
-                  max: [10, 40, 0]
-                verticesAABB:
-                  min: [-10, 0, 0]
-                  max: [10, 40, 0]
-                worldAABB:
-                  min: [370, 320, 0]
-                  max: [390, 360, 0]
                 receiveLights: false
                 receiveIBL: false
                 castShadows: false
@@ -394,12 +347,7 @@ entities:
             cullingMask: 4294967295
             target: [0, 0, 0]
             up: [0, 1, 0]
-            leftClip: <view>
-            rightClip: <view>
-            bottomClip: <view>
-            topClip: <view>
             yfov: 0.75
-            aspect: <view>
             nearClip: -10
             farClip: 10
             renderToTexture: true
@@ -442,7 +390,6 @@ entities:
                   name: ""
                 textureRect: [0, 0, 1, 1]
                 primitiveType: triangles
-                vertexCount: 6
                 faceCulling: false
                 textureShadow: true
                 hasTexCoord1: true
@@ -458,15 +405,6 @@ entities:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            aabb:
-              min: [-20, 0, 0]
-              max: [20, 60, 0]
-            verticesAABB:
-              min: [-20, 0, 0]
-              max: [20, 60, 0]
-            worldAABB:
-              min: [220, 300, 0]
-              max: [260, 360, 0]
             receiveLights: false
             receiveIBL: false
             castShadows: false
@@ -520,7 +458,6 @@ entities:
                       name: ""
                     textureRect: [0, 0, 1, 1]
                     primitiveType: triangles
-                    vertexCount: 6
                     faceCulling: false
                     textureShadow: true
                     hasTexCoord1: true
@@ -536,15 +473,6 @@ entities:
                     hasMorphTangent: false
                 normAdjustJoint: 1
                 normAdjustWeight: 1
-                aabb:
-                  min: [-10, 0, 0]
-                  max: [10, 30, 0]
-                verticesAABB:
-                  min: [-10, 0, 0]
-                  max: [10, 30, 0]
-                worldAABB:
-                  min: [230, 260, 0]
-                  max: [250, 290, 0]
                 receiveLights: false
                 receiveIBL: false
                 castShadows: false
@@ -624,7 +552,6 @@ entities:
               name: ""
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             hasTexCoord1: true
@@ -640,15 +567,6 @@ entities:
             hasMorphTangent: false
         normAdjustJoint: 1
         normAdjustWeight: 1
-        aabb:
-          min: [-150, 0, 0]
-          max: [150, 30, 0]
-        verticesAABB:
-          min: [-150, 0, 0]
-          max: [150, 30, 0]
-        worldAABB:
-          min: [750, 30, 0]
-          max: [1050, 60, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: false

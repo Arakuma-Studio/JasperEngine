@@ -97,8 +97,13 @@ callers outside a load (the inspector, the MCP tools, `warmUp`).
 
 - **Record During Play**: each Play adds the shader variants and pipelines it used to
   `ShaderWarmup.json`, next to `project.yaml`. Commit it with the project.
-- **Include in Builds** (on): exports build the list's variants as well as the scenes', and ship
-  the list (`shaders/warmup.json`, or inside the shader headers of web and mobile builds).
+- Whatever that setting says, Stop adds the variants Play drew with that the played scenes' own
+  lists lack (a material a script made), without pipelines. Stop writes no scene file.
+- The file is written only when it gains an entry, sorted, so repeated Play sessions leave it as
+  it is.
+- **Include in Builds** (on): exports ship the list (`shaders/warmup.json`, or inside the shader
+  headers of web and mobile builds) and the game replays it at start. Exports build the list's
+  variants as well as the scenes' whether it is on or off.
 - **Hold First Scene** (on): a game replays the list when it starts, and its scenes count as
   loaded only when the list is ready, so the loading screen covers it.
 - **Clear** (and the command *Clear Shader Warm-up List*) empties the list.
