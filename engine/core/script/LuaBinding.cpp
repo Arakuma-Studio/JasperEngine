@@ -967,6 +967,36 @@ void LuaBinding::init(){
 
 }
 
+#ifndef DISABLE_LUA_BINDINGS
+// The class and const tables of LuaBridge are their own metatables, so the one a script reaches
+// (debug.getmetatable(Vector3())) passed for an instance of its class: tostring(mt) raised "Vector3
+// expected" (crashed before S92). Each gets an empty metatable instead (S95 REQ-2): a call with one
+// is a type error, tostring gives "table: 0x...". LuaBridge reads these tables raw, never through
+// their metatable; their metamethods are untouched (S92's overload sets, nil operands).
+static void hardenClassTables(lua_State* L){
+    lua_newtable(L);
+    lua_pushboolean(L, 0);
+    lua_setfield(L, -2, "__metatable");  // still hidden from getmetatable
+    const int empty = lua_gettop(L);
+    lua_pushnil(L);
+    while (lua_next(L, LUA_REGISTRYINDEX)){
+        if (lua_islightuserdata(L, -2) && lua_istable(L, -1) && lua_getmetatable(L, -1)){
+            const bool ownMetatable = lua_rawequal(L, -1, -2);
+            lua_pop(L, 1);
+            lua_rawgetp(L, -1, luabridge::detail::getTypeKey());
+            const bool classTable = ownMetatable && lua_type(L, -1) == LUA_TSTRING;
+            lua_pop(L, 1);
+            if (classTable){
+                lua_pushvalue(L, empty);
+                lua_setmetatable(L, -2);
+            }
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+}
+#endif
+
 void LuaBinding::registerClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
     // luaL_openlibs() open all libraries: base, string, io, os, package, table, debug
@@ -1031,6 +1061,7 @@ void LuaBinding::registerClasses(lua_State *L){
 #endif
     registerScriptClasses(L);
     // last: every class is registered
+    hardenClassTables(L);
 
 #endif //DISABLE_LUA_BINDINGS
 }
@@ -1711,6 +1742,7 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
 void LuaBinding::registerMathClassesIn(lua_State* L) {
 #ifndef DISABLE_LUA_BINDINGS
     registerMathClasses(L);
+    hardenClassTables(L);
 #endif
 }
 
