@@ -16,6 +16,14 @@ Fixtures in tools/ci/fixtures/report/, and where each comes from:
                             trimmed from CI run 43357218922's unit and asan lanes, both cancelled by their
                             timeout mid-test: stdout and stderr interleaved mid-line, and CrashGuard's child
                             process SEGVing under ASan inside a passing test
+  gtest/macos-children-cancelled.log
+                            trimmed from a CI macOS editor-test run (timestamps cut, ending inside a test as a
+                            cancelled job's does): AppSettings.MergeConcurrent and CrashLeftovers.* run
+                            themselves again as child processes, killed midway, inside their own output
+  gtest/asan-editor-leak.log
+                            trimmed from CI run 44989221557's asan (editor) lane: a test's expected
+                            "error: ..." line, and the LeakSanitizer report at exit (two of its blocks, the
+                            stb_image one moved first)
   mcp/mcp.json, mcp-run.log a real tools/mcp/run_tests.py --suite ci --json run of scratch test files
                             (one failure, one skip, one worker crash, one left-out file); the host's
                             checkout prefix was rewritten to /src/
@@ -156,6 +164,46 @@ class GtestTest(unittest.TestCase):
             failures = report.parse_log(log, "SANITIZE=address,undefined tools/build.sh unit-tests")
         self.assertEqual(titles(failures), ["AddressSanitizer: SEGV"])
         self.assertIn("--gtest_filter=CrashGuard.WorkerCrashReachesHandler", failures[0]["repro"])
+
+    def test_a_test_that_runs_itself_as_a_child_is_not_in_flight(self):
+        # a test re-running itself as a child prints a second header and [ RUN ] inside its own output
+        log = FIXTURES / "gtest" / "macos-children-cancelled.log"
+        self.assertEqual(report.parse_log(log, "tools/ci/macos.sh tests"), [])
+        failure = report.cancelled_failure([log], "tools/ci/macos.sh tests", 600)
+        self.assertEqual(failure["title"], "cancelled after 10 min (a job timeout, or the run was cancelled) "
+                                           "while running: StagingFolders.OnlyOurMarkerCounts")
+
+    def test_a_crash_and_a_rerun_of_the_same_test_is_still_a_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "unit.log"
+            log.write_text("[==========] Running 2 tests from 1 test suite.\n[ RUN      ] Mesh.Refit\n"
+                           "Segmentation fault (core dumped)\n[==========] Running 1 test from 1 test suite.\n"
+                           "[ RUN      ] Mesh.Refit\n[       OK ] Mesh.Refit (3 ms)\n")
+            self.assertEqual(titles(report.parse_log(log, UNIT_REPRO)), ["Mesh.Refit crashed"])
+
+    def test_a_childs_failure_after_its_ok_fails_the_parent(self):
+        runs = report.gtest_runs(["[ RUN      ] A.B", "[==========] Running 1 test from 1 test suite.",
+                                  "[ RUN      ] A.B", "[       OK ] A.B (1 ms)", "[  FAILED  ] A.B (9 ms)"])
+        self.assertEqual([r["outcome"] for r in runs], ["failed", "ok"])
+
+    def test_a_leak_names_the_first_frame_of_our_own_code(self):
+        # past stb_image (engine/libs) and the test support's malloc wrap and counting operator new
+        log = FIXTURES / "gtest" / "asan-editor-leak.log"
+        failures = report.parse_log(log, "SANITIZE=address,undefined tools/build.sh unit-tests")
+        self.assertEqual(locations(failures), ["engine/core/texture/TextureData.cpp:270"])
+        text = log.read_text()
+        stb = text.index("Direct leak of 32 byte(s)")
+        with tempfile.TemporaryDirectory() as tmp:
+            trimmed = Path(tmp) / "asan-editor.log"
+            trimmed.write_text(text[:stb] + text[text.index("Direct leak of 16 byte(s)"):])
+            failures = report.parse_log(trimmed, "SANITIZE=address,undefined tools/build.sh unit-tests")
+        self.assertEqual(locations(failures), ["editor/tests/LogListenerTest.cpp:345"])
+        self.assertIn("--gtest_filter=LogListenerTest.SelfRemovalWithAnotherCallRunning", failures[0]["repro"])
+
+    def test_a_tests_own_error_line_is_no_build_failure(self):
+        # UnityParticleImportTest.MalformedFileFailsCleanly prints the importer's error and passes
+        failures = report.parse_log(FIXTURES / "gtest" / "asan-editor-leak.log", "SANITIZE=address,undefined tools/build.sh unit-tests")
+        self.assertEqual(titles(failures), ["LeakSanitizer: detected memory leaks"])
 
     def test_gate_line_without_xml_failures(self):
         failures = report.parse_log(FIXTURES / "gtest" / "unit.log", UNIT_REPRO)
@@ -543,6 +591,10 @@ class RenderTest(unittest.TestCase):
         body = self.render(path, needs=needs)
         self.assertIn("CI failed on", body)
         self.assertIn("macos", body.split("Passed:")[0])
+        # what ci.yml passes: {"<job>": "<result>"}
+        body = self.render(path, needs={"macos": "failure"})
+        self.assertIn("CI failed on", body)
+        self.assertIn("macos", body.split("Passed:")[0])
 
     def test_size_limit_and_forty_lines(self):
         # what collect can write at most: 200 failures of 40 clipped lines each (under MAX_JSON_BYTES)
@@ -672,6 +724,27 @@ class WindowsLegsTest(unittest.TestCase):
         body = self.render([r for r in reports if r["lane"] != "windows-compile"], lanes_json(),
                            needs={"windows": {"result": "success"}, "windows-compile": {"result": "failure"}})
         self.assertIn("CI failed on", body)
+
+    def test_only_the_planned_windows_legs_are_expected(self):
+        # tools/ci/plan_lanes.py windows_parts: the backend legs a change does not reach are not built
+        names = ["changes", "lint", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
+        legs = ["windows-editor", "windows-engine-glcore", "windows-compile", *report.TEST_REPORTS]
+        reports = [lane_report(n, ran=5 if n in ("unit", "asan", "htmlui", "mcp-1", "mcp-2", "windows-editor-tests") else 0)
+                   for n in names + legs]
+        planned = dict(lanes_json(), windows_parts=["editor", "engine-glcore"])
+        body = self.render(reports, planned)
+        self.assertIn(f"CI passed on `3f2c1ab`: {len(names) + len(legs)} jobs", body.splitlines()[1])
+        self.assertNotIn("engine-d3d11", body)
+        # a planned leg without a report is still missing; a plan without windows_parts expects every leg
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        body = self.render([r for r in reports if r["lane"] != "windows-engine-glcore"], planned)
+        self.assertIn("No report from: windows (engine-glcore)", body)
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        body = self.render(reports, lanes_json())
+        self.assertIn("No report from: windows (engine-d3d11) · windows (engine-vulkan)", body)
+        self.assertEqual(report.load_lanes(None).get("windows_parts"), None)
 
     def test_the_editor_tests_report_is_advisory_when_named(self):
         names = ["changes", "lint", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]

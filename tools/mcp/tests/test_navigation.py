@@ -166,6 +166,7 @@ async def test_paint_nav_grid(ed: Editor):
                             strokes=[{"mode": "paint", "area": "Not Walkable", "cells": [[4, 4], [4, 6]]}])
     ed.check_eq(painted["changed_cells"], 3, f"{painted}")
     ed.check_eq(painted["undo_name"], "Paint Nav Grid", f"{painted}")
+    await ed.check_error("paint_nav_grid", {"scene": s["scene"], "grid": s["grid"]}, contains="strokes: pass a list of strokes")
     detour = await ed.call("query_navigation", **query)
     ed.check_eq(detour["status"], "complete", f"{detour}")
     ed.check(detour["cost"] > straight["cost"] + 0.5, f"the path detours: {straight['cost']} -> {detour['cost']}")

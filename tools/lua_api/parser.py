@@ -1976,6 +1976,14 @@ OVERRIDES = {
     },
 }
 
+# S96 REQ-29: the Ragdoll wizard at run time, its arguments read by hand (LuaRef)
+OVERRIDES[('Ragdoll', 'create')] = {
+    'doc': ["Unity's Ragdoll Wizard on a live character: bodies, colliders and joints on its bones, all made before",
+            'the next step, and the Ragdoll on root. Unnamed bones are guessed (humanoid map, bone names); raises an',
+            'error naming the bones it could not find.'],
+    'overloads': [([('root', _OBJ), ('options?', '{bones?: table<string, GameObject|string>, totalMass?: number, '
+                    'start?: "simulated"|"animated", selfCollision?: boolean, flipForward?: boolean}')], 'Ragdoll')]}
+
 # T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
 OVERRIDES[('TerrainWorld', 'waitForArea')] = {
     'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
@@ -2083,6 +2091,11 @@ OVERRIDES.update({
                 "(at the next safe point, with its running state). False (logged) when the scene is not loaded."],
         'overloads': [([('obj', 'EntityHandle|ScriptInstance'), ('scene', 'Scene')], 'boolean')]},
 })
+
+# Mesh Space Rotation (docs/specs/mesh-space-rotation.md R14): read from the stack so that
+# `enabled` is required and the layer is an index or a name
+OVERRIDES[('Animator', 'setLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string'), ('enabled', 'boolean')], '')]}
+OVERRIDES[('Animator', 'getLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string')], 'boolean')]}
 
 # Line and Trail Renderers (lines and trails spec 6.6): the points by 0-based index (Unity's
 # SetPosition / GetPosition); an index out of range raises an error naming positionCount.
@@ -2582,8 +2595,17 @@ OVERRIDES.update({
         'overloads': [([('name', 'string')], 'number?')]},
     ('AudioSystem', 'preload'): {
         'doc': ['Decodes (or opens, for streaming) a clip ahead so its first play or one-shot has no load; held until',
-                'the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
+                'AudioSystem.unload or the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
         'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'boolean')]},
+    ('AudioSystem', 'unload'): {
+        'doc': ["Unity's AudioClip.UnloadAudioData: removes the clip's preload pin and drops its cached copies that nothing",
+                'holds (every load type, or the one `loadType` resolves to). Returns how many it dropped; a clip a source',
+                'or a voice holds stays until released.'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'integer')]},
+    ('AudioSystem', 'getLoadState'): {
+        'doc': ["Unity's AudioClip.loadState of a clip in the cache: Loaded, Loading while its load is on its way, Failed",
+                'after a failed load, else Unloaded. `loadType` as AudioSource.loadType (default Auto).'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'AudioLoadState')]},
     ('AudioSource', 'playOneShot'): {
         'doc': ["Unity's PlayOneShot: the clip, or a Sound Event's pick (its .soundevent path or GUID), as an extra",
                 "voice over what plays (volume x volumeScale, the source's group, pitch, pan and position). Up to",
@@ -2650,6 +2672,24 @@ OVERRIDES.update({
         'doc': ["Unity's AudioSource.PlayClipAtPoint: the clip at a world position (3D when the scene has a camera),",
                 'through a mixer group (name; default Master); it belongs to `scene` and stops with it.'],
         'overloads': [([('scene', 'Scene'), ('path', 'string'), ('position', 'Vector3'), ('volume?', 'number'), ('group?', 'string')], '')]},
+    # S97: a source's own effects (GameObjectClassesLua.cpp)
+    ('AudioSource', 'addEffect'): {
+        'doc': ["Appends a mixer effect to this source's own list (Unity's Audio Low Pass Filter...): lowpass, highpass, bandpass,",
+                'echo, reverb, equalizer, distortion, flanger, lofi or bassboost, up to 4. Nil (logged) for another type or a fifth.'],
+        'overloads': [([('type', 'string')], 'AudioSourceEffect?')]},
+    ('AudioSource', 'getEffect'): {
+        'doc': ["An effect of the source's own list by index (1-based) or type (\"lowpass\": the first of it); nil when none."],
+        'overloads': [([('index', 'integer')], 'AudioSourceEffect?'), ([('type', 'string')], 'AudioSourceEffect?')]},
+    ('AudioSource', 'removeEffect'): {
+        'doc': ['Removes an effect by index (1-based) or type (the first of it); false when none. Heard from the next play().'],
+        'overloads': [([('index', 'integer')], 'boolean'), ([('type', 'string')], 'boolean')]},
+    ('AudioSourceEffect', 'setParameter'): {
+        'doc': ['Sets a parameter of the effect ("cutoff", "resonance", "wet", ...: docs audio.md), over `seconds` of scaled',
+                'time (opts.unscaled: unscaled), along the mixer curves. False when the effect has no such parameter.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioSourceEffect', 'getParameter'): {
+        'doc': ['The value a parameter has now (what it sets, else its default); nil when the effect has no such parameter.'],
+        'overloads': [([('name', 'string')], 'number?')]},
 })
 
 # http (NetClassesLua.cpp): the request functions are lua_CFunctions (positional options and
@@ -2844,6 +2884,11 @@ PROPERTY_OVERRIDES = {
     ('HttpRequest', 'response'): ('HttpResponse|nil', False),
     ('NativeCall', 'result'): ('JsonValue', False),
     ('NativeCall', 'errorCode'): ('NativeErrorCode|nil', False),
+    # S96 RaycastHit fields: resolved through the hit's scene, nil without a physics body
+    ('RayReturn', 'collider'): ('Collider|Collider2D|nil', False),
+    ('RayReturn', 'gameObject'): ('GameObject|nil', False),
+    ('RayReturn', 'rigidbody'): ('Rigidbody|Rigidbody2D|nil', False),
+    ('RayReturn', 'transform'): ('GameObject|nil', False),
     ('NativeCall', 'errorMessage'): ('string|nil', False),
     ('HttpResponse', 'headers'): ('table<string, string>', True),
     ('HttpResponse', 'body'): ('string', False),
@@ -2918,14 +2963,87 @@ for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
     OVERRIDES[(_phys, 'resetLayerCollisionMatrix')] = {
         'doc': ['Every layer collides with every layer again.'],
         'overloads': [([], '')]}
+    _opts = 'PhysicsQueryOptions2D' if _phys == 'Physics2D' else 'PhysicsQueryOptions'
     for _all in (False, True):
         _ret = 'RayReturn[]' if _all else 'RayReturn'
         OVERRIDES[(_phys, 'raycastAll' if _all else 'raycast')] = {
             'doc': [('Every hit' if _all else 'The closest hit') + f' of a ray in the scene\'s physics world ({_vec} origin and',
-                    'direction, or a Ray), on the layers of `layerMask` (default: Physics.DEFAULT_RAYCAST_LAYERS).'],
-            'overloads': [([('scene', 'Scene'), ('ray', 'Ray'), ('layerMask?', 'integer')], _ret),
+                    'direction, or a Ray), on the layers of `layerMask` (default: Physics.DEFAULT_RAYCAST_LAYERS).',
+                    'options: ignore, triggers, ' + ('startInColliders' if _phys == 'Physics2D' else 'hitFromInside (3D: a collider around the origin is no hit), hitBackfaces') + '.'],
+            'overloads': [([('scene', 'Scene'), ('ray', 'Ray'), ('layerMask?', 'integer'), ('options?', _opts)], _ret),
                           ([('scene', 'Scene'), ('origin', _vec), ('direction', _vec), ('maxDistance', 'number'),
-                            ('layerMask?', 'integer')], _ret)]}
+                            ('layerMask?', 'integer'), ('options?', _opts)], _ret)]}
+
+# S96: the shape queries (PhysicsQueriesLua.cpp, lua_CFunctions); options: stubs/Physics.lua
+_Q3 = [('layerMask?', 'integer'), ('options?', 'PhysicsQueryOptions')]
+_Q2 = [('layerMask?', 'integer'), ('options?', 'PhysicsQueryOptions2D')]
+for _all in (False, True):
+    _ret = 'RayReturn[]' if _all else 'RayReturn|nil'
+    _what = 'Every collider hit, nearest first, once each,' if _all else 'The nearest hit (nil for none)'
+    _sfx = 'All' if _all else ''
+    OVERRIDES[('Physics', 'sphereCast' + _sfx)] = {
+        'doc': [f'{_what} of a sphere moved from `origin` along `direction` for `maxDistance` (Unity Physics.SphereCast).',
+                'A collider the shape starts in is skipped unless options.hitFromInside (then at distance 0).'],
+        'overloads': [([('scene', 'Scene'), ('origin', 'Vector3'), ('radius', 'number'), ('direction', 'Vector3'),
+                        ('maxDistance', 'number')] + _Q3, _ret)]}
+    OVERRIDES[('Physics', 'boxCast' + _sfx)] = {
+        'doc': [f'{_what} of a box (half extents, orientation: nil = identity) moved along `direction` (Unity Physics.BoxCast).'],
+        'overloads': [([('scene', 'Scene'), ('center', 'Vector3'), ('halfExtents', 'Vector3'), ('direction', 'Vector3'),
+                        ('orientation', 'Quaternion|nil'), ('maxDistance', 'number')] + _Q3, _ret)]}
+    OVERRIDES[('Physics', 'capsuleCast' + _sfx)] = {
+        'doc': [f'{_what} of a capsule (the centres of its two spheres) moved along `direction` (Unity Physics.CapsuleCast).'],
+        'overloads': [([('scene', 'Scene'), ('point1', 'Vector3'), ('point2', 'Vector3'), ('radius', 'number'),
+                        ('direction', 'Vector3'), ('maxDistance', 'number')] + _Q3, _ret)]}
+    OVERRIDES[('Physics2D', 'circleCast' + _sfx)] = {
+        'doc': [f'{_what} of a circle (points) moved from `origin` along `direction` for `distance` (Unity Physics2D.CircleCast).'],
+        'overloads': [([('scene', 'Scene'), ('origin', 'Vector2'), ('radius', 'number'), ('direction', 'Vector2'),
+                        ('distance', 'number')] + _Q2, _ret)]}
+    OVERRIDES[('Physics2D', 'boxCast' + _sfx)] = {
+        'doc': [f'{_what} of a box (its whole size, turned by `angle`) moved along `direction` (Unity Physics2D.BoxCast).'],
+        'overloads': [([('scene', 'Scene'), ('origin', 'Vector2'), ('size', 'Vector2'), ('angle', 'number'),
+                        ('direction', 'Vector2'), ('distance', 'number')] + _Q2, _ret)]}
+    OVERRIDES[('Physics2D', 'capsuleCast' + _sfx)] = {
+        'doc': [f'{_what} of a capsule (size, CapsuleDirection2D, angle) moved along `direction` (Unity Physics2D.CapsuleCast).'],
+        'overloads': [([('scene', 'Scene'), ('origin', 'Vector2'), ('size', 'Vector2'), ('capsuleDirection', 'integer'),
+                        ('angle', 'number'), ('direction', 'Vector2'), ('distance', 'number')] + _Q2, _ret)]}
+    _ret2 = 'Collider2D[]' if _all else 'Collider2D|nil'
+    _what2 = 'Every collider' if _all else 'The first collider (lowest GameObject, then index; nil for none)'
+    OVERRIDES[('Physics2D', 'overlapCircle' + _sfx)] = {
+        'doc': [f'{_what2} touching or inside the circle (Unity Physics2D.OverlapCircle).'],
+        'overloads': [([('scene', 'Scene'), ('point', 'Vector2'), ('radius', 'number')] + _Q2, _ret2)]}
+    OVERRIDES[('Physics2D', 'overlapBox' + _sfx)] = {
+        'doc': [f'{_what2} touching or inside the box (whole size, angle) (Unity Physics2D.OverlapBox).'],
+        'overloads': [([('scene', 'Scene'), ('point', 'Vector2'), ('size', 'Vector2'), ('angle', 'number')] + _Q2, _ret2)]}
+    OVERRIDES[('Physics2D', 'overlapCapsule' + _sfx)] = {
+        'doc': [f'{_what2} touching or inside the capsule (Unity Physics2D.OverlapCapsule).'],
+        'overloads': [([('scene', 'Scene'), ('point', 'Vector2'), ('size', 'Vector2'), ('capsuleDirection', 'integer'),
+                        ('angle', 'number')] + _Q2, _ret2)]}
+    OVERRIDES[('Physics2D', 'overlapPoint' + _sfx)] = {
+        'doc': [f'{_what2} containing the point (Unity Physics2D.OverlapPoint).'],
+        'overloads': [([('scene', 'Scene'), ('point', 'Vector2')] + _Q2, _ret2)]}
+    OVERRIDES[('Physics2D', 'overlapArea' + _sfx)] = {
+        'doc': [f'{_what2} touching or inside the box between two opposite corners (Unity Physics2D.OverlapArea).'],
+        'overloads': [([('scene', 'Scene'), ('pointA', 'Vector2'), ('pointB', 'Vector2')] + _Q2, _ret2)]}
+    OVERRIDES[('Rigidbody', 'sweepTest' + _sfx)] = {
+        'doc': [f'{_what} of the body\'s solid colliders moved along `direction`, never the body itself (Unity Rigidbody.SweepTest).'],
+        'overloads': [([('direction', 'Vector3'), ('maxDistance', 'number'), ('options?', 'PhysicsQueryOptions')], _ret)]}
+    OVERRIDES[('Rigidbody2D', 'cast' + _sfx)] = {
+        'doc': [f'{_what} of the body\'s shapes moved along `direction` (points), never the body itself (Unity Rigidbody2D.Cast).'],
+        'overloads': [([('direction', 'Vector2'), ('distance', 'number'), ('options?', 'PhysicsQueryOptions2D')], _ret)]}
+for _name, _shape, _args in (
+        ('Sphere', 'sphere', [('center', 'Vector3'), ('radius', 'number')]),
+        ('Box', 'box (half extents, orientation: nil = identity)', [('center', 'Vector3'), ('halfExtents', 'Vector3'), ('orientation?', 'Quaternion')]),
+        ('Capsule', 'capsule (the centres of its two spheres)', [('point1', 'Vector3'), ('point2', 'Vector3'), ('radius', 'number')])):
+    OVERRIDES[('Physics', 'overlap' + _name)] = {
+        'doc': [f'Every collider touching or inside the {_shape}, once each (Unity Physics.Overlap{_name}).'],
+        'overloads': [([('scene', 'Scene')] + _args + _Q3, 'Collider[]')]}
+    OVERRIDES[('Physics', 'check' + _name)] = {
+        'doc': [f'Whether any collider touches the {_shape}, stopping at the first (Unity Physics.Check{_name}).'],
+        'overloads': [([('scene', 'Scene')] + _args + _Q3, 'boolean')]}
+OVERRIDES[('Physics', 'closestPoint')] = {
+    'doc': ['The point of a convex collider nearest to `point`, `point` itself inside (Unity Physics.ClosestPoint);',
+            'an error for a mesh or heightfield collider.'],
+    'overloads': [([('scene', 'Scene'), ('point', 'Vector3'), ('collider', 'Collider')], 'Vector3')]}
 
 # S26: MeshRaycast, the triangle-exact raycast without physics (Physics.raycast's arguments)
 _MESH_RAYCAST_OPTIONS = '{hitBackfaces: boolean?, includeInactive: boolean?, ignore: (EntityHandle|integer)[]?, kinds: integer?}'
@@ -3222,6 +3340,12 @@ OVERRIDES[('NavigationSystem', 'setAreaInVolume')] = {
             'default); it ends at Stop. nil for an area outside 0-15.'],
     'overloads': [([('center', 'Vector3'), ('size', 'Vector3'), ('area', 'integer'),
                     ('options?', '{rotation: Quaternion|nil, agentType: string|integer|nil}')], 'NavAreaOverride|nil')]}
+
+# S96 vehicles: WheelCollider.getWorldPose returns two values (VehicleClassesLua.cpp)
+OVERRIDES[('WheelCollider', 'getWorldPose')] = {
+    'doc': ['The wheel\'s drawn pose after the last fixed step (Unity\'s GetWorldPose): the position of its',
+            'centre and its rotation with suspension, steer and spin. Before the first step, its GameObject\'s.'],
+    'overloads': [([], 'Vector3, Quaternion')]}
 
 # S19 navigation: the queries returning (bool, hit) and the link data table
 _NAV_FILTER = 'NavMeshQueryFilter|integer'

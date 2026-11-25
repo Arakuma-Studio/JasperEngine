@@ -30,6 +30,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/DecomposeColliderCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/UnlinkMaterialCmd.h"
 #include "command/type/LinkMaterialCmd.h"
@@ -87,6 +88,7 @@
 #include "Out.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "physics/AttachedColliders.h"
 #include "util/WaterEditorUtils.h"
 #include "component/BuoyancyComponent.h"
 #include "component/CharacterController2DComponent.h"
@@ -181,6 +183,24 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
     const bool playing = sceneProject->playState != ScenePlayState::STOPPED;
 
     beginTable(cpType, getLabelSize("Contacts With Static/Kinematic"));
+    // S96 WP-C: Unity's colliders below a Rigidbody; the body fields of an attached child are not used
+    RowSettings settingsAttach;
+    settingsAttach.help = "Its colliders join the body of the nearest parent with a Rigidbody (their contacts reach this GameObject too); it has no body of its own";
+    propertyRow(RowPropertyType::Bool, cpType, "attachToParentBody", "Attach To Parent Body", sceneProject, entities, settingsAttach);
+    bool attachedToParent = false;
+    if (body.attachToParentBody && entities.size() == 1){
+        const Entity joined = AttachedColliders::findBody3D(sceneProject->scene, entities[0]);
+        attachedToParent = joined != NULL_ENTITY;
+        propertyHeader("");
+        if (attachedToParent){
+            ImGui::TextDisabled("Joins the body of \"%s\"", sceneProject->scene->getEntityName(joined).c_str());
+        }else{
+            ImGui::TextDisabled("No parent body: this is its own body");
+        }
+    }
+    if (attachedToParent){
+        ImGui::BeginDisabled();
+    }
     propertyRow(RowPropertyType::Enum, cpType, "type", "Body Type", sceneProject, entities, settingsBodyType);
     if (body.type != BodyType::STATIC){
         propertyRowWithAutoButton(RowPropertyType::FloatPositive, cpType, "mass", "Mass", "automaticMass", "Automatic Mass (from the colliders)", sceneProject, entities, settingsMass);
@@ -229,7 +249,11 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
     }
     endTable();
 
-    if (ImGui::TreeNode("Advanced##rigidbody3d")){
+    if (attachedToParent){
+        ImGui::EndDisabled();
+    }
+
+    if (!attachedToParent && ImGui::TreeNode("Advanced##rigidbody3d")){
         beginTable(cpType, getLabelSize("Contacts With Static/Kinematic"), "rigidbody_advanced");
         propertyRow(RowPropertyType::FloatPositive, cpType, "maxLinearVelocity", "Max Linear Velocity", sceneProject, entities, settingsBodyValue);
         propertyRow(RowPropertyType::FloatPositive, cpType, "maxAngularVelocity", "Max Angular Velocity", sceneProject, entities, settingsBodyValue);
@@ -533,10 +557,12 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
         }else if (shape.type == Collider3DType::SPHERE){
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsShapeValue);
         }else if (shape.type == Collider3DType::CAPSULE || shape.type == Collider3DType::CYLINDER){
-            propertyRow(RowPropertyType::Float, cpType, shapeKey + ".halfHeight", "Half Height", sceneProject, entities, settingsShapeValue);
+            // a capsule of half height 0 is a sphere of its radius (S96 REQ-24)
+            propertyRow(shape.type == Collider3DType::CAPSULE ? RowPropertyType::FloatPositive : RowPropertyType::Float,
+                        cpType, shapeKey + ".halfHeight", "Half Height", sceneProject, entities, settingsShapeValue);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsShapeValue);
         }else if (shape.type == Collider3DType::TAPERED_CAPSULE){
-            propertyRow(RowPropertyType::Float, cpType, shapeKey + ".halfHeight", "Half Height", sceneProject, entities, settingsShapeValue);
+            propertyRow(RowPropertyType::FloatPositive, cpType, shapeKey + ".halfHeight", "Half Height", sceneProject, entities, settingsShapeValue);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".topRadius", "Top Radius", sceneProject, entities, settingsShapeValue);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".bottomRadius", "Bottom Radius", sceneProject, entities, settingsShapeValue);
         }
@@ -610,6 +636,53 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
             }
         }else if (shapeTypeUI == Collider3DType::MESH){
             propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".source", "Source", sceneProject, entities, settingsShapeSourceMesh);
+            // S96 WP-C: Jolt moves no mesh; its convex hulls (V-HACD, on a job) a body can move with
+            if (entities.size() == 1 && !playing){
+                propertyHeader("");
+                if (std::shared_ptr<ColliderDecomposition> running = ColliderDecomposition::find(sceneProject->id, entities[0], s)){
+                    const std::string stage = running->stage();
+                    ImGui::ProgressBar((float)running->progress(), ImVec2(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() * 3.0f, 0.0f),
+                                       stage.empty() ? "Decomposing" : stage.c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(("Cancel##decompose_" + std::to_string(s)).c_str())){
+                        running->cancel();
+                    }
+                }else{
+                    const std::string popupId = "decompose_collider_" + std::to_string(s);
+                    if (ImGui::Button(("Decompose Into Convex Hulls##" + std::to_string(s)).c_str())){
+                        ImGui::OpenPopup(popupId.c_str());
+                    }
+                    if (ImGui::IsItemHovered()){
+                        ImGui::SetTooltip("Replaces this Mesh collider with convex hull colliders (one undo step), so the body can be dynamic or kinematic");
+                    }
+                    static int decomposeQuality = 1;
+                    static int decomposeMaxHulls = 16;
+                    if (ImGui::BeginPopup(popupId.c_str())){
+                        const char* qualities[] = {"Low", "Medium", "High"};
+                        ImGui::Combo("Quality", &decomposeQuality, qualities, 3);
+                        ImGui::SliderInt("Max Hulls", &decomposeMaxHulls, 1, (int)ColliderDecomposition::MAX_HULLS);
+                        if (ImGui::Button("Decompose")){
+                            ColliderDecomposition::Request request;
+                            request.sceneId = sceneProject->id;
+                            request.entity = entities[0];
+                            request.index = s;
+                            request.quality = (DecompositionQuality)std::clamp(decomposeQuality, 0, 2);
+                            request.maxHulls = (uint32_t)std::clamp(decomposeMaxHulls, 1, (int)ColliderDecomposition::MAX_HULLS);
+                            std::string error;
+                            const bool started = (bool)ColliderDecomposition::start(project, request, [](const ColliderDecomposition::Outcome& outcome){
+                                if (!outcome.error.empty() && !outcome.cancelled){
+                                    Log::error("Decompose Into Convex Hulls: %s", outcome.error.c_str());
+                                }
+                            }, error);
+                            if (!started){
+                                Log::error("Decompose Into Convex Hulls: %s", error.c_str());
+                            }
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::EndPopup();
+                    }
+                }
+            }
             if (normalizedSourceUI == Collider3DSource::ENTITY_MESH){
                 propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source GameObject", sceneProject, entities, settingsShapeValue);
             }else if (normalizedSourceUI == Collider3DSource::RAW_MESH){

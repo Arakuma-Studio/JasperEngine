@@ -38,10 +38,16 @@ namespace jasperengine::test {
 
         ~TestTempDir(){
             std::error_code ec;
-            // read-only files left by a test must not keep the directory alive
+            // read-only files left by a test must not keep the directory alive. Never through a symlink a
+            // test planted: its target is not the test's (a link to /etc/passwd hung a macOS job in
+            // fchmodat, and on a developer's machine it would make their own files writable). The
+            // iterator does not descend into a linked directory, and remove_all removes the link itself
             for (auto it = std::filesystem::recursive_directory_iterator(root, ec); !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)){
                 std::error_code permEc;
-                std::filesystem::permissions(it->path(), std::filesystem::perms::owner_write, std::filesystem::perm_options::add, permEc);
+                if (it->is_symlink(permEc) || permEc)
+                    continue;
+                std::filesystem::permissions(it->path(), std::filesystem::perms::owner_write,
+                                             std::filesystem::perm_options::add | std::filesystem::perm_options::nofollow, permEc);
             }
             std::filesystem::remove_all(root, ec);
         }

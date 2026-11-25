@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <string_view>
 
 namespace jasperengine::pose {
 
@@ -52,10 +53,12 @@ namespace jasperengine::pose {
             return false;
         }
 
-        // Body part and side of a bone name (section 4.6)
-        NameInfo classify(const std::string& boneName){
+        // Body part and side of a bone name (section 4.6), under the naming rules `nameRules`
+        NameInfo classify(const std::string& boneName, int nameRules){
             NameInfo info;
-            const std::vector<std::string> tokens = humanoidNameTokens(boneName);
+            const std::vector<std::string> tokens = humanoidNameTokens(boneName, nameRules);
+            // rules 1 mapped proxies like any other name
+            const bool skipProxies = nameRules >= HUMANOID_NAME_RULES_B_RIGS;
             if (tokens.empty()){
                 return info;
             }
@@ -64,8 +67,8 @@ namespace jasperengine::pose {
             bool right = false;
             std::string key;
             for (const std::string& token : tokens){
-                // twist/roll helpers and IK/end bones are never mapped
-                if (oneOf(token, {"twist", "roll", "helper", "ik", "pole", "target", "end", "nub"})){
+                // twist/roll helpers, IK/end bones and proxies (Unity's Spine Proxy) are never mapped
+                if (oneOf(token, {"twist", "roll", "helper", "ik", "pole", "target", "end", "nub"}) || (skipProxies && token == "proxy")){
                     return info;
                 }
                 // fingers (not animated by the pose tool): "LeftHandIndex1" must not become the hand
@@ -80,9 +83,9 @@ namespace jasperengine::pose {
                     key += token;
                 }
             }
-            // the same inside unsplit lower-case names ("lefthandindex1", "upperarmtwist")
-            for (const char* part : {"twist", "helper", "index", "thumb", "pinky", "finger"}){
-                if (key.find(part) != std::string::npos){
+            // the same inside unsplit lower-case names ("lefthandindex1", "upperarmtwist", "spineproxy")
+            for (const char* part : {"twist", "helper", "index", "thumb", "pinky", "finger", "proxy"}){
+                if (key.find(part) != std::string::npos && (skipProxies || std::string_view(part) != "proxy")){
                     return info;
                 }
             }
@@ -241,7 +244,7 @@ namespace jasperengine::pose {
 
     }
 
-    std::vector<std::string> humanoidNameTokens(const std::string& boneName){
+    std::vector<std::string> humanoidNameTokens(const std::string& boneName, int nameRules){
         // namespace / path prefix up to the last ':' or '|'
         std::string name = boneName;
         const size_t ns = name.find_last_of(":|");
@@ -249,14 +252,15 @@ namespace jasperengine::pose {
             name = name.substr(ns + 1);
         }
 
-        // rig prefixes (repeatedly, with the separators after them)
-        static const char* PREFIXES[] = {"mixamorig", "bip001", "bip01", "def-", "def_", "j_bip_", "b_", "bone_"};
+        // rig prefixes (repeatedly, with the separators after them); "b-" from rules 2 on
+        static const char* PREFIXES[] = {"mixamorig", "bip001", "bip01", "def-", "def_", "j_bip_", "b_", "b-", "bone_"};
         bool stripped = true;
         while (stripped && !name.empty()){
             stripped = false;
             size_t pos = 0;
             while (pos < name.size() && isSeparator(name[pos])) pos++;
             for (const char* prefix : PREFIXES){
+                if (nameRules < HUMANOID_NAME_RULES_B_RIGS && std::string_view(prefix) == "b-") continue;
                 if (startsWithNoCase(name, pos, prefix)){
                     pos += std::char_traits<char>::length(prefix);
                     if (startsWith(prefix, "mixamorig")){
@@ -302,6 +306,11 @@ namespace jasperengine::pose {
         return tokens;
     }
 
+    bool isTorsoBoneName(const std::string& boneName, int nameRules){
+        const Part part = classify(boneName, nameRules).part;
+        return part == Part::Hips || part == Part::SpineChain;
+    }
+
     int findSkeletonBone(const Skeleton& skeleton, const std::string& name){
         if (name.empty()){
             return -1;
@@ -322,7 +331,7 @@ namespace jasperengine::pose {
         return p;
     }
 
-    HumanoidMap autoDetectHumanoid(const Skeleton& skeleton, std::vector<std::string>* notes){
+    HumanoidMap autoDetectHumanoid(const Skeleton& skeleton, std::vector<std::string>* notes, int nameRules){
         HumanoidMap map;
         const int count = static_cast<int>(skeleton.bones.size());
         const std::vector<int> depth = boneDepths(skeleton);
@@ -330,7 +339,7 @@ namespace jasperengine::pose {
         std::vector<NameInfo> infos(count);
         for (int i = 0; i < count; i++){
             if (depth[i] >= 0){
-                infos[i] = classify(skeleton.bones[i].name);
+                infos[i] = classify(skeleton.bones[i].name, nameRules);
             }
         }
         auto candidatesOf = [&](Part part, BodySide side){

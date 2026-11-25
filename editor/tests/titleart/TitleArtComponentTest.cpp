@@ -4,7 +4,8 @@
 // The Title Art Renderer (docs/specs/S81-title-art-runtime.md AC1, AC2, AC20 Baked part): its S08
 // table (defaults omitted, round trip), the companion it adds, Set Native Size, the companion's
 // own values while a Live Effect drives it and after the component goes, the overrides as
-// properties (prefab copies by name, set_properties by name), and the Lua sentences.
+// properties (prefab copies by name, set_properties by name), the Lua sentences, and the title_fx
+// variants an export cooks for it (S81 R47, S85 R13).
 
 #include <gtest/gtest.h>
 
@@ -25,6 +26,7 @@
 #include "subsystem/TitleArtSystem.h"
 #include "support/EditorTestSupport.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/runtime/TitleArtExportKeys.h"
 #include "titleart/runtime/TitleArtOverrides.h"
 #include "yaml-cpp/yaml.h"
 
@@ -247,6 +249,45 @@ TEST(TitleArtComponent, LiveEffectsDriveTheShaderAndTheCompanionKeepsItsOwn) {
     scene->removeComponent<TitleArtRendererComponent>(entity);
     EXPECT_EQ(scene->getComponent<UIComponent>(entity).customShader.path, "library:ui_fx");
     EXPECT_EQ(scene->getComponent<UIComponent>(entity).shaderFeatures, std::vector<std::string>{"SHINE"});
+}
+
+TEST(TitleArtComponent, ExportCooksTheVariantsOfAPlayingAnimation) {
+    ASSERT_TRUE(titleArtComponentHeadless().ready);
+    const fs::path root = titleArtComponentHeadless().dir;
+    // S85 R13: a playing animation draws its companion with ANIM, and a live.* track turns its
+    // Live Effect on: a player without the runtime shader compiler draws only what was cooked
+    titleart::TitleArtDoc doc = titleart::makeNewTitleArt({800, 400, "WIN", ""});
+    auto keyed = [](const char* field){ return titleart::Json{{"layer", ""}, {"field", field}, {"keys", titleart::Json::array({titleart::Json::array({0, 0}), titleart::Json::array({1, 1})})}}; };
+    titleart::Json intro = {{"name", "Intro"}, {"duration", 1.0}, {"tracks", titleart::Json::array({keyed("opacity")})}};
+    titleart::Json pulse = {{"name", "Pulse"}, {"duration", 1.0}, {"tracks", titleart::Json::array({keyed("live.tint_amount")})}};
+    doc.root["animation"] = {{"animations", titleart::Json::array({intro, pulse})}};
+    titleart::normalizeTitleArt(doc);
+    std::ofstream(root / "assets" / "titles" / "animated.titleart") << titleart::writeTitleArt(doc);
+
+    using Sets = std::vector<std::vector<std::string>>;
+    TitleArtRendererComponent title;
+    title.title.path = "assets/titles/animated.titleart";
+    title.renderMode = TitleArtRenderMode::BAKED;
+    EXPECT_EQ(titleArtLiveFeatureSets(title, root), (Sets{{"ANIM"}, {"TINT", "ANIM"}})) << "each animation's variant (Intro, Pulse)";
+
+    // with a Live Effect of its own, the effect stays on while it plays; a Realtime title's
+    // crossfade can come in over any of them
+    title.sweepEnabled = true;
+    title.renderMode = TitleArtRenderMode::REALTIME;
+    title.transition = TitleArtTransition::CROSSFADE;
+    EXPECT_EQ(titleArtLiveFeatureSets(title, root), (Sets{{"SWEEP"}, {"SWEEP", "CROSSFADE"}, {"SWEEP", "ANIM"}, {"SWEEP", "TINT", "ANIM"},
+                                                           {"SWEEP", "CROSSFADE", "ANIM"}, {"SWEEP", "TINT", "CROSSFADE", "ANIM"}}));
+
+    // Glow over a Baked flipbook frame is off (R16: frames have no glow output)
+    title.sweepEnabled = false;
+    title.glowEnabled = true;
+    title.renderMode = TitleArtRenderMode::BAKED;
+    EXPECT_EQ(titleArtLiveFeatureSets(title, root), (Sets{{"GLOW"}, {"ANIM"}, {"GLOW", "ANIM"}, {"TINT", "ANIM"}, {"GLOW", "TINT", "ANIM"}}));
+
+    // a title without animations and Live Effects draws the built-in shader: nothing of title_fx
+    title.glowEnabled = false;
+    title.title.path = "assets/titles/logo.titleart";
+    EXPECT_TRUE(titleArtLiveFeatureSets(title, root).empty());
 }
 
 TEST(TitleArtComponent, OverridesAreOnePropertyPerName) {

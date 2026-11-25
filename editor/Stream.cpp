@@ -30,6 +30,7 @@
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "util/WorldTransforms.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
@@ -2358,6 +2359,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showRootMotion"] = ds.showRootMotion;
     if (ds.showFootTrails)
         sceneNode["showFootTrails"] = ds.showFootTrails;
+    if (ds.showTorsoDirection)
+        sceneNode["showTorsoDirection"] = ds.showTorsoDirection;
     if (ds.drawMode != ViewDrawMode::SHADED)
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
@@ -2409,6 +2412,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     ds.showIK = node["showIK"] ? YamlNumbers::as<bool>(node["showIK"]) : false;
     ds.showRootMotion = node["showRootMotion"] ? YamlNumbers::as<bool>(node["showRootMotion"]) : false;
     ds.showFootTrails = node["showFootTrails"] ? YamlNumbers::as<bool>(node["showFootTrails"]) : false;
+    ds.showTorsoDirection = node["showTorsoDirection"] ? YamlNumbers::as<bool>(node["showTorsoDirection"]) : false;
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
@@ -3342,6 +3346,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (audio.maxRealVoices != defaults.maxRealVoices) audioNode["maxRealVoices"] = audio.maxRealVoices;
         if (audio.maxVoices != defaults.maxVoices) audioNode["maxVoices"] = audio.maxVoices;
         if (audio.seed != defaults.seed) audioNode["seed"] = audio.seed;
+        if (audio.unusedClipCacheMb != defaults.unusedClipCacheMb) audioNode["unusedClipCacheMb"] = audio.unusedClipCacheMb;
         if (audio.captureMaxSeconds != defaults.captureMaxSeconds) audioNode["captureMaxSeconds"] = audio.captureMaxSeconds;
         if (audio.captureKeep != defaults.captureKeep) audioNode["captureKeep"] = audio.captureKeep;
         if (audio.captureStems != defaults.captureStems) audioNode["captureStems"] = audio.captureStems;
@@ -4015,7 +4020,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         // Player > Target Platforms; missing: all six (every project before it). Unknown names are
         // dropped, and a list left empty targets all six, each with a warning
         uint8_t targets = Project::allTargetPlatforms;
-        const YAML::Node targetsNode = node["export"] && node["export"].IsMap() ? node["export"]["targetPlatforms"] : YAML::Node();
+        // without an export map the key is missing: YAML::Node() is a defined null, read as "not a list"
+        const YAML::Node targetsNode = node["export"] && node["export"].IsMap() ? node["export"]["targetPlatforms"]
+                                                                                : YAML::Node(YAML::NodeType::Undefined);
         if (targetsNode && targetsNode.IsSequence()) {
             targets = 0;
             for (const YAML::Node& entry : targetsNode) {
@@ -4360,6 +4367,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (audioNode["maxRealVoices"]) audio.maxRealVoices = YamlNumbers::as<int>(audioNode["maxRealVoices"]);
             if (audioNode["maxVoices"]) audio.maxVoices = YamlNumbers::as<int>(audioNode["maxVoices"]);
             if (audioNode["seed"]) audio.seed = YamlNumbers::as<int>(audioNode["seed"]);
+            if (audioNode["unusedClipCacheMb"]) audio.unusedClipCacheMb = YamlNumbers::as<int>(audioNode["unusedClipCacheMb"]);
             if (audioNode["captureMaxSeconds"]) audio.captureMaxSeconds = YamlNumbers::as<int>(audioNode["captureMaxSeconds"]);
             if (audioNode["captureKeep"]) audio.captureKeep = YamlNumbers::as<int>(audioNode["captureKeep"]);
             if (audioNode["captureStems"]) audio.captureStems = audioNode["captureStems"].as<bool>();
@@ -4973,6 +4981,8 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
 
     CameraTextureLink::resolve(sceneProject->scene);
     reportUnknownSortingLayers(sceneProject->scene);
+    // a broken Audio Source slot loads as an ordinary GameObject, never failing the load (S97 REQ-29)
+    AudioSourceSlots::repair(sceneProject->scene);
 }
 
 void editor::Stream::reportUnknownSortingLayers(Scene* scene){
@@ -5138,6 +5148,19 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         sceneNode["physics2DSubSteps"] = scene->getPhysics2DSubSteps();
+    // S96: the world settings away from their defaults, a flat key each (old scenes keep none)
+    {
+        const SceneSettings defaults;
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            const double value = getPhysicsWorldSetting(field, scene->getPhysics2DWorldSettings(), scene->getPhysics3DWorldSettings());
+            if (value == getPhysicsWorldSetting(field, defaults.physics2DWorld, defaults.physics3DWorld)) continue;
+            switch (field.type) {
+                case PhysicsWorldSettingField::Type::Float: sceneNode[field.key] = (float)value; break;
+                case PhysicsWorldSettingField::Type::Int: sceneNode[field.key] = (int)value; break;
+                case PhysicsWorldSettingField::Type::Bool: sceneNode[field.key] = value != 0.0; break;
+            }
+        }
+    }
     sceneNode["fixedResolutionEnabled"] = scene->isFixedResolutionEnabled();
     sceneNode["fixedResolutionWidth"] = scene->getFixedResolutionWidth();
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
@@ -5331,6 +5354,20 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
     scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
     scene->setPhysics2DSubSteps(node["physics2DSubSteps"] ? YamlNumbers::as<int>(node["physics2DSubSteps"]) : SceneSettings().physics2DSubSteps);
+    // S96: the world settings; an absent key is its default (StreamSchema lists the keys)
+    {
+        SceneSettings settings;
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            const YAML::Node value = node[field.key];
+            if (!value) continue;
+            const double number = field.type == PhysicsWorldSettingField::Type::Bool ? (YamlNumbers::as<bool>(value) ? 1.0 : 0.0)
+                                : field.type == PhysicsWorldSettingField::Type::Int ? (double)YamlNumbers::as<int>(value)
+                                : (double)YamlNumbers::as<float>(value);
+            setPhysicsWorldSetting(field, settings.physics2DWorld, settings.physics3DWorld, number);
+        }
+        scene->setPhysics2DWorldSettings(settings.physics2DWorld);
+        scene->setPhysics3DWorldSettings(settings.physics3DWorld);
+    }
 
     // absent restores the defaults, so decoding into a reused scene (play restore) is exact
     scene->setCanvasScaler(decodeCanvasScaler(node["canvasScaler"]));

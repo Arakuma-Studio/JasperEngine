@@ -16,6 +16,7 @@
 
 #include "hb.h"
 #include "hb-ot.h"
+#include "support/EditorTestSupport.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -309,8 +310,11 @@ TEST(TitleFontSubset, Timing) {
     std::printf("[ subset   ] Joyo + Kana from DelaGothicOne-Regular.ttf (2.5 MB): %.1f ms, %zu KB, %d glyphs\n", japanese.ms,
                 japanese.bytes.size() / 1024, japanese.glyphs);
 #ifdef NDEBUG
-    EXPECT_LE(latin.ms, 200.0);
-    EXPECT_LE(japanese.ms, 2000.0);
+    // wall-clock budgets: enforced where perfSlack() asks for them (the benchmark run)
+    if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LE(latin.ms, 200.0 * slack);
+        EXPECT_LE(japanese.ms, 2000.0 * slack);
+    }
 #endif
 }
 

@@ -48,11 +48,14 @@ namespace {
 }
 
 TEST(StreamProjectTargetPlatforms, MissingKeyTargetsAll) {
+    streamProjectTargetPlatformsEnsureLogging();
     Project project;
     project.setTargetPlatforms(streamProjectTargetPlatformsTargetBit(BuildPlatform::Android));
     // a project.yaml from before Target Platforms
+    uint64_t cursor = Out::lastLogId();
     Stream::decodeProject(&project, YAML::Load("vsync: true\nexport:\n  method: prebuilt\n"), Workspace());
     EXPECT_EQ(project.getTargetPlatforms(), Project::allTargetPlatforms);
+    EXPECT_EQ(warningsSince(cursor, "Target Platforms"), 0u) << "a missing key is no mistake";
     for (BuildPlatform platform : {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS, BuildPlatform::Android,
                                    BuildPlatform::IOS, BuildPlatform::Web}) {
         EXPECT_TRUE(project.isTargetPlatform(platform)) << buildPlatformName(platform);
@@ -61,10 +64,12 @@ TEST(StreamProjectTargetPlatforms, MissingKeyTargetsAll) {
     const YAML::Node encoded = YAML::Load(YAML::Dump(Stream::encodeProject(&project)));
     EXPECT_FALSE(encoded["export"] && encoded["export"]["targetPlatforms"]);
 
-    // without an export map at all, too
+    // without an export map at all, too (every project.yaml that never set an export option)
     project.setTargetPlatforms(streamProjectTargetPlatformsTargetBit(BuildPlatform::IOS));
+    cursor = Out::lastLogId();
     Stream::decodeProject(&project, YAML::Load("vsync: true\n"), Workspace());
     EXPECT_EQ(project.getTargetPlatforms(), Project::allTargetPlatforms);
+    EXPECT_EQ(warningsSince(cursor, "Target Platforms"), 0u) << "no export map is no mistake either";
 }
 
 TEST(StreamProjectTargetPlatforms, RoundTripsCanonical) {

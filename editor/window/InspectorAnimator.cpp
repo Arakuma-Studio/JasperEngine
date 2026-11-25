@@ -311,6 +311,27 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
         if (runtime.controller){
             for (const ClipWarning& warning : runtime.controller->diagnostics) warningText(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
         }
+        // Mesh Space Rotation (docs/specs/mesh-space-rotation.md R29): proposed on the bound rig,
+        // never turned on but by Fix (one undo step on the controller asset)
+        if (runtime.controller && runtime.bound && runtime.controller->layers.size() > 1){
+            std::string error;
+            std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project, animator->controller.path, &error);
+            const std::vector<MeshSpaceWarning> meshSpace = document && document->loadError().empty() ?
+                                                            meshSpaceWarnings(document->controller(), runtime) : std::vector<MeshSpaceWarning>();
+            for (const MeshSpaceWarning& warning : meshSpace){
+                ImGui::PushID(warning.layer);
+                warningText(warning.message);
+                if (ImGui::Button("Fix")){
+                    ControllerDef def = document->controller();
+                    LayerDef& layer = def.layers[(size_t)warning.layer];
+                    layer.meshSpaceRotation = true;
+                    if (!document->commit(def, "Edit Layer " + layer.name, std::string(), &error)) Out::error("%s", error.c_str());
+                }
+                UIProbe::item("animator.meshSpaceFix");
+                ImGui::SetItemTooltip("Turns on Mesh Space Rotation on the layer in the controller (one undo step)");
+                ImGui::PopID();
+            }
+        }
         if (!stopped && runtime.controller && runtime.bound){
             ImGui::SeparatorText("State");
             for (size_t l = 0; l < runtime.layers.size() && l < runtime.controller->layers.size(); l++){

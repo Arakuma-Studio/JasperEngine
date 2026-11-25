@@ -5,6 +5,9 @@ triggers none. A dense clip is sampled from the fixture's Walk here, since its W
 S77 R37, R54 (AC11, AC17): a planted 50 mm foot slide fails and a clean step passes, a generic rig
 with no feet reports contact_source "none", an instant crossfade pops, record_seconds watches the
 Animator's legs in play mode, and `check --anim-quality` plants each of its codes.
+Mesh Space Rotation (docs/specs/mesh-space-rotation.md AC23): layer_blend on the B- rig with an Upper Body
+mask from the spine reports the 110 degree twist and anim-layer-twist with the edit_animator_controller call
+in its next; that call applied, the same check measures under 0.01 degrees and finds nothing.
 
 Runs on a scratch copy of tools/fixtures/pose-animation.
 """
@@ -103,8 +106,10 @@ async def test_group_hidden_until_enabled(ed: Editor):
     check = ed.tool("check_animation")
     ed.check(check.annotations.read_only_hint is True, "check_animation is read-only")
     enum = check.input_schema["properties"]["checks"]["items"]["enum"]
-    ed.check_eq(sorted(enum), sorted(["stats", "loop_seam", "root_motion", "foot_sliding", "transition"]), "every check is listed now")
-    for name in ("transition", "feet", "move_speed", "record_seconds", "limits", "top", "compare_to", "entity", "scene", "state"):
+    ed.check_eq(sorted(enum), sorted(["stats", "loop_seam", "root_motion", "foot_sliding", "transition", "layer_blend"]),
+                "every check is listed now")
+    for name in ("transition", "feet", "move_speed", "record_seconds", "limits", "top", "compare_to", "entity", "scene", "state",
+                 "layer_blend"):
         ed.check_in(name, check.input_schema["properties"], "check_animation argument")
     optimize = ed.tool("optimize_animation")
     ed.check(optimize.annotations.read_only_hint is not True, "optimize_animation writes")
@@ -329,6 +334,10 @@ async def test_tolerance_and_skin_change_the_answer(ed: Editor):
     ed.check_eq(floored["clips"][0]["skin_distance_mm"], 10, "measured at the floor")
     r = await ed.call_raw("optimize_animation", {"clips": [DENSE], "joints": [{"path": "NoSuchBone", "tolerance_mm": 1}]})
     ed.check(r.is_error and "unknown_joint" in r.text, r.text[:200])
+    # a missing clips or joint tolerance is an error that names the fix (the handler once read the missing key)
+    await ed.check_error("optimize_animation", {}, contains="clips")
+    await ed.check_error("optimize_animation", {"clips": [DENSE], "joints": [{"path": "NoSuchBone"}]},
+                         contains="give each entry a path (the bone's path) and a tolerance_mm")
 
 
 async def test_skeleton_summary(ed: Editor):
@@ -536,3 +545,76 @@ async def test_cli_anim_quality():
         check(data["checked"].get("anim_quality", 0) >= 4, f"{data['checked']}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ---------------------------------------------------------------- layer_blend (mesh-space-rotation R36, AC23)
+
+PROXY_MODEL = "assets/models/b_rig_proxy.gltf"
+PROXY_SOURCE = REPO / "tools" / "fixtures" / "b-rig" / PROXY_MODEL
+PROXY_CONTROLLER = "assets/anim/proxy.controller"
+SPINE = "Rig/B-root/B-hips/B-spine"
+
+
+async def test_layer_blend_twist_then_fixed(ed: Editor):
+    # AC4's setup: Run (hips turned 90 degrees) under Attack (hips turned -20 degrees) masked from the spine
+    # the B- rig lives outside the fixture project, so opening the project cooks no extra model
+    shutil.copyfile(PROXY_SOURCE, ed.project / PROXY_MODEL)
+    await ed.call("sync_files")
+    await ed.call("set_model", path=PROXY_MODEL, create={"name": "Proxy", "position": [3, 0, 0]})
+    await ed.call("edit_avatar_mask", path="assets/anim/upper_spine.mask", create=True, default=0,
+                  paths={SPINE: {"weight": 1, "children": True}})
+    await ed.call("edit_animator_controller", path=PROXY_CONTROLLER, create=True, ops=[
+        {"op": "add_state", "name": "Run", "clip": PROXY_MODEL + "#Run", "default": True},
+        {"op": "add_layer", "name": "Upper Body", "mask": "assets/anim/upper_spine.mask"},
+        {"op": "add_state", "layer": "Upper Body", "name": "Attack", "clip": PROXY_MODEL + "#Attack", "default": True}])
+    await ed.call("add_component", entity="Proxy", component="animator", values={"animator": {"controller": PROXY_CONTROLLER}})
+
+    r = await ed.call_raw("check_animation", {"entity": "Proxy", "layer_blend": {"layer": "Upper Body"}})
+    ed.check(not r.is_error, f"ok false is a successful call: {r.text[:400]}")
+    out = r.structured
+    blend = out["layer_blend"]
+    ed.check(out["ok"] is False and abs(blend["max_angle_deg"] - 110) < 1, f"the spine follows the run's hips: {json.dumps(blend)[:800]}")
+    ed.check(blend["facing_delta_deg"] is not None and abs(blend["facing_delta_deg"] - 110) < 1, f"the chest faces 110 degrees off: {blend}")
+    ed.check_eq((blend["layer"], blend["mesh_space_rotation"], blend["boundary_bones"], blend["state"], blend["base_state"]),
+                ("Upper Body", False, [SPINE], "Upper Body.Attack", "Base Layer.Run"), "what was compared")
+    ed.check_eq([s["time"] for s in blend["samples"]], [0, 0.25, 0.5, 0.75, 1], "5 times over the layer's state")
+    ed.check(SPINE in blend["samples"][0]["bones"] and len(blend["samples"][0]["bones"]) == 2, f"the boundary bone and its child: {blend['samples'][0]}")
+    twist = [f for f in out["findings"] if f["code"] == "anim-layer-twist"]
+    ed.check(len(twist) == 1 and twist[0]["path"] == PROXY_CONTROLLER, f"one anim-layer-twist on the controller: {out['findings']}")
+    nxt = twist[0].get("next", {})
+    ed.check_eq(nxt, {"tool": "edit_animator_controller", "arguments": {"path": PROXY_CONTROLLER, "ops": [
+        {"op": "set_layer", "layer": "Upper Body", "mesh_space_rotation": True}]}}, "next is the exact call that turns it on")
+    ed.check("next: edit_animator_controller" in r.text, f"the text says it too: {r.text}")
+    loose = await ed.call("check_animation", entity="Proxy", layer_blend={"layer": "Upper Body"}, limits={"layer_twist_deg": 120})
+    ed.check(loose["ok"] is True and loose["findings"] == [], f"the limit is the agent's: {loose['findings']}")
+
+    await ed.call(nxt["tool"], **nxt["arguments"])
+    fixed = await ed.call("check_animation", entity="Proxy", layer_blend={"layer": "Upper Body"})
+    blend = fixed["layer_blend"]
+    ed.check(fixed["ok"] is True and fixed["findings"] == [], f"no finding with the option on: {fixed['findings']}")
+    ed.check(blend["mesh_space_rotation"] is True and blend["max_angle_deg"] < 0.01 and blend["facing_delta_deg"] < 0.01,
+             f"under 0.01 degrees: {json.dumps(blend)[:800]}")
+
+    # named states, times and bones; what it refuses names the fix
+    some = await ed.call("check_animation", entity="Proxy", layer_blend={"layer": "Upper Body", "base_state": "Run", "state": "Attack",
+                                                                         "times": [0.5], "bones": ["chest"]})
+    ed.check_eq((len(some["layer_blend"]["samples"]), list(some["layer_blend"]["samples"][0]["bones"])), (1, ["chest"]), f"{some}")
+    for args, why in (({"entity": "Proxy", "layer_blend": {"layer": "Base Layer"}}, "layer 0"),
+                      ({"entity": "Proxy", "layer_blend": {"layer": "Arms"}}, "Upper Body"),
+                      ({"entity": "Proxy", "layer_blend": {"layer": "Upper Body", "state": "Jump"}}, "no state"),
+                      ({"entity": "Proxy", "layer_blend": {"layer": "Upper Body", "bones": ["B-tail"]}}, "B-tail"),
+                      ({"entity": "Proxy", "layer_blend": {"layer": "Upper Body", "frames": [1]}}, 'unknown key "frames"'),
+                      ({"entity": "Proxy", "layer_blend": {"layer": "Upper Body", "times": [-1]}}, "layer_blend.times"),
+                      ({"layer_blend": {"layer": "Upper Body"}}, "entity"),
+                      ({"entity": "Proxy", "checks": ["layer_blend"]}, "layer_blend {layer}")):
+        r = await ed.call_raw("check_animation", args)
+        ed.check(r.is_error and why in r.text, f"{args}: {r.text[:300]}")
+
+    # the default times span one cycle as the state plays: its speed and the Animator's
+    await ed.call("edit_animator_controller", path=PROXY_CONTROLLER, ops=[{"op": "set_state", "state": "Upper Body.Attack", "speed": 2}])
+    fast = (await ed.call("check_animation", entity="Proxy", layer_blend={"layer": "Upper Body"}))["layer_blend"]
+    ed.check_eq([s["time"] for s in fast["samples"]], [0, 0.125, 0.25, 0.375, 0.5], f"a state at speed 2 plays its cycle in half the time: {fast}")
+    await ed.call("set_properties", entity="Proxy", values={"animator": {"speed": 0.5}})
+    slowed = (await ed.call("check_animation", entity="Proxy", layer_blend={"layer": "Upper Body"}))["layer_blend"]
+    ed.check_eq([s["time"] for s in slowed["samples"]], [0, 0.25, 0.5, 0.75, 1], f"and the Animator at speed 0.5: {slowed}")
+    await ed.call("undo", scope="project")

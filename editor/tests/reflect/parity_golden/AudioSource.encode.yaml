@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 3fffe48f17dd3b7f
+digest c90f193713947897
 --- 0
 enabled: false
 state: playing
@@ -25,6 +25,17 @@ minImpactSpeed: 2038.1403
 fullVolumeImpactSpeed: -36
 pitchRandomSemitones: 23
 volumeRandomDb: -0.6666374
+effects:
+  - type: with "quotes"
+    bypass: true
+    wet: 1e-45
+  - type: true
+    bypass: true
+  - type: "#hash"
+    bypass: true
+    wet: 4226.6655
+spatialBlend: 0.7335278
+slot: -18429
 --- 1
 enabled: false
 state: stopped
@@ -55,6 +66,11 @@ minImpactSpeed: 0.3208969
 fullVolumeImpactSpeed: 1e-45
 pitchRandomSemitones: 4254.0303
 volumeRandomDb: 3e+38
+effects:
+  - type: ümlaut
+    wet: 5486.4814
+spatialBlend: 96
+slot: 33283
 --- 2
 enabled: false
 state: playing
@@ -84,6 +100,15 @@ minImpactSpeed: 135.85715
 fullVolumeImpactSpeed: 6000.262
 pitchRandomSemitones: -0.98643166
 volumeRandomDb: 1950.9412
+effects:
+  - type: a/b/c.html
+    wet: 71.42857
+  - type: ümlaut
+    wet: -76.57143
+  - type: 123
+    wet: 8333.24
+spatialBlend: 1024.9169
+slot: -2
 --- 3
 enabled: false
 state: playing
@@ -111,6 +136,8 @@ minImpactSpeed: 57.42857
 fullVolumeImpactSpeed: 1e-45
 pitchRandomSemitones: 1617.6865
 volumeRandomDb: 8901.831
+spatialBlend: 3e+38
+slot: -2
 --- 4
 enabled: true
 state: paused
@@ -139,6 +166,17 @@ minImpactSpeed: -0.80343544
 fullVolumeImpactSpeed: -31
 pitchRandomSemitones: 1e-45
 volumeRandomDb: 9209.078
+effects:
+  - type: 123
+    wet: -0.11461807
+  - type: "  padded  "
+    bypass: true
+    wet: -0.29033312
+  - type: "  padded  "
+    bypass: true
+    wet: 23.714285
+spatialBlend: 99
+slot: 27946
 --- 5
 enabled: false
 state: stopped
@@ -166,6 +204,7 @@ playOn: [ui_click, ui_press, sensor_2d, sensor_3d]
 minImpactSpeed: 0.31747603
 pitchRandomSemitones: -0.36481053
 volumeRandomDb: 131
+slot: 17
 --- 6
 enabled: true
 state: stopped
@@ -194,6 +233,12 @@ playOn: [collision_3d]
 minImpactSpeed: -31
 fullVolumeImpactSpeed: -40
 volumeRandomDb: -59.142857
+effects:
+  - type: 123
+    bypass: true
+    wet: -96
+spatialBlend: 0.9782651
+slot: -4
 --- 7
 enabled: false
 state: stopped
@@ -222,3 +267,13 @@ playOn: [collision_2d, collision_3d]
 minImpactSpeed: -29
 pitchRandomSemitones: 6329.4004
 volumeRandomDb: 0.8403636
+effects:
+  - type: "Hello, YAML: [1, 2]"
+    wet: 6
+  - type: 123
+    wet: -4.428571
+  - type: true
+    bypass: true
+    wet: -0.67352
+spatialBlend: 7097.458
+slot: -84562
