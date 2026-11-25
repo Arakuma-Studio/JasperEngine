@@ -18,7 +18,10 @@
 //   default; Exit continues with the parent's transitions out of that machine, else the
 //   parent's entry. A seek (play(state, time)) fires no event.
 // - Allocation: after the first evaluation with a given controller, rig and montage set, an
-//   update allocates nothing (scratch, poses and output lists are sized at bind and reused).
+//   update allocates nothing (scratch, poses and output lists are sized at bind and reused; Mesh
+//   Space Rotation's scratch at bind or by its setters, and only while a layer uses it).
+// - Mesh Space Rotation (docs/specs/mesh-space-rotation.md): an Override layer above 0 with the
+//   option keeps its boundary bones' rig-space rotation in the combine, layer by layer, before IK.
 // - Thread-safety: see Lifecycle.
 
 #ifndef ANIMATOR_INSTANCE_H
@@ -130,6 +133,16 @@ namespace jasperengine::anim{
         Vector3 rootDelta = Vector3(0, 0, 0);
         float rootYaw = 0.0f;
         float rootWeight = 0.0f;
+        // Mesh Space Rotation (docs/specs/mesh-space-rotation.md). The rig bones whose mask weight
+        // differs from their parent's, parents first: from bind, for every masked layer above 0
+        // whatever its blending or option (the editor's warning and coverage read them)
+        std::vector<uint16_t> boundaryBones;
+        int8_t meshSpaceOverride = -1;      // setLayerMeshSpaceRotation: -1 the controller's, else 0 / 1
+        bool meshSpaceActive = false;       // the combine runs the pass (layerMeshSpaceApplies, scratch sized)
+        // setMeshSpaceDebug: per boundary bone, its rig-space rotation after this layer's blend
+        // and before the pass
+        std::vector<Quaternion> meshSpaceUnpassed;
+        uint64_t meshSpaceRecordedAt = 0;   // the evaluation that recorded it (0: none)
     };
 
     struct JASPERENGINE_API AnimatorMontageRun{
@@ -366,6 +379,31 @@ namespace jasperengine::anim{
         float getLayerWeight(int layer) const;
         int getLayerIndex(const std::string& name) const;
 
+        // Mesh Space Rotation (docs/specs/mesh-space-rotation.md). The layer's option: the
+        // runtime override, else the controller's (false for an unknown layer)
+        bool layerMeshSpaceRotation(int layer) const;
+        // a runtime override of this Animator only (the asset is not written); a new controller
+        // (or the same one loaded again) clears it. Sizes the pass's scratch when it turns on.
+        void setLayerMeshSpaceRotation(int layer, bool enabled);
+        // the pass runs on the layer: an Override layer above 0 with the option and boundary bones
+        bool layerMeshSpaceApplies(int layer) const;
+        // the layer's boundary bones (rig bone indices, parents first); empty for layer 0, an
+        // unmasked layer, an unknown layer or before the bind
+        const std::vector<uint16_t>& layerBoundaryBones(int layer) const;
+        // the editor's Compare: while set, no layer runs the pass (never saved)
+        void setMeshSpaceBypass(bool bypass){ meshSpaceBypassed = bypass; }
+        bool meshSpaceBypass() const { return meshSpaceBypassed; }
+        // the Torso Direction gizmo: while set, every layer the pass runs on records its boundary
+        // bones' rig-space rotations without the pass (layerMeshSpaceUnpassed); off costs one
+        // branch per layer and update
+        void setMeshSpaceDebug(bool debug);
+        bool meshSpaceDebug() const { return meshSpaceDebugOn; }
+        // per boundary bone of the layer, its rig-space rotation without the pass in the last
+        // sampled update; null when that update did not record one
+        const std::vector<Quaternion>* layerMeshSpaceUnpassed(int layer) const;
+        // the bytes of the pass's scratch (0 until a layer the pass runs on is bound)
+        size_t meshSpaceScratchBytes() const;
+
         // a montage (its asset loaded by the caller): blends in on its slot's layer; a montage
         // playing on that slot blends out (interrupted)
         bool playMontage(const std::string& path, const std::shared_ptr<const MontageDef>& montage, size_t clipSlot,
@@ -389,6 +427,11 @@ namespace jasperengine::anim{
         const std::vector<Affine>& rigWorld() const { return spaceWorld; }
         const std::vector<Vector3>& rigPositions() const { return spacePosition; }
         const std::vector<Quaternion>& rigRotations() const { return spaceRotation; }
+        // a layer's own pose of the last evaluation (local, unmasked, before the combine; a delta
+        // for an Additive layer): rig rest before its first evaluation
+        const Pose& layerOutput(int layer) const;
+        // the humanoid slot (pose::HumanBone) a rig bone is mapped to, -1 when none
+        int humanoidSlotOf(int bone) const;
 
         // ---- queries ----
 
@@ -436,7 +479,16 @@ namespace jasperengine::anim{
         std::vector<Vector3> spacePosition;
         std::vector<Quaternion> spaceRotation;
         std::vector<Vector3> spaceScale;
+        // Mesh Space Rotation: the rig rotations under the layer and of its own pose, sized only
+        // while some layer runs the pass
+        std::vector<Quaternion> meshSpaceBelow;
+        std::vector<Quaternion> meshSpaceLayer;
+        bool meshSpaceBypassed = false;
+        bool meshSpaceDebugOn = false;
 
+        // every layer's meshSpaceActive and the scratch, after a bind or an override (main thread)
+        void updateMeshSpace();
+        void blendMeshSpace(AnimatorLayerRun& run, const float* mask, const float* channelMask);
         void resetLayer(size_t layer);
         void enterNode(size_t layer, TransitionTargetKind kind, int target, double offset, AnimatorStateRun& run, int depth);
         bool resolveExit(int machine, TransitionTargetKind& kind, int& target, int depth);

@@ -22,6 +22,7 @@
 
 #include "GpuEnvironment.h"
 #include "ImageCompare.h"
+#include "LogCapture.h"
 #include "Readback.h"
 #include "TestTempDir.h"
 
@@ -247,11 +248,20 @@ TEST_F(SpriteSheetRenderGpu, ReimportsAlternatingBetweenTwoPagesDrawTheNewest) {
         }
         *current = versions[v];
         SpriteSheetPool::invalidate(path);
-        // the page reads in the background: drawn within a few frames, never the previous one for good
-        EXPECT_TRUE(GpuEnvironment::runFrames([&]() { return centre() == colours[v]; }, 120));
+        // the page reads in the background: drawn within a few frames, never the previous one for
+        // good, and the previous one until then (a binding of a released page draws nothing: the
+        // background, and a validation error in a debug sokol)
+        size_t neitherPage = 0;
+        EXPECT_TRUE(GpuEnvironment::runFrames([&]() {
+            const std::array<uint8_t, 3> shown = centre();
+            if (shown != colours[v] && shown != colours[1 - v]) neitherPage++;
+            return shown == colours[v];
+        }, 120));
         EXPECT_EQ(centre(), colours[v]);
+        EXPECT_EQ(neitherPage, 0u) << "frames that showed neither page";
     }
     SpriteSheetPool::invalidate(path);
+    EXPECT_NO_ENGINE_ERRORS();
 }
 
 // Dynamic Batching: sheet sprites on one page, each on another frame, draw as one run and the same

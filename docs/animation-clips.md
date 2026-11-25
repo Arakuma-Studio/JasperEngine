@@ -611,6 +611,16 @@ combo), and each layer has:
 - **Mask**: an **Avatar Mask** (`.mask`) that says which bones the layer animates. Without a mask, a
   layer animates exactly the channels its clips have keys for, and everything else passes through
   from below: an upper-body clip on layer 1 leaves the legs to the base layer.
+- **Mesh Space Rotation** (under Mask, off by default): the bones where the mask starts or stops
+  keep the rotation the layer's clip gives them relative to the player's GameObject, not to their
+  parent, so an attack masked from the spine up faces where the attack faces over a run whose hips
+  twist, and the legs keep facing where the run faces. It works as on an Animator Controller's layer,
+  limits included: see [Mesh Space Rotation](animator.md#mesh-space-rotation) for when to use it,
+  before and after pictures and its limits. It applies to Override layers above the base layer with
+  a mask (on the others the checkbox is disabled). While it is on, the line under it names the
+  GameObjects it applies at ("Applies at: B-spine") and the layer's row says "mesh space".
+  `player:setLayerMeshSpaceRotation("Upper Body", true)` sets the layer's own value, as the checkbox
+  and `setLayerMask` do; agents set `layers[1].meshSpaceRotation` with `set_properties`.
 
 `play`, `crossFade` and `queue` work per layer. `play("Hold")` on layer 1 does not stop the walk on
 layer 0 (Unity's `PlayMode.StopSameLayer`); `play("Walk", 0, PlayMode.STOP_ALL)` stops every layer.
@@ -894,9 +904,10 @@ animationplayer:
 ```
 
 `layer` is written only when not 0, `layers` only when they differ from one Base Layer without a
-mask, a layer's `weight` only when not 1 and `blend` only when not override. Masks follow the clip
-GUID rules: a rename repairs the path, a deleted file shows Missing. A `controller` key (files saved
-when the player played controllers) is moved to an Animator by the scene migration (scene version
+mask, a layer's `weight` only when not 1, `blend` only when not override and
+`meshSpaceRotation: true` (Mesh Space Rotation) only when on. Masks follow the clip GUID rules: a
+rename repairs the path, a deleted file shows Missing. A `controller` key (files saved when the
+player played controllers) is moved to an Animator by the scene migration (scene version
 6, prefab version 7); found in a newer file it is not read (a warning).
 
 ### The .mask and .controller files
@@ -926,8 +937,9 @@ Body parts are `root`, `body`, `head`, `left_arm`, `right_arm`, `left_hand`, `ri
 there also weighs the hand; transforms cover their children unless `children: false`) and the
 Animator's earlier true / false parts. A controller's layers nest a `state_machine` (states with
 their transitions, Any State, Entry, sub-state machines): `docs/mcp/guide/animator.md` lists every
-member. Version 1 controllers with flat `states` and `transitions` (`"from": "any"`) load
-converted, members such as `mirror` and `foot_ik` kept. Unity's YAML `.mask` and `.controller`
+member; a layer's `"mesh_space_rotation": true` (Mesh Space Rotation) is written only when on, and
+a controller without it reads as off. Version 1 controllers with flat `states` and `transitions`
+(`"from": "any"`) load converted, members such as `mirror` and `foot_ik` kept. Unity's YAML `.mask` and `.controller`
 files are refused with a message naming the menu that makes a JasperEngine one.
 
 ## Keyboard shortcuts

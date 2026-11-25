@@ -4,6 +4,7 @@ driven like a human with xdotool in the harness's Xvfb on a scratch copy of tool
 - an Animation Player on the animated hero with an .anim clip (one misspelled path, one event), the `#Walk`
   sub-clip with wrap loop and a clip deleted from disk: the section draws, + Add Clip is one scene undo step,
   the row menu's Remove is one step too;
+- its Layers table: Mesh Space Rotation under Mask, disabled on the base layer, a click one scene undo step;
 - the Model section: Use Animation Player (T2d's hook) turns the entity animations off;
 - the live states while playing;
 - the .anim asset section after a Project window click: the Length Auto checkbox writes the file (project undo);
@@ -88,7 +89,15 @@ class Ui:
                     await self.wheel(at, True, 1)
                     await self.frames()
                     moved = self.ed.ui_items().get(name)
-                    if not moved or moved[1] == rect[1]:
+                    if not moved:
+                        # that notch scrolled it past the panel's top, and the rect from before it
+                        # is stale: a click there lands on whatever row took its place
+                        await self.wheel(at, False, 1)
+                        await self.frames()
+                        moved = self.ed.ui_items().get(name)
+                        self.ed.check(moved, f"{name} is drawn again a notch back up")
+                        return moved
+                    if moved[1] == rect[1]:
                         break
                     rect = moved
                 return rect
@@ -219,6 +228,39 @@ async def test_player_section(ed: Editor):
     await ed.call("undo")
     back = await player(ed)
     ed.check_eq(len(back["clips"]), len(before["clips"]), "undo brings it back")
+
+
+async def test_player_layers_mesh_space_rotation(ed: Editor):
+    """mesh-space-rotation spec R32: the Layers table's Mesh Space Rotation checkbox sits directly under Mask, is
+    disabled on the base layer, and a click on an Override layer's is one scene undo step"""
+    ui = Ui(ed)
+    await ed.call("edit_avatar_mask", path="assets/anim/upper.mask", create=True, default=0,
+                  paths={SPINE: {"weight": 1, "children": True}})
+    await ed.call("set_properties", entity="Animated", values={"animationplayer": {
+        "layers": [{"name": "Base Layer"}, {"name": "Upper Body", "mask": "assets/anim/upper.mask"}]}})
+    header = await ui.reveal("player.layers")
+    if "player.layer.1.mask" not in ed.ui_items():
+        await ui.click(*center(header))
+    box = await ui.reveal("player.layer.1.meshSpaceRotation")
+    mask = ed.ui_items().get("player.layer.1.mask")
+    ed.check(mask, f"the Mask field is drawn with it: {sorted(ed.ui_items())}")
+    ed.check(mask[3] <= box[1] < mask[3] + 0.8 * (mask[3] - mask[1]) + 12, f"the checkbox is the row under Mask: mask {mask}, box {box}")
+    await ui.click(*center(box))
+    layers = (await player(ed))["layers"]
+    ed.check_eq([l.get("meshSpaceRotation", False) for l in layers], [False, True], f"a click turns it on: {layers}")
+    await ui.frames(5)
+    ed.check("player.layer.1.meshSpaceBoundary" in ed.ui_items(), f"the Applies at line shows: {sorted(ed.ui_items())}")
+    await shot(ed, "02d-player-layers-mesh-space")
+    # the base layer's is disabled: a click changes nothing
+    base = await ui.reveal("player.layer.0.meshSpaceRotation")
+    await ui.click(*center(base))
+    layers = (await player(ed))["layers"]
+    ed.check_eq([l.get("meshSpaceRotation", False) for l in layers], [False, True], f"the base layer's stays off: {layers}")
+    await ed.call("undo")
+    layers = (await player(ed))["layers"]
+    ed.check_eq([l.get("meshSpaceRotation", False) for l in layers], [False, False], f"one undo step turns it off: {layers}")
+    await ed.call("undo")
+    ed.check_eq(len((await player(ed))["layers"]), 1, "the layers go with the next undo")
 
 
 async def test_model_section(ed: Editor):

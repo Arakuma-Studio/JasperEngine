@@ -8083,7 +8083,7 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
     drawMeshComponentFields(cpType, sceneProject, entities);
     ImGui::EndDisabled();
     const ImVec2 fieldsBottom(ImGui::GetWindowPos().x + ImGui::GetWindowWidth(), ImGui::GetCursorScreenPos().y);
-    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenDisabled) && ImGui::IsMouseHoveringRect(fieldsTop, fieldsBottom)) {
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(fieldsTop, fieldsBottom)) {
         ImGui::SetTooltip("Edit the parts");
     }
 }

@@ -3325,6 +3325,122 @@ CASES = [
         "checks": {"calls": [{"tool": "focus_window", "args": {"window": "animator"}}], "must_not_call": ["screenshot"]},
         "max_turns": 6,
     },
+    # ---- Mesh Space Rotation (docs/specs/mesh-space-rotation.md R36, R40)
+    {
+        "id": "guard_layer_twist_through_check_next",
+        "kind": "guard",
+        "what_happened": "New text (mesh-space-rotation R36, R40): an upper-body layer masked from the spine over a run turns "
+                         "the torso with the run's hips. check_animation's layer_blend measures it and its anim-layer-twist "
+                         "finding's next is the edit_animator_controller call that turns on the layer's Mesh Space Rotation, "
+                         "instead of a script copying a proxy bone after the update (Unity's Spine Proxy), which moves "
+                         "Transforms but not the skinned mesh, or a mask that takes the hips and twists the legs instead.",
+        "text_at_issue": "check_animation: 'layer_blend: how far a masked Animator layer's bones (a twisted torso) are from its own "
+                         "clip'; its result's finding next; animator.md's Mesh Space Rotation line",
+        "source": "docs/specs/mesh-space-rotation.md R36, R40 (new tool text); no failure on record",
+        "prompt": "The Knight runs on his Animator's base layer and swings his sword on the 'Upper Body' layer, whose mask starts "
+                  "at the spine. While he runs, his chest points off to the side, so the swing lands sideways. Fix it and show "
+                  "me with a number that it is fixed.",
+        "groups_enabled": ["animation"],
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nKnight [31] animator model transform",
+                                                  {"entities": [{"id": 31, "path": "Knight"}]})},
+            {"tool": "get_animator", "args": {"entity": "*"}, "result": ok(
+                "Animator on \"Knight\" (anim/knight.controller).",
+                {"entity": {"id": 31, "name": "Knight"}, "controller": "assets/anim/knight.controller", "enabled": True, "speed": 1,
+                 "apply_root_motion": False, "playing": False,
+                 "rig": {"bones": 24, "skins": 1, "humanoid": True,
+                         "clips": [{"clip": "models/knight.glb#Run", "loaded": True, "length": 0.8, "bound_tracks": 24, "tracks": 24},
+                                   {"clip": "models/knight.glb#Swing", "loaded": True, "length": 1.2, "bound_tracks": 24, "tracks": 24}]},
+                 "diagnostics": []})},
+            {"tool": "get_animator", "args": {"controller": "*"}, "result": ok(
+                "assets/anim/knight.controller: 1 parameter(s), 2 layer(s), 3 state(s), 0 warning(s), 1 user(s)",
+                {"path": "assets/anim/knight.controller", "parameters": [{"name": "Attack", "type": "trigger"}],
+                 "layers": [{"name": "Base Layer", "weight": 1, "blending": "override", "mesh_space_rotation": False,
+                             "state_machine": {"default_state": "Run", "states": [{"name": "Run", "motion": {"clip": "models/knight.glb#Run"}}]}},
+                            {"name": "Upper Body", "weight": 1, "blending": "override", "mask": "anim/upper_body.mask",
+                             "mesh_space_rotation": False,
+                             "state_machine": {"default_state": "Empty", "states": [
+                                 {"name": "Empty", "motion": None}, {"name": "Swing", "motion": {"clip": "models/knight.glb#Swing"}}]}}],
+                 "diagnostics": [], "warnings": [], "users": [{"scene": 1, "entity": {"id": 31, "name": "Knight"}}]})},
+            {"tool": "check_animation", "args": {"layer_blend": "*"}, "after": {"tool": "edit_animator_controller",
+                                                                              "args": {"ops": [{"mesh_space_rotation": True}]}},
+             "result": {"text": "layer_blend: 'Upper Body' (Upper Body.Swing) over Base Layer.Run: mixamorig:Hips/mixamorig:Spine off by "
+                                "0.00 degrees at 0.00 s, chest facing 0.00 degrees off; Mesh Space Rotation on; ok: true.", "real": True,
+                        "structured": {"ok": True, "findings": [], "job_id": "job-7", "status": "succeeded",
+                                       "layer_blend": {"layer": "Upper Body", "base_state": "Base Layer.Run", "state": "Upper Body.Swing",
+                                                       "mesh_space_rotation": True, "boundary_bones": ["mixamorig:Hips/mixamorig:Spine"],
+                                                       "max_angle_deg": 0.0001, "worst_bone": "mixamorig:Hips/mixamorig:Spine",
+                                                       "facing_delta_deg": 0.0001, "samples": []}}}},
+            {"tool": "check_animation", "args": {"layer_blend": "*"}, "result": {
+                "text": "layer_blend: 'Upper Body' (Upper Body.Swing) over Base Layer.Run: mixamorig:Hips/mixamorig:Spine off by 74.10 "
+                        "degrees at 0.60 s, chest facing 73.80 degrees off; Mesh Space Rotation off; ok: false.\nnext: "
+                        "edit_animator_controller {\"ops\":[{\"layer\":\"Upper Body\",\"mesh_space_rotation\":true,\"op\":\"set_layer\"}],"
+                        "\"path\":\"assets/anim/knight.controller\"}", "real": True,
+                "structured": {"ok": False, "job_id": "job-6", "status": "succeeded",
+                               "layer_blend": {"layer": "Upper Body", "base_state": "Base Layer.Run", "state": "Upper Body.Swing",
+                                               "mesh_space_rotation": False, "boundary_bones": ["mixamorig:Hips/mixamorig:Spine"],
+                                               "max_angle_deg": 74.1, "worst_bone": "mixamorig:Hips/mixamorig:Spine",
+                                               "facing_delta_deg": 73.8, "samples": [
+                                                   {"time": 0.6, "max_angle_deg": 74.1, "facing_delta_deg": 73.8,
+                                                    "bones": {"mixamorig:Hips/mixamorig:Spine": 74.1,
+                                                              "mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1": 74.1}}]},
+                               "findings": [{"tool": "anim", "path": "assets/anim/knight.controller", "line": 0, "col": 0,
+                                             "severity": "warning", "code": "anim-layer-twist",
+                                             "message": "layer 'Upper Body': mixamorig:Hips/mixamorig:Spine is 74.1 degrees from where the "
+                                                        "blend should turn it (limit 5): the mask starts or stops below a bone it leaves "
+                                                        "out, so that bone follows the other side's rotation (an upper body turned by the "
+                                                        "base layer's hips)",
+                                             "suggestion": "turn on Mesh Space Rotation on the layer: edit_animator_controller "
+                                                           "{\"ops\":[{\"layer\":\"Upper Body\",\"mesh_space_rotation\":true,\"op\":\"set_layer\"}],"
+                                                           "\"path\":\"assets/anim/knight.controller\"}",
+                                             "next": {"tool": "edit_animator_controller",
+                                                      "arguments": {"path": "assets/anim/knight.controller", "ops": [
+                                                          {"op": "set_layer", "layer": "Upper Body", "mesh_space_rotation": True}]}}}]}}},
+            {"tool": "list_assets", "result": ok(
+                "assets/ (4): anim/knight.controller (Animator Controller), anim/upper_body.mask (Avatar Mask), "
+                "models/knight.glb (model: Run, Swing), scenes/Main.scene (scene)",
+                {"assets": [{"path": "assets/anim/knight.controller", "type": "animator_controller"},
+                            {"path": "assets/anim/upper_body.mask", "type": "avatar_mask"},
+                            {"path": "assets/models/knight.glb", "type": "model"}, {"path": "assets/scenes/Main.scene", "type": "scene"}]})},
+            {"tool": "read_file", "args": {"path": "re:knight\\.controller"}, "result": ok(
+                "assets/anim/knight.controller lines 1-12 of 12:\n{\"format\": \"jasperengine.controller\", \"version\": 2, "
+                "\"parameters\": [{\"name\": \"Attack\", \"type\": \"trigger\"}], \"layers\": [{\"name\": \"Base Layer\", "
+                "\"weight\": 1, \"blending\": \"override\", \"state_machine\": {\"default_state\": \"Run\", \"states\": "
+                "[{\"name\": \"Run\", \"motion\": {\"clip\": \"models/knight.glb#Run\"}}]}}, {\"name\": \"Upper Body\", "
+                "\"weight\": 1, \"blending\": \"override\", \"mask\": \"anim/upper_body.mask\", \"state_machine\": "
+                "{\"default_state\": \"Empty\", \"states\": [{\"name\": \"Empty\"}, {\"name\": \"Swing\", \"motion\": "
+                "{\"clip\": \"models/knight.glb#Swing\"}}]}}]}\n")},
+            {"tool": "read_file", "args": {"path": "re:upper_body\\.mask"}, "result": ok(
+                "assets/anim/upper_body.mask lines 1-4 of 4:\n{\"format\": \"jasperengine.mask\", \"version\": 2, \"default\": 0, "
+                "\"paths\": [{\"path\": \"mixamorig:Hips/mixamorig:Spine\", \"weight\": 1, \"children\": true}]}\n")},
+            {"tool": "get_animation", "args": {"entity": "*"}, "result": ok(
+                "0 animation(s) for \"Knight\". Animator on \"Knight\": assets/anim/knight.controller\n  Upper Body: Mesh Space "
+                "Rotation off, mask edges at 1 bone(s)",
+                {"entity": {"id": 31, "name": "Knight"}, "players": [], "animations": [],
+                 "animator": {"entity": {"id": 31, "name": "Knight", "path": "Knight"}, "controller": "assets/anim/knight.controller",
+                              "mask_coverage": [{"layer": "Upper Body", "covered": 18, "total": 24, "warnings": [],
+                                                 "mesh_space_rotation": False, "boundary_bones": ["mixamorig:Hips/mixamorig:Spine"]}]}})},
+            {"tool": "control_animator", "result": ok(
+                "Previewing \"Knight\" in edit mode.",
+                {"live": {"layers": [{"name": "Base Layer", "weight": 1, "state": "Base Layer.Run", "normalized_time": 0.6, "length": 0.8},
+                                     {"name": "Upper Body", "weight": 1, "state": "Upper Body.Swing", "normalized_time": 0.4, "length": 1.2}],
+                          "parameters": {"Attack": False}}})},
+            {"tool": "sample_animation_pose", "result": ok(
+                "2 bone(s) of \"Knight\" at Base Layer.Run (evaluated in edit mode, scene unchanged).",
+                {"bones": {"hips": {"position": [0, 1, 0], "rotation": [0, 0.7071, 0, 0.7071]},
+                           "chest": {"position": [0, 1.3, 0.05], "rotation": [0.05, 0.6, 0.02, 0.8]}},
+                 "space": "world", "state": "Base Layer.Run", "normalized_time": 0.5})},
+            {"tool": "edit_animator_controller", "result": ok(
+                "assets/anim/knight.controller: 1 change(s), 0 diagnostic(s), 0 warning(s); one project undo step.",
+                {"path": "assets/anim/knight.controller", "changes": ["set_layer Upper Body"], "diagnostics": [], "warnings": [],
+                 "users": [{"scene": 1, "entity": {"id": 31, "name": "Knight"}}]})},
+        ],
+        "checks": {"calls": [{"tool": "check_animation", "args": {"layer_blend": {"layer": "Upper Body"}}},
+                             {"tool": "edit_animator_controller", "args": {"ops": [{"op": "set_layer", "mesh_space_rotation": True}]}}],
+                   "order": [["check_animation", "edit_animator_controller"]],
+                   "must_not_call": ["create_script", "write_file"]},
+        "max_turns": 14,
+    },
     {
         "id": "guard_focus_graph_editor",
         "kind": "guard",

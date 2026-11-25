@@ -7,8 +7,9 @@
 // an absent slot uses auto-detect; the same for `extra_bones` (fingers, eyes, jaw). Version 2
 // adds `animation_type` (generic | humanoid: a humanoid model serves its clips as humanoid
 // clips), `extra_bones` and `twist` (per slot, degrees about the slot's neutral direction,
-// applied to the neutral pose by PoseRig::build). A sidecar with only `bones` is still written
-// as version 1, byte for byte as before. File access is in PoseFile.h. Applying the overrides to
+// applied to the neutral pose by PoseRig::build). `name_rules` (optional, no version change:
+// absent is 1) is the auto-detect naming rules the model was imported with (HumanoidMap.h). A
+// sidecar with only `bones` is still written as version 1, byte for byte as before. File access is in PoseFile.h. Applying the overrides to
 // an auto-detected map is resolveHumanoid's job.
 
 #ifndef HUMANOID_MAP_IO_H
@@ -17,6 +18,7 @@
 #include "Export.h"
 #include "pose/HumanBones.h"
 #include "pose/HumanExtraBones.h"
+#include "pose/HumanoidMap.h"
 
 #include <array>
 #include <optional>
@@ -45,6 +47,8 @@ namespace jasperengine::pose {
         std::array<std::optional<std::string>, HUMAN_EXTRA_BONE_COUNT> extraBones;
         // per slot: degrees about the slot's neutral direction (nullopt = none)
         std::array<std::optional<float>, HUMAN_BONE_COUNT> twist;
+        // the auto-detect's naming rules (nullopt = HUMANOID_NAME_RULES_ORIGINAL, not written)
+        std::optional<int> nameRules;
 
         // no slot override (the other fields aside)
         bool empty() const {
@@ -57,7 +61,7 @@ namespace jasperengine::pose {
         }
         // only `bones` (or nothing) is set: written as version 1
         bool onlyBones() const {
-            if (animationType.has_value()) return false;
+            if (animationType.has_value() || nameRules.has_value()) return false;
             for (const auto& bone : extraBones){
                 if (bone.has_value()) return false;
             }
@@ -67,6 +71,7 @@ namespace jasperengine::pose {
             return true;
         }
         bool isHumanoid() const { return animationType == AnimationType::Humanoid; }
+        int detectNameRules() const { return nameRules.value_or(HUMANOID_NAME_RULES_ORIGINAL); }
         // the twist corrections in degrees (0 for absent slots)
         std::array<float, HUMAN_BONE_COUNT> twistDegrees() const {
             std::array<float, HUMAN_BONE_COUNT> out{};
@@ -74,7 +79,8 @@ namespace jasperengine::pose {
             return out;
         }
         bool operator==(const HumanoidOverrides& other) const {
-            return bones == other.bones && animationType == other.animationType && extraBones == other.extraBones && twist == other.twist;
+            return bones == other.bones && animationType == other.animationType && extraBones == other.extraBones && twist == other.twist &&
+                   nameRules == other.nameRules;
         }
         bool operator!=(const HumanoidOverrides& other) const { return !(*this == other); }
     };
@@ -83,13 +89,14 @@ namespace jasperengine::pose {
     JASPERENGINE_API std::string humanoidSidecarPath(const std::string& modelPath);
 
     // Unknown slot and extra bone names, wrongly typed values and unknown keys are ignored with a
-    // warning (twists outside -180..180 are clamped); text that is not JSON, a wrong `format` or a
+    // warning (twists outside -180..180 are clamped, name_rules above HUMANOID_NAME_RULES reads as
+    // HUMANOID_NAME_RULES); text that is not JSON, a wrong `format` or a
     // `version` above HUMANOID_VERSION fails
     JASPERENGINE_API bool parseHumanoidOverrides(const std::string& text, HumanoidOverrides& out,
                                                  std::vector<std::string>& warnings, std::string* error);
     // Deterministic: slots in table order, 2-space indent, trailing newline; version 1 (the
-    // phase 2 bytes) when only `bones` is set, else version 2 with animation_type, bones,
-    // extra_bones and twist (each only when set)
+    // phase 2 bytes) when only `bones` is set, else version 2 with animation_type, name_rules,
+    // bones, extra_bones and twist (each only when set)
     JASPERENGINE_API std::string writeHumanoidOverrides(const HumanoidOverrides& overrides);
 
 }
