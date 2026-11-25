@@ -485,9 +485,10 @@ class Rules(unittest.TestCase):
         self.assertFalse(decide("pull_request", plan(["engine/core/Engine.cpp"]), macos_inputs="x")["lanes"]["macos"]["run"])
         for event in ("full", "nightly"):
             self.assertTrue(decide(event, None)["lanes"]["macos"]["run"])
-        # ci.yml runs the push's tests then
+        # ci.yml runs the push's tests and the call CLI then (its Compile build on every push: the macos
+        # ccache entry holds its objects)
         text = (HERE.parent.parent / pl.WORKFLOW).read_text()
-        self.assertEqual(text.count("needs.changes.outputs.macos_full == 'true'"), 3)
+        self.assertEqual(text.count("needs.changes.outputs.macos_full == 'true'"), 2)
 
     def test_the_macos_inputs_are_read_from_the_change(self):
         with tempfile.TemporaryDirectory() as d:
