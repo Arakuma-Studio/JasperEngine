@@ -64,6 +64,7 @@ namespace audio_source_slots_test {
     class AudioSourceSlotsTest : public ScriptTest {
     protected:
         AudioBackend backend = AudioBackend::Null;
+        bool asyncLoading = false;
 
         void SetUp() override {
             ScriptTest::SetUp();
@@ -71,6 +72,10 @@ namespace audio_source_slots_test {
             backend = AudioSystem::getBackend();
             AudioSystem::close();
             AudioSystem::setBackend(AudioBackend::Null);
+            // the clips load at once: frameUntilPlaying counts frames, which a background decode
+            // can outlast on a slow runner
+            asyncLoading = Engine::isAsyncLoading();
+            Engine::setAsyncLoading(false);
             writeSilence(dir / "loop.wav", 8000 * 5);
         }
 
@@ -78,6 +83,7 @@ namespace audio_source_slots_test {
             ScriptTest::TearDown();
             AudioSystem::close();
             AudioSystem::setBackend(backend);
+            Engine::setAsyncLoading(asyncLoading);
         }
 
         // a camera at the origin: the 3D listener
