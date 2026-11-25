@@ -26,7 +26,8 @@
 //     (PlayMode::StopSameLayer, Unity's default) or of every layer (StopAll); queue waits for the
 //     target's layer. A layer is a 0-based index or a name: an unknown one warns once and does
 //     nothing (getters return 0, "" or -1). Layer weight, mask and blend setters are runtime
-//     (not saved); addLayer / removeLayer are authored (the next update reloads).
+//     (not saved); addLayer / removeLayer and setLayerMeshSpaceRotation are authored (the next
+//     update reloads).
 //   * humanoid clips (anim-retarget 8): addClip(path, name, options) with options.retarget plays
 //     a generic clip retargeted from its source model; AnimationState mirror / footIK override
 //     the entry's flags at runtime (not saved); isHumanoid tells a humanoid or retargeted state.
@@ -257,6 +258,13 @@ namespace jasperengine{
         void setLayerBlendMode(const std::string& layer, const std::string& mode);
         std::string getLayerBlendMode(int layer) const;
         std::string getLayerBlendMode(const std::string& layer) const;
+        // authored Mesh Space Rotation (docs/specs/mesh-space-rotation.md R17): the bones where
+        // the layer's mask starts or stops keep its rotation relative to the GameObject; kept, and
+        // ignored, on layer 0 and on additive layers
+        void setLayerMeshSpaceRotation(int layer, bool enabled);
+        void setLayerMeshSpaceRotation(const std::string& layer, bool enabled);
+        bool getLayerMeshSpaceRotation(int layer) const;
+        bool getLayerMeshSpaceRotation(const std::string& layer) const;
         // every state of the layer fades out (instantly without a fade); its queue clears
         void stopLayer(int layer);
         void stopLayer(int layer, float fade);

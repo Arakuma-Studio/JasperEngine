@@ -8,7 +8,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "component/VehicleDrivetrainComponent.h"
 #include "component/WheelColliderComponent.h"
 
@@ -17,9 +16,9 @@ namespace jasperengine::editor::reflect {
 namespace {
 
     // read-outs of the last fixed step: listed for MCP, never saved, drawn by the Inspector's Play foldout
-    constexpr uint32_t kReadout = Transient | ReadOnly | NoMcpWrite | NoDefault | NoCodegen | Hidden;
+    constexpr uint32_t kReadout = Transient | ReadOnly | NoMcpWrite | NoDefault | Hidden;
     // inputs a script (or set_runtime_property) gives in Play: not saved
-    constexpr uint32_t kInput = Transient | NoCodegen | Hidden;
+    constexpr uint32_t kInput = Transient | Hidden;
 
     constexpr FieldDesc kJointSpringFields[] = {
         JE_FIELD(JointSpring3D, spring, .unit = Unit::Newtons, .min = 0.0f, .tooltip = "N/m: the force pushing the wheel back to its target position."),
@@ -93,30 +92,6 @@ namespace {
         JE_FIELD(WheelColliderComponent, vehicleBody, .ops = &ops::Entity, .flags = kReadout),
     };
 
-    std::string springLiteral(const JointSpring3D& s){
-        return "JointSpring3D{" + Factory::formatFloat(s.spring) + ", " + Factory::formatFloat(s.damper) + ", " +
-               Factory::formatFloat(s.targetPosition) + "}";
-    }
-
-    std::string curveLiteral(const WheelFrictionCurve& c){
-        return "WheelFrictionCurve{" + Factory::formatFloat(c.extremumSlip) + ", " + Factory::formatFloat(c.extremumValue) + ", " +
-               Factory::formatFloat(c.asymptoteSlip) + ", " + Factory::formatFloat(c.asymptoteValue) + ", " +
-               Factory::formatFloat(c.stiffness) + "}";
-    }
-
-    // the nested structs (the generic codegen writes scalar fields only), away from their defaults
-    void wheelColliderCodegen(const void* comp, const CodegenContext& ctx, std::string& out){
-        const WheelColliderComponent& wheel = *static_cast<const WheelColliderComponent*>(comp);
-        const WheelColliderComponent defaults;
-        const std::string ind = Factory::indentation(ctx.indentSpaces);
-        if (wheel.suspensionSpring != defaults.suspensionSpring)
-            out += ind + ctx.variable + ".suspensionSpring = " + springLiteral(wheel.suspensionSpring) + ";\n";
-        if (wheel.forwardFriction != defaults.forwardFriction)
-            out += ind + ctx.variable + ".forwardFriction = " + curveLiteral(wheel.forwardFriction) + ";\n";
-        if (wheel.sidewaysFriction != defaults.sidewaysFriction)
-            out += ind + ctx.variable + ".sidewaysFriction = " + curveLiteral(wheel.sidewaysFriction) + ";\n";
-    }
-
     // the inputs and read-outs are runtime: a decoded wheel (a scene loaded, Play stopped) starts
     // afresh, its rest pose read again from its Transform
     void wheelColliderPostDecode(void* comp, const DecodeContext&){
@@ -140,9 +115,9 @@ namespace {
 
     // ---------------------------------------------------------------- Vehicle Drivetrain
 
-    constexpr TypeOps kRatiosOps = ops::PushBackListCleared<float>;
-    constexpr TypeOps kDifferentialListOps = detail::withStatements(ops::Array<VehicleDifferential>, &detail::structPushBackStatements);
-    constexpr TypeOps kAntiRollBarListOps = detail::withStatements(ops::Array<VehicleAntiRollBar>, &detail::structPushBackStatements);
+    constexpr TypeOps kRatiosOps = ops::Array<float>;
+    constexpr TypeOps kDifferentialListOps = ops::Array<VehicleDifferential>;
+    constexpr TypeOps kAntiRollBarListOps = ops::Array<VehicleAntiRollBar>;
 
     void vehicleDrivetrainPostDecode(void* comp, const DecodeContext&){
         VehicleDrivetrainComponent& drivetrain = *static_cast<VehicleDrivetrainComponent*>(comp);
@@ -199,8 +174,6 @@ const ComponentDesc kWheelColliderDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WheelColliderComponent),
     .postDecode = &wheelColliderPostDecode,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegenVar = "wheelCollider",
-    .codegenExtra = &wheelColliderCodegen,
     .codegenGuard = "JASPERENGINE_PHYSICS_3D",
 };
 
@@ -211,7 +184,6 @@ const ComponentDesc kVehicleDrivetrainDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(VehicleDrivetrainComponent),
     .postDecode = &vehicleDrivetrainPostDecode,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegenVar = "vehicleDrivetrain",
     .codegenGuard = "JASPERENGINE_PHYSICS_3D",
 };
 

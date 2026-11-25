@@ -145,24 +145,6 @@ TEST(NavigationProjectSettings, RoundTripAndSanitize){
     EXPECT_EQ(read.settings.crowdMaxAgents, 1);
 }
 
-TEST(NavigationProjectSettings, GeneratedCodeSetsThem){
-    EXPECT_EQ(generateNavigationSettingsCode(nav::NavigationSettings(), "    "), "");
-    nav::NavigationSettings settings;
-    settings.crowdMaxAgents = 300;
-    settings.areas[6].name = "Ice \"slippery\"";
-    const std::string code = generateNavigationSettingsCode(settings, "    ");
-    EXPECT_NE(code.find("navigation.crowdMaxAgents = 300;"), std::string::npos) << code;
-    EXPECT_NE(code.find("navigation.areas[6] = {\"Ice \\\"slippery\\\"\""), std::string::npos) << code;
-    EXPECT_NE(code.find("nav::setSettings(navigation);"), std::string::npos) << code;
-    EXPECT_EQ(code.find("carveTilesPerTick"), std::string::npos) << "Auto is the default: " << code;
-    settings.carveTilesPerTick = 2;
-    const std::string carving = generateNavigationSettingsCode(settings, "    ");
-    EXPECT_NE(carving.find("navigation.carveTilesPerTick = 2;"), std::string::npos) << carving;
-    nav::NavigationSettings onlyCarving;
-    onlyCarving.carveTilesPerTick = 1;
-    EXPECT_NE(generateNavigationSettingsCode(onlyCarving, "").find("navigation.carveTilesPerTick = 1;"), std::string::npos);
-}
-
 // S74 R22: in play the cells agents reserved are tinted halfway to the agent-path colour; the
 // others keep their area's colour (overrides more opaque)
 TEST(NavigationOverlay, ReservationTint){

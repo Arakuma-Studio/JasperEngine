@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // The Inspector's Animation Player layer UI (upstream anim layers spec 9; docs/specs/S21-animation.md
-// "Upstream absorption"): the player's Animator Controller row, the Layers table, the clip
+// "Upstream absorption"): the player's Animator Controller row, the Layers table (with Mesh Space
+// Rotation, docs/specs/mesh-space-rotation.md R32), the clip
 // entries' Layer combo, the per-layer States in play mode, the mask coverage lines of the
 // Bindings report, and the Users lists of the mask and controller asset views (S21's, in
 // InspectorAnimator.cpp). The pure parts (figure, builds, coverage, preview hierarchy) are
@@ -62,11 +63,17 @@ namespace jasperengine::editor{
             double at = -1.0;
             std::vector<AnimatorAssetUser> users;
         };
+        struct BoundaryEntry{
+            double at = -1.0;
+            uint64_t maskRevision = 0;
+            std::string line;
+        };
 
         fs::path project;
         std::map<std::string, MaskEntry> masks;
         std::map<std::string, CoverageEntry> coverage;
         std::map<std::string, UsersEntry> users;
+        std::map<std::string, BoundaryEntry> boundaries;
         std::string error;
 
         // the layer being renamed (scene, entity, index) and its text
@@ -81,6 +88,7 @@ namespace jasperengine::editor{
             masks.clear();
             coverage.clear();
             users.clear();
+            boundaries.clear();
             project = path;
         }
     };
@@ -264,20 +272,6 @@ InspectorLayerState& editor::InspectorWindow::layerState(){
 
 // ---- the layers' fields ----
 
-// one field of an authored layer (layers[i].<field>); a player with the default layering gets
-// its whole list (one Base Layer) so the field has a place
-template<class T>
-static Command* layerFieldCommand(Project* project, uint32_t sceneId, Entity entity, const AnimationPlayerComponent& player, int layer,
-                                  const std::string& field, const T& value, T AnimationPlayerLayer::* member){
-    if (player.layers.empty()){
-        std::vector<AnimationPlayerLayer> layers = anim::playerLayers(player);
-        if (layer < 0 || (size_t)layer >= layers.size()) return nullptr;
-        layers[(size_t)layer].*member = value;
-        return new PropertyCmd<std::vector<AnimationPlayerLayer>>(project, sceneId, entity, ComponentType::AnimationPlayerComponent, "layers", layers);
-    }
-    return new PropertyCmd<T>(project, sceneId, entity, ComponentType::AnimationPlayerComponent, "layers[" + std::to_string(layer) + "]." + field, value);
-}
-
 void editor::InspectorWindow::setPlayerLayerMask(SceneProject* sceneProject, Entity entity, int layer, const std::string& mask){
     AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entity);
     if (!player) return;
@@ -359,6 +353,8 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
     const bool stopped = sceneProject->playState == ScenePlayState::STOPPED;
     const uint32_t sceneId = sceneProject->id;
     const float labelWidth = getLabelSize("Play Automatically");
+    // the layer rows' labels are indented (propertyHeader) and Mesh Space Rotation is the longest
+    const float layersLabelWidth = std::max(labelWidth, getLabelSize("Mesh Space Rotation") + ImGui::GetFontSize());
     std::string error;
 
     // "Layers (1)" collapsed while only the base layer exists
@@ -370,7 +366,7 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
     if (!open) return;
 
     int moveFrom = -1, moveTo = -1;
-    beginTable(cpType, labelWidth, "player_layers_table");
+    beginTable(cpType, layersLabelWidth, "player_layers_table");
     for (size_t i = 0; i < layers.size(); i++){
         const AnimationPlayerLayer& layer = layers[i];
         const int index = (int)i;
@@ -421,8 +417,10 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
             if (base){
                 ImGui::TextDisabled("weight 1, override");
             }else{
-                ImGui::TextDisabled("%s, %s%s", anim::layerBlendName(layer.blend), layer.mask.empty() ? "no mask" : "mask ",
-                                    layer.mask.empty() ? "" : fs::path(layer.mask).filename().string().c_str());
+                // wrapped: at the default width the summary is longer than the cell
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                ImGui::TextWrapped("%s", animlayersui::layerSummary(layer).c_str());
+                ImGui::PopStyleColor();
             }
         }
         if (ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()) && ImGui::IsMouseReleased(ImGuiMouseButton_Right)){
@@ -483,7 +481,7 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
             UIProbe::item("player.layer." + std::to_string(index) + ".weight");
             if (weightChanged){
                 weight = std::clamp(weight, 0.0f, 1.0f);
-                cmd = layerFieldCommand(project, sceneId, entity, snapshot, index, "weight", weight, &AnimationPlayerLayer::weight);
+                cmd = animlayersui::layerFieldCommand(project, sceneId, entity, snapshot, index, "weight", weight, &AnimationPlayerLayer::weight);
                 if (cmd) CommandHandle::get(sceneId)->addCommand(cmd);
             }
             if (ImGui::IsItemDeactivatedAfterEdit() && cmd){
@@ -500,7 +498,8 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
         const char* blendNames[] = {"Override", "Additive"};
         int blend = base ? 0 : (int)layer.blend;
         if (ImGui::Combo("##layer_blend", &blend, blendNames, 2) && !base){
-            Command* blendCmd = layerFieldCommand(project, sceneId, entity, snapshot, index, "blend", (AnimationLayerBlend)blend, &AnimationPlayerLayer::blend);
+            Command* blendCmd = animlayersui::layerFieldCommand(project, sceneId, entity, snapshot, index, "blend", (AnimationLayerBlend)blend,
+                                                                &AnimationPlayerLayer::blend);
             if (blendCmd) CommandHandle::get(sceneId)->addCommandNoMerge(blendCmd);
         }
         ImGui::EndDisabled();
@@ -516,7 +515,60 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
                        isMask, stopped, picked, &rejected)){
             setPlayerLayerMask(sceneProject, entity, index, picked);
         }
+        UIProbe::item("player.layer." + std::to_string(index) + ".mask");
         if (!rejected.empty()) state.error = rejected;
+
+        // Mesh Space Rotation, directly under Mask: one scene step; disabled where it has no meaning
+        prefabRowProperty = snapshot.layers.empty() ? std::string("layers") : prefix + ".meshSpaceRotation";
+        propertyHeader("Mesh Space Rotation", -1, false, false, true);
+        const char* noMeshSpace = animlayersui::meshSpaceRotationDisabledReason(index, layer.blend);
+        ImGui::BeginDisabled(noMeshSpace != nullptr || !stopped);
+        bool meshSpace = layer.meshSpaceRotation;
+        if (ImGui::Checkbox("##layer_mesh_space", &meshSpace)){
+            Command* meshSpaceCmd = animlayersui::layerFieldCommand(project, sceneId, entity, snapshot, index, "meshSpaceRotation", meshSpace,
+                                                                    &AnimationPlayerLayer::meshSpaceRotation);
+            if (meshSpaceCmd) CommandHandle::get(sceneId)->addCommandNoMerge(meshSpaceCmd);
+        }
+        ImGui::EndDisabled();
+        UIProbe::item("player.layer." + std::to_string(index) + ".meshSpaceRotation");
+        // above the checkbox: below it would hide the Applies at line a click has just shown
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)){
+            const char* tip = noMeshSpace ? noMeshSpace : animlayersui::MESH_SPACE_ROTATION_TOOLTIP;
+            const float wrap = ImGui::GetFontSize() * 30.0f;
+            // ImGui does not keep a tooltip placed by hand on screen, and the Inspector often docks at the right edge
+            const float tipWidth = ImGui::CalcTextSize(tip, nullptr, false, wrap).x + ImGui::GetStyle().WindowPadding.x * 2.0f;
+            const ImGuiViewport* viewport = ImGui::GetWindowViewport();
+            const ImVec2 boxMin = ImGui::GetItemRectMin();
+            const float x = std::max(viewport->Pos.x, std::min(boxMin.x, viewport->Pos.x + viewport->Size.x - tipWidth));
+            ImGui::SetNextWindowPos(ImVec2(x, boxMin.y - Theme::dpi(4.0f)), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+            if (ImGui::BeginTooltip()){
+                ImGui::PushTextWrapPos(wrap);
+                ImGui::TextUnformatted(tip);
+                ImGui::PopTextWrapPos();
+                ImGui::EndTooltip();
+            }
+        }
+        if (layer.meshSpaceRotation && !noMeshSpace){
+            // where it applies, on the rig the Player's clips animate (refreshed like the coverage
+            // lines)
+            std::shared_ptr<AnimatorAssetDocument> document = layer.mask.empty() ? nullptr : maskDocument(project, state, layer.mask, nullptr);
+            const std::string key = std::to_string(sceneId) + ":" + std::to_string(entity) + ":" + std::to_string(i) + ":" + layer.mask;
+            InspectorLayerState::BoundaryEntry& entry = state.boundaries[key];
+            const uint64_t revision = document ? document->revision() : 0;
+            const double now = ImGui::GetTime();
+            if (entry.at < 0.0 || entry.maskRevision != revision || now - entry.at > COVERAGE_SECONDS){
+                const anim::AvatarMaskDef unmasked{};
+                const anim::AvatarMaskDef* mask = layer.mask.empty() ? &unmasked : document ? &document->mask() : nullptr;
+                entry.line = animlayersui::meshSpaceBoundaryLine(scene, entity, mask, animlayersui::playerAnimatedTargets(project, scene, entity, snapshot));
+                entry.maskRevision = revision;
+                entry.at = now;
+            }
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            ImGui::TextWrapped("%s", entry.line.c_str());
+            ImGui::PopStyleColor();
+            UIProbe::item("player.layer." + std::to_string(index) + ".meshSpaceBoundary");
+            if (state.boundaries.size() > 64) state.boundaries.clear();
+        }
         ImGui::PopID();
     }
     endTable();

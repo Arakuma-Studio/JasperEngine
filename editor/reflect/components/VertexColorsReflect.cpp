@@ -67,7 +67,6 @@ const ComponentDesc kVertexColorsDesc{
     .displayName = "Vertex Colors", .icon = ICON_FA_PALETTE,
     .body = JE_STRUCT_DESC(VertexColorsComponent, "VertexColorsComponent", kVertexColorsFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(VertexColorsComponent),
-    .codegenVar = "vertexColors",
 };
 
 }

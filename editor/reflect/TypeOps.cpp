@@ -4,7 +4,6 @@
 #include "reflect/TypeOps.h"
 #include "util/LightPhotometry.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "StreamPreserved.h"
 #include "stream/CurveCodec.h"
@@ -478,85 +477,6 @@ bool reflect::detail::fixedArrayFromYaml(const FieldDesc& field, const YAML::Nod
 
 // ---------------------------------------------------------------- exported code
 
-std::string reflect::detail::boolLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatBool(*static_cast<const bool*>(value));
-}
-
-std::string reflect::detail::intLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatInt(*static_cast<const int*>(value));
-}
-
-std::string reflect::detail::uintLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatUInt(*static_cast<const unsigned int*>(value));
-}
-
-std::string reflect::detail::floatLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatFloat(*static_cast<const float*>(value));
-}
-
-std::string reflect::detail::positiveFloatLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatPositiveFloat(*static_cast<const float*>(value));
-}
-
-std::string reflect::detail::doubleLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatDouble(*static_cast<const double*>(value));
-}
-
-std::string reflect::detail::vector2Literal(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatVector2(*static_cast<const jasperengine::Vector2*>(value));
-}
-
-std::string reflect::detail::vector3Literal(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatVector3(*static_cast<const jasperengine::Vector3*>(value));
-}
-
-std::string reflect::detail::vector4Literal(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatVector4(*static_cast<const jasperengine::Vector4*>(value));
-}
-
-std::string reflect::detail::quatLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatQuaternion(*static_cast<const Quaternion*>(value));
-}
-
-std::string reflect::detail::rectLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatRect(*static_cast<const jasperengine::Rect*>(value));
-}
-
-std::string reflect::detail::stringLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatString(*static_cast<const std::string*>(value));
-}
-
-std::string reflect::detail::layerMaskLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatLayerMask(*static_cast<const uint32_t*>(value));
-}
-
-std::string reflect::detail::easeLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatEase(*static_cast<const jasperengine::Ease*>(value));
-}
-
-std::string reflect::detail::curveLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return curvecodec::curveCppLiteral(*static_cast<const jasperengine::Curve*>(value));
-}
-
-std::string reflect::detail::gradientLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return curvecodec::gradientCppLiteral(*static_cast<const jasperengine::Gradient*>(value));
-}
-
-std::string reflect::detail::entityLiteral(const FieldDesc&, const void* value, const CodegenContext& ctx) {
-    return Factory::formatEntity(*static_cast<const jasperengine::Entity*>(value), ctx.entityVarNames);
-}
-
-std::string reflect::detail::assetRefLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatString(static_cast<const jasperengine::AssetRef*>(value)->path);
-}
-
-std::string reflect::detail::enumLiteral(const FieldDesc& field, const void* value, const CodegenContext&) {
-    const int number = readEnum(field, value);
-    const EnumItem* item = enumItem(*field.enumDesc, number);
-    if (!item) item = enumItem(*field.enumDesc, field.enumDesc->fallback);
-    return item ? item->cppName : std::string();
-}
-
 // ---------------------------------------------------------------- scalar texts
 
 std::string reflect::detail::boolScalar(const FieldDesc&, const void* value) {
@@ -676,10 +596,6 @@ bool reflect::detail::charFromYaml(const FieldDesc&, const YAML::Node& node, voi
     }
 }
 
-std::string reflect::detail::charLiteral(const FieldDesc&, const void* value, const CodegenContext&) {
-    return Factory::formatChar(*static_cast<const char*>(value));
-}
-
 bool reflect::detail::uintFromIntYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string& reason) {
     int read = 0;
     std::string why;
@@ -773,62 +689,3 @@ bool reflect::detail::fontDecodeKey(const FieldDesc&, const YAML::Node& map, con
 
 // ---------------------------------------------------------------- exported code statements
 
-void reflect::detail::textureStatements(const FieldDesc&, const void* value, const std::string& target, const CodegenContext& ctx, std::string& out) {
-    out += Factory::formatTexture(ctx.indentSpaces, *static_cast<const jasperengine::Texture*>(value), target, ctx.projectPath);
-}
-
-void reflect::detail::fontStatements(const FieldDesc&, const void* value, const std::string& target, const CodegenContext& ctx, std::string& out) {
-    // the slots in use
-    const FontArray& fonts = *static_cast<const FontArray*>(value);
-    for (size_t i = 0; i < fonts.size(); i++) {
-        if (!fonts[i].empty()) {
-            out += Factory::indentation(ctx.indentSpaces) + target + "[" + std::to_string(i) + "] = " + Factory::formatString(fonts[i]) + ";\n";
-        }
-    }
-}
-
-void reflect::detail::pushBackStatements(const FieldDesc& field, const void* value, const std::string& target, const CodegenContext& ctx, std::string& out) {
-    void* array = const_cast<void*>(value);
-    const std::string ind = Factory::indentation(ctx.indentSpaces);
-    const size_t size = field.arrayOps->size(array);
-    for (size_t i = 0; i < size; i++) {
-        out += ind + target + ".push_back(" + field.elementOps->cppLiteral(field, field.arrayOps->at(array, i), ctx) + ");\n";
-    }
-}
-
-void reflect::detail::pushBackClearedStatements(const FieldDesc& field, const void* value, const std::string& target, const CodegenContext& ctx, std::string& out) {
-    out += Factory::indentation(ctx.indentSpaces) + target + ".clear();\n";
-    pushBackStatements(field, value, target, ctx, out);
-}
-
-void reflect::detail::fixedArrayStatements(const FieldDesc& field, const void* value, const std::string& target, const CodegenContext& ctx, std::string& out) {
-    void* array = const_cast<void*>(value);
-    const std::string ind = Factory::indentation(ctx.indentSpaces);
-    const size_t size = field.arrayOps->size(array);
-    // the default element: what a new component's array holds
-    const std::unique_ptr<std::max_align_t[]> storage(new std::max_align_t[(field.elementOps->size + sizeof(std::max_align_t) - 1) / sizeof(std::max_align_t)]);
-    void* defaults = storage.get();
-    field.elementOps->construct(defaults);
-    for (size_t i = 0; i < size; i++) {
-        const void* element = field.arrayOps->at(array, i);
-        if (field.elementOps->equals(element, defaults, 0.0f) || !field.elementOps->cppLiteral) continue;
-        out += ind + target + "[" + std::to_string(i) + "] = " + field.elementOps->cppLiteral(field, element, ctx) + ";\n";
-    }
-    field.elementOps->destroy(defaults);
-}
-
-void reflect::detail::structPushBackStatements(const FieldDesc& field, const void* value, const std::string& target, const CodegenContext& ctx,
-                                               std::string& out) {
-    void* array = const_cast<void*>(value);
-    const std::string ind = Factory::indentation(ctx.indentSpaces);
-    for (size_t i = 0; i < field.arrayOps->size(array); i++) {
-        void* element = field.arrayOps->at(array, i);
-        std::string literal = "{";
-        for (size_t m = 0; m < field.structDesc->fields.size(); m++) {
-            const FieldDesc& member = field.structDesc->fields[m];
-            if (m > 0) literal += ", ";
-            literal += member.ops->cppLiteral ? member.ops->cppLiteral(member, member.ref(element), ctx) : std::string("{}");
-        }
-        out += ind + target + ".push_back(" + literal + "});\n";
-    }
-}

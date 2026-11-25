@@ -119,10 +119,3 @@ TEST(CurveCodec, OldTweenSceneLoadsALinearCurve) {
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-TEST(CurveCodec, CppLiteral) {
-    const Curve plain = Curve::linear(0.0f, 0.0f, 1.0f, 1.0f);
-    EXPECT_EQ(curvecodec::curveCppLiteral(plain), "Curve({CurveKey{0.0f, 0.0f, 1.0f, 1.0f, 0}, CurveKey{1.0f, 1.0f, 1.0f, 1.0f, 0}})");
-    const std::string wrapped = curvecodec::curveCppLiteral(curveCodecSample());
-    EXPECT_NE(wrapped.find("CurveWrapMode::PingPong"), std::string::npos) << wrapped;
-    EXPECT_NE(wrapped.find("INFINITY"), std::string::npos) << wrapped;
-}

@@ -6,6 +6,7 @@
 
 #include "Exporter.h"
 
+#include "support/ExporterTestAccess.h"
 #include "support/TestTempDir.h"
 
 #include <gtest/gtest.h>
@@ -17,18 +18,6 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 namespace fs = std::filesystem;
-
-namespace jasperengine::editor {
-
-    struct ExporterTestAccess {
-        static void walkTree(Exporter& exporter, const fs::path& root, const Exporter::TreeVisitor& visit, std::error_code& ec) {
-            exporter.walkTree(root, visit, ec);
-        }
-        static fs::path treeListFailure(const Exporter& exporter) { return exporter.treeListFailure; }
-        using TreeStep = Exporter::TreeStep;
-    };
-
-}
 
 TEST(ExportTreeWalk, ASubfolderItCannotListFailsTheWalk) {
     TestTempDir dir("export-tree-walk");

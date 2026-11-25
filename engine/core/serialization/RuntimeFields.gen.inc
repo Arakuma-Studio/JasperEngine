@@ -865,6 +865,7 @@ const FieldEntry kStruct_AnimationPlayerLayer_fields[] = {
     JE_RF(AnimationPlayerLayer, blend, 0x527aec04u, Enum),
     JE_RF(AnimationPlayerLayer, mask, 0xb6a887b5u, String),
     JE_RF(AnimationPlayerLayer, maskGuid, 0x64d378fcu, String),
+    JE_RF(AnimationPlayerLayer, meshSpaceRotation, 0x64a8098cu, Bool),
 };
 const StructTable kStruct_AnimationPlayerLayer{"AnimationPlayerLayer", kStruct_AnimationPlayerLayer_fields, std::size(kStruct_AnimationPlayerLayer_fields)};
 void Codec<AnimationPlayerLayer>::write(Writer& w, const AnimationPlayerLayer& value) { writeStruct(w, kStruct_AnimationPlayerLayer, &value); }
@@ -1097,6 +1098,7 @@ const StructTable kBody_ScriptComponent{"script", kBody_ScriptComponent_fields, 
 
 const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, enabled, 0x787b2403u, Bool),
+    JE_RF(MeshComponent, meshAsset, 0x4fad0fd9u, AssetPath),
     JE_RF(MeshComponent, receiveLights, 0x5fa69afau, Bool),
     JE_RF(MeshComponent, receiveIBL, 0x5ef87748u, Bool),
     JE_RF(MeshComponent, castShadows, 0x37e4a2feu, Bool),

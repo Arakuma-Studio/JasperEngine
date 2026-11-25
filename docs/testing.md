@@ -72,7 +72,8 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
 
 Picking (S26): `JASPER_PICK_SIMD=scalar|avx2|neon` forces the mesh BVH's slab test path; `MeshPose.MatchesGpuSkinning` is a GPU suite (the
 CPU pose against the skinned shaders, glcore and Vulkan). `JASPER_PICK_BUILD_DELAY_MS=<ms>` holds
-every background mesh BVH build pending that long: the MCP tests use it to see the Scene view's
+every background mesh BVH build pending that long (the wait runs on a blocking thread, so it holds no
+Background gate slot other loads queue for): the MCP tests use it to see the Scene view's
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 `JASPER_TEXTURE_LOAD_DELAY_MS=<ms>` holds every async texture decode that long: a screenshot must
 then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
@@ -117,7 +118,11 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   (`build/web-mesh-raycast`, the web image; up to date after the first time) for
   `test_mesh_raycast.py`'s web latency gate. The Linux image carries the suite's test tools
   (lua-language-server, clangd, FFmpeg with AV1, chrome-headless-shell), so none of their tests
-  skips there. See `docs/mcp/README.md` for writing MCP tests.
+  skips there. See `docs/mcp/README.md` for writing MCP tests. A project the harness creates
+  (`Editor(create=True)`) keeps the flat layout the tests are written against, its assets and
+  scripts at its root: the harness sets `JASPER_TEST_FLAT_NEW_PROJECT=1` unless the test passes
+  `env={"JASPER_TEST_FLAT_NEW_PROJECT": "0"}`, which gives a new project's real layout (`assets/`,
+  `scripts/`, `test_asset_stripping.py`).
 - `test_audio_meter.py` takes no editor: it compiles `engine/tests/core/audio/AudioMeterProbe.cpp` with
   `AudioMeter.cpp` and `TruePeak.cpp` alone (so it needs a C++ compiler; FFmpeg decodes the fixtures)
   and compares the meter with pyloudnorm (`uv run --with`, pinned in the test).
@@ -249,7 +254,8 @@ The cache cannot hide a bug:
   run tries again.
 - The compiled games (`method="compile"`) build through ccache too: their editors get
   `harness.compile_env(name)`, a user cache (where the kit's compile tree goes) at the fixed path
-  `build/mcp-compile-home/<file>/`, emptied as the file starts, and ccache as CMake's compiler
+  `build/mcp-compile-home/<file>/`, emptied as the file's first editor starts (not as the file loads:
+  any run's `-k` listing loads every file), and ccache as CMake's compiler
   launcher. Each run still configures and compiles a fresh tree and links; an object comes from
   ccache only when its preprocessed source, flags and directory are those it was made from. They
   link without LTO (`JASPERENGINE_RELEASE_LTO=OFF` in the editor's environment, which an exported
@@ -1009,7 +1015,7 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `lint` | the repository's and the workflows' lints |
 | `linux` | `WERROR=1 tools/build.sh linux`; its editor install feeds `mcp` and `smoke` |
 | `unit` (one job per test binary: `core`; `editor-1`, `editor-2`) | `UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun (core); each editor part with `UNIT_SHARD=<k>/2`, after compiling half the objects (`UNIT_BUILD_PART=<k>/2`) and taking the other half from the other part (below) |
-| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter (on a PR: below) without the `*GpuSlow*` suites (the nightly runs them under ASan) |
+| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter (on a PR: below) without the `*GpuSlow*` suites (the nightly runs them under ASan); the editor job prints how much of x86-64's 2 GiB relocation reach its test binary uses (`tools/ci/reloc_reach.py`) |
 | `htmlui` | `JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests` |
 | `mcp` (one job per shard) | `tools/ci/mcp_shard.sh <k> build/ci-plan`: the CI suite's planned files, `-j 2`, without the fixture project |
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
@@ -1218,8 +1224,10 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **ccache in CI**: a build runs with no size limit (a cleanup in the middle of a build evicts the
   restored entries it has not reached yet, and each miss then evicts more: a PR that changed one test
   file hit 5 of 5,279 compiles). `ccache-save` then evicts every entry the run neither used nor wrote
-  and prints the rest, the lane's working set, on every run; on `main` it cuts that to the lane's cap
-  (`max-size` in `ci.yml`), oldest-used first, saves it and deletes the lane's older entry (`prune`;
+  and prints the rest, the lane's working set, on every run; on `main` it cuts a working set over the
+  lane's cap (`max-size` in `ci.yml`) to it, oldest-used first, and keeps one under it whole (ccache's
+  cleanup evicts from each of its 16 subdirectories past a 16th of the cap, so under the cap it still
+  cost the next linux build 238 of 5,284 compiles), saves it and deletes the lane's older entry (`prune`;
   the `caches` job, after every lane, deletes them again). Each lane's old and new entries would
   otherwise both live until the push's slowest lane ended, and past the 10 GB GitHub evicts the least
   recently used entries of any lane: during push run 44629653601 the repository held 11.7 GB, two

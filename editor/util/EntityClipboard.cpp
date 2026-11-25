@@ -406,8 +406,8 @@ YAML::Node editor::EntityClipboard::encodeComponent(EntityRegistry* registry, En
     // A generated or model-backed mesh is saved without its geometry because its source
     // rebuilds it, but a copy may land where nothing does, so it always carries it
     if (type == ComponentType::MeshComponent) {
-        // with the submesh a Sprite or Mesh Polygon has before its first frame made it, as a save writes
-        // it: set_properties edits this encoding (submeshes[0].material.shaderPalettes)
+        // the submeshes a save writes: a Sprite's one before its first frame, whose material an edit
+        // right after creating it (submeshes[0].material...) changes
         const MeshComponent& mesh = registry->getComponent<MeshComponent>(entity);
         return Stream::encodeMeshComponent(mesh, true, true, true, Stream::savedSubmeshCount(mesh, registry, registry->getSignature(entity)));
     }

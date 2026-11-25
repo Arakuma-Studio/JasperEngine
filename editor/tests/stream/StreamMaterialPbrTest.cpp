@@ -6,7 +6,6 @@
 // light's unit and colour temperature, a terrain layer's hex tiling; all of them written only
 // away from their defaults, so a file saved before them is written again byte for byte.
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/TerrainComponent.h"
 #include "reflect/Reflect.h"
@@ -188,12 +187,11 @@ TEST(StreamMaterialPbr, ALobesMapThatFailedToLoadKeepsItsFile){
 
 // V1 R70, R130: the Vertex Color section, written only away from Tint (a file saved before it is
 // written again byte for byte), by name, read back whole; a name this editor does not know keeps the
-// default. The generated C++ of a compiled game sets the same values
+// default. Every build reads it from the cooked scene (CookedScene.MaterialKeepsItsVertexColorSection)
 TEST(StreamMaterialPbr, VertexColorSectionRoundTrips){
     Material tint;
     tint.pbr.edit().vertexColor = MaterialPbrExtensions::VertexColor();
     EXPECT_FALSE(Stream::encodeMaterial(tint)["pbr"]) << "Tint writes nothing";
-    EXPECT_EQ(Factory::formatMaterialPbr(4, tint, "material", fs::path()), "");
 
     Material material;
     MaterialPbrExtensions::VertexColor& vertexColor = material.pbr.edit().vertexColor;
@@ -215,14 +213,6 @@ TEST(StreamMaterialPbr, VertexColorSectionRoundTrips){
     const Material read = Stream::decodeMaterial(node);
     EXPECT_EQ(read.pbr->vertexColor, vertexColor);
     EXPECT_EQ(read, material);
-
-    const std::string code = Factory::formatMaterialPbr(4, material, "material", fs::path());
-    EXPECT_NE(code.find("material.pbr.edit().vertexColor.use = VertexColorUse::MASKS;"), std::string::npos) << code;
-    EXPECT_NE(code.find("material.pbr.edit().vertexColor.alphaOpacity = false;"), std::string::npos) << code;
-    EXPECT_NE(code.find("material.pbr.edit().vertexColor.r = VertexColorTarget::OCCLUSION;"), std::string::npos) << code;
-    EXPECT_NE(code.find("material.pbr.edit().vertexColor.b = VertexColorTarget::ROUGHNESS_REPLACE;"), std::string::npos) << code;
-    EXPECT_NE(code.find("material.pbr.edit().vertexColor.a = VertexColorTarget::EMISSION;"), std::string::npos) << code;
-    EXPECT_EQ(code.find("vertexColor.g"), std::string::npos) << code;
 
     const Material unknown = Stream::decodeMaterial(YAML::Load("pbr:\n  vertexColor:\n    use: multiply\n    r: wetness\n    g: metallic\n"));
     EXPECT_EQ(unknown.pbr->vertexColor.use, VertexColorUse::TINT);

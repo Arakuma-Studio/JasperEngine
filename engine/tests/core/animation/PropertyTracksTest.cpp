@@ -46,12 +46,11 @@
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "box2d/box2d.h"
 #endif
+#include "support/AllocationCounter.h"
 
 #include <chrono>
 #include <cmath>
-#include <cstdlib>
 #include <functional>
-#include <thread>
 
 using namespace jasperengine;
 using namespace animatortest;
@@ -1151,15 +1150,8 @@ TEST_F(Properties, GameOverPanelPortPlaysLikeTheUnityClips){
 #ifdef NDEBUG
 TEST_F(Properties, PerformanceBudget){
     // 200 animated properties: UI fades and flickering lights (spec 14: <= 0.08 ms per frame on
-    // the host in Release). A shared box under load cannot time it: skipped above its core count
-    const double cores = (double)std::max(1u, std::thread::hardware_concurrency());
-#if defined(__unix__) || defined(__APPLE__)
-    double load[1] = {0.0};
-    const bool timed = !(getloadavg(load, 1) == 1 && load[0] > cores);
-#else
-    (void)cores;
-    const bool timed = true;   // no load average on Windows
-#endif
+    // the host in Release). A wall-clock budget: enforced where perfSlack() asks for it (the
+    // benchmark run), printed always
     ClipData data;
     data.wrap = ClipWrapMode::Loop;
     for (int i = 0; i < 100; i++){
@@ -1182,8 +1174,8 @@ TEST_F(Properties, PerformanceBudget){
         best = std::min(best, ms);
     }
     std::printf("[ property tracks ] 200 properties: %.4f ms per frame\n", best);
-    if (timed){
-        EXPECT_LE(best, 0.08);
+    if (const double slack = testsupport::perfSlack(); slack > 0.0){
+        EXPECT_LE(best, 0.08 * slack);
     }
 }
 #endif

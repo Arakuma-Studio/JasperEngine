@@ -453,6 +453,9 @@ TEST(AssetDatabase, ExternalDirectoryMove) {
     for (int i = 0; i < 50; i++) {
         before["tex" + std::to_string(i) + ".png"] = database.getAssetGuid("assets/pack/tex" + std::to_string(i) + ".png");
     }
+    // the content hashes read the files in the background: Windows refuses to rename a folder
+    // holding an open file ("Access is denied")
+    database.waitForBackgroundWork();
     fs::create_directories(dir.path / "assets/moved");
     fs::rename(dir.path / "assets/pack", dir.path / "assets/moved/pack");
     const std::vector<AssetDatabase::Change> changes = database.refresh();

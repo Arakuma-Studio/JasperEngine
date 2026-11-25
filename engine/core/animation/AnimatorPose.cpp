@@ -505,6 +505,44 @@ void anim::poseToRigSpace(const Pose& local, const int* parents, RigSpace out){
     poseToRigSpaceFrom(local, parents, 0, out);
 }
 
+void anim::poseRigRotations(const Pose& local, const int* parents, size_t count, Quaternion* out){
+    const float* qx = local.array(Pose::QX); const float* qy = local.array(Pose::QY);
+    const float* qz = local.array(Pose::QZ); const float* qw = local.array(Pose::QW);
+    const size_t n = std::min(count, local.boneCount());
+    for (size_t i = 0; i < n; i++){
+        const Quaternion q(qw[i], qx[i], qy[i], qz[i]);
+        const int p = parents[i];
+        out[i] = p >= 0 ? out[p] * q : q;
+    }
+}
+
+void anim::poseMeshSpaceRotation(Pose& out, const int* parents, const uint16_t* boundary, size_t boundaryCount,
+                                 const float* mask, float weight, Quaternion* belowRig, const Quaternion* layerRig){
+    if (boundaryCount == 0) return;
+    float* qx = out.array(Pose::QX); float* qy = out.array(Pose::QY);
+    float* qz = out.array(Pose::QZ); float* qw = out.array(Pose::QW);
+    const size_t end = std::min((size_t)boundary[boundaryCount - 1] + 1, out.boneCount());
+    // one walk, parents first: belowRig[i] is read as the pose below the layer until bone i is
+    // reached, then overwritten with the blended (and corrected) pose's, so a boundary bone
+    // under another sees its parent's corrected rotation
+    size_t next = 0;
+    for (size_t i = 0; i < end; i++){
+        Quaternion q(qw[i], qx[i], qy[i], qz[i]);
+        const int p = parents[i];
+        if (next < boundaryCount && (size_t)boundary[next] == i){
+            next++;
+            if (p >= 0){
+                q = poseMeshSpaceLocal(belowRig[p], belowRig[i], layerRig[i], weight * mask[i]);
+                qx[i] = q.x;
+                qy[i] = q.y;
+                qz[i] = q.z;
+                qw[i] = q.w;
+            }
+        }
+        belowRig[i] = p >= 0 ? belowRig[p] * q : q;
+    }
+}
+
 // ---------------------------------------------------------------- one element
 // The scalar lanes of the Kernels above, operation for operation (the same bits as poseBlend /
 // poseAdditive on the Scalar back end: AnimatorPoseOps.ElementOpsMatchTheKernels)
@@ -557,6 +595,19 @@ Quaternion anim::poseAdditiveRotation(const Quaternion& base, const Quaternion& 
     float ry = ((bw * ny) + (by * nw)) + ((bz * nx) - (bx * nz));
     float rz = ((bw * nz) + (bz * nw)) + ((bx * ny) - (by * nx));
     normalizeElement(rx, ry, rz, rw, bx, by, bz, bw);
+    return Quaternion(rw, rx, ry, rz);
+}
+
+Quaternion anim::poseMeshSpaceLocal(const Quaternion& parentRig, const Quaternion& belowRig, const Quaternion& layerRig, float weight){
+    const Quaternion target = poseBlendRotation(belowRig, layerRig, weight);
+    // conj(parentRig) * target
+    const float px = -parentRig.x, py = -parentRig.y, pz = -parentRig.z, pw = parentRig.w;
+    const float tx = target.x, ty = target.y, tz = target.z, tw = target.w;
+    float rw = ((pw * tw) - (px * tx)) - ((py * ty) + (pz * tz));
+    float rx = ((pw * tx) + (px * tw)) + ((py * tz) - (pz * ty));
+    float ry = ((pw * ty) + (py * tw)) + ((pz * tx) - (px * tz));
+    float rz = ((pw * tz) + (pz * tw)) + ((px * ty) - (py * tx));
+    normalizeElement(rx, ry, rz, rw, tx, ty, tz, tw);
     return Quaternion(rw, rx, ry, rz);
 }
 

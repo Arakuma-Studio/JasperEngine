@@ -1531,7 +1531,9 @@ Profiler.endSample()
 local path = Profiler.sample("Pathfind", function() return self:findPath() end)   -- fn's results
 Profiler.counter("Enemies alive", #self.enemies)   -- a monitor (the Monitors module, get_frame_times)
 Profiler.enabled = true                      -- start recording (read it to know whether it records)
-local s = Profiler.frameStats()              -- {drawCalls, instances, triangles, cpuMs, fps, gpuMs?}
+local s = Profiler.frameStats()              -- {drawCalls, instances, triangles, cpuMs, fps, gpuMs?, gpuPasses?}
+Profiler.gpuTiming = true                    -- time every render pass on the GPU (false again: the timers stop)
+for _, pass in ipairs(Profiler.frameStats().gpuPasses or {}) do Log.info(pass.name .. " " .. pass.ms) end
 local r = scene:getRenderStats()             -- by pass: mainDrawCalls, shadowDrawCalls, mainTriangles, instancedDraws...
 ```
 
@@ -1541,9 +1543,12 @@ local r = scene:getRenderStats()             -- by pass: mainDrawCalls, shadowDr
   (the Profiler's toolbar, `capture_profile deep_lua`) each callback gets a scope of its own,
   named by its chunk and line.
 - `frameStats().gpuMs` is there only while GPU timing runs (the Profiler records, an agent called
-  `get_gpu_passes`); GPU times arrive a few frames late.
-- In a release game (no profiler) the functions do nothing, `enabled` stays false, and
-  `frameStats()` still works.
+  `get_gpu_passes`, `Profiler.gpuTiming` is true); GPU times arrive a few frames late.
+- `Profiler.gpuTiming = true` keeps GPU timing on until it is set false or the game stops; while it
+  is on, `frameStats().gpuPasses` lists `{name, ms}` per pass of the newest timed frame (the names
+  `get_gpu_passes` gives). Where the backend has no GPU timer it stays false, with one warning.
+- In a release game (no profiler) the functions do nothing, `enabled` and `gpuTiming` stay false,
+  and `frameStats()` still works.
 
 ### 2.15 Crash (static): reports of earlier sessions, the report hook, tags
 
@@ -2289,6 +2294,7 @@ to play a sound from code use `Audio.play`, and react to clip events as below.
 | `setLayerWeight(layer, w [, fade])`, `getLayerWeight(layer)` | runtime weight 0..1, fading linearly over `fade` s (scaled time); the getter returns the current, possibly fading, value; layer 0 is always 1 |
 | `setLayerMask(layer, path)`, `getLayerMask(layer)` | runtime Avatar Mask (`""` clears it); a layer whose mask is missing contributes nothing |
 | `setLayerBlendMode(layer, mode)`, `getLayerBlendMode(layer)` | runtime `"override"` / `"additive"` (layer 0: always override) |
+| `setLayerMeshSpaceRotation(layer, enabled)`, `getLayerMeshSpaceRotation(layer)` | authored Mesh Space Rotation (the Inspector's checkbox): bones where the layer's mask starts or stops keep its direction relative to the character; ignored on layer 0 and additive layers |
 | `stopLayer(layer [, fade])` | fades every state of the layer out (instant without a fade) and clears its queue |
 | `controller` | rw, the controller of the GameObject's Animator (asset-relative `.controller`, `""` = none); setting one adds an Animator playing it and disables the player, which then hands over |
 | `hasController()` | bool: the player hands over to an Animator with a controller |
@@ -2486,6 +2492,7 @@ controller does not have warn once and do nothing.
 | `getCurrentState(layer)`, `getNextState(layer)` | an `AnimatorStateInfo`: `valid`, `name`, `fullPath`, `tag`, `normalizedTime` (laps + fraction), `length` (s), `loop`, `speed`, `mirror` and `footIK` (the state's humanoid playback) |
 | `isInTransition([layer])` | layer 0 by default |
 | `getLayerCount()`, `getLayerName(i)`, `getLayerIndex(name)`, `setLayerWeight(layer, w [, fade])`, `getLayerWeight(layer)` | `layer` an index or a name; `fade` seconds to reach `w`; the first layer always weighs 1 |
+| `setLayerMeshSpaceRotation(layer, enabled)`, `getLayerMeshSpaceRotation(layer)` | Mesh Space Rotation: the bones where the layer's mask starts or stops keep its direction relative to the character (an upper-body layer's torso faces where its clip faces, not where the base layer's hips turn); a runtime override of this Animator, not saved, cleared when the controller loads again; no effect on layer 0 or an Additive layer; an unknown layer is warned once and ignored (`false`) |
 | `getCurrentStateName([layer])`, `getCurrentStateInfo([layer])`, `getNextStateInfo([layer])` | the names of the Animation Player's controller calls (scripts written for them run as they are): the state's name, a `ControllerStateInfo` |
 | `playInLayer(state, layer [, normalizedTime])`, `crossFadeInLayer(state, seconds, layer)` | `play` and `crossFadeInFixedTime` by those names |
 | `hasController()`, `hasParameter(name)` | bool |

@@ -51,7 +51,9 @@ namespace jasperengine {
         VoxelVolume = 32,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
         NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
         TitleArt = 34,              // a .titleart Title Art document (S80; its GUID in its JSON)
-        VertexColors = 35           // a .vcolors file of one object's vertex colors (V1 R1; its GUID in its .meta)
+        Mesh = 35,                  // a .mesh mesh asset (S98 F1; its GUID in its .meta)
+        // 36 to 38 are #163's StringTable and Dialogue and #11's DataAsset, written whatever order they land in
+        VertexColors = 39           // a .vcolors file of one object's vertex colors (V1 R1; its GUID in its .meta)
     };
     // the highest value present (a sibling's reserved value below it may still be missing)
     inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::VertexColors);
@@ -93,6 +95,7 @@ namespace jasperengine {
             case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::TitleArt: return "title_art";
+            case AssetType::Mesh: return "mesh";
             case AssetType::VertexColors: return "vertex_colors";
             case AssetType::Unknown: break;
         }

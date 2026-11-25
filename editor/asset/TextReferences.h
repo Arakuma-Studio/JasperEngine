@@ -27,6 +27,10 @@ namespace jasperengine::editor {
         static std::vector<TextReference> scanCss(const std::string& text);
         static std::vector<TextReference> scanLua(const std::string& text);
         static std::vector<TextReference> scanShader(const std::string& text);
+        // Every string literal of a Lua source ("..", '..', [[..]], [=[..]=]) or a C++ / JSON one
+        // ("..", '..'), comments skipped, escapes left as written: what Referenced Only keeps when a
+        // literal names a file (S98 REQ-9)
+        static std::vector<std::string> scanStringLiterals(const std::string& text, bool lua);
 
         // A target that names a file of the project: not a URL, data URI, anchor or absolute path
         static bool isLocalTarget(const std::string& target);

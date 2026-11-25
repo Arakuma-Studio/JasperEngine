@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/CppIdentifier.h"
 #include "TerrainQualityPanel.h"
 #include "Engine.h"
 #include "mcp/TerrainMaterialInfo.h"
@@ -55,6 +56,7 @@
 #include "util/Fnv.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "asset/MeshAssetFiles.h"
 #include "script/ScriptScheduler.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
@@ -120,7 +122,6 @@
 #include "Screen.h"
 #include "window/DeviceProfiles.h"
 #include "Widgets.h"
-#include "Factory.h"
 #include "audio/AudioMixer.h"
 #include "pool/SoundPool.h"
 #include "component/ActionComponent.h"
@@ -1798,6 +1799,29 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
             if (ImGui::MenuItem(ICON_FA_PERSON_FALLING " Create Ragdoll...")) {
                 RagdollWizardDialog::instance().open(project, sceneProject->id, entities[0]);
             }
+        }
+        if (cpType == ComponentType::MeshComponent && entities.size() == 1) {
+            // S98 F1: the geometry to a .mesh the Mesh field then shows (Unity's Save Mesh As Asset)
+            reason.clear();
+            const bool canSave = MeshAssetFiles::ownsGeometry(sceneProject->scene, entities[0], &reason);
+            if (ImGui::MenuItem("Save Mesh As Asset...", nullptr, false, canSave)) {
+                const std::string name = sceneProject->scene->getEntityName(entities[0]);
+                const std::string chosen = FileDialogs::saveFileDialog(project->getAssetsPath().string(), (name.empty() ? "New Mesh" : name) + ".mesh",
+                                                                       "Mesh assets", "mesh");
+                if (!chosen.empty()) {
+                    std::string path = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(FileUtils::pathFromUtf8(chosen)));
+                    if (!Util::isMeshAssetFile(path)) path += ".mesh";
+                    std::string written, error;
+                    Command* save = MeshAssetFiles::saveAs(*project, sceneProject->id, entities[0], sceneProject->scene->getComponent<MeshComponent>(entities[0]),
+                                                           path, written, &error);
+                    if (save) {
+                        addMenuCommand(save);
+                    } else {
+                        Out::error("Save Mesh As Asset: %s", error.c_str());
+                    }
+                }
+            }
+            reasonTooltip(canSave, reason);
         }
         ImGui::Separator();
 
@@ -8086,7 +8110,7 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
     drawMeshComponentFields(cpType, sceneProject, entities);
     ImGui::EndDisabled();
     const ImVec2 fieldsBottom(ImGui::GetWindowPos().x + ImGui::GetWindowWidth(), ImGui::GetCursorScreenPos().y);
-    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenDisabled) && ImGui::IsMouseHoveringRect(fieldsTop, fieldsBottom)) {
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(fieldsTop, fieldsBottom)) {
         ImGui::SetTooltip("Edit the parts");
     }
 }
@@ -8096,6 +8120,16 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
 
     // Static variables for shape parameters
     static PrimitiveParameters shapeParams;
+
+    // S98 F1: the .mesh the geometry comes from (Unity's Mesh Filter's Mesh), for meshes whose
+    // geometry is not a model's or a generator's
+    bool meshAssetRow = !entities.empty();
+    for (Entity entity : entities) meshAssetRow = meshAssetRow && MeshAssetFiles::canShowMeshAsset(sceneProject->scene, entity);
+    if (meshAssetRow) {
+        RowSettings settingsMeshAsset;
+        settingsMeshAsset.help = "The .mesh asset the geometry comes from; none: the mesh's own (the component's menu > Save Mesh As Asset... makes one)";
+        propertyRow(RowPropertyType::Asset, cpType, "meshAsset", "Mesh", sceneProject, entities, settingsMeshAsset);
+    }
 
     // Add New Geometry property row
     propertyHeader("Geometry");
@@ -13100,7 +13134,7 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                     // Script dialog uses - since className is emitted verbatim as a
                     // class token by the code generator. Reflect it back in the field.
                     if (!newName.empty() && script.type != ScriptType::LUA) {
-                        newName = Factory::toIdentifier(newName);
+                        newName = toIdentifier(newName);
                         strncpy(nameBuffer, newName.c_str(), sizeof(nameBuffer) - 1);
                         nameBuffer[sizeof(nameBuffer) - 1] = '\0';
                     }

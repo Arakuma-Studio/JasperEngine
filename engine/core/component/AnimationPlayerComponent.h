@@ -80,9 +80,14 @@ namespace jasperengine{
         AnimationLayerBlend blend = AnimationLayerBlend::Override;  // layers[0]: always Override
         std::string mask;               // asset-relative .mask, "" = none
         std::string maskGuid;           // the mask's GUID (editor, AssetDatabase)
+        // Override layers above 0: the bones where the mask starts or stops keep this layer's
+        // rotation relative to the player's GameObject (docs/specs/mesh-space-rotation.md R15);
+        // kept and ignored on layer 0 and on Additive layers
+        bool meshSpaceRotation = false;
 
         bool operator==(const AnimationPlayerLayer& other) const{
-            return name == other.name && weight == other.weight && blend == other.blend && mask == other.mask && maskGuid == other.maskGuid;
+            return name == other.name && weight == other.weight && blend == other.blend && mask == other.mask && maskGuid == other.maskGuid &&
+                   meshSpaceRotation == other.meshSpaceRotation;
         }
         bool operator!=(const AnimationPlayerLayer& other) const{ return !(*this == other); }
     };

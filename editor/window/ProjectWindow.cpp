@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/CppIdentifier.h"
 #include "pixelart/BitmapFontCreate.h"
 #include "animation/AnimatorAssetDocument.h"
 #include "window/NoiseGraphWindow.h"
@@ -20,6 +21,7 @@
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "pose/PoseRigProvider.h"
 #include "pixelart/aseprite/AsepriteEditorHooks.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "sprite/SpriteSheetPool.h"
@@ -69,6 +71,8 @@
 #include "util/ProjectFileWrites.h"
 #include "procmat/ProceduralBake.h"
 #include "command/type/RenameFileCmd.h"
+#include "command/type/AssetStrippingSettingsCmd.h"
+#include "export/AssetStripping.h"
 #include "command/type/CreateDirCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/CreatePrefabCmd.h"
@@ -103,7 +107,6 @@
 #include "Theme.h"
 #include "Widgets.h"
 #include "Stream.h"
-#include "Factory.h"
 #include "Generator.h"
 #include "Log.h"
 #include "subsystem/MeshSystem.h"
@@ -295,6 +298,24 @@ static void makeTilesetFileIcon(int size, std::vector<uint8_t>& rgba) {
     for (int i = 0; i < 12; i++) {
         image.fillRect(px(8 + (i % 4) * 12.5f), px(12 + (i / 4) * 14.0f), px(11.5f), px(13), editor::PoseColor::hex(cells[i]));
     }
+    rgba = image.getPixels();
+}
+
+// a .mesh (S98 F1): a wireframe cube
+static void makeMeshAssetFileIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    const editor::PoseColor edge = editor::PoseColor::hex(0x8FB8E8);
+    const float front[4][2] = {{10, 22}, {42, 22}, {42, 54}, {10, 54}};
+    const float back[4][2] = {{22, 10}, {54, 10}, {54, 42}, {22, 42}};
+    for (int i = 0; i < 4; i++) {
+        const int j = (i + 1) % 4;
+        image.drawLine(front[i][0] * s, front[i][1] * s, front[j][0] * s, front[j][1] * s, 2.5f * s, edge);
+        image.drawLine(back[i][0] * s, back[i][1] * s, back[j][0] * s, back[j][1] * s, 2.5f * s, edge);
+        image.drawLine(front[i][0] * s, front[i][1] * s, back[i][0] * s, back[i][1] * s, 2.5f * s, edge);
+    }
+    // one face split in two triangles: geometry, not a model file
+    image.drawLine(front[0][0] * s, front[0][1] * s, front[2][0] * s, front[2][1] * s, 1.5f * s, edge);
     rgba = image.getPixels();
 }
 
@@ -1313,6 +1334,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.94f, 0.49f, 0.34f, 1.0f));
         case FileType::TILESET:
             return ImGui::GetColorU32(ImVec4(0.42f, 0.73f, 0.44f, 1.0f));
+        case FileType::MESH_ASSET:
+            return ImGui::GetColorU32(ImVec4(0.56f, 0.72f, 0.91f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -2636,7 +2659,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 if (!file.isDirectory && FbxImporter::isFbxFile(file.name)){
                     if (ImGui::MenuItem(ICON_FA_ROTATE " Reimport")) {
-                        project->importFbxModel(currentPath / file.name, true);
+                        // converted on the import queue's job: the editor keeps drawing (S98 REQ-32)
+                        project->requestModelImport(currentPath / file.name, true);
+                        PoseRigProvider::adoptNameRules(project, currentPath / file.name);
                         if (ModelCookQueue::get().getProject() == project && project->isInsideAssetsPath(currentPath / file.name)) {
                             const std::string assetPath = project->normalizeToAssetsRelative(currentPath / file.name).generic_string();
                             ModelCookQueue::get().invalidate(assetPath);
@@ -2658,11 +2683,14 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         for (const fs::path& path : chosen) {
                             if (!project->isInsideAssetsPath(path) || !isModelSource(path.filename().string())) continue;
                             const std::string assetPath = project->normalizeToAssetsRelative(path).generic_string();
+                            PoseRigProvider::adoptNameRules(project, path);
                             ModelCookQueue::get().invalidate(assetPath);
                             ModelCookQueue::get().request(assetPath, ModelFamily::Desktop, ModelCookQueue::Selected);
                         }
                     }
                     if (reimportAll) {
+                        for (const std::string& assetPath : projectModelSources(*project))
+                            PoseRigProvider::adoptNameRules(project, project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath));
                         ModelCookQueue::get().invalidateAll();
                         ModelCookQueue::get().requestAll({ModelFamily::Desktop});
                     }
@@ -2695,6 +2723,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 renderLabelsMenu();
                 if (ImGui::MenuItem(ICON_FA_BOOKMARK " Add to Bookmarks")) addSelectionToBookmarks();
+                renderBuildInclusionMenu(currentPath / file.name);
                 ImGui::Separator();
                 const std::string deleteKeys = CommandCatalog::editor().menuShortcutText("project.delete");
                 const bool deleteItem = ImGui::MenuItem(ICON_FA_TRASH " Delete", deleteKeys.empty() ? nullptr : deleteKeys.c_str());
@@ -3229,6 +3258,9 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }else if (Util::isTilesetFile(fileEntry.extension)){
             fileEntry.type = FileType::TILESET;
             fileEntry.icon = tilesetIcon.getRender();
+        }else if (Util::isMeshAssetFile(fileEntry.extension)){
+            fileEntry.type = FileType::MESH_ASSET;
+            fileEntry.icon = meshAssetIcon.getRender();
         }else if (Util::isLuaFile(fileEntry.extension)){
             fileEntry.type = FileType::LUA;
             fileEntry.icon = luaIcon.getRender();
@@ -4013,8 +4045,23 @@ void editor::ProjectWindow::thumbnailStep() {
                 // never needs full 4K maps): that is a preview load, which bakes node transforms into
                 // one static mesh, with no entities to build for a picture.
                 // GPU work is deferred to the main thread; ModelRender frames whatever entities exist.
-                // An FBX previews through its import, created here on first sight
-                const bool loadable = !FbxImporter::isFbxFile(thumbFile.path) || project->importFbxModel(thumbFile.path);
+                // An FBX previews through its import, queued here on first sight: a step never
+                // waits, so the thumbnail is asked again once the import lands (S98 REQ-32)
+                const Project::ModelImport import = FbxImporter::isFbxFile(thumbFile.path)
+                    ? project->requestModelImport(thumbFile.path) : Project::ModelImport::Ready;
+                if (import == Project::ModelImport::Pending) {
+                    const fs::path path = thumbFile.path;
+                    project->whenModelImported(path, [this, path]() { requestThumbnailGeneration(path, true); });
+                    {
+                        std::lock_guard<std::mutex> lock(thumbnailMutex);
+                        pendingThumbnailRequests.erase(thumbnailRequestKey(thumbFile.path));
+                        thumbnailWorkerBusy = false;
+                    }
+                    thumbnailCondition.notify_all();
+                    scheduleThumbnailStep();
+                    return;
+                }
+                const bool loadable = import == Project::ModelImport::Ready;
 
                 Engine::AsyncThreadScope loadAsyncScope;
                 MeshSystem::setImageDecodeMaxDimension(256);
@@ -4779,6 +4826,7 @@ void editor::ProjectWindow::show() {
         physicsMaterialIcon.load();
         proceduralIcon(paletteIcon, paletteIconPixels, "editor:resources:palette_icon", makePaletteFileIcon);
         proceduralIcon(tilesetIcon, tilesetIconPixels, "editor:resources:tileset_icon", makeTilesetFileIcon);
+        proceduralIcon(meshAssetIcon, meshAssetIconPixels, "editor:resources:mesh_asset_icon", makeMeshAssetFileIcon);
 
         scanDirectory(project->getProjectPath().string());
 
@@ -5899,7 +5947,7 @@ namespace {
             "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while"};
         if (name.empty()) return "Enter a name.";
         if (identifierKind(kind)) {
-            if (editor::Factory::toIdentifier(name) != name) return "A script's name is its class: letters, digits and _, not starting with a digit.";
+            if (editor::toIdentifier(name) != name) return "A script's name is its class: letters, digits and _, not starting with a digit.";
             if (kind == editor::AssetCreateKind::LuaScript && luaKeywords.count(name)) return "\"" + name + "\" is a Lua keyword.";
         } else {
             if (name == "." || name == ".." || name.find_first_of("/\\:*?\"<>|") != std::string::npos) {
@@ -6152,4 +6200,34 @@ void editor::ProjectWindow::pingAsset(const std::string& projectRelative) {
     pingName = fs::path(projectRelative).filename().string();
     pingUntil = ImGui::GetTime() + 1.5;
     pingScroll = true;
+}
+
+// S98 REQ-8: the selection's globs in Exclude From Build / Always Include in Build (Project Settings >
+// Player > Build), checked when every selected item's glob is in the list; one undo step each
+void editor::ProjectWindow::renderBuildInclusionMenu(const fs::path& clicked) {
+    std::vector<fs::path> chosen = getSelectedFiles();
+    if (std::find(chosen.begin(), chosen.end(), clicked) == chosen.end()) chosen = {clicked};
+    std::vector<std::string> globs;
+    for (const fs::path& path : chosen) {
+        std::error_code ec;
+        globs.push_back(buildglob::forSelection(FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(path)), fs::is_directory(path, ec)));
+    }
+    const AssetStrippingSettings stripping = project->getAssetStripping();
+    auto allIn = [&](const std::vector<std::string>& list) {
+        return std::all_of(globs.begin(), globs.end(), [&](const std::string& glob) { return std::find(list.begin(), list.end(), glob) != list.end(); });
+    };
+    const bool excluded = allIn(stripping.exclude);
+    const bool included = allIn(stripping.alwaysInclude);
+    const bool exclude = ImGui::MenuItem(ICON_FA_BAN " Exclude From Build", nullptr, excluded);
+    uiBuilding.contextMenu.push_back({"Exclude From Build", lastItemRect()});
+    ImGui::SetItemTooltip("No build ships it (Project Settings > Player > Build > Exclude From Build)");
+    const bool include = ImGui::MenuItem(ICON_FA_THUMBTACK " Always Include in Build", nullptr, included);
+    uiBuilding.contextMenu.push_back({"Always Include in Build", lastItemRect()});
+    ImGui::SetItemTooltip("Ships under Asset Stripping: Referenced Only, used or not: for a file a script loads by a path it builds");
+    if (!exclude && !include) return;
+    AssetStrippingSettings changed = stripping;
+    for (const std::string& glob : globs) changed = withBuildGlob(changed, exclude, glob, exclude ? !excluded : !included);
+    if (changed == stripping) return;
+    project->getProjectCommandHistory()->addCommandNoMerge(
+        new AssetStrippingSettingsCmd(project, changed, exclude ? "Exclude From Build" : "Always Include in Build"));
 }

@@ -16,6 +16,8 @@
 // - Rotation maths: blends align each contribution to the hemisphere of what it is blended with
 //   (dot < 0 negates it), then normalise (nlerp). A weight (times mask) of exactly 0 leaves the
 //   base value bit-identical: the kernels select the base there.
+// - Mesh Space Rotation: rotations composed in rig space, for the few boundary bones of a masked
+//   layer only (scalar, one bone at a time: they are a handful per layer).
 // - Thread-safety: a Pose is a value owned by one Animator; the free functions are pure.
 
 #ifndef ANIMATOR_POSE_H
@@ -121,6 +123,11 @@ namespace jasperengine::anim{
     JASPERENGINE_API float poseAdditiveScale(float base, float delta, float weight);
     // poseAdditive of one translation / channel value: base + delta * weight
     JASPERENGINE_API float poseAdditiveValue(float base, float delta, float weight);
+    // Mesh Space Rotation of one bone: the local rotation that puts it at the rig-space rotation
+    // poseBlendRotation(belowRig, layerRig, weight) under a parent at parentRig,
+    // normalize(conj(parentRig) * target)
+    JASPERENGINE_API Quaternion poseMeshSpaceLocal(const Quaternion& parentRig, const Quaternion& belowRig, const Quaternion& layerRig,
+                                                   float weight);
 
     // ---- rig space ----
 
@@ -155,6 +162,22 @@ namespace jasperengine::anim{
     // the same for `bone` and its descendants only: the bones in parents-first depth-first order
     // (a rig's), so a subtree is the bones from `bone` up to the first whose parent precedes it
     JASPERENGINE_API void poseToRigSpaceSubtree(const Pose& local, const int* parents, size_t bone, RigSpace out);
+    // the rig-space rotations of bones [0, count) only (poseToRigSpace's rotations, bit for bit)
+    JASPERENGINE_API void poseRigRotations(const Pose& local, const int* parents, size_t count, Quaternion* out);
+
+    // ---- Mesh Space Rotation (docs/specs/mesh-space-rotation.md R5-R7, D2) ----
+
+    // After poseBlend(out, below, layer, weight, mask, ...) of a masked Override layer: each
+    // boundary bone b (a bone with a parent whose mask weight differs from its parent's, in
+    // `boundary` parents first) gets the local rotation poseMeshSpaceLocal(final parent,
+    // belowRig[b], layerRig[b], weight * mask[b]), so it keeps a rotation relative to the rig, not
+    // to its parent. `belowRig` and `layerRig` hold poseRigRotations of `below` and `layer` for
+    // bones [0, boundary[boundaryCount - 1]], taken before the blend. Only boundary bones'
+    // rotations change; translations, scales and channels stay poseBlend's. `belowRig` is the
+    // scratch of out's own rig rotations: on return it holds them, corrected, over that range.
+    // Pure, allocates nothing.
+    JASPERENGINE_API void poseMeshSpaceRotation(Pose& out, const int* parents, const uint16_t* boundary, size_t boundaryCount,
+                                                const float* mask, float weight, Quaternion* belowRig, const Quaternion* layerRig);
 
 }
 

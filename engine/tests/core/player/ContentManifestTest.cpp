@@ -236,3 +236,15 @@ TEST(PlayerModules, BuiltModulesFollowTheBuildDefinitions) {
     EXPECT_FALSE(isModuleBuilt("nosuchmodule"));
     EXPECT_EQ(moduleDisplayName("physics3d"), "3D physics");
 }
+
+// S98 REQ-10: a Development Build's left-out assets round-trip; a release build's manifest has no key
+TEST(ContentManifest, StrippedListRoundTripsAndIsAbsentWhenEmpty) {
+    ContentManifest m = sample();
+    EXPECT_FALSE(m.toJson().contains("stripped"));
+    m.stripped["textures/b.png"] = "unreferenced";
+    m.stripped["dev/debug.png"] = "excluded: assets/dev/**";
+    ContentManifest back;
+    std::string error;
+    ASSERT_TRUE(ContentManifest::parse(m.toJson().dump(2), back, error)) << error;
+    EXPECT_EQ(back.stripped, m.stripped);
+}
