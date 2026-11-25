@@ -138,10 +138,14 @@ namespace{
         Vector3 p0, p1;
         float h0 = 0.0f, h1 = 0.0f;
         if (wrap != ClipWrapMode::Loop){
-            const float a = wrap == ClipWrapMode::PingPong ? anim::wrapClipTime((float)from, (float)length, wrap)
-                                                           : (float)std::min(std::max(from, 0.0), length);
-            const float b = wrap == ClipWrapMode::PingPong ? anim::wrapClipTime((float)to, (float)length, wrap)
-                                                           : (float)std::min(std::max(to, 0.0), length);
+            // clamped by value: MSVC 19.52 at /O2 /Ob2 read the reference std::min(std::max(to, 0.0),
+            // length) returns, inside a conditional, through a truncated address (an access violation)
+            const auto clipTimeOf = [&](double time){
+                if (wrap == ClipWrapMode::PingPong) return anim::wrapClipTime((float)time, (float)length, wrap);
+                return (float)(time < 0.0 ? 0.0 : (time > length ? length : time));
+            };
+            const float a = clipTimeOf(from);
+            const float b = clipTimeOf(to);
             playerRootPoint(rm, clip, a, p0, h0);
             playerRootPoint(rm, clip, b, p1, h1);
             delta = anim::rootRotateYaw(anim::rootRotateYaw(p1 - p0, -h0), rm.frame.turn);
