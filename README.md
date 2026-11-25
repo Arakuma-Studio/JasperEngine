@@ -1,5 +1,8 @@
 # JasperEngine
 
+**Español: [README.es.md](README.es.md)** — guía principal en español, con el mapa del repositorio,
+la compilación paso a paso y el workflow que compila el motor en GitHub Actions.
+
 **A lightweight native C++ engine for 2D and 3D games, with a visual editor and Lua scripting.**
 
 JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Eduardo Doria and contributors. See [NOTICE.md](NOTICE.md).
