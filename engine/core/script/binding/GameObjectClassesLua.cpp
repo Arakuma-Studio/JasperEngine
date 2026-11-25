@@ -3695,8 +3695,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("width", &Text::getWidth, +[](Text* self, unsigned int width) { self->setWidth(width); })
         .addProperty("height", &Text::getHeight, +[](Text* self, unsigned int height) { self->setHeight(height); })
         .addFunction("updateLayout", &Text::updateLayout)
-        .addProperty("horizontalAlignment", &Text::getHorizontalAlignment, &Text::setHorizontalAlignment)
-        .addProperty("verticalAlignment", &Text::getVerticalAlignment, &Text::setVerticalAlignment)
+        .addProperty("anchorHorizontal", &Text::getAnchorHorizontal, &Text::setAnchorHorizontal)
+        .addProperty("anchorVertical", &Text::getAnchorVertical, &Text::setAnchorVertical)
         .addProperty("fontSizeUnit", &Text::getFontSizeUnit, &Text::setFontSizeUnit)
         .addFunction("setFixedSize", &Text::setFixedSize)
         .addProperty("fixedWidth", &Text::isFixedWidth, &Text::setFixedWidth)
@@ -3761,7 +3761,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("depthWrite", &Text::getDepthWrite, &Text::setDepthWrite)
         .addProperty("stencil", &Text::getStencil, &Text::setStencil)
         .addProperty("colorWrite", &Text::getColorWrite, &Text::setColorWrite)
-        // deprecated aliases of verticalAlignment Baseline and horizontalAlignment Center
+        // deprecated aliases of anchorVertical Baseline and anchorHorizontal Center
         .addProperty("pivotBaseline", &Text::isPivotBaseline, &Text::setPivotBaseline)
         .addProperty("pivotCentered", &Text::isPivotCentered, &Text::setPivotCentered)
         .addProperty("outlineWidth", &Text::getOutlineWidth, &Text::setOutlineWidth)

@@ -331,7 +331,7 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
 // S94 F24 (AC24): scene 8 -> 9 and prefab 9 -> 10 turn a Text's pivotBaseline / pivotCentered into
 // its alignment (false: the old defaults, Bottom and Left, so an instance's override keeps its
 // value), children and prefab instance overrides included, the overridden names renamed
-TEST(StreamMigrations, SceneV8TextPivotsBecomeAlignment){
+TEST(StreamMigrations, SceneV8TextPivotsBecomeAnchor){
     YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/scene-v8-text.scene")));
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     ASSERT_TRUE(result.migrated());
@@ -340,38 +340,38 @@ TEST(StreamMigrations, SceneV8TextPivotsBecomeAlignment){
     EXPECT_NE(result.log.lines[0].find("3 Texts'"), std::string::npos) << result.log.lines[0];
 
     const YAML::Node plaque = root["entities"][0]["components"]["text"];
-    EXPECT_EQ(plaque["verticalAlignment"].as<std::string>(), "baseline");
-    EXPECT_EQ(plaque["horizontalAlignment"].as<std::string>(), "center");
+    EXPECT_EQ(plaque["anchorVertical"].as<std::string>(), "baseline");
+    EXPECT_EQ(plaque["anchorHorizontal"].as<std::string>(), "center");
     EXPECT_FALSE(plaque["pivotBaseline"]);
     EXPECT_FALSE(plaque["pivotCentered"]);
     EXPECT_EQ(plaque["text"].as<std::string>(), "12");
 
     const YAML::Node caption = root["entities"][0]["children"][0]["components"]["text"];
-    EXPECT_EQ(caption["verticalAlignment"].as<std::string>(), "bottom");
-    EXPECT_EQ(caption["horizontalAlignment"].as<std::string>(), "left");
+    EXPECT_EQ(caption["anchorVertical"].as<std::string>(), "bottom");
+    EXPECT_EQ(caption["anchorHorizontal"].as<std::string>(), "left");
 
     const YAML::Node instance = root["entities"][1]["prefabInstance"]["overrides"][0];
-    EXPECT_EQ(instance["components"]["text"]["horizontalAlignment"].as<std::string>(), "left");
-    EXPECT_FALSE(instance["components"]["text"]["verticalAlignment"]);
-    EXPECT_EQ(instance["properties"]["text"][0].as<std::string>(), "horizontalAlignment");
+    EXPECT_EQ(instance["components"]["text"]["anchorHorizontal"].as<std::string>(), "left");
+    EXPECT_FALSE(instance["components"]["text"]["anchorVertical"]);
+    EXPECT_EQ(instance["properties"]["text"][0].as<std::string>(), "anchorHorizontal");
     EXPECT_EQ(instance["properties"]["text"][1].as<std::string>(), "text");
 
     // what the Text decodes to
     TextComponent text;
     const YAML::Node component = root["entities"][0]["components"]["text"];
     reflect::decodeInto(ComponentType::TextComponent, component, &text, nullptr);
-    EXPECT_EQ(text.verticalAlignment, TextVerticalAlignment::BASELINE);
-    EXPECT_EQ(text.horizontalAlignment, TextHorizontalAlignment::CENTER);
+    EXPECT_EQ(text.anchorVertical, TextAnchorVertical::BASELINE);
+    EXPECT_EQ(text.anchorHorizontal, TextAnchorHorizontal::CENTER);
 }
 
-TEST(StreamMigrations, PrefabV9TextPivotsBecomeAlignment){
+TEST(StreamMigrations, PrefabV9TextPivotsBecomeAnchor){
     YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/prefab-v9-text.prefab")));
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     ASSERT_TRUE(result.migrated());
     EXPECT_EQ(root["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
     const YAML::Node sign = root["members"][0]["components"]["text"];
-    EXPECT_EQ(sign["verticalAlignment"].as<std::string>(), "baseline");
-    EXPECT_EQ(sign["horizontalAlignment"].as<std::string>(), "center");
+    EXPECT_EQ(sign["anchorVertical"].as<std::string>(), "baseline");
+    EXPECT_EQ(sign["anchorHorizontal"].as<std::string>(), "center");
     EXPECT_FALSE(sign["pivotBaseline"]);
 }
 

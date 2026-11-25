@@ -10,8 +10,8 @@
 namespace jasperengine{
     class JASPERENGINE_API STBText;
     // component/TextComponent.h
-    enum class TextHorizontalAlignment;
-    enum class TextVerticalAlignment;
+    enum class TextAnchorHorizontal;
+    enum class TextAnchorVertical;
     enum class TextFontSizeUnit;
 
     class JASPERENGINE_API Text: public RectTransform{
@@ -80,16 +80,16 @@ namespace jasperengine{
         void setFlipY(bool flipY);
         bool isFlipY() const;
 
-        // TextMesh Pro's alignment (S94 F24): the point of the box on the origin, each line in the box
-        void setHorizontalAlignment(TextHorizontalAlignment alignment);
-        TextHorizontalAlignment getHorizontalAlignment() const;
-        void setVerticalAlignment(TextVerticalAlignment alignment);
-        TextVerticalAlignment getVerticalAlignment() const;
+        // Unity TextMesh's Anchor (S94 F24): the point of the text's box on the origin
+        void setAnchorHorizontal(TextAnchorHorizontal alignment);
+        TextAnchorHorizontal getAnchorHorizontal() const;
+        void setAnchorVertical(TextAnchorVertical alignment);
+        TextAnchorVertical getAnchorVertical() const;
         // the font size as ascender to descender (the default) or as the em square (S94 F26)
         void setFontSizeUnit(TextFontSizeUnit unit);
         TextFontSizeUnit getFontSizeUnit() const;
 
-        // deprecated: the alignment before S94 (Baseline and Center)
+        // deprecated: the anchor before S94 (Baseline and Center)
         void setPivotBaseline(bool pivotBaseline);
         bool isPivotBaseline() const;
 

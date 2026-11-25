@@ -781,8 +781,8 @@ namespace {
     }
 
     // Every Text map below node (GameObjects, children, prefab members, prefab instance overrides
-    // and added GameObjects alike): pivotBaseline is verticalAlignment Baseline, pivotCentered
-    // horizontalAlignment Center, and false the old default of each (Bottom, Left: an override
+    // and added GameObjects alike): pivotBaseline is anchorVertical Baseline, pivotCentered
+    // anchorHorizontal Center, and false the old default of each (Bottom, Left: an override
     // keeps its value); an instance's overridden property names follow
     int migrateTextPivots(YAML::Node node){
         int migrated = 0;
@@ -792,21 +792,21 @@ namespace {
                 const bool textKey = it->first.IsScalar() && it->first.Scalar() == "text";
                 if (textKey && value.IsMap() && (value["pivotBaseline"] || value["pivotCentered"])){
                     if (value["pivotBaseline"]){
-                        if (!value["verticalAlignment"])
-                            value["verticalAlignment"] = yamlTrue(value["pivotBaseline"]) ? "baseline" : "bottom";
+                        if (!value["anchorVertical"])
+                            value["anchorVertical"] = yamlTrue(value["pivotBaseline"]) ? "baseline" : "bottom";
                         value.remove("pivotBaseline");
                     }
                     if (value["pivotCentered"]){
-                        if (!value["horizontalAlignment"])
-                            value["horizontalAlignment"] = yamlTrue(value["pivotCentered"]) ? "center" : "left";
+                        if (!value["anchorHorizontal"])
+                            value["anchorHorizontal"] = yamlTrue(value["pivotCentered"]) ? "center" : "left";
                         value.remove("pivotCentered");
                     }
                     migrated++;
                 }else if (textKey && value.IsSequence()){
                     // an override's property names (properties: {text: [...]})
                     for (YAML::Node name : value){
-                        if (name.IsScalar() && name.Scalar() == "pivotBaseline") name = "verticalAlignment";
-                        else if (name.IsScalar() && name.Scalar() == "pivotCentered") name = "horizontalAlignment";
+                        if (name.IsScalar() && name.Scalar() == "pivotBaseline") name = "anchorVertical";
+                        else if (name.IsScalar() && name.Scalar() == "pivotCentered") name = "anchorHorizontal";
                     }
                 }else{
                     migrated += migrateTextPivots(value);
@@ -822,7 +822,7 @@ namespace {
     void logTextPivots(int migrated, MigrationLog& log){
         if (migrated > 0){
             log.info(std::to_string(migrated) + (migrated == 1 ? " Text's" : " Texts'") +
-                     " pivotBaseline / pivotCentered are its Vertical and Horizontal Alignment now");
+                     " pivotBaseline / pivotCentered are its Anchor now");
         }
     }
 
@@ -871,13 +871,13 @@ namespace {
 
     // Scene 10 -> 11 (S94 F24, F33): Text alignment replaces the two pivot booleans; Animators and
     // Animation Players keep their clips' root drift
-    void sceneTextAlignmentAndRootDrift(YAML::Node& root, MigrationLog& log){
+    void sceneTextAnchorAndRootDrift(YAML::Node& root, MigrationLog& log){
         logTextPivots(migrateTextPivots(root["entities"]), log);
         logRootDrift(keepRootDrift(root["entities"]), log);
     }
 
     // Prefab 10 -> 11: the same for its members
-    void prefabTextAlignmentAndRootDrift(YAML::Node& root, MigrationLog& log){
+    void prefabTextAnchorAndRootDrift(YAML::Node& root, MigrationLog& log){
         logTextPivots(migrateTextPivots(root["members"]), log);
         logRootDrift(keepRootDrift(root["members"]), log);
     }
@@ -937,7 +937,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {7, 8, "sprite sheets (identity: an older scene has none)", sheetSpritesIdentity},
         {8, 9, "mesh assets (identity: an older scene holds its meshes' buffers)", meshAssetsIdentity},
         {9, 10, "S92's HTML UI render mode (on main before this; identity here)", sceneV9ToV10BeforeS92},
-        {10, 11, "Text pivots to Text alignment; Animators keep their root drift", sceneTextAlignmentAndRootDrift},
+        {10, 11, "Text pivots to Text Anchor; Animators keep their root drift", sceneTextAnchorAndRootDrift},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
@@ -955,7 +955,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {7, 8, "Line and Trail Renderer curves and gradients in the editor's curve form", prefabV7ToV8},
         {8, 9, "sprite sheets (identity: an older prefab has none)", sheetSpritesIdentity},
         {9, 10, "mesh assets; linked materials keep the embedded copies", prefabV9ToV10},
-        {10, 11, "Text pivots to Text alignment; Animators keep their root drift", prefabTextAlignmentAndRootDrift},
+        {10, 11, "Text pivots to Text Anchor; Animators keep their root drift", prefabTextAnchorAndRootDrift},
     };
 
     switch (kind){

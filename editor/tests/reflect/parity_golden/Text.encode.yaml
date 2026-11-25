@@ -8,8 +8,8 @@ multiline: true
 maxTextSize: 169
 fixedWidth: false
 fixedHeight: true
-horizontalAlignment: right
-verticalAlignment: baseline
+anchorHorizontal: right
+anchorVertical: baseline
 fontSizeUnit: em
 outlineWidth: .nan
 outlineColor: [4875.966, -0, 141.85715, -124.14286]
@@ -27,8 +27,8 @@ multiline: false
 maxTextSize: 945
 fixedWidth: false
 fixedHeight: false
-horizontalAlignment: center
-verticalAlignment: middle
+anchorHorizontal: center
+anchorVertical: middle
 outlineWidth: 2166.342
 outlineColor: [0.37051225, 0, 0, -0]
 outlineNeighbors: -5
@@ -45,8 +45,8 @@ multiline: false
 maxTextSize: 2259
 fixedWidth: false
 fixedHeight: false
-horizontalAlignment: center
-verticalAlignment: capline
+anchorHorizontal: center
+anchorVertical: capline
 fontSizeUnit: em
 outlineWidth: .inf
 outlineColor: [-0, 6010.211, -108.71429, 3e+38]
@@ -65,8 +65,8 @@ multiline: false
 maxTextSize: 1960
 fixedWidth: true
 fixedHeight: true
-horizontalAlignment: left
-verticalAlignment: middle
+anchorHorizontal: left
+anchorVertical: middle
 outlineWidth: .inf
 outlineColor: [0.31115672, -61.57143, 0.5953465, 0.95927495]
 outlineNeighbors: -1
@@ -84,8 +84,8 @@ multiline: true
 maxTextSize: 3382
 fixedWidth: false
 fixedHeight: true
-horizontalAlignment: left
-verticalAlignment: middle
+anchorHorizontal: left
+anchorVertical: middle
 fontSizeUnit: em
 outlineWidth: -93
 outlineColor: [104.71429, 0, 2698.5674, 3e+38]
@@ -103,8 +103,8 @@ multiline: false
 maxTextSize: 1654
 fixedWidth: true
 fixedHeight: true
-horizontalAlignment: left
-verticalAlignment: midline
+anchorHorizontal: left
+anchorVertical: midline
 outlineWidth: -57
 outlineColor: [-57.57143, 0, 43, -0.52759516]
 outlineNeighbors: 2
@@ -121,8 +121,8 @@ multiline: false
 maxTextSize: 2014
 fixedWidth: false
 fixedHeight: false
-horizontalAlignment: left
-verticalAlignment: bottom
+anchorHorizontal: left
+anchorVertical: bottom
 fontSizeUnit: em
 outlineWidth: 84.71429
 outlineColor: [-0, 7423.4126, 0.34046715, 3489.342]
@@ -141,8 +141,8 @@ multiline: true
 maxTextSize: 3861
 fixedWidth: true
 fixedHeight: true
-horizontalAlignment: right
-verticalAlignment: midline
+anchorHorizontal: right
+anchorVertical: midline
 fontSizeUnit: em
 outlineWidth: 5977.078
 outlineColor: [0.7512765, 0, 42.42857, 0]

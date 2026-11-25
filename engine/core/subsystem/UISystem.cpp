@@ -548,7 +548,7 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
     ui.minIndicesCount = text.maxTextSize * 6;
 
     text.stbtext->createText(text.text, &ui.buffer, indices_array, text.charPositions, text.charExtents, layout.width, layout.height, text.fixedWidth, text.fixedHeight, text.multiline, ui.flipY,
-                             &text.glyphInfo, textLineAlign(text));
+                             &text.glyphInfo);
 
     syncFontAtlas(text, ui);
     updateTextShaderParams(text, ui);
@@ -557,10 +557,10 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
                        indices_array);
 }
 
-float UISystem::textLineAlign(const TextComponent& text){
-    switch (text.horizontalAlignment){
-        case TextHorizontalAlignment::CENTER: return 0.5f;
-        case TextHorizontalAlignment::RIGHT: return 1.0f;
+float UISystem::textAnchorX(const TextComponent& text){
+    switch (text.anchorHorizontal){
+        case TextAnchorHorizontal::CENTER: return 0.5f;
+        case TextAnchorHorizontal::RIGHT: return 1.0f;
         default: return 0.0f;
     }
 }
@@ -577,16 +577,16 @@ void UISystem::finishTextGeometry(TextComponent& text, UIComponent& ui, RectTran
         boxLow = -std::round(-boxLow / pivotStep) * pivotStep;
     const float up = ui.flipY ? 1.0f : -1.0f;
     float anchorY = boxLow;
-    switch (text.verticalAlignment){
-        case TextVerticalAlignment::TOP: anchorY = boxLow + height; break;
-        case TextVerticalAlignment::MIDDLE: anchorY = boxLow + height / 2.0f; break;
-        case TextVerticalAlignment::BASELINE: anchorY = 0.0f; break;
-        case TextVerticalAlignment::CAPLINE: anchorY = up * capHeight / 2.0f; break;
-        case TextVerticalAlignment::MIDLINE: anchorY = up * xHeight / 2.0f; break;
+    switch (text.anchorVertical){
+        case TextAnchorVertical::TOP: anchorY = boxLow + height; break;
+        case TextAnchorVertical::MIDDLE: anchorY = boxLow + height / 2.0f; break;
+        case TextAnchorVertical::BASELINE: anchorY = 0.0f; break;
+        case TextAnchorVertical::CAPLINE: anchorY = up * capHeight / 2.0f; break;
+        case TextAnchorVertical::MIDLINE: anchorY = up * xHeight / 2.0f; break;
         default: break;
     }
     float offsetY = -anchorY;
-    float offsetX = -(float)layout.width * textLineAlign(text);
+    float offsetX = -(float)layout.width * textAnchorX(text);
     if (pivotStep > 0.0f){
         offsetY = std::round(offsetY / pivotStep) * pivotStep;
         offsetX = -std::floor(-offsetX / pivotStep) * pivotStep;

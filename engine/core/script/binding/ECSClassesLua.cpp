@@ -311,19 +311,19 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("FRAME", PivotPreset::FRAME)
         .endNamespace();
 
-    // Text.horizontalAlignment and Text.verticalAlignment (TextMesh Pro's): one table, values the
+    // Text.anchorHorizontal and Text.anchorVertical (Unity TextMesh's Anchor): one table, values the
     // other property refuses
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("TextAlignment")
-        .addVariable("Left", TextHorizontalAlignment::LEFT)
-        .addVariable("Center", TextHorizontalAlignment::CENTER)
-        .addVariable("Right", TextHorizontalAlignment::RIGHT)
-        .addVariable("Top", TextVerticalAlignment::TOP)
-        .addVariable("Middle", TextVerticalAlignment::MIDDLE)
-        .addVariable("Bottom", TextVerticalAlignment::BOTTOM)
-        .addVariable("Baseline", TextVerticalAlignment::BASELINE)
-        .addVariable("Capline", TextVerticalAlignment::CAPLINE)
-        .addVariable("Midline", TextVerticalAlignment::MIDLINE)
+        .beginNamespace("TextAnchor")
+        .addVariable("Left", TextAnchorHorizontal::LEFT)
+        .addVariable("Center", TextAnchorHorizontal::CENTER)
+        .addVariable("Right", TextAnchorHorizontal::RIGHT)
+        .addVariable("Top", TextAnchorVertical::TOP)
+        .addVariable("Middle", TextAnchorVertical::MIDDLE)
+        .addVariable("Bottom", TextAnchorVertical::BOTTOM)
+        .addVariable("Baseline", TextAnchorVertical::BASELINE)
+        .addVariable("Capline", TextAnchorVertical::CAPLINE)
+        .addVariable("Midline", TextAnchorVertical::MIDLINE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)

@@ -27,23 +27,23 @@ namespace jasperengine::editor::reflect {
 namespace enums {
 
     namespace {
-        constexpr int textValue(TextHorizontalAlignment alignment) { return static_cast<int>(alignment); }
-        constexpr int textValue(TextVerticalAlignment alignment) { return static_cast<int>(alignment); }
+        constexpr int textValue(TextAnchorHorizontal alignment) { return static_cast<int>(alignment); }
+        constexpr int textValue(TextAnchorVertical alignment) { return static_cast<int>(alignment); }
         constexpr int textValue(TextFontSizeUnit unit) { return static_cast<int>(unit); }
 
-        constexpr EnumItem kTextHorizontalAlignmentItems[] = {
-            {textValue(TextHorizontalAlignment::LEFT), "left", "Left", "TextHorizontalAlignment::LEFT"},
-            {textValue(TextHorizontalAlignment::CENTER), "center", "Center", "TextHorizontalAlignment::CENTER"},
-            {textValue(TextHorizontalAlignment::RIGHT), "right", "Right", "TextHorizontalAlignment::RIGHT"},
+        constexpr EnumItem kTextAnchorHorizontalItems[] = {
+            {textValue(TextAnchorHorizontal::LEFT), "left", "Left", "TextAnchorHorizontal::LEFT"},
+            {textValue(TextAnchorHorizontal::CENTER), "center", "Center", "TextAnchorHorizontal::CENTER"},
+            {textValue(TextAnchorHorizontal::RIGHT), "right", "Right", "TextAnchorHorizontal::RIGHT"},
         };
 
-        constexpr EnumItem kTextVerticalAlignmentItems[] = {
-            {textValue(TextVerticalAlignment::TOP), "top", "Top", "TextVerticalAlignment::TOP"},
-            {textValue(TextVerticalAlignment::MIDDLE), "middle", "Middle", "TextVerticalAlignment::MIDDLE"},
-            {textValue(TextVerticalAlignment::BOTTOM), "bottom", "Bottom", "TextVerticalAlignment::BOTTOM"},
-            {textValue(TextVerticalAlignment::BASELINE), "baseline", "Baseline", "TextVerticalAlignment::BASELINE"},
-            {textValue(TextVerticalAlignment::CAPLINE), "capline", "Capline", "TextVerticalAlignment::CAPLINE"},
-            {textValue(TextVerticalAlignment::MIDLINE), "midline", "Midline", "TextVerticalAlignment::MIDLINE"},
+        constexpr EnumItem kTextAnchorVerticalItems[] = {
+            {textValue(TextAnchorVertical::TOP), "top", "Top", "TextAnchorVertical::TOP"},
+            {textValue(TextAnchorVertical::MIDDLE), "middle", "Middle", "TextAnchorVertical::MIDDLE"},
+            {textValue(TextAnchorVertical::BOTTOM), "bottom", "Bottom", "TextAnchorVertical::BOTTOM"},
+            {textValue(TextAnchorVertical::BASELINE), "baseline", "Baseline", "TextAnchorVertical::BASELINE"},
+            {textValue(TextAnchorVertical::CAPLINE), "capline", "Capline", "TextAnchorVertical::CAPLINE"},
+            {textValue(TextAnchorVertical::MIDLINE), "midline", "Midline", "TextAnchorVertical::MIDLINE"},
         };
 
         constexpr EnumItem kTextFontSizeUnitItems[] = {
@@ -52,8 +52,8 @@ namespace enums {
         };
     }
 
-    const EnumDesc kTextHorizontalAlignment{"TextHorizontalAlignment", kTextHorizontalAlignmentItems, textValue(TextHorizontalAlignment::LEFT)};
-    const EnumDesc kTextVerticalAlignment{"TextVerticalAlignment", kTextVerticalAlignmentItems, textValue(TextVerticalAlignment::BOTTOM)};
+    const EnumDesc kTextAnchorHorizontal{"TextAnchorHorizontal", kTextAnchorHorizontalItems, textValue(TextAnchorHorizontal::LEFT)};
+    const EnumDesc kTextAnchorVertical{"TextAnchorVertical", kTextAnchorVerticalItems, textValue(TextAnchorVertical::BOTTOM)};
     const EnumDesc kTextFontSizeUnit{"TextFontSizeUnit", kTextFontSizeUnitItems, textValue(TextFontSizeUnit::PIXEL_HEIGHT)};
 
 }
@@ -310,11 +310,11 @@ namespace {
                  .uiOrder = 10),
         JE_FIELD(TextComponent, fixedWidth, .updateFlags = kText, .label = "Width", .group = "Fixed size"),
         JE_FIELD(TextComponent, fixedHeight, .updateFlags = kText, .label = "Height", .group = "Fixed size"),
-        // S94 F24: TextMesh Pro's Alignment, drawn as the Text drawer's button rows (InspectorPixelFont.cpp)
-        JE_FIELD(TextComponent, horizontalAlignment, .enumDesc = &enums::kTextHorizontalAlignment, .flags = Hidden, .updateFlags = kText,
-                 .label = "Horizontal Alignment", .group = "Alignment"),
-        JE_FIELD(TextComponent, verticalAlignment, .enumDesc = &enums::kTextVerticalAlignment, .flags = Hidden, .updateFlags = kText,
-                 .label = "Vertical Alignment", .group = "Alignment"),
+        // S94 F24: Unity TextMesh's Anchor (the box point on the origin), drawn as the Text drawer's button rows (InspectorPixelFont.cpp)
+        JE_FIELD(TextComponent, anchorHorizontal, .enumDesc = &enums::kTextAnchorHorizontal, .flags = Hidden, .updateFlags = kText,
+                 .label = "Anchor Horizontal", .group = "Anchor"),
+        JE_FIELD(TextComponent, anchorVertical, .enumDesc = &enums::kTextAnchorVertical, .flags = Hidden, .updateFlags = kText,
+                 .label = "Anchor Vertical", .group = "Anchor"),
         // S94 F26: written only when Em
         JE_FIELD(TextComponent, fontSizeUnit, .enumDesc = &enums::kTextFontSizeUnit, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
                  .label = "Font Size Unit", .tooltip = "Pixel Height: Font Size is ascender to descender. Em: the em square, as CSS and TextMesh Pro.",

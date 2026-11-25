@@ -389,7 +389,7 @@ namespace {
         // S96 vehicles
         &enums::kVehicleTransmissionMode,
         // Text alignment (S94)
-        &enums::kTextHorizontalAlignment, &enums::kTextVerticalAlignment, &enums::kTextFontSizeUnit,
+        &enums::kTextAnchorHorizontal, &enums::kTextAnchorVertical, &enums::kTextFontSizeUnit,
         // the Outline (S94)
         &enums::kOutlineMode, &enums::kOutlineWidthUnits,
     };

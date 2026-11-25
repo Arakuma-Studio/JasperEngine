@@ -144,7 +144,6 @@ void UISystem::createBitmapText(TextComponent& text, UIComponent& ui, RectTransf
     options.fixedHeight = text.fixedHeight;
     options.multiline = text.multiline;
     options.invert = ui.flipY;
-    options.lineAlign = textLineAlign(text);
     options.style = style;
     options.vertexColor = colors;
     options.faceColor = Vector3(ui.color.x, ui.color.y, ui.color.z);

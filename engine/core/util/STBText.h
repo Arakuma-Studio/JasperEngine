@@ -143,12 +143,11 @@ namespace jasperengine {
 
         TextureData* load(const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize);
         // Every length in and out is in text pixels (UI units), whatever the raster scale.
-        // glyphInfo (optional) gets one entry per quad written to the buffer. lineAlign places each
-        // line in the box (the fixed width, else the widest line): 0 left, 0.5 centre, 1 right.
+        // glyphInfo (optional) gets one entry per quad written to the buffer.
         void createText(const std::string& text, Buffer* buffer, std::vector<uint16_t>& indices, std::vector<Vector2>& charPositions,
                         std::vector<CharExtent>& charExtents,
                         unsigned int& width, unsigned int& height, bool fixedWidth, bool fixedHeight, bool multiline, bool invert,
-                        std::vector<TextGlyphInfo>* glyphInfo = nullptr, float lineAlign = 0.0f);
+                        std::vector<TextGlyphInfo>* glyphInfo = nullptr);
 
         TextureData* getTextureData();
         

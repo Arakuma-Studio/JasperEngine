@@ -528,8 +528,8 @@ namespace jasperengine{
         // Text:updateLayout (S94 F25): the glyphs and the box size now, only when the text is dirty;
         // without a camera yet the box is measured and the glyphs built again once there is one
         bool updateTextLayout(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
-        // where each line sits in the text's box: 0 left, 0.5 centre, 1 right
-        static float textLineAlign(const TextComponent& text);
+        // the Anchor along x: the share of the text's box left of its origin (0 left, 0.5 centre, 1 right)
+        static float textAnchorX(const TextComponent& text);
 
         // advanced UIs
         void createButtonObjects(Entity entity, ButtonComponent& button);

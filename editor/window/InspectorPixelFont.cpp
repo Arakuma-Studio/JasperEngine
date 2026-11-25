@@ -49,26 +49,27 @@ namespace {
 
 }
 
-// TextMesh Pro's Alignment (S94 F24): a row of horizontal buttons and one of vertical ones; the
-// selection's shared value is lit, a click sets every selected Text in one undo step
-void editor::InspectorWindow::drawTextAlignment(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities){
-    struct AlignmentButton {
+// Unity TextMesh's Anchor (S94 F24): which point of the text box sits on the origin, a row of
+// horizontal buttons and one of vertical ones; the selection's shared value is lit, a click sets
+// every selected Text in one undo step
+void editor::InspectorWindow::drawTextAnchor(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities){
+    struct AnchorButton {
         int value;
         const char* label;
         const char* tooltip;
     };
-    static const AlignmentButton horizontal[] = {
-        {(int)TextHorizontalAlignment::LEFT, ICON_FA_ALIGN_LEFT, "Left: the box starts at the origin, lines aligned left"},
-        {(int)TextHorizontalAlignment::CENTER, ICON_FA_ALIGN_CENTER, "Center: the box centred on the origin, lines centred"},
-        {(int)TextHorizontalAlignment::RIGHT, ICON_FA_ALIGN_RIGHT, "Right: the box ends at the origin, lines aligned right"},
+    static const AnchorButton horizontal[] = {
+        {(int)TextAnchorHorizontal::LEFT, "Left", "Left: the box starts at the origin"},
+        {(int)TextAnchorHorizontal::CENTER, "Center", "Center: the box centred on the origin"},
+        {(int)TextAnchorHorizontal::RIGHT, "Right", "Right: the box ends at the origin"},
     };
-    static const AlignmentButton vertical[] = {
-        {(int)TextVerticalAlignment::TOP, "Top", "Top: the box's top edge on the origin"},
-        {(int)TextVerticalAlignment::MIDDLE, "Middle", "Middle: the box's centre on the origin"},
-        {(int)TextVerticalAlignment::BOTTOM, "Bottom", "Bottom: the box's bottom edge on the origin (the default)"},
-        {(int)TextVerticalAlignment::BASELINE, "Baseline", "Baseline: the first line's baseline on the origin"},
-        {(int)TextVerticalAlignment::CAPLINE, "Capline", "Capline: the middle of the first line's capitals on the origin"},
-        {(int)TextVerticalAlignment::MIDLINE, "Midline", "Midline: the middle of the first line's lowercase letters on the origin"},
+    static const AnchorButton vertical[] = {
+        {(int)TextAnchorVertical::TOP, "Top", "Top: the box's top edge on the origin"},
+        {(int)TextAnchorVertical::MIDDLE, "Middle", "Middle: the box's centre on the origin"},
+        {(int)TextAnchorVertical::BOTTOM, "Bottom", "Bottom: the box's bottom edge on the origin (the default)"},
+        {(int)TextAnchorVertical::BASELINE, "Baseline", "Baseline: the first line's baseline on the origin"},
+        {(int)TextAnchorVertical::CAPLINE, "Capline", "Capline: the middle of the first line's capitals on the origin"},
+        {(int)TextAnchorVertical::MIDLINE, "Midline", "Midline: the middle of the first line's lowercase letters on the origin"},
     };
 
     // the value every selected Text shares, -1 when they differ
@@ -81,7 +82,7 @@ void editor::InspectorWindow::drawTextAlignment(ComponentType cpType, SceneProje
         }
         return value;
     };
-    auto buttons = [&](const char* property, const AlignmentButton* items, size_t count, int current){
+    auto buttons = [&](const char* property, const AnchorButton* items, size_t count, int current){
         for (size_t i = 0; i < count; i++){
             if (i > 0) ImGui::SameLine(0.0f, 2.0f);
             const bool lit = items[i].value == current;
@@ -95,18 +96,18 @@ void editor::InspectorWindow::drawTextAlignment(ComponentType cpType, SceneProje
         }
     };
 
-    separatorText("Alignment");
+    separatorText("Anchor");
     beginTable(cpType, getLabelSize("Vertical"), "textalignment");
     ipfLabel("Horizontal");
-    buttons("horizontalAlignment", horizontal, 3, shared(&TextComponent::horizontalAlignment));
+    buttons("anchorHorizontal", horizontal, 3, shared(&TextComponent::anchorHorizontal));
     ipfLabel("Vertical");
-    buttons("verticalAlignment", vertical, 6, shared(&TextComponent::verticalAlignment));
+    buttons("anchorVertical", vertical, 6, shared(&TextComponent::anchorVertical));
     endTable();
 }
 
 void editor::InspectorWindow::drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     drawDefaultComponent(cpType, sceneProject, entities);
-    drawTextAlignment(cpType, sceneProject, entities);
+    drawTextAnchor(cpType, sceneProject, entities);
     TextComponent& text = sceneProject->scene->getComponent<TextComponent>(entities[0]);
     if (!ipf::isBitmapFontPath(text.font[0]))
         return;

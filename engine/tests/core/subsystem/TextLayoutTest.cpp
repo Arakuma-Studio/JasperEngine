@@ -1,9 +1,9 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// S94 F24-F26 (AC24-AC26): a Text's alignment places its box against its origin by the font's
-// metrics (Top, Middle, Bottom on the box; Baseline, Capline, Midline on the first line), each
-// line inside the box for Center and Right; its size is known right after setText (Text:width
+// S94 F24-F26 (AC24-AC26): a Text's Anchor places its box against its origin by the font's
+// metrics (Top, Middle, Bottom on the box; Baseline, Capline, Midline on the first line) and
+// leaves its lines where they are inside the box; its size is known right after setText (Text:width
 // lays it out on demand, once); and the em font size scales by the em square as CSS does. No GPU:
 // UISystem lays the glyphs out on the CPU (the built-in Roboto).
 
@@ -67,7 +67,7 @@ namespace {
 
 // AC24: the box of each vertical mode against the font's metrics (world camera: y up); the glyphs
 // move with it
-TEST(TextLayoutTest, VerticalAlignments){
+TEST(TextLayoutTest, AnchorVerticals){
     TextLayoutScene t(CameraType::CAMERA_PERSPECTIVE, "Hg");
     ASSERT_TRUE(t.text->updateLayout());
     TextComponent& text = t.component();
@@ -90,18 +90,18 @@ TEST(TextLayoutTest, VerticalAlignments){
     EXPECT_FLOAT_EQ(text.boxMin.y, 0.0f);
     const float bottomGlyphs = t.minY();
 
-    struct Mode { TextVerticalAlignment alignment; float boxMinY; };
+    struct Mode { TextAnchorVertical alignment; float boxMinY; };
     const Mode modes[] = {
-        {TextVerticalAlignment::TOP, -height},
-        {TextVerticalAlignment::MIDDLE, -height / 2.0f},
-        {TextVerticalAlignment::BOTTOM, 0.0f},
-        {TextVerticalAlignment::BASELINE, ascent - height},
-        {TextVerticalAlignment::CAPLINE, ascent - height - cap / 2.0f},
-        {TextVerticalAlignment::MIDLINE, ascent - height - x / 2.0f},
+        {TextAnchorVertical::TOP, -height},
+        {TextAnchorVertical::MIDDLE, -height / 2.0f},
+        {TextAnchorVertical::BOTTOM, 0.0f},
+        {TextAnchorVertical::BASELINE, ascent - height},
+        {TextAnchorVertical::CAPLINE, ascent - height - cap / 2.0f},
+        {TextAnchorVertical::MIDLINE, ascent - height - x / 2.0f},
     };
     for (const Mode& mode : modes){
         SCOPED_TRACE((int)mode.alignment);
-        t.text->setVerticalAlignment(mode.alignment);
+        t.text->setAnchorVertical(mode.alignment);
         ASSERT_TRUE(t.text->updateLayout());
         EXPECT_NEAR(text.boxMin.y, mode.boxMinY, 0.5f);
         EXPECT_NEAR(t.minY() - bottomGlyphs, mode.boxMinY, 0.5f);
@@ -109,7 +109,7 @@ TEST(TextLayoutTest, VerticalAlignments){
 
     // Capline centres the capitals on the origin (an H's ink, within its rasterized pixel)
     TextLayoutScene h(CameraType::CAMERA_PERSPECTIVE, "H");
-    h.text->setVerticalAlignment(TextVerticalAlignment::CAPLINE);
+    h.text->setAnchorVertical(TextAnchorVertical::CAPLINE);
     ASSERT_TRUE(h.text->updateLayout());
     float low = FLT_MAX, high = -FLT_MAX;
     for (const Vector3& v : h.vertices()){
@@ -125,37 +125,37 @@ TEST(TextLayoutTest, UiCameraKeepsTheOldAnchor){
     ASSERT_TRUE(t.text->updateLayout());
     TextComponent& text = t.component();
     EXPECT_FLOAT_EQ(text.boxMin.y, 0.0f);
-    t.text->setVerticalAlignment(TextVerticalAlignment::BASELINE);
+    t.text->setAnchorVertical(TextAnchorVertical::BASELINE);
     ASSERT_TRUE(t.text->updateLayout());
     EXPECT_NEAR(text.boxMin.y, -text.stbtext->getAscent(), 0.5f);
     EXPECT_TRUE(t.text->isPivotBaseline());
 }
 
-// Center and Right: the box against the origin, and each line inside the box (TextMesh Pro's)
-TEST(TextLayoutTest, HorizontalAlignments){
+// Center and Right: the box against the origin (Unity TextMesh's Anchor); the lines keep their
+// place inside the box (how they sit there is the Text's alignment, not the anchor)
+TEST(TextLayoutTest, AnchorHorizontals){
     TextLayoutScene t(CameraType::CAMERA_PERSPECTIVE, "WWWW\nW");
     ASSERT_TRUE(t.text->updateLayout());
     TextComponent& text = t.component();
     const float width = (float)t.layout().width;
     ASSERT_EQ(text.charExtents.size(), 5u);
-    const float lineWidth = text.charExtents[4].right - text.charExtents[4].left;
     EXPECT_NEAR(text.charExtents[4].left, 0.0f, 0.5f);
 
-    t.text->setHorizontalAlignment(TextHorizontalAlignment::CENTER);
+    t.text->setAnchorHorizontal(TextAnchorHorizontal::CENTER);
     ASSERT_TRUE(t.text->updateLayout());
     EXPECT_FLOAT_EQ(text.boxMin.x, -width / 2.0f);
-    EXPECT_NEAR(text.charExtents[4].left, (width - lineWidth) / 2.0f, 1.0f);
+    EXPECT_NEAR(text.charExtents[4].left, 0.0f, 0.5f) << "the short line stays at the box's left";
     EXPECT_NEAR(text.charExtents[0].left, 0.0f, 0.5f);
     EXPECT_TRUE(t.text->isPivotCentered());
 
-    t.text->setHorizontalAlignment(TextHorizontalAlignment::RIGHT);
+    t.text->setAnchorHorizontal(TextAnchorHorizontal::RIGHT);
     ASSERT_TRUE(t.text->updateLayout());
     EXPECT_FLOAT_EQ(text.boxMin.x, -width);
-    EXPECT_NEAR(text.charExtents[4].right, width, 1.0f);
+    EXPECT_NEAR(text.charExtents[4].left, 0.0f, 0.5f);
 
     // a value of the other enum is refused
-    t.text->setHorizontalAlignment(static_cast<TextHorizontalAlignment>(TextVerticalAlignment::MIDDLE));
-    EXPECT_EQ(t.text->getHorizontalAlignment(), TextHorizontalAlignment::RIGHT);
+    t.text->setAnchorHorizontal(static_cast<TextAnchorHorizontal>(TextAnchorVertical::MIDDLE));
+    EXPECT_EQ(t.text->getAnchorHorizontal(), TextAnchorHorizontal::RIGHT);
 }
 
 // AC25 (R42): the size right after setText, before any update drew the text; a clean text is not

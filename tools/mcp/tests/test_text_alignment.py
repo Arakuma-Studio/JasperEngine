@@ -1,14 +1,14 @@
-"""Text alignment, layout on demand and the em font size over MCP and Lua
+"""Text Anchor (Unity TextMesh's), layout on demand and the em font size over MCP and Lua
 (docs/specs/S94-rendering-anim-gaps.md F24-F26; AC24's MCP side, AC25's Lua play test, AC26's
 field): a world-space Text reads Left / Bottom (the old anchor), set_properties writes the
-alignment and the font size unit in one undo step each, the pivot booleans are gone from MCP (the
-scene migration turns them into alignment), Lua's TextAlignment table drives both properties and a
+anchor and the font size unit in one undo step each, the pivot booleans are gone from MCP (the
+scene migration turns them into the anchor), Lua's TextAnchor table drives both properties and a
 value of one is refused by the other, pivotBaseline / pivotCentered stay as Lua aliases, and
 Text.width is final right after setText (R42: it read 0 until the first draw)."""
 
 from harness import Editor
 
-EDITOR = {"create": True, "name": "Text Alignment"}
+EDITOR = {"create": True, "name": "Text Anchor"}
 CI = True
 
 S: dict = {}
@@ -34,25 +34,25 @@ async def text_values(ed: Editor, s: dict) -> dict:
     return got["components"]["text"]
 
 
-async def test_alignment_properties(ed: Editor):
+async def test_anchor_properties(ed: Editor):
     s = await setup(ed)
     text = await text_values(ed, s)
-    ed.check_eq((text["horizontalAlignment"], text["verticalAlignment"]), ("left", "bottom"), f"the old anchor by default: {text}")
+    ed.check_eq((text["anchorHorizontal"], text["anchorVertical"]), ("left", "bottom"), f"the old anchor by default: {text}")
     ed.check("pivotBaseline" not in text and "pivotCentered" not in text, f"the pivot booleans are gone: {text}")
 
     await ed.call("set_properties", scene=s["scene"], entity="Door",
-                  values={"text": {"horizontalAlignment": "center", "verticalAlignment": "capline", "fontSizeUnit": "em"}})
+                  values={"text": {"anchorHorizontal": "center", "anchorVertical": "capline", "fontSizeUnit": "em"}})
     text = await text_values(ed, s)
-    ed.check_eq((text["horizontalAlignment"], text["verticalAlignment"], text["fontSizeUnit"]), ("center", "capline", "em"))
-    await ed.check_error("set_properties", scene=s["scene"], entity="Door", values={"text": {"verticalAlignment": "centre"}},
+    ed.check_eq((text["anchorHorizontal"], text["anchorVertical"], text["fontSizeUnit"]), ("center", "capline", "em"))
+    await ed.check_error("set_properties", scene=s["scene"], entity="Door", values={"text": {"anchorVertical": "centre"}},
                          contains="middle")
     await ed.call("undo", scene=s["scene"])
     text = await text_values(ed, s)
-    ed.check_eq((text["horizontalAlignment"], text["verticalAlignment"], text["fontSizeUnit"]), ("left", "bottom", "pixel_height"),
+    ed.check_eq((text["anchorHorizontal"], text["anchorVertical"], text["fontSizeUnit"]), ("left", "bottom", "pixel_height"),
                 "one undo step")
 
 
-async def test_lua_layout_and_alignment(ed: Editor):
+async def test_lua_layout_and_anchor(ed: Editor):
     s = await setup(ed)
     cursor = (await ed.call("read_console", limit=1))["next_cursor"]
     await ed.call("play", action="start", scene=s["scene"], fixed_fps=60, auto_pause=True)
@@ -64,20 +64,20 @@ async def test_lua_layout_and_alignment(ed: Editor):
         ed.check(values[0] > 0 and values[1] > 0, f"width and height right after setText: {values}")
         ed.check(values[2] > values[0], f"a longer text is wider at once: {values}")
 
-        values = (await ed.call("eval_lua", code="local t = object('Door', 'Text') t.verticalAlignment = TextAlignment.Middle "
-                                                 "t.horizontalAlignment = TextAlignment.Right "
-                                                 "return t.verticalAlignment == TextAlignment.Middle, t.horizontalAlignment == TextAlignment.Right"))["values"]
-        ed.check_eq(values, [True, True], "TextAlignment drives both properties")
-        values = (await ed.call("eval_lua", code="local t = object('Door', 'Text') t.horizontalAlignment = TextAlignment.Middle "
-                                                 "return t.horizontalAlignment == TextAlignment.Right"))["values"]
+        values = (await ed.call("eval_lua", code="local t = object('Door', 'Text') t.anchorVertical = TextAnchor.Middle "
+                                                 "t.anchorHorizontal = TextAnchor.Right "
+                                                 "return t.anchorVertical == TextAnchor.Middle, t.anchorHorizontal == TextAnchor.Right"))["values"]
+        ed.check_eq(values, [True, True], "TextAnchor drives both properties")
+        values = (await ed.call("eval_lua", code="local t = object('Door', 'Text') t.anchorHorizontal = TextAnchor.Middle "
+                                                 "return t.anchorHorizontal == TextAnchor.Right"))["values"]
         ed.check_eq(values, [True], "a vertical value is refused by the horizontal property")
         console = await ed.call("read_console", since=cursor, types=["error"])
-        ed.check(any("horizontal alignment" in line.get("message", "") for line in console["entries"]),
+        ed.check(any("horizontal anchor" in line.get("message", "") for line in console["entries"]),
                  f"and the Console says why: {console['entries'][-5:]}")
 
         values = (await ed.call("eval_lua", code="local t = object('Door', 'Text') t.pivotBaseline = true t.pivotCentered = true "
-                                                 "return t.verticalAlignment == TextAlignment.Baseline, "
-                                                 "t.horizontalAlignment == TextAlignment.Center, t.pivotBaseline"))["values"]
+                                                 "return t.anchorVertical == TextAnchor.Baseline, "
+                                                 "t.anchorHorizontal == TextAnchor.Center, t.pivotBaseline"))["values"]
         ed.check_eq(values, [True, True, True], "pivotBaseline and pivotCentered are aliases")
         values = (await ed.call("eval_lua", code="local t = object('Door', 'Text') t.fontSizeUnit = TextFontSizeUnit.Em "
                                                  "local em = t.height t.fontSizeUnit = TextFontSizeUnit.PixelHeight return em, t.height"))["values"]

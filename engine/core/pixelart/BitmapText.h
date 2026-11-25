@@ -39,7 +39,6 @@ namespace jasperengine::pixelart {
         bool fixedHeight = false;
         bool multiline = true;
         bool invert = false;            // y up (STBText's invert)
-        float lineAlign = 0.0f;         // each line in the box: 0 left, 0.5 centre, 1 right (whole font pixels)
         BitmapTextStyle style;
         bool vertexColor = false;       // the buffer has a COLOR attribute (forced by the cache path)
         Vector3 faceColor = Vector3(1.0f, 1.0f, 1.0f);   // linear, the face quads' vertex colour

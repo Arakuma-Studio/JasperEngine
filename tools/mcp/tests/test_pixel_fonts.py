@@ -503,7 +503,7 @@ async def test_vector_text_unchanged(ed: Editor):
         "type": "text", "name": "Parity", "text": "text: [1, 2]", "font_size": 20, "text_color": [1, 1, 1, 1],
         "layout": {"anchor": "top_left", "position": [10, 110]}})
     await ed.call("set_properties", scene=scene, entity="Parity", values={"text": {
-        "maxTextSize": 100, "fixedWidth": True, "fixedHeight": True, "verticalAlignment": "baseline", "horizontalAlignment": "center"}})
+        "maxTextSize": 100, "fixedWidth": True, "fixedHeight": True, "anchorVertical": "baseline", "anchorHorizontal": "center"}})
     await ed.call("configure_game_view", resolution="320x180")
     image = await ed.screenshot(view="game", max_width=0)
     reference = GOLDEN / "vector_text.png"

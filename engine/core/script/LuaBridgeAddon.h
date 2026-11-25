@@ -290,8 +290,8 @@ namespace luabridge
     template<> struct Stack<jasperengine::SpriteBatchSpace> : EnumWrapper<jasperengine::SpriteBatchSpace>{};
     template<> struct Stack<jasperengine::SpriteSortPoint> : EnumWrapper<jasperengine::SpriteSortPoint>{};
     // Text alignment and font size unit (S94)
-    template<> struct Stack<jasperengine::TextHorizontalAlignment> : EnumWrapper<jasperengine::TextHorizontalAlignment>{};
-    template<> struct Stack<jasperengine::TextVerticalAlignment> : EnumWrapper<jasperengine::TextVerticalAlignment>{};
+    template<> struct Stack<jasperengine::TextAnchorHorizontal> : EnumWrapper<jasperengine::TextAnchorHorizontal>{};
+    template<> struct Stack<jasperengine::TextAnchorVertical> : EnumWrapper<jasperengine::TextAnchorVertical>{};
     template<> struct Stack<jasperengine::TextFontSizeUnit> : EnumWrapper<jasperengine::TextFontSizeUnit>{};
 
     template<> struct Stack<jasperengine::ScrollbarType> : EnumWrapper<jasperengine::ScrollbarType>{};

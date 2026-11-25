@@ -308,15 +308,15 @@ Each requirement names the ledger items it closes.
 
 ### Functional — Text, Camera, Sprite (P5)
 
-- **F24 Text alignment (R42).**
-  - `TextComponent` gains `horizontalAlignment` (Left, Center, Right) and `verticalAlignment` (Top,
+- **F24 Text anchor (R42).**
+  - `TextComponent` gains `anchorHorizontal` (Left, Center, Right) and `anchorVertical` (Top,
     Middle, Bottom, Baseline, Capline, Midline).
   - Today's default anchor (the line box's bottom) is Bottom.
-  - Alignment is relative to the text's box: its fixed width/height when set, else its content.
+  - The anchor is relative to the text's box: its fixed width/height when set, else its content.
     Capline and Midline use the font's cap height and x-height (OS/2), else 0.7 / 0.5 em.
-  - `pivotBaseline` and `pivotCentered` migrate (scene v8→v9, prefab v9→v10):
-    - `pivotBaseline: true` → `verticalAlignment: baseline`;
-    - `pivotCentered: true` → `horizontalAlignment: center`.
+  - `pivotBaseline` and `pivotCentered` migrate (scene v10→v11, prefab v10→v11):
+    - `pivotBaseline: true` → `anchorVertical: baseline`;
+    - `pivotCentered: true` → `anchorHorizontal: center`.
 
     Lua keeps both as deprecated aliases.
 - **F25 Text size before the first draw (R42).**
@@ -522,7 +522,7 @@ All edits are undoable commands. The Unity names are:
   - Skybox: Per-Vertex Mapping, on the panoramic material.
   - Add Component > Rendering > Outline (Outline Mode, Outline Color, Outline Width, Width Units,
     Include Children).
-  - Text: Alignment (horizontal and vertical button rows, as TMP), Font Size Unit.
+  - Text: Anchor (horizontal and vertical button rows), Font Size Unit.
   - Camera: Size, shown for orthographic cameras.
   - Sprite: Flip (X, Y) and Size.
 - **Animation:**
@@ -575,7 +575,7 @@ Extend before adding (AGENTS.md "Adding an MCP tool"). Reflection-driven fields 
   | F15 | `scene.ambientMode`, `scene:setAmbientGradient(sky, equator, ground)` |
   | F16 | `Skybox.visible` |
   | F22 | `Outline` component handle |
-  | F24 | `Text.horizontalAlignment` / `verticalAlignment` (`TextAlignment` enum tables) |
+  | F24 | `Text.anchorHorizontal` / `anchorVertical` (`TextAnchor` enum tables) |
   | F25 | `Text:updateLayout()` |
   | F26 | `Text.fontSizeUnit` |
   | F28 | `Camera.orthographicSize` |
@@ -665,7 +665,7 @@ struct OutlineComponent { OutlineMode mode; Vector4 color; float width; OutlineW
 local block = MaterialPropertyBlock()
 block:setColor("u_tint", Vector4(1, 0.5, 0, 1))
 mesh:setPropertyBlock(block)            -- all submeshes; mesh:setPropertyBlock(block, 1) for one
-text.verticalAlignment = TextAlignment.Middle
+text.anchorVertical = TextAnchor.Middle
 camera.orthographicSize = 11            -- Unity Size
 sprite.flipX = true; sprite.size = Vector2(1, 1)
 ```
@@ -701,7 +701,7 @@ fails without the change. Where a red control cannot be built, the PR says so.
 | AC21 | F21 | `SkyGpu.PanoramaRotationMatchesUnity` and `SkyGpu.CubemapFacesMatchUnity`: a marker texel's screen position for rotations 0, 90 and 200 against Unity's direction formula through the documented mapping. The docs are updated. If the cubemap is mirrored, the migration test in AC51 covers it |
 | AC22 | F22 | `OutlineGpu.Modes`: goldens of 5 modes × 2 width units on an occluded cube. `OutlineGpu.DisabledAddsNothing`: the draw and pass counts of a disabled or absent outline are equal. `test_outline.py`: add, set, undo, screenshot with outline-colour pixels, `get_entity`. Lua play test. Red: no component |
 | AC23 | F23 | `OutlineGpu.ModelRootOutlinesSkinnedChild` (`rigged_cube.fbx` root). `test_materials.py::test_preset_on_model_root_descends` with `next` present. Red: "has no Mesh component" |
-| AC24 | F24 | `StreamMigrationsTest.SceneV8TextPivotsBecomeAlignment` with prefab twin fixtures. `TextLayoutTest.VerticalAlignments`: the bounding box of each mode against font metrics, within 0.5 px. Red: the fields are absent |
+| AC24 | F24 | `StreamMigrationsTest.SceneV8TextPivotsBecomeAnchor` with prefab twin fixtures. `TextLayoutTest.AnchorVerticals`: the bounding box of each mode against font metrics, within 0.5 px. Red: the fields are absent |
 | AC25 | F25 | `TextLayoutTest.SizeKnownBeforeFirstDraw`, and a Lua play test (`t.width > 0` right after `setText`). Red: 0 |
 | AC26 | F26 | `TextLayoutTest.EmSizeMatchesCss`: LiberationSans 100 Em cap height = capHeight × 100 / unitsPerEm ± 0.5 px, and Pixel Height ÷ Em = 2048 / 2288 ± 1%. Red: the field is absent |
 | AC27 | F27 | `test_camera.py::test_clip_write_clears_auto_resize`: `set_properties camera.topClip` sets `autoResize` false, the bounds survive Play and a canvas resize, and one undo restores both. Red: the bounds are overwritten (R46) |
@@ -864,7 +864,7 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
   `tools/mcp/tests/test_draw_materials.py` (`test_property_overrides`,
   `test_lua_property_block_and_textures`), not in `test_materials.py` / `test_lua_mesh.py`. AC23's
   preset check is `test_outline.py::test_preset_on_model_root_descends`.
-- **P5, F24 vertical alignment on a UI camera.** The modes are measured along the Text's local +y.
+- **P5, F24 vertical anchor on a UI camera.** The modes are measured along the Text's local +y.
   In a y-up world view that is the screen's up, as specified. A UI camera draws y down, so there
   Top and Bottom swap on screen; Baseline, Capline, Midline and Middle do not. The other choice
   (screen-up everywhere) would have moved every existing UI-camera Text, whose stored default is
@@ -875,9 +875,14 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
 - **P5, F24 metrics fallbacks.** Cap height: OS/2 `sCapHeight`, else the `H` glyph's box, else
   0.7 em. x-height keeps `FontFace::getXHeight`'s fallback (`x` box, then ascender / 2), which the
   HTML UI's `ex` unit shares. Bitmap fonts use 0.7 / 0.5 of their native size.
-- **P5, F24 Center and Right align each line inside the box** (TextMesh Pro's), besides placing the
-  box. A migrated multi-line `pivotCentered` text now centres each line; a single line draws as
-  before.
+- **P5, F24 is Unity TextMesh's Anchor, not an alignment** (user decision, with S93's Text
+  Alignment): the fields are `anchorHorizontal` / `anchorVertical` (enums `TextAnchorHorizontal`,
+  `TextAnchorVertical`, Lua `TextAnchor`, Inspector "Anchor"), and they only place the box on the
+  origin. How the lines sit inside the box is S93's Alignment (left/center/right/justified,
+  top/middle/bottom/baseline, plus Auto Size), a separate row, as in Unity. So Center and Right no
+  longer align each line: a migrated multi-line `pivotCentered` text draws as before
+  (`pixel_fonts/vector_text.png` back to main's). The scene 10 -> 11 and prefab 10 -> 11 migrations
+  write the anchor keys.
 - **P5, F26 AC26** measures the built-in Roboto (its own unitsPerEm and ascender - descender)
   instead of LiberationSans, which is not in the repository; the formulas checked are the same.
 - **P5, F27** also turns the Orthographic Size off on a bound written by hand (Lua setters, MCP,

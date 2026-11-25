@@ -1382,8 +1382,8 @@ entities:
         maxTextSize: 100
         fixedWidth: true
         fixedHeight: true
-        horizontalAlignment: center
-        verticalAlignment: baseline
+        anchorHorizontal: center
+        anchorVertical: baseline
   - type: Entity
     entity: 1045
     name: InputFieldComponent

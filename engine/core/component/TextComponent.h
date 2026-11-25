@@ -23,11 +23,11 @@ namespace jasperengine{
     //for what it misses. Empty slots are skipped, the built-in fonts close the chain
     typedef std::array<AssetRef, MAX_TEXT_FONTS> FontArray;
 
-    // TextMesh Pro's alignment (S94 F24): which point of the text's box sits on its origin, and how
-    // each line sits in the box. The box is the fixed width/height when set, else the content.
-    // The two enums take disjoint values, so a value of one given to the other is refused (Lua's
-    // TextAlignment table holds both).
-    enum class TextHorizontalAlignment{
+    // Unity TextMesh's Anchor (S94 F24): which point of the text's box sits on its origin; how the
+    // lines sit inside the box is the Text's alignment, not this. The box is the fixed width/height
+    // when set, else the content. The two enums take disjoint values, so a value of one given to the
+    // other is refused (Lua's TextAnchor table holds both).
+    enum class TextAnchorHorizontal{
         LEFT = 0,
         CENTER = 1,
         RIGHT = 2
@@ -36,7 +36,7 @@ namespace jasperengine{
     // along the text's local +y: Bottom (the default) puts the box above the origin in a y-up
     // world (below it on a y-down UI camera); Baseline the first line's baseline; Capline and
     // Midline the middle of its capitals and of its lowercase letters
-    enum class TextVerticalAlignment{
+    enum class TextAnchorVertical{
         TOP = 3,
         MIDDLE = 4,
         BOTTOM = 5,
@@ -68,8 +68,8 @@ namespace jasperengine{
         bool fixedWidth = false;
         bool fixedHeight = false;
 
-        TextHorizontalAlignment horizontalAlignment = TextHorizontalAlignment::LEFT;
-        TextVerticalAlignment verticalAlignment = TextVerticalAlignment::BOTTOM;
+        TextAnchorHorizontal anchorHorizontal = TextAnchorHorizontal::LEFT;
+        TextAnchorVertical anchorVertical = TextAnchorVertical::BOTTOM;
         TextFontSizeUnit fontSizeUnit = TextFontSizeUnit::PIXEL_HEIGHT;
 
         // Outline (TMP "Outline"): UI units drawn outside the glyph edge, and its colour

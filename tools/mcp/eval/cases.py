@@ -5684,12 +5684,12 @@ CASES = [
         "max_turns": 10,
     },
     {
-        "id": "guard_text_capline_alignment",
+        "id": "guard_text_capline_anchor",
         "kind": "guard",
-        "what_happened": "New text (S94 F24, R42): the UI guide's Text alignment names center + capline for a number centred on a "
+        "what_happened": "New text (S94 F24, R42): the UI guide's Text anchor names center + capline for a number centred on a "
                          "point; without it an agent offsets the Text's position by guessed font metrics (the port's door numbers "
                          "sat too high).",
-        "text_at_issue": "jasper://docs/ui 'Text alignment and size': 'To centre a number on a plaque, use center + capline.'",
+        "text_at_issue": "jasper://docs/ui 'Text anchor and size': 'To centre a number on a plaque, use center + capline.'",
         "source": "S94 F24 (new guide text); ARCADE ENGINE_LIMITATIONS R42",
         "prompt": "The world-space Text 'Door12' should have its digits centred exactly on its GameObject's position "
                   "(it sits at the plaque's centre). Fix how the text is anchored.",
@@ -5697,13 +5697,13 @@ CASES = [
             {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDoor12 [21] text transform ui",
                                                    {"entities": [{"id": 21, "path": "Door12"}]})},
             {"tool": "get_entity", "args": {"entity": "re:(?i)^(21|Door12)$"}, "result": ok(
-                "Door12 [21] components: rectTransform text transform ui; text: text \"12\", fontSize 40, horizontalAlignment "
-                "left, verticalAlignment bottom", {"id": 21, "name": "Door12"})},
+                "Door12 [21] components: rectTransform text transform ui; text: text \"12\", fontSize 40, anchorHorizontal "
+                "left, anchorVertical bottom", {"id": 21, "name": "Door12"})},
             {"tool": "set_properties", "result": ok("Set 2 properties on 1 GameObject(s) (one undo step).", {"entities": [{"id": 21}]})},
         ],
-        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"text": {"horizontalAlignment": "center",
-                                                                                                  "verticalAlignment": "re:capline|middle"}}}}]},
-                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "verticalAlignment", "value": "re:capline|middle"}]}}]}],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"text": {"anchorHorizontal": "center",
+                                                                                                  "anchorVertical": "re:capline|middle"}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "anchorVertical", "value": "re:capline|middle"}]}}]}],
                    "must_not_call": ["set_transform"]},
         "max_turns": 10,
     },

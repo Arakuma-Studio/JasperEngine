@@ -105,8 +105,8 @@ entities:
         maxTextSize: 100
         fixedWidth: false
         fixedHeight: false
-        horizontalAlignment: left
-        verticalAlignment: bottom
+        anchorHorizontal: left
+        anchorVertical: bottom
       script:
         scripts:
           - type: lua
@@ -171,8 +171,8 @@ entities:
         maxTextSize: 100
         fixedWidth: false
         fixedHeight: false
-        horizontalAlignment: left
-        verticalAlignment: bottom
+        anchorHorizontal: left
+        anchorVertical: bottom
         outlineWidth: 1
         outlineNeighbors: 4
   - type: Entity
@@ -233,5 +233,5 @@ entities:
         maxTextSize: 100
         fixedWidth: false
         fixedHeight: false
-        horizontalAlignment: left
-        verticalAlignment: bottom
+        anchorHorizontal: left
+        anchorVertical: bottom

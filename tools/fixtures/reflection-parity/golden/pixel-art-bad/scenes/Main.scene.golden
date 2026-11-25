@@ -888,8 +888,8 @@ entities:
         maxTextSize: 100
         fixedWidth: false
         fixedHeight: false
-        horizontalAlignment: left
-        verticalAlignment: bottom
+        anchorHorizontal: left
+        anchorVertical: bottom
   - type: Entity
     entity: 1012
     name: Sparks

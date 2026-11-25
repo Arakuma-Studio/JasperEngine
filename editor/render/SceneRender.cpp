@@ -2636,7 +2636,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     if (isText){
                         // a centred or right-aligned box grows about its origin: the origin moves so the
                         // edge not dragged stays
-                        const float align = UISystem::textLineAlign(target->getComponent<TextComponent>(entity));
+                        const float align = UISystem::textAnchorX(target->getComponent<TextComponent>(entity));
                         if (align > 0.0f){
                             float widthDelta = size.x - objectSizeOffset[entity].x;
                             Gizmo2DSideSelected side = tools.getGizmo2DSideSelected();

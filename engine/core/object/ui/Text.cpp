@@ -342,44 +342,44 @@ bool Text::isFlipY() const{
     return ui.flipY;
 }
 
-void Text::setHorizontalAlignment(TextHorizontalAlignment alignment){
+void Text::setAnchorHorizontal(TextAnchorHorizontal alignment){
     TextComponent& textcomp = getComponent<TextComponent>();
 
-    if (alignment != TextHorizontalAlignment::LEFT && alignment != TextHorizontalAlignment::CENTER && alignment != TextHorizontalAlignment::RIGHT){
-        Log::error("Text horizontal alignment must be TextAlignment.Left, Center or Right (got %d)", (int)alignment);
+    if (alignment != TextAnchorHorizontal::LEFT && alignment != TextAnchorHorizontal::CENTER && alignment != TextAnchorHorizontal::RIGHT){
+        Log::error("Text horizontal anchor must be TextAnchor.Left, Center or Right (got %d)", (int)alignment);
         return;
     }
-    if (textcomp.horizontalAlignment != alignment){
-        textcomp.horizontalAlignment = alignment;
+    if (textcomp.anchorHorizontal != alignment){
+        textcomp.anchorHorizontal = alignment;
         textcomp.needUpdateText = true;
         markChanged<TextComponent>();
     }
 }
 
-TextHorizontalAlignment Text::getHorizontalAlignment() const{
+TextAnchorHorizontal Text::getAnchorHorizontal() const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
-    return textcomp.horizontalAlignment;
+    return textcomp.anchorHorizontal;
 }
 
-void Text::setVerticalAlignment(TextVerticalAlignment alignment){
+void Text::setAnchorVertical(TextAnchorVertical alignment){
     TextComponent& textcomp = getComponent<TextComponent>();
 
-    if ((int)alignment < (int)TextVerticalAlignment::TOP || (int)alignment > (int)TextVerticalAlignment::MIDLINE){
-        Log::error("Text vertical alignment must be TextAlignment.Top, Middle, Bottom, Baseline, Capline or Midline (got %d)", (int)alignment);
+    if ((int)alignment < (int)TextAnchorVertical::TOP || (int)alignment > (int)TextAnchorVertical::MIDLINE){
+        Log::error("Text vertical anchor must be TextAnchor.Top, Middle, Bottom, Baseline, Capline or Midline (got %d)", (int)alignment);
         return;
     }
-    if (textcomp.verticalAlignment != alignment){
-        textcomp.verticalAlignment = alignment;
+    if (textcomp.anchorVertical != alignment){
+        textcomp.anchorVertical = alignment;
         textcomp.needUpdateText = true;
         markChanged<TextComponent>();
     }
 }
 
-TextVerticalAlignment Text::getVerticalAlignment() const{
+TextAnchorVertical Text::getAnchorVertical() const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
-    return textcomp.verticalAlignment;
+    return textcomp.anchorVertical;
 }
 
 void Text::setFontSizeUnit(TextFontSizeUnit unit){
@@ -408,25 +408,25 @@ TextFontSizeUnit Text::getFontSizeUnit() const{
 // pivotBaseline true was the Baseline alignment; false leaves another alignment as it is
 void Text::setPivotBaseline(bool pivotBaseline){
     if (pivotBaseline)
-        setVerticalAlignment(TextVerticalAlignment::BASELINE);
+        setAnchorVertical(TextAnchorVertical::BASELINE);
     else if (isPivotBaseline())
-        setVerticalAlignment(TextVerticalAlignment::BOTTOM);
+        setAnchorVertical(TextAnchorVertical::BOTTOM);
 }
 
 bool Text::isPivotBaseline() const{
-    return getVerticalAlignment() == TextVerticalAlignment::BASELINE;
+    return getAnchorVertical() == TextAnchorVertical::BASELINE;
 }
 
 // pivotCentered true was the Center alignment; false leaves Right as it is
 void Text::setPivotCentered(bool pivotCentered){
     if (pivotCentered)
-        setHorizontalAlignment(TextHorizontalAlignment::CENTER);
+        setAnchorHorizontal(TextAnchorHorizontal::CENTER);
     else if (isPivotCentered())
-        setHorizontalAlignment(TextHorizontalAlignment::LEFT);
+        setAnchorHorizontal(TextAnchorHorizontal::LEFT);
 }
 
 bool Text::isPivotCentered() const{
-    return getHorizontalAlignment() == TextHorizontalAlignment::CENTER;
+    return getAnchorHorizontal() == TextAnchorHorizontal::CENTER;
 }
 
 AABB Text::getAABB() const{
