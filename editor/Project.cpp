@@ -4839,7 +4839,7 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
                                          scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
                                          scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier(), getShippedTerrainTiers(),
-                                         scriptsMention("Outline"));
+                                         scriptsSetLight2D(), scriptsMention("Outline"));
     // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
     if (scriptsMention("FluidSimulation"))
         ShaderVariantCollector::addFluidKeys(keys);
@@ -4872,6 +4872,13 @@ bool editor::Project::scriptsSetShadowQuality() const {
     // scene.shadowQuality (Lua) or Scene::setShadowQuality (C++): the shadow tier, and with it
     // the High filters' variant bit, can change at runtime
     return scriptsMention("hadowQuality");
+}
+
+bool editor::Project::scriptsSetLight2D() const {
+    // scene.ambientLight2DColor / ambientLight2DIntensity / ambientLight2DWithoutLights /
+    // light2DSteps (Lua) or Scene::setAmbientLight2D / setAmbientLight2DWithoutLights /
+    // setLight2DSteps (C++)
+    return scriptsMention("mbientLight2D") || scriptsMention("ight2DSteps");
 }
 
 bool editor::Project::scriptsSetPostProcessing() const {
