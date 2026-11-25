@@ -32,7 +32,7 @@ versionControl:
   lfs: true
 export:
   assetStripping: referencedOnly
-startSceneId: 136308725
+startSceneId: 3035739784
 mesh:
   animationEntities: auto
 audio:
@@ -41,4 +41,4 @@ audio:
   iosSessionCategory: ambient
 scenes:
   - filepath: assets/scenes/Main.scene
-    filepathGuid: 570350e01473a889dba9660c6a42f45b
+    filepathGuid: 846896d51fd1955a201c2b62e21e87d9

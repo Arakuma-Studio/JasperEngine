@@ -1,6 +1,6 @@
 formatVersion: 10
-guid: 80bef04c15d30f0e24b4bb22a0d25b94
-id: 2589990047
+guid: 972fcbdc985f35ee05a2266caef6d35d
+id: 894496234
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -14,6 +14,7 @@ scene:
   litQuality: high
   ambientLight2DIntensity: 1
   ambientLight2DColor: [1, 1, 1]
+  ambientLight2DWithoutLights: true
   shadow2DQuality: low
   ssaoEnabled: false
   ssaoRadius: 0.5
@@ -244,7 +245,7 @@ entities:
               emissiveTexCoord: 0
               normalTexCoord: 0
               name: assets/materials/Ground.material
-              nameGuid: 5a3a1d550771162e061a4290be37b8f8
+              nameGuid: d57aae5d1f9071c757aa64ab1785bbc7
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
             vertexCount: 6
