@@ -10,8 +10,8 @@
 #include "component/LightComponent.h"
 #include "component/Transform.h"
 #include "Stream.h"
+#include "support/EditorTestSupport.h"
 #include "Catalog.h"
-#include "Factory.h"
 #include "StreamSchema.h"
 #include "util/Angle.h"
 
@@ -327,6 +327,93 @@ TEST(StreamScene, WaterWakeSettings){
     EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 120.0f);
 }
 
+// S92 R37: the screen HTML UI documents' render mode and MSAA samples: written only away from
+// their defaults (Screen Space - Overlay, 0 = the project's), read back; a scene without the keys
+// takes the defaults; a sample count that is not 0, 1, 2, 4 or 8 goes to the one below it
+TEST(StreamScene, HtmlUiSettings){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    EXPECT_EQ(plainYaml.find("htmlUi"), std::string::npos) << "defaults are not written";
+
+    Scene scene;
+    scene.setHtmlUiRenderMode(UIRenderMode::CAMERA);
+    scene.setHtmlUiMsaaSamples(2);
+    const YAML::Node encoded = YAML::Load(dumpScene(&scene));
+    EXPECT_EQ(encoded["htmlUiRenderMode"].as<std::string>(), "camera");
+    EXPECT_EQ(encoded["htmlUiMsaaSamples"].as<int>(), 2);
+    Scene read;
+    Stream::decodeScene(&read, encoded);
+    EXPECT_EQ(read.getHtmlUiRenderMode(), UIRenderMode::CAMERA);
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 2);
+    EXPECT_EQ(dumpScene(&read), dumpScene(&scene));
+
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    const SceneSettings defaults;
+    EXPECT_EQ(read.getHtmlUiRenderMode(), defaults.htmlUiRenderMode);
+    EXPECT_EQ(read.getHtmlUiRenderMode(), UIRenderMode::OVERLAY);
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 0);
+
+    Stream::decodeScene(&read, YAML::Load("htmlUiMsaaSamples: 6\n"));
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 4);
+    read.setHtmlUiMsaaSamples(-1);
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 0);
+}
+
+// S78 R1, R26: Light Steps, written only away from 0 (scenes saved before re-save unchanged), read
+// back; a scene without the key is off, a stored value out of range is clamped
+TEST(StreamScene, LightStepsSetting){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    EXPECT_EQ(plainYaml.find("light2DSteps"), std::string::npos) << "off is not written";
+
+    Scene scene;
+    scene.setLight2DSteps(6);
+    const std::string yaml = dumpScene(&scene);
+    EXPECT_NE(yaml.find("light2DSteps: 6"), std::string::npos) << yaml;
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(yaml));
+    EXPECT_EQ(read.getLight2DSteps(), 6);
+    EXPECT_EQ(dumpScene(&read), yaml);
+
+    // an old scene (no key) over a stepped one: off
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    EXPECT_EQ(read.getLight2DSteps(), 0);
+
+    YAML::Node edited = YAML::Load(yaml);
+    edited["light2DSteps"] = 99;
+    Stream::decodeScene(&read, edited);
+    EXPECT_EQ(read.getLight2DSteps(), 16);
+}
+
+// S78 R6, R7 (the lead's decision at the main merge): a scene saved before S78 (no key) reads Ambient
+// Without Lights off, so its 2D ambient still leaves it untinted without a Light 2D, and re-saves as it
+// was; a new scene has it on and writes it, and each value reads back
+TEST(StreamScene, AmbientWithoutLightsOffInScenesFromBefore){
+    const std::filesystem::path path = editor::test::fixture("migrations/scene-v8-ambient2d.scene");
+    const std::string original = editor::test::readText(path);
+    ASSERT_FALSE(YAML::Load(original)["scene"]["ambientLight2DWithoutLights"]) << "a scene from before S78";
+    editor::test::DecodedScene old = editor::test::decodeSceneFile(path);
+    ASSERT_TRUE(old.scene);
+    EXPECT_FALSE(old.scene->scene->isAmbientLight2DWithoutLights());
+    EXPECT_EQ(editor::test::encodeSceneText(old).find("ambientLight2DWithoutLights"), std::string::npos) << "re-saved as it was";
+
+    // a new scene: on, written; off is not
+    Scene fresh;
+    EXPECT_TRUE(fresh.isAmbientLight2DWithoutLights());
+    const std::string freshYaml = dumpScene(&fresh);
+    EXPECT_NE(freshYaml.find("ambientLight2DWithoutLights: true"), std::string::npos) << freshYaml;
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(freshYaml));
+    EXPECT_TRUE(read.isAmbientLight2DWithoutLights());
+    EXPECT_EQ(dumpScene(&read), freshYaml);
+    Scene off;
+    off.setAmbientLight2DWithoutLights(false);
+    const std::string offYaml = dumpScene(&off);
+    EXPECT_EQ(offYaml.find("ambientLight2DWithoutLights"), std::string::npos) << offYaml;
+    Stream::decodeScene(&read, YAML::Load(offYaml));
+    EXPECT_FALSE(read.isAmbientLight2DWithoutLights());
+}
+
 // S96 (REQ-30..REQ-35, AC-28): the physics world settings are written as flat keys only away from
 // their defaults, read back, and a scene without them (every scene before them) takes the defaults;
 // the generated scene code sets the changed ones; each is a scene setting of Catalog (MCP, Inspector)
@@ -370,14 +457,7 @@ TEST(StreamScene, PhysicsWorldSettingsRoundTrip){
     for (const PhysicsWorldSettingField& field : physicsWorldSettingFields())
         EXPECT_TRUE(StreamSchema::isKnownRootKey(RootKind::SceneSettings, field.key)) << field.key;
 
-    // the generated code sets each changed one through its Scene setter
-    const std::string code = Factory::createScene(0, &scene, 4343, "Physics", {}, NULL_ENTITY, std::filesystem::path("/project"), std::filesystem::path("/project/generated"));
-    EXPECT_NE(code.find("scene->setPhysics2DPointsPerMeter(100.0"), std::string::npos) << code;
-    EXPECT_NE(code.find("scene->setPhysics2DWarmStarting(false);"), std::string::npos);
-    EXPECT_NE(code.find("scene->setPhysics3DCollisionSteps(2);"), std::string::npos);
-    EXPECT_EQ(code.find("scene->setPhysics2DContinuous("), std::string::npos);
-    const std::string plainCode = Factory::createScene(0, &plain, 4343, "Plain", {}, NULL_ENTITY, std::filesystem::path("/project"), std::filesystem::path("/project/generated"));
-    EXPECT_EQ(plainCode.find("scene->setPhysics2DPointsPerMeter"), std::string::npos);
+    // builds carry them in the cooked scene (CookedScene.SceneSettingsKeepPhysicsWorld): no scene code is generated (S98 D1)
 
     // Catalog (set_scene_settings, the Inspector rows, ScenePropertyCmd): by the MCP names
     Scene edited;

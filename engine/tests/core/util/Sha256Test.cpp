@@ -70,7 +70,7 @@ TEST(Sha256, EveryLengthUpTo300MatchesTheCompatLayer) {
 }
 
 TEST(Sha256, FileDigestAndSize) {
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     const std::string content(3 * 1024 * 1024 + 17, 'x');
     const auto path = dir.write("big.bin", content);
     std::string hex;

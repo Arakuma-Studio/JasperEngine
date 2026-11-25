@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 10
 guid: b4603f423740bf430d1fe579010f6fd8
 id: 2
 name: Legacy
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.15
   globalIlluminationColor: [1, 1, 1]
@@ -33,13 +34,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_3d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 128
 shaderKeys:
   - type: blit
   - type: blit
@@ -63,7 +57,6 @@ entities:
         enabled: true
         type: directional
         direction: [-0.4, -1, -0.6]
-        worldDirection: [-0.4, -1, -0.6]
         color: [1, 1, 1]
         range: 100
         intensity: 3

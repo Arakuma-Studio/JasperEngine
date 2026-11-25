@@ -191,6 +191,8 @@
     "lodEnabled",
     "lodFadeMode",
     "lodFadeTransitionWidth",
+    "meshAsset",
+    "meshAssetGuid",
     "mirroredWinding",
     "morphTargetCount",
     "morphWeights",
@@ -276,6 +278,11 @@
     "lodFadeTransitionWidth": [
      2,
      0,
+     true
+    ],
+    "meshAsset": [
+     18,
+     8,
      true
     ],
     "morphWeights[0]": [
@@ -433,6 +440,11 @@
     "lodFadeTransitionWidth": [
      2,
      0,
+     true
+    ],
+    "meshAsset": [
+     18,
+     8,
      true
     ],
     "morphWeights[]": [
@@ -12808,6 +12820,7 @@
     "filename",
     "inputSurface",
     "interactive",
+    "msaaSamples",
     "pixelRatio",
     "renderMode",
     "sortOrder",
@@ -12833,6 +12846,11 @@
     ],
     "interactive": [
      0,
+     0,
+     true
+    ],
+    "msaaSamples": [
+     8,
      0,
      true
     ],
@@ -12880,6 +12898,11 @@
     ],
     "interactive": [
      0,
+     0,
+     true
+    ],
+    "msaaSamples": [
+     8,
      0,
      true
     ],
@@ -28387,6 +28410,11 @@
     0,
     true
    ],
+   "meshAsset": [
+    18,
+    8,
+    true
+   ],
    "morphWeights[N]": [
     2,
     0,
@@ -33385,6 +33413,11 @@
    ],
    "interactive": [
     0,
+    0,
+    true
+   ],
+   "msaaSamples": [
+    8,
     0,
     true
    ],

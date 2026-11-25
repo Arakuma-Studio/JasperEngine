@@ -161,6 +161,19 @@ STABLE(FogComponent, FogComponent, component.type = FogType::EXPONENTIAL; compon
 STABLE(MirrorComponent, MirrorComponent, )
 STABLE(ReflectionProbeComponent, ReflectionProbeComponent, )
 STABLE(UIDocumentComponent, UIDocumentComponent, )
+// S92 R18: a texture-mode document's own MSAA samples
+TEST(StreamComponent, UIDocumentMsaaSamplesRoundTrip){
+    UIDocumentComponent component{};
+    EXPECT_FALSE(reflect::encodeValue(ComponentType::UIDocumentComponent, &component)["msaaSamples"]) << "0 is not written";
+    component.renderMode = UIDocumentRenderMode::TEXTURE;
+    component.msaaSamples = 2;
+    const YAML::Node node = reflect::encodeValue(ComponentType::UIDocumentComponent, &component);
+    EXPECT_EQ(node["msaaSamples"].as<int>(), 2);
+    EXPECT_EQ(reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, node).msaaSamples, 2);
+    // a document saved before it
+    EXPECT_EQ(reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, YAML::Load("renderMode: texture\n")).msaaSamples, 0);
+    EXPECT_NO_ENGINE_ERRORS();
+}
 STABLE(CameraComponent, CameraComponent,
     component.type = CameraType::CAMERA_PERSPECTIVE; component.target = Vector3(0, 1, -5); component.cullingMask = 0x5u;
     component.transparencyMode = TransparencyMode::ORDER_INDEPENDENT; component.oitWeightScale = 0.5f)
@@ -403,15 +416,6 @@ TEST(StreamComponent, ActionStartOffsetRoundTripsAndOmitsDefaults){
     EXPECT_FLOAT_EQ(old.startOffset, 0.0f);
     EXPECT_FALSE(old.randomStart);
 
-    // exported code: only when set
-    const reflect::ComponentDesc& desc = *reflect::find(ComponentType::ActionComponent);
-    reflect::CodegenContext ctx;
-    ctx.variable = "action";
-    EXPECT_EQ(reflect::cppAssignments(desc, &plain, ctx).find("startOffset"), std::string::npos);
-    const std::string code = reflect::cppAssignments(desc, &set, ctx);
-    EXPECT_NE(code.find("action.startOffset = 0.35"), std::string::npos) << code;
-    EXPECT_NE(code.find("action.randomStart = true"), std::string::npos) << code;
-    EXPECT_EQ(code.find("phase"), std::string::npos) << code;
     EXPECT_NO_ENGINE_ERRORS();
 }
 

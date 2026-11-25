@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -170,6 +171,8 @@ namespace jasperengine {
         Rml::Vector2f v{0.0f, 0.0f};                // linear: to the end, radial: 1/radius, conic: angle unit vector
         std::vector<float> stopPositions;           // normalized, at most MAX_STOPS
         std::vector<Rml::Colourf> stopColors;       // premultiplied
+        size_t declaredStops = 0;                   // the stops given (only MAX_STOPS of them drawn)
+        int stopRow = -1;                           // its row of the renderer's stop table (S92 R7), -1: none
     };
 
     // RmlUi's render interface on the engine render abstraction, with every optional RmlUi 6.3
@@ -264,7 +267,8 @@ namespace jasperengine {
         // compositePipeline is PIP_DEFAULT_NODEPTH (swapchain) or PIP_RTT_NODEPTH (offscreen),
         // or PIP_MSAA_NODEPTH for the post-processed camera's multisampled scene target
         // (shader library phase 4 MSAA) of msaaSamples samples, drawn through the pipeline
-        // cache since its sample count is the scene's
+        // cache since its sample count is the scene's. S92 R4: for the last frame's layer 0, only
+        // the 64x64 tiles it wrote, in one draw (false, nothing drawn, when it wrote none)
         bool drawComposite(TextureRender& source, PipelineType compositePipeline, bool flipY);
         bool drawComposite(TextureRender& source, PipelineType compositePipeline, const Rml::Matrix4f& clipFromQuad,
                            int msaaSamples = 1);
@@ -348,6 +352,17 @@ namespace jasperengine {
         PipelineState getGeometryState(BlendMode blend = BlendMode::PREMULTIPLIED) const;
         // the top layer as the target of the next draw (opens or keeps its pass)
         bool bindTopLayer();
+        // tests (S92 R12): each draw tested against the clip mask from now on (nullptr: none), with
+        // the depth-stencil it tests (nullptr: layer 0's, which the ordinary layers share; else the
+        // region layer's framebuffer), the mask version that depth-stencil holds and the current
+        // one. Every draw that tests the stencil reports itself here before it is drawn
+        struct StencilAuditEntry {
+            const void* attachment = nullptr;
+            uint64_t attachmentVersion = 0;
+            uint64_t maskVersion = 0;
+        };
+        void setStencilAuditForTesting(std::vector<StencilAuditEntry>* audit);
+        void auditStencilDraw(const PipelineState& state);
         // a compiled geometry's buffers, uploaded on first use; false when it has no GPU data
         bool bindGeometry(Rml::CompiledGeometryHandle geometry, ObjectRender& program, uint32_t& indexCount);
 
@@ -437,6 +452,78 @@ namespace jasperengine {
         int runVideoConversions();
         uint64_t getVideoConversionCount() const;   // passes run over the renderer's life
 
+        // S92 frame reuse (RmlRendererFrame.cpp). Why a frame is drawn whatever it recorded (R2):
+        // it reads something its signature cannot version (stats.liveSources)
+        enum LiveSource : uint32_t {
+            LIVE_VIDEO = 1u << 0,           // a <video>'s texture (HtmlUITexture::liveContent)
+            LIVE_RENDER_TARGET = 1u << 1,   // a texture on an image the UI does not write (an engine render target)
+            LIVE_EFFECT = 1u << 2,          // a phase-5 effect on a running clock, or a stateful one
+            LIVE_PARTICLES = 1u << 3,       // a <particle-system> that drew particles
+            LIVE_MSDF_PENDING = 1u << 4,    // distance glyphs asked for and not made yet
+            LIVE_TEXT_SETTLE = 1u << 5,     // transform-aware text settling at its scale (RenderManager::RequestRender)
+            LIVE_REQUESTED = 1u << 6,       // HtmlUIContext::requestRedraw (custom native content, settings)
+        };
+        // a live source of the frame being recorded; outside a recording, of the next frame
+        void addLiveSource(uint32_t reasons);
+        // The signature of the recorded commands [first, end) and of the state in effect at first
+        // (transform, scissor, clip mask): geometry and textures by serial and content version,
+        // compiled filters, shaders and effects by their parameters, everything else by value.
+        // With an origin (target px), translations, scissors and region layers are taken relative
+        // to it, unless a transform other than the identity is in effect (a layer scope's key: an
+        // element that moves keeps it). live receives the live sources the commands read
+        uint64_t signatureOf(size_t first, size_t end, Rml::Vector2i origin, uint32_t& live);
+        // the commands recorded so far in this frame (a range's end)
+        size_t getRecordedCommandCount() const { return commands.size(); }
+        // R1: a recorded frame whose signature equals the last drawn frame's, with no live source,
+        // into the same target, is not replayed (stats.framesKept 1, nothing drawn or uploaded):
+        // the target keeps its image and its composite tiles. Tests: false draws every frame (not a
+        // user setting: a stale frame is a bug to fix, S92 risk 1). Read by endFrame
+        static void setFrameReuseForTesting(bool enabled);
+        static bool isFrameReuse();
+        bool wasLastFrameKept() const { return lastFrameKept; }
+        // the signature's CPU time in the last recorded frame (R33)
+        double getLastSignatureMs() const { return lastSignatureMs; }
+        // R3 (tests, JASPER_HTMLUI_VERIFY_KEPT=1 or the setter): a kept frame is also replayed into a
+        // scratch target, which is compared with the kept image byte for byte (on GL at once, on the
+        // other backends once the frame is committed: the next frame, or checkKeptFrame). A difference
+        // logs "[HTML UI] kept frame differs" and counts in stats.keptMismatches
+        static void setKeptFrameVerificationForTesting(bool enabled);
+        static bool isKeptFrameVerification();
+        // a comparison still pending, done now when its frame was committed; false when none is pending
+        bool checkKeptFrame();
+        uint32_t getKeptMismatchCount() const { return keptMismatchCount; }
+        // R5 (tests): OFF stores every depth-stencil, as before S92; PLANNED (the default) stores
+        // one only when a later pass tests it; EVERY_PASS stores none, so every later stencil test
+        // finds its mask dropped and draws it again (the fallback a wrong plan relies on). The
+        // images are the same. Read by the replay
+        enum class DepthStencilDiscard : uint8_t { OFF, PLANNED, EVERY_PASS };
+        static void setDepthStencilDiscardForTesting(DepthStencilDiscard mode);
+        // R4: the composite's draws over the renderer's life (one per drawComposite that drew)
+        uint64_t getCompositeDrawCount() const { return compositeDraws; }
+
+        // S92 layer cache (RmlRendererLayerCache.cpp, R9). A layer scope (a PUSH_LAYER to its
+        // COMPOSITE) keeps its filtered result, without a trailing opacity, as an image of its
+        // window, keyed by its signature relative to the window: a later frame recording the
+        // same scope draws the image with the composite's blend, scissor, clip mask and opacity
+        // (one draw, no pass, no filter). Scopes reading live sources, saved-layer textures or
+        // layers outside them are not kept. Tests: false replays every scope (read by the replay)
+        static void setLayerCacheForTesting(bool enabled);
+        static bool isLayerCache();
+        // the cache's budget per renderer, least recently used first: 8 MiB on Android, iOS and
+        // the web, 32 MiB on desktop; tests set another (0: the platform's)
+        static void setLayerCacheBudgetForTesting(size_t bytes);
+        static size_t getLayerCacheBudget();
+        static constexpr uint64_t kLayerCacheKeepFrames = 120;   // replays an unused entry is kept
+        size_t getLayerCacheEntryCount() const;
+        size_t getLayerCacheBytes() const;                         // entries and free images
+        // R30 (tests): the last frame's layer and post-process passes, each by the 64-px granules
+        // of the window of the layer it serves (what RmlUi asked the layer to cover; the whole
+        // target for a layer pushed without one), and the largest such pass's render area
+        // and how many were layer passes and post-process passes (the rest of stats.passes: layer 0's
+        // and the cache's copies)
+        struct LayerPassStats { uint64_t windowPixels = 0; uint32_t largestPass = 0; uint32_t layerPasses = 0; uint32_t postPasses = 0; };
+        LayerPassStats getLastLayerPassStats() const { return layerPassStats; }
+
     private:
         friend class RmlFilterContext;
         // phase 5: the UI effects draw with the renderer's passes, geometry and state
@@ -507,9 +594,15 @@ namespace jasperengine {
         struct DeferredComposite {
             int layer = -1;                  // the pushed layer; -1: none
             int post = -1;                   // the post target holding the filter output
-            Rml::Rectanglei scissor;         // the first composite's
+            Rml::Rectanglei scissor;         // the first composite's (the pushed layer's px)
             PipelineState state;             // the first composite's (no clip mask)
+            // S92 R10: the post target (of the source layer's frame, a region layer's set too) and
+            // the frames it and the pushed layer cover (target px)
+            Framebuffer* postImage = nullptr;
+            Rml::Rectanglei postFrame, layerFrame;
         };
+        // a post draw's source of frame `from` placed by the target plane into a target of frame `to`
+        static void placeByFrames(PostDraw& draw, Rml::Rectanglei from, Rml::Rectanglei to);
         DeferredComposite deferred;
         bool fusingDeferred = false;
         void flushDeferredComposite();
@@ -523,6 +616,7 @@ namespace jasperengine {
             Framebuffer* framebuffer = nullptr;
             int pool = -1;
             uint64_t maskVersion = 0;
+            Rml::Rectanglei window;           // S92 R30: what RmlUi asked it to cover (target px)
         };
         std::vector<LayerFrame> frames;               // the replay's, per layer stack index
         std::vector<Rml::Rectanglei> recordFrames;    // the recording's rects, per layer stack index
@@ -553,10 +647,29 @@ namespace jasperengine {
             Rml::CompiledGeometryHandle geometry;
             Rml::Vector2f translation;
             Rml::Matrix4f transform;      // getCurrentTransform's, when it was drawn
+            // S92 R5: the scissor it was drawn with (maskHistory replays it exactly), and the
+            // depth-stencil it went into (nullptr: layer 0's shared one, else a region layer's)
+            bool scissored = false;
+            Rml::Rectanglei scissorPixels;
+            const Framebuffer* attachment = nullptr;
         };
         std::vector<MaskOp> maskOps;
+        // S92 R5: every stencil write into each depth-stencil since it was last cleared (layer 0's
+        // shared one this frame, a region layer's since its push), in order, with its scissor: a
+        // depth-stencil a DONTCARE store dropped is cleared and gets them all again, the stencil
+        // it held outside the current mask's scissor included
+        std::vector<MaskOp> maskHistory;
+        std::vector<const Framebuffer*> replayDs;   // dropped and cleared since (nullptr: the shared one)
+        // the mask version each dropped depth-stencil held when it was dropped
+        std::vector<std::pair<const Framebuffer*, uint64_t>> droppedVersions;
+        const Framebuffer* attachmentOf(int index) const;
+        // a dropped and cleared depth-stencil gets what it held back (its writes replayed, its
+        // version again), before anything tests or writes it; the layer is bound
+        void restoreDroppedMask(int index);
+        void drawMaskOp(const MaskOp& op);
         uint64_t maskVersion = 0;
         uint64_t sharedMaskVersion = 0;   // layer 0's depth-stencil's
+        std::vector<StencilAuditEntry>* stencilAudit = nullptr;
         bool drawingMask = false;
         int drawIndexOverride = -1;       // ensureMask's layer, which the mask draws go to
         // the layer a geometry draw goes to: the top one (or ensureMask's)
@@ -587,7 +700,9 @@ namespace jasperengine {
         void stencilClear(uint8_t value);
         bool drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation, HtmlUITexture* texture, const PipelineState& state);
         // size: the images' (the layer's frame)
-        void blurInto(Framebuffer& source, Framebuffer& destination, Framebuffer& temp, float sigma, Rml::Rectanglei window, Rml::Vector2i size);
+        // first: the first pass's variant and parameters instead of a copy of the source (a drop shadow)
+        void blurInto(Framebuffer& source, Framebuffer& destination, Framebuffer& temp, float sigma, Rml::Rectanglei window, Rml::Vector2i size,
+                      const PostDraw* first = nullptr);
         void applyFilter(RmlFilterContext& context, const RmlCompiledFilter& filter);
         Framebuffer* postTarget(int index);
 
@@ -628,11 +743,16 @@ namespace jasperengine {
         // the replay of RenderGeometry: the texture was checked when it was recorded
         void drawRecordedGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, HtmlUITexture* texture);
         void renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation);
-        // frame: an ordinary layer when invalid, else a region layer covering it (target px)
-        Rml::LayerHandle pushLayerNow(Rml::Rectanglei frame = Rml::Rectanglei::MakeInvalid());
+        // frame: an ordinary layer when invalid, else a region layer covering it (target px);
+        // window: what RmlUi asked it to cover (S92 R30; invalid: the frame)
+        Rml::LayerHandle pushLayerNow(Rml::Rectanglei frame = Rml::Rectanglei::MakeInvalid(),
+                                      Rml::Rectanglei window = Rml::Rectanglei::MakeInvalid());
         void popLayerNow();
+        struct LayerCacheScope;
+        // scope: a layer cache miss (S92 R9): the result without its trailing opacity is stored
+        // and drawn from the cache, the opacity applied at the composite
         void compositeLayersNow(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blendMode,
-                                Rml::Span<const Rml::CompiledFilterHandle> filters);
+                                Rml::Span<const Rml::CompiledFilterHandle> filters, const LayerCacheScope* scope = nullptr);
         void renderShaderNow(Rml::CompiledShaderHandle shader, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation);
         void releaseGeometryNow(Rml::CompiledGeometryHandle geometry);
         void releaseFilterNow(Rml::CompiledFilterHandle filter);
@@ -684,14 +804,19 @@ namespace jasperengine {
         struct ClipShapeRecord {
             Rml::Rectanglef rect;            // relative to the mask's translation
             Rml::Vector2f radii[4];          // top-left, top-right, bottom-right, bottom-left
+            // S92: a convex polygon (counter-clockwise, relative to the translation) the rect bounds; 0: none
+            int polygonPoints = 0;
+            Rml::Vector2f polygon[Rml::ClipShape::MaxPolygonPoints];
         };
         // u_fs_htmluiClip (includes/htmlui_sdf.glsl)
         struct ClipParams {
             float rect[2][4] = {};           // x, y, width, height (document px, before the element transform)
             float radiiX[2][4] = {};
             float radiiY[2][4] = {};
-            float params[4] = {};            // x: shapes, y: texture kind (0 RGBA, 1 R8 coverage, 2 MTSDF)
+            float params[4] = {};            // x: shapes, y: texture kind (0 RGBA, 1 R8 coverage, 2 MTSDF),
+                                             // z: the shape that is a polygon + 1 (0: none), w: its points
             float text[4] = {};              // MTSDF: effect, dilation, blur sigma (document px), distance range (texels)
+            float polygon[Rml::ClipShape::MaxPolygonPoints / 2][4] = {};   // S92: the polygon's points, two a row
         };
         enum class ScopeMode : uint8_t { STENCIL, ELIDED, ANALYTIC };
         // the commands under one clip mask list: from its CLIP_ENABLE to the next one
@@ -700,6 +825,10 @@ namespace jasperengine {
             uint32_t masks = 0;              // the mask draws of its list
             Rml::Rectanglei scissor;         // ELIDED: target px
             ClipParams clip;                 // ANALYTIC
+            // ANALYTIC with masks that are all rectangles on the target's axes: their intersection
+            // (target px), which clips a layer composite in its shader (S92, U27: no stencil)
+            bool compositeClip = false;
+            Rml::Rectanglef compositeRect;
         };
         enum class RunKind : uint8_t { VERTICES, INSTANCES };
         // a run cut into chunks of bounded size, each found in the run cache or gathered on its own
@@ -931,8 +1060,185 @@ namespace jasperengine {
         // bindings on the dynamic path
         ObjectRender compositeMsaaObject;
         TextureRender placeholderWhite;
+
+        // S92 gradient stop table (R7, D9): the stops of the gradient primitives of more than
+        // HtmlUIPrimitive::GRADIENT_STOPS, a row each, kept from CompileShader to ReleaseShader;
+        // the texture is made when a primitive first reads a changed table (none without rows)
+        static constexpr int STOP_TABLE_WIDTH = 2 * HtmlUIPrimitive::GRADIENT_TABLE_STOPS;   // colours, then positions
+        std::vector<uint8_t> stopTable;                   // rows of STOP_TABLE_WIDTH RGBA8 texels
+        std::vector<uint64_t> stopRowHashes;              // each row's content (the primitives' recorded hash)
+        std::vector<int> freeStopRows;
+        bool stopTableDirty = false;
+        TextureRender stopTableTexture;
+        std::vector<TextureRender> retiredStopTables;     // replaced in this frame: destroyed in a later one
+        uint64_t retiredStopTablesFrame = 0;
+        std::pair<int, int> primStopsSlot{-1, -1};        // u_htmluiStops
+        void assignStopRow(RmlCompiledShader& shader);
+        void releaseStopRow(RmlCompiledShader& shader);
+        // the table's texture with every row written (placeholderWhite without rows)
+        TextureRender* currentStopTable();
+        void destroyStopTables();
         // phase 5: handles with bit 0 set (CompileShader/CompileFilter "jfx")
         std::unique_ptr<htmlui::EffectRenderer> effects;
+
+        // S92 frame reuse
+        uint32_t frameLiveSources = 0;       // the frame being recorded's (addLiveSource)
+        uint32_t pendingLiveSources = 0;     // asked for between frames: the next frame's
+        uint64_t textureSignature(const HtmlUITexture* texture, uint32_t& live) const;
+        uint64_t filterSignature(Rml::CompiledFilterHandle filter, uint32_t& live) const;
+        uint64_t shaderSignature(Rml::CompiledShaderHandle shader, uint32_t& live) const;
+        // R1: the last drawn frame (its signature, target and the target's generation after it)
+        uint64_t keptSignature = 0;
+        bool keptValid = false;
+        const RmlRenderTarget* keptTarget = nullptr;
+        uint64_t keptGeneration = 0;
+        uint64_t frameSignature = 0;         // the frame being ended's
+        bool lastFrameKept = false;
+        double lastSignatureMs = 0.0;
+        // what a replay leaves undrawn (a pipeline compiling, an upload past the staging buffer)
+        uint64_t skippedBefore = 0;
+        uint64_t skippedWork() const;
+        // endFrame: the frame's signature; true when it is kept (then nothing is replayed)
+        bool keepRecordedFrame();
+        // a kept frame's end (its textures count as drawn, R3's verification)
+        void finishKeptFrame();
+        // a replayed frame's end (recorded: not drawn at once): it can be kept from now on when
+        // everything was drawn; its composite tiles
+        void rememberDrawnFrame(bool recorded);
+        // the frame statistics both ends fill
+        void closeFrameStats();
+        uint32_t targetBytesOf(const RmlRenderTarget& renderTarget) const;
+        // R4: the 64x64 tiles of layer 0 the recorded frame writes (draw bounds after transform and
+        // scissor, composites' scissors), as quads of horizontal runs merged down identical rows
+        static constexpr int TILE_SIZE = 64;
+        std::vector<uint8_t> tileMask;
+        std::vector<uint8_t> uploadedTileMask;
+        int tileColumns = 0, tileRows = 0;
+        bool tilesFull = true;               // the whole quad (immediate drawing, an upload refused)
+        const TextureRender* tileSource = nullptr;   // the layer-0 image the tiles are of
+        uint32_t tileQuads = 0;
+        uint32_t tileCount = 0;
+        uint32_t tilePixels = 0;
+        std::vector<Rml::Vertex> tileVertices;
+        BufferRender tileVertexBuffer;
+        BufferRender tileIndexBuffer;
+        // the composite on the dynamic path, its buffers swapped for the tiles' (every backend
+        // takes them there), at the camera pass's format
+        ObjectRender compositeTileObject;
+        uint32_t tileCapacity = 0;           // quads the buffers hold
+        uint64_t tileUploadFrame = UINT64_MAX;
+        uint64_t compositeDraws = 0;
+        void computeCompositeTiles();
+        void markTiles(float x0, float y0, float x1, float y1, bool scissorOn, const Rml::Rectanglei& scissor);
+        void buildTileQuads();
+        void destroyTileBuffers();
+        // R5: the replay's depth-stencil plan. Per replay position (an op of the batched plan, else a
+        // command): whether it uses the stencil, and the next position that surely begins another
+        // pass; a pass begun where no stencil use follows its end stores DONTCARE, one where none
+        // follows at all also loads DONTCARE. A depth-stencil stored DONTCARE is cleared and its mask
+        // drawn again if a later pass needs it after all
+        enum : uint8_t { DS_STENCIL = 1, DS_BREAK = 2 };
+        std::vector<uint8_t> dsFlags;
+        std::vector<uint32_t> dsNextBreak;
+        int64_t dsLastStencil = -1;
+        bool dsPlanned = false;
+        bool dsEveryPass = false;            // DepthStencilDiscard::EVERY_PASS (tests)
+        size_t replayPosition = 0;
+        bool activeDsDiscard = false;        // the open pass stores its depth-stencil DONTCARE
+        const Framebuffer* activeDsAttachment = nullptr;   // nullptr: the shared one
+        bool sharedDsDiscarded = false;
+        std::vector<const Framebuffer*> discardedRegionDs;
+        void planDepthStencil();
+        // R3
+        std::unique_ptr<RmlRenderTarget> verifyTarget;
+        bool verifyPending = false;
+        uint64_t verifyFrame = 0;
+        RmlRenderTarget* verifyKeptTarget = nullptr;
+        uint64_t verifyKeptGeneration = 0;   // its framebuffers then: made again since, nothing to compare
+        std::string verifySource;            // the first command reading an unversioned source
+        uint32_t keptMismatchCount = 0;
+        void verifyKeptFrame();
+        void compareKeptFrame();
+
+        // S92 layer cache (RmlRendererLayerCache.cpp)
+        struct LayerCacheEntry {
+            std::unique_ptr<Framebuffer> image;   // 1-sample RGBA8
+            Rml::Rectanglei rect;                 // the window's pixels in it
+            size_t bytes = 0;
+            uint64_t lastUsed = 0;                // replay
+            bool hit = false;                     // drawn from since it was stored
+            bool transient = false;               // over the budget, for an equal scope of the replay only
+        };
+        // what the replay does with a recorded command of a cached scope: a hit's commands draw
+        // nothing (its clip masks only set the mask, drawn where it is tested), its composite
+        // draws the image; a miss's composite stores its result
+        enum class CacheOp : uint8_t { NONE, SKIP, MASK, HIT, STORE };
+        struct LayerCacheScope {
+            uint64_t key = 0;
+            Rml::Rectanglei window;               // target px: the composite's scissor within the layer
+            float opacity = 1.0f;                 // a trailing opacity filter, applied at the composite
+            int filters = 0;                      // the composite's filters before it
+            bool keep = false;                    // a store an equal scope later in the replay draws
+            bool afterStore = false;              // a hit on a store earlier in the replay
+        };
+        std::unordered_map<uint64_t, LayerCacheEntry> layerCache;
+        // images of evicted entries, reused by size by the next replay's stores (an element that
+        // changes every frame stores every frame), destroyed when it takes none
+        struct LayerCacheFreeImage {
+            std::unique_ptr<Framebuffer> image;
+            uint64_t freed = 0;                   // replay
+        };
+        std::vector<LayerCacheFreeImage> layerCacheFree;
+        size_t layerCacheBytes = 0;
+        uint64_t layerCacheReplay = 0;
+        uint32_t recordedPushes = 0;             // the frame's PUSH_LAYER commands (none: no plan)
+        std::vector<CacheOp> cacheOps;           // per command (empty: no cached scope this frame)
+        std::vector<int32_t> cacheScopeOf;       // HIT, STORE: the scope in cacheScopes
+        std::vector<LayerCacheScope> cacheScopes;
+        LayerPassStats layerPassStats;
+        int filterSourceLayer = -1;              // the layer post-process passes serve (-1: the top one)
+        // before the replay: the scopes' keys, hits and misses
+        void planLayerCache();
+        // The state a scope starts in (the replay's at its PUSH_LAYER), and the signature of its
+        // commands (first, end) relative to origin (target px). Unlike signatureOf, every draw is
+        // hashed with the state it is drawn in (scissor, transform, clip) instead of the state
+        // commands that set it, and geometry by its vertices: a scope keys the same whatever
+        // state the commands before it left, and equal elements key the same
+        struct ScopeState {
+            int transform = -1;                   // in commandMatrices, -1: none
+            bool scissorOn = false;
+            Rml::Rectanglei scissor;              // target px
+            bool clipOn = false;
+            uint64_t mask = 0;                    // the clip mask's operations since its last Set
+        };
+        uint64_t scopeSignature(size_t first, size_t end, Rml::Vector2i origin, const ScopeState& start, int layer, uint32_t& live);
+        // a command of a cached scope replayed: true when it was handled
+        bool replayCached(size_t index, const Command& command);
+        // a skipped scope's clip mask: the operation without its draw (ensureMask draws it where tested)
+        void setClipMaskOnly(const Command& command);
+        // the scope's result into the cache (taking a region post target, else a copy), nullptr
+        // when the budget has no room for it and no equal scope of the replay draws it
+        LayerCacheEntry* storeLayerResult(const LayerCacheScope& scope, RmlFilterContext& context);
+        void drawCachedLayer(const LayerCacheEntry& entry, Rml::Rectanglei window, int destination, Rml::BlendMode blend, float opacity);
+        // a layer composite into a layer covering destinationFrame: within an analytic clip scope
+        // of rectangles, their clip in the shader (PASSTHROUGH: params.w on, texCoordMinMax the
+        // rectangle in destination px, params.yz its size) and the scissor within it; false when
+        // that leaves nothing to draw
+        bool applyCompositeClip(PostDraw& draw, Rml::Rectanglei destinationFrame) const;
+        bool compositeClipActive() const;
+        // end of a replay: entries unused for kLayerCacheKeepFrames, and stored ones not drawn
+        // again in the replay after, go; free images no store took, and beyond a few, go
+        void trimLayerCache();
+        void releaseLayerCache();
+        // a texture in a scope's key: a small static one by its texels, else textureSignature
+        uint64_t scopeTextureSignature(const HtmlUITexture* texture, uint32_t& live) const;
+        static constexpr size_t kLayerCachePixelHashBytes = 256 * 1024;
+        static uint64_t layerCacheTextureHash(const uint8_t* data, size_t bytes, int width, int height, int filter, int wrapU, int wrapV,
+                                              int format);
+        std::unique_ptr<Framebuffer> takeLayerCacheImage(int width, int height);
+        bool makeLayerCacheRoom(size_t bytes);
+        // a pass's render area, by the window of the layer it serves (R30)
+        void noteLayerPass(Rml::Rectanglei full, TargetKind kind, int index);
     };
 
 }

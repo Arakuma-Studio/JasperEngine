@@ -52,7 +52,6 @@
 #include "lattice/LatticeTypes.h"
 #include "object/CameraFollow.h"
 #include "object/CameraShaker.h"
-#include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/MeshSystem.h"
@@ -3043,6 +3042,11 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
+        // S98 REQ-8: written only when set, so an old project's file stays as it was
+        const AssetStrippingSettings& stripping = project->getAssetStripping();
+        if (stripping.mode == AssetStrippingMode::ReferencedOnly) exportNode["assetStripping"] = "referencedOnly";
+        if (!stripping.alwaysInclude.empty()) exportNode["alwaysInclude"] = stripping.alwaysInclude;
+        if (!stripping.exclude.empty()) exportNode["exclude"] = stripping.exclude;
         // Player > Target Platforms: only when not all six, in BuildPlatform order
         if (project->getTargetPlatforms() != Project::allTargetPlatforms) {
             YAML::Node targetsNode(YAML::NodeType::Sequence);
@@ -3251,6 +3255,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             keystoreNode["alias"] = android.keystoreAlias;
             androidNode["keystore"] = keystoreNode;
         }
+        if (!android.debugPackageSuffix.empty()) androidNode["debugPackageSuffix"] = android.debugPackageSuffix;
         encodeStringList(androidNode, "gradleDependencies", android.gradleDependencies);
         encodeStringList(androidNode, "gradleRepositories", android.gradleRepositories);
         encodeStringList(androidNode, "gradleProperties", android.gradleProperties);
@@ -3441,7 +3446,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // one entry per file: two scenes on one file would each load and overwrite the other
         std::unordered_map<std::string, const SceneProject*> listedFiles;
         for (const auto& sceneProject : project->getScenes()) {
-            if (sceneProject.filepath.empty()) {
+            // untitled, or opened without joining the build (S98 REQ-28: the workspace has it)
+            if (sceneProject.filepath.empty() || !sceneProject.inBuild) {
                 continue;
             }
             const auto [listed, added] = listedFiles.emplace(project->sceneFileKey(sceneProject.filepath), &sceneProject);
@@ -3623,9 +3629,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setPlayerCrash(crash);
     }
 
-    if (node["htmlUiMsaaSamples"].IsDefined()) {
-        project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
-    }
+    // S92 R16: a project saved without the key had 4 samples (new projects are Auto, 0)
+    project->setHtmlUiMsaaSamples(node["htmlUiMsaaSamples"].IsDefined() ? YamlNumbers::as<int>(node["htmlUiMsaaSamples"])
+                                                                         : Project::legacyHtmlUiMsaaSamples);
 
     // S56: a project saved before it has no device block, and gets the defaults
     {
@@ -4070,6 +4076,20 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setPackContent(exportNode["pack"] && exportNode["pack"].as<bool>());
         project->setStripEngineCode(!exportNode["stripEngineCode"] || exportNode["stripEngineCode"].as<bool>());
+        {
+            // S98 REQ-50: absent keys are Ship All Assets and empty lists
+            AssetStrippingSettings stripping;
+            const YAML::Node& mode = exportNode["assetStripping"];
+            if (mode && mode.IsScalar() && mode.as<std::string>() == "referencedOnly") stripping.mode = AssetStrippingMode::ReferencedOnly;
+            for (const char* key : {"alwaysInclude", "exclude"}) {
+                const YAML::Node& list = exportNode[key];
+                if (!list || !list.IsSequence()) continue;
+                std::vector<std::string>& globs = std::string(key) == "exclude" ? stripping.exclude : stripping.alwaysInclude;
+                for (const YAML::Node& item : list)
+                    if (item.IsScalar() && !item.as<std::string>().empty()) globs.push_back(item.as<std::string>());
+            }
+            project->setAssetStripping(stripping);
+        }
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
             const YAML::Node& desktopNode = exportNode["desktop"];
@@ -4276,6 +4296,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (androidNode["keystore"]["path"]) android.keystorePath = FileUtils::pathFromUtf8(portablePath(androidNode["keystore"]["path"].as<std::string>()));
             if (androidNode["keystore"]["alias"]) android.keystoreAlias = androidNode["keystore"]["alias"].as<std::string>();
         }
+        if (androidNode["debugPackageSuffix"]) android.debugPackageSuffix = androidNode["debugPackageSuffix"].as<std::string>();
         android.gradleDependencies = decodeStringList(androidNode["gradleDependencies"]);
         android.gradleRepositories = decodeStringList(androidNode["gradleRepositories"]);
         android.gradleProperties = decodeStringList(androidNode["gradleProperties"]);
@@ -4537,6 +4558,27 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
             if (loadedScene.sceneType == SceneType::SCENE_3D) {
                 static_cast<SceneRender3D*>(loadedScene.sceneRender)->setWalkSpeedOffset(walkSpeedOffset);
+            }
+        }
+    }
+
+    // The tabs of scene files project.yaml does not list: opened out of the build (S98 REQ-28),
+    // as they were when the project closed
+    if (hasTabs) {
+        for (const TabEntry& tab : workspace.getTabs()) {
+            if (tab.type != TabType::SCENE || tab.filepath.empty() || fs::path(tab.filepath).extension() != ".scene" ||
+                listedFiles.count(project->sceneFileKey(tab.filepath))) {
+                continue;
+            }
+            const fs::path scenePath = project->getProjectPath() / tab.filepath;
+            std::error_code ec;
+            if (!fs::is_regular_file(scenePath, ec) || project->findSceneByPath(scenePath) != NULL_PROJECT_SCENE) {
+                continue;
+            }
+            if (project->loadScene(scenePath, true, true, true)) {
+                if (SceneProject* opened = project->getScene(project->findSceneByPath(scenePath))) {
+                    opened->inBuild = false;
+                }
             }
         }
     }
@@ -4866,7 +4908,6 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
             } else {
                 info.prefabPath = pathNode.as<std::string>();
             }
-            info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
         }
     }
@@ -5091,6 +5132,11 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     // written only when not the default (half), so scenes saved before it existed re-save unchanged
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         sceneNode["sceneColorScale"] = sceneColorScaleToString(scene->getSceneColorScale());
+    // the screen HTML UI documents (S92): written only away from their defaults
+    if (scene->getHtmlUiRenderMode() != SceneSettings().htmlUiRenderMode)
+        sceneNode["htmlUiRenderMode"] = StreamSchema::uiRenderMode().toString(scene->getHtmlUiRenderMode());
+    if (scene->getHtmlUiMsaaSamples() != SceneSettings().htmlUiMsaaSamples)
+        sceneNode["htmlUiMsaaSamples"] = scene->getHtmlUiMsaaSamples();
     // planar reflections: written only away from their defaults
     if (scene->getPlanarReflectionResolution() != SceneSettings().planarReflectionResolution)
         sceneNode["planarReflectionResolution"] = StreamSchema::planarReflectionResolution().toString(scene->getPlanarReflectionResolution());
@@ -5131,6 +5177,13 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["capsuleShadowSoftness"] = YamlNumbers::text(scene->getCapsuleShadowSoftness());
     sceneNode["ambientLight2DIntensity"] = scene->getAmbientLight2DIntensity();
     sceneNode["ambientLight2DColor"] = encodeVector3(scene->getAmbientLight2DColor());
+    // Light Steps (S78 R1): written only when on, so scenes saved before them re-save unchanged
+    if (scene->getLight2DSteps() != SceneSettings().light2DSteps)
+        sceneNode["light2DSteps"] = scene->getLight2DSteps();
+    // the 2D ambient without a Light 2D (S78 R6, R7): a scene without the key is off (it was drawn so
+    // before S78); new scenes are on, which is written
+    if (scene->isAmbientLight2DWithoutLights())
+        sceneNode["ambientLight2DWithoutLights"] = true;
     sceneNode["shadow2DQuality"] = shadowQualityToString(scene->getShadow2DQuality());
     sceneNode["ssaoEnabled"] = scene->isSSAOEnabled();
     sceneNode["ssaoRadius"] = scene->getSSAORadius();
@@ -5263,6 +5316,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
     // absent = the default (half): it is only written when it differs
     scene->setSceneColorScale(node["sceneColorScale"] ? decodeEnum(node, "sceneColorScale", StreamSchema::sceneColorScale()) : SceneSettings().sceneColorScale);
+    // the screen HTML UI documents: absent = the defaults (Screen Space - Overlay, the project's samples)
+    scene->setHtmlUiRenderMode(node["htmlUiRenderMode"] ? decodeEnum(node, "htmlUiRenderMode", StreamSchema::uiRenderMode()) : SceneSettings().htmlUiRenderMode);
+    scene->setHtmlUiMsaaSamples(node["htmlUiMsaaSamples"] ? YamlNumbers::as<int>(node["htmlUiMsaaSamples"]) : SceneSettings().htmlUiMsaaSamples);
     // planar reflections: absent = the defaults
     const SceneSettings planarDefaults;
     scene->setPlanarReflectionResolution(node["planarReflectionResolution"]
@@ -5313,6 +5369,8 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     } else if (node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(decodeVector3(node["ambientLight2DColor"]));
     }
+    scene->setLight2DSteps(node["light2DSteps"] ? YamlNumbers::as<int>(node["light2DSteps"]) : SceneSettings().light2DSteps);
+    scene->setAmbientLight2DWithoutLights(node["ambientLight2DWithoutLights"] && YamlNumbers::as<bool>(node["ambientLight2DWithoutLights"]));
 
     if (node["shadow2DQuality"]) {
         scene->setShadow2DQuality(decodeEnum(node, "shadow2DQuality", StreamSchema::shadowQuality()));

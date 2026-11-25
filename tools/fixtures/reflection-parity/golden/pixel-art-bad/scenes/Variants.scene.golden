@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 10
 guid: bebe8865a4fe54f57447610444f28700
 id: 2334831824
 name: Variants
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: true
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: off
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]

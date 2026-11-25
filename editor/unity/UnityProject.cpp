@@ -51,7 +51,7 @@ namespace {
 
 }
 
-fs::path Project::findRoot(const fs::path& file){
+fs::path jasperengine::editor::unity::Project::findRoot(const fs::path& file){
     std::error_code ec;
     fs::path dir = fs::absolute(file, ec).parent_path();
     while (!dir.empty()){
@@ -63,7 +63,7 @@ fs::path Project::findRoot(const fs::path& file){
     return {};
 }
 
-bool Project::open(const fs::path& root, std::string& error){
+bool jasperengine::editor::unity::Project::open(const fs::path& root, std::string& error){
     std::error_code ec;
     projectRoot = fs::absolute(root, ec).lexically_normal();
     guids.clear();
@@ -91,16 +91,16 @@ bool Project::open(const fs::path& root, std::string& error){
     return true;
 }
 
-fs::path Project::pathOf(const std::string& guid) const{
+fs::path jasperengine::editor::unity::Project::pathOf(const std::string& guid) const{
     auto it = guids.find(guid);
     return it == guids.end() ? fs::path() : it->second;
 }
 
-std::string Project::relative(const fs::path& path) const{
+std::string jasperengine::editor::unity::Project::relative(const fs::path& path) const{
     return path.lexically_relative(projectRoot).generic_string();
 }
 
-YAML::Node Project::metaOf(const fs::path& asset) const{
+YAML::Node jasperengine::editor::unity::Project::metaOf(const fs::path& asset) const{
     std::error_code ec;
     const fs::path meta = asset.string() + ".meta";
     if (!fs::exists(meta, ec)) return YAML::Node();
@@ -111,11 +111,11 @@ YAML::Node Project::metaOf(const fs::path& asset) const{
     }
 }
 
-bool Project::isBuiltinGuid(const std::string& guid){
+bool jasperengine::editor::unity::Project::isBuiltinGuid(const std::string& guid){
     return guid == BUILTIN_MESHES_GUID || guid == BUILTIN_RESOURCES_GUID;
 }
 
-const BuiltinAsset* Project::builtin(const Ref& ref){
+const BuiltinAsset* jasperengine::editor::unity::Project::builtin(const Ref& ref){
     for (const BuiltinEntry& entry : BUILTINS){
         if (ref.guid == entry.guid && ref.fileID == entry.fileID) return &entry.asset;
     }

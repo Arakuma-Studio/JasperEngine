@@ -37,6 +37,9 @@
 
 namespace jasperengine{
     enum class LodFadeMode;
+    enum class PivotPreset;
+    enum class RigidbodyMotionQuality;
+    enum class ScriptType;
     // T3's terrain settings (component/TerrainComponent.h, component/TerrainSurfaceLayer.h)
     enum class TerrainQualitySetting : int;
     enum class TerrainOffscreenShadows : int;
@@ -279,6 +282,7 @@ namespace jasperengine::editor {
         static const EnumTable<RigidbodyMotionQuality>& rigidbodyMotionQuality();
         static const EnumTable<Scaling>& scalingMode();
         static const EnumTable<SceneColorScale>& sceneColorScale();
+        static const EnumTable<UIRenderMode>& uiRenderMode();
         static const EnumTable<PlanarReflectionResolution>& planarReflectionResolution();
         static const EnumTable<WaterWakeResolution>& waterWakeResolution();
         static const EnumTable<SceneType>& sceneType();

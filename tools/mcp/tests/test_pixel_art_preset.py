@@ -49,7 +49,8 @@ async def test_preset_through_fixes(ed: Editor):
     # the 2d template's images get their import settings from their first cook
     await cooks_idle(ed)
     before = hashes(ed.project)
-    metas = {k: (ed.project / k).read_text() for k in before if k.endswith(".png.meta")}
+    # the template's images are under its assets dir (S98 REQ-36); thumbnail.png beside project.yaml is no asset
+    metas = {k: (ed.project / k).read_text() for k in before if k.endswith(".png.meta") and k.startswith("assets/")}
     ed.check(metas and all("textureImporter" in text for text in metas.values()), f"every image has its import settings: {metas}")
 
     first = await ed.call("check_pixel_art", fix=["pixel_art_mode"], output=True)
@@ -66,7 +67,7 @@ async def test_preset_through_fixes(ed: Editor):
     ed.check("Main Camera" in text, f"a Main Camera: {text[:600]}")
     camera = await ed.call("get_entity", scene="Main", entity="Main Camera")
     ed.check("pixelperfectcamera" in camera["components"], f"with a Pixel Perfect Camera: {list(camera['components'])}")
-    ed.check("pixelArt: true" in (ed.project / "sprites" / "player.png.meta").read_text(), "player.png.meta has pixelArt: true")
+    ed.check("pixelArt: true" in (ed.project / "assets" / "sprites" / "player.png.meta").read_text(), "player.png.meta has pixelArt: true")
     player = await ed.call("get_entity", scene="Main", entity="Player", components=["mesh"])
     texture = player["components"]["mesh"].get(M + "baseColorTexture") or player["components"]["mesh"]["submeshes"][0]["material"]["baseColorTexture"]
     ed.check(isinstance(texture, dict) and texture.get("min_filter") == "nearest" and texture.get("mag_filter") == "nearest",

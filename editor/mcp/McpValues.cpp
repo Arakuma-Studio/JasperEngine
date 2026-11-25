@@ -644,6 +644,14 @@ const EnumOptions& waterWakeResolutionOptions() {
     return options;
 }
 
+const EnumOptions& uiRenderModeOptions() {
+    static const EnumOptions options = {
+        {(int)UIRenderMode::OVERLAY, "overlay", "Screen Space - Overlay"},
+        {(int)UIRenderMode::CAMERA, "camera", "Screen Space - Camera"}
+    };
+    return options;
+}
+
 const EnumOptions& sceneColorScaleOptions() {
     static const EnumOptions options = {
         {(int)SceneColorScale::FULL, "full", "Full"},
@@ -836,6 +844,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"shadow_debug_view", &shadowDebugViewOptions()},
         {"shadow_tier", &shadowTierOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
+        {"ui_render_mode", &uiRenderModeOptions()},
         {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
         {"water_wake_resolution", &waterWakeResolutionOptions()},
         {"lit_quality", &litQualityOptions()},
@@ -3074,9 +3083,10 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 }
                 text = FileUtils::pathToGenericUtf8(found);
             }
-            // a foliage layer's FBX mesh loads from its import, created here the first time
+            // a foliage layer's FBX mesh loads from its import, queued here the first time: the layer
+            // draws once it lands (S98 REQ-32)
             if (component == ComponentType::TerrainComponent && endsWith(propertyName, "meshPath") &&
-                    FbxImporter::isFbxFile(text) && !project->prepareModelFile(text)) {
+                    FbxImporter::isFbxFile(text) && project->prepareModelFile(text) == Project::ModelImport::Failed) {
                 error = propertyName + ": " + text + " could not be imported (the console has details).";
                 return nullptr;
             }

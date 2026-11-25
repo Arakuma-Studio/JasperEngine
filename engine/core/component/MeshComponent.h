@@ -5,6 +5,7 @@
 #define MESH_COMPONENT_H
 
 #include "Engine.h"
+#include "asset/AssetRef.h"
 #include "util/GrowArray.h"
 #include "util/StableArray.h"
 #include "math/Vector3.h"
@@ -537,6 +538,13 @@ namespace jasperengine{
         // a submesh's attribute names a buffer the mesh does not have: not drawn and settled as
         // above, and not tried again until the mesh is reloaded
         bool loadMissingBuffer = false;
+
+        // the .mesh asset holding the geometry (S98 F1, model/MeshAsset.h), relative to the assets
+        // root: MeshSystem reads it into the buffers below and the submeshes' layouts whenever it
+        // differs from loadedMeshAsset. Empty: the geometry is the component's own (saved with it).
+        AssetRef meshAsset;
+        // the path MeshSystem last read (or failed to read: logged once), empty before any read
+        std::string loadedMeshAsset;
 
         InterleavedBuffer buffer;
         IndexBuffer indices;

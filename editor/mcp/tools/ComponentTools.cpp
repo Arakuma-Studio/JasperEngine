@@ -11,6 +11,7 @@
 #include "component/Transform.h"
 #include "component/AudioSourceComponent.h"
 #include "object/sound/AudioSourceSlots.h"
+#include "component/UIDocumentComponent.h"
 #include "component/ParticleSystemComponent.h"
 
 #include "mcp/McpCall.h"
@@ -33,6 +34,7 @@
 #include "command/type/ComponentValuesCmd.h"
 #include "command/type/CreateClipCmd.h"
 #include "command/type/MeshChangeCmd.h"
+#include "asset/MeshAssetFiles.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/RemoveComponentCmd.h"
@@ -569,6 +571,17 @@ void setPropertiesTool(const CallPtr& call) {
                                " part(s) (" + refs + "): set the mesh on them, or use the Model API in Lua");
         }
     }
+    // S92 R18: a screen document draws in the scene's shared target, so its own count does nothing
+    const bool screenMsaa = std::any_of(changes.begin(), changes.end(), [&](const McpValues::Change& c) {
+        if (c.component != ComponentType::UIDocumentComponent || c.property != "msaaSamples") return false;
+        return std::any_of(entities.begin(), entities.end(), [&](Entity entity) {
+            const UIDocumentComponent* document = current->scene->findComponent<UIDocumentComponent>(entity);
+            return document && document->renderMode == UIDocumentRenderMode::SCREEN;
+        });
+    });
+    if (screenMsaa)
+        data["next"] = "msaaSamples applies to Texture-mode documents only; a screen document's MSAA is the scene's: "
+                       "set_scene_settings {html_ui_msaa_samples}.";
     std::string warningText;
     if (!warnings.empty()) {
         data["warnings"] = warnings;
@@ -1116,9 +1129,10 @@ void setMeshGeometryTool(const CallPtr& call) {
         return;
     }
     const std::string shape = args.value("shape", "");
+    const std::string saveAs = args.value("save_as", "");
     static const std::vector<std::string> shapes = {"plane", "box", "sphere", "cylinder", "capsule", "torus", "wall"};
-    if (std::find(shapes.begin(), shapes.end(), shape) == shapes.end()) {
-        call->fail("shape must be one of plane, box, sphere, cylinder, capsule, torus, wall.");
+    if ((!shape.empty() || saveAs.empty()) && std::find(shapes.begin(), shapes.end(), shape) == shapes.end()) {
+        call->fail("shape must be one of plane, box, sphere, cylinder, capsule, torus, wall (or pass only save_as to save the current geometry).");
         return;
     }
     Scene* sc = scene->scene;
@@ -1151,7 +1165,9 @@ void setMeshGeometryTool(const CallPtr& call) {
     };
     MeshComponent mesh = sc->getComponent<MeshComponent>(entity);
     const float radius = size("radius", 1.0f);
-    if (shape == "plane") {
+    if (shape.empty()) {
+        // save_as alone: the geometry as it is
+    } else if (shape == "plane") {
         meshSystem->createPlane(mesh, size("width", 10.0f), size("depth", 10.0f), count("tiles", 1, 1));
     } else if (shape == "wall") {
         meshSystem->createWall(mesh, size("width", 10.0f), size("height", 10.0f), count("tiles", 1, 1));
@@ -1169,17 +1185,38 @@ void setMeshGeometryTool(const CallPtr& call) {
         meshSystem->createTorus(mesh, radius, size("ring_radius", 0.5f), count("sides", 36, 3), count("rings", 16, 3));
     }
     const uint32_t sceneId = scene->id;
-    if (!runSceneCommand(sceneId, new MeshChangeCmd(project, sceneId, entity, mesh), error, "Could not change the mesh.")) {
+    // S98 F1: the geometry to a .mesh the mesh shows from then on, in the same undo step
+    std::string written;
+    Command* command = nullptr;
+    if (!saveAs.empty()) {
+        command = MeshAssetFiles::saveAs(*project, sceneId, entity, mesh, saveAs, written, &error);
+        if (!command) {
+            call->fail(error);
+            return;
+        }
+    } else {
+        command = new MeshChangeCmd(project, sceneId, entity, mesh);
+    }
+    if (!runSceneCommand(sceneId, command, error, "Could not change the mesh.")) {
         call->fail(error);
         return;
     }
     SceneProject* current = project->getScene(sceneId);
-    Json data = {{"entity", McpRefs::entityJson(current, entity)}, {"shape", shape}};
+    Json data = {{"entity", McpRefs::entityJson(current, entity)}};
+    if (!shape.empty()) data["shape"] = shape;
     if (MeshComponent* now = current && current->scene ? current->scene->findComponent<MeshComponent>(entity) : nullptr) {
+        // read now, so the sizes below are the file's
+        if (!written.empty()) current->scene->getSystem<MeshSystem>()->loadMeshAsset(*now);
         data["local_size"] = vec3Json(now->aabb.getSize());
         data["local_center"] = vec3Json(now->aabb.getCenter());
     }
-    call->ok("Set the mesh of " + data["entity"].value("path", std::string()) + " to a " + shape + ".", data);
+    std::string text = "Set the mesh of " + data["entity"].value("path", std::string()) + (shape.empty() ? "" : " to a " + shape);
+    if (!written.empty()) {
+        const std::string asset = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->getAssetsPath() / FileUtils::pathFromUtf8(written)));
+        data["mesh_asset"] = asset;
+        text += (shape.empty() ? " to show " : ", saved as ") + asset;
+    }
+    call->ok(text + ".", data);
 }
 
 
@@ -1428,19 +1465,19 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "set_mesh_geometry";
         tool.title = "Set Mesh Geometry";
         tool.description =
-            "Replace a mesh's geometry with a generated primitive (the Inspector's shape fields). Sizes: plane "
-            "width/depth, wall width/height, box width/height/depth, sphere radius, cylinder/capsule "
-            "radius/top_radius/height, torus radius/ring_radius; segments tiles, slices/stacks, sides/rings. "
-            "Omitted values take defaults, not current ones. Not for models, sprites, tilemaps, polygons, "
-            "terrains.";
+            "Replace a mesh's geometry with a primitive. Sizes: plane width/depth, wall width/height, box "
+            "width/height/depth, sphere radius, cylinder/capsule radius/top_radius/height, torus radius/ring_radius; "
+            "segments tiles, slices/stacks, sides/rings. Omitted: defaults. Not for models or generated "
+            "meshes. save_as: also a .mesh asset it then shows (alone: the current geometry).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"shape", stringEnum("", {"plane", "box", "sphere", "cylinder", "capsule", "torus", "wall"})},
+            {"save_as", assetPath("")},
             {"width", number("")},
             {"height", number("")},
             {"depth", number("")},
-            {"radius", number("Base radius for cylinder/capsule.")},
+            {"radius", number("")},
             {"top_radius", number("Default: radius.")},
             {"ring_radius", number("")},
             {"tiles", integer("")},
@@ -1448,7 +1485,7 @@ void registerComponentTools(McpRegistry& registry) {
             {"stacks", integer("")},
             {"sides", integer("")},
             {"rings", integer("")}
-        }, {"entity", "shape"});
+        }, {"entity"});
         tool.allowedWhilePlaying = false;
         tool.handler = setMeshGeometryTool;
         registry.addTool(std::move(tool));

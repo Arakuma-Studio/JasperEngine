@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 10
 id: 4103
 name: Derived
 scene:
@@ -7,6 +7,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

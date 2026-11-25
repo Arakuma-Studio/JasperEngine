@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import re
 import importlib.util
 import math
 import sys
@@ -232,7 +233,7 @@ async def test_round_trip(ed: Editor):
     await ed.call("save_scene", scene=older["scene"]["id"])
     await ed.call("close_scene", scene=older["scene"]["id"])
     current = (ed.project / "scenes/Before.scene").read_text()
-    ed.check(current.startswith("formatVersion: 8\n"), "this editor writes format 8")
+    ed.check(current.startswith("formatVersion: 10\n"), "this editor writes format 10")
     pre = "formatVersion: 3\n" + current.split("\n", 1)[1]
     (ed.project / "scenes/Before.scene").write_text(pre)
     await ed.call("sync_files")
@@ -244,7 +245,9 @@ async def test_round_trip(ed: Editor):
              f"a pre-S18 scene loads with nothing but its version note: {report}")
     await ed.call("save_scene", scene=find_key(before, "id"))
     after = (ed.project / "scenes/Before.scene").read_text()
-    ed.check(after in (current, pre), "the pre-S18 scene saves with nothing but its version line changed")
+    # (and, as every older scene, with Screen Space - Camera, the mode its UI drew in: S92's 9 -> 10)
+    migrated = re.sub(r"(?m)^(  depthPrepassEnabled: .*\n)", r"\1  htmlUiRenderMode: camera\n", current, count=1)
+    ed.check(after in (migrated, pre), "the pre-S18 scene saves with nothing but its version line and render mode changed")
     await ed.call("select_scene", scene=s["scene"])
 
 

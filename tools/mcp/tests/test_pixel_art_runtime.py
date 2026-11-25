@@ -9,6 +9,7 @@ references keep their own filters: after Play and Stop with point, a scene saves
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 from harness import Editor
@@ -54,13 +55,16 @@ async def test_default_filter_mode_reaches_runtime_textures(ed: Editor):
 
     # edit mode keeps bilinear for what the editor makes; Play's value is restored at stop
     ed.check("defaultFilterMode: point" in (ed.project / "project.yaml").read_text(), "written to project.yaml (graphics)")
-    # the compiled game's generated main carries it
+    # the compiled game's game.json carries it (it applies it as a prebuilt player does: S98 D1)
+    game_json = ed.project / ".jasperengine" / "cooked" / "game.json"
+    filter_mode = None
     for _ in range(60):
-        generated = [p for p in ed.project.rglob("*.cpp") if "setDefaultTextureFilter" in p.read_text(errors="replace")]
-        if generated:
-            break
+        if game_json.is_file():
+            filter_mode = json.loads(game_json.read_text()).get("canvas", {}).get("defaultFilterMode")
+            if filter_mode == "point":
+                break
         await ed.call("wait", frames=10)
-    ed.check(generated, "the generated main contains Engine::setDefaultTextureFilter(TextureFilter::NEAREST)")
+    ed.check_eq(filter_mode, "point", "the compiled game's game.json names Default Filter Mode point")
 
     await ed.call("set_project_settings", values={"graphics.default_filter_mode": "bilinear"})
     ed.check("defaultFilterMode" not in (ed.project / "project.yaml").read_text(), "bilinear (the default) is not written")

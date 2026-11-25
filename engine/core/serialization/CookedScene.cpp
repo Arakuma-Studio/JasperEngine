@@ -397,6 +397,12 @@ SceneResources CookedSceneLoader::sceneResources(std::span<const uint8_t> bytes)
     read(list, resources.sounds);
     read(list, resources.models);
     read(list, resources.clips);
+    if (file.header.minor >= 7) {
+        read(list, resources.vats);
+        read(list, resources.masks);
+        read(list, resources.controllers);
+        read(list, resources.bitmapFonts);
+    }
     if (list.failed()) Log::error("Scene resources: %s", list.error().c_str());
     return resources;
 }

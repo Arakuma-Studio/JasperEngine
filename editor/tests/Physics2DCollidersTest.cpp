@@ -10,7 +10,6 @@
 
 #include "Physics2DTestWorld.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/PhysicsCommon.h"
 #include "physics/PhysicsMaterial.h"
@@ -402,23 +401,6 @@ TEST(Physics2DColliders, EveryBodyFieldSurvivesEncodeAndDecode) {
     EXPECT_EQ(decoded.collisionDetection, CollisionDetectionMode2D::CONTINUOUS);
     EXPECT_FALSE(decoded.useAutoMass);
     EXPECT_EQ(decoded.material, "physics/body.physicsmaterial");
-
-    // the exported-build code: every non-default field, the points in chunks of 64
-    Scene scene;
-    Entity e = scene.createEntity();
-    scene.addComponent<Rigidbody2DComponent>(e, body);
-    const std::string code = Factory::createRigidbody2DComponent(4, &scene, e, "scene", "entity", false, nullptr);
-    for (const char* expected : {"rigidbody2d.gravityScale = 0.500000f;", "rigidbody2d.fixedRotation = true;",
-                                 "rigidbody2d.collisionDetection = CollisionDetectionMode2D::CONTINUOUS;",
-                                 "rigidbody2d.sleepingMode = RigidbodySleepMode2D::START_ASLEEP;", "rigidbody2d.useAutoMass = false;",
-                                 "rigidbody2d.mass = 3.000000f;", "rigidbody2d.centerOfMass = Vector2(1.000000f, 2.000000f);",
-                                 "rigidbody2d.inertia = 0.250000f;", "rigidbody2d.colliders.resize(1);",
-                                 "rigidbody2d.colliders[0].points = {", "rigidbody2d.colliders[0].points.insert(",
-                                 "rigidbody2d.colliders[0].contactEvents = false;", "rigidbody2d.colliders[0].receiver = 12;"}){
-        EXPECT_NE(code.find(expected), std::string::npos) << expected;
-    }
-    EXPECT_EQ(code.find("numColliders"), std::string::npos);
-    EXPECT_EQ(code.find("MAX_COLLIDER"), std::string::npos);
 }
 
 TEST(Physics2DColliders, OldFilesReadAndContactEventsDefault) {

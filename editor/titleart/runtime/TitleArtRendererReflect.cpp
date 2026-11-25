@@ -10,7 +10,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/TitleArtRendererComponent.h"
 #include "subsystem/TitleArtSystem.h"
@@ -141,7 +140,7 @@ namespace {
         JE_FIELD(TitleArtRendererComponent, animationUnscaledTime, .flags = OmitIfDefault, .label = "Animation Update", .group = kAnimation,
                  .uiOrder = 73),
         JE_FIELD(TitleArtRendererComponent, driveAnimation, .flags = OmitIfDefault, .label = "Drive Animation", .group = kAnimation, .uiOrder = 74),
-        JE_FIELD(TitleArtRendererComponent, animationTime, .flags = NoSave | Hidden | NoCodegen, .unit = Unit::Seconds, .min = 0.0f, .step = 0.01f,
+        JE_FIELD(TitleArtRendererComponent, animationTime, .flags = NoSave | Hidden, .unit = Unit::Seconds, .min = 0.0f, .step = 0.01f,
                  .label = "Animation Time", .group = kAnimation, .uiOrder = 75),
     };
 
@@ -171,7 +170,6 @@ const ComponentDesc kTitleArtRendererDesc{
     .body = JE_STRUCT_DESC(TitleArtRendererComponent, "TitleArtRendererComponent", kTitleArtFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(TitleArtRendererComponent),
     .postDecode = &titleArtPostDecode,
-    .codegenVar = "titleArt",
     .extraProperty = &titleArtExtraProperty,
     .extraProperties = &titleArtExtraProperties,
     .extraUpdateFlags = 0,

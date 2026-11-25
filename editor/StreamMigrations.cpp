@@ -699,6 +699,61 @@ namespace {
     void sheetSpritesIdentity(YAML::Node&, MigrationLog&){
     }
 
+    // Scene 8 -> 9, prefab 9 -> 10 (S98 F1): a Mesh Renderer may show a .mesh asset (meshAsset)
+    // instead of holding its buffers, and a save moves large geometry into one. An older file holds
+    // its buffers, which still read; the version keeps an older editor from reading a mesh without them.
+    void meshAssetsIdentity(YAML::Node&, MigrationLog&){
+    }
+
+    // the submesh materials under `node` that name a .material file (Material::name)
+    int countLinkedMaterials(const YAML::Node& node){
+        int linked = 0;
+        if (node.IsMap()){
+            const YAML::Node submeshes = node["submeshes"];
+            if (submeshes && submeshes.IsSequence()){
+                for (const YAML::Node& submesh : submeshes){
+                    const YAML::Node material = submesh.IsMap() ? submesh["material"] : YAML::Node();
+                    const YAML::Node name = material && material.IsMap() ? material["name"] : YAML::Node();
+                    if (name && name.IsScalar() && !name.Scalar().empty()) linked++;
+                }
+            }
+            for (auto it = node.begin(); it != node.end(); ++it){
+                if (it->first.IsScalar() && it->first.Scalar() == "submeshes") continue;
+                linked += countLinkedMaterials(it->second);
+            }
+        }else if (node.IsSequence()){
+            for (const YAML::Node& child : node){
+                linked += countLinkedMaterials(child);
+            }
+        }
+        return linked;
+    }
+
+    // Prefab 9 -> 10 (S98 F1, REQ-29): mesh assets, as for scenes; and a submesh linked to a
+    // .material file now takes the file's values wherever the prefab is read, where an older prefab
+    // used the copy it embeds. An older prefab with a link keeps its copies (followMaterialFiles:
+    // false, which its saves keep); one without a link follows the links it gets from now on.
+    void prefabV9ToV10(YAML::Node& root, MigrationLog& log){
+        const int linked = countLinkedMaterials(root["members"]);
+        if (linked == 0) return;
+        root["followMaterialFiles"] = false;
+        log.info("This prefab keeps the material copies it embeds for its " + std::to_string(linked) +
+                 (linked == 1 ? " submesh" : " submeshes") + " linked to .material files, as before; a new prefab "
+                 "follows its .material files");
+    }
+
+    // Scene 9 -> 10 (S92): an absent htmlUiRenderMode means Screen Space - Overlay now; before it
+    // the screen documents were composited in the camera pass, so an older scene keeps that.
+    // Every scene the editor saved has its settings map: one without it is left alone, since
+    // adding the map would change how its other absent settings decode.
+    void sceneV9ToV10(YAML::Node& root, MigrationLog& log){
+        YAML::Node settings = root["scene"];
+        if (!settings || !settings.IsMap() || settings["htmlUiRenderMode"])
+            return;
+        settings["htmlUiRenderMode"] = "camera";
+        log.info("HTML UI Render Mode: Screen Space - Camera, as the scene drew its UI before; Screen Space - Overlay is the new scenes' default");
+    }
+
 }
 
 const char* StreamMigrations::versionKey(DocumentKind kind){
@@ -707,11 +762,11 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 8;
+        case DocumentKind::Scene: return 10;
         case DocumentKind::Project: return 1;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
-        case DocumentKind::Prefab: return 9;
+        case DocumentKind::Prefab: return 10;
     }
     return 0;
 }
@@ -752,6 +807,8 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {5, 6, "Animation Player controllers to Animators", sceneV5ToV6},
         {6, 7, "Line and Trail Renderer curves and gradients in the editor's curve form", sceneV6ToV7},
         {7, 8, "sprite sheets (identity: an older scene has none)", sheetSpritesIdentity},
+        {8, 9, "mesh assets (identity: an older scene holds its meshes' buffers)", meshAssetsIdentity},
+        {9, 10, "HTML UI render mode: older scenes keep Screen Space - Camera", sceneV9ToV10},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
@@ -767,6 +824,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {6, 7, "Animation Player controllers to Animators", prefabV6ToV7},
         {7, 8, "Line and Trail Renderer curves and gradients in the editor's curve form", prefabV7ToV8},
         {8, 9, "sprite sheets (identity: an older prefab has none)", sheetSpritesIdentity},
+        {9, 10, "mesh assets; linked materials keep the embedded copies", prefabV9ToV10},
     };
 
     switch (kind){

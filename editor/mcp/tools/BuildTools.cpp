@@ -11,6 +11,7 @@
 // Builds never block the main thread: Exporter::startExport runs on its own thread (it hops to
 // the main thread to save scenes, which keeps running since tool handlers return at once) and a
 // watcher thread forwards its progress and log lines (Out) into the McpJob.
+#include "util/CppIdentifier.h"
 #include "McpTools.h"
 #include "util/BuildDiagnostics.h"
 #include "util/SourceLocation.h"
@@ -30,7 +31,6 @@
 #include "EditorHost.h"
 #include "AppSettings.h"
 #include "Exporter.h"
-#include "Factory.h"
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
@@ -352,7 +352,7 @@ Json shaderOverridesJson(const ShaderOverrides& overrides) {
 }
 
 std::string appName(Project* project) {
-    return project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(project->getName());
+    return project->getName().empty() ? "jasperengine-project" : toIdentifier(project->getName());
 }
 
 // The file starts like a native executable: ELF, Mach-O (thin or universal) or PE
@@ -613,6 +613,15 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
     if (!r.result.notes.empty()) result["notes"] = r.result.notes;
     if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
+        // S98 REQ-10: what Asset Stripping and Exclude From Build left out, listed in the report
+        if (!r.result.buildReport.empty()) {
+            result["build_report"] = FileUtils::pathToGenericUtf8(r.result.buildReport);
+            result["stripped_count"] = r.result.strippedCount;
+            result["stripped_bytes"] = r.result.strippedBytes;
+            if (r.result.strippedCount > 0)
+                result["next"] = "build_report lists each asset left out and why; a script that builds a path at runtime needs its file in "
+                                 "player.always_include (set_project_settings)";
+        }
         std::string message;
         if (r.mode == ExportMode::Player) {
             const ExportResult& report = r.result;
@@ -656,7 +665,8 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         }
         if (r.warningCount) message += " " + std::to_string(r.warningCount) + " compiler warning(s).";
         if (!r.result.warnings.empty()) message += " " + std::to_string(r.result.warnings.size()) + " build warning(s): see warnings.";
-        if (!r.next.empty()) result["next"] = r.next;
+        // both hints when both apply: the build's own (a non-target platform) and Asset Stripping's
+        if (!r.next.empty()) result["next"] = result.contains("next") ? r.next + "; " + result["next"].get<std::string>() : r.next;
         r.job->succeed(message, result);
     } else if (r.job->cancelRequested()) {
         r.job->markCancelled("Build cancelled.");
@@ -808,7 +818,7 @@ void buildProjectTool(const CallPtr& call) {
     const Json& args = call->args();
 
     if (ctx.isPlaying()) {
-        call->fail("Stop Play mode first: a build saves every scene.");
+        call->fail("Stop Play mode first: a build cooks the scenes as edited, not as playing.");
         return;
     }
     if (busy(call)) return;
@@ -840,7 +850,7 @@ void buildProjectTool(const CallPtr& call) {
 
     // ---- scenes
     bool hasSavedScene = false;
-    for (const SceneProject& scene : project->getScenes()) hasSavedScene = hasSavedScene || !scene.filepath.empty();
+    for (const SceneProject& scene : project->getScenes()) hasSavedScene = hasSavedScene || (!scene.filepath.empty() && scene.inBuild);
     if (!hasSavedScene) {
         call->fail("No saved scene is in the build: save a scene first (save_project saves untitled scenes).");
         return;
@@ -865,13 +875,17 @@ void buildProjectTool(const CallPtr& call) {
             call->fail("start_scene \"" + scene->name + "\" is untitled: save it first.");
             return;
         }
+        if (!scene->inBuild) {
+            call->fail("start_scene \"" + scene->name + "\" is not in the build: edit_build_scenes add puts it in.");
+            return;
+        }
         startScene = scene->id;
     }
     const SceneProject* start = project->getScene(startScene);
-    if (!start || start->filepath.empty()) {
+    if (!start || start->filepath.empty() || !start->inBuild) {
         startScene = NULL_PROJECT_SCENE;
         for (const SceneProject& scene : project->getScenes()) {
-            if (!scene.filepath.empty()) {
+            if (!scene.filepath.empty() && scene.inBuild) {
                 startScene = scene.id;
                 break;
             }
@@ -1427,7 +1441,7 @@ void getBuildInfoTool(const CallPtr& call) {
     Json scenes = Json::array();
     const uint32_t startId = project->getStartSceneId();
     for (const SceneProject& scene : project->getScenes()) {
-        if (scene.filepath.empty()) continue;
+        if (scene.filepath.empty() || !scene.inBuild) continue;
         scenes.push_back({{"id", scene.id}, {"name", scene.name}, {"start", scene.id == startId}});
     }
     data["scenes"] = scenes;
@@ -2407,7 +2421,7 @@ void registerBuildTools(McpRegistry& registry) {
         tool.description =
             "File > Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled if it needs "
             "native code); desktop/web: this computer/web; source: a CMake project; omitted: the project's default platform "
-            "(get_build_info). Saves scenes first. Past timeout_seconds: {job_id} (get_job).";
+            "(get_build_info). Past timeout_seconds: {job_id} (get_job).";
         tool.inputSchema = object({
             {"mode", stringEnum("", {"player", "desktop", "web", "source"})},
             {"output_dir", string("Absolute, outside the project.")},

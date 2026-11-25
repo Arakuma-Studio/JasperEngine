@@ -50,7 +50,8 @@ namespace jasperengine::editor::spritenormals {
 
     // ---- settings (contract section 3: names, ranges, defaults)
 
-    enum class Preset { Soft, Default, Crisp, Detailed, Chunky, Toon, Painted, Props, Tile };
+    // (appended only: the window's and the stored settings' indices stay)
+    enum class Preset { Soft, Default, Crisp, Detailed, Chunky, Toon, Painted, Props, Tile, Stones };
     // Auto: Rounded for islands (or the frames of a sequence) up to kHiresSide px, Inflate above (version 1: Rounded)
     enum class Profile { Rounded, Dome, Bevel, Inflate, Auto };
     // Auto: smoothing, softness and detail multiplied by k = max(1, S / kHiresSide); Off: as given
@@ -85,6 +86,27 @@ namespace jasperengine::editor::spritenormals {
         bool operator!=(const Quantize& o) const { return !(*this == o); }
     };
 
+    // Dark gaps ("Dark Gaps Are Edges", S78): per cell, the pixels at or below the `share` quantile
+    // of the blurred Oklab lightness of its pixels above the alpha cutoff are gaps (ties at the
+    // quantile included), outside the shape for the distance field, the inflate solve, the auto
+    // radius and the thickness: every stone of a floor tile gets its own rim (with auto radius on a
+    // still image, each stone, a part of the shape between gaps, its own: as an island's). They keep their
+    // alpha and get normals; detail, regions and paint are unchanged. The blur: Gaussian sigma
+    // 0.8 x k px, k = max(1, S / 128), S the shorter side of the cell's pixels (resolution scale
+    // auto, version 2; else 1), toroidal with edges wrap, clamped with extend, masked over the
+    // pixels above the cutoff. A cell whose pixels above the quantile are not at least
+    // kGapContrast lighter than it (their median: a flat or evenly lit image) gets no gaps
+    // (warning gaps_unmatched). Off (share 0) by default: the output is byte-identical to before.
+    struct Gaps {
+        float share = 0.0f;                   // 0 (off)..0.9: the darkest share of each cell's pixels
+        bool on() const { return share > 0.0f; }
+        bool operator==(const Gaps& o) const { return share == o.share; }
+        bool operator!=(const Gaps& o) const { return !(*this == o); }
+    };
+    // The Oklab lightness step between the gaps' quantile and the median of the lighter pixels
+    // below which a cell has no dark gaps
+    inline constexpr float kGapContrast = 0.02f;
+
     // The size up to which nothing scales (k = 1) and profile auto is rounded: pixel art
     inline constexpr int kHiresSide = 128;
     // The settings version new generations use; 1 = before high-resolution support (recipes
@@ -110,16 +132,17 @@ namespace jasperengine::editor::spritenormals {
         bool directx = false;
         bool height = false;                  // also produce Result::height
         Quantize quantize;                    // off unless directions > 0 (the toon preset turns it on)
+        Gaps gaps;                            // off unless share > 0 (the stones preset turns it on)
     };
 
     // The preset's values (contract section 3 table); softness 1.15 unless the preset says
     // otherwise, radius auto, alpha 0.03, profile auto (painted: inflate, props: dome), edges
-    // transparent (tile: wrap), resolution scale auto, version 2, no outline handling, no regions,
-    // OpenGL, no height map; quantize off except for toon.
+    // transparent (tile, stones: wrap), resolution scale auto, version 2, no outline handling, no regions,
+    // OpenGL, no height map; quantize off except for toon; gaps off except for stones.
     // Resolving a preset with overrides (every surface does exactly this):
     //   Settings s = presetSettings(p); settingsFromJson(overrides, s, error); s.preset = p; validateSettings(s)
     Settings presetSettings(Preset preset);
-    // "soft", "default", "crisp", "detailed", "chunky", "toon", "painted", "props", "tile" (and
+    // "soft", "default", "crisp", "detailed", "chunky", "toon", "painted", "props", "tile", "stones" (and
     // back; false for an unknown name)
     const char* toString(Preset preset);
     const char* toString(Profile profile);    // "rounded", "dome", "bevel", "inflate", "auto"
@@ -228,7 +251,7 @@ namespace jasperengine::editor::spritenormals {
     struct Result {
         Status status = Status::InvalidRequest;
         std::vector<Problem> errors;         // InvalidRequest / Failed: why
-        std::vector<Problem> warnings;       // outline_not_found, region_unmatched (section 3.8)
+        std::vector<Problem> warnings;       // outline_not_found, region_unmatched (section 3.8), gaps_unmatched
 
         Image normal;                        // RGBA8, the colour image's size
         Image shape;                         // request.shapeNormals: the silhouette's share of the normals alone (no
@@ -250,6 +273,12 @@ namespace jasperengine::editor::spritenormals {
         uint32_t profilesUsed = 0;
         // The largest share of an island's pixels the outer band took (soft_edge auto; 0 without)
         float outerBandShare = 0.0f;
+        // Edges transparent: the frames (cells) whose largest island is filled like a box (its
+        // pixels at least kBoxyFill of its bounding box, its shorter side at least 3 px) and was
+        // given profile rounded or inflate, which bulge a box into a pillow; boxySide: the shorter
+        // side of the largest of those islands (0 without)
+        int boxyIslands = 0;
+        int boxySide = 0;
 
         std::optional<uint32_t> outlineColor;   // ignoreOutline: the colour detected (0xRRGGBB)
         int islands = 0;                     // processed (Transparent edges); cells otherwise
@@ -261,6 +290,9 @@ namespace jasperengine::editor::spritenormals {
     // problems come back with Status::InvalidRequest (kinds invalid_settings, invalid_source,
     // frames_mismatch, too_large), Failed when memory ran out. Blocking; any thread.
     Result generate(const Request& request, const Control& control = Control());
+
+    // The fill of its bounding box from which an island counts as a box (Result::boxyIslands)
+    inline constexpr float kBoxyFill = 0.9f;
 
     // Limits (contract section 4)
     inline constexpr int64_t kMaxPixels = 16777216;            // 4096 x 4096, per image or atlas

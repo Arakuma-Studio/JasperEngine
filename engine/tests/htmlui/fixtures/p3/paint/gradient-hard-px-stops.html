@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: hard px stops and partial tiles on rounded boxes</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 140px; height: 56px; }
+  /* JasperArcade's Button01 body: 7 stops, hard px stops */
+  #b1 { left: 10px; top: 10px; border-radius: 14px; border: 2px solid #7a3c00; background: linear-gradient(180deg, #fff3c0 0px, #ffd060 8px, #ffb000 8px, #ff8a00 30px, #e06000 45px, #c83c00 45px, #a03000 56px); }
+  #b2 { left: 170px; top: 10px; border-radius: 28px; background: linear-gradient(90deg, #339966 0px 20px, #ffffff 20px 24px, #3366cc 24px 70px, transparent 70px 74px, #cc3333 74px); }
+  /* layers that are not one tile over the box: a centred tile, a strip repeated along x, a grid of dots, all on a rounded box */
+  #b3 { left: 10px; top: 90px; width: 150px; height: 70px; border-radius: 22px; border: 3px solid #333333;
+        background: linear-gradient(#cc333380, #cc333380) center / 40px 20px no-repeat,
+                    linear-gradient(90deg, #339966, #3366cc) 0 10px / 30px 12px repeat-x,
+                    radial-gradient(#ffffff 30%, transparent 32%) 0 0 / 16px 16px,
+                    linear-gradient(180deg, #303030, #808080); }
+  #b4 { left: 180px; top: 90px; width: 150px; height: 70px; border-radius: 34px; background: radial-gradient(circle, #f4c430, #f4c43000) 0 0 / 60px 60px no-repeat #203040; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div></body>
+</html>

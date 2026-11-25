@@ -2175,6 +2175,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setRange", &Light2D::setRange)
         .addProperty("falloff", &Light2D::getFalloff, &Light2D::setFalloff)
         .addFunction("setFalloff", &Light2D::setFalloff)
+        // the virtual height above the 2D plane that normal maps answer (0: they are ignored);
+        // Light2D(scene) starts at 64, Light2D(scene, entity) keeps the stored value
         .addProperty("height", &Light2D::getHeight, &Light2D::setHeight)
         .addFunction("setHeight", &Light2D::setHeight)
         .addProperty("shadows", &Light2D::isShadows, &Light2D::setShadows)
@@ -2460,6 +2462,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("autoTransparency", &Mesh::isAutoTransparency, &Mesh::setAutoTransparency)
         .addProperty("customShader", &Mesh::getCustomShader, &Mesh::setCustomShader)
         .addProperty("customDepthShader", &Mesh::getCustomDepthShader, &Mesh::setCustomDepthShader)
+        // the .mesh asset its geometry comes from ("meshes/rock.mesh"), read at once; "" keeps the
+        // geometry as the mesh's own
+        .addProperty("meshAsset", &Mesh::getMeshAsset, &Mesh::setMeshAsset)
         .addFunction("setShaderUniform",
             luabridge::overload<const std::string&, const Vector4&>(&Mesh::setShaderUniform),
             luabridge::overload<const std::string&, const Vector3&>(&Mesh::setShaderUniform),

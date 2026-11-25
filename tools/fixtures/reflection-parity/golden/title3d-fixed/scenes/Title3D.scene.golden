@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 10
 guid: bf38a3576304e7a1f945ab419a9ac709
 id: 1255658311
 name: Title3D
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: true
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: off
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]
