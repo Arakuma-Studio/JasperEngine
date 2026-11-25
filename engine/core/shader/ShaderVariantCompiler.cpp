@@ -440,8 +440,8 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & ShaderPool::getVertexColorViewProperties(0)) {
         defs.push_back({"VERTEX_COLOR_VIEW", "1"});
         int channel = -1;
-        if (prop & shaderPropertyBit(56))
-            channel = ((prop & shaderPropertyBit(57)) ? 1 : 0) + ((prop & shaderPropertyBit(58)) ? 2 : 0);
+        if (prop & shaderPropertyBit(57))
+            channel = ((prop & shaderPropertyBit(58)) ? 1 : 0) + ((prop & shaderPropertyBit(59)) ? 2 : 0);
         defs.push_back({"VERTEX_COLOR_VIEW_CHANNEL", std::to_string(channel)});
     }
 }

@@ -52,8 +52,8 @@ namespace jasperengine {
         NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
         TitleArt = 34,              // a .titleart Title Art document (S80; its GUID in its JSON)
         Mesh = 35,                  // a .mesh mesh asset (S98 F1; its GUID in its .meta)
-        // 36 to 38 are #163's StringTable and Dialogue and #11's DataAsset, written whatever order they land in
-        VertexColors = 39           // a .vcolors file of one object's vertex colors (V1 R1; its GUID in its .meta)
+        // 36 to 39 are IesProfile (S99), StringTable, Dialogue and DataAsset (S95), each written explicitly
+        VertexColors = 40           // a .vcolors file of one object's vertex colors (V1 R1; its GUID in its .meta)
     };
     // the highest value present (a sibling's reserved value below it may still be missing)
     inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::VertexColors);

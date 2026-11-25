@@ -323,9 +323,9 @@ TEST(VertexColorsUndo, AddAndFieldEditsUndo) {
 }
 
 // R1, R131: a .vcolors is an asset of its own type with a GUID in a .meta beside it, and a binary
-TEST(AssetTypes, VertexColorsValueIs35) {
+TEST(AssetTypes, VertexColorsValueIs40) {
     // a file format (assetmap.bin): the number and the name stay
-    EXPECT_EQ(static_cast<int>(AssetType::VertexColors), 35);
+    EXPECT_EQ(static_cast<int>(AssetType::VertexColors), 40);
     EXPECT_STREQ(assetTypeName(AssetType::VertexColors), "vertex_colors");
     EXPECT_EQ(assetTypeFromName("vertex_colors"), AssetType::VertexColors);
     for (const char* path : {"assets/paint/Rock.vcolors", "assets/paint/Rock.VColors"}) {

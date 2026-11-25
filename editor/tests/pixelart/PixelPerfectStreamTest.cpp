@@ -263,8 +263,16 @@ TEST(PixelFxShaders, ShaderCacheVersionCoversPixelFx){
     EXPECT_GE(std::stoi(name.substr(1)), 64) << name;
 }
 
-// S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65, after
-// S48's v64: an older cache holds tilemap programs that sample past their frames
+// S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65 or a
+// later cache, after S48's v64: an older cache holds tilemap programs that sample past their frames
 TEST(TilemapShaders, ShaderCacheVersionCoversTheTileClamp){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v65");
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 65) << name;
+}
+
+// V1's Vertex Color view (MESH 56-59) and the Lit's Vertex Color section (LIT_VC_*) are cached under v74, after
+// S93's v73: an older cache holds MESH programs whose bits 56-59 were unnamed
+TEST(VertexColorShaders, ShaderCacheVersionCoversTheVertexColorBits){
+    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v74");
 }
