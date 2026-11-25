@@ -23,7 +23,7 @@ namespace {
 
     // a list that is the single default Base Layer again is stored empty (as a new player)
     std::vector<AnimationPlayerLayer> stored(std::vector<AnimationPlayerLayer> layers){
-        if (layers.size() == 1 && layers[0] == AnimationPlayerLayer{anim::BASE_LAYER_NAME, 1.0f, AnimationLayerBlend::Override, "", ""}){
+        if (layers.size() == 1 && layers[0] == AnimationPlayerLayer{anim::BASE_LAYER_NAME, 1.0f, AnimationLayerBlend::Override, "", "", false}){
             layers.clear();
         }
         return layers;

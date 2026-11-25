@@ -165,6 +165,45 @@ TEST(AnimationLayersEditor, OldScenesStayByteIdentical) {
     EXPECT_EQ(YAML::Dump(Stream::encodeAnimationPlayerComponent(explicitBase)), YAML::Dump(node));
 }
 
+// docs/specs/mesh-space-rotation.md R44, AC17: meshSpaceRotation is written only when true, so a
+// player without it (the default layering too) saves as before
+TEST(AnimationLayersEditor, MeshSpaceRotationRoundTripsAndIsWrittenOnlyWhenSet) {
+    AnimationPlayerComponent player = layeredPlayer();
+    const std::string without = YAML::Dump(Stream::encodeAnimationPlayerComponent(player));
+    EXPECT_EQ(without.find("meshSpaceRotation"), std::string::npos) << without;
+    player.layers[1].meshSpaceRotation = true;
+    const YAML::Node node = Stream::encodeAnimationPlayerComponent(player);
+    ASSERT_TRUE(node["layers"][1]["meshSpaceRotation"]) << YAML::Dump(node);
+    EXPECT_EQ(node["layers"][1]["meshSpaceRotation"].Scalar(), "true");
+    EXPECT_FALSE(node["layers"][0]["meshSpaceRotation"]);
+    EXPECT_FALSE(node["layers"][2]["meshSpaceRotation"]);
+    const AnimationPlayerComponent decoded = Stream::decodeAnimationPlayerComponent(node);
+    EXPECT_TRUE(decoded.layers[1].meshSpaceRotation);
+    EXPECT_FALSE(decoded.layers[2].meshSpaceRotation);
+    EXPECT_EQ(decoded.layers, player.layers);
+    EXPECT_EQ(YAML::Dump(Stream::encodeAnimationPlayerComponent(decoded)), YAML::Dump(node));
+    // part of a layer's value (operator==: prefab diffs, Catalog copies)
+    EXPECT_NE(decoded.layers[1], layeredPlayer().layers[1]);
+
+    // the default layering stays unwritten; a base layer holding the flag keeps it (ignored there)
+    AnimationPlayerComponent plain;
+    plain.clips = {animationLayersClipEntry("anim/walk.anim")};
+    plain.layers = {animationLayersLayerOf(anim::BASE_LAYER_NAME)};
+    EXPECT_FALSE(Stream::encodeAnimationPlayerComponent(plain)["layers"]);
+    plain.layers[0].meshSpaceRotation = true;
+    const YAML::Node kept = Stream::encodeAnimationPlayerComponent(plain);
+    ASSERT_TRUE(kept["layers"]);
+    EXPECT_TRUE(Stream::decodeAnimationPlayerComponent(kept).layers[0].meshSpaceRotation);
+
+    // lenient: anything but a boolean is off
+    const AnimationPlayerComponent lenient = Stream::decodeAnimationPlayerComponent(YAML::Load(
+        "clips: [{clip: anim/a.anim}]\n"
+        "layers: [Base Layer, {name: Upper, meshSpaceRotation: sideways}, {name: Lower, meshSpaceRotation: false}]\n"));
+    ASSERT_EQ(lenient.layers.size(), 3u);
+    EXPECT_FALSE(lenient.layers[1].meshSpaceRotation);
+    EXPECT_FALSE(lenient.layers[2].meshSpaceRotation);
+}
+
 // ---- Catalog -------------------------------------------------------------------------------
 
 TEST(AnimationLayersEditor, CatalogProperties) {
@@ -186,6 +225,10 @@ TEST(AnimationLayersEditor, CatalogProperties) {
     EXPECT_EQ(blend.ref, &player.layers[2].blend);
     EXPECT_EQ(Catalog::findProperty(&scene, entity, type, "layers[1].mask").ref, &player.layers[1].mask);
     EXPECT_EQ(Catalog::findProperty(&scene, entity, type, "layers[1].maskGuid").ref, &player.layers[1].maskGuid);
+    const PropertyData meshSpace = Catalog::findProperty(&scene, entity, type, "layers[1].meshSpaceRotation");
+    EXPECT_EQ(meshSpace.type, PropertyType::Bool);
+    EXPECT_EQ(meshSpace.ref, &player.layers[1].meshSpaceRotation);
+    EXPECT_TRUE(meshSpace.updateFlags & UpdateFlags_AnimationPlayer_Reload);
     EXPECT_FALSE(Catalog::findProperty(&scene, entity, type, "layers[3].name").ref);
     const PropertyData layer = Catalog::findProperty(&scene, entity, type, "clips[1].layer");
     EXPECT_EQ(layer.type, PropertyType::Int);
@@ -194,7 +237,7 @@ TEST(AnimationLayersEditor, CatalogProperties) {
 
     const std::map<std::string, PropertyData> templates = Catalog::getProperties(type, nullptr);
     for (const char* name : {"layers", "layers[].name", "layers[].weight", "layers[].blend", "layers[].mask", "layers[].maskGuid",
-                             "clips[].layer"}) {
+                             "layers[].meshSpaceRotation", "clips[].layer"}) {
         EXPECT_TRUE(templates.count(name)) << name;
     }
 
@@ -259,6 +302,7 @@ namespace {
         animationplayer.layers[1].weight = 0.500000f;
         animationplayer.layers[1].blend = AnimationLayerBlend::Additive;
         animationplayer.layers[1].mask = "anim/arm.mask";
+        animationplayer.layers[1].meshSpaceRotation = true;
         animationplayer.playAutomatically = true;
         animationplayer.speed = 1.000000f;
         animationplayer.defaultFadeTime = 0.250000f;
@@ -277,6 +321,7 @@ namespace {
         "animationplayer.layers[1].weight = 0.500000f;\n"
         "animationplayer.layers[1].blend = AnimationLayerBlend::Additive;\n"
         "animationplayer.layers[1].mask = \"anim/arm.mask\";\n"
+        "animationplayer.layers[1].meshSpaceRotation = true;\n"
         "animationplayer.playAutomatically = true;\n"
         "animationplayer.speed = 1.000000f;\n"
         "animationplayer.defaultFadeTime = 0.250000f;\n"
@@ -288,6 +333,7 @@ TEST(AnimationLayersEditor, FactoryEmitsLayers) {
     AnimationPlayerComponent player;
     player.clips = {animationLayersClipEntry("anim/walk.anim"), animationLayersClipEntry("anim/hold.anim", 1)};
     player.layers = {animationLayersLayerOf("Base Layer"), animationLayersLayerOf("Holding", 0.5f, AnimationLayerBlend::Additive, "anim/arm.mask", MASK_GUID)};
+    player.layers[1].meshSpaceRotation = true;
     Scene scene;
     const Entity entity = animationLayersPlayerEntity(scene, player);
     const std::string code = Factory::createComponent(0, &scene, entity, ComponentType::AnimationPlayerComponent, "", "scene", "entity");
@@ -476,6 +522,28 @@ TEST(AnimationLayersEditor, SetPropertiesValuesAndRefusals) {
     // upstream's player controller: the Animator's now
     EXPECT_FALSE(animationLayersApply(s, Json{{"animationplayer", {{"controller", "assets/anim/granjero.controller"}}}}, error));
 
+    // Mesh Space Rotation (mesh-space-rotation spec R39): one field, the whole list, and an edit of
+    // another field keeps it
+    ASSERT_TRUE(animationLayersApply(s, Json{{"animationplayer", {{"layers[1].blend", "override"}, {"layers[1].meshSpaceRotation", true}}}}, error)) << error;
+    EXPECT_TRUE(s.player().layers[1].meshSpaceRotation);
+    EXPECT_EQ(animationLayersRead(s, "layers[1].meshSpaceRotation"), true);
+    EXPECT_EQ(animationLayersRead(s, "layers")[1]["meshSpaceRotation"], true);
+    EXPECT_FALSE(animationLayersRead(s, "layers")[0].contains("meshSpaceRotation")) << "written only when on";
+    ASSERT_TRUE(animationLayersApply(s, Json{{"animationplayer", {{"clips", Json::array({Json{{"clip", "assets/anim/walk.anim"}, {"layer", 1}}})}}}}, error))
+        << error;
+    EXPECT_TRUE(s.player().layers[1].meshSpaceRotation) << "a clips edit re-checks the encoded layers";
+    ASSERT_TRUE(animationLayersApply(s, Json{{"animationplayer", {{"layers", Json::array({Json{{"name", "Base Layer"}},
+        Json{{"name", "Holding"}, {"mask", "assets/anim/arm.mask"}, {"meshSpaceRotation", false}}})}}}}, error)) << error;
+    EXPECT_FALSE(s.player().layers[1].meshSpaceRotation);
+    ASSERT_TRUE(animationLayersApply(s, Json{{"animationplayer", {{"layers", Json::array({Json{{"name", "Base Layer"}},
+        Json{{"name", "Holding"}, {"mask", "assets/anim/arm.mask"}, {"meshSpaceRotation", true}}})}}}}, error)) << error;
+    EXPECT_TRUE(s.player().layers[1].meshSpaceRotation);
+    EXPECT_FALSE(animationLayersApply(s, Json{{"animationplayer", {{"layers", Json::array({Json{{"name", "Base Layer"}},
+        Json{{"name", "Holding"}, {"meshSpaceRotation", "yes"}}})}}}}, error));
+    EXPECT_NE(error.find("meshSpaceRotation must be true or false"), std::string::npos) << error;
+    EXPECT_FALSE(animationLayersApply(s, Json{{"animationplayer", {{"layers[1].meshSpaceRotation", "yes"}}}}, error));
+    EXPECT_NE(error.find("true or false"), std::string::npos) << error;
+
     // refusals, with the reason
     EXPECT_FALSE(animationLayersApply(s, Json{{"animationplayer", {{"layers[0].blend", "additive"}}}}, error));
     EXPECT_NE(error.find("base layer"), std::string::npos) << error;
@@ -492,6 +560,14 @@ TEST(AnimationLayersEditor, SetPropertiesValuesAndRefusals) {
     EXPECT_NE(error.find("read-only"), std::string::npos) << error;
     EXPECT_FALSE(animationLayersApply(s, Json{{"animationplayer", {{"clips", Json::array({Json{{"clip", "assets/anim/walk.anim"}, {"layer", 5}}})}}}}, error));
     EXPECT_NE(error.find("add the layer first"), std::string::npos) << error;
+
+    // the base layer of a default player: its whole list holds the field (kept, and ignored there)
+    AnimationPlayerComponent single;
+    single.clips = {animationLayersClipEntry("anim/walk.anim")};
+    PlayerScene plain = playerScene(single);
+    ASSERT_TRUE(animationLayersApply(plain, Json{{"animationplayer", {{"layers[0].meshSpaceRotation", true}}}}, error)) << error;
+    ASSERT_EQ(plain.player().layers.size(), 1u);
+    EXPECT_TRUE(plain.player().layers[0].meshSpaceRotation);
 }
 
 TEST(AnimationLayersEditor, ALayerReorderIsOneUndoStep) {

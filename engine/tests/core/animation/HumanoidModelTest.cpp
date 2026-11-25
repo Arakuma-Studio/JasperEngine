@@ -18,12 +18,15 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/AnimatorAssetIO.h"
+#include "animation/AnimatorInstance.h"
 #include "animation/ClipBinding.h"
 #include "animation/HumanoidClip.h"
 #include "animation/KeyframeSampling.h"
 #include "animation/ModelSubClips.h"
+#include "component/AnimatorComponent.h"
 #include "component/BoneComponent.h"
 #include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "object/AnimationPlayer.h"
 #include "object/Model.h"
 #include "pool/AnimationClipPool.h"
@@ -31,7 +34,9 @@
 #include "pose/ModelRig.h"
 #include "pose/PoseMath.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/AnimatorSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "support/AllocationCounter.h"
 
 #include <algorithm>
 #include <chrono>
@@ -358,6 +363,79 @@ TEST_F(HumanoidModel, BadExtraOverrideKeepsTheRigWithOneWarningPerBuild){
     EXPECT_EQ(warned, 1u) << "one warning per rig build (the cached rig says nothing)";
 }
 
+// ---- a Kevin Iglesias rig with Unity's Spine Proxy bone (mesh-space-rotation R1, R3) ----
+
+TEST_F(HumanoidModel, SpineProxyNodeIsNotedOnceAndKept){
+    const std::string brig = dir + "b_rig_proxy.gltf";
+    animtest::writeAsset(brig, humanoidModelReadFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/b-rig/assets/models") + "/b_rig_proxy.gltf"));
+    const Entity entity = load(brig);
+    const std::string proxyPath = "Rig/B-root/B-spineProxy";
+    const Entity proxy = anim::resolvePath(&scene, entity, proxyPath);
+    ASSERT_NE(proxy, NULL_ENTITY);
+    EXPECT_EQ(scene.findComponent<BoneComponent>(proxy), nullptr) << "a plain node, not a joint";
+    const Transform before = scene.getComponent<Transform>(proxy);
+    auto proxyTrack = [&](ClipData& clip){
+        std::vector<ClipWarning> warnings;
+        std::string error;
+        EXPECT_TRUE(anim::buildModelSubClip(brig + "#Attack", clip, warnings, &error)) << error;
+        for (const ClipTrackData& track : clip.tracks){
+            if (track.path == proxyPath && track.channel == ClipChannel::Rotation) return &track;
+        }
+        return static_cast<const ClipTrackData*>(nullptr);
+    };
+    ClipData clipBefore;
+    const ClipTrackData* trackBefore = proxyTrack(clipBefore);
+    ASSERT_NE(trackBefore, nullptr);
+    ASSERT_EQ(trackBefore->keys.size(), 5u);
+
+    // every required slot from the B- names, the proxy is not in the skeleton
+    Skeleton skeleton;
+    std::vector<Entity> bones;
+    ASSERT_TRUE(buildSkeleton(&scene, entity, skeleton, bones));
+    EXPECT_EQ(findSkeletonBone(skeleton, "B-spineProxy"), -1);
+    HumanoidMap map;
+    std::vector<std::string> notes;
+    std::string error;
+    // imported before the B- rules (no name_rules): no humanoid, as it was
+    EXPECT_FALSE(resolveHumanoid(skeleton, HumanoidOverrides(), map, &error, &notes));
+    // a new import or a reimport records the current rules
+    HumanoidOverrides imported;
+    imported.nameRules = HUMANOID_NAME_RULES;
+    notes.clear();
+    ASSERT_TRUE(resolveHumanoid(skeleton, imported, map, &error, &notes)) << error;
+    EXPECT_EQ(map.bones[boneIndex(HumanBone::Spine)], "B-spine");
+
+    const std::string note = "B-spineProxy is a spine proxy bone for Unity's Spine Proxy. JasperEngine does not need it: "
+                             "turn on Mesh Space Rotation on the layer instead.";
+    noteSpineProxies(&scene, entity, map, notes);
+    EXPECT_EQ(std::count(notes.begin(), notes.end(), note), 1) << "once, though both clips key it";
+
+    // inside the hips' subtree it is not the Spine Proxy bone: B-root taken as the hips here
+    HumanoidMap rootAsHips = map;
+    rootAsHips.bones[boneIndex(HumanBone::Hips)] = "B-root";
+    std::vector<std::string> none;
+    noteSpineProxies(&scene, entity, rootAsHips, none);
+    EXPECT_TRUE(none.empty());
+    // a model without one says nothing
+    const Entity heroEntity = load(hero);
+    noteSpineProxies(&scene, heroEntity, map, none);
+    EXPECT_TRUE(none.empty());
+
+    // the node and its track are unchanged
+    const Transform& after = scene.getComponent<Transform>(proxy);
+    EXPECT_EQ(after.position, before.position);
+    EXPECT_EQ(after.rotation, before.rotation);
+    EXPECT_EQ(after.scale, before.scale);
+    ClipData clipAfter;
+    const ClipTrackData* trackAfter = proxyTrack(clipAfter);
+    ASSERT_NE(trackAfter, nullptr);
+    ASSERT_EQ(trackAfter->keys.size(), trackBefore->keys.size());
+    for (size_t k = 0; k < trackAfter->keys.size(); k++){
+        EXPECT_EQ(trackAfter->keys[k].time, trackBefore->keys[k].time);
+        EXPECT_EQ(trackAfter->keys[k].value, trackBefore->keys[k].value);
+    }
+}
+
 // ---- dropped scale tracks of mapped bones (review L-2) ----
 
 TEST_F(HumanoidModel, ScaleOfMappedBonesAtTheNodeRestIsDroppedQuietly){
@@ -606,6 +684,163 @@ TEST_F(HumanoidModel, MaskedHumanoidLayerOverAGenericWalk){
     EXPECT_LT(humanoidModelDegreesBetween(scene.getComponent<Transform>(leftThigh).rotation, walked), 0.05);
 }
 
+// Mesh Space Rotation on the Animation Player (docs/specs/mesh-space-rotation.md R16) after a
+// hierarchy change its bindings do not see: both clips retargeted (bound to the humanoid's bones,
+// not by path), the left shoulder moved under a new turned GameObject. The node table is built
+// again with it, so the arm keeps the wave's rotation relative to the hero as a table built after
+// the move gives it
+TEST_F(HumanoidModel, PlayerMeshSpaceRotationFollowsAReparentedBone){
+    const Entity entity = load(hero);
+    anim::AvatarMaskDef maskData;
+    maskData.defaultWeight = 0.0f;
+    maskData.bodyParts[(int)AvatarBodyPart::LeftArm] = 1.0f;
+    maskData.bodyParts[(int)AvatarBodyPart::LeftHand] = 1.0f;
+    animtest::writeAsset(dir + "leftarm.mask", anim::writeMask(maskData));
+    scene.addComponent<AnimationPlayerComponent>(entity, AnimationPlayerComponent());
+    AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(entity);
+    AnimationPlayerLayer base;
+    base.name = "Base Layer";
+    AnimationPlayerLayer wave;
+    wave.name = "Wave";
+    wave.mask = dir + "leftarm.mask";
+    wave.meshSpaceRotation = true;
+    component.layers = {base, wave};
+    AnimationPlayerClip walkEntry;
+    walkEntry.clip = hero + "#Walk";
+    walkEntry.retarget = true;
+    AnimationPlayerClip waveEntry;
+    waveEntry.clip = hero + "#Wave 2";
+    waveEntry.retarget = true;
+    waveEntry.layer = 1;
+    component.clips = {walkEntry, waveEntry};
+    component.playAutomatically = false;
+    AnimationPlayer player(&scene, entity);
+    player.play("Walk");
+    player.play("Wave 2");
+    step(0.0);
+    step(0.3);
+    ASSERT_TRUE(player.isLoaded()) << player.getStateInfo("Wave 2").error;
+    const anim::PlayerPoseScratch& scratch = component.runtime->scratch;
+    ASSERT_EQ(scratch.meshBoundary.size(), 2u);
+    ASSERT_FALSE(scratch.meshBoundary[1].empty()) << "the arm mask starts at the left shoulder";
+
+    const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(&scene, entity);
+    ASSERT_TRUE(slots.valid) << slots.error;
+    const Entity shoulder = slots.entities[(size_t)boneIndex(HumanBone::LeftShoulder)];
+    const Entity upperArm = slots.entities[(size_t)boneIndex(HumanBone::LeftUpperArm)];
+    ASSERT_NE(shoulder, NULL_ENTITY);
+    const Entity offset = scene.createEntity();
+    scene.setEntityName(offset, "Offset");
+    Transform turned;
+    turned.rotation = Quaternion(0.96592583f, 0.0f, 0.0f, 0.25881905f);     // 30 degrees about Z
+    scene.addComponent<Transform>(offset, turned);
+    scene.addEntityChild(scene.getComponent<Transform>(shoulder).parent, offset, false);
+    scene.addEntityChild(offset, shoulder, false);
+    step(0.0);
+    EXPECT_NE(std::find(scratch.meshParents.begin(), scratch.meshParents.end(), std::make_pair(shoulder, offset)), scratch.meshParents.end())
+        << "the table's rig has the shoulder under Offset";
+    const Quaternion moved[] = {scene.getComponent<Transform>(shoulder).rotation, scene.getComponent<Transform>(upperArm).rotation};
+
+    // a table built after the move: the option off and on again
+    player.setLayerMeshSpaceRotation(1, false);
+    step(0.0);
+    player.setLayerMeshSpaceRotation(1, true);
+    step(0.0);
+    EXPECT_LT(humanoidModelDegreesBetween(moved[0], scene.getComponent<Transform>(shoulder).rotation), 0.01) << "the shoulder";
+    EXPECT_LT(humanoidModelDegreesBetween(moved[1], scene.getComponent<Transform>(upperArm).rotation), 0.01) << "the upper arm";
+}
+
+// Mesh Space Rotation (docs/specs/mesh-space-rotation.md AC9, R12): the hero's wave, retargeted on
+// the robot, on an Animator layer masked from the robot's spine, over a base pose that turns the
+// robot's hips 90 degrees. With the option every bone of the mask has the wave's rotation
+// relative to the robot (as realised on the target rig) and every other bone the base's, within
+// AC4's bound
+TEST_F(HumanoidModel, MeshSpaceRotationOnARetargetedUpperBodyLayer){
+    const Entity entity = load(robot);
+    const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(&scene, entity);
+    ASSERT_TRUE(slots.valid) << slots.error;
+    std::string spinePath, hipsPath;
+    ASSERT_TRUE(anim::relativePath(&scene, entity, slots.entities[(size_t)boneIndex(HumanBone::Spine)], spinePath));
+    const Entity hipsEntity = slots.entities[(size_t)boneIndex(HumanBone::Hips)];
+    ASSERT_TRUE(anim::relativePath(&scene, entity, hipsEntity, hipsPath));
+    // the base: the robot's own hips turned about the vertical, played by path
+    const Quaternion turned = Quaternion(0.70710678f, 0.0f, 0.70710678f, 0.0f) * scene.getComponent<Transform>(hipsEntity).rotation;
+    ClipData base;
+    base.wrap = ClipWrapMode::Loop;
+    ClipTrackData hipsTrack;
+    hipsTrack.path = hipsPath;
+    hipsTrack.channel = ClipChannel::Rotation;
+    for (float t : {0.0f, 1.0f}){
+        ClipKey k;
+        k.time = t;
+        k.value = {turned.x, turned.y, turned.z, turned.w};
+        hipsTrack.keys.push_back(k);
+    }
+    base.tracks = {hipsTrack};
+    animtest::writeAsset(dir + "turned.anim", anim::writeClip(base));
+    anim::AvatarMaskDef maskData;
+    maskData.defaultWeight = 0.0f;
+    maskData.paths.push_back({spinePath, 1.0f, true});
+    animtest::writeAsset(dir + "spine.mask", anim::writeMask(maskData));
+    auto layer = [](const std::string& name, const std::string& clip){
+        anim::LayerDef out;
+        out.name = name;
+        anim::StateDef state;
+        state.name = name + " State";
+        state.motion.clip.path = clip;
+        out.machine.states.push_back(state);
+        return out;
+    };
+    anim::ControllerDef def;
+    def.layers = {layer("Base Layer", dir + "turned.anim"), layer("Upper Body", hero + "#Wave 2")};
+    def.layers[1].mask.path = dir + "spine.mask";
+    def.layers[1].meshSpaceRotation = true;
+    animtest::writeAsset(dir + "upper.controller", anim::writeController(def));
+    scene.addComponent<AnimatorComponent>(entity, AnimatorComponent());
+    AnimatorComponent& component = scene.getComponent<AnimatorComponent>(entity);
+    component.controller = dir + "upper.controller";
+    component.needsLoad = true;
+    AnimatorSystem& system = *scene.getSystem<AnimatorSystem>();
+    system.update(0.0);
+    system.update(0.3);
+    ASSERT_TRUE(component.runtime);
+    anim::AnimatorInstance& i = *component.runtime;
+    ASSERT_TRUE(i.bound) << i.bindError;
+    ASSERT_TRUE(i.humanoid.valid) << i.humanoid.error;
+    bool waveRetargeted = false;
+    for (size_t c = 0; c < i.controllerClipCount; c++){
+        if (i.clips[c].path == hero + "#Wave 2") waveRetargeted = i.clips[c].retargeted;
+    }
+    ASSERT_TRUE(waveRetargeted) << "the wave plays through the humanoid path";
+    ASSERT_TRUE(i.layerMeshSpaceApplies(1));
+    const int spine = i.humanoid.slotBones[(size_t)HumanBone::Spine];
+    EXPECT_EQ(i.layerBoundaryBones(1), std::vector<uint16_t>{(uint16_t)spine});
+
+    auto rigOf = [&](const anim::Pose& pose){
+        const size_t n = i.rig.bones.size();
+        std::vector<anim::Affine> world(n);
+        std::vector<Vector3> positions(n), scales(n);
+        std::vector<Quaternion> rotations(n);
+        anim::poseToRigSpace(pose, i.rig.parents.data(), anim::RigSpace{world.data(), positions.data(), rotations.data(), scales.data()});
+        return rotations;
+    };
+    auto error = [](const Quaternion& a, const Quaternion& b){
+        const float s = a.dot(b) < 0.0f ? -1.0f : 1.0f;
+        return std::max(std::max(std::fabs(a.w - s * b.w), std::fabs(a.x - s * b.x)), std::max(std::fabs(a.y - s * b.y), std::fabs(a.z - s * b.z)));
+    };
+    const std::vector<Quaternion> below = rigOf(i.layerOutput(0));
+    const std::vector<Quaternion> wave = rigOf(i.layerOutput(1));
+    const std::vector<float>& weights = i.layers[1].mask;
+    for (size_t b = 0; b < i.rig.bones.size(); b++){
+        ASSERT_TRUE(weights[b] == 0.0f || weights[b] == 1.0f);
+        const Quaternion& expected = weights[b] == 1.0f ? wave[b] : below[b];
+        EXPECT_LE(error(i.rigRotations()[b], expected), 1e-5f) << i.rig.bones[b].path << " (mask " << weights[b] << ")";
+    }
+    i.setLayerMeshSpaceRotation(1, false);
+    system.update(0.0);
+    EXPECT_GT(humanoidModelDegreesBetween(i.rigRotations()[(size_t)spine], wave[(size_t)spine]), 45.0) << "local blending: the base's hips turn the spine";
+}
+
 // ---- spec 13: performance (host, Release) ----
 
 TEST_F(HumanoidModel, PerformanceBudget){
@@ -633,8 +868,11 @@ TEST_F(HumanoidModel, PerformanceBudget){
     const double convertMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     std::printf("convert a 3 s clip: %.2f ms\n", convertMs);
 #ifdef NDEBUG
-    // timings hold in optimized builds only (the sanitizer builds are Debug)
-    EXPECT_LT(convertMs, 5.0);
+    // timings hold in optimized builds only (the sanitizer builds are Debug); a wall-clock
+    // budget: enforced where perfSlack() asks for it (the benchmark run)
+    if (const double slack = testsupport::perfSlack(); slack > 0.0){
+        EXPECT_LT(convertMs, 5.0 * slack);
+    }
 #endif
 
     // 30 characters with one humanoid state each and Foot IK: the realisation per frame
@@ -660,6 +898,8 @@ TEST_F(HumanoidModel, PerformanceBudget){
     }
     std::printf("30 humanoid states with Foot IK: %.3f ms per frame\n", best);
 #ifdef NDEBUG
-    EXPECT_LT(best, 0.3);
+    if (const double slack = testsupport::perfSlack(); slack > 0.0){
+        EXPECT_LT(best, 0.3 * slack);
+    }
 #endif
 }

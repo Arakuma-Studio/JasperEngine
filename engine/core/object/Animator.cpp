@@ -257,6 +257,61 @@ float Animator::getLayerWeight(int layer) const{
     return instance ? instance->getLayerWeight(layer) : 0.0f;
 }
 
+bool Animator::knownLayer(int layer, const std::string* name) const{
+    anim::AnimatorInstance* instance = runtime();
+    if (!instance) return false;
+    if (layer >= 0 && (size_t)layer < instance->layers.size()) return true;
+    // before its controller loads an Animator has no layers to name
+    if (instance->controller) unknown("layer", name ? *name : std::to_string(layer));
+    return false;
+}
+
+void Animator::setLayerMeshSpaceRotation(int layer, bool enabled){
+    if (knownLayer(layer, nullptr)) runtime()->setLayerMeshSpaceRotation(layer, enabled);
+}
+
+void Animator::setLayerMeshSpaceRotation(const std::string& layer, bool enabled){
+    const int index = getLayerIndex(layer);
+    if (knownLayer(index, &layer)) runtime()->setLayerMeshSpaceRotation(index, enabled);
+}
+
+bool Animator::getLayerMeshSpaceRotation(int layer) const{
+    return knownLayer(layer, nullptr) && runtime()->layerMeshSpaceRotation(layer);
+}
+
+bool Animator::getLayerMeshSpaceRotation(const std::string& layer) const{
+    const int index = getLayerIndex(layer);
+    return knownLayer(index, &layer) && runtime()->layerMeshSpaceRotation(index);
+}
+
+std::vector<Entity> Animator::getLayerBoundaryBones(int layer) const{
+    std::vector<Entity> bones;
+    anim::AnimatorInstance* instance = runtime();
+    if (!instance || !instance->bound) return bones;
+    for (uint16_t bone : instance->layerBoundaryBones(layer)) bones.push_back(instance->rig.bones[bone].entity);
+    return bones;
+}
+
+void Animator::setMeshSpaceBypass(bool bypass){
+    anim::AnimatorInstance* instance = runtime();
+    if (instance) instance->setMeshSpaceBypass(bypass);
+}
+
+bool Animator::isMeshSpaceBypass() const{
+    anim::AnimatorInstance* instance = runtime();
+    return instance && instance->meshSpaceBypass();
+}
+
+void Animator::setMeshSpaceDebug(bool debug){
+    anim::AnimatorInstance* instance = runtime();
+    if (instance) instance->setMeshSpaceDebug(debug);
+}
+
+bool Animator::isMeshSpaceDebug() const{
+    anim::AnimatorInstance* instance = runtime();
+    return instance && instance->meshSpaceDebug();
+}
+
 bool Animator::playMontage(const std::string& path){
     return playMontage(path, 1.0f, std::string());
 }

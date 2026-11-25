@@ -1,0 +1,27 @@
+name: Save the Xcode compilation cache
+description: >
+  Saves XCODE_CAS (xcode-cache-restore) as the run's xcode-cas-<Xcode>- entry and deletes the older
+  ones of the ref, so one entry lives. The caller decides when (the nightly's ios job, on main, after
+  both Xcode builds passed: an entry of a failed build would miss what it never compiled). Needs
+  actions write. An overflow Mac's own cache is kept, not saved.
+runs:
+  using: composite
+  steps:
+    - name: Size
+      shell: bash
+      run: du -sh "$XCODE_CAS"
+    - name: Save
+      if: env.JASPER_XCODE_CAS_LOCAL != '1'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: build/.cache/xcode-cas
+        key: ${{ env.JASPER_XCODE_CAS_KEY }}
+    - name: Delete the older entries
+      if: env.JASPER_XCODE_CAS_LOCAL != '1'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "$JASPER_XCODE_CAS_PREFIX" --limit 100 \
+            --json id,key --jq ".[] | select(.key != \"$JASPER_XCODE_CAS_KEY\") | .id" |
+            while read -r id; do gh cache delete --repo "$GITHUB_REPOSITORY" "$id"; done
