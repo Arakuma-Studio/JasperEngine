@@ -415,6 +415,8 @@ editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sce
 }
 
 editor::Project::~Project(){
+    // the importer's process-wide FBX Submesh Order is the open project's: a closed one leaves the default
+    FbxImporter::setDefaultUsedMaterialsOrder(false);
     // closing the project: a map waiting for its debounce reaches its file (T1 R30)
     TerrainMapPersistence::get().flushAll();
     // the poller and the worker read nothing of the project, but its backups go with it

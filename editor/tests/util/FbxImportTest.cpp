@@ -540,6 +540,7 @@ TEST(FbxImport, RestPoseSkipsTakesThatAnimateNothing) {
 }
 
 TEST(FbxImport, SubmeshOrderFollowsMaterialSlots) {
+    FbxImporter::setDefaultUsedMaterialsOrder(false);
     // three slots: 0 unused, then the faces' materials 1 and 2, the first face on slot 1 (B's
     // eyes/body case: the empty slot shifted every later submesh by one)
     std::string text = readText(fixture);
