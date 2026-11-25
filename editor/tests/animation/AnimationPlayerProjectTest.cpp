@@ -11,6 +11,8 @@
 // through the ModelPool).
 
 #include <gtest/gtest.h>
+
+#include "serialization/CookedScene.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/Transform.h"
 
@@ -18,7 +20,6 @@
 
 #include "AppSettings.h"
 #include "Engine.h"
-#include "Factory.h"
 #include "Platform.h"
 #include "Project.h"
 #include "asset/AssetOps.h"
@@ -335,26 +336,21 @@ TEST(AnimationPlayerProject, MovesRemapClipsAndTheModelPartOfSubClips) {
 
 // ---- scene resources -----------------------------------------------------------------------
 
-TEST(AnimationPlayerProject, TheGeneratedSceneSourcePreloadsTheClipsAndTheirModels) {
+TEST(AnimationPlayerProject, TheCookedScenePreloadsTheClipsAndTheirModels) {
     ASSERT_TRUE(headless().ready);
     resetAssets();
     PlayerScene s = playerScene({entry("anim/walk.anim", WALK_GUID), entry(""), entry("models/hero.gltf#Walk"),
                                  entry("anim/walk.anim", WALK_GUID)});
     ASSERT_TRUE(project()->saveSceneToPath(s.sceneProject->id, "Players.scene"));
 
-    const fs::path source = project()->getProjectInternalPath() / "generated" /
-                            (Factory::sceneToFileName(s.sceneProject->id, s.sceneProject->name) + ".cpp");
-    ASSERT_TRUE(fs::exists(source)) << source;
-    const std::string code = readAll(source);
+    const fs::path cooked = project()->getCookedCacheDir() / "scenes" / (std::to_string(s.sceneProject->id) + ".jscn");
+    ASSERT_TRUE(fs::exists(cooked)) << cooked;
+    const std::string bytes = readAll(cooked);
     // each file once, the empty entry left out; a sub-clip's model is preloaded with it
-    const std::string resources = code.substr(code.find("SceneResources resources_"));
-    EXPECT_NE(resources.find("    resources.models.push_back(\"models/hero.gltf\");\n"
-                             "    resources.clips.push_back(\"anim/walk.anim\");\n"
-                             "    resources.clips.push_back(\"models/hero.gltf#Walk\");\n"
-                             "    return resources;"), std::string::npos) << resources.substr(0, 600);
-    EXPECT_NE(code.find("animationplayer.clips[2].clip = \"models/hero.gltf#Walk\";"), std::string::npos);
+    const SceneResources resources = CookedSceneLoader::sceneResources(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()));
+    EXPECT_EQ(resources.models, std::vector<std::string>{"models/hero.gltf"});
+    EXPECT_EQ(resources.clips, (std::vector<std::string>{"anim/walk.anim", "models/hero.gltf#Walk"}));
 
-    // the scene file stores the GUIDs, the generated code does not
+    // the scene file stores the GUIDs
     EXPECT_NE(readAll(project()->getProjectPath() / "Players.scene").find(WALK_GUID), std::string::npos);
-    EXPECT_EQ(code.find(WALK_GUID), std::string::npos);
 }

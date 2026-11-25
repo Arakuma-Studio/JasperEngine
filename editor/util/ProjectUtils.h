@@ -7,6 +7,7 @@
 
 #include <string>
 #include <filesystem>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -26,6 +27,9 @@
 #include "ecs/ComponentFwd.h"
 
 namespace jasperengine{
+    class MeshSystem;
+    class SplineSystem;
+    class VoxelSystem;
     struct LineRendererComponent;
     struct ScriptEntry;
     struct TrailRendererComponent;
@@ -62,6 +66,10 @@ private:
         bool byTransformParent; // a bone or node: its Transform parent when it has one
     };
     Scene* scene;
+    // the systems that own generated entities, looked up once (each a map lookup a call)
+    std::shared_ptr<MeshSystem> meshes;
+    std::shared_ptr<VoxelSystem> voxels;
+    std::shared_ptr<SplineSystem> splines;
     std::unordered_map<Entity, ModelReference> modelReferences;
     std::unordered_map<Entity, Entity> panelParts;
 };

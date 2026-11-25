@@ -787,6 +787,8 @@ struct FoliageSystem::Impl {
             requested = path;
             meshLoads++;
         }
+        // its import still running (the editor): the next update asks again
+        if (MeshSystem::isModelImportPending(path)) return;
         if (!loadPrototypeMesh(entity, path)) {
             if (!scene->getSystem<MeshSystem>()->isAsyncModelLoadPending(entity, path)) {
                 failed = true;

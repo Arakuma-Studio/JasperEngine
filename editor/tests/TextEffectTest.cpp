@@ -21,7 +21,6 @@
 #include "util/TextEffects.h"
 #include "object/ui/TextEffect.h"
 #include "Stream.h"
-#include "Factory.h"
 #include "Catalog.h"
 #include "pool/FontPool.h"
 #include "reflect/Reflect.h"
@@ -649,40 +648,6 @@ TEST(TextEffectStreamTest, NonDefaultFieldsRoundTrip){
     EXPECT_EQ(decoded.startIndex, 2);
     EXPECT_EQ(decoded.length, 5);
     EXPECT_EQ(decoded.forWords, "gold");
-}
-
-// the exported scene's C++ (Factory): a Text Effect's layers and settings, a Particle System's
-// useUnscaledTime
-TEST(TextEffectStreamTest, GeneratedCode){
-    Scene scene;
-    const Entity entity = scene.createEntity();
-    TextEffectComponent effect;
-    effect.layers[0] = textEffectLayerOf(TextEffectType::Grow);
-    effect.layers[0].amplitude = 0.5f;
-    effect.layers[1] = textEffectLayerOf(TextEffectType::Gradient);
-    effect.layers[1].gradient = {TextEffectGradientStop{Vector4(1.0f, 0.0f, 0.0f, 1.0f), 0.0f}};
-    effect.useUnscaledTime = false;
-    effect.forWords = "gold";
-    scene.addComponent<TextEffectComponent>(entity, effect);
-    const std::string code = editor::Factory::createComponent(0, &scene, entity, editor::ComponentType::TextEffectComponent, "", "scene", "entity");
-    EXPECT_NE(code.find("TextEffectComponent textEffect;"), std::string::npos) << code;
-    EXPECT_NE(code.find("textEffect.layers[0].type = TextEffectType::Grow;"), std::string::npos) << code;
-    EXPECT_NE(code.find("textEffect.layers[0].amplitude = 0.5"), std::string::npos) << code;
-    EXPECT_NE(code.find("textEffect.layers[1].type = TextEffectType::Gradient;"), std::string::npos) << code;
-    EXPECT_NE(code.find("textEffect.layers[1].gradient.push_back(TextEffectGradientStop{"), std::string::npos) << code;
-    EXPECT_NE(code.find("textEffect.useUnscaledTime = false;"), std::string::npos) << code;
-    EXPECT_NE(code.find("textEffect.forWords = \"gold\";"), std::string::npos) << code;
-    EXPECT_NE(code.find("addComponent<TextEffectComponent>"), std::string::npos) << code;
-
-    const Entity emitter = scene.createEntity();
-    ParticleSystemComponent particles;
-    particles.useUnscaledTime = true;
-    scene.addComponent<ParticleSystemComponent>(emitter, particles);
-    const std::string particleCode = editor::Factory::createComponent(0, &scene, emitter, editor::ComponentType::ParticleSystemComponent, "", "scene", "entity");
-    EXPECT_NE(particleCode.find("particles.useUnscaledTime = true;"), std::string::npos) << particleCode;
-    scene.getComponent<ParticleSystemComponent>(emitter).useUnscaledTime = false;
-    EXPECT_EQ(editor::Factory::createComponent(0, &scene, emitter, editor::ComponentType::ParticleSystemComponent, "", "scene", "entity").find("useUnscaledTime"),
-              std::string::npos);
 }
 
 // atlases of a raster scale or a distance field go with their last text (a resize makes new ones)

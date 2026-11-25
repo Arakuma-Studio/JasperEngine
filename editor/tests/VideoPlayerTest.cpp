@@ -5,13 +5,12 @@
 // §9): VideoPlayerSystem against a fake source (event order, game vs unscaled time, timeScale 0,
 // stop and prepare again, Material Override restored, a player destroyed while preparing), the
 // Catalog and scene-file round trip, the video|<entity> texture links (resolve, remap on
-// duplicate), the cloner, and the export codegen.
+// duplicate) and the cloner.
 
 #include "PhysicsTestScene.h"
 
 #include "Catalog.h"
 #include "Exporter.h"
-#include "Factory.h"
 #include "Stream.h"
 #include "component/MeshComponent.h"
 #include "component/Transform.h"
@@ -471,22 +470,6 @@ TEST(VideoPlayerComponent, TextureLinksResolveAndFollowCopies){
     EXPECT_EQ(copiedTexture.getId(), VideoTextureLink::makeId(copies[0]));
 }
 
-TEST(VideoPlayerComponent, ExportCodegen){
-    Scene scene;
-    const Entity entity = scene.createUserEntity();
-    scene.addComponent<Transform>(entity, {});
-    VideoPlayerComponent player;
-    player.url = "https://cdn.example.com/a.mp4";
-    player.source = VideoPlayerSource::URL;
-    player.renderMode = VideoRenderMode::CAMERA_NEAR_PLANE;
-    scene.addComponent<VideoPlayerComponent>(entity, player);
-    const std::string code = Factory::createVideoPlayerComponent(4, &scene, entity, "scene", "entity");
-    EXPECT_NE(code.find("VideoPlayerComponent player;"), std::string::npos) << code;
-    EXPECT_NE(code.find("player.url = \"https://cdn.example.com/a.mp4\";"), std::string::npos) << code;
-    EXPECT_NE(code.find("player.renderMode = VideoRenderMode(1);"), std::string::npos) << code;
-    EXPECT_EQ(code.find("player.clip"), std::string::npos) << "defaults are not written";
-}
-
 TEST(VideoPlayerComponent, AndroidInternetForUrlPlayers){
     // the scene file's text as Stream writes it: an http(s) url needs INTERNET, a clip or a
     // data:// url does not
@@ -582,23 +565,6 @@ TEST(VideoPlayerComponent, LinksFollowRemapsAndDeletes){
     const Texture& after = scene.getComponent<MeshComponent>(image).submeshes[0].material.baseColorTexture;
     EXPECT_EQ(after.getFramebuffer(), nullptr);
     EXPECT_EQ(after.getId(), VideoTextureLink::makeId(b));
-}
-
-TEST(VideoPlayerComponent, ExportedLinkCode){
-    Scene scene;
-    const Entity player = scene.createUserEntity();
-    scene.addComponent<Transform>(player, {});
-    scene.addComponent<VideoPlayerComponent>(player, {});
-    const Entity image = scene.createUserEntity();
-    scene.addComponent<Transform>(image, {});
-    MeshComponent mesh;
-    mesh.numSubmeshes = 1;
-    mesh.submeshes[0].material.baseColorTexture.setId(VideoTextureLink::makeId(player));
-    scene.addComponent<MeshComponent>(image, mesh);
-    const std::string code = Factory::createCameraTextureLinks(4, &scene, {player, image}, nullptr, false);
-    EXPECT_NE(code.find(".output = std::make_shared<VideoTextureConverter>();"), std::string::npos) << code;
-    EXPECT_NE(code.find(".setFramebuffer(scene->getComponent<VideoPlayerComponent>("), std::string::npos) << code;
-    EXPECT_NE(code.find(".output->getFramebuffer());"), std::string::npos) << code;
 }
 
 TEST_F(VideoPlayerSystemTest, AMovedPlayerKeepsPlaying){

@@ -8,6 +8,9 @@
 // path visitor, the scene resources) is in AnimationPlayerProjectTest.cpp.
 
 #include <gtest/gtest.h>
+
+#include "cook/SceneCooker.h"
+#include "serialization/CookedScene.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
@@ -15,7 +18,6 @@
 #include "component/AnimationPlayerComponent.h"
 
 #include "Catalog.h"
-#include "Factory.h"
 #include "Project.h"
 #include "Scene.h"
 #include "Stream.h"
@@ -372,77 +374,6 @@ TEST(AnimationPlayerComponent, ClipReferencesNeedAProjectToResolve) {
     EXPECT_EQ(scene.getComponent<AnimationPlayerComponent>(entity).clips, authoredPlayer().clips);
 }
 
-// ---- C++ export ----------------------------------------------------------------------------
-
-namespace {
-
-    // the code below is Factory's output for authoredPlayer(), pasted: it must keep compiling
-    // against the engine headers and build the same component. It and EMITTED_ANIMATION_PLAYER
-    // are one text: change them together (FactoryEmitsTheAuthoredFields compares the emitted code
-    // with the string; a real export compile runs in the MCP build_project checks)
-    void emittedAnimationPlayer(Scene* scene, Entity entity) {
-        AnimationPlayerComponent animationplayer;
-        animationplayer.enabled = false;
-        animationplayer.clips.resize(3);
-        animationplayer.clips[0].clip = "anim/walk.anim";
-        animationplayer.clips[0].name = "Walk";
-        animationplayer.clips[0].wrap = ClipWrapMode::Loop;
-        animationplayer.clips[1].clip = "models/hero.gltf#Idle";
-        animationplayer.clips[2].clip = "anim/jump.anim";
-        animationplayer.clips[2].wrap = ClipWrapMode::ClampForever;
-        animationplayer.defaultClip = "Walk";
-        animationplayer.playAutomatically = false;
-        animationplayer.speed = 1.500000f;
-        animationplayer.defaultFadeTime = 0.400000f;
-        scene->addComponent<AnimationPlayerComponent>(entity, animationplayer);
-    }
-
-    const char* const EMITTED_ANIMATION_PLAYER =
-        "AnimationPlayerComponent animationplayer;\n"
-        "animationplayer.enabled = false;\n"
-        "animationplayer.clips.resize(3);\n"
-        "animationplayer.clips[0].clip = \"anim/walk.anim\";\n"
-        "animationplayer.clips[0].name = \"Walk\";\n"
-        "animationplayer.clips[0].wrap = ClipWrapMode::Loop;\n"
-        "animationplayer.clips[1].clip = \"models/hero.gltf#Idle\";\n"
-        "animationplayer.clips[2].clip = \"anim/jump.anim\";\n"
-        "animationplayer.clips[2].wrap = ClipWrapMode::ClampForever;\n"
-        "animationplayer.defaultClip = \"Walk\";\n"
-        "animationplayer.playAutomatically = false;\n"
-        "animationplayer.speed = 1.500000f;\n"
-        "animationplayer.defaultFadeTime = 0.400000f;\n"
-        "scene->addComponent<AnimationPlayerComponent>(entity, animationplayer);\n";
-
-}
-
-TEST(AnimationPlayerComponent, FactoryEmitsTheAuthoredFields) {
-    Scene scene;
-    const Entity entity = animationPlayerComponentPlayerEntity(scene, authoredPlayer());
-    const std::string code = Factory::createComponent(0, &scene, entity, ComponentType::AnimationPlayerComponent, "", "scene", "entity");
-    EXPECT_EQ(code, EMITTED_ANIMATION_PLAYER);
-    // the editor's GUIDs stay out of the build
-    EXPECT_EQ(code.find(WALK_GUID), std::string::npos);
-    EXPECT_NE(Factory::createAllComponents(0, &scene, entity, "", "scene", "entity").find("AnimationPlayerComponent animationplayer;"),
-              std::string::npos);
-
-    Scene built;
-    const Entity builtEntity = built.createUserEntity();
-    emittedAnimationPlayer(&built, builtEntity);
-    AnimationPlayerComponent expected = authoredPlayer();
-    for (AnimationPlayerClip& entry : expected.clips) entry.guid.clear();
-    animationPlayerComponentExpectSameAuthored(built.getComponent<AnimationPlayerComponent>(builtEntity), expected);
-
-    // a default player: no list, the settings
-    Scene plain;
-    const Entity plainEntity = animationPlayerComponentPlayerEntity(plain, AnimationPlayerComponent());
-    EXPECT_EQ(Factory::createComponent(0, &plain, plainEntity, ComponentType::AnimationPlayerComponent, "", "scene", "entity"),
-              "AnimationPlayerComponent animationplayer;\n"
-              "animationplayer.playAutomatically = true;\n"
-              "animationplayer.speed = 1.000000f;\n"
-              "animationplayer.defaultFadeTime = 0.250000f;\n"
-              "scene->addComponent<AnimationPlayerComponent>(entity, animationplayer);\n");
-}
-
 // ---- ModelComponent.animationEntities (spec 9.R15) -----------------------------------------
 
 namespace {
@@ -507,14 +438,6 @@ TEST(AnimationPlayerComponent, ModelAnimationEntitiesPropertyFactoryAndPrefabOve
     ASSERT_TRUE(property.def);
     EXPECT_TRUE(*static_cast<bool*>(property.def));  // Reset gives on
     EXPECT_TRUE(Catalog::findEntityProperties(&scene, entity, ComponentType::ModelComponent).count("animationEntities"));
-
-    // the exporter: written only when off
-    const std::string code = Factory::createComponent(0, &scene, entity, ComponentType::ModelComponent, "", "scene", "entity");
-    EXPECT_NE(code.find("modelcomp.mergeStaticMeshes = false;\nmodelcomp.animationEntities = false;\n"), std::string::npos) << code;
-    Scene plain;
-    const Entity plainEntity = modelEntity(plain, true);
-    EXPECT_EQ(Factory::createComponent(0, &plain, plainEntity, ComponentType::ModelComponent, "", "scene", "entity").find("animationEntities"),
-              std::string::npos);
 
     // a prefab instance turning it off overrides that one property, applied as the instance loads
     Scene asset;
@@ -588,23 +511,24 @@ TEST(AnimationPlayerComponent, SavedMorphWeightsAreKeptByTheModelLoad) {
     const YAML::Node editedNode = Stream::encodeMeshComponent(edited, false, false, false);
     ASSERT_TRUE(editedNode["morphWeights"]) << "a weight set before any load is kept";
     EXPECT_EQ(Stream::decodeMeshComponent(editedNode).morphTargetCount, 1);
-    {
-        Scene exported;
-        const Entity entity = exported.createEntity();
-        exported.addComponent<Transform>(entity, {});
-        exported.addComponent<MeshComponent>(entity, edited);
-        const std::string code = Factory::createComponent(0, &exported, entity, ComponentType::MeshComponent, "", "scene", "entity");
-        EXPECT_NE(code.find("mesh.morphWeightsSet = true;\n"), std::string::npos) << code;
-        EXPECT_NE(code.find("mesh.morphTargetCount = 1;\n"), std::string::npos) << code;
-    }
-
-    Scene scene;
-    const Entity entity = scene.createEntity();
-    scene.addComponent<Transform>(entity, {});
-    scene.addComponent<MeshComponent>(entity, zeros);
-    const std::string code = Factory::createComponent(0, &scene, entity, ComponentType::MeshComponent, "", "scene", "entity");
-    EXPECT_NE(code.find("mesh.morphWeightsSet = true;\n"), std::string::npos) << code;
-    scene.getComponent<MeshComponent>(entity).morphWeightsSet = false;
-    EXPECT_EQ(Factory::createComponent(0, &scene, entity, ComponentType::MeshComponent, "", "scene", "entity").find("morphWeightsSet"),
-              std::string::npos);
+    // a build carries the weights and their count (the cooked scene every build loads)
+    auto cooked = [](const MeshComponent& mesh) {
+        Scene source;
+        const Entity entity = source.createEntity();
+        source.addComponent<Transform>(entity, {});
+        source.addComponent<MeshComponent>(entity, mesh);
+        const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(&source, 7, {entity}, NULL_ENTITY, SceneResources{});
+        Scene loaded;
+        std::string error;
+        EXPECT_TRUE(CookedSceneLoader::loadScene(&loaded, std::span<const uint8_t>(bytes.data(), bytes.size()), &error)) << error;
+        return loaded.isEntityCreated(entity) && loaded.findComponent<MeshComponent>(entity) ? *loaded.findComponent<MeshComponent>(entity) : MeshComponent();
+    };
+    const MeshComponent editedBuilt = cooked(edited);
+    EXPECT_TRUE(editedBuilt.morphWeightsSet);
+    EXPECT_EQ(editedBuilt.morphTargetCount, 1);
+    EXPECT_FLOAT_EQ(editedBuilt.morphWeights[0], 0.5f);
+    EXPECT_TRUE(cooked(zeros).morphWeightsSet);
+    MeshComponent unset = zeros;
+    unset.morphWeightsSet = false;
+    EXPECT_FALSE(cooked(unset).morphWeightsSet);
 }

@@ -44,28 +44,24 @@ namespace enums {
 namespace {
 
     constexpr FieldDesc kSortingGroupFields[] = {
-        JE_FIELD(SortingGroupComponent, enabled, .flags = CodegenIfChanged),
-        JE_FIELD(SortingGroupComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer",
+        JE_FIELD(SortingGroupComponent, enabled),
+        JE_FIELD(SortingGroupComponent, sortingLayer, .flags = OmitIfDefault, .min = 0.0f, .label = "Sorting Layer",
                  .drawer = "sortingLayer"),
-        JE_FIELD(SortingGroupComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f,
+        JE_FIELD(SortingGroupComponent, sortingOrder, .flags = OmitIfDefault, .min = -32768.0f, .max = 32767.0f,
                  .label = "Order in Layer"),
     };
 
-    constexpr const char* kSortingGroupCodegenOrder[] = {"sortingLayer", "sortingOrder", "enabled"};
-
     // instances are runtime data: their count is shown, never saved or written
-    constexpr uint32_t kRuntimeCount = Transient | ReadOnly | NoMcpWrite | NoDefault | NoCodegen;
+    constexpr uint32_t kRuntimeCount = Transient | ReadOnly | NoMcpWrite | NoDefault;
 
     constexpr FieldDesc kSpriteBatchFields[] = {
-        JE_FIELD(SpriteBatchComponent, enabled, .flags = CodegenIfChanged),
-        JE_FIELD(SpriteBatchComponent, mode, .enumDesc = &enums::kSpriteBatchMode, .flags = OmitIfDefault | CodegenIfChanged),
-        JE_FIELD(SpriteBatchComponent, space, .enumDesc = &enums::kSpriteBatchSpace, .flags = OmitIfDefault | CodegenIfChanged),
-        JE_FIELD(SpriteBatchComponent, capacity, .flags = OmitIfDefault | CodegenIfChanged, .min = 1.0f, .max = 1048576.0f),
-        JE_FIELD(SpriteBatchComponent, sortInstances, .flags = OmitIfDefault | CodegenIfChanged, .label = "Sort Instances"),
+        JE_FIELD(SpriteBatchComponent, enabled),
+        JE_FIELD(SpriteBatchComponent, mode, .enumDesc = &enums::kSpriteBatchMode, .flags = OmitIfDefault),
+        JE_FIELD(SpriteBatchComponent, space, .enumDesc = &enums::kSpriteBatchSpace, .flags = OmitIfDefault),
+        JE_FIELD(SpriteBatchComponent, capacity, .flags = OmitIfDefault, .min = 1.0f, .max = 1048576.0f),
+        JE_FIELD(SpriteBatchComponent, sortInstances, .flags = OmitIfDefault, .label = "Sort Instances"),
         JE_FIELD(SpriteBatchComponent, count, .flags = kRuntimeCount, .label = "Instances"),
     };
-
-    constexpr const char* kSpriteBatchCodegenOrder[] = {"mode", "space", "capacity", "sortInstances", "enabled"};
 
 }
 
@@ -74,7 +70,6 @@ const ComponentDesc kSortingGroupDesc{
     .displayName = "Sorting Group", .icon = ICON_FA_LAYER_GROUP,
     .body = JE_STRUCT_DESC(SortingGroupComponent, "SortingGroupComponent", kSortingGroupFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SortingGroupComponent),
-    .codegenVar = "sortingGroup", .codegenOrder = kSortingGroupCodegenOrder,
 };
 
 const ComponentDesc kSpriteBatchDesc{
@@ -82,7 +77,6 @@ const ComponentDesc kSpriteBatchDesc{
     .displayName = "Sprite Batch", .icon = ICON_FA_TABLE_CELLS_LARGE,
     .body = JE_STRUCT_DESC(SpriteBatchComponent, "SpriteBatchComponent", kSpriteBatchFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SpriteBatchComponent),
-    .codegenVar = "spriteBatch", .codegenOrder = kSpriteBatchCodegenOrder,
 };
 
 }

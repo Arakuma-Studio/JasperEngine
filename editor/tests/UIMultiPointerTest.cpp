@@ -19,7 +19,6 @@
 #include "object/Camera.h"
 #include "Catalog.h"
 #include "Stream.h"
-#include "Factory.h"
 
 #include <cmath>
 #include <climits>
@@ -113,7 +112,6 @@ namespace {
 
         OnScreenStickComponent& stickOf(Entity e) { return scene->getComponent<OnScreenStickComponent>(e); }
     };
-
 }
 
 // two fingers press two Buttons; lifting one releases only its Button, and the legacy
@@ -676,15 +674,4 @@ TEST(OnScreenControlsEditor, CatalogStreamAndExport) {
     const TouchAreaComponent areaBack = editor::Stream::decodeTouchAreaComponent(editor::Stream::encodeTouchAreaComponent(area));
     EXPECT_FLOAT_EQ(areaBack.sensitivity, 0.5f);
     EXPECT_TRUE(areaBack.invertY);
-
-    // the exported scene's code sets every field
-    Scene scene;
-    const Entity entity = scene.createUserEntity();
-    scene.addComponent<Transform>(entity, {});
-    scene.addComponent<OnScreenStickComponent>(entity, stick);
-    const std::string code = editor::Factory::createComponent(0, &scene, entity, ComponentType::OnScreenStickComponent, std::filesystem::temp_directory_path());
-    EXPECT_NE(code.find("OnScreenStickMode::DYNAMIC"), std::string::npos) << code;
-    EXPECT_NE(code.find("OnScreenStickAxes::HORIZONTAL"), std::string::npos);
-    EXPECT_NE(code.find("\"MoveX\""), std::string::npos);
-    EXPECT_NE(code.find("OnScreenVisibility::TOUCH_DEVICES_ONLY"), std::string::npos);
 }

@@ -15,7 +15,8 @@ answer) and an empty working directory, which must stay empty (R15).
 - --wait-job follows a generate_shaders job to its end; SIGINT while waiting cancels the job
   (cancel_job) and exits 3; build_project --wait-job under JASPER_SLOW_BUILD=1;
 - batch: 3 lines with the second failing print 2 envelopes and exit 1, with --continue 3;
-  --atomic makes them one undo step; 201 lines with --atomic exit 2 before anything runs.
+  --atomic makes them one undo step; 201 lines with --atomic exit 2 before anything runs;
+- check_shader on a shader that does not compile is an MCP error and exits 1 (S98 REQ-22).
 """
 
 from __future__ import annotations
@@ -363,6 +364,58 @@ async def test_batch(ed: Editor):
     p = await cli.arun("batch", *ATTACH, "--atomic", stdin=many)
     ed.check(p.returncode == 2 and envelopes(p)[0]["code"] == "usage" and "at most 200" in envelopes(p)[0]["error"],
              f"201 lines: {p.returncode} {p.stdout} {p.stderr}")
+
+
+async def test_export_platform_android(ed: Editor):
+    """`export --platform android` compiles the GLES3 shaders alone, as the Build Settings preset
+    does (S98 REQ-18, AC16); an unknown platform exits 2 and lists the names."""
+    cli: Cli = S["cli"]
+    await ed.call("save_project", untitled_scene_dir="scenes")
+    out = cli.root / "export-android"
+    p = await cli.arun("export", "--project", str(ed.project), "--out", str(out), "--platform", "android", timeout=900)
+    ed.check(p.returncode == 0, f"export --platform android: {p.returncode} {p.stdout[-800:]} {p.stderr[-800:]}")
+    shaders = out / "shaders"
+    ed.check((shaders / "glsl300es.h").stat().st_size > 4096, "the GLES3 shaders are compiled")
+    # the other backends' headers stay the SDK's empty stubs
+    for name in ("spirv10.h", "glsl410.h", "hlsl5.h", "msl21macos.h"):
+        size = (shaders / name).stat().st_size if (shaders / name).exists() else 0
+        ed.check(size < 1024, f"no {name} shaders for Android: {size} bytes")
+    bogus = await cli.arun("export", "--project", str(ed.project), "--out", str(cli.root / "export-bogus"), "--platform", "bogus")
+    ed.check(bogus.returncode == 2 and "windows, linux, macos, android, ios, web" in bogus.stderr,
+             f"--platform bogus: {bogus.returncode} {bogus.stderr[-400:]}")
+
+
+# check_shader (S98 REQ-22): a failed compile is an MCP error (isError, its structuredContent kept)
+# and the CLI exits 1 on it, 0 on a shader that compiles
+SHADER_VERT = "#version 450\n#include \"includes/surface_vs.glsl\"\n"
+SHADER_GOOD_FRAG = ("#version 450\n// @shader mesh\nout vec4 g_finalColor;\n#include \"includes/output.glsl\"\n"
+                    "void main() { g_finalColor = finalizeColor(vec4(1.0, 0.5, 0.25, 1.0)); }\n")
+# a vec2 where the output takes a vec4: no overload of finalizeColor matches
+SHADER_BAD_FRAG = ("#version 450\n// @shader mesh\nout vec4 g_finalColor;\n#include \"includes/output.glsl\"\n"
+                   "void main() { vec2 uv = vec2(0.5); g_finalColor = finalizeColor(uv); }\n")
+
+
+async def test_check_shader_failure_is_error(ed: Editor):
+    for name, frag in (("Good", SHADER_GOOD_FRAG), ("Bad", SHADER_BAD_FRAG)):
+        await ed.call("write_file", path=f"shaders/{name}.vert", content=SHADER_VERT, timeout=300)
+        await ed.call("write_file", path=f"shaders/{name}.frag", content=frag, timeout=300)
+
+    good = await ed.call_raw("check_shader", {"shader": "shaders/Good", "shader_type": "mesh"}, timeout=300)
+    ed.check(not good.is_error and good.value["failed"] == 0, f"a compiling shader is a success: {good.text[:800]}")
+
+    bad = await ed.call_raw("check_shader", {"shader": "shaders/Bad", "shader_type": "mesh"}, timeout=300)
+    ed.check(bad.is_error, f"a failed compile is an error: {bad.text[:800]}")
+    data = bad.value
+    ed.check_eq(data.get("failed"), 1, f"structuredContent keeps the result: {str(data)[:800]}")
+    ed.check(isinstance(data.get("results"), list) and data["results"] and not data["results"][0]["ok"], f"results: {str(data)[:800]}")
+    ed.check("findings" in data, "and the findings")
+    ed.check("failed to compile" in bad.text and "FAILED" in bad.text, f"the same text: {bad.text[:800]}")
+
+    cli: Cli = S["cli"]
+    p = await cli.arun("call", *ATTACH, "check_shader", "--shader", "shaders/Bad", "--shader-type", "mesh")
+    ed.check_eq(p.returncode, 1, f"the CLI exits 1 on a failed check: {p.stdout[-800:]} {p.stderr[-800:]}")
+    p = await cli.arun("call", *ATTACH, "check_shader", "--shader", "shaders/Good", "--shader-type", "mesh")
+    ed.check_eq(p.returncode, 0, f"and 0 on a passing one: {p.stdout[-800:]} {p.stderr[-800:]}")
 
 
 async def test_teardown(ed: Editor):

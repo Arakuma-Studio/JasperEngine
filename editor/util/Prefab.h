@@ -113,8 +113,10 @@ public:
     // biases in shadow texels (StreamMigrations, prefab 3 -> 4); 5: particle systems as effects;
     // 6: no derived transform values (S29 R20); 7: Animation Player controllers on Animators (S21
     // upstream absorption, StreamMigrations prefab 6 -> 7); 8: Line / Trail Renderer curves and
-    // gradients in S27's form (the S27 upstream absorption, prefab 7 -> 8)
-    static constexpr int FILE_VERSION = 9;
+    // gradients in S27's form (the S27 upstream absorption, prefab 7 -> 8); 9: sprite sheets; 10:
+    // Mesh Renderers showing .mesh assets (S98 F1) and linked .material files followed (S98 REQ-29;
+    // prefab 9 -> 10 keeps an older file's embedded copies: followMaterialFiles)
+    static constexpr int FILE_VERSION = 10;
     // the first version with the root-GameObject layout of today (`root`, members as written)
     static constexpr int ROOT_LAYOUT_VERSION = 3;
 
@@ -211,6 +213,11 @@ public:
     // Read from a file older than FILE_VERSION: written again the next time a scene using it
     // is saved, even if nothing changed
     bool needsUpgrade = false;
+    // The submeshes linked to a .material file take the file's values wherever the prefab is read
+    // (S98 REQ-29). False for a file written before (version < 10) with a linked material: it keeps
+    // the copies it embeds, as it did (the file's followMaterialFiles: false, stamped by its
+    // migration and written back on save)
+    bool followMaterialFiles = true;
     // What the asset's file load could not read (docs/data-safety.md): with dropped issues
     // outstanding, its saves are gated (Project::savePrefabToDisk)
     LoadReport loadReport;

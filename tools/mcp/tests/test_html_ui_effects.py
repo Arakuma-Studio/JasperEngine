@@ -502,7 +502,9 @@ async def test_stateful_project_effect(ed: Editor):
     ed.check(sorted(r.get("form") for r in failed) == ["filter-step", "paint-step"] and
              all(r.get("code") == "HTMLUI-FX-0015" for r in failed), f"the step forms fail with effect-shader-compile: {results}")
     ed.check(all(any(e["line"] == line for e in r.get("errors", [])) for r in failed), f"at the .frag line {line}: {failed}")
-    checked = await ed.call("check_shader", shader="assets/ui/fx/sim-probe.frag", timeout=300)
+    raw = await ed.call_raw("check_shader", {"shader": "assets/ui/fx/sim-probe.frag"}, timeout=300)
+    ed.check(raw.is_error, f"a failed check is an error: {raw.text[:500]}")
+    checked = raw.value
     ed.check(checked["failed"] == 2 and checked["findings"] and
              (checked["findings"][0]["path"], checked["findings"][0]["line"]) == ("assets/ui/fx/sim-probe.frag", line),
              f"check_shader finds the step forms' error at the .frag line {line}: {str(checked)[:2000]}")
