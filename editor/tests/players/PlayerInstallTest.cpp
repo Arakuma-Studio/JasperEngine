@@ -194,20 +194,20 @@ TEST(PlayerInstall, APlayerOfTheContentBeforeBuildProfilesServesABuildWithoutOne
     before.contentFormatVersion = major + std::to_string(jasperengine::cook::BUILD_PROFILE_MINOR - 1);
     ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "before.zip", BINARY, before), dir / "before", installed, warnings, error, &none)) << error;
     for (bool allowMismatch : {false, true}) {
-        EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "before", allowMismatch, error, profile).has_value());
+        EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "before", allowMismatch, error, profile, true).has_value());
         EXPECT_NE(error.find("reads content format " + before.contentFormatVersion + ", older than the " + profile +
                              " a Build Profile's build needs (its game.json's profile and defines): update the player runtime"),
                   std::string::npos)
             << error;
-        EXPECT_TRUE(PlayerRuntimes::findVariants(ID, dir / "before", allowMismatch, profile).empty());
+        EXPECT_TRUE(PlayerRuntimes::findVariants(ID, dir / "before", allowMismatch, profile, true).empty());
     }
     // the layout's runtime serves a profile's build when the layout is no older than BUILD_PROFILE_MINOR
-    EXPECT_EQ(PlayerRuntimes::find(ID, dir / "layout", false, error, profile).has_value(),
+    EXPECT_EQ(PlayerRuntimes::find(ID, dir / "layout", false, error, profile, true).has_value(),
               jasperengine::cook::FORMAT_MINOR >= jasperengine::cook::BUILD_PROFILE_MINOR) << error;
     // and a runtime of this editor serves both
     PlayerInfo current = info(sha256Hex(BINARY));
     ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "current.zip", BINARY, current), dir / "current", installed, warnings, error, &none)) << error;
-    EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "current", false, error, profile).has_value()) << error;
+    EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "current", false, error, profile, true).has_value()) << error;
     EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "current", false, error).has_value()) << error;
 }
 

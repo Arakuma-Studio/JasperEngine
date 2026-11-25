@@ -116,7 +116,11 @@ TEST(ContentManifest, ReadsContentFormat) {
     EXPECT_TRUE(cook::readsContentFormat(cook::buildContentFormatVersion(true), cooked)) << "a profile's build carries the cooked files too";
     EXPECT_TRUE(cook::readsContentFormat(cook::contentFormatVersion(), cook::buildContentFormatVersion(true)));
     EXPECT_TRUE(cook::readsContentFormat(cooked, cook::buildContentFormatVersion(false)));
-    EXPECT_FALSE(cook::readsContentFormat(cooked, cook::buildContentFormatVersion(true)));
+    // (a cooked layout past BUILD_PROFILE_MINOR, S95's 1.12/1.13, reads a profile's build too; a
+    // runtime before BUILD_PROFILE_MINOR never does: PlayerRuntimes::find's buildProfile)
+    EXPECT_EQ(cook::readsContentFormat(cooked, cook::buildContentFormatVersion(true)), cook::FORMAT_MINOR >= cook::BUILD_PROFILE_MINOR);
+    EXPECT_FALSE(cook::readsContentFormat(std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::BUILD_PROFILE_MINOR - 1),
+                                          cook::buildContentFormatVersion(true)));
 }
 
 // game.json's side of the same (R17): the profile and its defines, absent without a profile
