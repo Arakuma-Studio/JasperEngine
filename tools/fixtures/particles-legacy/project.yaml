@@ -12,3 +12,4 @@ luaDir: scripts
 startSceneId: 1
 scenes:
   - filepath: Legacy Particles.scene
+  - filepath: Legacy K.scene
