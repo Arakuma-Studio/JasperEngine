@@ -399,6 +399,14 @@ namespace jasperengine{
         Vector3 getAmbientLight2DColor() const;
         Vector3 getAmbientLight2DColorLinear() const;
 
+        // Light Steps: the bands each Light 2D's light is quantized into, 0 (off) to 16 (clamped)
+        void setLight2DSteps(int steps);
+        int getLight2DSteps() const;
+        // the Ambient Light 2D tints the unlit 2D materials of a scene without a Light 2D too
+        // (on in new scenes, off in scenes saved before it)
+        void setAmbientLight2DWithoutLights(bool enabled);
+        bool isAmbientLight2DWithoutLights() const;
+
         void setShadow2DQuality(ShadowQuality quality);
         ShadowQuality getShadow2DQuality() const;
 

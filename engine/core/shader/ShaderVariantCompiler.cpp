@@ -430,6 +430,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & ShaderPool::getPixelSnapProperty(ShaderType::MESH)) defs.push_back({"PIXEL_SNAP", "1"}); // 'Pxs' (S41)
     if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::MESH)) defs.push_back({"TERRAIN_HOLES", "1"});       // 'Thl'
     if (prop & ShaderPool::getTerrainWorldProperty(ShaderType::MESH)) defs.push_back({"HAS_TERRAIN_WORLD", "1"});   // 'Twd'
+    if (prop & ShaderPool::getLight2DStepsProperty()) defs.push_back({"LIGHT2D_STEPS", "1"});                        // 'Lst' (S78)
     // S52: a batchable sprite's FX slots, frame rect and snap pivot
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX)) defs.push_back({"HAS_SPRITE_FX", "1"});         // 'Sfx'
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)) defs.push_back({"HAS_FRAME_RECT", "1"}); // 'Sfr'

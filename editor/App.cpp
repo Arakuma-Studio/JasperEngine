@@ -6218,6 +6218,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (BLIT 'Gli' 20) and the screen transition program.
     // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
+    // v66: S78's Light Steps (after S50's v65): MESH 'Lst' 55 (LIGHT2D_STEPS in includes/lighting2d.glsl, the count
+    //      in u_fs_lighting2d's atlasInfo.z, which held the 2D shadow atlas's width and no shader read).
     // v70: S99's Area Lights and IES Profiles (after S78's v66 and S92's v69): the built-in Lit's
     //      USE_AREA_LIGHTS ('Ar') and USE_IES ('Ie') defines (includes/area_lights.glsl, u_lightProfiles in
     //      includes/lights.glsl).

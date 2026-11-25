@@ -5,9 +5,10 @@
 
 // What a sprite normal map looks like, without a GPU: the sprite lit by 2D point lights with
 // exactly the engine's formula (shaderlib includes/lighting2d.glsl getLight2DIntensity on the
-// unlit 2D path of mesh.frag: linear albedo x (ambient + sum of colour x intensity x attenuation
-// x N.L), gamma 2.2 back to sRGB), a contact sheet for agents and tests, quality metrics and the
-// plain-language assessment shared by the window, the MCP tool and the CLI.
+// unlit 2D path of mesh.frag: linear albedo x (ambient + sum of colour x intensity x
+// steps(attenuation x N.L)), gamma 2.2 back to sRGB; steps: the scene's Light Steps, S78 R2), a
+// contact sheet for agents and tests, quality metrics and the plain-language assessment shared
+// by the window, the MCP tool and the CLI.
 
 #include "SpriteNormals.h"
 
@@ -36,7 +37,14 @@ namespace jasperengine::editor::spritenormals {
         float ambientIntensity = 0.15f;
         bool directx = false;          // the map's convention (green flipped back before lighting)
         float alphaThreshold = 0.03f;  // pixels at or below are left transparent
+        int lightSteps = 0;            // Light Steps: 0 off, 1..kMaxLightSteps (lightStep)
     };
+
+    // The most Light Steps a scene takes
+    inline constexpr int kMaxLightSteps = 16;
+    // One light's term t = attenuation x N.L (0..1, before its colour and intensity) in `steps`
+    // bands: ceil(t x steps) / steps for steps > 0 (0 stays 0), t unchanged for 0
+    float lightStep(float t, int steps);
 
     // One light at `angleDegrees` around the image centre (0 = right, 90 = up the image,
     // counter-clockwise), at distance 0.75 * max(w, h), height 0.5 * max(w, h), range 3 * max(w, h)
@@ -54,7 +62,11 @@ namespace jasperengine::editor::spritenormals {
         int maxHeight = 1024;
         int maxFrames = 8;
         int maxScale = 8;
+        int lightSteps = 0;            // the lit columns' Light Steps (LightSetup::lightSteps)
     };
+    // The lit columns' light: at 0.75 x the frame's larger side from its centre, 0.5 x that side
+    // high (orbitLight): about 34 degrees above the sprite's plane at its centre
+    inline constexpr double kSheetLightElevationDeg = 33.69;
     Image contactSheet(const Image& color, const Image& normal, const std::vector<Cell>& cells, bool directx,
                        float alphaThreshold, const SheetOptions& options = SheetOptions(), const PaintOverlay* paint = nullptr);
     // Which frames a sheet shows: all when <= maxFrames, else round(i * (n - 1) / (maxFrames - 1))
@@ -119,4 +131,6 @@ namespace jasperengine::editor::spritenormals {
     // good result warn (unsmoothed, over-strong relief: detail 8 with smoothing 0.1-0.3, 14-21)
     inline constexpr double kCreasedPct = 2.0;      // crease_pct above: creased
     inline constexpr double kStreakyDeg = 13.0;     // roughness_deg above (and not creased): streaky
+    // The bevel radius the boxy warning proposes for a box of shorter side `side`: 5% of it, at least 1 px
+    int boxyBevelRadius(int side);
 }
