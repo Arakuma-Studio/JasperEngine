@@ -57,7 +57,7 @@ namespace jasperengine::editor {
         static constexpr const char* SMOOTHING_GROUP_ATTRIBUTE = "_SMOOTHING_GROUP";
 
         GlbBuilder(const ufbx_scene* scene, const std::filesystem::path& fbxPath, const std::filesystem::path& assetsRoot,
-                   const Options& options = {});
+                   const Options& options);
 
         bool build(std::string& error);
         // The .glb contents, with extras in its asset info; empty on failure
