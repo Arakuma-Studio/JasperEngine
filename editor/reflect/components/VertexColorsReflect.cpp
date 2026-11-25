@@ -37,7 +37,7 @@ namespace enums {
 
 namespace {
 
-    constexpr uint32_t kVertexColorsOmit = OmitIfDefault | EmptyIsDefault | CodegenIfChanged;
+    constexpr uint32_t kVertexColorsOmit = OmitIfDefault | EmptyIsDefault;
     constexpr uint64_t kVertexColorsUpdate = UpdateFlags_VertexColors;
 
     bool vertexColorsCustomInitialVisible(const void* owner) {
