@@ -12,6 +12,7 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "external/IconsFontAwesome6.h"
 #include "model/ModelSettingsEdit.h"
+#include "pose/PoseRigProvider.h"
 #include "render/LodFade.h"
 #include "texture/TextureCookQueue.h"
 #include "animation/ModelSubClips.h"
@@ -563,6 +564,7 @@ void ModelImporterView::drawIssues(){
         const bool transcode = issue.code == "gltf-cook-transcodes" && !cooked;
         const bool recook = issue.fix == ModelIssue::Fix::Reimport || transcode || (error && issue.code != "gltf-required-extension");
         if (recook && actionButton(transcode ? "Cook anyway" : "Reimport")){
+            PoseRigProvider::adoptNameRules(project, project->getAssetsPath() / FileUtils::pathFromUtf8(assetPaths[0]));
             ModelCookQueue::get().invalidate(assetPaths[0]);
             ModelCookQueue::get().request(assetPaths[0], shownFamily(), ModelCookQueue::Selected);
         }

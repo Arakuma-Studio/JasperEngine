@@ -7,6 +7,8 @@
 
 #include "pixelart/PixelArtInput.h"
 #include "pixelart/PixelArtMode.h"
+#include "pose/PoseRigProvider.h"
+#include "animation/ModelSubClips.h"
 #include "texture/TextureCookQueue.h"
 #include "tilemap/TilesetPool.h"
 #include "Project.h"
@@ -473,6 +475,14 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
             const fs::path absolute = getProjectPath() / change.path;
             if (isInsideAssetsPath(absolute)) writeImportSettingsNow(*this, normalizeToAssetsRelative(absolute).generic_string());
         }
+    }
+    // a model arriving is a new import: it takes the current humanoid naming rules where they map it
+    // otherwise (a model imported before keeps its status until a reimport, pose/HumanoidMap.h)
+    for (const AssetDatabase::Change& change : changes) {
+        // glTF and FBX (an OBJ has no skeleton)
+        if (change.type != AssetDatabase::Change::Type::Added || !anim::isModelFilePath(change.path.generic_string())) continue;
+        const fs::path absolute = getProjectPath() / change.path;
+        if (isInsideAssetsPath(absolute)) PoseRigProvider::adoptNameRules(this, absolute);
     }
     // what the pixel-art check kept of closed scenes follows the files' stamps; files added, moved
     // or removed (references resolve by GUID) and prefabs (instances in those scenes) it cannot see

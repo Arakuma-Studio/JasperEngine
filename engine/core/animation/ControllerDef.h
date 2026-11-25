@@ -174,6 +174,9 @@ namespace jasperengine::anim{
         AnimatorLayerBlending blending = AnimatorLayerBlending::Override;
         AnimatorAssetRef mask;              // a .mask; empty: every bone
         std::string slot;                   // the montage slot this layer plays (empty: none)
+        // Override layers above 0: the bones where the mask starts or stops keep their rig-space
+        // rotation (docs/specs/mesh-space-rotation.md); kept and ignored on layer 0 and Additive
+        bool meshSpaceRotation = false;
         StateMachineDef machine;
         AnimatorUnknownKeys unknownKeys;
     };

@@ -95,10 +95,14 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"NavAreaOverride", 0x29479b88u},
         {"NavGrid", 0x5911c33cu},
         // (S74's isIKReached, setIKSoften, setIKHingeAxis, setIKTwist, setIKAimOffset reviewed: an IK
-        // constraint's shape and its last solve, bones only)
-        {"Animator", 0xd3a5c340u},
-        // (S94 applyRootMotion and legacyRootDrift reviewed: where the root goes, never what it draws with)
-        {"AnimationPlayer", 0xd8d0b1fbu},
+        // constraint's shape and its last solve, bones only; mesh-space-rotation's
+        // setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a layer's rotation space
+        // where its mask starts or stops, bones only; S94's legacyRootDrift reviewed: where the root goes)
+        {"Animator", 0xc0f7cb88u},
+        // (S94 applyRootMotion and legacyRootDrift reviewed: where the root goes, never what it draws with;
+        // mesh-space-rotation's setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a
+        // layer's rotation space where its mask starts or stops, bones only)
+        {"AnimationPlayer", 0xc917096bu},
         {"PoseAnimator", 0x9efa391cu},
         {"AnimationEvent", 0x3191cc4eu},
         {"AnimationState", 0xd696bd82u},

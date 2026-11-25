@@ -2787,6 +2787,7 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
         if (layer.weight != 1.0f) code << ind << target << ".weight = " << formatFloat(layer.weight) << ";\n";
         if (layer.blend == AnimationLayerBlend::Additive) code << ind << target << ".blend = AnimationLayerBlend::Additive;\n";
         if (!layer.mask.empty()) code << ind << target << ".mask = " << formatString(layer.mask) << ";\n";
+        if (layer.meshSpaceRotation) code << ind << target << ".meshSpaceRotation = true;\n";
     }
     if (!player.defaultClip.empty()) code << ind << "animationplayer.defaultClip = " << formatString(player.defaultClip) << ";\n";
     code << ind << "animationplayer.playAutomatically = " << formatBool(player.playAutomatically) << ";\n";

@@ -172,7 +172,7 @@ void main() {
         if (f.x < r.x || f.y < r.y || f.x >= r.z || f.y >= r.w) continue;
         vec4 u = ta.p[4 + 2 * i];
         vec2 t = (f - r.xy) / max(r.zw - r.xy, vec2(1e-3));
-        vec4 s = texture(TA_TEX0, mix(u.xy, u.zw, t));
+        vec4 s = textureLod(TA_TEX0, mix(u.xy, u.zw, t), 0.0);
         acc = s + acc * (1.0 - s.a);
     }
     frag_color = acc;
@@ -199,7 +199,7 @@ void main() {
         vec2 t = vec2(dot(row0.xyz, vec3(f, 1.0)), dot(row1.xyz, vec3(f, 1.0)));
         if (t.x < 0.0 || t.y < 0.0 || t.x >= 1.0 || t.y >= 1.0) continue;
         vec4 u = ta.p[4 + 6 * i];
-        vec4 s = texture(TA_TEX0, mix(u.xy, u.zw, t));
+        vec4 s = textureLod(TA_TEX0, mix(u.xy, u.zw, t), 0.0);
         s.rgb = s.rgb * ta.p[7 + 6 * i].rgb + ta.p[8 + 6 * i].rgb * s.a;
         s *= row0.w;
         acc = s + acc * (1.0 - s.a);

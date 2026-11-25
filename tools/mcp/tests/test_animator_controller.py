@@ -7,8 +7,9 @@ get_animation {controller}; play mode through the Animator (after setFloat('Spee
 Running) and through a disabled Animation Player that hands over to it (upstream's controller-on-player scripts);
 from_player (one state per clip, an Animator added and the player handing over, one scene step); write_file of
 .controller text (upstream's version 1 read converted, Unity YAML refused, warnings returned); a long transition's
-live progress; and the tool's budget. Runs on a scratch copy of tools/fixtures/pose-animation (Hero: Mixamo
-names)."""
+live progress; the layers' Mesh Space Rotation (docs/specs/mesh-space-rotation.md AC21: set and echoed, written only
+when on, a warning and no error on layer 0 and on an Additive layer); and the tool's budget. Runs on a scratch copy
+of tools/fixtures/pose-animation (Hero: Mixamo names)."""
 
 from __future__ import annotations
 
@@ -194,6 +195,34 @@ async def test_all_or_nothing_and_undo(ed: Editor):
     got = await ed.call("get_animation", controller=CONTROLLER)
     ed.check_eq([l["name"] for l in got["layers"]], ["Base Layer", "Holding"], "get_animation {controller}")
     ed.check(warned(got, "layers[0].state_machine.states[2]", "dead end"), "with its warnings")
+
+
+async def test_mesh_space_rotation_field(ed: Editor):
+    before = (ed.project / CONTROLLER).read_text()
+    ed.check('"mesh_space_rotation"' not in before, "an option that is off is not written")
+    r = await ed.call_raw("edit_animator_controller", {"path": CONTROLLER, "ops": [
+        {"op": "set_layer", "layer": "Holding", "mesh_space_rotation": True}]})
+    ed.check(not r.is_error, r.text[:400])
+    out = r.structured
+    ed.check_eq([l["mesh_space_rotation"] for l in out["controller"]["layers"]], [False, True], "echoed for each layer")
+    ed.check(not any("mesh_space_rotation" in w["path"] for w in out["warnings"]), f"no warning on an Override layer above 0: {out['warnings']}")
+    layer = json.loads((ed.project / CONTROLLER).read_text())["layers"][1]
+    ed.check_eq(layer.get("mesh_space_rotation"), True, "written when on")
+    await ed.call("undo", scope="project")
+    ed.check_eq((ed.project / CONTROLLER).read_text(), before, "undo restores the file")
+
+    # layer 0 and an Additive layer keep it, and say it does nothing there
+    r = await ed.call_raw("edit_animator_controller", {"path": CONTROLLER, "ops": [
+        {"op": "set_layer", "layer": 0, "mesh_space_rotation": True},
+        {"op": "add_layer", "name": "Breathe", "blending": "additive", "mesh_space_rotation": True}]})
+    ed.check(not r.is_error, f"not an error: {r.text[:400]}")
+    ed.check(warned(r.structured, "layers[0].mesh_space_rotation", "no effect on layer 0"), f"layer 0: {r.structured['warnings']}")
+    ed.check(warned(r.structured, "layers[2].mesh_space_rotation", "no effect on an Additive layer"), f"additive: {r.structured['warnings']}")
+    ed.check_eq([l["mesh_space_rotation"] for l in r.structured["controller"]["layers"]], [True, False, True], "kept as set")
+    await ed.call("undo", scope="project")
+    await refused(ed, "edit_animator_controller", {"path": CONTROLLER, "ops": [{"op": "set_layer", "layer": 1, "mesh_space_rotation": "on"}]},
+                  '"mesh_space_rotation" must be a boolean')
+    ed.check_eq((ed.project / CONTROLLER).read_text(), before, "the file as it was")
 
 
 async def test_play_drives_the_controller(ed: Editor):

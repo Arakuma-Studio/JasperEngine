@@ -11,6 +11,9 @@
 #include "component/Transform.h"
 #include "pose/ModelRig.h"
 
+#include <algorithm>
+#include <unordered_map>
+
 using namespace jasperengine;
 
 namespace{
@@ -236,4 +239,63 @@ float anim::maskWeightOf(const AvatarMaskDef& mask, EntityRegistry* scene, Entit
 
 float anim::maskRootMotionWeight(const AvatarMaskDef& mask){
     return mask.partWeight(AvatarBodyPart::Root);
+}
+
+void anim::maskBoundaryBones(const float* weights, const int* parents, size_t count, int hips, std::vector<uint16_t>& out){
+    out.clear();
+    auto starts = [&](size_t b){
+        const int parent = parents[b];
+        const bool fromRoot = parent < 0 || (size_t)parent >= count || (int)b == hips;
+        return weights[b] > (fromRoot ? 0.0f : weights[(size_t)parent]);
+    };
+    const size_t listed = std::min<size_t>(count, (size_t)UINT16_MAX + 1);
+    for (size_t b = 0; b < listed; b++){
+        const int parent = parents[b];
+        if (parent < 0 || (size_t)parent >= count) continue;
+        const float weight = weights[b];
+        const float above = weights[(size_t)parent];
+        if (weight > above || (weight < above && starts((size_t)parent))) out.push_back((uint16_t)b);
+    }
+}
+
+anim::PlayerRig anim::playerRig(EntityRegistry* scene, Entity root, const std::vector<Entity>& animated){
+    std::unordered_map<Entity, int> depth;
+    std::vector<Entity> path;
+    for (Entity target : animated){
+        path.clear();
+        Entity current = target;
+        while (current != NULL_ENTITY && current != root && path.size() < 1024){
+            path.push_back(current);
+            current = parentOf(scene, current);
+        }
+        if (current != root) continue;      // not below the root (or the root itself)
+        for (size_t k = 0; k < path.size(); k++) depth.emplace(path[k], (int)(path.size() - k));
+    }
+    std::vector<std::pair<int, Entity>> order;
+    order.reserve(depth.size());
+    for (const std::pair<const Entity, int>& entry : depth) order.push_back({entry.second, entry.first});
+    std::sort(order.begin(), order.end());
+    PlayerRig rig;
+    rig.bones.resize(order.size());
+    rig.parents.assign(order.size(), -1);
+    std::unordered_map<Entity, int> boneOf;
+    for (size_t b = 0; b < order.size(); b++){
+        rig.bones[b] = order[b].second;
+        boneOf.emplace(rig.bones[b], (int)b);
+        const auto parent = boneOf.find(parentOf(scene, rig.bones[b]));
+        if (parent != boneOf.end()) rig.parents[b] = parent->second;
+    }
+    return rig;
+}
+
+void anim::playerMaskBoundaryBones(const AvatarMaskDef& mask, EntityRegistry* scene, Entity root, const PlayerRig& rig,
+                                   const std::vector<Entity>& pathEntities, const HumanoidSlots* humanoid, std::vector<uint16_t>& out){
+    std::vector<float> weights(rig.bones.size());
+    int hips = -1;
+    const bool body = humanoid && humanoid->valid && mask.usesHumanoid();
+    for (size_t b = 0; b < rig.bones.size(); b++){
+        weights[b] = maskWeightOf(mask, scene, root, rig.bones[b], pathEntities, humanoid).weight;
+        if (body && rig.bones[b] == humanoid->entities[(size_t)pose::HumanBone::Hips]) hips = (int)b;
+    }
+    maskBoundaryBones(weights.data(), rig.parents.data(), rig.bones.size(), hips, out);
 }

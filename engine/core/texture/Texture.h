@@ -63,6 +63,20 @@ namespace jasperengine{
             // what AUTO means here, set by the system that draws the texture
             bool alphaBorderAuto;
 
+            // The GPU texture of the image shown before a reload pointed this Texture at another
+            // file (setPath, setSvgScale, the alpha border), kept while that one loads: the
+            // bindings made of it stay drawable until getRender gives the new one. Never copied
+            // (a copy is not what was bound); null while nothing loads in its place.
+            struct ShownRender{
+                std::shared_ptr<TextureRender> render;
+                std::string renderId;
+            };
+            std::unique_ptr<ShownRender> shown;
+            std::unique_ptr<ShownRender> takeShownRender();
+            void keepShownRender(std::unique_ptr<ShownRender> previous);
+            void releaseShownRender();
+            TextureRender* findRender(TextureRender* fallBackTexture);
+
             void reloadAlphaBorder(bool wasFixed);
             // after a sampler change: lets go of the texture of the previous pool key
             void releaseSamplerRender(const std::string& previousRenderId);
