@@ -1288,7 +1288,7 @@ Entities are plain integers (`0` = none).
 | `physics2DPointsPerMeter`, `physics2DMaxRotation` (number, rw) | canvas points in a 2D metre (64; a change rebuilds the bodies where they are) and a 2D body's rotation per fixed step at most (45 degrees); `jasper://docs/physics` "World settings" |
 | `physics2DContactHertz`, `physics2DContactDampingRatio`, `physics2DContactPushSpeed`, `physics2DJointHertz`, `physics2DJointDampingRatio`, `physics2DBounceThreshold`, `physics2DMaxLinearSpeed` (number, rw); `physics2DWarmStarting`, `physics2DContinuous`, `physics2DSleep` (bool, rw) | the 2D solver's tuning (Box2D's defaults) |
 | `physics3DVelocityIterations`, `physics3DPositionIterations`, `physics3DCollisionSteps` (integer, rw); `physics3DBounceThreshold`, `physics3DSleepThreshold`, `physics3DSpeculativeDistance` (number, rw) | the 3D solver's settings (Jolt's defaults); out of range values are clamped |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `ambientLight2DWithoutLights` (bool: the 2D ambient tints unlit 2D objects with no Light 2D in the scene too; on in new scenes, off in scenes saved before it), `light2DSteps` (0-16: each Light 2D's light in this many hard bands, 0 off), `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `htmlUiRenderMode` (`UIRenderMode.OVERLAY`, the default: the screen HTML UI documents composite after post-processing at the output resolution; `CAMERA`: in the camera pass, render scale and post apply), `htmlUiMsaaSamples` (their MSAA samples: 0 = the project's, 1, 2, 4, 8; the next frame makes the target again), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `ambientLight2DWithoutLights` (bool: the 2D ambient tints unlit 2D objects with no Light 2D in the scene too; on in new scenes, off in scenes saved before it), `light2DSteps` (0-16: each Light 2D's light in this many hard bands, 0 off), `globalIlluminationColor`, `globalIlluminationIntensity`, `ambientMode` (`AmbientMode.COLOR` / `GRADIENT`: Environment Lighting's source), `ambientSkyColor`, `ambientEquatorColor`, `ambientGroundColor` (the Gradient's colours, sRGB), `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `htmlUiRenderMode` (`UIRenderMode.OVERLAY`, the default: the screen HTML UI documents composite after post-processing at the output resolution; `CAMERA`: in the camera pass, render scale and post apply), `htmlUiMsaaSamples` (their MSAA samples: 0 = the project's, 1, 2, 4, 8; the next frame makes the target again), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `defaultMeshShader`, `defaultUIShader`, `defaultSkyShader`, `defaultPointsShader`, `defaultLinesShader` (string, rw) | the scene's default shader of each type ("" built-in) |
 | `setDefaultShaderUniform(ShaderType.MESH, name, float/Vector2/3/4)`, `getDefaultShaderUniform(type, name)` (-> Vector4), `hasDefaultShaderUniform(type, name)`, `removeDefaultShaderUniform(type, name)` (-> bool) | a property value of that default shader, inherited by every object without a shader of its own (an object's own value wins; `ShaderType.MESH`/`UI`/`SKYBOX`/`POINTS`/`LINES`; other types log an error). A value changed every frame belongs in `Shader.setGlobal*` |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects (below) |
@@ -2893,13 +2893,17 @@ last transform update), `color` (Vector3),
 `range`, `intensity`, `innerConeAngle`, `outerConeAngle`, `shadows`, `cameraNear`,
 `cameraFar`, `automaticShadowCamera`, `numCascades` (0: the quality tier's), `cullingMask`, `shading`
 (`LightShading.*`, the stage evaluating it on MIXED-lighting materials), `intensityUnit`
-(`LightUnit.ENGINE`, `LUX` for a directional light, `CANDELA` or `LUMEN` for a point or spot;
-setting the property keeps the number, which then means the new unit),
+(`LightUnit.ENGINE`, `LUX` for a directional light, `CANDELA` or `LUMEN` for a point or spot,
+`NITS` for an area light; setting the property keeps the number, which then means the new unit),
 `useColorTemperature`, `colorTemperature` (Kelvin, 1000-20000, 6500 white; `color` filters
 it); methods `setDirection(x,y,z)`, `setColor(r,g,b)`, `setConeAngle(a)`, `setRange(r)`,
 `setIntensity(i)`, `setIntensityUnit(unit, preserveBrightness)` (true converts the intensity so
 the light stays as bright, through `scene.physicalLightEV100`), `setShadows(b)`,
 `setShadowCameraNearFar(n, f)`.
+Area Light (`LightType.AREA`) rw: `areaShape` (`AreaLightShape.RECTANGLE/DISC`), `areaWidth`,
+`areaHeight` (a Rectangle's), `areaRadius` (a Disc's), metres, not the transform's scale. A spot or
+point light's `iesProfile` (rw, an `.ies` path relative to the assets, `""` for none) shapes it,
+turned with the light; `intensity` stays the profile's peak.
 Shadows (`jasper://docs/shadows`) rw: `shadowType` (`ShadowType.NONE/HARD/SOFT`), `shadowStrength`
 (0-1), `shadowBias` and `shadowNormalBias` (shadow texels), `shadowResolution` (0: the tier's),
 `cascadeSplitMode` (`CascadeSplitMode.AUTO/MANUAL`), `cascadeSplits` (Vector3, fractions of the
@@ -3899,7 +3903,7 @@ file's own environment: a game script never sees it, and a game global named `Te
 | `SwingType` | `CONE`, `PYRAMID` |
 | `RigidbodyInterpolation` | `SCENE`, `NONE`, `INTERPOLATE`, `EXTRAPOLATE` |
 | `CameraType` | `CAMERA_UI`, `CAMERA_ORTHO`, `CAMERA_PERSPECTIVE` |
-| `LightType` | `DIRECTIONAL`, `POINT`, `SPOT` |
+| `LightType` | `DIRECTIONAL`, `POINT`, `SPOT`, `AREA` |
 | `JobLane` | `High`, `Normal`, `Background` |
 | `EaseType` | `LINEAR`, `STEP`, `QUAD_IN/OUT/IN_OUT`, `CUBIC_*`, `QUART_*`, `QUINT_*`, `SINE_*`, `EXPO_*`, `CIRC_*`, `ELASTIC_*`, `BACK_*`, `BOUNCE_*` (each `_IN`, `_OUT`, `_IN_OUT`), `CUSTOM`, `CURVE` (the Tween's `curve`) |
 | `WrapMode` | `Clamp` (also `ClampForever`, `Constant`), `Loop`, `PingPong`, `Linear`, `LoopWithOffset` (also `CycleWithOffset`) |
@@ -3951,10 +3955,12 @@ file's own environment: a game script never sees it, and a game global named `Te
 | `MaterialAlphaMode` | `AUTO`, `ALPHA_OPAQUE`, `MASK`, `BLEND` |
 | `MaterialLighting` | `AUTO`, `PIXEL`, `VERTEX`, `MIXED`, `NONE` |
 | `LightShading` | `BOTH`, `PIXEL`, `VERTEX` |
+| `AreaLightShape` | `RECTANGLE`, `DISC` (`light.areaShape`) |
 | `LightState` | `OFF`, `ON`, `AUTO` |
 | `ShadowQuality` | `NONE`, `LOW`, `MEDIUM`, `HIGH` |
 | `LitQuality` | `STANDARD`, `HIGH` (`scene.litQuality`) |
-| `LightUnit` | `ENGINE`, `LUX`, `CANDELA`, `LUMEN` (`light.intensityUnit`) |
+| `AmbientMode` | `COLOR`, `GRADIENT` (`scene.ambientMode`) |
+| `LightUnit` | `ENGINE`, `LUX`, `CANDELA`, `LUMEN`, `NITS` (`light.intensityUnit`) |
 | `SceneColorScale` | `FULL`, `HALF` |
 | `UIRenderMode` | `OVERLAY`, `CAMERA` (`scene.htmlUiRenderMode`) |
 | `TonemapMode` | `NONE`, `ACES`, `NEUTRAL`, `REINHARD`, `AGX` (`PostProcessingSettings.tonemap`) |

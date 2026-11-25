@@ -3,6 +3,7 @@
 
 #include "EntityCloner.h"
 #include "model/ModelCpuData.h"
+#include "component/MeshComponent.h"
 #include "component/ActionComponent.h"
 #include "component/TerrainWorldComponent.h"
 #include "component/VoxelVolumeComponent.h"

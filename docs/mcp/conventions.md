@@ -248,5 +248,6 @@ has a budget too: the `guide` entry of `tools/mcp/budget.json`.
 ## The test-only group
 
 `JASPER_MCP_SELFTEST_GROUP=1` registers the group `selftest` with one tool, `selftest_echo`,
-for the tests of groups, coverage and budget; `=<n>` (n > 1) pads its description to n
-characters (the budget gate's red control). It never exists otherwise.
+for the tests of groups, coverage, budget and fault advice (its `throw` argument raises that
+exception from the handler); `=<n>` (n > 1) pads its description to n characters (the budget
+gate's red control). It never exists otherwise.

@@ -372,6 +372,7 @@ private:
     static void loadMcpHttpToken();
     static bool writeMcpHttpTokenFile(const std::string& token);
     static std::string mcpToolGroups;
+    static bool mcpLogCalls;
 
     // HTML UI (phase-2 §3.13.4): imports of remote resources when documents load; Info
     // diagnostics logged one by one
@@ -564,6 +565,9 @@ public:
     static std::filesystem::path getMcpHttpTokenPath();
     static bool getMcpHttpAllowChanges();
     static void setMcpHttpAllowChanges(bool allow);
+    // mcp.log_calls: the MCP Server window's Log Calls To File (default off)
+    static bool getMcpLogCalls();
+    static void setMcpLogCalls(bool enabled);
 
     // HTML UI: download the remote resources (Google Fonts, stylesheets, images, Lottie) a
     // document references when it loads (default on); log every Info diagnostic (default off)

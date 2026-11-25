@@ -58,6 +58,7 @@
 
 #include "yaml-cpp/yaml.h"
 
+#include <array>
 #include <filesystem>
 #include <optional>
 #include <chrono>
@@ -1148,6 +1149,10 @@ namespace jasperengine::editor{
         // Project Settings > Player > Publishing Settings > Target Platforms: a bit per BuildPlatform
         // (export: targetPlatforms, written when not all six), never empty
         uint8_t targetPlatforms = allTargetPlatforms;
+        // Project Settings > Player > Publishing Settings > Download Budget (MB) (S99 R11), per
+        // ModelFamily: a build over its family's warns W-BUILD-OVER-BUDGET; 0 is off
+        // (export: downloadBudgetMB, only the families set)
+        std::array<double, kModelFamilyCount> downloadBudgetMB = {};
         // S45 R18: "enabled" | "enabled_for_builds" | "disabled"
         std::string spriteAtlasMode = "enabled";
         ApplicationSettings applicationSettings;
@@ -2292,6 +2297,8 @@ namespace jasperengine::editor{
         void setSizeBudgetFail(bool fail) { sizeBudgetFail = fail; }
         const AssetStrippingSettings& getAssetStripping() const { return assetStripping; }
         void setAssetStripping(const AssetStrippingSettings& settings) { assetStripping = settings; }
+        double getDownloadBudgetMB(ModelFamily family) const { return downloadBudgetMB[(size_t)family]; }
+        void setDownloadBudgetMB(ModelFamily family, double megabytes) { downloadBudgetMB[(size_t)family] = megabytes; }
         // Target Platforms: where the game ships. Build Settings, build_project and get_build_info default
         // to them; any platform still builds. 0 sets all six (a game has a target)
         static constexpr uint8_t allTargetPlatforms = 0x3F;

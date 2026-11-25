@@ -8,21 +8,25 @@ C++ script makes Auto pick Compile and --method prebuilt refuse. run_build runs 
 script that implements --quit-after / --screenshot as a player does.
 """
 
+import asyncio
 import base64
+import gzip
 import hashlib
 import json
+import os
 import plistlib
 import re
 import shutil
 import stat
 import struct
+import subprocess
 import zipfile
 import zlib
 from pathlib import Path
 
 import pbxproj
 from audio_refs import write_tone
-from harness import Editor, record_built_player
+from harness import Editor, editor_command, record_built_player
 
 CI = True
 EDITOR = {"create": True, "name": "Build Method Test"}
@@ -99,6 +103,12 @@ async def test_prebuilt_linux_build(ed: Editor):
     r = await ed.call("build_project", mode="player", platform="linux", output_dir=str(out), timeout_seconds=600)
     ed.check_eq(r["status"], "succeeded", f"{r}")
     result = r["result"]
+    # S99 R13, R14: an estimate at submit; the report's fallbacks are the downgrades the build took:
+    # here at most the bigger player variant, exactly when the build warned W-PLAYER-VARIANT
+    ed.check(r.get("estimate", {}).get("seconds", 0) > 0, f"an estimate: {r.get('estimate')}")
+    fallbacks = result.get("report", {}).get("fallbacks")
+    variant = any(isinstance(w, dict) and w.get("code") == "W-PLAYER-VARIANT" for w in result.get("warnings", []))
+    ed.check_eq([f["step"] for f in fallbacks or []], ["player"] if variant else [], f"a report: {result.get('report')}")
     ed.check_eq(result["method_used"], "prebuilt")
     ed.check_eq(result["player_id"], RUNTIME)
     ed.check_eq(result["compile_reasons"], [])
@@ -280,6 +290,88 @@ async def test_prebuilt_web_carries_plugins(ed: Editor):
     finally:
         await ed.call("set_project_settings", values={"web.script_urls": []})
         shutil.rmtree(ed.project / "plugins", ignore_errors=True)
+
+
+def web_fetched_gzip(out: Path) -> int:
+    """gzip -9 of what a browser fetches of a web build: not the notices, manifests or report."""
+    skipped = {"build-report.json", "content-manifest.json", "_headers", "THIRD-PARTY-NOTICES.txt"}
+    return sum(len(gzip.compress(p.read_bytes(), 9)) for p in out.rglob("*")
+               if p.is_file() and p.name not in skipped and "licenses" not in p.relative_to(out).parts)
+
+
+async def test_build_sizes_and_download_budget(ed: Editor):
+    """S99 R10, R11, AC3: build_project's result says what the build weighs (a web build also its
+    gzip download estimate); a build over its platform group's Download Budget still succeeds,
+    with W-BUILD-OVER-BUDGET and a next naming the tools that inspect its largest category. The
+    CLI's build --json has the same fields. (The Linux and web runtimes of the tests above are
+    installed.)"""
+    for platform in ("linux", "web"):
+        out = ed.scratch.root / f"sized-{platform}"
+        r = await ed.call("build_project", mode="player", platform=platform, output_dir=str(out), timeout_seconds=600)
+        ed.check_eq(r["status"], "succeeded", f"{r}")
+        result = r["result"]
+        ed.check_eq(Path(result["build_report"]), out / "build-report.json")
+        report = json.loads((out / "build-report.json").read_text())
+        ed.check(result["build_bytes"] > 0, f"{platform} build_bytes {result['build_bytes']}")
+        ed.check_eq(result["build_bytes"], report["total_bytes"])
+        ed.check_eq(result["build_categories"], report["categories"])
+        ed.check_eq(result["top_files"], [{"path": f["path"], "bytes": f["bytes"]} for f in report["largest"][:5]])
+        ed.check(0 < len(result["top_files"]) <= 5, f"{result['top_files']}")
+        if platform == "web":
+            expected = web_fetched_gzip(out)
+            ed.check(abs(result["download_bytes_gzip"] - expected) <= expected * 0.05 + 64,
+                     f"download_bytes_gzip {result['download_bytes_gzip']}, gzip -9 of the fetched files {expected}")
+            ed.check_eq(report["download_bytes_gzip"], result["download_bytes_gzip"])
+        else:
+            ed.check("download_bytes_gzip" not in result, "only a web build has a download estimate")
+        ed.check("download_budget" not in result and "W-BUILD-OVER-BUDGET" not in warning_codes(r), "no budget, no verdict")
+
+    await ed.call("set_project_settings", values={"player.download_budget_mb.web": 0.001})
+    try:
+        out = ed.scratch.root / "sized-web"
+        r = await ed.call("build_project", mode="player", platform="web", output_dir=str(out), timeout_seconds=600)
+        ed.check_eq(r["status"], "succeeded", f"over budget still builds: {r}")
+        result = r["result"]
+        ed.check_in("W-BUILD-OVER-BUDGET", warning_codes(r))
+        message = next(w["message"] for w in result["warnings"] if w.get("code") == "W-BUILD-OVER-BUDGET")
+        ed.check_in("over its Download Budget of 1.0 KB (player.download_budget_mb.web)", message)
+        ed.check_in("largest categories: ", message)
+        budget = result["download_budget"]
+        ed.check_eq(budget["budget_bytes"], 1049)
+        ed.check_eq(budget["actual_bytes"], result["download_bytes_gzip"])
+        ed.check_eq(budget["over"], True)
+        largest = max(result["build_categories"].items(), key=lambda kv: kv[1])
+        ed.check_eq(budget["largest_categories"][0], {"category": largest[0], "bytes": largest[1]})
+        ed.check(len(budget["largest_categories"]) <= 3, f"{budget}")
+        # the next names tools that exist, for the largest category
+        inspect = {"textures": "get_texture_cook_report", "models": "inspect_models", "engine": "player.strip_engine_code"}.get(largest[0], "list_assets")
+        ed.check_in("Over the Download Budget", r.get("next", ""))
+        ed.check_in(inspect, r["next"])
+        names = {t.name for t in await ed.tools()}
+        for tool in re.findall(r"\b([a-z]+(?:_[a-z]+)+) \{", r["next"]):
+            ed.check_in(tool, names)
+
+        # another platform group's budget does not hold a Linux build
+        r = await ed.call("build_project", mode="player", platform="linux", output_dir=str(ed.scratch.root / "sized-linux"), timeout_seconds=600)
+        ed.check_eq(r["status"], "succeeded", f"{r}")
+        ed.check("W-BUILD-OVER-BUDGET" not in warning_codes(r) and "download_budget" not in r["result"], f"{r['result']}")
+
+        # the CLI's build --json, with the editor's environment (its HOME holds the installed runtimes)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_") and k not in ("DISPLAY", "WAYLAND_DISPLAY")}
+        env["HOME"] = str(ed.scratch.home)
+        cli_out = ed.scratch.root / "cli-web"
+        p = await asyncio.to_thread(subprocess.run, [*editor_command(), "build", "--project", str(ed.project), "--platform", "web",
+                                                     "--out", str(cli_out), "--json"],
+                                    cwd=ed.scratch.root, env=env, capture_output=True, text=True, timeout=600)
+        ed.check_eq(p.returncode, 0, f"{p.stdout[-2000:]}\n{p.stderr[-2000:]}")
+        cli = json.loads(p.stdout[p.stdout.index("{"):])
+        ed.check_eq(Path(cli["build_report"]), cli_out / "build-report.json")
+        ed.check(cli["build_bytes"] > 0 and cli["top_files"] and cli["download_bytes_gzip"] > 0, f"{cli}")
+        ed.check_eq(cli["download_budget"]["budget_bytes"], 1049)
+        ed.check_eq(cli["download_budget"]["over"], True)
+        ed.check_in("W-BUILD-OVER-BUDGET", [w["code"] for w in cli["warnings"]])
+    finally:
+        await ed.call("set_project_settings", values={"player.download_budget_mb.web": 0})
 
 
 async def install_ios_runtime(ed: Editor, name: str, with_manifest: bool = True) -> None:

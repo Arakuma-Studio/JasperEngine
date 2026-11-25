@@ -25,6 +25,18 @@ namespace jasperengine{
         AUTO
     };
 
+    // Environment Lighting > Source (Unity's names: ambientMode, Color and Gradient): where lit
+    // surfaces take their ambient light from. Stored as ints: append only.
+    enum class AmbientMode {
+        // as scenes always drew: the Ambient Color (globalIllum*), which the built-in Lit swaps for
+        // the sky's image (IBL) where the scene has a sky with an image
+        COLOR,
+        // Unity's trilight: sky, equator and ground colours by the surface's facing, projected to
+        // the per-object spherical harmonics (render/AmbientGradient.h); the sky's image still
+        // gives reflections, no longer the diffuse ambient
+        GRADIENT
+    };
+
     // Shadow quality, uniform-driven (no shader rebuild). Stored as ints: append only.
     // 3D shadows (shadowQuality) pick the quality tier (ShadowTiers.h): AUTO the platform's
     // (project graphics.shadowTier.<platform>), LOW, MEDIUM, HIGH, ULTRA that tier, NONE ("Hard
@@ -465,6 +477,13 @@ namespace jasperengine{
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear
         float globalIllumIntensity = 0.1f;
+        // a scene file without the key keeps COLOR (as it was drawn); the gradient's colours are
+        // used as they are, as Unity's (its Intensity Multiplier is the Skybox source's), stored
+        // linear (Color::sRGBToLinear, gamma 2.2, so the Inspector shows Unity's defaults)
+        AmbientMode ambientMode = AmbientMode::COLOR;
+        Vector3 ambientSkyColor = Vector3(0.0328759f, 0.0384727f, 0.0511221f);       // sRGB (54, 58, 66)
+        Vector3 ambientEquatorColor = Vector3(0.0083731f, 0.0103978f, 0.0118813f);   // sRGB (29, 32, 34)
+        Vector3 ambientGroundColor = Vector3(0.0012017f, 0.0009924f, 0.0006382f);    // sRGB (12, 11, 9)
 
         // lights evaluated per object (1..16); the rest of the lights reaching it are folded
         // into its spherical-harmonics ambient

@@ -56,6 +56,7 @@ namespace jasperengine::editor::reflect {
         Tileset,        // a .tileset (S50)
         TitleArt,       // a .titleart (S81's Title Art Renderer)
         Mesh,           // a .mesh (S98 F1: a Mesh Renderer's geometry)
+        IesProfile,     // an .ies light profile (S99)
         Dialogue        // a .dialogue (dialogue-graphs.md R13)
     };
 

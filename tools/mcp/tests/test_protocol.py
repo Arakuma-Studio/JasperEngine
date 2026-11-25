@@ -8,6 +8,7 @@ import base64
 import contextlib
 import json
 import os
+import re
 import socket
 import stat
 import sys
@@ -86,6 +87,111 @@ async def test_bad_argument_is_tool_error(ed: Editor):
     msg = await ed.call("create_entity", name="Bad", type="definitely_not_a_type", expect_error=True)
     ed.check("type" in msg.lower(), f"invalid entity type was rejected for the wrong reason: {msg}")
     await ed.ping()
+
+
+# S99 R1-R5, AC1: each misspelled name gets the one nearest valid name, a name nothing is close to gets
+# the valid ones or the call that lists them, and an internal fault gets advice and a fault id that
+# editor.log holds with the detail. (what, tool, arguments, the suggestion or None, what the text
+# must also name: the list or the call that lists it)
+NAME_CASES = [
+    ("misspelled tool", "create_entty", {}, "create_entity", "tool_groups"),
+    ("misspelled argument", "create_entity", {"nam": "X"}, "name", "Arguments: changes, components, model, name"),
+    ("nested key", "place_with_physics", {"entities": ["Crate"], "mode": "move", "target": {"dleta": [1, 0, 0]}}, "delta",
+     "(allowed: delta, position"),
+    ("enum value", "create_entity", {"type": "cylindr"}, "cylinder", "Types: empty, bare, cube"),
+    ("docs area", "read_file", {"path": "jasper://docs/lightng"}, "lighting", "jasper://docs"),
+    ("resource uri", "read_file", {"path": "jasper://guid"}, "jasper://guide", "jasper://docs"),
+    ("camelCase key", "search_engine_api", {"query": "x", "maxDocResults": 2}, "max_doc_results",
+     "Arguments: include_docs, max_doc_results"),
+    ("missing underscore", "find_entities", {"withcomponents": True}, "with_components", "Arguments: active, component"),
+    ("no close tool", "zzqx_wvut", {}, None, "tool_groups"),
+    ("no close argument", "create_entity", {"zzqxwvut": 1}, None, "Arguments: changes, components, model, name"),
+    ("no close nested key", "place_with_physics", {"entities": ["Crate"], "mode": "move", "target": {"zzqxwvut": 1}}, None,
+     "(allowed: delta, position"),
+    ("no close docs area", "read_file", {"path": "jasper://docs/zzqxwvut"}, None, "Documents:"),
+    ("no close enum value", "create_entity", {"type": "zzqxwvut"}, None, "Types: empty, bare, cube"),
+]
+
+# (exception raised by selftest_echo's handler, what editor.log holds of it); runtime_error is the
+# normal error path: its message is the agent's
+FAULT_CASES = [("out_of_range", "logic_error: vector"), ("invalid_argument", "logic_error: selftest boom"),
+               ("bad_alloc", "bad_alloc"), ("bad_function_call", "bad_function_call"),
+               ("json_out_of_range", "json out_of_range"), ("unknown", "an exception that is not a std::exception")]
+
+
+async def test_errors_suggest_names_and_advise_faults():
+    import shutil
+    import tempfile
+    from pathlib import Path
+    logdir = Path(tempfile.mkdtemp(prefix="je-fault-log-"))
+    calls_log = logdir / "calls.jsonl"
+    try:
+        await errors_suggest_names_and_advise_faults(calls_log)
+    finally:
+        shutil.rmtree(logdir, ignore_errors=True)
+
+
+async def errors_suggest_names_and_advise_faults(calls_log):
+    # the call log (JASPER_MCP_LOG) runs too: a fault is logged as error_kind "internal", never its text
+    env = {"JASPER_MCP_SELFTEST_GROUP": "1", "JASPER_MCP_LOG": str(calls_log)}
+    async with Editor(create=True, name="MCP Errors", env=env) as ed:
+        await ed.call("create_entity", name="Crate", type="cube")
+        problems = []
+        for what, tool, args, suggestion, lists in NAME_CASES:
+            try:
+                r = await ed.call_raw(tool, args)
+                text = r.text if r.is_error else f"(not an error) {r.text}"
+            except ProtocolError as error:   # tools/call of an unknown tool is a JSON-RPC error
+                text = str(error)
+            # inside batch an unknown tool is a step's error result, with the same text
+            if tool == "create_entty" or tool == "zzqx_wvut":
+                step = (await ed.call("batch", calls=[{"tool": tool, "arguments": args}]))["results"][0]
+                if step["ok"] or text.split(": ", 2)[-1] not in step["text"]:
+                    problems.append(f"{what} in batch: {step['text']!r} lacks {text!r}")
+            suggested = re.findall(r"did you mean '([^']*)'", text)
+            if suggested != ([suggestion] if suggestion else []):
+                problems.append(f"{what}: suggests {suggested}, not {suggestion!r}: {text!r}")
+            if lists not in text:
+                problems.append(f"{what}: names no next action ({lists!r}): {text!r}")
+
+        log = ed.scratch.root / "editor.log"
+        for raised, detail in FAULT_CASES:
+            r = await ed.call_raw("selftest_echo", {"throw": raised, "text": "boom"})
+            fault = (r.structured or {}).get("fault", "")
+            advice = (f"Internal error in selftest_echo (not caused by your arguments); details in editor.log as fault "
+                      f"{fault}. Check the state with editor_status, retry once, and report it if it repeats.")
+            if not (r.is_error and fault and r.text.startswith(advice)):
+                problems.append(f"{raised}: not the fault advice: {r.text!r} {r.structured!r}")
+                continue
+            line = f"MCP fault {fault} in selftest_echo: {detail}"
+            for _ in range(100):   # the log is written by its own thread
+                if line in (log.read_text(errors="replace") if log.exists() else ""):
+                    break
+                await asyncio.sleep(0.1)
+            else:
+                text = log.read_text(errors="replace") if log.exists() else ""
+                problems.append(f"{raised}: editor.log lacks {line!r}; its fault lines: "
+                                f"{[entry for entry in text.splitlines() if 'MCP fault' in entry][-8:]}")
+        r = await ed.call_raw("selftest_echo", {"throw": "runtime_error", "text": "boom"})
+        if not (r.is_error and r.text.startswith("Tool selftest_echo failed: selftest boom")):
+            problems.append(f"runtime_error: its message is not the error: {r.text!r}")
+
+        # the faults and the runtime_error, as the call log records them (its writer has its own thread)
+        expected = [("internal", raised) for raised, _ in FAULT_CASES] + [("error", "runtime_error")]
+        deadline = time.monotonic() + 30
+        while True:
+            rows = [row for row in call_log_lines(calls_log) if row.get("tool") == "selftest_echo"]
+            if len(rows) >= len(expected) or time.monotonic() > deadline:
+                break
+            await asyncio.sleep(0.05)
+        kinds = [(row.get("ok"), row.get("error_kind")) for row in rows]
+        if kinds != [(False, kind) for kind, _ in expected]:
+            problems.append(f"call log error kinds {kinds}, expected {[(False, kind) for kind, _ in expected]}")
+        logged = calls_log.read_bytes() if calls_log.exists() else b""
+        if b"boom" in logged or b"fault" in logged:
+            problems.append("a fault's text or id reached the call log")
+        ed.check(not problems, "\n".join(problems))
+        await ed.ping()
 
 
 # -- edits through commands -------------------------------------------------------
@@ -655,3 +761,123 @@ async def test_http_read_only_mode():
         raise
     finally:
         await raw_cm.__aexit__(None, None, None)
+
+
+# -- call log (S99 R17, R18, AC5) ---------------------------------------------
+
+
+CALL_LOG_FIELDS = ["ts", "tool", "group", "ms", "ok", "error_kind", "result_bytes", "client"]
+CALL_LOG_CAP = 2048
+
+
+def call_log_lines(path) -> list[dict]:
+    """The calls in <path>.1 then <path>: each a complete JSON line."""
+    rows = []
+    for f in (path.with_name(path.name + ".1"), path):
+        if f.exists():
+            rows += [json.loads(line) for line in f.read_text().splitlines()]
+    return rows
+
+
+async def call_log_wait(raw: RawEditor, path, count: int) -> list[dict]:
+    """The log once it holds `count` calls (the writer flushes on its own thread)."""
+    deadline = time.monotonic() + 30
+    while True:
+        rows = call_log_lines(path)
+        if len(rows) >= count or time.monotonic() > deadline:
+            return rows
+        await asyncio.sleep(0.05)
+
+
+async def test_call_log():
+    """JASPER_MCP_LOG: one line per tools/call with exactly the fields, in order; no argument, path,
+    entity name or result text ever reaches it (a secret-looking value in an argument, a key and a
+    name is absent); the client is the initialize handshake's name; past the cap
+    (JASPER_TEST_MCP_LOG_MAX_BYTES) the file moves to <file>.1 whole lines at a time. Then Log Calls
+    To File (settings.yaml mcp.log_calls) writes mcp-calls.jsonl beside settings.yaml."""
+    import datetime
+    import re
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    secret = "sk-SECRET-" + uuid.uuid4().hex
+    logdir = Path(tempfile.mkdtemp(prefix="je-call-log-"))
+    log = logdir / "calls.jsonl"
+    env = {"JASPER_MCP_LOG": str(log), "JASPER_TEST_MCP_LOG_MAX_BYTES": str(CALL_LOG_CAP)}
+    try:
+        async with RawEditor(create=True, name="MCP Protocol", env=env) as raw:
+            init = await raw.initialize()
+            if "error" in init:
+                raw.fail(f"initialize failed: {init['error']}")
+            started = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+            calls = [("editor_status", {}), ("create_entity", {"name": secret, "type": "box"}),
+                     ("find_entities", {"name": secret}), ("create_entity", {"name": "Box", "bogus_" + secret: 1})]
+            results = []
+            for i, (tool, args) in enumerate(calls, start=10):
+                raw.send({"jsonrpc": "2.0", "id": i, "method": "tools/call", "params": {"name": tool, "arguments": args}})
+                results.append((await raw.response(i))["result"])
+            if results[1].get("isError") or not results[3].get("isError"):
+                raw.fail(f"create_entity should succeed, the unknown argument fail: {results[1]!r:.300} {results[3]!r:.300}")
+            rows = await call_log_wait(raw, log, len(calls))
+            ended = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=1)
+            if len(rows) != len(calls):
+                raw.fail(f"{len(rows)} log lines for {len(calls)} calls: {rows}")
+            for row, (tool, _), result in zip(rows, calls, results):
+                if list(row) != CALL_LOG_FIELDS:
+                    raw.fail(f"log line fields {list(row)}, expected exactly {CALL_LOG_FIELDS}")
+                if row["tool"] != tool or row["group"] != "core" or row["client"] != "jasper-harness-raw":
+                    raw.fail(f"tool, group or client wrong in {row}")
+                ts = datetime.datetime.fromisoformat(row["ts"].replace("Z", "+00:00"))
+                if not started <= ts <= ended or not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", row["ts"]):
+                    raw.fail(f"ts {row['ts']} is not the call's UTC time")
+                if not isinstance(row["ms"], (int, float)) or not 0 <= row["ms"] <= (ended - started).total_seconds() * 1000:
+                    raw.fail(f"ms {row['ms']!r} out of range")
+                sent = len(json.dumps(result, separators=(",", ":"), ensure_ascii=False).encode())
+                if not isinstance(row["result_bytes"], int) or abs(row["result_bytes"] - sent) > max(16, sent // 50):
+                    raw.fail(f"result_bytes {row['result_bytes']!r}, the result sent was {sent} bytes")
+            if [r["ok"] for r in rows] != [True, True, True, False] or [r["error_kind"] for r in rows] != [None, None, None, "error"]:
+                raw.fail(f"ok / error_kind wrong: {[(r['ok'], r['error_kind']) for r in rows]}")
+
+            # past the cap: <file>.1 holds the older whole lines, the file the newer ones
+            rotated = log.with_name(log.name + ".1")
+            next_id = 100
+            while not rotated.exists() and next_id < 200:
+                raw.send({"jsonrpc": "2.0", "id": next_id, "method": "tools/call", "params": {"name": "editor_status", "arguments": {}}})
+                await raw.response(next_id)
+                next_id += 1
+                await call_log_wait(raw, log, len(calls) + next_id - 100)
+            if not rotated.exists():
+                raw.fail(f"no {rotated.name} after {next_id - 100} more calls with a {CALL_LOG_CAP}-byte cap")
+            for f in (rotated, log):
+                if f.stat().st_size > CALL_LOG_CAP:
+                    raw.fail(f"{f.name} is {f.stat().st_size} bytes, over the {CALL_LOG_CAP}-byte cap")
+            rows = call_log_lines(log)
+            if any(list(r) != CALL_LOG_FIELDS for r in rows) or rows[-1]["tool"] != "editor_status":
+                raw.fail(f"rotated lines must stay whole calls: {rows}")
+            if [r["ts"] for r in rows] != sorted(r["ts"] for r in rows):
+                raw.fail(f"{rotated.name} must hold the older calls")
+            text = rotated.read_bytes() + log.read_bytes()
+            if secret.encode() in text or b"bogus_" in text:
+                raw.fail("an argument reached the call log")
+        if secret.encode() in log.read_bytes():
+            raise TestFailure("an argument reached the call log at exit")
+
+        # the MCP Server window's Log Calls To File, saved per user
+        async with RawEditor(create=True, name="MCP Protocol",
+                             settings={"mcp": {"http_token": HTTP_TOKEN, "log_calls": True}}) as raw:
+            await raw.initialize()
+            raw.send({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "editor_status", "arguments": {}}})
+            await raw.response(2)
+            default_log = raw.scratch.root / "mcp-calls.jsonl"
+            rows = await call_log_wait(raw, default_log, 1)
+            if [r.get("tool") for r in rows] != ["editor_status"]:
+                raw.fail(f"Log Calls To File should write {default_log.name} beside settings.yaml: {rows}")
+    finally:
+        shutil.rmtree(logdir, ignore_errors=True)
+
+
+async def test_call_log_is_off_by_default(ed: Editor):
+    """No JASPER_MCP_LOG and no Log Calls To File: nothing is written (an open log creates its file at start)."""
+    await ed.call("editor_status")
+    ed.check(not (ed.scratch.root / "mcp-calls.jsonl").exists(), "the call log is opt-in")

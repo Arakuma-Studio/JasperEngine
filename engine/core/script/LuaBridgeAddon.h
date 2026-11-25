@@ -250,7 +250,9 @@ namespace luabridge
     template<> struct Stack<jasperengine::UIRenderMode> : EnumWrapper<jasperengine::UIRenderMode>{};
     template<> struct Stack<jasperengine::PlanarReflectionResolution> : EnumWrapper<jasperengine::PlanarReflectionResolution>{};
     template<> struct Stack<jasperengine::LitQuality> : EnumWrapper<jasperengine::LitQuality>{};
+    template<> struct Stack<jasperengine::AmbientMode> : EnumWrapper<jasperengine::AmbientMode>{};
     template<> struct Stack<jasperengine::LightUnit> : EnumWrapper<jasperengine::LightUnit>{};
+    template<> struct Stack<jasperengine::AreaLightShape> : EnumWrapper<jasperengine::AreaLightShape>{};
     template<> struct Stack<jasperengine::TonemapMode> : EnumWrapper<jasperengine::TonemapMode>{};
     template<> struct Stack<jasperengine::MonochromeMode> : EnumWrapper<jasperengine::MonochromeMode>{};
     template<> struct Stack<jasperengine::FilmGrainType> : EnumWrapper<jasperengine::FilmGrainType>{};

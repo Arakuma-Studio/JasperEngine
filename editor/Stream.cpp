@@ -2365,6 +2365,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
         sceneNode["showStats"] = ds.showStats;
+    if (ds.frameChecks)
+        sceneNode["frameChecks"] = ds.frameChecks;
     // S41: written only when turned off (on by default)
     if (!ds.pixelZoom) sceneNode["pixelZoom"] = false;
     if (!ds.pixelGrid) sceneNode["pixelGrid"] = false;
@@ -2417,6 +2419,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
     ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
+    ds.frameChecks = node["frameChecks"] ? YamlNumbers::as<bool>(node["frameChecks"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
     decodeTerrainOverlaySettings(node["terrainOverlay"], ds.terrainOverlay);
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
@@ -3089,6 +3092,15 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             exportNode["sizeBudgets"] = budgetsNode;
         }
         if (project->isSizeBudgetFail()) exportNode["sizeBudgetAction"] = "fail";
+        // Download Budget (S99 R11): only the families that have one, so an old project.yaml stays as it was
+        {
+            YAML::Node budgetNode;
+            for (size_t f = 0; f < kModelFamilyCount; f++) {
+                const double megabytes = project->getDownloadBudgetMB((ModelFamily)f);
+                if (megabytes > 0.0) budgetNode[modelFamilyName((ModelFamily)f)] = megabytes;
+            }
+            if (budgetNode.size()) exportNode["downloadBudgetMB"] = budgetNode;
+        }
         // S98 REQ-8: written only when set, so an old project's file stays as it was
         const AssetStrippingSettings& stripping = project->getAssetStripping();
         if (stripping.mode == AssetStrippingMode::ReferencedOnly) exportNode["assetStripping"] = "referencedOnly";
@@ -4231,6 +4243,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setSizeBudgets(sizeBudgets);
         project->setSizeBudgetFail(exportNode["sizeBudgetAction"] && exportNode["sizeBudgetAction"].IsScalar() &&
                                    exportNode["sizeBudgetAction"].as<std::string>() == "fail");
+        // absent families are off; a negative or non-finite value is off too
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            const YAML::Node budgetNode = exportNode["downloadBudgetMB"];
+            const char* family = modelFamilyName((ModelFamily)f);
+            const double megabytes = budgetNode && budgetNode.IsMap() ? decodeFiniteDouble(budgetNode[family], 0.0) : 0.0;
+            project->setDownloadBudgetMB((ModelFamily)f, std::max(0.0, megabytes));
+        }
         {
             // S98 REQ-50: absent keys are Ship All Assets and empty lists
             AssetStrippingSettings stripping;
@@ -5376,6 +5395,22 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
+    // Environment Lighting (S99 R30): written only away from its defaults (no key: Color)
+    {
+        const SceneSettings defaults;
+        // (a default decoded through sRGB may differ from it in the last bits)
+        auto away = [](const Vector3& a, const Vector3& b) {
+            return std::fabs(a.x - b.x) > 1e-5f || std::fabs(a.y - b.y) > 1e-5f || std::fabs(a.z - b.z) > 1e-5f;
+        };
+        if (scene->getAmbientMode() != defaults.ambientMode)
+            sceneNode["ambientMode"] = StreamSchema::ambientMode().toString(scene->getAmbientMode());
+        if (away(scene->getAmbientSkyColorLinear(), defaults.ambientSkyColor))
+            sceneNode["ambientSkyColor"] = encodeVector3(scene->getAmbientSkyColor());
+        if (away(scene->getAmbientEquatorColorLinear(), defaults.ambientEquatorColor))
+            sceneNode["ambientEquatorColor"] = encodeVector3(scene->getAmbientEquatorColor());
+        if (away(scene->getAmbientGroundColorLinear(), defaults.ambientGroundColor))
+            sceneNode["ambientGroundColor"] = encodeVector3(scene->getAmbientGroundColor());
+    }
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         sceneNode["maxLightsPerObject"] = scene->getMaxLightsPerObject();
     // a scene without the key is Standard (it was drawn so before Lit Quality existed); new
@@ -5565,6 +5600,19 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setGlobalIllumination(YamlNumbers::as<float>(node["globalIlluminationIntensity"]));
     } else if (node["globalIlluminationColor"]) {
         scene->setGlobalIllumination(decodeVector3(node["globalIlluminationColor"]));
+    }
+
+    // Environment Lighting: absent keys restore the defaults (a reused scene decodes exactly)
+    {
+        const SceneSettings defaults;
+        scene->setAmbientMode(node["ambientMode"] ? decodeEnum(node, "ambientMode", StreamSchema::ambientMode()) : defaults.ambientMode);
+        // (an absent key on a scene already at the default leaves it untouched: exact, no sRGB round trip)
+        if (node["ambientSkyColor"]) scene->setAmbientSkyColor(decodeVector3(node["ambientSkyColor"]));
+        else if (scene->getAmbientSkyColorLinear() != defaults.ambientSkyColor) scene->setAmbientSkyColor(Color::linearTosRGB(defaults.ambientSkyColor));
+        if (node["ambientEquatorColor"]) scene->setAmbientEquatorColor(decodeVector3(node["ambientEquatorColor"]));
+        else if (scene->getAmbientEquatorColorLinear() != defaults.ambientEquatorColor) scene->setAmbientEquatorColor(Color::linearTosRGB(defaults.ambientEquatorColor));
+        if (node["ambientGroundColor"]) scene->setAmbientGroundColor(decodeVector3(node["ambientGroundColor"]));
+        else if (scene->getAmbientGroundColorLinear() != defaults.ambientGroundColor) scene->setAmbientGroundColor(Color::linearTosRGB(defaults.ambientGroundColor));
     }
 
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact

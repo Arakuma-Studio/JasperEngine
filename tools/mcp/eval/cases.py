@@ -1546,6 +1546,97 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_extract_sun",
+        "kind": "guard",
+        "what_happened": "S99 R28 adds extract_sun to set_scene_settings: an HDRI sky lights the scene only through IBL, so "
+                         "its sun casts no shadow. Without the parameter an agent guesses a Directional Light's angle by eye "
+                         "and leaves the sun in the sky's lighting twice.",
+        "text_at_issue": "set_scene_settings description: 'extract_sun: a Directional Light from the skybox HDR's sun'; "
+                         "its next: 'set_scene_settings extract_sun {\"remove_sun_disc\": true} "
+                         "clamps the sky's disc'; jasper://docs/lighting",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R28, R29, R31",
+        "prompt": "Our Skybox uses the HDR image assets/sky/desert.hdr. Make its sun cast shadows: a sun light pointing "
+                  "exactly from the sun in the image, as bright and as coloured, and don't let the sky light the scene "
+                  "with the sun a second time.",
+        "mocks": [
+            {"tool": "set_scene_settings", "args": {"extract_sun": {"remove_sun_disc": True}}, "result": ok(
+                "Aligned the main Directional Light \"Directional Light\" to the sky's sun (812x the sky's mean) (one undo step).",
+                {"scene_id": 1, "settings": {}, "sun": {"light": {"id": 16, "name": "Directional Light"}, "created": False,
+                 "direction": [-0.41, -0.64, -0.65], "color": [1.0, 0.93, 0.82], "intensity": 3.1, "unit": "engine",
+                 "peak_ratio": 812.0, "disc_degrees": 0.9, "remove_sun_disc": ["assets/sky/desert.hdr"]}})},
+            # as the editor answers extract_sun without remove_sun_disc: the disc is left in, and next says so
+            {"tool": "set_scene_settings", "args": {"extract_sun": "*"}, "result": ok(
+                "Aligned the main Directional Light \"Directional Light\" to the sky's sun (812x the sky's mean) (one undo step).",
+                {"scene_id": 1, "settings": {}, "sun": {"light": {"id": 16, "name": "Directional Light"}, "created": False,
+                 "direction": [-0.41, -0.64, -0.65], "color": [1.0, 0.93, 0.82], "intensity": 3.1, "unit": "engine",
+                 "peak_ratio": 812.0, "disc_degrees": 0.9, "remove_sun_disc": []},
+                 "next": "Image-based lighting still has the sun: set_scene_settings extract_sun {\"remove_sun_disc\": true} "
+                         "clamps the sky's disc so it is not counted twice."})},
+            {"tool": "get_entity", "args": {"entity": "re:^(16|Directional Light)$"}, "result": ok(
+                "Directional Light [16] components: light transform",
+                {"id": 16, "name": "Directional Light", "path": "Directional Light", "components": {
+                    "light": {"type": "directional", "intensity": 1.0, "color": [1, 1, 1], "direction": [0, -1, 0],
+                              "shadows": True, "intensityUnit": "engine"}}}) | {"real": True}},
+            {"tool": "get_entity", "args": {"entity": "re:^(17|Skybox)$"}, "result": ok(
+                "Skybox [17] components: skybox",
+                {"id": 17, "name": "Skybox", "path": "Skybox", "components": {
+                    "skybox": {"texture": "assets/sky/desert.hdr"}}}) | {"real": True}},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"extract_sun": {"remove_sun_disc": True}}}],
+                   "must_not_call": [{"tool": "create_entity", "args": {"type": "directional_light"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_gradient_ambient",
+        "kind": "guard",
+        "what_happened": "S99 R30 adds Environment Lighting Source Gradient (ambient_mode and the sky, equator and ground "
+                         "colours). Without it an agent tints the flat global_illumination_color, which lights every facing "
+                         "the same.",
+        "text_at_issue": "get_scene_settings detail (ambient_mode: 'Environment Lighting Source: color ..., gradient "
+                         "(sky/equator/ground colors by facing ...)'); "
+                         "jasper://docs/lighting",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R30, R31",
+        "prompt": "There is no sky image in this scene. Give it Unity-style trilight ambient: light blue from above, a "
+                  "neutral grey at the horizon and a warm brown from the ground.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nambient_mode = gradient",
+                {"scene_id": 1, "settings": {"ambient_mode": "gradient"}})},
+            # detail: the schema rows of Environment Lighting, as SceneTools.cpp writes them
+            {"tool": "get_scene_settings", "args": {"detail": True}, "result": ok(
+                "Scene 1 \"Main\" settings:\nglobal_illumination_color = [1.0,1.0,1.0]\nglobal_illumination_intensity = 0.2\n"
+                "ambient_mode = \"color\"\nambient_sky_color = [0.21176471,0.22745098,0.25882353]\n"
+                "ambient_equator_color = [0.11372549,0.1254902,0.13333334]\nambient_ground_color = [0.04705882,0.04313726,0.03529412]",
+                {"scene_id": 1,
+                 "schema": {
+                     "global_illumination_color": {"default": [1.0, 1.0, 1.0], "help": "ambient light color [r,g,b] (sRGB)", "type": "vector3"},
+                     "global_illumination_intensity": {"default": 0.1, "help": "ambient light intensity", "type": "float"},
+                     "ambient_mode": {"default": "color", "help": "Environment Lighting Source: color (default: the ambient color; Lit under "
+                                      "a sky image takes the image), gradient (sky/equator/ground colors by facing; the sky still reflects)",
+                                      "options": ["color", "gradient"], "type": "enum"},
+                     "ambient_sky_color": {"default": [0.21176471, 0.22745098, 0.25882353],
+                                           "help": "gradient color facing up [r,g,b] (sRGB)", "type": "vector3"},
+                     "ambient_equator_color": {"default": [0.11372549, 0.1254902, 0.13333334],
+                                               "help": "gradient color at the horizon [r,g,b] (sRGB)", "type": "vector3"},
+                     "ambient_ground_color": {"default": [0.04705882, 0.04313726, 0.03529412],
+                                              "help": "gradient color facing down [r,g,b] (sRGB)", "type": "vector3"}},
+                 "settings": {"global_illumination_color": [1.0, 1.0, 1.0], "global_illumination_intensity": 0.2, "ambient_mode": "color",
+                              "ambient_sky_color": [0.21176471, 0.22745098, 0.25882353], "ambient_equator_color": [0.11372549, 0.1254902, 0.13333334],
+                              "ambient_ground_color": [0.04705882, 0.04313726, 0.03529412]}})},
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings"}},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 4 scene setting(s) (one undo step).", {"scene_id": 1, "settings": {"ambient_mode": "gradient"}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        # the source and its colours may go in one call or several
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_mode": "gradient"}}},
+                             {"tool": "set_scene_settings", "args": {"settings": {"ambient_sky_color": "*"}}},
+                             {"tool": "set_scene_settings", "args": {"settings": {"ambient_ground_color": "*"}}}],
+                   "must_not_call": [{"tool": "set_scene_settings", "args": {"settings": {"global_illumination_color": "*"}}}]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_light_mode_setting",
         "kind": "guard",
         "what_happened": "S57 adds the project setting graphics.light_mode (Automatic, Per Object, Tiled). Raising Max "
@@ -1568,6 +1659,53 @@ CASES = [
                    "must_not_call": [{"tool": "set_scene_settings", "args": {"settings": {"max_lights_per_object": "*"}}}],
                    "edits_must_not": [r"project\.yaml$"], "shell_must_not": [YAML_WRITE]},
         "max_turns": 10,
+    },
+    {
+        "id": "guard_area_light",
+        "kind": "guard",
+        "what_happened": "S99 adds Area Lights (Light Type Area: a Rectangle or Disc emitting from its face) and the nits unit. "
+                         "Without them an agent fakes a soft panel with a row of point lights or an emissive quad, and sizes "
+                         "the panel with the transform's scale, which does not size it.",
+        "text_at_issue": "jasper://docs/lighting 'Area Light ... type: \"area\" ... areaWidth, areaHeight ... in metres: the "
+                         "transform's scale does not size it ... intensityUnit: \"nits\" (or set_light_unit nits)'; "
+                         "set_light_unit 'nits (area)'",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R32, R34, R39",
+        "prompt": "Hang a soft 1.2 m by 0.4 m rectangular panel light 2 m above the Desk, facing down, at 500 nits.",
+        "mocks": [
+            # the world has no Desk: id 19 is free in it (15 is the Crate)
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDesk [19] mesh",
+                                                   {"entities": [{"id": 19, "path": "Desk"}]})},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
+                "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
+                "  Shield [18] sprite\nEnemy [14] script sprite\nCrate [15] mesh\nDesk [19] mesh\n"
+                "Directional Light [16] light\nSkybox [17] skybox (no transform)\n",
+                {"entity_count": 9, "scene_id": 1, "scene_name": "Main", "truncated": False})},
+            {"tool": "get_entity", "args": {"entity": "re:^(19|Desk)$"}, "result": ok(
+                "Desk [19] components: mesh transform",
+                {"id": 19, "name": "Desk", "path": "Desk", "components": {
+                    "transform": {"position": [3, 0.75, 1], "rotation": [0, 0, 0, 1], "scale": [1.6, 0.05, 0.8]},
+                    "mesh": {"numSubmeshes": 1, "castShadows": True}}}) | {"real": True}},
+            {"tool": "list_component_types", "args": {"component": "re:(?i)^light$"}, "result": ok(
+                "light (Light), addable. Properties: type enum (directional, point, spot, area) default point; "
+                "direction vector3 default [0,0,-1]; color vector3; intensity float default 1; intensityUnit enum (engine, lux, "
+                "candela, lumen, nits) default engine; range float; shadows bool; areaShape enum (rectangle, disc) default "
+                "rectangle; areaWidth float default 1; areaHeight float default 1; areaRadius float default 0.5; iesProfile asset.")},
+            {"tool": "create_entity", "result": ok("Created GameObject 21 \"Panel Light\" (point_light).",
+                                                   {"entity": {"id": 21, "path": "Panel Light"}, "entity_id": 21})},
+            {"tool": "add_component", "result": ok("Added light to GameObject 21 \"Panel Light\".", {"entity": {"id": 21}})},
+            {"tool": "set_properties", "result": ok("Set the properties of GameObject 21 \"Panel Light\" (one undo step).",
+                                                    {"entity": {"id": 21}})},
+            {"tool": "set_light_unit", "result": ok("Set the unit of 1 light(s), as bright as before (EV100 15).",
+                                                    {"lights": [{"entity": {"id": 21}, "unit": "Nits", "intensity": 500}], "ev100": 15})},
+        ],
+        # the panel's values may go in with the component (add_component, create_entity) or after it (set_properties)
+        "checks": {"any_of": [{"calls": [{"tool": tool, "args": {"values": {"light": {"type": "area", "areaWidth": 1.2,
+                                                                                      "areaHeight": 0.4}}}}]}
+                              for tool in ("set_properties", "add_component", "create_entity")],
+                   "must_not_call": [{"tool": "set_properties", "args": {"values": {"transform": {"scale": "*"}}}},
+                                     {"tool": "create_entity", "args": {"scale": "*"}}]},
+        "max_turns": 12,
     },
     {
         "id": "guard_physics_body",
@@ -1999,6 +2137,61 @@ CASES = [
                    "max_calls": {"record_game": 1},
                    "reply_must": [r"disk|space", r"partial"]},
         "max_turns": 10,
+    },
+    {
+        "id": "bad_record_fallback_unreported",
+        "kind": "bad",
+        "what_happened": "A movie came out of another H.264 encoder than libx264 (a bitrate instead of CRF quality); the "
+                         "result named only the encoder used, so the agent could not tell the user it was a downgrade.",
+        "text_at_issue": "record_game's result: report.fallbacks [{step, from, to, reason}] (S99 R14)",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R14",
+        "groups_enabled": ["editor_tools"],
+        "prompt": "Record 3 seconds of the game as an MP4 to captures/clip.mp4 and tell me if anything came out worse than asked.",
+        "mocks": [
+            {"tool": "record_game", "result": {
+                "text": "Recorded 90 frames to captures/clip.mp4.",
+                "real": True,
+                "structured": {"frames": 90, "fps": 30, "width": 1920, "height": 1080, "encoder": "h264_nvenc", "scene": "Main", "take": 1,
+                               "startFrame": 0, "warnings": [], "wallSeconds": 6.1, "maxQueued": 3, "output": "captures/clip.mp4",
+                               "estimated_bytes": 1555200, "movie": "captures/clip.mp4", "sidecar": "captures/clip.mp4.recording.json",
+                               "report": {"seconds": 6.4, "estimated_seconds": 5.9, "ratio": 1.08,
+                                          "fallbacks": [{"step": "encoder", "from": "libx264", "to": "h264_nvenc",
+                                                         "reason": "this FFmpeg has no libx264"}]},
+                               "job": {"job_id": "job-1", "kind": "record", "title": "Record 90 frame(s) to mp4", "status": "succeeded",
+                                       "message": "Recorded 90 frames to captures/clip.mp4.", "elapsed_seconds": 6.4, "progress": 1.0,
+                                       "estimate": {"seconds": 5.9, "bytes": 1555200, "basis": "history", "confidence": "medium"},
+                                       "log_tail": []}}}},
+        ],
+        "checks": {"calls": [{"tool": "record_game"}], "max_calls": {"record_game": 1}, "reply_must": [r"libx264"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_build_estimate_unknown",
+        "kind": "bad",
+        "what_happened": "Asked how long a build would take, an agent could only guess: no job said what it expected to cost.",
+        "text_at_issue": "a job's estimate {seconds, basis, confidence} and remaining_seconds (S99 R13, R16)",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R13, R16",
+        "prompt": "Start a Linux build of the game, don't wait for it to finish, and tell me about how long it should take.",
+        "mocks": [
+            {"tool": "build_project", "result": {
+                "text": "Job job-3 (Build Linux (Release)) is still running. Poll get_job with job_id \"job-3\" until its status is "
+                        "succeeded, failed or cancelled; cancel_job stops it.",
+                "real": True,
+                "structured": {"job_id": "job-3", "kind": "build", "title": "Build Linux (Release)", "status": "running",
+                               "message": "Cooking textures...", "elapsed_seconds": 0.4, "progress": 0.05, "holds": "export",
+                               "estimate": {"seconds": 240.0, "basis": "history", "confidence": "high"}, "remaining_seconds": 236.0,
+                               "log_tail": []}}},
+            {"tool": "get_job", "result": {
+                "text": "Build Linux (Release): running - Cooking textures...",
+                "real": True,
+                "structured": {"job_id": "job-3", "kind": "build", "title": "Build Linux (Release)", "status": "running",
+                               "message": "Cooking textures...", "elapsed_seconds": 3.0, "progress": 0.06, "holds": "export",
+                               "estimate": {"seconds": 240.0, "basis": "history", "confidence": "high"}, "remaining_seconds": 234.0,
+                               "log_tail": []}}},
+        ],
+        "checks": {"calls": [{"tool": "build_project"}],
+                   "reply_must": [r"\b(4|four)\s*min|\b2[34]\d\s*s"]},
+        "max_turns": 8,
     },
     {
         "id": "guard_shadow_softness",
@@ -3320,6 +3513,78 @@ CASES = [
                    "must_not_call": [{"tool": "build_project", "args": {"mode": "re:^(desktop|web)$"}},
                                      {"tool": "build_project", "args": {"platform": "re:^(windows|linux|macos|web)$"}}]},
         "max_turns": 14,
+    },
+    {
+        "id": "bad_build_over_download_budget",
+        "kind": "bad",
+        "what_happened": "A web build over the project's Download Budget: build_project's result said nothing about sizes, so "
+                         "agents listed the output folder with du and guessed which assets to shrink.",
+        "text_at_issue": "build_project result: build_bytes, build_categories, top_files, download_bytes_gzip, W-BUILD-OVER-BUDGET "
+                         "and its next ('Over the Download Budget: textures is the largest category (5.1 MB). get_texture_cook_report "
+                         "{\"platforms\": [\"web\"]} (tool_groups: assets_pipeline) names the source texture of each cooked "
+                         "file...'); jasper://docs/shipping Size",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R10, R11 (Crucible's build-size feedback); no transcript",
+        "files": GAME_FILES,
+        "prompt": "The web portal only takes games under 5 MB, and the project's web Download Budget is set to that. Build the web "
+                  "version and find out which files make it too big. Don't change anything yet.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "3 setting(s).", {"settings": {"player.download_budget_mb.desktop": 0.0, "player.download_budget_mb.mobile": 0.0,
+                                               "player.download_budget_mb.web": 5.0}}) | {"real": True}},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available (prebuilt player web-wasm32-gles3-release); source "
+                "export: available. 1 scene(s) in the build, 43 shader(s). Default platform: web.",
+                {"host_platform": "linux", "default_platform": "web", "last_build": None})},
+            {"tool": "build_project", "result": ok(
+                "Build web (Release): succeeded - Built web (prebuilt player web-wasm32-gles3-release) in /work/space-dodge-web. "
+                "1 build warning(s): see warnings.",
+                {"job_id": "job-4", "status": "succeeded", "result": {
+                    "mode": "player", "platform": "web", "method_used": "prebuilt", "output_dir": "/work/space-dodge-web",
+                    "artifacts": ["content.jpak", "index.html", "jasperengine-player-st.js", "jasperengine-player-st.wasm"],
+                    "errors": [], "error_count": 0, "warning_count": 0,
+                    "warnings": [{"code": "W-BUILD-OVER-BUDGET", "message":
+                                  "the web build downloads 7.9 MB (gzip estimate), over its Download Budget of 5.0 MB "
+                                  "(player.download_budget_mb.web); largest categories: textures 5.1 MB, engine 4.2 MB, audio 1.3 MB"}],
+                    "build_report": "/work/space-dodge-web/build-report.json", "build_bytes": 11534336,
+                    "build_categories": {"models": 524288, "textures": 5347737, "audio": 1363148, "scripts": 20480, "scenes": 61440,
+                                         "engine": 4404019, "other": 2048},
+                    "top_files": [{"path": "jasperengine-player-st.wasm", "bytes": 4194304},
+                                  {"path": "assets/je-cooked/web/1f/1f9a.ktx2", "bytes": 2097152},
+                                  {"path": "assets/je-cooked/web/7c/7c02.ktx2", "bytes": 1572864},
+                                  {"path": "assets/music/theme.ogg", "bytes": 1153433},
+                                  {"path": "assets/je-cooked/web/a4/a4d1.ktx2", "bytes": 786432}],
+                    "download_bytes_gzip": 8283750,
+                    "download_budget": {"budget_bytes": 5242880, "actual_bytes": 8283750, "over": True,
+                                        "largest_categories": [{"category": "textures", "bytes": 5347737},
+                                                               {"category": "engine", "bytes": 4404019},
+                                                               {"category": "audio", "bytes": 1363148}]}},
+                 "next": "Over the Download Budget: textures is the largest category (5.1 MB). get_texture_cook_report "
+                         "{\"platforms\": [\"web\"]} (tool_groups: assets_pipeline) names the source texture of each cooked "
+                         "file with its disk bytes; set_texture_import_settings lowers max_size or quality."}) | {"real": True}},
+            {"tool": "get_texture_cook_report", "result": ok(
+                "Texture cook report: 3 textures; web: 3 cooked, 4.3 MB on disk (source 18.0 MB).",
+                {"textures": [
+                    {"path": "assets/textures/background.png", "type": "default",
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "key": "1f9a", "width": 4096, "height": 4096, "mips": 13,
+                                           "disk_bytes": 2097152, "source_bytes": 9437184}}},
+                    {"path": "assets/textures/ship_atlas.png", "type": "sprite",
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "key": "7c02", "width": 2048, "height": 2048, "mips": 12,
+                                           "disk_bytes": 1572864, "source_bytes": 6291456}}},
+                    {"path": "assets/textures/asteroids.png", "type": "default",
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "key": "a4d1", "width": 2048, "height": 1024, "mips": 12,
+                                           "disk_bytes": 786432, "source_bytes": 3145728}}}],
+                 "totals": {"web": {"textures": 3, "cooked": 3, "failed": 0, "cache_hits": 3, "vram_bytes": 22369621,
+                                    "disk_bytes": 4456448, "source_bytes": 18874368}}}) | {"real": True}},
+        ],
+        "shell": [{"match": r"\bdu\b|\bls\b|\bfind\b", "output": ""}],
+        # mode web and the web player (platform web) are both the web build, held to the same budget
+        "checks": {"calls": [{"tool": "get_texture_cook_report"}],
+                   "any_of": [{"calls": [{"tool": "build_project", "args": {"platform": "web"}}]},
+                              {"calls": [{"tool": "build_project", "args": {"mode": "web"}}]}],
+                   "order": [["build_project", "get_texture_cook_report"]],
+                   "must_not_call": ["set_texture_import_settings", "set_project_settings"],
+                   "reply_must": [r"(?i)background\.png"]},
+        "max_turns": 12,
     },
     {
         "id": "guard_build_output_inside_project",
@@ -6884,6 +7149,151 @@ CASES = [
         "checks": {"calls": [{"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}}],
                    "reply_must": [r"splash\.material|Credits"]},
         "max_turns": 14,  # a grep of the project comes first; 10 turns ended runs after the report, before the reply
+    },
+    # -- S99 W2: screenshot findings (R6, R7); an image the agent cannot judge without them ----------
+    {
+        "id": "bad_screenshot_clipped_light",
+        "kind": "bad",
+        "what_happened": "Asked whether a scene looked right, agents described a screenshot they could not judge (a stub or "
+                         "a small image) and changed nothing; the result's findings and next now name the over-bright light "
+                         "and the call that lowers it (S99 R6, R7).",
+        "text_at_issue": "screenshot result: findings [{kind: exposure_clipped, ...}] and next 'exposure_clipped: ... Fix: "
+                         "set_properties {entity: 16, values: {light: {intensity: 0.75}}} halves it.'",
+        "source": "S99 spec, Crucible's frame-checks idea (paraphrased); no failure on record",
+        "prompt": "Take a Game view screenshot of the Main scene and fix anything that looks wrong with the lighting.",
+        "mocks": [
+            {"tool": "screenshot", "after": "set_properties", "result": ok(
+                "game view screenshot 768x432 of scene \"Main\".", {"view": "game", "width": 768, "height": 432, "findings": []})},
+            {"tool": "screenshot", "result": ok(
+                "game view screenshot 768x432 of scene \"Main\". Note: Frame checks: exposure_clipped (findings; next has the "
+                "first fix).",
+                {"view": "game", "width": 768, "height": 432, "findings_ms": 2.1,
+                 "findings": [{"kind": "exposure_clipped", "severity": "warning",
+                               "message": "41 % of the image is clipped white (luminance at or above 0.98); the brightest light "
+                                          "on it is Directional Light (#16), Directional at intensity 1.5.",
+                               "fix": "set_properties {entity: 16, values: {light: {intensity: 0.75}}} halves it", "entities": [16]}],
+                 "next": "exposure_clipped: 41 % of the image is clipped white (luminance at or above 0.98); the brightest "
+                         "light on it is Directional Light (#16), Directional at intensity 1.5. Fix: set_properties "
+                         "{entity: 16, values: {light: {intensity: 0.75}}} halves it."})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 16 \"Directional Light\".",
+                                                    {"entity": {"id": 16}})},
+            {"tool": "get_entity", "args": {"entity": "re:^(16|Directional Light)$"}, "result": ok(
+                "Directional Light [16] components: light transform",
+                {"id": 16, "name": "Directional Light", "path": "Directional Light", "components": {
+                    "light": {"type": "directional", "intensity": 1.5, "color": [1, 1, 1], "shadows": True}}}) | {"real": True}},
+        ],
+        # an intensity that looks ordinary in the data: only the finding shows it clips; lowered below 1.5
+        "checks": {"calls": ["screenshot", {"tool": "set_properties", "args": {
+            "entity": "re:^(16|Directional Light)$",
+            "values": {"light": {"intensity": r"re:^(0(\.\d+)?|1(\.[0-4]\d*)?|\.\d+)$"}}}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_screenshot_selection_out_of_frame",
+        "kind": "bad",
+        "what_happened": "Agents reported on a Scene view screenshot of the selected object when the object was off-screen; "
+                         "the findings say it is out of frame and next gives frame_entity (S99 R6, R7).",
+        "text_at_issue": "screenshot result: findings [{kind: subject_out_of_frame}] and next 'subject_out_of_frame: Crate (#15) "
+                         "(the selection) is 88 % outside the frame. Fix: frame_entity {entity: 15}.'",
+        "source": "S99 spec (paraphrased); no failure on record",
+        "prompt": "I lined the Scene view up on the selected Crate. Take a Scene view screenshot and tell me how the Crate "
+                  "looks.",
+        "mocks": [
+            {"tool": "screenshot", "after": "frame_entity", "result": ok(
+                "scene view screenshot 768x432 of scene \"Main\".", {"view": "scene", "width": 768, "height": 432, "findings": []})},
+            {"tool": "screenshot", "result": ok(
+                "scene view screenshot 768x432 of scene \"Main\". Note: Frame checks: subject_out_of_frame (findings; next has "
+                "the first fix).",
+                {"view": "scene", "width": 768, "height": 432, "findings_ms": 1.4,
+                 "findings": [{"kind": "subject_out_of_frame", "severity": "warning",
+                               "message": "Crate (#15) (the selection) is 88 % outside the frame.",
+                               "fix": "frame_entity {entity: 15}", "entities": [15]}],
+                 "next": "subject_out_of_frame: Crate (#15) (the selection) is 88 % outside the frame. Fix: frame_entity "
+                         "{entity: 15}."})},
+            {"tool": "frame_entity", "result": ok("Framed 1 GameObject in the Scene view.", {"framed": [15]})},
+            {"tool": "set_scene_camera", "result": ok("Scene view camera set.", {"position": [2, 1, 3], "target": [0, 0, 0]})},
+            {"tool": "get_selection", "result": ok("Selected: 15 Crate", {"entities": [{"id": 15, "path": "Crate"}]})},
+        ],
+        # the finding acted on: the Crate framed after the screenshot (frame_entity with no GameObject frames the
+        # selection), or, as the user aimed the view, the reply says it is out of frame instead of describing it
+        "checks": {"calls": ["screenshot"],
+                   "any_of": [{"calls": ["frame_entity"], "order": [["screenshot", "frame_entity"]]},
+                              {"reply_must": [r"(?i)(out of|outside) (the )?(frame|view|shot|screenshot)|off[- ]?screen"]}],
+                   "must_not_call": [{"tool": "frame_entity", "args": {"entity": "re:^(?!(15|Crate)$)"}},
+                                     {"tool": "frame_entity", "args": {"entities": ["re:^(?!(15|Crate)$)"]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_internal_fault_as_argument_error",
+        "kind": "bad",
+        "what_happened": "A handler's std::out_of_range reached the agent verbatim ('Tool create_entity failed: "
+                         "vector::_M_range_check ...'); it read that as a bad argument and kept changing a correct call.",
+        "text_at_issue": "McpServer.cpp failFromException: 'Internal error in <tool> (not caused by your arguments); details in "
+                         "editor.log as fault <id>. Check the state with <read tool>, retry once, and report it if it repeats.'",
+        "source": "S99 section 3 (raw what() of logic_error reached agents); S99 R3",
+        "prompt": "Add a cube named Crate2 at position (2, 0, 0).",
+        "mocks": [
+            {"tool": "create_entity", "once": True, "result": err(
+                "Internal error in create_entity (not caused by your arguments); details in editor.log as fault 3fa9c021. "
+                "Check the state with get_entity, retry once, and report it if it repeats.")},
+            {"tool": "get_entity", "args": {"entity": "re:Crate2"}, "after": "create_entity", "result": ok(
+                "GameObject 22 \"Crate2\": transform, mesh. Position [2, 0, 0].", {"id": 22, "name": "Crate2", "path": "Crate2"})},
+            {"tool": "get_entity", "args": {"entity": "re:Crate2"}, "result": err(
+                "No GameObject \"Crate2\" in scene 1 \"Main\".")},
+            {"tool": "find_entities", "after": "create_entity", "result": ok(
+                "1 GameObject(s) match:\nCrate2 [22] mesh", {"entities": [{"id": 22, "path": "Crate2"}]})},
+            {"tool": "find_entities", "result": ok("0 GameObject(s) match.", {"entities": []})},
+            {"tool": "editor_status", "result": ok("Project \"Space Dodge\", scene 1 \"Main\" (edit mode).",
+                                                   {"project": {"name": "Space Dodge"}, "playing": False})},
+            {"tool": "create_entity", "result": ok(
+                "Created GameObject 22 \"Crate2\" (cube) in scene 1 \"Main\".",
+                {"entity": {"id": 22, "name": "Crate2", "path": "Crate2"}, "scene": {"id": 1, "name": "Main"}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "create_entity", "args": {"name": "Crate2", "type": "re:^(cube|box)$"}}],
+                   "min_calls": {"create_entity": 2}, "max_calls": {"create_entity": 2},
+                   "any_of": [{"calls": ["get_entity"]}, {"calls": ["find_entities"]}, {"calls": ["editor_status"]}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_did_you_mean_argument",
+        "kind": "guard",
+        "what_happened": "An agent wrote a snake_case argument in camelCase; the registry refuses it naming the argument "
+                         "meant, and the agent resends with that name instead of dropping the argument.",
+        "text_at_issue": "McpRegistry.cpp argumentProblem: 'Unknown argument \"withComponents\" for find_entities (did you "
+                         "mean 'with_components'?). Arguments: ...'",
+        "source": "S99 R1 (camelCase for snake_case)",
+        "history": [
+            {"user": "List the GameObjects named Crate with their components."},
+            {"assistant": "Looking them up.", "calls": [{"tool": "find_entities", "args": {"name": "Crate", "withComponents": True},
+                "result": "Unknown argument \"withComponents\" for find_entities (did you mean 'with_components'?). Arguments: "
+                          "active, component, layer, limit, name, path, runtime, scene, tag, under, with_components."}]},
+        ],
+        "prompt": "Continue.",
+        "mocks": [
+            {"tool": "find_entities", "args": {"with_components": True}, "result": ok(
+                "1 GameObject(s) match:\nCrate [15] mesh rigidbody transform", {"entities": [{"id": 15, "path": "Crate",
+                                                                                     "components": ["mesh", "rigidbody", "transform"]}]})},
+        ],
+        "checks": {"calls": [{"tool": "find_entities", "args": {"with_components": True}}],
+                   "max_calls": {"find_entities": 2}},
+        "max_turns": 6,
+    },
+    # ---- S99 W5: the MCP call log (docs/mcp/guide/profiling.md "The MCP call log")
+    {
+        "id": "guard_mcp_call_log",
+        "kind": "guard",
+        "what_happened": "New text (S99 R17, R19): asked which of its own tool calls are slow or fail over many sessions, an "
+                         "agent points at the opt-in call log (JASPER_MCP_LOG or Log Calls To File) and call_profile.py, "
+                         "instead of timing calls by hand or reading editor.log.",
+        "text_at_issue": "docs/mcp/guide/profiling.md 'The MCP call log'",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R17-R19; no failure on record",
+        "prompt": "Over the next week I want to see which of your editor tool calls are slow or fail most, across all our "
+                  "sessions. What should I turn on in the editor and how do I read the result afterwards? Answer in a few "
+                  "lines from the editor's docs; change nothing.",
+        "checks": {"reply_must": [r"JASPER_MCP_LOG|Log Calls To File", r"call_profile"],
+                   "must_not_call": ["write_file", "set_project_settings"]},
+        "max_turns": 8,
     },
     # ---- S98 F1: .mesh assets
     {

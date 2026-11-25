@@ -84,6 +84,16 @@ namespace jasperengine::editor::recorder {
         std::vector<std::filesystem::path> files;
         std::filesystem::path sidecar;
         double overriddenFixedFps = 0.0;  // MCP play's fixed_fps the recording replaced (0: none)
+        // S99 R14: what this recording took below what was asked: another H.264 encoder than
+        // libx264, a size clamped (the GPU's limit, even sizes for 4:2:0), audio dropped, frames
+        // recorded without waiting for what does not settle
+        struct Downgrade {
+            std::string step;
+            std::string from;
+            std::string to;
+            std::string reason;
+        };
+        std::vector<Downgrade> downgrades;
 
         mcp::Json sidecarJson() const;
     };
@@ -127,6 +137,9 @@ namespace jasperengine::editor::recorder {
         int64_t framesRecorded() const { return recorded; }
         int64_t gameFrame() const { return frameIndex; }
         const Settings& settings() const { return current; }
+        // the output size of the recording started (outputSize: clamped, even for a movie)
+        int outputWidth() const { return width; }
+        int outputHeight() const { return height; }
         // "REC 00:12 · frame 734" (empty when not recording): the Game view's overlay
         std::string overlayText() const;
         bool audioMuted() const;
@@ -196,6 +209,8 @@ namespace jasperengine::editor::recorder {
         std::chrono::steady_clock::time_point settleStart;
 
         bool arm(const Settings& settings, bool fromPlayStart, std::string& error);
+        // the size asked for against the output's: a downgrade when the limits changed it
+        void noteSizeDowngrade(int gameWidth, int gameHeight, int maxTextureSize);
         void warnAboutFreeSpace();
         bool assetsLoading() const;
         bool contentSettled() const;

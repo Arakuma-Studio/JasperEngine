@@ -11,6 +11,7 @@
 #include "Platform.h"
 #include "Project.h"
 #include "cli/CommandLine.h"
+#include "cook/BuildReport.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "io/AtomicFile.h"
 #include "platform/ExternalTools.h"
@@ -422,7 +423,11 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         if (!result.buildReport.empty()) {
             report["build_report"] = result.buildReport.string();
             report["build_bytes"] = result.buildBytes;
-            report["build_categories"] = result.buildCategories;
+            // S99 R10, R11: as build_project and build-report.json have them (every category)
+            ordered_json categories = ordered_json::object();
+            for (const std::string& name : BuildReport::categoryNames())
+                categories[name] = result.buildCategories.count(name) ? result.buildCategories.at(name) : 0;
+            report["build_categories"] = categories;
             // build-size-tools R35: the history id and the size budget rows the build met
             report["build_report_id"] = result.buildReportId;
             ordered_json budgets = ordered_json::array();
@@ -430,6 +435,16 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
                 budgets.push_back({{"platform", budget.platform}, {"category", budget.category}, {"limit_bytes", budget.limitBytes},
                                    {"bytes", budget.bytes}, {"over_bytes", budget.overBytes()}});
             report["size_budgets"] = budgets;
+            ordered_json top = ordered_json::array();
+            for (size_t i = 0; i < result.largestFiles.size() && i < 5; i++)
+                top.push_back({{"path", result.largestFiles[i].path}, {"bytes", result.largestFiles[i].bytes}});
+            report["top_files"] = top;
+            if (result.downloadBytesGzip) report["download_bytes_gzip"] = result.downloadBytesGzip;
+            if (result.downloadBudgetBytes) {
+                const uint64_t actual = result.downloadBytesGzip ? result.downloadBytesGzip : result.buildBytes;
+                report["download_budget"] = {{"budget_bytes", result.downloadBudgetBytes}, {"actual_bytes", actual},
+                                             {"over", actual > result.downloadBudgetBytes}};
+            }
             report["stripped_count"] = result.strippedCount;
             report["stripped_bytes"] = result.strippedBytes;
         }

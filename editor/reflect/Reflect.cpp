@@ -141,6 +141,7 @@ const char* reflect::assetKindName(AssetKind kind) {
         case AssetKind::Tileset: return "tileset";
         case AssetKind::TitleArt: return "title_art";
         case AssetKind::Mesh: return "mesh";
+        case AssetKind::IesProfile: return "ies_profile";
         case AssetKind::Dialogue: return "dialogue";
     }
     return "";

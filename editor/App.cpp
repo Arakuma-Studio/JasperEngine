@@ -1951,8 +1951,33 @@ void editor::App::showFooter(){
                  frameStats.drawCalls, (unsigned long long)frameStats.triangles);
         indicators.emplace_back(statText, textCol);
 
+        // S99 R16: the running MCP jobs that have an estimate (record_game, build_project...): their
+        // progress, or the share of the estimate elapsed, and the time left
+        struct JobBar {
+            float share = 0.0f;
+            std::string overlay;
+            std::string tooltip;
+        };
+        std::vector<JobBar> jobBars;
+        for (const mcp::JobPtr& job : mcp::McpServer::get().jobs().list()) {
+            if (job->finished() || jobBars.size() == 2) break;   // the running ones come first
+            mcp::JobEstimate estimate;
+            if (!job->estimate(estimate)) continue;
+            const double elapsed = job->elapsedSeconds();
+            const double progress = job->progress();
+            const double left = mcp::jobRemainingSeconds(estimate.seconds, elapsed, progress);
+            JobBar bar;
+            bar.share = static_cast<float>(progress >= 0.0 ? progress : (estimate.seconds > 0.0 ? std::min(0.99, elapsed / estimate.seconds) : 0.0));
+            bar.overlay = job->title() + " \xC2\xB7 " + (left >= 0.5 ? mcp::formatJobDuration(left) + " left" : std::string("finishing"));
+            bar.tooltip = job->title() + " (MCP " + job->id() + ")\nEstimated " + mcp::formatJobDuration(estimate.seconds) + " from the " +
+                          (estimate.basis == "history" ? "last runs" : "cost model") + ", " + estimate.confidence + " confidence; " +
+                          mcp::formatJobDuration(elapsed) + " elapsed";
+            jobBars.push_back(std::move(bar));
+        }
+        const float jobBarWidth = Theme::dpi(300.0f);
+
         const float gap = Theme::dpi(14.0f);
-        float indicatorsWidth = 0.0f;
+        float indicatorsWidth = static_cast<float>(jobBars.size()) * (jobBarWidth + gap);
         for (const auto& indicator : indicators) {
             indicatorsWidth += ImGui::CalcTextSize(indicator.first.c_str()).x + gap;
         }
@@ -2006,8 +2031,16 @@ void editor::App::showFooter(){
         } else {
             ImGui::SameLine();
         }
-        for (size_t i = 0; i < indicators.size(); i++) {
+        for (size_t i = 0; i < jobBars.size(); i++) {
             if (i > 0) ImGui::SameLine(0.0f, gap);
+            // no frame padding: the bar sits on the footer's text line
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
+            ImGui::ProgressBar(jobBars[i].share, ImVec2(jobBarWidth, ImGui::GetTextLineHeight()), jobBars[i].overlay.c_str());
+            ImGui::PopStyleVar();
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", jobBars[i].tooltip.c_str());
+        }
+        for (size_t i = 0; i < indicators.size(); i++) {
+            if (i > 0 || !jobBars.empty()) ImGui::SameLine(0.0f, gap);
             ImGui::TextColored(indicators[i].second, "%s", indicators[i].first.c_str());
             if (i == missingIndicator) {
                 if (ImGui::IsItemHovered()) {
@@ -6326,7 +6359,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      for its own sources at the time: a shared cache of either must not serve the other's programs.)
     // v68: S92's HTMLUI_POST: a layer composite's rectangle clip in the passthrough (v_dst, params.w).
     // v69: S92's u_fs_htmluiClip: a convex polygon (clip-path polygon(), includes/htmlui_sdf.glsl).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v69";
+    // v70: S99's Area Lights and IES Profiles (after S78's v66 and S92's v69): the built-in Lit's
+    //      USE_AREA_LIGHTS ('Ar') and USE_IES ('Ie') defines (includes/area_lights.glsl, u_lightProfiles in
+    //      includes/lights.glsl).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v70";
 }
 
 void editor::App::pushTabNotificationStyle(){

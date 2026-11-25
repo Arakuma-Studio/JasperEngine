@@ -250,6 +250,10 @@ namespace jasperengine::editor{
         bool windowOpen;
         bool focusRequested;
         int nameFocusFrames = 0;   // visible frames left for focusNameInput() to take
+        // the Skybox's Extract Sun (S99 R28): its Remove Sun Disc option and what the last run said
+        bool extractSunRemoveDisc = true;
+        std::string extractSunMessage;
+        bool extractSunFailed = false;
         bool finishProperty;
 
         std::set<std::string> usedPreviewIds;
@@ -496,6 +500,8 @@ namespace jasperengine::editor{
         void forgetSpriteFxScene(uint32_t sceneId);
         // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
         void drawAudioMixerAsset(const std::filesystem::path& asset);
+        // a selected .ies: its polar plot and metadata (InspectorIesProfile.cpp, S99 R37)
+        void drawIesProfileAsset(const std::filesystem::path& asset);
         // a selected .soundevent: its editor, problems, Match Levels and Audition (InspectorSoundEvent.cpp)
         void drawSoundEventAsset(const std::filesystem::path& asset);
         // AudioSource: the Event, Play On, impact and Variation rows and their warnings

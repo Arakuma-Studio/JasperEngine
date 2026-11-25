@@ -6907,6 +6907,7 @@ void editor::Project::resetConfigs() {
     stripEngineCode = true;
     assetStripping = AssetStrippingSettings();
     targetPlatforms = allTargetPlatforms;
+    downloadBudgetMB = {};
     spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setPixelsPerUnit(defaultPixelsPerUnit);

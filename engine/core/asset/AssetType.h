@@ -52,6 +52,7 @@ namespace jasperengine {
         NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
         TitleArt = 34,              // a .titleart Title Art document (S80; its GUID in its JSON)
         Mesh = 35,                  // a .mesh mesh asset (S98 F1; its GUID in its .meta)
+        IesProfile = 36,            // an .ies photometric profile of a light (S99 R36; its GUID in its .meta)
         StringTable = 37,           // a .stringtable String Table and its .translation files (game-ui-localization.md R41; GUID in its JSON)
         Dialogue = 38               // a .dialogue dialogue graph (dialogue-graphs.md R30; its GUID in its JSON)
     };
@@ -96,6 +97,7 @@ namespace jasperengine {
             case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::TitleArt: return "title_art";
             case AssetType::Mesh: return "mesh";
+            case AssetType::IesProfile: return "ies_profile";
             case AssetType::StringTable: return "stringtable";
             case AssetType::Dialogue: return "dialogue";
             case AssetType::Unknown: break;

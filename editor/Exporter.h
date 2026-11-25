@@ -156,6 +156,7 @@ namespace jasperengine::editor {
         fs::path executable;
         std::vector<fs::path> artifacts;
         std::vector<BuildWarning> warnings;
+        std::vector<BuildFallback> fallbacks;
         // what the user does next ("Open on a Mac with Xcode")
         std::vector<std::string> notes;
         // S34: the engine modules the build ships (a prebuilt player's: the ones the project
@@ -179,6 +180,12 @@ namespace jasperengine::editor {
         // an Android package that says android:debuggable (a Development Build of a runtime whose
         // manifest template has the {{DEBUGGABLE}} marker, R9)
         bool debuggable = false;
+        // S99 R10, R11: the largest files (largest first), a web build's gzip download estimate
+        // (0 otherwise), and the Download Budget the build was held to (0: none)
+        std::vector<BuildReportFile> largestFiles;
+        uint64_t downloadBytesGzip = 0;
+        uint64_t downloadBudgetBytes = 0;
+        std::string downloadBudgetFamily;     // "desktop", "mobile", "web"; empty: none (a source export)
         // S98 REQ-10: what Asset Stripping (and Exclude From Build) left out
         size_t strippedCount = 0;
         uint64_t strippedBytes = 0;

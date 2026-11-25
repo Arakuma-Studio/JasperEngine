@@ -89,8 +89,14 @@ namespace jasperengine::editor::mcp::titletools {
         std::function<bool(McpJob& job)> tick;                  // true when done (job finished by it)
         std::vector<ToolImage> images;
         std::string text;
+        // S99 R13: export_title's estimate ("" history kind: none)
+        std::string historyKind;
+        double modelSeconds = 0.0;
+        uint64_t modelBytes = 0;
     };
     void runFrameTask(const CallPtr& call, const std::string& kind, const std::string& title, std::shared_ptr<FrameTask> task);
+    // S99 R14: the output_downscaled warnings of an export as the job's resolution fallbacks
+    void addDownscaleFallbacks(McpJob& job, const std::vector<std::string>& warnings);
 
     // the render_title machinery, shared with edit_title's `render`
     struct RenderSpec {

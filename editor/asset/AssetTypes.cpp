@@ -77,6 +77,8 @@ namespace {
             {{AssetType::StringTable, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".stringtable", ".translation"}},
             // dialogue graphs (dialogue-graphs.md R30): a graph file with a top-level "guid", as .procmat
             {{AssetType::Dialogue, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".dialogue"}},
+            // a light's IES Profile (S99): the file holds no GUID, its .meta does
+            {{AssetType::IesProfile, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ies"}},
         };
         return table;
     }

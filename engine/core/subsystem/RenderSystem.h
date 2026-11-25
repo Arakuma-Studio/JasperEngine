@@ -521,6 +521,11 @@ namespace jasperengine{
 		// every Light component of the scene is Directional (enabled or not, so a flashlight
 		// switched on keeps the variant): the built-in Lit's 'Dlo' variant
 		bool directionalLightsOnly = false;
+		// S99: the scene has an Area Light / a light with an IES Profile (enabled or not): the
+		// built-in Lit's pixel-lit variants take USE_AREA_LIGHTS / USE_IES (in their builtin:lit
+		// reference); without them every variant stays the one it was
+		bool areaLights = false;
+		bool iesProfiles = false;
 		// the scene has a Water Excluder / a Water Wake (enabled or not): a shader requiring
 		// waterexclusion / waterwake takes 'Wex' / 'Wwk' (includes/water_interaction.glsl)
 		bool waterExclusion = false;
@@ -746,6 +751,7 @@ namespace jasperengine{
 
 	class FluidSystem;
 	class TitleArtSystem;
+	struct IesProfile;
 
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
@@ -1088,6 +1094,19 @@ namespace jasperengine{
 		std::array<SpotMaskAtlasEntry, SPOT_MASK_ATLAS_TILES> spotMaskAtlasEntries;
 		std::vector<unsigned char> spotMaskAtlasPixels;
 		bool spotMaskAtlasCreated;
+
+		// S99: the Area Lights' LTC tables and the IES Profiles, one RGBA16F texture of
+		// LIGHT_PROFILE_WIDTH texels: rows 0-63 the two 64x64 LTC tables side by side, then a band
+		// of IesProfile::GRID_ROWS rows per profile (LightComponent::iesProfileBand), in the order
+		// the scene's lights first name them. Made only while the scene has an Area Light or a
+		// profile, again when the profiles change.
+		static constexpr int LIGHT_PROFILE_WIDTH = 128;
+		static constexpr int LIGHT_PROFILE_LUT_ROWS = 64;
+		static constexpr int MAX_IES_PROFILES = 64;
+		TextureRender lightProfiles;
+		bool lightProfilesCreated = false;
+		std::vector<std::string> lightProfileBands;
+		std::unordered_map<std::string, std::shared_ptr<IesProfile>> iesProfileCache;
 
 		struct ReflectionProbeRuntime{
 			FramebufferRender captureFramebuffer;
@@ -1956,6 +1975,8 @@ namespace jasperengine{
 			Vector4 packed[4];
 			uint32_t cullingMask = LAYER_MASK_EVERYTHING;
 			int spotMaskTile = -1;
+			// spot_shadow.w's S99 bits: 14 an Area Light's Disc, 15-21 its IES Profile's band + 1
+			int profileBits = 0;
 			LightShading shading = LightShading::BOTH;
 			bool active = false;      // enabled, on an active entity, giving light
 
@@ -1968,7 +1989,11 @@ namespace jasperengine{
 		// bumped when every mesh has to pick its lights again: lights added, removed or
 		// reordered, the scene ambient or the cap changed
 		uint64_t lightListEpoch;
-		Vector3 lightListAmbient;
+		// the SH every object's ambient starts from (sceneAmbient), before its folded lights
+		Vector4 lightListAmbientSH[3];
+		// Environment Lighting Source Gradient as the meshes loaded: the sky's irradiance map is
+		// not bound then (the gradient is the diffuse ambient)
+		bool loadedAmbientGradient = false;
 		int lightListCap;
 		// capacity tier the meshes loaded their variants with
 		int lightCapacityTier;
@@ -1979,6 +2004,12 @@ namespace jasperengine{
 		// a point or spot Light was in the scene since load(): the general Lit stays until the
 		// next load, so lights that come and go never reload every mesh again
 		bool nonDirectionalLightSeen = false;
+		// S99: an Area Light / a light with an IES Profile was in the scene since load() (the
+		// variants with them stay until the next load), and as the meshes loaded
+		bool areaLightSeen = false;
+		bool iesProfileSeen = false;
+		bool loadedAreaLights = false;
+		bool loadedIesProfiles = false;
 		// the Lit Quality and the lobe tier the meshes loaded their variants with
 		LitQuality loadedLitQuality;
 		PbrTier loadedPbrTier;
@@ -2485,6 +2516,13 @@ namespace jasperengine{
 		// the camera part of the lighting (frame block, legacy block) and the shadow uniforms of target for camera
 		void processLights(CameraShadows& target, int numLights, const CameraComponent& camera, const Transform& cameraTransform);
 		void updateSpotMaskAtlas(int numLights);
+		// S99: the profiles' bands of the lights (iesProfileBand) and the texture holding them
+		void updateLightProfiles();
+	public:
+		// the light profiles' texture (tests): whether it is made, its bands after the LTC tables
+		bool hasLightProfiles() const { return lightProfilesCreated; }
+		int getLightProfileBands() const { return (int)lightProfileBands.size(); }
+	private:
 		// unified lighting: the scene's lights, then the lights each mesh is lit by
 		void updateSceneLights();
 		void updateObjectLights();
@@ -2494,6 +2532,10 @@ namespace jasperengine{
 		void orderObjectLights(const MeshComponent& mesh, uint64_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
 		// the per-object lights block of a submesh variant for the camera pass being drawn
 		void buildObjectLights(const MeshComponent& mesh, uint64_t properties, object_lights_t& block) const;
+		// the scene's ambient as the lit shaders take it (SceneSettings::AmbientMode): the SH every
+		// object starts from, its average over every facing (flat consumers: particles, clouds), and
+		// the part Lit treats as uniform (litFrame ambient; the rest of the SH it adds as overflow)
+		void sceneAmbient(Vector4 sh[3], Vector3& flat, Vector3& litFlat) const;
 		int passLightCascades(const SceneLight& light) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
 		void buildLegacyLighting(const MeshComponent& mesh, uint64_t properties, fs_lighting_t& block) const;

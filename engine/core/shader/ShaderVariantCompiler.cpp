@@ -1550,11 +1550,13 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         bool rawViewOff = false;
         bool spotMasksOff = false;
         bool shadows2DOff = false;
+        bool lightProfilesOff = false;
     };
     Fallbacks taken;
     auto build = [&](const Fallbacks& fallbacks) -> std::string {
         // (a retry reports no progress: the first pass did)
-        const bool retry = fallbacks.lightRecords || fallbacks.rawViewOff || fallbacks.spotMasksOff || fallbacks.shadows2DOff;
+        const bool retry = fallbacks.lightRecords || fallbacks.rawViewOff || fallbacks.spotMasksOff || fallbacks.shadows2DOff ||
+                           fallbacks.lightProfilesOff;
         shadercompiler::args_t args;
         std::string setupError;
         if (!prepareVariantArgs(key, backend, customSources, args, setupError))
@@ -1567,6 +1569,8 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
             args.defines.push_back({"SPOT_MASKS_OFF", "1"});
         if (fallbacks.shadows2DOff)
             args.defines.push_back({"SHADOWS_2D_OFF", "1"});
+        if (fallbacks.lightProfilesOff)
+            args.defines.push_back({"LIGHT_PROFILES_OFF", "1"});
         args.error_output = &compileLog;
 
         if (stopped())
@@ -1680,6 +1684,15 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         compileLog += std::string(SHADOWS_2D_LEFT_OUT) + ": the lights' records would take the variant past 16 samplers or "
                       "16 fragment textures; its 2D lights light it unshadowed\n";
         taken.shadows2DOff = true;
+        failure = build(taken);
+    }
+    // last, without the light profiles (S99, LIGHT_PROFILES_OFF: the IES Profiles and the Area
+    // Lights' LTC tables): its IES lights light it with their cones, its Area Lights with the
+    // representative point
+    if (failure.empty() && isOverBindLimits(out) && out.getTextureIndexByName("u_lightProfiles").first >= 0) {
+        compileLog += std::string(LIGHT_PROFILES_LEFT_OUT) + ": the light profiles would take the variant past 16 samplers or "
+                      "16 fragment textures; IES Profiles are left out and Area Lights shade with the representative point\n";
+        taken.lightProfilesOff = true;
         failure = build(taken);
     }
     if (!failure.empty()) {

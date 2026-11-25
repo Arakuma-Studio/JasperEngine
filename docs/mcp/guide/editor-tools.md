@@ -73,7 +73,8 @@ exactly 1/fps per frame (frame k is game time k/fps, the same on every machine) 
 the Recorder window's resolution); `audio: true` mixes the game's sound in (from Play's start
 only). The result is the sidecar (`frames, fps, width, height, encoder, scene, take,
 startFrame, warnings, wallSeconds`) with `files` or `movie`; `<output>.recording.json` holds the
-same. `cancel_job` stops early and still finalises. A `play` `fixed_fps` is replaced while
+same. `report` compares the time taken with the `estimate` the job got at submit and lists its
+`fallbacks` (another encoder than libx264, a clamped size or fps, audio dropped): tell the user. `cancel_job` stops early and still finalises. A `play` `fixed_fps` is replaced while
 recording and restored after (`overrode_fixed_fps`).
 
 From a shell: `jasperengine-editor call --project P --wait-job record_game --frames 90 --format mp4 --output out.mp4`.
