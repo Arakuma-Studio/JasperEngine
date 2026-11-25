@@ -368,7 +368,7 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
   settings `localization.remember_language = true`, `localization.default_table = ""`,
   `localization.fonts = {}`. Reflection tables,
   codecs, `ReflectParity` golden and `catalog_snapshot.json` gain `localizationKey`.
-- **R41 Asset types.** `AssetType::StringTable` (36 at the time of writing, after #18's Mesh 35; covers `.stringtable`
+- **R41 Asset types.** `AssetType::StringTable` (37 at the time of writing, after #149's IES Profile 36; covers `.stringtable`
   and `.translation`, GUID in-file) appended after `TitleArt = 34` with an explicit value; Lua
   name `stringtable`. Moving or renaming an owner moves its `<stem>.<lang>.translation` siblings
   with it (one undo step); translations also resolve their owner by GUID.

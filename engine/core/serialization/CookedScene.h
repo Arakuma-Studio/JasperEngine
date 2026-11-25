@@ -48,12 +48,12 @@ namespace jasperengine {
         constexpr uint16_t FORMAT_MINOR = 7;
         // Content minors past the cooked files' layout: what a build's game.json uses. A build stamps one
         // only when it uses it, so a build that does not stays playable by every runtime of FORMAT_MINOR.
-        // 8: game.json's buildProfile and defines (build-profiles: a runtime of 7 or older ignores them and would
-        // run a demo as the full game)
-        constexpr uint16_t BUILD_PROFILE_MINOR = 8;
+        // 11: game.json's buildProfile and defines (build-profiles: a runtime of 10 or older ignores them and
+        // would run a demo as the full game)
+        constexpr uint16_t BUILD_PROFILE_MINOR = 11;
         // The newest content minor this runtime reads: its player-info's contentFormatVersion
         // (tools/players/package_player.py reads this line)
-        constexpr uint16_t CONTENT_MINOR = 8;
+        constexpr uint16_t CONTENT_MINOR = 11;
         static_assert(CONTENT_MINOR >= FORMAT_MINOR && CONTENT_MINOR >= BUILD_PROFILE_MINOR, "CONTENT_MINOR is the newest minor");
         constexpr size_t HEADER_BYTES = 28;
 
@@ -61,10 +61,10 @@ namespace jasperengine {
         constexpr uint8_t ENTITY_SYSTEM = 1;     // made with createSystemEntity (a default camera)
         constexpr uint8_t ENTITY_PRESENT = 2;    // a prefab slot that holds a GameObject
 
-        // "1.8": the newest content format this runtime reads (player-info's contentFormatVersion)
+        // "1.11": the newest content format this runtime reads (player-info's contentFormatVersion)
         JASPERENGINE_API std::string contentFormatVersion();
         // The content format a build's content needs (its content manifest's contentFormatVersion):
-        // the cooked files' layout, or BUILD_PROFILE_MINOR when game.json carries a Build Profile
+        // the cooked files' layout, or no older than BUILD_PROFILE_MINOR when game.json carries a Build Profile
         JASPERENGINE_API std::string buildContentFormatVersion(bool buildProfile);
         // A reader of format `reader` ("1.5") reads all of content of format `content`: the same
         // major and no newer a minor. False for a version that is not "<major>.<minor>".

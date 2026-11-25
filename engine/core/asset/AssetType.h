@@ -52,8 +52,8 @@ namespace jasperengine {
         NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
         TitleArt = 34,              // a .titleart Title Art document (S80; its GUID in its JSON)
         Mesh = 35,                  // a .mesh mesh asset (S98 F1; its GUID in its .meta)
-        StringTable = 36,           // a .stringtable String Table and its .translation files (game-ui-localization.md R41; GUID in its JSON)
-        Dialogue = 37               // a .dialogue dialogue graph (dialogue-graphs.md R30; its GUID in its JSON)
+        StringTable = 37,           // a .stringtable String Table and its .translation files (game-ui-localization.md R41; GUID in its JSON)
+        Dialogue = 38               // a .dialogue dialogue graph (dialogue-graphs.md R30; its GUID in its JSON)
     };
     // the highest value present (a sibling's reserved value below it may still be missing)
     inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::Dialogue);

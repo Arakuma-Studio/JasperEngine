@@ -145,7 +145,7 @@ std::string cook::contentFormatVersion() {
 }
 
 std::string cook::buildContentFormatVersion(bool buildProfile) {
-    return std::to_string(FORMAT_MAJOR) + "." + std::to_string(buildProfile ? BUILD_PROFILE_MINOR : FORMAT_MINOR);
+    return std::to_string(FORMAT_MAJOR) + "." + std::to_string(buildProfile ? std::max(FORMAT_MINOR, BUILD_PROFILE_MINOR) : FORMAT_MINOR);
 }
 
 namespace {

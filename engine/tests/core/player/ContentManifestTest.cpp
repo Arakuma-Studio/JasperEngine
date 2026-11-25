@@ -111,7 +111,9 @@ TEST(ContentManifest, ReadsContentFormat) {
     // without a profile needs only the cooked files' minor, so older runtimes still serve it
     const std::string cooked = std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::FORMAT_MINOR);
     EXPECT_EQ(cook::buildContentFormatVersion(false), cooked);
-    EXPECT_EQ(cook::buildContentFormatVersion(true), std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::BUILD_PROFILE_MINOR));
+    EXPECT_EQ(cook::buildContentFormatVersion(true),
+              std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(std::max(cook::FORMAT_MINOR, cook::BUILD_PROFILE_MINOR)));
+    EXPECT_TRUE(cook::readsContentFormat(cook::buildContentFormatVersion(true), cooked)) << "a profile's build carries the cooked files too";
     EXPECT_TRUE(cook::readsContentFormat(cook::contentFormatVersion(), cook::buildContentFormatVersion(true)));
     EXPECT_TRUE(cook::readsContentFormat(cooked, cook::buildContentFormatVersion(false)));
     EXPECT_FALSE(cook::readsContentFormat(cooked, cook::buildContentFormatVersion(true)));

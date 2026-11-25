@@ -25,8 +25,8 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
         if (value == 27) {
             continue;
         }
-        // 35 is #18's Mesh (the number ledger), which main does not have yet
-        if (value == 35 && assetTypeName(static_cast<AssetType>(value)) == std::string("unknown")) {
+        // 36 is #149's IES Profile (the number ledger), which this branch does not have yet
+        if (value == 36 && assetTypeName(static_cast<AssetType>(value)) == std::string("unknown")) {
             continue;
         }
         const AssetType type = static_cast<AssetType>(value);
@@ -42,9 +42,9 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
     EXPECT_EQ(static_cast<int>(AssetType::TitleArt), 34) << "the numbers are a file format: append only";
     EXPECT_EQ(static_cast<int>(AssetType::Mesh), 35) << "the numbers are a file format: append only";
     EXPECT_EQ(assetTypeFromName("mesh"), AssetType::Mesh);
-    EXPECT_EQ(static_cast<int>(AssetType::StringTable), 36) << "the numbers are a file format: append only";
+    EXPECT_EQ(static_cast<int>(AssetType::StringTable), 37) << "the numbers are a file format: append only";
     EXPECT_EQ(assetTypeFromName("stringtable"), AssetType::StringTable);
-    EXPECT_EQ(static_cast<int>(AssetType::Dialogue), 37) << "the numbers are a file format: append only";
+    EXPECT_EQ(static_cast<int>(AssetType::Dialogue), 38) << "the numbers are a file format: append only";
     EXPECT_EQ(assetTypeFromName("dialogue"), AssetType::Dialogue);
     EXPECT_EQ(assetTypeFromName("nothing"), AssetType::Unknown);
 }
