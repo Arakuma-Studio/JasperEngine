@@ -104,7 +104,7 @@ TEST(StreamProjectHtmlUiRender, MsaaAutoForNewProjectsFourWithoutTheKey) {
 TEST(StreamProjectHtmlUiRender, ExportsCarryMsaaAuto) {
     // every build reads game.json (S98 D1): a new project's Auto (0) is what it carries
     Project project;
-    const jasperengine::player::PlayerConfig game = makeGameConfig(project, GameConfigTarget());
+    const jasperengine::player::PlayerConfig game = cook::makeGameConfig(project, cook::GameConfigTarget());
     EXPECT_EQ(game.htmlUiMsaa, 0);
 
     // 0 written and read; a game.json without it is Auto too
