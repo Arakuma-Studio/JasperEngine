@@ -384,6 +384,10 @@ BodyType Rigidbody::getType() const{
     if (body.hasPendingType){
         return body.pendingType;
     }
+    // frozen by Simulation Culling: kinematic in Jolt, the authored type to scripts
+    if (body.simulationFrozen){
+        return body.type;
+    }
     checkBody(body);
     return getJoltToBodyType(getBodyInterface().GetMotionType(body.body));
 }
@@ -972,6 +976,10 @@ Entity Rigidbody::getAttachedBody() const{
 Vector3 Rigidbody::getLinearVelocity() const{
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
+    // frozen by Simulation Culling: the velocity it had, which it gets back when it thaws
+    if (body.simulationFrozen){
+        return body.frozenLinearVelocity;
+    }
     checkBody(body);
     JPH::Vec3 vec = getBodyInterface().GetLinearVelocity(body.body);
 
@@ -981,12 +989,21 @@ Vector3 Rigidbody::getLinearVelocity() const{
 void Rigidbody::setLinearVelocity(Vector3 linearVelocity){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
+    if (body.simulationFrozen){
+        body.frozenLinearVelocity = linearVelocity;
+        return;
+    }
     checkBody(body);
     scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, true, false);
     getBodyInterface().SetLinearVelocity(body.body, JPH::Vec3(linearVelocity.x, linearVelocity.y, linearVelocity.z));
 }
 
 void Rigidbody::setLinearVelocityClamped(Vector3 linearVelocity){
+    RigidbodyComponent& frozenBody = getComponent<RigidbodyComponent>();
+    if (frozenBody.simulationFrozen){
+        frozenBody.frozenLinearVelocity = linearVelocity;
+        return;
+    }
     scene->getSystem<PhysicsSystem>()->stopFollowing3D(getComponent<RigidbodyComponent>(), true, false);
     getJoltBodyWrite().SetLinearVelocityClamped(JPH::Vec3(linearVelocity.x, linearVelocity.y, linearVelocity.z));
 }
@@ -994,6 +1011,9 @@ void Rigidbody::setLinearVelocityClamped(Vector3 linearVelocity){
 Vector3 Rigidbody::getAngularVelocity() const{
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
+    if (body.simulationFrozen){
+        return body.frozenAngularVelocity;
+    }
     checkBody(body);
     JPH::Vec3 vec = getBodyInterface().GetAngularVelocity(body.body);
 
@@ -1003,12 +1023,21 @@ Vector3 Rigidbody::getAngularVelocity() const{
 void Rigidbody::setAngularVelocity(Vector3 angularVelocity){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
+    if (body.simulationFrozen){
+        body.frozenAngularVelocity = angularVelocity;
+        return;
+    }
     checkBody(body);
     scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, false, true);
     getBodyInterface().SetAngularVelocity(body.body, JPH::Vec3(angularVelocity.x, angularVelocity.y, angularVelocity.z));
 }
 
 void Rigidbody::setAngularVelocityClamped(Vector3 angularVelocity){
+    RigidbodyComponent& frozenBody = getComponent<RigidbodyComponent>();
+    if (frozenBody.simulationFrozen){
+        frozenBody.frozenAngularVelocity = angularVelocity;
+        return;
+    }
     scene->getSystem<PhysicsSystem>()->stopFollowing3D(getComponent<RigidbodyComponent>(), false, true);
     getJoltBodyWrite().SetAngularVelocityClamped(JPH::Vec3(angularVelocity.x, angularVelocity.y, angularVelocity.z));
 }

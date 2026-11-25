@@ -70,6 +70,10 @@ namespace jasperengine{
         void show(); void hide();
         void setVisible(bool visible); bool isVisible() const;   // component.enabled
         void setSortOrder(int sortOrder); int getSortOrder() const;   // higher draws on top
+        // Is Menu: Back goes here first, showing it releases the game's held input (Engine::isMenuShowing)
+        void setMenu(bool menu); bool isMenu() const;
+        // Gamepad Cursor: while the player uses a gamepad, the stick moves a pointer over the documents
+        void setGamepadCursor(bool enabled); bool isGamepadCursor() const;
 
         UIElement getElementById(const std::string& id) const;
         UIElement getBody() const;                       // the document element (RML body)

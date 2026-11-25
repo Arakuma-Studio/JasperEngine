@@ -17,7 +17,9 @@
 #include <gtest/gtest.h>
 
 using namespace jasperengine;
-using namespace jasperengine::pixelart;
+// the tests in Pixel Art's namespace: a file-scope using-directive would reach the next source of a
+// unity unit (docs/testing.md, Unity build)
+namespace jasperengine::pixelart {
 
 namespace {
 
@@ -273,4 +275,6 @@ TEST(ScreenTransitionController, ACompositeTransitionBakesOffscreenPipelines){
     Engine::setCompositeExpected(false);
     Engine::removeScene(&scene);
     Engine::setFramebuffer(target);
+}
+
 }

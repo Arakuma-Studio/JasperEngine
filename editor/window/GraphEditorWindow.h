@@ -50,6 +50,7 @@
 #include "graph/GraphDocument.h"
 #include "window/widget/GraphCanvas.h"
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
@@ -74,6 +75,8 @@ namespace jasperengine::editor{
             std::vector<graph::GraphOp> fix;    // a single edit Fix applies (empty: no Fix)
             std::string fixLabel;               // its undo name
             uint64_t revision = 0;              // the document's revision it was found on: Fix refuses another
+            // a fix that is no graph edit (a dialogue's "declare prefix": Project Settings), run instead of `fix`
+            std::function<bool()> fixAction;
         };
         // An entry of the node search: a node type, or one value of one of its enum parameters
         struct SearchEntry{
@@ -197,6 +200,9 @@ namespace jasperengine::editor{
         virtual void documentClosed() {}
         // items a kind's window adds to an Inspector row's right-click menu (Expose)
         virtual void drawParamMenuExtras(const graph::Node&, const std::string&) {}
+        // the Inspector's rows of a node drawn by the kind's window instead of the generic ones
+        // (the Dialogue window's line: text, variants, options); true when it drew
+        virtual bool drawKindNodeInspector(const graph::Node&) { return false; }
 
         // what the edits above do: `ops` as one undo step, refused with the status when they fail
         bool apply(const std::vector<graph::GraphOp>& ops, const std::string& undoName, std::vector<graph::GraphOp>* inverses = nullptr);

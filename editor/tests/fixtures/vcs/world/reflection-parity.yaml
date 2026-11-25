@@ -89,6 +89,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 22, 0, 0, 1]
+  DialogueRunnerComponent:
+    position: [105, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 105, 0, 0, 1]
   FluidSimulationComponent:
     position: [53, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -369,6 +374,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 50, 0, 0, 1]
+  SimulationCullingComponent:
+    position: [104, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 104, 0, 0, 1]
   SkyboxComponent:
     position: [7, 0, 0]
     rotation: [1, 0, 0, 0]

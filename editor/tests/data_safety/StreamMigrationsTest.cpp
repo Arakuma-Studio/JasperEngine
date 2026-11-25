@@ -128,8 +128,8 @@ TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
     EXPECT_FLOAT_EQ(root["entities"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][1]["children"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][2]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
-    // one line for the quality, one for the biases (two lights reset)
-    ASSERT_EQ(result.log.lines.size(), 2u);
+    // one line for the quality, one for the biases (two lights reset), one for the HTML UI render mode
+    ASSERT_EQ(result.log.lines.size(), 3u);
     EXPECT_NE(result.log.lines[1].find("2 lights' Bias reset to 1"), std::string::npos) << result.log.lines[1];
 
     // an explicit quality other than Low stays
@@ -462,4 +462,30 @@ TEST(StreamMigrations, ProjectV1KeepsPerspectiveSort){
     decodeModelProjectSettings(current["mesh"], meshSettings);
     EXPECT_EQ(meshSettings.fbxSubmeshOrder, FbxSubmeshOrder::MaterialSlots);
     EXPECT_FALSE(encodeModelProjectSettings(meshSettings)["fbxSubmeshOrder"]) << "the default is not written";
+TEST(StreamMigrations, SceneV9ToV10KeepsTheCameraRenderMode){
+    // S92: an absent htmlUiRenderMode is Screen Space - Overlay now; a scene saved before it drew
+    // its screen documents in the camera pass, so it keeps Screen Space - Camera
+    YAML::Node root = YAML::Load("{formatVersion: 9, scene: {backgroundColor: [0, 0, 0, 1]}, entities: []}");
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
+    ASSERT_EQ(result.applied.size(), 2u) << "S92's 9 -> 10, then S94's 10 -> 11 (no texts or animators)";
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
+    EXPECT_EQ(root["scene"]["htmlUiRenderMode"].as<std::string>(), "camera");
+    ASSERT_EQ(result.log.lines.size(), 1u);
+    EXPECT_NE(result.log.lines[0].find("Screen Space - Camera"), std::string::npos) << result.log.lines[0];
+
+    // a mode already written stays (a hand edit, or a key copied from a newer scene)
+    YAML::Node overlay = YAML::Load("{formatVersion: 9, scene: {htmlUiRenderMode: overlay}, entities: []}");
+    StreamMigrations::migrate(DocumentKind::Scene, overlay);
+    EXPECT_EQ(overlay["scene"]["htmlUiRenderMode"].as<std::string>(), "overlay");
+
+    // without a settings map nothing is added: the map would change how its other absent keys decode
+    YAML::Node bare = YAML::Load("{formatVersion: 9, entities: []}");
+    StreamMigrations::migrate(DocumentKind::Scene, bare);
+    EXPECT_FALSE(bare["scene"]);
+
+    // a current scene is not touched: absent is Overlay
+    YAML::Node current = YAML::Load("{formatVersion: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) +
+                                    ", scene: {backgroundColor: [0, 0, 0, 1]}, entities: []}");
+    EXPECT_FALSE(StreamMigrations::migrate(DocumentKind::Scene, current).migrated());
+    EXPECT_FALSE(current["scene"]["htmlUiRenderMode"]);
 }

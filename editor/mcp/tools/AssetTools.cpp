@@ -352,7 +352,8 @@ bool color01(const Json& value, std::array<float, 4>& out, std::string& error) {
     if (value.is_string()) {
         std::string hex = value.get<std::string>();
         if (!hex.empty() && hex[0] == '#') hex.erase(0, 1);
-        if (hex.size() != 6 && hex.size() != 8) {
+        if ((hex.size() != 6 && hex.size() != 8) ||
+            !std::all_of(hex.begin(), hex.end(), [](unsigned char c) { return std::isxdigit(c) != 0; })) {
             error = "colors are [r,g,b(,a)] in 0..1 or \"#RRGGBB(AA)\".";
             return false;
         }
@@ -965,6 +966,13 @@ void getAssetInfoTool(const CallPtr& call) {
         call->ok(text + ": " + data["sound_event"]["mode"].get<std::string>() + ", " + std::to_string(data["sound_event"]["clips"].size()) +
                  " clip(s), " + std::to_string(problems.size()) + " problem(s).", data);
         return;
+    }
+    if (Util::isDataAssetFile(rel)) {
+        // S95 REQ-24: its class and values
+        data["data_asset"] = dataAssetInfo(project, file);
+        const Json& block = data["data_asset"];
+        text += ": " + (block["class"].is_string() ? block["class"].get<std::string>() : std::string("unreadable")) + ", " +
+                std::to_string(block.value("problems", Json::array()).size()) + " problem(s)";
     }
     if (kind != "script" && kind != "shader" && kind != "material" && kind != "scene" && kind != "prefab" && kind != "other") {
         data["inside_assets_dir"] = project->isInsideAssetsPath(file);
@@ -4966,7 +4974,9 @@ const std::vector<std::pair<std::string, std::string>>& textureSettingFields() {
         // S42 R4, R6, R7
         {"pixel_art", "pixelArt"}, {"alpha_clip", "alphaClip"}, {"filter_mode", "filterMode"}, {"pixels_per_unit", "pixelsPerUnit"},
         // S94 F48: a PSD/PSB's layers as sprites
-        {"import_mode", "importMode"}, {"character_rig", "characterRig"}};
+        {"import_mode", "importMode"}, {"character_rig", "characterRig"},
+        // S99 R29
+        {"remove_sun_disc", "removeSunDisc"}};
     return fields;
 }
 

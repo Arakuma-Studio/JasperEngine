@@ -66,7 +66,8 @@ namespace jasperengine::editor {
         NOISE_GRAPH,        // .noisegraph (the Noise Graph window)
         TILESET,            // .tileset (the Tileset Editor; a thumbnail of its tiles)
         TITLE_ART,          // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
-        MESH_ASSET          // .mesh (S98 F1; get_asset_info, the Mesh Renderer's Mesh field): an icon
+        MESH_ASSET,         // .mesh (S98 F1; get_asset_info, the Mesh Renderer's Mesh field): an icon
+        IES_PROFILE         // .ies (S99: the Inspector's polar plot and metadata)
     };
 
     struct FileEntry {
@@ -633,6 +634,8 @@ namespace jasperengine::editor {
         // Assets > Create > Title Art (S80 R7): "New Title Art.titleart", baked at once
         void assetsCreateTitleArt(const fs::path& directory);
         void assetsCreateProceduralMaterial(const fs::path& directory);
+        // dialogue-graphs.md R22: Create > Dialogue
+        void assetsCreateDialogue(const fs::path& directory);
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer(const fs::path& directory);
@@ -642,6 +645,11 @@ namespace jasperengine::editor {
         // the Create list's Noise Graph entry: a submenu of Blank and the presets
         void renderNoiseGraphCreateMenu(const std::string& label, const fs::path& directory);
         void assetsCreateSoundEvent(const fs::path& directory);
+        // Create > Data Asset > <class> (S95 REQ-21): "New <class>.dataasset" with the class's defaults,
+        // one project undo step, then renamed in place; refused (an alert) outside the assets folder
+        void assetsCreateDataAsset(const std::string& className, const fs::path& directory);
+        // the Create list's Data Asset entry: a submenu of the project's data classes
+        void renderDataAssetCreateMenu(const std::string& label, const fs::path& directory);
         // a shuffle event of the selected audio files
         void assetsCreateSoundEventFromClips();
         bool hasAudioSelection() const;

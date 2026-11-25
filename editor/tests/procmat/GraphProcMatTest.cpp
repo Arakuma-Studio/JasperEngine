@@ -14,6 +14,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
+// its own name: another Json is in sight in some unity units
+using GraphProcMatJson = jasperengine::editor::procmat::Json;
 
 namespace {
 
@@ -175,9 +177,9 @@ TEST_F(GraphProcMatTest, TheCatalogComesFromTheDescriptors) {
     const auto mode = std::find_if(blend->params.begin(), blend->params.end(), [](const graph::ParamDesc& param) { return param.name == "blend_type"; });
     ASSERT_NE(mode, blend->params.end());
     // a file names enum values; the descriptor stores its default as an index
-    const Json* descriptor = library->descriptor("blend");
+    const GraphProcMatJson* descriptor = library->descriptor("blend");
     ASSERT_NE(descriptor, nullptr);
-    const Json& definition = *std::find_if((*descriptor)["parameters"].begin(), (*descriptor)["parameters"].end(), [](const Json& p) { return p["name"] == "blend_type"; });
+    const GraphProcMatJson& definition = *std::find_if((*descriptor)["parameters"].begin(), (*descriptor)["parameters"].end(), [](const GraphProcMatJson& p) { return p["name"] == "blend_type"; });
     EXPECT_EQ(mode->defaultValue, enumValueIds(definition).at(definition["default"].get<size_t>()));
     EXPECT_NE(std::find(mode->enumValues.begin(), mode->enumValues.end(), "hard_light"), mode->enumValues.end());
 
@@ -266,7 +268,7 @@ TEST_F(GraphProcMatTest, EveryCatalogPresetIsAValidNode) {
     // what Assets > Create and the search would place: an entry's values pass the check they will meet
     int checked = 0;
     for (const auto& [id, descriptor] : library->descriptors()) {
-        const Json* entry = library->catalogEntry(id);
+        const GraphProcMatJson* entry = library->catalogEntry(id);
         if (!entry || !entry->contains("parameters")) continue;
         graph::Node node;
         node.id = "n1";

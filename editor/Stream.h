@@ -240,6 +240,9 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeScriptProperty(const ScriptProperty& prop);
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
+        // a list property's value (S95 REQ-20): each element as its single property stores its value
+        static YAML::Node encodeScriptList(ScriptPropertyType elementType, const ScriptPropertyValue& value);
+        static ScriptPropertyList decodeScriptList(ScriptPropertyType elementType, const YAML::Node& value);
 
     public:
         // ---- value helpers: the scene codec's text of each value type, shared with the

@@ -43,6 +43,10 @@ namespace jasperengine {
 }
 
 namespace jasperengine::test {
+    class RenderTestContext;
+}
+
+namespace jasperengine::test {
 
     struct FixtureStep {
         // SeekVideo (phase 6): a <video>'s currentTime set (`seconds`), the frame shown before the next step
@@ -181,6 +185,8 @@ namespace jasperengine::test {
 
         Rml::Context* context() const;
         RmlRenderer* renderer() const;   // the context's (leak counts of the <video> tests)
+        // the context's render target and screen (S92: the composite of the frames it keeps)
+        RenderTestContext* renderContext() const;
         // the last frame asked for another one (text settling at its on-screen scale, S16 R15)
         bool renderRequested() const;
         // the font engine's counters of the last frame drawn (S16)

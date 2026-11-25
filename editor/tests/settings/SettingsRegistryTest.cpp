@@ -77,7 +77,8 @@ TEST(SettingsRegistry, PreferencePagesFollowTheWindowsCategories) {
     std::vector<std::string> titles;
     for (const SettingsPage* page : registry.pages(SettingsScope::Preference)) titles.push_back(page->displayName());
     EXPECT_EQ(titles, (std::vector<std::string>{"General", "Code Editor", "Asset Pipeline", "Scripting", "Undo", "Lattice", "Scene View",
-                                                "External Tools", "Logging", "Pixel Art", "Diagnostics", "Shader Cache", "Version Control"}));
+                                                "External Tools", "Logging", "Pixel Art", "Diagnostics", "Shader Cache", "Version Control",
+                                                "Play Mode"}));
     const SettingRow* highlight = registry.find("preferences.pixel_art.agent_edit_highlight");
     ASSERT_NE(highlight, nullptr);
     EXPECT_TRUE(highlight->mcp);

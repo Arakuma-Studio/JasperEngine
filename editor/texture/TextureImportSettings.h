@@ -117,6 +117,8 @@ namespace jasperengine::editor {
         // why it is CPU-readable ("TerrainComponent.heightMap of scenes/main.scene")
         std::string cpuReason;
         TextureSizeStrategy strategy = TextureSizeStrategy::None;
+        // S99 R29: the sun's disc of an HDR sky clamped to the ring around it (lighting/HdriSun.h)
+        bool removeSunDisc = false;
 
         // the processing of the levels (the raw path takes the same)
         TextureProcessing processing() const;
@@ -160,6 +162,8 @@ namespace jasperengine::editor {
         // bones as GameObjects, each layer's Sprite Skin bound to them)
         std::optional<TextureImportMode> importMode;
         std::optional<bool> characterRig;
+        // S99 R29: Remove Sun Disc (an HDR sky whose sun a Directional Light gives: Extract Sun)
+        std::optional<bool> removeSunDisc;
         std::array<TexturePlatformSettings, kTextureFamilyCount> platforms;
         // keys this version does not know, kept as they were
         YAML::Node unknown;

@@ -26,6 +26,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
+// its own name: another Json is in sight in some unity units
+using ProceduralCpuEvaluatorJson = jasperengine::editor::procmat::Json;
 
 namespace {
 
@@ -58,7 +60,7 @@ namespace {
     }
 
     std::string firstPort(const std::shared_ptr<const NodeLibrary>& library, const std::string& type, graph::PortDirection direction) {
-        const Json* descriptor = library->descriptor(type);
+        const ProceduralCpuEvaluatorJson* descriptor = library->descriptor(type);
         EXPECT_NE(descriptor, nullptr) << type;
         if (!descriptor) return {};
         for (const graph::Port& port : nodePorts(*descriptor, 1)) {

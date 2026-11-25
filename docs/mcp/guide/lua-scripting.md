@@ -66,6 +66,8 @@ return Player
   onFixedUpdate). Mouse delta: Input.getMouseDelta(). More: jasper://docs/input. Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
   Engine.frameCount (scaled game time and frames since start).
+- A Simulation Culling component skips the update callbacks of a far GameObject: its scripts get
+  onSimulationCulled(reason) and onSimulationResumed() (stop NavMesh Agents, sounds there).
 - Lua has no C++ default arguments: pass every argument (e.g. the wake flag).
 - Lua has no on_start, getComponent or setProperty (timers: Timer.after/every). Never put
   editor property paths (submeshes[0]...) in scripts.

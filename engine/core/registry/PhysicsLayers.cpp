@@ -3,6 +3,7 @@
 
 #include "PhysicsLayers.h"
 #include "Log.h"
+#include "physics/PhysicsQueryDebug.h"
 
 #include <cmath>
 
@@ -231,6 +232,26 @@ namespace{
         }
     }
 
+    // a ray counts as a query (monitors) and is drawn as a zero-radius cast (debug draw)
+    void noteRay(Scene* scene, const Ray& ray, const RayReturn* hits, size_t count, bool is2D){
+        Physics::countQuery(count);
+        if (!physics::recordingQueries()){
+            return;
+        }
+        physics::QueryShape shape;
+        shape.type = is2D ? physics::QueryShape::Type::Circle2D : physics::QueryShape::Type::Sphere;
+        shape.a = ray.getOrigin();
+        const Vector3 direction = ray.getDirection();
+        const float length = direction.length();
+        Vector3 points[PhysicsQueryDebug::MAX_HIT_POINTS];
+        size_t pointCount = 0;
+        for (size_t i = 0; i < count && pointCount < PhysicsQueryDebug::MAX_HIT_POINTS; i++){
+            points[pointCount++] = hits[i].point;
+        }
+        const float reach = count > 0 ? (hits[count - 1].point - shape.a).length() : length;
+        physics::recordQuery(scene, shape, length > 0.0f ? direction / length : direction, reach, true, points, pointCount, count > 0);
+    }
+
 }
 #endif
 
@@ -309,7 +330,9 @@ RayReturn Physics::raycast(Scene* scene, Vector3 origin, Vector3 direction, floa
 }
 
 RayReturn Physics::raycast(Scene* scene, const Ray& ray, const QueryOptions& options){
-    return ray.cast(scene, RayFilter::BODY_3D, -1, false, (uint16_t)~0u, (uint16_t)~0u, options.ignore, options.layerMask, nullptr, &options);
+    const RayReturn hit = ray.cast(scene, RayFilter::BODY_3D, -1, false, (uint16_t)~0u, (uint16_t)~0u, options.ignore, options.layerMask, nullptr, &options);
+    noteRay(scene, ray, &hit, hit.hit ? 1 : 0, false);
+    return hit;
 }
 
 RayReturn Physics::raycast(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, const QueryOptions& options){
@@ -336,6 +359,7 @@ std::vector<RayReturn> Physics::raycastAll(Scene* scene, const Ray& ray, const Q
     if (hits.size() > options.maxHits){
         hits.resize(options.maxHits);
     }
+    noteRay(scene, ray, hits.data(), hits.size(), false);
     return hits;
 }
 
@@ -362,7 +386,9 @@ RayReturn Physics2D::raycast(Scene* scene, Vector2 origin, Vector2 direction, fl
 }
 
 RayReturn Physics2D::raycast(Scene* scene, const Ray& ray, const QueryOptions& options){
-    return ray.cast(scene, RayFilter::BODY_2D, -1, false, (uint16_t)~0u, (uint16_t)~0u, options.ignore, options.layerMask, nullptr, &options);
+    const RayReturn hit = ray.cast(scene, RayFilter::BODY_2D, -1, false, (uint16_t)~0u, (uint16_t)~0u, options.ignore, options.layerMask, nullptr, &options);
+    noteRay(scene, ray, &hit, hit.hit ? 1 : 0, true);
+    return hit;
 }
 
 RayReturn Physics2D::raycast(Scene* scene, Vector2 origin, Vector2 direction, float distance, const QueryOptions& options){
@@ -389,6 +415,7 @@ std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, const Ray& ray, const
     if (hits.size() > options.maxHits){
         hits.resize(options.maxHits);
     }
+    noteRay(scene, ray, hits.data(), hits.size(), true);
     return hits;
 }
 
@@ -408,6 +435,32 @@ std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, Vector2 origin, Vecto
 namespace {
     std::atomic<bool> physicsDebugDraw{false};
     std::atomic<bool> physicsDebugDrawContacts{false};
+    std::atomic<bool> physicsDebugDrawQueries{false};
+    std::atomic<uint64_t> physicsQueryCount{0};
+    std::atomic<uint64_t> physicsQueryHitCount{0};
+}
+
+void Physics::setDebugDrawQueries(bool debugDrawQueries){
+    physicsDebugDrawQueries.store(debugDrawQueries, std::memory_order_relaxed);
+}
+
+bool Physics::isDebugDrawQueries(){
+    return physicsDebugDrawQueries.load(std::memory_order_relaxed);
+}
+
+uint64_t Physics::getQueryCount(){
+    return physicsQueryCount.load(std::memory_order_relaxed);
+}
+
+uint64_t Physics::getQueryHitCount(){
+    return physicsQueryHitCount.load(std::memory_order_relaxed);
+}
+
+void Physics::countQuery(size_t hits){
+    physicsQueryCount.fetch_add(1, std::memory_order_relaxed);
+    if (hits > 0){
+        physicsQueryHitCount.fetch_add(hits, std::memory_order_relaxed);
+    }
 }
 
 void Physics::setDebugDraw(bool debugDraw){

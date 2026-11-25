@@ -74,6 +74,8 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "component/WheelColliderComponent.h"
 #include "component/VehicleDrivetrainComponent.h"
 #include "particles/ParticleEffectCodec.h"
@@ -161,6 +163,19 @@ STABLE(FogComponent, FogComponent, component.type = FogType::EXPONENTIAL; compon
 STABLE(MirrorComponent, MirrorComponent, )
 STABLE(ReflectionProbeComponent, ReflectionProbeComponent, )
 STABLE(UIDocumentComponent, UIDocumentComponent, )
+// S92 R18: a texture-mode document's own MSAA samples
+TEST(StreamComponent, UIDocumentMsaaSamplesRoundTrip){
+    UIDocumentComponent component{};
+    EXPECT_FALSE(reflect::encodeValue(ComponentType::UIDocumentComponent, &component)["msaaSamples"]) << "0 is not written";
+    component.renderMode = UIDocumentRenderMode::TEXTURE;
+    component.msaaSamples = 2;
+    const YAML::Node node = reflect::encodeValue(ComponentType::UIDocumentComponent, &component);
+    EXPECT_EQ(node["msaaSamples"].as<int>(), 2);
+    EXPECT_EQ(reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, node).msaaSamples, 2);
+    // a document saved before it
+    EXPECT_EQ(reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, YAML::Load("renderMode: texture\n")).msaaSamples, 0);
+    EXPECT_NO_ENGINE_ERRORS();
+}
 STABLE(CameraComponent, CameraComponent,
     component.type = CameraType::CAMERA_PERSPECTIVE; component.target = Vector3(0, 1, -5); component.cullingMask = 0x5u;
     component.transparencyMode = TransparencyMode::ORDER_INDEPENDENT; component.oitWeightScale = 0.5f)
@@ -219,6 +234,10 @@ STABLE(WaterVolumeComponent, WaterVolumeComponent, component.infinite = true; co
 STABLE(WaterExcluderComponent, WaterExcluderComponent, component.shape = WaterExcluderShape::SPHERE; component.center = Vector3(0.0f, 0.5f, 1.0f);
     component.size = Vector3(2.0f, 1.0f, 6.0f); component.enabled = false)
 STABLE(WaterWakeComponent, WaterWakeComponent, component.foam = 1.5f; component.waves = 0.25f; component.width = 2.0f; component.length = 7.0f)
+STABLE(SimulationCullingComponent, SimulationCullingComponent, component.simulationDistance = 80.0f; component.reducedRateDistance = 30.0f;
+    component.reducedUpdateInterval = 6; component.cullPhysics = false; component.simulateWhenVisible = false)
+STABLE(DialogueRunnerComponent, DialogueRunnerComponent, component.dialogue = "dialogue/guard.dialogue"; component.startEntry = "greet";
+    component.autoStart = true; component.seed = 42)
 STABLE(BuoyancyComponent, BuoyancyComponent, component.columns = BuoyancyColumns::CUSTOM;
     component.customPoints = {Vector3(-1.0f, 0.0f, -1.0f), Vector3(1.0f, 0.0f, 1.0f)}; component.volumeScale = 0.8f)
 // S96 vehicles: the nested spring and friction curves, the drivetrain's lists
@@ -250,6 +269,26 @@ TEST(StreamComponent, LightPhotometricFieldsRoundTrip){
     EXPECT_EQ(decoded.intensityUnit, LightUnit::CANDELA);
     EXPECT_TRUE(decoded.useColorTemperature);
     EXPECT_FLOAT_EQ(decoded.colorTemperature, 2700.0f);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// text-entry-gamepad-cursor-back-button R32: Is Menu and Gamepad Cursor are additive (OmitIfDefault):
+// an old document saves without them, set ones round-trip
+TEST(StreamComponent, UIDocumentMenuAndCursorRoundTrip){
+    UIDocumentComponent document{};
+    document.filename = "ui/menu.html";
+    const YAML::Node plain = reflect::encodeValue(ComponentType::UIDocumentComponent, &document);
+    EXPECT_FALSE(plain["isMenu"]) << "default: omitted";
+    EXPECT_FALSE(plain["gamepadCursor"]);
+    const UIDocumentComponent old = reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, plain);
+    EXPECT_FALSE(old.isMenu);
+    EXPECT_FALSE(old.gamepadCursor);
+
+    document.isMenu = true;
+    document.gamepadCursor = true;
+    const UIDocumentComponent decoded = streamComponentRoundTrip(ComponentType::UIDocumentComponent, document);
+    EXPECT_TRUE(decoded.isMenu);
+    EXPECT_TRUE(decoded.gamepadCursor);
     EXPECT_NO_ENGINE_ERRORS();
 }
 

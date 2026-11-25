@@ -59,6 +59,9 @@ namespace jasperengine {
         static constexpr const char* SPOT_MASKS_LEFT_OUT = "spot-masks-left-out";
         // what starts the log line of a variant built without the 2D lights' shadows (compile)
         static constexpr const char* SHADOWS_2D_LEFT_OUT = "shadows-2d-left-out";
+        // what starts the log line of a variant built without the light profiles (S99: IES Profiles
+        // and the Area Lights' LTC tables, compile)
+        static constexpr const char* LIGHT_PROFILES_LEFT_OUT = "light-profiles-left-out";
 
         using FileReader = std::function<bool(const std::string& path, std::string& content)>;
         using ProgressFn = std::function<void(float progress)>;
@@ -113,7 +116,9 @@ namespace jasperengine {
         // with LIGHTS_FS_RECORDS (a LIGHT_RECORDS_TAKEN line). One
         // reading its lights' records (u_lightRecords) still over them is then built without the
         // spot lights' masks (SPOT_MASKS_OFF), with a SPOT_MASKS_LEFT_OUT line, and still over them
-        // without the 2D lights' shadows (SHADOWS_2D_OFF), with a SHADOWS_2D_LEFT_OUT line.
+        // without the 2D lights' shadows (SHADOWS_2D_OFF), with a SHADOWS_2D_LEFT_OUT line. Any
+        // variant still over them with the light profiles (u_lightProfiles) is then built without
+        // them (LIGHT_PROFILES_OFF), with a LIGHT_PROFILES_LEFT_OUT line.
         static bool compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
                             ShaderData& out, std::string* error = nullptr, std::string* log = nullptr,
                             const ProgressFn& progress = {}, const std::function<bool()>& cancelled = {});

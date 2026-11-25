@@ -41,6 +41,7 @@ component	TerrainComponent	textureDetailRed	texture	texture	assets	scene_compone
 component	TerrainComponent	textureDetailGreen	texture	texture	assets	scene_component	legacy
 component	TerrainComponent	textureDetailBlue	texture	texture	assets	scene_component	legacy
 component	LightComponent	spotMask	texture	texture	assets	scene_component
+component	LightComponent	iesProfile	asset	ies_profile	assets	scene_component
 component	ReflectionProbeComponent	texture	texture	texture	assets	scene_component
 component	SkyboxComponent	texture	texture	texture	assets	scene_component
 component	SkyboxComponent	customShader	shader	shader	project	scene_component

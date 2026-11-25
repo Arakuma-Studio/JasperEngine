@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest b4b1f25fcd642323
+digest e4e96b838a2ce459
 --- 0
 enabled: true
 filename: ""
@@ -7,6 +7,8 @@ sortOrder: 6
 textureWidth: 1
 textureHeight: 12
 pixelRatio: 7085.833
+gamepadCursor: true
+msaaSamples: 8
 --- 1
 enabled: false
 filename: ui/menu.html
@@ -14,6 +16,7 @@ sortOrder: 13
 renderMode: texture
 textureHeight: 5
 inputSurface: 135
+msaaSamples: 8
 --- 2
 enabled: false
 filename: textures/a.png
@@ -22,6 +25,7 @@ interactive: false
 textureWidth: 1
 textureHeight: 5
 pixelRatio: 3160.6855
+msaaSamples: 7
 --- 3
 enabled: true
 filename: ui/menu.html
@@ -35,6 +39,7 @@ sortOrder: 19
 renderMode: texture
 textureWidth: 8192
 textureHeight: 1
+gamepadCursor: true
 --- 5
 enabled: true
 filename: ui/menu.html
@@ -50,9 +55,11 @@ textureWidth: 1
 textureHeight: 11
 inputSurface: 222
 pixelRatio: 97
+gamepadCursor: true
 --- 7
 enabled: true
 filename: ui/menu.html
 sortOrder: -11
 textureWidth: 7
 textureHeight: 1
+gamepadCursor: true

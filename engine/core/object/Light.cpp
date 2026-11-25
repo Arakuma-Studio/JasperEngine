@@ -221,6 +221,74 @@ float Light::getOuterConeAngle() const{
     return lightcomp.outerConeCos;
 }
 
+void Light::setAreaShape(AreaLightShape shape){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+    if (lightcomp.areaShape != shape){
+        lightcomp.areaShape = shape;
+        lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
+    }
+}
+
+AreaLightShape Light::getAreaShape() const{
+    return getComponent<LightComponent>().areaShape;
+}
+
+void Light::setAreaWidth(float width){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+    width = std::max(width, 0.01f);
+    if (lightcomp.areaWidth != width){
+        lightcomp.areaWidth = width;
+        lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
+    }
+}
+
+float Light::getAreaWidth() const{
+    return getComponent<LightComponent>().areaWidth;
+}
+
+void Light::setAreaHeight(float height){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+    height = std::max(height, 0.01f);
+    if (lightcomp.areaHeight != height){
+        lightcomp.areaHeight = height;
+        lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
+    }
+}
+
+float Light::getAreaHeight() const{
+    return getComponent<LightComponent>().areaHeight;
+}
+
+void Light::setAreaRadius(float radius){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+    radius = std::max(radius, 0.005f);
+    if (lightcomp.areaRadius != radius){
+        lightcomp.areaRadius = radius;
+        lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
+    }
+}
+
+float Light::getAreaRadius() const{
+    return getComponent<LightComponent>().areaRadius;
+}
+
+void Light::setIesProfile(const std::string& path){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+    if (lightcomp.iesProfile.path != path){
+        lightcomp.iesProfile = path;
+        lightcomp.iesProfileBand = -1;
+        markChanged<LightComponent>();
+    }
+}
+
+std::string Light::getIesProfile() const{
+    return getComponent<LightComponent>().iesProfile.path;
+}
+
 void Light::setSpotMask(const std::string& texture){
     LightComponent& lightcomp = getComponent<LightComponent>();
     lightcomp.spotMask.setPath(texture);

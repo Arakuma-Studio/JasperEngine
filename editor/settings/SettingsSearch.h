@@ -14,6 +14,7 @@
 #include "settings/SettingsRegistry.h"
 
 #include <initializer_list>
+#include <set>
 #include <string>
 
 namespace jasperengine::editor::settingsui {
@@ -29,6 +30,10 @@ namespace jasperengine::editor::settingsui {
     bool beginRow(std::initializer_list<const char*> keys);
     // A foldout or sub-heading of the current page: false when the search hides all its rows
     bool sectionVisible(const char* section);
+
+    // Build Profiles R20: the keys the active profile changes in builds, for the page being drawn
+    // (endPage clears them); their rows' labels carry a marker saying so
+    void setBuildProfileOverrides(const std::string& profile, std::set<std::string> keys);
 
     // The current row's label, the search's matches highlighted (a revealed row flashes)
     void rowLabel(const char* label);

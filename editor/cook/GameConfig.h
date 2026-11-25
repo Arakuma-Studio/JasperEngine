@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -32,9 +33,15 @@ namespace jasperengine::editor::cook {
         std::string fallbackName;
         // the prefabs SceneCooker::cookProject (or cookPrefabs) wrote, by PrefabManager id
         std::vector<CookedPrefabInfo> prefabs;
+        // a Build Profile's settings snapshot (Project::makeSettingsSnapshot) the settings come
+        // from, and the scenes it ships (its Scene List and the scenes they involve); null: the
+        // project's own settings, every scene in the build
+        Project* settings = nullptr;
+        const std::set<uint32_t>* scenes = nullptr;
     };
 
-    // Everything but the icon, which the caller ships when it has one
+    // Everything but the icon and the Build Profile's name and defines, which the caller sets when
+    // its build has them
     player::PlayerConfig makeGameConfig(Project& project, const GameConfigTarget& target);
 
 }

@@ -138,7 +138,9 @@ namespace jasperengine::editor{
         TITLE_ART_UI,
         TITLE_ART_SPRITE,
         // not a GameObject: the Hierarchy's "3D Object > Vehicle..." makes the rig (VehicleRig.h, S96)
-        VEHICLE_RIG
+        VEHICLE_RIG,
+        // GameObject > Light > Area Light (S99 R38): a 1 m x 1 m Rectangle facing down
+        AREA_LIGHT
     };
 
     class CreateEntityCmd: public Command{

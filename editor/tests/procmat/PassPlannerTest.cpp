@@ -20,6 +20,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
+// its own name: another Json is in sight in some unity units
+using PassPlannerJson = jasperengine::editor::procmat::Json;
 
 namespace {
 
@@ -286,8 +288,8 @@ TEST(PassPlanner, AShrinkingIterateChangesSizeAsItGoes) {
     ASSERT_TRUE(library);
     // auto_tones is the library's one shrinking Iterate Buffer
     Expander expander(library);
-    NodeInstance tones = expander.instantiate("auto_tones", Json::object());
-    NodeInstance noise = expander.instantiate("perlin", Json::object());
+    NodeInstance tones = expander.instantiate("auto_tones", PassPlannerJson::object());
+    NodeInstance noise = expander.instantiate("perlin", PassPlannerJson::object());
     expander.connect(tones.inputs.at(0), SourceRef{noise.generator, 0, false});
     PassPlan plan;
     std::string error;
@@ -359,8 +361,8 @@ TEST(PassPlanner, APassKnowsWhereTheSizeOfEachBufferItReadsIs) {
     ASSERT_TRUE(library);
     // auto_tones' loop snaps to the nearest texel of a Buffer that halves each iteration (M4 of the review)
     Expander expander(library);
-    NodeInstance tones = expander.instantiate("auto_tones", Json::object());
-    NodeInstance noise = expander.instantiate("perlin", Json::object());
+    NodeInstance tones = expander.instantiate("auto_tones", PassPlannerJson::object());
+    NodeInstance noise = expander.instantiate("perlin", PassPlannerJson::object());
     expander.connect(tones.inputs.at(0), SourceRef{noise.generator, 0, false});
     PassPlan plan;
     std::string error;

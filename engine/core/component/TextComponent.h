@@ -10,6 +10,7 @@
 #include "math/Vector3.h"
 #include "util/CharExtent.h"
 #include "util/TextGlyphInfo.h"
+#include "localization/LocalizationArgs.h"
 #include "math/Vector4.h"
 
 #include <array>
@@ -57,6 +58,9 @@ namespace jasperengine{
 
         FontArray font;
         std::string text = "";
+        // Localization Key (game-ui-localization.md R16): "ns.key" whose message `text` shows in
+        // the game language; "" keeps `text` as written
+        std::string localizationKey = "";
         unsigned int fontSize = 20;
         bool multiline = true;
         unsigned int maxTextSize = 100;
@@ -114,6 +118,14 @@ namespace jasperengine{
 
         bool needReloadAtlas = false;
         bool needUpdateText = true;
+
+        // runtime: Text.setLocalized's arguments (not saved) and the Localization generation
+        // the text and the language font were taken at
+        LocalizationArgs textArgs;
+        uint64_t localizationGeneration = 0;
+        // runtime: in a scene that is not running (the editor's Edit mode) the key's message is drawn
+        // from here, so `text` keeps what a save writes (game-ui-localization.md R13, D-15); "" none
+        std::string localizedPreview;
     };
 
 }

@@ -57,6 +57,8 @@ function Bad:init()
     Engine.scene = "main"
     Engine["fixedDeltatime"] = false
     Http.maxConcurrentRequests = "many"
+    local door = { onOpening = CancellableEvent() }
+    door.onOpening:invoke(1)
 end
 
 return Bad
@@ -84,6 +86,7 @@ BAD_LUA_EXPECTED = {
     26: "assign-type-mismatch",  # Scene <- string
     27: "assign-type-mismatch",  # number <- boolean, indexed with a string
     28: "assign-type-mismatch",  # integer <- string (Http)
+    30: "discard-returns",       # a CancellableEvent's veto ignored
 }
 
 # A script without engine fields assigned: the plugin leaves the checks driven by the doc
@@ -94,6 +97,36 @@ local badPoint = { x = 1, y = 2 }
 print(badPoint)
 """
 BAD_DOCS_LUA_EXPECTED = {3: "inject-field"}  # not a field of the exact class
+
+# The cancellable-prioritised-events example: an emitter that reads invoke's result, a deciding
+# listener and a monitor
+DOOR_LOCK_LUA = """---@class Door : ScriptInstance
+---@field onOpening CancellableEvent
+---@field isOpen boolean
+local Door = {}
+function Door:init() self.onOpening = CancellableEvent() end
+function Door:open(by)
+    if self.onOpening:invoke(self, by) then return false end
+    self.isOpen = true
+    return true
+end
+
+---@class Lock : ScriptInstance
+---@field door Door
+---@field locked boolean
+local Lock = {}
+function Lock:onEnable()
+    RegisterEvent(self, self.door.onOpening, "check", nil, 10)
+    RegisterEvent(self, self.door.onOpening, "report", nil, Event.MONITOR)
+    print(#self.door.onOpening:getListeners(), self.door.onOpening.cancelledBy)
+end
+---@param e CancelEventArgs
+function Lock:check(e, door, by) if self.locked then e:cancel() end end
+---@param e CancelEventArgs
+function Lock:report(e, door, by) if e.cancelled then print("locked", door, by) end end
+
+return { Door = Door, Lock = Lock }
+"""
 
 # Typical script code that must check clean: an annotated script module, events, physics
 # events, operators, static members, the hand-written lua_CFunction signatures
@@ -539,7 +572,7 @@ async def test_luals_script_class_property_types(ed: Editor):
 
 async def test_luals_zero_diagnostics_on_known_good_scripts(ed: Editor):
     await wait_tooling(ed)
-    ws = lua_workspace(ed, {"Good.lua": GOOD_LUA})
+    ws = lua_workspace(ed, {"Good.lua": GOOD_LUA, "DoorLock.lua": DOOR_LOCK_LUA})
     try:
         diags = luals_check(ws)
         ed.check(not diags, f"lua-language-server diagnostics on known-good scripts: {diags}")

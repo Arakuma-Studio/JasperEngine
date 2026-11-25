@@ -189,8 +189,12 @@ bool JasperEngineApple::isTouchDevice(){
 // The hidden text field starts empty (its sentinel): the engine keeps the text being
 // edited, so the current text passed here is not needed.
 void JasperEngineApple::showVirtualKeyboard(std::wstring text){
+    showVirtualKeyboard(text, jasperengine::TextEntryTraits());
+}
+
+void JasperEngineApple::showVirtualKeyboard(const std::wstring& text, const jasperengine::TextEntryTraits& traits){
 #if TARGET_OS_IPHONE
-    [appleEngineView() showTextInput];
+    [appleEngineView() showTextInput:traits];
 #endif
 }
 

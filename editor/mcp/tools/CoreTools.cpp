@@ -39,6 +39,7 @@
 #include "memory/MemoryStats.h"
 #include "physics/PlacementSession.h"
 #include "util/FileUtils.h"
+#include "util/NearestName.h"
 #include "util/SystemFonts.h"
 #include "AppSettings.h"
 #include "window/CodeEditor.h"
@@ -868,8 +869,12 @@ bool changeToolGroups(const CallPtr& call, const char* key, bool on, std::set<st
         const std::string name = item.is_string() ? item.get<std::string>() : item.dump();
         if (!item.is_string() || !findToolGroup(name)) {
             std::string valid;
-            for (const ToolGroupInfo& group : toolGroups()) valid += (valid.empty() ? "" : ", ") + group.name;
-            call->fail("Unknown tool group " + name + ". Groups: " + valid + ".");
+            std::vector<std::string> groups;
+            for (const ToolGroupInfo& group : toolGroups()) {
+                valid += (valid.empty() ? "" : ", ") + group.name;
+                groups.push_back(group.name);
+            }
+            call->fail("Unknown tool group " + name + NearestIdentifierSuffix(name, groups) + ". Groups: " + valid + ".");
             return false;
         }
         if (name == CORE_TOOL_GROUP) {

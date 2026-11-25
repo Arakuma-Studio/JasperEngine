@@ -12,6 +12,7 @@
 
 #include "lua.hpp"
 #include "pixelart/HitStop.h"
+#include "util/SubscriptionOwnerIndex.h"
 
 #include <algorithm>
 #include <chrono>
@@ -114,6 +115,8 @@ const char* ScriptMessages::methodName(ScriptMessage m) {
         case ScriptMessage::Move: return "onMove";
         case ScriptMessage::Submit: return "onSubmit";
         case ScriptMessage::Cancel: return "onCancel";
+        case ScriptMessage::SimulationCulled: return "onSimulationCulled";
+        case ScriptMessage::SimulationResumed: return "onSimulationResumed";
         case ScriptMessage::Count: break;
     }
     return "";
@@ -310,7 +313,11 @@ bool ScriptMessages::invoke(Scene* scene, Entity entity, size_t scriptIndex, Scr
         lua_insert(L, -2); // method, self
         const std::string entityName = scene->getEntityName(entity);
         const int nargs = pushArgs ? pushArgs(L) : 0;
-        if (LuaBinding::pcallWithTraceback(L, 1 + nargs, 0) != LUA_OK && reportError(m, className)) {
+        // what the script makes that it owns (a CullingGroup made in init) is released with it
+        const uint64_t previousScript = SubscriptionOwnerIndex::setScriptOwner(ownerKeyOf(lua_topointer(L, top + 2)));
+        const int status = LuaBinding::pcallWithTraceback(L, 1 + nargs, 0);
+        SubscriptionOwnerIndex::setScriptOwner(previousScript);
+        if (status != LUA_OK && reportError(m, className)) {
             Log::error("Lua %s() failed for '%s' on '%s': %s", method, className.c_str(), entityName.c_str(),
                        LuaBinding::getLuaStackErrorString(L, -1).c_str());
         }

@@ -9,7 +9,7 @@ description: >
   §10.2).
 inputs:
   lane:
-    description: The cache's lane (linux, unit-core, unit-editor, asan-core, asan-editor, htmlui, smoke, web, android, windows-editor, macos)
+    description: The cache's lane (linux, unit-core, unit-editor, asan-core, asan-editor, htmlui, smoke, web, android, windows-editor, windows-engine-glcore, windows-engine-d3d11, windows-engine-vulkan, windows-compile, macos)
     required: true
   max-size:
     description: The lane's cap (§10.2), what ccache-save cuts the saved entry to
@@ -34,7 +34,9 @@ runs:
                 tools/ci/retry.sh brew install ccache
             fi
         fi
-        ccache --version | sed -n 1p
+        # (a directory of its own: without CCACHE_DIR, which the next step sets, Windows ccache reads its
+        # configuration from LOCALAPPDATA, which an overflow runner's job environment does not have)
+        CCACHE_DIR="$RUNNER_TEMP/ccache-version" ccache --version | sed -n 1p
 
     - name: Cache key
       id: key

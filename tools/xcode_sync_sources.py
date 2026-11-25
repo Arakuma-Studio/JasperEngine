@@ -54,14 +54,17 @@ APPLE = {"APPLE": "1", "UNIX": "1", "EMSCRIPTEN": None, "WIN32": None, "ANDROID"
          "CMAKE_CURRENT_BINARY_DIR": os.path.join(ROOT, "build", "xcode", "engine"),
          "JASPERENGINE_LIB_TYPE": "STATIC", "JASPERENGINE_SHARED": "OFF", "JASPERENGINE_TESTS": "OFF",
          "JASPERENGINE_HTMLUI_TESTS": "OFF", "JASPERENGINE_NOISE_ALL_BACKENDS": "OFF",
-         "EMSCRIPTEN_THREAD_SUPPORT": None, "JASPERENGINE_EDITOR_VERSION": None}
+         "EMSCRIPTEN_THREAD_SUPPORT": None, "JASPERENGINE_EDITOR_VERSION": None,
+         # the project test runner ships in Development players only (project-test-runner.md R32)
+         "JASPERENGINE_TEST_RUNNER": "OFF"}
 # the optional modules: the editor engine's set (docs/specs/S34-player-size.md R1), but Title Art,
 # and V-HACD, which only the editor's desktop engine decomposes with (the project defines no
 # JASPERENGINE_CONVEX_DECOMPOSITION)
 MODULES = {"JASPERENGINE_PHYSICS_2D": "ON", "JASPERENGINE_PHYSICS_3D": "ON", "JASPERENGINE_RUNTIME_SHADERS": "ON",
            "JASPERENGINE_NAVIGATION": "ON", "JASPERENGINE_TERRAIN_WORLD": "ON", "JASPERENGINE_TERRAIN_EDIT": "ON",
            "JASPERENGINE_SOUND_LAYER": "ON", "JASPERENGINE_NOISE": "ON", "JASPERENGINE_VOXEL": "ON",
-           "JASPERENGINE_HTMLUI": "ON", "JASPERENGINE_VIDEO": "ON", "JASPERENGINE_CONVEX_DECOMPOSITION": "OFF",
+           "JASPERENGINE_HTMLUI": "ON", "JASPERENGINE_VIDEO": "ON", "JASPERENGINE_CONVEX_DECOMPOSITION": "OFF", "JASPERENGINE_DIALOGUE": "ON",
+           "JASPERENGINE_INPUT_SCRIPTS": "ON",
            "JASPERENGINE_TITLE_ART": "OFF", "JASPERENGINE_TITLE_ART_3D": "OFF", "JASPERENGINE_TITLE_ART_MESHER": "OFF"}
 # the project's engine targets and what CMake calls their platform
 TARGETS = [("jasperengine-macos", {"CMAKE_SYSTEM_NAME": "Darwin"}),

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "export/SizeBudget.h"
 #include "pixelart/PixelColor.h"
 #include "pixelart/ScreenTransition.h"
 #include "util/TitleArtLanguage.h"
@@ -2419,6 +2420,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
         sceneNode["showStats"] = ds.showStats;
+    if (ds.frameChecks)
+        sceneNode["frameChecks"] = ds.frameChecks;
     // S41: written only when turned off (on by default)
     if (!ds.pixelZoom) sceneNode["pixelZoom"] = false;
     if (!ds.pixelGrid) sceneNode["pixelGrid"] = false;
@@ -2471,6 +2474,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
     ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
+    ds.frameChecks = node["frameChecks"] ? YamlNumbers::as<bool>(node["frameChecks"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
     decodeTerrainOverlaySettings(node["terrainOverlay"], ds.terrainOverlay);
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
@@ -2817,13 +2821,46 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     // Project Settings > Pixel Art (S42), omitted at its defaults
     if (const YAML::Node pixelArt = pixelart::encodePixelArtSettings(project->getPixelArtSettings()); pixelArt.size() > 0)
         root["pixelArt"] = pixelArt;
+    // Project Settings > Input > Simulate Touch From Mouse and Project Settings > Time, omitted at
+    // their defaults
+    if (project->isSimulateTouchFromMouse())
+        root["simulateTouchFromMouse"] = true;
+    if (project->getFixedTimestep() != Project::defaultFixedTimestep || project->getMaximumDeltaTime() != Project::defaultMaximumDeltaTime) {
+        YAML::Node time;
+        if (project->getFixedTimestep() != Project::defaultFixedTimestep)
+            time["fixedTimestep"] = project->getFixedTimestep();
+        if (project->getMaximumDeltaTime() != Project::defaultMaximumDeltaTime)
+            time["maximumDeltaTime"] = project->getMaximumDeltaTime();
+        root["time"] = time;
+    }
     // Project Settings > Input, omitted at its defaults
-    if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
+    const GamepadCursorSettings& cursor = project->getGamepadCursorSettings();
+    const GamepadCursorSettings cursorDefaults;
+    if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone || cursor != cursorDefaults) {
         YAML::Node input;
         if (!project->getInputActionsAsset().empty())
             input["actions"] = project->getInputActionsAsset().generic_string();
         if (project->getInputDeadzone() != Project::defaultInputDeadzone)
             input["deadzone"] = project->getInputDeadzone();
+        // Input > Gamepad Cursor: what differs from the defaults
+        if (cursor != cursorDefaults) {
+            YAML::Node cursorNode;
+            if (cursor.speed != cursorDefaults.speed) cursorNode["speed"] = cursor.speed;
+            if (cursor.accelerationTime != cursorDefaults.accelerationTime) cursorNode["accelerationTime"] = cursor.accelerationTime;
+            if (cursor.slowOverControls != cursorDefaults.slowOverControls) cursorNode["slowOverControls"] = cursor.slowOverControls;
+            if (cursor.scrollSpeed != cursorDefaults.scrollSpeed) cursorNode["scrollSpeed"] = cursor.scrollSpeed;
+            if (cursor.deadzone != cursorDefaults.deadzone) cursorNode["deadzone"] = cursor.deadzone;
+            if (cursor.graphic != cursorDefaults.graphic) cursorNode["graphic"] = cursor.graphic;
+            if (cursor.size != cursorDefaults.size) cursorNode["size"] = cursor.size;
+            if (cursor.hotSpot != cursorDefaults.hotSpot) {
+                YAML::Node hot(YAML::NodeType::Sequence);
+                hot.push_back(cursor.hotSpot.x);
+                hot.push_back(cursor.hotSpot.y);
+                hot.SetStyle(YAML::EmitterStyle::Flow);
+                cursorNode["hotSpot"] = hot;
+            }
+            input["gamepadCursor"] = cursorNode;
+        }
         root["input"] = input;
     } else if (!project->getUnreadableInputNode().empty()) {
         // an older editor's Input Manager node that could not be read: back as it was, until
@@ -2850,6 +2887,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         crashNode["hangWatchdog"] = crash.hangWatchdog;
         crashNode["hangSeconds"] = crash.hangSeconds;
         crashNode["webOverlay"] = crash.webCrashOverlay;
+        crashNode["journalKiB"] = crash.journalKiB;
+        crashNode["journalEngineEvents"] = crash.journalEngineEvents;
         root["playerCrash"] = crashNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
@@ -3076,6 +3115,15 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["physics3DWorld"] = physicsNode;
     }
 
+    // Project Settings > Physics / Physics 2D > Queries Hit Triggers: only when one is off
+    if (project->getPhysicsQuerySettings() != PhysicsQuerySettings()) {
+        const PhysicsQuerySettings& queries = project->getPhysicsQuerySettings();
+        YAML::Node queriesNode;
+        queriesNode["hitTriggers3D"] = queries.hitTriggers3D;
+        queriesNode["hitTriggers2D"] = queries.hitTriggers2D;
+        root["physicsQueries"] = queriesNode;
+    }
+
 
     {
         YAML::Node exportNode;
@@ -3094,9 +3142,32 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->isDevelopmentBuild()) {
             exportNode["developmentBuild"] = true;
         }
+        if (project->isIncludeTests()) exportNode["includeTests"] = true;
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
+        if (!project->getSizeBudgets().empty()) {
+            YAML::Node budgetsNode(YAML::NodeType::Sequence);
+            for (const SizeBudgetRow& row : project->getSizeBudgets()) {
+                YAML::Node rowNode;
+                rowNode["platform"] = row.platform;
+                rowNode["category"] = row.category;
+                rowNode["limitMb"] = row.limitMb;
+                rowNode.SetStyle(YAML::EmitterStyle::Flow);
+                budgetsNode.push_back(rowNode);
+            }
+            exportNode["sizeBudgets"] = budgetsNode;
+        }
+        if (project->isSizeBudgetFail()) exportNode["sizeBudgetAction"] = "fail";
+        // Download Budget (S99 R11): only the families that have one, so an old project.yaml stays as it was
+        {
+            YAML::Node budgetNode;
+            for (size_t f = 0; f < kModelFamilyCount; f++) {
+                const double megabytes = project->getDownloadBudgetMB((ModelFamily)f);
+                if (megabytes > 0.0) budgetNode[modelFamilyName((ModelFamily)f)] = megabytes;
+            }
+            if (budgetNode.size()) exportNode["downloadBudgetMB"] = budgetNode;
+        }
         // S98 REQ-8: written only when set, so an old project's file stays as it was
         const AssetStrippingSettings& stripping = project->getAssetStripping();
         if (stripping.mode == AssetStrippingMode::ReferencedOnly) exportNode["assetStripping"] = "referencedOnly";
@@ -3138,6 +3209,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (presentation.keepScreenOn != defaults.keepScreenOn) presentationNode["keepScreenOn"] = presentation.keepScreenOn;
         if (presentation.targetFrameRate != defaults.targetFrameRate) presentationNode["targetFrameRate"] = presentation.targetFrameRate;
+        if (presentation.pauseOnFocusLoss != defaults.pauseOnFocusLoss) presentationNode["pauseOnFocusLoss"] = presentation.pauseOnFocusLoss;
         if (presentationNode.size() != 0) root["presentation"] = presentationNode;
     }
 
@@ -3151,7 +3223,61 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             localizationNode["languages"] = list;
         }
         if (!localization.defaultLanguage.empty()) localizationNode["defaultLanguage"] = localization.defaultLanguage;
+        // game-ui-localization.md R40: new members with defaults, written when they differ
+        if (!localization.rememberLanguage) localizationNode["rememberLanguage"] = false;
+        if (!localization.defaultTable.empty()) localizationNode["defaultTable"] = localization.defaultTable;
+        if (!localization.fonts.empty()) {
+            YAML::Node fonts(YAML::NodeType::Map);
+            for (const auto& [code, list] : localization.fonts) {
+                YAML::Node paths(YAML::NodeType::Sequence);
+                for (const std::string& path : list) paths.push_back(path);
+                fonts[code] = paths;
+            }
+            localizationNode["fonts"] = fonts;
+        }
         if (localizationNode.size() != 0) root["localization"] = localizationNode;
+    }
+
+    // Project Settings > Dialogue (dialogue-graphs.md R31): written only when something is declared
+    {
+        const DialogueSettings& dialogue = project->getDialogueSettings();
+        YAML::Node dialogueNode(YAML::NodeType::Map);
+        auto prefixes = [](const std::vector<DialogueSettings::Prefix>& list) {
+            YAML::Node out(YAML::NodeType::Sequence);
+            for (const DialogueSettings::Prefix& prefix : list) {
+                YAML::Node item(YAML::NodeType::Map);
+                item["name"] = prefix.name;
+                if (!prefix.description.empty()) item["description"] = prefix.description;
+                if (!prefix.hint.empty()) item["hint"] = prefix.hint;
+                out.push_back(item);
+            }
+            return out;
+        };
+        if (!dialogue.actionPrefixes.empty()) dialogueNode["actionPrefixes"] = prefixes(dialogue.actionPrefixes);
+        if (!dialogue.conditionPrefixes.empty()) dialogueNode["conditionPrefixes"] = prefixes(dialogue.conditionPrefixes);
+        if (!dialogue.variables.empty()) {
+            YAML::Node list(YAML::NodeType::Sequence);
+            for (const DialogueSettings::Variable& variable : dialogue.variables) {
+                YAML::Node item(YAML::NodeType::Map);
+                item["name"] = variable.name;
+                item["type"] = variable.type;
+                item["default"] = variable.defaultValue;
+                if (!variable.description.empty()) item["description"] = variable.description;
+                list.push_back(item);
+            }
+            dialogueNode["variables"] = list;
+        }
+        if (!dialogue.speakers.empty()) {
+            YAML::Node list(YAML::NodeType::Sequence);
+            for (const DialogueSettings::Speaker& speaker : dialogue.speakers) {
+                YAML::Node item(YAML::NodeType::Map);
+                item["id"] = speaker.id;
+                if (!speaker.displayKey.empty()) item["displayKey"] = speaker.displayKey;
+                list.push_back(item);
+            }
+            dialogueNode["speakers"] = list;
+        }
+        if (dialogueNode.size() != 0) root["dialogue"] = dialogueNode;
     }
 
     {
@@ -3371,6 +3497,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // Shader Creation (spec S32): the values away from their defaults, by its reflection table
         const YAML::Node shaderCreationNode = reflect::encode(reflect::shaderCreationStruct(), &project->getShaderCreationSettings(), reflect::EncodeContext{});
         if (shaderCreationNode.IsMap() && shaderCreationNode.size()) root["shaderCreation"] = shaderCreationNode;
+        // Player > Saved Data: the values away from their defaults, by its reflection table
+        const YAML::Node saveGameNode = reflect::encode(reflect::saveGameSettingsStruct(), &project->getSaveGameSettings(), reflect::EncodeContext{});
+        if (saveGameNode.IsMap() && saveGameNode.size()) root["saveGame"] = saveGameNode;
     }
 
     {
@@ -3628,6 +3757,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     {
+        project->setSimulateTouchFromMouse(node["simulateTouchFromMouse"].IsDefined() && node["simulateTouchFromMouse"].as<bool>(false));
+        const YAML::Node time = node["time"];
+        const bool timeMap = time.IsDefined() && time.IsMap();
+        // out of range (a hand edit): the default, as Project Settings > Time accepts no other
+        auto timeValue = [&](const char* key, double fallback) {
+            const double value = timeMap ? decodeFiniteDouble(time[key], fallback) : fallback;
+            return (value >= Project::minFixedTimestep && value <= Project::maxFixedTimestep) ? value : fallback;
+        };
+        project->setFixedTimestep(timeValue("fixedTimestep", Project::defaultFixedTimestep));
+        project->setMaximumDeltaTime(timeValue("maximumDeltaTime", Project::defaultMaximumDeltaTime));
+    }
+
+    {
         const YAML::Node input = node["input"];
         project->setUnreadableInputNode("");
         project->setInputActionsMigration(InputActionsMigration());
@@ -3652,6 +3794,22 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             project->setInputActionsAsset(map && input["actions"].IsDefined() ? fs::path(input["actions"].as<std::string>()) : fs::path());
             project->setInputDeadzone(map && input["deadzone"].IsDefined() ? YamlNumbers::as<float>(input["deadzone"]) : Project::defaultInputDeadzone);
         }
+        // Input > Gamepad Cursor (absent: the defaults)
+        GamepadCursorSettings cursor;
+        if (input.IsDefined() && input.IsMap() && input["gamepadCursor"].IsDefined() && input["gamepadCursor"].IsMap()) {
+            const YAML::Node cursorNode = input["gamepadCursor"];
+            if (cursorNode["speed"].IsDefined()) cursor.speed = YamlNumbers::as<float>(cursorNode["speed"]);
+            if (cursorNode["accelerationTime"].IsDefined()) cursor.accelerationTime = YamlNumbers::as<float>(cursorNode["accelerationTime"]);
+            if (cursorNode["slowOverControls"].IsDefined()) cursor.slowOverControls = YamlNumbers::as<float>(cursorNode["slowOverControls"]);
+            if (cursorNode["scrollSpeed"].IsDefined()) cursor.scrollSpeed = YamlNumbers::as<float>(cursorNode["scrollSpeed"]);
+            if (cursorNode["deadzone"].IsDefined()) cursor.deadzone = YamlNumbers::as<float>(cursorNode["deadzone"]);
+            if (cursorNode["graphic"].IsDefined() && cursorNode["graphic"].IsScalar()) cursor.graphic = cursorNode["graphic"].as<std::string>();
+            if (cursorNode["size"].IsDefined()) cursor.size = YamlNumbers::as<float>(cursorNode["size"]);
+            const YAML::Node hot = cursorNode["hotSpot"];
+            if (hot.IsDefined() && hot.IsSequence() && hot.size() == 2)
+                cursor.hotSpot = Vector2(YamlNumbers::as<float>(hot[0]), YamlNumbers::as<float>(hot[1]));
+        }
+        project->setGamepadCursorSettings(cursor);
     }
 
     {
@@ -3680,13 +3838,17 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (crashNode["hangWatchdog"].IsDefined()) crash.hangWatchdog = YamlNumbers::as<bool>(crashNode["hangWatchdog"]);
             if (crashNode["hangSeconds"].IsDefined()) crash.hangSeconds = YamlNumbers::as<int>(crashNode["hangSeconds"]);
             if (crashNode["webOverlay"].IsDefined()) crash.webCrashOverlay = YamlNumbers::as<bool>(crashNode["webOverlay"]);
+            if (crashNode["journalKiB"].IsDefined()) {
+                crash.journalKiB = std::clamp(YamlNumbers::as<int>(crashNode["journalKiB"]), 0, PlayerCrashSettings::maxJournalKiB);
+            }
+            if (crashNode["journalEngineEvents"].IsDefined()) crash.journalEngineEvents = YamlNumbers::as<bool>(crashNode["journalEngineEvents"]);
         }
         project->setPlayerCrash(crash);
     }
 
-    if (node["htmlUiMsaaSamples"].IsDefined()) {
-        project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
-    }
+    // S92 R16: a project saved without the key had 4 samples (new projects are Auto, 0)
+    project->setHtmlUiMsaaSamples(node["htmlUiMsaaSamples"].IsDefined() ? YamlNumbers::as<int>(node["htmlUiMsaaSamples"])
+                                                                         : Project::legacyHtmlUiMsaaSamples);
 
     // S56: a project saved before it has no device block, and gets the defaults
     {
@@ -4076,6 +4238,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setPhysics3DWorldSettings(world);
     }
 
+    {
+        // Project Settings > Physics / Physics 2D > Queries Hit Triggers; missing: on
+        PhysicsQuerySettings queries;
+        const YAML::Node queriesNode = node["physicsQueries"];
+        if (queriesNode && queriesNode.IsMap()) {
+            if (queriesNode["hitTriggers3D"]) queries.hitTriggers3D = queriesNode["hitTriggers3D"].as<bool>(true);
+            if (queriesNode["hitTriggers2D"]) queries.hitTriggers2D = queriesNode["hitTriggers2D"].as<bool>(true);
+        } else if (queriesNode) {
+            Out::warning("Ignoring physicsQueries in project settings: not a map");
+        }
+        project->setPhysicsQuerySettings(queries);
+    }
+
 
     {
         // Player > Target Platforms; missing: all six (every project before it). Unknown names are
@@ -4125,12 +4300,36 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
 
         project->setDevelopmentBuild(exportNode["developmentBuild"] && exportNode["developmentBuild"].as<bool>());
+        project->setIncludeTests(exportNode["includeTests"] && exportNode["includeTests"].as<bool>());
         if (exportNode["method"] && exportNode["method"].IsScalar()) {
             const std::string method = exportNode["method"].as<std::string>();
             project->setBuildMethod(method == "prebuilt" || method == "compile" ? method : "auto");
         }
         project->setPackContent(exportNode["pack"] && exportNode["pack"].as<bool>());
         project->setStripEngineCode(!exportNode["stripEngineCode"] || exportNode["stripEngineCode"].as<bool>());
+        // build-size-tools R40: optional, none and warn by default; a row this editor cannot read is dropped
+        std::vector<SizeBudgetRow> sizeBudgets;
+        if (exportNode["sizeBudgets"] && exportNode["sizeBudgets"].IsSequence()) {
+            for (const YAML::Node& rowNode : exportNode["sizeBudgets"]) {
+                if (!rowNode.IsMap() || !rowNode["limitMb"]) continue;
+                mcp::Json row = {{"platform", rowNode["platform"] ? rowNode["platform"].as<std::string>() : std::string("all")},
+                                 {"category", rowNode["category"] ? rowNode["category"].as<std::string>() : std::string("total")},
+                                 {"limit_mb", rowNode["limitMb"].as<double>(0.0)}};
+                std::vector<SizeBudgetRow> parsed;
+                std::string rowError;
+                if (sizebudget::fromJson(mcp::Json::array({row}), parsed, rowError)) sizeBudgets.push_back(parsed.front());
+            }
+        }
+        project->setSizeBudgets(sizeBudgets);
+        project->setSizeBudgetFail(exportNode["sizeBudgetAction"] && exportNode["sizeBudgetAction"].IsScalar() &&
+                                   exportNode["sizeBudgetAction"].as<std::string>() == "fail");
+        // absent families are off; a negative or non-finite value is off too
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            const YAML::Node budgetNode = exportNode["downloadBudgetMB"];
+            const char* family = modelFamilyName((ModelFamily)f);
+            const double megabytes = budgetNode && budgetNode.IsMap() ? decodeFiniteDouble(budgetNode[family], 0.0) : 0.0;
+            project->setDownloadBudgetMB((ModelFamily)f, std::max(0.0, megabytes));
+        }
         {
             // S98 REQ-50: absent keys are Ship All Assets and empty lists
             AssetStrippingSettings stripping;
@@ -4173,6 +4372,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         presentation.allowedOrientations = nodeToOrientationMask(presentationNode["allowedOrientations"], presentation.allowedOrientations);
         if (presentationNode["keepScreenOn"].IsDefined()) presentation.keepScreenOn = YamlNumbers::as<bool>(presentationNode["keepScreenOn"]);
+        if (presentationNode["pauseOnFocusLoss"].IsDefined()) presentation.pauseOnFocusLoss = YamlNumbers::as<bool>(presentationNode["pauseOnFocusLoss"]);
         if (presentationNode["targetFrameRate"].IsDefined()) {
             const int fps = YamlNumbers::as<int>(presentationNode["targetFrameRate"]);
             presentation.targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);
@@ -4194,6 +4394,51 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (localizationNode["defaultLanguage"]) {
             const std::string tag = TitleArtLanguage::canonicalize(localizationNode["defaultLanguage"].as<std::string>(""));
             if (TitleArtLanguage::isValid(tag)) localization.defaultLanguage = tag;
+        }
+        if (localizationNode["rememberLanguage"]) localization.rememberLanguage = localizationNode["rememberLanguage"].as<bool>(true);
+        if (localizationNode["defaultTable"]) localization.defaultTable = localizationNode["defaultTable"].as<std::string>("");
+        if (localizationNode["fonts"] && localizationNode["fonts"].IsMap()) {
+            for (const auto& entry : localizationNode["fonts"]) {
+                const std::string tag = TitleArtLanguage::canonicalize(entry.first.as<std::string>(""));
+                if (!TitleArtLanguage::isValid(tag) || !entry.second.IsSequence()) continue;
+                for (const YAML::Node& path : entry.second) {
+                    const std::string value = path.as<std::string>("");
+                    if (!value.empty()) localization.fonts[tag].push_back(value);
+                }
+            }
+        }
+    }
+
+    if (node["dialogue"] && node["dialogue"].IsMap()) {
+        DialogueSettings& dialogue = project->getDialogueSettings();
+        dialogue = DialogueSettings();
+        const YAML::Node dialogueNode = node["dialogue"];
+        auto prefixes = [](const YAML::Node& list, std::vector<DialogueSettings::Prefix>& out) {
+            if (!list || !list.IsSequence()) return;
+            for (const YAML::Node& item : list) {
+                if (!item.IsMap() || item["name"].as<std::string>("").empty()) continue;
+                out.push_back({item["name"].as<std::string>(""), item["description"].as<std::string>(""), item["hint"].as<std::string>("")});
+            }
+        };
+        prefixes(dialogueNode["actionPrefixes"], dialogue.actionPrefixes);
+        prefixes(dialogueNode["conditionPrefixes"], dialogue.conditionPrefixes);
+        if (dialogueNode["variables"] && dialogueNode["variables"].IsSequence()) {
+            for (const YAML::Node& item : dialogueNode["variables"]) {
+                if (!item.IsMap() || item["name"].as<std::string>("").empty()) continue;
+                DialogueSettings::Variable variable;
+                variable.name = item["name"].as<std::string>("");
+                const std::string type = item["type"].as<std::string>("number");
+                variable.type = type == "bool" || type == "string" ? type : "number";
+                variable.defaultValue = item["default"].as<std::string>("");
+                variable.description = item["description"].as<std::string>("");
+                dialogue.variables.push_back(variable);
+            }
+        }
+        if (dialogueNode["speakers"] && dialogueNode["speakers"].IsSequence()) {
+            for (const YAML::Node& item : dialogueNode["speakers"]) {
+                if (!item.IsMap() || item["id"].as<std::string>("").empty()) continue;
+                dialogue.speakers.push_back({item["id"].as<std::string>(""), item["displayKey"].as<std::string>("")});
+            }
         }
     }
 
@@ -4426,6 +4671,18 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setShaderCreationSettings(shaderCreation);
     }
 
+    {
+        SaveGameSettings saveGame;
+        if (node["saveGame"] && node["saveGame"].IsMap()){
+            reflect::DecodeContext ctx;
+            ctx.component = "saveGame";
+            reflect::decode(reflect::saveGameSettingsStruct(), node["saveGame"], &saveGame, ctx);
+            saveGame.clamp();
+        }
+        // a project without the node (older ones) gets the defaults
+        project->setSaveGameSettings(saveGame);
+    }
+
     project->setNavigationSettings(decodeNavigationProjectSettings(node["navigation"]));
     project->setVoxelSettings(decodeVoxelProjectSettings(node["voxel"]));
 
@@ -4512,6 +4769,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     project->getSpriteNormalsSettings() = workspace.getSpriteNormalsSettings();
 
     project->setSimulateTouch(workspace.isSimulateTouch());
+    // an unknown name (a newer editor's) leaves it on Auto
+    if (!project->setInputSchemeOverride(workspace.getInputScheme()))
+        project->setInputSchemeOverride("auto");
     project->setCustomResolutions(workspace.getCustomResolutions());
 
     // Which scenes are open is a per-user choice, so the tab list decides it. With no
@@ -5187,6 +5447,11 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     // written only when not the default (half), so scenes saved before it existed re-save unchanged
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         sceneNode["sceneColorScale"] = sceneColorScaleToString(scene->getSceneColorScale());
+    // the screen HTML UI documents (S92): written only away from their defaults
+    if (scene->getHtmlUiRenderMode() != SceneSettings().htmlUiRenderMode)
+        sceneNode["htmlUiRenderMode"] = StreamSchema::uiRenderMode().toString(scene->getHtmlUiRenderMode());
+    if (scene->getHtmlUiMsaaSamples() != SceneSettings().htmlUiMsaaSamples)
+        sceneNode["htmlUiMsaaSamples"] = scene->getHtmlUiMsaaSamples();
     // planar reflections: written only away from their defaults
     if (scene->getPlanarReflectionResolution() != SceneSettings().planarReflectionResolution)
         sceneNode["planarReflectionResolution"] = StreamSchema::planarReflectionResolution().toString(scene->getPlanarReflectionResolution());
@@ -5210,6 +5475,22 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
+    // Environment Lighting (S99 R30): written only away from its defaults (no key: Color)
+    {
+        const SceneSettings defaults;
+        // (a default decoded through sRGB may differ from it in the last bits)
+        auto away = [](const Vector3& a, const Vector3& b) {
+            return std::fabs(a.x - b.x) > 1e-5f || std::fabs(a.y - b.y) > 1e-5f || std::fabs(a.z - b.z) > 1e-5f;
+        };
+        if (scene->getAmbientMode() != defaults.ambientMode)
+            sceneNode["ambientMode"] = StreamSchema::ambientMode().toString(scene->getAmbientMode());
+        if (away(scene->getAmbientSkyColorLinear(), defaults.ambientSkyColor))
+            sceneNode["ambientSkyColor"] = encodeVector3(scene->getAmbientSkyColor());
+        if (away(scene->getAmbientEquatorColorLinear(), defaults.ambientEquatorColor))
+            sceneNode["ambientEquatorColor"] = encodeVector3(scene->getAmbientEquatorColor());
+        if (away(scene->getAmbientGroundColorLinear(), defaults.ambientGroundColor))
+            sceneNode["ambientGroundColor"] = encodeVector3(scene->getAmbientGroundColor());
+    }
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         sceneNode["maxLightsPerObject"] = scene->getMaxLightsPerObject();
     // a scene without the key is Standard (it was drawn so before Lit Quality existed); new
@@ -5251,6 +5532,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         sceneNode["physics2DSubSteps"] = scene->getPhysics2DSubSteps();
+    if (scene->getFixedTimestep() != SceneSettings().fixedTimestep)
+        sceneNode["fixedTimestep"] = scene->getFixedTimestep();
     // S96: the world settings away from their defaults, a flat key each (old scenes keep none)
     {
         const SceneSettings defaults;
@@ -5366,6 +5649,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
     // absent = the default (half): it is only written when it differs
     scene->setSceneColorScale(node["sceneColorScale"] ? decodeEnum(node, "sceneColorScale", StreamSchema::sceneColorScale()) : SceneSettings().sceneColorScale);
+    // the screen HTML UI documents: absent = the defaults (Screen Space - Overlay, the project's samples)
+    scene->setHtmlUiRenderMode(node["htmlUiRenderMode"] ? decodeEnum(node, "htmlUiRenderMode", StreamSchema::uiRenderMode()) : SceneSettings().htmlUiRenderMode);
+    scene->setHtmlUiMsaaSamples(node["htmlUiMsaaSamples"] ? YamlNumbers::as<int>(node["htmlUiMsaaSamples"]) : SceneSettings().htmlUiMsaaSamples);
     // planar reflections: absent = the defaults
     const SceneSettings planarDefaults;
     scene->setPlanarReflectionResolution(node["planarReflectionResolution"]
@@ -5396,6 +5682,19 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setGlobalIllumination(YamlNumbers::as<float>(node["globalIlluminationIntensity"]));
     } else if (node["globalIlluminationColor"]) {
         scene->setGlobalIllumination(decodeVector3(node["globalIlluminationColor"]));
+    }
+
+    // Environment Lighting: absent keys restore the defaults (a reused scene decodes exactly)
+    {
+        const SceneSettings defaults;
+        scene->setAmbientMode(node["ambientMode"] ? decodeEnum(node, "ambientMode", StreamSchema::ambientMode()) : defaults.ambientMode);
+        // (an absent key on a scene already at the default leaves it untouched: exact, no sRGB round trip)
+        if (node["ambientSkyColor"]) scene->setAmbientSkyColor(decodeVector3(node["ambientSkyColor"]));
+        else if (scene->getAmbientSkyColorLinear() != defaults.ambientSkyColor) scene->setAmbientSkyColor(Color::linearTosRGB(defaults.ambientSkyColor));
+        if (node["ambientEquatorColor"]) scene->setAmbientEquatorColor(decodeVector3(node["ambientEquatorColor"]));
+        else if (scene->getAmbientEquatorColorLinear() != defaults.ambientEquatorColor) scene->setAmbientEquatorColor(Color::linearTosRGB(defaults.ambientEquatorColor));
+        if (node["ambientGroundColor"]) scene->setAmbientGroundColor(decodeVector3(node["ambientGroundColor"]));
+        else if (scene->getAmbientGroundColorLinear() != defaults.ambientGroundColor) scene->setAmbientGroundColor(Color::linearTosRGB(defaults.ambientGroundColor));
     }
 
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact
@@ -5459,6 +5758,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
     scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
     scene->setPhysics2DSubSteps(node["physics2DSubSteps"] ? YamlNumbers::as<int>(node["physics2DSubSteps"]) : SceneSettings().physics2DSubSteps);
+    scene->setFixedTimestep(decodeFinite(node["fixedTimestep"], SceneSettings().fixedTimestep));
     // S96: the world settings; an absent key is its default (StreamSchema lists the keys)
     {
         SceneSettings settings;
@@ -5736,14 +6036,64 @@ void editor::Stream::decodeEntityState(Entity entity, EntityRegistry* registry, 
     registry->setEntityLayer(entity, entityNode["layer"] ? YamlNumbers::as<int>(entityNode["layer"]) : 0);
 }
 
+// an entity reference element is {entity, sceneId} when it names another scene
+YAML::Node editor::Stream::encodeScriptList(ScriptPropertyType elementType, const ScriptPropertyValue& value) {
+    YAML::Node list(YAML::NodeType::Sequence);
+    const ScriptPropertyList* items = std::get_if<ScriptPropertyList>(&value);
+    if (!items) return list;
+    for (const ScriptPropertyElement& item : items->items) {
+        if (elementType == ScriptPropertyType::EntityReference) {
+            const EntityReference* ref = std::get_if<EntityReference>(&item);
+            const EntityReference reference = ref ? *ref : EntityReference{};
+            if (reference.sceneId == 0) {
+                list.push_back(YAML::Node(reference.entity));
+                continue;
+            }
+            YAML::Node node(YAML::NodeType::Map);
+            node["entity"] = reference.entity;
+            node["sceneId"] = reference.sceneId;
+            list.push_back(node);
+            continue;
+        }
+        ScriptProperty single;
+        single.type = elementType;
+        single.value = scriptPropertyValueOf(item);
+        single.defaultValue = single.value;
+        list.push_back(YAML::Clone(encodeScriptProperty(single)["value"]));
+    }
+    return list;
+}
+
+ScriptPropertyList editor::Stream::decodeScriptList(ScriptPropertyType elementType, const YAML::Node& value) {
+    ScriptPropertyList list;
+    if (!value || !value.IsSequence()) return list;
+    for (const YAML::Node& item : value) {
+        if (elementType == ScriptPropertyType::EntityReference) {
+            if (item.IsMap()) {
+                list.items.push_back(EntityReference{item["entity"] ? item["entity"].as<Entity>(NULL_ENTITY) : Entity(NULL_ENTITY),
+                                                     item["sceneId"] ? item["sceneId"].as<uint32_t>(0) : 0u});
+            } else {
+                list.items.push_back(EntityReference{item.as<Entity>(NULL_ENTITY), 0});
+            }
+            continue;
+        }
+        YAML::Node node(YAML::NodeType::Map);
+        node["type"] = scriptPropertyTypeToString(elementType);
+        node["value"] = item;
+        list.items.push_back(scriptPropertyElementOf(decodeScriptProperty(node).value));
+    }
+    return list;
+}
+
 YAML::Node editor::Stream::encodeScriptProperty(const ScriptProperty& prop) {
     YAML::Node node;
     node["name"] = prop.name;
     node["displayName"] = prop.displayName;
     node["type"] = scriptPropertyTypeToString(prop.type);
 
-    // Store ptrTypeName if it's a pointer type
-    if (prop.type == ScriptPropertyType::EntityReference && !prop.ptrTypeName.empty()) {
+    // Store ptrTypeName if it's a pointer type, or the data class of a Data Asset reference
+    if (!prop.ptrTypeName.empty() && (prop.type == ScriptPropertyType::EntityReference || prop.type == ScriptPropertyType::Asset ||
+                                      prop.type == ScriptPropertyType::List)) {
         node["ptrTypeName"] = prop.ptrTypeName;
     }
 
@@ -5813,6 +6163,12 @@ YAML::Node editor::Stream::encodeScriptProperty(const ScriptProperty& prop) {
             node["defaultValue"] = encodeAsset(prop.getDefaultValue<AssetRef>());
             break;
         }
+        case ScriptPropertyType::List:
+            node["elementType"] = scriptPropertyTypeToString(prop.elementType);
+            if (!prop.assetType.empty()) node["assetType"] = prop.assetType;
+            node["value"] = encodeScriptList(prop.elementType, prop.value);
+            node["defaultValue"] = encodeScriptList(prop.elementType, prop.defaultValue);
+            break;
     }
 
     return node;
@@ -5832,6 +6188,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
     if (node["assetType"]) {
         prop.assetType = node["assetType"].as<std::string>();
     }
+    if (node["elementType"]) prop.elementType = decodeEnum(node, "elementType", StreamSchema::scriptPropertyType());
 
     if (node["value"]) {
         switch (prop.type) {
@@ -5895,6 +6252,10 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
                 prop.defaultValue = decodeAsset(node["defaultValue"]);
                 break;
             }
+            case ScriptPropertyType::List:
+                prop.value = decodeScriptList(prop.elementType, node["value"]);
+                prop.defaultValue = decodeScriptList(prop.elementType, node["defaultValue"]);
+                break;
         }
     } else {
         // Initialize with default values if no value is provided
@@ -5911,6 +6272,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
             case ScriptPropertyType::EntityReference: prop.value = EntityReference{NULL_ENTITY, 0}; prop.defaultValue = EntityReference{NULL_ENTITY, 0}; break;
             case ScriptPropertyType::Prefab: prop.value = PrefabAsset(); prop.defaultValue = PrefabAsset(); break;
             case ScriptPropertyType::Asset: prop.value = AssetRef(); prop.defaultValue = AssetRef(); break;
+            case ScriptPropertyType::List: prop.value = ScriptPropertyList(); prop.defaultValue = ScriptPropertyList(); break;
         }
     }
 

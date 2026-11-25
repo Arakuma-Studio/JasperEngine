@@ -3,6 +3,7 @@
 
 #include "EntityCloner.h"
 #include "model/ModelCpuData.h"
+#include "component/MeshComponent.h"
 #include "component/ActionComponent.h"
 #include "component/TerrainWorldComponent.h"
 #include "component/VoxelVolumeComponent.h"
@@ -62,6 +63,8 @@
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
 #include "component/TitleArtRendererComponent.h"
+#include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -946,6 +949,30 @@ void prepare<TitleArtRendererComponent>(TitleArtRendererComponent& title, Entity
 }
 
 template<>
+void prepare<DialogueRunnerComponent>(DialogueRunnerComponent& runner, Entity, CloneContext& ctx) {
+    runner.view = ctx.remap(runner.view);
+    // a copy has not started: its own runner is made on its first use; the events are the original's
+    runner.runner.reset();
+    runner.isRunning = false;
+    runner.state = "idle";
+    runner.currentNode.clear();
+    runner.forEachEvent([](auto& event) { event.clear(); });
+}
+
+template<>
+void prepare<SimulationCullingComponent>(SimulationCullingComponent& culling, Entity, CloneContext&) {
+    // the copy is evaluated on its own (CullingSystem): it froze nothing yet
+    const SimulationCullingComponent defaults;
+    culling.state = defaults.state;
+    culling.reason = defaults.reason;
+    culling.focusDistance = defaults.focusDistance;
+    culling.resolvedRadius = defaults.resolvedRadius;
+    culling.groundChecked = false;
+    culling.groundLoaded = true;
+    culling.evaluated = false;
+}
+
+template<>
 void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, CloneContext&) {
     // a copy has not started: it has nothing to revert
     snapshot.previousSnapshot.clear();
@@ -1041,6 +1068,7 @@ void prepare<CameraFollowComponent>(CameraFollowComponent& follow, Entity, Clone
     follow.foreignWriteDetected = false;
     follow.warnedForeignWrite = false;
     follow.warnedMissingTarget = false;
+    follow.frameStep = CameraFollowStep();
 }
 
 template<>
@@ -1450,6 +1478,8 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<OutlineComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<HitStopExemptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SimulationCullingComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<DialogueRunnerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<GridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapLayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapCollider2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

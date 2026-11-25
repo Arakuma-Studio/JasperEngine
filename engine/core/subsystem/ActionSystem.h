@@ -415,6 +415,9 @@ namespace jasperengine{
 		void resetRunningActions();
 		void draw() override;
 		void destroy() override;
+		// no GPU objects: running actions and tweens go on after a view loss (destroy stops them)
+		void releaseGpu() override {}
+		void restoreGpu() override {}
 		void update(double dt) override;
 
 		// the unscaled delta of an update whose scaled delta is dt (Tween.useUnscaledTime)

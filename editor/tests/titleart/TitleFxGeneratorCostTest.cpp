@@ -14,7 +14,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleFxGeneratorCostJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 
 namespace {
 
@@ -57,9 +57,9 @@ TEST(TitleFxGeneratorCostTest, OneRowPerVisibleGenerator) {
     EXPECT_EQ(rings->liveKind, titleart::LiveKind::Kernel);
     EXPECT_GE(rings->cost.passes, 1);
     EXPECT_GT(rings->mobileMs, rings->desktopMs);
-    const Json json = cost.toJson();
+    const TitleFxGeneratorCostJson json = cost.toJson();
     bool found = false;
-    for (const Json& r : json["rows"]) found = found || r["type"] == "shockwave";
+    for (const TitleFxGeneratorCostJson& r : json["rows"]) found = found || r["type"] == "shockwave";
     EXPECT_TRUE(found);
     EXPECT_NE(cost.summary().find("shockwave"), std::string::npos) << cost.summary();
 }

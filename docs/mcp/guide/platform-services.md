@@ -112,6 +112,8 @@ Screen.orientation = ScreenOrientation.AutoRotation
 | `Engine.isFocused` | Unity's `Application.isFocused`; `true` at start |
 | `Engine.onFocus` `(hasFocus)` | the app is frontmost and gets input, or something covers it (a system dialog, the notification shade, another window) |
 | `Engine.onPause`, `Engine.onResume` | the app goes to the background and comes back |
+| `Engine.onPauseRequested` `(reason)` | Project Settings > Player > Pause On Focus Loss on and no Is Menu document showing: once after `onFocus(false)` (`"focus_lost"`), after an `onPause` no focus loss announced (`"app_paused"`), after the disconnect of the pad that holds the Gamepad scheme (`"gamepad_disconnected"`). Open the pause menu there; the engine changes no time scale. On without a subscriber: one warning at Play start |
+| `Engine.onBack` `(source)`, `Engine.isMenuShowing()` | Back (Android's Back button, Escape, gamepad B) that no menu document took; whether an Is Menu document shows (jasper://docs/html-ui "Back and menus") |
 | `Engine.onLowMemory` | the system is short of memory (Android, iOS): free caches |
 | `Device.onLowMemory` | the next frame, after the engine cleared its own caches (Android `onTrimMemory`, iOS, the web's heap heuristic; jasper://docs/device) |
 | `Device.thermalState`, `Device.onThermalStateChanged` `(state)` | the platform's thermal state (`ThermalState`; Android, iOS and macOS report one) |
@@ -186,6 +188,7 @@ function Music:onVisibilityChanged(visible) self.sound.volume = visible and 1 or
 | `System.getDeviceModel()`, `getDeviceType()` | `SystemInfo.deviceModel`, `deviceType` | `"Google Pixel 8"`, `"iPhone16,1"`; `DeviceType.Handheld` / `Desktop` |
 | `System.getSystemMemorySize()`, `getProcessorCount()` | `systemMemorySize`, `processorCount` | MiB (0 unknown), logical CPUs |
 | `System.isEditor()` | `Application.isEditor` | true only in editor Play |
+| `System.getBuildProfile()`, `isDefined(symbol)`, `getDefines()`, `getBuildInfo()` | Build Profiles, `#if` defines | the build's Build Profile (`""` none; Play: the active one) and its Scripting Define Symbols; `getBuildInfo()` is `{profile, defines, development, contentPatch, contentPatched}` (the Patch And Run patch a development player runs: 0/false for packaged content and in Play). Values, not a preprocessor: the code behind them ships |
 | `System.getInternetReachability()` | `Application.internetReachability` | says a network is there, not that a server answers. Android adds `ACCESS_NETWORK_STATE` to the export when a script calls it |
 | `System.vibrate([ms])` | `Handheld.Vibrate` | 400 ms by default; iOS ignores the length; `false` without a vibrator. Android adds `VIBRATE` to the export when a script calls it |
 | `System.hapticFeedback(HapticFeedback.X)` | (iOS feedback generators) | `Light`, `Medium`, `Heavy`, `Selection`, `Success`, `Warning`, `Error`; Android haptic constants, web vibration patterns, Force Touch trackpads |
@@ -200,6 +203,10 @@ but not for every frame). The pixel size stays `System.getScreenWidth()/getScree
   {type: "wait", ms: 500}, {type: "app", action: "resume"}]}`: the lifecycle as a device reports it
   (`focus_gained`, `low_memory` too). While "paused" the game does not update, as on a device;
   the input steps (a `resume` after a `wait`) keep going.
+- `{type: "app", action: "view_lost"}`, then `view_restored`: the GPU context lost and made again,
+  as on an Android return after `low_memory` or a lost WebGL context. The running scenes' GPU
+  objects go and come back; their state and their HTML UI documents stay (no `onLoad`/`onUnload`).
+  The game is paused and draws nothing until `view_restored`.
 - `{type: "app", action: "orientation", orientation: "landscape_left"}` turns the simulated device
   (needs `configure_game_view {device}`; refused when the game allows another orientation only).
 - `configure_game_view {device: "iphone_15_pro", orientation: "portrait", language: "es-MX"}`;
@@ -207,7 +214,7 @@ but not for every frame). The pixel size stays `System.getScreenWidth()/getScree
   rotation of the device ends with the Play.
 - `get_play_state` while playing: `platform: {focused, paused, visible, hidden_update_fps, orientation,
   requested_orientation, target_frame_rate, vsync_count, language, system_language, device, opened_urls,
-  vibrations, haptics}`.
+  vibrations, haptics, lifecycle: {view_lost, view_restored, view}}`.
 - Project settings: `player.default_orientation`, `player.allowed_orientations`,
   `player.keep_screen_on`, `player.target_frame_rate` (`android.orientation` and
   `android.keep_screen_on` were renamed to these; older project.yaml files migrate on load).

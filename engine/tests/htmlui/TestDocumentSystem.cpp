@@ -454,22 +454,30 @@ TEST_F(UIDocumentSystemTest, ViewDestroyedAndReloaded){
     updateDocuments(scene);
     ASSERT_TRUE(document.isLoaded());
 
-    // the platform drops the view (Android pause, Web context loss): scenes destroy their systems
+    HtmlUIContext* context = documentSystem(scene).getContext();
+    UIElement box = document.getElementById("box");
+    ASSERT_TRUE(box.isValid());
+
+    // the platform drops the view (Android without its context, Web context loss): the scenes
+    // release their GPU objects only (S95 REQ-15; the context and its documents went before)
     Engine::systemViewDestroyed();
-    EXPECT_EQ(documentSystem(scene).getContext(), nullptr);
-    EXPECT_FALSE(HtmlUI::isInitialized());
-    EXPECT_FALSE(document.isLoaded());
-    EXPECT_TRUE(document.getComponent<UIDocumentComponent>().needReload);
+    EXPECT_EQ(documentSystem(scene).getContext(), context);
+    EXPECT_TRUE(HtmlUI::isInitialized());
+    EXPECT_TRUE(document.isLoaded());
+    EXPECT_FALSE(document.getComponent<UIDocumentComponent>().needReload);
+    EXPECT_TRUE(box.isValid());
 
     // nothing happens without a view
     updateDocuments(scene);
-    EXPECT_EQ(documentSystem(scene).getContext(), nullptr);
+    EXPECT_EQ(documentSystem(scene).getContext(), context);
 
     Engine::systemViewLoaded();
     Engine::systemViewChanged();
     updateDocuments(scene);
     EXPECT_TRUE(document.isLoaded());
-    EXPECT_TRUE(document.getElementById("box").isValid());
+    EXPECT_EQ(documentSystem(scene).getContext(), context);
+    EXPECT_TRUE(box.isValid());
+    EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), 1u);
     EXPECT_EQ(HtmlUI::getReferenceCount(), 1);
     EXPECT_EQ(errors(), 0u);
 }

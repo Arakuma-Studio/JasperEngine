@@ -21,7 +21,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleFxGeneratorOpsJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 using titleart::TitleArtDoc;
 
 namespace {
@@ -78,7 +78,7 @@ TEST_F(TitleFxGeneratorOpsTest, PresetFilesAreClean) {
             for (auto it = p.params.begin(); it != p.params.end(); ++it) {
                 const titleart::ParamDef* param = titleart::findParam(def->params, it.key());
                 ASSERT_TRUE(param) << def->type << "/" << p.id << ": unknown param " << it.key();
-                Json value = it.value();
+                TitleFxGeneratorOpsJson value = it.value();
                 std::vector<titleart::TitleWarning> warnings;
                 titleart::NormalizeContext context;
                 context.warnings = &warnings;
@@ -93,9 +93,9 @@ TEST_F(TitleFxGeneratorOpsTest, PresetFilesAreClean) {
 TEST_F(TitleFxGeneratorOpsTest, AddGeneratorAppliesItsPreset) {
     const TitleFxPreset* neon = TitleFxPresets::find("shockwave", "neon");
     ASSERT_TRUE(neon);
-    const TitleOpsResult r = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}, {"preset", "neon"}});
+    const TitleOpsResult r = TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}, {"preset", "neon"}});
     ASSERT_TRUE(r.ok) << r.error();
-    const Json& layer = r.doc.layers().back();
+    const TitleFxGeneratorOpsJson& layer = r.doc.layers().back();
     EXPECT_EQ(layer.value("name", std::string()), neon->name);
     EXPECT_EQ(layer["generator"]["params"]["rings"], 5);
     EXPECT_EQ(layer["generator"]["params"]["profile"], "hard");
@@ -105,11 +105,11 @@ TEST_F(TitleFxGeneratorOpsTest, AddGeneratorAppliesItsPreset) {
     EXPECT_EQ(layer["effects"][0]["type"], "outer_glow");
     EXPECT_EQ(layer["effects"][0]["params"]["mode"], "add");
     // no preset: the first one (R7)
-    const TitleOpsResult plain = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}});
+    const TitleOpsResult plain = TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}});
     ASSERT_TRUE(plain.ok) << plain.error();
     EXPECT_EQ(plain.doc.layers().back().value("name", std::string()), TitleFxPresets::forType("shockwave").front().name);
     // an unknown preset fails naming the nearest
-    const TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}, {"preset", "neom"}});
+    const TitleOpsResult bad = TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}, {"preset", "neom"}});
     ASSERT_FALSE(bad.ok);
     ASSERT_TRUE(titleFxGeneratorOpsFailure(bad));
     EXPECT_EQ(titleFxGeneratorOpsFailure(bad)->nearest, "neon");
@@ -117,41 +117,41 @@ TEST_F(TitleFxGeneratorOpsTest, AddGeneratorAppliesItsPreset) {
 
 TEST_F(TitleFxGeneratorOpsTest, FollowPlaceAndGroup) {
     // below its layer, as a preset or the op places it
-    TitleOpsResult below = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"}, {"place", "below"}});
+    TitleOpsResult below = TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"}, {"place", "below"}});
     ASSERT_TRUE(below.ok) << below.error();
     ASSERT_EQ(below.doc.layers().size(), 3u);
     EXPECT_EQ(below.doc.layers()[1].value("follow", std::string()), "00000002");
     EXPECT_EQ(below.doc.layers()[2].value("name", std::string()), "Title");
     // an Add-blended companion above a layer with a sibling below it: "auto" wraps the two in "Title FX"
-    TitleOpsResult grouped = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"},
+    TitleOpsResult grouped = TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"},
                                                           {"group", "auto"}, {"values", {{"blend", "add"}}}});
     ASSERT_TRUE(grouped.ok) << grouped.error();
     ASSERT_EQ(grouped.doc.layers().size(), 2u);
-    const Json& group = grouped.doc.layers()[1];
+    const TitleFxGeneratorOpsJson& group = grouped.doc.layers()[1];
     EXPECT_EQ(group.value("type", std::string()), "group");
     EXPECT_EQ(group.value("name", std::string()), "Title FX");
     ASSERT_EQ(group["children"].size(), 2u);
     EXPECT_EQ(group["children"][0].value("name", std::string()), "Title");
     EXPECT_EQ(group["children"][1].value("follow", std::string()), "00000002");
     // a Normal companion is not wrapped by "auto"; "always" wraps it; "none" never does
-    TitleOpsResult normal = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"}, {"group", "auto"}});
+    TitleOpsResult normal = TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"}, {"group", "auto"}});
     ASSERT_TRUE(normal.ok) << normal.error();
     EXPECT_EQ(normal.doc.layers().size(), 3u);
-    TitleOpsResult always = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"}, {"group", "always"}});
+    TitleOpsResult always = TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"}, {"group", "always"}});
     ASSERT_TRUE(always.ok) << always.error();
     EXPECT_EQ(always.doc.layers().size(), 2u);
     // `follow` on a generator that follows nothing, and S83 members on another layer type, fail
-    EXPECT_FALSE(TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}, {"follow", "Title"}}).ok);
-    EXPECT_FALSE(TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "shape"}, {"preset", "x"}}).ok);
-    EXPECT_FALSE(TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"}, {"group", "maybe"}}).ok);
+    EXPECT_FALSE(TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}, {"follow", "Title"}}).ok);
+    EXPECT_FALSE(TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "shape"}, {"preset", "x"}}).ok);
+    EXPECT_FALSE(TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"}, {"group", "maybe"}}).ok);
 }
 
 TEST_F(TitleFxGeneratorOpsTest, FollowMissingReportsAndFixes) {
-    TitleOpsResult added = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"}});
+    TitleOpsResult added = TitleArtOps::apply(doc, TitleFxGeneratorOpsJson{{"op", "add_layer"}, {"type", "generator"}, {"generator", "test_follower"}, {"follow", "Title"}});
     ASSERT_TRUE(added.ok) << added.error();
     EXPECT_TRUE(titleFollowProblems(added.doc).empty());
     // the followed layer removed: S80 clears the reference, so the required follow is empty
-    TitleOpsResult removed = TitleArtOps::apply(added.doc, Json{{"op", "remove_layer"}, {"layer", "Title"}});
+    TitleOpsResult removed = TitleArtOps::apply(added.doc, TitleFxGeneratorOpsJson{{"op", "remove_layer"}, {"layer", "Title"}});
     ASSERT_TRUE(removed.ok) << removed.error();
     ASSERT_EQ(titleFollowProblems(removed.doc).size(), 1u);
     registerBuiltinTitleChecks();

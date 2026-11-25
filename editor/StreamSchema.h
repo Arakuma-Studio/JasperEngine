@@ -260,6 +260,7 @@ namespace jasperengine::editor {
         static const EnumTable<LightType>& lightType();
         static const EnumTable<LightUnit>& lightUnit();
         static const EnumTable<LitQuality>& litQuality();
+        static const EnumTable<AmbientMode>& ambientMode();
         static const EnumTable<PbrTier>& pbrTier();
         static const EnumTable<MaterialAlphaMode>& materialAlphaMode();
         static const EnumTable<MaterialBlendMode>& materialBlendMode();
@@ -284,6 +285,7 @@ namespace jasperengine::editor {
         static const EnumTable<RigidbodyMotionQuality>& rigidbodyMotionQuality();
         static const EnumTable<Scaling>& scalingMode();
         static const EnumTable<SceneColorScale>& sceneColorScale();
+        static const EnumTable<UIRenderMode>& uiRenderMode();
         static const EnumTable<PlanarReflectionResolution>& planarReflectionResolution();
         static const EnumTable<WaterWakeResolution>& waterWakeResolution();
         static const EnumTable<SceneType>& sceneType();

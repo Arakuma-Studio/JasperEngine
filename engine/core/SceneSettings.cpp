@@ -26,6 +26,8 @@ namespace{
     const char* const filmGateMaskValues[] = {"NONE", "ROUNDED", "ACADEMY_137", "WIDESCREEN_185", "ANAMORPHIC_239", nullptr};
     const char* const vignetteFalloffNames[] = {"smoothness", "radii", nullptr};
     const char* const vignetteFalloffValues[] = {"SMOOTHNESS", "RADII", nullptr};
+    const char* const cavityTypeNames[] = {"screen", "world", "both", nullptr};
+    const char* const cavityTypeValues[] = {"SCREEN", "WORLD", "BOTH", nullptr};
     const char* const lutEncodingNames[] = {"auto", "srgb", "linear", "logc3", "acescct", "cineon", "davinci_intermediate", nullptr};
     const char* const lutEncodingValues[] = {"AUTO", "SRGB", "LINEAR", "LOGC3", "ACESCCT", "CINEON", "DAVINCI_INTERMEDIATE", nullptr};
 
@@ -88,6 +90,18 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_FIELD(edgeDetectThreshold, "edge_detect_threshold", T::Float, 0.0f, 1.0f, "luma gradient where edges start (0..1)"),
         PP_FIELD(edgeDetectIntensity, "edge_detect_intensity", T::Float, 0.0f, 1.0f, "edge colour mix (0..1)"),
         PP_FIELD(edgeDetectColor, "edge_detect_color", T::Vector3, 0.0f, 1.0f, "edge colour [r,g,b] (sRGB)"),
+        PP_FIELD(cavityEnabled, "cavity_enabled", T::Bool, 0.0f, 1.0f, "Blender-style cavity: lightens convex edges and darkens creases of opaque 3D meshes"),
+        PP_ENUM(cavityType, "cavity_type", cavityTypeNames, "CavityType", cavityTypeValues,
+                "cavity: screen (thin edge lines), world (soft bevel within a world radius), both"),
+        PP_FIELD(cavityScreenRidge, "cavity_screen_ridge", T::Float, 0.0f, 2.0f, "how much the edge lines brighten convex edges (0..2)"),
+        PP_FIELD(cavityScreenValley, "cavity_screen_valley", T::Float, 0.0f, 2.0f, "how much the edge lines darken creases (0..2)"),
+        PP_FIELD(cavityScreenWidth, "cavity_screen_width", T::Float, 1.0f, 4.0f, "edge line width in pixels at 1080p, scaled with the screen height (1..4)"),
+        PP_FIELD(cavityWorldRadius, "cavity_world_radius", T::Float, 0.01f, 5.0f, "world-space width of the soft bevel; raise it when nothing shows on large objects (0.01..5)"),
+        PP_FIELD(cavityWorldRidge, "cavity_world_ridge", T::Float, 0.0f, 2.5f, "how much the bevel brightens convex edges (0..2.5)"),
+        PP_FIELD(cavityWorldValley, "cavity_world_valley", T::Float, 0.0f, 2.5f, "how much the bevel darkens creases (0..2.5)"),
+        PP_FIELD(cavityWorldSamples, "cavity_world_samples", T::Int, 4.0f, 16.0f, "bevel depth samples per pixel: 4, 8 or 16 (smoother, same width)"),
+        PP_FIELD(cavityMaxPixelRadius, "cavity_max_pixel_radius", T::Float, 0.0f, 64.0f, "caps how wide the bevel gets on screen when the camera is close, pixels at 1080p (0 no cap)"),
+        PP_FIELD(cavityDebug, "cavity_debug", T::Bool, 0.0f, 1.0f, "shows the cavity alone as grey (mid grey: no change)"),
         PP_FIELD(filmGrainEnabled, "film_grain_enabled", T::Bool, 0.0f, 1.0f, "film grain (uber pass)"),
         PP_FIELD(filmGrainIntensity, "film_grain_intensity", T::Float, 0.0f, 1.0f, "grain amount (0..1)"),
         PP_FIELD(filmGrainResponse, "film_grain_response", T::Float, 0.0f, 1.0f, "less grain in bright areas (0..1)"),
@@ -211,9 +225,11 @@ void PostProcessingSettings::clamp(){
     dynamicResolutionTargetFps = std::min(std::max(dynamicResolutionTargetFps, 0), 240);
     glitchTears = std::min(std::max(glitchTears, 0), 8);
     glitchSeed = std::min(std::max(glitchSeed, 0), 65535);
+    cavityWorldSamples = cavityWorldSamples >= 16 ? 16 : (cavityWorldSamples >= 8 ? 8 : 4);
     if ((int)tonemap < 0 || (int)tonemap > (int)TonemapMode::AGX) tonemap = TonemapMode::NONE;
     if ((int)monochromeMode < 0 || (int)monochromeMode > (int)MonochromeMode::SEPIA) monochromeMode = MonochromeMode::GRAYSCALE;
     if ((int)filmGrainType < 0 || (int)filmGrainType > (int)FilmGrainType::FILMIC) filmGrainType = FilmGrainType::CLASSIC;
+    if ((int)cavityType < 0 || (int)cavityType > (int)CavityType::BOTH) cavityType = CavityType::BOTH;
     if ((int)filmGateMask < 0 || (int)filmGateMask > (int)FilmGateMask::ANAMORPHIC_239) filmGateMask = FilmGateMask::NONE;
     if ((int)lutInputEncoding < 0 || (int)lutInputEncoding > (int)LutInputEncoding::DAVINCI_INTERMEDIATE) lutInputEncoding = LutInputEncoding::AUTO;
     if ((int)paletteDither < 0 || (int)paletteDither > (int)PaletteDither::BAYER8) paletteDither = PaletteDither::BAYER4;

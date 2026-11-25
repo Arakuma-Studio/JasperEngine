@@ -1079,6 +1079,8 @@ bool UIVideoElement::createTexture(const Rml::CallbackTextureInterface& textureI
         created->render = &created->ownedTarget->getRender().getColorTexture();
         created->width = width;
         created->height = height;
+        // a playing video's frames: a document drawing it is drawn every frame (S92 R2)
+        created->liveContent = true;
         if (sourceFrame){
             // the source draws into the target itself: no planes
             stats.texturesCreated++;
@@ -1112,6 +1114,7 @@ bool UIVideoElement::createTexture(const Rml::CallbackTextureInterface& textureI
         created = HtmlUITexture::createDynamic("htmlui-video", width, height, ColorFormat::RGBA, filter);
         if (!created)
             return false;
+        created->liveContent = true;
     }
     stats.texturesCreated++;
     HtmlUITexture* raw = created.release();

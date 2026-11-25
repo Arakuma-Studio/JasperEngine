@@ -7,6 +7,7 @@
 #include "Export.h"
 #include "ecs/Entity.h"
 #include "htmlui/compat/Diagnostics.h"
+#include "input/TextEntry.h"
 
 #include <cstdint>
 #include <functional>
@@ -196,6 +197,13 @@ struct InspectReload {
     std::vector<std::string> causes;
 };
 
+// the document's focused text field and the soft keyboard it asks for (text-entry R30)
+struct InspectFocus {
+    std::string ref;
+    TextEntryTraits traits;
+    bool keyboardOpen = false;   // the soft keyboard is shown for it
+};
+
 struct DocumentInfo {
     Entity entity = NULL_ENTITY;
     std::string html;                 // asset-relative (the component's filename)
@@ -247,6 +255,8 @@ public:
     // The last frame's render statistics of the context that draws the document (S16 R27):
     // HtmlUIRenderStats::forEachField's names and values, in that order
     static bool renderStats(Scene* scene, Entity entity, std::vector<std::pair<std::string, uint32_t>>& out, std::string& error);
+    // The focused text field of the document, when it has one (present = false otherwise)
+    static bool focus(Scene* scene, Entity entity, bool& present, InspectFocus& out, std::string& error);
     // Pushes the Lua table bound to data model `name` (UIDocumentSystem::pushDataModel)
     static bool pushDataModel(Scene* scene, Entity entity, const std::string& name, lua_State* L);
 };

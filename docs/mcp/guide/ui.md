@@ -236,6 +236,8 @@ arguments change it. They are editor preferences, not undoable, and not saved wi
   or `system`), `device_overlay`, `safe_area_outline`, `custom_device` `{width, height, insets
   {top, right, bottom, left}, corner_radius}` in pixels with `dpi`: a simulated phone and system
   language, editor only; `safe_area` in the reply is `Screen.safeArea` (jasper://docs/safe-area).
+  `language: "en-XA"` (accented, longer) or `"ar-XB"` (right to left) is a pseudo-locale of the
+  String Tables; translating a UI is jasper://docs/localization.
 - `simulate_touch`: the mouse is one finger (not while playing); `simulate_textures`: every view
   shows the cooked textures of `desktop`, `mobile`, `android_etc2` or `web`.
 - `atmosphere_quality`: the preview's Atmosphere Quality (`project` = the project's desktop tier;

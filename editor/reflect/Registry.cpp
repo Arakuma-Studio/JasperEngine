@@ -124,6 +124,8 @@ namespace {
         &kTitleArtRendererDesc,
         &kWheelColliderDesc,
         &kVehicleDrivetrainDesc,
+        &kSimulationCullingDesc,
+        &kDialogueRunnerDesc,
         &kOutlineDesc,
         &kSpriteSkinDesc,
     };
@@ -238,6 +240,8 @@ namespace {
         &kTitleArtRendererDesc,
         &kWheelColliderDesc,
         &kVehicleDrivetrainDesc,
+        &kSimulationCullingDesc,
+        &kDialogueRunnerDesc,
         &kOutlineDesc,
         &kSpriteSkinDesc,
     };
@@ -350,6 +354,8 @@ namespace {
         &kTitleArtRendererDesc,
         &kWheelColliderDesc,
         &kVehicleDrivetrainDesc,
+        &kSimulationCullingDesc,
+        &kDialogueRunnerDesc,
         &kOutlineDesc,
         &kSpriteSkinDesc,
     };
@@ -360,7 +366,7 @@ namespace {
         &enums::kAnimatorEventMode, &enums::kAnimatorRetarget, &enums::kAnimatorIKType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
         &enums::kCloudsRendering, &enums::kCollider2DType, &enums::kCollider3DSource, &enums::kCollider3DType, &enums::kCullingMode,
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,
-        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kWaterExcluderShape, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
+        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kWaterExcluderShape, &enums::kSimulationState, &enums::kSimulationCullReason, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
         &enums::kLatticeMaskChannel, &enums::kLatticeOutside, &enums::kLatticeStage, &enums::kLayoutGroupType, &enums::kLightShading,
         &enums::kLightType, &enums::kLightUnit, &enums::kLodFadeMode,
         &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialBlendFactor, &enums::kMaterialBlendOp, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,

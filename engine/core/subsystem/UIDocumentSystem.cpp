@@ -46,6 +46,14 @@ namespace {
     // the scene whose context shows the (global) RmlUi debugger
     UIDocumentSystem* debuggerOwner = nullptr;
 
+    // UIDocumentSystem::getMenuRevision: Engine::isMenuShowing recounts only after a change
+    uint32_t documentMenuRevision = 0;
+    void bumpMenuRevision(){ documentMenuRevision++; }
+
+}
+
+uint32_t UIDocumentSystem::getMenuRevision(){
+    return documentMenuRevision;
 }
 
 UIDocumentSystem::UIDocumentSystem(Scene* scene): SubSystem(scene){
@@ -71,6 +79,16 @@ void UIDocumentSystem::destroyContext(){
     documents.clear();
     safeAreaApplied.clear();
     inputState.reset();
+    // the context's documents go: the cursor overlay with them
+    cursorOverlay = nullptr;
+    cursorOverlayImage = nullptr;
+    cursorOverlayGraphic.clear();
+    cursorOverlayLook[0] = -1.0f;
+    if (!menuEntities.empty() || !cursorEntities.empty()){
+        menuEntities.clear();
+        cursorEntities.clear();
+        bumpMenuRevision();
+    }
     if (context)
         contextScenes().erase(context->getRmlContext());
     delete context;
@@ -91,7 +109,15 @@ void UIDocumentSystem::destroy(){
         document.needReload = true;
         document.loaded = false;
         document.loadFailed = false;
+        document.appliedMenu = false;
+        document.appliedCursor = false;
     }
+}
+
+void UIDocumentSystem::releaseGpu(){
+    if (context)
+        context->releaseGpuResources();
+    textureReleaseGpu();
 }
 
 bool UIDocumentSystem::ensureContext(){
@@ -247,8 +273,10 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
     }
 
     auto it = documents.find(entity);
-    if (it == documents.end())
+    if (it == documents.end()){
+        setInputFlagsApplied(entity, document, false, false);
         return;
+    }
     Rml::ElementDocument* rmlDocument = it->second;
 
     if (forceApply || document.sortOrder != document.appliedSortOrder){
@@ -266,6 +294,31 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         }
         document.appliedVisible = visible;
     }
+    setInputFlagsApplied(entity, document, visible && document.interactive && document.isMenu,
+                         visible && document.interactive && document.gamepadCursor && document.renderMode == UIDocumentRenderMode::SCREEN);
+}
+
+void UIDocumentSystem::setInputFlagsApplied(Entity entity, UIDocumentComponent& document, bool menu, bool cursor){
+    bool changed = false;
+    if (menu != document.appliedMenu || (menuEntities.count(entity) > 0) != menu){
+        document.appliedMenu = menu;
+        static uint64_t menuOrder = 0;
+        if (menu)
+            menuEntities[entity] = ++menuOrder;
+        else
+            menuEntities.erase(entity);
+        changed = true;
+    }
+    if (cursor != document.appliedCursor || (cursorEntities.count(entity) > 0) != cursor){
+        document.appliedCursor = cursor;
+        if (cursor)
+            cursorEntities[entity] = true;
+        else
+            cursorEntities.erase(entity);
+        changed = true;
+    }
+    if (changed)
+        bumpMenuRevision();
 }
 
 void UIDocumentSystem::update(double dt){
@@ -373,6 +426,8 @@ void UIDocumentSystem::onComponentRemoved(Entity entity, ComponentId componentId
     unloadEntityDocument(entity);
     textureRemoveEntity(entity);
     scriptComponentRemoved(entity);
+    if (menuEntities.erase(entity) + cursorEntities.erase(entity) > 0)
+        bumpMenuRevision();
 }
 
 bool UIDocumentSystem::hasVisibleDocument() const{
@@ -395,6 +450,14 @@ void UIDocumentSystem::toContext(float& x, float& y) const{
         x = x * (float)dimensions.x / (float)canvasWidth;
     if (canvasHeight > 0)
         y = y * (float)dimensions.y / (float)canvasHeight;
+}
+
+void UIDocumentSystem::toCanvas(float& x, float& y) const{
+    const Rml::Vector2i dimensions = context->getDimensions();
+    if (dimensions.x > 0)
+        x = x * (float)Engine::getCanvasWidth() / (float)dimensions.x;
+    if (dimensions.y > 0)
+        y = y * (float)Engine::getCanvasHeight() / (float)dimensions.y;
 }
 
 // phase-0 entry points: the mouse (touch = false), phase-1 methods in UIDocumentSystemInput.cpp

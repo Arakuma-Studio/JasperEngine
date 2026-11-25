@@ -108,6 +108,7 @@ void editor::InspectorWindow::drawTextAnchor(ComponentType cpType, SceneProject*
 void editor::InspectorWindow::drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     drawDefaultComponent(cpType, sceneProject, entities);
     drawTextAnchor(cpType, sceneProject, entities);
+    drawTextLocalizationRows(cpType, sceneProject, entities);
     TextComponent& text = sceneProject->scene->getComponent<TextComponent>(entities[0]);
     if (!ipf::isBitmapFontPath(text.font[0]))
         return;

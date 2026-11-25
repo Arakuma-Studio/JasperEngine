@@ -135,6 +135,18 @@ json PlayerConfig::toJson() const {
     }
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
+    if (simulateTouchFromMouse)
+        out["input"]["simulateTouchFromMouse"] = true;
+    // (only when set: a game at the defaults keeps its file)
+    if (fixedTimestep != PlayerConfig().fixedTimestep || maximumDeltaTime != PlayerConfig().maximumDeltaTime)
+        out["time"] = {{"fixedTimestep", fixedTimestep}, {"maximumDeltaTime", maximumDeltaTime}};
+    if (!localization.empty()) out["localization"] = localization;
+    if (gamepadCursor != GamepadCursorSettings()){
+        out["input"]["gamepadCursor"] = {{"speed", gamepadCursor.speed}, {"accelerationTime", gamepadCursor.accelerationTime},
+                                         {"slowOverControls", gamepadCursor.slowOverControls}, {"scrollSpeed", gamepadCursor.scrollSpeed},
+                                         {"deadzone", gamepadCursor.deadzone}, {"graphic", gamepadCursor.graphic}, {"size", gamepadCursor.size},
+                                         {"hotSpot", {gamepadCursor.hotSpot.x, gamepadCursor.hotSpot.y}}};
+    }
     json areas = json::array();
     for (const nav::AreaSettings& area : navigation.areas)
         areas.push_back({{"name", area.name}, {"cost", area.cost}, {"color", {area.color.x, area.color.y, area.color.z, area.color.w}}});
@@ -155,6 +167,7 @@ json PlayerConfig::toJson() const {
                      {"transformAwareText", transformAwareText}};
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
     out["dynamicBatching"] = dynamicBatching;
+    out["pauseOnFocusLoss"] = pauseOnFocusLoss;
     out["lightMode"] = LightingTiers::getModeName(lightMode);
     if (transitions != pixelart::TransitionDefaults()){
         char color[8];
@@ -181,9 +194,13 @@ json PlayerConfig::toJson() const {
         out["transparencySortAxis"] = {transparencySortAxis.x, transparencySortAxis.y, transparencySortAxis.z};
     out["collision3D"] = collision3D;
     out["collision2D"] = collision2D;
+    // written only when off: an older player and a game.json without them read true
+    if (!queriesHitTriggers3D) out["queries_hit_triggers_3d"] = false;
+    if (!queriesHitTriggers2D) out["queries_hit_triggers_2d"] = false;
     out["logging"] = {{"level", logLevel}, {"file", logFile}, {"backtrace", logBacktrace}};
     out["crash"] = {{"handler", crashHandler}, {"logTail", crashLogTail}, {"dumpWithHeap", crashDumpWithHeap},
-                    {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
+                    {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay},
+                    {"journalBytes", crashJournalBytes}, {"journalEngineEvents", crashJournalEngineEvents}};
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
                     {"musicGroup", audioMusicGroup}, {"unusedClipCacheMb", audioUnusedClipCacheMb}};
@@ -231,6 +248,10 @@ json PlayerConfig::toJson() const {
                         {"statsCorner", nameOf(kCorners, debugOverlay.statsCorner)}, {"logBufferSize", logBufferSize},
                         {"logStackTraces", nameOf(kStackTraces, logStackTraces)}};
     }
+    if (!buildProfile.empty()) out["buildProfile"] = buildProfile;
+    if (!buildProfile.empty()) out["defines"] = defines;
+    if (consoleCommands != "development") out["consoleCommands"] = consoleCommands;
+    if (saveGame != savegame::SaveSettings()) out["saveGame"] = {{"backups", saveGame.backups}, {"maxSlotMiB", saveGame.maxSlotMiB}};
     return out;
 }
 
@@ -255,6 +276,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         config.appId = in.value("appId", "");
         config.version = in.value("version", "");
         config.startScene = in.value("startScene", 0u);
+        config.localization = in.value("localization", std::string());
         for (const json& scene : in.value("scenes", json::array())) {
             GameScene item;
             item.id = scene.at("id").get<uint32_t>();
@@ -320,6 +342,31 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
+            config.simulateTouchFromMouse = input->value("simulateTouchFromMouse", false);
+            if (const auto cursor = input->find("gamepadCursor"); cursor != input->end() && cursor->is_object()){
+                GamepadCursorSettings& c = config.gamepadCursor;
+                c.speed = cursor->value("speed", c.speed);
+                c.accelerationTime = cursor->value("accelerationTime", c.accelerationTime);
+                c.slowOverControls = cursor->value("slowOverControls", c.slowOverControls);
+                c.scrollSpeed = cursor->value("scrollSpeed", c.scrollSpeed);
+                c.deadzone = cursor->value("deadzone", c.deadzone);
+                c.graphic = cursor->value("graphic", c.graphic);
+                c.size = cursor->value("size", c.size);
+                if (const auto hot = cursor->find("hotSpot"); hot != cursor->end() && hot->is_array() && hot->size() == 2 &&
+                    (*hot)[0].is_number() && (*hot)[1].is_number())
+                    c.hotSpot = Vector2((*hot)[0].get<float>(), (*hot)[1].get<float>());
+            }
+        }
+        if (const auto time = in.find("time"); time != in.end() && time->is_object()) {
+            // a step the engine refuses keeps the default
+            auto seconds = [&](const char* key, double fallback) {
+                const auto value = time->find(key);
+                if (value == time->end() || !value->is_number()) return fallback;
+                const double v = value->get<double>();
+                return v > 0.0 && std::isfinite(v) ? v : fallback;
+            };
+            config.fixedTimestep = seconds("fixedTimestep", config.fixedTimestep);
+            config.maximumDeltaTime = seconds("maximumDeltaTime", config.maximumDeltaTime);
         }
         if (const auto voxel = in.find("voxel"); voxel != in.end()) {
             config.voxelMaxDimension = voxel->value("maxDimension", 0);
@@ -368,6 +415,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         }
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
         config.dynamicBatching = in.value("dynamicBatching", config.dynamicBatching);
+        config.pauseOnFocusLoss = in.value("pauseOnFocusLoss", config.pauseOnFocusLoss);
         // absent (a config written before it) or unknown: Automatic
         if (const auto transitions = in.find("transitions"); transitions != in.end() && transitions->is_object()){
             pixelart::TransitionDefaults& t = config.transitions;
@@ -415,6 +463,8 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         const std::vector<uint32_t> collision2D = in.value("collision2D", std::vector<uint32_t>{});
         for (size_t i = 0; i < collision3D.size() && i < config.collision3D.size(); i++) config.collision3D[i] = collision3D[i];
         for (size_t i = 0; i < collision2D.size() && i < config.collision2D.size(); i++) config.collision2D[i] = collision2D[i];
+        config.queriesHitTriggers3D = in.value("queries_hit_triggers_3d", config.queriesHitTriggers3D);
+        config.queriesHitTriggers2D = in.value("queries_hit_triggers_2d", config.queriesHitTriggers2D);
         if (const auto logging = in.find("logging"); logging != in.end()) {
             config.logLevel = logging->value("level", "");
             config.logFile = logging->value("file", config.logFile);
@@ -427,6 +477,9 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.hangWatchdog = crash->value("hangWatchdog", config.hangWatchdog);
             config.hangMs = crash->value("hangMs", config.hangMs);
             config.crashWebOverlay = crash->value("webOverlay", config.crashWebOverlay);
+            // absent (an older editor's game.json): the default journal
+            config.crashJournalBytes = crash->value("journalBytes", config.crashJournalBytes);
+            config.crashJournalEngineEvents = crash->value("journalEngineEvents", config.crashJournalEngineEvents);
         }
         // absent (a game.json of an older editor): no mixer, the default voices
         if (const auto audio = in.find("audio"); audio != in.end()) {
@@ -440,6 +493,8 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioMusicGroup = audio->value("musicGroup", config.audioMusicGroup);
             config.audioUnusedClipCacheMb = audio->value("unusedClipCacheMb", config.audioUnusedClipCacheMb);
         }
+        // absent (an older editor's game.json): development
+        config.consoleCommands = in.value("consoleCommands", config.consoleCommands);
         // absent: no native plugin of the project is for other platforms only
         if (const auto native = in.find("nativePlatformOnly"); native != in.end() && native->is_object()) {
             for (const auto& [plugin, message] : native->items()) {
@@ -523,6 +578,13 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             valueOf(kCorners, debug->value("statsCorner", std::string("top_left")), overlay.statsCorner);
             config.logBufferSize = debug->value("logBufferSize", config.logBufferSize);
             valueOf(kStackTraces, debug->value("logStackTraces", std::string("warnings")), config.logStackTraces);
+        }
+        config.buildProfile = in.value("buildProfile", std::string());
+        config.defines = in.value("defines", std::vector<std::string>{});
+        // absent: the defaults
+        if (const auto saveGame = in.find("saveGame"); saveGame != in.end() && saveGame->is_object()) {
+            config.saveGame.backups = saveGame->value("backups", config.saveGame.backups);
+            config.saveGame.maxSlotMiB = saveGame->value("maxSlotMiB", config.saveGame.maxSlotMiB);
         }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;

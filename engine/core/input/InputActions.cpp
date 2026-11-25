@@ -9,6 +9,7 @@
 #include "input/InputActionAssetJson.h"
 #include "input/InputControlPath.h"
 #include "input/InputRebind.h"
+#include "input/InputScheme.h"
 #include "io/Data.h"
 #include "io/UserSettings.h"
 #include "System.h"
@@ -16,6 +17,7 @@
 #include <algorithm>
 #include <bitset>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <set>
 #include <unordered_map>
@@ -143,6 +145,8 @@ namespace jasperengine {
 
     struct InputActionsRuntime {
         bool loaded = false;
+        // bumped by every change of what the bindings are (an asset build, an override): prompts follow
+        uint32_t bindingRevision = 0;
         std::string path;
         InputActionAssetDesc asset;
         std::vector<RMap> maps;
@@ -429,7 +433,26 @@ namespace {
                     control.index == D_KEY_RIGHT || control.index == D_KEY_TAB || control.index == D_KEY_ENTER ||
                     control.index == D_KEY_KP_ENTER || control.index == D_KEY_SPACE);
         }
-        if (!r.suppression.gamepadNavigation)
+        // the gamepad cursor's controls: both sticks, A, B and the d-pad
+        if (r.suppression.gamepadCursor){
+            switch (control.kind){
+                case InputControlKind::GAMEPAD_BUTTON:
+                    if (control.index == D_GAMEPAD_BUTTON_B)
+                        return true;
+                    break;
+                case InputControlKind::GAMEPAD_AXIS:
+                    if (control.index == D_GAMEPAD_AXIS_RIGHT_X || control.index == D_GAMEPAD_AXIS_RIGHT_Y)
+                        return true;
+                    break;
+                case InputControlKind::GAMEPAD_STICK:
+                    if (control.index == 1)
+                        return true;
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (!r.suppression.gamepadNavigation && !r.suppression.gamepadCursor)
             return false;
         switch (control.kind){
             case InputControlKind::GAMEPAD_BUTTON:
@@ -784,78 +807,112 @@ namespace {
         return titleWords(InputControlNames::keyName(key));
     }
 
-    bool isPlayStation(const std::string& padName){
-        std::string lower = padName;
-        for (char& c : lower)
-            c = (char)std::tolower(static_cast<unsigned char>(c));
-        return lower.find("playstation") != std::string::npos || lower.find("dualshock") != std::string::npos ||
-               lower.find("dualsense") != std::string::npos || lower.find("ps4") != std::string::npos ||
-               lower.find("ps5") != std::string::npos || lower.find("sony") != std::string::npos;
+    // the family the names follow: the map's pad, else the pad last used, else the first connected
+    GamepadFamily padFamily(int id){
+        return InputSchemeTracker::familyOf(Input::getGamepadName(id));
     }
 
-    std::string gamepadButtonDisplayName(int button, bool playStation){
-        if (playStation){
-            switch (button){
-                case D_GAMEPAD_BUTTON_A: return "Cross";
-                case D_GAMEPAD_BUTTON_B: return "Circle";
-                case D_GAMEPAD_BUTTON_X: return "Square";
-                case D_GAMEPAD_BUTTON_Y: return "Triangle";
-                case D_GAMEPAD_BUTTON_LEFT_BUMPER: return "L1";
-                case D_GAMEPAD_BUTTON_RIGHT_BUMPER: return "R1";
-                case D_GAMEPAD_BUTTON_BACK: return "Share";
-                case D_GAMEPAD_BUTTON_START: return "Options";
-                case D_GAMEPAD_BUTTON_GUIDE: return "PS";
-                case D_GAMEPAD_BUTTON_LEFT_THUMB: return "L3";
-                case D_GAMEPAD_BUTTON_RIGHT_THUMB: return "R3";
-                default: break;
-            }
-        }
-        switch (button){
-            case D_GAMEPAD_BUTTON_A: return "A";
-            case D_GAMEPAD_BUTTON_B: return "B";
-            case D_GAMEPAD_BUTTON_X: return "X";
-            case D_GAMEPAD_BUTTON_Y: return "Y";
-            case D_GAMEPAD_BUTTON_LEFT_BUMPER: return "Left Bumper";
-            case D_GAMEPAD_BUTTON_RIGHT_BUMPER: return "Right Bumper";
-            case D_GAMEPAD_BUTTON_BACK: return "Back";
-            case D_GAMEPAD_BUTTON_START: return "Start";
-            case D_GAMEPAD_BUTTON_GUIDE: return "Guide";
-            case D_GAMEPAD_BUTTON_LEFT_THUMB: return "Left Stick Press";
-            case D_GAMEPAD_BUTTON_RIGHT_THUMB: return "Right Stick Press";
-            case D_GAMEPAD_BUTTON_DPAD_UP: return "D-Pad Up";
-            case D_GAMEPAD_BUTTON_DPAD_RIGHT: return "D-Pad Right";
-            case D_GAMEPAD_BUTTON_DPAD_DOWN: return "D-Pad Down";
-            case D_GAMEPAD_BUTTON_DPAD_LEFT: return "D-Pad Left";
-            default: break;
-        }
-        return std::to_string(button);
+    GamepadFamily displayFamily(int gamepad){
+        if (gamepad >= 0 && Input::isGamepadConnected(gamepad))
+            return padFamily(gamepad);
+        const int last = InputSchemeTracker::getLastGamepad();
+        if (last >= 0 && Input::isGamepadConnected(last))
+            return padFamily(last);
+        if (Input::numGamepads() > 0)
+            return padFamily(Input::getGamepadId(0));
+        return GamepadFamily::Generic;
     }
 
-    std::string gamepadAxisDisplayName(int axis, bool playStation){
+    // a button's name on each family's pad (Nintendo's by position: its south button is B)
+    struct PadButtonNames {
+        int button;
+        const char* xbox;
+        const char* playStation;
+        const char* nintendo;
+        const char* generic;
+    };
+
+    // display names; nullptr: the generic one
+    constexpr PadButtonNames kPadButtonNames[] = {
+        {D_GAMEPAD_BUTTON_A, nullptr, "Cross", "B", "A"},
+        {D_GAMEPAD_BUTTON_B, nullptr, "Circle", "A", "B"},
+        {D_GAMEPAD_BUTTON_X, nullptr, "Square", "Y", "X"},
+        {D_GAMEPAD_BUTTON_Y, nullptr, "Triangle", "X", "Y"},
+        {D_GAMEPAD_BUTTON_LEFT_BUMPER, "LB", "L1", "L", "Left Bumper"},
+        {D_GAMEPAD_BUTTON_RIGHT_BUMPER, "RB", "R1", "R", "Right Bumper"},
+        {D_GAMEPAD_BUTTON_BACK, "View", "Share", "\xE2\x88\x92", "Back"},
+        {D_GAMEPAD_BUTTON_START, "Menu", "Options", "+", "Start"},
+        {D_GAMEPAD_BUTTON_GUIDE, "Xbox", "PS", "Home", "Guide"},
+        {D_GAMEPAD_BUTTON_LEFT_THUMB, nullptr, "L3", "L Stick Press", "Left Stick Press"},
+        {D_GAMEPAD_BUTTON_RIGHT_THUMB, nullptr, "R3", "R Stick Press", "Right Stick Press"},
+        {D_GAMEPAD_BUTTON_DPAD_UP, nullptr, nullptr, nullptr, "D-Pad Up"},
+        {D_GAMEPAD_BUTTON_DPAD_RIGHT, nullptr, nullptr, nullptr, "D-Pad Right"},
+        {D_GAMEPAD_BUTTON_DPAD_DOWN, nullptr, nullptr, nullptr, "D-Pad Down"},
+        {D_GAMEPAD_BUTTON_DPAD_LEFT, nullptr, nullptr, nullptr, "D-Pad Left"},
+    };
+
+    // glyph keys (docs/mcp/guide/input.md "Glyph keys"); nullptr: the generic one
+    constexpr PadButtonNames kPadButtonGlyphs[] = {
+        {D_GAMEPAD_BUTTON_A, "a", "cross", "b", "south"},
+        {D_GAMEPAD_BUTTON_B, "b", "circle", "a", "east"},
+        {D_GAMEPAD_BUTTON_X, "x", "square", "y", "west"},
+        {D_GAMEPAD_BUTTON_Y, "y", "triangle", "x", "north"},
+        {D_GAMEPAD_BUTTON_LEFT_BUMPER, "lb", "l1", "l", "left_bumper"},
+        {D_GAMEPAD_BUTTON_RIGHT_BUMPER, "rb", "r1", "r", "right_bumper"},
+        {D_GAMEPAD_BUTTON_BACK, "view", "share", "minus", "back"},
+        {D_GAMEPAD_BUTTON_START, "menu", "options", "plus", "start"},
+        {D_GAMEPAD_BUTTON_GUIDE, "xbox", "ps", "home", "guide"},
+        {D_GAMEPAD_BUTTON_LEFT_THUMB, nullptr, "l3", nullptr, "left_stick_press"},
+        {D_GAMEPAD_BUTTON_RIGHT_THUMB, nullptr, "r3", nullptr, "right_stick_press"},
+        {D_GAMEPAD_BUTTON_DPAD_UP, nullptr, nullptr, nullptr, "dpad_up"},
+        {D_GAMEPAD_BUTTON_DPAD_RIGHT, nullptr, nullptr, nullptr, "dpad_right"},
+        {D_GAMEPAD_BUTTON_DPAD_DOWN, nullptr, nullptr, nullptr, "dpad_down"},
+        {D_GAMEPAD_BUTTON_DPAD_LEFT, nullptr, nullptr, nullptr, "dpad_left"},
+    };
+
+    // the triggers: display names, then glyph keys
+    constexpr PadButtonNames kTriggerNames[] = {
+        {D_GAMEPAD_AXIS_LEFT_TRIGGER, "LT", "L2", "ZL", "Left Trigger"},
+        {D_GAMEPAD_AXIS_RIGHT_TRIGGER, "RT", "R2", "ZR", "Right Trigger"},
+    };
+    constexpr PadButtonNames kTriggerGlyphs[] = {
+        {D_GAMEPAD_AXIS_LEFT_TRIGGER, "lt", "l2", "zl", "left_trigger"},
+        {D_GAMEPAD_AXIS_RIGHT_TRIGGER, "rt", "r2", "zr", "right_trigger"},
+    };
+
+    template<size_t N>
+    const char* padName(const PadButtonNames (&table)[N], int code, GamepadFamily family){
+        for (const PadButtonNames& row : table){
+            if (row.button != code)
+                continue;
+            const char* name = family == GamepadFamily::Xbox ? row.xbox
+                             : family == GamepadFamily::PlayStation ? row.playStation
+                             : family == GamepadFamily::Nintendo ? row.nintendo : nullptr;
+            return name ? name : row.generic;
+        }
+        return nullptr;
+    }
+
+    std::string gamepadButtonDisplayName(int button, GamepadFamily family){
+        const char* name = padName(kPadButtonNames, button, family);
+        return name ? std::string(name) : std::to_string(button);
+    }
+
+    std::string gamepadAxisDisplayName(int axis, GamepadFamily family){
         switch (axis){
             case D_GAMEPAD_AXIS_LEFT_X: return "Left Stick X";
             case D_GAMEPAD_AXIS_LEFT_Y: return "Left Stick Y";
             case D_GAMEPAD_AXIS_RIGHT_X: return "Right Stick X";
             case D_GAMEPAD_AXIS_RIGHT_Y: return "Right Stick Y";
-            case D_GAMEPAD_AXIS_LEFT_TRIGGER: return playStation ? "L2" : "Left Trigger";
-            case D_GAMEPAD_AXIS_RIGHT_TRIGGER: return playStation ? "R2" : "Right Trigger";
             default: break;
         }
-        return std::to_string(axis);
-    }
-
-    // the pad the names follow: the map's, else the first connected one
-    std::string displayPadName(int gamepad){
-        if (gamepad >= 0 && Input::isGamepadConnected(gamepad))
-            return Input::getGamepadName(gamepad);
-        if (Input::numGamepads() > 0)
-            return Input::getGamepadName(Input::getGamepadId(0));
-        return std::string();
+        const char* name = padName(kTriggerNames, axis, family);
+        return name ? std::string(name) : std::to_string(axis);
     }
 
     std::string controlDisplayName(const InputControlPath& control, int mods, int gamepad){
         std::string name;
-        const bool playStation = isPlayStation(displayPadName(gamepad));
+        const GamepadFamily family = displayFamily(gamepad);
         switch (control.kind){
             case InputControlKind::KEY: name = keyDisplayName(control.index); break;
             case InputControlKind::MOUSE_BUTTON:
@@ -872,8 +929,8 @@ namespace {
             case InputControlKind::MOUSE_SCROLL:
                 name = control.component == 0 ? "Scroll X" : control.component == 1 ? "Scroll Y" : "Scroll";
                 break;
-            case InputControlKind::GAMEPAD_BUTTON: name = gamepadButtonDisplayName(control.index, playStation); break;
-            case InputControlKind::GAMEPAD_AXIS: name = gamepadAxisDisplayName(control.index, playStation); break;
+            case InputControlKind::GAMEPAD_BUTTON: name = gamepadButtonDisplayName(control.index, family); break;
+            case InputControlKind::GAMEPAD_AXIS: name = gamepadAxisDisplayName(control.index, family); break;
             case InputControlKind::GAMEPAD_STICK: name = control.index == 0 ? "Left Stick" : "Right Stick"; break;
             case InputControlKind::TOUCH_PRESS: name = "Touch"; break;
             case InputControlKind::TOUCH_POSITION: name = "Touch Position"; break;
@@ -888,6 +945,44 @@ namespace {
         if (mods & D_MODIFIER_ALT) prefix += "Alt+";
         if (mods & D_MODIFIER_SUPER) prefix += "Super+";
         return prefix + name;
+    }
+
+    // a control's glyph key: keyboard/space, gamepad/playstation/cross, touch/tap...
+    std::string controlGlyph(const InputControlPath& control, int mods, int gamepad){
+        std::string glyph;
+        if (mods & D_MODIFIER_CONTROL) glyph += "keyboard/ctrl+";
+        if (mods & D_MODIFIER_SHIFT) glyph += "keyboard/shift+";
+        if (mods & D_MODIFIER_ALT) glyph += "keyboard/alt+";
+        if (mods & D_MODIFIER_SUPER) glyph += "keyboard/super+";
+        const auto pad = [&](const char* name){
+            return std::string("gamepad/") + InputSchemeTracker::familyKey(displayFamily(gamepad)) + "/" + name;
+        };
+        switch (control.kind){
+            case InputControlKind::KEY: return glyph + "keyboard/" + InputControlNames::keyName(control.index);
+            case InputControlKind::MOUSE_BUTTON: return glyph + "mouse/" + InputControlNames::mouseButtonName(control.index);
+            case InputControlKind::MOUSE_DELTA: return glyph + "mouse/delta";
+            case InputControlKind::MOUSE_SCROLL: return glyph + "mouse/scroll";
+            case InputControlKind::GAMEPAD_BUTTON: {
+                const char* name = padName(kPadButtonGlyphs, control.index, displayFamily(gamepad));
+                return glyph + pad(name ? name : InputControlNames::gamepadButtonName(control.index).c_str());
+            }
+            case InputControlKind::GAMEPAD_AXIS:
+                if (control.index == D_GAMEPAD_AXIS_LEFT_X || control.index == D_GAMEPAD_AXIS_LEFT_Y)
+                    return glyph + pad("left_stick");
+                if (control.index == D_GAMEPAD_AXIS_RIGHT_X || control.index == D_GAMEPAD_AXIS_RIGHT_Y)
+                    return glyph + pad("right_stick");
+                if (const char* name = padName(kTriggerGlyphs, control.index, displayFamily(gamepad)))
+                    return glyph + pad(name);
+                return glyph + pad(InputControlNames::gamepadAxisName(control.index).c_str());
+            case InputControlKind::GAMEPAD_STICK: return glyph + pad(control.index == 0 ? "left_stick" : "right_stick");
+            case InputControlKind::TOUCH_PRESS: return glyph + "touch/tap";
+            case InputControlKind::TOUCH_POSITION: return glyph + "touch/position";
+            case InputControlKind::TOUCH_DELTA: return glyph + "touch/delta";
+            case InputControlKind::TOUCH_COUNT: return glyph + "touch/count";
+            case InputControlKind::VIRTUAL: return glyph + "virtual/" + control.name;
+            case InputControlKind::NONE: break;
+        }
+        return std::string();
     }
 
     std::string overridesJson(const std::map<std::string, std::string>& overrides){
@@ -1184,6 +1279,7 @@ void InputActionsRuntime::resetActionState(InputAction& action){
 // the runtime arrays of the asset; maps keep the state they had (enabled, priority, pad)
 void InputActionsRuntime::build(bool keepMapState){
     InputActionsRuntime& r = *this;
+    r.bindingRevision++;
     std::map<std::string, RMap> previous;
     if (keepMapState){
         for (const RMap& map : r.maps)
@@ -1642,6 +1738,7 @@ void InputActions::setOverride(const std::string& bindingId, const std::string& 
         return;
     }
     r.overrides[bindingId] = control.toString();
+    r.bindingRevision++;
     if (RBinding* binding = r.findBinding(bindingId)){
         binding->control = control;
         binding->virtualIndex = control.kind == InputControlKind::VIRTUAL ? r.virtualIndex(control.name, true) : -1;
@@ -1651,6 +1748,7 @@ void InputActions::setOverride(const std::string& bindingId, const std::string& 
 void InputActions::removeOverride(const std::string& bindingId){
     InputActionsRuntime& r = rt();
     r.overrides.erase(bindingId);
+    r.bindingRevision++;
     if (RBinding* binding = r.findBinding(bindingId)){
         if (const InputBindingDesc* desc = r.asset.findBinding(bindingId)){
             binding->control = InputControlPath::parse(desc->path);
@@ -1722,45 +1820,174 @@ void InputActions::setOverrideStore(std::shared_ptr<InputOverrideStore> store){
 
 // ---- display
 
+namespace {
+
+    // the pad a binding's names follow: its map's (-1 any)
+    int bindingGamepad(const InputActionsRuntime& r, const RBinding* binding){
+        for (size_t a = 0; a < r.actions.size(); a++){
+            const RAction& action = r.actions[a];
+            for (int b = action.firstBinding; b < action.firstBinding + action.bindingCount; b++){
+                const RBinding& top = r.bindings[b];
+                bool mine = &top == binding;
+                for (int p = 0; p < top.partCount && !mine; p++)
+                    mine = &r.parts[top.firstPart + p] == binding;
+                if (mine){
+                    const int m = mapOfAction(r, (int)a);
+                    return m >= 0 ? r.maps[m].gamepad : -1;
+                }
+            }
+        }
+        return -1;
+    }
+
+    // a composite's parts in display order: "W/A/S/D" is up, left, down, right; "Q/E" negative, positive
+    template<typename F>
+    void forEachDisplayPart(const InputActionsRuntime& r, const RBinding& binding, F&& f){
+        static const int dpad[] = {0, 2, 1, 3};
+        static const int axis[] = {0, 1};
+        const bool square = binding.composite == InputCompositeType::DPAD_2D;
+        const int* order = square ? dpad : axis;
+        for (int i = 0; i < (square ? 4 : 2); i++){
+            if (order[i] < binding.partCount)
+                f(r.parts[binding.firstPart + order[i]]);
+        }
+    }
+
+    std::string bindingDisplayName(const InputActionsRuntime& r, const RBinding& binding, int gamepad){
+        if (binding.partCount == 0)
+            return controlDisplayName(binding.control, binding.requiredMods, gamepad);
+        std::string name;
+        forEachDisplayPart(r, binding, [&](const RBinding& part){
+            if (!name.empty()) name += "/";
+            name += controlDisplayName(part.control, part.requiredMods, gamepad);
+        });
+        return name;
+    }
+
+    std::string bindingGlyph(const InputActionsRuntime& r, const RBinding& binding, int gamepad){
+        if (binding.partCount == 0)
+            return controlGlyph(binding.control, binding.requiredMods, gamepad);
+        std::string glyph;
+        forEachDisplayPart(r, binding, [&](const RBinding& part){
+            if (!glyph.empty()) glyph += "+";
+            glyph += controlGlyph(part.control, part.requiredMods, gamepad);
+        });
+        return glyph;
+    }
+
+    // its groups name the scheme; with none, its control's device does (a composite's first
+    // part's); virtual controls belong to every scheme
+    bool bindingInScheme(const InputActionsRuntime& r, const RBinding& binding, InputScheme scheme){
+        const char* group = InputSchemeTracker::groupName(scheme);
+        if (!binding.groups.empty())
+            return std::find(binding.groups.begin(), binding.groups.end(), group) != binding.groups.end();
+        const InputControlPath& control = binding.partCount > 0 ? r.parts[binding.firstPart].control : binding.control;
+        if (control.kind == InputControlKind::VIRTUAL)
+            return true;
+        return std::strcmp(control.deviceGroup(), group) == 0;
+    }
+
+    // the first binding of the action for the scheme ("" or an unknown scheme: the current one)
+    const RBinding* actionBinding(InputActionsRuntime& r, const std::string& action, const std::string& schemeName,
+                                                       int& gamepad){
+        InputScheme scheme = InputSchemeTracker::getCurrent();
+        if (!schemeName.empty() && !InputSchemeTracker::parseScheme(schemeName, scheme))
+            return nullptr;
+        const int index = r.nameIndex(action, false);
+        if (index < 0)
+            return nullptr;
+        const RAction& entry = r.actions[index];
+        const int m = mapOfAction(r, index);
+        gamepad = m >= 0 ? r.maps[m].gamepad : -1;
+        for (int b = entry.firstBinding; b < entry.firstBinding + entry.bindingCount; b++){
+            if (bindingInScheme(r, r.bindings[b], scheme))
+                return &r.bindings[b];
+        }
+        return nullptr;
+    }
+
+}
+
 std::string InputActions::getBindingDisplayName(const std::string& bindingId){
     InputActionsRuntime& r = rt();
     const RBinding* binding = r.findBinding(bindingId);
     if (!binding)
         return std::string();
-    int gamepad = -1;
-    for (size_t a = 0; a < r.actions.size(); a++){
-        const RAction& action = r.actions[a];
-        for (int b = action.firstBinding; b < action.firstBinding + action.bindingCount; b++){
-            const RBinding& top = r.bindings[b];
-            bool mine = &top == binding;
-            for (int p = 0; p < top.partCount && !mine; p++)
-                mine = &r.parts[top.firstPart + p] == binding;
-            if (mine){
-                const int m = mapOfAction(r, (int)a);
-                if (m >= 0) gamepad = r.maps[m].gamepad;
-            }
-        }
-    }
-    if (binding->partCount > 0){
-        // "W/A/S/D": up, left, down, right; "Q/E": negative, positive
-        std::vector<int> order;
-        if (binding->composite == InputCompositeType::DPAD_2D) order = {0, 2, 1, 3};
-        else order = {0, 1};
-        std::string name;
-        for (int index : order){
-            if (index >= binding->partCount)
-                continue;
-            const RBinding& part = r.parts[binding->firstPart + index];
-            if (!name.empty()) name += "/";
-            name += controlDisplayName(part.control, part.requiredMods, gamepad);
-        }
-        return name;
-    }
-    return controlDisplayName(binding->control, binding->requiredMods, gamepad);
+    return bindingDisplayName(r, *binding, bindingGamepad(r, binding));
 }
 
 std::string InputActions::getControlDisplayName(const std::string& path, int mods){
     return controlDisplayName(InputControlPath::parse(path), mods, -1);
+}
+
+std::string InputActions::getBindingGlyph(const std::string& bindingId){
+    InputActionsRuntime& r = rt();
+    const RBinding* binding = r.findBinding(bindingId);
+    if (!binding)
+        return std::string();
+    return bindingGlyph(r, *binding, bindingGamepad(r, binding));
+}
+
+std::string InputActions::getActionDisplayName(const std::string& action, const std::string& scheme){
+    InputActionsRuntime& r = rt();
+    int gamepad = -1;
+    const RBinding* binding = actionBinding(r, action, scheme, gamepad);
+    return binding ? bindingDisplayName(r, *binding, gamepad) : std::string();
+}
+
+std::string InputActions::getActionGlyph(const std::string& action, const std::string& scheme){
+    InputActionsRuntime& r = rt();
+    int gamepad = -1;
+    const RBinding* binding = actionBinding(r, action, scheme, gamepad);
+    return binding ? bindingGlyph(r, *binding, gamepad) : std::string();
+}
+
+bool InputActions::isBindingInScheme(const std::string& bindingId, const std::string& scheme){
+    InputActionsRuntime& r = rt();
+    const RBinding* binding = r.findBinding(bindingId);
+    InputScheme parsed = InputSchemeTracker::getCurrent();
+    if (!binding || (!scheme.empty() && !InputSchemeTracker::parseScheme(scheme, parsed)))
+        return false;
+    return bindingInScheme(r, *binding, parsed);
+}
+
+uint32_t InputActions::getBindingRevision(){
+    return rt().bindingRevision;
+}
+
+// ---- the input scheme
+
+std::string InputActions::getCurrentScheme(){
+    return InputSchemeTracker::groupName(InputSchemeTracker::getCurrent());
+}
+
+std::string InputActions::getCurrentPointer(){
+    return InputSchemeTracker::groupName(InputSchemeTracker::getPointer());
+}
+
+std::string InputActions::getGamepadFamily(){
+    return InputSchemeTracker::familyName(InputSchemeTracker::getGamepadFamily());
+}
+
+int InputActions::getLastGamepad(){
+    return InputSchemeTracker::getLastGamepad();
+}
+
+bool InputActions::setSchemeOverride(const std::string& scheme){
+    if (scheme.empty()){
+        InputSchemeTracker::setOverride(std::nullopt);
+        return true;
+    }
+    InputScheme parsed = InputScheme::KeyboardMouse;
+    if (!InputSchemeTracker::parseScheme(scheme, parsed))
+        return false;
+    InputSchemeTracker::setOverride(parsed);
+    return true;
+}
+
+std::string InputActions::getSchemeOverride(){
+    const std::optional<InputScheme> forced = InputSchemeTracker::getOverride();
+    return forced ? InputSchemeTracker::groupName(*forced) : std::string();
 }
 
 bool InputActions::isControlBound(const std::string& path){
@@ -1943,6 +2170,8 @@ void InputActions::endFixedStep(){
 
 void InputActions::resetSession(){
     InputActionsRuntime& r = rt();
+    // the input scheme starts again from the device (input-device-awareness R3)
+    InputSchemeTracker::reset(System::instance().isTouchDevice());
     cancelRebind();
     resetRuntimeState();
     for (int i = 0; i < r.virtualCount; i++)

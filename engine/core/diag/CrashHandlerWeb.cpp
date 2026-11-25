@@ -16,12 +16,17 @@ namespace jasperengine::diag::crash::detail {
 
     bool installPlatform(const Config& config) {
         const std::string& hash = buildId();
+        // the Gameplay Journal's ring, read from the heap at the first fatal event (install
+        // copied it into the state; its header ends at "capacity:")
+        const CrashState& s = state();
         const int armed = EM_ASM_INT({
             var hooks = typeof Module != "undefined" && Module.jasperengineCrash;
             if (!hooks) return 0;
-            hooks.configure({ overlay: $0 != 0, buildHash: UTF8ToString($1), product: UTF8ToString($2) });
+            hooks.configure({ overlay: $0 != 0, buildHash: UTF8ToString($1), product: UTF8ToString($2),
+                              journal: { ring: $3, capacity: $4, cursor: $5, written: $6, header: $7 ? UTF8ToString($7) : "" } });
             return 1;
-        }, config.webOverlay ? 1 : 0, hash.c_str(), config.product ? config.product : "JasperEngine");
+        }, config.webOverlay ? 1 : 0, hash.c_str(), config.product ? config.product : "JasperEngine",
+           s.journal, static_cast<int>(s.journalCapacity), s.journalCursor, s.journalWritten, s.journalHeader);
         return armed != 0;
     }
 

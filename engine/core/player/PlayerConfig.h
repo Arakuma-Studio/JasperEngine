@@ -26,6 +26,8 @@
 #include "util/CanvasScaler.h"
 #include "Log.h"
 #include "System.h"
+#include "save/SaveGameStore.h"
+#include "subsystem/GamepadCursor.h"
 
 #include "json.hpp"
 
@@ -71,6 +73,8 @@ namespace jasperengine::player {
         bool vsync = true;
         // Project Settings > Graphics > Dynamic Batching
         bool dynamicBatching = true;
+        // Player > Pause On Focus Loss
+        bool pauseOnFocusLoss = false;
         std::string icon;                  // content-relative PNG ("icon.png"), the window icon
         std::string storageId;
 
@@ -101,13 +105,21 @@ namespace jasperengine::player {
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
+        // Input > Simulate Touch From Mouse (Engine::callTouchInMouseEvent)
+        bool simulateTouchFromMouse = false;
+        // Project Settings > Time, seconds: the fixed step and the frame delta cap
+        double fixedTimestep = 1.0 / 60.0;
+        double maximumDeltaTime = 0.25;
+        // the String Tables' manifest ("l10n/manifest.json") when the game has any (game-ui-localization.md D5)
+        std::string localization;
+        GamepadCursorSettings gamepadCursor;
         nav::NavigationSettings navigation;
         // Project Settings > Voxels (T6 R7): what the project lowers of the platform's limits, 0: nothing
         int voxelMaxDimension = 0;
         int voxelCpuBudgetMB = 0;
         int voxelMeshBudgetMB = 0;
         std::array<Engine::TexturePlatformDefaults, 3> textureDefaults;
-        int htmlUiMsaa = 4;
+        int htmlUiMsaa = 0;   // HTML UI MSAA samples, 0 = Auto (1 on phones and the web, 4 on desktop)
         int glyphAtlasMiB = 0;
         bool sdfPrimitives = true;
         bool transformAwareText = true;
@@ -133,6 +145,9 @@ namespace jasperengine::player {
         Vector3 transparencySortAxis = Vector3(0.0f, 1.0f, 0.0f);
         std::array<uint32_t, MAX_LAYERS> collision3D{};
         std::array<uint32_t, MAX_LAYERS> collision2D{};
+        // Project Settings > Physics / Physics 2D > Queries Hit Triggers (absent: true)
+        bool queriesHitTriggers3D = true;
+        bool queriesHitTriggers2D = true;
 
         // Player > Logging and Crash Handling (a Compile build's macros)
         std::string logLevel;
@@ -144,6 +159,12 @@ namespace jasperengine::player {
         bool hangWatchdog = true;
         int hangMs = 5000;
         bool crashWebOverlay = true;
+        int crashJournalBytes = 32 << 10;
+        bool crashJournalEngineEvents = true;
+
+        // Project Settings > Debug > Console Commands (development, always or never): whether
+        // --command, agents and the console field may run commands (console::setCommandsEnabled)
+        std::string consoleCommands = "development";
 
         // Project Settings > Audio (a Compile build's generated AudioSystem::configure and
         // AudioMixer::load): the defaults are AudioConfig's, the mixer asset-relative ("" = none)
@@ -201,6 +222,13 @@ namespace jasperengine::player {
         DebugOverlaySettings debugOverlay;     // its enabled and allowLua follow the modes
         unsigned int logBufferSize = 500;
         LogStackTraces logStackTraces = LogStackTraces::Warnings;
+
+        // the Build Profile the game was built with and its Scripting Define Symbols (System.isDefined);
+        // both absent without a profile
+        std::string buildProfile;
+        std::vector<std::string> defines;
+        // Player > Saved Data (savegame::configure before the first scene; written only away from the defaults)
+        savegame::SaveSettings saveGame;
 
         PlayerConfig();
 
