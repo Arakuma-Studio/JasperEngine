@@ -109,3 +109,14 @@ draw the same image (compare two `screenshot`s).
   `--profile-capture <file>` also writes the measured frames as a capture.
 - A `.jetrace.json` opens in Perfetto (ui.perfetto.dev) and chrome://tracing as it is, and in the
   Profiler (Load).
+
+## The MCP call log
+
+To learn which of your own tool calls are slow or fail most, across a whole session or several, an
+editor started with `JASPER_MCP_LOG=<file>` (or with **Log Calls To File** on in Window > MCP > MCP
+Server, which writes `mcp-calls.jsonl` beside `settings.yaml`) appends one JSON line per call:
+`ts, tool, group, ms, ok, error_kind, result_bytes, client`. It never holds arguments, paths,
+names or results, so it can be shared. Past 16 MB the file moves to `<file>.1`. Calls that never
+reach a tool (an unknown tool name) are not logged. `python3 tools/mcp/call_profile.py <file>`
+prints per tool the calls, error rate, p50 and p95 ms and mean result bytes, most calls first. The
+MCP Server window also shows the session's calls and error rate per tool.

@@ -1172,6 +1172,11 @@ const FieldEntry kBody_LightComponent_fields[] = {
     JE_RF(LightComponent, intensityUnit, 0xcbf60f3eu, Enum),
     JE_RF(LightComponent, useColorTemperature, 0xc5aafe45u, Bool),
     JE_RF(LightComponent, colorTemperature, 0xcd5d3778u, Float),
+    JE_RF(LightComponent, areaShape, 0xc4b6fc3bu, Enum),
+    JE_RF(LightComponent, areaWidth, 0x6a7dd45au, Float),
+    JE_RF(LightComponent, areaHeight, 0x91033c35u, Float),
+    JE_RF(LightComponent, areaRadius, 0x3a021f6cu, Float),
+    JE_RF(LightComponent, iesProfile, 0xf6ad894bu, AssetPath),
 };
 const StructTable kBody_LightComponent{"light", kBody_LightComponent_fields, std::size(kBody_LightComponent_fields)};
 
@@ -1983,6 +1988,7 @@ const FieldEntry kBody_UIDocumentComponent_fields[] = {
     JE_RF(UIDocumentComponent, textureHeight, 0xe657e304u, Int),
     JE_RF_ENTITY(UIDocumentComponent, inputSurface, 0xdf0ce86fu, Entity),
     JE_RF(UIDocumentComponent, pixelRatio, 0x9ecbc5dbu, Float),
+    JE_RF(UIDocumentComponent, msaaSamples, 0x16930f21u, Int),
 };
 const StructTable kBody_UIDocumentComponent{"uidocument", kBody_UIDocumentComponent_fields, std::size(kBody_UIDocumentComponent_fields)};
 

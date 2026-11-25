@@ -7,10 +7,14 @@
 #include "texture/CookedTextures.h"
 #include "util/FileUtils.h"
 
+#include "miniz.h"
+
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -35,6 +39,35 @@ namespace {
     fs::path& lastReport(){
         static fs::path path;
         return path;
+    }
+
+    mz_bool buildReportCountBytes(const void*, int length, void* user){
+        *static_cast<uint64_t*>(user) += (uint64_t)length;
+        return MZ_TRUE;
+    }
+
+    // the file's size as `gzip -9` writes it: the deflate stream plus the 10-byte header and the
+    // 8-byte trailer; streamed, so a large .wasm or content pack is never held whole
+    uint64_t buildReportGzipBytes(const fs::path& file){
+        std::ifstream in(file, std::ios::binary);
+        if (!in)
+            return 0;
+        uint64_t deflated = 0;
+        auto compressor = std::make_unique<tdefl_compressor>();
+        const mz_uint flags = tdefl_create_comp_flags_from_zip_params(9, -MZ_DEFAULT_WINDOW_BITS, MZ_DEFAULT_STRATEGY);
+        if (tdefl_init(compressor.get(), &buildReportCountBytes, &deflated, (int)flags) != TDEFL_STATUS_OKAY)
+            return 0;
+        std::vector<char> chunk(1 << 20);
+        tdefl_status status = TDEFL_STATUS_OKAY;
+        while (status == TDEFL_STATUS_OKAY){
+            in.read(chunk.data(), (std::streamsize)chunk.size());
+            const std::streamsize got = in.gcount();
+            const bool last = !in;
+            status = tdefl_compress_buffer(compressor.get(), chunk.data(), (size_t)got, last ? TDEFL_FINISH : TDEFL_NO_FLUSH);
+            if (last)
+                break;
+        }
+        return status == TDEFL_STATUS_DONE ? deflated + 18 : 0;
     }
 
 }
@@ -129,10 +162,15 @@ std::map<std::string, std::pair<std::string, uint64_t>> BuildReport::cookedTextu
     return out;
 }
 
-Json BuildReport::toJson() const{
-    Json categoryJson = Json::object();
+Json BuildReport::categoriesJson(const std::map<std::string, uint64_t>& categories){
+    Json out = Json::object();
     for (const std::string& name : categoryNames())
-        categoryJson[name] = categories.count(name) ? categories.at(name) : 0;
+        out[name] = categories.count(name) ? categories.at(name) : 0;
+    return out;
+}
+
+Json BuildReport::toJson() const{
+    const Json categoryJson = categoriesJson(categories);
     Json files = Json::array();
     for (const BuildReportFile& file : largest){
         Json entry = {{"path", file.path}, {"category", file.category}, {"bytes", file.bytes}};
@@ -143,6 +181,8 @@ Json BuildReport::toJson() const{
         files.push_back(entry);
     }
     Json out = {{"version", 1}, {"platform", platform}, {"method", method}, {"total_bytes", totalBytes}, {"categories", categoryJson}, {"largest", files}};
+    if (downloadBytesGzip)
+        out["download_bytes_gzip"] = downloadBytesGzip;
     // absent when nothing was left out: an old project's report is as it was
     if (!leftOut.empty()){
         Json stripped = Json::array();
@@ -168,6 +208,7 @@ bool BuildReport::fromJson(const Json& json, BuildReport& out){
     out.platform = json.value("platform", std::string());
     out.method = json.value("method", std::string());
     out.totalBytes = json.value("total_bytes", (uint64_t)0);
+    out.downloadBytesGzip = json.value("download_bytes_gzip", (uint64_t)0);
     if (json.contains("categories") && json["categories"].is_object())
         for (const auto& [name, bytes] : json["categories"].items())
             if (bytes.is_number_unsigned()) out.categories[name] = bytes.get<uint64_t>();
@@ -228,6 +269,8 @@ std::string BuildReport::formatBytes(uint64_t bytes){
 
 std::string BuildReport::summary() const{
     std::string out = "Build Report (" + platform + "): " + formatBytes(totalBytes);
+    if (downloadBytesGzip)
+        out += " (download " + formatBytes(downloadBytesGzip) + ", gzip estimate)";
     std::string parts;
     for (const std::string& name : categoryNames()){
         auto it = categories.find(name);
@@ -238,6 +281,78 @@ std::string BuildReport::summary() const{
     if (!parts.empty()) out += "; " + parts;
     if (!leftOut.empty()) out += "; " + std::to_string(leftOut.size()) + " asset(s) left out (" + formatBytes(leftOutBytes()) + ")";
     return out;
+}
+
+bool BuildReport::isWebDownload(const std::string& path){
+    const std::string name = path.substr(path.rfind('/') + 1);
+    const size_t slash = path.find('/');
+    const std::string first = slash == std::string::npos ? std::string() : path.substr(0, slash);
+    if (first == "licenses" || first == "threads" || first == "symbols")
+        return false;
+    if (name == kFileName || name == "content-manifest.json" || name == "_headers" || name == "coi-serviceworker.js")
+        return false;
+    if (name.rfind("jasperengine-player-mt", 0) == 0)
+        return false;
+    std::string upper = name;
+    std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c){ return (char)std::toupper(c); });
+    auto endsWith = [&upper](const std::string& tail){ return upper.size() >= tail.size() && upper.compare(upper.size() - tail.size(), tail.size(), tail) == 0; };
+    return !endsWith("LICENSE") && !endsWith("LICENSE.TXT") && !endsWith("LICENSE.MD") && upper.find("NOTICES") == std::string::npos;
+}
+
+uint64_t BuildReport::webDownloadGzipBytes(const fs::path& root){
+    uint64_t total = 0;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)){
+        if (!it->is_regular_file(ec))
+            continue;
+        if (isWebDownload(FileUtils::pathToGenericUtf8(it->path().lexically_relative(root))))
+            total += buildReportGzipBytes(it->path());
+    }
+    return total;
+}
+
+bool BuildReport::budgetFamilyOf(const std::string& platform, ModelFamily& family){
+    if (platform == "web") family = ModelFamily::Web;
+    else if (platform == "android" || platform == "ios") family = ModelFamily::Mobile;
+    else if (platform == "windows" || platform == "linux" || platform == "macos" || platform == "desktop") family = ModelFamily::Desktop;
+    else return false;
+    return true;
+}
+
+uint64_t BuildReport::budgetedBytes() const{
+    return platform == "web" ? downloadBytesGzip : totalBytes;
+}
+
+uint64_t BuildReport::budgetBytesOf(double megabytes){
+    return std::isfinite(megabytes) && megabytes > 0.0 ? (uint64_t)std::llround(megabytes * 1048576.0) : 0;
+}
+
+std::vector<std::pair<std::string, uint64_t>> BuildReport::largestCategories(size_t count) const{
+    std::vector<std::pair<std::string, uint64_t>> out;
+    for (const std::string& name : categoryNames()){
+        auto it = categories.find(name);
+        if (it != categories.end() && it->second > 0)
+            out.push_back(*it);
+    }
+    // ties keep the display order
+    std::stable_sort(out.begin(), out.end(), [](const auto& a, const auto& b){ return a.second > b.second; });
+    if (out.size() > count)
+        out.resize(count);
+    return out;
+}
+
+std::string BuildReport::overBudgetMessage(uint64_t budgetBytes) const{
+    ModelFamily family;
+    const uint64_t actual = budgetedBytes();
+    if (budgetBytes == 0 || actual <= budgetBytes || !budgetFamilyOf(platform, family))
+        return std::string();
+    std::string message = "the " + platform + " build " + (platform == "web" ? "downloads " + formatBytes(actual) + " (gzip estimate)"
+                                                                            : "weighs " + formatBytes(actual)) +
+                          ", over its Download Budget of " + formatBytes(budgetBytes) + " (player.download_budget_mb." + modelFamilyName(family) + ")";
+    std::string parts;
+    for (const auto& [name, bytes] : largestCategories(3))
+        parts += (parts.empty() ? "" : ", ") + name + " " + formatBytes(bytes);
+    return parts.empty() ? message : message + "; largest categories: " + parts;
 }
 
 void BuildReport::setLast(const fs::path& file){

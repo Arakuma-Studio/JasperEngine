@@ -55,6 +55,7 @@
 
 #include "yaml-cpp/yaml.h"
 
+#include <array>
 #include <filesystem>
 #include <optional>
 #include <chrono>
@@ -1074,6 +1075,10 @@ namespace jasperengine::editor{
         // Project Settings > Player > Publishing Settings > Target Platforms: a bit per BuildPlatform
         // (export: targetPlatforms, written when not all six), never empty
         uint8_t targetPlatforms = allTargetPlatforms;
+        // Project Settings > Player > Publishing Settings > Download Budget (MB) (S99 R11), per
+        // ModelFamily: a build over its family's warns W-BUILD-OVER-BUDGET; 0 is off
+        // (export: downloadBudgetMB, only the families set)
+        std::array<double, kModelFamilyCount> downloadBudgetMB = {};
         // S45 R18: "enabled" | "enabled_for_builds" | "disabled"
         std::string spriteAtlasMode = "enabled";
         ApplicationSettings applicationSettings;
@@ -1705,7 +1710,10 @@ namespace jasperengine::editor{
         static constexpr std::array<FoliageQuality, 3> defaultFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
         static constexpr std::array<FoliageQuality, 3> newProjectFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::LOW, FoliageQuality::LOW};
         static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
-        static constexpr int defaultHtmlUiMsaaSamples = 4;
+        // S92 R16: new projects are Auto (0: 1 sample on phones and the web, 4 on desktop); a
+        // project.yaml without the key had 4
+        static constexpr int defaultHtmlUiMsaaSamples = 0;
+        static constexpr int legacyHtmlUiMsaaSamples = 4;
         static constexpr int defaultPixelsPerUnit = 1;
         static constexpr int minPixelsPerUnit = 1;
         static constexpr int maxPixelsPerUnit = 256;
@@ -1775,6 +1783,8 @@ namespace jasperengine::editor{
         // a project script sets the scene's maxLightsPerObject (the export then ships the lit
         // variants of every light capacity tier, see ShaderVariantCollector)
         bool scriptsSetLightCapacity() const;
+        // a script sets the 2D ambient or the Light Steps (S78: variants of the 2D-lit meshes)
+        bool scriptsSetLight2D() const;
         // a project script sets the scene's post-processing (both states of its colour variant bit ship)
         bool scriptsSetShadowQuality() const;
         bool scriptsSetPostProcessing() const;
@@ -1871,8 +1881,8 @@ namespace jasperengine::editor{
         void setInputDeadzone(float deadzone);
         float getInputDeadzone() const;
 
-        // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
-        // them), applied to the editor's documents at once and written into exports
+        // MSAA samples of the HTML UI targets (0 = Auto, else 1, 2, 4 or 8; others round down to
+        // one of them), applied to the editor's documents at once and written into exports
         void setHtmlUiMsaaSamples(int samples);
         int getHtmlUiMsaaSamples() const;
         // Pixels Per Unit (S41, 1-256, clamped): applied to the editor's scenes at once and written into exports
@@ -2176,6 +2186,8 @@ namespace jasperengine::editor{
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
         const AssetStrippingSettings& getAssetStripping() const { return assetStripping; }
         void setAssetStripping(const AssetStrippingSettings& settings) { assetStripping = settings; }
+        double getDownloadBudgetMB(ModelFamily family) const { return downloadBudgetMB[(size_t)family]; }
+        void setDownloadBudgetMB(ModelFamily family, double megabytes) { downloadBudgetMB[(size_t)family] = megabytes; }
         // Target Platforms: where the game ships. Build Settings, build_project and get_build_info default
         // to them; any platform still builds. 0 sets all six (a game has a target)
         static constexpr uint8_t allTargetPlatforms = 0x3F;

@@ -3,6 +3,7 @@
 
 #include "util/CppIdentifier.h"
 #include "TerrainQualityPanel.h"
+#include "lighting/ExtractSun.h"
 #include "Engine.h"
 #include "mcp/TerrainMaterialInfo.h"
 #include "animation/BoneOverlay.h"
@@ -261,6 +262,7 @@ static std::vector<editor::EnumEntry>& entriesSpriteDrawMode = *editor::Inspecto
 static std::vector<editor::EnumEntry>& entriesLightType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightType);
 static std::vector<editor::EnumEntry>& entriesShadowCaster2DShape = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kShadowCaster2DShape);
 static std::vector<editor::EnumEntry>& entriesLightShading = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightShading);
+static std::vector<editor::EnumEntry>& entriesAreaLightShape = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kAreaLightShape);
 static std::vector<editor::EnumEntry>& entriesCullingMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCullingMode);
 static std::vector<editor::EnumEntry>& entriesLodFadeMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLodFadeMode);
 static std::vector<editor::EnumEntry>& entriesFogType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kFogType);
@@ -481,7 +483,9 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
             break;
         case ScenePropertyInputType::DragInt:
             if constexpr (std::is_same_v<T, int>) {
-                changed = ImGui::DragInt(("##" + propertyName).c_str(), &value, 1.0f, (int)minValue, (int)maxValue);
+                // Light Steps' 0 is Off
+                const char* format = (propertyName == "light_2d_steps" && value == 0) ? "Off" : "%d";
+                changed = ImGui::DragInt(("##" + propertyName).c_str(), &value, 1.0f, (int)minValue, (int)maxValue, format);
             }
             break;
         case ScenePropertyInputType::SliderFloat:
@@ -536,6 +540,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     }
                 }
             }
+            if constexpr (std::is_same_v<T, AmbientMode>) {
+                const char* sourceNames[] = { "Color", "Gradient" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 1);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, sourceNames, IM_ARRAYSIZE(sourceNames));
+                if (changed) {
+                    value = static_cast<AmbientMode>(currentItem);
+                }
+            }
             if constexpr (std::is_same_v<T, LitQuality>) {
                 const char* qualityNames[] = { "Standard", "High" };
                 int currentItem = static_cast<int>(value);
@@ -558,6 +570,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                 changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, resolutionNames, IM_ARRAYSIZE(resolutionNames));
                 if (changed) {
                     value = static_cast<WaterWakeResolution>(currentItem);
+                }
+            }
+            if constexpr (std::is_same_v<T, UIRenderMode>) {
+                const char* modeNames[] = { "Screen Space - Overlay", "Screen Space - Camera" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 1);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, modeNames, IM_ARRAYSIZE(modeNames));
+                if (changed) {
+                    value = static_cast<UIRenderMode>(currentItem);
                 }
             }
             if constexpr (std::is_same_v<T, SceneColorScale>) {
@@ -613,6 +633,20 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     Command* maskCmd = new ScenePropertyCmd<T>(project, sceneProject->id, propertyName, value);
                     CommandHandle::get(sceneProject->id)->addCommandNoMerge(maskCmd);
                     changed = false;
+                }
+            }
+            break;
+        case ScenePropertyInputType::SampleCount:
+            if constexpr (std::is_same_v<T, int>) {
+                const char* countNames[] = { "Project Default", "Disabled", "2x", "4x", "8x" };
+                const int countValues[] = { 0, 1, 2, 4, 8 };
+                int currentItem = 0;
+                for (int c = 0; c < IM_ARRAYSIZE(countValues); c++) {
+                    if (countValues[c] == value) currentItem = c;
+                }
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, countNames, IM_ARRAYSIZE(countNames));
+                if (changed) {
+                    value = countValues[currentItem];
                 }
             }
             break;
@@ -2080,6 +2114,25 @@ void editor::InspectorWindow::drawSceneWaterWakes(SceneProject* sceneProject, Im
         "Metres the wake map spans around the main camera; wakes farther away are not drawn. A smaller area shows finer wakes.");
     drawScenePropertyRow<float>(sceneProject, "water_wake_fade", "Fade", ScenePropertyInputType::DragFloat, -1.0f, 0.1f, 120.0f,
         "Seconds a wake takes to fade (an eighth of its foam is left by then, as scattered foam).");
+    ImGui::EndTable();
+}
+
+void editor::InspectorWindow::drawSceneHtmlUi(SceneProject* sceneProject, ImGuiTableFlags tableFlags){
+    ImGui::SeparatorText("HTML UI");
+    if (!ImGui::BeginTable("scene_html_ui_table", 2, tableFlags))
+        return;
+    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Anti-aliasing (MSAA)"));
+    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+    const float comboWidth = ImGui::CalcTextSize("Screen Space - Overlay").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+    drawScenePropertyRow<UIRenderMode>(sceneProject, "html_ui_render_mode", "Render Mode", ScenePropertyInputType::Combo, comboWidth, 0.0f, 1.0f,
+        "Where the scene's screen UI Documents draw. Screen Space - Overlay: after post-processing, at the output resolution, "
+        "so Render Scale, FXAA, CRT and the other effects leave them sharp. Screen Space - Camera: in the camera's pass, "
+        "so Render Scale and post-processing apply to them too.");
+    drawScenePropertyRow<int>(sceneProject, "html_ui_msaa_samples", "Anti-aliasing (MSAA)", ScenePropertyInputType::SampleCount, comboWidth, 0.0f, 8.0f,
+        "Multisampling of the scene's screen UI Documents (and of Texture-mode documents set to Scene Default). Project Default: "
+        "Project Settings > Graphics > HTML UI MSAA (Auto: 1 sample on phones and the web, 4 on desktop). More samples smooth "
+        "rotated and curved edges at more GPU memory; rounded boxes and clips antialias at any count.");
     ImGui::EndTable();
 }
 
@@ -11149,6 +11202,8 @@ void editor::InspectorWindow::drawLightIntensityRows(ComponentType cpType, Scene
     std::vector<LightUnit> units = {LightUnit::ENGINE};
     if (light.type == LightType::DIRECTIONAL){
         units.push_back(LightUnit::LUX);
+    }else if (light.type == LightType::AREA){
+        units.push_back(LightUnit::NITS);
     }else{
         units.push_back(LightUnit::CANDELA);
         units.push_back(LightUnit::LUMEN);
@@ -11170,7 +11225,8 @@ void editor::InspectorWindow::drawLightIntensityRows(ComponentType cpType, Scene
         }
         ImGui::EndCombo();
     }
-    ImGui::SameLine(); helpMarker("Engine: the engine's own intensity, drawn as it is. Lux (directional), Candela and Lumen (point, spot): "
+    ImGui::SameLine(); helpMarker("Engine: the engine's own intensity, drawn as it is. Lux (directional), Candela and Lumen (point, spot), "
+                                  "Nits (an area light's face): "
                                   "physical units, converted on the CPU through the scene's Physical Light Exposure. Changing the unit keeps "
                                   "the light as bright.");
 }
@@ -11283,6 +11339,27 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     drawLightTemperatureRows(cpType, sceneProject, entities);
     if (light.type != LightType::POINT){
         propertyRow(RowPropertyType::Direction, cpType, "direction", "Direction", sceneProject, entities);
+    }
+    if (light.type == LightType::AREA){
+        // S99 R32: the shape emits from its front along Direction, sized here, not by the scale
+        RowSettings settingsShape;
+        settingsShape.enumEntries = &entriesAreaLightShape;
+        settingsShape.help = "Rectangle (Width x Height) or Disc (Radius), emitting from its front along Direction. Its Intensity is "
+                             "the face's brightness (Nits in physical units); the transform's scale does not size it.";
+        propertyRow(RowPropertyType::Enum, cpType, "areaShape", "Shape", sceneProject, entities, settingsShape);
+        if (light.areaShape == AreaLightShape::DISC){
+            propertyRow(RowPropertyType::FloatPositive, cpType, "areaRadius", "Radius", sceneProject, entities, settingsFloat);
+        }else{
+            propertyRow(RowPropertyType::FloatPositive, cpType, "areaWidth", "Width", sceneProject, entities, settingsFloat);
+            propertyRow(RowPropertyType::FloatPositive, cpType, "areaHeight", "Height", sceneProject, entities, settingsFloat);
+        }
+    }
+    if (light.type == LightType::SPOT || light.type == LightType::POINT){
+        // S99 R37: an .ies file shaping the light, turned with it; Intensity stays its peak
+        RowSettings settingsIes;
+        settingsIes.help = "An .ies photometric file (IESNA LM-63) shaping the light, turned with it: vertical angle 0 along its "
+                           "forward axis. Intensity stays the profile's peak. Empty: the light's own shape.";
+        propertyRow(RowPropertyType::Asset, cpType, "iesProfile", "IES Profile", sceneProject, entities, settingsIes);
     }
     if (light.type != LightType::DIRECTIONAL){
         RowSettings settingsVolumetric = settingsFloat;
@@ -12063,7 +12140,14 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
     ratioSettings.format = (document.pixelRatio == 0.0f) ? "Auto" : "%.2f";
     ratioSettings.help = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode).";
 
-    beginTable(cpType, getLabelSize("Texture Height"));
+    // S92 R18: a texture-mode document has a context and target of its own
+    static std::vector<EnumEntry> msaaEntries = {{0, "Scene Default"}, {1, "Disabled"}, {2, "2x"}, {4, "4x"}, {8, "8x"}};
+    RowSettings msaaSettings;
+    msaaSettings.enumEntries = &msaaEntries;
+    msaaSettings.help = "Multisampling of this document's texture. Scene Default: the scene's HTML UI Anti-aliasing (MSAA). "
+                        "Screen documents share the scene's target, so the scene setting decides for them.";
+
+    beginTable(cpType, getLabelSize("Anti-aliasing (MSAA)"));
 
     if (entities.size() == 1) {
         Entity entity = entities[0];
@@ -12192,6 +12276,7 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
         propertyRow(RowPropertyType::Int, cpType, "textureWidth", "Texture Width", sceneProject, entities, sizeSettings);
         propertyRow(RowPropertyType::Int, cpType, "textureHeight", "Texture Height", sceneProject, entities, sizeSettings);
         propertyRow(RowPropertyType::LocalEntity, cpType, "inputSurface", "Input Surface", sceneProject, entities, surfaceSettings);
+        propertyRow(RowPropertyType::Enum, cpType, "msaaSamples", "Anti-aliasing (MSAA)", sceneProject, entities, msaaSettings);
     }
     propertyRow(RowPropertyType::FloatPositive, cpType, "pixelRatio", "Pixel Ratio", sceneProject, entities, ratioSettings);
 
@@ -13355,6 +13440,47 @@ void editor::InspectorWindow::drawSkyboxComponent(ComponentType cpType, ScenePro
     propertyRow(RowPropertyType::Float, cpType, "rotation", "Rotation", sceneProject, entities);
 
     endTable();
+
+    // S99 R28: the sun of the sky's HDR image as the scene's main Directional Light
+    separatorText("Sun");
+    beginTable(cpType, getLabelSize("Remove Sun Disc"), "sky_sun");
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Remove Sun Disc");
+    ImGui::SetItemTooltip("Also turn on the sky images' Remove Sun Disc import setting: the cook clamps the sun's disc to the sky "
+                          "around it, so image-based lighting does not count the sun the light now gives. HDR images only.");
+    ImGui::TableNextColumn();
+    ImGui::Checkbox("##extract_sun_remove_disc", &extractSunRemoveDisc);
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::TableNextColumn();
+    if (ImGui::Button(ICON_FA_SUN " Extract Sun")) {
+        ExtractSunResult result;
+        std::string error;
+        extractSunFailed = !ExtractSun::apply(project, sceneProject->id, extractSunRemoveDisc, result, error);
+        if (extractSunFailed) {
+            extractSunMessage = error;
+        } else {
+            char text[160];
+            std::snprintf(text, sizeof(text), "%s the Directional Light: intensity %.3g%s, the sun %.0fx the sky's mean.",
+                          result.created ? "Created" : "Aligned", result.intensity, result.unit == LightUnit::LUX ? " lux" : "",
+                          result.peakRatio);
+            extractSunMessage = text;
+        }
+    }
+    ImGui::SetItemTooltip("Finds the sun in the sky's HDR image (the brightest spot, at least 20 times the sky's mean) and sets the "
+                          "scene's main Directional Light to its direction, colour and intensity, creating one when there is none, "
+                          "so the sun casts shadows. One undo step.");
+    if (!extractSunMessage.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        if (extractSunFailed)
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s", extractSunMessage.c_str());
+        else
+            ImGui::TextDisabled("%s", extractSunMessage.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    endTable();
 }
 
 // (upstream's drawParticleSystemLegacy rows of ui-scaling-text, Unscaled Time and the "UI particles" note, are S20's
@@ -13958,11 +14084,17 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Ambient Light (2D)");
 
                 if (ImGui::BeginTable("scene_ambient2d_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Intensity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Without Lights"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     drawScenePropertyRow<Vector3>(sceneProject, "ambient_light_2d_color", "Color", ScenePropertyInputType::ColorRGB);
                     drawScenePropertyRow<float>(sceneProject, "ambient_light_2d_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
+                    drawScenePropertyRow<int>(sceneProject, "light_2d_steps", "Light Steps", ScenePropertyInputType::DragInt, 6 * ImGui::GetFontSize(), 0.0f, 16.0f,
+                        "Draws each 2D light in this many hard bands, the stepped look of pixel-art lighting (6 is a common choice). "
+                        "Off keeps the light smooth. The ambient is not banded.");
+                    drawScenePropertyRow<bool>(sceneProject, "ambient_light_2d_without_lights", "Without Lights", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+                        "Tints unlit 2D objects with the ambient even when the scene has no Light 2D. "
+                        "On in new scenes; scenes saved before it have it off, so they look as they did.");
 
                     ImGui::EndTable();
                 }
@@ -13987,14 +14119,26 @@ void editor::InspectorWindow::show(){
 
             LightState currentLightState = jasperengine::editor::Catalog::getSceneProperty<LightState>(sceneProject->scene, "light_state");
             if (currentLightState != LightState::OFF) {
-                ImGui::SeparatorText("Global Illumination");
+                ImGui::SeparatorText("Environment Lighting");
 
                 if (ImGui::BeginTable("scene_globalillum_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Intensity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Equator Color"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-                    drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Color", ScenePropertyInputType::ColorRGB);
-                    drawScenePropertyRow<float>(sceneProject, "global_illumination_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
+                    drawScenePropertyRow<AmbientMode>(sceneProject, "ambient_mode", "Source", ScenePropertyInputType::Combo, 7 * ImGui::GetFontSize(), 0.0f, 1.0f,
+                        "Where lit surfaces take their ambient light from:\n"
+                        "- Color: the Ambient Color times Intensity; Lit materials under a sky with an image take the image instead "
+                        "(image-based lighting)\n"
+                        "- Gradient: Sky, Equator and Ground colours by the way a surface faces, on every lit shader. The sky's image "
+                        "still gives Lit its reflections. Costs nothing over Color.");
+                    if (jasperengine::editor::Catalog::getSceneProperty<AmbientMode>(sceneProject->scene, "ambient_mode") == AmbientMode::GRADIENT) {
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_sky_color", "Sky Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_equator_color", "Equator Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_ground_color", "Ground Color", ScenePropertyInputType::ColorRGB);
+                    } else {
+                        drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Ambient Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<float>(sceneProject, "global_illumination_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
+                    }
 
                     ImGui::EndTable();
                 }
@@ -14295,6 +14439,9 @@ void editor::InspectorWindow::show(){
 
                 ImGui::EndTable();
             }
+
+            // every scene type: its screen documents
+            drawSceneHtmlUi(sceneProject, tableFlags);
 
             ImGui::SeparatorText("Fixed Resolution");
             // R4: a Pixel Perfect Camera on the main camera drives the target instead

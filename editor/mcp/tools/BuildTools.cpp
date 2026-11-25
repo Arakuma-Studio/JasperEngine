@@ -35,6 +35,7 @@
 #include "Out.h"
 #include "Project.h"
 #include "command/type/ShaderOverridesCmd.h"
+#include "cook/BuildReport.h"
 #include "ShippingTypes.h"
 #include "players/PlayerRuntimes.h"
 #include "platform/AndroidTools.h"
@@ -503,6 +504,8 @@ struct BuildRun {
     ExportResult result;                  // a player build's report (taken before the exporter goes)
     std::string next;                     // the success result's next: a platform the game does not target
     Json unreadableScenes = Json::array();  // generate_shaders: the scenes its list could not read (R4)
+    uint64_t workFiles = 0;               // S99: what the estimate's model counted (the Assets folder)
+    uint64_t workBytes = 0;
 };
 
 // Never destroyed: a build still running at exit must not be joined from a static destructor
@@ -577,8 +580,99 @@ Json artifactsJson(const fs::path& dir) {
     return list;
 }
 
+// S99 R10, R11: what the build weighs, and the Download Budget it was held to. Returns the next
+// step when the build is over its budget: the tools that inspect its largest category.
+std::string addBuildSizes(const ExportResult& report, Json& result) {
+    if (report.buildReport.empty()) return std::string();
+    result["build_report"] = FileUtils::pathToGenericUtf8(report.buildReport);
+    result["build_bytes"] = report.buildBytes;
+    result["build_categories"] = BuildReport::categoriesJson(report.buildCategories);
+    Json top = Json::array();
+    for (size_t i = 0; i < report.largestFiles.size() && i < 5; i++)
+        top.push_back({{"path", report.largestFiles[i].path}, {"bytes", report.largestFiles[i].bytes}});
+    result["top_files"] = top;
+    if (report.downloadBytesGzip) result["download_bytes_gzip"] = report.downloadBytesGzip;   // the name says it is an estimate
+    if (!report.downloadBudgetBytes) return std::string();
+    BuildReport sizes;
+    sizes.categories = report.buildCategories;
+    const auto largest = sizes.largestCategories(3);
+    const uint64_t actual = report.downloadBytesGzip ? report.downloadBytesGzip : report.buildBytes;
+    Json categories = Json::array();
+    for (const auto& [name, bytes] : largest) categories.push_back({{"category", name}, {"bytes", bytes}});
+    result["download_budget"] = {{"budget_bytes", report.downloadBudgetBytes}, {"actual_bytes", actual},
+                                 {"over", actual > report.downloadBudgetBytes}, {"largest_categories", categories}};
+    if (actual <= report.downloadBudgetBytes || largest.empty()) return std::string();
+    const std::string& family = report.downloadBudgetFamily;
+    const std::string& category = largest.front().first;
+    std::string inspect;
+    if (category == "textures")
+        // the cooked files in top_files are hashes, and the tools are outside core: without both an agent stops at the hashes
+        inspect = "get_texture_cook_report {\"platforms\": [\"" + family + "\"]} (tool_groups: assets_pipeline) names the source texture of "
+                  "each cooked file with its disk bytes; set_texture_import_settings lowers max_size or quality";
+    else if (category == "models")
+        inspect = "inspect_models {\"platform\": \"" + family + "\"} lists each model's download; set_model_import_settings shrinks them";
+    else if (category == "engine")
+        inspect = "modules and module_reasons say why each engine module ships; set_project_settings {\"player.strip_engine_code\": true} "
+                  "leaves out the unused ones";
+    else
+        inspect = "top_files names the largest files; list_assets {\"details\": true} sizes the project's";
+    return "Over the Download Budget: " + category + " is the largest category (" + BuildReport::formatBytes(largest.front().second) + "). " + inspect + ".";
+}
+
+// S99 R13: a build's history kind (platform and method: their times differ by minutes)
+std::string buildHistoryKind(ExportMode mode, BuildPlatform platform, jobmodel::BuildKind kind) {
+    if (mode == ExportMode::SourceCode) return "build_project:source";
+    if (mode != ExportMode::Player) return std::string("build_project:") + modeName(mode);
+    return std::string("build_project:") + buildPlatformName(platform) + (kind == jobmodel::BuildKind::Prebuilt ? ":prebuilt" : ":compiled");
+}
+
+jobmodel::BuildKind buildModelKind(ExportMode mode, BuildPlatform platform, bool prebuilt) {
+    if (mode == ExportMode::SourceCode) return jobmodel::BuildKind::Source;
+    if (mode == ExportMode::Player && prebuilt) return jobmodel::BuildKind::Prebuilt;
+    return mode == ExportMode::Web || (mode == ExportMode::Player && platform == BuildPlatform::Web) ? jobmodel::BuildKind::CompiledWeb
+                                                                                                    : jobmodel::BuildKind::CompiledDesktop;
+}
+
+// S99 R13: the estimate at submit: the files and bytes of the Assets folder, and the method the
+// exporter will pick (chooseBuildMethod, as get_build_info shows it)
+void estimateBuildJob(BuildRun& run, Project* project) {
+    std::error_code ec;
+    size_t seen = 0;
+    for (auto it = fs::recursive_directory_iterator(project->getAssetsPath(), fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator() && seen < 200000; it.increment(ec), seen++) {
+        std::error_code entryError;
+        if (!it->is_regular_file(entryError)) continue;
+        const uintmax_t size = it->file_size(entryError);
+        run.workFiles++;
+        if (!entryError) run.workBytes += size;
+    }
+    bool prebuilt = false;
+    uint64_t bytes = 0;
+    if (run.mode == ExportMode::Player) {
+        std::string findError;
+        const std::optional<PlayerInfo> runtime = PlayerRuntimes::find(
+            Exporter::playerIdFor(run.config, run.config.developmentBuild || project->isDevelopmentBuild()), run.config.playersDir, false, findError);
+        const BuildMethodChoice choice = Exporter::chooseBuildMethod(project, run.config, runtime ? &*runtime : nullptr);
+        prebuilt = choice.method == BuildMethod::Prebuilt && runtime;
+        if (prebuilt && runtime->shippedBytes > 0) bytes = runtime->shippedBytes + run.workBytes;
+    }
+    const jobmodel::BuildKind kind = buildModelKind(run.mode, run.config.platform, prebuilt);
+    run.job->estimateFor(project->getProjectPath(), buildHistoryKind(run.mode, run.config.platform, kind),
+                         jobmodel::buildSeconds(kind, run.workFiles, run.workBytes), bytes);
+}
+
+// S99 R14: the downgrades the build took; a build whose method was not the one estimated records
+// its measure against the model of what ran
+void reportBuildJob(BuildRun& r) {
+    for (const BuildFallback& f : r.result.fallbacks) r.job->addFallback({f.step, f.from, f.to, f.reason});
+    if (r.mode != ExportMode::Player || r.shadersOnly || r.result.methodUsed == BuildMethod::Auto) return;
+    const jobmodel::BuildKind kind = buildModelKind(r.mode, r.config.platform, r.result.methodUsed == BuildMethod::Prebuilt);
+    r.job->setHistoryModel(buildHistoryKind(r.mode, r.config.platform, kind), jobmodel::buildSeconds(kind, r.workFiles, r.workBytes));
+}
+
 void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progress) {
     BuildRun& r = *run;
+    reportBuildJob(r);
     Json result = {
         {"mode", r.shadersOnly ? "shaders" : modeName(r.mode)},
         {"errors", diagnosticsJson(r, "error")},
@@ -611,6 +705,7 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
     // notices) and notes
     for (const BuildWarning& warning : r.result.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
     if (!r.result.notes.empty()) result["notes"] = r.result.notes;
+    const std::string budgetNext = addBuildSizes(r.result, result);
     if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
         // S98 REQ-10: what Asset Stripping and Exclude From Build left out, listed in the report
@@ -665,8 +760,11 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         }
         if (r.warningCount) message += " " + std::to_string(r.warningCount) + " compiler warning(s).";
         if (!r.result.warnings.empty()) message += " " + std::to_string(r.result.warnings.size()) + " build warning(s): see warnings.";
-        // both hints when both apply: the build's own (a non-target platform) and Asset Stripping's
-        if (!r.next.empty()) result["next"] = result.contains("next") ? r.next + "; " + result["next"].get<std::string>() : r.next;
+        // every hint that applies: the build's own (a non-target platform), Asset Stripping's and the Download Budget's
+        std::string next = r.next;
+        if (result.contains("next")) next = next.empty() ? result["next"].get<std::string>() : next + "; " + result["next"].get<std::string>();
+        if (!budgetNext.empty()) next = next.empty() ? budgetNext : next + "; " + budgetNext;
+        if (!next.empty()) result["next"] = next;
         r.job->succeed(message, result);
     } else if (r.job->cancelRequested()) {
         r.job->markCancelled("Build cancelled.");
@@ -1133,6 +1231,7 @@ void buildProjectTool(const CallPtr& call) {
         std::lock_guard<std::mutex> lock(manager().mutex);
         manager().active = run;
     }
+    estimateBuildJob(*run, project);
     Out::info("MCP: %s to %s", modeLabel, FileUtils::pathToUtf8(outputDir).c_str());
     run->exporter->startExport(project, config);
     startRun(run);
@@ -2849,7 +2948,7 @@ unsigned long playerKeysym(const std::string& rawName) {
     };
     auto it = keys.find(name);
     if (it != keys.end()) return it->second;
-    if (name.size() >= 2 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), ::isdigit)) {
+    if (name.size() >= 2 && name.size() <= 3 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), ::isdigit)) {
         const int n = std::stoi(name.substr(1));
         if (n >= 1 && n <= 24) return XK_F1 + (n - 1);
     }

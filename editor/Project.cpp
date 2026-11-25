@@ -2009,12 +2009,13 @@ const editor::PlayerCrashSettings& editor::Project::getPlayerCrash() const{
 }
 
 bool editor::Project::isValidHtmlUiMsaaSamples(int samples){
-    return samples == 1 || samples == 2 || samples == 4 || samples == 8;
+    return samples == 0 || samples == 1 || samples == 2 || samples == 4 || samples == 8;
 }
 
 void editor::Project::setHtmlUiMsaaSamples(int samples){
-    int valid = 1;
-    while (valid * 2 <= samples && valid < 8){
+    // 0 (Auto) stays; a count rounds down to 1, 2, 4 or 8
+    int valid = samples <= 0 ? 0 : 1;
+    while (valid > 0 && valid * 2 <= samples && valid < 8){
         valid *= 2;
     }
     this->htmlUiMsaaSamples = valid;
@@ -4834,7 +4835,8 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
                                          scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
-                                         scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier(), getShippedTerrainTiers());
+                                         scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier(), getShippedTerrainTiers(),
+                                         scriptsSetLight2D());
     // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
     if (scriptsMention("FluidSimulation"))
         ShaderVariantCollector::addFluidKeys(keys);
@@ -4867,6 +4869,13 @@ bool editor::Project::scriptsSetShadowQuality() const {
     // scene.shadowQuality (Lua) or Scene::setShadowQuality (C++): the shadow tier, and with it
     // the High filters' variant bit, can change at runtime
     return scriptsMention("hadowQuality");
+}
+
+bool editor::Project::scriptsSetLight2D() const {
+    // scene.ambientLight2DColor / ambientLight2DIntensity / ambientLight2DWithoutLights /
+    // light2DSteps (Lua) or Scene::setAmbientLight2D / setAmbientLight2DWithoutLights /
+    // setLight2DSteps (C++)
+    return scriptsMention("mbientLight2D") || scriptsMention("ight2DSteps");
 }
 
 bool editor::Project::scriptsSetPostProcessing() const {
@@ -6740,6 +6749,7 @@ void editor::Project::resetConfigs() {
     stripEngineCode = true;
     assetStripping = AssetStrippingSettings();
     targetPlatforms = allTargetPlatforms;
+    downloadBudgetMB = {};
     spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setPixelsPerUnit(defaultPixelsPerUnit);

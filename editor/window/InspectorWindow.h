@@ -247,6 +247,10 @@ namespace jasperengine::editor{
         bool windowOpen;
         bool focusRequested;
         int nameFocusFrames = 0;   // visible frames left for focusNameInput() to take
+        // the Skybox's Extract Sun (S99 R28): its Remove Sun Disc option and what the last run said
+        bool extractSunRemoveDisc = true;
+        std::string extractSunMessage;
+        bool extractSunFailed = false;
         bool finishProperty;
 
         std::set<std::string> usedPreviewIds;
@@ -343,7 +347,8 @@ namespace jasperengine::editor{
             ColorRGB,
             ColorRGBA,
             Combo,
-            LayerMask   // a uint32_t layer mask: Unity's mask field
+            LayerMask,   // a uint32_t layer mask: Unity's mask field
+            SampleCount  // an int MSAA sample count: 0 (Project Default), 1 (Disabled), 2, 4, 8
         };
 
         struct DirtyMaterialEntry {
@@ -492,6 +497,8 @@ namespace jasperengine::editor{
         void forgetSpriteFxScene(uint32_t sceneId);
         // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
         void drawAudioMixerAsset(const std::filesystem::path& asset);
+        // a selected .ies: its polar plot and metadata (InspectorIesProfile.cpp, S99 R37)
+        void drawIesProfileAsset(const std::filesystem::path& asset);
         // a selected .soundevent: its editor, problems, Match Levels and Audition (InspectorSoundEvent.cpp)
         void drawSoundEventAsset(const std::filesystem::path& asset);
         // AudioSource: the Event, Play On, impact and Variation rows and their warnings
@@ -532,6 +539,8 @@ namespace jasperengine::editor{
         void drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
         // the scene's Water Wakes map: resolution, area, fade
         void drawSceneWaterWakes(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
+        // S92: Render Mode and Anti-aliasing (MSAA) of the scene's screen HTML UI documents
+        void drawSceneHtmlUi(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
     public:
         // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
         static std::string sceneLayerMaskLabel(uint32_t mask);

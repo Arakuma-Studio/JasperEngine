@@ -56,6 +56,35 @@ float getSpotAttenuation(vec3 pointToLight, vec3 spotDirection, float outerConeC
     return 0.0;
 }
 
+// A light's IES Profile (S99, includes/lights.glsl LIGHTS_IES): its band of u_lightProfiles at the
+// direction from the light, vertical angle from its forward axis (0 .. 180 degrees along a row),
+// horizontal angle round it (0 along its right, 90 along its up: down the band's rows). 1 without one.
+#ifdef LIGHTS_IES
+float lightIesAttenuation(Light light, vec3 pointToLight, int lightIndex)
+{
+    int band = ((lightPackedBits(lightIndex) >> 15) & 127) - 1;
+    if (band < 0 || light.type == LightType_Directional)
+    {
+        return 1.0;
+    }
+    vec3 forward = normalize(light.direction);
+    vec3 up = light.spotUp - forward * dot(light.spotUp, forward);
+    float upLength = length(up);
+    up = (upLength > 0.0001) ? up / upLength : normalize(cross(forward, (abs(forward.y) < 0.99) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+    vec3 right = cross(forward, up);
+    vec3 ray = normalize(-pointToLight);
+    float vertical = acos(clamp(dot(ray, forward), -1.0, 1.0)) * 0.31830988618;
+    float x = dot(ray, right);
+    float y = dot(ray, up);
+    float horizontal = (abs(x) + abs(y) > 1e-6) ? fract(atan(y, x) * 0.15915494309 + 1.0) : 0.0;
+    vec2 size = vec2(textureSize(sampler2D(u_lightProfiles, LIGHT_PROFILES_SAMPLER), 0));
+    vec2 uv = vec2((vertical * (IES_GRID_COLUMNS - 1.0) + 0.5) / size.x,
+                   (LIGHT_PROFILE_LUT_ROWS + float(band) * IES_GRID_ROWS + horizontal * (IES_GRID_ROWS - 1.0) + 0.5) / size.y);
+    // one level: an explicit LOD keeps the lookup legal in any loop
+    return textureLod(sampler2D(u_lightProfiles, LIGHT_PROFILES_SAMPLER), uv, 0.0).r;
+}
+#endif
+
 // range and cone attenuation, without the projected spot mask (vertex lights)
 float getLightConeAttenuation(Light light, vec3 pointToLight)
 {
@@ -165,6 +194,9 @@ float getLightAttenuation(Light light, vec3 pointToLight, int lightIndex)
             spotAttenuation = getSpotAttenuation(pointToLight, light.direction, light.outerConeCos, light.innerConeCos);
         }
     }
+    #ifdef LIGHTS_IES
+        spotAttenuation *= lightIesAttenuation(light, pointToLight, lightIndex);
+    #endif
 
     return rangeAttenuation * spotAttenuation;
 }
@@ -180,7 +212,11 @@ vec3 getLighIntensity(Light light, vec3 pointToLight, int lightIndex)
 // (SPOT_MASKS_OFF, includes/lights.glsl) lights a masked spot with its cone: the same functions
 float getLightAttenuation(Light light, vec3 pointToLight, int lightIndex)
 {
-    return getLightConeAttenuation(light, pointToLight);
+    #ifdef LIGHTS_IES
+        return getLightConeAttenuation(light, pointToLight) * lightIesAttenuation(light, pointToLight, lightIndex);
+    #else
+        return getLightConeAttenuation(light, pointToLight);
+    #endif
 }
 
 vec3 getLighIntensity(Light light, vec3 pointToLight, int lightIndex)

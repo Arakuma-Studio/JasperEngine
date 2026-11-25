@@ -2364,6 +2364,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
         sceneNode["showStats"] = ds.showStats;
+    if (ds.frameChecks)
+        sceneNode["frameChecks"] = ds.frameChecks;
     // S41: written only when turned off (on by default)
     if (!ds.pixelZoom) sceneNode["pixelZoom"] = false;
     if (!ds.pixelGrid) sceneNode["pixelGrid"] = false;
@@ -2416,6 +2418,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
     ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
+    ds.frameChecks = node["frameChecks"] ? YamlNumbers::as<bool>(node["frameChecks"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
     decodeTerrainOverlaySettings(node["terrainOverlay"], ds.terrainOverlay);
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
@@ -3042,6 +3045,15 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
+        // Download Budget (S99 R11): only the families that have one, so an old project.yaml stays as it was
+        {
+            YAML::Node budgetNode;
+            for (size_t f = 0; f < kModelFamilyCount; f++) {
+                const double megabytes = project->getDownloadBudgetMB((ModelFamily)f);
+                if (megabytes > 0.0) budgetNode[modelFamilyName((ModelFamily)f)] = megabytes;
+            }
+            if (budgetNode.size()) exportNode["downloadBudgetMB"] = budgetNode;
+        }
         // S98 REQ-8: written only when set, so an old project's file stays as it was
         const AssetStrippingSettings& stripping = project->getAssetStripping();
         if (stripping.mode == AssetStrippingMode::ReferencedOnly) exportNode["assetStripping"] = "referencedOnly";
@@ -3629,9 +3641,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setPlayerCrash(crash);
     }
 
-    if (node["htmlUiMsaaSamples"].IsDefined()) {
-        project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
-    }
+    // S92 R16: a project saved without the key had 4 samples (new projects are Auto, 0)
+    project->setHtmlUiMsaaSamples(node["htmlUiMsaaSamples"].IsDefined() ? YamlNumbers::as<int>(node["htmlUiMsaaSamples"])
+                                                                         : Project::legacyHtmlUiMsaaSamples);
 
     // S56: a project saved before it has no device block, and gets the defaults
     {
@@ -4076,6 +4088,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setPackContent(exportNode["pack"] && exportNode["pack"].as<bool>());
         project->setStripEngineCode(!exportNode["stripEngineCode"] || exportNode["stripEngineCode"].as<bool>());
+        // absent families are off; a negative or non-finite value is off too
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            const YAML::Node budgetNode = exportNode["downloadBudgetMB"];
+            const char* family = modelFamilyName((ModelFamily)f);
+            const double megabytes = budgetNode && budgetNode.IsMap() ? decodeFiniteDouble(budgetNode[family], 0.0) : 0.0;
+            project->setDownloadBudgetMB((ModelFamily)f, std::max(0.0, megabytes));
+        }
         {
             // S98 REQ-50: absent keys are Ship All Assets and empty lists
             AssetStrippingSettings stripping;
@@ -5132,6 +5151,11 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     // written only when not the default (half), so scenes saved before it existed re-save unchanged
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         sceneNode["sceneColorScale"] = sceneColorScaleToString(scene->getSceneColorScale());
+    // the screen HTML UI documents (S92): written only away from their defaults
+    if (scene->getHtmlUiRenderMode() != SceneSettings().htmlUiRenderMode)
+        sceneNode["htmlUiRenderMode"] = StreamSchema::uiRenderMode().toString(scene->getHtmlUiRenderMode());
+    if (scene->getHtmlUiMsaaSamples() != SceneSettings().htmlUiMsaaSamples)
+        sceneNode["htmlUiMsaaSamples"] = scene->getHtmlUiMsaaSamples();
     // planar reflections: written only away from their defaults
     if (scene->getPlanarReflectionResolution() != SceneSettings().planarReflectionResolution)
         sceneNode["planarReflectionResolution"] = StreamSchema::planarReflectionResolution().toString(scene->getPlanarReflectionResolution());
@@ -5155,6 +5179,22 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
+    // Environment Lighting (S99 R30): written only away from its defaults (no key: Color)
+    {
+        const SceneSettings defaults;
+        // (a default decoded through sRGB may differ from it in the last bits)
+        auto away = [](const Vector3& a, const Vector3& b) {
+            return std::fabs(a.x - b.x) > 1e-5f || std::fabs(a.y - b.y) > 1e-5f || std::fabs(a.z - b.z) > 1e-5f;
+        };
+        if (scene->getAmbientMode() != defaults.ambientMode)
+            sceneNode["ambientMode"] = StreamSchema::ambientMode().toString(scene->getAmbientMode());
+        if (away(scene->getAmbientSkyColorLinear(), defaults.ambientSkyColor))
+            sceneNode["ambientSkyColor"] = encodeVector3(scene->getAmbientSkyColor());
+        if (away(scene->getAmbientEquatorColorLinear(), defaults.ambientEquatorColor))
+            sceneNode["ambientEquatorColor"] = encodeVector3(scene->getAmbientEquatorColor());
+        if (away(scene->getAmbientGroundColorLinear(), defaults.ambientGroundColor))
+            sceneNode["ambientGroundColor"] = encodeVector3(scene->getAmbientGroundColor());
+    }
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         sceneNode["maxLightsPerObject"] = scene->getMaxLightsPerObject();
     // a scene without the key is Standard (it was drawn so before Lit Quality existed); new
@@ -5172,6 +5212,13 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["capsuleShadowSoftness"] = YamlNumbers::text(scene->getCapsuleShadowSoftness());
     sceneNode["ambientLight2DIntensity"] = scene->getAmbientLight2DIntensity();
     sceneNode["ambientLight2DColor"] = encodeVector3(scene->getAmbientLight2DColor());
+    // Light Steps (S78 R1): written only when on, so scenes saved before them re-save unchanged
+    if (scene->getLight2DSteps() != SceneSettings().light2DSteps)
+        sceneNode["light2DSteps"] = scene->getLight2DSteps();
+    // the 2D ambient without a Light 2D (S78 R6, R7): a scene without the key is off (it was drawn so
+    // before S78); new scenes are on, which is written
+    if (scene->isAmbientLight2DWithoutLights())
+        sceneNode["ambientLight2DWithoutLights"] = true;
     sceneNode["shadow2DQuality"] = shadowQualityToString(scene->getShadow2DQuality());
     sceneNode["ssaoEnabled"] = scene->isSSAOEnabled();
     sceneNode["ssaoRadius"] = scene->getSSAORadius();
@@ -5304,6 +5351,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
     // absent = the default (half): it is only written when it differs
     scene->setSceneColorScale(node["sceneColorScale"] ? decodeEnum(node, "sceneColorScale", StreamSchema::sceneColorScale()) : SceneSettings().sceneColorScale);
+    // the screen HTML UI documents: absent = the defaults (Screen Space - Overlay, the project's samples)
+    scene->setHtmlUiRenderMode(node["htmlUiRenderMode"] ? decodeEnum(node, "htmlUiRenderMode", StreamSchema::uiRenderMode()) : SceneSettings().htmlUiRenderMode);
+    scene->setHtmlUiMsaaSamples(node["htmlUiMsaaSamples"] ? YamlNumbers::as<int>(node["htmlUiMsaaSamples"]) : SceneSettings().htmlUiMsaaSamples);
     // planar reflections: absent = the defaults
     const SceneSettings planarDefaults;
     scene->setPlanarReflectionResolution(node["planarReflectionResolution"]
@@ -5336,6 +5386,19 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setGlobalIllumination(decodeVector3(node["globalIlluminationColor"]));
     }
 
+    // Environment Lighting: absent keys restore the defaults (a reused scene decodes exactly)
+    {
+        const SceneSettings defaults;
+        scene->setAmbientMode(node["ambientMode"] ? decodeEnum(node, "ambientMode", StreamSchema::ambientMode()) : defaults.ambientMode);
+        // (an absent key on a scene already at the default leaves it untouched: exact, no sRGB round trip)
+        if (node["ambientSkyColor"]) scene->setAmbientSkyColor(decodeVector3(node["ambientSkyColor"]));
+        else if (scene->getAmbientSkyColorLinear() != defaults.ambientSkyColor) scene->setAmbientSkyColor(Color::linearTosRGB(defaults.ambientSkyColor));
+        if (node["ambientEquatorColor"]) scene->setAmbientEquatorColor(decodeVector3(node["ambientEquatorColor"]));
+        else if (scene->getAmbientEquatorColorLinear() != defaults.ambientEquatorColor) scene->setAmbientEquatorColor(Color::linearTosRGB(defaults.ambientEquatorColor));
+        if (node["ambientGroundColor"]) scene->setAmbientGroundColor(decodeVector3(node["ambientGroundColor"]));
+        else if (scene->getAmbientGroundColorLinear() != defaults.ambientGroundColor) scene->setAmbientGroundColor(Color::linearTosRGB(defaults.ambientGroundColor));
+    }
+
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact
     scene->setMaxLightsPerObject(node["maxLightsPerObject"] ? YamlNumbers::as<int>(node["maxLightsPerObject"]) : SceneSettings().maxLightsPerObject);
     scene->setLitQuality(node["litQuality"] ? decodeEnum(node, "litQuality", StreamSchema::litQuality()) : LitQuality::STANDARD);
@@ -5354,6 +5417,8 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     } else if (node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(decodeVector3(node["ambientLight2DColor"]));
     }
+    scene->setLight2DSteps(node["light2DSteps"] ? YamlNumbers::as<int>(node["light2DSteps"]) : SceneSettings().light2DSteps);
+    scene->setAmbientLight2DWithoutLights(node["ambientLight2DWithoutLights"] && YamlNumbers::as<bool>(node["ambientLight2DWithoutLights"]));
 
     if (node["shadow2DQuality"]) {
         scene->setShadow2DQuality(decodeEnum(node, "shadow2DQuality", StreamSchema::shadowQuality()));

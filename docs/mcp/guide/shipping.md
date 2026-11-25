@@ -15,6 +15,9 @@ as a job. `mode: desktop` is this computer's platform and `mode: web` the web (t
   from source (minutes; this computer's platform and the web only). The result says which:
   `method_used`, `compile_reasons[]`.
 - `prebuilt` fails with the reasons when the project needs native code; `compile` always compiles.
+- The job has an `estimate` from submit (`seconds`, `basis` model or history; `remaining_seconds`
+  in get_job). Its result's `report.fallbacks` names each downgrade (compiled instead of prebuilt,
+  a bigger player variant, textures left uncompressed): tell the user.
 - **development**: the development flavour (profiler, `--profile`); else release.
 - **graphics_api**: `opengl`/`glcore`, `gles3`/`opengles`, `vulkan`, `d3d11`, `metal`. Each
   platform has its list (get_build_info `platforms`).
@@ -37,6 +40,16 @@ leaves out the HTML UI, video, the runtime shader compiler, 3D or 2D physics whe
 them), `module_reasons` (the first evidence of each), `content_manifest`, `executable`, `artifacts` and
 `warnings[{code, message}]` (`W-MAC-UNSIGNED`, `W-ICON-NONWINDOWS`, ...). The output folder is
 replaced only when the build succeeds (the previous build stays until then).
+
+**Size.** Every result says what the build weighs: `build_bytes`, `build_categories` (models,
+textures, audio, scripts, scenes, engine, other), `top_files` (the 5 largest) and `build_report`
+(its `build-report.json`, the Build Report window's). A web build adds `download_bytes_gzip`, an
+estimate of what a browser downloads (gzip -9 of the files the page loads). When the user names a
+size limit, set it as the Download Budget: `set_project_settings`
+`player.download_budget_mb.<web|mobile|desktop>` (MB; web holds the download estimate, the others
+the build's bytes; 0 is off). A build over it still succeeds, with `W-BUILD-OVER-BUDGET`,
+`download_budget {budget_bytes, actual_bytes, largest_categories}` and a `next` naming the tools
+that inspect the largest category: follow it before shrinking anything.
 
 A prebuilt build needs the player runtime `<platform>-<arch>-<backend>-<flavour>` (a release one
 also comes in variants of fewer modules, `-ui`, `-core`, `-lite3d`, `-lite2d`: the build takes the

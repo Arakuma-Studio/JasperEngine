@@ -4371,10 +4371,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, audio "
-            "(voices, mixer_meters dB), "
-            "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
-            "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.";
+            "frames, errors, crash), how the last one ended, held input, input, debug_overlay, audio (voices, mixer_meters dB), "
+            "console_cursor, script coroutines and timers, the clock (time_scale, fixed_fps, auto_pause, held), platform, http, "
+            "safe_area; stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

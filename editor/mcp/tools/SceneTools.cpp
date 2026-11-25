@@ -29,6 +29,7 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/SetChildSceneStartActiveCmd.h"
 #include "command/type/SetMainCameraCmd.h"
+#include "lighting/ExtractSun.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 #include "util/FileUtils.h"
@@ -803,9 +804,9 @@ void setMainCameraTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ scene settings
 
-enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, Filter, PostProcess,
+enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, AmbientMode, Filter, PostProcess,
                          PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler, PlanarReflectionResolution, LayerMask, ShaderUniforms,
-                         WaterWakeResolution };
+                         WaterWakeResolution, UIRenderMode };
 
 struct SceneSetting {
     std::string name;
@@ -828,6 +829,11 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"light_state", SettingKind::LightState, "scene lighting: off, on, auto (on when a light exists)"},
         {"global_illumination_color", SettingKind::Vector3, "ambient light color [r,g,b] (sRGB)"},
         {"global_illumination_intensity", SettingKind::Float, "ambient light intensity"},
+        {"ambient_mode", SettingKind::AmbientMode,
+         "Environment Lighting Source: color (default: the ambient color; Lit under a sky image takes the image), gradient (sky/equator/ground colors by facing; the sky still reflects)"},
+        {"ambient_sky_color", SettingKind::Vector3, "gradient color facing up [r,g,b] (sRGB)"},
+        {"ambient_equator_color", SettingKind::Vector3, "gradient color at the horizon [r,g,b] (sRGB)"},
+        {"ambient_ground_color", SettingKind::Vector3, "gradient color facing down [r,g,b] (sRGB)"},
         {"max_lights_per_object", SettingKind::Int, "lights each object is lit by, 1-16 (the rest reaching it fold into its ambient)"},
         {"lit_quality", SettingKind::LitQuality, "the built-in Lit's quality: standard (as before), high (specular anti-aliasing, direct-light energy compensation; new scenes)"},
         {"physical_light_ev100", SettingKind::Float, "Physical Light Exposure, EV100 -6..24 (Sunny 15, Overcast 12, Interior 7, Night 2): only lights in lux, candela or lumen"},
@@ -845,6 +851,9 @@ const std::vector<SceneSetting>& sceneSettings() {
          "Scene view shadow debug view (editor only, never saved, no undo step): none, cascades, shadow_factor, texel_density, cache, atlas"},
         {"ambient_light_2d_color", SettingKind::Vector3, "2D ambient light color [r,g,b] (sRGB)"},
         {"ambient_light_2d_intensity", SettingKind::Float, "2D ambient light intensity"},
+        {"light_2d_steps", SettingKind::Int, "Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth)"},
+        {"ambient_light_2d_without_lights", SettingKind::Bool,
+         "the 2D ambient tints unlit 2D objects with no Light 2D in the scene too (on in new scenes; off in scenes saved before it, as they were drawn)"},
         {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high)"},
         {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
@@ -857,6 +866,10 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
         {"scene_color_scale", SettingKind::SceneColorScale,
          "resolution of the scene-colour copy shaders requiring scenecolor sample: full, half (default)"},
+        {"html_ui_render_mode", SettingKind::UIRenderMode,
+         "where screen HTML UI documents composite: overlay (default: after post-processing, at output resolution), "
+         "camera (in the camera pass: render scale and post apply)"},
+        {"html_ui_msaa_samples", SettingKind::Int, "MSAA samples of the screen HTML UI documents: 0 project default, 1, 2, 4, 8"},
         {"planar_reflection_resolution", SettingKind::PlanarReflectionResolution,
          "water planar reflection passes (one per water height a camera sees): off (none: the environment), quarter, half (default), full"},
         {"planar_reflection_layers", SettingKind::LayerMask, "layers the planar reflections draw (with the camera's culling mask)"},
@@ -1090,9 +1103,11 @@ const char* kindName(SettingKind kind) {
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
         case SettingKind::LitQuality:
+        case SettingKind::AmbientMode:
         case SettingKind::ShadowDebugView:
         case SettingKind::PlanarReflectionResolution:
         case SettingKind::WaterWakeResolution:
+        case SettingKind::UIRenderMode:
         case SettingKind::Filter: return "enum";
         case SettingKind::LayerMask: return "layer_mask";
         case SettingKind::PostProcess: return "post_process";
@@ -1111,8 +1126,10 @@ const McpValues::EnumOptions* settingOptions(SettingKind kind) {
         case SettingKind::SceneColorScale: return McpValues::enumTable("scene_color_scale");
         case SettingKind::PlanarReflectionResolution: return McpValues::enumTable("planar_reflection_resolution");
         case SettingKind::WaterWakeResolution: return McpValues::enumTable("water_wake_resolution");
+        case SettingKind::UIRenderMode: return McpValues::enumTable("ui_render_mode");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
         case SettingKind::LitQuality: return McpValues::enumTable("lit_quality");
+        case SettingKind::AmbientMode: return McpValues::enumTable("ambient_mode");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
         default: return nullptr;
     }
@@ -1238,6 +1255,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<WaterWakeResolution>(setting.name)
                                                         : Catalog::getSceneProperty<WaterWakeResolution>(scene, setting.name)),
                                          *settingOptions(setting.kind));
+        case SettingKind::UIRenderMode:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<UIRenderMode>(setting.name)
+                                                        : Catalog::getSceneProperty<UIRenderMode>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
         case SettingKind::LayerMask:
             return layerMaskToJson(defaults ? Catalog::getScenePropertyDefault<uint32_t>(setting.name)
                                             : Catalog::getSceneProperty<uint32_t>(scene, setting.name));
@@ -1248,6 +1269,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
         case SettingKind::LitQuality:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LitQuality>(setting.name)
                                                         : Catalog::getSceneProperty<LitQuality>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
+        case SettingKind::AmbientMode:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<AmbientMode>(setting.name)
+                                                        : Catalog::getSceneProperty<AmbientMode>(scene, setting.name)),
                                          *settingOptions(setting.kind));
         case SettingKind::Filter:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<TextureFilter>(setting.name)
@@ -1326,7 +1351,10 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             if (name == "physics_2d_sub_steps" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             if (name == "max_planar_reflections" && (value.get<int>() < 1 || value.get<int>() > 4)) return expect("1 to 4");
+            if (name == "light_2d_steps" && (value.get<int>() < 0 || value.get<int>() > 16)) return expect("0 to 16");
             if (name == "ssr_debug_mode" && (value.get<int>() < 0 || value.get<int>() > 8)) return expect("0 to 8");
+            if (name == "html_ui_msaa_samples" && !Project::isValidHtmlUiMsaaSamples(value.get<int>()))
+                return expect("0 (the project's), 1, 2, 4 or 8");
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");
@@ -1386,10 +1414,12 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         }
         case SettingKind::PlanarReflectionResolution:
         case SettingKind::WaterWakeResolution:
+        case SettingKind::UIRenderMode:
         case SettingKind::ShadowQuality:
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
         case SettingKind::LitQuality:
+        case SettingKind::AmbientMode:
         case SettingKind::Filter: {
             int parsed = 0;
             std::string why;
@@ -1403,8 +1433,10 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 return new ScenePropertyCmd<PlanarReflectionResolution>(project, id, name, (PlanarReflectionResolution)parsed);
             if (setting.kind == SettingKind::WaterWakeResolution)
                 return new ScenePropertyCmd<WaterWakeResolution>(project, id, name, (WaterWakeResolution)parsed);
+            if (setting.kind == SettingKind::UIRenderMode) return new ScenePropertyCmd<UIRenderMode>(project, id, name, (UIRenderMode)parsed);
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
             if (setting.kind == SettingKind::LitQuality) return new ScenePropertyCmd<LitQuality>(project, id, name, (LitQuality)parsed);
+            if (setting.kind == SettingKind::AmbientMode) return new ScenePropertyCmd<AmbientMode>(project, id, name, (AmbientMode)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
         }
         case SettingKind::PostProcessing:
@@ -1628,14 +1660,28 @@ void setSceneSettingsTool(const CallPtr& call) {
         call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return;
     }
-    if (!args.contains("settings") || !args["settings"].is_object() || args["settings"].empty()) {
+    // S99 R28: extract_sun {remove_sun_disc} with or without settings
+    const bool extractSun = args.contains("extract_sun") && !args["extract_sun"].is_null();
+    if (extractSun) {
+        const Json& sun = args["extract_sun"];
+        const bool valid = sun.is_object() && (!sun.contains("remove_sun_disc") || sun["remove_sun_disc"].is_boolean()) &&
+                           sun.size() <= (sun.contains("remove_sun_disc") ? 1u : 0u);
+        if (!valid) {
+            call->fail("extract_sun must be {} or {\"remove_sun_disc\": true} (also clamps the sun out of the sky's lighting).");
+            return;
+        }
+    }
+    const Json noSettings = Json::object();
+    const bool hasSettings = args.contains("settings") && !args["settings"].is_null();
+    if ((hasSettings && (!args["settings"].is_object() || args["settings"].empty())) || (!hasSettings && !extractSun)) {
         call->fail("settings must be an object {name: value}. Settings: " + settingNamesText() + ".");
         return;
     }
+    const Json& settings = hasSettings ? args["settings"] : noSettings;
     auto* multi = new MultiPropertyCmd();
     PostProcessingSettings postProcessing = scene->scene->getPostProcessing();
     bool postProcessingSet = false;
-    for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
+    for (auto it = settings.begin(); it != settings.end(); ++it) {
         const SceneSetting* setting = findSetting(it.key());
         if (!setting) {
             delete multi;
@@ -1685,6 +1731,14 @@ void setSceneSettingsTool(const CallPtr& call) {
     }
     const uint32_t id = scene->id;
     std::string error;
+    // the sun first: a sky without one refuses the whole call
+    ExtractSunResult sun;
+    const bool removeSunDisc = extractSun && args["extract_sun"].value("remove_sun_disc", false);
+    if (extractSun && !ExtractSun::apply(project, id, removeSunDisc, sun, error)) {
+        delete multi;
+        call->fail(error);
+        return;
+    }
     if (multi->empty()) {
         delete multi;
     }else if (!runSceneCommand(id, multi, error)) {
@@ -1693,13 +1747,30 @@ void setSceneSettingsTool(const CallPtr& call) {
     }
     SceneProject* updated = project->getScene(id);
     Json values = Json::object();
-    for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
+    for (auto it = settings.begin(); it != settings.end(); ++it) {
         values[it.key()] = settingValue(updated->scene, *findSetting(it.key()), false, project);
     }
-    const bool debugView = args["settings"].contains("shadows_debug_view");
-    call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step" +
-             (debugView ? std::string("; shadows_debug_view takes none).") : std::string(").")),
-             Json{{"scene_id", id}, {"settings", values}});
+    Json data = {{"scene_id", id}, {"settings", values}};
+    std::string text = "Set " + std::to_string(values.size()) + " scene setting(s)";
+    if (extractSun) {
+        static const char* const unitNames[] = {"engine", "lux", "candela", "lumen"};
+        data["sun"] = {{"light", McpValues::entityToJson(updated, sun.light)},
+                       {"created", sun.created},
+                       {"direction", McpValues::toJson(sun.direction)},
+                       {"color", McpValues::toJson(sun.color)},
+                       {"intensity", McpValues::number(sun.intensity)},
+                       {"unit", unitNames[std::clamp((int)sun.unit, 0, 3)]},
+                       {"peak_ratio", McpValues::number(sun.peakRatio)},
+                       {"disc_degrees", McpValues::number(sun.discDegrees)},
+                       {"remove_sun_disc", sun.sunDiscTextures}};
+        text = std::string(sun.created ? "Created" : "Aligned") + " the main Directional Light \"" + updated->scene->getEntityName(sun.light) +
+               "\" to the sky's sun (" + Json(McpValues::number(sun.peakRatio)).dump() + "x the sky's mean)" +
+               (values.empty() ? std::string() : "; set " + std::to_string(values.size()) + " scene setting(s)");
+        if (!removeSunDisc)
+            data["next"] = "Image-based lighting still has the sun: set_scene_settings extract_sun {\"remove_sun_disc\": true} clamps the sky's disc so it is not counted twice.";
+    }
+    const bool debugView = settings.contains("shadows_debug_view");
+    call->ok(text + " (one undo step" + (debugView ? std::string("; shadows_debug_view takes none).") : std::string(").")), data);
 }
 
 // ------------------------------------------------------------------ post-processing presets
@@ -2241,10 +2312,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Set Scene Settings";
         tool.description =
             "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces "
-            "the pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": "
-            "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); one undo "
-            "step per call.";
-        tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
+            "the pass list: [{\"shader\":\"shaders/MyPost\",\"enabled\":true,\"uniforms\":{\"strength\":"
+            "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); extract_sun: a "
+            "Directional Light from the skybox HDR's sun; one undo step per call.";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}, {"extract_sun", anyObject("")}});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;
         registry.addTool(std::move(tool));
@@ -2255,8 +2326,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "List Post-processing Presets";
         tool.description =
             "Post-processing presets (none, mobile, mobile_adaptive, console, stylised, crt_retro, film, vhs): id, name, "
-            "description, the post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against "
-            "Unity URP). current: the scene's preset (null = custom), settings and cost; in play also applied.";
+            "description, the post_processing fields each sets, estimated cost. current: the scene's preset (null = custom), "
+            "settings and cost; in play also applied.";
         tool.inputSchema = object({{"scene", sceneRef()}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

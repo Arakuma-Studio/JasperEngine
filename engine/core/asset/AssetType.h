@@ -51,10 +51,11 @@ namespace jasperengine {
         VoxelVolume = 32,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
         NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
         TitleArt = 34,              // a .titleart Title Art document (S80; its GUID in its JSON)
-        Mesh = 35                   // a .mesh mesh asset (S98 F1; its GUID in its .meta)
+        Mesh = 35,                  // a .mesh mesh asset (S98 F1; its GUID in its .meta)
+        IesProfile = 36             // an .ies photometric profile of a light (S99 R36; its GUID in its .meta)
     };
     // the highest value present (a sibling's reserved value below it may still be missing)
-    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::Mesh);
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::IesProfile);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -94,6 +95,7 @@ namespace jasperengine {
             case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::TitleArt: return "title_art";
             case AssetType::Mesh: return "mesh";
+            case AssetType::IesProfile: return "ies_profile";
             case AssetType::Unknown: break;
         }
         return "unknown";

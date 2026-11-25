@@ -161,6 +161,19 @@ STABLE(FogComponent, FogComponent, component.type = FogType::EXPONENTIAL; compon
 STABLE(MirrorComponent, MirrorComponent, )
 STABLE(ReflectionProbeComponent, ReflectionProbeComponent, )
 STABLE(UIDocumentComponent, UIDocumentComponent, )
+// S92 R18: a texture-mode document's own MSAA samples
+TEST(StreamComponent, UIDocumentMsaaSamplesRoundTrip){
+    UIDocumentComponent component{};
+    EXPECT_FALSE(reflect::encodeValue(ComponentType::UIDocumentComponent, &component)["msaaSamples"]) << "0 is not written";
+    component.renderMode = UIDocumentRenderMode::TEXTURE;
+    component.msaaSamples = 2;
+    const YAML::Node node = reflect::encodeValue(ComponentType::UIDocumentComponent, &component);
+    EXPECT_EQ(node["msaaSamples"].as<int>(), 2);
+    EXPECT_EQ(reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, node).msaaSamples, 2);
+    // a document saved before it
+    EXPECT_EQ(reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, YAML::Load("renderMode: texture\n")).msaaSamples, 0);
+    EXPECT_NO_ENGINE_ERRORS();
+}
 STABLE(CameraComponent, CameraComponent,
     component.type = CameraType::CAMERA_PERSPECTIVE; component.target = Vector3(0, 1, -5); component.cullingMask = 0x5u;
     component.transparencyMode = TransparencyMode::ORDER_INDEPENDENT; component.oitWeightScale = 0.5f)

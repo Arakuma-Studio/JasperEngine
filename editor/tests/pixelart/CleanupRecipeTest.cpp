@@ -50,7 +50,7 @@ namespace {
         recipe.paletteMode = PaletteMode::Fixed;
         recipe.palette = RecipePalette{"Mine", {Rgba8{26, 28, 44, 255}, Rgba8{255, 205, 117, 255}}, {1}, "0123456789abcdef0123456789abcdef", "palettes/mine.palette"};
         recipe.metric = jasperengine::pixelart::ColorMetric::Ciede2000;
-        recipe.dither = Dither::Ordered;
+        recipe.dither = jasperengine::editor::pixelart::cleanup::Dither::Ordered;
         recipe.ditherStrength = 0.75;
         recipe.cleanup = {2, 0.6};
         recipe.cleanKeep = {"32x24", {5, 9}};

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Gamecrafters Guild Limited and contributors
 // SPDX-License-Identifier: MIT
 // From OpenEngine, Engine/Modules/Types/Include/Types/NearestName.h, unchanged except for the
-// namespace (NOTICE.md).
+// namespace and the JasperEngine addition at the end, NearestIdentifier (NOTICE.md).
 
 #pragma once
 
@@ -11,6 +11,7 @@
 // suggestion rule serves them all.
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -80,6 +81,64 @@ std::string NearestNameSuffix(std::string_view target, const Range& candidates,
                               size_t maxDistance = kNearestNameMaxDistance)
 {
     const std::string best = NearestName(target, candidates, maxDistance);
+    return best.empty() ? std::string() : (" (did you mean '" + best + "'?)");
+}
+
+// ---- JasperEngine addition (not in OpenEngine) ----
+
+/// `name` without case, '_' and '-': "localPosition", "local_position" and "Local-Position" all fold
+/// to "localposition".
+inline std::string FoldedName(std::string_view name)
+{
+    std::string out;
+    out.reserve(name.size());
+    for (const char c : name)
+    {
+        if (c == '_' || c == '-')
+            continue;
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    return out;
+}
+
+/// NearestName for identifiers an agent types (MCP tool, argument, key and enum names): first a
+/// candidate equal to `target` once both are folded (a camelCase spelling of a snake_case name, a
+/// missing or extra '_'), then NearestName as written, then NearestName of the folded names (a
+/// typo on top of a case confusion). "" when nothing is close enough.
+template <typename Range>
+std::string NearestIdentifier(std::string_view target, const Range& candidates,
+                              size_t maxDistance = kNearestNameMaxDistance)
+{
+    const std::string folded = FoldedName(target);
+    for (const auto& candidate : candidates)
+    {
+        const std::string_view sv(candidate);
+        if (FoldedName(sv) == folded)
+            return std::string(sv);
+    }
+    std::string best = NearestName(target, candidates, maxDistance);
+    if (!best.empty())
+        return best;
+    size_t bestDist = maxDistance + 1;
+    for (const auto& candidate : candidates)
+    {
+        const std::string_view sv(candidate);
+        const size_t d = LevenshteinCapped(folded, FoldedName(sv), maxDistance);
+        if (d < bestDist)
+        {
+            bestDist = d;
+            best.assign(sv);
+        }
+    }
+    return bestDist <= maxDistance ? best : std::string();
+}
+
+/// " (did you mean 'X'?)" for NearestIdentifier, or "" when none is close.
+template <typename Range>
+std::string NearestIdentifierSuffix(std::string_view target, const Range& candidates,
+                                    size_t maxDistance = kNearestNameMaxDistance)
+{
+    const std::string best = NearestIdentifier(target, candidates, maxDistance);
     return best.empty() ? std::string() : (" (did you mean '" + best + "'?)");
 }
 

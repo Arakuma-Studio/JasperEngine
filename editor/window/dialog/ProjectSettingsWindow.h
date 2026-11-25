@@ -143,6 +143,8 @@ namespace jasperengine::editor {
         int m_buildMethodIndex = 0;
         bool m_packContent = false;
         bool m_stripEngineCode = true;
+        // Download Budget (S99 R11) per ModelFamily, applied as one undo step
+        double m_downloadBudgetMB[kModelFamilyCount] = {};
         // S98 REQ-8: Player > Build (one undo step on Apply), and the globs typed but not added yet
         AssetStrippingSettings m_assetStripping;
         char m_alwaysIncludeInput[256] = {0};

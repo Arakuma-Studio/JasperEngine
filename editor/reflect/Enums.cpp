@@ -508,6 +508,7 @@ namespace {
         {v(LightUnit::LUX), "lux", "Lux", "LightUnit::LUX"},
         {v(LightUnit::CANDELA), "candela", "Candela", "LightUnit::CANDELA"},
         {v(LightUnit::LUMEN), "lumen", "Lumen", "LightUnit::LUMEN"},
+        {v(LightUnit::NITS), "nits", "Nits", "LightUnit::NITS"},
     };
 
     constexpr EnumItem kLightShadingItems[] = {
@@ -525,6 +526,12 @@ namespace {
         {v(LightType::DIRECTIONAL), "directional", "Directional", "LightType::DIRECTIONAL"},
         {v(LightType::POINT), "point", "Point", "LightType::POINT"},
         {v(LightType::SPOT), "spot", "Spot", "LightType::SPOT"},
+        {v(LightType::AREA), "area", "Area", "LightType::AREA"},
+    };
+
+    constexpr EnumItem kAreaLightShapeItems[] = {
+        {v(AreaLightShape::RECTANGLE), "rectangle", "Rectangle", "AreaLightShape::RECTANGLE"},
+        {v(AreaLightShape::DISC), "disc", "Disc", "AreaLightShape::DISC"},
     };
 
     constexpr EnumItem kMaterialAlphaModeItems[] = {
@@ -856,6 +863,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kLightUnit{"LightUnit", kLightUnitItems, v(LightUnit::ENGINE)};
     const EnumDesc kLightShading{"LightShading", kLightShadingItems, v(LightShading::BOTH)};
     const EnumDesc kLightType{"LightType", kLightTypeItems, v(LightType::DIRECTIONAL)};
+    const EnumDesc kAreaLightShape{"AreaLightShape", kAreaLightShapeItems, v(AreaLightShape::RECTANGLE)};
     const EnumDesc kLodFadeMode{"LodFadeMode", kLodFadeModeItems, v(LodFadeMode::CROSS_FADE)};
     const EnumDesc kMaterialAlphaMode{"MaterialAlphaMode", kMaterialAlphaModeItems, v(MaterialAlphaMode::AUTO)};
     const EnumDesc kMaterialBlendMode{"MaterialBlendMode", kMaterialBlendModeItems, v(MaterialBlendMode::AUTO)};

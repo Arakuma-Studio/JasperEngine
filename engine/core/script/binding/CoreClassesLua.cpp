@@ -1985,10 +1985,25 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HIGH", LitQuality::HIGH)
         .endNamespace();
 
+    // Environment Lighting > Source (Scene.ambientMode)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AmbientMode")
+        .addVariable("COLOR", AmbientMode::COLOR)
+        .addVariable("GRADIENT", AmbientMode::GRADIENT)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("SceneColorScale")
         .addVariable("FULL", SceneColorScale::FULL)
         .addVariable("HALF", SceneColorScale::HALF)
+        .endNamespace();
+
+    // where the scene's screen HTML UI documents composite (Scene.htmlUiRenderMode): OVERLAY after
+    // post-processing at the output resolution, CAMERA in the camera pass before it
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIRenderMode")
+        .addVariable("OVERLAY", UIRenderMode::OVERLAY)
+        .addVariable("CAMERA", UIRenderMode::CAMERA)
         .endNamespace();
 
     // the resolution of the water reflection passes (Scene.planarReflectionResolution)
@@ -3426,6 +3441,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)
         .addFunction("getGlobalIlluminationColorLinear", &Scene::getGlobalIlluminationColorLinear)
         .addFunction("setGlobalIllumination", (void (Scene::*)(float, Vector3))&Scene::setGlobalIllumination)
+        // Environment Lighting: the source (AmbientMode.COLOR, GRADIENT) and the Gradient's
+        // colours (sRGB, used as they are)
+        .addProperty("ambientMode", &Scene::getAmbientMode, &Scene::setAmbientMode)
+        .addProperty("ambientSkyColor", &Scene::getAmbientSkyColor, &Scene::setAmbientSkyColor)
+        .addProperty("ambientEquatorColor", &Scene::getAmbientEquatorColor, &Scene::setAmbientEquatorColor)
+        .addProperty("ambientGroundColor", &Scene::getAmbientGroundColor, &Scene::setAmbientGroundColor)
         .addProperty("maxLightsPerObject", &Scene::getMaxLightsPerObject, &Scene::setMaxLightsPerObject)
         // the built-in Lit's quality (LitQuality.STANDARD, HIGH) and the exposure lights in
         // physical units are drawn at (EV100)
@@ -3438,6 +3459,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("ambientLight2DIntensity", &Scene::getAmbientLight2DIntensity, (void (Scene::*)(float))&Scene::setAmbientLight2D)
         .addFunction("getAmbientLight2DColorLinear", &Scene::getAmbientLight2DColorLinear)
         .addFunction("setAmbientLight2D", (void (Scene::*)(float, Vector3))&Scene::setAmbientLight2D)
+        // the bands each Light 2D's light is quantized into, 0 (off) to 16
+        .addProperty("light2DSteps", &Scene::getLight2DSteps, &Scene::setLight2DSteps)
+        // a tinting 2D ambient on the unlit 2D materials of a scene without a Light 2D
+        .addProperty("ambientLight2DWithoutLights", &Scene::isAmbientLight2DWithoutLights, &Scene::setAmbientLight2DWithoutLights)
         .addProperty("shadow2DQuality", &Scene::getShadow2DQuality, &Scene::setShadow2DQuality)
         .addProperty("gravity2D", &Scene::getGravity2D, (void (Scene::*)(Vector2))&Scene::setGravity2D)
         .addFunction("setGravity2D",
@@ -3501,6 +3526,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("crossFadeDuration", &Scene::getMeshLodCrossFadeDuration, &Scene::setMeshLodCrossFadeDuration)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
         .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
+        // the screen HTML UI documents: their composite (UIRenderMode) and MSAA samples (0: the project's)
+        .addProperty("htmlUiRenderMode", &Scene::getHtmlUiRenderMode, &Scene::setHtmlUiRenderMode)
+        .addProperty("htmlUiMsaaSamples", &Scene::getHtmlUiMsaaSamples, &Scene::setHtmlUiMsaaSamples)
         // water planar reflections (library:water's PLANAR_REFLECTION; a quality menu sets OFF)
         .addProperty("planarReflectionResolution", &Scene::getPlanarReflectionResolution, &Scene::setPlanarReflectionResolution)
         .addProperty("planarReflectionLayers", &Scene::getPlanarReflectionLayers, &Scene::setPlanarReflectionLayers)

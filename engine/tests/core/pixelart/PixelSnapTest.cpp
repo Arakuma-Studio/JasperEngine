@@ -12,7 +12,9 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::pixelart;
+// the tests in Pixel Art's namespace: a file-scope using-directive would reach the next source of a
+// unity unit (docs/testing.md, Unity build)
+namespace jasperengine::pixelart {
 
 namespace {
 
@@ -184,4 +186,6 @@ TEST(PixelSnapTest, SnapWorld){
     EXPECT_FLOAT_EQ(snapWorld(0.53125f, 16), 0.5625f);
     // a non-positive PPU is the default 1
     EXPECT_FLOAT_EQ(snapWorld(2.6f, 0), 3.0f);
+}
+
 }

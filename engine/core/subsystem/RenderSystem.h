@@ -101,7 +101,7 @@ namespace jasperengine{
 	    Vector4 color_intensity[MAX_LIGHTS_2D];  // rgb = color (linear), w = intensity
 	    Vector4 falloff_shadow[MAX_LIGHTS_2D];   // x = falloff exp, y = shadow atlas row (-1 = none), z = softness (texels), w = bias
 		Vector4 ambient;                         // rgb = ambient2D (linear) * intensity, w = numLights2D
-		Vector4 atlasInfo;                       // x = 1/atlasWidth, y = 1/MAX_LIGHTS_2D, z = atlasWidth, w = PCF tap radius
+		Vector4 atlasInfo;                       // x = 1/atlasWidth, y = 1/MAX_LIGHTS_2D, z = Light Steps (0 off), w = PCF tap radius
 	} fs_lighting2d_t;
 
 	// The post-processing colour's parameters (phase 4, shaderlib/includes/post_color.glsl),
@@ -495,6 +495,12 @@ namespace jasperengine{
 		bool fog = false;
 		bool lights2D = false;
 		bool shadows2D = false;         // a shadow-casting 2D light and an occluder
+		// no Light 2D, Ambient Without Lights on and the scene's Ambient Light 2D tints
+		// (isAmbient2DTinted): the unlit variants take the 2D light path with no lights, so the
+		// ambient multiplies them (S78 R6)
+		bool ambient2D = false;
+		// the scene's Light Steps are on: the 2D-lit variants take 'Lst' (S78 R3)
+		bool light2DSteps = false;
 		bool ssao = false;
 		bool ssr = false;
 		bool depthPrepass = false;
@@ -529,6 +535,11 @@ namespace jasperengine{
 		// every Light component of the scene is Directional (enabled or not, so a flashlight
 		// switched on keeps the variant): the built-in Lit's 'Dlo' variant
 		bool directionalLightsOnly = false;
+		// S99: the scene has an Area Light / a light with an IES Profile (enabled or not): the
+		// built-in Lit's pixel-lit variants take USE_AREA_LIGHTS / USE_IES (in their builtin:lit
+		// reference); without them every variant stays the one it was
+		bool areaLights = false;
+		bool iesProfiles = false;
 		// the scene has a Water Excluder / a Water Wake (enabled or not): a shader requiring
 		// waterexclusion / waterwake takes 'Wex' / 'Wwk' (includes/water_interaction.glsl)
 		bool waterExclusion = false;
@@ -769,6 +780,7 @@ namespace jasperengine{
 
 	class FluidSystem;
 	class TitleArtSystem;
+	struct IesProfile;
 
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
@@ -1111,6 +1123,19 @@ namespace jasperengine{
 		std::array<SpotMaskAtlasEntry, SPOT_MASK_ATLAS_TILES> spotMaskAtlasEntries;
 		std::vector<unsigned char> spotMaskAtlasPixels;
 		bool spotMaskAtlasCreated;
+
+		// S99: the Area Lights' LTC tables and the IES Profiles, one RGBA16F texture of
+		// LIGHT_PROFILE_WIDTH texels: rows 0-63 the two 64x64 LTC tables side by side, then a band
+		// of IesProfile::GRID_ROWS rows per profile (LightComponent::iesProfileBand), in the order
+		// the scene's lights first name them. Made only while the scene has an Area Light or a
+		// profile, again when the profiles change.
+		static constexpr int LIGHT_PROFILE_WIDTH = 128;
+		static constexpr int LIGHT_PROFILE_LUT_ROWS = 64;
+		static constexpr int MAX_IES_PROFILES = 64;
+		TextureRender lightProfiles;
+		bool lightProfilesCreated = false;
+		std::vector<std::string> lightProfileBands;
+		std::unordered_map<std::string, std::shared_ptr<IesProfile>> iesProfileCache;
 
 		struct ReflectionProbeRuntime{
 			FramebufferRender captureFramebuffer;
@@ -1777,6 +1802,11 @@ namespace jasperengine{
 		bool hasLights2D = false;
 		bool hasShadows2D = false;
 		int numLights2D = 0;
+		// no Light 2D and a tinting Ambient Light 2D: the unlit variants take the 2D light path
+		// with no lights (S78 R6); with the Light Steps' on or off, as the meshes loaded them
+		bool hasAmbient2D = false;
+		bool loadedAmbient2D = false;
+		bool loadedLight2DSteps = false;
 
 		// Shadows (RenderSystemShadows.cpp, docs/rendering/shadows.md). The projective atlas
 		// (directional cascades and spot lights) and the point atlas (cube faces) are depth-only
@@ -1975,6 +2005,8 @@ namespace jasperengine{
 			Vector4 packed[4];
 			uint32_t cullingMask = LAYER_MASK_EVERYTHING;
 			int spotMaskTile = -1;
+			// spot_shadow.w's S99 bits: 14 an Area Light's Disc, 15-21 its IES Profile's band + 1
+			int profileBits = 0;
 			LightShading shading = LightShading::BOTH;
 			bool active = false;      // enabled, on an active entity, giving light
 
@@ -1987,7 +2019,11 @@ namespace jasperengine{
 		// bumped when every mesh has to pick its lights again: lights added, removed or
 		// reordered, the scene ambient or the cap changed
 		uint64_t lightListEpoch;
-		Vector3 lightListAmbient;
+		// the SH every object's ambient starts from (sceneAmbient), before its folded lights
+		Vector4 lightListAmbientSH[3];
+		// Environment Lighting Source Gradient as the meshes loaded: the sky's irradiance map is
+		// not bound then (the gradient is the diffuse ambient)
+		bool loadedAmbientGradient = false;
 		int lightListCap;
 		// capacity tier the meshes loaded their variants with
 		int lightCapacityTier;
@@ -1998,6 +2034,12 @@ namespace jasperengine{
 		// a point or spot Light was in the scene since load(): the general Lit stays until the
 		// next load, so lights that come and go never reload every mesh again
 		bool nonDirectionalLightSeen = false;
+		// S99: an Area Light / a light with an IES Profile was in the scene since load() (the
+		// variants with them stay until the next load), and as the meshes loaded
+		bool areaLightSeen = false;
+		bool iesProfileSeen = false;
+		bool loadedAreaLights = false;
+		bool loadedIesProfiles = false;
 		// the Lit Quality and the lobe tier the meshes loaded their variants with
 		LitQuality loadedLitQuality;
 		PbrTier loadedPbrTier;
@@ -2527,6 +2569,13 @@ namespace jasperengine{
 		// the camera part of the lighting (frame block, legacy block) and the shadow uniforms of target for camera
 		void processLights(CameraShadows& target, int numLights, const CameraComponent& camera, const Transform& cameraTransform);
 		void updateSpotMaskAtlas(int numLights);
+		// S99: the profiles' bands of the lights (iesProfileBand) and the texture holding them
+		void updateLightProfiles();
+	public:
+		// the light profiles' texture (tests): whether it is made, its bands after the LTC tables
+		bool hasLightProfiles() const { return lightProfilesCreated; }
+		int getLightProfileBands() const { return (int)lightProfileBands.size(); }
+	private:
 		// unified lighting: the scene's lights, then the lights each mesh is lit by
 		void updateSceneLights();
 		void updateObjectLights();
@@ -2536,6 +2585,10 @@ namespace jasperengine{
 		void orderObjectLights(const MeshComponent& mesh, uint64_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
 		// the per-object lights block of a submesh variant for the camera pass being drawn
 		void buildObjectLights(const MeshComponent& mesh, uint64_t properties, object_lights_t& block) const;
+		// the scene's ambient as the lit shaders take it (SceneSettings::AmbientMode): the SH every
+		// object starts from, its average over every facing (flat consumers: particles, clouds), and
+		// the part Lit treats as uniform (litFrame ambient; the rest of the SH it adds as overflow)
+		void sceneAmbient(Vector4 sh[3], Vector3& flat, Vector3& litFlat) const;
 		int passLightCascades(const SceneLight& light) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
 		void buildLegacyLighting(const MeshComponent& mesh, uint64_t properties, fs_lighting_t& block) const;
@@ -3604,6 +3657,20 @@ namespace jasperengine{
 		// upscales fixedResFramebuffer to the view rect
 		void renderFixedResolutionBlit();
 
+		// S92 R13 (Screen Space - Overlay): the main camera's screen HTML UI documents, held back
+		// from its camera pass when a later pass writes its output (the uber pass, a blit, the
+		// post-process chain's or SSR's composite). The first of those passes that writes the view
+		// (a null destination: the view's framebuffer or the swapchain) composites them over the
+		// whole pass at the output resolution, after its own draw
+		bool overlayDocumentsPending = false;
+		bool writesView(const FramebufferRender* destination) const;
+		void drawOverlayDocuments(const FramebufferRender* destination, PipelineType pip);
+		// the canvas the main camera's documents are placed in (UIDocumentSystem::drawComposite), held
+		// with overlayDocumentsPending
+		float overlayCanvasWidth = 0.0f;
+		float overlayCanvasHeight = 0.0f;
+		void documentsCanvas(const CameraComponent& camera, float& width, float& height) const;
+
 		// user post-process chain
 		void loadPostProcess();
 		void updatePostProcessUniforms();
@@ -4012,6 +4079,9 @@ namespace jasperengine{
 		// capacity tier (4, 8 or 16 lights) of the per-object lights blocks for a scene's
 		// maxLightsPerObject: the light-capacity bits of every lit mesh variant
 		static int getLightCapacity(int maxLightsPerObject);
+		// the 2D ambient (linear colour times intensity) is not (1, 1, 1), by more than 1e-4 in a
+		// channel: it changes what the 2D-lit unlit materials draw without a Light 2D (S78 R6)
+		static bool isAmbient2DTinted(Vector3 ambientLinear, float intensity);
 
 		// ---- shader library (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
 		// The shader a submesh draws with: its material's, else the mesh's fork, else the

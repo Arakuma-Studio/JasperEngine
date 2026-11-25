@@ -73,6 +73,8 @@ namespace {
             {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
             // .mesh assets (S98 F1): binary, so their GUID is in a .meta
             {{AssetType::Mesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".mesh"}},
+            // a light's IES Profile (S99): the file holds no GUID, its .meta does
+            {{AssetType::IesProfile, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ies"}},
         };
         return table;
     }

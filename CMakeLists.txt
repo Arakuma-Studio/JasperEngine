@@ -921,6 +921,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/picking/BvhDiskCache.cpp
     ${EDITOR_DIR}/picking/IconPicker.cpp
     ${EDITOR_DIR}/picking/ScenePicker.cpp
+    ${EDITOR_DIR}/sceneview/FrameChecks.cpp
     ${EDITOR_DIR}/sceneview/SceneViewController.cpp
     ${EDITOR_DIR}/sceneview/SceneViewMath.cpp
     ${EDITOR_DIR}/sceneview/SceneViewState.cpp
@@ -943,6 +944,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/profiler/ProfilerWindow.cpp
     ${EDITOR_DIR}/mcp/McpAutoSync.cpp
     ${EDITOR_DIR}/mcp/McpCall.cpp
+    ${EDITOR_DIR}/mcp/McpCallLog.cpp
     ${EDITOR_DIR}/mcp/McpDialogs.cpp
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp
@@ -1115,6 +1117,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/FileUtils.cpp
     ${EDITOR_DIR}/util/BuiltPlayers.cpp
     ${EDITOR_DIR}/util/NormalMapTilt.cpp
+    ${EDITOR_DIR}/util/Ambient2D.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptAttach.cpp
@@ -1254,6 +1257,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/texture/TextureCli.cpp
     ${EDITOR_DIR}/texture/TextureCookReport.cpp
     ${EDITOR_DIR}/texture/TextureCooker.cpp
+    # S99 W7: the sun of an HDR sky (Remove Sun Disc in the cook, Extract Sun)
+    ${EDITOR_DIR}/lighting/HdriSun.cpp
+    ${EDITOR_DIR}/lighting/ExtractSun.cpp
     ${EDITOR_DIR}/texture/TextureEncoders.cpp
     ${EDITOR_DIR}/texture/TextureExport.cpp
     ${EDITOR_DIR}/texture/TextureFormatSelector.cpp
@@ -1517,6 +1523,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/window/InspectorIesProfile.cpp
     ${EDITOR_DIR}/window/InspectorAudioEffects.cpp
     ${EDITOR_DIR}/audio/SourceEffectEdit.cpp
     ${EDITOR_DIR}/window/AudioCapturesWindow.cpp

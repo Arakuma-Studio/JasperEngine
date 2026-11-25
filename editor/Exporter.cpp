@@ -3408,6 +3408,24 @@ bool editor::Exporter::cookTextures() {
         if (!line.empty()) Out::info("%s", line.c_str());
     }
     Out::info("Textures: %d cooked, %d from the cache", result.cooked, result.cacheHits);
+    // S99 R14: per family, the textures R6 left uncompressed (the build report's fallbacks)
+    for (const TextureFamily family : families) {
+        int count = 0;
+        std::string first, from, to;
+        for (const TextureReportRow& row : result.rows) {
+            const auto state = row.families.find(family);
+            if (state == row.families.end() || state->second.plan.choice.fallbackFrom.empty()) continue;
+            if (count++ == 0) {
+                first = row.path;
+                from = state->second.plan.choice.fallbackFrom;
+                to = state->second.plan.choice.label();
+            }
+        }
+        if (count == 0) continue;
+        std::lock_guard<std::mutex> lock(progressMutex);
+        this->result.fallbacks.push_back({"texture_format", from, to, std::to_string(count) + " texture(s) for " + textureFamilyLabel(family) +
+                                          " are not a multiple of 4 (first: " + first + ")"});
+    }
     cookedTextureSources = result.cookedSources;
     // T3 R16: the layer sources the array slices replace
     cookedTextureSources.insert(droppedTerrainSources.begin(), droppedTerrainSources.end());
@@ -3552,16 +3570,25 @@ bool editor::Exporter::writeBuildReport(const fs::path& outputDir, const std::st
     buildReport.platform = config.mode == ExportMode::Player ? buildPlatformName(config.platform)
                          : config.mode == ExportMode::Web ? "web" : config.mode == ExportMode::Desktop ? "desktop" : "source";
     buildReport.method = method;
+    if (buildReport.platform == "web") buildReport.downloadBytesGzip = BuildReport::webDownloadGzipBytes(outputDir);
+    // S99 R11: the family's Download Budget; a build over it succeeds with the warning
+    ModelFamily family;
+    const uint64_t budget = BuildReport::budgetFamilyOf(buildReport.platform, family) ? BuildReport::budgetBytesOf(project->getDownloadBudgetMB(family)) : 0;
     const fs::path file = outputDir / BuildReport::kFileName;
     std::string error;
     if (!buildReport.write(file, error)) {
         setError("Build Report: " + error);
         return false;
     }
+    if (const std::string over = buildReport.overBudgetMessage(budget); !over.empty()) warn("W-BUILD-OVER-BUDGET", over);
     std::lock_guard<std::mutex> lock(progressMutex);
     result.buildReport = file;
     result.buildBytes = buildReport.totalBytes;
     result.buildCategories = buildReport.categories;
+    result.largestFiles = buildReport.largest;
+    result.downloadBytesGzip = buildReport.downloadBytesGzip;
+    result.downloadBudgetBytes = budget;
+    result.downloadBudgetFamily = BuildReport::budgetFamilyOf(buildReport.platform, family) ? modelFamilyName(family) : "";
     result.strippedCount = buildReport.leftOutCount();
     result.strippedBytes = buildReport.leftOutBytes();
     BuildReport::setLast(file);

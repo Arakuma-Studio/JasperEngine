@@ -1538,6 +1538,23 @@ std::vector<Setting> mcpSettingsTable() {
         globList("player.always_include", "Project-relative globs (* ? **) that ship under referenced_only: files a script loads by a path "
                  "it builds at runtime.", false);
         globList("player.exclude_from_build", "Project-relative globs (* ? **) no build ships, under either mode; wins over always_include.", true);
+        // S99 R11: what a build of each family may weigh
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            const ModelFamily family = (ModelFamily)f;
+            Setting s;
+            s.key = std::string("player.download_budget_mb.") + modelFamilyName(family);
+            s.type = "number";
+            s.description = std::string("MB a ") + modelFamilyName(family) + (family == ModelFamily::Web ? " build downloads (gzip estimate)" : " build weighs") +
+                            "; over it build_project warns W-BUILD-OVER-BUDGET. 0 = off.";
+            s.get = [family](SettingsContext& ctx) { return Json(ctx.project()->getDownloadBudgetMB(family)); };
+            s.set = [family](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.0, 1e6, v, error)) return false;
+                if (apply) ctx.project()->setDownloadBudgetMB(family, v);
+                return true;
+            };
+            add(s);
+        }
         nameChoice("android.package_format", "Android builds make an App Bundle (aab, for Google Play: one ABI per device), one APK per ABI "
                    "(apk-per-abi), or one universal APK of every selected ABI (apk).", {"aab", "apk-per-abi", "apk"},
                    [](Project& p) { return p.getAndroidProjectSettings().packageFormat; },
@@ -2271,14 +2288,14 @@ std::vector<Setting> mcpSettingsTable() {
             Setting s;
             s.key = "graphics.html_ui_msaa_samples";
             s.type = "int";
-            s.description = "MSAA samples of the HTML/CSS UI documents' targets (1, 2, 4 or 8; default 4). Smoother "
-                            "rounded corners and rotated edges at more GPU memory; devices without MSAA use 1.";
+            s.description = "MSAA samples of the HTML/CSS UI documents' targets: 0 = Auto (1 sample on phones and the web, 4 on "
+                            "desktop; new projects), 1, 2, 4 or 8. A scene's html_ui_msaa_samples replaces it for its documents.";
             s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getHtmlUiMsaaSamples()); };
             s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                 long long v;
-                if (!readInt(value, 1, 8, v, error)) return false;
+                if (!readInt(value, 0, 8, v, error)) return false;
                 if (!Project::isValidHtmlUiMsaaSamples(static_cast<int>(v))) {
-                    error = "must be 1, 2, 4 or 8";
+                    error = "must be 0 (Auto), 1, 2, 4 or 8";
                     return false;
                 }
                 if (apply) ctx.project()->setHtmlUiMsaaSamples(static_cast<int>(v));
@@ -4387,6 +4404,9 @@ const Placement placements[] = {
     {"player.asset_stripping", "Player", "Build", "Asset Stripping", "strip unused unreferenced assets size referenced only ship all"},
     {"player.always_include", "Player", "Build", "Always Include", "strip resources streaming assets include build glob"},
     {"player.exclude_from_build", "Player", "Build", "Exclude From Build", "strip exclude ignore build glob"},
+    {"player.download_budget_mb.desktop", "Player", "Publishing Settings", "Download Budget MB (Desktop)", "build size budget W-BUILD-OVER-BUDGET"},
+    {"player.download_budget_mb.mobile", "Player", "Publishing Settings", "Download Budget MB (Mobile)", "build size budget android ios W-BUILD-OVER-BUDGET"},
+    {"player.download_budget_mb.web", "Player", "Publishing Settings", "Download Budget MB (Web)", "build size budget gzip W-BUILD-OVER-BUDGET"},
     {"android.package_format", "Player", "Android", "Package Format", "android apk aab bundle abi universal split"},
     {"android.keystore_path", "Player", "Android", "Keystore", "android signing key"},
     {"android.keystore_alias", "Player", "Android", "Key Alias", "android signing key"},

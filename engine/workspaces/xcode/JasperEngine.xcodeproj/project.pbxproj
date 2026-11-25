@@ -4991,6 +4991,10 @@
 		4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */; };
 		4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
 		4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
+		4A534E474F0C1FAE254222FD /* RmlRendererFrame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */; };
+		4A534E476FED1ADCC1068DC5 /* RmlRendererFrame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */; };
+		4A534E472A46CF1186D6EE02 /* RmlRendererLayerCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */; };
+		4A534E4773FFCEFA2D4C0157 /* RmlRendererLayerCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */; };
 		4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477CE603833084E5A8 /* PortableMath.h */; };
 		4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
 		4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
@@ -5044,6 +5048,16 @@
 		4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47315BA78BA4D638EE /* StrippedAssets.h */; };
 		4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D91AB01B3A49CD25 /* MeshAsset.h */; };
 		4A534E473F514FDB62D83E2C /* GameRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4709862CF7780A4732 /* GameRunner.h */; };
+		4A534E47B8521A3CF7D9ADCB /* AreaLightMath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C32AD1D967C89E5D /* AreaLightMath.cpp */; };
+		4A534E470AB045C99F6C4A71 /* AreaLightMath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C32AD1D967C89E5D /* AreaLightMath.cpp */; };
+		4A534E4756349D911283993B /* IesProfile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477112FA3A0A05F6D9 /* IesProfile.cpp */; };
+		4A534E4756448E70050EF8A0 /* IesProfile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477112FA3A0A05F6D9 /* IesProfile.cpp */; };
+		4A534E4783F36D220A3BF759 /* RenderSystemLightProfiles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E0D5D6B1D8260B79 /* RenderSystemLightProfiles.cpp */; };
+		4A534E47E958DEE9E669E59E /* RenderSystemLightProfiles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E0D5D6B1D8260B79 /* RenderSystemLightProfiles.cpp */; };
+		4A534E478DD5448A959B28F9 /* AmbientGradient.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4719A299540F80DF8D /* AmbientGradient.h */; };
+		4A534E470DB2E6BDCE6FDBB7 /* AreaLightMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474E343EAC3BF43E5C /* AreaLightMath.h */; };
+		4A534E47863C756D7F99996F /* IesProfile.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B14BDCDB27094B7C /* IesProfile.h */; };
+		4A534E479DB18A7E2BAB0F22 /* LtcLut.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47EFF77737BB5BD85F /* LtcLut.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9661,6 +9675,8 @@
 		4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.offset.cpp; sourceTree = "<group>"; };
 		4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.rectclip.cpp; sourceTree = "<group>"; };
 		4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.triangulation.cpp; sourceTree = "<group>"; };
+		4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlRendererFrame.cpp; sourceTree = "<group>"; };
+		4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlRendererLayerCache.cpp; sourceTree = "<group>"; };
 		4A534E477CE603833084E5A8 /* PortableMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PortableMath.h; sourceTree = "<group>"; };
 		4A534E472C361D2083EA2902 /* SourceEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SourceEffects.cpp; sourceTree = "<group>"; };
 		4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceSlots.cpp; sourceTree = "<group>"; };
@@ -9697,6 +9713,13 @@
 		4A534E47315BA78BA4D638EE /* StrippedAssets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StrippedAssets.h; sourceTree = "<group>"; };
 		4A534E47D91AB01B3A49CD25 /* MeshAsset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshAsset.h; sourceTree = "<group>"; };
 		4A534E4709862CF7780A4732 /* GameRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GameRunner.h; sourceTree = "<group>"; };
+		4A534E47C32AD1D967C89E5D /* AreaLightMath.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AreaLightMath.cpp; sourceTree = "<group>"; };
+		4A534E477112FA3A0A05F6D9 /* IesProfile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = IesProfile.cpp; sourceTree = "<group>"; };
+		4A534E47E0D5D6B1D8260B79 /* RenderSystemLightProfiles.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemLightProfiles.cpp; sourceTree = "<group>"; };
+		4A534E4719A299540F80DF8D /* AmbientGradient.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AmbientGradient.h; sourceTree = "<group>"; };
+		4A534E474E343EAC3BF43E5C /* AreaLightMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AreaLightMath.h; sourceTree = "<group>"; };
+		4A534E47B14BDCDB27094B7C /* IesProfile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = IesProfile.h; sourceTree = "<group>"; };
+		4A534E47EFF77737BB5BD85F /* LtcLut.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LtcLut.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -12117,6 +12140,12 @@
 				4A534E47E3EE06EED87CE187 /* sprite */,
 				4A534E4740AB62A2850A6B9F /* FoliageQuality.h */,
 				4A534E47CA217A0C9E227F5F /* TerrainNodes.h */,
+				4A534E47C32AD1D967C89E5D /* AreaLightMath.cpp */,
+				4A534E477112FA3A0A05F6D9 /* IesProfile.cpp */,
+				4A534E4719A299540F80DF8D /* AmbientGradient.h */,
+				4A534E474E343EAC3BF43E5C /* AreaLightMath.h */,
+				4A534E47B14BDCDB27094B7C /* IesProfile.h */,
+				4A534E47EFF77737BB5BD85F /* LtcLut.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -12591,6 +12620,7 @@
 				4A534E47A3412E0CDD92AD07 /* VehicleSystem.cpp */,
 				4A534E47E90ACABF2B099AB3 /* PhysicsSystemWorldSettings.cpp */,
 				4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */,
+				4A534E47E0D5D6B1D8260B79 /* RenderSystemLightProfiles.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -14755,6 +14785,8 @@
 				4A534E47535074DEA48446A6 /* controls */,
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
+				4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */,
+				4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -17163,6 +17195,10 @@
 				4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */,
 				4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */,
 				4A534E473F514FDB62D83E2C /* GameRunner.h in Headers */,
+				4A534E478DD5448A959B28F9 /* AmbientGradient.h in Headers */,
+				4A534E470DB2E6BDCE6FDBB7 /* AreaLightMath.h in Headers */,
+				4A534E47863C756D7F99996F /* IesProfile.h in Headers */,
+				4A534E479DB18A7E2BAB0F22 /* LtcLut.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19867,6 +19903,8 @@
 				4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */,
 				4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */,
 				4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */,
+				4A534E474F0C1FAE254222FD /* RmlRendererFrame.cpp in Sources */,
+				4A534E472A46CF1186D6EE02 /* RmlRendererLayerCache.cpp in Sources */,
 				4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */,
 				4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */,
 				4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */,
@@ -19884,6 +19922,9 @@
 				4A534E473C3F3FAB6431E070 /* GameRunner.cpp in Sources */,
 				4A534E47AED253F50FD5B635 /* StrippedAssets.cpp in Sources */,
 				4A534E47370533C6085BB91A /* MeshAsset.cpp in Sources */,
+				4A534E47B8521A3CF7D9ADCB /* AreaLightMath.cpp in Sources */,
+				4A534E4756349D911283993B /* IesProfile.cpp in Sources */,
+				4A534E4783F36D220A3BF759 /* RenderSystemLightProfiles.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20879,6 +20920,8 @@
 				4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */,
 				4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */,
 				4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */,
+				4A534E476FED1ADCC1068DC5 /* RmlRendererFrame.cpp in Sources */,
+				4A534E4773FFCEFA2D4C0157 /* RmlRendererLayerCache.cpp in Sources */,
 				4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */,
 				4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */,
 				4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */,
@@ -20896,6 +20939,9 @@
 				4A534E4752B2DFA7EE1A4622 /* GameRunner.cpp in Sources */,
 				4A534E47ECB526055E579D5A /* StrippedAssets.cpp in Sources */,
 				4A534E47FD2BD71465E394EE /* MeshAsset.cpp in Sources */,
+				4A534E470AB045C99F6C4A71 /* AreaLightMath.cpp in Sources */,
+				4A534E4756448E70050EF8A0 /* IesProfile.cpp in Sources */,
+				4A534E47E958DEE9E669E59E /* RenderSystemLightProfiles.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1788,6 +1788,18 @@
   {
    "display_name": "Light",
    "enum_options": {
+    "areaShape": [
+     [
+      0,
+      "rectangle",
+      "Rectangle"
+     ],
+     [
+      1,
+      "disc",
+      "Disc"
+     ]
+    ],
     "cascadeSplitMode": [
      [
       0,
@@ -1820,6 +1832,11 @@
       3,
       "lumen",
       "Lumen"
+     ],
+     [
+      4,
+      "nits",
+      "Nits"
      ]
     ],
     "shading": [
@@ -1871,6 +1888,11 @@
       2,
       "spot",
       "Spot"
+     ],
+     [
+      3,
+      "area",
+      "Area"
      ]
     ]
    },
@@ -1878,6 +1900,10 @@
    "icon": "ef83ab",
    "key": "light",
    "known_keys": [
+    "areaHeight",
+    "areaRadius",
+    "areaShape",
+    "areaWidth",
     "automaticShadowCamera",
     "cascadeSplitMode",
     "cascadeSplits",
@@ -1890,6 +1916,7 @@
     "cullingMask",
     "direction",
     "enabled",
+    "iesProfile",
     "innerConeCos",
     "intensity",
     "intensityUnit",
@@ -1916,6 +1943,26 @@
    ],
    "name": "LightComponent",
    "properties_of_default": {
+    "areaHeight": [
+     2,
+     4096,
+     true
+    ],
+    "areaRadius": [
+     2,
+     4096,
+     true
+    ],
+    "areaShape": [
+     13,
+     4096,
+     true
+    ],
+    "areaWidth": [
+     2,
+     4096,
+     true
+    ],
     "automaticShadowCamera": [
      0,
      4096,
@@ -1973,6 +2020,11 @@
     ],
     "enabled": [
      0,
+     0,
+     true
+    ],
+    "iesProfile": [
+     18,
      0,
      true
     ],
@@ -2093,6 +2145,26 @@
     ]
    },
    "properties_without_component": {
+    "areaHeight": [
+     2,
+     4096,
+     true
+    ],
+    "areaRadius": [
+     2,
+     4096,
+     true
+    ],
+    "areaShape": [
+     13,
+     4096,
+     true
+    ],
+    "areaWidth": [
+     2,
+     4096,
+     true
+    ],
     "automaticShadowCamera": [
      0,
      4096,
@@ -2150,6 +2222,11 @@
     ],
     "enabled": [
      0,
+     0,
+     true
+    ],
+    "iesProfile": [
+     18,
      0,
      true
     ],
@@ -12820,6 +12897,7 @@
     "filename",
     "inputSurface",
     "interactive",
+    "msaaSamples",
     "pixelRatio",
     "renderMode",
     "sortOrder",
@@ -12845,6 +12923,11 @@
     ],
     "interactive": [
      0,
+     0,
+     true
+    ],
+    "msaaSamples": [
+     8,
      0,
      true
     ],
@@ -12892,6 +12975,11 @@
     ],
     "interactive": [
      0,
+     0,
+     true
+    ],
+    "msaaSamples": [
+     8,
      0,
      true
     ],
@@ -27933,6 +28021,26 @@
    ]
   },
   "LightComponent": {
+   "areaHeight": [
+    2,
+    4096,
+    true
+   ],
+   "areaRadius": [
+    2,
+    4096,
+    true
+   ],
+   "areaShape": [
+    13,
+    4096,
+    true
+   ],
+   "areaWidth": [
+    2,
+    4096,
+    true
+   ],
    "automaticShadowCamera": [
     0,
     4096,
@@ -27990,6 +28098,11 @@
    ],
    "enabled": [
     0,
+    0,
+    true
+   ],
+   "iesProfile": [
+    18,
     0,
     true
    ],
@@ -33405,6 +33518,11 @@
     0,
     true
    ],
+   "msaaSamples": [
+    8,
+    0,
+    true
+   ],
    "pixelRatio": [
     2,
     274877906944,
@@ -34442,7 +34560,8 @@
    "names": [
     "directional",
     "point",
-    "spot"
+    "spot",
+    "area"
    ]
   },
   "MaterialAlphaMode": {

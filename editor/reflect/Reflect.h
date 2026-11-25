@@ -55,7 +55,8 @@ namespace jasperengine::editor::reflect {
         TerrainWorld,   // a Name.terrainworld folder (T4 R48)
         Tileset,        // a .tileset (S50)
         TitleArt,       // a .titleart (S81's Title Art Renderer)
-        Mesh            // a .mesh (S98 F1: a Mesh Renderer's geometry)
+        Mesh,           // a .mesh (S98 F1: a Mesh Renderer's geometry)
+        IesProfile      // an .ies light profile (S99)
     };
 
     // How a field holds an asset reference (editor/asset/AssetRefSchema generates its table from the

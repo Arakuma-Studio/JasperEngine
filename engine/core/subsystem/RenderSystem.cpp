@@ -43,6 +43,7 @@
 #include "render/UIDrawColor.h"
 #include "render/PipelineState.h"
 #include "render/LodFade.h"
+#include "render/AmbientGradient.h"
 #include <cfloat>
 #include <optional>
 #include "htmlui/HtmlUIClock.h"
@@ -958,9 +959,12 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     hasIBL = false;
     hasLights2D = false;
     hasShadows2D = false;
+    hasAmbient2D = false;
 
     lightListEpoch = 1;
     lightListCap = 0;
+    for (int c = 0; c < 3; c++)
+        lightListAmbientSH[c] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
     lightCapacityTier = 8;
     directionalLightsOnly = false;
     loadedDirectionalLightsOnly = false;
@@ -990,9 +994,12 @@ void RenderSystem::load(){
     objectLightsCleared = false;
     directionalLightsOnlyKnown = false;
     nonDirectionalLightSeen = false;
+    areaLightSeen = false;
+    iesProfileSeen = false;
     loadedPipelines = 0;
     hasLights2D = false;
     hasShadows2D = false;
+    hasAmbient2D = false;
     numLights2D = 0;
 
     {
@@ -1151,6 +1158,13 @@ void RenderSystem::destroy(){
     }
     spotMaskAtlasPixels.clear();
     spotMaskAtlasEntries.fill({});
+    if (lightProfilesCreated){
+        lightProfiles.destroyTexture();
+        lightProfilesCreated = false;
+    }
+    lightProfileBands.clear();
+    // (read again when the scene loads again: an edited file shows then)
+    iesProfileCache.clear();
 
     auto skys = scene->getComponentArray<SkyboxComponent>();
     if (skys->size() > 0){
@@ -1466,6 +1480,14 @@ int RenderSystem::checkLightsAndShadow(){
         if (light.type != LightType::DIRECTIONAL){
             nonDirectionalLightSeen = true;
         }
+        // (S99: sticky as the general Lit is, so a light turned into an Area Light or given a
+        // profile and back reloads the variants once)
+        if (light.type == LightType::AREA){
+            areaLightSeen = true;
+        }
+        if ((light.type == LightType::SPOT || light.type == LightType::POINT) && !light.iesProfile.empty()){
+            iesProfileSeen = true;
+        }
     }
     directionalLightsOnly = hasLights && !nonDirectionalLightSeen;
 
@@ -1482,6 +1504,11 @@ int RenderSystem::checkLightsAndShadow(){
 
     if (numLights2D > 0)
         hasLights2D = true;
+    // a scene without a Light 2D: its 2D ambient still multiplies the unlit 2D surfaces (as with
+    // one Light 2D out of range), unless it is (1, 1, 1), which draws as before, or the scene was
+    // saved before S78 (Ambient Without Lights off: it draws as it did)
+    hasAmbient2D = !hasLights2D && scene->isAmbientLight2DWithoutLights() &&
+                   isAmbient2DTinted(scene->getAmbientLight2DColorLinear(), scene->getAmbientLight2DIntensity());
 
     return numLights;
 }
@@ -1724,6 +1751,13 @@ void RenderSystem::loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& ren
         shaderData.getTextureIndex(TextureShaderType::SPOTMASKATLAS),
         ShaderStageType::FRAGMENT,
         spotMaskAtlasCreated ? &spotMaskAtlas : &emptyWhite);
+    // S99: the light profiles (LTC tables, IES bands) of the variants with Area Lights or IES
+    // Profiles; a scene without either looks nothing up
+    if (areaLightSeen || iesProfileSeen){
+        const std::pair<int, int> slot = shaderData.getTextureIndexByName("u_lightProfiles");
+        if (slot.first != -1)
+            render.addTexture(slot, ShaderStageType::FRAGMENT, lightProfilesCreated ? &lightProfiles : &emptyBlack);
+    }
 }
 
 // inverse viewport size, used by USE_SSAO to convert gl_FragCoord to a screen UV.
@@ -1792,7 +1826,10 @@ void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, cons
     // linear fog (type 0) reads start and end, the exponential ones the density
     const float fogParam = (fogColorType.w == 0.0f) ? fogDensityStartEnd.z : fogDensityStartEnd.x;
     litFrame.cameraPosition_fogEnd = Vector4(frame.cameraPosition.x, frame.cameraPosition.y, frame.cameraPosition.z, fogDensityStartEnd.w);
-    litFrame.ambient_fogType = Vector4(frame.ambient.x, frame.ambient.y, frame.ambient.z, fogColorType.w);
+    // (Gradient: none of the ambient is uniform for Lit, it takes the object's SH whole)
+    const bool gradientAmbient = scene->getAmbientMode() == AmbientMode::GRADIENT;
+    litFrame.ambient_fogType = gradientAmbient ? Vector4(0.0f, 0.0f, 0.0f, fogColorType.w)
+                                               : Vector4(frame.ambient.x, frame.ambient.y, frame.ambient.z, fogColorType.w);
     litFrame.fogColor_param = Vector4(fogColorType.x, fogColorType.y, fogColorType.z, fogParam);
     litFrame.cameraForward_pcf = Vector4(frame.cameraDirection.x, frame.cameraDirection.y, frame.cameraDirection.z, pcfRadius);
     litFrame.viewport_ssao_envRotation = Vector4(viewport.x, viewport.y, viewport.z + 2.0f * viewport.w, environment.w);
@@ -1802,7 +1839,8 @@ void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, cons
 //-----Unified lighting: per-object light lists-----
 
 // spot_shadow.w of the lights block packs (shadow map index + 1) in 6 bits, the cascades
-// in 3 and the spot mask tile in 3 (7 = none): 12 bits, exact in a float
+// in 3 and the spot mask tile in 3 (7 = none), the occlusions in 2, an Area Light's Disc in 1 and
+// the IES Profile's band + 1 in 7 (S99): 22 bits, exact in a float
 static_assert(SPOT_MASK_ATLAS_TILES <= 7, "spot mask tiles must fit 3 bits, 7 meaning none");
 static_assert(MAX_SHADOW_ATLAS_SLOTS < 63 && MAX_POINT_SHADOW_ATLAS_SLOTS < 63, "shadow map indices must fit 6 bits");
 static_assert(MAX_SHADOWCASCADES <= 7, "shadow cascades must fit 3 bits");
@@ -1889,7 +1927,8 @@ namespace {
             const float ratio = bounds.distanceTo(position) / range;
             attenuation *= std::clamp(1.0f - ratio * ratio * ratio * ratio, 0.0f, 1.0f);
         }
-        if (withCone && positionType.w == 2.0f){
+        // (an Area Light's cone_shadow is its front hemisphere's, type 3)
+        if (withCone && positionType.w >= 2.0f){
             attenuation *= lightSpotAttenuation(towardsLight, directionRange, coneShadow.y, coneShadow.x);
         }
         return attenuation;
@@ -1935,6 +1974,7 @@ bool RenderSystem::SceneLight::operator==(const SceneLight& other) const{
         spot_mask == other.spot_mask &&
         cullingMask == other.cullingMask &&
         spotMaskTile == other.spotMaskTile &&
+        profileBits == other.profileBits &&
         shading == other.shading &&
         active == other.active;
 }
@@ -1945,6 +1985,11 @@ int RenderSystem::getLightCapacity(int maxLightsPerObject){
     if (maxLightsPerObject <= 8)
         return 8;
     return 16;
+}
+
+bool RenderSystem::isAmbient2DTinted(Vector3 ambientLinear, float intensity){
+    const Vector3 ambient = ambientLinear * intensity;
+    return std::fabs(ambient.x - 1.0f) > 1e-4f || std::fabs(ambient.y - 1.0f) > 1e-4f || std::fabs(ambient.z - 1.0f) > 1e-4f;
 }
 
 // Snapshot of every light as the object lists copy it, after the lights' transforms, shadow
@@ -1980,14 +2025,21 @@ void RenderSystem::updateSceneLights(){
             type = 1.0f;
         if (light.type == LightType::SPOT)
             type = 2.0f;
+        if (light.type == LightType::AREA)
+            type = 3.0f;
+        const bool area = light.type == LightType::AREA;
 
         const bool spotMask = light.type == LightType::SPOT && light.spotMaskReady && light.spotMaskTile >= 0;
 
         SceneLight& sceneLight = sceneLights[i];
         sceneLight.position_type = Vector4(position.x, position.y, position.z, type);
         sceneLight.direction_range = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, light.range);
-        sceneLight.color_intensity = Vector4(light.resolvedColor.x, light.resolvedColor.y, light.resolvedColor.z, light.resolvedIntensity);
-        sceneLight.cone_shadow = Vector4(light.innerConeCos, light.outerConeCos, (float)light.shadowMapIndex, (float)light.shadowCascades);
+        // an Area Light ranks and folds as what it gives far away in front: luminance x area, in
+        // its front hemisphere (cone cos 1 .. 0)
+        const float areaSize = area ? light.getAreaSize() : 1.0f;
+        sceneLight.color_intensity = Vector4(light.resolvedColor.x, light.resolvedColor.y, light.resolvedColor.z, light.resolvedIntensity * areaSize);
+        sceneLight.cone_shadow = area ? Vector4(1.0f, 0.0f, (float)light.shadowMapIndex, (float)light.shadowCascades)
+                                      : Vector4(light.innerConeCos, light.outerConeCos, (float)light.shadowMapIndex, (float)light.shadowCascades);
         sceneLight.spot_mask = Vector4(light.worldUp.x, light.worldUp.y, light.worldUp.z, spotMask ? light.spotMaskAspect : 0.0f);
         // the per-object lights block's form (includes/lights.glsl); spot_shadow.w is per draw
         const bool directional = light.type == LightType::DIRECTIONAL;
@@ -1998,6 +2050,22 @@ void RenderSystem::updateSceneLights(){
                                        light.resolvedColor.z * light.resolvedIntensity, spot ? light.outerConeCos : -2.0f);
         const Vector2 up = octahedralEncode(light.worldUp);
         sceneLight.packed[3] = Vector4(up.x, up.y, spotMask ? light.spotMaskAspect : 0.0f, 0.0f);
+        if (area){
+            // S99 (includes/lights.glsl getAreaLight): direction_inner.w 2 + the half width (over 1.5:
+            // an Area Light), spot_shadow.z minus the half height, colour times the area. A variant
+            // without USE_AREA_LIGHTS reads a spot of cone cos 0 .. 2 + w: its front hemisphere
+            sceneLight.packed[1].w = 2.0f + light.getAreaHalfWidth();
+            // (a light added without a direction faces down: a zero axis has no front)
+            if (light.worldDirection.squaredLength() < 1e-12f){
+                sceneLight.packed[1].x = 0.0f;
+                sceneLight.packed[1].y = -1.0f;
+                sceneLight.packed[1].z = 0.0f;
+            }
+            sceneLight.packed[2] = Vector4(sceneLight.packed[2].x * areaSize, sceneLight.packed[2].y * areaSize, sceneLight.packed[2].z * areaSize, 0.0f);
+            sceneLight.packed[3].z = -light.getAreaHalfHeight();
+        }
+        sceneLight.profileBits = ((area && light.areaShape == AreaLightShape::DISC) ? (1 << 14) : 0) |
+            (((light.type == LightType::SPOT || light.type == LightType::POINT) && light.iesProfileBand >= 0) ? ((light.iesProfileBand + 1) & 127) << 15 : 0);
         sceneLight.cullingMask = light.cullingMask;
         sceneLight.spotMaskTile = spotMask ? light.spotMaskTile : -1;
         sceneLight.shading = light.shading;
@@ -2009,14 +2077,36 @@ void RenderSystem::updateSceneLights(){
     }
 
     // what every mesh's pick depends on
-    const Vector3 ambient = scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity();
+    Vector4 ambient[3];
+    Vector3 flatAmbient;
+    Vector3 litFlatAmbient;
+    sceneAmbient(ambient, flatAmbient, litFlatAmbient);
+    const bool ambientChanged = ambient[0] != lightListAmbientSH[0] || ambient[1] != lightListAmbientSH[1] || ambient[2] != lightListAmbientSH[2];
     const int cap = std::clamp(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()), 1, MAX_LIGHTS_PER_OBJECT);
-    if (restructured || ambient != lightListAmbient || cap != lightListCap){
+    if (restructured || ambientChanged || cap != lightListCap){
         lightListEpoch++;
-        lightListAmbient = ambient;
+        for (int c = 0; c < 3; c++)
+            lightListAmbientSH[c] = ambient[c];
         lightListCap = cap;
         changedLights.clear();
     }
+}
+
+void RenderSystem::sceneAmbient(Vector4 sh[3], Vector3& flat, Vector3& litFlat) const{
+    if (scene->getAmbientMode() == AmbientMode::GRADIENT){
+        const Vector3 sky = scene->getAmbientSkyColorLinear();
+        const Vector3 equator = scene->getAmbientEquatorColorLinear();
+        const Vector3 ground = scene->getAmbientGroundColorLinear();
+        AmbientGradient::project(sky, equator, ground, sh);
+        flat = AmbientGradient::average(sky, equator, ground);
+        // Lit takes the whole SH as its environment light (none of it is uniform)
+        litFlat = Vector3(0.0f, 0.0f, 0.0f);
+        return;
+    }
+    flat = scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity();
+    litFlat = flat;
+    for (int c = 0; c < 3; c++)
+        sh[c] = Vector4(0.0f, 0.0f, 0.0f, flat[c]);
 }
 
 namespace {
@@ -2152,7 +2242,7 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
     }
 
     for (int c = 0; c < 3; c++){
-        picked.sh[c] = Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+        picked.sh[c] = lightListAmbientSH[c];
     }
 
     picked.foldedDirectional = false;
@@ -2198,7 +2288,7 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
 
         // a spot whose cone misses the bounds gives the mesh nothing (it stays in reachMask,
         // so turning it towards the mesh picks again)
-        if (light.position_type.w == 2.0f && !spotReachesBounds(light.position_type, light.direction_range, light.cone_shadow.y, bounds))
+        if (light.position_type.w >= 2.0f && !spotReachesBounds(light.position_type, light.direction_range, light.cone_shadow.y, bounds))
             continue;
         if (directionalOnly && !candidate.directional){
             fold(i);
@@ -2310,7 +2400,7 @@ void RenderSystem::buildObjectLights(const MeshComponent& mesh, uint64_t propert
 
     block.data[0] = Vector4((float)pixelCount, (float)vertexCount, 0.0f, 0.0f);
     for (int c = 0; c < 3; c++){
-        sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+        sh[c] = (picked.epoch != 0) ? picked.sh[c] : lightListAmbientSH[c];
     }
 
     for (int n = 0; n < pixelCount + vertexCount; n++){
@@ -2334,7 +2424,9 @@ float RenderSystem::packObjectLightShadow(int sceneLight, bool perPixel) const{
     const int cascades = perPixel ? passLightCascades(light) : 0;
     // (bits 12-13: the capsule and contact shadows a shadowed pixel light takes, S57)
     const int occlusion = perPixel ? lightOcclusionBits(sceneLight) : 0;
-    return (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9) | (occlusion << 12));
+    // (bits 14-21: the Area Light's shape and the IES Profile's band, S99; the pixel lights' only)
+    const int profile = perPixel ? light.profileBits : 0;
+    return (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9) | (occlusion << 12) | profile);
 }
 
 // The records form of the block: the counts and the SH as the block form has them, then each
@@ -2349,7 +2441,7 @@ void RenderSystem::buildObjectLightRecords(const MeshComponent& mesh, uint64_t p
 
     block.counts = Vector4((float)pixelCount, (float)vertexCount, 0.0f, 0.0f);
     for (int c = 0; c < 3; c++){
-        block.sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+        block.sh[c] = (picked.epoch != 0) ? picked.sh[c] : lightListAmbientSH[c];
     }
     for (int n = 0; n < pixelCount; n++){
         Vector4& pair = block.records[n >> 1];
@@ -2468,6 +2560,9 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint64_t prope
         if (n < count){
             const SceneLight& light = sceneLights[order[n]];
             block.position_type[n] = light.position_type;
+            // (an older fork knows no Area Light: a spot of its front hemisphere, its cone_shadow)
+            if (block.position_type[n].w == 3.0f)
+                block.position_type[n].w = 2.0f;
             block.direction_range[n] = light.direction_range;
             block.color_intensity[n] = light.color_intensity;
             block.inCon_ouCon_shadows_cascades[n] = light.cone_shadow;
@@ -2493,8 +2588,8 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint64_t prope
     Vector4 sh[3];
     bool leftOut = false;
     for (int c = 0; c < 3; c++){
-        sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
-        leftOut = leftOut || sh[c].w != lightListAmbient[c];
+        sh[c] = (picked.epoch != 0) ? picked.sh[c] : lightListAmbientSH[c];
+        leftOut = leftOut || sh[c] != lightListAmbientSH[c];
     }
     if (pixelCount > count){
         const LightBounds bounds(mesh.lights.bounds, Vector3(0.0f, 0.0f, 0.0f));
@@ -2511,7 +2606,7 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint64_t prope
         // divided by PI (foldLight), as Lit-like forks divide their direct light
         Vector3 flat;
         for (int c = 0; c < 3; c++){
-            flat[c] = lightListAmbient[c] + std::max(sh[c].w - lightListAmbient[c], 0.0f);
+            flat[c] = lightListAmbientSH[c].w + std::max(sh[c].w - lightListAmbientSH[c].w, 0.0f);
         }
         block.globalIllum = Vector4(flat.x, flat.y, flat.z, 1.0f);
     }
@@ -2643,9 +2738,10 @@ void RenderSystem::processLights2D(){
         case ShadowQuality::ULTRA:  pcfRadius = 6.0f; break;
     }
 
-    // rows without shadows keep shadowMapIndex -1 and never sample the atlas
+    // rows without shadows keep shadowMapIndex -1 and never sample the atlas; z: the Light Steps,
+    // read only by the 'Lst' variants (includes/lighting2d.glsl)
     float atlasW = (hasShadow2DAtlas && shadow2DAtlasWidth > 0) ? (float)shadow2DAtlasWidth : 1.0f;
-    fs_lighting2d.atlasInfo = Vector4(1.0f / atlasW, 1.0f / (float)MAX_LIGHTS_2D, atlasW, pcfRadius);
+    fs_lighting2d.atlasInfo = Vector4(1.0f / atlasW, 1.0f / (float)MAX_LIGHTS_2D, (float)scene->getLight2DSteps(), pcfRadius);
 }
 
 bool RenderSystem::loadAndProcessFog(){
@@ -3464,6 +3560,8 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.lights = hasLights;
     environment.lightCapacity = getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
     environment.directionalLightsOnly = directionalLightsOnly;
+    environment.areaLights = areaLightSeen;
+    environment.iesProfiles = iesProfileSeen;
     environment.shadows = hasShadows;
     environment.shadowsHQ = shadowHQVariants;
     environment.ibl = hasIBL;
@@ -3472,6 +3570,8 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.atmosphereDepth = atmosphereDepthPrograms;
     environment.lights2D = hasLights2D;
     environment.shadows2D = hasShadows2D;
+    environment.ambient2D = hasAmbient2D;
+    environment.light2DSteps = scene->getLight2DSteps() > 0;
     environment.ssao = QualityResolver::ssao(scene->isSSAOEnabled());
     environment.ssr = scene->isSSREnabled();
     environment.depthPrepass = scene->isDepthPrepassEnabled();
@@ -4218,11 +4318,14 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // dedicated 2D light path: composes with MATERIAL_UNLIT (sprites keep the
     // cheap unlit shader; accumulated 2D light multiplies the base color) and
     // with the lit path in mixed scenes (contributions add)
-    // (not with transmission: like SSAO, a uniform block it has no room for)
-    const bool useLight2D = environment.lights2D && inputs.receiveLights && !inputs.pbrTransmission;
+    // (not with transmission: like SSAO, a uniform block it has no room for). Without a Light 2D
+    // a tinting 2D ambient takes the unlit path too, with no light to read normals (S78 R6); the
+    // lit path adds 2D lights only, never the 2D ambient
+    const bool ambientOnly2D = !environment.lights2D && environment.ambient2D && p_unlit;
+    const bool useLight2D = (environment.lights2D || ambientOnly2D) && inputs.receiveLights && !inputs.pbrTransmission;
     const bool p_light2d = useLight2D;
     const bool p_shadows2d = useLight2D && environment.shadows2D && inputs.receiveShadows;
-    if (useLight2D){
+    if (useLight2D && !ambientOnly2D){
         // the 2D light path reads the normal when the mesh has one (+Z otherwise) and the
         // tangents only for a normal map (includes/lighting2d.glsl getNormal2DAt)
         p_hasNormal = p_hasNormal || inputs.normal;
@@ -4285,7 +4388,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_hasNormalMap = false;
         // @require normalmap: the material's normal map on the 2D light path (tangent frame
         // from the mesh, read at uv1: includes/lighting2d.glsl, surface_vs.glsl)
-        if ((require & ShaderRequire_NormalMap) && useLight2D && inputs.normalTexture && inputs.normal && inputs.tangent &&
+        if ((require & ShaderRequire_NormalMap) && useLight2D && !ambientOnly2D && inputs.normalTexture && inputs.normal && inputs.tangent &&
                 p_hasTexture1 && !inputs.terrain){
             p_hasNormal = true;
             p_hasTangent = true;
@@ -4355,6 +4458,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // whose tiles list the scene's lights as they come)
     if (environment.directionalLightsOnly && inputs.builtinLit && !manifest && (p_punctual || p_vertexLights) && !p_tiledLights)
         variant.properties |= ShaderPool::getDirectionalOnlyProperty();
+    // S78's Light Steps: each 2D light's term quantized (the count is a uniform, off is the
+    // variant without the bit)
+    if (p_light2d && environment.light2DSteps)
+        variant.properties |= ShaderPool::getLight2DStepsProperty();
     // Water Excluders and Water Wakes: only for a shader asking for them, in a scene that has them
     if ((manifestRequire & ShaderRequire_WaterExclusion) && environment.waterExclusion)
         variant.properties |= ShaderPool::getWaterExclusionProperty();
@@ -4397,6 +4504,11 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         }
         if (environment.litQualityHigh && !p_unlit)
             variant.litDefines.push_back(MaterialPbr::LIT_QUALITY_DEFINE);
+        // S99: the pixel lights' Area Light and IES Profile paths, only where the scene has them
+        if (environment.areaLights && p_punctual && !p_unlit)
+            variant.litDefines.push_back(MaterialPbr::AREA_LIGHTS_DEFINE);
+        if (environment.iesProfiles && p_punctual && !p_unlit)
+            variant.litDefines.push_back(MaterialPbr::IES_DEFINE);
         if (inputs.voxelTier != 0){
             variant.litDefines.push_back(MaterialPbr::VOXEL_DEFINE);
             variant.litDefines.push_back(inputs.voxelTier == 1 ? MaterialPbr::VOXEL_TIER_HIGH_DEFINE
@@ -4831,7 +4943,11 @@ void RenderSystem::fillFrameBlock(frame_t& frame, const CameraComponent& camera,
         frame.mainLightColor = Vector4(light.resolvedColor, 1.0f);
     }
 
-    frame.ambient = Vector4(scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity(), 1.0f);
+    Vector4 ambientSH[3];
+    Vector3 flatAmbient;
+    Vector3 litFlatAmbient;
+    sceneAmbient(ambientSH, flatAmbient, litFlatAmbient);
+    frame.ambient = Vector4(flatAmbient, 1.0f);
 }
 
 Vector2 RenderSystem::passFrameResolution(const CameraComponent& camera) const{
@@ -5473,6 +5589,7 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         uberRender.applyUniformBlock(uberSlotFSParams, sizeof(fs_uber_t), &fs_uber);
         uberRender.draw(0, 3, 1);
     }
+    drawOverlayDocuments(destination, pip);
     uberPassRender.endRenderPass();
 
     // where a later pass into the same destination (a layer scene's) reads the blurred scene: the
@@ -7210,7 +7327,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             TextureRender* prefiltered = &emptyCubeBlack;
             // the prefiltered map the SSR composite rebuilds the reflection with too
             skyEnvironment(prefiltered);
-            if (prefiltered != &emptyCubeBlack)
+            // under a Gradient ambient the sky gives reflections alone: the gradient, in the
+            // object's SH, is the diffuse ambient (black irradiance; Lit adds the SH as overflow,
+            // which takes a scene light: without one the sky stays the ambient)
+            if (prefiltered != &emptyCubeBlack && !(loadedAmbientGradient && hasLights))
                 irradiance = skyArray->getComponentFromIndex(0).irradianceMap.get();
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::IRRADIANCEMAP), ShaderStageType::FRAGMENT, irradiance);
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::PREFILTEREDMAP), ShaderStageType::FRAGMENT, prefiltered);
@@ -12718,6 +12838,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         ssrPassRender.applyViewport(targetViewRect());
     }
     drawSSRComposite(targetFormatFor(destination ? PIP_RTT : PIP_DEFAULT), reflection, prefiltered);
+    drawOverlayDocuments(destination, destination ? PIP_RTT : PIP_DEFAULT);
     ssrPassRender.endRenderPass();
 }
 
@@ -13056,11 +13177,48 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport, const Vector
         blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
         blitRender.draw(0, 3, 1);
     }
+    drawOverlayDocuments(destination, blitPip);
     fixedResPassRender.endRenderPass();
 }
 
 void RenderSystem::renderFixedResolutionBlit(){
     renderBlit(&rv().fixedResFramebuffer.getRender().getColorTexture(), targetViewRect());
+}
+
+bool RenderSystem::writesView(const FramebufferRender* destination) const{
+    if (!destination)
+        return true;
+    Framebuffer* target = targetFramebuffer();
+    return target && destination == &target->getRender();
+}
+
+void RenderSystem::drawOverlayDocuments(const FramebufferRender* destination, PipelineType pip){
+    if (!overlayDocumentsPending || !writesView(destination))
+        return;
+    overlayDocumentsPending = false;
+    // the view's framebuffer is stored bottom row first on GL, as the camera pass draws into it
+    // (isRenderingFlipped); the swapchain is not
+    scene->getSystem<UIDocumentSystem>()->drawComposite(pip, pip != PIP_DEFAULT && Engine::isOpenGL(), 1, overlayCanvasWidth,
+                                                        overlayCanvasHeight);
+}
+
+void RenderSystem::documentsCanvas(const CameraComponent& camera, float& width, float& height) const{
+    width = 0.0f;
+    height = 0.0f;
+#ifdef JASPERENGINE_EDITOR
+    // the editor's Game view outside Play frames the project canvas while the documents keep the
+    // layout the editor gave them: an Auto Resize UI or 2D camera's clip rectangle is the canvas
+    // the view shows, which the documents' canvas pixels are placed in. A game lays its documents
+    // out in the canvas its camera covers (they fill the viewport), and a Pixel Perfect Camera
+    // spans its own rectangle
+    if (camera.type != CameraType::CAMERA_PERSPECTIVE && camera.autoResize && !camera.renderToTexture && camera.leftClip == 0.0f
+        && camera.bottomClip == 0.0f && !findPixelPerfectDrive(camera)){
+        width = camera.rightClip;
+        height = camera.topClip;
+    }
+#else
+    (void)camera;
+#endif
 }
 
 void RenderSystem::needReloadPostProcess(){
@@ -13354,6 +13512,7 @@ void RenderSystem::renderPostProcessCopy(TextureRender* source, FramebufferRende
         blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
         blitRender.draw(0, 3, 1);
     }
+    drawOverlayDocuments(destination, PIP_RTT);
     postProcessPassRender.endRenderPass();
 }
 
@@ -13417,6 +13576,8 @@ TextureRender* RenderSystem::renderPostProcess(FramebufferRender* destination, b
             applyCustomUniforms(pass.render, pass.params, frameTime, frameSceneTime, Vector2((float)width, (float)height));
             pass.render.draw(0, 3, 1);
         }
+        if (writeDestination)
+            drawOverlayDocuments(destination, PIP_RTT);
         postProcessPassRender.endRenderPass();
 
         if (writeDestination){
@@ -18073,9 +18234,19 @@ void RenderSystem::update(double dt){
     if (!directionalLightsOnlyKnown){
         directionalLightsOnlyKnown = true;
         loadedDirectionalLightsOnly = directionalLightsOnly;
-    }else if (directionalLightsOnly != loadedDirectionalLightsOnly){
-        loadedDirectionalLightsOnly = directionalLightsOnly;
-        needReloadMeshVariants();
+        loadedAreaLights = areaLightSeen;
+        loadedIesProfiles = iesProfileSeen;
+    }else{
+        if (directionalLightsOnly != loadedDirectionalLightsOnly){
+            loadedDirectionalLightsOnly = directionalLightsOnly;
+            needReloadMeshVariants();
+        }
+        // and whether the scene has an Area Light or an IES Profile (USE_AREA_LIGHTS, USE_IES)
+        if (areaLightSeen != loadedAreaLights || iesProfileSeen != loadedIesProfiles){
+            loadedAreaLights = areaLightSeen;
+            loadedIesProfiles = iesProfileSeen;
+            needReloadMeshVariants();
+        }
     }
     // the Lit Quality and the lobe tier are part of the built-in Lit's variants (builtin:lit)
     const PbrTier pbrTier = MaterialPbr::getRuntimeTier();
@@ -18083,6 +18254,14 @@ void RenderSystem::update(double dt){
     if (litQuality != loadedLitQuality || pbrTier != loadedPbrTier){
         loadedLitQuality = litQuality;
         loadedPbrTier = pbrTier;
+        needReloadMeshVariants();
+    }
+    // so are the 2D ambient of a scene without a Light 2D ('L2d' on the unlit ones) and the Light
+    // Steps being on ('Lst'); the count itself is a uniform
+    const bool light2DSteps = scene->getLight2DSteps() > 0;
+    if (hasAmbient2D != loadedAmbient2D || light2DSteps != loadedLight2DSteps){
+        loadedAmbient2D = hasAmbient2D;
+        loadedLight2DSteps = light2DSteps;
         needReloadMeshVariants();
     }
 
@@ -18099,6 +18278,7 @@ void RenderSystem::update(double dt){
     resolveLights();
     loadLights(numLights);
     updateSpotMaskAtlas(numLights);
+    updateLightProfiles();
     loadLights2D();
     loadAndProcessFog();
     // the atmosphere (height fog, volumetric fog and clouds): the fogged mesh variants carry the
@@ -18179,6 +18359,13 @@ void RenderSystem::update(double dt){
     if (hasIBL != newHasIBL){
         hasIBL = newHasIBL;
         needReloadMeshes();
+    }
+    // the meshes bind the sky's irradiance map or not by the ambient source
+    const bool ambientGradient = scene->getAmbientMode() == AmbientMode::GRADIENT;
+    if (ambientGradient != loadedAmbientGradient){
+        loadedAmbientGradient = ambientGradient;
+        if (hasIBL || hasReflectionProbes)
+            needReloadMeshes();
     }
 
     for (int i = 0; i < transforms->size(); i++){
@@ -18741,7 +18928,7 @@ void RenderSystem::update(double dt){
     updateShadowCasters();
     updateLightCameras(mainCamera, mainCameraTransform);
     processLights(primaryView.shadows, numLights, mainCamera, mainCameraTransform);
-    if (hasLights2D){
+    if (hasLights2D || hasAmbient2D){
         processLights2D();
     }
 
@@ -20423,18 +20610,34 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     drawScreenFluids();
 
     //---------Draw HTML UI documents (in front of everything, including component UI)----------
-    // UI and 2D cameras draw the canvas in world space, the editor's Scene view included; a
-    // 3D camera fills its viewport, in the game camera only
-    // (the documents draw over every run)
+    // A Screen Space - Overlay game view fills the viewport under any camera (S92 R15); the
+    // editor's Scene view, and every view of a Screen Space - Camera scene (an older scene's,
+    // as before S92), draw the canvas of UI and 2D cameras in world space; the Scene view draws
+    // no document under a 3D camera (the documents draw over every run)
     endBatchPass();
 
     bool drawDocuments = isMainCamera && !pass.renderToTexture;
+    bool documentsSceneView = false;
 #ifdef JASPERENGINE_EDITOR
+    documentsSceneView = passDrawsOverlays;
     drawDocuments = drawDocuments && (!passDrawsOverlays || camera.type != CameraType::CAMERA_PERSPECTIVE);
 #endif
-    if (drawDocuments){
+    // Screen Space - Overlay (S92 R13): when a later pass writes the camera's output (the uber
+    // pass, a blit, the chain's or SSR's composite), the documents composite there, after post
+    // and at the output resolution. The camera pass is the output without them, and with SSR
+    // composited inside it onto the view itself (the pass continues on its alias)
+    const bool ssrPassOnView = ssrInPass && ssrPassTarget != &rv().ssrSceneTarget && !usePostProcess && !useUber && !useFixedRes;
+    const bool laterOutputPass = useUber || useFixedRes || usePostProcess || (useSSR && !ssrPassOnView) || useSceneColorRedirect
+        || useMsaaRedirect;
+    overlayDocumentsPending = drawDocuments && !documentsSceneView && laterOutputPass
+        && scene->getHtmlUiRenderMode() == UIRenderMode::OVERLAY;
+    if (drawDocuments)
+        documentsCanvas(camera, overlayCanvasWidth, overlayCanvasHeight);
+    if (drawDocuments && !overlayDocumentsPending){
         camera.render.applyScissor(colorPassViewport);
-        scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera), passMsaa);
+        const bool throughCamera = documentsSceneView || scene->getHtmlUiRenderMode() == UIRenderMode::CAMERA;
+        scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera), passMsaa,
+                                                            throughCamera, overlayCanvasWidth, overlayCanvasHeight);
     }
 
     camera.render.endRenderPass();
@@ -20574,6 +20777,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     if (useMsaaRedirect){
         renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect(), barsColor);
     }
+    // (a pass above that wrote the view drew the held documents)
+    overlayDocumentsPending = false;
     passHidesEditorHidden = false;
 }
 

@@ -3,6 +3,7 @@
 
 #include "pixelart/BitmapFont.h"
 #include "CreateEntityCmd.h"
+#include "component/MeshComponent.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/SpriteBatchComponent.h"
@@ -600,6 +601,18 @@ bool editor::CreateEntityCmd::execute(){
         light.range = 10.0f;
         light.intensity = 30.0f;
 
+    }else if (type == EntityCreationType::AREA_LIGHT){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<LightComponent>(entity, {});
+        updateFlags |= Catalog::getComponentStructuralUpdateFlags(ComponentType::LightComponent);
+
+        LightComponent& light = scene->getComponent<LightComponent>(entity);
+        light.type = LightType::AREA;
+        light.direction = Vector3(0.0f, -1.0f, 0.0f);
+        light.range = 10.0f;
+        light.intensity = 30.0f;
+
     }else if (type == EntityCreationType::POINT_LIGHT_2D){
 
         scene->addComponent<Transform>(entity, {});
@@ -610,7 +623,7 @@ bool editor::CreateEntityCmd::execute(){
         light.range = 200.0f;
         light.intensity = 1.0f;
         // the virtual height normal maps respond to; sprites without one are not affected
-        light.height = 64.0f;
+        light.height = Light2DComponent::NEW_HEIGHT;
 
     }else if (type == EntityCreationType::SHADOW_CASTER_2D){
 

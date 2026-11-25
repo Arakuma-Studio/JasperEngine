@@ -25,6 +25,18 @@ namespace jasperengine{
         AUTO
     };
 
+    // Environment Lighting > Source (Unity's names: ambientMode, Color and Gradient): where lit
+    // surfaces take their ambient light from. Stored as ints: append only.
+    enum class AmbientMode {
+        // as scenes always drew: the Ambient Color (globalIllum*), which the built-in Lit swaps for
+        // the sky's image (IBL) where the scene has a sky with an image
+        COLOR,
+        // Unity's trilight: sky, equator and ground colours by the surface's facing, projected to
+        // the per-object spherical harmonics (render/AmbientGradient.h); the sky's image still
+        // gives reflections, no longer the diffuse ambient
+        GRADIENT
+    };
+
     // Shadow quality, uniform-driven (no shader rebuild). Stored as ints: append only.
     // 3D shadows (shadowQuality) pick the quality tier (ShadowTiers.h): AUTO the platform's
     // (project graphics.shadowTier.<platform>), LOW, MEDIUM, HIGH, ULTRA that tier, NONE ("Hard
@@ -77,6 +89,15 @@ namespace jasperengine{
         LOW,        // 128 texels
         MEDIUM,     // 256
         HIGH        // 512
+    };
+
+    // Where the scene's screen HTML UI documents composite (Unity's Canvas Render Mode): OVERLAY
+    // after post-processing, at the output resolution (Screen Space - Overlay); CAMERA in the
+    // camera pass, before post, at the render scale (Screen Space - Camera). Stored as ints:
+    // append only.
+    enum class UIRenderMode {
+        OVERLAY,
+        CAMERA
     };
 
     // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
@@ -455,6 +476,11 @@ namespace jasperengine{
         // library phase 3): FULL = the camera pass's resolution, HALF = half of it (default; mobile)
         SceneColorScale sceneColorScale = SceneColorScale::HALF;
 
+        // the screen HTML UI documents (S92): where they composite, and their target's MSAA samples
+        // (0: the project's htmlUiMsaaSamples, else 1, 2, 4 or 8)
+        UIRenderMode htmlUiRenderMode = UIRenderMode::OVERLAY;
+        int htmlUiMsaaSamples = 0;
+
         // Planar reflections (RenderSystem's water reflection passes, one per water height and
         // viewing camera): their resolution, the layers they draw (with the viewer's culling
         // mask), whether they sample the viewer's shadow maps, their far clip (0: the viewer's),
@@ -476,6 +502,13 @@ namespace jasperengine{
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear
         float globalIllumIntensity = 0.1f;
+        // a scene file without the key keeps COLOR (as it was drawn); the gradient's colours are
+        // used as they are, as Unity's (its Intensity Multiplier is the Skybox source's), stored
+        // linear (Color::sRGBToLinear, gamma 2.2, so the Inspector shows Unity's defaults)
+        AmbientMode ambientMode = AmbientMode::COLOR;
+        Vector3 ambientSkyColor = Vector3(0.0328759f, 0.0384727f, 0.0511221f);       // sRGB (54, 58, 66)
+        Vector3 ambientEquatorColor = Vector3(0.0083731f, 0.0103978f, 0.0118813f);   // sRGB (29, 32, 34)
+        Vector3 ambientGroundColor = Vector3(0.0012017f, 0.0009924f, 0.0006382f);    // sRGB (12, 11, 9)
 
         // lights evaluated per object (1..16); the rest of the lights reaching it are folded
         // into its spherical-harmonics ambient
@@ -498,6 +531,13 @@ namespace jasperengine{
         // default 1.0 keeps 2D scenes visually unchanged until the user dims it
         Vector3 ambientLight2DColor = Vector3(1.0, 1.0, 1.0); // stored linear
         float ambientLight2DIntensity = 1.0f;
+        // Light Steps (S78 R1, R2): each Light 2D's light quantized into this many bands, 0..16;
+        // 0 is off (smooth light, the variants of before)
+        int light2DSteps = 0;
+        // a tinting Ambient Light 2D multiplies the unlit 2D-lit materials of a scene without a
+        // Light 2D too (S78 R6); new scenes have it on, a scene file without the key (and a cooked
+        // record before 1.8) is off, as it was drawn before S78
+        bool ambientLight2DWithoutLights = true;
         ShadowQuality shadow2DQuality = ShadowQuality::LOW;
 
         bool ssaoEnabled = false;

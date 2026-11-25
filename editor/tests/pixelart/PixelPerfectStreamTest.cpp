@@ -264,7 +264,7 @@ TEST(PixelFxShaders, ShaderCacheVersionCoversPixelFx){
 }
 
 // S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65 or later
-// (S100's Cavity took v71), after S48's v64: an older cache holds tilemap programs that sample past their frames
+// (S78 took v66, S100's Cavity v71), after S48's v64: an older cache holds tilemap programs that sample past their frames
 TEST(TilemapShaders, ShaderCacheVersionCoversTheTileClamp){
     const std::string name = editor::App::getUserShaderCacheDir().filename().string();
     ASSERT_EQ(name.rfind('v', 0), 0u) << name;

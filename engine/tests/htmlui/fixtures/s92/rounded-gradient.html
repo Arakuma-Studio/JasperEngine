@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>S92: rounded-gradient</title>
+<!-- S92 R29 (docs/specs/S92-htmlui-render-cost.md): a rounded box with the port's four gradient layers (one of 7 px stops): no layer once gradients on rounded boxes are primitives.
+     Drawn at 1280x720, pixel ratio 1; #tick is the element another frame changes (the warm column). -->
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; font-family: sans-serif; color: #ffffff; }
+  #tick { position: absolute; left: 1180px; top: 680px; font-size: 16px; }
+  #body { position: absolute; left: 100px; top: 100px; width: 320px; height: 120px; border-radius: 23px; border: 5px solid #000000; background-image: linear-gradient(to top, #1bb91e 8px, #1ec921 8px, #1ec921 9px, #22da23 9px, #22da23 10px, rgba(0, 0, 0, 0) 10px), linear-gradient(to right, #4ce333 1px, rgba(0, 0, 0, 0) 1px), linear-gradient(to left, #4ce333 1px, rgba(0, 0, 0, 0) 1px), linear-gradient(to bottom, #b7fd62 3px, #9dfb56 3px, #9dfb56 4px, #6af641 4px, #51f437 5px, #39ef2e 55px, #26eb26 105px); }
+</style>
+</head>
+<body>
+  <div id="body"></div>
+  <span id="tick">0</span>
+</body>
+</html>

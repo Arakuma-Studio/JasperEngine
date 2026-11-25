@@ -267,6 +267,12 @@ void editor::Exporter::runPlayerBuild() {
         result.compileReasons = choice.reasons;
         result.methodUsed = choice.method;
         if (choice.method == BuildMethod::Prebuilt) result.carried = choice.carried;
+        // Auto prefers the prebuilt player: compiling instead is a downgrade of build time
+        if (config.method == BuildMethod::Auto && choice.method == BuildMethod::Compile) {
+            std::string reasons;
+            for (const std::string& reason : choice.reasons) reasons += (reasons.empty() ? "" : "; ") + reason;
+            result.fallbacks.push_back({"method", "prebuilt", "compiled", reasons});
+        }
     }
     for (const std::string& warning : choice.nativeWarnings) warn("W-NATIVE-MOCK", warning);
     Out::info("Build method: %s%s", choice.method == BuildMethod::Prebuilt ? "prebuilt player" : "compile from source",
@@ -425,6 +431,8 @@ bool editor::Exporter::selectPlayerVariant() {
     player = std::make_shared<PlayerInfo>(*best);
     {
         std::lock_guard<std::mutex> lock(progressMutex);
+        if (!fittingInstalled && fitting.modules.size() < bestModules && best->shippedBytes > 0)
+            result.fallbacks.push_back({"player", fittingId, best->id, "the smaller player that fits is not installed"});
         result.playerId = player->id;
     }
     std::vector<std::string> shipped;

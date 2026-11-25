@@ -461,6 +461,8 @@ TEST_F(RmlRendererP1GoldenTest, MsaaRounded){
 
 TEST_F(RmlRendererP1GoldenTest, LayersNested){
     JASPER_REQUIRE_GPU();
+    // every frame's own layer passes, not results drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     P1Context test;
     std::vector<uint8_t> screen;
     ASSERT_TRUE(draw(test, "layers_nested", screen));
@@ -529,6 +531,8 @@ TEST_F(RmlRendererP1GoldenTest, OpacityText){
 }
 
 TEST_F(RmlRendererP1GoldenTest, ManyElements){
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     JASPER_REQUIRE_GPU();
     P1Context test;
     ASSERT_TRUE(test.isValid());

@@ -5493,6 +5493,14 @@
   {
    "component": "light",
    "group": "",
+   "kind": "Asset",
+   "label": "IES Profile",
+   "path": "iesProfile",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
    "kind": "FloatPositive",
    "label": "Volumetric Intensity",
    "path": "volumetricIntensity",
@@ -7327,6 +7335,14 @@
   {
    "component": "light",
    "group": "",
+   "kind": "Asset",
+   "label": "IES Profile",
+   "path": "iesProfile",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
    "kind": "FloatPositive",
    "label": "Volumetric Intensity",
    "path": "volumetricIntensity",
@@ -8802,6 +8818,14 @@
    "kind": "LocalEntity",
    "label": "Input Surface",
    "path": "inputSurface",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anti-aliasing (MSAA)",
+   "path": "msaaSamples",
    "read_only": false
   },
   {

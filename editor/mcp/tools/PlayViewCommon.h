@@ -79,6 +79,8 @@ namespace jasperengine::editor::mcp::w3 {
         bool focus = true;               // bring the view's tab to the front when it must render
         int timeoutMs = 20000;
         bool deviceOverlay = true;       // game view with a simulated device: its screen drawn over the image
+        // game or scene: the frame checks (S99 R6) in info.findings, their first fix in info.next
+        bool findings = false;
         // editor: the part of the editor window to keep (ImGui pixels from the main viewport's
         // corner; empty: the whole window). view "title_designer" sets it to that window's rect
         float cropX = 0.0f, cropY = 0.0f, cropWidth = 0.0f, cropHeight = 0.0f;

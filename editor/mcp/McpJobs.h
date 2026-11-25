@@ -3,11 +3,13 @@
 
 #pragma once
 
+#include "JobEstimate.h"
 #include "McpCall.h"
 #include "McpJson.h"
 
 #include <chrono>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -67,7 +69,23 @@ namespace jasperengine::editor::mcp {
         bool cancelRequested() const;
         void setCancelHandler(std::function<void()> handler);
 
-        // {id, kind, title, status, progress, message, elapsed_seconds, log_tail, result}
+        // S99 R13-R16: the estimate given at submit (toJson's `estimate` and `remaining_seconds`, the
+        // status bar). On completion the result gets `report` (measured against estimated, the
+        // fallbacks taken) and a success adds its measure to `historyFile` under `historyKind`.
+        void setEstimate(JobEstimate estimate, std::string historyKind = {}, std::filesystem::path historyFile = {});
+        // ... from the model's seconds and the project's job history (JobHistory::fileFor)
+        void estimateFor(const std::filesystem::path& projectPath, const std::string& historyKind, double modelSeconds, uint64_t bytes = 0);
+        // what actually ran when it is not what was estimated (a build that compiled instead): the
+        // history records the measure against this kind and model
+        void setHistoryModel(std::string historyKind, double modelSeconds);
+        // a downgrade taken (the same one twice is kept once)
+        void addFallback(JobFallback fallback);
+        bool estimate(JobEstimate& out) const;
+        double progress() const;
+        double elapsedSeconds() const;
+
+        // {id, kind, title, status, progress, message, elapsed_seconds, estimate?, remaining_seconds?,
+        // log_tail, result}
         Json toJson(int logLines = 40) const;
         std::string message() const;
         Json result() const;
@@ -92,6 +110,17 @@ namespace jasperengine::editor::mcp {
         std::function<void()> cancelHandler;
         std::chrono::steady_clock::time_point startTime;
         std::chrono::steady_clock::time_point endTime;
+        bool hasEstimate = false;
+        JobEstimate jobEstimate;
+        std::string historyKind;
+        double historyModel = 0.0;
+        std::filesystem::path historyFile;
+        std::vector<JobFallback> fallbacks;
+
+        // the report a finishing job adds to its result (mutex held)
+        void addReport(Json& result, double seconds) const;
+        // after a success, outside the mutex
+        void recordHistory() const;
     };
 
     using JobPtr = std::shared_ptr<McpJob>;

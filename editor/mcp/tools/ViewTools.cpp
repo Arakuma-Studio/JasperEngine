@@ -76,6 +76,7 @@
 #include "util/UiItemLocator.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseViewport.h"
+#include "sceneview/FrameChecks.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -278,6 +279,11 @@ struct CaptureJob {
     std::function<void(w3::CaptureResult)> done;
     Clock::time_point deadline;
     bool finished = false;
+    // the frame checks' input (req.findings): the scene shot, through which view, and the image's
+    // luminance (the game canvas only, without its letterbox bars)
+    uint32_t checkSceneId = NULL_PROJECT_SCENE;
+    bool checkSceneView = false;
+    framechecks::Luminance luminance;
     // the rest of the content had not settled when the wait for it gave up
     bool stillSettling = false;
     Clock::time_point settleWaitStart;
@@ -350,6 +356,46 @@ void captureScene(const CaptureJobPtr& job);
     return stbi_write_png_to_func(append, &png, outWidth, outHeight, 3, rgb.data(), outWidth * 3) != 0;
 }
 
+// S99 R6: the frame checks of the scene the job shot, as findings, the first one's fix in next
+void addFindings(const CaptureJobPtr& job, Json& info, std::string& note) {
+    Project* project = job->call->ctx().project();
+    SceneProject* sp = project ? project->getScene(job->checkSceneId) : nullptr;
+    if (!sp || !sp->scene) return;
+    framechecks::Request request;
+    request.project = project;
+    request.sceneProject = sp;
+    request.sceneView = job->checkSceneView;
+    request.luminance = job->luminance;
+    request.refreshMissingAssets = true;
+    if (job->checkSceneView) {
+        Camera* camera = sp->sceneRender ? sp->sceneRender->getCamera() : nullptr;
+        if (!camera) return;
+        request.cameraScene = camera->getScene();
+        request.camera = camera->getEntity();
+        request.layerMask = sp->viewState.layerFilter.visible;
+    } else {
+        request.cameraScene = sp->scene;
+        request.camera = project->getGameCamera(sp->id);
+    }
+    const framechecks::Result checks = framechecks::run(request);
+    Json findings = Json::array();
+    std::string kinds;
+    for (const framechecks::Finding& finding : checks.findings) {
+        Json item = {{"kind", finding.kind}, {"severity", framechecks::severityName(finding.severity)},
+                     {"message", finding.message}, {"fix", finding.fix}};
+        if (!finding.entities.empty()) item["entities"] = finding.entities;
+        findings.push_back(std::move(item));
+        kinds += (kinds.empty() ? "" : ", ") + finding.kind;
+    }
+    info["findings"] = std::move(findings);
+    info["findings_ms"] = std::round(checks.ms * 100.0) / 100.0;
+    if (!checks.findings.empty()) {
+        const framechecks::Finding& first = checks.findings.front();
+        info["next"] = first.kind + ": " + first.message + " Fix: " + first.fix + ".";
+        note += std::string(note.empty() ? "" : " ") + "Frame checks: " + kinds + " (findings; next has the first fix).";
+    }
+}
+
 // Fills image + common info, writes save_path, and finishes the job
 void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width, int height, int sourceWidth,
                    int sourceHeight, Json info) {
@@ -367,6 +413,7 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         info["flat_colour"] = colour;
         result.note = "The image is one flat colour (" + colour + "): nothing visible rendered there yet?";
     }
+    if (job->req.findings && job->checkSceneId != NULL_PROJECT_SCENE) addFindings(job, info, result.note);
     if (job->stillSettling) {
         info["assets_loading"] = true;
         result.note += std::string(result.note.empty() ? "" : " ") +
@@ -404,7 +451,8 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
     job->finish(std::move(result));
 }
 
-void readFramebuffer(const CaptureJobPtr& job, Framebuffer* framebuffer, Json info) {
+// region: the part of the framebuffer the frame checks measure (null: all of it)
+void readFramebuffer(const CaptureJobPtr& job, Framebuffer* framebuffer, Json info, const Rect* region = nullptr) {
     std::vector<uint8_t> png;
     int width = 0, height = 0;
     if (!framebuffer || !framebuffer->isCreated()) {
@@ -413,8 +461,26 @@ void readFramebuffer(const CaptureJobPtr& job, Framebuffer* framebuffer, Json in
     }
     const int sourceWidth = static_cast<int>(framebuffer->getWidth());
     const int sourceHeight = static_cast<int>(framebuffer->getHeight());
-    if (!GraphicUtils::encodeFramebufferPng(framebuffer, png, false, job->req.maxWidth, &width, &height)) {
+    if (!job->req.findings) {
+        if (!GraphicUtils::encodeFramebufferPng(framebuffer, png, false, job->req.maxWidth, &width, &height)) {
+            job->fail("Reading the view's framebuffer back failed.");
+            return;
+        }
+        finishWithPng(job, std::move(png), width, height, sourceWidth, sourceHeight, std::move(info));
+        return;
+    }
+    // the same readback and encoding, with the full-size pixels measured on the way
+    std::vector<uint8_t> rgba;
+    if (!GraphicUtils::readFramebufferRGBA(framebuffer, rgba)) {
         job->fail("Reading the view's framebuffer back failed.");
+        return;
+    }
+    job->luminance = region ? framechecks::measureLuminance(rgba.data(), sourceWidth, sourceHeight, 4, (int)std::lround(region->getX()),
+                                                            (int)std::lround(region->getY()), (int)std::lround(region->getWidth()),
+                                                            (int)std::lround(region->getHeight()))
+                            : framechecks::measureLuminance(rgba.data(), sourceWidth, sourceHeight, 4);
+    if (!encodePixels(rgba.data(), sourceWidth, sourceHeight, 4, job->req.maxWidth, png, width, height)) {
+        job->fail("Encoding the screenshot failed.");
         return;
     }
     finishWithPng(job, std::move(png), width, height, sourceWidth, sourceHeight, std::move(info));
@@ -441,19 +507,25 @@ void readGameView(const CaptureJobPtr& job, uint32_t sceneId, bool running) {
     Framebuffer* fb = gw->getFramebuffer();
     Json info = {{"scene", sp ? McpRefs::sceneJson(project, *sp) : Json(nullptr)},
                  {"playing", running}};
+    job->checkSceneId = sceneId;
+    job->checkSceneView = false;
+    // where the game canvas is drawn (the frame checks measure it, not its letterbox bars)
+    Rect canvasRect;
+    bool hasCanvasRect = false;
     if (fb && fb->isCreated()) {
         const int fbWidth = static_cast<int>(fb->getWidth());
         const int fbHeight = static_cast<int>(fb->getHeight());
         if (running) {
-            addCanvasInfo(info, Engine::getCanvasWidth(), Engine::getCanvasHeight(), Engine::getViewRect(), fbWidth,
+            canvasRect = Engine::getViewRect();
+            addCanvasInfo(info, Engine::getCanvasWidth(), Engine::getCanvasHeight(), canvasRect, fbWidth,
                           job->req.maxWidth);
         } else {
             int canvasWidth = 0, canvasHeight = 0;
-            Rect viewRect;
             Engine::computeViewLayout(fbWidth, fbHeight, (int)project->getCanvasWidth(), (int)project->getCanvasHeight(),
-                                      project->getScalingMode(), canvasWidth, canvasHeight, viewRect);
-            addCanvasInfo(info, canvasWidth, canvasHeight, viewRect, fbWidth, job->req.maxWidth);
+                                      project->getScalingMode(), canvasWidth, canvasHeight, canvasRect);
+            addCanvasInfo(info, canvasWidth, canvasHeight, canvasRect, fbWidth, job->req.maxWidth);
         }
+        hasCanvasRect = canvasRect.getWidth() > 0.0f && canvasRect.getHeight() > 0.0f;
         // a simulated device: where its safe area is in the image, and its screen drawn over it
         const DeviceProfile* device = Platform::getSimulation().device;
         Rect safe;
@@ -466,6 +538,12 @@ void readGameView(const CaptureJobPtr& job, uint32_t sceneId, bool running) {
                 if (!GraphicUtils::readFramebufferRGBA(fb, rgba)) {
                     job->fail("Reading the view's framebuffer back failed.");
                     return;
+                }
+                // what the game drew, before the device's frame covers parts of it
+                if (job->req.findings && hasCanvasRect) {
+                    job->luminance = framechecks::measureLuminance(rgba.data(), fbWidth, fbHeight, 4, (int)std::lround(canvasRect.getX()),
+                                                                   (int)std::lround(canvasRect.getY()), (int)std::lround(canvasRect.getWidth()),
+                                                                   (int)std::lround(canvasRect.getHeight()));
                 }
                 rasterizeDeviceOverlay(rgba.data(), fbWidth, fbHeight, *device, gw->getLayoutOrientation(),
                                        gw->getSettings().safeAreaOutline, &safe, gw->getSettings().deviceOverlay);
@@ -482,7 +560,7 @@ void readGameView(const CaptureJobPtr& job, uint32_t sceneId, bool running) {
             }
         }
     }
-    readFramebuffer(job, fb, std::move(info));
+    readFramebuffer(job, fb, std::move(info), hasCanvasRect ? &canvasRect : nullptr);
 }
 
 void captureGame(const CaptureJobPtr& job) {
@@ -713,6 +791,8 @@ void captureScene(const CaptureJobPtr& job) {
                 info["view_rect_in_window"] = {{"x", std::round(vx)}, {"y", std::round(vy)},
                                                {"width", std::round(vw)}, {"height", std::round(vh)}};
             }
+            job->checkSceneId = sceneId;
+            job->checkSceneView = true;
             readFramebuffer(job, sc->sceneRender->getFramebuffer(), std::move(info));
         });
     });
@@ -918,6 +998,7 @@ void screenshotTool(const CallPtr& call) {
     request.focus = args.value("focus", true);
     request.timeoutMs = static_cast<int>(std::clamp(args.value("timeout_seconds", 30.0), 1.0, 600.0) * 1000.0);
     request.deviceOverlay = args.value("device_overlay", true);
+    request.findings = true;
     if (request.view != "game" && request.view != "scene" && request.view != "editor" && request.view != "title_designer") {
         call->fail("view must be \"game\" (the Game view: the running game, or the scene through its game camera), "
                    "\"scene\" (a Scene view with gizmos), \"editor\" (the whole editor window) or \"title_designer\" (that window).");
@@ -1041,6 +1122,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"show_root_motion", &SceneDisplaySettings::showRootMotion},
         {"show_foot_trails", &SceneDisplaySettings::showFootTrails},
         {"show_torso_direction", &SceneDisplaySettings::showTorsoDirection},
+        {"frame_checks", &SceneDisplaySettings::frameChecks},
         // S41 (in a scene with a Pixel Perfect Camera)
         {"pixel_zoom", &SceneDisplaySettings::pixelZoom},
         {"pixel_grid", &SceneDisplaySettings::pixelGrid},
