@@ -20,7 +20,9 @@
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/HitStopExemptComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
@@ -727,6 +729,12 @@ namespace {
         rows.push_back(enabledRow<CapsuleShadowCasterComponent>("capsuleshadowcaster"));
         rows.push_back(enabledRow<PixelPerfectCameraComponent>("pixelperfectcamera"));
         rows.push_back(enabledRow<SortingGroupComponent>("sortinggroup"));
+        // the Outline (S94 F22): QuickOutline's OutlineColor and OutlineWidth
+        rows.push_back(enabledRow<OutlineComponent>("outline"));
+        rows.push_back(fieldRow<OutlineComponent, Vector4, &OutlineComponent::color>("outline", "color", "Outline Color", "OutlineColor", C4, SRGB));
+        rows.push_back(fieldRow<OutlineComponent, float, &OutlineComponent::width>("outline", "width", "Outline Width", "OutlineWidth", F));
+        // the Sprite Skin (S94 F49): its Inspector checkbox, as every component's with one
+        rows.push_back(enabledRow<SpriteSkinComponent>("spriteskin"));
         rows.push_back(enabledRow<SpriteBatchComponent>("spritebatch"));
         rows.push_back(enabledRow<HitStopExemptComponent>("hitstopexempt"));
         rows.push_back(enabledRow<TilemapLayerComponent>("tilemaplayer"));

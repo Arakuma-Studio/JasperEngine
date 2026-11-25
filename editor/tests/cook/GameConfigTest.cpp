@@ -14,6 +14,7 @@
 #include "net/Http.h"
 #include "player/PlayerConfig.h"
 #include "render/LightingTiers.h"
+#include "registry/SortingLayers.h"
 
 #include <string>
 
@@ -114,6 +115,23 @@ TEST(GameConfig, CarriesWhatTheGeneratedInitSet) {
     EXPECT_TRUE(game.allowInsecureHttp);
     // a source export's native plugins go per target: none here
     EXPECT_TRUE(game.nativePlatformOnly.empty());
+}
+
+// S94 F5: Transparency Sort Mode reaches a game as data, every mode (Perspective, the mode older
+// projects migrate to, and Orthographic too), where the generated main.cpp once set it
+TEST(GameConfig, CarriesTheTransparencySortMode) {
+    const TransparencySortMode before = SortingLayers::getTransparencySortMode();
+    const Vector3 axis = SortingLayers::getTransparencySortAxis();
+    Project project;
+    editor::cook::GameConfigTarget target;
+    target.fallbackName = "game";
+    for (TransparencySortMode mode : {TransparencySortMode::PERSPECTIVE, TransparencySortMode::ORTHOGRAPHIC,
+                                      TransparencySortMode::CUSTOM_AXIS, TransparencySortMode::DEFAULT}) {
+        project.setTransparencySort(mode, axis);
+        EXPECT_EQ(throughJson(editor::cook::makeGameConfig(project, target)).transparencySortMode, mode)
+            << SortingLayers::transparencySortModeToken(mode);
+    }
+    SortingLayers::setTransparencySortMode(before);
 }
 
 TEST(GameConfig, AnOlderGameJsonKeepsTheEngineDefaults) {

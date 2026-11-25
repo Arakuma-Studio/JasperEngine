@@ -2634,14 +2634,15 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     }
 
                     if (isText){
-                        TextComponent& text = target->getComponent<TextComponent>(entity);
-                        if (text.pivotCentered){
+                        // a centred or right-aligned box grows about its origin: the origin moves so the
+                        // edge not dragged stays
+                        const float align = UISystem::textAnchorX(target->getComponent<TextComponent>(entity));
+                        if (align > 0.0f){
                             float widthDelta = size.x - objectSizeOffset[entity].x;
                             Gizmo2DSideSelected side = tools.getGizmo2DSideSelected();
-                            if (side == Gizmo2DSideSelected::NX || side == Gizmo2DSideSelected::NX_NY || side == Gizmo2DSideSelected::NX_PY) {
-                                pos.x += widthDelta * 0.5f;
-                            }else if (side == Gizmo2DSideSelected::PX || side == Gizmo2DSideSelected::PX_NY || side == Gizmo2DSideSelected::PX_PY) {
-                                pos.x += widthDelta * 0.5f;
+                            if (side == Gizmo2DSideSelected::NX || side == Gizmo2DSideSelected::NX_NY || side == Gizmo2DSideSelected::NX_PY ||
+                                side == Gizmo2DSideSelected::PX || side == Gizmo2DSideSelected::PX_NY || side == Gizmo2DSideSelected::PX_PY) {
+                                pos.x += widthDelta * align;
                             }
                         }
                     }

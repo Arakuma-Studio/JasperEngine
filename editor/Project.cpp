@@ -1281,6 +1281,9 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
     if (!result.warnings.empty()) {
         editor::Out::warning("%s", editor::FbxImporter::summarizeWarnings(fbxName, result.warnings).c_str());
     }
+    for (const std::string& note : result.notes) {
+        editor::Out::info("%s: %s", fbxName.c_str(), note.c_str());
+    }
     if (!result.success) {
         editor::Out::error("Cannot import %s: %s", fbxName.c_str(), result.error.c_str());
         // A stale import still loads
@@ -4187,6 +4190,7 @@ const editor::ModelProjectSettings& editor::Project::getModelSettings() const{
 void editor::Project::setModelSettings(const ModelProjectSettings& settings){
     // the importer's process-wide value is the open project's, also when it equals the last one's
     FbxImporter::setDefaultCreatesMaterials(settings.materialCreationMode == MaterialCreationMode::Import);
+    FbxImporter::setDefaultUsedMaterialsOrder(settings.fbxSubmeshOrder == FbxSubmeshOrder::UsedMaterials);
     if (settings == modelSettings){
         return;
     }
@@ -4836,7 +4840,8 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
                                          scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
-                                         scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier(), getShippedTerrainTiers());
+                                         scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier(), getShippedTerrainTiers(),
+                                         scriptsSetLight2D(), scriptsMention("Outline"));
     // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
     if (scriptsMention("FluidSimulation"))
         ShaderVariantCollector::addFluidKeys(keys);
@@ -4869,6 +4874,13 @@ bool editor::Project::scriptsSetShadowQuality() const {
     // scene.shadowQuality (Lua) or Scene::setShadowQuality (C++): the shadow tier, and with it
     // the High filters' variant bit, can change at runtime
     return scriptsMention("hadowQuality");
+}
+
+bool editor::Project::scriptsSetLight2D() const {
+    // scene.ambientLight2DColor / ambientLight2DIntensity / ambientLight2DWithoutLights /
+    // light2DSteps (Lua) or Scene::setAmbientLight2D / setAmbientLight2DWithoutLights /
+    // setLight2DSteps (C++)
+    return scriptsMention("mbientLight2D") || scriptsMention("ight2DSteps");
 }
 
 bool editor::Project::scriptsSetPostProcessing() const {
@@ -7591,6 +7603,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             vcsProjectSettings.lfs = true;
             // ... and places a model of many clips without an Animation entity per clip (S77 R38)
             modelSettings.animationEntities = AnimationEntitiesMode::Auto;
+            // ... and keeps the node hierarchy of the models placed in it (S94 F44)
+            modelSettings.preserveHierarchyForNewModels = true;
             // ... and ships at a sane level (S38 R8): a Master true-peak limiter, the linear output
             // stage that lets its ceiling hold at the device, the ambient iOS session
             {

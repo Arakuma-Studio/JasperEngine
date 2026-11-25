@@ -31,6 +31,7 @@
 #include "component/FogComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
@@ -259,6 +260,7 @@ namespace luabridge
     template<> struct Stack<jasperengine::PaletteDistance> : EnumWrapper<jasperengine::PaletteDistance>{};
     template<> struct Stack<jasperengine::PalettePrecision> : EnumWrapper<jasperengine::PalettePrecision>{};
     template<> struct Stack<jasperengine::LutInputEncoding> : EnumWrapper<jasperengine::LutInputEncoding>{};
+    template<> struct Stack<jasperengine::VignetteFalloff> : EnumWrapper<jasperengine::VignetteFalloff>{};
     template<> struct Stack<jasperengine::AudioSourceState> : EnumWrapper<jasperengine::AudioSourceState>{};
     template<> struct Stack<jasperengine::AudioSourceAttenuation> : EnumWrapper<jasperengine::AudioSourceAttenuation>{};
     template<> struct Stack<jasperengine::AudioLoadType> : EnumWrapper<jasperengine::AudioLoadType>{};
@@ -288,6 +290,10 @@ namespace luabridge
     template<> struct Stack<jasperengine::SpriteBatchMode> : EnumWrapper<jasperengine::SpriteBatchMode>{};
     template<> struct Stack<jasperengine::SpriteBatchSpace> : EnumWrapper<jasperengine::SpriteBatchSpace>{};
     template<> struct Stack<jasperengine::SpriteSortPoint> : EnumWrapper<jasperengine::SpriteSortPoint>{};
+    // Text alignment and font size unit (S94)
+    template<> struct Stack<jasperengine::TextAnchorHorizontal> : EnumWrapper<jasperengine::TextAnchorHorizontal>{};
+    template<> struct Stack<jasperengine::TextAnchorVertical> : EnumWrapper<jasperengine::TextAnchorVertical>{};
+    template<> struct Stack<jasperengine::TextFontSizeUnit> : EnumWrapper<jasperengine::TextFontSizeUnit>{};
 
     template<> struct Stack<jasperengine::ScrollbarType> : EnumWrapper<jasperengine::ScrollbarType>{};
     // ui-components: the Button's Selectable enums

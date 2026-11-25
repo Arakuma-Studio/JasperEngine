@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: UnifiedLighting
 canvasWidth: 1280
 canvasHeight: 720
@@ -15,6 +15,7 @@ windowHeight: 720
 windowResizable: true
 assetsDir: assets
 luaDir: scripts
+transparencySortMode: perspective
 export:
   shaderAdditions:
     - type: mesh
@@ -44,6 +45,8 @@ export:
       properties: 1112
       customShader: assets/shaders/tinted
 startSceneId: 1
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: Main Scene.scene
     filepathGuid: 2385f1a5e2877b94bc16d5309fb19aca

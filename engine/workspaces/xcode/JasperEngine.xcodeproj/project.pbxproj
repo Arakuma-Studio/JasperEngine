@@ -4913,6 +4913,30 @@
 		4A534E47D8A431BB8CC22481 /* TilemapColliders.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AF792C8F202882DB /* TilemapColliders.h */; };
 		4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470186C6CDBD462BD7 /* TilemapSystem.h */; };
 		4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */; };
+		4A534E47DA060EDB89B9506B /* MaterialPropertyBlockLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */; };
+		4A534E47C1663269E34AB923 /* MaterialPropertyBlockLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */; };
+		4A534E479B061C69221C4D62 /* Outline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478DFCC199D4981589 /* Outline.cpp */; };
+		4A534E4742E5599C8B465910 /* Outline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478DFCC199D4981589 /* Outline.cpp */; };
+		4A534E47C98545D43F637C78 /* OutlineLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4754C3A6961FBF853C /* OutlineLua.cpp */; };
+		4A534E4730EC6BBAA28A148C /* OutlineLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4754C3A6961FBF853C /* OutlineLua.cpp */; };
+		4A534E476216B24F1D94D8A8 /* RenderSystemOutline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */; };
+		4A534E47B758827EE3225C8C /* RenderSystemOutline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */; };
+		4A534E47730A71320720C44A /* OutlineComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470DD199B9F1E7EB24 /* OutlineComponent.h */; };
+		4A534E47501A8BCAD7C5AB18 /* Outline.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474C83E40B234EA9C4 /* Outline.h */; };
+		4A534E474CC1F08BD30FA1FA /* RootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EE5CF176C08B72B /* RootMotion.cpp */; };
+		4A534E476716AC50E75D48DD /* RootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EE5CF176C08B72B /* RootMotion.cpp */; };
+		4A534E472936AAD3FB48E98A /* ActionSystemRootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */; };
+		4A534E47E140513EA249A116 /* ActionSystemRootMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */; };
+		4A534E478ED9FB6FD05FEB8D /* RootMotion.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47736FFBD4F64D9163 /* RootMotion.h */; };
+		4A534E47721F0250BA59020F /* SpriteSkinning.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */; };
+		4A534E47A6C850E6586B1564 /* SpriteSkinning.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */; };
+		4A534E475DD22FCEF256193F /* SpriteSkin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479920E96CC7362C45 /* SpriteSkin.cpp */; };
+		4A534E471C14304D7A66D95F /* SpriteSkin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479920E96CC7362C45 /* SpriteSkin.cpp */; };
+		4A534E475E95808F07B4BD61 /* SpriteSkinLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714A162309B607880 /* SpriteSkinLua.cpp */; };
+		4A534E47EB53B33EA27F4522 /* SpriteSkinLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714A162309B607880 /* SpriteSkinLua.cpp */; };
+		4A534E476CD552A27A50EDFC /* SpriteSkinComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CA53098C2D7FBF8D /* SpriteSkinComponent.h */; };
+		4A534E47A22036B29249620B /* SpriteSkin.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F288F92F0CD372E9 /* SpriteSkin.h */; };
+		4A534E479BD40CFA4074F857 /* SpriteSkinning.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FF8545A73F8D913 /* SpriteSkinning.h */; };
 		4A534E53F2185B6DA1DAA6C0 /* AudioImport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5353AA59FA780A0415 /* AudioImport.cpp */; };
 		4A534E53AF0A9444AA441D5E /* ClipSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53D84DFB0CCAD62E92 /* ClipSource.cpp */; };
 		4A534E53145BA8E2C82B5D5E /* MusicPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530DA79C0C843A97CF /* MusicPlayer.cpp */; };
@@ -9645,6 +9669,21 @@
 		4A534E47AF792C8F202882DB /* TilemapColliders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapColliders.h; sourceTree = "<group>"; };
 		4A534E470186C6CDBD462BD7 /* TilemapSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TilemapSystem.h; sourceTree = "<group>"; };
 		4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtLanguage.h; sourceTree = "<group>"; };
+		4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MaterialPropertyBlockLua.cpp; sourceTree = "<group>"; };
+		4A534E478DFCC199D4981589 /* Outline.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Outline.cpp; sourceTree = "<group>"; };
+		4A534E4754C3A6961FBF853C /* OutlineLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OutlineLua.cpp; sourceTree = "<group>"; };
+		4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemOutline.cpp; sourceTree = "<group>"; };
+		4A534E470DD199B9F1E7EB24 /* OutlineComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OutlineComponent.h; sourceTree = "<group>"; };
+		4A534E474C83E40B234EA9C4 /* Outline.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Outline.h; sourceTree = "<group>"; };
+		4A534E473EE5CF176C08B72B /* RootMotion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RootMotion.cpp; sourceTree = "<group>"; };
+		4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemRootMotion.cpp; sourceTree = "<group>"; };
+		4A534E47736FFBD4F64D9163 /* RootMotion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RootMotion.h; sourceTree = "<group>"; };
+		4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSkinning.cpp; sourceTree = "<group>"; };
+		4A534E479920E96CC7362C45 /* SpriteSkin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSkin.cpp; sourceTree = "<group>"; };
+		4A534E4714A162309B607880 /* SpriteSkinLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSkinLua.cpp; sourceTree = "<group>"; };
+		4A534E47CA53098C2D7FBF8D /* SpriteSkinComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSkinComponent.h; sourceTree = "<group>"; };
+		4A534E47F288F92F0CD372E9 /* SpriteSkin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSkin.h; sourceTree = "<group>"; };
+		4A534E475FF8545A73F8D913 /* SpriteSkinning.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSkinning.h; sourceTree = "<group>"; };
 		4A534E5353AA59FA780A0415 /* AudioImport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioImport.cpp; sourceTree = "<group>"; };
 		4A534E53D84DFB0CCAD62E92 /* ClipSource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ClipSource.cpp; sourceTree = "<group>"; };
 		4A534E530DA79C0C843A97CF /* MusicPlayer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MusicPlayer.cpp; sourceTree = "<group>"; };
@@ -10306,6 +10345,9 @@
 				4A534E47B2F3277BCB9B162A /* PhysicsQueriesLua.cpp */,
 				4A534E470776324E027F35E3 /* VehicleClassesLua.cpp */,
 				4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */,
+				4A534E4785F6B847AB3B2188 /* MaterialPropertyBlockLua.cpp */,
+				4A534E4754C3A6961FBF853C /* OutlineLua.cpp */,
+				4A534E4714A162309B607880 /* SpriteSkinLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11233,6 +11275,8 @@
 				4A534E47C3FC7FC23123CAB8 /* ClipAudio.h */,
 				4A534E474E197FD9213D710B /* ModelClipSettings.cpp */,
 				4A534E4770702AB38EE8F1C5 /* ModelClipSettings.h */,
+				4A534E473EE5CF176C08B72B /* RootMotion.cpp */,
+				4A534E47736FFBD4F64D9163 /* RootMotion.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -11698,6 +11742,8 @@
 				4A534E47F916164B86075842 /* SpriteSheetPool.h */,
 				4A534E47995B2A4A9A2030A2 /* SpriteSheetSources.h */,
 				4A534E4766741A7C4FB88EF3 /* PivotPreset.h */,
+				4A534E47BCD93910D61260CB /* SpriteSkinning.cpp */,
+				4A534E475FF8545A73F8D913 /* SpriteSkinning.h */,
 			);
 			path = sprite;
 			sourceTree = "<group>";
@@ -12272,6 +12318,8 @@
 				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
 				4A534E4713532B8D1DB19F2B /* VehicleDrivetrainComponent.h */,
 				4A534E47367FF921CC4C6947 /* WheelColliderComponent.h */,
+				4A534E470DD199B9F1E7EB24 /* OutlineComponent.h */,
+				4A534E47CA53098C2D7FBF8D /* SpriteSkinComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12413,6 +12461,10 @@
 				4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */,
 				4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */,
 				4A534E47B2C3C858EC6764BC /* tilemap */,
+				4A534E478DFCC199D4981589 /* Outline.cpp */,
+				4A534E474C83E40B234EA9C4 /* Outline.h */,
+				4A534E479920E96CC7362C45 /* SpriteSkin.cpp */,
+				4A534E47F288F92F0CD372E9 /* SpriteSkin.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -12623,6 +12675,8 @@
 				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
 				4A534E47AF792C8F202882DB /* TilemapColliders.h */,
 				4A534E470186C6CDBD462BD7 /* TilemapSystem.h */,
+				4A534E47576A173A03D71C88 /* RenderSystemOutline.cpp */,
+				4A534E47B77112B005E51DEC /* ActionSystemRootMotion.cpp */,
 				4A534E53A0F68A54750DE418 /* NavDiagnostics.cpp */,
 				4A534E531D69208F7AAFD88B /* NavTerrainWorld.cpp */,
 				4A534E5389D865FAC6A9C583 /* TilemapColliders.cpp */,
@@ -17214,6 +17268,12 @@
 				4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */,
 				4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */,
 				4A534E473F514FDB62D83E2C /* GameRunner.h in Headers */,
+				4A534E47730A71320720C44A /* OutlineComponent.h in Headers */,
+				4A534E47501A8BCAD7C5AB18 /* Outline.h in Headers */,
+				4A534E478ED9FB6FD05FEB8D /* RootMotion.h in Headers */,
+				4A534E476CD552A27A50EDFC /* SpriteSkinComponent.h in Headers */,
+				4A534E47A22036B29249620B /* SpriteSkin.h in Headers */,
+				4A534E479BD40CFA4074F857 /* SpriteSkinning.h in Headers */,
 				4A534E47AD816906EC266941 /* HtmlUIFontDiagnostics.h in Headers */,
 				4A534E470CDEA074BA1CE770 /* HtmlUIImageCache.h in Headers */,
 				4A534E4791A46D9CB4612768 /* HtmlUIPrewarm.h in Headers */,
@@ -19883,6 +19943,15 @@
 				4A534E47780D4F13D9478EFC /* TilemapLayer.cpp in Sources */,
 				4A534E47C7F2BA4DF48F436C /* TilemapClassesLua.cpp in Sources */,
 				4A534E47C795B93C96A0B869 /* TitleArtLanguage.cpp in Sources */,
+				4A534E47DA060EDB89B9506B /* MaterialPropertyBlockLua.cpp in Sources */,
+				4A534E479B061C69221C4D62 /* Outline.cpp in Sources */,
+				4A534E47C98545D43F637C78 /* OutlineLua.cpp in Sources */,
+				4A534E476216B24F1D94D8A8 /* RenderSystemOutline.cpp in Sources */,
+				4A534E474CC1F08BD30FA1FA /* RootMotion.cpp in Sources */,
+				4A534E472936AAD3FB48E98A /* ActionSystemRootMotion.cpp in Sources */,
+				4A534E47721F0250BA59020F /* SpriteSkinning.cpp in Sources */,
+				4A534E475DD22FCEF256193F /* SpriteSkin.cpp in Sources */,
+				4A534E475E95808F07B4BD61 /* SpriteSkinLua.cpp in Sources */,
 				4A534E53167EE11DB57D3CD2 /* AudioImport.cpp in Sources */,
 				4A534E53990EE4D72FF75631 /* ClipSource.cpp in Sources */,
 				4A534E53255E6ADFCD360281 /* MusicPlayer.cpp in Sources */,
@@ -20903,6 +20972,15 @@
 				4A534E473D07FA373F66F3ED /* TilemapLayer.cpp in Sources */,
 				4A534E4713F670CAB0346060 /* TilemapClassesLua.cpp in Sources */,
 				4A534E47B873477847FE838B /* TitleArtLanguage.cpp in Sources */,
+				4A534E47C1663269E34AB923 /* MaterialPropertyBlockLua.cpp in Sources */,
+				4A534E4742E5599C8B465910 /* Outline.cpp in Sources */,
+				4A534E4730EC6BBAA28A148C /* OutlineLua.cpp in Sources */,
+				4A534E47B758827EE3225C8C /* RenderSystemOutline.cpp in Sources */,
+				4A534E476716AC50E75D48DD /* RootMotion.cpp in Sources */,
+				4A534E47E140513EA249A116 /* ActionSystemRootMotion.cpp in Sources */,
+				4A534E47A6C850E6586B1564 /* SpriteSkinning.cpp in Sources */,
+				4A534E471C14304D7A66D95F /* SpriteSkin.cpp in Sources */,
+				4A534E47EB53B33EA27F4522 /* SpriteSkinLua.cpp in Sources */,
 				4A534E53F2185B6DA1DAA6C0 /* AudioImport.cpp in Sources */,
 				4A534E53AF0A9444AA441D5E /* ClipSource.cpp in Sources */,
 				4A534E53145BA8E2C82B5D5E /* MusicPlayer.cpp in Sources */,

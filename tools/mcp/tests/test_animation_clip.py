@@ -1113,6 +1113,9 @@ async def test_guide_names_exist(ed: Editor):
               "follow_speed", "pitch_semitones", "state_exit", "volume_db",
               # root_motion's members (S77 R53): a free-form object in edit_animation's lean schema
               "bake_rotation", "bake_position_y", "bake_position_xz",
+              # and S94 F32's Based Upon and Offset members and the body_orientation basis
+              "rotation_based_upon", "rotation_offset", "position_y_based_upon", "position_y_offset", "position_xz_based_upon",
+              "body_orientation",
               # clip quality (S77, test_animation_quality): optimize_animation's and check_animation's result fields and
               # error kinds, which this test does not call (the animation group)
               "bytes_after", "bytes_before", "effective_tolerance_mm", "kept_all_keys", "keys_after", "keys_before", "max_error_mm",

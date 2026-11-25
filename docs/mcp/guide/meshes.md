@@ -33,7 +33,11 @@ Model import and cook settings, detail levels (LOD) and render budgets: the `mes
 | `weld_vertices` | true, false | true |
 | `index_format` | auto, u16, u32 | auto |
 | `read_write` | automatic, on | automatic |
-| `normals` | import, calculate (with `smoothing_angle`, 0-180) | import |
+| `normals` | import, calculate (with `smoothing_angle`, 0-180), none (faces shade flat) | import |
+| `normals_weighting` | area_and_angle, area (calculate) | area_and_angle |
+| `smoothness_source` | from_angle, from_smoothing_groups, prefer_smoothing_groups (an FBX's groups; per model) | from_angle |
+| `tangents` | import, calculate (MikkTSpace), none | import |
+| `rest_pose`, `rest_pose_take` | node_values, first_frame (an FBX imports a clip's first frame; the clip by name, default the first) | node_values |
 | `generate_lods` | automatic, on, off | automatic |
 | `lod_count`, `lod_reduction` | 1-3; preserve_detail, balanced, smallest (used when `generate_lods` is on) | 3, balanced |
 | `ship_source` | true, false | false |
@@ -43,6 +47,25 @@ With `platform` (desktop, mobile, web) the settings are that platform's override
 puts settings back to their defaults. They live in the model's `.meta` under
 `import.modelImporter`; a model nobody changed has no section (the project's Mesh defaults apply:
 `set_project_settings` keys `mesh.defaults.<platform>.<setting>`).
+
+`smoothness_source`, `rest_pose` and `rest_pose_take` are read when the FBX is converted: they are
+the model's own, never a platform's. A changed one converts the FBX again and reloads the scenes'
+models.
+
+### Model GameObjects (S94)
+
+- A Model's `preserveHierarchy` (Unity's Preserve Hierarchy) gives every node of its file a GameObject
+  of its own: the mesh is never merged into the Model's. New projects place models with it on
+  (`mesh.preserve_hierarchy_for_new_models`); older ones keep the loader's rule.
+- `get_model_info`'s `mesh_nodes[].drawn_by` is the GameObject a node's mesh draws on. Set mesh and
+  material values there.
+- `create_entity` applies `model.animationEntities` and `model.preserveHierarchy` before the first
+  load. Writing either later reloads the model in the same undo step.
+- `first_frame_differs` lists clips whose root or hips start away from the file's nodes.
+- An FBX of a skeleton and takes only (Unity's `Model@Clip.fbx`) imports as a clip source:
+  `"<model>.fbx#<take>"`.
+- Submesh `i` is the FBX node's material slot `i`. An empty slot keeps its index. Older projects keep
+  `mesh.fbx_submesh_order` `used_materials`: the used slots in order.
 
 ### What changes the image
 

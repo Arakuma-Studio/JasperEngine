@@ -1504,6 +1504,7 @@ set(JASPERENGINE_SRCS
     core/animation/AnimatorPose.cpp
     core/animation/AnimatorRetarget.cpp
     core/animation/AnimatorRig.cpp
+    core/animation/RootMotion.cpp
     core/animation/BlendTree.cpp
     core/animation/VertexAnimatorRuntime.cpp
     core/animation/ClipBinding.cpp
@@ -1644,6 +1645,7 @@ set(JASPERENGINE_SRCS
     core/sprite/SpriteSheetIO.cpp
     core/sprite/SpriteSheetPool.cpp
     core/sprite/SpriteFrameGeometry.cpp
+    core/sprite/SpriteSkinning.cpp
     core/render/sprite/SpriteInstanceBatch.cpp
     core/sprite/AsepriteClips.cpp
     # S45: texture sheets, name@WxH, .spriteatlas and the atlas remap
@@ -1705,6 +1707,8 @@ set(JASPERENGINE_SRCS
     core/object/Light.cpp
     core/object/PixelPerfectCamera.cpp
     core/object/SortingGroup.cpp
+    core/object/Outline.cpp
+    core/object/SpriteSkin.cpp
     core/object/tilemap/Grid.cpp
     core/object/tilemap/TilemapLayer.cpp
     core/object/SpriteBatch.cpp
@@ -1870,6 +1874,10 @@ set(JASPERENGINE_SRCS
     core/script/binding/TerrainClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
+    core/script/binding/OutlineLua.cpp
+    core/script/binding/SpriteSkinLua.cpp
+    # S94 Property Overrides (MaterialPropertyBlock)
+    core/script/binding/MaterialPropertyBlockLua.cpp
     core/script/binding/HitStopClassesLua.cpp
     # S48 screen transitions and the scripted glitch
     core/script/binding/TransitionClassesLua.cpp
@@ -1896,6 +1904,7 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
     core/subsystem/ActionSystemPlayers.cpp
+    core/subsystem/ActionSystemRootMotion.cpp
     core/subsystem/ActionSystemLayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp
@@ -1948,6 +1957,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/RenderSystemTerrainWorld.cpp
     core/subsystem/RenderSystemPixelArt.cpp
     core/subsystem/RenderSystemSorting.cpp
+    core/subsystem/RenderSystemOutline.cpp
     core/subsystem/RenderSystemSpriteBatch.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp

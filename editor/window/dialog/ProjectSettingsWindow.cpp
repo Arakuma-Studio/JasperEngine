@@ -2375,14 +2375,22 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 SortingSettings changed = current;
                 if (projectBeginSettingsRow("Transparency Sort Mode", current.mode != TransparencySortMode::DEFAULT))
                     changed.mode = TransparencySortMode::DEFAULT;
-                int mode = current.mode == TransparencySortMode::CUSTOM_AXIS ? 1 : 0;
-                const char* modes[] = {"Default", "Custom Axis"};
+                // Unity's order of the modes
+                static const TransparencySortMode order[] = {TransparencySortMode::DEFAULT, TransparencySortMode::PERSPECTIVE,
+                                                             TransparencySortMode::ORTHOGRAPHIC, TransparencySortMode::CUSTOM_AXIS};
+                const char* modes[] = {"Default", "Perspective", "Orthographic", "Custom Axis"};
+                int mode = 0;
+                for (int m = 0; m < 4; m++) {
+                    if (order[m] == current.mode) mode = m;
+                }
                 ImGui::SetNextItemWidth(Theme::dpi(160.0f));
-                if (ImGui::Combo("##TransparencySortMode", &mode, modes, 2))
-                    changed.mode = mode == 1 ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                if (ImGui::Combo("##TransparencySortMode", &mode, modes, 4))
+                    changed.mode = order[mode];
                 UIProbe::item("graphics.transparency_sort_mode");
-                endSettingsRow("Custom Axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw along the "
-                               "Transparency Sort Axis, a larger dot(axis, position) first. Default keeps the Hierarchy order.");
+                endSettingsRow("How transparent objects sort, far first. Perspective: by the distance to the camera. Orthographic: by "
+                               "depth along the camera's view. Default: Orthographic for orthographic cameras, else Perspective. "
+                               "Custom Axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw along the "
+                               "Transparency Sort Axis, a larger dot(axis, position) first.");
                 applySorting(changed);
             }
             if (settingsui::beginRow("graphics.transparency_sort_axis")) {
@@ -2634,9 +2642,24 @@ void ProjectSettingsWindow::drawMeshSettings() {
                 d.weldVertices = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
             }
             {
-                const std::vector<std::string> names = {"Built-in (Import)", "Import", "Calculate"};
-                const int value = optionCombo("Normals", "normals", names, d.normals ? (int)*d.normals : -1, "Calculate makes area-weighted normals, creased at the Smoothing Angle.");
+                const std::vector<std::string> names = {"Built-in (Import)", "Import", "Calculate", "None"};
+                const int value = optionCombo("Normals", "normals", names, d.normals ? (int)*d.normals : -1,
+                                              "Calculate makes normals that crease at the Smoothing Angle; None writes none (faces shade flat).");
                 d.normals = value < 0 ? std::optional<ModelNormals>() : std::optional<ModelNormals>((ModelNormals)value);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Area And Angle)"};
+                for (NormalsWeighting w : {NormalsWeighting::AreaAndAngle, NormalsWeighting::Area}) names.push_back(normalsWeightingLabel(w));
+                const int value = optionCombo("Normals Weighting", "normals_weighting", names, d.normalsWeighting ? (int)*d.normalsWeighting : -1,
+                                              "How Calculate weighs the faces at a corner: by their area and their angle there, or by area.");
+                d.normalsWeighting = value < 0 ? std::optional<NormalsWeighting>() : std::optional<NormalsWeighting>((NormalsWeighting)value);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Import)"};
+                for (ModelTangents t : {ModelTangents::Import, ModelTangents::Calculate, ModelTangents::None}) names.push_back(modelTangentsLabel(t));
+                const int value = optionCombo("Tangents", "tangents", names, d.tangents ? (int)*d.tangents : -1,
+                                              "Calculate Mikktspace makes tangents from the normals and the first UV set; None writes none.");
+                d.tangents = value < 0 ? std::optional<ModelTangents>() : std::optional<ModelTangents>((ModelTangents)value);
             }
             {
                 const std::vector<std::string> names = {"Built-in (Off)", "Off", "On"};
@@ -2644,6 +2667,24 @@ void ProjectSettingsWindow::drawMeshSettings() {
                                               "Exports keep the source model next to its cook (code that reads the file itself).");
                 d.shipSource = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
             }
+        }
+        if (settingsui::beginRow("mesh.preserve_hierarchy_for_new_models")) {
+            const ModelProjectSettings defaults;
+            if (projectBeginSettingsRow("Preserve Hierarchy for New Models", m.preserveHierarchyForNewModels != defaults.preserveHierarchyForNewModels))
+                m.preserveHierarchyForNewModels = defaults.preserveHierarchyForNewModels;
+            ImGui::Checkbox("##MeshPreserveHierarchy", &m.preserveHierarchyForNewModels);
+            endSettingsRow("A Model made in the editor starts with Preserve Hierarchy on: every node of its file gets a GameObject, "
+                           "and a lone mesh is never merged into the Model's own. New projects start with it on; models already "
+                           "placed keep theirs.");
+        }
+        if (settingsui::beginRow("mesh.fbx_submesh_order")) {
+            static const char* const orderLabels[] = {"Material Slots", "Used Materials"};
+            int value = (int)m.fbxSubmeshOrder;
+            drawComboSetting("FBX Submesh Order", "##MeshFbxSubmeshOrder", orderLabels, 2, value, 0,
+                             "Material Slots: an FBX mesh's submesh i is its node's material slot i, as in Unity. Used Materials: "
+                             "the used slots in order, so an empty slot moves the next ones up (projects made before Material Slots "
+                             "keep it, so their per-submesh materials stay where they are). A change reimports every FBX.");
+            m.fbxSubmeshOrder = (FbxSubmeshOrder)value;
         }
         if (settingsui::beginRow("mesh.material_creation_mode")) {
             static const char* const materialLabels[] = {"Import", "None"};

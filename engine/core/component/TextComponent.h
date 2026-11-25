@@ -24,6 +24,35 @@ namespace jasperengine{
     //for what it misses. Empty slots are skipped, the built-in fonts close the chain
     typedef std::array<AssetRef, MAX_TEXT_FONTS> FontArray;
 
+    // Unity TextMesh's Anchor (S94 F24): which point of the text's box sits on its origin; how the
+    // lines sit inside the box is the Text's alignment, not this. The box is the fixed width/height
+    // when set, else the content. The two enums take disjoint values, so a value of one given to the
+    // other is refused (Lua's TextAnchor table holds both).
+    enum class TextAnchorHorizontal{
+        LEFT = 0,
+        CENTER = 1,
+        RIGHT = 2
+    };
+
+    // along the text's local +y: Bottom (the default) puts the box above the origin in a y-up
+    // world (below it on a y-down UI camera); Baseline the first line's baseline; Capline and
+    // Midline the middle of its capitals and of its lowercase letters
+    enum class TextAnchorVertical{
+        TOP = 3,
+        MIDDLE = 4,
+        BOTTOM = 5,
+        BASELINE = 6,
+        CAPLINE = 7,
+        MIDLINE = 8
+    };
+
+    // what fontSize measures (S94 F26): ascender to descender (stb_truetype's pixel height), or the
+    // em square as CSS and TextMesh Pro do
+    enum class TextFontSizeUnit{
+        PIXEL_HEIGHT = 0,
+        EM = 1
+    };
+
     struct JASPERENGINE_API TextComponent{
         bool loaded = false;
 
@@ -40,10 +69,11 @@ namespace jasperengine{
         bool fixedWidth = false;
         bool fixedHeight = false;
 
-        bool pivotBaseline = false;
-        bool pivotCentered = false;
+        TextAnchorHorizontal anchorHorizontal = TextAnchorHorizontal::LEFT;
+        TextAnchorVertical anchorVertical = TextAnchorVertical::BOTTOM;
+        TextFontSizeUnit fontSizeUnit = TextFontSizeUnit::PIXEL_HEIGHT;
 
-        // S93 R37: TMP Alignment, inside the fixed width / height (the old pivots without one)
+        // S93 R37: TMP Alignment, the lines inside the fixed width / height (S94's anchor places the box)
         TextHorizontalAlignment horizontalAlignment = TextHorizontalAlignment::LEFT;
         TextVerticalAlignment verticalAlignment = TextVerticalAlignment::TOP;
         // TMP Auto Size: the largest whole font size in [fontSizeMin, fontSizeMax] whose layout
@@ -78,6 +108,8 @@ namespace jasperengine{
         bool vertexColor = false;
         // bumped by every rebuild of the glyphs (a Text Effect takes them as its base again)
         unsigned long buildCount = 0;
+        // runtime: the box's lowest corner in local units after the alignment (picking, gizmos)
+        Vector2 boxMin = Vector2(0.0f, 0.0f);
 
         std::shared_ptr<STBText> stbtext = NULL;
         // a bitmap font (S51), set instead of stbtext: its layout, its pixel scale k (0 for a

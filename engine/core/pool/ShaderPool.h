@@ -199,6 +199,9 @@ namespace jasperengine{
         // MESH's 'Dlo': the built-in Lit of a scene whose lights are all directional
         // (DIRECTIONAL_LIGHTS_ONLY: no point or spot path, spot mask or point shadow resources)
         static uint64_t getDirectionalOnlyProperty();
+        // MESH's 'Lst': the scene's Light Steps on a 2D-lit variant (LIGHT2D_STEPS, S78 R3; the
+        // count is u_fs_lighting2d's atlasInfo.z)
+        static uint64_t getLight2DStepsProperty();
         // the variant bit of a terrain's holes (T3 R20: TERRAIN_HOLES) of MESH, DEPTH and GBUFFER, 0 for
         // another type. Never in getFallbackProperties: a dropped hole would draw over the hole.
         static uint64_t getTerrainHolesProperty(ShaderType shaderType);

@@ -843,6 +843,15 @@ namespace jasperengine::editor{
         // material (prefix "submeshes[N].material."), its extra pass ("...extraPass.") or a
         // component (""), into the current table. resolveAuto: an entity's state with both on
         // Auto. An edit changes only what it names on each selected GameObject.
+        // A Mesh's Property Overrides foldout (S94 F7, Unity's MaterialPropertyBlock): the
+        // properties and textures of the shader its submesh draws with (the built-in Lit's Base
+        // Color, Emission and Base Map), each with an Override toggle; the Mesh's (submesh -1,
+        // read against submesh 0's shader) or one submesh's. Edits the first GameObject.
+        void drawPropertyOverridesRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities, int submesh);
+        // Blend Mode Custom's Src/Dst factor and Blend Op rows of a material or its extra pass
+        // (prefix ends in '.'), shown while the first entity's blend mode is Custom
+        void drawBlendFactorRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                 const std::string& prefix, bool custom, const RowSettings& settings);
         void drawStencilColorWriteRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
                                        const std::string& prefix, const std::function<RenderState(Entity)>& resolveAuto,
                                        const RowSettings& settings);
@@ -973,6 +982,8 @@ namespace jasperengine::editor{
         void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Title Art Renderer (InspectorTitleArtRenderer.cpp, S81 R60-R62, §6.4)
         void drawTitleArtRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // S94 F49: InspectorSpriteSkin.cpp
+        void drawSpriteSkinComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Pixel Perfect Camera (InspectorPixelArt.cpp, S41)
@@ -1053,6 +1064,7 @@ namespace jasperengine::editor{
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // its table's rows, then a bitmap font's Pixel Font rows (S51 R22, InspectorPixelFont.cpp)
         void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTextAnchor(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawPoseAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

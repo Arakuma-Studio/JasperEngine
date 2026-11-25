@@ -50,6 +50,7 @@
 #include "window/InspectorWindowTitleArt.h"
 #include "titleart/designer/TitleCanvasView.h"
 #include "window/SpritePreviewWindow.h"
+#include "window/SkinningEditorWindow.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
 #include "window/NoiseGraphWindow.h"
@@ -321,6 +322,7 @@ editor::App::App(){
     spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
     SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
     spritePreviewWindow = new SpritePreviewWindow(&project, projectWindow);
+    skinningEditorWindow = new SkinningEditorWindow(&project);
     pixelart::aseprite::asepriteEditorHooks().openSpritePreview = [this](const std::string& p) { spritePreviewWindow->open(p); };
     mcpActivityWindow = new mcp::McpActivityWindow();
     systemsWindow = new SystemsWindow(&project);
@@ -778,6 +780,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         catalogItem("assets.import"),
         catalogItem("assets.importTitleArt"),
+        catalogItem("assets.importUnityAnimation"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
         catalogItem("assets.importSoundEssentials"),
@@ -880,6 +883,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("2D", {
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
+            catalogItem("window.skinningEditor", windowMenuLabel(SkinningEditorWindow::WINDOW_NAME)),
             catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME)),
             catalogItem("window.pixelArtCheck", windowMenuLabel(PixelArtCheckWindow::WINDOW_NAME)),
             catalogItem("window.pixelArtCleanup", windowMenuLabel(PixelArtCleanupWindow::WINDOW_NAME)),
@@ -1218,6 +1222,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleSpritePreview:
             spritePreviewWindow->open();
+            break;
+        case AppMenuCommand::ToggleSkinningEditor:
+            skinningEditorWindow->open();
             break;
         case AppMenuCommand::ToggleVertexAnimationBaker:
             vertexAnimationBakerWindow->open();
@@ -2413,6 +2420,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(GraphEditorWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(ProceduralMaterialWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(SpritePreviewWindow::WINDOW_NAME, dock_id_middle_top);
+    ImGui::DockBuilderDockWindow(SkinningEditorWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(PixelArtCleanupWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
@@ -3237,6 +3245,7 @@ void editor::App::show(){
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     spritePreviewWindow->show();
+    skinningEditorWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     titleDesignerWindow->show();
@@ -3937,6 +3946,8 @@ void editor::App::updateHubCreation() {
             // S77 R38: a new project places a model of many clips without an Animation entity per clip
             ModelProjectSettings models = project.getModelSettings();
             models.animationEntities = AnimationEntitiesMode::Auto;
+            // S94 F44: and keeps every model's node hierarchy, as Unity's Preserve Hierarchy
+            models.preserveHierarchyForNewModels = true;
             project.setModelSettings(models);
             project.saveProject();
             project.writeVersionControlMetadata();
@@ -5632,6 +5643,7 @@ void editor::App::prepareForProjectSwitch() {
     spriteNormalsWatcher->reset();
     editor::spritenormals::SpriteNormalsRun::cancelRunning();
     spritePreviewWindow->resetForProjectSwitch();
+    skinningEditorWindow->resetForProjectSwitch();
     // a running bake or import is cancelled, its source and result forgotten
     vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
@@ -6185,6 +6197,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (BLIT 'Gli' 20) and the screen transition program.
     // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
+    // v66: S78's Light Steps (after S50's v65): MESH 'Lst' 55 (LIGHT2D_STEPS in includes/lighting2d.glsl, the count
+    //      in u_fs_lighting2d's atlasInfo.z, which held the 2D shadow atlas's width and no shader read).
+    // v72: S94 (after #3's v66, #10's v69, #149's v70, #140's v71 in the landing order): the Radii
+    //      vignette (post_color.glsl, uber.frag), library:panoramic_sky's VERTEX_MAPPING (sky_vs.glsl
+    //      SKY_SPHERE_UV), the Outline passes and Sprite Skin.
     // v73: S93's World Space UI Documents (after S94's v72): htmlui.vert keeps the quad's depth when its
     //      translation.w asks (HTMLUI 'Tex'); an older cache draws the quad in front of everything.
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v73";

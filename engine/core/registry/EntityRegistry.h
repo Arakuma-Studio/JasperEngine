@@ -56,6 +56,7 @@
 #include "component/AudioSnapshotComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"   // S48
 #include "component/GridComponent.h"
@@ -63,6 +64,7 @@
 #include "component/TilemapCollider2DComponent.h"
 #include "component/TitleArtRendererComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/Transform.h"
 #include "component/LightComponent.h"

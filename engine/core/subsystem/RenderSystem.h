@@ -6,6 +6,7 @@
 
 #include "SubSystem.h"
 #include <functional>
+#include <optional>
 #include "render/ViewDrawMode.h"
 #include <string>
 #include <vector>
@@ -37,6 +38,7 @@
 #include "component/SpriteComponent.h"
 #include "ecs/ComponentFwd.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/OutlineComponent.h"
 #include "pixelart/PixelSnap.h"
 #include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
@@ -101,7 +103,7 @@ namespace jasperengine{
 	    Vector4 color_intensity[MAX_LIGHTS_2D];  // rgb = color (linear), w = intensity
 	    Vector4 falloff_shadow[MAX_LIGHTS_2D];   // x = falloff exp, y = shadow atlas row (-1 = none), z = softness (texels), w = bias
 		Vector4 ambient;                         // rgb = ambient2D (linear) * intensity, w = numLights2D
-		Vector4 atlasInfo;                       // x = 1/atlasWidth, y = 1/MAX_LIGHTS_2D, z = atlasWidth, w = PCF tap radius
+		Vector4 atlasInfo;                       // x = 1/atlasWidth, y = 1/MAX_LIGHTS_2D, z = Light Steps (0 off), w = PCF tap radius
 	} fs_lighting2d_t;
 
 	// The post-processing colour's parameters (phase 4, shaderlib/includes/post_color.glsl),
@@ -481,6 +483,12 @@ namespace jasperengine{
 		bool fog = false;
 		bool lights2D = false;
 		bool shadows2D = false;         // a shadow-casting 2D light and an occluder
+		// no Light 2D, Ambient Without Lights on and the scene's Ambient Light 2D tints
+		// (isAmbient2DTinted): the unlit variants take the 2D light path with no lights, so the
+		// ambient multiplies them (S78 R6)
+		bool ambient2D = false;
+		// the scene's Light Steps are on: the 2D-lit variants take 'Lst' (S78 R3)
+		bool light2DSteps = false;
 		bool ssao = false;
 		bool ssr = false;
 		bool depthPrepass = false;
@@ -818,6 +826,9 @@ namespace jasperengine{
 			int unitPriority = 0;
 			float unitDistance = 0.0f;
 			uint64_t unitSeq = 0;
+			// a mesh split by sort priority (MeshComponent::splitPriorities): the submeshes of
+			// this entry's priority; all otherwise
+			uint32_t submeshMask = 0xFFFFFFFFu;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -1749,6 +1760,11 @@ namespace jasperengine{
 		bool hasLights2D = false;
 		bool hasShadows2D = false;
 		int numLights2D = 0;
+		// no Light 2D and a tinting Ambient Light 2D: the unlit variants take the 2D light path
+		// with no lights (S78 R6); with the Light Steps' on or off, as the meshes loaded them
+		bool hasAmbient2D = false;
+		bool loadedAmbient2D = false;
+		bool loadedLight2DSteps = false;
 
 		// Shadows (RenderSystemShadows.cpp, docs/rendering/shadows.md). The projective atlas
 		// (directional cascades and spot lights) and the point atlas (cube faces) are depth-only
@@ -2293,6 +2309,7 @@ namespace jasperengine{
 		// the user's LUT (PostProcessingSettings::lutTexture: a .cube, its cooked .jlut or a PNG
 		// strip), shared through the CubeLut cache by path; null when none or it failed to load
 		std::string postLutPath;
+		bool postLutFlipGreen = false;
 		std::shared_ptr<const CubeLut> postLut;
 		// the bake buffer, kept between bakes
 		std::vector<uint8_t> postLutPixels;
@@ -2728,7 +2745,8 @@ namespace jasperengine{
 
 		bool checkPBRFrabebufferUpdate(Material& material);
 		bool checkPBRTextures(Material& material, bool receiveLights, bool receiveIBL);
-		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
+		// baseColor: a Property Override's base colour texture in place of the material's (drawnBaseColor)
+		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights, Texture* baseColor = nullptr);
 		// A material's binding takes a stand-in for an image it names that has no GPU texture yet
 		// (Texture::getStandInCount): taken around the binding, noted on the submesh, which binds
 		// again once an image could be made since (TexturePool::getReadyEpoch)
@@ -2754,8 +2772,8 @@ namespace jasperengine{
 		static void applyLitMaterialBlock(ObjectRender& render, int slot, const Material& material, unsigned int size);
 		void loadShadowTextures(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool receiveShadow);
 		void updateShadowBindings();
-		bool loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render);
-		bool loadGBufferTextures(Material& material, ShaderData& shaderData, ObjectRender& render);
+		bool loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render, Texture* baseColor = nullptr);
+		bool loadGBufferTextures(Material& material, ShaderData& shaderData, ObjectRender& render, Texture* baseColor = nullptr);
 		// Every map of every layer is a slice of one array texture, so the whole terrain
 		// costs a single bind slot. Kept here, not on the component, which stays copiable.
 		struct TerrainDetailArray{
@@ -2913,6 +2931,53 @@ namespace jasperengine{
 		void drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, Transform& transform, PipelineType pipType,
 		                          InstancedMeshComponent* instmesh, int instanceView, const MeshDraw& draw, unsigned int instanceCount,
 		                          const Matrix4* objectBlock, TilemapComponent* tilemap, uint32_t& builtLightBits);
+
+		// ---- the Outline component (S94 F22, F23; RenderSystemOutline.cpp)
+		// An outlined submesh's render: library:outline_stencil loaded as the submesh's extra pass
+		// would be (getOutlinePass), on the dynamic pipeline path, so its mask and fill draws and
+		// every mode share it. Made on its first draw, kept while an Outline covers the submesh
+		// and its mesh stays loaded (destroyMesh lets it go)
+		struct OutlineRender{
+			SubmeshExtraPass pass;      // shader, render and block slots
+			OutlineWidthUnits units = OutlineWidthUnits::PIXELS;
+			int widthMember = -1;       // screenWidth / worldWidth of u_vs_customParams
+			int colorMember = -1;       // outlineColor of u_fs_customParams
+			// the submesh render's buffers it was bound like (a buffer retargeted: made again)
+			uint32_t vertexBufferId = 0;
+			uint32_t indexBufferId = 0;
+			// the last frame an enabled Outline covered its mesh (unused a while: let go)
+			uint64_t coveredFrame = 0;
+		};
+		// a Mesh an enabled Outline covers in the pass being drawn
+		struct OutlineDraw{
+			Entity entity = NULL_ENTITY;
+			MeshComponent* mesh = nullptr;
+			Transform* transform = nullptr;
+			InstancedMeshComponent* instmesh = nullptr;
+			const OutlineComponent* outline = nullptr;
+			MeshDraw draw;
+		};
+		// key: entity << 32 | submesh
+		std::unordered_map<uint64_t, std::unique_ptr<OutlineRender>> outlineRenders;
+		std::vector<OutlineDraw> outlineDraws;
+		std::vector<std::pair<std::string, Texture>> outlineNoTextures;
+		uint64_t outlineSweepFrame = 0;
+		// the masks, then the fills, of every outlined Mesh the camera pass shows: after its
+		// opaque queue (3D), or after its hierarchy draws (2D)
+		void drawOutlines(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPip, int passMsaa,
+		                  uint32_t cullingMask, int instanceView, const LodView* lodView);
+		// false while its shader builds or a binding is not ready (tried again next draw)
+		bool loadOutlineRender(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh,
+		                       OutlineRender& outline);
+		void drawOutlineRender(OutlineRender& outline, const OutlineDraw& target, unsigned int submeshIndex, int instanceView,
+		                       const Matrix4* objectBlock, const PipelineState& state, float width, const Vector4& color);
+		void releaseOutlineRender(OutlineRender& outline);
+		// the renders of a mesh's submeshes (its mesh destroyed or reloaded)
+		void releaseOutlineRenders(Entity entity);
+		void releaseAllOutlineRenders();
+		// the swapchain has no stencil (a WebGL canvas or an EGL config without one) and an
+		// Outline is drawn: the main camera draws offscreen (updateSwapchainRedirect, F-PB2)
+		bool outlinesNeedStencilTarget() const;
 		// the vertex attributes of the submesh (its buffers, its own attributes, the instance
 		// buffer) bound to a render; the index count when indexed, else the mesh's vertex count
 		// The batch variants (spec S55 R1): their shaders asked for with the submesh's others
@@ -3616,7 +3681,7 @@ namespace jasperengine{
 		                   const particles::EmitterRuntime* only = nullptr, particles::ParticleRenderData* onlyRender = nullptr);
 		// an emitter and its children as items of the transparent queue
 		void queueParticleTree(Entity entity, ParticleSystemComponent& particles, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd,
-		                       Transform& transform, const Transform& cameraTransform, bool root, uint32_t& order);
+		                       Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, bool root, uint32_t& order);
 		// an emitter, then its children in the effect's order
 		void drawParticleTree(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
 		                      CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, uint32_t& drawn, bool& sorted);
@@ -3722,6 +3787,9 @@ namespace jasperengine{
 		// Transparency Sort Axis distance as an order-preserving float, larger first (32; 0 in
 		// mode Default)
 		static uint64_t makeSortKey(uint16_t layerValue, int32_t order, bool axis, float distance);
+		// the distance a transparent draw at `point` sorts by from this camera (Transparency Sort
+		// Mode: the view-axis depth or the distance; larger first)
+		static float transparentSortDistance(const CameraComponent& camera, const Transform& cameraTransform, const Vector3& point);
 		// whether this frame's renderers leave the defaults (R9: else today's loop runs)
 		bool isSortingActive() const { return sortingActive; }
 		// the flag of this frame and a new frame for the order (update() calls it)
@@ -3789,7 +3857,7 @@ namespace jasperengine{
 		uint64_t entitySortKey(Entity entity, Signature signature, bool axis);
 		void gatherSortRange(size_t first, size_t end, size_t depth, uint32_t outerSequence, uint64_t outerKey, int32_t skipGroup);
 		// true when an enabled Sorting Group is in the queue (sort with TransparentGroupComparison)
-		bool applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const Vector3& cameraPosition);
+		bool applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const CameraComponent& camera, const Transform& cameraTransform);
 
 		// Sprite Batch (RenderSystemSpriteBatch.cpp)
 		SpriteBatchStats spriteBatchStats;
@@ -3941,11 +4009,28 @@ namespace jasperengine{
 		// capacity tier (4, 8 or 16 lights) of the per-object lights blocks for a scene's
 		// maxLightsPerObject: the light-capacity bits of every lit mesh variant
 		static int getLightCapacity(int maxLightsPerObject);
+		// the 2D ambient (linear colour times intensity) is not (1, 1, 1), by more than 1e-4 in a
+		// channel: it changes what the 2D-lit unlit materials draw without a Light 2D (S78 R6)
+		static bool isAmbient2DTinted(Vector3 ambientLinear, float intensity);
 
 		// ---- shader library (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
 		// The shader a submesh draws with: its material's, else the mesh's fork, else the
 		// scene's default mesh shader; "" is the built-in Lit shader
 		static const std::string& getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// Property Overrides (S94 F7). The textures a submesh draws with, made at load: its
+		// material's shader textures with the overrides' over them (the Mesh's, then the
+		// submesh's), and the built-in Lit's overridden base colour texture
+		static void resolveOverrideTextures(const MeshComponent& mesh, Submesh& submesh);
+		static std::vector<std::pair<std::string, Texture>>& drawnShaderTextures(Submesh& submesh);
+		static Texture* drawnBaseColor(Submesh& submesh);
+		// the material the built-in Lit's block is written from: the submesh's, or (an override
+		// naming baseColorFactor or emissiveFactor) a copy in scratch with the overrides in it
+		static const Material& drawnLitMaterial(const MeshComponent& mesh, const Submesh& submesh, std::optional<Material>& scratch);
+		// a submesh's override of `name`: its own, else the Mesh's; false without one
+		static bool findOverrideValue(const MeshComponent& mesh, const Submesh& submesh, const std::string& name, Vector4& value);
+		// the built-in Lit's colour factors as drawn (an override's, else the material's)
+		static Vector4 drawnBaseColorFactor(const MeshComponent& mesh, const Submesh& submesh);
+		static Vector3 drawnEmissiveFactor(const MeshComponent& mesh, const Submesh& submesh);
 		// R37: whether this shader's vertex program reads the compact instance; F6: whether its
 		// fragment program knows the fade
 		static bool shaderSupportsCompactInstances(const std::string& shader);
@@ -3974,6 +4059,15 @@ namespace jasperengine{
 		// getSubmeshShaderInputs) with its own shader's manifest and features, its default
 		// lighting mode, and no received shadows, IBL or mirror
 		static SubmeshShaderInputs getExtraPassShaderInputs(const SubmeshShaderInputs& submeshInputs, const MaterialPass& pass);
+		// ---- the Outline component (S94 F22, F23; RenderSystemOutline.cpp)
+		// The Outline drawing a Mesh GameObject: the nearest enabled one on it or, with Include
+		// Children, on an ancestor (a disabled one is skipped; null: none)
+		static const OutlineComponent* findOutline(EntityRegistry* registry, Entity entity);
+		// The pass an Outline draws a submesh with, as an extra pass: library:outline_stencil with
+		// its width units' feature and alpha blend (its variant: getExtraPassShaderInputs), and
+		// the custom shader string that variant is keyed by
+		static MaterialPass getOutlinePass(OutlineWidthUnits units);
+		static std::string getOutlineReference(OutlineWidthUnits units);
 		// Its colour pipeline state, resolved as the submesh's (resolveSubmeshRenderState):
 		// the pass's values, else its shader's @state with the rules of its features
 		// (manifestState, null: none), else the submesh's legacy behaviour
@@ -4062,6 +4156,10 @@ namespace jasperengine{
 		// sizes an auto-resize camera for a canvas of canvasWidth x canvasHeight, the
 		// Engine canvas in updateCameraSize(entity); a render-to-texture camera keeps its framebuffer's
 		void updateCameraSizeForCanvas(Entity entity, float canvasWidth, float canvasHeight);
+		// an orthographic camera with an Orthographic Size (S94 F28), and its clips from that size
+		// and its aspect (true when they changed)
+		static bool usesOrthographicSize(const CameraComponent& camera);
+		static bool applyOrthographicSize(CameraComponent& camera);
 		bool isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const Vector3& point);

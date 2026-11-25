@@ -161,6 +161,7 @@ namespace jasperengine::editor {
         ToggleParticleEffect,         // Window > Visual Effects > Particle Effect (S91)
         ToggleGraphEditor,            // Window > Assets > Graph Editor (S90)
         ToggleSpritePreview,          // Window > 2D > Sprite Preview (S44)
+        ToggleSkinningEditor,         // Window > 2D > Skinning Editor (S94 F49)
         // S43: Window > 2D > Palette (payload: a .palette to open), Assets > Create > Palette
         TogglePalette,
         AssetsCreatePalette,

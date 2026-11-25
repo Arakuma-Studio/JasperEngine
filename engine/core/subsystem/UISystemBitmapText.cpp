@@ -186,7 +186,9 @@ void UISystem::createBitmapText(TextComponent& text, UIComponent& ui, RectTransf
                   k * font.getNativeSize(), k);
     }
 
-    finishTextGeometry(text, ui, layout, text.bitmapText->getAscent(unit), unit, false, indices);
+    // a bitmap font has no OS/2 table: its capitals 0.7 and its lowercase 0.5 of its native size
+    const float em = (float)font.getNativeSize() * unit;
+    finishTextGeometry(text, ui, layout, text.bitmapText->getAscent(unit), 0.7f * em, 0.5f * em, unit, false, indices);
 }
 
 void UISystem::updateBitmapText(TextComponent& text, UIComponent& ui){

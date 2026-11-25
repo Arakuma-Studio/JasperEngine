@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: 6ae1376c14107d910f5730d8479f6f78
 id: 2026080800
 name: AllComponents
@@ -1384,8 +1384,8 @@ entities:
         maxTextSize: 100
         fixedWidth: true
         fixedHeight: true
-        pivotBaseline: true
-        pivotCentered: true
+        anchorHorizontal: center
+        anchorVertical: baseline
   - type: Entity
     entity: 1045
     name: InputFieldComponent
@@ -1973,6 +1973,7 @@ entities:
         playAutomatically: false
         speed: 2.5
         defaultFadeTime: 0.5
+        legacyRootDrift: true
   - type: Entity
     entity: 1068
     name: NavMeshSurfaceComponent
@@ -3032,3 +3033,42 @@ entities:
         antiRollBars:
           []
         maxPitchRollAngle: 60
+  - type: Entity
+    entity: 1107
+    name: OutlineComponent
+    components:
+      transform:
+        position: [106, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      outline:
+        enabled: false
+        mode: outline_hidden
+        color: [0.25, 0.5, 0.75, 0.5]
+        width: 3.5
+        widthUnits: world
+        includeChildren: false
+  - type: Entity
+    entity: 1108
+    name: SpriteSkinComponent
+    components:
+      transform:
+        position: [107, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      spriteskin:
+        enabled: false
+        rootBone: 1104
+        bones:
+          - 1104
+          - 1103

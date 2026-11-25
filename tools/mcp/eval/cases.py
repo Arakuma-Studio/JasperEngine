@@ -75,6 +75,11 @@ def err(text):
     return {"text": text, "is_error": True}
 
 
+def real(text, structured):
+    """A result as the editor sends it: a client like Claude Code shows the model only the structuredContent"""
+    return {**ok(text, structured), "real": True}
+
+
 RENAME_DIALOG = {"kind": "modal", "title": "Rename File", "message": "Rename 'RenameMe.lua' to:", "choices": ["ok", "cancel"],
                  "fields": [{"name": "name", "type": "text", "value": "RenameMe.lua"}]}
 
@@ -127,6 +132,43 @@ TERRAIN_IMPORT_DRY = {
                           "range_low": 812, "range_high": 61022, "clipped_low": 0, "clipped_high": 0}}],
     "warnings": [], "next": "Nothing changed. Call again without dry_run to apply.",
 }
+
+
+def scene_2d(entities):
+    """S78: the editor's answers about an open 2D scene "Main" holding `entities` [(id, path, components text,
+    components {name: values}, name regex)] (world.py's scene is 3D, without them)"""
+    tree = "\n".join(f"{path} [{eid}] {comps}" for eid, path, comps, _, _ in entities)
+    mocks = [
+        {"tool": "get_scene_tree", "result": ok(
+            f"Scene 1 \"Main\" (2D, {len(entities)} GameObjects). Each line: Name [id] components (flags); children indented.\n" + tree,
+            {"entity_count": len(entities), "scene_id": 1, "scene_name": "Main", "tree": tree, "truncated": False})},
+        {"tool": "find_entities", "result": ok(
+            f"{len(entities)} GameObject(s) match:\n" + tree, {"entities": [{"id": e[0], "path": e[1]} for e in entities]})},
+    ]
+    for eid, path, comps, values, names in entities:
+        # shaped like the real get_entity (world.py's), so it goes out as structuredContent with the values
+        mocks.append({"tool": "get_entity", "args": {"entity": f"re:(?i)^({eid}|{names})$"}, "result": {**ok(
+            f"{path} [{eid}] components: {comps}\n{json.dumps(values)}",
+            {"id": eid, "name": path, "path": path, "active": True, "active_in_hierarchy": True, "layer": 0, "tag": "",
+             "scene_id": 1, "child_count": 0, "components": values}), "real": True}})
+    mocks += [
+        {"tool": "list_scenes", "result": ok("1 scene(s):\n1 \"Main\" 2D scenes/Main.scene open selected start",
+                                             {"scenes": [{"id": 1, "name": "Main", "type": "2D", "opened": True, "selected": True}],
+                                              "selected_scene_id": 1})},
+        {"tool": "editor_status", "result": ok("Project \"Space Dodge\" at the current directory. 1 scene(s), selected: 1 \"Main\" (2D). Edit mode.",
+                                               {"project": {"name": "Space Dodge", "path": "."}, "playing": False,
+                                                "scenes": [{"id": 1, "name": "Main", "type": "2D", "selected": True}]})},
+    ]
+    return mocks
+
+
+SCENE_2D_BASE = [(10, "Main Camera", "camera transform", {"camera": {"type": "orthographic"}}, "main camera"),
+                 (11, "Ground", "sprite transform", {"sprite": {"texture": "assets/sprites/ground.png", "width": 640, "height": 64}}, "ground")]
+LAMP_64 = (30, "Lamp", "light2d transform", {"transform": {"position": [300.0, 0.0, 0.0]},
+                                             "light2d": {"enabled": True, "color": [1.0, 1.0, 1.0], "intensity": 1.0, "range": 900.0,
+                                                         "falloff": 1.0, "height": 64.0, "shadows": False}}, "lamp")
+BOSS_512 = (20, "Boss", "sprite transform", {"sprite": {"texture": "assets/sprites/boss.png", "width": 512, "height": 512}}, "boss")
+
 
 
 CASES = [
@@ -5433,6 +5475,260 @@ CASES = [
                    "must_not_call": ["create_entity"]},
         "max_turns": 12,
     },
+    # S78 WP-B
+    {
+        "id": "guard_s78_stone_floor_uses_stones",
+        "kind": "guard",
+        "what_happened": "New preset and setting (S78): a floor tile of light stones between dark gaps came out flat with "
+                         "tile (an opaque tile has no silhouette); the stones preset (gaps) gives every stone its own rim. "
+                         "The default preset's no_alpha fix now names it.",
+        "text_at_issue": "jasper://docs/sprite-normals 'Stone floors: gaps'; no_alpha fix 'For tiles use edges wrap or extend; for "
+                         "stones or bricks between dark gaps the stones preset (gaps).'",
+        "source": "S78 R9, R11, R25 (new preset, guide and fix text); no failure on record",
+        "groups_enabled": ["assets_pipeline"],
+        "prompt": "Our seamless 32 px floor tile assets/ground/cobbles.png still looks flat under the 2D lights with the tile "
+                  "preset. Make a normal map where every cobble catches the light on its own, and write it.",
+        "mocks": [
+            {"tool": "read_file", "args": {"path": "re:sprite-normals"}, "result": ok(
+                "## Stone floors: gaps\nA tile of stones or bricks between dark gaps comes out flat with `tile` (an opaque tile "
+                "has no silhouette): use `preset: \"stones\"`. `gaps: {share: 0..0.9}` (default 0, off) makes the darkest `share` "
+                "of each frame's pixels gaps: outside the shape, so every stone gets its own rim.")},
+            {"tool": "generate_sprite_normals", "args": {"preset": "stones", "output": "*"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset stones, radius 4.8 px) in 0.01 s. "
+                "Hint: Looks fine. Wrote assets/ground/cobbles_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/ground/cobbles_normal.png"], "undo": [{"scope": "project", "name": "Generate Normal Map cobbles_normal.png"}],
+                 "settings": {"preset": "stones", "edges": "wrap", "profile": "dome", "gaps": {"share": 0.3}}, "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"gaps": "*"}, "output": "*"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset tile, radius 4.8 px) in 0.01 s. "
+                "Wrote assets/ground/cobbles_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/ground/cobbles_normal.png"], "settings": {"preset": "tile", "edges": "wrap", "gaps": {"share": 0.3}},
+                 "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"preset": "stones"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset stones, radius 4.8 px) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"preset": "stones", "edges": "wrap", "profile": "dome", "gaps": {"share": 0.3}}, "hint": "Looks fine.",
+                 "warnings": [], "default_output": {"normal": "assets/ground/cobbles_normal.png"},
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/ground/cobbles_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"gaps": "*"}}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"gaps": {"share": 0.3}}, "hint": "Looks fine.", "warnings": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/ground/cobbles_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset default, radius 4.8 px) in 0.01 s. "
+                "Wrote assets/ground/cobbles_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/ground/cobbles_normal.png"], "settings": {"preset": "default", "edges": "transparent"},
+                 "hint": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps).",
+                 "warnings": [{"kind": "no_alpha", "message": "The image has no transparent pixels: volume only bevels its border.",
+                               "fix": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps)."}]})},
+            {"tool": "generate_sprite_normals", "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset default, radius 4.8 px) in 0.01 s.",
+                {"written": False, "settings": {"preset": "default", "edges": "transparent"},
+                 "hint": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps).",
+                 "warnings": [{"kind": "no_alpha", "message": "The image has no transparent pixels: volume only bevels its border.",
+                               "fix": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps)."}],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/ground/cobbles_normal.png) to write exactly this."})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "generate_sprite_normals", "args": {"preset": "stones", "output": "*"}}]},
+                              {"calls": [{"tool": "generate_sprite_normals", "args": {"params": {"gaps": "*"}, "output": "*"}}]}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_s78_sprite_normals_preview_then_write_from_next",
+        "kind": "guard",
+        "what_happened": "generate_sprite_normals without output previews and writes nothing; the write step was only in the "
+                         "result's text, which a client like Claude Code does not show next to structuredContent (S78 R22).",
+        "text_at_issue": "generate_sprite_normals structuredContent next: 'Preview only, nothing written: call again with the same "
+                         "arguments plus output (true for ...) to write exactly this.'",
+        "source": "S78 R22 (text moved into structuredContent); docs/mcp/conventions.md results rule",
+        "groups_enabled": ["assets_pipeline"],
+        "prompt": "Preview a normal map for the sprite image assets/sprites/hero.png with the defaults. If the preview reports "
+                  "no problem, keep it: the map belongs next to the image.",
+        "mocks": [
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": real(
+                "Normal map of assets/sprites/hero.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. "
+                "Wrote assets/sprites/hero_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/hero_normal.png"], "undo": [{"scope": "project", "name": "Generate Normal Map hero_normal.png"}],
+                 "settings": {"preset": "default"}, "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "result": real(
+                "Normal map of assets/sprites/hero.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. Hint: Looks fine. "
+                "Preview only, nothing written: call again with the same arguments plus output (true for assets/sprites/hero_normal.png) "
+                "to write exactly this.",
+                {"written": False, "settings": {"preset": "default"}, "hint": "Looks fine.", "warnings": [],
+                 "default_output": {"normal": "assets/sprites/hero_normal.png", "atlas": None, "height": None, "frames_json": None},
+                 "sheet_legend": {"rows": "the frames", "columns": ["colour", "normal", "lit from the top-left", "lit from the top-right",
+                                                                   "lit from the bottom-right", "lit from the bottom-left"],
+                                  "light_elevation_deg": 34, "light_steps": 0},
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/hero_normal.png) to write exactly this."})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sprite_normals", "args": {"output": "*"}}], "max_calls": {"generate_sprite_normals": 3},
+                   "must_not_call": ["write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_s78_boxy_crate_follows_the_fix",
+        "kind": "guard",
+        "what_happened": "New warning (S78): a crate on the default preset (rounded at pixel-art sizes, inflate above) bulges into "
+                         "a pillow; boxy says so and names the fix (preset props, or profile bevel with a radius).",
+        "text_at_issue": "generate_sprite_normals warning boxy: 'Use preset props, or profile bevel with radius 1.'",
+        "source": "S78 R13 (new warning text); no failure on record",
+        "groups_enabled": ["assets_pipeline"],
+        "prompt": "Make a normal map for the sprite assets/sprites/block_07.png and write it. Fix any problem the tool reports "
+                  "about the map before you write it.",
+        "mocks": [
+            {"tool": "generate_sprite_normals", "args": {"preset": "props", "output": "*"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "props", "profile": "dome"},
+                 "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}, "output": "*"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "default", "profile": "bevel", "radius": 1},
+                 "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"preset": "props"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"preset": "props", "profile": "dome"}, "hint": "Looks fine.", "warnings": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"preset": "default", "profile": "bevel", "radius": 1}, "hint": "Looks fine.", "warnings": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "default", "profile": "auto"},
+                 "profile_resolved": ["rounded"], "hint": "Use preset props, or profile bevel with radius 1.",
+                 "warnings": [{"kind": "boxy", "message": "1 sprite fills its box like a crate or panel, and the rounded profile bulges a box into a pillow.",
+                               "fix": "Use preset props, or profile bevel with radius 1."}]})},
+            {"tool": "generate_sprite_normals", "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s.",
+                {"written": False, "settings": {"preset": "default", "profile": "auto"}, "profile_resolved": ["rounded"],
+                 "hint": "Use preset props, or profile bevel with radius 1.",
+                 "warnings": [{"kind": "boxy", "message": "1 sprite fills its box like a crate or panel, and the rounded profile bulges a box into a pillow.",
+                               "fix": "Use preset props, or profile bevel with radius 1."}],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "generate_sprite_normals", "args": {"preset": "props", "output": "*"}}]},
+                              {"calls": [{"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}, "output": "*"}}]}]},
+        "max_turns": 12,
+    },
+    # S78 WP-C: a light too low over a large sprite is a generate_sprite_normals warning naming the height
+    {
+        "id": "guard_light_low_big_sprite",
+        "kind": "guard",
+        "what_happened": "New warning (S78): the editor's Light 2D height 64 is low over a 512 px sprite (it lights it from the "
+                         "side only); generate_sprite_normals warns light_low naming the height to set.",
+        "text_at_issue": "generate_sprite_normals warning light_low: 'Light 2D \"Lamp\" sits lower than half the sprite's larger "
+                         "side (512 world units), so it lights it from the side only.' Fix: 'Set its Height to at least 512 (the "
+                         "sprite's larger side).'",
+        "source": "S78 R14 (new warning text); no failure on record",
+        "prompt": "The GameObject \"Boss\" in the open 2D scene is a 512x512 sprite (assets/sprites/boss.png) lit by the Light 2D "
+                  "\"Lamp\". Give it a normal map, apply it, and make sure the lamp really shows the relief on the boss.",
+        "mocks": [
+            {"tool": "generate_sprite_normals", "args": {"output": True}, "result": ok(
+                "Normal map of assets/sprites/boss.png (512x512, 1 frame, preset auto, radius 9 px) in 0.80 s. Hint: Looks fine. "
+                "Wrote assets/sprites/boss_normal.png (undo with scope project) and applied it to Boss (undo with scope scene).\n"
+                "Warning: light_low: Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so it lights "
+                "it from the side only. Fix: Set its Height to at least 512 (the sprite's larger side).",
+                {"source": {"path": "assets/sprites/boss.png", "kind": "sprite", "width": 512, "height": 512},
+                 "files": ["assets/sprites/boss_normal.png"], "hint": "Looks fine.",
+                 "warnings": [{"kind": "light_low",
+                               "message": "Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so "
+                                          "it lights it from the side only.",
+                               "fix": "Set its Height to at least 512 (the sprite's larger side)."}]})},
+            {"tool": "generate_sprite_normals", "result": ok(
+                "Normal map of assets/sprites/boss.png (512x512, 1 frame, preset auto, radius 9 px) in 0.80 s. Hint: Looks fine. "
+                "Preview only, nothing written: call again with the same arguments plus output (true for "
+                "assets/sprites/boss_normal.png) to write exactly this.\n"
+                "Warning: light_low: Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so it lights "
+                "it from the side only. Fix: Set its Height to at least 512 (the sprite's larger side).",
+                {"source": {"path": "assets/sprites/boss.png", "kind": "sprite", "width": 512, "height": 512}, "hint": "Looks fine.",
+                 "default_output": {"normal": "assets/sprites/boss_normal.png", "atlas": None, "height": None, "frames_json": None},
+                 "warnings": [{"kind": "light_low",
+                               "message": "Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so "
+                                          "it lights it from the side only.",
+                               "fix": "Set its Height to at least 512 (the sprite's larger side)."}]})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step). New values: "
+                                                    "{\"light2d\":{\"height\":512.0}}",
+                                                    {"scene_id": 1, "entities": [{"id": 30, "name": "Lamp"}],
+                                                     "values": {"light2d": {"height": 512.0}}})},
+            *scene_2d(SCENE_2D_BASE + [BOSS_512, LAMP_64]),
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"light2d": {"height": "*"}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:height"}]}}]}]},
+        "max_turns": 14,
+    },
+    # S78 WP-A
+    {
+        "id": "guard_light_steps",
+        "kind": "guard",
+        "what_happened": "New setting (S78): the stepped, banded 2D lighting of pixel-art games is the scene's Light Steps "
+                         "(light_2d_steps), one value for every Light 2D; without it agents fork library:sprite to quantize "
+                         "the light in GLSL, which leaves the tiles and every other 2D-lit surface smooth.",
+        "text_at_issue": "set_scene_settings names (light_2d_steps: 'Light Steps: each Light 2D's light in this many hard bands, "
+                         "0-16 (0 off: smooth)')",
+        "source": "docs/specs/S78-sprite-normals-improvements.md R1-R4 (new setting text); no failure on record",
+        "prompt": "Our 2D pixel-art level is lit by Light 2Ds and the sprites have normal maps. Make the lighting look stepped, "
+                  "in about 6 hard bands like classic pixel-art lighting, on every sprite and tile.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nlight_2d_steps = 6",
+                {"scene_id": 1, "settings": {"light_2d_steps": 6}})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_color = [1, 1, 1] (2D ambient light color [r,g,b] (sRGB))\n"
+                "ambient_light_2d_intensity = 1 (2D ambient light intensity)\n"
+                "light_2d_steps = 0 (Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth))\n"
+                "shadows_2d_quality = low (2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high))",
+                {"scene_id": 1, "settings": {"ambient_light_2d_color": [1, 1, 1], "ambient_light_2d_intensity": 1.0,
+                                             "light_2d_steps": 0, "shadows_2d_quality": "low"}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["light_2d_steps"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Level\" (scenes/Level.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"light_2d_steps": 6}}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(frag|glsl)$"}}]},
+        "max_turns": 10,
+    },
+    # S78 R7 at the main merge (old scenes keep their look)
+    {
+        "id": "guard_ambient_2d_without_lights",
+        "kind": "guard",
+        "what_happened": "New setting (S78): a scene saved before S78 keeps ambient_light_2d_without_lights off, so its dark "
+                         "2D ambient leaves unlit sprites untinted while it has no Light 2D; turning it on is the fix. Without "
+                         "the setting's text agents add a Light 2D out of range or tint every sprite's material instead.",
+        "text_at_issue": "get_scene_settings (ambient_light_2d_without_lights: 'the 2D ambient tints unlit 2D objects with no "
+                         "Light 2D in the scene too (on in new scenes; off in scenes saved before it, as they were drawn)')",
+        "source": "docs/specs/S78-sprite-normals-improvements.md Deviations, R7 (new setting text); no failure on record",
+        "prompt": "In our old 2D level I set a dark blue 2D ambient for a night look, but the sprites still draw at full "
+                  "brightness. The level has no 2D lights and shouldn't get any. Make the ambient darken the sprites.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_without_lights = true",
+                {"scene_id": 1, "settings": {"ambient_light_2d_without_lights": True}})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_color = [0.3, 0.3, 0.4] (2D ambient light color [r,g,b] (sRGB))\n"
+                "ambient_light_2d_intensity = 1 (2D ambient light intensity)\n"
+                "light_2d_steps = 0 (Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth))\n"
+                "ambient_light_2d_without_lights = false (the 2D ambient tints unlit 2D objects with no Light 2D in the scene "
+                "too (on in new scenes; off in scenes saved before it, as they were drawn))\n"
+                "shadows_2d_quality = low (2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high))",
+                {"scene_id": 1, "settings": {"ambient_light_2d_color": [0.3, 0.3, 0.4], "ambient_light_2d_intensity": 1.0,
+                                             "light_2d_steps": 0, "ambient_light_2d_without_lights": False,
+                                             "shadows_2d_quality": "low"}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["ambient_light_2d_without_lights"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Level\" (scenes/Level.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_light_2d_without_lights": True}}}],
+                   "must_not_call": [{"tool": "create_entity", "args": {"type": "light_2d"}}]},
+        "max_turns": 10,
+    },
     # -- S48 Pixel FX: the "Other areas" entry and capture_contact_sheet's lint and preview-then-write ----------------
     {
         "id": "guard_contact_sheet_lint",
@@ -5685,6 +5981,448 @@ CASES = [
         "checks": {"calls": [{"tool": "apply_material_preset", "args": {"preset": "selout_outline"}}],
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
+    },
+    # ---- S94 P7 model import: rest pose and the GameObject that draws a model's mesh
+    {
+        "id": "guard_model_rest_pose_first_frame",
+        "kind": "guard",
+        "what_happened": "New text (S94 F40): get_model_info reports first_frame_differs (a take starting with the hips away from "
+                         "the file's nodes, CLEIVER's 5.6 m) and its next names set_model_import_settings rest_pose: first_frame; "
+                         "an agent fixes the pose there instead of moving bones by hand.",
+        "text_at_issue": "get_model_info next: 'Its clips start with the root or hips away from where the file's nodes put them "
+                         "... set_model_import_settings with settings {rest_pose: \"first_frame\"} ...'",
+        "source": "S94 F40 (new result text); ARCADE R37",
+        "prompt": "The Cleiver model stands about 5 metres too low compared to how it looks in its animations. Fix the model so it "
+                  "imports in the right pose.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCleiver [30] model", {"entities": [{"id": 30, "path": "Cleiver"}]})},
+            {"tool": "get_model_info", "result": ok(
+                "Model \"Cleiver\": 1 mesh(es), 52 bone(s), 1 animation(s).",
+                {"model": {"id": 30, "name": "Cleiver"}, "file": "assets/models/cleiver@T-Pose.fbx", "loading": False,
+                 "first_frame_differs": [{"animation": "mixamo.com", "node": "Hips", "node_translation": [0, 0.2, 0],
+                                          "first_frame": [0, 5.8, 0], "distance": 5.6}],
+                 "next": "Its clips start with the root or hips away from where the file's nodes put them (first_frame_differs). Unity "
+                         "imports such an FBX in the first frame's pose: set_model_import_settings with settings {rest_pose: "
+                         "\"first_frame\"} (rest_pose_take names another take) does the same, and the model reloads."})},
+            {"tool": "get_entity", "result": ok("Cleiver [30] components: model mesh transform", {"id": 30, "name": "Cleiver"})},
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["assets/models/cleiver@T-Pose.fbx"], "unchanged": 0, "models": []})},
+        ],
+        "checks": {"calls": [{"tool": "set_model_import_settings", "args": {"settings": {"rest_pose": "first_frame"}}}],
+                   "must_not_call": ["set_properties", "set_transform"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_model_node_material_on_root",
+        "kind": "guard",
+        "what_happened": "New text (S94 F45): a mesh value sent to a model node whose mesh the model's own GameObject draws fails "
+                         "naming that GameObject and preserveHierarchy; the agent sets it on the root (or turns Preserve Hierarchy "
+                         "on) instead of giving up or adding a Mesh to the node.",
+        "text_at_issue": "set_properties error: 'Shark/Body is a node of the model Shark, whose own GameObject draws this node's "
+                         "mesh: set the mesh and material values on Shark, or set model.preserveHierarchy true on it ...'",
+        "source": "S94 F45 (new error text); ARCADE R52 (M's shark)",
+        "prompt": "Turn off shadow casting on the shark's Body mesh (GameObject Shark/Body).",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObject(s) match:\nShark [50] model\nShark/Body [51] bone",
+                                                  {"entities": [{"id": 50, "path": "Shark"}, {"id": 51, "path": "Shark/Body"}]})},
+            {"tool": "set_properties", "args": {"entity": "re:(?i)^(51|Shark/Body)$"}, "result": err(
+                "Shark/Body is a node of the model Shark, whose own GameObject draws this node's mesh: set the mesh and material "
+                "values on Shark, or set model.preserveHierarchy true on it (every node then draws its own mesh).")},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 50 \"Shark\".", {"entity": {"id": 50}})},
+            {"tool": "get_entity", "result": ok("Shark/Body [51] components: bone transform", {"id": 51, "name": "Body"})},
+            {"tool": "get_model_info", "result": ok("Model \"Shark\": 1 mesh(es), 12 bone(s), 0 animation(s).",
+                {"model": {"id": 50, "name": "Shark"}, "mesh_nodes": [{"node": 1, "name": "Body", "entity": {"id": 51},
+                                                                       "drawn_by": {"id": 50, "name": "Shark"}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties", "args": {"entity": "re:(?i)^(50|Shark)$"}}],
+                   "must_not_call": ["add_component"]},
+        "max_turns": 10,
+    },
+    # ---- S94 P6: Root Transform Based Upon (F32)
+    {
+        "id": "guard_root_motion_body_orientation",
+        "kind": "guard",
+        "what_happened": "New text (S94 F32): edit_animation's root_motion takes Unity's Based Upon; asked to make a clip that "
+                         "starts turned away face forward, an agent sets rotation_based_upon instead of rewriting the hips' keys.",
+        "text_at_issue": "animation.md clip mode arguments: root_motion '... rotation_based_upon ... a clip that starts turned away "
+                         "or off the ground: rotation_based_upon: \"body_orientation\"'",
+        "source": "docs/specs/S94-rendering-anim-gaps.md F32 (new text); no failure on record",
+        "prompt": "assets/anims/walk.anim was captured with the actor turned about 30 degrees, so the character walks along its "
+                  "forward but faces off to the side. Make the clip face the GameObject's forward when it plays.",
+        "mocks": [
+            {"tool": "get_animation", "result": ok(
+                "assets/anims/walk.anim: 1.00 s, loop, 2 tracks (Hips position, Hips rotation), root_motion {bake_position_y}.",
+                {"clip": "assets/anims/walk.anim", "length": 1.0, "wrap": "loop",
+                 "tracks": [{"index": 0, "path": "Hips", "channel": "position", "keys": 3},
+                            {"index": 1, "path": "Hips", "channel": "rotation", "keys": 3}],
+                 "root_motion": {"bone": "", "bake_rotation": False, "bake_position_y": True, "bake_position_xz": False,
+                                 "rotation_based_upon": "original", "rotation_offset": 0, "position_y_based_upon": "original",
+                                 "position_y_offset": 0, "position_xz_based_upon": "original"}})},
+            {"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "root_motion": "*"}, "result": ok(
+                "assets/anims/walk.anim: root_motion changed (one project undo step).",
+                {"clip": "assets/anims/walk.anim", "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim",
+                                                                  "root_motion": {"rotation_based_upon": "body_orientation"}}}],
+                   "must_not_call": [{"tool": "edit_animation", "args": {"tracks": "*"}}]},
+        "max_turns": 8,
+    },
+    # ---- S94 P5: Text alignment, the Orthographic Size, Sprite Flip X ------------------------------------------------------
+    {
+        "id": "guard_camera_orthographic_size",
+        "kind": "guard",
+        "what_happened": "New text (S94 F28, R46): the camera guide names camera.orthographicSize (Unity's Size, following the "
+                         "aspect); without it an agent writes fixed left/right/top/bottom bounds for one aspect (the port's "
+                         "workaround) or leaves Auto Resize showing the canvas in pixels.",
+        "text_at_issue": "jasper://docs/camera 'Orthographic bounds': 'For Unity's Size, set camera.orthographicSize (> 0) ...'",
+        "source": "S94 F28 (new guide text); ARCADE ENGINE_LIMITATIONS R46",
+        "prompt": "The 2D level was made in Unity with an orthographic camera Size of 11. Make the Main Camera show the same "
+                  "vertical extent on every screen shape.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nMain Camera [10] camera transform",
+                                                   {"entities": [{"id": 10, "path": "Main Camera"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(10|Main Camera)$"}, "result": ok(
+                "Main Camera [10] components: camera transform; camera: type orthographic, autoResize true, left 0, right 1280, "
+                "bottom 0, top 720, orthographicSize 0", {"id": 10, "name": "Main Camera"})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"id": 10}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"camera": {"orthographicSize": 11}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "orthographicSize", "value": 11}]}}]}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_text_capline_anchor",
+        "kind": "guard",
+        "what_happened": "New text (S94 F24, R42): the UI guide's Text anchor names center + capline for a number centred on a "
+                         "point; without it an agent offsets the Text's position by guessed font metrics (the port's door numbers "
+                         "sat too high).",
+        "text_at_issue": "jasper://docs/ui 'Text anchor and size': 'To centre a number on a plaque, use center + capline.'",
+        "source": "S94 F24 (new guide text); ARCADE ENGINE_LIMITATIONS R42",
+        "prompt": "The world-space Text 'Door12' should have its digits centred exactly on its GameObject's position "
+                  "(it sits at the plaque's centre). Fix how the text is anchored.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDoor12 [21] text transform ui",
+                                                   {"entities": [{"id": 21, "path": "Door12"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(21|Door12)$"}, "result": ok(
+                "Door12 [21] components: rectTransform text transform ui; text: text \"12\", fontSize 40, anchorHorizontal "
+                "left, anchorVertical bottom", {"id": 21, "name": "Door12"})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on 1 GameObject(s) (one undo step).", {"entities": [{"id": 21}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"text": {"anchorHorizontal": "center",
+                                                                                                  "anchorVertical": "re:capline|middle"}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "anchorVertical", "value": "re:capline|middle"}]}}]}],
+                   "must_not_call": ["set_transform"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sprite_flip_x",
+        "kind": "guard",
+        "what_happened": "New text (S94 F29, R9): the sprites guide names sprite.flipX; without it an agent mirrors a sprite with a "
+                         "negative scale, which also flips its colliders and children.",
+        "text_at_issue": "jasper://docs/sprites 'Flip and Size': 'sprite.flipX mirrors the quad about its pivot'",
+        "source": "S94 F29 (new guide text); ARCADE ENGINE_LIMITATIONS R9",
+        "prompt": "Make the Hero sprite face left: mirror its picture horizontally, but leave its transform and collider alone.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nHero [7] sprite mesh transform rigidbody2d",
+                                                   {"entities": [{"id": 7, "path": "Hero"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(7|Hero)$"}, "result": ok(
+                "Hero [7] components: mesh rigidbody2d sprite transform; sprite: width 32, height 32, flipX false, flipY true",
+                {"id": 7, "name": "Hero"})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"id": 7}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"sprite": {"flipX": True}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "flipX", "value": True}]}}]}],
+                   "must_not_call": ["set_transform"]},
+        "max_turns": 10,
+    },
+
+    {   # -- S94 F1: Points sprite frames are UV rects (a Sprite's are pixels) ----------------------------------------
+        "id": "guard_points_frames_in_uv",
+        "kind": "guard",
+        "what_happened": "New text (S94 F1, the port's R54): Points:addSpriteFrame takes UV rects (0..1) while Sprite:addFrame "
+                         "takes pixels; a port passed pixel rects and the frames sampled outside the texture.",
+        "text_at_issue": "lua-api.md 4.18 Points: 'addSpriteFrame([id,] [name,] rect) takes the rect in UV units (0..1), not "
+                         "pixels as Sprite:addFrame does'",
+        "source": "JasperArcade-Ported ENGINE_LIMITATIONS.md R54 (paraphrased)",
+        "files": GAME_FILES,
+        "prompt": "Write scripts/confetti_frames.lua: a module with a function add(points) that adds the 8 cells of our "
+                  "confetti sheet (assets/confetti.png, 256x128 pixels, 4 columns x 2 rows of 64x64 cells) as sprite frames "
+                  "named c0..c7 on a Points object, row by row. Just write the file; don't attach or run it.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/confetti_frames.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"scripts/confetti_frames.lua": [r"addSpriteFrame", r"0\.25|1\s*/\s*4|/\s*(?:256|128|4\.0)\b"]},
+                   "file_must_not": {"scripts/confetti_frames.lua": [r"(?:addSpriteFrame|Rect)\(.*,\s*64\s*,\s*64\s*\)"]},
+                   "must_not_call": ["play", "attach_script", "write_file"]},
+        "max_turns": 16,
+    },
+    # ---- S94 F23: an outline on a model root (the ledger's R32)
+    {
+        "id": "bad_outline_preset_on_model_root",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port (ledger R32) applied an outline preset to a skinned model's root, which has no "
+                         "Mesh; apply_material_preset failed and the outline was given up. It now applies to the meshes below "
+                         "and its next names the Outline component, which outlines the whole model.",
+        "text_at_issue": "apply_material_preset next: 'Applied to the meshes below Drone ..., which have no Mesh of their own. "
+                         "To outline a whole object, add the Outline component to its root instead (add_component outline; "
+                         "set_properties outline.mode, outline.color, outline.width).'",
+        "source": "S94 F23 (new result text); JasperArcade-Ported ENGINE_LIMITATIONS.md R32",
+        "prompt": "Outline the Drone model in orange, a few pixels wide, and keep the outline when the drone flies behind walls.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDrone [20] model transform", {"entities": [{"id": 20, "path": "Drone"}]})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (3D).\nDrone [20] model\n  RootNode [21]\n    Body [22] mesh (skinned)\n",
+                                                    {"scene_id": 1})},
+            {"tool": "get_entity", "result": ok("Drone [20] components: model transform", {"id": 20, "name": "Drone"})},
+            {"tool": "list_material_presets", "result": ok(
+                "3 material preset(s); apply_material_preset applies one:\noutline_hull (Outline (hull)): Outline as an extra pass ...\n"
+                "outline_stencil (Outline (stencil)): through walls ...\nsee_through_silhouette (See-through silhouette) ...",
+                {"presets": [{"id": "outline_hull"}, {"id": "outline_stencil"}, {"id": "see_through_silhouette"}]})},
+            {"tool": "apply_material_preset", "result": ok(
+                "Applied preset outline_stencil to 1 submesh(es) (one undo step).",
+                {"preset": "outline_stencil", "applied": [{"entity": {"id": 22, "name": "Body"}, "submesh": 0}],
+                 "next": "Applied to the meshes below Drone (1 mesh(es)), which have no Mesh of their own. To outline a whole "
+                         "object, add the Outline component to its root instead (add_component outline; set_properties "
+                         "outline.mode, outline.color, outline.width)."})},
+            {"tool": "undo", "result": ok("Undid: Apply material preset.", {"undone": 1})},
+            {"tool": "add_component", "result": ok("Added Outline to Drone.", {"added": [{"entity": {"id": 20}, "component": "outline"}]})},
+            {"tool": "set_properties", "result": ok("Set properties of Drone.", {"entity": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)outline"}}],
+                   "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    # ---- S94 F42: an older project keeps the old FBX submesh order (the project migration)
+    {
+        "id": "guard_fbx_submesh_order_setting",
+        "kind": "guard",
+        "what_happened": "New text (S94 F42): projects made before submeshes followed the FBX material slots keep "
+                         "mesh.fbx_submesh_order used_materials; an agent porting a Unity model whose submeshes come out "
+                         "shifted (an empty slot) switches the setting instead of reordering the materials by hand.",
+        "text_at_issue": "get_project_settings describe: mesh.fbx_submesh_order 'An FBX mesh's submeshes: material_slots "
+                         "(submesh i is material slot i, Unity's order; new projects) or used_materials (the used slots in "
+                         "order, projects made before; a change reimports every FBX).'",
+        "source": "S94 F42 and the lead's old-projects rule (new setting text); no failure on record",
+        "prompt": "This project is older. In Unity, submesh 1 of assets/models/robot.fbx is the eyes (its material slot 0 "
+                  "is unused), but here the eyes are submesh 0. Make every FBX's submeshes follow Unity's material slots.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "mesh.fbx_submesh_order = used_materials (enum: material_slots, used_materials): An FBX mesh's submeshes: "
+                "material_slots (submesh i is material slot i, Unity's order; new projects) or used_materials (the used "
+                "slots in order, projects made before; a change reimports every FBX).",
+                {"mesh.fbx_submesh_order": "used_materials"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["mesh.fbx_submesh_order"]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "mesh.fbx_submesh_order = material_slots", {"mesh.fbx_submesh_order": "material_slots"})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"mesh.fbx_submesh_order": "material_slots"}}}],
+                   "must_not_call": ["set_properties", "link_material", "set_model_import_settings"],
+                   "edits_must_not": [r"project\.yaml$", r"\.meta$"]},
+        "max_turns": 10,
+    },
+    # ---- S94 P2: Property Overrides (MaterialPropertyBlock) and the shadowed Mesh value
+    {
+        "id": "guard_property_override_per_object_colour",
+        "kind": "guard",
+        "what_happened": "New text (S94 F7): set_shader_uniform's override parameter writes a Mesh's Property Override; "
+                         "an agent asked to tint one of several boxes sharing a material uses it instead of editing the shared "
+                         "material (which tints every box) or the Mesh's shaderUniforms (which the material's parameter hides).",
+        "text_at_issue": "set_shader_uniform: '... (+ component, + submesh; override: a Property Override, over its materials) ...'",
+        "source": "S94 F7, ARCADE ledger R15 (M's zone colours stuck under the material's values)",
+        "prompt": "Crate and Crate2 share the material materials/crate.material (library:unlit). Make only Crate2 red; Crate must stay as it is.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObject(s) match:\nCrate [30] mesh transform\nCrate2 [31] mesh transform",
+                                                   {"entities": [{"id": 30, "path": "Crate"}, {"id": 31, "path": "Crate2"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 31 \"Crate2\": transform, mesh (submeshes[0] material materials/crate.material, "
+                                               "shader library:unlit, shaderParams {baseColor: [1, 1, 1, 1]}).", {"id": 31, "name": "Crate2"})},
+            {"tool": "get_shader_uniforms", "result": ok("library:unlit on Crate2 submesh 0: baseColor [1, 1, 1, 1] (own), tiling [1, 1, 0, 0] (shader_default).",
+                                                        {"parameters": [{"member": "baseColor", "source": "own", "effective": [1, 1, 1, 1]}]})},
+            {"tool": "set_shader_uniform", "args": {"override": True}, "result": ok(
+                "Set baseColor on Crate2 (Property Override).", {"entity": {"id": 31, "name": "Crate2"}, "property": "propertyOverrides.values",
+                                                                 "name": "baseColor", "declared": True, "value": [1, 0, 0, 1]})},
+            {"tool": "set_shader_uniform", "result": ok(
+                "Set baseColor on Crate2 (submesh 0 material).", {"entity": {"id": 31, "name": "Crate2"}, "property": "submeshes[0].material.shaderParams",
+                                                                  "name": "baseColor", "declared": True, "value": [1, 0, 0, 1]})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 31 \"Crate2\".", {"entity": {"id": 31}})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}],
+                   "must_not_call": ["update_material"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_shadowed_mesh_uniform_next",
+        "kind": "guard",
+        "what_happened": "New text (S94 F8): set_shader_uniform's next says a Mesh value is hidden by its material's parameter "
+                         "of the same name and names override: true; the agent sets the value again as an override.",
+        "text_at_issue": "set_shader_uniform next: 'Submesh 0's material sets 'speed', which wins over this value: set it again "
+                         "with override: true (a Property Override) to win.'",
+        "source": "S94 F8, ARCADE ledger R15 (a silent failure)",
+        "prompt": "Set the Conveyor's shader uniform speed to 3.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nConveyor [40] mesh transform", {"entities": [{"id": 40, "path": "Conveyor"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 40 \"Conveyor\": transform, mesh (customShader shaders/belt, submeshes[0] material "
+                                               "shaderParams {speed: 1}).", {"id": 40, "name": "Conveyor"})},
+            {"tool": "set_shader_uniform", "args": {"override": True}, "result": ok(
+                "Set speed on Conveyor (Property Override).", {"entity": {"id": 40}, "property": "propertyOverrides.values", "name": "speed",
+                                                               "declared": True, "value": [3, 0, 0, 0]})},
+            {"tool": "set_shader_uniform", "result": ok(
+                "Set speed on Conveyor.", {"entity": {"id": 40}, "property": "shaderUniforms", "name": "speed", "declared": True,
+                                           "value": [3, 0, 0, 0],
+                                           "next": "Submesh 0's material sets 'speed', which wins over this value: set it again with "
+                                                   "override: true (a Property Override) to win."})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}]},
+        "max_turns": 8,
+    },
+    # ---- S94 F35, F36: Unity .anim / .controller / .mask import
+    {
+        "id": "guard_unity_anim_import",
+        "kind": "guard",
+        "what_happened": "New text (S94 F35): edit_animation's create.unity imports a Unity YAML .anim; an agent given a Unity "
+                         "clip imports it instead of hand-converting its curves into tracks or copying the YAML.",
+        "text_at_issue": "edit_animation: 'create {from?, humanoid?, unity: Unity .anim}' (schema: create.unity, create.mirror_x)",
+        "source": "S94 F35 (new description text); the JasperArcade port converted .anim files with its own script",
+        "prompt": "Bring the Unity clip /home/me/UnityGame/Assets/Anim/Walk.anim into this project as assets/anim/walk.anim.",
+        "mocks": [
+            {"tool": "edit_animation", "result": ok(
+                "assets/anim/walk.anim: created, 3 tracks, 1 s, loop; no Animation Player uses it yet (set_properties clips) "
+                "(one project undo step: undo scope project)\nimported the Unity clip Assets/Anim/Walk.anim (3 tracks, 1 event)",
+                {"path": "assets/anim/walk.anim", "created": True, "tracks": [], "wrap": "loop", "length": 1,
+                 "unity": {"source": "Assets/Anim/Walk.anim", "tracks": 3, "events": 1, "unmapped": [], "notes": [],
+                           "muscle_curves": {"count": 0, "names": []}}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim$", "create": {"unity": "re:Walk\\.anim$"}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.anim$"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_unity_anim_unmapped_next",
+        "kind": "guard",
+        "what_happened": "New text (S94 F35): edit_animation create.unity's next sends the agent to list_properties when Unity "
+                         "bindings did not map, so it keys their engine equivalents instead of reporting the clip done.",
+        "text_at_issue": "edit_animation next: 'unity.unmapped lists the Unity bindings with no engine property: key their engine "
+                         "equivalents with tracks (get_animation {root, list_properties} lists what a GameObject can animate)'",
+        "source": "S94 F35 (new result text); no failure on record",
+        "prompt": "Import the Unity clip /home/me/UnityGame/Assets/Anim/Blink.anim as assets/anim/blink.anim for the Hero "
+                  "GameObject, and make sure everything it animated in Unity is animated here too.",
+        "mocks": [
+            {"tool": "edit_animation", "args": {"create": "*"}, "result": ok(
+                "assets/anim/blink.anim: created, 1 track, 0.5 s, once; no Animation Player uses it yet (set_properties clips) "
+                "(one project undo step: undo scope project)\nimported the Unity clip Assets/Anim/Blink.anim (1 track, 0 events)",
+                {"path": "assets/anim/blink.anim", "created": True, "tracks": [], "wrap": "once", "length": 0.5,
+                 "unity": {"source": "Assets/Anim/Blink.anim", "tracks": 1, "events": 0, "notes": [],
+                           "unmapped": [{"binding": "Face: MonoBehaviour.eyeOpen", "reason": "script fields of Unity MonoBehaviours "
+                                         "have no engine binding: key the Lua script's field (script:<Class>) with edit_animation"}],
+                           "muscle_curves": {"count": 0, "names": []}},
+                 "next": "unity.unmapped lists the Unity bindings with no engine property: key their engine equivalents with tracks "
+                         "(get_animation {root, list_properties} lists what a GameObject can animate)"})},
+            {"tool": "get_animation", "result": ok(
+                "\"Face\": animatable properties (track component, property, kind):\nscript:face eyeOpen float\nmesh "
+                "submeshes[0].material.baseColorFactor color4",
+                {"properties": [{"component": "script:face", "property": "eyeOpen", "kind": "float"}]})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nHero [7] transform\nHero/Face [8] mesh script",
+                                                   {"entities": [{"id": 7, "path": "Hero"}, {"id": 8, "path": "Hero/Face"}]})},
+            {"tool": "edit_animation", "args": {"tracks": "*"}, "result": ok(
+                "assets/anim/blink.anim: 2 tracks, 0.5 s, once (one project undo step: undo scope project)",
+                {"path": "assets/anim/blink.anim", "created": False, "tracks": []})},
+        ],
+        "checks": {"calls": [{"tool": "get_animation", "args": {"list_properties": "*"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_unity_controller_import",
+        "kind": "guard",
+        "what_happened": "New text (S94 F36): edit_animator_controller's create.unity imports a Unity .controller with the clips "
+                         "and masks it uses; an agent imports it in one call instead of rebuilding states with ops or importing "
+                         "each clip first, and follows next for the model clip that did not map.",
+        "text_at_issue": "edit_animator_controller create: 'true, or {unity: an absolute Unity .controller}'; next: 'unity.unmapped "
+                         "lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's clip: set_state "
+                         "{clip: \"<model>#<clip>\"} once the model is in the project)'",
+        "source": "S94 F36 (new schema and result text); no failure on record",
+        "prompt": "Import the Unity Animator Controller /home/me/UnityGame/Assets/Anim/Hero.controller as "
+                  "assets/anim/hero.controller, with everything it needs. The Hero model is already in the project at "
+                  "assets/models/hero.fbx.",
+        "mocks": [
+            {"tool": "edit_animator_controller", "args": {"create": "*"}, "result": ok(
+                "assets/anim/hero.controller: imported Assets/Anim/Hero.controller (4 file(s), one project undo step); 1 unmapped "
+                "item(s): see unity.unmapped\nlayers[Base Layer].states[Jump].motion: a clip of the model Assets/Models/Hero.fbx "
+                "(\"Jump\"): import the model into the project, then set the state's clip to \"<model path>#Jump\" with "
+                "edit_animator_controller set_state",
+                {"path": "assets/anim/hero.controller", "created": True,
+                 "files": ["assets/anim/hero.controller", "assets/anim/Walk.anim", "assets/anim/Run.anim", "assets/anim/UpperBody.mask"],
+                 "unity": {"source": "Assets/Anim/Hero.controller", "kind": "controller", "layers": 2, "states": 5,
+                           "unmapped": [{"what": "layers[Base Layer].states[Jump].motion", "reason": "a clip of the model "
+                                         "Assets/Models/Hero.fbx (\"Jump\"): import the model into the project, then set the state's "
+                                         "clip to \"<model path>#Jump\" with edit_animator_controller set_state"}]},
+                 "next": "unity.unmapped lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's "
+                         "clip: set_state {clip: \"<model>#<clip>\"} once the model is in the project)"})},
+            {"tool": "edit_animator_controller", "args": {"ops": "*"}, "result": ok(
+                "assets/anim/hero.controller: 1 change(s), 0 diagnostic(s), 0 warning(s); one project undo step.",
+                {"path": "assets/anim/hero.controller", "changes": ["set_state Jump"], "diagnostics": [], "warnings": []})},
+            {"tool": "get_animator", "result": ok("assets/anim/hero.controller: 6 parameters, 2 layers, 5 states.",
+                                                  {"controller": {"layers": []}})},
+            {"tool": "get_model_info", "result": ok("assets/models/hero.fbx: 1 mesh, 32 bones, clips: Jump, Idle.",
+                                                    {"clips": [{"name": "Jump"}, {"name": "Idle"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animator_controller", "args": {"create": {"unity": "re:Hero\\.controller$"}}},
+                             {"tool": "edit_animator_controller", "args": {"ops": [{"clip": "re:hero\\.fbx#Jump"}]}}],
+                   "must_not_call": ["edit_animation"]},
+        "max_turns": 12,
+    },
+    # ---- S94 F48, F49: layered PSD/PSB import and 2D skinning
+    {
+        "id": "guard_psd_layers_import_mode",
+        "kind": "guard",
+        "what_happened": "New text (S94 F48): set_texture_import_settings takes import_mode: layers, which makes a PSD/PSB's "
+                         "layers sprites and a prefab; an agent asked for the layers as separate sprites sets it instead of "
+                         "exporting PNGs per layer by hand.",
+        "text_at_issue": "set_texture_import_settings: 'import_mode: layers gives a PSD/PSB a frame per layer and a prefab'",
+        "source": "S94 F48 (new parameter); the JasperArcade port decoded PSB layers with its own parser (ledger R45)",
+        "prompt": "assets/art/truck.psb is a layered Photoshop file. Bring its layers into the project as separate sprites, placed as "
+                  "in the document.",
+        "mocks": [
+            {"tool": "list_assets", "result": ok("1 asset: assets/art/truck.psb (texture)", {"assets": [{"path": "assets/art/truck.psb", "type": "texture"}]})},
+            {"tool": "get_asset_info", "result": ok("assets/art/truck.psb: texture 512x256 (PSB).", {"path": "assets/art/truck.psb", "kind": "texture"})},
+            {"tool": "get_texture_import_settings", "result": ok("assets/art/truck.psb: type default, max_size 2048.", {"path": "assets/art/truck.psb"})},
+            {"tool": "set_texture_import_settings", "result": ok(
+                "Updated the import settings of 1 texture(s); their cooks are queued. Undo with scope project.",
+                {"updated": ["assets/art/truck.psb"], "unchanged": 0,
+                 "layers": [{"path": "assets/art/truck.psb", "prefab": "assets/art/truck.psb.prefab",
+                             "sprites": [{"name": "Body", "key": "layer:1"}, {"name": "Wheel", "key": "layer:2"}]}],
+                 "next": "instantiate_prefab the prefab to place the layers; a Sprite's sheet is the document, its frame a layer's name."})},
+            {"tool": "instantiate_prefab", "result": ok("Instantiated assets/art/truck.psb.prefab as \"truck\" [20].", {"root": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "set_texture_import_settings", "args": {"settings": {"import_mode": "layers"}}}],
+                   "must_not_call": ["create_sprite", "edit_sprite"], "edits_must_not": [r"\.png$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sprite_skin_bones",
+        "kind": "guard",
+        "what_happened": "New tool (S94 F49): edit_sprite_skin makes a Sprite's bones, mesh and weights; an agent asked to make "
+                         "a sprite arm bend at the elbow skins it instead of cutting the sprite into two GameObjects.",
+        "text_at_issue": "edit_sprite_skin: '2D skinning of a Sprite's frame (Unity's Sprite Skin): bones create/remove, "
+                         "auto_geometry, auto_weights, set_weights ...'",
+        "source": "S94 F49 (new tool); the JasperArcade port rebuilt its rig as parent/child GameObjects (ledger R45)",
+        "prompt": "The Arm sprite (a 16x64 vertical arm, shoulder at the bottom) should bend smoothly at the elbow halfway up. "
+                  "Set that up so I can animate the bend.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nArm [12] sprite transform", {"entities": [{"id": 12, "path": "Arm"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Arm\": transform, sprite (sheet assets/skin/arm.png, frame arm).", {"id": 12})},
+            {"tool": "edit_sprite_skin", "result": ok(
+                "Edited the skin of 'arm' (assets/skin/arm.png): 2 bones, 27 vertices. One undo step (scope timeline).",
+                {"bones": [{"name": "upper_arm", "parent": None, "head": [8, 64], "tail": [8, 32], "vertices": 15, "gameobject": {"id": 30}},
+                           {"name": "forearm", "parent": "upper_arm", "head": [8, 32], "tail": [8, 0], "vertices": 15, "gameobject": {"id": 31}}],
+                 "vertices": 27, "triangles": 32, "weighted": True, "source": "assets/skin/arm.png", "frame": "arm", "changed": True,
+                 "next": "Move or rotate the bone GameObjects (set_properties transform) to pose the Sprite; check with screenshot."})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 31 \"forearm\".", {"entity": {"id": 31}})},
+            {"tool": "screenshot", "result": ok("Game view, 640x360.", {"width": 640, "height": 360})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_skin", "args": {"entity": "re:(?i)^(12|Arm)$"}}],
+                   "must_not_call": ["create_entity", "duplicate_entities", "edit_sprite"]},
+        "max_turns": 10,
     },
     # ---- S98 F1: .mesh assets
     {

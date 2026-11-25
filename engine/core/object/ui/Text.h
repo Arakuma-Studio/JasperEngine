@@ -10,6 +10,10 @@
 
 namespace jasperengine{
     class JASPERENGINE_API STBText;
+    // component/TextComponent.h
+    enum class TextAnchorHorizontal;
+    enum class TextAnchorVertical;
+    enum class TextFontSizeUnit;
 
     class JASPERENGINE_API Text: public RectTransform{
 
@@ -25,6 +29,13 @@ namespace jasperengine{
 
         bool createText();
         bool load();
+
+        // the glyphs laid out now when the text, font or size changed since the last layout (S94
+        // F25): width and height are final right after setText. False without a font to load.
+        bool updateLayout();
+        // the text's box, laid out first when it is dirty (RectTransform's are the stored size)
+        unsigned int getWidth() const;
+        unsigned int getHeight() const;
 
         void setFixedSize(bool fixedSize);
 
@@ -70,6 +81,16 @@ namespace jasperengine{
         void setFlipY(bool flipY);
         bool isFlipY() const;
 
+        // Unity TextMesh's Anchor (S94 F24): the point of the text's box on the origin
+        void setAnchorHorizontal(TextAnchorHorizontal alignment);
+        TextAnchorHorizontal getAnchorHorizontal() const;
+        void setAnchorVertical(TextAnchorVertical alignment);
+        TextAnchorVertical getAnchorVertical() const;
+        // the font size as ascender to descender (the default) or as the em square (S94 F26)
+        void setFontSizeUnit(TextFontSizeUnit unit);
+        TextFontSizeUnit getFontSizeUnit() const;
+
+        // deprecated: the anchor before S94 (Baseline and Center)
         void setPivotBaseline(bool pivotBaseline);
         bool isPivotBaseline() const;
 

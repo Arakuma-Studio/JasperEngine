@@ -67,6 +67,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
 #include "component/GridComponent.h"
@@ -83,6 +84,7 @@
 #include "component/SplineInstantiateComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TerrainWorldComponent.h"
 #include "component/TextComponent.h"
@@ -245,6 +247,10 @@ EntityRegistry::EntityRegistry() {
     registerComponent<WheelColliderComponent>(ComponentOrder::Insertion, "WheelColliderComponent");
     registerComponent<VehicleDrivetrainComponent>(ComponentOrder::Insertion, "VehicleDrivetrainComponent");
 #endif
+    // S94 F22: after the last one, so no ComponentType moves
+    registerComponent<OutlineComponent>(ComponentOrder::Insertion, "OutlineComponent");
+    // S94 F49: after the last one, so no ComponentType moves
+    registerComponent<SpriteSkinComponent>(ComponentOrder::Insertion, "SpriteSkinComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

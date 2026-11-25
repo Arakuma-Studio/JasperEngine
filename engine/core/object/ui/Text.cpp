@@ -45,6 +45,24 @@ bool Text::createText(){
     return scene->getSystem<UISystem>()->createOrUpdateText(textcomp, ui, layout);
 }
 
+bool Text::updateLayout(){
+    TextComponent& textcomp = getComponent<TextComponent>();
+    UIComponent& ui = getComponent<UIComponent>();
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
+
+    return scene->getSystem<UISystem>()->updateTextLayout(textcomp, ui, layout);
+}
+
+unsigned int Text::getWidth() const{
+    const_cast<Text*>(this)->updateLayout();
+    return RectTransform::getWidth();
+}
+
+unsigned int Text::getHeight() const{
+    const_cast<Text*>(this)->updateLayout();
+    return RectTransform::getHeight();
+}
+
 bool Text::load(){
     UIComponent& ui = getComponent<UIComponent>();
 
@@ -324,32 +342,91 @@ bool Text::isFlipY() const{
     return ui.flipY;
 }
 
-void Text::setPivotBaseline(bool pivotBaseline){
+void Text::setAnchorHorizontal(TextAnchorHorizontal alignment){
     TextComponent& textcomp = getComponent<TextComponent>();
 
-    textcomp.pivotBaseline = pivotBaseline;
-    textcomp.needUpdateText = true;
-    markChanged<TextComponent>();
+    if (alignment != TextAnchorHorizontal::LEFT && alignment != TextAnchorHorizontal::CENTER && alignment != TextAnchorHorizontal::RIGHT){
+        Log::error("Text horizontal anchor must be TextAnchor.Left, Center or Right (got %d)", (int)alignment);
+        return;
+    }
+    if (textcomp.anchorHorizontal != alignment){
+        textcomp.anchorHorizontal = alignment;
+        textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
+    }
+}
+
+TextAnchorHorizontal Text::getAnchorHorizontal() const{
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    return textcomp.anchorHorizontal;
+}
+
+void Text::setAnchorVertical(TextAnchorVertical alignment){
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    if ((int)alignment < (int)TextAnchorVertical::TOP || (int)alignment > (int)TextAnchorVertical::MIDLINE){
+        Log::error("Text vertical anchor must be TextAnchor.Top, Middle, Bottom, Baseline, Capline or Midline (got %d)", (int)alignment);
+        return;
+    }
+    if (textcomp.anchorVertical != alignment){
+        textcomp.anchorVertical = alignment;
+        textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
+    }
+}
+
+TextAnchorVertical Text::getAnchorVertical() const{
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    return textcomp.anchorVertical;
+}
+
+void Text::setFontSizeUnit(TextFontSizeUnit unit){
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    if (unit != TextFontSizeUnit::PIXEL_HEIGHT && unit != TextFontSizeUnit::EM){
+        Log::error("Text font size unit must be TextFontSizeUnit.PixelHeight or Em (got %d)", (int)unit);
+        return;
+    }
+    // another scale is another atlas
+    if (textcomp.fontSizeUnit != unit){
+        textcomp.fontSizeUnit = unit;
+
+        textcomp.needReloadAtlas = true;
+        textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
+    }
+}
+
+TextFontSizeUnit Text::getFontSizeUnit() const{
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    return textcomp.fontSizeUnit;
+}
+
+// pivotBaseline true was the Baseline alignment; false leaves another alignment as it is
+void Text::setPivotBaseline(bool pivotBaseline){
+    if (pivotBaseline)
+        setAnchorVertical(TextAnchorVertical::BASELINE);
+    else if (isPivotBaseline())
+        setAnchorVertical(TextAnchorVertical::BOTTOM);
 }
 
 bool Text::isPivotBaseline() const{
-    TextComponent& textcomp = getComponent<TextComponent>();
-
-    return textcomp.pivotBaseline;
+    return getAnchorVertical() == TextAnchorVertical::BASELINE;
 }
 
+// pivotCentered true was the Center alignment; false leaves Right as it is
 void Text::setPivotCentered(bool pivotCentered){
-    TextComponent& textcomp = getComponent<TextComponent>();
-
-    textcomp.pivotCentered = pivotCentered;
-    textcomp.needUpdateText = true;
-    markChanged<TextComponent>();
+    if (pivotCentered)
+        setAnchorHorizontal(TextAnchorHorizontal::CENTER);
+    else if (isPivotCentered())
+        setAnchorHorizontal(TextAnchorHorizontal::LEFT);
 }
 
 bool Text::isPivotCentered() const{
-    TextComponent& textcomp = getComponent<TextComponent>();
-
-    return textcomp.pivotCentered;
+    return getAnchorHorizontal() == TextAnchorHorizontal::CENTER;
 }
 
 void Text::setHorizontalAlignment(TextHorizontalAlignment alignment){

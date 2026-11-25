@@ -94,7 +94,7 @@ namespace {
         {"Missing Assets", "window.missingAssets"}, {"Graph Editor", "window.graphEditor"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},
         {"Frame Debugger", "window.frameDebugger"}, {"Systems", "window.systems"}, {"Jobs & Memory", "window.jobsMemory"},
         {"Mesh Optimization Audit", "window.meshAudit"}, {"Build Report", "window.buildReport"}, {"Animation Statistics", "window.animationStatistics"},
-        {"Sprite Preview", "window.spritePreview"}, {"Palette", "window.palette"}, {"Tile Palette", "window.tilePalette"},
+        {"Sprite Preview", "window.spritePreview"}, {"Skinning Editor", "window.skinningEditor"}, {"Palette", "window.palette"}, {"Tile Palette", "window.tilePalette"},
         {"Tileset Editor", "window.tilesetEditor"}, {"Title Designer", "window.titleDesigner"},
     };
 

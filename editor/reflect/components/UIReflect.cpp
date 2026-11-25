@@ -24,6 +24,40 @@
 
 namespace jasperengine::editor::reflect {
 
+namespace enums {
+
+    namespace {
+        constexpr int textValue(TextAnchorHorizontal alignment) { return static_cast<int>(alignment); }
+        constexpr int textValue(TextAnchorVertical alignment) { return static_cast<int>(alignment); }
+        constexpr int textValue(TextFontSizeUnit unit) { return static_cast<int>(unit); }
+
+        constexpr EnumItem kTextAnchorHorizontalItems[] = {
+            {textValue(TextAnchorHorizontal::LEFT), "left", "Left", "TextAnchorHorizontal::LEFT"},
+            {textValue(TextAnchorHorizontal::CENTER), "center", "Center", "TextAnchorHorizontal::CENTER"},
+            {textValue(TextAnchorHorizontal::RIGHT), "right", "Right", "TextAnchorHorizontal::RIGHT"},
+        };
+
+        constexpr EnumItem kTextAnchorVerticalItems[] = {
+            {textValue(TextAnchorVertical::TOP), "top", "Top", "TextAnchorVertical::TOP"},
+            {textValue(TextAnchorVertical::MIDDLE), "middle", "Middle", "TextAnchorVertical::MIDDLE"},
+            {textValue(TextAnchorVertical::BOTTOM), "bottom", "Bottom", "TextAnchorVertical::BOTTOM"},
+            {textValue(TextAnchorVertical::BASELINE), "baseline", "Baseline", "TextAnchorVertical::BASELINE"},
+            {textValue(TextAnchorVertical::CAPLINE), "capline", "Capline", "TextAnchorVertical::CAPLINE"},
+            {textValue(TextAnchorVertical::MIDLINE), "midline", "Midline", "TextAnchorVertical::MIDLINE"},
+        };
+
+        constexpr EnumItem kTextFontSizeUnitItems[] = {
+            {textValue(TextFontSizeUnit::PIXEL_HEIGHT), "pixel_height", "Pixel Height", "TextFontSizeUnit::PIXEL_HEIGHT"},
+            {textValue(TextFontSizeUnit::EM), "em", "Em", "TextFontSizeUnit::EM"},
+        };
+    }
+
+    const EnumDesc kTextAnchorHorizontal{"TextAnchorHorizontal", kTextAnchorHorizontalItems, textValue(TextAnchorHorizontal::LEFT)};
+    const EnumDesc kTextAnchorVertical{"TextAnchorVertical", kTextAnchorVerticalItems, textValue(TextAnchorVertical::BOTTOM)};
+    const EnumDesc kTextFontSizeUnit{"TextFontSizeUnit", kTextFontSizeUnitItems, textValue(TextFontSizeUnit::PIXEL_HEIGHT)};
+
+}
+
 namespace {
 
     template<typename T, bool T::*flag>
@@ -277,8 +311,15 @@ namespace {
                  .uiOrder = 10),
         JE_FIELD(TextComponent, fixedWidth, .updateFlags = kText, .label = "Width", .group = "Fixed size"),
         JE_FIELD(TextComponent, fixedHeight, .updateFlags = kText, .label = "Height", .group = "Fixed size"),
-        JE_FIELD(TextComponent, pivotBaseline, .updateFlags = kText, .label = "Baseline", .group = "Pivot"),
-        JE_FIELD(TextComponent, pivotCentered, .updateFlags = kText, .label = "Center", .group = "Pivot"),
+        // S94 F24: Unity TextMesh's Anchor (the box point on the origin), drawn as the Text drawer's button rows (InspectorPixelFont.cpp)
+        JE_FIELD(TextComponent, anchorHorizontal, .enumDesc = &enums::kTextAnchorHorizontal, .flags = Hidden, .updateFlags = kText,
+                 .label = "Anchor Horizontal", .group = "Anchor"),
+        JE_FIELD(TextComponent, anchorVertical, .enumDesc = &enums::kTextAnchorVertical, .flags = Hidden, .updateFlags = kText,
+                 .label = "Anchor Vertical", .group = "Anchor"),
+        // S94 F26: written only when Em
+        JE_FIELD(TextComponent, fontSizeUnit, .enumDesc = &enums::kTextFontSizeUnit, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
+                 .label = "Font Size Unit", .tooltip = "Pixel Height: Font Size is ascender to descender. Em: the em square, as CSS and TextMesh Pro.",
+                 .visibleIf = &textIsVector, .uiOrder = 2),
         // S93 R37 (TMP): drawn by the Text drawer's two Alignment button rows; Auto Size's rows here
         JE_FIELD(TextComponent, horizontalAlignment, .enumDesc = &enums::kTextHorizontalAlignment, .flags = OmitIfDefault | Hidden,
                  .updateFlags = kText, .label = "Horizontal Alignment",
@@ -420,7 +461,7 @@ namespace {
         JE_FIELD(UIComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
-        JE_FIELD(UIComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
+        JE_FIELD(UIComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload, .enumMask = enums::kComponentBlendModes),
         JE_FIELD(UIComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),

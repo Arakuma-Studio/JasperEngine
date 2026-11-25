@@ -13,7 +13,8 @@ namespace jasperengine {
 
     Vector2 spriteWorldSize(const SpriteComponent& sprite){
         const float ppu = resolvePixelsPerUnit(sprite.pixelsPerUnit);
-        return Vector2((float)sprite.width / ppu, (float)sprite.height / ppu);
+        return Vector2(sprite.size.x > 0.0f ? sprite.size.x : (float)sprite.width / ppu,
+                       sprite.size.y > 0.0f ? sprite.size.y : (float)sprite.height / ppu);
     }
 
 }

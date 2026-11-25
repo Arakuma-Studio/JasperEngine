@@ -97,11 +97,12 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         // (S74's isIKReached, setIKSoften, setIKHingeAxis, setIKTwist, setIKAimOffset reviewed: an IK
         // constraint's shape and its last solve, bones only; mesh-space-rotation's
         // setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a layer's rotation space
-        // where its mask starts or stops, bones only)
-        {"Animator", 0xc0f7cb88u},
-        // (mesh-space-rotation's setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a
+        // where its mask starts or stops, bones only; S94's legacyRootDrift reviewed: where the root goes)
+        {"Animator", 0x687702ccu},
+        // (S94 applyRootMotion and legacyRootDrift reviewed: where the root goes, never what it draws with;
+        // mesh-space-rotation's setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a
         // layer's rotation space where its mask starts or stops, bones only)
-        {"AnimationPlayer", 0xc917096bu},
+        {"AnimationPlayer", 0x55468727u},
         {"PoseAnimator", 0x9efa391cu},
         {"AnimationEvent", 0x3191cc4eu},
         {"AnimationState", 0xd696bd82u},
@@ -128,8 +129,8 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"AnimationComponent", 0x1f9ef76eu},
         {"TweenComponent", 0x6fb2e681u},
         {"ActionSystem", 0x2b5420b8u},
-        {"AnimationPlayerComponent", 0xcf5f06f5u},
-        {"AnimatorComponent", 0xc953276au},
+        {"AnimationPlayerComponent", 0xbe9bec49u},
+        {"AnimatorComponent", 0x25dc74deu},
         {"PoseAnimatorComponent", 0x39f009a9u},
         {"SplineFrame", 0x2e6a235du},
         {"SplineHit", 0x923264d8u},

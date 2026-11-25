@@ -43,7 +43,7 @@ namespace jasperengine::editor{
 
         inline static bool isImageFile(const std::string& path) {
             static const std::unordered_set<std::string> imageExtensions = {
-                ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".psd", ".pic", ".pnm", ".svg"
+                ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".exr", ".psd", ".psb", ".tif", ".tiff", ".pic", ".pnm", ".svg"
             };
 
             const std::string ext = fileExtension(path);

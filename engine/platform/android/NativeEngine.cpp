@@ -34,6 +34,7 @@
 #include "Screen.h"
 #include "Log.h"
 #include "render/GpuWorkerContext.h"
+#include "render/SystemRender.h"
 #include "util/StringUtils.h"
 #include "../common/PlatformDefaults.h"
 #include "player/PlayerLaunch.h"
@@ -1113,6 +1114,10 @@ bool NativeEngine::initSurface() {
         jasperengine::Log::error("Unable to retrieve EGL config");
         return false;
     }
+    // a config without stencil: what needs it (the Outline) draws offscreen instead
+    EGLint stencilSize = 0;
+    eglGetConfigAttrib(mEglDisplay, mEglConfig, EGL_STENCIL_SIZE, &stencilSize);
+    jasperengine::SystemRender::setSwapchainStencil(stencilSize > 0);
 
     // create EGL surface
     mEglSurface = eglCreateWindowSurface(mEglDisplay, mEglConfig, mApp->window, NULL);

@@ -1,4 +1,4 @@
-# Lighting: tiles, capsule and contact shadows, OIT, hair
+# Lighting: tiles, capsule and contact shadows, OIT, hair, sky
 
 For agents: what to set and how to check it. The full reference is `docs/rendering/lighting.md`.
 
@@ -22,6 +22,12 @@ For agents: what to set and how to check it. The full reference is `docs/renderi
 - Hair: the material's `pbr.hair.enabled: true` (the Inspector's Shading Model: Hair) and its
   `primaryColor`, `primaryShift`, `primaryWidth`, `secondaryColor`, `secondaryShift`,
   `secondaryWidth`, `rotation`, `flowMap`.
+
+- Sky: a hidden sky (`skybox.visible` false, Lua `Skybox.visible`) or one on an inactive entity
+  draws nothing and feeds no reflection probe; a hidden one keeps lighting the scene. It draws
+  after the opaque objects (only the pixels they leave are shaded), first under a camera without
+  `depthTest`. On mobile and web, `library:panoramic_sky` with the `VERTEX_MAPPING` feature
+  (Per-Vertex Mapping) costs one texture read a pixel. Unity's rotations: `docs/unity-glossary.md`.
 
 ## Checking
 

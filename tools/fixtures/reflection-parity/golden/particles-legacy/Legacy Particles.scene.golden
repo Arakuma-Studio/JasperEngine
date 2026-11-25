@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: 0f153ca2a957eb5d8f91ac03716acf99
 id: 1
 name: Legacy Particles
@@ -65,6 +65,7 @@ entities:
         playOnAwake: false
         seed: 0
         playbackSpeed: 1
+        legacyFrom: 1002
   - type: Entity
     entity: 1002
     name: Fire Particles
@@ -93,6 +94,7 @@ entities:
         playOnAwake: false
         seed: 0
         playbackSpeed: 1
+        legacyFrom: 1004
   - type: Entity
     entity: 1004
     name: Explosion Particles

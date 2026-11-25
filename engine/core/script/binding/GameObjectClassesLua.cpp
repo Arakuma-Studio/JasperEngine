@@ -14,6 +14,7 @@
 #include "component/PanelComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/TextComponent.h"
 #include "component/ActionComponent.h"
 
 #include "lua.hpp"
@@ -1690,6 +1691,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const float, const float, const float, const float>(&Skybox::setColor))
         .addProperty("alpha", &Skybox::getAlpha, &Skybox::setAlpha)
         .addProperty("rotation", &Skybox::getRotation, &Skybox::setRotation)
+        // false draws no sky (nor its probe captures) and keeps its lighting (S94 F16)
+        .addProperty("visible", &Skybox::isVisible, &Skybox::setVisible)
+        .addFunction("setVisible", &Skybox::setVisible)
         .addProperty("customShader", &Skybox::getCustomShader, &Skybox::setCustomShader)
         .addFunction("setShaderUniform",
             luabridge::overload<const std::string&, const Vector4&>(&Skybox::setShaderUniform),
@@ -1772,7 +1776,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setRotation", (void(GameObject::*)(const float, const float, const float))&GameObject::setRotation)
         .addFunction("getWorldRotation", &GameObject::getWorldRotation)
         .addProperty("scale", &GameObject::getScale, (void(GameObject::*)(Vector3))&GameObject::setScale)
-        .addFunction("setScale", (void(GameObject::*)(const float))&GameObject::setScale)
+        // uniform, or per axis (S94 F31: distinct arities, no userdata miss)
+        .addFunction("setScale",
+            luabridge::overload<const float>(&GameObject::setScale),
+            luabridge::overload<const float, const float, const float>(&GameObject::setScale))
         .addFunction("getWorldScale", &GameObject::getWorldScale)
         .addProperty("visible", &GameObject::isVisible, &GameObject::setVisible)
         .addFunction("setVisibleOnly", &GameObject::setVisibleOnly)
@@ -2049,6 +2056,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setOrtho", &Camera::setOrtho)
         .addFunction("setPerspective", &Camera::setPerspective)
         .addProperty("autoResize",  &Camera::isAutoResize, &Camera::setAutoResize)
+        // Unity's orthographic Size: half the view's height, the width follows the aspect (0 off)
+        .addProperty("orthographicSize",  &Camera::getOrthographicSize, &Camera::setOrthographicSize)
         .addProperty("nearClip",  &Camera::getNearClip, &Camera::setNearClip)
         .addProperty("farClip",  &Camera::getFarClip, &Camera::setFarClip)
         .addProperty("leftClip",  &Camera::getLeftClip, &Camera::setLeftClip)
@@ -2175,6 +2184,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setRange", &Light2D::setRange)
         .addProperty("falloff", &Light2D::getFalloff, &Light2D::setFalloff)
         .addFunction("setFalloff", &Light2D::setFalloff)
+        // the virtual height above the 2D plane that normal maps answer (0: they are ignored);
+        // Light2D(scene) starts at 64, Light2D(scene, entity) keeps the stored value
         .addProperty("height", &Light2D::getHeight, &Light2D::setHeight)
         .addFunction("setHeight", &Light2D::setHeight)
         .addProperty("shadows", &Light2D::isShadows, &Light2D::setShadows)
@@ -2797,6 +2808,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("loadGLTF", &Model::loadGLTF)
         .addFunction("loadModel", &Model::loadModel)
         .addProperty("filename", &Model::getFilename)
+        .addProperty("preserveHierarchy", &Model::isPreserveHierarchy, &Model::setPreserveHierarchy)
         .addFunction("getAnimationCount", &Model::getAnimationCount)
         .addFunction("getAnimation", &Model::getAnimation)
         .addFunction("findAnimation", &Model::findAnimation)
@@ -3360,6 +3372,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("width", &Sprite::getWidth, &Sprite::setWidth)
         .addProperty("height", &Sprite::getHeight, &Sprite::setHeight)
         .addProperty("flipY", &Sprite::isFlipY, &Sprite::setFlipY)
+        // Unity's Flip X and SpriteRenderer.size (world units; an axis at 0 follows width/height)
+        .addProperty("flipX", &Sprite::isFlipX, &Sprite::setFlipX)
+        .addProperty("size", &Sprite::getQuadSize, &Sprite::setQuadSize)
         .addProperty("textureScaleFactor", &Sprite::getTextureScaleFactor, &Sprite::setTextureScaleFactor)
         .addProperty("pixelsPerUnit", &Sprite::getPixelsPerUnit, &Sprite::setPixelsPerUnit)
         .addProperty("pixelRotation", &Sprite::getPixelRotation, &Sprite::setPixelRotation)
@@ -3693,6 +3708,13 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Text, RectTransform>("Text")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        // the box, laid out first when the text, font or size changed (S94 F25)
+        .addProperty("width", &Text::getWidth, +[](Text* self, unsigned int width) { self->setWidth(width); })
+        .addProperty("height", &Text::getHeight, +[](Text* self, unsigned int height) { self->setHeight(height); })
+        .addFunction("updateLayout", &Text::updateLayout)
+        .addProperty("anchorHorizontal", &Text::getAnchorHorizontal, &Text::setAnchorHorizontal)
+        .addProperty("anchorVertical", &Text::getAnchorVertical, &Text::setAnchorVertical)
+        .addProperty("fontSizeUnit", &Text::getFontSizeUnit, &Text::setFontSizeUnit)
         .addFunction("setFixedSize", &Text::setFixedSize)
         .addProperty("fixedWidth", &Text::isFixedWidth, &Text::setFixedWidth)
         .addProperty("fixedHeight", &Text::isFixedHeight, &Text::setFixedHeight)
@@ -3762,6 +3784,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("depthWrite", &Text::getDepthWrite, &Text::setDepthWrite)
         .addProperty("stencil", &Text::getStencil, &Text::setStencil)
         .addProperty("colorWrite", &Text::getColorWrite, &Text::setColorWrite)
+        // deprecated aliases of anchorVertical Baseline and anchorHorizontal Center
         .addProperty("pivotBaseline", &Text::isPivotBaseline, &Text::setPivotBaseline)
         .addProperty("pivotCentered", &Text::isPivotCentered, &Text::setPivotCentered)
         .addProperty("outlineWidth", &Text::getOutlineWidth, &Text::setOutlineWidth)
@@ -4456,6 +4479,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("speed", &AnimationPlayer::getSpeed, &AnimationPlayer::setSpeed)
         // fps (0 = smooth): every track holds on whole steps from its previous key, fades step too
         .addProperty("poseFrameRate", &AnimationPlayer::getPoseFrameRate, &AnimationPlayer::setPoseFrameRate)
+        // Unity's Apply Root Motion: the base layer's clip root motion moves the GameObject
+        .addProperty("applyRootMotion", &AnimationPlayer::getApplyRootMotion, &AnimationPlayer::setApplyRootMotion)
+        .addProperty("legacyRootDrift", &AnimationPlayer::getLegacyRootDrift, &AnimationPlayer::setLegacyRootDrift)
         .addProperty("defaultClip", &AnimationPlayer::getDefaultClip, &AnimationPlayer::setDefaultClip)
         .addProperty("defaultFadeTime", &AnimationPlayer::getDefaultFadeTime, &AnimationPlayer::setDefaultFadeTime)
         .addProperty("playAutomatically", &AnimationPlayer::isPlayAutomatically, &AnimationPlayer::setPlayAutomatically)
@@ -4794,6 +4820,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // step too; root motion and events stay at the true time
         .addProperty("poseFrameRate", &Animator::getPoseFrameRate, &Animator::setPoseFrameRate)
         .addProperty("applyRootMotion", &Animator::isApplyRootMotion, &Animator::setApplyRootMotion)
+        .addProperty("legacyRootDrift", &Animator::isLegacyRootDrift, &Animator::setLegacyRootDrift)
         .addFunction("getDeltaPosition", &Animator::getDeltaPosition)
         .addFunction("getDeltaRotation", &Animator::getDeltaRotation)
         .addFunction("isHumanoid", &Animator::isHumanoid)

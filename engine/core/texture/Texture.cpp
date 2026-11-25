@@ -620,6 +620,15 @@ void Texture::invalidateRender(){
     }
 }
 
+bool Texture::isReady() const{
+    if (framebuffer)
+        return framebuffer->isCreated();
+    if (id.empty())
+        return false;
+    std::shared_ptr<TextureRender> made = TexturePool::get(getRenderId());
+    return made && made->isCreated();
+}
+
 TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     TextureRender* answer = findRender(fallBackTexture);
     // what the caller binds now replaces the image kept from before a reload (an image still

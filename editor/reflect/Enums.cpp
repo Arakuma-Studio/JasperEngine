@@ -543,6 +543,30 @@ namespace {
         {v(MaterialBlendMode::PREMULTIPLIED), "PREMULTIPLIED", "Premultiplied", "MaterialBlendMode::PREMULTIPLIED", "premultiplied"},
         {v(MaterialBlendMode::ADDITIVE), "ADDITIVE", "Additive", "MaterialBlendMode::ADDITIVE", "additive"},
         {v(MaterialBlendMode::MULTIPLY), "MULTIPLY", "Multiply", "MaterialBlendMode::MULTIPLY", "multiply"},
+        {v(MaterialBlendMode::CUSTOM), "CUSTOM", "Custom", "MaterialBlendMode::CUSTOM", "custom"},
+    };
+
+    // Unity's BlendMode factor names (ShaderLab Blend)
+    constexpr EnumItem kMaterialBlendFactorItems[] = {
+        {v(MaterialBlendFactor::ZERO), "ZERO", "Zero", "MaterialBlendFactor::ZERO", "zero"},
+        {v(MaterialBlendFactor::ONE), "ONE", "One", "MaterialBlendFactor::ONE", "one"},
+        {v(MaterialBlendFactor::SRC_COLOR), "SRC_COLOR", "Src Color", "MaterialBlendFactor::SRC_COLOR", "src_color"},
+        {v(MaterialBlendFactor::ONE_MINUS_SRC_COLOR), "ONE_MINUS_SRC_COLOR", "One Minus Src Color", "MaterialBlendFactor::ONE_MINUS_SRC_COLOR", "one_minus_src_color"},
+        {v(MaterialBlendFactor::SRC_ALPHA), "SRC_ALPHA", "Src Alpha", "MaterialBlendFactor::SRC_ALPHA", "src_alpha"},
+        {v(MaterialBlendFactor::ONE_MINUS_SRC_ALPHA), "ONE_MINUS_SRC_ALPHA", "One Minus Src Alpha", "MaterialBlendFactor::ONE_MINUS_SRC_ALPHA", "one_minus_src_alpha"},
+        {v(MaterialBlendFactor::DST_COLOR), "DST_COLOR", "Dst Color", "MaterialBlendFactor::DST_COLOR", "dst_color"},
+        {v(MaterialBlendFactor::ONE_MINUS_DST_COLOR), "ONE_MINUS_DST_COLOR", "One Minus Dst Color", "MaterialBlendFactor::ONE_MINUS_DST_COLOR", "one_minus_dst_color"},
+        {v(MaterialBlendFactor::DST_ALPHA), "DST_ALPHA", "Dst Alpha", "MaterialBlendFactor::DST_ALPHA", "dst_alpha"},
+        {v(MaterialBlendFactor::ONE_MINUS_DST_ALPHA), "ONE_MINUS_DST_ALPHA", "One Minus Dst Alpha", "MaterialBlendFactor::ONE_MINUS_DST_ALPHA", "one_minus_dst_alpha"},
+    };
+
+    // Unity's BlendOp
+    constexpr EnumItem kMaterialBlendOpItems[] = {
+        {v(MaterialBlendOp::ADD), "ADD", "Add", "MaterialBlendOp::ADD", "add"},
+        {v(MaterialBlendOp::SUBTRACT), "SUBTRACT", "Subtract", "MaterialBlendOp::SUBTRACT", "subtract"},
+        {v(MaterialBlendOp::REVERSE_SUBTRACT), "REVERSE_SUBTRACT", "Reverse Subtract", "MaterialBlendOp::REVERSE_SUBTRACT", "reverse_subtract"},
+        {v(MaterialBlendOp::MIN), "MIN", "Min", "MaterialBlendOp::MIN", "min"},
+        {v(MaterialBlendOp::MAX), "MAX", "Max", "MaterialBlendOp::MAX", "max"},
     };
 
     constexpr EnumItem kMaterialCullModeItems[] = {
@@ -881,6 +905,8 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kLodFadeMode{"LodFadeMode", kLodFadeModeItems, v(LodFadeMode::CROSS_FADE)};
     const EnumDesc kMaterialAlphaMode{"MaterialAlphaMode", kMaterialAlphaModeItems, v(MaterialAlphaMode::AUTO)};
     const EnumDesc kMaterialBlendMode{"MaterialBlendMode", kMaterialBlendModeItems, v(MaterialBlendMode::AUTO)};
+    const EnumDesc kMaterialBlendFactor{"MaterialBlendFactor", kMaterialBlendFactorItems, v(MaterialBlendFactor::ONE)};
+    const EnumDesc kMaterialBlendOp{"MaterialBlendOp", kMaterialBlendOpItems, v(MaterialBlendOp::ADD)};
     const EnumDesc kMaterialCullMode{"MaterialCullMode", kMaterialCullModeItems, v(MaterialCullMode::AUTO)};
     const EnumDesc kMaterialDepthTest{"MaterialDepthTest", kMaterialDepthTestItems, v(MaterialDepthTest::AUTO)};
     const EnumDesc kMaterialDepthWrite{"MaterialDepthWrite", kMaterialDepthWriteItems, v(MaterialDepthWrite::AUTO)};

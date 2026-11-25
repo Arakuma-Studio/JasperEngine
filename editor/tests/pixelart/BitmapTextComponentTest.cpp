@@ -162,6 +162,59 @@ TEST(BitmapText, AutoSizeFitsWholeScales){
     }
 }
 
+TEST(BitmapText, AnchorAndAlignmentApplyTogether){
+    // S94's Anchor places the box on the origin and S93's Alignment places the lines inside the
+    // box: set at once, the glyphs move by the sum of what each moves them alone, and only the
+    // anchor moves the box (boxMin)
+    struct Placed { Vector2 low; Vector2 high; Vector2 boxMin; };
+    auto place = [](TextAnchorHorizontal anchorH, TextAnchorVertical anchorV, TextHorizontalAlignment alignH,
+                    TextVerticalAlignment alignV){
+        BitmapTextScene t("Hp 99", 9);
+        TextComponent& text = t.text();
+        RectTransformComponent& layout = t.scene.getComponent<RectTransformComponent>(t.entity);
+        text.fixedWidth = true;
+        text.fixedHeight = true;
+        layout.width = 120;
+        layout.height = 60;
+        text.anchorHorizontal = anchorH;
+        text.anchorVertical = anchorV;
+        text.horizontalAlignment = alignH;
+        text.verticalAlignment = alignV;
+        t.update();
+        Placed placed{Vector2(1e9f, 1e9f), Vector2(-1e9f, -1e9f), text.boxMin};
+        for (const Vector3& p : t.positions()){
+            placed.low = Vector2(std::min(placed.low.x, p.x), std::min(placed.low.y, p.y));
+            placed.high = Vector2(std::max(placed.high.x, p.x), std::max(placed.high.y, p.y));
+        }
+        return placed;
+    };
+    const Placed base = place(TextAnchorHorizontal::LEFT, TextAnchorVertical::BOTTOM, TextHorizontalAlignment::LEFT, TextVerticalAlignment::TOP);
+    const Placed aligned = place(TextAnchorHorizontal::LEFT, TextAnchorVertical::BOTTOM, TextHorizontalAlignment::RIGHT, TextVerticalAlignment::BOTTOM);
+    const Placed anchored = place(TextAnchorHorizontal::RIGHT, TextAnchorVertical::TOP, TextHorizontalAlignment::LEFT, TextVerticalAlignment::TOP);
+    const Placed both = place(TextAnchorHorizontal::RIGHT, TextAnchorVertical::TOP, TextHorizontalAlignment::RIGHT, TextVerticalAlignment::BOTTOM);
+
+    const Vector2 byAlignment = aligned.low - base.low;
+    const Vector2 byAnchor = anchored.low - base.low;
+    ASSERT_GT(std::fabs(byAlignment.x), 1.0f) << "Right alignment moves the line inside the box";
+    ASSERT_GT(std::fabs(byAlignment.y), 1.0f) << "Bottom alignment moves the line inside the box";
+    ASSERT_GT(std::fabs(byAnchor.x), 1.0f) << "the Right anchor moves the box";
+    ASSERT_GT(std::fabs(byAnchor.y), 1.0f) << "the Top anchor moves the box";
+    EXPECT_NEAR(both.low.x - base.low.x, byAlignment.x + byAnchor.x, 1e-3f);
+    EXPECT_NEAR(both.low.y - base.low.y, byAlignment.y + byAnchor.y, 1e-3f);
+    EXPECT_NEAR(both.high.x - base.high.x, byAlignment.x + byAnchor.x, 1e-3f);
+    EXPECT_NEAR(both.high.y - base.high.y, byAlignment.y + byAnchor.y, 1e-3f);
+
+    // the box is the anchor's alone, and the aligned glyphs stay inside it
+    EXPECT_FLOAT_EQ(aligned.boxMin.x, base.boxMin.x);
+    EXPECT_FLOAT_EQ(aligned.boxMin.y, base.boxMin.y);
+    EXPECT_FLOAT_EQ(both.boxMin.x, anchored.boxMin.x);
+    EXPECT_FLOAT_EQ(both.boxMin.y, anchored.boxMin.y);
+    EXPECT_GE(both.low.x, both.boxMin.x - 1e-3f);
+    EXPECT_LE(both.high.x, both.boxMin.x + 120.0f + 1e-3f);
+    EXPECT_GE(both.low.y, both.boxMin.y - 1e-3f);
+    EXPECT_LE(both.high.y, both.boxMin.y + 60.0f + 1e-3f);
+}
+
 TEST(BitmapText, NoSdf){
     BitmapTextScene t("Outlined", 18);
     t.text().outlineWidth = 1.0f;

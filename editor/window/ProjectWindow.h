@@ -610,6 +610,9 @@ namespace jasperengine::editor {
         void createAsset(AssetCreateKind kind, const fs::path& directory);
         // the folder Assets > Create makes things in
         fs::path createTargetDirectory() const;
+        // Unity YAML .anim / .controller / .mask files as engine assets in `directory` (S94 F35,
+        // F36): each one undo step, numbered past existing names, its report in the Console
+        void importUnityAnimations(const std::vector<fs::path>& files, const fs::path& directory);
         // why a Lua script can't be created in `directory` ("" when it can): outside the Lua directory
         std::string luaScriptRefusal(const fs::path& directory) const;
         // Assets > Create > Pose Animation: a .poseanim with one neutral pose (Pose Animation window)

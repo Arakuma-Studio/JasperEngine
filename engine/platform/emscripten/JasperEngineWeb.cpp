@@ -19,6 +19,7 @@
 #include "Screen.h"
 #include "System.h"
 #include "Log.h"
+#include "render/SystemRender.h"
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
 #include "util/FrameLimiter.h"
@@ -562,6 +563,10 @@ int JasperEngineWeb::init(int argc, char **argv){
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context(canvas.c_str(), &attr);
     
     emscripten_webgl_make_context_current(ctx);
+    // stencil is a request: a canvas without it draws what needs it (the Outline) offscreen
+    EmscriptenWebGLContextAttributes granted;
+    if (emscripten_webgl_get_context_attributes(ctx, &granted) == EMSCRIPTEN_RESULT_SUCCESS)
+        jasperengine::SystemRender::setSwapchainStencil(granted.stencil);
 
     // the view is loaded once the project has started (renderLoop): the order of the other
     // platforms, init -> view loaded -> view changed, so Engine.onViewLoaded reaches the game

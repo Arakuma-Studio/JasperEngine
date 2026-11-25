@@ -252,12 +252,16 @@ namespace jasperengine::editor{
         TitleArtRendererComponent,
         // S96 vehicles: Unity's WheelCollider, and an engine and gear box driving them
         WheelColliderComponent,
-        VehicleDrivetrainComponent
+        VehicleDrivetrainComponent,
+        // QuickOutline: outlines its Mesh and the Meshes below it (S94 F22)
+        OutlineComponent,
+        // deforms its Sprite with bone GameObjects (S94 F49)
+        SpriteSkinComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::VehicleDrivetrainComponent;
+    constexpr ComponentType LastComponentType = ComponentType::SpriteSkinComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
@@ -669,6 +673,16 @@ namespace jasperengine::editor{
                     return scene->getAmbientLight2DIntensity();
                 }
             }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    return scene->getLight2DSteps();
+                }
+            }
+            else if (propertyName == "ambient_light_2d_without_lights") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isAmbientLight2DWithoutLights();
+                }
+            }
             else if (propertyName == "shadows_2d_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) {
                     return scene->getShadow2DQuality();
@@ -975,6 +989,12 @@ namespace jasperengine::editor{
             else if (propertyName == "ambient_light_2d_intensity") {
                 if constexpr (std::is_same_v<T, float>) return d.ambientLight2DIntensity;
             }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) return d.light2DSteps;
+            }
+            else if (propertyName == "ambient_light_2d_without_lights") {
+                if constexpr (std::is_same_v<T, bool>) return d.ambientLight2DWithoutLights;
+            }
             else if (propertyName == "shadows_2d_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) return d.shadow2DQuality;
             }
@@ -1226,6 +1246,16 @@ namespace jasperengine::editor{
             else if (propertyName == "ambient_light_2d_intensity") {
                 if constexpr (std::is_same_v<T, float>) {
                     scene->setAmbientLight2D(value);
+                }
+            }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    scene->setLight2DSteps(value);
+                }
+            }
+            else if (propertyName == "ambient_light_2d_without_lights") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setAmbientLight2DWithoutLights(value);
                 }
             }
             else if (propertyName == "shadows_2d_quality") {

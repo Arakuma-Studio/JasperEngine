@@ -1016,6 +1016,15 @@ Recorded by the packages and the integration. The code is what is true now.
 - The built-in shader cache moves to `v73` (World Space keeps `htmlui.vert`'s depth), the next free number after S94's `v72` in the landing order (#3 `v66`, S92 `v69`, S99 `v70`, S100 `v71`, S94 `v72`).
 - World Space documents draw in every camera pass; the UI Document Inspector shows two "Billboard" rows.
 
+**Train C (with S94, user decision)**
+- S94 (#19) gives Text Unity TextMesh's Anchor (`anchorHorizontal`, `anchorVertical`: which point of the
+  box sits on the origin) and migrates the old pivots into it. R37's Alignment stays beside it under its
+  own keys (`horizontalAlignment` Left/Center/Right/Justified, `verticalAlignment`
+  Top/Middle/Bottom/Baseline: the lines inside the box), with its own Inspector row, Lua properties and
+  MCP keys. The layout applies both: the alignment moves the lines inside the box, then the anchor puts
+  the box on the origin (`BitmapText.AnchorAndAlignmentApplyTogether`). R37's vertical alignment no
+  longer depends on a baseline pivot, which S94 removed.
+
 **Integration**
 - R37 Auto Size with a bitmap font (P6 left it out): the largest scale k whose native size x k lies in
   Font Size Min..Max and fits the fixed box, Min's scale when none fits (a range holding no multiple takes

@@ -712,6 +712,28 @@ void createEntityRun(const CallPtr& call, bool waited) {
         });
     }
     if (!modelStored.empty()) {
+        // the Model values its load reads (animationEntities, preserveHierarchy) go before it, so
+        // the first load already follows them (S94 F47)
+        std::vector<McpValues::Change> loadOptions;
+        for (auto it = changes.begin(); it != changes.end();) {
+            if (it->component == ComponentType::ModelComponent && ModelLoadCmd::isLoadOption(it->property)) {
+                loadOptions.push_back(*it);
+                it = changes.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        if (!loadOptions.empty()) {
+            stepCount++;
+            steps->addStep([project, sceneId, created, loadOptions](std::string& why) -> Command* {
+                auto* multi = new MultiPropertyCmd();
+                if (!McpValues::appendChangeCommands(project, project->getScene(sceneId), {*created}, loadOptions, *multi, why)) {
+                    delete multi;
+                    return nullptr;
+                }
+                return multi;
+            });
+        }
         stepCount++;
         steps->addStep([project, sceneId, created, modelStored](std::string&) -> Command* {
             return new ModelLoadCmd(project, sceneId, *created, modelStored);

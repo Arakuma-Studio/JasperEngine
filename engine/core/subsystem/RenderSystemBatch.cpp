@@ -64,6 +64,7 @@ namespace{
         31, // Pcl
         33, // Shq
         44, // Dlo (the lights' types a constant of the variant: nothing per object)
+        55, // Lst (the scene's Light Steps, in u_fs_lighting2d: nothing per object)
         // pixel-art S52
         45, // Pxs (the snap mode a key section; mode 2 with Spv only)
         46, // Sfx (the instance= amounts baked into a_spriteFx)
@@ -461,7 +462,7 @@ bool RenderSystem::bakeMeshRecord(BatchRecord& record, MeshComponent& mesh){
     record.sourceSize = buffer.getSize();
     record.hasRect = submesh.hasTextureRect;
     record.rect = submesh.textureRect;
-    record.color = submesh.material.baseColorFactor;
+    record.color = drawnBaseColorFactor(mesh, submesh);
     // a variant reading vertex colour multiplies them by the colour factor (pbr.glsl getBaseColor)
     record.bakesColor = (properties & shaderPropertyBit(10)) && record.colorOffset >= 0;
     record.bakesNormals = (properties & shaderPropertyBit(6)) != 0;
@@ -741,13 +742,16 @@ bool RenderSystem::fillMeshKey(BatchKey& key, Entity entity, MeshComponent& mesh
         fits = fits && key.addSection(BatchBreak::CUSTOM_PARAMS, &record.customHash, sizeof(record.customHash));
     }
 
+    // (a Property Override's colours, S94 F7: equal sets batch together, others draw apart)
+    const Vector4 baseColorFactor = drawnBaseColorFactor(mesh, submesh);
     if (!record.bakesColor)
-        fits = fits && key.addSection(BatchBreak::COLOR_FACTOR, &material.baseColorFactor, sizeof(Vector4));
+        fits = fits && key.addSection(BatchBreak::COLOR_FACTOR, &baseColorFactor, sizeof(Vector4));
     const bool lit = !(properties & shaderPropertyBit(0));
     if (lit){
+        const Vector3 emissive = drawnEmissiveFactor(mesh, submesh);
         const float params[8] = {material.metallicFactor, material.roughnessFactor, material.alphaCutoff,
-                                 material.emissiveFactor.x * material.emissiveStrength, material.emissiveFactor.y * material.emissiveStrength,
-                                 material.emissiveFactor.z * material.emissiveStrength, material.foliageTransmission, mesh.receiveLights ? 1.0f : 0.0f};
+                                 emissive.x * material.emissiveStrength, emissive.y * material.emissiveStrength,
+                                 emissive.z * material.emissiveStrength, material.foliageTransmission, mesh.receiveLights ? 1.0f : 0.0f};
         fits = fits && key.addSection(BatchBreak::MATERIAL_PARAMS, params, sizeof(params));
     }else{
         const uint8_t receiveLights = mesh.receiveLights ? 1 : 0;
@@ -924,7 +928,7 @@ bool RenderSystem::submitMesh(Entity entity, MeshComponent& mesh, Transform& tra
             record->sourceWrites != mesh.buffer.getWriteCount() || record->indexWrites != mesh.indices.getWriteCount() ||
             record->vertexCount != mesh.buffer.getCount() || record->indexCount != submesh.vertexCount ||
             record->hasRect != submesh.hasTextureRect || (record->hasRect && record->rect != currentRect) ||
-            (record->bakesColor && record->color != submesh.material.baseColorFactor) || record->bakesNormals != bakesNormals ||
+            (record->bakesColor && record->color != drawnBaseColorFactor(mesh, submesh)) || record->bakesNormals != bakesNormals ||
             batchFxChanged(*record, mesh)){
         if (!bakeMeshRecord(*record, mesh)){
             dropBatchRecord(entity);
@@ -1030,7 +1034,7 @@ bool RenderSystem::submitMeshDepth(Entity entity, MeshComponent& mesh, Transform
             record->sourceWrites != mesh.buffer.getWriteCount() || record->indexWrites != mesh.indices.getWriteCount() ||
             record->vertexCount != mesh.buffer.getCount() || record->indexCount != submesh.vertexCount ||
             record->hasRect != submesh.hasTextureRect || (record->hasRect && record->rect != currentRect) ||
-            (record->bakesColor && record->color != submesh.material.baseColorFactor) || record->bakesNormals != bakesNormals ||
+            (record->bakesColor && record->color != drawnBaseColorFactor(mesh, submesh)) || record->bakesNormals != bakesNormals ||
             batchFxChanged(*record, mesh)){
         if (!bakeMeshRecord(*record, mesh)){
             dropBatchRecord(entity);
@@ -1401,14 +1405,14 @@ const RenderSystem::BatchFrame* RenderSystem::getBatchFrame(uint32_t viewTag) co
 void RenderSystem::refreshSubmeshTextures(Submesh& submesh, bool receiveLights, bool pbrFramebufferOutdated){
     const ShaderLibraryBindings& libraryBindings = submesh.libraryBindings;
     const bool needUpdateFramebuffer = pbrFramebufferOutdated ||
-        (!libraryBindings.textures.empty() && shaderTexturesOutdated(libraryBindings, submesh.material.shaderTextures));
+        (!libraryBindings.textures.empty() && shaderTexturesOutdated(libraryBindings, drawnShaderTextures(submesh)));
 
     if (submesh.needUpdateTexture || needUpdateFramebuffer){
         ShaderData& shaderData = submesh.shader.get()->shaderData;
         const TextureBindMark bindMark = markTextureBinding();
-        if (loadPBRTextures(submesh.material, shaderData, submesh.render, receiveLights) &&
+        if (loadPBRTextures(submesh.material, shaderData, submesh.render, receiveLights, drawnBaseColor(submesh)) &&
                 loadPbrExtTextures(submesh, shaderData, submesh.render) &&
-                bindShaderTextures(libraryBindings, submesh.render, submesh.material.shaderTextures)){
+                bindShaderTextures(libraryBindings, submesh.render, drawnShaderTextures(submesh))){
             submesh.needUpdateTexture = false;
             submesh.needRebindTexture = false;
             noteTextureBinding(submesh, bindMark);
@@ -1419,7 +1423,7 @@ void RenderSystem::refreshSubmeshTextures(Submesh& submesh, bool receiveLights, 
 void RenderSystem::refreshDepthTextures(Submesh& submesh){
     if (submesh.needUpdateDepthTexture && (submesh.depthShaderProperties & (1u << 0))){
         ShaderData& depthShaderData = submesh.depthShader.get()->shaderData;
-        if (loadDepthTexture(submesh.material, depthShaderData, submesh.depthRender)){
+        if (loadDepthTexture(submesh.material, depthShaderData, submesh.depthRender, drawnBaseColor(submesh))){
             submesh.needUpdateDepthTexture = false;
         }
     }else if (submesh.needUpdateDepthTexture){

@@ -35,8 +35,8 @@ void create_scene_PixelFonts_1868004712(Scene* scene){
         text.maxTextSize = 100;
         text.fixedWidth = false;
         text.fixedHeight = false;
-        text.pivotBaseline = false;
-        text.pivotCentered = false;
+        text.anchorHorizontal = TextAnchorHorizontal::LEFT;
+        text.anchorVertical = TextAnchorVertical::BOTTOM;
         text.horizontalAlignment = TextHorizontalAlignment::LEFT;
         text.verticalAlignment = TextVerticalAlignment::TOP;
         text.autoSize = false;
@@ -107,8 +107,8 @@ void create_scene_PixelFonts_1868004712(Scene* scene){
         text.maxTextSize = 100;
         text.fixedWidth = false;
         text.fixedHeight = false;
-        text.pivotBaseline = false;
-        text.pivotCentered = false;
+        text.anchorHorizontal = TextAnchorHorizontal::LEFT;
+        text.anchorVertical = TextAnchorVertical::BOTTOM;
         text.horizontalAlignment = TextHorizontalAlignment::LEFT;
         text.verticalAlignment = TextVerticalAlignment::TOP;
         text.autoSize = false;
@@ -179,8 +179,8 @@ void create_scene_PixelFonts_1868004712(Scene* scene){
         text.maxTextSize = 100;
         text.fixedWidth = false;
         text.fixedHeight = false;
-        text.pivotBaseline = false;
-        text.pivotCentered = false;
+        text.anchorHorizontal = TextAnchorHorizontal::LEFT;
+        text.anchorVertical = TextAnchorVertical::BOTTOM;
         text.horizontalAlignment = TextHorizontalAlignment::LEFT;
         text.verticalAlignment = TextVerticalAlignment::TOP;
         text.autoSize = false;

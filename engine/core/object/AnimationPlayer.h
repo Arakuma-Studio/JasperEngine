@@ -213,6 +213,13 @@ namespace jasperengine{
         // S48 Pose Frame Rate (fps, 0 = smooth): poses held on whole steps from each key
         void setPoseFrameRate(float fps);
         float getPoseFrameRate() const;
+        // S94 F34 Apply Root Motion: the base layer's clip root motion moves the GameObject
+        void setApplyRootMotion(bool apply);
+        bool getApplyRootMotion() const;
+        // Apply Root Motion off: clips with a root_motion block keep their drift (players saved
+        // before S94); false plays them in place
+        void setLegacyRootDrift(bool keep);
+        bool getLegacyRootDrift() const;
         void setDefaultClip(const std::string& name);
         std::string getDefaultClip() const;
         void setDefaultFadeTime(float fade);

@@ -54,6 +54,7 @@ namespace jasperengine{
         bool uiCamera = false;
         bool flipY = true;                      // the sprite's UV flip (createSprite's)
         int pageWidth = 0, pageHeight = 0;
+        Vector2 size = Vector2(0.0f, 0.0f);     // S94 F30: the drawn frame in world units per axis, 0 = width/height
     };
 
     JASPERENGINE_API SpriteFrameQuad spriteFrameQuad(const SpriteFrame& frame, const SpriteFrameGeometryInput& input);

@@ -195,6 +195,12 @@ namespace jasperengine::editor{
         static bool isLoadPending(uint32_t sceneId, Entity entity);
         // Waits for a load into this Model still running on a worker and finishes it now
         static void completePendingLoad(uint32_t sceneId, Entity entity);
+
+        // A Model value its load reads (animationEntities, preserveHierarchy: spec S94 F47) set to
+        // `value`, with the reload that applies it in the same undo step when the model has a
+        // file. Null when `property` is not one of them.
+        static bool isLoadOption(const std::string& property);
+        static Command* setLoadOption(Project* project, uint32_t sceneId, Entity entity, const std::string& property, bool value);
     };
 
 }

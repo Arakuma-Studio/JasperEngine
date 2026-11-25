@@ -176,7 +176,7 @@ json PlayerConfig::toJson() const {
         for (const SortingLayerInfo& layer : sortingLayers) layers.push_back({{"id", layer.id}, {"name", layer.name}});
         out["sortingLayers"] = layers;
     }
-    if (transparencySortMode == TransparencySortMode::CUSTOM_AXIS) out["transparencySortMode"] = "custom_axis";
+    if (transparencySortMode != TransparencySortMode::DEFAULT) out["transparencySortMode"] = SortingLayers::transparencySortModeToken(transparencySortMode);
     if (transparencySortAxis != Vector3(0.0f, 1.0f, 0.0f))
         out["transparencySortAxis"] = {transparencySortAxis.x, transparencySortAxis.y, transparencySortAxis.z};
     out["collision3D"] = collision3D;
@@ -408,7 +408,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                     config.sortingLayers.push_back({layer["id"].get<int32_t>(), layer["name"].get<std::string>()});
             }
         }
-        if (in.value("transparencySortMode", std::string()) == "custom_axis") config.transparencySortMode = TransparencySortMode::CUSTOM_AXIS;
+        SortingLayers::transparencySortModeFromToken(in.value("transparencySortMode", std::string()), config.transparencySortMode);
         if (const auto axis = in.find("transparencySortAxis"); axis != in.end() && axis->is_array() && axis->size() == 3 &&
                 (*axis)[0].is_number() && (*axis)[1].is_number() && (*axis)[2].is_number())
             config.transparencySortAxis = Vector3((*axis)[0].get<float>(), (*axis)[1].get<float>(), (*axis)[2].get<float>());

@@ -25,6 +25,8 @@ STBText::STBText() {
     descent = 0;
     lineGap = 0;
     lineHeight = 0;
+    capHeight = 0;
+    xHeight = 0;
 
     textureData = NULL;
 }
@@ -59,7 +61,8 @@ void STBText::addFace(const std::shared_ptr<FontFace>& face, unsigned int fontSi
 
     faces.push_back(face);
     facePointers.push_back(face.get());
-    faceScales.push_back(face->scaleForPixelHeight((float)fontSize * options.rasterScale));
+    const float pixels = (float)fontSize * options.rasterScale;
+    faceScales.push_back(options.emSize ? face->scaleForEmSize(pixels) : face->scaleForPixelHeight(pixels));
 }
 
 void STBText::addBuiltInFaces(unsigned int fontSize){
@@ -362,6 +365,14 @@ int STBText::getLineHeight(){
     return (options.rasterScale == 1.0f) ? lineHeight : (int)std::lround((float)lineHeight / options.rasterScale);
 }
 
+float STBText::getCapHeight(){
+    return (options.rasterScale == 1.0f) ? capHeight : capHeight / options.rasterScale;
+}
+
+float STBText::getXHeight(){
+    return (options.rasterScale == 1.0f) ? xHeight : xHeight / options.rasterScale;
+}
+
 float STBText::getCharWidth(uint32_t codepoint){
     const FontGlyph* glyph = getGlyphForCodepoint(codepoint);
     if (!glyph)
@@ -429,6 +440,8 @@ TextureData* STBText::load(const std::string& fontpath, const std::vector<std::s
     this->descent = descent * scale;
     this->lineGap = lineGap * scale;
     this->lineHeight = (ascent - descent + lineGap) * scale;
+    this->capHeight = faces[0]->getCapHeight() * scale;
+    this->xHeight = faces[0]->getXHeight() * scale;
 
     glyphMap.clear();
     codepointMap.clear();
