@@ -344,7 +344,7 @@ namespace {
                  .flags = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | NonStructural, .updateFlags = kDocumentReload,
                  .min = 0.0f, .tooltip = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode)."),
         // S92 R18: read each frame by UIDocumentSystem (no reload); another count goes to the one below it
-        JE_FIELD(UIDocumentComponent, msaaSamples, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged | Clamped,
+        JE_FIELD(UIDocumentComponent, msaaSamples, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | Clamped,
                  .min = 0.0f, .max = 8.0f, .label = "Anti-aliasing (MSAA)",
                  .tooltip = "Texture mode: MSAA samples of the document's texture, 0 (the scene's), 1, 2, 4 or 8. Screen documents use the scene's.",
                  .visibleIf = &documentInTexture),
