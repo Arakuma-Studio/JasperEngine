@@ -144,6 +144,8 @@ namespace jasperengine{
         // the look at the scene's camera (Lua's getResolved, the main camera of a game)
         static void resolveAtMainCamera(Scene* scene, const FogComponent& fog, FogResolve& out);
         static Vector3 mainCameraPosition(Scene* scene);
+        // where a camera GameObject is, else the scene's camera (the editor reads it without the Transform header)
+        static Vector3 cameraPosition(Scene* scene, Entity camera);
         // every active zone's state at a camera position, by priority then entity id
         static std::vector<FogZoneState> zoneStates(Scene* scene, const Vector3& camera);
 

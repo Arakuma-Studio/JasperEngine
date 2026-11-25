@@ -320,6 +320,11 @@ Vector3 FogScene::mainCameraPosition(Scene* scene){
     return transform ? transform->worldPosition : Vector3(0.0f, 0.0f, 0.0f);
 }
 
+Vector3 FogScene::cameraPosition(Scene* scene, Entity camera){
+    const Transform* transform = scene && camera != NULL_ENTITY ? scene->findComponent<Transform>(camera) : nullptr;
+    return transform ? transform->worldPosition : mainCameraPosition(scene);
+}
+
 void FogScene::resolveAtMainCamera(Scene* scene, const FogComponent& fog, FogResolve& out){
     resolve(scene, fog, mainCameraPosition(scene), out);
 }

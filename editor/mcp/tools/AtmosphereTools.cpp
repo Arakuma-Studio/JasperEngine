@@ -22,7 +22,6 @@
 #include "command/type/LinkFogProfileCmd.h"
 #include "component/FogComponent.h"
 #include "component/FogZoneComponent.h"
-#include "component/Transform.h"
 #include "object/Camera.h"
 #include "render/AtmosphereDiagnostics.h"
 #include "render/AtmospherePresets.h"
@@ -542,9 +541,7 @@ Vector3 viewCameraPosition(Project* project, SceneProject* scene, const std::str
     if (view == "scene" && scene->sceneRender) {
         if (Camera* camera = scene->sceneRender->getCamera()) return camera->getWorldPosition();
     }
-    const Entity camera = project->getGameCamera(scene->id);
-    const Transform* transform = camera != NULL_ENTITY ? scene->scene->findComponent<Transform>(camera) : nullptr;
-    return transform ? transform->worldPosition : FogScene::mainCameraPosition(scene->scene);
+    return FogScene::cameraPosition(scene->scene, project->getGameCamera(scene->id));
 }
 
 void getAtmosphereInfoTool(const CallPtr& call) {
