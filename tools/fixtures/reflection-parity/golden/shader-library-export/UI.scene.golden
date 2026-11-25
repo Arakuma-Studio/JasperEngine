@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 10
 guid: 6235c8cdbb813f6c2827f2290a3101f8
 id: 2461316713
 name: UI
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: off
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]

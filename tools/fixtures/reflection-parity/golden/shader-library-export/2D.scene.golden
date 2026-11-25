@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 10
 guid: 25e1614af9e2418a7e7919404bb13615
 id: 4155373791
 name: 2D
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

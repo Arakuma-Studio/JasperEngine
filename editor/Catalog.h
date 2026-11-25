@@ -561,6 +561,7 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
+                if constexpr (std::is_same_v<T, UIRenderMode>) return UIRenderMode::OVERLAY;
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
                 if constexpr (std::is_same_v<T, WaterWakeResolution>) return WaterWakeResolution::AUTO;
                 if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
@@ -669,6 +670,16 @@ namespace jasperengine::editor{
                     return scene->getAmbientLight2DIntensity();
                 }
             }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    return scene->getLight2DSteps();
+                }
+            }
+            else if (propertyName == "ambient_light_2d_without_lights") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isAmbientLight2DWithoutLights();
+                }
+            }
             else if (propertyName == "shadows_2d_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) {
                     return scene->getShadow2DQuality();
@@ -733,6 +744,12 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, SceneColorScale>) {
                     return scene->getSceneColorScale();
                 }
+            }
+            else if (propertyName == "html_ui_render_mode") {
+                if constexpr (std::is_same_v<T, UIRenderMode>) return scene->getHtmlUiRenderMode();
+            }
+            else if (propertyName == "html_ui_msaa_samples") {
+                if constexpr (std::is_same_v<T, int>) return scene->getHtmlUiMsaaSamples();
             }
             else if (propertyName == "planar_reflection_resolution") {
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return scene->getPlanarReflectionResolution();
@@ -892,6 +909,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
             if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
+            if constexpr (std::is_same_v<T, UIRenderMode>) return UIRenderMode::OVERLAY;
             if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
             if constexpr (std::is_same_v<T, std::string>) return std::string();
@@ -980,6 +998,12 @@ namespace jasperengine::editor{
             else if (propertyName == "ambient_light_2d_intensity") {
                 if constexpr (std::is_same_v<T, float>) return d.ambientLight2DIntensity;
             }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) return d.light2DSteps;
+            }
+            else if (propertyName == "ambient_light_2d_without_lights") {
+                if constexpr (std::is_same_v<T, bool>) return d.ambientLight2DWithoutLights;
+            }
             else if (propertyName == "shadows_2d_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) return d.shadow2DQuality;
             }
@@ -1018,6 +1042,12 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "scene_color_scale") {
                 if constexpr (std::is_same_v<T, SceneColorScale>) return d.sceneColorScale;
+            }
+            else if (propertyName == "html_ui_render_mode") {
+                if constexpr (std::is_same_v<T, UIRenderMode>) return d.htmlUiRenderMode;
+            }
+            else if (propertyName == "html_ui_msaa_samples") {
+                if constexpr (std::is_same_v<T, int>) return d.htmlUiMsaaSamples;
             }
             else if (propertyName == "planar_reflection_resolution") {
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return d.planarReflectionResolution;
@@ -1236,6 +1266,16 @@ namespace jasperengine::editor{
                     scene->setAmbientLight2D(value);
                 }
             }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    scene->setLight2DSteps(value);
+                }
+            }
+            else if (propertyName == "ambient_light_2d_without_lights") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setAmbientLight2DWithoutLights(value);
+                }
+            }
             else if (propertyName == "shadows_2d_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) {
                     scene->setShadow2DQuality(value);
@@ -1300,6 +1340,12 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, SceneColorScale>) {
                     scene->setSceneColorScale(value);
                 }
+            }
+            else if (propertyName == "html_ui_render_mode") {
+                if constexpr (std::is_same_v<T, UIRenderMode>) scene->setHtmlUiRenderMode(value);
+            }
+            else if (propertyName == "html_ui_msaa_samples") {
+                if constexpr (std::is_same_v<T, int>) scene->setHtmlUiMsaaSamples(value);
             }
             else if (propertyName == "planar_reflection_resolution") {
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) scene->setPlanarReflectionResolution(value);

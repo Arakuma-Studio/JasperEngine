@@ -1,0 +1,55 @@
+name: Restore the Xcode compilation cache
+description: >
+  Sets XCODE_CAS (tools/ci/macos.sh xcode builds through Xcode's compilation cache there) and restores
+  main's newest xcode-cas-<Xcode>- entry into it, which the nightly's ios job saves (xcode-cache-save).
+  An overflow Mac keeps its own in its tool cache instead. With fresh-over, a cache restored larger than
+  that many MB starts afresh: Xcode prunes only by COMPILATION_CACHE_LIMIT_SIZE, which on the Mac made
+  it larger (1600M: 1.78 GB, 92 % hits on a commit seen before) than none (1.23 GB, 100 %), and without
+  one each build adds what changed.
+inputs:
+  fresh-over:
+    description: The size in MB past which the restored cache is emptied (empty, never)
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Cache key
+      id: key
+      shell: bash
+      run: |
+        # (the key names the Xcode: an update invalidates the cache)
+        prefix="xcode-cas-$(xcodebuild -version | sed -n 1p | tr -cd 'A-Za-z0-9.')-"
+        dir="$PWD/build/.cache/xcode-cas"
+        if [[ "$RUNNER_ENVIRONMENT" == self-hosted ]]; then
+            dir="$RUNNER_TOOL_CACHE/xcode-cas"
+            echo "JASPER_XCODE_CAS_LOCAL=1" >> "$GITHUB_ENV"
+        fi
+        mkdir -p "$dir"
+        {
+            echo "XCODE_CAS=$dir"
+            echo "JASPER_XCODE_CAS_PREFIX=$prefix"
+            echo "JASPER_XCODE_CAS_KEY=$prefix$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+        } >> "$GITHUB_ENV"
+        echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+        echo "key=$prefix$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+    - name: Restore
+      if: env.JASPER_XCODE_CAS_LOCAL != '1'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: build/.cache/xcode-cas
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
+
+    - name: Size
+      shell: bash
+      env:
+        FRESH_OVER: ${{ inputs.fresh-over }}
+      run: |
+        mb="$(du -sm "$XCODE_CAS" | cut -f1)"
+        echo "xcode-cache-restore: $XCODE_CAS holds $mb MB"
+        if [[ -n "$FRESH_OVER" ]] && (( mb > FRESH_OVER )); then
+            echo "xcode-cache-restore: over $FRESH_OVER MB: starting afresh (this build compiles cold)"
+            rm -rf "$XCODE_CAS" && mkdir -p "$XCODE_CAS"
+        fi

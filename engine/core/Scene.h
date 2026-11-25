@@ -257,6 +257,14 @@ namespace jasperengine{
         void setSceneColorScale(SceneColorScale scale);
         SceneColorScale getSceneColorScale() const;
 
+        // The screen HTML UI documents (SceneSettings, S92): read each frame, no reload. Samples:
+        // 0 = the project's, else 1, 2, 4 or 8 (another count goes to the one below it); a change
+        // makes the next frame recreate the document target
+        void setHtmlUiRenderMode(UIRenderMode mode);
+        UIRenderMode getHtmlUiRenderMode() const;
+        void setHtmlUiMsaaSamples(int samples);
+        int getHtmlUiMsaaSamples() const;
+
         // Planar reflections (SceneSettings): read each frame by RenderSystem, no reload
         void setPlanarReflectionResolution(PlanarReflectionResolution resolution);
         PlanarReflectionResolution getPlanarReflectionResolution() const;
@@ -389,6 +397,14 @@ namespace jasperengine{
         float getAmbientLight2DIntensity() const;
         Vector3 getAmbientLight2DColor() const;
         Vector3 getAmbientLight2DColorLinear() const;
+
+        // Light Steps: the bands each Light 2D's light is quantized into, 0 (off) to 16 (clamped)
+        void setLight2DSteps(int steps);
+        int getLight2DSteps() const;
+        // the Ambient Light 2D tints the unlit 2D materials of a scene without a Light 2D too
+        // (on in new scenes, off in scenes saved before it)
+        void setAmbientLight2DWithoutLights(bool enabled);
+        bool isAmbientLight2DWithoutLights() const;
 
         void setShadow2DQuality(ShadowQuality quality);
         ShadowQuality getShadow2DQuality() const;

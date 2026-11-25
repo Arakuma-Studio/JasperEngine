@@ -22,6 +22,8 @@
 
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// its own name: another RgbaImage is in sight in some unity units
+using CleanupBenchImage = jasperengine::editor::pixelart::cleanup::RgbaImage;
 
 namespace {
 
@@ -53,7 +55,7 @@ namespace {
         ~EightWorkers() { setParallelFor(nullptr); }
     };
 
-    RgbaImage benchUpscaled(int cells, double scale, uint32_t seed) {
+    CleanupBenchImage benchUpscaled(int cells, double scale, uint32_t seed) {
         Upscale options;
         options.scale = scale;
         options.blur = 1;
@@ -67,7 +69,7 @@ namespace {
 TEST(CleanupBench, DetectionWithEightWorkers) {
     EightWorkers workers;
     for (const auto& [cells, budget] : {std::pair<int, double>{128, 120.0}, std::pair<int, double>{256, 450.0}}) {
-        const RgbaImage image = benchUpscaled(cells, 8.0, 11);
+        const CleanupBenchImage image = benchUpscaled(cells, 8.0, 11);
         const auto start = std::chrono::steady_clock::now();
         const std::optional<Detection> found = detectGrid(image);
         const double ms = cleanupBenchMsSince(start);
@@ -78,7 +80,7 @@ TEST(CleanupBench, DetectionWithEightWorkers) {
 }
 
 TEST(CleanupBench, WholeFixOfOnePicture) {
-    const RgbaImage image = benchUpscaled(128, 8.0, 11);
+    const CleanupBenchImage image = benchUpscaled(128, 8.0, 11);
     Recipe recipe;
     recipe.paletteMode = PaletteMode::Auto;
     recipe.autoPalette = AutoPalette{32, ProposeMethod::Dominant};
@@ -116,7 +118,7 @@ TEST(CleanupBench, WholeFixOfASheet) {
 }
 
 TEST(CleanupBench, InteractiveRerunAfterOneSlider) {
-    const RgbaImage image = benchUpscaled(128, 8.0, 11);
+    const CleanupBenchImage image = benchUpscaled(128, 8.0, 11);
     Recipe recipe;
     recipe.palette = RecipePalette{"Sweetie 16", sweetie16(), {}, "", ""};
     recipe.paletteMode = PaletteMode::Fixed;

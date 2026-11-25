@@ -343,7 +343,8 @@ namespace jasperengine::editor{
             ColorRGB,
             ColorRGBA,
             Combo,
-            LayerMask   // a uint32_t layer mask: Unity's mask field
+            LayerMask,   // a uint32_t layer mask: Unity's mask field
+            SampleCount  // an int MSAA sample count: 0 (Project Default), 1 (Disabled), 2, 4, 8
         };
 
         struct DirtyMaterialEntry {
@@ -534,6 +535,8 @@ namespace jasperengine::editor{
         void drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
         // the scene's Water Wakes map: resolution, area, fade
         void drawSceneWaterWakes(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
+        // S92: Render Mode and Anti-aliasing (MSAA) of the scene's screen HTML UI documents
+        void drawSceneHtmlUi(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
     public:
         // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
         static std::string sceneLayerMaskLabel(uint32_t mask);

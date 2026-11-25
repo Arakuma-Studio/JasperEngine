@@ -363,7 +363,8 @@ then screenshots the device (`adb exec-out screencap`) and checks it with
 `debug.jasperengine.scene` set to it (a test project reads it, `JASPERENGINE_SCENE` elsewhere),
 each run checked on its own in `--out/<scene>/`; `{scene}` in an expectation is the run's scene.
 The gate's project is `tools/test-projects/render-gate`: a lit 3D scene (`lit3d`), 2D and UI
-(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`) and Title Art
+(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`), the JasperArcade port's
+scaled list of filtered rows clipped by its viewport (`htmlui-u27`, S92 R11) and Title Art
 Renderers (`titleart`, S81; run it also with `--setprop debug.jasperengine.titleart_rgba8=1` against
 the same golden), goldens in its `golden/`:
 
@@ -371,7 +372,7 @@ the same golden), goldens in its `golden/`:
 ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android
 tools/android-emulator-test.sh build/android-render-gate/app-debug.apk \
     --expect-file tools/test-projects/render-gate/android-expect.txt \
-    --scene lit3d --scene ui2d --scene htmlui --scene titleart --golden tools/test-projects/render-gate/golden
+    --scene lit3d --scene ui2d --scene htmlui --scene htmlui-u27 --scene titleart --golden tools/test-projects/render-gate/golden
 ```
 
 `ANDROID_ABIS=x86_64` builds only the emulator's ABI (a quarter of the build).
@@ -709,6 +710,16 @@ JASPER_TEST_UPDATE_GOLDEN=1 UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=Rende
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=RenderGpu.*' tools/build.sh unit-tests
 ```
 
+An HTML UI frame that records what the last drawn one did is not replayed (S92 R1). A test that
+counts a replay's passes, draws or caches frame after frame turns that off for its scope
+(`FrameReuseMode replayed(false)`, `TestRenderCommon.h`). `JASPER_HTMLUI_VERIFY_KEPT=1` makes the
+golden harnesses draw a second frame and compare every kept frame with a fresh replay; a
+difference fails the comparison and logs `[HTML UI] kept frame differs`:
+
+```sh
+JASPER_HTMLUI_VERIFY_KEPT=1 HTMLUI_TEST_ARGS='--gtest_filter=*Golden*:RenderP1*:RenderPrimitive.*:RenderClip.*:RenderFilter*' tools/build.sh htmlui-tests
+```
+
 The cooked fixtures of the texture format test (`engine/tests/core/fixtures/texture_formats/`, S14
 AC8: every `GpuTextureFormat` as a cooked 32 px KTX2 with the CPU decode of each level, which
 `TextureFormatsGpu` compares the GPU's sampling with) come from the editor's encoders and
@@ -1027,8 +1038,8 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
 | `web` | `tools/build.sh web && tools/build.sh web-gate` |
 | `android` | `tools/build.sh android` (`ANDROID_ABIS=arm64-v8a` on a PR) |
-| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`), the D3D11 and Vulkan legs on a PR and in the queue only for their inputs (below); then a Compile build of a fixture with the editor job's install |
-| `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `xcode ios` for iOS |
+| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`), the D3D11 and Vulkan legs on a PR and in the queue only for their inputs (below); then a Compile build of a fixture with the editor job's install. Each job keeps its own ccache entry |
+| `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `XCODE_CAS=build/.cache/xcode-cas tools/ci/macos.sh xcode ios` (and `macos`) for the Xcode project, through Xcode's compilation cache |
 | `report` | writes the PR comment (below) |
 | `check` | the one required status, `Check` (`tools/ci/check_gate.py`): green only when every lane that had to run passed |
 
@@ -1151,6 +1162,13 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   median of 2 h (up to 10) while the merge queue stalled behind them. The queue is the gate: it, a push
   to `main`, full runs and the nightly build `macos` for every change that builds, so a macOS break
   still stops the merge, one queue run later than a PR would have shown it.
+- **The Windows editor leg in the merge queue** builds the editor and its call CLI (what `windows
+  (compile)` and the CLI check use), not the editor-tests binary: its test run is advisory there
+  (`lanes.json` `unbuilt`; `tools/ci/windows.sh editor` with `EDITOR_TESTS_BUILD=0`). The tree is
+  still configured with its tests, so every object is the one the ccache entry holds. The binary was
+  558 of the step's 3,957 build steps, about a quarter of its 110 min (run 45291112468). A pull
+  request, a push to `main`, the advisory run and full runs build it. An MSVC-only compile error in an
+  editor test therefore shows on `main` after the merge, in the advisory run, not in the queue.
 - **macOS in the merge queue** builds only for a macOS-only input. macOS is what caps the queue: 5
   hosted runners and `je-mac`, a `macos` job a group. Its inputs, wider than a pull request's (the queue
   is the last gate), are:
@@ -1201,10 +1219,11 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **Push to `main`** builds what keeps a cache and nothing else (`tools/ci/plan_lanes.py` `build_only`
   lists what builds without its tests): it saves the caches (ccache per lane), and a PR restores what
   `main` saved, never what the queue did; and it publishes the deps dumps `changes` plans from (below,
-  "Plan inputs"). The queue built and tested the same commit, so a push runs no check: not `ios` or
-  the Windows engine legs, which keep no cache entry, nor any step the queue ran (`MAIN_STAGE` in
-  `ci.yml`). ASan builds both binaries for their entries, and `smoke` runs when a game-building path
-  changed, for its entry.
+  "Plan inputs"). The queue built and tested the same commit, so a push runs no check, nor any step
+  the queue ran (`MAIN_STAGE` in `ci.yml`). ASan builds both binaries for their entries, the Windows
+  engine legs build without their tests and `windows (compile)` and macOS make their Compile builds,
+  for theirs, and `smoke` runs when a game-building path changed, for its
+  entry.
 - **One push run at a time.** Merge-queue groups land one push each, some minutes apart (2026-11-15
   to 20: 21 pushes, gaps of 62 s, 3 and 4 min among 20). Push runs share one concurrency group without
   cancel-in-progress: one runs, the newest waits, and GitHub drops an older waiting run before it takes
@@ -1233,13 +1252,15 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   and prints the rest, the lane's working set, on every run; on `main` it cuts a working set over the
   lane's cap (`max-size` in `ci.yml`) to it, oldest-used first, and keeps one under it whole (ccache's
   cleanup evicts from each of its 16 subdirectories past a 16th of the cap, so under the cap it still
-  cost the next linux build 238 of 5,284 compiles), saves it and deletes the lane's older entry (`prune`;
+  cost the next linux build 238 of 5,284 compiles), recompresses it from the zstd level 1 a build
+  writes to level 9 (14 % smaller: a linux sample of 296 MB took 23 s on 2 CPUs; level 12 gave 15 %,
+  19 22 % in 277 s), saves it and deletes the lane's older entry (`prune`;
   the `caches` job, after every lane, deletes them again). Each lane's old and new entries would
   otherwise both live until the push's slowest lane ended, and past the 10 GB GitHub evicts the least
   recently used entries of any lane: during push run 44629653601 the repository held 11.7 GB, two
   entries of linux, unit-core and Android, and the plan inputs, the coverage map and the Vulkan SDK
   were gone. A cap below the working set loses the start of the build, not all of it. The caches
-  share GitHub's 10 GB per repository (the repository's `max_cache_size_gb`); working sets from each
+  share the repository's 20 GB (`max_cache_size_gb`, raised from GitHub's default 10 on 2026-11-24); working sets from each
   lane's `ccache-save` (no precompiled headers, line tables only: `JASPERENGINE_DEBUG_INFO=lines`,
   "Build speed"), in decimal GB (ccache's caps are decimal; `du -h` prints binary), from PR 131's
   runs 44775260806 and 44806837004:
@@ -1252,18 +1273,24 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   | asan-core | 0.74 | 2.1 | 0.8G | yes |
   | asan-editor | 1.58-1.62 (the whole build: 7,721 entries of 3,863 compiles; runs 44934269450, 44959473600, 44970821863 and a local build) | 4.6 | 2.2G | yes |
   | htmlui | 0.78 (2,176 compiles, Release) | 1.66 | 0.85G | yes |
-  | macOS | 0.84 | 1.30-1.37 | 0.9G | yes |
+  | macOS | 0.81 with the Compile build, which a push makes for it (PR run 45075106333) | 1.30-1.37 | 0.9G | yes |
   | Windows editor | 0.92 (MSVC: `/Z7` as before) | 0.91 | 0.95G | yes |
+  | Windows OpenGL | 1.50 (1.4 GiB; `/Z7`: its core tests' reports name frames), 1.29 recompressed; PR 176's run 45274919394 | | 1.6G | yes |
+  | Windows D3D11, Vulkan | 0.35 each (337 MiB; Release, no debug information), 0.31 recompressed; same run | | 0.4G each | yes |
+  | Windows Compile | 0.45 (425 MiB), 0.38 recompressed; same run | | 0.5G | yes |
+  | iOS and macOS Xcode (`xcode-cas`, Xcode's compilation cache, no debug symbols) | 1.14-1.23 raw, 0.35-0.38 compressed (both SDKs, five builds of two commits 36 apart, on the Mac); saved by the nightly's `ios` job on `main` (a push would take a macOS runner for a lane the queue mostly leaves out), and it only grows, so a nightly that restores over 2 GB starts it afresh (`COMPILATION_CACHE_LIMIT_SIZE=1600M` held it at 1.78 GB with 92 % hits on a commit seen before, against 100 % without) | iOS alone 0.89 compressed | 2 GB raw (`fresh-over`) | yes |
   | Android | 0.27 | 0.63 | 0.3G | yes |
   | web | 0.24 | 0.48 | 0.3G | yes |
   | smoke | 1.93 (the player runtime and two Compile builds, which share nothing: each its own directory) | 3.5 | 0.5G | yes, the last-used part: the second Compile build |
   | Gradle, Vulkan SDK, MCP timings, uv | 0.73, 0.21, under 0.01 each | | | yes |
-  | Windows OpenGL | 1.4 | | | no: the lane ends with its slowest leg, and D3D11 and Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108) |
 
-  At most 9.0 GB of caps plus 0.96 GB of the rest, 9.96 GB in ccache's sizes; GitHub counts the saved
-  archives, about 0.96 of those (asan-editor: 1,526 MB for its 1.59 GB), and a cut entry holds about
-  92 % of its cap, so full caps would hold about 9.2 GB (8.9 GB at these working sets, smoke cut to
-  its cap). A cap a few percent above its working set still cuts it: ccache 4.5 (the image's) empties
+  The caps add up to 11.9 GB in ccache's sizes; a saved entry is recompressed to about 0.86 of its
+  working set (the Windows legs: 0.85-0.89), and GitHub counts the saved archives, about 0.96 of that
+  again (asan-editor: 1,526 MB for its 1.59 GB). At these working sets the ccache entries come to
+  about 8.6 GB and the rest (Gradle, the Vulkan SDK, `xcode-cas`, MCP timings, uv) to 1.3 GB: main's
+  entries hold about 10 GB, and caps full everywhere about 11 GB, which leaves the 20 GB room for a
+  push's old and new entries side by side and for the other branches' caches (the Vulkan SDK of a PR,
+  the merge queue's Gradle) without GitHub evicting one of main's. A cap a few percent above its working set still cuts it: ccache 4.5 (the image's) empties
   each of its 16 subdirectories that is over a sixteenth of the cap down to 80 % of that
   (`limit_multiple`), whatever the total, and the largest subdirectory runs about a quarter above the
   mean. asan-editor's whole build (1.58 GB, the largest subdirectory 123 MB) lost 415 of its 7,721
@@ -1274,7 +1301,8 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   same way. Smoke,
   last in line (the slowest cold lanes that run on every PR came first: unit-editor, then ASan),
   takes what is left and keeps its last-used part. A cache with no entry builds cold, its job still
-  reusing what an earlier step of the same job compiled, as do Windows D3D11 and Vulkan. A lane that
+  reusing what an earlier step of the same job compiled. A cancelled job saves nothing (the Windows
+  and macOS lanes): its working set lacks what it had not reached. A lane that
   gives its entry up has its prefix in the `caches` job's second list, so its last entry goes at
   once instead of holding the budget for 7 days.
 - **Full run on any branch**: `gh workflow run ci.yml --ref <branch> -f full=true`.

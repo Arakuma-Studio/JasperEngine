@@ -59,6 +59,20 @@ namespace jasperengine {
         // converted from (RmlRenderer::queueVideoConversion), owned and released with it
         std::unique_ptr<TextureRender> planes[3];
 
+        // S92 (R1): what a frame signature knows of the texels. The serial is unique over the
+        // process (an address reused after a release never matches); the content version is
+        // bumped by every change of the texels: update(), a <video> frame's conversion, a saved
+        // layer copied in (RmlRenderer). liveContent: texels that change without either (a
+        // <video>'s texture, an engine render target): a frame that draws it is always drawn
+        const uint64_t serial = nextSerial();
+        uint64_t contentVersion = 0;
+        bool liveContent = false;
+        // S92 R9: a small static texture's texels and sampling, hashed when it was made (0: not),
+        // for the content version it was hashed at: equal elements' textures (a clip-path's mask
+        // raster each) key their layer scopes the same
+        uint64_t pixelHash = 0;
+        uint64_t pixelHashVersion = 0;
+
         HtmlUITexture() = default;
         HtmlUITexture(const HtmlUITexture&) = delete;
         HtmlUITexture& operator=(const HtmlUITexture&) = delete;
@@ -80,6 +94,9 @@ namespace jasperengine {
         bool update(const void* data, size_t size);
         // DYNAMIC: update() would upload this frame
         bool canUpdate() const;
+
+    private:
+        static uint64_t nextSerial();
     };
 
 }

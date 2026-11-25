@@ -1579,6 +1579,8 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFontMsdf.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlRendererBatch.cpp
+    core/htmlui/RmlRendererFrame.cpp
+    core/htmlui/RmlRendererLayerCache.cpp
     core/htmlui/RmlSystem.cpp
     core/htmlui/HtmlUIContextInput.cpp
     core/htmlui/RmlKeyMap.cpp

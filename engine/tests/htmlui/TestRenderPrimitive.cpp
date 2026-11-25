@@ -149,6 +149,10 @@ namespace {
 
 TEST(RenderPrimitive, MatchesTheMeshPath){
     JASPER_REQUIRE_GPU();
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
+    // the layers of the mesh path in the frame compared, not drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     for (const Case& test : cases()){
         const std::string rml = documentOf(test.css, test.body);
         for (int samples : {1, 4, 8}){
@@ -195,6 +199,10 @@ TEST(RenderPrimitive, ShadowsMakeNoTextures){
 
 TEST(RenderPrimitive, GradientBackgroundsNeedNoMaskLayer){
     JASPER_REQUIRE_GPU();
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
+    // the layers of the mesh path in the frame compared, not drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     // a rounded box's CSS gradient: the mesh path masks it in a layer, the primitive clips itself
     // (S16-F5); the gradients are instances, no shader draw is left
     const std::string rml = documentOf(".g { left: 20px; top: 20px; border-radius: 12px; border: 2px solid #ffffff;"
@@ -334,4 +342,133 @@ TEST(RenderPrimitive, BoxInstanceLayout){
     EXPECT_FLOAT_EQ(shadowInstance.params[1], 3.0f);
     EXPECT_FLOAT_EQ(shadowInstance.a[1], 5.0f);
     EXPECT_FLOAT_EQ(shadowInstance.d[1], 1.0f);
+}
+
+// S92 R7 (AC7): gradients beyond S16-F5's four linear or radial stops are primitives too: up to 16
+// stops (px, %, hard and transparent ones) through the renderer's stop table, conic and repeating
+// gradients, and every background layer of a rounded box whose tiles are one tile or a grid along
+// each axis. They push no layer and no mask, the frame is one pass, and they look like the mesh
+// path they replace (the default golden metric of MatchesTheMeshPath)
+namespace {
+
+    void expectLayerFreeGradients(const char* label, const std::string& css, const std::string& body){
+        const std::string rml = documentOf(css, body);
+        for (int samples : {1, 4}){
+            const std::string at = std::string(label) + " at " + std::to_string(samples) + " samples";
+            Frame meshes, primitives;
+            ASSERT_TRUE(drawDocument(rml, samples, false, meshes)) << at;
+            ASSERT_TRUE(drawDocument(rml, samples, true, primitives)) << at;
+            EXPECT_EQ(primitives.stats.layersPushed, 0u) << at;
+            EXPECT_EQ(primitives.stats.passes, 1u) << at;
+            EXPECT_GT(primitives.stats.instancesDrawn, 0u) << at;
+            const ::testing::AssertionResult result = similar(primitives.screen, meshes.screen, at);
+            EXPECT_TRUE(result);
+            if (!result){
+                const std::string base = getOutputDirectory() + "/primitives-" + label + "-" + std::to_string(samples);
+                writePng(base + ".sdf.png", primitives.screen, width, height);
+                writePng(base + ".mesh.png", meshes.screen, width, height);
+            }
+        }
+    }
+
+}
+
+TEST(RenderPrimitive, GradientsWithManyStops){
+    JASPER_REQUIRE_GPU();
+    // the layers of the mesh path in the frame compared, not drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
+    // the port's button body (7 stops, hard px stops), 16 stops, hard and transparent stops of a
+    // radial gradient, a decorator of 9 stops
+    expectLayerFreeGradients("many-stops",
+                             ".a { left: 10px; top: 10px; border-radius: 14px; border: 2px solid #ffffff;"
+                             " background-image: linear-gradient(180deg, #fff3c0 0px, #ffd060 8px, #ffb000 8px, #ff8a00 30px, #e06000 45px, #c83c0080 52px, transparent 60px); }"
+                             ".b { left: 130px; top: 10px; border-radius: 20px; background-image: linear-gradient(90deg, #ff0000 0%, #ff6000 7%, #ffc000 13%,"
+                             " #c0ff00 20%, #60ff00 27%, #00ff00 33%, #00ff60 40%, #00ffc0 47%, #00c0ff 53%, #0060ff 60%, #0000ff 67%, #6000ff 73%,"
+                             " #c000ff 80%, #ff00c0 87%, #ff0060 93%, #ffffff 100%); }"
+                             ".c { left: 250px; top: 10px; border-radius: 30px; background-image: radial-gradient(circle at 40% 40%, #ffffff 0px, #ffffff 6px,"
+                             " #f04040 6px, #f04040 14px, transparent 14px, transparent 20px, #4040f0 20px, #102040 40px); }"
+                             ".d { left: 370px; top: 10px; decorator: linear-gradient(0deg, #101010, #303030 10%, #505050 20%, #707070 30%, #909090 40%,"
+                             " #b0b0b0 50%, #d0d0d0 60%, #f0f0f0 70%, #ffffff); }"
+                             ".e { left: 40px; top: 130px; border-radius: 10px; transform: rotate(10deg); background-image: linear-gradient(45deg, #ff0000,"
+                             " #00ff00 20%, #0000ff 40%, #ffff00 60%, #00ffff 80%, #ff00ff); }",
+                             "<div class=\"box a\"/><div class=\"box b\"/><div class=\"box c\"/><div class=\"box d\"/><div class=\"box e\"/>");
+
+    // more than 16 stops keep the mesh path and its mask layer
+    std::string seventeen = "linear-gradient(90deg";
+    for (int i = 0; i < 17; i++)
+        seventeen += std::string(", ") + ((i % 2) ? "#ff0000 " : "#0000ff ") + std::to_string(i * 6) + "%";
+    seventeen += ")";
+    Frame frame;
+    ASSERT_TRUE(drawDocument(documentOf(".f { left: 10px; top: 10px; border-radius: 14px; background-image: " + seventeen + "; }", "<div class=\"box f\"/>"),
+                             4, true, frame));
+    EXPECT_GT(frame.stats.layersPushed, 0u);
+}
+
+TEST(RenderPrimitive, ConicAndRepeating){
+    JASPER_REQUIRE_GPU();
+    expectLayerFreeGradients("conic-repeating",
+                             ".a { left: 10px; top: 10px; border-radius: 16px; background-image: conic-gradient(from 45deg at 40% 60%, #ff0000, #ffff00,"
+                             " #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); }"
+                             ".b { left: 130px; top: 10px; border-radius: 12px; background-image: repeating-linear-gradient(45deg, #cc3333 0px, #cc3333 6px,"
+                             " #ffffff 6px, #ffffff 12px); }"
+                             ".c { left: 250px; top: 10px; border-radius: 20px; background-image: repeating-radial-gradient(circle at 30% 40%, #3366cc 0px,"
+                             " #3366cc 5px, #f4c430 5px, #f4c430 10px); }"
+                             ".d { left: 370px; top: 10px; border-radius: 45px / 30px; background-image: repeating-conic-gradient(#222222 0deg, #222222 15deg,"
+                             " #eeeeee 15deg, #eeeeee 30deg); }"
+                             ".e { left: 40px; top: 130px; decorator: conic-gradient(from 90deg, #cc3333, #3366cc, #cc3333); }"
+                             ".f { left: 160px; top: 130px; border-radius: 8px; decorator: repeating-linear-gradient(90deg, #40c040 0px, #40c040 4px,"
+                             " #202020 4px, #202020 9px); }",
+                             "<div class=\"box a\"/><div class=\"box b\"/><div class=\"box c\"/><div class=\"box d\"/><div class=\"box e\"/>"
+                             "<div class=\"box f\"/>");
+}
+
+TEST(RenderPrimitive, EveryLayerOfARoundedBox){
+    JASPER_REQUIRE_GPU();
+    // four layers on a rounded, bordered box: a tile drawn once in the middle, a strip repeated
+    // along x only, a grid of dots, one over the whole box; and a tile alone in a corner
+    expectLayerFreeGradients("rounded-layers",
+                             ".a { left: 20px; top: 20px; width: 160px; height: 110px; border-radius: 22px; border: 3px solid #e0e0e0;"
+                             " background-image: linear-gradient(#ff000080, #ff000080), linear-gradient(90deg, #00ff00, #0000ff),"
+                             " radial-gradient(#ffffff 30%, transparent 32%), linear-gradient(180deg, #303030, #808080);"
+                             " background-size: 40px 20px, 30px 12px, 16px 16px, auto;"
+                             " background-position: center, 0px 10px, 0px 0px, 0px 0px;"
+                             " background-repeat: no-repeat, repeat-x, repeat, repeat; }"
+                             ".b { left: 240px; top: 20px; width: 160px; height: 110px; border-radius: 40px; background-color: #203040;"
+                             " background-image: radial-gradient(circle, #f0c040, #f0c04000); background-size: 60px 60px;"
+                             " background-position: 0px 0px; background-repeat: no-repeat; }",
+                             "<div class=\"box a\"/><div class=\"box b\"/>");
+}
+
+TEST(RenderPrimitive, GradientInstanceLayout){
+    // up to four stops in the instance, more in the shader's row of the stop table; the function
+    // and the single tile (a negative period) as given
+    RmlCompiledShader four;
+    four.function = RmlCompiledShader::Function::REPEATING_CONIC;
+    four.p = Rml::Vector2f(3, 4);
+    four.v = Rml::Vector2f(1, 0);
+    four.stopPositions = {0.0f, 0.25f, 0.5f, 1.0f};
+    four.stopColors = {Rml::Colourf(1, 0, 0, 1), Rml::Colourf(0, 1, 0, 1), Rml::Colourf(0, 0, 1, 1), Rml::Colourf(1, 1, 1, 1)};
+    Rml::BoxPrimitive gradient;
+    gradient.kind = Rml::BoxPrimitive::Kind::Gradient;
+    gradient.border_box = Rml::Rectanglef::FromPositionSize(Rml::Vector2f(0, 0), Rml::Vector2f(80, 40));
+    gradient.shader = reinterpret_cast<Rml::CompiledShaderHandle>(&four);
+    gradient.gradient_repeat = Rml::Vector2f(-20, 16);
+    HtmlUIPrimitive instance = RmlRenderer::toInstance(gradient, Rml::Vector2f(0, 0));
+    EXPECT_EQ(instance.params[0], (float)HtmlUIPrimitive::GRADIENT);
+    EXPECT_FLOAT_EQ(instance.f[0], (float)RmlCompiledShader::Function::REPEATING_CONIC);
+    EXPECT_FLOAT_EQ(instance.f[1], 4.0f);
+    EXPECT_FLOAT_EQ(instance.f[2], -20.0f);
+    EXPECT_FLOAT_EQ(instance.f[3], 16.0f);
+    EXPECT_FLOAT_EQ(instance.e[1], 0.25f);
+    EXPECT_EQ(instance.border[1][1], 255);
+
+    RmlCompiledShader seven = four;
+    seven.stopPositions = {0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 1.0f};
+    seven.stopColors.resize(7, Rml::Colourf(1, 1, 1, 1));
+    seven.stopRow = 5;
+    gradient.shader = reinterpret_cast<Rml::CompiledShaderHandle>(&seven);
+    instance = RmlRenderer::toInstance(gradient, Rml::Vector2f(0, 0));
+    EXPECT_FLOAT_EQ(instance.f[1], 7.0f);
+    EXPECT_FLOAT_EQ(instance.e[0], 5.0f);
+    EXPECT_EQ(instance.border[1][1], 0);
 }

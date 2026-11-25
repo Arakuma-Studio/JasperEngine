@@ -17,9 +17,9 @@ CI = True
 TIMEOUT = 900
 
 MESH, SKYBOX, DEPTH = 2, 3, 4   # ShaderType
-# the MESH properties past the 32 of older keys (ShaderPool::getShaderPropertyName, bits 32-54): a
+# the MESH properties past the 32 of older keys (ShaderPool::getShaderPropertyName, bits 32-55): a
 # key with one is wide
-WIDE_MESH = {"Ltc", "Shq", "Vat", "Vab", "Til", "Cap", "Cts", "Oit", "Lfd", "Aui", "Wex", "Wwk", "Dlo", "Pxs", "Sfx", "Sfr", "Spv", "Cin", "Wnd", "Dth", "Thl", "Twd", "Tcl"}
+WIDE_MESH = {"Ltc", "Shq", "Vat", "Vab", "Til", "Cap", "Cts", "Oit", "Lfd", "Aui", "Wex", "Wwk", "Dlo", "Pxs", "Sfx", "Sfr", "Spv", "Cin", "Wnd", "Dth", "Thl", "Twd", "Tcl", "Lst"}
 UNNAMED_BIT = 63
 
 

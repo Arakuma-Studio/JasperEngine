@@ -4991,6 +4991,10 @@
 		4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */; };
 		4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
 		4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
+		4A534E474F0C1FAE254222FD /* RmlRendererFrame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */; };
+		4A534E476FED1ADCC1068DC5 /* RmlRendererFrame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */; };
+		4A534E472A46CF1186D6EE02 /* RmlRendererLayerCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */; };
+		4A534E4773FFCEFA2D4C0157 /* RmlRendererLayerCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */; };
 		4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477CE603833084E5A8 /* PortableMath.h */; };
 		4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
 		4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
@@ -9666,6 +9670,8 @@
 		4A534E537CEA2BEF5EF22172 /* clipper.offset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.offset.cpp; sourceTree = "<group>"; };
 		4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.rectclip.cpp; sourceTree = "<group>"; };
 		4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.triangulation.cpp; sourceTree = "<group>"; };
+		4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlRendererFrame.cpp; sourceTree = "<group>"; };
+		4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlRendererLayerCache.cpp; sourceTree = "<group>"; };
 		4A534E477CE603833084E5A8 /* PortableMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PortableMath.h; sourceTree = "<group>"; };
 		4A534E472C361D2083EA2902 /* SourceEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SourceEffects.cpp; sourceTree = "<group>"; };
 		4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceSlots.cpp; sourceTree = "<group>"; };
@@ -14766,6 +14772,8 @@
 				4A534E47535074DEA48446A6 /* controls */,
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
+				4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */,
+				4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -19879,6 +19887,8 @@
 				4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */,
 				4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */,
 				4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */,
+				4A534E474F0C1FAE254222FD /* RmlRendererFrame.cpp in Sources */,
+				4A534E472A46CF1186D6EE02 /* RmlRendererLayerCache.cpp in Sources */,
 				4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */,
 				4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */,
 				4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */,
@@ -20893,6 +20903,8 @@
 				4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */,
 				4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */,
 				4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */,
+				4A534E476FED1ADCC1068DC5 /* RmlRendererFrame.cpp in Sources */,
+				4A534E4773FFCEFA2D4C0157 /* RmlRendererLayerCache.cpp in Sources */,
 				4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */,
 				4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */,
 				4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */,

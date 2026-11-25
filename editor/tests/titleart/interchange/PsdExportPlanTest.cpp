@@ -23,29 +23,29 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::psd;
-using titleart::Json;
+using PsdExportPlanJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 namespace fs = std::filesystem;
 
 namespace {
 
     titleart::TitleArtDoc psdExportPlanDocument() {
         titleart::TitleArtDoc doc = titleart::makeNewTitleArt();
-        doc.root["canvas"] = Json{{"width", 64}, {"height", 32}};
-        doc.root["exposed"] = Json::array();
-        const Json shape = Json{{"type", "shape"}, {"name", "Plate"}, {"size", 20}};
-        Json title = Json{{"type", "text"}, {"name", "Title"}, {"text", "AB"}, {"size", 20},
-                          {"style", {{"rims", Json::array({Json{{"width", 3}}, Json{{"width", 2}}})}}}};
-        Json clippedShape = Json{{"type", "shape"}, {"name", "Shine"}, {"clip", true}, {"blend", "screen"}};
-        Json clippedLevels = Json{{"type", "adjustment"}, {"name", "Clip Levels"}, {"clip", true}, {"adjustment", {{"type", "levels"}}}};
-        Json clippedExposure = Json{{"type", "adjustment"}, {"name", "Clip Exposure"}, {"clip", true}, {"adjustment", {{"type", "exposure"}}}};
-        Json group = Json{{"type", "group"}, {"name", "FX Group"},
-                          {"effects", Json::array({Json{{"type", "drop_shadow"}}})},
-                          {"children", Json::array({Json{{"type", "shape"}, {"name", "In A"}}, Json{{"type", "shape"}, {"name", "In B"}}})}};
-        Json masked = Json{{"type", "shape"}, {"name", "Masked"}, {"masks", Json::array({Json{{"type", "shape"}}})}};
-        Json hidden = Json{{"type", "shape"}, {"name", "Hidden"}, {"visible", false}, {"blend", "luminosity"}};
-        Json hue = Json{{"type", "adjustment"}, {"name", "Hue"}, {"adjustment", {{"type", "hue_saturation"}, {"hue", 20}}}};
-        Json vibrance = Json{{"type", "adjustment"}, {"name", "Vibrance"}, {"adjustment", {{"type", "vibrance"}, {"vibrance", 20}}}};
-        doc.root["layers"] = Json::array({shape, title, clippedShape, clippedLevels, clippedExposure, group, masked, hidden, hue, vibrance});
+        doc.root["canvas"] = PsdExportPlanJson{{"width", 64}, {"height", 32}};
+        doc.root["exposed"] = PsdExportPlanJson::array();
+        const PsdExportPlanJson shape = PsdExportPlanJson{{"type", "shape"}, {"name", "Plate"}, {"size", 20}};
+        PsdExportPlanJson title = PsdExportPlanJson{{"type", "text"}, {"name", "Title"}, {"text", "AB"}, {"size", 20},
+                          {"style", {{"rims", PsdExportPlanJson::array({PsdExportPlanJson{{"width", 3}}, PsdExportPlanJson{{"width", 2}}})}}}};
+        PsdExportPlanJson clippedShape = PsdExportPlanJson{{"type", "shape"}, {"name", "Shine"}, {"clip", true}, {"blend", "screen"}};
+        PsdExportPlanJson clippedLevels = PsdExportPlanJson{{"type", "adjustment"}, {"name", "Clip Levels"}, {"clip", true}, {"adjustment", {{"type", "levels"}}}};
+        PsdExportPlanJson clippedExposure = PsdExportPlanJson{{"type", "adjustment"}, {"name", "Clip Exposure"}, {"clip", true}, {"adjustment", {{"type", "exposure"}}}};
+        PsdExportPlanJson group = PsdExportPlanJson{{"type", "group"}, {"name", "FX Group"},
+                          {"effects", PsdExportPlanJson::array({PsdExportPlanJson{{"type", "drop_shadow"}}})},
+                          {"children", PsdExportPlanJson::array({PsdExportPlanJson{{"type", "shape"}, {"name", "In A"}}, PsdExportPlanJson{{"type", "shape"}, {"name", "In B"}}})}};
+        PsdExportPlanJson masked = PsdExportPlanJson{{"type", "shape"}, {"name", "Masked"}, {"masks", PsdExportPlanJson::array({PsdExportPlanJson{{"type", "shape"}}})}};
+        PsdExportPlanJson hidden = PsdExportPlanJson{{"type", "shape"}, {"name", "Hidden"}, {"visible", false}, {"blend", "luminosity"}};
+        PsdExportPlanJson hue = PsdExportPlanJson{{"type", "adjustment"}, {"name", "Hue"}, {"adjustment", {{"type", "hue_saturation"}, {"hue", 20}}}};
+        PsdExportPlanJson vibrance = PsdExportPlanJson{{"type", "adjustment"}, {"name", "Vibrance"}, {"adjustment", {{"type", "vibrance"}, {"vibrance", 20}}}};
+        doc.root["layers"] = PsdExportPlanJson::array({shape, title, clippedShape, clippedLevels, clippedExposure, group, masked, hidden, hue, vibrance});
         titleart::normalizeTitleArt(doc, nullptr);
         return doc;
     }
@@ -82,7 +82,7 @@ TEST(PsdExportPlan, LayersGroupsClipsAdjustments) {
     ASSERT_EQ(shine->clipBases.size(), 1u);
     const PsdRenderJob& base = plan.jobs[(size_t)shine->clipBases[0]];
     EXPECT_EQ(base.purpose, "clip_base");
-    EXPECT_TRUE(titleart::findLayer(base.doc->root, doc.layers()[1]["id"].get<std::string>())->value("effects", Json::array()).empty());
+    EXPECT_TRUE(titleart::findLayer(base.doc->root, doc.layers()[1]["id"].get<std::string>())->value("effects", PsdExportPlanJson::array()).empty());
     // a clipped native adjustment, a clipped baked one (opaque inside the base, clipped)
     const PsdPlanNode* levels = named(plan.nodes, "Clip Levels");
     EXPECT_EQ(levels->kind, PsdPlanNode::Kind::Adjust);
@@ -104,7 +104,7 @@ TEST(PsdExportPlan, LayersGroupsClipsAdjustments) {
     const PsdPlanNode* mask = named(plan.nodes, "Masked");
     ASSERT_GE(mask->maskJob, 0);
     EXPECT_EQ(plan.jobs[(size_t)mask->maskJob].purpose, "mask");
-    const Json* drawn = titleart::findLayer(plan.jobs[(size_t)mask->job].doc->root, doc.layers()[6]["id"].get<std::string>());
+    const PsdExportPlanJson* drawn = titleart::findLayer(plan.jobs[(size_t)mask->job].doc->root, doc.layers()[6]["id"].get<std::string>());
     EXPECT_TRUE((*drawn)["masks"].empty());
     // a hidden layer stays a hidden record, a blend Photoshop has natively
     EXPECT_TRUE(named(plan.nodes, "Hidden")->hidden);
@@ -132,7 +132,7 @@ TEST(PsdExportPlan, SplitTitles) {
     EXPECT_FALSE(title->children[3].hidden);
     // rim 2 alone: its cumulative width, the face hidden, no effects
     const titleart::TitleArtDoc& rim2 = *plan.jobs[(size_t)title->children[0].job].doc;
-    const Json* layer = titleart::findLayer(rim2.root, plan.jobs[(size_t)title->children[0].job].isolateLayer);
+    const PsdExportPlanJson* layer = titleart::findLayer(rim2.root, plan.jobs[(size_t)title->children[0].job].isolateLayer);
     ASSERT_NE(layer, nullptr);
     ASSERT_EQ((*layer)["style"]["rims"].size(), 1u);
     EXPECT_DOUBLE_EQ((*layer)["style"]["rims"][0]["width"].get<double>(), 5.0);

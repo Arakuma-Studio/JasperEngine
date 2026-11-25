@@ -7,7 +7,10 @@
 #   tools/ci/windows.sh editor                     the Release editor (preset windows-msvc-release) with
 #                                                  jasperengine-editor-cmd and jasperengine-editor-tests,
 #                                                  installed into instdir/ (EDITOR_TESTS=0: no tests; a
-#                                                  release editor, which package needs)
+#                                                  release editor, which package needs; EDITOR_TESTS_BUILD=0:
+#                                                  the same tree, configured with its tests so every object is
+#                                                  the one the cache holds, without building them: the merge
+#                                                  queue, where their run is advisory)
 #   tools/ci/windows.sh engine [d3d11|glcore|vulkan]  the engine sample project and jasperengine-core-tests
 #                                                  of that backend (default glcore, engine/CMakeLists.txt's
 #                                                  for Windows; vulkan needs the Vulkan SDK, VULKAN_SDK);
@@ -44,7 +47,11 @@ check_backend() {
 step_editor() {
     ci_msvc
     local targets=(jasperengine-editor jasperengine-editor-cmd) tests=ON
-    if [[ "${EDITOR_TESTS:-1}" == 0 ]]; then tests=OFF; else targets+=(jasperengine-editor-tests); fi
+    if [[ "${EDITOR_TESTS:-1}" == 0 ]]; then
+        tests=OFF
+    elif [[ "${EDITOR_TESTS_BUILD:-1}" != 0 ]]; then
+        targets+=(jasperengine-editor-tests)
+    fi
     cmake --preset windows-msvc-release -B "$EDITOR_TREE" -DCMAKE_BUILD_TYPE=Release \
         -DJASPERENGINE_TESTS:BOOL="$tests" -DJASPERENGINE_WERROR="$WERROR_VALUE" \
         "-DCMAKE_INSTALL_PREFIX:PATH=$(ci_native "$INSTALL")" "${MSVC_LINKER_ARGS[@]}" \

@@ -79,6 +79,15 @@ namespace jasperengine{
         HIGH        // 512
     };
 
+    // Where the scene's screen HTML UI documents composite (Unity's Canvas Render Mode): OVERLAY
+    // after post-processing, at the output resolution (Screen Space - Overlay); CAMERA in the
+    // camera pass, before post, at the render scale (Screen Space - Camera). Stored as ints:
+    // append only.
+    enum class UIRenderMode {
+        OVERLAY,
+        CAMERA
+    };
+
     // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
     enum class SceneColorScale {
         FULL,   // the camera pass's resolution
@@ -430,6 +439,11 @@ namespace jasperengine{
         // library phase 3): FULL = the camera pass's resolution, HALF = half of it (default; mobile)
         SceneColorScale sceneColorScale = SceneColorScale::HALF;
 
+        // the screen HTML UI documents (S92): where they composite, and their target's MSAA samples
+        // (0: the project's htmlUiMsaaSamples, else 1, 2, 4 or 8)
+        UIRenderMode htmlUiRenderMode = UIRenderMode::OVERLAY;
+        int htmlUiMsaaSamples = 0;
+
         // Planar reflections (RenderSystem's water reflection passes, one per water height and
         // viewing camera): their resolution, the layers they draw (with the viewer's culling
         // mask), whether they sample the viewer's shadow maps, their far clip (0: the viewer's),
@@ -473,6 +487,13 @@ namespace jasperengine{
         // default 1.0 keeps 2D scenes visually unchanged until the user dims it
         Vector3 ambientLight2DColor = Vector3(1.0, 1.0, 1.0); // stored linear
         float ambientLight2DIntensity = 1.0f;
+        // Light Steps (S78 R1, R2): each Light 2D's light quantized into this many bands, 0..16;
+        // 0 is off (smooth light, the variants of before)
+        int light2DSteps = 0;
+        // a tinting Ambient Light 2D multiplies the unlit 2D-lit materials of a scene without a
+        // Light 2D too (S78 R6); new scenes have it on, a scene file without the key (and a cooked
+        // record before 1.8) is off, as it was drawn before S78
+        bool ambientLight2DWithoutLights = true;
         ShadowQuality shadow2DQuality = ShadowQuality::LOW;
 
         bool ssaoEnabled = false;

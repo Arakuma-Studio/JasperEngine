@@ -27,22 +27,22 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using Title3DEditorJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 using titleart::TitleArtDoc;
 
 namespace {
 
     // a shape layer "Plate" (no font needed) with two rims and a red face
     TitleArtDoc title3DSample() {
-        Json root = Json{{"format", titleart::TITLE_ART_FORMAT}, {"version", titleart::TITLE_ART_VERSION}};
-        root["layers"] = Json::array(
+        Title3DEditorJson root = Title3DEditorJson{{"format", titleart::TITLE_ART_FORMAT}, {"version", titleart::TITLE_ART_VERSION}};
+        root["layers"] = Title3DEditorJson::array(
             {{{"type", "shape"}, {"name", "Plate"}, {"shape", "rect"}, {"size", 200}, {"aspect", 2},
               {"style", {{"face", {{"fill", {{"kind", "solid"}, {"color", "#ff2020"}}}}},
-                         {"rims", Json::array({Json{{"width", 4}, {"material", {{"fill", {{"color", "#ffd000"}}}}}}, Json{{"width", 2}}})}}}}});
+                         {"rims", Title3DEditorJson::array({Title3DEditorJson{{"width", 4}, {"material", {{"fill", {{"color", "#ffd000"}}}}}}, Title3DEditorJson{{"width", 2}}})}}}}});
         return titleart::parseTitleArtJson(root).doc;
     }
 
-    TitleOpsResult title3DApplyOps(const TitleArtDoc& doc, const Json& ops) {
+    TitleOpsResult title3DApplyOps(const TitleArtDoc& doc, const Title3DEditorJson& ops) {
         registerTitle3DEditor();
         return TitleArtOps::apply(doc, ops, TitleOpsOptions{7});
     }
@@ -51,10 +51,10 @@ namespace {
 
 TEST(Title3DEditorTest, SetDimensionDerivesTheStyleInOneStep) {
     const TitleArtDoc doc = title3DSample();
-    const TitleOpsResult r = title3DApplyOps(doc, Json{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}});
+    const TitleOpsResult r = title3DApplyOps(doc, Title3DEditorJson{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}});
     ASSERT_TRUE(r.ok) << r.error();
     EXPECT_EQ(r.undoName, "Set Dimension 3D");
-    const Json& layer = r.doc.layers()[0];
+    const Title3DEditorJson& layer = r.doc.layers()[0];
     EXPECT_EQ(layer["dimension"], "3d");
     ASSERT_TRUE(layer["style_3d"].is_object());
     ASSERT_EQ(layer["style_3d"]["bands"].size(), 2u);
@@ -63,52 +63,52 @@ TEST(Title3DEditorTest, SetDimensionDerivesTheStyleInOneStep) {
     EXPECT_EQ(layer["style_3d"]["face"]["color"], "#ff2020");
     EXPECT_TRUE(r.doc.root["scene_3d"].is_object());
     // back to 2D keeps the 2D style exactly
-    const TitleOpsResult back = title3DApplyOps(r.doc, Json{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "2d"}});
+    const TitleOpsResult back = title3DApplyOps(r.doc, Title3DEditorJson{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "2d"}});
     ASSERT_TRUE(back.ok) << back.error();
     EXPECT_EQ(back.doc.layers()[0]["style"], doc.layers()[0]["style"]);
     EXPECT_EQ(back.undoName, "Set Dimension 2D");
 }
 
 TEST(Title3DEditorTest, BandOpsAndErrors) {
-    const TitleArtDoc doc = title3DApplyOps(title3DSample(), Json{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
-    TitleOpsResult added = title3DApplyOps(doc, Json{{"op", "add_band"}, {"layer", "Plate"}, {"preset", "plate"}, {"values", {{"depth", 9}}}});
+    const TitleArtDoc doc = title3DApplyOps(title3DSample(), Title3DEditorJson{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
+    TitleOpsResult added = title3DApplyOps(doc, Title3DEditorJson{{"op", "add_band"}, {"layer", "Plate"}, {"preset", "plate"}, {"values", {{"depth", 9}}}});
     ASSERT_TRUE(added.ok) << added.error();
     EXPECT_EQ(added.undoName, "Add Band");
-    const Json& bands = added.doc.layers()[0]["style_3d"]["bands"];
+    const Title3DEditorJson& bands = added.doc.layers()[0]["style_3d"]["bands"];
     ASSERT_EQ(bands.size(), 3u);
     EXPECT_DOUBLE_EQ(bands[2]["depth"].get<double>(), 9);
     EXPECT_EQ(bands[2]["name"], "Plate");
-    const TitleOpsResult moved = title3DApplyOps(added.doc, Json{{"op", "move_band"}, {"layer", "Plate"}, {"band", "band#2"}, {"index", 0}});
+    const TitleOpsResult moved = title3DApplyOps(added.doc, Title3DEditorJson{{"op", "move_band"}, {"layer", "Plate"}, {"band", "band#2"}, {"index", 0}});
     ASSERT_TRUE(moved.ok) << moved.error();
     EXPECT_EQ(moved.undoName, "Move Band");
     EXPECT_EQ(moved.doc.layers()[0]["style_3d"]["bands"][0]["name"], "Plate");
-    const TitleOpsResult removed = title3DApplyOps(moved.doc, Json{{"op", "remove_band"}, {"layer", "Plate"}, {"band", "band#0"}});
+    const TitleOpsResult removed = title3DApplyOps(moved.doc, Title3DEditorJson{{"op", "remove_band"}, {"layer", "Plate"}, {"band", "band#0"}});
     ASSERT_TRUE(removed.ok) << removed.error();
     EXPECT_EQ(removed.doc.layers()[0]["style_3d"]["bands"].size(), 2u);
     // errors list the valid values
-    const TitleOpsResult badBand = title3DApplyOps(doc, Json{{"op", "remove_band"}, {"layer", "Plate"}, {"band", "band#9"}});
+    const TitleOpsResult badBand = title3DApplyOps(doc, Title3DEditorJson{{"op", "remove_band"}, {"layer", "Plate"}, {"band", "band#9"}});
     ASSERT_FALSE(badBand.ok);
     ASSERT_FALSE(badBand.problems.empty());
     EXPECT_FALSE(badBand.problems[0].validHere.empty());
-    const TitleOpsResult badPreset = title3DApplyOps(doc, Json{{"op", "add_band"}, {"layer", "Plate"}, {"preset", "neon_halo"}});
+    const TitleOpsResult badPreset = title3DApplyOps(doc, Title3DEditorJson{{"op", "add_band"}, {"layer", "Plate"}, {"preset", "neon_halo"}});
     ASSERT_FALSE(badPreset.ok);
     EXPECT_EQ(badPreset.problems[0].validHere, title3DBandPresetNames());
 }
 
 TEST(Title3DEditorTest, ApplyMaterialAndFitToTier) {
-    const TitleArtDoc doc = title3DApplyOps(title3DSample(), Json{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
-    const TitleOpsResult gold = title3DApplyOps(doc, Json{{"op", "apply_material"}, {"layer", "Plate"}, {"part", "face"}, {"preset", "gold"}});
+    const TitleArtDoc doc = title3DApplyOps(title3DSample(), Title3DEditorJson{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
+    const TitleOpsResult gold = title3DApplyOps(doc, Title3DEditorJson{{"op", "apply_material"}, {"layer", "Plate"}, {"part", "face"}, {"preset", "gold"}});
     ASSERT_TRUE(gold.ok) << gold.error();
     EXPECT_EQ(gold.undoName, "Apply Material Gold");
     EXPECT_EQ(gold.doc.layers()[0]["style_3d"]["face"]["preset"], "gold");
-    const TitleOpsResult band = title3DApplyOps(doc, Json{{"op", "apply_material"}, {"layer", "Plate"}, {"part", "band#1"}, {"preset", "chrome"}});
+    const TitleOpsResult band = title3DApplyOps(doc, Title3DEditorJson{{"op", "apply_material"}, {"layer", "Plate"}, {"part", "band#1"}, {"preset", "chrome"}});
     ASSERT_TRUE(band.ok) << band.error();
     EXPECT_EQ(band.doc.layers()[0]["style_3d"]["bands"][1]["material"]["preset"], "chrome");
-    const TitleOpsResult bad = title3DApplyOps(doc, Json{{"op", "apply_material"}, {"layer", "Plate"}, {"part", "rim"}, {"preset", "gold"}});
+    const TitleOpsResult bad = title3DApplyOps(doc, Title3DEditorJson{{"op", "apply_material"}, {"layer", "Plate"}, {"part", "rim"}, {"preset", "gold"}});
     ASSERT_FALSE(bad.ok);
     EXPECT_NE(std::find(bad.problems[0].validHere.begin(), bad.problems[0].validHere.end(), "band#0"), bad.problems[0].validHere.end());
     // fit_to_tier reduces the curve segments and band bevels for Low
-    const TitleOpsResult fit = title3DApplyOps(doc, Json{{"op", "fit_to_tier"}, {"layer", "Plate"}, {"tier", "low"}});
+    const TitleOpsResult fit = title3DApplyOps(doc, Title3DEditorJson{{"op", "fit_to_tier"}, {"layer", "Plate"}, {"tier", "low"}});
     ASSERT_TRUE(fit.ok) << fit.error();
     EXPECT_EQ(fit.undoName, "Fit To Tier Low");
     EXPECT_EQ(fit.doc.layers()[0]["style_3d"]["curve_segments"], 4);
@@ -116,8 +116,8 @@ TEST(Title3DEditorTest, ApplyMaterialAndFitToTier) {
 
 TEST(Title3DEditorTest, ChecksReportZFightingAndBudgets) {
     registerTitle3DEditor();
-    TitleArtDoc doc = title3DApplyOps(title3DSample(), Json{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
-    doc = title3DApplyOps(doc, Json{{"op", "set"}, {"layer", "Plate"}, {"values", {{"band#0.offset", -0.1}}}}).doc;
+    TitleArtDoc doc = title3DApplyOps(title3DSample(), Title3DEditorJson{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
+    doc = title3DApplyOps(doc, Title3DEditorJson{{"op", "set"}, {"layer", "Plate"}, {"values", {{"band#0.offset", -0.1}}}}).doc;
     std::vector<const CheckDef*> checks;
     std::string error;
     std::vector<std::string> valid;
@@ -134,10 +134,10 @@ TEST(Title3DEditorTest, ChecksReportZFightingAndBudgets) {
 }
 
 TEST(TitleGlbWriterTest, RoundTripThroughTinyGltf) {
-    TitleArtDoc doc = title3DApplyOps(title3DSample(), Json{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
-    doc = title3DApplyOps(doc, Json::array({Json{{"op", "apply_material"}, {"layer", "Plate"}, {"part", "face"}, {"preset", "gold"}},
-                                  Json{{"op", "apply_material"}, {"layer", "Plate"}, {"part", "band#0"}, {"preset", "sapphire"}},
-                                  Json{{"op", "set"}, {"layer", "Plate"}, {"values", {{"3d.face.clearcoat", 0.5}, {"3d.face.iridescence", 0.4}}}}}))
+    TitleArtDoc doc = title3DApplyOps(title3DSample(), Title3DEditorJson{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
+    doc = title3DApplyOps(doc, Title3DEditorJson::array({Title3DEditorJson{{"op", "apply_material"}, {"layer", "Plate"}, {"part", "face"}, {"preset", "gold"}},
+                                  Title3DEditorJson{{"op", "apply_material"}, {"layer", "Plate"}, {"part", "band#0"}, {"preset", "sapphire"}},
+                                  Title3DEditorJson{{"op", "set"}, {"layer", "Plate"}, {"values", {{"3d.face.clearcoat", 0.5}, {"3d.face.iridescence", 0.4}}}}}))
               .doc;
     TitleGlbOptions options;
     const TitleGlbResult glb = writeTitleGlb(doc, nullptr, options);
@@ -183,7 +183,7 @@ TEST(TitleGlbWriterTest, RoundTripThroughTinyGltf) {
 
 TEST(Title3DEditorTest, CookedMeshesReadBackAtTheirTier) {
     // R38: a 3D layer's mesh cooked at Low reads back at Low with the triangles stats_3d counts
-    const TitleArtDoc doc = title3DApplyOps(title3DSample(), Json{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
+    const TitleArtDoc doc = title3DApplyOps(title3DSample(), Title3DEditorJson{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
     std::map<std::string, std::vector<uint8_t>> cooked;
     std::string error;
     ASSERT_TRUE(cookTitleMeshes(doc, nullptr, titleart::TitleTier::Low, 1.0, nullptr, cooked, error)) << error;
@@ -191,7 +191,7 @@ TEST(Title3DEditorTest, CookedMeshesReadBackAtTheirTier) {
     const std::shared_ptr<titleart::TitleMesh> mesh = titleart::readTitleMesh(cooked.begin()->second, &error);
     ASSERT_TRUE(mesh) << error;
     EXPECT_EQ(mesh->tier, titleart::TitleTier::Low);
-    const Json stats = title3DStats(doc, nullptr, titleart::TitleTier::Low);
+    const Title3DEditorJson stats = title3DStats(doc, nullptr, titleart::TitleTier::Low);
     ASSERT_EQ(stats.size(), 1u);
     EXPECT_EQ(mesh->stats.triangles, stats[0]["triangles"].get<uint32_t>());
 }

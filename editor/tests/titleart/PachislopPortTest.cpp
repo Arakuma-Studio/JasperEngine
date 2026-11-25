@@ -26,6 +26,8 @@
 using namespace jasperengine;
 using namespace jasperengine::editor::titlelibrary;
 namespace fs = std::filesystem;
+// its own name: Title Art's, Pachislop's and the editor's Json aliases may all be in sight in a unity unit
+using PachislopPortJson = jasperengine::titleart::Json;
 
 namespace {
 
@@ -38,8 +40,8 @@ namespace {
         return ss.str();
     }
 
-    Json pachislopPortReadJson(const fs::path& path) {
-        return Json::parse(pachislopPortReadText(path), nullptr, false);
+    PachislopPortJson pachislopPortReadJson(const fs::path& path) {
+        return PachislopPortJson::parse(pachislopPortReadText(path), nullptr, false);
     }
 
     void pachislopPortWriteText(const fs::path& path, const std::string& text) {
@@ -70,7 +72,7 @@ namespace {
             std::string error;
             loadOk = loadPortOptions(REPO, *options, &error);
             loadError = error;
-            const Json dump = pachislopPortReadJson(REPO / PACHISLOP_DUMP_PATH);
+            const PachislopPortJson dump = pachislopPortReadJson(REPO / PACHISLOP_DUMP_PATH);
             result = std::make_unique<PortResult>(portDump(dump, *options));
             std::vector<std::string> errors;
             normalized = std::make_unique<std::map<std::string, std::string>>(normalizedPortFiles(*result, &errors));
@@ -95,7 +97,7 @@ namespace {
     }
 
     // the JSON path of the first text layer of a document's tree ("layers[2].children[0]")
-    bool firstTextLayer(const Json& layers, const std::string& path, std::vector<std::string>& keys, std::string& text) {
+    bool firstTextLayer(const PachislopPortJson& layers, const std::string& path, std::vector<std::string>& keys, std::string& text) {
         for (size_t i = 0; i < layers.size(); i++) {
             const std::string at = path + "[" + std::to_string(i) + "]";
             keys.push_back("#" + std::to_string(i));
@@ -146,14 +148,14 @@ TEST_F(PachislopPortTest, HashedMapKeysMatchRawSources) {
     ASSERT_TRUE(loadOk) << loadError;
     ASSERT_TRUE(result->ok) << pachislopPortJoined(result->errors);
     PortOptions hashed = *options;
-    Json ids = Json::object();
+    PachislopPortJson ids = PachislopPortJson::object();
     for (auto it = options->map["ids"].begin(); it != options->map["ids"].end(); ++it) {
         ids[it.key().rfind("sha256:", 0) == 0 ? it.key() : pachislopSourceKey(it.key())] = it.value();
     }
     hashed.map["ids"] = ids;
     size_t texts = 0;
     for (auto it = hashed.map["template_texts"].begin(); it != hashed.map["template_texts"].end(); ++it) {
-        for (Json& e : it.value()) {
+        for (PachislopPortJson& e : it.value()) {
             const std::string source = e.value("source", std::string());
             if (source.rfind("sha256:", 0) != 0) {
                 e["source"] = pachislopSourceKey(source);
@@ -212,7 +214,7 @@ TEST_F(PachislopPortTest, ChangedByteInCommittedLookIsNamed) {
 
 TEST_F(PachislopPortTest, UnmappedMemberFailsNamingIt) {
     ASSERT_TRUE(loadOk) << loadError;
-    Json dump = pachislopPortReadJson(fixturePath());
+    PachislopPortJson dump = pachislopPortReadJson(fixturePath());
     ASSERT_TRUE(dump.is_object());
     const PortResult bad = portDump(dump, *options);
     EXPECT_FALSE(bad.ok);
@@ -228,7 +230,7 @@ TEST_F(PachislopPortTest, UnmappedMemberFailsNamingIt) {
     ASSERT_TRUE(good.files.count(path));
     const LookParseResult look = parseLook(good.files.at(path));
     ASSERT_TRUE(look.ok) << look.error;
-    EXPECT_EQ(look.look.root["style"]["rims"][0]["offset"], Json::array({0, -3.2}));
+    EXPECT_EQ(look.look.root["style"]["rims"][0]["offset"], PachislopPortJson::array({0, -3.2}));
     EXPECT_EQ(look.look.root["effects"][0]["params"]["color"], "#1a2040");
     EXPECT_GE(look.look.tags().size(), 3u);
     EXPECT_EQ(look.look.root["provenance"]["item"], "f-outline-white");
@@ -236,7 +238,7 @@ TEST_F(PachislopPortTest, UnmappedMemberFailsNamingIt) {
 
 TEST_F(PachislopPortTest, DeniedTermInMappedNameFails) {
     ASSERT_TRUE(loadOk) << loadError;
-    Json dump = pachislopPortReadJson(fixturePath());
+    PachislopPortJson dump = pachislopPortReadJson(fixturePath());
     dump["looks"][0]["preset"]["style"]["face"].erase("sparkleDust");
     PortOptions tainted = *options;
     tainted.map["names"]["looks"]["casino/outline-white"]["en"] = "Hokuto Outline White";  // denied-term fixture
@@ -248,18 +250,18 @@ TEST_F(PachislopPortTest, DeniedTermInMappedNameFails) {
 
 TEST_F(PachislopPortTest, ReviewRecords) {
     ASSERT_TRUE(result->ok) << pachislopPortJoined(result->errors);
-    const Json review = pachislopPortReadJson(REPO / PACHISLOP_REVIEW_PATH);
-    const Json overrides = pachislopPortReadJson(REPO / PACHISLOP_OVERRIDES_PATH);
+    const PachislopPortJson review = pachislopPortReadJson(REPO / PACHISLOP_REVIEW_PATH);
+    const PachislopPortJson overrides = pachislopPortReadJson(REPO / PACHISLOP_OVERRIDES_PATH);
     ASSERT_TRUE(review.is_object() && review["records"].is_array());
-    std::map<std::pair<std::string, std::string>, Json> records;
-    for (const Json& r : review["records"]) {
+    std::map<std::pair<std::string, std::string>, PachislopPortJson> records;
+    for (const PachislopPortJson& r : review["records"]) {
         const auto key = std::make_pair(r.value("kind", std::string()), r.value("id", std::string()));
         EXPECT_EQ(records.count(key), 0u) << "two records for " << key.first << " " << key.second;
         records[key] = r;
     }
     auto section = [](const std::string& kind) { return kind == "look" ? "looks" : kind == "template" ? "templates" : "color_schemes"; };
     size_t ported = 0;
-    for (const Json& item : result->provenance["items"]) {
+    for (const PachislopPortJson& item : result->provenance["items"]) {
         const std::string kind = item["kind"], ref = item["ref"];
         if (kind == "color_scheme" && !result->files.count(std::string(TITLE_LIBRARY_RESOURCES_PATH) + "/color-schemes/" + ref + ".titlecolors")) continue;
         ported++;
@@ -327,12 +329,12 @@ TEST_F(PachislopPortTest, DeniedTerms) {
 
     // every place the port and `verify` check: name, synonym, tag, template sample, text layer
     ASSERT_TRUE(result->ok) << pachislopPortJoined(result->errors);
-    const Json look = Json::parse(result->files.at(std::string(TITLE_LIBRARY_RESOURCES_PATH) + "/looks/metal/classic-gold.titlelook"));
-    const Json tmpl = Json::parse(result->files.at(std::string(TITLE_LIBRARY_RESOURCES_PATH) + "/templates/casino/confirm-rainbow.titletemplate"));
+    const PachislopPortJson look = PachislopPortJson::parse(result->files.at(std::string(TITLE_LIBRARY_RESOURCES_PATH) + "/looks/metal/classic-gold.titlelook"));
+    const PachislopPortJson tmpl = PachislopPortJson::parse(result->files.at(std::string(TITLE_LIBRARY_RESOURCES_PATH) + "/templates/casino/confirm-rainbow.titletemplate"));
     EXPECT_TRUE(findDeniedTerms(look).empty());
     EXPECT_TRUE(findDeniedTerms(tmpl).empty());
     struct Injection {
-        const Json* base;
+        const PachislopPortJson* base;
         std::vector<std::string> path;      // object keys and array indexes ("#0")
         bool append;                        // into a list
         std::string expect;
@@ -349,8 +351,8 @@ TEST_F(PachislopPortTest, DeniedTerms) {
         {&tmpl, textKeys, false, textPath + ".text"},
     };
     for (const Injection& inj : injections) {
-        Json j = *inj.base;
-        Json* at = &j;
+        PachislopPortJson j = *inj.base;
+        PachislopPortJson* at = &j;
         for (const std::string& k : inj.path) at = k[0] == '#' ? &(*at)[(size_t)std::stoul(k.substr(1))] : &(*at)[k];
         const std::string value = (inj.path.back() == "ja" ? cjk : "Super " + latin + " Title");
         if (inj.append) at->insert(at->begin(), value);
