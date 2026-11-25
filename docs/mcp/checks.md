@@ -19,7 +19,7 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | `--cpp` | The C++ scripts: generated sources, CMake configure and build, as Play and `compile_scripts` do (same build directory, `.jasperengine/build`, so it is incremental). Slow the first time (a configure plus a full build; about 25 s for one script here), then a few seconds to tens of seconds. |
 | `--ui` | HTML/CSS UI documents: what the engine's compatibility layer drops or rewrites lossily, missing and remote files, JavaScript, each with `file:line:col`, a stable code and a fix (see below). Pure parsing, no engine start: about 1 ms per document. |
 | `--textures` | Synthesized textures: every project PNG that carries a texture synthesis recipe (an iTXt chunk `jasper.synthesis`, written by `synthesize_texture` and Window > Texture Synthesis) whose sources changed or disappeared since it was made: a warning at the PNG (see below). Reads only the PNG chunks before the image data, and hashes sources only for PNGs with a recipe, both cached by mtime and size: milliseconds once cached. |
-| `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file), a model clip whose model is missing or has no animation of that name (see below), and four warnings on what a clip holds (`anim-*`, below). Pure parsing, no engine start. |
+| `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file), a model clip whose model is missing or has no animation of that name (see below), four warnings on what a clip holds, and one on a controller layer's mask (`anim-*`, below). Pure parsing, no engine start. |
 | `--anim-quality` | How clips move, measured on their models (no scene loads): every model clip and every `.anim` that names its model, sampled as it plays, and every model's skins. Four warnings (below). Not in `--hook` or the default set; in `--all`. |
 | `--vat` | Vertex Animations (`.vat`): every `.vat` read as the engine reads it (an error with `line:col` for text that is not one, a warning with the JSON path of each editable field the lenient reader repairs), a source changed or missing since the bake (warnings), a `.vat.glb` that is missing or no longer matches the `.vat` (errors), and a payload texture over the device limit of the recipe's preset (an error; see below). Loads the project (no scenes). |
 | `--normals` | Sprite normal maps: generated ones (a PNG with a `jasper.spritenormals` recipe, written by `generate_sprite_normals`, the `generate-sprite-normals` CLI and Window > Sprite Normal Map) whose source changed or went missing, and normal maps on Sprites, Tilemaps and Polygons (not 3D meshes, whose Lit normal maps are sized independently) that don't match their colour texture (size, frames, filter), look like DirectX or aren't normal maps, or no Light 2D can show (height 0). Pure parsing, no engine start; cached (see below). |
@@ -92,7 +92,8 @@ Exit code: **0** no errors (warnings allowed), **1** errors, **2** usage error (
 `project.yaml`, the project fails to load).
 
 The same findings come back from MCP: `check_script` and `check_shader` return `findings` in this
-format, and `compile_scripts` returns the same diagnostics as `errors`/`warnings`
+format (`check_shader` returns `isError` when a shader fails or a finding is an error, as the exit
+code 1 here), and `compile_scripts` returns the same diagnostics as `errors`/`warnings`
 (`{file, line, column, message}`).
 
 ## Stochastic Tiling warnings
@@ -270,6 +271,7 @@ The CLI that bakes them is `jasperengine-editor bake-vat` (`--help`; `docs/verte
 | `anim-constant-track` | a track of more than one key holds one value | `optimize_animation` leaves one key |
 | `anim-rotation-flip` | two consecutive keys have opposite signs in the file, or on a Hermite track, or are more than 160 degrees apart | add a key in the middle, or export it again |
 | `anim-optimize-stale` | a reduced clip's `optimize.source` has changed or is gone (`optimize.source_sha1`) | `optimize_animation` again with the same arguments |
+| `anim-mask-root-inherits` | an Animator Controller's Override layer above 0, Mesh Space Rotation off, whose mask is a paths mask (no body parts) with a weighted torso entry whose parent path is a torso bone it leaves out (weight 0; torso names as the humanoid auto-detect reads them: `Hips/Spine`, `B-hips/B-spine`, not `Armature/Hips` or an arm): on a rig of the paths' shape that bone follows the layers below (a torso turned by the base layer's hips). It reads the mask's shape only, not a rig | turn on Mesh Space Rotation on the layer (`edit_animator_controller` `set_layer` `mesh_space_rotation: true`), then measure with `check_animation {entity, layer_blend: {layer}}` |
 
 `--anim-quality` (all warnings; the same limits as `check_animation`):
 
@@ -285,7 +287,9 @@ limit), `anim-compare-unmeasured` (no bone moves on this rig: no number to trust
 `anim-compare-events` (events or audio cues), `anim-compare-length`, `anim-compare-failed`, `anim-loop-seam` (a Loop clip's seam over 10 mm),
 `anim-root-drift` (a root under 0.25 m/s, or any with `limits.root_drift_mm`, ending over 20 mm or that limit from its start),
 `anim-foot-slide` (over 15 mm or `limits.foot_slide_mm`), `anim-unknown-foot`, `anim-transition-pop` (a step over 30 mm or
-`limits.pop_mm` and twice the steps around it), `anim-no-rig`, `anim-unreadable`.
+`limits.pop_mm` and twice the steps around it), `anim-layer-twist` (`layer_blend`: a bone over 5 degrees or
+`limits.layer_twist_deg` from where its layer's blend should turn it; with Mesh Space Rotation off, its `next` is the
+`edit_animator_controller` call that turns it on), `anim-no-rig`, `anim-unreadable`.
 
 ## What the normal map check runs
 

@@ -572,12 +572,16 @@ Per package, before merging:
 
 ### Integration
 
-- **Cooked scene format.** `main` reads and writes 1.6 (S96 took 1.6); this spec takes 1.7 (WP-5:
-  script list properties, their element types a tail after a Script component's scripts) and 1.8
-  (WP-3: the scene's Fixed Timestep, after S96's physics world settings), contrary to REQ-37's "no
-  version bump": the cooked format is positional, so a new value is a new minor (the YAML scene and
-  project keys stay optional, with defaults, unversioned). The reader takes 1.5 to 1.8. Another PR
-  landing first renumbers these minors above the one on `main`.
+- **Cooked scene format.** `main` reads and writes 1.6 (S96); S98 takes 1.7 and #3/#163 1.8 (the
+  landing order's ledger). This spec takes 1.9 (WP-5: script list properties, their element types a
+  tail after a Script component's scripts) and 1.10 (WP-3: the scene's Fixed Timestep, the last
+  value of the settings record), contrary to REQ-37's "no version bump": the cooked format is
+  positional, so a new value is a new minor (the YAML scene and project keys stay optional, with
+  defaults, unversioned). The reader takes 1.5 to 1.10.
+- **Compile builds read the settings as data (S98).** The scene's Fixed Timestep reaches a Compile
+  build in its cooked scene (no generated `scene->setFixedTimestep` line), and Project Settings >
+  Time and Input > Simulate Touch From Mouse in `game.json` (`cook::makeGameConfig`), which
+  `player::runGame` applies before the first scene, as in the prebuilt player.
 - **The LuaBridge workaround stays until S92 lands.** WP-1 left `engine/libs/luabridge3/LuaBridge.h`
   untouched (S92 owns its patch) and hardens LuaBridge's class tables from
   `LuaBinding.cpp` (`hardenClassTables`) instead. S92 fixes the same crashes inside LuaBridge;
@@ -647,12 +651,12 @@ Per package, before merging:
 - **The class index.** Exports write `je-dataassets.json` (class to assets) for
   `DataAsset.loadAll`; editor Play builds the index from the project.
 - **Data classes leave Add Script**: a `---@dataasset` module is not offered as a component.
-- **`AssetType::DataAsset = 35`** (the next free value when this branch lands).
+- **`AssetType::DataAsset = 38`** (after S98's Mesh 35 and #163's 36 and 37, the landing order's ledger).
 - **References load with the asset.** References to other Data Assets load together with the asset
   that holds them (cycles handled), not lazily per field: a lazy proxy would break `pairs` and `#list`.
 - **Stored type name** is `data_asset`; `assetType = "dataasset"` is accepted as an alias.
 - **Lists are for Lua scripts and data classes only**, not C++ `DPROPERTY` fields.
-- **Cooked format:** element types are written after the scripts, so content cooked at 1.5 or 1.6 still reads.
+- **Cooked format:** element types are written after the scripts, so content cooked at 1.5 to 1.8 still reads.
 
 ### WP-6 String Tables
 
@@ -664,7 +668,7 @@ Per package, before merging:
   drops the rest (the one-file format, `{form: text}` plurals, `data-loc`, `"Table:key"`, the
   cross-table duplicate check, the `.meta` GUID). This branch drops its WP-6 implementation
   (REQ-25 to REQ-30, AC-22) so that one lands; S10 closes with it. `AssetType::StringTable` is
-  that spec's, and WP-5's `DataAsset` takes the next free value when this branch lands.
+  that spec's (36), and WP-5's `DataAsset` is 38.
 
 ### WP-2 Frame order and transforms
 

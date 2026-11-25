@@ -33,6 +33,9 @@ files, `package/`, and the code of other architectures (`src/ppc`, `src/riscv`, 
     gas-preprocessor and armasm: C there.
   - Web (Emscripten): C. dav1d has no WebAssembly SIMD code.
   - `JASPERENGINE_DAV1D_ASM=OFF` builds C only.
+  - Threads: the link libraries of `Threads::Threads` and its `-pthread` for C only, not the
+    target itself: where FindThreads falls back to `-pthread` (Android, CMake 3.22) the target gives
+    it to every language, and NASM reads it as a pre-include of a file named `thread`.
 - `config/config.h`: one configuration for every platform, chosen by the preprocessor (`HAVE_ASM`
   when the build defines `DAV1D_ASM` on x86-64/aarch64/armv7, `CONFIG_LOG 1`, both bit depths); it
   is also read by the `.S` files. `config/config.asm`: NASM's (x86-64). `config/vcs_version.h`:

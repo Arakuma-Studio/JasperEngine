@@ -23,6 +23,7 @@
 #include "sprite/SpriteSheetPool.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
+#include "mcp/McpModelImport.h"
 #include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
@@ -1184,11 +1185,18 @@ void editTerrainDetailsTool(const CallPtr& call) {
     }
 
     if (editing) {
-        // an FBX draws from its import, made the first time (as the Terrain window does)
+        // an FBX draws from its import, queued the first time (as the Terrain window does): its
+        // layer draws once it lands (S98 REQ-32)
         for (const std::string& mesh : meshes) {
-            if (!project->prepareModelFile(mesh)) {
+            const Project::ModelImport state = project->prepareModelFile(mesh);
+            if (state == Project::ModelImport::Failed) {
                 call->fail("Could not import " + mesh + " (see the console). Nothing was changed.");
                 return;
+            }
+            if (state == Project::ModelImport::Pending) {
+                const JobPtr job = syncModelImportJob(call->ctx(), true);
+                notes.push_back(mesh + " is importing" + (job ? " (job " + job->id() + ")" : std::string()) +
+                                ": its layer draws once the import lands.");
             }
         }
         auto multi = std::make_unique<MultiPropertyCmd>();
@@ -4884,8 +4892,10 @@ void getAnimationTool(const CallPtr& call) {
     }
     // the Animation Player that plays it (its own, else the nearest ancestor's): clips by path
     const Json players = clip_tools::playersJson(target.project, target.scene, target.entity);
-    if (list.empty() && players.empty()) {
-        call->fail("\"" + scene->getEntityName(target.entity) + "\" is not an Animation, no Animation targets it and no Animation Player plays it. "
+    // the Animator that plays it: its masked layers' coverage and boundary bones
+    const Json animator = animator_tools::animatorLayers(target.project, target.scene, target.entity);
+    if (list.empty() && players.empty() && animator.is_null()) {
+        call->fail("\"" + scene->getEntityName(target.entity) + "\" is not an Animation, no Animation targets it and no Animation Player plays it (nor an Animator). "
                    "Create one with edit_animation {target} (scene) or {clip, create: {}} (a shared clip file).");
         return;
     }
@@ -4901,7 +4911,18 @@ void getAnimationTool(const CallPtr& call) {
             }
         }
     }
-    call->ok(text, Json{{"entity", entityJson(target, target.entity)}, {"players", players}, {"animations", list}});
+    Json out = {{"entity", entityJson(target, target.entity)}, {"players", players}, {"animations", list}};
+    if (!animator.is_null()) {
+        text += " Animator on \"" + animator["entity"].value("name", std::string()) + "\": " + animator["controller"].get<std::string>();
+        for (const Json& layer : animator.value("mask_coverage", Json::array())) {
+            text += "\n  " + layer["layer"].get<std::string>() + ": Mesh Space Rotation " + (layer["mesh_space_rotation"].get<bool>() ? "on" : "off");
+            if (layer.contains("boundary_bones") && !layer["boundary_bones"].empty()) {
+                text += ", mask edges at " + std::to_string(layer["boundary_bones"].size()) + " bone(s)";
+            }
+        }
+        out["animator"] = animator;
+    }
+    call->ok(text, out);
 }
 
 void previewAnimationTool(const CallPtr& call) {

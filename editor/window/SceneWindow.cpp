@@ -46,6 +46,7 @@
 #include "render/SceneDrawModes.h"
 #include "render/RenderUtil.h"
 #include "util/Util.h"
+#include "asset/MeshAssetFiles.h"
 #include "util/EntityPayload.h"
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
@@ -664,6 +665,21 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 }
                                 focusSceneWindow(*sceneProject);
                             }
+                        }
+                    }
+                } else if (Util::isMeshAssetFile(droppedRelativePath) && sceneProject->sceneType == SceneType::SCENE_3D) {
+                    // a .mesh (S98 F1): a GameObject showing it on the surface under the pointer, one step
+                    if (sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                            if (payload->IsDelivery() && !insideAssets) {
+                                Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                            } else if (payload->IsDelivery()) {
+                                const SceneSurfaceHit surface = getDropSurface(sceneProject, x, y, {});
+                                std::string error;
+                                if (MeshAssetFiles::createObject(*project, sceneProject->id, receivedStrings[0], surface.point, NULL_ENTITY, &error) == NULL_ENTITY)
+                                    Out::error("%s", error.c_str());
+                            }
+                            if (payload->IsDelivery()) focusSceneWindow(*sceneProject);
                         }
                     }
                 } else if (Util::isTitleArtFile(droppedRelativePath)) {
@@ -2803,7 +2819,8 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
-    // every Animator's live IK, root motion and feet (S77 R49): view state, saved with the workspace
+    // every Animator's live IK, root motion and feet (S77 R49), the selected one's torso direction
+    // (mesh-space-rotation R30): view state, saved with the workspace
     if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Animation")) {
         drawSettingRow(ICON_FA_ROUTE " Root Motion", sceneProject.displaySettings.showRootMotion);
         ImGui::SetItemTooltip("Each Animator's root: its last %.0f s in red, where its speed and turn lead in green", anim::kAnimatorTrailSeconds);
@@ -2811,6 +2828,8 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::SetItemTooltip("Targets (green reached, red not), chains, poles, Foot IK rays and hits, locked feet");
         drawSettingRow(ICON_FA_SHOE_PRINTS " Foot Trails", sceneProject.displaySettings.showFootTrails);
         ImGui::SetItemTooltip("Foot IK and Foot Lock feet, %.0f s: green planted, yellow to red sliding", anim::kAnimatorTrailSeconds);
+        drawSettingRow(ICON_FA_COMPASS " Torso Direction", sceneProject.displaySettings.showTorsoDirection);
+        ImGui::SetItemTooltip("The selected Animator's Mesh Space Rotation bones: where they face in green, where they would face without it in red");
         ImGui::EndTable();
     }
 

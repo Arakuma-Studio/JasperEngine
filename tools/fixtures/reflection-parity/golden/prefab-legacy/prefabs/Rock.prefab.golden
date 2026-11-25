@@ -1,5 +1,5 @@
 type: Prefab
-version: 9
+version: 10
 guid: be6090bd331dae57064d1f63cc9ada05
 nextEntity: 1005
 root: 1004
@@ -50,7 +50,6 @@ members:
                   name: ""
                 textureRect: [0, 0, 1, 1]
                 primitiveType: triangles
-                vertexCount: 6
                 faceCulling: false
                 textureShadow: false
                 hasTexCoord1: false
@@ -66,15 +65,6 @@ members:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            aabb:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
-            verticesAABB:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
-            worldAABB:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
             receiveLights: false
             receiveIBL: false
             castShadows: false
@@ -128,7 +118,6 @@ members:
                       name: ""
                     textureRect: [0, 0, 1, 1]
                     primitiveType: triangles
-                    vertexCount: 6
                     faceCulling: false
                     textureShadow: false
                     hasTexCoord1: false
@@ -144,15 +133,6 @@ members:
                     hasMorphTangent: false
                 normAdjustJoint: 1
                 normAdjustWeight: 1
-                aabb:
-                  min: [0, 0, 0]
-                  max: [0, 0, 0]
-                verticesAABB:
-                  min: [0, 0, 0]
-                  max: [0, 0, 0]
-                worldAABB:
-                  min: [0, 0, 0]
-                  max: [0, 0, 0]
                 receiveLights: false
                 receiveIBL: false
                 castShadows: false
@@ -205,7 +185,6 @@ members:
                   name: ""
                 textureRect: [0, 0, 1, 1]
                 primitiveType: triangles
-                vertexCount: 6
                 faceCulling: false
                 textureShadow: false
                 hasTexCoord1: false
@@ -221,15 +200,6 @@ members:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            aabb:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
-            verticesAABB:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
-            worldAABB:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
             receiveLights: false
             receiveIBL: false
             castShadows: false

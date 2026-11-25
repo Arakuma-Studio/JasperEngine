@@ -1,5 +1,5 @@
 type: Prefab
-version: 9
+version: 10
 guid: 6a121bc13079cc89021cde9df07e3778
 nextEntity: 1052
 root: 1051
@@ -50,7 +50,6 @@ members:
                   name: ""
                 textureRect: [0, 0, 1, 1]
                 primitiveType: triangles
-                vertexCount: 6
                 faceCulling: false
                 textureShadow: false
                 hasTexCoord1: false
@@ -66,15 +65,6 @@ members:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            aabb:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
-            verticesAABB:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
-            worldAABB:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
             receiveLights: false
             receiveIBL: false
             castShadows: false

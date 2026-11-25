@@ -47,6 +47,7 @@
 #include "mcp/McpValues.h"
 #include "mcp/tools/W4Shared.h"
 #include "registry/TagManager.h"
+#include "export/AssetStripping.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/NativePlugins.h"
@@ -1492,6 +1493,51 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolSetting("player.strip_engine_code", "Builds leave out the engine modules nothing in the project reaches (HTML UI, video, the runtime "
                         "shader compiler, 3D or 2D physics): a smaller player that behaves the same. Off: every module the settings allow.",
                         [](Project& p) { return p.isStripEngineCode(); }, [](Project& p, bool v) { p.setStripEngineCode(v); }));
+        // S98 REQ-8: Asset Stripping and its two lists (project-relative globs)
+        nameChoice("player.asset_stripping", "What builds ship: ship_all (every asset), or referenced_only (what the build's scenes, project "
+                   "settings and Lua/C++ string literals reach, plus player.always_include).", {"ship_all", "referenced_only"},
+                   [](Project& p) { return std::string(assetStrippingModeName(p.getAssetStripping().mode)); },
+                   [](Project& p, const std::string& v) {
+                       AssetStrippingSettings settings = p.getAssetStripping();
+                       assetStrippingModeFromName(v, settings.mode);
+                       p.setAssetStripping(settings);
+                   });
+        auto globList = [&add](const char* key, const char* description, bool exclude) {
+            Setting s;
+            s.key = key;
+            s.type = "list";
+            s.description = description;
+            s.get = [exclude](SettingsContext& ctx) {
+                const AssetStrippingSettings& settings = ctx.project()->getAssetStripping();
+                return Json(exclude ? settings.exclude : settings.alwaysInclude);
+            };
+            s.set = [exclude](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of project-relative globs (\"assets/levels/**\")";
+                    return false;
+                }
+                std::vector<std::string> globs;
+                for (const Json& item : value) {
+                    if (!item.is_string()) {
+                        error = "must be a list of project-relative globs (\"assets/levels/**\")";
+                        return false;
+                    }
+                    const std::string glob = item.get<std::string>();
+                    if (!buildglob::isValid(glob, error)) return false;
+                    if (std::find(globs.begin(), globs.end(), glob) == globs.end()) globs.push_back(glob);
+                }
+                if (apply) {
+                    AssetStrippingSettings settings = ctx.project()->getAssetStripping();
+                    (exclude ? settings.exclude : settings.alwaysInclude) = globs;
+                    ctx.project()->setAssetStripping(settings);
+                }
+                return true;
+            };
+            add(s);
+        };
+        globList("player.always_include", "Project-relative globs (* ? **) that ship under referenced_only: files a script loads by a path "
+                 "it builds at runtime.", false);
+        globList("player.exclude_from_build", "Project-relative globs (* ? **) no build ships, under either mode; wins over always_include.", true);
         nameChoice("android.package_format", "Android builds make an App Bundle (aab, for Google Play: one ABI per device), one APK per ABI "
                    "(apk-per-abi), or one universal APK of every selected ABI (apk).", {"aab", "apk-per-abi", "apk"},
                    [](Project& p) { return p.getAndroidProjectSettings().packageFormat; },
@@ -1500,6 +1546,11 @@ std::vector<Setting> mcpSettingsTable() {
                         [](Project& p) -> fs::path& { return p.getAndroidProjectSettings().keystorePath; }));
         add(stringSetting("android.keystore_alias", "The key alias of the Android keystore.",
                           [](Project& p) -> std::string& { return p.getAndroidProjectSettings().keystoreAlias; }));
+        add(stringSetting("android.debug_package_suffix", "Debug Package Suffix: appended to the package name of Android debug builds "
+                          "(\".debug\"), so they install beside the release one. Empty: the same package.",
+                          [](Project& p) -> std::string& { return p.getAndroidProjectSettings().debugPackageSuffix; },
+                          [](const std::string& v) { return v.size() > 1 && v[0] == '.' && isDottedIdentifier("x" + v, javaIdPart); },
+                          "a dot and a Java identifier, like .debug"));
         add(stringSetting("ios.team_id", "The Apple Developer team id that signs iOS device builds (DEVELOPMENT_TEAM).",
                           [](Project& p) -> std::string& { return p.getIOSProjectSettings().teamId; }));
         nameChoice("ios.export_method", "How an iOS archive is exported to an .ipa.", {"development", "ad-hoc", "app-store", "enterprise"},
@@ -2183,6 +2234,21 @@ std::vector<Setting> mcpSettingsTable() {
                             e = "\"" + name + "\" is not one of automatic, keep, release";
                             return false;
                         }, {"automatic", "keep", "release"});
+            meshSetting("mesh.material_creation_mode", "enum",
+                        "Material Creation Mode of FBX models that do not set their own: import, or none (no materials or textures).",
+                        [](const ModelProjectSettings& m) { return Json(materialCreationModeName(m.materialCreationMode)); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            std::string name;
+                            if (!readString(v, name, e)) return false;
+                            for (MaterialCreationMode mode : {MaterialCreationMode::Import, MaterialCreationMode::None}) {
+                                if (name == materialCreationModeName(mode)) {
+                                    m.materialCreationMode = mode;
+                                    return true;
+                                }
+                            }
+                            e = "\"" + name + "\" is not one of import, none";
+                            return false;
+                        }, {"import", "none"});
             // Project Settings > Animation (S77 R38); stored with the model settings
             meshSetting("animation.animation_entities", "enum",
                         "Models placed in a scene: always make an Animation entity per clip, or auto: none for a model of 5+ clips "
@@ -4354,9 +4420,13 @@ const Placement placements[] = {
     {"player.build_method", "Player", "Publishing Settings", "Build Method", "prebuilt compile player"},
     {"player.pack_content", "Player", "Publishing Settings", "Content Pack", "jpak pack"},
     {"player.strip_engine_code", "Player", "Publishing Settings", "Strip Engine Code", "size modules variant smaller"},
+    {"player.asset_stripping", "Player", "Build", "Asset Stripping", "strip unused unreferenced assets size referenced only ship all"},
+    {"player.always_include", "Player", "Build", "Always Include", "strip resources streaming assets include build glob"},
+    {"player.exclude_from_build", "Player", "Build", "Exclude From Build", "strip exclude ignore build glob"},
     {"android.package_format", "Player", "Android", "Package Format", "android apk aab bundle abi universal split"},
     {"android.keystore_path", "Player", "Android", "Keystore", "android signing key"},
     {"android.keystore_alias", "Player", "Android", "Key Alias", "android signing key"},
+    {"android.debug_package_suffix", "Player", "Android", "Debug Package Suffix", "android debug development applicationIdSuffix side by side install"},
     {"ios.team_id", "Player", "iOS", "Team ID", "ios signing apple developer"},
     {"ios.export_method", "Player", "iOS", "Export Method", "ios ipa app store ad hoc"},
     {"web.application_name", "Player", "Web", "App Name", "web page title"},
@@ -4707,7 +4777,7 @@ void meshRowPlacement(const std::string& key, SettingRow& row) {
         {"generate_lods", "Generate LODs"}, {"lod_count", "LOD Count"}, {"lod_reduction", "Reduction"}, {"ship_source", "Ship Source Files"},
         {"cache_size_mb", "Cache Size (MB)"}, {"keep_cpu_data_for_scripts", "Keep CPU Data for Scripts"},
         {"triangles", "Triangle Budget"}, {"draw_calls", "Draw Call Budget"}, {"mesh_memory_mb", "Mesh Memory Budget (MB)"},
-        {"download_mb", "Download Budget (MB)"}};
+        {"download_mb", "Download Budget (MB)"}, {"material_creation_mode", "Material Creation Mode"}};
     static const std::map<std::string, const char*> platforms = {{"desktop", "Desktop"}, {"mobile", "Mobile"}, {"web", "Web"}};
     const std::string leaf = key.substr(key.rfind('.') + 1);
     auto label = labels.find(leaf);
@@ -4722,8 +4792,8 @@ void meshRowPlacement(const std::string& key, SettingRow& row) {
         row.keywords = "render budget triangles draw calls memory download check_render_budgets";
     } else {
         row.page = "Mesh";
-        row.section = key.rfind("mesh.defaults.", 0) == 0 ? "Defaults" : "Cache";
-        row.keywords = "mesh model import cook";
+        row.section = key.rfind("mesh.defaults.", 0) == 0 || key == "mesh.material_creation_mode" ? "Defaults" : "Cache";
+        row.keywords = key == "mesh.material_creation_mode" ? "mesh model import fbx materials textures creation none" : "mesh model import cook";
     }
 }
 

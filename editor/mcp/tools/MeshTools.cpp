@@ -25,7 +25,9 @@
 #include "component/ModelComponent.h"
 #include "model/ModelAudit.h"
 #include "model/ModelSettingsEdit.h"
+#include "pose/PoseRigProvider.h"
 #include "util/FileUtils.h"
+#include "util/FbxImporter.h"
 #include "window/ProjectWindow.h"
 
 #include <algorithm>
@@ -138,11 +140,15 @@ bool settingsEditArg(const CallPtr& call, const Json& settings, const Json& rese
             std::string error;
             if (!yaml || !validateModelSettingsField(metaKey, yaml, error)) {
                 std::string valid;
-                for (const std::string& name : modelSettingKeys()) valid += (valid.empty() ? "" : ", ") + ModelAudit::snakeOf(name);
+                for (const std::string& name : modelImporterKeys()) valid += (valid.empty() ? "" : ", ") + ModelAudit::snakeOf(name);
                 const size_t colon = error.find(':');
-                call->fail("settings." + key + ": " + (std::find(modelSettingKeys().begin(), modelSettingKeys().end(), metaKey) == modelSettingKeys().end()
+                call->fail("settings." + key + ": " + (std::find(modelImporterKeys().begin(), modelImporterKeys().end(), metaKey) == modelImporterKeys().end()
                                                            ? "not a model import setting (" + valid + ")."
                                                            : (colon == std::string::npos ? error : error.substr(colon + 2)) + "."));
+                return false;
+            }
+            if (platform && std::find(modelSettingKeys().begin(), modelSettingKeys().end(), metaKey) == modelSettingKeys().end()) {
+                call->fail("settings." + key + " is one value for every platform: set it without platform.");
                 return false;
             }
             edit.set.push_back({metaKey, yaml});
@@ -151,7 +157,7 @@ bool settingsEditArg(const CallPtr& call, const Json& settings, const Json& rese
     if (reset.is_array()) {
         for (const Json& item : reset) {
             const std::string metaKey = item.is_string() ? ModelAudit::metaKeyOf(item.get<std::string>()) : std::string();
-            if (std::find(modelSettingKeys().begin(), modelSettingKeys().end(), metaKey) == modelSettingKeys().end()) {
+            if (std::find(modelImporterKeys().begin(), modelImporterKeys().end(), metaKey) == modelImporterKeys().end()) {
                 call->fail("reset: " + item.dump() + " is not a model import setting.");
                 return false;
             }
@@ -379,6 +385,16 @@ void setModelImportSettingsTool(const CallPtr& call) {
         }
         ModelSettingsEdit edit;
         if (!settingsEditArg(call, settings, reset, platform, edit)) return;
+        // Material Creation Mode is the FBX import's: a glTF carries the materials it draws with
+        if (settings.contains("material_creation_mode")) {
+            for (const std::string& path : paths) {
+                if (!FbxImporter::isFbxFile(FileUtils::pathFromUtf8(path))) {
+                    call->fail("settings.material_creation_mode applies to FBX models; " + path + " is a glTF, whose materials are its own. "
+                               "Drop it from paths.");
+                    return;
+                }
+            }
+        }
         // every model's new section, checked whole before anything is written
         std::vector<YAML::Node> sections;
         for (const std::string& path : paths) {
@@ -454,6 +470,8 @@ void reimportModelsTool(const CallPtr& call) {
         }
         if (families.empty()) families = {ModelFamily::Desktop};
         for (const std::string& path : paths) {
+            // an explicit reimport: the model takes the current humanoid naming rules
+            PoseRigProvider::adoptNameRules(project, project->getAssetsPath() / FileUtils::pathFromUtf8(path));
             queue.invalidate(path);
             for (ModelFamily family : families) queue.request(path, family, ModelCookQueue::Selected);
         }
@@ -692,7 +710,8 @@ void editor::mcp::registerMeshTools(McpRegistry& registry) {
                 {"generate_lods", stringEnum("", {"automatic", "on", "off"})},
                 {"lod_count", integer("", 1, 3)},
                 {"lod_reduction", stringEnum("", {"preserve_detail", "balanced", "smallest"})},
-                {"ship_source", boolean("")}
+                {"ship_source", boolean("")},
+                {"material_creation_mode", stringEnum("FBX: none imports no materials or textures.", {"import", "none"})}
             })},
             {"platform", platform},
             {"reset", array(string(""), "Settings back to their defaults.")},

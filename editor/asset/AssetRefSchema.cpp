@@ -123,6 +123,7 @@ namespace {
             case K::TerrainWorld: return AssetType::TerrainWorld;
             case K::Tileset: return AssetType::Tileset;
             case K::TitleArt: return AssetType::TitleArt;
+            case K::Mesh: return AssetType::Mesh;
             case K::None: case K::Any: case K::ModelOrPrefab: break;
         }
         return AssetType::Unknown;

@@ -110,7 +110,8 @@ The editor always keeps the data.
 ## Project Settings > Mesh and the render budgets
 
 Mesh holds each platform's default for every setting (a model's own value, then its platform
-override, win), the cache size, Clear Mesh Cache and Keep CPU Data for Scripts. Quality holds the
+override, win), Material Creation Mode for the FBX models that do not set their own (None imports no
+materials or textures), the cache size, Clear Mesh Cache and Keep CPU Data for Scripts. Quality holds the
 render budgets per platform: triangles, draw calls, mesh memory (MB) and download (MB); 0 is no
 limit. `check_render_budgets` compares a scene with them: its geometry at LOD 0 with every object
 drawn, and the cooked sizes of its models for that platform.
@@ -125,3 +126,41 @@ LODs, Mesh Compression Medium, Reimport, Turn on LODs in this scene, the importe
 Every export writes `build-report.json` next to what it builds: totals by category (models,
 textures, audio, scripts, scenes, engine, other) and the 25 largest files with their source and its
 size. The export's completion page shows it, and Window > Analysis > Build Report opens it.
+
+## Mesh assets (.mesh)
+
+A `.mesh` holds one mesh's geometry, as Unity's Mesh asset does: its vertex, index and extra vertex
+buffers, its submeshes' topology and vertex counts, and its bounds. A Mesh Renderer shows one
+through its **Mesh** field (`meshAsset`; the GUID is in the file's `.meta`, S04); its materials,
+shaders and the rest of its settings stay with the component. A scene or prefab that names a
+`.mesh` holds the reference, not the buffers.
+
+- **Save Mesh As Asset...** in the Mesh Renderer's menu writes the GameObject's geometry to a new
+  `.mesh` and points the Mesh field at it (one undo step; undo keeps the file). It is offered for a
+  mesh whose geometry is its own: not a model's, nor a Sprite's, Tilemap's, Mesh Polygon's,
+  Terrain's or Spline Extrude's.
+- **A scene save** moves every mesh of its own with more than 4 KB of geometry into a `.mesh`
+  beside the scene: `<scene folder>/<scene name>/<GameObject>.mesh`, or
+  `<assets>/Meshes/<scene name>/` for a scene outside the assets folder. A box, plane or wall (under
+  2 KB) stays in the scene; a sphere, cylinder, capsule, torus or anything larger leaves it. Meshes
+  with the same geometry share one file. A file already there is used again when it holds the same
+  bytes and is never written over otherwise (`<name> 1.mesh` follows). Prefab instances keep their
+  prefab's mesh.
+- **Changing the geometry** (Shape fields, `set_mesh_geometry`, `Primitive:create*`) makes it the
+  mesh's own again: the Mesh field empties and the file is left as it is. An extracted file no
+  GameObject shows any more stays until you delete it.
+- Dropping a `.mesh` in the Hierarchy or the Scene view makes a GameObject that shows it.
+- A `.mesh` another program changes is read again by every GameObject showing it.
+- Exports ship `.mesh` files as they are; the game reads them on every platform. Under Asset
+  Stripping's Referenced Only, a `.mesh` ships when a build scene, prefab or script names it.
+  Cooked scenes (format 1.6) and compiled scenes name the file instead of holding the buffers.
+
+Scripts: `mesh.meshAsset = "meshes/rock.mesh"` (a path relative to the assets folder) reads the
+file at once, so `mesh.vertexCount` and `mesh:getAABB()` answer straight away; `""` keeps the
+geometry as the mesh's own.
+
+Scenes saved with `.mesh` references are format 9 and prefabs format 10: older editors refuse them
+rather than show empty meshes. Older files keep their inline buffers until they are saved.
+
+The file (`engine/core/model/MeshAsset.h`): the magic `JMSH`, a 16-bit major and minor version, a
+string table, then the cooked scenes' buffer codecs. Readers refuse another major version.

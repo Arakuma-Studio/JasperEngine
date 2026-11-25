@@ -159,6 +159,42 @@ TEST(HumanoidMapIO, BadFormatOrVersionFails){
     EXPECT_FALSE(parseHumanoidOverrides("x", out, warnings, nullptr));   // the error is optional
 }
 
+// the naming rules of the model's import (HumanoidMap.h): optional, absent is the original rules,
+// written in a version 2 sidecar
+TEST(HumanoidMapIO, NameRulesRoundTrip){
+    HumanoidOverrides overrides;
+    EXPECT_EQ(overrides.detectNameRules(), HUMANOID_NAME_RULES_ORIGINAL);
+    overrides.nameRules = HUMANOID_NAME_RULES;
+    const std::string expected =
+        "{\n"
+        "  \"format\": \"jasperengine.humanoid\",\n"
+        "  \"version\": 2,\n"
+        "  \"name_rules\": 2,\n"
+        "  \"bones\": {}\n"
+        "}\n";
+    EXPECT_EQ(writeHumanoidOverrides(overrides), expected);
+    EXPECT_TRUE(overrides.empty()) << "no slot override";
+    EXPECT_FALSE(overrides.onlyBones());
+    HumanoidMapIOParsed parsed = humanoidMapIOParse(expected);
+    ASSERT_TRUE(parsed.ok) << parsed.error;
+    EXPECT_TRUE(parsed.warnings.empty());
+    EXPECT_EQ(parsed.overrides, overrides);
+    EXPECT_EQ(parsed.overrides.detectNameRules(), HUMANOID_NAME_RULES);
+    EXPECT_NE(parsed.overrides, HumanoidOverrides()) << "part of the value";
+
+    // a newer editor's rules read as the newest here; anything but a whole number from 1 is ignored
+    parsed = humanoidMapIOParse("{\"format\": \"jasperengine.humanoid\", \"version\": 2, \"name_rules\": 9}");
+    ASSERT_TRUE(parsed.ok) << parsed.error;
+    EXPECT_EQ(parsed.overrides.nameRules, std::optional<int>(HUMANOID_NAME_RULES));
+    EXPECT_TRUE(anyWarningContains(parsed.warnings, "name_rules: 9 is newer"));
+    for (const char* value : {"0", "1.5", "\"2\"", "null"}){
+        parsed = humanoidMapIOParse(std::string("{\"format\": \"jasperengine.humanoid\", \"version\": 2, \"name_rules\": ") + value + "}");
+        ASSERT_TRUE(parsed.ok) << parsed.error;
+        EXPECT_FALSE(parsed.overrides.nameRules.has_value()) << value;
+        EXPECT_TRUE(anyWarningContains(parsed.warnings, "name_rules: expected")) << value;
+    }
+}
+
 TEST(HumanoidMapIO, SidecarPath){
     EXPECT_EQ(humanoidSidecarPath("models/hero.gltf"), "models/hero.gltf.humanoid");
 }

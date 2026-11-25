@@ -5035,6 +5035,15 @@
 		4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C03036C6074531C9 /* WorldSettings.h */; };
 		4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */; };
 		4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */; };
+		4A534E473C3F3FAB6431E070 /* GameRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702453DBB311CF515 /* GameRunner.cpp */; };
+		4A534E4752B2DFA7EE1A4622 /* GameRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702453DBB311CF515 /* GameRunner.cpp */; };
+		4A534E47AED253F50FD5B635 /* StrippedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A46D102198AF060B /* StrippedAssets.cpp */; };
+		4A534E47ECB526055E579D5A /* StrippedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A46D102198AF060B /* StrippedAssets.cpp */; };
+		4A534E47370533C6085BB91A /* MeshAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */; };
+		4A534E47FD2BD71465E394EE /* MeshAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */; };
+		4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47315BA78BA4D638EE /* StrippedAssets.h */; };
+		4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D91AB01B3A49CD25 /* MeshAsset.h */; };
+		4A534E473F514FDB62D83E2C /* GameRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4709862CF7780A4732 /* GameRunner.h */; };
 		4A534E47C1581EFF35A6EA07 /* DataAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475225092D13912A39 /* DataAsset.cpp */; };
 		4A534E4796DA521EA4DCF08E /* DataAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475225092D13912A39 /* DataAsset.cpp */; };
 		4A534E47EEF3D173539D464C /* DataAssetClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477E17544764F57217 /* DataAssetClassesLua.cpp */; };
@@ -9687,6 +9696,12 @@
 		4A534E47C03036C6074531C9 /* WorldSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldSettings.h; sourceTree = "<group>"; };
 		4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueriesLua.h; sourceTree = "<group>"; };
 		4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VehicleSystem.h; sourceTree = "<group>"; };
+		4A534E4702453DBB311CF515 /* GameRunner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GameRunner.cpp; sourceTree = "<group>"; };
+		4A534E47A46D102198AF060B /* StrippedAssets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StrippedAssets.cpp; sourceTree = "<group>"; };
+		4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshAsset.cpp; sourceTree = "<group>"; };
+		4A534E47315BA78BA4D638EE /* StrippedAssets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StrippedAssets.h; sourceTree = "<group>"; };
+		4A534E47D91AB01B3A49CD25 /* MeshAsset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshAsset.h; sourceTree = "<group>"; };
+		4A534E4709862CF7780A4732 /* GameRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GameRunner.h; sourceTree = "<group>"; };
 		4A534E475225092D13912A39 /* DataAsset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataAsset.cpp; sourceTree = "<group>"; };
 		4A534E477E17544764F57217 /* DataAssetClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataAssetClassesLua.cpp; sourceTree = "<group>"; };
 		4A534E47EB6EE9407F1511D5 /* DataAsset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DataAsset.h; sourceTree = "<group>"; };
@@ -11395,6 +11410,8 @@
 				4A534E47C484ACD2846CB3C2 /* RunControl.h */,
 				4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */,
 				4A534E47A4609FEFF72DC9EF /* PlayerModules.h */,
+				4A534E4702453DBB311CF515 /* GameRunner.cpp */,
+				4A534E4709862CF7780A4732 /* GameRunner.h */,
 			);
 			path = player;
 			sourceTree = "<group>";
@@ -11567,6 +11584,8 @@
 				4A534E47AD19DC42C003CE33 /* CookedModels.h */,
 				4A534E47297026DDD66F700A /* ModelCpuData.cpp */,
 				4A534E479B0FAC56BA3B9CFB /* ModelCpuData.h */,
+				4A534E47604F6AC5FEF9A18D /* MeshAsset.cpp */,
+				4A534E47D91AB01B3A49CD25 /* MeshAsset.h */,
 			);
 			path = model;
 			sourceTree = "<group>";
@@ -12024,6 +12043,8 @@
 				A5E05A7C0000000000000001 /* watch */,
 				4A534E478A53FD45D6859CB8 /* JPak.cpp */,
 				4A534E477327188402907BEC /* JPak.h */,
+				4A534E47A46D102198AF060B /* StrippedAssets.cpp */,
+				4A534E47315BA78BA4D638EE /* StrippedAssets.h */,
 			);
 			path = io;
 			sourceTree = "<group>";
@@ -17150,6 +17171,9 @@
 				4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */,
 				4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */,
 				4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */,
+				4A534E478944E14FE312EA13 /* StrippedAssets.h in Headers */,
+				4A534E47A552D17766B4FFC5 /* MeshAsset.h in Headers */,
+				4A534E473F514FDB62D83E2C /* GameRunner.h in Headers */,
 				4A534E47DFC8393A2E473FB3 /* DataAsset.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -19869,6 +19893,9 @@
 				4A534E478AA5B63EAA52315B /* VehicleDrivetrain.cpp in Sources */,
 				4A534E4757409C2B8884C336 /* VehicleClassesLua.cpp in Sources */,
 				4A534E47706936990B8552E9 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E473C3F3FAB6431E070 /* GameRunner.cpp in Sources */,
+				4A534E47AED253F50FD5B635 /* StrippedAssets.cpp in Sources */,
+				4A534E47370533C6085BB91A /* MeshAsset.cpp in Sources */,
 				4A534E47C1581EFF35A6EA07 /* DataAsset.cpp in Sources */,
 				4A534E47EEF3D173539D464C /* DataAssetClassesLua.cpp in Sources */,
 			);
@@ -20880,6 +20907,9 @@
 				4A534E4745EC5F61B6962A54 /* VehicleDrivetrain.cpp in Sources */,
 				4A534E47BE01B38E98FA2F1E /* VehicleClassesLua.cpp in Sources */,
 				4A534E47C8BC5AC830F6D577 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E4752B2DFA7EE1A4622 /* GameRunner.cpp in Sources */,
+				4A534E47ECB526055E579D5A /* StrippedAssets.cpp in Sources */,
+				4A534E47FD2BD71465E394EE /* MeshAsset.cpp in Sources */,
 				4A534E4796DA521EA4DCF08E /* DataAsset.cpp in Sources */,
 				4A534E47B2B7406438B248B8 /* DataAssetClassesLua.cpp in Sources */,
 			);

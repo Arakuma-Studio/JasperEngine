@@ -3,22 +3,18 @@
 
 // S95 REQ-12, REQ-13: Project Settings > Time (time.fixed_timestep, time.maximum_delta_time) and
 // Input > Simulate Touch From Mouse (input.simulate_touch_from_mouse) as rows, in project.yaml
-// (omitted at their defaults, so old projects load as before), in a prebuilt player's game.json and
-// in a compiled game's generated main, before the first scene.
+// (omitted at their defaults, so old projects load as before) and in every build's game.json, which
+// player::runGame applies before the first scene.
 
-#include "Generator.h"
+#include "cook/GameConfig.h"
 #include "Project.h"
 #include "Stream.h"
 #include "Workspace.h"
 #include "player/PlayerConfig.h"
 #include "settings/SettingsRegistry.h"
-#include "support/PosixCompat.h"
 
 #include <gtest/gtest.h>
 
-#include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 using namespace jasperengine;
@@ -100,30 +96,18 @@ TEST(TimeAndTouchSettings, ReachTheGames){
     EXPECT_EQ(read.fixedTimestep, 1.0 / 60.0);
     EXPECT_FALSE(read.simulateTouchFromMouse);
 
-    // a compiled game's main sets them before the first scene
-    namespace fs = std::filesystem;
-    const fs::path project = fs::temp_directory_path() / ("jasper-generator-time-" + std::to_string(::getpid()));
-    fs::remove_all(project);
-    fs::create_directories(project / "assets");
-    const fs::path internal = project / ".jasperengine";
-    auto generatedMain = [&](double step, double maxDelta, bool touch){
-        Generator generator;
-        generator.setTimeAndTouchSettings(step, maxDelta, touch);
-        const std::vector<SceneBuildInfo> scenes = {SceneBuildInfo{1, "Level", {1}, {1}, true}};
-        generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17);
-        std::ifstream file(internal / "generated" / "main.cpp");
-        std::stringstream text;
-        text << file.rdbuf();
-        return text.str();
-    };
-    const std::string set = generatedMain(1.0 / 120.0, 0.1, true);
-    const size_t step = set.find("Engine::setProjectUpdateTime(0.0083333333333333332);");
-    ASSERT_NE(step, std::string::npos) << "every digit of the double";
-    EXPECT_LT(step, set.find("SceneManager::loadScene")) << "before the first scene";
-    EXPECT_NE(set.find("Engine::setMaxDeltatime(0.10000000000000001f);"), std::string::npos);
-    EXPECT_NE(set.find("Engine::setCallTouchInMouseEvent(true);"), std::string::npos);
-    const std::string defaults = generatedMain(1.0 / 60.0, 0.25, false);
-    EXPECT_EQ(defaults.find("setProjectUpdateTime"), std::string::npos) << "the defaults cost a game nothing";
-    EXPECT_EQ(defaults.find("setCallTouchInMouseEvent"), std::string::npos);
-    fs::remove_all(project);
+    // every build's game.json carries them (S98: a Compile build's runGame reads it too and
+    // applies them before the first scene); at the defaults it writes nothing
+    Project project;
+    editor::cook::GameConfigTarget target;
+    target.fallbackName = "game";
+    EXPECT_FALSE(editor::cook::makeGameConfig(project, target).toJson().contains("time"));
+    project.setFixedTimestep(1.0 / 120.0);
+    project.setMaximumDeltaTime(0.1);
+    project.setSimulateTouchFromMouse(true);
+    const player::PlayerConfig built = editor::cook::makeGameConfig(project, target);
+    ASSERT_TRUE(player::PlayerConfig::fromJson(built.toJson(), read, error)) << error;
+    EXPECT_EQ(read.fixedTimestep, 1.0 / 120.0) << "every digit of the double";
+    EXPECT_EQ(read.maximumDeltaTime, 0.1);
+    EXPECT_TRUE(read.simulateTouchFromMouse);
 }

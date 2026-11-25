@@ -14,13 +14,16 @@
 // AnimatorSystem's wall time per frame (p50 / p95) with the workers and serial, the main
 // thread's share (prepare + finalize), and with --count-allocs the heap allocations of the
 // steady-state frames.
+// AnimBench.Crowd200MeshSpace: the same crowd with Mesh Space Rotation on its upper-body layer
+// (docs/specs/mesh-space-rotation.md R24), the same rows.
 // AnimBench.Micro*: a two-pose blend at 128 bones (Native and Scalar), one 65-bone clip sample,
 // a state-machine update (20 states, 60 transitions, no pose), an Animator's runtime state, a
 // Look At solve over 3 bones of a leaning chain (S77 R33, information).
 // Each is the median of N runs. tools/perf/check_bench.py gates the JSON with
 // tools/perf/bench-thresholds.json.
 // S77 R10, information unless the thresholds name them (docs/perf/animator.md): Web30 (30 of the
-// same characters, one thread), an Animation Player crowd, a retargeted crowd, rig space and skin
+// same characters, one thread), an Animation Player crowd (also layered: the wave over the walk on
+// a masked upper-body layer, Mesh Space Rotation off and on), a retargeted crowd, rig space and skin
 // matrices alone, key groups with different times, sampleQuaternion against Quaternion::slerp per
 // tier, and for the dense and reduced clip shapes (generated here) and each --clip file (real
 // clips, kept out of the repository) the sample, sample + hierarchy, parse + build and
@@ -35,6 +38,7 @@
 #include "Scene.h"
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimationPlayerRuntime.h"
 #include "animation/AnimatorAssetIO.h"
 #include "animation/AnimatorIK.h"
 #include "animation/AnimatorInstance.h"
@@ -42,6 +46,7 @@
 #include "animation/AnimatorRig.h"
 #include "animation/CompiledController.h"
 #include "animation/KeyframeSampling.h"
+#include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
@@ -738,6 +743,43 @@ namespace {
         return crowd;
     }
 
+    // the same characters with two player layers: `base` on the base layer, `upper` over it on an
+    // Override layer at 0.7 with `mask` (docs/specs/mesh-space-rotation.md R16 when `meshSpace`)
+    std::unique_ptr<PlayerCrowd> buildLayeredPlayerCrowd(const std::vector<BoneSpec>& bones, const std::string& base, const std::string& upper,
+                                                         const std::string& mask, int characters, bool meshSpace){
+        auto crowd = std::make_unique<PlayerCrowd>();
+        Scene& scene = *crowd->scene;
+        for (int c = 0; c < characters; c++){
+            const Entity root = animBenchNode(scene, NULL_ENTITY, "Hero" + std::to_string(c), Vector3((float)(c % 20), 0, (float)(c / 20)));
+            std::vector<Entity> entities(bones.size());
+            for (size_t b = 0; b < bones.size(); b++){
+                entities[b] = animBenchNode(scene, bones[b].parent < 0 ? root : entities[(size_t)bones[b].parent], bones[b].name, bones[b].position);
+            }
+            AnimationPlayer player(&scene, root);
+            AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(root);
+            AnimationPlayerLayer baseLayer;
+            baseLayer.name = BASE_LAYER_NAME;
+            AnimationPlayerLayer upperLayer;
+            upperLayer.name = "Upper";
+            upperLayer.weight = 0.7f;
+            upperLayer.mask = mask;
+            upperLayer.meshSpaceRotation = meshSpace;
+            component.layers = {baseLayer, upperLayer};
+            AnimationPlayerClip move;
+            move.clip = base;
+            move.name = "Move";
+            AnimationPlayerClip wave;
+            wave.clip = upper;
+            wave.name = "Wave";
+            wave.layer = 1;
+            component.clips = {move, wave};
+            component.needsLoad = true;
+            player.play("Move");
+            player.play("Wave");
+        }
+        return crowd;
+    }
+
     void playerCrowdRows(bench::Results& results, const std::string& name, PlayerCrowd& crowd, int frames, bool countAllocs){
         for (int i = 0; i < 120; i++) crowd.step();
         std::vector<double> times;
@@ -910,6 +952,26 @@ int main(int argc, char** argv){
         results.add("crowd200_serial_no_root_motion_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
     }
 
+    // ---- AnimBench.Crowd200MeshSpace (docs/specs/mesh-space-rotation.md R24): the same crowd with
+    // Mesh Space Rotation on its upper-body layer (boundary bones: the neck and both shoulders)
+    {
+        std::unique_ptr<Crowd> crowd = buildCrowd(assets, bones);
+        for (Entity root : crowd->roots) crowd->scene->getComponent<AnimatorComponent>(root).runtime->setLayerMeshSpaceRotation(1, true);
+        const CrowdTimes parallel = runCrowd(*crowd, true, kFrames, false);
+        results.add("crowd200_mesh_space_parallel_p50_ms", parallel.p50, "ms");
+        results.add("crowd200_mesh_space_parallel_p95_ms", parallel.p95, "ms");
+        results.add("crowd200_mesh_space_main_thread_p95_ms", parallel.mainP95, "ms");
+        const CrowdTimes serial = runCrowd(*crowd, false, std::max(120, kFrames / 3), false);
+        results.add("crowd200_mesh_space_serial_p50_ms", serial.p50, "ms");
+        results.add("crowd200_mesh_space_serial_p95_ms", serial.p95, "ms");
+        if (countAllocs){
+            const CrowdTimes counted = runCrowd(*crowd, true, kFrames, true);
+            results.add("crowd200_mesh_space_steady_state_allocations", (double)counted.allocations, "allocations");
+        }
+        const AnimatorInstance* instance = crowd->scene->getComponent<AnimatorComponent>(crowd->roots[0]).runtime.get();
+        results.add("crowd200_mesh_space_boundary_bones", (double)instance->layerBoundaryBones(1).size(), "bones");
+    }
+
     // ---- AnimBench.Micro: a two-pose blend at 128 bones, Native and Scalar
     {
         std::mt19937 rng(3);
@@ -1028,6 +1090,20 @@ int main(int argc, char** argv){
         const std::string fwd = (assetDir / "fwd.anim").generic_string();
         playerCrowdRows(results, "player_crowd200", *buildPlayerCrowd(bones, fwd, kAnimBenchCharacters, true), std::max(120, kFrames / 3), countAllocs);
         playerCrowdRows(results, "player_idle200", *buildPlayerCrowd(bones, fwd, kAnimBenchCharacters, false), std::max(120, kFrames / 3), countAllocs);
+        // the wave on an upper-body layer masked from the neck and the shoulders (Crowd200's
+        // boundary bones: 3 per character), Mesh Space Rotation off and on
+        AvatarMaskDef upper;
+        upper.defaultWeight = 0.0f;
+        for (const std::string& path : assets.paths){
+            const std::string name = path.substr(path.rfind('/') + 1);
+            if (name == "mixamorig:Neck" || name == "mixamorig:LeftShoulder" || name == "mixamorig:RightShoulder") upper.paths.push_back({path, 1.0f, true});
+        }
+        const std::string mask = animBenchWriteFile("player_upper.mask", writeMask(upper));
+        const std::string wave = (assetDir / "wave.anim").generic_string();
+        playerCrowdRows(results, "player_layered200", *buildLayeredPlayerCrowd(bones, fwd, wave, mask, kAnimBenchCharacters, false), std::max(120, kFrames / 3),
+                        countAllocs);
+        playerCrowdRows(results, "player_mesh_space200", *buildLayeredPlayerCrowd(bones, fwd, wave, mask, kAnimBenchCharacters, true),
+                        std::max(120, kFrames / 3), countAllocs);
     }
     retargetCrowdRows(results, fixtures, 50, std::max(120, kFrames / 3));
 

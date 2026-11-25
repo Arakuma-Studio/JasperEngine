@@ -31,6 +31,12 @@
 #include "util/TextEffects.h"
 
 namespace jasperengine{
+    enum class ActionState;
+    enum class Collider2DType;
+    enum class Collider3DType;
+    enum class PivotPreset;
+    enum class RigidbodyMotionQuality;
+    enum class ScriptType;
     enum class AlphaTweenTarget;
     enum class AnchorPreset;
     enum class AudioSourceAttenuation;

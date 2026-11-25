@@ -71,7 +71,10 @@ void Enemy::think(){
 name), `JE_PROFILE_THREAD(name)`, `JE_PROFILE_COUNTER(name, value)` and
 `JE_GPU_ALLOC_SCOPE(Category, owner)` (what the GPU resources made in the scope are for: Textures,
 RenderTargets, ShadowMaps, PostFX, Meshes, Uniforms, UI, Particles, Terrain, Editor, Other). Lua
-has the `Profiler` table (`docs/mcp/guide/lua-api.md` 2.14).
+has the `Profiler` table (`docs/mcp/guide/lua-api.md` 2.14): `Profiler.gpuTiming = true` turns GPU
+timing on (the timer `get_gpu_passes` arms; false lets it go), and `Profiler.frameStats()` then
+has `gpuMs` and `gpuPasses`, `{name, ms}` per pass of the newest timed frame. Where the backend
+has no GPU timer, and in a release export, `gpuTiming` stays false and those fields are absent.
 
 A scope costs one relaxed atomic load and a branch while nothing records, and two reads of the
 CPU's counter (rdtsc, cntvct_el0) and two writes into the thread's own ring while it records; job workers name themselves

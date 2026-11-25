@@ -31,7 +31,5 @@ namespace jasperengine::editor {
     // Missing keys keep their defaults; the result is sanitized (costs >= 1, fixed areas, ids)
     NavigationProjectSettings decodeNavigationProjectSettings(const YAML::Node& node);
 
-    // The C++ a standalone build's main.cpp runs before its first scene (empty for the defaults)
-    std::string generateNavigationSettingsCode(const nav::NavigationSettings& settings, const std::string& indent);
 
 }

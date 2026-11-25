@@ -28,9 +28,9 @@ namespace {
     std::vector<std::vector<uint16_t>> chunkTypes(const Document& doc) {
         std::vector<std::vector<uint16_t>> out;
         if (!doc.provenance) return out;
-        for (const detail::FrameRecord& f : doc.provenance->frames) {
+        for (const aseprite::detail::FrameRecord& f : doc.provenance->frames) {
             std::vector<uint16_t> types;
-            for (const detail::ChunkRecord& c : f.chunks) types.push_back(c.type);
+            for (const aseprite::detail::ChunkRecord& c : f.chunks) types.push_back(c.type);
             out.push_back(types);
         }
         return out;
@@ -45,9 +45,9 @@ namespace {
         ReadResult r = read(file);
         std::vector<std::vector<ChunkBytes>> out;
         if (!r.ok()) return out;
-        for (const detail::FrameRecord& f : r.document->provenance->frames) {
+        for (const aseprite::detail::FrameRecord& f : r.document->provenance->frames) {
             std::vector<ChunkBytes> chunks;
-            for (const detail::ChunkRecord& c : f.chunks) {
+            for (const aseprite::detail::ChunkRecord& c : f.chunks) {
                 chunks.push_back({c.type, std::vector<uint8_t>(file.begin() + static_cast<std::ptrdiff_t>(c.offset),
                                                                file.begin() + static_cast<std::ptrdiff_t>(c.offset + c.size))});
             }
@@ -184,7 +184,7 @@ TEST(AsepriteCodecTest, GoldenCorpus) {
         ASSERT_GE(layer, 0);
         const Cel* cel = doc.cel(layer, 0);
         ASSERT_TRUE(cel && cel->tilemap);
-        const Tilemap& tm = *cel->tilemap;
+        const aseprite::Tilemap& tm = *cel->tilemap;
         const Tileset* tilemapTileset = nullptr;
         for (const Tileset& t : doc.tilesets) {
             if (t.id == doc.layers[static_cast<size_t>(layer)].tilesetIndex) tilemapTileset = &t;
@@ -539,12 +539,12 @@ namespace {
         Layer group;
         group.name = "Body";
         group.type = LayerType::Group;
-        group.blend = BlendMode::Multiply;
+        group.blend = aseprite::BlendMode::Multiply;
         group.opacity = 200;
         Layer arm;
         arm.name = "Arm";
         arm.childLevel = 1;
-        arm.blend = BlendMode::Screen;
+        arm.blend = aseprite::BlendMode::Screen;
         arm.opacity = 128;
         Layer hidden;
         hidden.name = "_guide";
@@ -633,16 +633,16 @@ namespace {
         // every property type, mixed vectors and three levels of nesting
         PropertyMap nested2 = {{"deep", PropertyValue::string("bottom")}};
         PropertyMap nested1 = {{"level2", PropertyValue::map(nested2)}, {"n", PropertyValue::integer(-70000)}};
-        PropertyValue f32{PropertyType::Float, 1.5, 0};
-        PropertyValue fixed{PropertyType::Fixed, -2.25, 0};
-        PropertyValue i8{PropertyType::Int8, int64_t{-5}, 0};
-        PropertyValue i16{PropertyType::Int16, int64_t{-300}, 0};
-        PropertyValue i32{PropertyType::Int32, int64_t{-100000}, 0};
-        PropertyValue i64{PropertyType::Int64, int64_t{-5000000000LL}, 0};
-        PropertyValue u8{PropertyType::Uint8, uint64_t{200}, 0};
-        PropertyValue u16{PropertyType::Uint16, uint64_t{60000}, 0};
-        PropertyValue u32{PropertyType::Uint32, uint64_t{4000000000u}, 0};
-        PropertyValue u64{PropertyType::Uint64, uint64_t{18000000000000000000ull}, 0};
+        PropertyValue f32{aseprite::PropertyType::Float, 1.5, 0};
+        PropertyValue fixed{aseprite::PropertyType::Fixed, -2.25, 0};
+        PropertyValue i8{aseprite::PropertyType::Int8, int64_t{-5}, 0};
+        PropertyValue i16{aseprite::PropertyType::Int16, int64_t{-300}, 0};
+        PropertyValue i32{aseprite::PropertyType::Int32, int64_t{-100000}, 0};
+        PropertyValue i64{aseprite::PropertyType::Int64, int64_t{-5000000000LL}, 0};
+        PropertyValue u8{aseprite::PropertyType::Uint8, uint64_t{200}, 0};
+        PropertyValue u16{aseprite::PropertyType::Uint16, uint64_t{60000}, 0};
+        PropertyValue u32{aseprite::PropertyType::Uint32, uint64_t{4000000000u}, 0};
+        PropertyValue u64{aseprite::PropertyType::Uint64, uint64_t{18000000000000000000ull}, 0};
         Uuid uuid;
         for (int i = 0; i < 16; i++) uuid.bytes[static_cast<size_t>(i)] = static_cast<uint8_t>(i * 13);
         PropertyMap all = {
@@ -694,7 +694,7 @@ namespace {
         Cel tilemapCel;
         tilemapCel.layer = 5;
         tilemapCel.frame = 0;
-        auto tm = std::make_shared<Tilemap>();
+        auto tm = std::make_shared<aseprite::Tilemap>();
         tm->columns = 3;
         tm->rows = 2;
         tm->tiles = {1, 2 | 0x80000000u, 0, 2 | 0x40000000u, 1 | 0x20000000u, 2 | 0xE0000000u};
@@ -795,16 +795,16 @@ TEST(AsepriteCodecTest, WriteRoundTrip) {
         EXPECT_EQ(resaved, bytes);
     }
     // every blend mode, on a layer and on a group
-    for (int m = 0; m <= static_cast<int>(BlendMode::Divide); m++) {
+    for (int m = 0; m <= static_cast<int>(aseprite::BlendMode::Divide); m++) {
         Document doc = asepriteCodecMakeDocument(ColorMode::Rgba);
-        doc.layers[1].blend = static_cast<BlendMode>(m);
-        doc.layers[2].blend = static_cast<BlendMode>(18 - m);
+        doc.layers[1].blend = static_cast<aseprite::BlendMode>(m);
+        doc.layers[2].blend = static_cast<aseprite::BlendMode>(18 - m);
         std::vector<uint8_t> bytes;
         ASSERT_TRUE(write(doc, bytes, nullptr));
         ReadResult r = read(bytes);
         ASSERT_TRUE(r.ok());
-        EXPECT_EQ(r.document->layers[1].blend, static_cast<BlendMode>(m));
-        EXPECT_EQ(r.document->layers[2].blend, static_cast<BlendMode>(18 - m));
+        EXPECT_EQ(r.document->layers[1].blend, static_cast<aseprite::BlendMode>(m));
+        EXPECT_EQ(r.document->layers[2].blend, static_cast<aseprite::BlendMode>(18 - m));
     }
 }
 

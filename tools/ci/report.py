@@ -378,17 +378,22 @@ SANITIZER_RE = re.compile(r"^==\d+==ERROR: (?P<san>\w+Sanitizer): (?P<msg>.+)$|^
 UBSAN_RE = re.compile(r"^(?P<file>[^\s:][^:]*?):(?P<line>\d+):(?:\d+:)? runtime error: (?P<msg>.+)$")
 FRAME_RE = re.compile(r"^\s+#\d+ 0x[0-9a-f]+ in (?P<fn>.+?) (?P<file>[^\s()]+):(?P<line>\d+)(?::\d+)?$")
 TESTBODY_RE = re.compile(r"\b([A-Za-z0-9]+)_([A-Za-z0-9]+)_Test::TestBody\(\)")
+# the allocation every leak and heap report starts in (the linker's malloc wrap, the counting operator
+# new of the test support), not where the code that allocated is
+ALLOCATOR_FRAME_RE = re.compile(r"^(?:__wrap_\w+|__interceptor_\w+|operator (?:new|delete)\b.*|probeAllocate)$")
 
 
 def repo_frame(lines: list[str]) -> tuple[str, str]:
-    """The first stack frame in this repository's code (location), and the googletest test it is in."""
+    """The first stack frame in this repository's own code (location), past vendored libraries and the
+    test support's allocation hooks, and the googletest test it is in."""
     location, test = "", ""
     for line in lines:
         m = FRAME_RE.match(line)
         if not m:
             continue
         path = relative_path(m.group("file"))
-        if not location and not path.startswith(("/", "../", "libs/")):
+        if not location and not path.startswith(("/", "../", "libs/", "engine/libs/")) \
+                and not ALLOCATOR_FRAME_RE.match(m.group("fn")):
             location = f"{path}:{m.group('line')}"
         t = TESTBODY_RE.search(m.group("fn"))
         if t and not test:
@@ -497,9 +502,16 @@ def parse_smoke(lines: list[str], repro: str) -> list[dict]:
 def gtest_runs(lines: list[str]) -> list[dict]:
     """Every googletest test the console started: its name, the line it started on, the line its
     output ends before, and its outcome (ok, failed, skipped, ended: another test started after it,
-    unfinished: its binary's output stops inside it) with died: the log then shows the binary died."""
+    unfinished: its binary's output stops inside it) with died: the log then shows the binary died.
+
+    A test that runs itself again as a child process (a helper it kills midway, a re-exec with its own
+    filter) prints the child's whole console, header and the same test's [ RUN ], inside its own: that
+    test is a parent, and its own result line, which may be the only one when the child was killed,
+    ends both."""
     runs: list[dict] = []
     current = None
+    parents: list[dict] = []        # tests whose child's console is being printed
+    segment_cut = None              # the test a new binary's header cut short, until the next [ RUN ]
 
     def close(end: int, outcome: str) -> None:
         nonlocal current
@@ -510,16 +522,44 @@ def gtest_runs(lines: list[str]) -> list[dict]:
 
     for i, line in enumerate(lines):
         end = END_RE.search(line)
-        if end and current is not None and end.group(1) in (None, current["name"]):
-            close(i, "failed" if "FAILED" in end.group(0) else "skipped" if "SKIPPED" in end.group(0) else "ok")
+        if end:
+            outcome = "failed" if "FAILED" in end.group(0) else "skipped" if "SKIPPED" in end.group(0) else "ok"
+            name = end.group(1)
+            if current is not None and name in (None, current["name"]):
+                name = current["name"]
+                close(i, outcome)
+            for parent in [p for p in parents if p["name"] == name]:
+                parents.remove(parent)
+                parent.update(end=i, outcome=outcome)
+                runs.append(parent)
+            if outcome == "failed":
+                # the parent's own FAILED after its child's OK
+                for done in reversed(runs):
+                    if done["name"] == name:
+                        done["outcome"] = "failed"
+                        break
         run = RUN_RE.search(line)
         if run:
             close(i, "ended")
+            if segment_cut is not None and segment_cut["name"] == run.group(1):
+                runs.remove(segment_cut)
+                segment_cut.update(end=len(lines), outcome="unfinished")
+                parents.append(segment_cut)
+            segment_cut = None
             current = {"name": run.group(1), "start": i, "end": len(lines), "outcome": "unfinished", "died": False}
             continue
         if current is not None and SEGMENT_END_RE.match(line):
+            # a binary's header right after a test started, with no sign of a death between, and then that
+            # same test's [ RUN ]: its child (decided at that [ RUN ]); anything else: it stopped here
+            starts_child = line.startswith("[==========] Running ") and not any(
+                DEATH_RE.search(l) for l in lines[current["start"] + 1:i])
+            cut = current
             close(i, "unfinished")
+            segment_cut = cut if starts_child else None
     close(len(lines), "unfinished")
+    for parent in parents:
+        runs.append(parent)
+    runs.sort(key=lambda r: r["start"])
     for run in runs:
         if run["outcome"] == "unfinished":
             tail_lines = lines[run["start"] + 1:min(len(lines), run["end"] + 3)]
@@ -624,6 +664,11 @@ def parse_log(path: Path, repro_base: str, transcripts: list[Path] = (), cancell
     i = 0
     while i < len(lines) and len(primary) < DIAGNOSTICS:
         line = lines[i]
+        if owner_at[i]:
+            # a test's own output (an importer's expected "error: ..."): its result is the XML's and the
+            # console's above, never a build's
+            i += 1
+            continue
         if GRADLE_RE.match(line):
             body = []
             for later in lines[i + 1:]:

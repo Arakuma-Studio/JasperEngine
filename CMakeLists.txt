@@ -817,6 +817,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cli/TitleArtCli.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
+    ${EDITOR_DIR}/cook/GameConfig.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
     ${EDITOR_DIR}/cook/TerrainWorldCooker.cpp
     ${EDITOR_DIR}/cook/VoxelVolumeCook.cpp
@@ -838,6 +839,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/platform/AndroidTools.cpp
     ${EDITOR_DIR}/platform/PinnedDownload.cpp
     ${EDITOR_DIR}/platform/AndroidPackager.cpp
+    ${EDITOR_DIR}/platform/AndroidIcons.cpp
     ${EDITOR_DIR}/platform/WindowsResources.cpp
     ${EDITOR_DIR}/platform/MacBundle.cpp
     ${EDITOR_DIR}/platform/IosProject.cpp
@@ -845,7 +847,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/AppCommands.cpp
     ${EDITOR_DIR}/AppSettings.cpp
     ${EDITOR_DIR}/Theme.cpp
-    ${EDITOR_DIR}/Factory.cpp
     ${EDITOR_DIR}/Out.cpp
     ${EDITOR_DIR}/Platform.cpp
     ${EDITOR_DIR}/Project.cpp
@@ -872,7 +873,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/Resolve.cpp
     ${EDITOR_DIR}/reflect/YamlCodec.cpp
     ${EDITOR_DIR}/reflect/Schema.cpp
-    ${EDITOR_DIR}/reflect/Codegen.cpp
     ${EDITOR_DIR}/reflect/Remap.cpp
     ${EDITOR_DIR}/reflect/Properties.cpp
     ${EDITOR_DIR}/reflect/PostProcessingReflect.cpp
@@ -931,6 +931,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Exporter.cpp
     ${EDITOR_DIR}/ExporterPrebuilt.cpp
     ${EDITOR_DIR}/ShippingTypes.cpp
+    ${EDITOR_DIR}/export/AssetStripping.cpp
     ${EDITOR_DIR}/export/ExportFiles.cpp
     ${EDITOR_DIR}/util/BuildDiagnostics.cpp
 
@@ -946,6 +947,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp
     ${EDITOR_DIR}/mcp/McpJobs.cpp
+    ${EDITOR_DIR}/mcp/McpModelImport.cpp
     ${EDITOR_DIR}/mcp/McpRefs.cpp
     ${EDITOR_DIR}/mcp/McpRegistry.cpp
     ${EDITOR_DIR}/mcp/McpSchema.cpp
@@ -1076,6 +1078,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/asset/AssetMeta.cpp
     ${EDITOR_DIR}/asset/AssetRefSchema.cpp
     ${EDITOR_DIR}/asset/AssetTypes.cpp
+    ${EDITOR_DIR}/asset/MeshAssetFiles.cpp
     ${EDITOR_DIR}/asset/ContentHash.cpp
     ${EDITOR_DIR}/asset/DepEdge.cpp
     ${EDITOR_DIR}/asset/MissingAssetTracker.cpp
@@ -1267,6 +1270,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/model/ModelCookQueue.cpp
     ${EDITOR_DIR}/model/ModelCooker.cpp
     ${EDITOR_DIR}/model/ModelExport.cpp
+    ${EDITOR_DIR}/model/FbxImportQueue.cpp
     ${EDITOR_DIR}/model/ModelHeader.cpp
     ${EDITOR_DIR}/model/ModelImportSettings.cpp
     ${EDITOR_DIR}/model/ModelPreviewRaster.cpp
@@ -1565,7 +1569,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
+    ${EDITOR_DIR}/command/type/AssetStrippingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/AndroidSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp

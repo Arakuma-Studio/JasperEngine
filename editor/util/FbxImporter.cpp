@@ -4,6 +4,8 @@
 #include "util/FbxImporter.h"
 #include "io/AtomicFile.h"
 
+#include "command/type/SetAssetMetaCmd.h"
+#include "model/ModelImportSettings.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/GlbBuilder.h"
@@ -21,6 +23,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 
@@ -59,6 +62,15 @@ struct ImportInfo {
     int version = 0;
     std::vector<Dependency> files; // the FBX first
     std::vector<TextureEntry> textures;
+    bool materials = true;          // Material Creation Mode Import (absent from the marker)
+    std::vector<std::string> warnings;
+};
+
+// The Material Creation Mode of an FBX's meta sidecar, read again when the sidecar changes
+struct MaterialMode {
+    uintmax_t size = 0;
+    fs::file_time_type time;
+    std::optional<bool> materials;   // absent: the project's default
 };
 
 struct CachedInfo {
@@ -71,6 +83,41 @@ std::mutex importMutex;
 std::mutex cacheMutex;
 std::unordered_map<std::string, FileStamp> fileStamps;
 std::unordered_map<std::string, CachedInfo> importInfos;
+std::unordered_map<std::string, MaterialMode> materialModes;
+std::atomic<bool> defaultMaterials{true};
+
+// Whether the FBX's import makes materials (Material Creation Mode Import), its sidecar's mode or
+// else the project's: a model without a sidecar costs one failed stat
+bool createsMaterials(const fs::path& fbxPath) {
+    const fs::path meta = SetAssetMetaCmd::metaPathOf(fbxPath);
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(meta, ec);
+    if (ec) {
+        return defaultMaterials.load();
+    }
+    const fs::file_time_type time = fs::last_write_time(meta, ec);
+    if (ec) {
+        return defaultMaterials.load();
+    }
+    const std::string key = FileUtils::pathToGenericUtf8(fbxPath.lexically_normal());
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        auto it = materialModes.find(key);
+        if (it != materialModes.end() && it->second.size == size && it->second.time == time) {
+            return it->second.materials.value_or(defaultMaterials.load());
+        }
+    }
+    // a section that does not read is the default
+    ModelImportSettings settings;
+    ModelImportSettings::parse(SetAssetMetaCmd::read(fbxPath, ModelImportSettings::metaKey), settings);
+    std::optional<bool> materials;
+    if (settings.materialCreationMode) {
+        materials = *settings.materialCreationMode == MaterialCreationMode::Import;
+    }
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    materialModes[key] = {size, time, materials};
+    return materials.value_or(defaultMaterials.load());
+}
 
 // FNV-1a, since mtimes do not survive a git clone
 std::string hashContents(const fs::path& path) {
@@ -181,6 +228,10 @@ ImportInfo readImportInfo(const fs::path& glbPath) {
                 info.textures.push_back({{entry.value("filename", ""), entry.value("relative", ""), entry.value("absolute", "")},
                     entry.value("path", "")});
             }
+            info.materials = data.value("materials", true);
+            for (const Json& warning : data.value("warnings", Json::array())) {
+                if (warning.is_string()) info.warnings.push_back(warning.get<std::string>());
+            }
         } catch (const Json::exception&) {
             info = ImportInfo();
         }
@@ -244,8 +295,10 @@ std::string makeSourceId(int version, const std::string& hash) {
     return hash.empty() ? std::string() : std::to_string(version) + "-" + hash;
 }
 
-// The marker that ties a .glb to the files it was imported from
-tinygltf::Value describeImport(const GlbBuilder& builder, const fs::path& fbxPath, const fs::path& assetsRoot) {
+// The marker that ties a .glb to the files it was imported from, with what the import made of it
+// (no materials) and its warnings (the import report: inspect_models, the Model Importer)
+tinygltf::Value describeImport(const GlbBuilder& builder, const fs::path& fbxPath, const fs::path& assetsRoot, bool materials,
+                               const std::vector<std::string>& warnings) {
     const fs::path fbxDir = fbxPath.parent_path().lexically_normal();
     // Relative to the FBX when part of the project
     auto pathOf = [&](const fs::path& path) {
@@ -279,10 +332,24 @@ tinygltf::Value describeImport(const GlbBuilder& builder, const fs::path& fbxPat
     if (!textures.empty()) {
         marker["textures"] = tinygltf::Value(textures);
     }
+    if (!materials) {
+        marker["materials"] = tinygltf::Value(false);
+    }
+    if (!warnings.empty()) {
+        tinygltf::Value::Array list;
+        for (const std::string& warning : warnings) {
+            list.emplace_back(warning);
+        }
+        marker["warnings"] = tinygltf::Value(list);
+    }
     return tinygltf::Value(tinygltf::Value::Object{{IMPORT_EXTRAS_KEY, tinygltf::Value(marker)}});
 }
 
 } // namespace
+
+void FbxImporter::setDefaultCreatesMaterials(bool materials) {
+    defaultMaterials.store(materials);
+}
 
 bool FbxImporter::isFbxFile(const fs::path& path) {
     std::string ext = path.extension().string();
@@ -297,7 +364,7 @@ FbxImporter::State FbxImporter::getState(const fs::path& fbxPath, const fs::path
     }
 
     const ImportInfo info = readImportInfo(glbPath);
-    if (info.files.empty() || info.version != IMPORTER_VERSION) {
+    if (info.files.empty() || info.version != IMPORTER_VERSION || info.materials != createsMaterials(fbxPath)) {
         return State::Stale;
     }
     for (const Dependency& file : info.files) {
@@ -335,6 +402,58 @@ bool FbxImporter::isCurrentImport(const tinygltf::Model& model, const fs::path& 
         });
 }
 
+std::vector<std::string> FbxImporter::getImportWarnings(const fs::path& glbPath) {
+    return readImportInfo(glbPath).warnings;
+}
+
+std::string FbxImporter::summarizeWarnings(const std::string& fileName, const std::vector<std::string>& warnings) {
+    if (warnings.empty()) {
+        return std::string();
+    }
+    auto startsWith = [](const std::string& text, const char* prefix) { return text.rfind(prefix, 0) == 0; };
+    std::vector<std::string> missing;
+    size_t tiled = 0;
+    std::vector<std::string> others;
+    for (const std::string& warning : warnings) {
+        if (startsWith(warning, GlbBuilder::TEXTURE_NOT_FOUND)) {
+            missing.push_back(warning.substr(std::char_traits<char>::length(GlbBuilder::TEXTURE_NOT_FOUND)));
+        } else if (startsWith(warning, GlbBuilder::TEXTURE_UV_TRANSFORM)) {
+            tiled++;
+        } else {
+            others.push_back(warning);
+        }
+    }
+    auto plural = [](size_t count, const char* word) { return std::to_string(count) + " " + word + (count == 1 ? "" : "s"); };
+    std::vector<std::string> parts;
+    if (!missing.empty()) {
+        std::string names;
+        for (size_t i = 0; i < missing.size() && i < 2; i++) {
+            names += (i ? ", " : "") + missing[i];
+        }
+        if (missing.size() > 2) {
+            names += ", +" + std::to_string(missing.size() - 2);
+        }
+        parts.push_back(plural(missing.size(), "texture") + " not found (" + names + ")");
+    }
+    if (tiled > 0) {
+        parts.push_back("tiling/offset not imported on " + plural(tiled, "texture"));
+    }
+    if (others.size() == 1) {
+        parts.push_back(others.front());
+    } else if (others.size() > 1) {
+        parts.push_back(plural(others.size(), "other warning"));
+    }
+    std::string text = fileName + ": ";
+    for (size_t i = 0; i < parts.size(); i++) {
+        text += (i ? "; " : "") + parts[i];
+    }
+    // the whole list stays with the model
+    if (warnings.size() > 1) {
+        text += " (all " + std::to_string(warnings.size()) + " in its import report: inspect_models, the Model Importer)";
+    }
+    return text;
+}
+
 std::vector<fs::path> FbxImporter::findMissingLinkedFiles(const fs::path& fbxPath, const fs::path& glbPath) {
     std::vector<fs::path> missing;
     for (const Dependency& file : readImportInfo(glbPath).files) {
@@ -345,6 +464,14 @@ std::vector<fs::path> FbxImporter::findMissingLinkedFiles(const fs::path& fbxPat
         }
     }
     return missing;
+}
+
+std::vector<fs::path> FbxImporter::findLinkedFiles(const fs::path& fbxPath, const fs::path& glbPath) {
+    std::vector<fs::path> linked;
+    for (const Dependency& file : readImportInfo(glbPath).files) {
+        if (file.linked) linked.push_back(resolveDependency(fbxPath, file.path));
+    }
+    return linked;
 }
 
 FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path& glbPath, const fs::path& assetsRoot, bool force) {
@@ -394,13 +521,14 @@ FbxImporter::Result FbxImporter::import(const fs::path& fbxPath, const fs::path&
 
     std::vector<unsigned char> glb;
     try {
-        GlbBuilder builder(scene, fbxPath, assetsRoot);
+        const bool materials = createsMaterials(fbxPath);
+        GlbBuilder builder(scene, fbxPath, assetsRoot, materials);
         const bool built = builder.build(result.error);
         result.warnings.insert(result.warnings.end(), builder.getWarnings().begin(), builder.getWarnings().end());
         if (!built) {
             return result;
         }
-        glb = builder.write(describeImport(builder, fbxPath, assetsRoot));
+        glb = builder.write(describeImport(builder, fbxPath, assetsRoot, materials, result.warnings));
     } catch (const std::exception& e) {
         result.error = e.what();
         return result;

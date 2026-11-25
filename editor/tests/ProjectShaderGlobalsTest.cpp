@@ -9,7 +9,6 @@
 
 #include <gtest/gtest.h>
 
-#include "Factory.h"
 #include "Generator.h"
 #include "Project.h"
 #include "Stream.h"
@@ -174,35 +173,6 @@ TEST_F(ProjectShaderGlobalsStreamTest, TheJsonShapeMcpTakes) {
     EXPECT_EQ(updated.defaultValue[0], Vector4(0, 0, 1, 0));
     ASSERT_TRUE(ShaderGlobalsJson::declFromJson(nlohmann::json::parse(R"({"type": "vector4"})"), updated, error, "Wind", &decls[1])) << error;
     EXPECT_EQ(updated.defaultValue[0], Vector4(1, 0, 0, 0)) << "the same type keeps the default";
-}
-
-TEST_F(ProjectShaderGlobalsStreamTest, ExportsDeclareTheListBeforeAnySceneLoads) {
-    EXPECT_EQ(Generator::shaderGlobalsInitSource({}), "") << "nothing without globals";
-    const std::string source = Generator::shaderGlobalsInitSource(everyType());
-    EXPECT_EQ(source.rfind("    ShaderGlobals::declare({\n", 0), 0u) << source;
-    EXPECT_NE(source.find("ShaderGlobalDecl{\"FogTint\", ShaderGlobalType::Color, 0u, {Vector4("), std::string::npos) << source;
-    EXPECT_NE(source.find("ShaderGlobalDecl{\"Weights\", ShaderGlobalType::FloatArray, 3u, {"), std::string::npos) << source;
-    EXPECT_NE(source.find("ShaderGlobalDecl{\"_NoiseTex\", ShaderGlobalType::Texture2D, 0u, {}, \"textures/noise.png\"}"), std::string::npos) << source;
-    EXPECT_NE(source.find("ShaderGlobalType::TextureCube"), std::string::npos) << source;
-    EXPECT_EQ(source.substr(source.size() - 8), "    });\n") << source;
-    // one entry per global, every one a literal the engine's types take
-    size_t entries = 0;
-    for (size_t at = 0; (at = source.find("ShaderGlobalDecl{", at)) != std::string::npos; at++) entries++;
-    EXPECT_EQ(entries, everyType().size());
-}
-
-TEST_F(ProjectShaderGlobalsStreamTest, BindingsAreWrittenOnlyWhenSet) {
-    Material material;
-    EXPECT_FALSE(Stream::encodeMaterial(material)["shaderGlobalBindings"]);
-    material.shader = "library:toon";
-    material.shaderGlobalBindings = {{"tint", "FogTint"}, {"rimColor", "_Rim"}};
-    const YAML::Node node = Stream::encodeMaterial(material);
-    ASSERT_TRUE(node["shaderGlobalBindings"]);
-    EXPECT_EQ(node["shaderGlobalBindings"]["tint"].as<std::string>(), "FogTint");
-    const Material decoded = Stream::decodeMaterial(YAML::Load(YAML::Dump(node)));
-    EXPECT_EQ(decoded.shaderGlobalBindings, material.shaderGlobalBindings) << "in order";
-    EXPECT_EQ(Factory::formatShaderGlobalBindings(material.shaderGlobalBindings), "{{\"tint\", \"FogTint\"}, {\"rimColor\", \"_Rim\"}}");
-    EXPECT_EQ(Stream::decodeShaderGlobalBindings(YAML::Load("{a: B, c: ''}")), (ShaderGlobalBindings{{"a", "B"}}));
 }
 
 TEST_F(ProjectShaderGlobalsStreamTest, ProjectSettingsCancelRestoresTheDeclarations) {

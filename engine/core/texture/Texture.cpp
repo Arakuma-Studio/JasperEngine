@@ -183,6 +183,7 @@ Texture::~Texture(){
 }
 
 void Texture::setPath(const std::string& path){
+    std::unique_ptr<ShownRender> previous = takeShownRender();
     destroy();
 
     // Legacy form "<path>?svgScale=N" is absorbed into the svgScale field so paths[] always
@@ -215,6 +216,7 @@ void Texture::setPath(const std::string& path){
         this->wrapV = TextureWrap::CLAMP_TO_EDGE;
         pixelart::registerPaletteRampTexture(this->id, newPath);
     }
+    keepShownRender(std::move(previous));
     this->render = TexturePool::get(getRenderId());
 }
 
@@ -541,7 +543,38 @@ void Texture::retryLoad(){
         needLoad = true;
 }
 
+std::unique_ptr<Texture::ShownRender> Texture::takeShownRender(){
+    // the GPU texture drawn now; while an earlier reload still loads, the one it kept
+    if (!framebuffer && !id.empty() && render && render->isCreated()){
+        releaseShownRender();
+        auto previous = std::make_unique<ShownRender>();
+        previous->render = render;
+        previous->renderId = getRenderId();
+        return previous;
+    }
+    return std::move(shown);
+}
+
+void Texture::keepShownRender(std::unique_ptr<ShownRender> previous){
+    shown = std::move(previous);
+    // the same pool entry again (the same file): reloaded, as destroy() left it to be
+    if (shown && shown->renderId == getRenderId())
+        releaseShownRender();
+}
+
+void Texture::releaseShownRender(){
+    if (!shown)
+        return;
+    std::unique_ptr<ShownRender> previous = std::move(shown);
+    const bool pooled = TexturePool::holds(previous->renderId, previous->render);
+    previous->render.reset();
+    // destroyed now unless another Texture uses it too
+    if (pooled)
+        TexturePool::remove(previous->renderId);
+}
+
 void Texture::destroy(){
+    releaseShownRender();
     if (!id.empty()){
 
         if (render) {
@@ -588,6 +621,15 @@ void Texture::invalidateRender(){
 }
 
 TextureRender* Texture::getRender(TextureRender* fallBackTexture){
+    TextureRender* answer = findRender(fallBackTexture);
+    // what the caller binds now replaces the image kept from before a reload (an image still
+    // loading is not created: the bindings keep showing the kept one)
+    if (shown && (!answer || answer->isCreated()))
+        releaseShownRender();
+    return answer;
+}
+
+TextureRender* Texture::findRender(TextureRender* fallBackTexture){
     if (framebuffer){
         lastFramebufferVersion = framebuffer->getVersion();
         // a framebuffer that was made and is gone (its owner freed it: a removed fluid, a
@@ -896,10 +938,12 @@ void Texture::setSvgScale(float scale){
     // The scale is part of the texture identity for SVG path sources, so changing it means
     // pointing at a different pool entry: release the old one and reload, like setPath().
     if (loadFromPath && TextureData::hasSvgExtension(paths[0].c_str())){
+        std::unique_ptr<ShownRender> previous = takeShownRender();
         destroy();
         svgScale = scale;
         id = buildPathTextureId();
         needLoad = true;
+        keepShownRender(std::move(previous));
         render = TexturePool::get(getRenderId());
     }else{
         svgScale = scale;
@@ -936,9 +980,11 @@ void Texture::reloadAlphaBorder(bool wasFixed){
         return;
     }
 
+    std::unique_ptr<ShownRender> previous = takeShownRender();
     destroy();
     id = buildPathTextureId();
     needLoad = true;
+    keepShownRender(std::move(previous));
     render = TexturePool::get(getRenderId());
 }
 

@@ -2502,6 +2502,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("autoTransparency", &Mesh::isAutoTransparency, &Mesh::setAutoTransparency)
         .addProperty("customShader", &Mesh::getCustomShader, &Mesh::setCustomShader)
         .addProperty("customDepthShader", &Mesh::getCustomDepthShader, &Mesh::setCustomDepthShader)
+        // the .mesh asset its geometry comes from ("meshes/rock.mesh"), read at once; "" keeps the
+        // geometry as the mesh's own
+        .addProperty("meshAsset", &Mesh::getMeshAsset, &Mesh::setMeshAsset)
         .addFunction("setShaderUniform",
             luabridge::overload<const std::string&, const Vector4&>(&Mesh::setShaderUniform),
             luabridge::overload<const std::string&, const Vector3&>(&Mesh::setShaderUniform),
@@ -4530,6 +4533,18 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerBlendMode(std::string(lua_tostring(L, 2)));
             return self->getLayerBlendMode((int)luaL_checkinteger(L, 2));
         })
+        // Mesh Space Rotation of a layer (index or name): authored like the Inspector's checkbox,
+        // unlike the runtime setters above (docs/specs/mesh-space-rotation.md R17)
+        .addFunction("setLayerMeshSpaceRotation", +[](AnimationPlayer* self, lua_State* L) {
+            luaL_checktype(L, 3, LUA_TBOOLEAN);
+            const bool enabled = lua_toboolean(L, 3) != 0;
+            if (lua_type(L, 2) == LUA_TSTRING) self->setLayerMeshSpaceRotation(std::string(lua_tostring(L, 2)), enabled);
+            else self->setLayerMeshSpaceRotation((int)luaL_checkinteger(L, 2), enabled);
+        })
+        .addFunction("getLayerMeshSpaceRotation", +[](const AnimationPlayer* self, lua_State* L) -> bool {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerMeshSpaceRotation(std::string(lua_tostring(L, 2)));
+            return self->getLayerMeshSpaceRotation((int)luaL_checkinteger(L, 2));
+        })
         .addFunction("stopLayer", +[](AnimationPlayer* self, lua_State* L) {
             const bool faded = lua_isnumber(L, 3);
             const float fade = faded ? (float)lua_tonumber(L, 3) : 0.0f;
@@ -4753,6 +4768,19 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getLayerWeight", +[](const Animator* self, lua_State* L) -> float {
             const int layer = lua_type(L, 2) == LUA_TSTRING ? self->getLayerIndex(lua_tostring(L, 2)) : (int)luaL_checkinteger(L, 2);
             return self->getLayerWeight(layer);
+        })
+        // Mesh Space Rotation (docs/specs/mesh-space-rotation.md R14): a runtime override of this
+        // Animator, a layer by index or by name (an unknown one warned once, as on the Animation
+        // Player); `enabled` is required (nil is not false), as the Animation Player's
+        .addFunction("setLayerMeshSpaceRotation", +[](Animator* self, lua_State* L) {
+            luaL_checktype(L, 3, LUA_TBOOLEAN);
+            const bool enabled = lua_toboolean(L, 3) != 0;
+            if (lua_type(L, 2) == LUA_TSTRING) self->setLayerMeshSpaceRotation(std::string(lua_tostring(L, 2)), enabled);
+            else self->setLayerMeshSpaceRotation((int)luaL_checkinteger(L, 2), enabled);
+        })
+        .addFunction("getLayerMeshSpaceRotation", +[](const Animator* self, lua_State* L) -> bool {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerMeshSpaceRotation(std::string(lua_tostring(L, 2)));
+            return self->getLayerMeshSpaceRotation((int)luaL_checkinteger(L, 2));
         })
         .addFunction("playMontage",
             luabridge::overload<const std::string&>(&Animator::playMontage),

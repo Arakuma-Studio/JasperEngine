@@ -338,6 +338,8 @@ namespace jasperengine{
 			float weight = 1.0f;		// ignored for layer 0
 			AnimationLayerBlend blend = AnimationLayerBlend::Override;
 			std::string mask;			// asset-relative .mask (AnimatorAssetPool::mask), "" = none
+			// Mesh Space Rotation (docs/specs/mesh-space-rotation.md R16): on an Override layer above 0 with a mask
+			bool meshSpaceRotation = false;
 		};
 		struct PlayerPreview {
 			std::vector<PlayerPreviewState> states;

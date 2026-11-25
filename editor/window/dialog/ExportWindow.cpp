@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/CppIdentifier.h"
 #include "ExportWindow.h"
 #include "command/type/ShaderOverridesCmd.h"
 #include "cook/BuildReport.h"
@@ -18,7 +19,6 @@
 #include "external/IconsFontAwesome6.h"
 #include "Out.h"
 #include "Theme.h"
-#include "Factory.h"
 #include "SettingsCategoryList.h"
 #include "window/ConsoleWindow.h"
 #include "window/TargetPlatformsUi.h"
@@ -73,10 +73,10 @@ void ExportWindow::open(Project* project) {
     m_targetDirFromDefault = false;
     m_startSceneId = project->getStartSceneId();
     const SceneProject* startScene = project->getScene(m_startSceneId);
-    if (!startScene || startScene->filepath.empty()) {
+    if (!startScene || startScene->filepath.empty() || !startScene->inBuild) {
         m_startSceneId = NULL_PROJECT_SCENE;
         for (const auto& scene : project->getScenes()) {
-            if (!scene.filepath.empty()) {
+            if (!scene.filepath.empty() && scene.inBuild) {
                 m_startSceneId = scene.id;
                 break;
             }
@@ -520,10 +520,10 @@ void ExportWindow::drawScenesInBuild(float height) {
     const ImGuiStyle& style = ImGui::GetStyle();
 
     // Edit Scenes In Build can remove the start scene: fall back to the first saved one.
-    if (const SceneProject* start = m_project->getScene(m_startSceneId); !start || start->filepath.empty()) {
+    if (const SceneProject* start = m_project->getScene(m_startSceneId); !start || start->filepath.empty() || !start->inBuild) {
         m_startSceneId = NULL_PROJECT_SCENE;
         for (const auto& scene : m_project->getScenes()) {
-            if (!scene.filepath.empty()) {
+            if (!scene.filepath.empty() && scene.inBuild) {
                 m_startSceneId = scene.id;
                 break;
             }
@@ -536,13 +536,15 @@ void ExportWindow::drawScenesInBuild(float height) {
         scenes.push_back(start);
     }
     for (const auto& scene : m_project->getScenes()) {
-        if (!scene.filepath.empty() && scene.id != m_startSceneId) scenes.push_back(&scene);
+        if (!scene.filepath.empty() && scene.inBuild && scene.id != m_startSceneId) scenes.push_back(&scene);
     }
+    // open in a tab from a file project.yaml does not list (S98 REQ-28): shown greyed, out of the build
+    const std::vector<uint32_t> openNotInBuild = m_project->getOpenScenesNotInBuild();
 
     const float buttonsHeight = ImGui::GetFrameHeightWithSpacing();
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
     if (ImGui::BeginChild("##ScenesInBuild", ImVec2(0, std::max(1.0f, height - buttonsHeight)), ImGuiChildFlags_Borders)) {
-        if (scenes.empty()) {
+        if (scenes.empty() && openNotInBuild.empty()) {
             ImGui::TextDisabled("No saved scenes. Save a scene to add it to the build.");
         } else if (ImGui::BeginTable("##ScenesInBuildTable", 3, ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn("Included", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
@@ -597,19 +599,48 @@ void ExportWindow::drawScenesInBuild(float height) {
 
                 ImGui::PopID();
             }
+            for (uint32_t id : openNotInBuild) {
+                const SceneProject* scene = m_project->getScene(id);
+                if (!scene) continue;
+                ImGui::PushID(static_cast<int>(scene->id));
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                bool included = false;
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 0.0f));
+                ImGui::BeginDisabled();
+                ImGui::Checkbox("##included", &included);
+                ImGui::EndDisabled();
+                ImGui::PopStyleVar();
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("%s (open, not in build)", scene->filepath.generic_string().c_str());
+                ImGui::SetItemTooltip("Opened without being in the build. Add Open Scenes adds it.");
+                ImGui::TableNextColumn();
+                ImGui::PopID();
+            }
             ImGui::EndTable();
         }
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
 
+    const char* addOpenLabel = "Add Open Scenes";
     const char* startLabel = "Set As Start Scene";
     const char* editLabel = "Edit Scenes In Build...";
+    const float addOpenWidth = textButtonWidth(addOpenLabel);
     const float startWidth = textButtonWidth(startLabel);
     const float editWidth = textButtonWidth(editLabel);
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - startWidth - editWidth - style.ItemSpacing.x));
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - addOpenWidth - startWidth - editWidth -
+                                                                      style.ItemSpacing.x * 2.0f));
+    ImGui::BeginDisabled(openNotInBuild.empty() || m_project->isAnyScenePlaying());
+    if (ImGui::Button(addOpenLabel)) {
+        for (uint32_t id : openNotInBuild) m_project->addSceneToBuild(id);
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Adds the scenes open in tabs that are not in the build.");
+    ImGui::SameLine();
+    const SceneProject* selectedScene = m_project->getScene(m_selectedSceneId);
     const bool canSetStart = m_selectedSceneId != NULL_PROJECT_SCENE && m_selectedSceneId != m_startSceneId &&
-                             m_project->getScene(m_selectedSceneId) != nullptr;
+                             selectedScene != nullptr && selectedScene->inBuild;
     ImGui::BeginDisabled(!canSetStart);
     if (ImGui::Button(startLabel)) setStartScene(m_selectedSceneId);
     ImGui::EndDisabled();
@@ -737,7 +768,7 @@ void ExportWindow::drawSourceBackendsRow() {
 
 fs::path ExportWindow::builtPlayerPath() const {
     // Mirrors Exporter::getAppName()
-    std::string exeName = m_project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(m_project->getName());
+    std::string exeName = m_project->getName().empty() ? "jasperengine-project" : toIdentifier(m_project->getName());
     #ifdef _WIN32
     exeName += ".exe";
     #endif
@@ -1168,12 +1199,12 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
 
     bool hasSavedScenes = false;
     for (const auto& scene : m_project->getScenes()) {
-        if (!scene.filepath.empty()) {
+        if (!scene.filepath.empty() && scene.inBuild) {
             hasSavedScenes = true;
             break;
         }
     }
-    // a scene never saved ships as it is now (W-SCENE-NOT-SAVED)
+    // a scene never saved ships as it is now (W-SCENE-UNSAVED)
     if (hasSavedScenes) {
         for (const auto& scene : m_project->getScenes()) {
             if (!scene.filepath.empty() || !scene.scene) continue;
@@ -1524,7 +1555,7 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
 
     // Set start scene
     const SceneProject* startScene = m_project->getScene(m_startSceneId);
-    if (startScene && !startScene->filepath.empty()) {
+    if (startScene && !startScene->filepath.empty() && startScene->inBuild) {
         exportConfig.startSceneId = startScene->id;
         m_projectSettingsDirty = m_projectSettingsDirty || m_project->getStartSceneId() != exportConfig.startSceneId;
         m_project->setStartSceneId(exportConfig.startSceneId);

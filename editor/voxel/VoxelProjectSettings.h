@@ -50,8 +50,5 @@ namespace jasperengine::editor {
     std::string voxelDimensionProblem(const std::string& volumeName, const voxel::Int3& dimensions, BuildPlatform target,
                                       const VoxelProjectSettings& settings);
 
-    // the lines of a standalone build's main.cpp ("" when nothing is lowered, so its source does
-    // not change)
-    std::string generateVoxelSettingsCode(const VoxelProjectSettings& settings, const std::string& indent);
 
 }
