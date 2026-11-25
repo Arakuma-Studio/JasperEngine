@@ -118,7 +118,11 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   (`build/web-mesh-raycast`, the web image; up to date after the first time) for
   `test_mesh_raycast.py`'s web latency gate. The Linux image carries the suite's test tools
   (lua-language-server, clangd, FFmpeg with AV1, chrome-headless-shell), so none of their tests
-  skips there. See `docs/mcp/README.md` for writing MCP tests.
+  skips there. See `docs/mcp/README.md` for writing MCP tests. A project the harness creates
+  (`Editor(create=True)`) keeps the flat layout the tests are written against, its assets and
+  scripts at its root: the harness sets `JASPER_TEST_FLAT_NEW_PROJECT=1` unless the test passes
+  `env={"JASPER_TEST_FLAT_NEW_PROJECT": "0"}`, which gives a new project's real layout (`assets/`,
+  `scripts/`, `test_asset_stripping.py`).
 - `test_audio_meter.py` takes no editor: it compiles `engine/tests/core/audio/AudioMeterProbe.cpp` with
   `AudioMeter.cpp` and `TruePeak.cpp` alone (so it needs a C++ compiler; FFmpeg decodes the fixtures)
   and compares the meter with pyloudnorm (`uv run --with`, pinned in the test).
@@ -250,7 +254,8 @@ The cache cannot hide a bug:
   run tries again.
 - The compiled games (`method="compile"`) build through ccache too: their editors get
   `harness.compile_env(name)`, a user cache (where the kit's compile tree goes) at the fixed path
-  `build/mcp-compile-home/<file>/`, emptied as the file starts, and ccache as CMake's compiler
+  `build/mcp-compile-home/<file>/`, emptied as the file's first editor starts (not as the file loads:
+  any run's `-k` listing loads every file), and ccache as CMake's compiler
   launcher. Each run still configures and compiles a fresh tree and links; an object comes from
   ccache only when its preprocessed source, flags and directory are those it was made from. They
   link without LTO (`JASPERENGINE_RELEASE_LTO=OFF` in the editor's environment, which an exported
@@ -352,7 +357,8 @@ then screenshots the device (`adb exec-out screencap`) and checks it with
 `debug.jasperengine.scene` set to it (a test project reads it, `JASPERENGINE_SCENE` elsewhere),
 each run checked on its own in `--out/<scene>/`; `{scene}` in an expectation is the run's scene.
 The gate's project is `tools/test-projects/render-gate`: a lit 3D scene (`lit3d`), 2D and UI
-(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`) and Title Art
+(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`), the JasperArcade port's
+scaled list of filtered rows clipped by its viewport (`htmlui-u27`, S92 R11) and Title Art
 Renderers (`titleart`, S81; run it also with `--setprop debug.jasperengine.titleart_rgba8=1` against
 the same golden), goldens in its `golden/`:
 
@@ -360,7 +366,7 @@ the same golden), goldens in its `golden/`:
 ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android
 tools/android-emulator-test.sh build/android-render-gate/app-debug.apk \
     --expect-file tools/test-projects/render-gate/android-expect.txt \
-    --scene lit3d --scene ui2d --scene htmlui --scene titleart --golden tools/test-projects/render-gate/golden
+    --scene lit3d --scene ui2d --scene htmlui --scene htmlui-u27 --scene titleart --golden tools/test-projects/render-gate/golden
 ```
 
 `ANDROID_ABIS=x86_64` builds only the emulator's ABI (a quarter of the build).
@@ -696,6 +702,16 @@ in the commit why it changed:
 ```sh
 JASPER_TEST_UPDATE_GOLDEN=1 UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=RenderGpu.*' tools/build.sh unit-tests
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=RenderGpu.*' tools/build.sh unit-tests
+```
+
+An HTML UI frame that records what the last drawn one did is not replayed (S92 R1). A test that
+counts a replay's passes, draws or caches frame after frame turns that off for its scope
+(`FrameReuseMode replayed(false)`, `TestRenderCommon.h`). `JASPER_HTMLUI_VERIFY_KEPT=1` makes the
+golden harnesses draw a second frame and compare every kept frame with a fresh replay; a
+difference fails the comparison and logs `[HTML UI] kept frame differs`:
+
+```sh
+JASPER_HTMLUI_VERIFY_KEPT=1 HTMLUI_TEST_ARGS='--gtest_filter=*Golden*:RenderP1*:RenderPrimitive.*:RenderClip.*:RenderFilter*' tools/build.sh htmlui-tests
 ```
 
 The cooked fixtures of the texture format test (`engine/tests/core/fixtures/texture_formats/`, S14

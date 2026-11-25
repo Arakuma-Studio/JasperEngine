@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 10
 guid: 7ee0ed86c1403d0c6603f0a7ff3ea8c0
 id: 1824306547
 name: Hex
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]
@@ -35,7 +36,7 @@ scene:
 sceneType: scene_3d
 mainCamera: 1004
 maxValues:
-  maxSubmeshes: 2
+  maxSubmeshes: 1
   maxTilemapTilesRect: 0
   maxTilemapTiles: 0
   maxExternalBuffers: 0
@@ -123,7 +124,6 @@ entities:
         enabled: true
         type: directional
         direction: [-0.2, -0.5, 0.3]
-        worldDirection: [-0.2, -0.5, 0.3]
         color: [1, 1, 1]
         range: 100
         intensity: 4
@@ -189,7 +189,6 @@ entities:
               name: ""
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6144
             faceCulling: true
             textureShadow: false
             hasTexCoord1: false
@@ -219,7 +218,6 @@ entities:
               name: ""
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 1536
             faceCulling: true
             textureShadow: false
             hasTexCoord1: false
@@ -236,15 +234,6 @@ entities:
         normAdjustJoint: 1
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
-        aabb:
-          min: [-100, 0, -100]
-          max: [100, 5, 100]
-        verticesAABB:
-          min: [0, 0, 0]
-          max: [0, 0, 0]
-        worldAABB:
-          min: [-100, 0, -100]
-          max: [100, 5, 100]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -365,13 +354,6 @@ entities:
         textureDetailTiles: 20
         rootGridSize: 2
         levels: 6
-        ranges:
-          - 6.25
-          - 12.5
-          - 25
-          - 50
-          - 100
-          - 4000
   - type: Entity
     entity: 1004
     name: Camera
@@ -391,12 +373,7 @@ entities:
         cullingMask: 4294967295
         target: [0, 0, 0]
         up: [0, 1, 0]
-        leftClip: <view>
-        rightClip: <view>
-        bottomClip: <view>
-        topClip: <view>
         yfov: 0.75
-        aspect: <view>
         nearClip: 0.2
         farClip: 200
         renderToTexture: false
@@ -540,9 +517,6 @@ entities:
         verticesAABB:
           min: [-5, 0, -5]
           max: [5, 0, 5]
-        worldAABB:
-          min: [-30, 8, 0]
-          max: [30, 8, 60]
         receiveLights: true
         receiveIBL: false
         castShadows: true

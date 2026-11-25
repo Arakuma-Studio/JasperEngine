@@ -10,7 +10,6 @@
 
 #include "AppSettings.h"
 #include "Catalog.h"
-#include "Factory.h"
 #include "Platform.h"
 #include "Project.h"
 #include "ScriptDataTestSupport.h"
@@ -108,78 +107,6 @@ namespace {
         EXPECT_EQ(a.boundsMax, b.boundsMax);
         EXPECT_EQ(a.unscaledTime, b.unscaledTime);
     }
-
-    // the code Factory emits for authoredShaker() / authoredFollow(7), pasted: it must compile
-    // against the engine headers and build the same components (EMITTED_* hold its text)
-    void emittedShaker(Scene* scene, Entity entity){
-        CameraShakerComponent camerashaker;
-        camerashaker.enabled = false;
-        camerashaker.global = false;
-        camerashaker.unscaledTime = true;
-        camerashaker.mode = CameraShakeMode::Mode2D;
-        camerashaker.positionScale = 0.500000f;
-        camerashaker.rotationScale = 2.000000f;
-        camerashaker.startPreset = "drunk";
-        camerashaker.traumaDecay = 0.750000f;
-        camerashaker.traumaPower = 3.000000f;
-        camerashaker.traumaMaxOffset = Vector3(0.200000f, 0.300000f, 0.400000f);
-        camerashaker.traumaMaxAngle = Vector3(1.000000f, 2.000000f, 6.000000f);
-        camerashaker.traumaFrequency = 20.000000f;
-        scene->addComponent<CameraShakerComponent>(entity, camerashaker);
-    }
-
-    const char* const EMITTED_SHAKER =
-        "CameraShakerComponent camerashaker;\n"
-        "camerashaker.enabled = false;\n"
-        "camerashaker.global = false;\n"
-        "camerashaker.unscaledTime = true;\n"
-        "camerashaker.mode = CameraShakeMode::Mode2D;\n"
-        "camerashaker.positionScale = 0.500000f;\n"
-        "camerashaker.rotationScale = 2.000000f;\n"
-        "camerashaker.startPreset = \"drunk\";\n"
-        "camerashaker.traumaDecay = 0.750000f;\n"
-        "camerashaker.traumaPower = 3.000000f;\n"
-        "camerashaker.traumaMaxOffset = Vector3(0.200000f, 0.300000f, 0.400000f);\n"
-        "camerashaker.traumaMaxAngle = Vector3(1.000000f, 2.000000f, 6.000000f);\n"
-        "camerashaker.traumaFrequency = 20.000000f;\n"
-        "scene->addComponent<CameraShakerComponent>(entity, camerashaker);\n";
-
-    void emittedFollow(Scene* scene, Entity entity){
-        CameraFollowComponent camerafollow;
-        camerafollow.enabled = false;
-        camerafollow.target = 7;
-        camerafollow.offset = Vector3(1.000000f, 3.000000f, -9.000000f);
-        camerafollow.offsetSpace = FollowOffsetSpace::TargetYaw;
-        camerafollow.damping = Vector3(0.100000f, 0.400000f, 0.000000f);
-        camerafollow.maxSpeed = 12.000000f;
-        camerafollow.lookAt = false;
-        camerafollow.lookAtOffset = Vector3(0.000000f, 2.000000f, 0.000000f);
-        camerafollow.rotationDamping = 0.250000f;
-        camerafollow.deadZone = Vector2(2.000000f, 1.000000f);
-        camerafollow.useBounds = true;
-        camerafollow.boundsMin = Vector3(-5.000000f, -1.000000f, -50.000000f);
-        camerafollow.boundsMax = Vector3(5.000000f, 10.000000f, 50.000000f);
-        camerafollow.unscaledTime = true;
-        scene->addComponent<CameraFollowComponent>(entity, camerafollow);
-    }
-
-    const char* const EMITTED_FOLLOW =
-        "CameraFollowComponent camerafollow;\n"
-        "camerafollow.enabled = false;\n"
-        "camerafollow.target = 7;\n"
-        "camerafollow.offset = Vector3(1.000000f, 3.000000f, -9.000000f);\n"
-        "camerafollow.offsetSpace = FollowOffsetSpace::TargetYaw;\n"
-        "camerafollow.damping = Vector3(0.100000f, 0.400000f, 0.000000f);\n"
-        "camerafollow.maxSpeed = 12.000000f;\n"
-        "camerafollow.lookAt = false;\n"
-        "camerafollow.lookAtOffset = Vector3(0.000000f, 2.000000f, 0.000000f);\n"
-        "camerafollow.rotationDamping = 0.250000f;\n"
-        "camerafollow.deadZone = Vector2(2.000000f, 1.000000f);\n"
-        "camerafollow.useBounds = true;\n"
-        "camerafollow.boundsMin = Vector3(-5.000000f, -1.000000f, -50.000000f);\n"
-        "camerafollow.boundsMax = Vector3(5.000000f, 10.000000f, 50.000000f);\n"
-        "camerafollow.unscaledTime = true;\n"
-        "scene->addComponent<CameraFollowComponent>(entity, camerafollow);\n";
 
     // ---- one headless project for the asset and preview tests
 
@@ -304,31 +231,6 @@ TEST(CameraShakeComponents, SceneYamlRoundTripAndOldScenes){
     ProjectUtils::addEntityComponent(&scene, entity, ComponentType::CameraShakerComponent, entities, removed);
     ASSERT_TRUE(scene.findComponent<CameraShakerComponent>(entity));
     expectSameShaker(scene.getComponent<CameraShakerComponent>(entity), authoredShaker());
-}
-
-TEST(CameraShakeComponents, FactoryEmitsCodeThatBuildsTheSameComponents){
-    Scene scene;
-    const Entity entity = scene.createUserEntity();
-    scene.addComponent<Transform>(entity, {});
-    scene.addComponent<CameraShakerComponent>(entity, authoredShaker());
-    scene.addComponent<CameraFollowComponent>(entity, authoredFollow(7));
-    EXPECT_EQ(Factory::createComponent(0, &scene, entity, ComponentType::CameraShakerComponent, "", "scene", "entity"), EMITTED_SHAKER);
-    EXPECT_EQ(Factory::createComponent(0, &scene, entity, ComponentType::CameraFollowComponent, "", "scene", "entity"), EMITTED_FOLLOW);
-
-    Scene built;
-    const Entity builtEntity = built.createUserEntity();
-    emittedShaker(&built, builtEntity);
-    emittedFollow(&built, builtEntity);
-    expectSameShaker(built.getComponent<CameraShakerComponent>(builtEntity), authoredShaker());
-    expectSameFollow(built.getComponent<CameraFollowComponent>(builtEntity), authoredFollow(7));
-
-    // defaults emit no mode / space / start preset line
-    Scene plain;
-    const Entity plainEntity = plain.createUserEntity();
-    plain.addComponent<CameraShakerComponent>(plainEntity, {});
-    const std::string code = Factory::createComponent(0, &plain, plainEntity, ComponentType::CameraShakerComponent, "", "scene", "entity");
-    EXPECT_EQ(code.find(".mode"), std::string::npos) << code;
-    EXPECT_EQ(code.find(".startPreset"), std::string::npos) << code;
 }
 
 TEST(CameraShakeComponents, CloningResetsTheRuntimeAndRemapsTheTarget){

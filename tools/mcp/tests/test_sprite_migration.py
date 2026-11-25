@@ -167,8 +167,8 @@ async def test_undo_keeps_saves_made_since(ed: Editor):
     file = ed.project / "scenes" / "Kept.scene"
     # a Windows checkout (CRLF) of a file from before sheet sprites (scene format 7: no sheet sprite in it)
     text = file.read_bytes().replace(b"\r\n", b"\n")
-    check(b"formatVersion: 8" in text, f"saved at format 8: {text[:80]}")
-    file.write_bytes(text.replace(b"formatVersion: 8", b"formatVersion: 7").replace(b"\n", b"\r\n"))
+    check(b"formatVersion: 10" in text, f"saved at format 10: {text[:80]}")
+    file.write_bytes(text.replace(b"formatVersion: 10", b"formatVersion: 7").replace(b"\n", b"\r\n"))
     await ed.call("sync_files", paths=["scenes/Kept.scene"])
     await ed.call("set_sprite_frames", scene=S["main"], create={"name": "K0"}, texture=KEPT, frames=KEPT_FRAMES, frame=1, inline=True)
 
@@ -178,7 +178,7 @@ async def test_undo_keeps_saves_made_since(ed: Editor):
     check("k_0 2" in meta, f"the second k_0 is unique in the Sprite Mode: {meta}")
     converted = file.read_bytes()
     check(b"\r\n" in converted and b"\n" not in converted.replace(b"\r\n", b""), "the converted file keeps CRLF")
-    check(b"formatVersion: 8" in converted, f"the file holding sheet sprites now says format 8: {converted[:80]}")
+    check(b"formatVersion: 10" in converted, f"the file holding sheet sprites now says format 10: {converted[:80]}")
     k2 = next(c for c in r["converted"] if c["game_object"] == "K2")
     check(k2["frame"] == 2, f"K2's rect is kept as a third frame: {r['converted']}")
     k0 = (await ed.call("get_entity", scene=S["main"], entity="K0", components=["sprite"]))["components"]["sprite"]

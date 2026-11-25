@@ -1,0 +1,15 @@
+formatVersion: 1
+guid: d57aae5d1f9071c757aa64ab1785bbc7
+baseColorFactor: [0.42, 0.45, 0.4, 1]
+metallicFactor: 1
+roughnessFactor: 0.9
+alphaCutoff: 0.5
+foliageTransmission: 0
+alphaMode: AUTO
+emissiveFactor: [0, 0, 0]
+baseColorTexCoord: 0
+metallicRoughnessTexCoord: 0
+occlusionTexCoord: 0
+emissiveTexCoord: 0
+normalTexCoord: 0
+name: assets/materials/Ground.material

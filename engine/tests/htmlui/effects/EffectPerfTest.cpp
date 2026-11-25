@@ -663,6 +663,8 @@ TEST(EffectPerfTest, StatefulSteadyState){
 }
 
 TEST(EffectPerfTest, CostTable){
+    // the cost of replayed frames: S92 R1 keeps the unchanged fill document's (no pass, no draw)
+    FrameReuseMode replayed(false);
     printLoadAverage("CostTable");
     EffectScene fill(1024, 1024, 4);
     EffectScene scene(1024, 1024, 4);

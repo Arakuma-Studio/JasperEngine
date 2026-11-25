@@ -141,6 +141,7 @@
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "model/FbxImportQueue.h"
 #include "pixelart/aseprite/AsepriteEditorHooks.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "pixelart/cleanup/CleanupSession.h"
@@ -3122,14 +3123,17 @@ void editor::App::show(){
     dockspace_id = ImGui::GetID("MyDockspace");
 
     // the version control snapshot and the diffs before the windows read them (S29)
-    vcsUi->update();
-    showMenu();
-    EditorDiagnostics::pollNotices();
-    showCrashNotice();
-    mainToolbar->show();
-    statusBar->show();
-    showFooter();
-    showHangToast();
+    {
+        JE_PROFILE_SCOPE("Menu and Toolbars");
+        vcsUi->update();
+        showMenu();
+        EditorDiagnostics::pollNotices();
+        showCrashNotice();
+        mainToolbar->show();
+        statusBar->show();
+        showFooter();
+        showHangToast();
+    }
 
     isInitialized = true;
 
@@ -3182,10 +3186,20 @@ void editor::App::show(){
         processNextSaveDialog();
     }
 
-    hierarchyWindow->show();
-    projectWindow->show();
+    {
+        JE_PROFILE_SCOPE("Hierarchy");
+        // Maximize On Play covers the panels: the Hierarchy is not built under it (S98 REQ-31)
+        hierarchyWindow->show(gameWindow->isMaximizedNow());
+    }
+    {
+        JE_PROFILE_SCOPE("Project Window");
+        projectWindow->show();
+    }
     imageViewerWindow->show();
-    consoleWindow->show();
+    {
+        JE_PROFILE_SCOPE("Console");
+        consoleWindow->show();
+    }
     animationWindow->show();
     animatorWindow->show();
     avatarWindow->show();
@@ -3230,7 +3244,10 @@ void editor::App::show(){
     drawTitleArtInterchangeWindows(&project);
     // also the tick of the Scene view's physics sessions, with the panel closed too
     physicsPlacementWindow->show();
-    inspectorWindow->show();
+    {
+        JE_PROFILE_SCOPE("Inspector");
+        inspectorWindow->show();
+    }
     mcpActivityWindow->show();
     systemsWindow->show();
     missingAssetsWindow->show();
@@ -3248,12 +3265,18 @@ void editor::App::show(){
     playModeChangesWindow->show();
     bookmarksWindow->show();
     codeEditor->show();
-    gameWindow->show();
+    {
+        JE_PROFILE_SCOPE("Game Window");
+        gameWindow->show();
+    }
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
     if (project.getActivePrefabStage()) {
         dockTabWindow(SceneWindow::PREFAB_STAGE_WINDOW_ID);
     }
-    sceneWindow->show();
+    {
+        JE_PROFILE_SCOPE("Scene Window");
+        sceneWindow->show();
+    }
     Backend::setGameCursorInSceneRect(gameWindow->isGameCursorInView());
 
     drawSaveProjectAsTemplate();
@@ -3597,6 +3620,12 @@ void editor::App::engineInit(int argc, char** argv) {
     if (const char* delay = std::getenv("JASPER_TEST_MODEL_LOAD_DELAY_MS")) {
         const long ms = std::strtol(delay, nullptr, 10);
         if (ms > 0) MeshSystem::setModelLoadDelayForTest(static_cast<int>(std::min(ms, 60000L)));
+    }
+    // Test hook: each FBX conversion waits this long first, so tools are called while an import
+    // runs (test_fbx.py)
+    if (const char* delay = std::getenv("JASPER_TEST_FBX_IMPORT_DELAY_MS")) {
+        const long ms = std::strtol(delay, nullptr, 10);
+        if (ms > 0) FbxImportQueue::setDelayForTest(static_cast<int>(std::min(ms, 60000L)));
     }
 
     // Before the project loads, so an MCP client's initialize is answered at once;
@@ -4400,7 +4429,7 @@ void editor::App::engineRender(){
         // Beside a running game the Engine's frame is the game's: another scene's view
         // draws on its own, so the game still updates once per frame
         if (project.getPlaySessionSceneId() != NULL_PROJECT_SCENE) {
-            if (sceneProject.isVisible && sceneNeedsRender(sceneProject, isSelected)) {
+            if (sceneProject.isVisible && !gameWindow->isMaximizedNow() && sceneNeedsRender(sceneProject, isSelected)) {
                 renderSceneBesideGame(sceneProject);
             }
             continue;
@@ -4614,7 +4643,8 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     const int sceneWidth = sceneWindow->getWidth(sceneProject.id);
     const int sceneHeight = sceneWindow->getHeight(sceneProject.id);
-    const bool sceneViewShown = sceneProject.isVisible && sceneWidth > 0 && sceneHeight > 0;
+    // Maximize On Play covers the Scene view: it updates no gizmo and draws nothing (S98 REQ-31)
+    const bool sceneViewShown = sceneProject.isVisible && sceneWidth > 0 && sceneHeight > 0 && !gameWindow->isMaximizedNow();
 
     // the runtime manages its own layers while it plays
     sceneRender->setChildSceneLayers({});
@@ -6155,7 +6185,14 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (BLIT 'Gli' 20) and the screen transition program.
     // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v65";
+    // v66: S78's Light Steps (after S50's v65): MESH 'Lst' 55 (LIGHT2D_STEPS in includes/lighting2d.glsl, the count
+    //      in u_fs_lighting2d's atlasInfo.z, which held the 2D shadow atlas's width and no shader read).
+    // v67: S92's HTMLUI_PRIM gradients: up to 16 stops through the stop table (u_htmluiStops), the
+    //      conic and repeating functions, a single tile (a negative period). (S93's branch held v66
+    //      for its own sources at the time: a shared cache of either must not serve the other's programs.)
+    // v68: S92's HTMLUI_POST: a layer composite's rectangle clip in the passthrough (v_dst, params.w).
+    // v69: S92's u_fs_htmluiClip: a convex polygon (clip-path polygon(), includes/htmlui_sdf.glsl).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v69";
 }
 
 void editor::App::pushTabNotificationStyle(){

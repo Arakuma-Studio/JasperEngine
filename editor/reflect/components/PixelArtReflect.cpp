@@ -42,32 +42,32 @@ namespace {
 
     // what RenderSystem lays out while the component drives its camera: shown by get_entity and
     // get_runtime_entity, never saved, drawn or written
-    constexpr uint32_t kLayoutValue = Transient | ReadOnly | NoMcpWrite | NoDefault | Hidden | NoCodegen;
+    constexpr uint32_t kLayoutValue = Transient | ReadOnly | NoMcpWrite | NoDefault | Hidden;
 
     constexpr FieldDesc kPixelPerfectCameraFields[] = {
-        JE_FIELD(PixelPerfectCameraComponent, enabled, .flags = CodegenIfChanged),
-        JE_FIELD(PixelPerfectCameraComponent, referenceWidth, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Pixels, .max = 16384.0f,
+        JE_FIELD(PixelPerfectCameraComponent, enabled),
+        JE_FIELD(PixelPerfectCameraComponent, referenceWidth, .flags = OmitIfDefault, .unit = Unit::Pixels, .max = 16384.0f,
                  .label = "Reference Width", .tooltip = "The base resolution the art is drawn at, in pixels. 0 x 0: the project canvas.",
                  .group = "Reference Resolution"),
-        JE_FIELD(PixelPerfectCameraComponent, referenceHeight, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Pixels,
+        JE_FIELD(PixelPerfectCameraComponent, referenceHeight, .flags = OmitIfDefault, .unit = Unit::Pixels,
                  .max = 16384.0f, .label = "Reference Height", .group = "Reference Resolution"),
-        JE_FIELD(PixelPerfectCameraComponent, upscaleMode, .enumDesc = &enums::kPixelUpscaleMode, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(PixelPerfectCameraComponent, upscaleMode, .enumDesc = &enums::kPixelUpscaleMode, .flags = OmitIfDefault,
                  .tooltip = "Integer (Letterbox): every base pixel k x k screen pixels, bars around. Integer (Expand): the same k, the "
                             "base grows to fill the screen. Stretch Fill: the integer image stretched to fill, sharp at its seams."),
-        JE_FIELD(PixelPerfectCameraComponent, upscaleRenderTexture, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(PixelPerfectCameraComponent, upscaleRenderTexture, .flags = OmitIfDefault,
                  .label = "Upscale Render Texture",
                  .tooltip = "Draws the base resolution into a texture scaled by a whole number (rotated sprites stay on base pixels). "
                             "Off: draws straight at the screen's resolution on the same grid."),
-        JE_FIELD(PixelPerfectCameraComponent, pixelSnapping, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(PixelPerfectCameraComponent, pixelSnapping, .flags = OmitIfDefault,
                  .tooltip = "Puts the camera and every sprite, tile, UI element and particle on whole base pixels."),
-        JE_FIELD(PixelPerfectCameraComponent, rotationMode, .enumDesc = &enums::kPixelRotation, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(PixelPerfectCameraComponent, rotationMode, .enumDesc = &enums::kPixelRotation, .flags = OmitIfDefault,
                  .label = "Rotation",
                  .tooltip = "90 Degree Steps: rotations are drawn rounded to the nearest 90 degrees (the Transform keeps its angle). "
                             "Rotate On Grid: the angle is kept, the pivot snaps.",
                  .enumMask = kCameraRotations),
-        JE_FIELD(PixelPerfectCameraComponent, subpixelSmoothing, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(PixelPerfectCameraComponent, subpixelSmoothing, .flags = OmitIfDefault,
                  .tooltip = "Scrolls by whole screen pixels between base pixels: the image moves, the art stays on its grid."),
-        JE_FIELD(PixelPerfectCameraComponent, letterboxColor, .flags = OmitIfDefault | CodegenIfChanged | ColorSRGB, .label = "Letterbox Color"),
+        JE_FIELD(PixelPerfectCameraComponent, letterboxColor, .flags = OmitIfDefault | ColorSRGB, .label = "Letterbox Color"),
         JE_PROXY(PixelPerfectCameraComponent, "pixelRatio", layout.scale, .flags = kLayoutValue, .label = "Current Pixel Ratio"),
         JE_PROXY(PixelPerfectCameraComponent, "baseWidth", layout.baseWidth, .flags = kLayoutValue, .unit = Unit::Pixels),
         JE_PROXY(PixelPerfectCameraComponent, "baseHeight", layout.baseHeight, .flags = kLayoutValue, .unit = Unit::Pixels),
@@ -79,25 +79,17 @@ namespace {
         JE_FIELD(PixelPerfectCameraComponent, subpixelOffset, .flags = kLayoutValue, .unit = Unit::Pixels),
     };
 
-    constexpr const char* kPixelPerfectCameraCodegenOrder[] = {
-        "referenceWidth", "referenceHeight", "upscaleMode", "upscaleRenderTexture", "pixelSnapping", "rotationMode", "subpixelSmoothing",
-        "letterboxColor", "enabled"
-    };
-
     // the spelling of the spec's YAML sketch (S41 §6.1), read as the key
     constexpr const char* kPixelPerfectCameraAliases[] = {"pixelPerfectCamera"};
 
     // S48 R21
     constexpr FieldDesc kHitStopExemptFields[] = {
-        JE_FIELD(HitStopExemptComponent, enabled, .flags = CodegenIfChanged,
-                 .tooltip = "While a hit-stop freezes the game, this GameObject keeps running: its animations, actions, tweens, "
+        JE_FIELD(HitStopExemptComponent, enabled, .tooltip = "While a hit-stop freezes the game, this GameObject keeps running: its animations, actions, tweens, "
                             "particles, shakes, follow, Pixel FX effects and its scripts' Time.deltaTime. Rigidbodies still run "
                             "with the physics world."),
-        JE_FIELD(HitStopExemptComponent, includeChildren, .flags = OmitIfDefault | CodegenIfChanged, .label = "Include Children",
+        JE_FIELD(HitStopExemptComponent, includeChildren, .flags = OmitIfDefault, .label = "Include Children",
                  .tooltip = "Its descendants keep running too."),
     };
-
-    constexpr const char* kHitStopExemptCodegenOrder[] = {"includeChildren", "enabled"};
 
 }
 
@@ -107,7 +99,6 @@ const ComponentDesc kPixelPerfectCameraDesc{
     .body = JE_STRUCT_DESC(PixelPerfectCameraComponent, "PixelPerfectCameraComponent", kPixelPerfectCameraFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(PixelPerfectCameraComponent),
     .keyAliases = kPixelPerfectCameraAliases,
-    .codegenVar = "pixelPerfectCamera", .codegenOrder = kPixelPerfectCameraCodegenOrder,
 };
 
 const ComponentDesc kHitStopExemptDesc{
@@ -115,7 +106,6 @@ const ComponentDesc kHitStopExemptDesc{
     .displayName = "Hit Stop Exempt", .icon = ICON_FA_PAUSE,
     .body = JE_STRUCT_DESC(HitStopExemptComponent, "HitStopExemptComponent", kHitStopExemptFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(HitStopExemptComponent),
-    .codegenVar = "hitStopExempt", .codegenOrder = kHitStopExemptCodegenOrder,
 };
 
 }

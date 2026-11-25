@@ -11,7 +11,7 @@ foliageQuality:
   web: low
 pixelArt:
   enabled: true
-htmlUiMsaaSamples: 4
+htmlUiMsaaSamples: 0
 device:
   tiers:
     desktop:
@@ -46,10 +46,13 @@ windowMode: windowed
 windowWidth: 1280
 windowHeight: 720
 windowResizable: true
-luaDir: .
+assetsDir: assets
+luaDir: scripts
 versionControl:
   lfs: true
-startSceneId: 654718099
+export:
+  assetStripping: referencedOnly
+startSceneId: 1340111123
 mesh:
   animationEntities: auto
 audio:
@@ -57,5 +60,5 @@ audio:
   outputStage: linear
   iosSessionCategory: ambient
 scenes:
-  - filepath: Main.scene
-    filepathGuid: c5258b3cf0774b85065b45563b8aced3
+  - filepath: assets/scenes/Main.scene
+    filepathGuid: 7e4452369997327cf3c2a41d4a81b739

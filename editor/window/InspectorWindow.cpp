@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/CppIdentifier.h"
 #include "TerrainQualityPanel.h"
 #include "Engine.h"
 #include "mcp/TerrainMaterialInfo.h"
@@ -55,6 +56,7 @@
 #include "util/Fnv.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "asset/MeshAssetFiles.h"
 #include "script/ScriptScheduler.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
@@ -120,7 +122,6 @@
 #include "Screen.h"
 #include "window/DeviceProfiles.h"
 #include "Widgets.h"
-#include "Factory.h"
 #include "audio/AudioMixer.h"
 #include "pool/SoundPool.h"
 #include "component/ActionComponent.h"
@@ -480,7 +481,9 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
             break;
         case ScenePropertyInputType::DragInt:
             if constexpr (std::is_same_v<T, int>) {
-                changed = ImGui::DragInt(("##" + propertyName).c_str(), &value, 1.0f, (int)minValue, (int)maxValue);
+                // Light Steps' 0 is Off
+                const char* format = (propertyName == "light_2d_steps" && value == 0) ? "Off" : "%d";
+                changed = ImGui::DragInt(("##" + propertyName).c_str(), &value, 1.0f, (int)minValue, (int)maxValue, format);
             }
             break;
         case ScenePropertyInputType::SliderFloat:
@@ -559,6 +562,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     value = static_cast<WaterWakeResolution>(currentItem);
                 }
             }
+            if constexpr (std::is_same_v<T, UIRenderMode>) {
+                const char* modeNames[] = { "Screen Space - Overlay", "Screen Space - Camera" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 1);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, modeNames, IM_ARRAYSIZE(modeNames));
+                if (changed) {
+                    value = static_cast<UIRenderMode>(currentItem);
+                }
+            }
             if constexpr (std::is_same_v<T, SceneColorScale>) {
                 const char* scaleNames[] = { "Full", "Half" };
                 int currentItem = static_cast<int>(value);
@@ -612,6 +623,20 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     Command* maskCmd = new ScenePropertyCmd<T>(project, sceneProject->id, propertyName, value);
                     CommandHandle::get(sceneProject->id)->addCommandNoMerge(maskCmd);
                     changed = false;
+                }
+            }
+            break;
+        case ScenePropertyInputType::SampleCount:
+            if constexpr (std::is_same_v<T, int>) {
+                const char* countNames[] = { "Project Default", "Disabled", "2x", "4x", "8x" };
+                const int countValues[] = { 0, 1, 2, 4, 8 };
+                int currentItem = 0;
+                for (int c = 0; c < IM_ARRAYSIZE(countValues); c++) {
+                    if (countValues[c] == value) currentItem = c;
+                }
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, countNames, IM_ARRAYSIZE(countNames));
+                if (changed) {
+                    value = countValues[currentItem];
                 }
             }
             break;
@@ -1799,6 +1824,29 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
                 RagdollWizardDialog::instance().open(project, sceneProject->id, entities[0]);
             }
         }
+        if (cpType == ComponentType::MeshComponent && entities.size() == 1) {
+            // S98 F1: the geometry to a .mesh the Mesh field then shows (Unity's Save Mesh As Asset)
+            reason.clear();
+            const bool canSave = MeshAssetFiles::ownsGeometry(sceneProject->scene, entities[0], &reason);
+            if (ImGui::MenuItem("Save Mesh As Asset...", nullptr, false, canSave)) {
+                const std::string name = sceneProject->scene->getEntityName(entities[0]);
+                const std::string chosen = FileDialogs::saveFileDialog(project->getAssetsPath().string(), (name.empty() ? "New Mesh" : name) + ".mesh",
+                                                                       "Mesh assets", "mesh");
+                if (!chosen.empty()) {
+                    std::string path = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(FileUtils::pathFromUtf8(chosen)));
+                    if (!Util::isMeshAssetFile(path)) path += ".mesh";
+                    std::string written, error;
+                    Command* save = MeshAssetFiles::saveAs(*project, sceneProject->id, entities[0], sceneProject->scene->getComponent<MeshComponent>(entities[0]),
+                                                           path, written, &error);
+                    if (save) {
+                        addMenuCommand(save);
+                    } else {
+                        Out::error("Save Mesh As Asset: %s", error.c_str());
+                    }
+                }
+            }
+            reasonTooltip(canSave, reason);
+        }
         ImGui::Separator();
 
         // a further Audio Source of its GameObject (S97 REQ-26): removed with its entity, reordered
@@ -2056,6 +2104,25 @@ void editor::InspectorWindow::drawSceneWaterWakes(SceneProject* sceneProject, Im
         "Metres the wake map spans around the main camera; wakes farther away are not drawn. A smaller area shows finer wakes.");
     drawScenePropertyRow<float>(sceneProject, "water_wake_fade", "Fade", ScenePropertyInputType::DragFloat, -1.0f, 0.1f, 120.0f,
         "Seconds a wake takes to fade (an eighth of its foam is left by then, as scattered foam).");
+    ImGui::EndTable();
+}
+
+void editor::InspectorWindow::drawSceneHtmlUi(SceneProject* sceneProject, ImGuiTableFlags tableFlags){
+    ImGui::SeparatorText("HTML UI");
+    if (!ImGui::BeginTable("scene_html_ui_table", 2, tableFlags))
+        return;
+    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Anti-aliasing (MSAA)"));
+    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+    const float comboWidth = ImGui::CalcTextSize("Screen Space - Overlay").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+    drawScenePropertyRow<UIRenderMode>(sceneProject, "html_ui_render_mode", "Render Mode", ScenePropertyInputType::Combo, comboWidth, 0.0f, 1.0f,
+        "Where the scene's screen UI Documents draw. Screen Space - Overlay: after post-processing, at the output resolution, "
+        "so Render Scale, FXAA, CRT and the other effects leave them sharp. Screen Space - Camera: in the camera's pass, "
+        "so Render Scale and post-processing apply to them too.");
+    drawScenePropertyRow<int>(sceneProject, "html_ui_msaa_samples", "Anti-aliasing (MSAA)", ScenePropertyInputType::SampleCount, comboWidth, 0.0f, 8.0f,
+        "Multisampling of the scene's screen UI Documents (and of Texture-mode documents set to Scene Default). Project Default: "
+        "Project Settings > Graphics > HTML UI MSAA (Auto: 1 sample on phones and the web, 4 on desktop). More samples smooth "
+        "rotated and curved edges at more GPU memory; rounded boxes and clips antialias at any count.");
     ImGui::EndTable();
 }
 
@@ -8094,6 +8161,16 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
     // Static variables for shape parameters
     static PrimitiveParameters shapeParams;
 
+    // S98 F1: the .mesh the geometry comes from (Unity's Mesh Filter's Mesh), for meshes whose
+    // geometry is not a model's or a generator's
+    bool meshAssetRow = !entities.empty();
+    for (Entity entity : entities) meshAssetRow = meshAssetRow && MeshAssetFiles::canShowMeshAsset(sceneProject->scene, entity);
+    if (meshAssetRow) {
+        RowSettings settingsMeshAsset;
+        settingsMeshAsset.help = "The .mesh asset the geometry comes from; none: the mesh's own (the component's menu > Save Mesh As Asset... makes one)";
+        propertyRow(RowPropertyType::Asset, cpType, "meshAsset", "Mesh", sceneProject, entities, settingsMeshAsset);
+    }
+
     // Add New Geometry property row
     propertyHeader("Geometry");
     if (ImGui::Button("Create Primitive")){
@@ -12029,7 +12106,14 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
     ratioSettings.format = (document.pixelRatio == 0.0f) ? "Auto" : "%.2f";
     ratioSettings.help = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode).";
 
-    beginTable(cpType, getLabelSize("Texture Height"));
+    // S92 R18: a texture-mode document has a context and target of its own
+    static std::vector<EnumEntry> msaaEntries = {{0, "Scene Default"}, {1, "Disabled"}, {2, "2x"}, {4, "4x"}, {8, "8x"}};
+    RowSettings msaaSettings;
+    msaaSettings.enumEntries = &msaaEntries;
+    msaaSettings.help = "Multisampling of this document's texture. Scene Default: the scene's HTML UI Anti-aliasing (MSAA). "
+                        "Screen documents share the scene's target, so the scene setting decides for them.";
+
+    beginTable(cpType, getLabelSize("Anti-aliasing (MSAA)"));
 
     if (entities.size() == 1) {
         Entity entity = entities[0];
@@ -12158,6 +12242,7 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
         propertyRow(RowPropertyType::Int, cpType, "textureWidth", "Texture Width", sceneProject, entities, sizeSettings);
         propertyRow(RowPropertyType::Int, cpType, "textureHeight", "Texture Height", sceneProject, entities, sizeSettings);
         propertyRow(RowPropertyType::LocalEntity, cpType, "inputSurface", "Input Surface", sceneProject, entities, surfaceSettings);
+        propertyRow(RowPropertyType::Enum, cpType, "msaaSamples", "Anti-aliasing (MSAA)", sceneProject, entities, msaaSettings);
     }
     propertyRow(RowPropertyType::FloatPositive, cpType, "pixelRatio", "Pixel Ratio", sceneProject, entities, ratioSettings);
 
@@ -13095,7 +13180,7 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                     // Script dialog uses - since className is emitted verbatim as a
                     // class token by the code generator. Reflect it back in the field.
                     if (!newName.empty() && script.type != ScriptType::LUA) {
-                        newName = Factory::toIdentifier(newName);
+                        newName = toIdentifier(newName);
                         strncpy(nameBuffer, newName.c_str(), sizeof(nameBuffer) - 1);
                         nameBuffer[sizeof(nameBuffer) - 1] = '\0';
                     }
@@ -13924,11 +14009,17 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Ambient Light (2D)");
 
                 if (ImGui::BeginTable("scene_ambient2d_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Intensity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Without Lights"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     drawScenePropertyRow<Vector3>(sceneProject, "ambient_light_2d_color", "Color", ScenePropertyInputType::ColorRGB);
                     drawScenePropertyRow<float>(sceneProject, "ambient_light_2d_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
+                    drawScenePropertyRow<int>(sceneProject, "light_2d_steps", "Light Steps", ScenePropertyInputType::DragInt, 6 * ImGui::GetFontSize(), 0.0f, 16.0f,
+                        "Draws each 2D light in this many hard bands, the stepped look of pixel-art lighting (6 is a common choice). "
+                        "Off keeps the light smooth. The ambient is not banded.");
+                    drawScenePropertyRow<bool>(sceneProject, "ambient_light_2d_without_lights", "Without Lights", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+                        "Tints unlit 2D objects with the ambient even when the scene has no Light 2D. "
+                        "On in new scenes; scenes saved before it have it off, so they look as they did.");
 
                     ImGui::EndTable();
                 }
@@ -14261,6 +14352,9 @@ void editor::InspectorWindow::show(){
 
                 ImGui::EndTable();
             }
+
+            // every scene type: its screen documents
+            drawSceneHtmlUi(sceneProject, tableFlags);
 
             ImGui::SeparatorText("Fixed Resolution");
             // R4: a Pixel Perfect Camera on the main camera drives the target instead

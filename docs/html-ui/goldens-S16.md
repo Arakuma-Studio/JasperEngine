@@ -5,7 +5,7 @@ The golden policy of `docs/specs/S16-ui-render-text.md` (AC2, AC3): the 277 Chro
 self-golden S16 changes has a row here: its name, the default compare metric of the old golden
 against the new image before the update (max channel difference / mean / bad pixels) and of the
 new golden after (always a pass), the category (`sdf-aa`, `analytic-clip`, `analytic-shadow`,
-`exact-scale-text`, `gpu-text-effect`), the reason, and for fixtures that
+`exact-scale-text`, `gpu-text-effect`, `filter-blur`), the reason, and for fixtures that
 `tools/htmlui/render-reference.mjs` can render, the mean difference against Chromium (new <= old).
 "Before" is the default compare of the old golden against the S16 image (glcore, llvmpipe);
 "n/a (engine scene)": an RML scene of the engine's suites, which the Chromium script does not
@@ -39,6 +39,7 @@ that every changed golden has its row. More than 60 updates need a separate revi
 | `s17/views_scrolled` | 39 / 0.058 / 207 | 0 / 0.000 / 0 | `sdf-aa` | S17's scrolled grid view: its tiles' backgrounds are primitives cut to the scissor, so the row above the pane no longer shows llvmpipe's 4-sample leak across the scissor's top (the glyphs, exact quads, still do) | n/a (engine scene) |
 | `examples/inventory` | 231 / 1.582 / 12721 | 0 / 0.000 / 0 | `exact-scale-text` | S17's play golden (`test_html_ui_examples.py`, at most 1 % of the pixels apart; 1.09 % against S16) predates S16: the labels drawn at their on-screen scale, the gradients and boxes as primitives, and the hovered slot's tooltip placed 18 px higher from its laid-out size (deterministic over two runs, the same with S16's paint shortcuts off) | n/a (engine scene) |
 | `examples/server_browser` | 169 / 1.880 / 20429 | 0 / 0.000 / 0 | `exact-scale-text` | S17's play golden predates S16 (1.58 % against S16): the table's labels sit on whole target pixels at the game view's scale (moved by under a pixel) | n/a (engine scene) |
+| `p1/texture_effects` | 255 / 1.920 / 451 | 0 / 0.000 / 0 | `filter-blur` | S92 B2's blur (`07480e8ef`): the two halvings are one pass of four bilinear taps without the 8-bit intermediate, so the 6 px blur's outermost ring reaches one pixel further: 448 of the 451 bad pixels have alpha 0-2 in both images (the straight colour of a pixel the old blur left at alpha 0 is white at alpha 1-2), alpha differs by at most 8; 3 pixels of the turned panel's edge by the text outline differ by 43; reviewed by eye, no visible change | n/a (engine scene) |
 
 ## New goldens
 
@@ -49,3 +50,8 @@ that every changed golden has its row. More than 60 updates need a separate revi
 | `p1/rounded_clip_1x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | a rounded `overflow: hidden` clip done in the shaders at one sample: its curve antialiased |
 | `p1/rounded_clip_4x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | the same at four samples |
 | `p1/rounded_clip_nested` | `RenderClip.NestedRoundedClipsUseTheStencil` | three nested rounded clips: the stencil path |
+| `s92/clip_path_shapes_1x` | `RenderClip.ClipPathBasicShapesAreAnalytic` | S92 R8: `clip-path` `inset() round`, `circle()` and `ellipse()` clipped in the shaders without a layer, a child crossing each shape, at one sample |
+| `s92/clip_path_shapes_4x` | `RenderClip.ClipPathBasicShapesAreAnalytic` | the same at four samples |
+| `s92/u27_scaled_scroll` | `RenderClip.TextInScaledScrollWithFilterLayers` | S92 R11, the JasperArcade port's U27: a scaled panel's `overflow: hidden` list of filtered tiles and text, clipped by a scissor (no stencil) |
+| `s92/u27_rotated_scroll` | `RenderClip.RotatedClipKeepsStencil` | the same list turned: its clip stays a stencil mask |
+| `overlay_camera_mode_scaled` | `HtmlUIScene.CameraModeKeepsOldPlacement` | S92 R14: Screen Space - Camera at `render_scale` 0.5, the document scaled down and up with the scene as before S92 (captured with the old placement) |

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: conic and repeating gradients on rounded boxes</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; border-radius: 16px; background: conic-gradient(from 45deg at 40% 60%, #cc3333, #f4c430, #339966, #3366cc, #663399, #cc3333); }
+  #b2 { left: 120px; top: 10px; border-radius: 50%; background: conic-gradient(#cc3333 0deg 90deg, #f4c430 90deg 180deg, #339966 180deg 270deg, #3366cc 270deg); }
+  #b3 { left: 230px; top: 10px; border-radius: 20px; border: 3px solid #333333; background: repeating-conic-gradient(#222222 0deg 15deg, #eeeeee 15deg 30deg); }
+  #b4 { left: 10px; top: 90px; border-radius: 12px; background: repeating-linear-gradient(45deg, #cc3333 0px 6px, #ffffff 6px 12px); }
+  #b5 { left: 120px; top: 90px; border-radius: 30px; background: repeating-radial-gradient(circle at 30% 40%, #3366cc 0px 5px, #f4c430 5px 10px); }
+  #b6 { left: 230px; top: 90px; border-radius: 18px 4px; background: repeating-linear-gradient(to right, #339966, #ffffff 10px, #339966 20px); }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"></div><div class="b" id="b6"></div></body>
+</html>

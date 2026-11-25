@@ -18,9 +18,12 @@ uniform u_fs_htmluiClip {
     vec4 rect[2];       // x, y, width, height: document px before the element transform
     vec4 radiiX[2];     // top-left, top-right, bottom-right, bottom-left
     vec4 radiiY[2];
-    vec4 params;        // x: clip shapes (0, 1 or 2); y: texture kind (0 RGBA, 1 R8 coverage, 2 MTSDF)
+    vec4 params;        // x: clip shapes (0, 1 or 2); y: texture kind (0 RGBA, 1 R8 coverage, 2 MTSDF);
+                        // z: the shape that is a convex polygon + 1 (0: none, S92), w: its points
     vec4 text;          // MTSDF: x: effect (0 fill, 1 dilated, 2 blurred), y: dilation, z: blur sigma
                         // (document px), w: the atlas distance range (texels each side of the outline)
+    vec4 polygon[8];    // S92: the polygon's points (document px before the element transform), two a row,
+                        // counter-clockwise
 } clip;
 
 // Signed distance to an elliptical corner whose ellipse is centred at c with semi-axes r, for a
@@ -111,13 +114,46 @@ float htmluiClipShape(vec2 p, vec2 dpdx, vec2 dpdy, vec4 rect, vec4 radX, vec4 r
     return sdfCoverage(roundedRectSDF(p, rect, radX, radY), rectEdgeFootprint(p, rect, dpdx, dpdy));
 }
 
+// u_fs_htmluiClip's convex polygon's point i (S92)
+vec2 htmluiClipPoint(int i){
+    vec4 pair = clip.polygon[i / 2];
+    return (i - (i / 2) * 2) == 0 ? pair.xy : pair.zw;
+}
+
+// The coverage of the convex polygon at p (S92: clip-path polygon()): the nearest edge's distance
+// in screen px, each edge's from the gradient of its own line (exact along every straight edge)
+float htmluiClipPolygon(vec2 p, vec2 dpdx, vec2 dpdy){
+    int count = int(clip.params.w + 0.5);
+    float sd = 1e9;
+    vec2 a = htmluiClipPoint(count - 1);
+    for (int i = 0; i < 16; i++){
+        if (i >= count)
+            break;
+        vec2 b = htmluiClipPoint(i);
+        vec2 e = b - a;
+        // inside to the left of each edge (counter-clockwise)
+        vec2 n = vec2(-e.y, e.x) / max(length(e), 1e-6);
+        float footprint = max(length(vec2(dot(dpdx, n), dot(dpdy, n))), 1e-4);
+        sd = min(sd, dot(p - a, n) / footprint);
+        a = b;
+    }
+    return clamp(sd + 0.5, 0.0, 1.0);
+}
+
+float htmluiClipShapeAt(int shape, vec2 p, vec2 dpdx, vec2 dpdy){
+    if (int(clip.params.z + 0.5) == shape + 1)
+        return htmluiClipPolygon(p, dpdx, dpdy);
+    return shape == 0 ? htmluiClipShape(p, dpdx, dpdy, clip.rect[0], clip.radiiX[0], clip.radiiY[0])
+                      : htmluiClipShape(p, dpdx, dpdy, clip.rect[1], clip.radiiX[1], clip.radiiY[1]);
+}
+
 // The clip of u_fs_htmluiClip at p (1 without one)
 float htmluiClipCoverage(vec2 p, vec2 dpdx, vec2 dpdy){
     float coverage = 1.0;
     if (clip.params.x > 0.5){
-        coverage = htmluiClipShape(p, dpdx, dpdy, clip.rect[0], clip.radiiX[0], clip.radiiY[0]);
+        coverage = htmluiClipShapeAt(0, p, dpdx, dpdy);
         if (clip.params.x > 1.5)
-            coverage *= htmluiClipShape(p, dpdx, dpdy, clip.rect[1], clip.radiiX[1], clip.radiiY[1]);
+            coverage *= htmluiClipShapeAt(1, p, dpdx, dpdy);
     }
     return coverage;
 }

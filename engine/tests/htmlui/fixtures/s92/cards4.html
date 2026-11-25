@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>S92: cards4</title>
+<!-- S92 R29 (docs/specs/S92-htmlui-render-cost.md): four power-up cards and a timer label that changes every frame (the port measured 206 passes at 7f48d7e8d).
+     Drawn at 1280x720, pixel ratio 1; #tick is the element another frame changes (the warm column). -->
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; font-family: sans-serif; color: #ffffff; }
+  #tick { position: absolute; left: 1180px; top: 680px; font-size: 16px; }
+  .pu-card { position: absolute; width: 337.5px; height: 485px; }
+  .pu-card > div { position: absolute; }
+  .pf-outer { left: 0px; top: 0px; width: 337.5px; height: 485px; background-color: #000000;
+              clip-path: polygon(21px 0px, 316.5px 0px, 337.5px 21px, 337.5px 464px, 316.5px 485px, 21px 485px, 0px 464px, 0px 21px); }
+  .pf-band { left: 5px; top: 5px; width: 327.5px; height: 475px;
+             clip-path: polygon(18.07px 0px, 309.43px 0px, 327.5px 18.07px, 327.5px 456.93px, 309.43px 475px, 18.07px 475px, 0px 456.93px, 0px 18.07px);
+             background-image: conic-gradient(from 0deg at 50% 50%, #01cbcb 0deg, #01adf5 31deg, #01a8ff 37deg, #3c89eb 54deg,
+               #8a60d1 90deg, #d938b7 126deg, #f34594 143deg, #f77262 164deg, #f98d44 180deg, #ffc605 211deg,
+               #addb29 234deg, #60eb51 270deg, #12fb78 306deg, #00f196 323deg, #00d9b7 344deg, #01cbcb 360deg); }
+  .pf-fill { left: 12px; top: 12px; width: 313.5px; height: 461px; background-color: #0dcaf2;
+             clip-path: polygon(13.97px 0px, 299.53px 0px, 313.5px 13.97px, 313.5px 447.03px, 299.53px 461px, 13.97px 461px, 0px 447.03px, 0px 13.97px); }
+  .pf-glow { left: 37.5px; top: 85.5px; width: 262.5px; height: 261.5px; filter: drop-shadow(0px 0px 10px rgba(0, 0, 0, 0.8)); }
+  .pf-win { position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; background-color: #000000;
+            clip-path: polygon(19px 0px, 243.5px 0px, 262.5px 19px, 262.5px 242.5px, 243.5px 261.5px, 19px 261.5px, 0px 242.5px, 0px 19px); }
+  .pf-name { left: 23.5px; top: 380px; width: 290.5px; text-align: center; font-size: 28px; color: #101010; }
+  #timer { position: absolute; left: 600px; top: 600px; font-size: 40px; }
+</style>
+</head>
+<body>
+  <div class="pu-card" style="left: 20px; top: 80px">
+    <div class="pf-outer"></div><div class="pf-band"></div><div class="pf-fill"></div>
+    <div class="pf-glow"><div class="pf-win"></div></div>
+    <div class="pf-name">POWER UP</div>
+  </div>
+  <div class="pu-card" style="left: 330px; top: 80px">
+    <div class="pf-outer"></div><div class="pf-band"></div><div class="pf-fill"></div>
+    <div class="pf-glow"><div class="pf-win"></div></div>
+    <div class="pf-name">POWER UP</div>
+  </div>
+  <div class="pu-card" style="left: 640px; top: 80px">
+    <div class="pf-outer"></div><div class="pf-band"></div><div class="pf-fill"></div>
+    <div class="pf-glow"><div class="pf-win"></div></div>
+    <div class="pf-name">POWER UP</div>
+  </div>
+  <div class="pu-card" style="left: 950px; top: 80px">
+    <div class="pf-outer"></div><div class="pf-band"></div><div class="pf-fill"></div>
+    <div class="pf-glow"><div class="pf-win"></div></div>
+    <div class="pf-name">POWER UP</div>
+  </div>
+  <div id="timer">10.0</div>
+  <span id="tick">0</span>
+</body>
+</html>

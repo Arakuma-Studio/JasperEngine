@@ -263,8 +263,10 @@ TEST(PixelFxShaders, ShaderCacheVersionCoversPixelFx){
     EXPECT_GE(std::stoi(name.substr(1)), 64) << name;
 }
 
-// S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65, after
-// S48's v64: an older cache holds tilemap programs that sample past their frames
+// S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65 or later
+// (S78 took v66), after S48's v64: an older cache holds tilemap programs that sample past their frames
 TEST(TilemapShaders, ShaderCacheVersionCoversTheTileClamp){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v65");
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 65) << name;
 }

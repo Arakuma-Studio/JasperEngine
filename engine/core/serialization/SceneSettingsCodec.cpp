@@ -163,9 +163,28 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
         w.endLength(at);
     }
     w.u32(0);
+    // format 1.7 (S98 D1): the scene's own Canvas Scaler, which a Compile build's generated scene
+    // code set and its cooked scenes now carry
+    w.boolean(scene.isCanvasScalerUseProjectDefault());
+    const CanvasScalerSettings& scaler = scene.getCanvasScaler();
+    w.u8(static_cast<uint8_t>(scaler.mode));
+    w.f32(scaler.scaleFactor);
+    write(w, scaler.referenceResolution);
+    w.u8(static_cast<uint8_t>(scaler.screenMatchMode));
+    w.f32(scaler.matchWidthOrHeight);
+    w.u8(static_cast<uint8_t>(scaler.physicalUnit));
+    w.f32(scaler.fallbackScreenDPI);
+    // format 1.8 (S78): the Light Steps, the 2D ambient without a Light 2D
+    w.svarint(scene.getLight2DSteps());
+    w.boolean(scene.isAmbientLight2DWithoutLights());
+    // format 1.9 (S92): the screen HTML UI documents' composite and MSAA samples
+    w.u8(static_cast<uint8_t>(scene.getHtmlUiRenderMode()));
+    w.u8(static_cast<uint8_t>(scene.getHtmlUiMsaaSamples()));
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
+    // a record before 1.8 was cooked from a scene whose 2D ambient never tinted without a Light 2D
+    scene.setAmbientLight2DWithoutLights(false);
     Vector4 backgroundColor;
     read(r, backgroundColor);
     scene.setBackgroundColor(backgroundColor);
@@ -238,6 +257,9 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     PostProcessingSettings postProcessing;
     read(r, postProcessing);
     if (postProcessing != PostProcessingSettings()) scene.setPostProcessing(postProcessing);
+    // a record older than 1.9 drew its screen documents in the camera pass, before S92's Screen
+    // Space - Overlay default; a 1.9 record reads its own mode below
+    scene.setHtmlUiRenderMode(UIRenderMode::CAMERA);
     // a 1.0 record ends here: the capsule shadows keep their defaults
     if (r.atEnd()) return;
     scene.setCapsuleShadowsEnabled(r.boolean());
@@ -292,4 +314,31 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     }
     scene.setPhysics2DWorldSettings(settings2D);
     scene.setPhysics3DWorldSettings(settings3D);
+    // a 1.6 record ends here: the project's Canvas Scaler (format 1.7)
+    if (r.atEnd()) return;
+    scene.setCanvasScalerUseProjectDefault(r.boolean());
+    CanvasScalerSettings scaler;
+    const uint8_t mode = r.u8();
+    if (mode <= static_cast<uint8_t>(UIScaleMode::ConstantPhysicalSize)) scaler.mode = static_cast<UIScaleMode>(mode);
+    scaler.scaleFactor = r.f32();
+    read(r, scaler.referenceResolution);
+    const uint8_t match = r.u8();
+    if (match <= static_cast<uint8_t>(ScreenMatchMode::Shrink)) scaler.screenMatchMode = static_cast<ScreenMatchMode>(match);
+    scaler.matchWidthOrHeight = r.f32();
+    const uint8_t unit = r.u8();
+    if (unit <= static_cast<uint8_t>(PhysicalUnit::Picas)) scaler.physicalUnit = static_cast<PhysicalUnit>(unit);
+    scaler.fallbackScreenDPI = r.f32();
+    if (scaler != CanvasScalerSettings()) scene.setCanvasScaler(scaler);
+    // a 1.7 record ends here: the Light Steps are off and the 2D ambient leaves a scene without a
+    // Light 2D as it was drawn (format 1.8)
+    if (r.atEnd()) return;
+    scene.setLight2DSteps(static_cast<int>(r.svarint()));
+    scene.setAmbientLight2DWithoutLights(r.boolean());
+    // a 1.8 record ends here: the screen documents stay in the camera pass (above) and keep the
+    // default samples, the project's (format 1.9)
+    if (r.atEnd()) return;
+    const uint8_t uiRenderMode = r.u8();
+    if (uiRenderMode <= static_cast<uint8_t>(UIRenderMode::CAMERA))
+        scene.setHtmlUiRenderMode(static_cast<UIRenderMode>(uiRenderMode));
+    scene.setHtmlUiMsaaSamples(r.u8());
 }

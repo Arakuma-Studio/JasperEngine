@@ -1077,6 +1077,7 @@ const StructTable kBody_ScriptComponent{"script", kBody_ScriptComponent_fields, 
 
 const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, enabled, 0x787b2403u, Bool),
+    JE_RF(MeshComponent, meshAsset, 0x4fad0fd9u, AssetPath),
     JE_RF(MeshComponent, receiveLights, 0x5fa69afau, Bool),
     JE_RF(MeshComponent, receiveIBL, 0x5ef87748u, Bool),
     JE_RF(MeshComponent, castShadows, 0x37e4a2feu, Bool),
@@ -1982,6 +1983,7 @@ const FieldEntry kBody_UIDocumentComponent_fields[] = {
     JE_RF(UIDocumentComponent, textureHeight, 0xe657e304u, Int),
     JE_RF_ENTITY(UIDocumentComponent, inputSurface, 0xdf0ce86fu, Entity),
     JE_RF(UIDocumentComponent, pixelRatio, 0x9ecbc5dbu, Float),
+    JE_RF(UIDocumentComponent, msaaSamples, 0x16930f21u, Int),
 };
 const StructTable kBody_UIDocumentComponent{"uidocument", kBody_UIDocumentComponent_fields, std::size(kBody_UIDocumentComponent_fields)};
 

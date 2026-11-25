@@ -51,12 +51,12 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     YAML::Node root = YAML::Load("{name: Level1, entities: [{name: A}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 0);
-    EXPECT_EQ(result.versionCurrent, 8);
+    EXPECT_EQ(result.versionCurrent, 10);
     EXPECT_TRUE(result.migrated());
     EXPECT_FALSE(result.newer());
     ASSERT_TRUE(root.IsMap());
     EXPECT_EQ(root.begin()->first.Scalar(), "formatVersion");
-    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 10);
     EXPECT_EQ(root["name"].as<std::string>(), "Level1");
     EXPECT_EQ(root["entities"][0]["name"].as<std::string>(), "A");
     EXPECT_EQ(root.size(), 3u);
@@ -64,7 +64,7 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     // current: nothing to do
     const MigrationResult again = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_FALSE(again.migrated());
-    EXPECT_EQ(again.versionRead, 8);
+    EXPECT_EQ(again.versionRead, 10);
 }
 
 TEST(StreamMigrations, NewerIsLeftUntouched){
@@ -73,8 +73,8 @@ TEST(StreamMigrations, NewerIsLeftUntouched){
     EXPECT_TRUE(result.newer());
     EXPECT_FALSE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 99);
-    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 9),
-            "Written by a newer JasperEngine (scene format 9; this editor writes 8).");
+    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 11),
+            "Written by a newer JasperEngine (scene format 11; this editor writes 10).");
 }
 
 TEST(StreamMigrations, OldPrefabsAreLeftToThePrefabLoader){
@@ -110,15 +110,16 @@ TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
     EXPECT_EQ(result.versionRead, 1);
     // 1 -> 2, then 2 -> 3 (S20's particle systems: none here), 3 -> 4 (S29's derived transform
     // values: none here), 4 -> 5 (S18's splines: identity), 5 -> 6 (S21's Animation Player
-    // controllers: none here) and 6 -> 7 (S27's curve form: no lines)
-    ASSERT_EQ(result.applied.size(), 7u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
+    // controllers: none here), 6 -> 7 (S27's curve form: no lines), 7 -> 8 (S44's sheet sprites:
+    // identity), 8 -> 9 (S98's mesh assets: identity) and 9 -> 10 (S92's HTML UI render mode)
+    ASSERT_EQ(result.applied.size(), 9u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 10);
     EXPECT_EQ(root["scene"]["shadowQuality"].as<std::string>(), "auto");
     EXPECT_FLOAT_EQ(root["entities"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][1]["children"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][2]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
-    // one line for the quality, one for the biases (two lights reset)
-    ASSERT_EQ(result.log.lines.size(), 2u);
+    // one line for the quality, one for the biases (two lights reset), one for the HTML UI render mode
+    ASSERT_EQ(result.log.lines.size(), 3u);
     EXPECT_NE(result.log.lines[1].find("2 lights' Bias reset to 1"), std::string::npos) << result.log.lines[1];
 
     // an explicit quality other than Low stays
@@ -133,7 +134,7 @@ TEST(StreamMigrations, PrefabV3ToV4ShadowBiasInTexels){
         "{type: Prefab, version: 3, members: [{type: Entity, entity: 1001, components: {light: {type: spot, shadowBias: 0.002}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 9);
+    EXPECT_EQ(root["version"].as<int>(), 10);
     EXPECT_FLOAT_EQ(root["members"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
 }
 
@@ -165,9 +166,10 @@ TEST(StreamMigrations, SceneV2ToV3ParticleSystemsMoveToTheirTargets){
         "{type: Entity, entity: 1003, name: Lonely, components: {particlesystem: {rate: 3}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 2);
-    // 2 -> 3, then S29's 3 -> 4, S18's identity 4 -> 5, S21's 5 -> 6 and S27's curve form 6 -> 7
-    ASSERT_EQ(result.applied.size(), 6u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
+    // 2 -> 3, then S29's 3 -> 4, S18's identity 4 -> 5, S21's 5 -> 6, S27's curve form 6 -> 7, the
+    // identities 7 -> 8 (S44) and 8 -> 9 (S98), and S92's HTML UI render mode 9 -> 10
+    ASSERT_EQ(result.applied.size(), 8u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 10);
 
     const YAML::Node fire = root["entities"][0]["components"];
     ASSERT_TRUE(fire["particlesystem"]);
@@ -225,7 +227,7 @@ TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
         "{type: Entity, entity: 1002, name: Dust FX, components: {action: {target: 1001}, particlesystem: {rate: 9}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 9) << "migrated to the current version";
+    EXPECT_EQ(root["version"].as<int>(), 10) << "migrated to the current version";
     EXPECT_TRUE(root["members"][0]["components"]["particlesystem"]);
     EXPECT_FALSE(root["members"][1]["components"]["particlesystem"]);
 }
@@ -246,8 +248,8 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
         " components: {animationplayer: {controller: anim/other.controller, controllerGuid: 0000111122223333444455556666aaaa}}}]}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 5);
-    ASSERT_EQ(result.applied.size(), 3u) << "5 -> 6, S27's curve form 6 -> 7 (no lines), then S44's sheet sprites 7 -> 8";
-    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
+    ASSERT_EQ(result.applied.size(), 5u) << "5 -> 6, S27's curve form 6 -> 7 (no lines), then S44's sheet sprites 7 -> 8, S98's mesh assets 8 -> 9 and S92's HTML UI render mode 9 -> 10";
+    EXPECT_EQ(root["formatVersion"].as<int>(), 10);
 
     const YAML::Node granjero = root["entities"][0]["components"];
     ASSERT_TRUE(granjero["animator"]);
@@ -286,7 +288,34 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
         "{type: Prefab, version: 6, members: [{type: Entity, entity: 1001, components: {animationplayer: {enabled: false, controller: anim/c.controller}}}]}");
     const MigrationResult prefabResult = StreamMigrations::migrate(DocumentKind::Prefab, prefab);
     EXPECT_TRUE(prefabResult.migrated());
-    EXPECT_EQ(prefab["version"].as<int>(), 9);
+    EXPECT_EQ(prefab["version"].as<int>(), 10);
     EXPECT_EQ(prefab["members"][0]["components"]["animator"]["controller"].as<std::string>(), "anim/c.controller");
     EXPECT_FALSE(prefab["members"][0]["components"]["animator"]["enabled"].as<bool>()) << "a disabled player: a disabled Animator";
+}
+
+TEST(StreamMigrations, SceneV9ToV10KeepsTheCameraRenderMode){
+    // S92: an absent htmlUiRenderMode is Screen Space - Overlay now; a scene saved before it drew
+    // its screen documents in the camera pass, so it keeps Screen Space - Camera
+    YAML::Node root = YAML::Load("{formatVersion: 9, scene: {backgroundColor: [0, 0, 0, 1]}, entities: []}");
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
+    ASSERT_EQ(result.applied.size(), 1u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 10);
+    EXPECT_EQ(root["scene"]["htmlUiRenderMode"].as<std::string>(), "camera");
+    ASSERT_EQ(result.log.lines.size(), 1u);
+    EXPECT_NE(result.log.lines[0].find("Screen Space - Camera"), std::string::npos) << result.log.lines[0];
+
+    // a mode already written stays (a hand edit, or a key copied from a newer scene)
+    YAML::Node overlay = YAML::Load("{formatVersion: 9, scene: {htmlUiRenderMode: overlay}, entities: []}");
+    StreamMigrations::migrate(DocumentKind::Scene, overlay);
+    EXPECT_EQ(overlay["scene"]["htmlUiRenderMode"].as<std::string>(), "overlay");
+
+    // without a settings map nothing is added: the map would change how its other absent keys decode
+    YAML::Node bare = YAML::Load("{formatVersion: 9, entities: []}");
+    StreamMigrations::migrate(DocumentKind::Scene, bare);
+    EXPECT_FALSE(bare["scene"]);
+
+    // a current scene is not touched: absent is Overlay
+    YAML::Node current = YAML::Load("{formatVersion: 10, scene: {backgroundColor: [0, 0, 0, 1]}, entities: []}");
+    EXPECT_FALSE(StreamMigrations::migrate(DocumentKind::Scene, current).migrated());
+    EXPECT_FALSE(current["scene"]["htmlUiRenderMode"]);
 }

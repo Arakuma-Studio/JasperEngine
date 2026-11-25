@@ -5,6 +5,7 @@
 
 #include "render/CapsuleShadows.h"
 
+#include "GizmoBatch.h"
 #include "SceneDisplaySettings.h"
 #include "spline/SplineTypes.h"
 #include "ToolsLayer.h"
@@ -42,32 +43,6 @@ namespace jasperengine::editor{
     // bottom-right, then the far ones): near to far with fullFrustum, else compact (2 units deep in
     // perspective, half the view's larger side in orthographic, never past the far plane)
     std::array<Vector3, 8> cameraGizmoCorners(const CameraComponent& camera, bool fullFrustum);
-
-    struct CameraObjects{
-        Sprite* icon = nullptr;
-        LineRenderer* lines = nullptr;
-
-        CameraType type = CameraType::CAMERA_UI;
-        bool isMainCamera = false;
-        // drawn near to far (a selected camera), else compact
-        bool fullFrustum = false;
-        float yfov = 0;
-        float aspect = 0;
-        float nearClip = 0;
-        float farClip = 0;
-        float leftClip = 0;
-        float rightClip = 0;
-        float bottomClip = 0;
-        float topClip = 0;
-    };
-
-    struct SoundObjects{
-        Sprite* icon = nullptr;
-    };
-
-    struct Light2DObjects{
-        Sprite* icon = nullptr;
-    };
 
     class Project;
     class PoseViewport;
@@ -252,9 +227,10 @@ namespace jasperengine::editor{
     private:
 
         // --- lattices: cages, point gizmo and drag (editor/lattice/LatticeSceneRender.cpp) ---
+        // one cage's lines; every cage draws through the two batches below
         struct LatticeCageLines{
-            LineRenderer* overlay = nullptr; // tools scene: over the geometry (faded where hidden in 3D)
-            LineRenderer* depth = nullptr;   // this scene: depth tested, at full colour (3D views)
+            GizmoLineList overlay; // tools scene: over the geometry (faded where hidden in 3D)
+            GizmoLineList depth;   // this scene: depth tested, at full colour (3D views)
             // what an unselected cage was last built from: its lines do not depend on the camera,
             // so they are rebuilt only when one of these changes (many cages, Show all lattices)
             bool cached = false;
@@ -267,6 +243,8 @@ namespace jasperengine::editor{
         std::vector<Vector3> latticeRestScratch;
         std::vector<Vector3> latticeWorldScratch;
         std::map<Entity, LatticeCageLines> latticeCages;
+        GizmoLineBatch latticeCageOverlay{true};
+        GizmoLineBatch latticeCageDepth;
         LineRenderer* latticeFalloffLines = nullptr;
         // the project scene this view shows, found on first use (selections are per scene)
         uint32_t latticeSceneId = 0;
@@ -294,6 +272,7 @@ namespace jasperengine::editor{
         bool getLatticePointsPivot(Entity entity, const std::vector<int>& points, Vector3& pivot, Quaternion& rotation, OBB& obb);
         void updateLatticeCages(const std::vector<Entity>& selEntities, const std::vector<Entity>& entities, Entity editedLattice);
         void drawLatticeCage(LatticeCageLines& lines, Entity entity, bool selected, bool editable);
+        void appendLatticeCage(const LatticeCageLines& lines, bool depthTested);
         void drawLatticeFalloff(Entity entity, bool visible);
         void hideLatticeCages();
         void destroyLatticeCages();
@@ -346,27 +325,31 @@ namespace jasperengine::editor{
         // selection outline of boxes: their near face (2D views), or all twelve edges
         static void fillSelectionLines(LineRenderer* lines, const std::vector<OBB>& obbs, bool boxes);
 
-        // fullFrustum: near to far (a selected camera, as Unity draws it), else a compact gizmo
-        void updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum);
-        void drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum);
-        void setupCameraIcon(CameraObjects& co);
-        void setupSoundIcon(SoundObjects& so);
-        void setupLight2DIcon(Light2DObjects& lo);
+        // fullFrustum: near to far (a selected camera, as Unity draws it), else a compact gizmo;
+        // toWorld places the camera's space
+        void drawCameraFrustumLines(GizmoLineBatch& lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum,
+                                    const Matrix4& toWorld);
+
+        // A batch's collected gizmos to its renderer, made in the system pool the first time it
+        // draws anything (in this scene, marked as an editor overlay, or in the tools layer)
+        void flushGizmos(GizmoLineBatch& batch);
+        void flushGizmos(GizmoIconBatch& batch);
+        // a batch whose renderer its scene destroyed (Stop) is forgotten (the next flush makes one)
+        void dropGoneGizmos(GizmoLineBatch& batch, const RenderSystem& render);
+        void dropGoneGizmos(GizmoIconBatch& batch, const RenderSystem& render);
+        void deleteGizmos(GizmoLineBatch& batch, const RenderSystem& render);
+        void deleteGizmos(GizmoIconBatch& batch, const RenderSystem& render);
+        void deleteGizmos(GizmoLineBatch& batch);
 
         float overlayPx(float logicalPixels) const { return logicalPixels * overlayScale; }
-        void ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity);
 
-        // the wire of a selected version 2 Particle System's Shape module (particles spec 6.8):
-        // `entity` noted in `current`; the wires of systems not in it are dropped by
-        // dropParticleShapeLines after the entity loop
-        void updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current);
-        void dropParticleShapeLines(const std::set<Entity>& current);
-        std::map<Entity, LineRenderer*> particleShapeLines;
+        // the wire of a selected version 2 Particle System's Shape module (particles spec 6.8),
+        // into particleShapeLines (begun and flushed around the subclasses' entity loop)
+        void updateParticleShapeLines(Entity entity, bool selected);
+        GizmoLineBatch particleShapeLines;
 
-        // Hides the icons and lines of one GameObject inactive in hierarchy (Unity draws no
-        // gizmos for those; the icon picker refuses them too); called after its update
-        virtual void hideEntityGizmos(Entity entity);
-        // the GameObject is active in hierarchy (cheap when the scene has no inactive ones)
+        // the GameObject is active in hierarchy (cheap when the scene has no inactive ones):
+        // Unity draws no gizmos for an inactive one (the icon picker refuses them too)
         bool gizmoActive(Entity entity) const;
 
         // Marks an editor gizmo or icon created in the scene it annotates: only the

@@ -22,14 +22,14 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleFxRuntimeChecksJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 using titleart::TitleArtDoc;
 
 namespace {
 
-    TitleArtDoc titleFxRuntimeChecksDocumentOf(Json layers, Json exposed = Json::array()) {
-        Json root{{"format", titleart::TITLE_ART_FORMAT}, {"version", titleart::TITLE_ART_VERSION}, {"guid", "0123456789abcdef0123456789abcdef"}};
-        root["canvas"] = Json{{"width", 1024}, {"height", 512}};
+    TitleArtDoc titleFxRuntimeChecksDocumentOf(TitleFxRuntimeChecksJson layers, TitleFxRuntimeChecksJson exposed = TitleFxRuntimeChecksJson::array()) {
+        TitleFxRuntimeChecksJson root{{"format", titleart::TITLE_ART_FORMAT}, {"version", titleart::TITLE_ART_VERSION}, {"guid", "0123456789abcdef0123456789abcdef"}};
+        root["canvas"] = TitleFxRuntimeChecksJson{{"width", 1024}, {"height", 512}};
         root["layers"] = std::move(layers);
         root["exposed"] = std::move(exposed);
         titleart::TitleArtParseResult parsed = titleart::parseTitleArtJson(std::move(root));
@@ -37,16 +37,16 @@ namespace {
         return parsed.doc;
     }
 
-    Json titleFxRuntimeChecksShape(const char* id, Json effects = Json::array()) {
-        return Json{{"id", id}, {"type", "shape"}, {"name", "Plate"}, {"shape", "rect"}, {"size", 60}, {"effects", std::move(effects)}};
+    TitleFxRuntimeChecksJson titleFxRuntimeChecksShape(const char* id, TitleFxRuntimeChecksJson effects = TitleFxRuntimeChecksJson::array()) {
+        return TitleFxRuntimeChecksJson{{"id", id}, {"type", "shape"}, {"name", "Plate"}, {"shape", "rect"}, {"size", 60}, {"effects", std::move(effects)}};
     }
 
-    Json effect(const char* id, const char* type, Json params = Json::object()) {
-        return Json{{"id", id}, {"type", type}, {"enabled", true}, {"params", std::move(params)}};
+    TitleFxRuntimeChecksJson effect(const char* id, const char* type, TitleFxRuntimeChecksJson params = TitleFxRuntimeChecksJson::object()) {
+        return TitleFxRuntimeChecksJson{{"id", id}, {"type", type}, {"enabled", true}, {"params", std::move(params)}};
     }
 
-    Json exposing(const char* name, const char* layer, const std::string& field) {
-        return Json{{"name", name}, {"type", "number"}, {"targets", Json::array({Json{{"layer", layer}, {"field", field}}})}};
+    TitleFxRuntimeChecksJson exposing(const char* name, const char* layer, const std::string& field) {
+        return TitleFxRuntimeChecksJson{{"name", name}, {"type", "number"}, {"targets", TitleFxRuntimeChecksJson::array({TitleFxRuntimeChecksJson{{"layer", layer}, {"field", field}}})}};
     }
 
     TitleCheckResult titleFxRuntimeChecksRun(const char* id, const TitleArtDoc& doc, std::optional<std::vector<std::string>> instances = std::nullopt) {
@@ -66,7 +66,7 @@ namespace {
         const titleart::FxSize mobile{1024, 512, 1.0f};
         for (const titleart::EffectDef* def : titleart::TitleEffectRegistry::get().effects()) {
             if (!def->estimate) continue;
-            Json values = Json::object();
+            TitleFxRuntimeChecksJson values = TitleFxRuntimeChecksJson::object();
             titleart::NormalizeContext normalize;
             titleart::normalizeParams(def->params, values, "params", normalize);
             const titleart::FxCost cost = def->estimate(titleart::ParamValues(values, &def->globalLight), mobile, titleart::FxTier::Mobile);
@@ -80,7 +80,7 @@ namespace {
 TEST(TitleFxRuntimeChecks, BakeOnlyEffectOnARuntimeTitleWarnsAndItsFixRemovesIt) {
     const titleart::EffectDef* def = bakeOnlyEffect();
     ASSERT_TRUE(def) << "a definition stays C4 on the mobile tier at its defaults";
-    const TitleArtDoc doc = titleFxRuntimeChecksDocumentOf(Json::array({titleFxRuntimeChecksShape("00000001", Json::array({effect("00000101", def->type)}))}));
+    const TitleArtDoc doc = titleFxRuntimeChecksDocumentOf(TitleFxRuntimeChecksJson::array({titleFxRuntimeChecksShape("00000001", TitleFxRuntimeChecksJson::array({effect("00000101", def->type)}))}));
     const TitleCheckResult used = titleFxRuntimeChecksRun("fx_bake_only_realtime", doc, std::vector<std::string>{"scene Main: Logo (realtime)"});
     EXPECT_EQ(used.status, TitleCheckStatus::Warn) << used.message;
     EXPECT_NE(used.message.find(def->label), std::string::npos) << used.message;
@@ -96,16 +96,16 @@ TEST(TitleFxRuntimeChecks, BakeOnlyEffectOnARuntimeTitleWarnsAndItsFixRemovesIt)
 
 TEST(TitleFxRuntimeChecks, LiveBudget) {
     // a scale_split composes its split in one full-resolution pass: within 0.5 ms on the mobile tier
-    const TitleArtDoc glow = titleFxRuntimeChecksDocumentOf(Json::array({titleFxRuntimeChecksShape("00000001", Json::array({effect("00000101", "outer_glow")}))}),
-                                        Json::array({exposing("glow", "00000001", "fx:outer_glow.intensity")}));
+    const TitleArtDoc glow = titleFxRuntimeChecksDocumentOf(TitleFxRuntimeChecksJson::array({titleFxRuntimeChecksShape("00000001", TitleFxRuntimeChecksJson::array({effect("00000101", "outer_glow")}))}),
+                                        TitleFxRuntimeChecksJson::array({exposing("glow", "00000001", "fx:outer_glow.intensity")}));
     const TitleCheckResult within = titleFxRuntimeChecksRun("fx_live_budget", glow);
     EXPECT_EQ(within.status, TitleCheckStatus::Pass) << within.message;
     EXPECT_EQ(within.measured["live_params"].size(), 1u);
 
     // the suffix rule: a sweep before a Gaussian Blur re-renders
-    const TitleArtDoc suffix = titleFxRuntimeChecksDocumentOf(Json::array({titleFxRuntimeChecksShape("00000001", Json::array({effect("00000101", "gradient_overlay"),
+    const TitleArtDoc suffix = titleFxRuntimeChecksDocumentOf(TitleFxRuntimeChecksJson::array({titleFxRuntimeChecksShape("00000001", TitleFxRuntimeChecksJson::array({effect("00000101", "gradient_overlay"),
                                                                                        effect("00000102", "gaussian_blur")}))}),
-                                          Json::array({exposing("sweep", "00000001", "fx:gradient_overlay.position")}));
+                                          TitleFxRuntimeChecksJson::array({exposing("sweep", "00000001", "fx:gradient_overlay.position")}));
     const TitleCheckResult after = titleFxRuntimeChecksRun("fx_live_budget", suffix);
     EXPECT_EQ(after.status, TitleCheckStatus::Warn);
     EXPECT_NE(after.message.find("Gaussian Blur after Gradient Overlay"), std::string::npos) << after.message;
@@ -115,8 +115,8 @@ TEST(TitleFxRuntimeChecks, LiveBudget) {
     const titleart::GeneratorDef* particles = titleart::findGenerator("particles");
     ASSERT_TRUE(particles);
     ASSERT_TRUE(titleart::findParam(particles->params, "count"));
-    Json gen{{"id", "00000002"}, {"type", "generator"}, {"name", "Sparks"}, {"generator", {{"type", "particles"}, {"params", {{"count", 5000}}}}}};
-    const TitleArtDoc heavy = titleFxRuntimeChecksDocumentOf(Json::array({titleFxRuntimeChecksShape("00000001"), gen}), Json::array({exposing("t", "00000002", "gen.time")}));
+    TitleFxRuntimeChecksJson gen{{"id", "00000002"}, {"type", "generator"}, {"name", "Sparks"}, {"generator", {{"type", "particles"}, {"params", {{"count", 5000}}}}}};
+    const TitleArtDoc heavy = titleFxRuntimeChecksDocumentOf(TitleFxRuntimeChecksJson::array({titleFxRuntimeChecksShape("00000001"), gen}), TitleFxRuntimeChecksJson::array({exposing("t", "00000002", "gen.time")}));
     const TitleCheckResult over = titleFxRuntimeChecksRun("fx_live_budget", heavy);
     ASSERT_EQ(over.status, TitleCheckStatus::Warn) << over.message;
     ASSERT_TRUE(over.fix.contains("ops")) << over.fix.dump();
@@ -132,13 +132,13 @@ TEST(TitleFxRuntimeChecks, RealtimeBudgetWarnsAndItsFixFits) {
     // enough of the heaviest kind of the catalogue to pass 15 ms on the mobile tier
     const titleart::EffectDef* heavy = bakeOnlyEffect();
     ASSERT_TRUE(heavy);
-    Json effects = Json::array();
+    TitleFxRuntimeChecksJson effects = TitleFxRuntimeChecksJson::array();
     TitleArtDoc doc;
     for (int i = 0; i < 12; i++) {
         char id[16];
         std::snprintf(id, sizeof(id), "%08x", 0x101 + i);
         effects.push_back(effect(id, heavy->type));
-        doc = titleFxRuntimeChecksDocumentOf(Json::array({titleFxRuntimeChecksShape("00000001", effects)}));
+        doc = titleFxRuntimeChecksDocumentOf(TitleFxRuntimeChecksJson::array({titleFxRuntimeChecksShape("00000001", effects)}));
         if (estimateTitleFxCost(doc, titleart::FxTier::Mobile).mobileMs > 15.0) break;
     }
     const double before = estimateTitleFxCost(doc, titleart::FxTier::Mobile).mobileMs;
@@ -155,7 +155,7 @@ TEST(TitleFxRuntimeChecks, RealtimeBudgetWarnsAndItsFixFits) {
 }
 
 TEST(TitleFxRuntimeChecks, HdrOn8BitNeedsARender) {
-    const TitleArtDoc doc = titleFxRuntimeChecksDocumentOf(Json::array({titleFxRuntimeChecksShape("00000001", Json::array({effect("00000101", "light_glow")}))}));
+    const TitleArtDoc doc = titleFxRuntimeChecksDocumentOf(TitleFxRuntimeChecksJson::array({titleFxRuntimeChecksShape("00000001", TitleFxRuntimeChecksJson::array({effect("00000101", "light_glow")}))}));
     const TitleCheckResult r = titleFxRuntimeChecksRun("fx_hdr_on_8bit", doc);
     EXPECT_EQ(r.status, TitleCheckStatus::Skip);
     EXPECT_EQ(r.kind, TitleCheckKind::Pixels);
@@ -166,7 +166,7 @@ TEST(TitleFxRuntimeChecks, HdrOn8BitReportsLightAboveFourAsInfo) {
     registerBuiltinTitleChecks();
     const CheckDef* check = TitleArtChecks::find("fx_hdr_on_8bit");
     ASSERT_TRUE(check);
-    const TitleArtDoc doc = titleFxRuntimeChecksDocumentOf(Json::array({titleFxRuntimeChecksShape("00000001", Json::array({effect("00000101", "light_glow")}))}));
+    const TitleArtDoc doc = titleFxRuntimeChecksDocumentOf(TitleFxRuntimeChecksJson::array({titleFxRuntimeChecksShape("00000001", TitleFxRuntimeChecksJson::array({effect("00000101", "light_glow")}))}));
     const auto runWith = [&](uint8_t alpha) {
         TitleCheckContext context(doc, "assets/titles/test.titleart");
         context.render = [alpha](const titleart::RenderRequest& request, TitleCheckImage& out, std::string&) {

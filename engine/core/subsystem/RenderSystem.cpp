@@ -958,6 +958,7 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     hasIBL = false;
     hasLights2D = false;
     hasShadows2D = false;
+    hasAmbient2D = false;
 
     lightListEpoch = 1;
     lightListCap = 0;
@@ -993,6 +994,7 @@ void RenderSystem::load(){
     loadedPipelines = 0;
     hasLights2D = false;
     hasShadows2D = false;
+    hasAmbient2D = false;
     numLights2D = 0;
 
     {
@@ -1479,6 +1481,11 @@ int RenderSystem::checkLightsAndShadow(){
 
     if (numLights2D > 0)
         hasLights2D = true;
+    // a scene without a Light 2D: its 2D ambient still multiplies the unlit 2D surfaces (as with
+    // one Light 2D out of range), unless it is (1, 1, 1), which draws as before, or the scene was
+    // saved before S78 (Ambient Without Lights off: it draws as it did)
+    hasAmbient2D = !hasLights2D && scene->isAmbientLight2DWithoutLights() &&
+                   isAmbient2DTinted(scene->getAmbientLight2DColorLinear(), scene->getAmbientLight2DIntensity());
 
     return numLights;
 }
@@ -1942,6 +1949,11 @@ int RenderSystem::getLightCapacity(int maxLightsPerObject){
     if (maxLightsPerObject <= 8)
         return 8;
     return 16;
+}
+
+bool RenderSystem::isAmbient2DTinted(Vector3 ambientLinear, float intensity){
+    const Vector3 ambient = ambientLinear * intensity;
+    return std::fabs(ambient.x - 1.0f) > 1e-4f || std::fabs(ambient.y - 1.0f) > 1e-4f || std::fabs(ambient.z - 1.0f) > 1e-4f;
 }
 
 // Snapshot of every light as the object lists copy it, after the lights' transforms, shadow
@@ -2640,9 +2652,10 @@ void RenderSystem::processLights2D(){
         case ShadowQuality::ULTRA:  pcfRadius = 6.0f; break;
     }
 
-    // rows without shadows keep shadowMapIndex -1 and never sample the atlas
+    // rows without shadows keep shadowMapIndex -1 and never sample the atlas; z: the Light Steps,
+    // read only by the 'Lst' variants (includes/lighting2d.glsl)
     float atlasW = (hasShadow2DAtlas && shadow2DAtlasWidth > 0) ? (float)shadow2DAtlasWidth : 1.0f;
-    fs_lighting2d.atlasInfo = Vector4(1.0f / atlasW, 1.0f / (float)MAX_LIGHTS_2D, atlasW, pcfRadius);
+    fs_lighting2d.atlasInfo = Vector4(1.0f / atlasW, 1.0f / (float)MAX_LIGHTS_2D, (float)scene->getLight2DSteps(), pcfRadius);
 }
 
 bool RenderSystem::loadAndProcessFog(){
@@ -3469,6 +3482,8 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.atmosphereDepth = atmosphereDepthPrograms;
     environment.lights2D = hasLights2D;
     environment.shadows2D = hasShadows2D;
+    environment.ambient2D = hasAmbient2D;
+    environment.light2DSteps = scene->getLight2DSteps() > 0;
     environment.ssao = QualityResolver::ssao(scene->isSSAOEnabled());
     environment.ssr = scene->isSSREnabled();
     environment.depthPrepass = scene->isDepthPrepassEnabled();
@@ -4214,11 +4229,14 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // dedicated 2D light path: composes with MATERIAL_UNLIT (sprites keep the
     // cheap unlit shader; accumulated 2D light multiplies the base color) and
     // with the lit path in mixed scenes (contributions add)
-    // (not with transmission: like SSAO, a uniform block it has no room for)
-    const bool useLight2D = environment.lights2D && inputs.receiveLights && !inputs.pbrTransmission;
+    // (not with transmission: like SSAO, a uniform block it has no room for). Without a Light 2D
+    // a tinting 2D ambient takes the unlit path too, with no light to read normals (S78 R6); the
+    // lit path adds 2D lights only, never the 2D ambient
+    const bool ambientOnly2D = !environment.lights2D && environment.ambient2D && p_unlit;
+    const bool useLight2D = (environment.lights2D || ambientOnly2D) && inputs.receiveLights && !inputs.pbrTransmission;
     const bool p_light2d = useLight2D;
     const bool p_shadows2d = useLight2D && environment.shadows2D && inputs.receiveShadows;
-    if (useLight2D){
+    if (useLight2D && !ambientOnly2D){
         // the 2D light path reads the normal when the mesh has one (+Z otherwise) and the
         // tangents only for a normal map (includes/lighting2d.glsl getNormal2DAt)
         p_hasNormal = p_hasNormal || inputs.normal;
@@ -4281,7 +4299,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_hasNormalMap = false;
         // @require normalmap: the material's normal map on the 2D light path (tangent frame
         // from the mesh, read at uv1: includes/lighting2d.glsl, surface_vs.glsl)
-        if ((require & ShaderRequire_NormalMap) && useLight2D && inputs.normalTexture && inputs.normal && inputs.tangent &&
+        if ((require & ShaderRequire_NormalMap) && useLight2D && !ambientOnly2D && inputs.normalTexture && inputs.normal && inputs.tangent &&
                 p_hasTexture1 && !inputs.terrain){
             p_hasNormal = true;
             p_hasTangent = true;
@@ -4351,6 +4369,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // whose tiles list the scene's lights as they come)
     if (environment.directionalLightsOnly && inputs.builtinLit && !manifest && (p_punctual || p_vertexLights) && !p_tiledLights)
         variant.properties |= ShaderPool::getDirectionalOnlyProperty();
+    // S78's Light Steps: each 2D light's term quantized (the count is a uniform, off is the
+    // variant without the bit)
+    if (p_light2d && environment.light2DSteps)
+        variant.properties |= ShaderPool::getLight2DStepsProperty();
     // Water Excluders and Water Wakes: only for a shader asking for them, in a scene that has them
     if ((manifestRequire & ShaderRequire_WaterExclusion) && environment.waterExclusion)
         variant.properties |= ShaderPool::getWaterExclusionProperty();
@@ -5463,6 +5485,7 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         uberRender.applyUniformBlock(uberSlotFSParams, sizeof(fs_uber_t), &fs_uber);
         uberRender.draw(0, 3, 1);
     }
+    drawOverlayDocuments(destination, pip);
     uberPassRender.endRenderPass();
 
     // where a later pass into the same destination (a layer scene's) reads the blurred scene: the
@@ -12515,6 +12538,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         ssrPassRender.applyViewport(targetViewRect());
     }
     drawSSRComposite(targetFormatFor(destination ? PIP_RTT : PIP_DEFAULT), reflection, prefiltered);
+    drawOverlayDocuments(destination, destination ? PIP_RTT : PIP_DEFAULT);
     ssrPassRender.endRenderPass();
 }
 
@@ -12853,11 +12877,48 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport, const Vector
         blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
         blitRender.draw(0, 3, 1);
     }
+    drawOverlayDocuments(destination, blitPip);
     fixedResPassRender.endRenderPass();
 }
 
 void RenderSystem::renderFixedResolutionBlit(){
     renderBlit(&rv().fixedResFramebuffer.getRender().getColorTexture(), targetViewRect());
+}
+
+bool RenderSystem::writesView(const FramebufferRender* destination) const{
+    if (!destination)
+        return true;
+    Framebuffer* target = targetFramebuffer();
+    return target && destination == &target->getRender();
+}
+
+void RenderSystem::drawOverlayDocuments(const FramebufferRender* destination, PipelineType pip){
+    if (!overlayDocumentsPending || !writesView(destination))
+        return;
+    overlayDocumentsPending = false;
+    // the view's framebuffer is stored bottom row first on GL, as the camera pass draws into it
+    // (isRenderingFlipped); the swapchain is not
+    scene->getSystem<UIDocumentSystem>()->drawComposite(pip, pip != PIP_DEFAULT && Engine::isOpenGL(), 1, overlayCanvasWidth,
+                                                        overlayCanvasHeight);
+}
+
+void RenderSystem::documentsCanvas(const CameraComponent& camera, float& width, float& height) const{
+    width = 0.0f;
+    height = 0.0f;
+#ifdef JASPERENGINE_EDITOR
+    // the editor's Game view outside Play frames the project canvas while the documents keep the
+    // layout the editor gave them: an Auto Resize UI or 2D camera's clip rectangle is the canvas
+    // the view shows, which the documents' canvas pixels are placed in. A game lays its documents
+    // out in the canvas its camera covers (they fill the viewport), and a Pixel Perfect Camera
+    // spans its own rectangle
+    if (camera.type != CameraType::CAMERA_PERSPECTIVE && camera.autoResize && !camera.renderToTexture && camera.leftClip == 0.0f
+        && camera.bottomClip == 0.0f && !findPixelPerfectDrive(camera)){
+        width = camera.rightClip;
+        height = camera.topClip;
+    }
+#else
+    (void)camera;
+#endif
 }
 
 void RenderSystem::needReloadPostProcess(){
@@ -13151,6 +13212,7 @@ void RenderSystem::renderPostProcessCopy(TextureRender* source, FramebufferRende
         blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
         blitRender.draw(0, 3, 1);
     }
+    drawOverlayDocuments(destination, PIP_RTT);
     postProcessPassRender.endRenderPass();
 }
 
@@ -13214,6 +13276,8 @@ TextureRender* RenderSystem::renderPostProcess(FramebufferRender* destination, b
             applyCustomUniforms(pass.render, pass.params, frameTime, frameSceneTime, Vector2((float)width, (float)height));
             pass.render.draw(0, 3, 1);
         }
+        if (writeDestination)
+            drawOverlayDocuments(destination, PIP_RTT);
         postProcessPassRender.endRenderPass();
 
         if (writeDestination){
@@ -17880,6 +17944,14 @@ void RenderSystem::update(double dt){
         loadedPbrTier = pbrTier;
         needReloadMeshVariants();
     }
+    // so are the 2D ambient of a scene without a Light 2D ('L2d' on the unlit ones) and the Light
+    // Steps being on ('Lst'); the count itself is a uniform
+    const bool light2DSteps = scene->getLight2DSteps() > 0;
+    if (hasAmbient2D != loadedAmbient2D || light2DSteps != loadedLight2DSteps){
+        loadedAmbient2D = hasAmbient2D;
+        loadedLight2DSteps = light2DSteps;
+        needReloadMeshVariants();
+    }
 
     if (pipelines != loadedPipelines){
         loadedPipelines = pipelines;
@@ -18536,7 +18608,7 @@ void RenderSystem::update(double dt){
     updateShadowCasters();
     updateLightCameras(mainCamera, mainCameraTransform);
     processLights(primaryView.shadows, numLights, mainCamera, mainCameraTransform);
-    if (hasLights2D){
+    if (hasLights2D || hasAmbient2D){
         processLights2D();
     }
 
@@ -20156,18 +20228,34 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     drawScreenFluids();
 
     //---------Draw HTML UI documents (in front of everything, including component UI)----------
-    // UI and 2D cameras draw the canvas in world space, the editor's Scene view included; a
-    // 3D camera fills its viewport, in the game camera only
-    // (the documents draw over every run)
+    // A Screen Space - Overlay game view fills the viewport under any camera (S92 R15); the
+    // editor's Scene view, and every view of a Screen Space - Camera scene (an older scene's,
+    // as before S92), draw the canvas of UI and 2D cameras in world space; the Scene view draws
+    // no document under a 3D camera (the documents draw over every run)
     endBatchPass();
 
     bool drawDocuments = isMainCamera && !pass.renderToTexture;
+    bool documentsSceneView = false;
 #ifdef JASPERENGINE_EDITOR
+    documentsSceneView = passDrawsOverlays;
     drawDocuments = drawDocuments && (!passDrawsOverlays || camera.type != CameraType::CAMERA_PERSPECTIVE);
 #endif
-    if (drawDocuments){
+    // Screen Space - Overlay (S92 R13): when a later pass writes the camera's output (the uber
+    // pass, a blit, the chain's or SSR's composite), the documents composite there, after post
+    // and at the output resolution. The camera pass is the output without them, and with SSR
+    // composited inside it onto the view itself (the pass continues on its alias)
+    const bool ssrPassOnView = ssrInPass && ssrPassTarget != &rv().ssrSceneTarget && !usePostProcess && !useUber && !useFixedRes;
+    const bool laterOutputPass = useUber || useFixedRes || usePostProcess || (useSSR && !ssrPassOnView) || useSceneColorRedirect
+        || useMsaaRedirect;
+    overlayDocumentsPending = drawDocuments && !documentsSceneView && laterOutputPass
+        && scene->getHtmlUiRenderMode() == UIRenderMode::OVERLAY;
+    if (drawDocuments)
+        documentsCanvas(camera, overlayCanvasWidth, overlayCanvasHeight);
+    if (drawDocuments && !overlayDocumentsPending){
         camera.render.applyScissor(colorPassViewport);
-        scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera), passMsaa);
+        const bool throughCamera = documentsSceneView || scene->getHtmlUiRenderMode() == UIRenderMode::CAMERA;
+        scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera), passMsaa,
+                                                            throughCamera, overlayCanvasWidth, overlayCanvasHeight);
     }
 
     camera.render.endRenderPass();
@@ -20289,6 +20377,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     if (useMsaaRedirect){
         renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect(), barsColor);
     }
+    // (a pass above that wrote the view drew the held documents)
+    overlayDocumentsPending = false;
     passHidesEditorHidden = false;
 }
 

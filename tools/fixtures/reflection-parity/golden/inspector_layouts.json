@@ -1751,6 +1751,14 @@
   {
    "component": "mesh",
    "group": "",
+   "kind": "Asset",
+   "label": "Mesh",
+   "path": "meshAsset",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
    "kind": "Bool",
    "label": "Receive Lights",
    "path": "receiveLights",
@@ -4760,6 +4768,14 @@
    "kind": "Bool",
    "label": "Billboard",
    "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Asset",
+   "label": "Mesh",
+   "path": "meshAsset",
    "read_only": false
   },
   {
@@ -8786,6 +8802,14 @@
    "kind": "LocalEntity",
    "label": "Input Surface",
    "path": "inputSurface",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anti-aliasing (MSAA)",
+   "path": "msaaSamples",
    "read_only": false
   },
   {

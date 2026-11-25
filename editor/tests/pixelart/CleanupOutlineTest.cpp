@@ -22,6 +22,8 @@
 #include <vector>
 
 using namespace jasperengine::editor::pixelart::cleanup;
+// its own name: another RgbaImage is in sight in some unity units
+using CleanupOutlineImage = jasperengine::editor::pixelart::cleanup::RgbaImage;
 
 namespace {
 
@@ -57,8 +59,8 @@ namespace {
     }
 
     // A light 120 x 120 picture (12 x 12 cells of 10 px) with a dark vertical stroke from `from` to `to`, rows 10 to 110
-    RgbaImage stroked(int from, int to) {
-        RgbaImage image(120, 120);
+    CleanupOutlineImage stroked(int from, int to) {
+        CleanupOutlineImage image(120, 120);
         for (int y = 0; y < 120; y++) {
             for (int x = 0; x < 120; x++) {
                 const Rgba8 color = x >= from && x < to && y >= 10 && y < 110 ? outlineK : outlineW;
@@ -107,7 +109,7 @@ TEST(CleanupOutline, JudgesDarkStrokesOneCellWideAndFindsNoneInAPictureWithout) 
 
 TEST(CleanupOutline, GivesAStrokeSplitByAGridLineBackToOnePixel) {
     // 12 px wide across cells 4 and 5: the middle of both reads as dark
-    const RgbaImage image = stroked(44, 56);
+    const CleanupOutlineImage image = stroked(44, 56);
     EXPECT_EQ(darkColumns(runRecipe(image, outlineRecipe(Outlines::Off))->art), (std::vector<int>{4, 5}));
     const Outcome fixed = *runRecipe(image, outlineRecipe(Outlines::Auto));
     EXPECT_TRUE(fixed.outlines);
@@ -126,7 +128,7 @@ TEST(CleanupOutline, LeavesAStaircaseOutlineWhole) {
     Upscale options;
     options.scale = 10;
     options.blur = 1;
-    const RgbaImage image = upscale(stairs, options);
+    const CleanupOutlineImage image = upscale(stairs, options);
     const Grid grid = uniformGrid(image.width(), image.height(), outlineCells);
     QuantizeOptions snap;
     snap.palette = outlinePalette();
@@ -138,7 +140,7 @@ TEST(CleanupOutline, LeavesAStaircaseOutlineWhole) {
 TEST(CleanupBentGrid, FollowsAWarpedGridThatStraightLinesCannot) {
     for (uint32_t seed : {1u, 2u, 3u}) {
         const PixelArt sprite = makeSprite(24, 24, sweetie6(), seed);
-        const RgbaImage image = warped(sprite, 10, 0, 0.45, 12);
+        const CleanupOutlineImage image = warped(sprite, 10, 0, 0.45, 12);
         auto wrong = [&](Follow follow) {
             Recipe recipe;
             recipe.follow = follow;
@@ -163,7 +165,7 @@ TEST(CleanupBentGrid, FollowsAWarpedGridThatStraightLinesCannot) {
 
 TEST(CleanupBentGrid, PutsEachBentLineWithinAPixelOrSoOfWhereTheCellsMeet) {
     const PixelArt sprite = makeSprite(24, 24, sweetie6(), 4);
-    const RgbaImage image = warped(sprite, 10, 0, 0.3, 12);
+    const CleanupOutlineImage image = warped(sprite, 10, 0, 0.3, 12);
     RefineOptions options;
     options.bend = true;
     const Grid grid = refineGrid(image, uniformGrid(image.width(), image.height(), outlineCells), options);
