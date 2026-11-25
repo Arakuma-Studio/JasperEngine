@@ -12,7 +12,6 @@
 #include "Stream.h"
 #include "support/EditorTestSupport.h"
 #include "Catalog.h"
-#include "Factory.h"
 #include "StreamSchema.h"
 #include "util/Angle.h"
 
@@ -424,14 +423,7 @@ TEST(StreamScene, PhysicsWorldSettingsRoundTrip){
     for (const PhysicsWorldSettingField& field : physicsWorldSettingFields())
         EXPECT_TRUE(StreamSchema::isKnownRootKey(RootKind::SceneSettings, field.key)) << field.key;
 
-    // the generated code sets each changed one through its Scene setter
-    const std::string code = Factory::createScene(0, &scene, 4343, "Physics", {}, NULL_ENTITY, std::filesystem::path("/project"), std::filesystem::path("/project/generated"));
-    EXPECT_NE(code.find("scene->setPhysics2DPointsPerMeter(100.0"), std::string::npos) << code;
-    EXPECT_NE(code.find("scene->setPhysics2DWarmStarting(false);"), std::string::npos);
-    EXPECT_NE(code.find("scene->setPhysics3DCollisionSteps(2);"), std::string::npos);
-    EXPECT_EQ(code.find("scene->setPhysics2DContinuous("), std::string::npos);
-    const std::string plainCode = Factory::createScene(0, &plain, 4343, "Plain", {}, NULL_ENTITY, std::filesystem::path("/project"), std::filesystem::path("/project/generated"));
-    EXPECT_EQ(plainCode.find("scene->setPhysics2DPointsPerMeter"), std::string::npos);
+    // builds carry them in the cooked scene (CookedScene.SceneSettingsKeepPhysicsWorld): no scene code is generated (S98 D1)
 
     // Catalog (set_scene_settings, the Inspector rows, ScenePropertyCmd): by the MCP names
     Scene edited;

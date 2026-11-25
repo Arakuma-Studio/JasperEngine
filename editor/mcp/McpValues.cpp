@@ -3074,9 +3074,10 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 }
                 text = FileUtils::pathToGenericUtf8(found);
             }
-            // a foliage layer's FBX mesh loads from its import, created here the first time
+            // a foliage layer's FBX mesh loads from its import, queued here the first time: the layer
+            // draws once it lands (S98 REQ-32)
             if (component == ComponentType::TerrainComponent && endsWith(propertyName, "meshPath") &&
-                    FbxImporter::isFbxFile(text) && !project->prepareModelFile(text)) {
+                    FbxImporter::isFbxFile(text) && project->prepareModelFile(text) == Project::ModelImport::Failed) {
                 error = propertyName + ": " + text + " could not be imported (the console has details).";
                 return nullptr;
             }

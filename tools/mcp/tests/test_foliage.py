@@ -6,6 +6,7 @@ writes into its own project.
 
 from __future__ import annotations
 
+import json
 import asyncio
 import hashlib
 from pathlib import Path
@@ -297,19 +298,19 @@ async def test_duplicate_terrain_copies_on_first_write(ed: Editor):
 
 
 
-async def test_foliage_quality_reaches_main_cpp(ed: Editor):
+async def test_foliage_quality_reaches_the_game(ed: Editor):
     """A project made now declares its Foliage Quality (High, Low, Low, capped), which differs from the engine's
-    default and so reaches the compiled game's main.cpp; a change of it follows. (A project from before T5 has no
-    line: the reflection fixtures' codegen goldens hold that.)"""
+    default and so reaches the game's game.json (the project's own build reads <internal>/cooked/game.json); a
+    change of it follows. (A project from before T5 writes none.)"""
     sid, _ = await terrain_scene(ed, "Quality")
-    main = ed.project / ".jasperengine" / "generated" / "main.cpp"
+    game = ed.project / ".jasperengine" / "cooked" / "game.json"
     await ed.call("save_scene", scene=sid)
-    ed.check("Engine::setFoliageQualityDefaults(FoliageQuality::HIGH, FoliageQuality::LOW, FoliageQuality::LOW, false);"
-             in main.read_text(encoding="utf-8"), "a new project's Foliage Quality reaches the compiled game")
+    ed.check_eq(json.loads(game.read_text(encoding="utf-8")).get("foliageQuality"), ["high", "low", "low"],
+                "a new project's Foliage Quality reaches the game")
     await ed.call("set_project_settings", values={"quality.foliage_quality_mobile": "medium"})
     try:
         await ed.call("save_scene", scene=sid)
-        ed.check("Engine::setFoliageQualityDefaults(FoliageQuality::HIGH, FoliageQuality::MEDIUM, FoliageQuality::LOW, false);"
-                 in main.read_text(encoding="utf-8"), "a changed Foliage Quality follows")
+        ed.check_eq(json.loads(game.read_text(encoding="utf-8")).get("foliageQuality"), ["high", "medium", "low"],
+                    "a changed Foliage Quality follows")
     finally:
         await ed.call("set_project_settings", values={"quality.foliage_quality_mobile": "low"})
