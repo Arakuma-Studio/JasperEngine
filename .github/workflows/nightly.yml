@@ -435,11 +435,15 @@ jobs:
   # (tools/ci/plan_lanes.py NIGHTLY_LEFT_OUT: an MCP shard does not make one)
   # The Xcode project for iOS and macOS, whatever changed: the merge queue builds it only for an Apple-only
   # input (tools/ci/plan_lanes.py APPLE_INPUTS), so an iOS-only break the queue's macos lane did not catch
-  # shows here within a day. As ci.yml's ios job
+  # shows here within a day. As ci.yml's ios job, whose Xcode compilation cache entry this saves on main
+  # (one a day: a push would take a macOS runner for a lane the queue mostly leaves out)
   ios:
     name: ios
     runs-on: macos-latest
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write  # xcode-cache-save deletes the older entry
     env:
       JASPER_CI_REPRO: tools/ci/macos.sh xcode ios
     steps:
@@ -449,11 +453,19 @@ jobs:
       # dav1d's x86-64 asm: the simulator build has an x86_64 slice
       - name: NASM
         run: command -v nasm > /dev/null || tools/ci/retry.sh brew install nasm
+      # 2 GB: both SDKs' cache is 1.1-1.3 GB raw on the Mac, and grows by what each day changed
+      - uses: ./.github/actions/xcode-cache-restore
+        with:
+          fresh-over: '2000'
       - name: Xcode project (iOS)
+        id: ios
         run: tools/ci/macos.sh xcode ios
       - name: Xcode project (macOS)
+        id: macos
         if: ${{ !cancelled() }}
         run: tools/ci/macos.sh xcode macos
+      - uses: ./.github/actions/xcode-cache-save
+        if: github.ref == 'refs/heads/main' && steps.ios.outcome == 'success' && steps.macos.outcome == 'success'
       - uses: ./.github/actions/report
         if: always()
         with:

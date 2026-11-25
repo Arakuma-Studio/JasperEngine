@@ -10,6 +10,7 @@
 #include "component/ModelComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "model/ModelSettingsEdit.h"
+#include "pose/PoseRigProvider.h"
 #include "command/type/SetAssetMetaCmd.h"
 #include "util/FileUtils.h"
 
@@ -70,6 +71,7 @@ void MeshAuditWindow::applyFix(const ModelAuditRow& row, const ModelIssue& issue
             break;
         }
         case ModelIssue::Fix::Reimport:
+            PoseRigProvider::adoptNameRules(project, project->getAssetsPath() / FileUtils::pathFromUtf8(row.assetPath));
             ModelCookQueue::get().invalidate(row.assetPath);
             ModelCookQueue::get().request(row.assetPath, row.family, ModelCookQueue::Selected);
             break;

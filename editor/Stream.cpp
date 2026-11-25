@@ -2359,6 +2359,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showRootMotion"] = ds.showRootMotion;
     if (ds.showFootTrails)
         sceneNode["showFootTrails"] = ds.showFootTrails;
+    if (ds.showTorsoDirection)
+        sceneNode["showTorsoDirection"] = ds.showTorsoDirection;
     if (ds.drawMode != ViewDrawMode::SHADED)
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
@@ -2410,6 +2412,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     ds.showIK = node["showIK"] ? YamlNumbers::as<bool>(node["showIK"]) : false;
     ds.showRootMotion = node["showRootMotion"] ? YamlNumbers::as<bool>(node["showRootMotion"]) : false;
     ds.showFootTrails = node["showFootTrails"] ? YamlNumbers::as<bool>(node["showFootTrails"]) : false;
+    ds.showTorsoDirection = node["showTorsoDirection"] ? YamlNumbers::as<bool>(node["showTorsoDirection"]) : false;
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);

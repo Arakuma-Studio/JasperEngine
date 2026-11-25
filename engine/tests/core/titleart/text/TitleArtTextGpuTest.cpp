@@ -16,6 +16,7 @@
 #include "../support/TitleStandardTitle.h"
 
 #include "ImageCompare.h"
+#include "support/AllocationCounter.h"
 
 #include <chrono>
 #include <functional>
@@ -185,7 +186,10 @@ TEST_F(TitleArtTextGpu, ClassicFixture) {
     jasperengine::test::finishGpu();
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     const uint64_t fullPasses = renderer.stats().passes - before;
-    EXPECT_LE(ms, 8000.0);
+    // a wall-clock budget: enforced where perfSlack() asks for it (the benchmark run)
+    if (const double slack = testsupport::perfSlack(); slack > 0.0) {
+        EXPECT_LE(ms, 8000.0 * slack);
+    }
 
     auto variant = [&](const std::function<void(Json&)>& edit) {
         RenderRequest r = request;
