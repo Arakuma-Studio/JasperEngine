@@ -86,7 +86,7 @@ namespace {
         JE_FIELD(CameraComponent, useTarget, .updateFlags = kCamera, .uiOrder = 2),
         JE_FIELD(CameraComponent, autoResize, .updateFlags = kCamera, .uiOrder = 14),
         // S94 F28: Unity's Size, written only when set (0: off)
-        JE_FIELD(CameraComponent, orthographicSize, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(CameraComponent, orthographicSize, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault,
                  .updateFlags = kCamera, .unit = Unit::Meters, .min = 0.0f, .label = "Size",
                  .tooltip = "Half the view's height in world units; the width follows the aspect. 0: off, the clips stay as set.",
                  .visibleIf = &cameraOrthoOnly, .uiOrder = 7),

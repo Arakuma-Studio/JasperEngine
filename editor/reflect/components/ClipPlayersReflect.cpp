@@ -109,9 +109,9 @@ namespace {
         JE_FIELD(AnimationPlayerComponent, defaultFadeTime, .unit = Unit::Seconds),
         JE_FIELD(AnimationPlayerComponent, poseFrameRate, .flags = OmitIfDefault, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
                  .tooltip = "Frames per second the poses hold on (0: smooth). Each track steps from its previous key, so every key shows; fades step too, events fire at their true times.", .drawer = "poseFrameRate"),
-        JE_FIELD(AnimationPlayerComponent, applyRootMotion, .flags = OmitIfDefault | CodegenIfChanged, .label = "Apply Root Motion",
+        JE_FIELD(AnimationPlayerComponent, applyRootMotion, .flags = OmitIfDefault, .label = "Apply Root Motion",
                  .tooltip = "The base layer's clips' root motion moves the GameObject (or its Character Controller). Off, a clip with Root Transform settings plays in place."),
-        JE_FIELD(AnimationPlayerComponent, legacyRootDrift, .flags = OmitIfDefault | CodegenIfChanged, .label = "Legacy Root Drift",
+        JE_FIELD(AnimationPlayerComponent, legacyRootDrift, .flags = OmitIfDefault, .label = "Legacy Root Drift",
                  .tooltip = "Apply Root Motion off: a clip with Root Transform settings keeps its root's drift, as scenes saved before this version played it. Untick to play it in place, as Unity does."),
     };
 

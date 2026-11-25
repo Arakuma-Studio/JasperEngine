@@ -512,8 +512,8 @@ namespace {
         JE_FIELD(SpriteComponent, automaticFlipY, .updateFlags = kSprite),
         JE_FIELD(SpriteComponent, flipY, .updateFlags = kSprite),
         // S94 F29, F30: Unity's Flip X and Size (world units, an axis at 0 from width/height), written only when set
-        JE_FIELD(SpriteComponent, flipX, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kSprite, .label = "Flip X"),
-        JE_FIELD(SpriteComponent, size, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kSprite, .unit = Unit::Meters, .min = 0.0f,
+        JE_FIELD(SpriteComponent, flipX, .flags = OmitIfDefault, .updateFlags = kSprite, .label = "Flip X"),
+        JE_FIELD(SpriteComponent, size, .flags = OmitIfDefault, .updateFlags = kSprite, .unit = Unit::Meters, .min = 0.0f,
                  .tooltip = "The quad's size in world units (Sliced corners keep theirs). 0 on an axis: Width / Height over Pixels Per Unit."),
         JE_FIELD(SpriteComponent, textureScaleFactor, .updateFlags = kSprite, .min = 0.0f),
         JE_FIELD(SpriteComponent, pivotPreset, .enumDesc = &enums::kPivotPreset, .updateFlags = kSprite, .label = "Pivot"),

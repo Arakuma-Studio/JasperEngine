@@ -39,17 +39,15 @@ namespace enums {
 namespace {
 
     constexpr FieldDesc kOutlineFields[] = {
-        JE_FIELD(OutlineComponent, enabled, .flags = CodegenIfChanged),
-        JE_FIELD(OutlineComponent, mode, .enumDesc = &enums::kOutlineMode, .flags = OmitIfDefault | CodegenIfChanged, .label = "Outline Mode"),
-        JE_FIELD(OutlineComponent, color, .flags = OmitIfDefault | CodegenIfChanged | ColorLinear | Hdr, .label = "Outline Color"),
-        JE_FIELD(OutlineComponent, width, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f,
+        JE_FIELD(OutlineComponent, enabled),
+        JE_FIELD(OutlineComponent, mode, .enumDesc = &enums::kOutlineMode, .flags = OmitIfDefault, .label = "Outline Mode"),
+        JE_FIELD(OutlineComponent, color, .flags = OmitIfDefault | ColorLinear | Hdr, .label = "Outline Color"),
+        JE_FIELD(OutlineComponent, width, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .min = 0.0f,
                  .label = "Outline Width"),
-        JE_FIELD(OutlineComponent, widthUnits, .enumDesc = &enums::kOutlineWidthUnits, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(OutlineComponent, widthUnits, .enumDesc = &enums::kOutlineWidthUnits, .flags = OmitIfDefault,
                  .label = "Width Units"),
-        JE_FIELD(OutlineComponent, includeChildren, .flags = OmitIfDefault | CodegenIfChanged, .label = "Include Children"),
+        JE_FIELD(OutlineComponent, includeChildren, .flags = OmitIfDefault, .label = "Include Children"),
     };
-
-    constexpr const char* kOutlineCodegenOrder[] = {"mode", "color", "width", "widthUnits", "includeChildren", "enabled"};
 
 }
 
@@ -58,7 +56,6 @@ const ComponentDesc kOutlineDesc{
     .displayName = "Outline", .icon = ICON_FA_VECTOR_SQUARE,
     .body = JE_STRUCT_DESC(OutlineComponent, "OutlineComponent", kOutlineFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(OutlineComponent),
-    .codegenVar = "outline", .codegenOrder = kOutlineCodegenOrder,
 };
 
 }

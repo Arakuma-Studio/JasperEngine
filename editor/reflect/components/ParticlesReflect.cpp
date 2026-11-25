@@ -53,7 +53,7 @@ namespace {
         JE_FIELD(ParticleSystemComponent, collisionPlanes, .flags = NoDefault | ListWhole, .elementOps = &ops::Entity),
         // the old system's GameObject a migrated one came from (S94 F2): old scripts' wrappers
         // resolve through it; the migration writes it, nothing edits it
-        JE_FIELD(ParticleSystemComponent, legacyFrom, .ops = &ops::Entity, .flags = Hidden | OmitIfDefault | CodegenIfChanged),
+        JE_FIELD(ParticleSystemComponent, legacyFrom, .ops = &ops::Entity, .flags = Hidden | OmitIfDefault),
     };
 
     const ComponentCodec kParticleSystemCodec = JE_STREAM_CODEC(ParticleSystemComponent, encodeParticleSystemComponent, decodeParticleSystemComponent);
