@@ -20,6 +20,8 @@
 
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// its own name: another RgbaImage is in sight in some unity units
+using CleanupGridImage = jasperengine::editor::pixelart::cleanup::RgbaImage;
 
 namespace {
 
@@ -32,7 +34,7 @@ namespace {
 
     // core.test.ts's fix with `refine`: detect, cut, refine each axis on its own profile, snap
     struct GridFix {
-        RgbaImage image;
+        CleanupGridImage image;
         Detection detection;
         Grid grid;
         PixelArt art;
@@ -53,7 +55,7 @@ namespace {
     }
 
     // A rows-only blur pass of core.test.ts's square-cells case
-    RgbaImage blurRows(const RgbaImage& image, int passes) {
+    CleanupGridImage blurRows(const CleanupGridImage& image, int passes) {
         std::vector<uint8_t> data(image.pixels().begin(), image.pixels().end());
         const int w = image.width(), h = image.height();
         for (int pass = 0; pass < passes; pass++) {
@@ -72,7 +74,7 @@ namespace {
             }
             data = std::move(out);
         }
-        RgbaImage result(w, h);
+        CleanupGridImage result(w, h);
         std::copy(data.begin(), data.end(), result.editPixels().begin());
         return result;
     }
@@ -119,7 +121,7 @@ TEST(CleanupGrid, KeepsCellsSquareWhenBlurAlongOneAxisMakesAMultipleLookCleaner)
     options.blur = 1;
     options.noise = 6;
     options.seed = 1;
-    const RgbaImage image = blurRows(upscale(demoSprite(), options), 6);
+    const CleanupGridImage image = blurRows(upscale(demoSprite(), options), 6);
     const std::optional<Detection> detection = detectGrid(image);
     ASSERT_TRUE(detection);
     EXPECT_LT(std::abs(detection->spec.cellWidth - 9.4), 0.05);
@@ -134,10 +136,10 @@ TEST(CleanupGrid, FindsCellsAScreenshotStretchedOnOneAxisAndKeepsThemNearSquare)
     options.blur = 1;
     options.noise = 6;
     options.seed = 1;
-    const RgbaImage wide = upscale(demoSprite(), options);
+    const CleanupGridImage wide = upscale(demoSprite(), options);
     const double squeeze = 0.965;
     const int height = int(std::floor(wide.height() * squeeze));
-    RgbaImage image(wide.width(), height);
+    CleanupGridImage image(wide.width(), height);
     std::span<uint8_t> data = image.editPixels();
     for (int y = 0; y < height; y++) {
         const double from = std::min(double(wide.height() - 1), y / squeeze);
@@ -157,7 +159,7 @@ TEST(CleanupGrid, FindsCellsAScreenshotStretchedOnOneAxisAndKeepsThemNearSquare)
 }
 
 TEST(CleanupGrid, DoesNotInventAGridInABlankPicture) {
-    EXPECT_FALSE(detectGrid(RgbaImage(40, 40)));
+    EXPECT_FALSE(detectGrid(CleanupGridImage(40, 40)));
 }
 
 TEST(CleanupGrid, DetectsTheSameGridWhateverTheThreadCount) {
@@ -166,7 +168,7 @@ TEST(CleanupGrid, DetectsTheSameGridWhateverTheThreadCount) {
     options.offset = 3;
     options.blur = 1;
     options.noise = 6;
-    const RgbaImage image = upscale(makeSprite(32, 24, sweetie16(), 11), options);
+    const CleanupGridImage image = upscale(makeSprite(32, 24, sweetie16(), 11), options);
     const Detection serial = *detectGrid(image);
     // Eight threads, each taking every eighth index: a split unlike the serial one
     setParallelFor([](int count, const std::function<void(int)>& body) {
