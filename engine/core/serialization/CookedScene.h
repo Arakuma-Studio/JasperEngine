@@ -42,8 +42,9 @@ namespace jasperengine {
         // property values; 4: the planar reflections (water-reflections); 5: the Water Wakes' map (water-boats);
         // 6: the Box2D sub-steps and the physics world settings, and the scene hierarchy (S96); 7: a Mesh
         // Renderer's .mesh asset (S98 F1: its geometry is not in the scene), the scene resources' VATs,
-        // masks, controllers and bitmap fonts (S98 REQ-52), the scene's own Canvas Scaler (S98 D1)
-        constexpr uint16_t FORMAT_MINOR = 7;
+        // masks, controllers and bitmap fonts (S98 REQ-52), the scene's own Canvas Scaler (S98 D1); 8: the Light
+        // Steps and the 2D ambient without a Light 2D (S78)
+        constexpr uint16_t FORMAT_MINOR = 8;
         constexpr size_t HEADER_BYTES = 28;
 
         // entity record flags

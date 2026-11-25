@@ -69,8 +69,8 @@ namespace {
     // draw-perf's directional-only Lit ('Dlo'), bit 45, S41's Pixel Snap ('Pxs'), bits 46-48,
     // S52's pixel-art batching inputs ('Sfx', 'Sfr', 'Spv'), bits 49-51, T5's foliage ('Cin', 'Wnd',
     // 'Dth'), bit 52, T3's terrain holes ('Thl'), bit 53, T4's Terrain World ('Twd'), bit 54, S50's
-    // tile frame clamp ('Tcl'), bit 55, S78's Light Steps ('Lst', named once S78 lands), and bits 56-59, V1's
-    // Vertex Color Draw Mode view ('Vcv', 'Vcs', 'Vk1', 'Vk2')
+    // tile frame clamp ('Tcl'), bit 55, S78's Light Steps ('Lst'), and bits 56-59, V1's Vertex Color
+    // Draw Mode view ('Vcv', 'Vcs', 'Vk1', 'Vk2')
     const uint64_t meshValidMask = 0xFFFFFFFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
@@ -445,7 +445,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::DEPTH, shaderPropertyBit(19) | shaderPropertyBit(20), "depth_PxsSpv"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxsSfxSfrSpvCinWndDthThlTwdTclVcvVcsVk1Vk2"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxsSfxSfrSpvCinWndDthThlTwdTclLstVcvVcsVk1Vk2"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},
@@ -552,4 +552,15 @@ TEST(ShaderKey, TerrainWorldBitIsPinned) {
     for (uint64_t candidate : ShaderPool::getFallbackProperties(ShaderType::DEPTH, shaderPropertyBit(25) | shaderPropertyBit(0))) {
         EXPECT_NE(candidate & shaderPropertyBit(25), 0u);
     }
+}
+
+// S78 R3: 'Lst' came after T4's 'Twd' on MESH, pinned here; a stream landing before it moves it and
+// bumps the shader cache. It reads only u_fs_lighting2d, which 'L2d' uploads, so a fallback may drop it.
+TEST(ShaderKey, Light2DStepsBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getLight2DStepsProperty(), shaderPropertyBit(55));
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 55, true), "Lst");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::MESH, shaderPropertyBit(0) | shaderPropertyBit(22) | shaderPropertyBit(55)), "mesh_UltL2dLst");
+    ShaderKey parsed;
+    ASSERT_TRUE(ShaderPool::parseShaderStr("mesh_UltL2dLst", parsed));
+    EXPECT_EQ(parsed, ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(0) | shaderPropertyBit(22) | shaderPropertyBit(55)));
 }
