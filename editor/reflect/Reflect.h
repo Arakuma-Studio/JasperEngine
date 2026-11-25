@@ -56,7 +56,7 @@ namespace jasperengine::editor::reflect {
         Tileset,        // a .tileset (S50)
         TitleArt,       // a .titleart (S81's Title Art Renderer)
         Mesh,           // a .mesh (S98 F1: a Mesh Renderer's geometry)
-        FogProfile      // a .fogprofile (docs/specs/vapor.md R1)
+        FogProfile      // a .fogprofile (docs/specs/S101-vapor.md R1)
     };
 
     // How a field holds an asset reference (editor/asset/AssetRefSchema generates its table from the

@@ -246,7 +246,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<WheelColliderComponent>(ComponentOrder::Insertion, "WheelColliderComponent");
     registerComponent<VehicleDrivetrainComponent>(ComponentOrder::Insertion, "VehicleDrivetrainComponent");
 #endif
-    // docs/specs/vapor.md R40: appended, so no ComponentType moves
+    // docs/specs/S101-vapor.md R40: appended, so no ComponentType moves
     registerComponent<FogZoneComponent>(ComponentOrder::Insertion, "FogZoneComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());

@@ -91,7 +91,7 @@ namespace jasperengine{
         // the Fog's own fields; false for an unknown one. Profiles are the shared looks.
         bool applyPreset(const std::string& preset);
 
-        // The Fog Profile (docs/specs/vapor.md R7, R10): a .fogprofile path (assets-relative),
+        // The Fog Profile (docs/specs/S101-vapor.md R7, R10): a .fogprofile path (assets-relative),
         // "builtin:<id>", a runtime key ("runtime:<n>"), or "" for none. While the game runs,
         // setting it applies a runtime profile at once (never saved) and cancels a blend;
         // otherwise it sets the saved reference. The getter names the one in use.

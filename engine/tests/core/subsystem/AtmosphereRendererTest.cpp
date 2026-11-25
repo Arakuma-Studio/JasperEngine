@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The volumetric fog's choice of point and spot lights (docs/specs/vapor.md R13, AC6): lit ones
+// The volumetric fog's choice of point and spot lights (docs/specs/S101-vapor.md R13, AC6): lit ones
 // whose bounding sphere is in the view frustum and within the volumetric distance, the nearest
 // first, capped by the tier, with the reason of every light left out.
 

@@ -1,4 +1,4 @@
-"""The Fog Profile Inspector (docs/specs/vapor.md R23, R24, R26, R27, AC11), driven like a person
+"""The Fog Profile Inspector (docs/specs/S101-vapor.md R23, R24, R26, R27, AC11), driven like a person
 (xdotool in the harness's Xvfb, aimed where find_ui_item says a control is drawn now).
 
 1. A Fog linked to a .fogprofile draws the Profile row and a Set by profile box on every look row;

@@ -18,7 +18,7 @@ namespace jasperengine{
 
     enum class AtmosphereSeverity : uint8_t { Info, Warning, Error };
 
-    // Why the fog of a scene shows less (or more) than its author expects (docs/specs/vapor.md
+    // Why the fog of a scene shows less (or more) than its author expects (docs/specs/S101-vapor.md
     // R17): a stable code, a sentence naming what was found and one naming the fix. The same
     // strings are the inspector's help boxes and get_atmosphere_info's diagnostics.
     struct AtmosphereDiagnostic{

@@ -11813,7 +11813,7 @@ void editor::InspectorWindow::drawAtmosphereDiagnostics(SceneProject* sceneProje
 void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     FogComponent& fog = sceneProject->scene->getComponent<FogComponent>(entities[0]);
     const bool height = fog.type == FogType::HEIGHT;
-    // what the look rows show: the Fog's own fields under its profile's (docs/specs/vapor.md R24)
+    // what the look rows show: the Fog's own fields under its profile's (docs/specs/S101-vapor.md R24)
     const std::shared_ptr<const FogProfileData> linked = FogProfileLibrary::getRef(fog.profile);
     const FogComponent shown = LinkFogProfileCmd::resolvedLook(fog, linked.get());
 
@@ -11873,7 +11873,7 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
         RowSettings settingsColorMode;
         settingsColorMode.enumEntries = &entriesFogColorMode;
         settingsColorMode.help = reflectedHelp("colorMode");
-        // the Lit colour mode's rows (docs/specs/vapor.md R30); its Color is unused
+        // the Lit colour mode's rows (docs/specs/S101-vapor.md R30); its Color is unused
         const bool lit = shown.colorMode == FogColorMode::LIT;
         RowSettings settingsAlbedo;
         settingsAlbedo.help = reflectedHelp("albedo");

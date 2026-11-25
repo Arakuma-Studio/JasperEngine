@@ -1,4 +1,4 @@
-"""Vapor's atmosphere diagnostics and opacity through get_atmosphere_info (docs/specs/vapor.md R17,
+"""Vapor's atmosphere diagnostics and opacity through get_atmosphere_info (docs/specs/S101-vapor.md R17,
 R18, R34, AC9, AC10): each state an agent meets when "the fog isn't showing" comes back as a
 diagnostic naming the cause, its entity and its fix, with the tool route in `next`; fixing the
 cause clears it. The opacity estimate thins and thickens with the fog and says it counts the

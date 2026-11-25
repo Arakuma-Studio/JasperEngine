@@ -1,6 +1,6 @@
 #version 450
 
-// Atmosphere/Denoise: one 3x3 (or, the Low tier's volumetric fog, 5x5: docs/specs/vapor.md R15)
+// Atmosphere/Denoise: one 3x3 (or, the Low tier's volumetric fog, 5x5: docs/specs/S101-vapor.md R15)
 // depth-aware blur of a reduced-resolution (S, T) target (the volumetric fog, the Screen
 // clouds), which removes the static jitter's pattern without bleeding across depth edges: each
 // neighbour weighs by a binomial kernel times exp(-|z - zCentre| / (0.05 zCentre)) on the

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The CPU opacity estimate (docs/specs/vapor.md R18, AC10) against the GPU's analytic fog: for
+// The CPU opacity estimate (docs/specs/S101-vapor.md R18, AC10) against the GPU's analytic fog: for
 // each built-in fog look, a black wall straight ahead of the main camera at 10, 50 and 200 m,
 // seen through that look's medium lit by a white fog colour alone, so the pixel is the fog's
 // opacity (S = colour (1 - T) over black). AtmosphereDiagnostics::estimateOpacity must match the

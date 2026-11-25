@@ -215,7 +215,7 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".soundevent";
         }
 
-        // Fog Profiles (docs/specs/vapor.md R1)
+        // Fog Profiles (docs/specs/S101-vapor.md R1)
         inline static bool isFogProfileFile(const std::string& path) {
             return fileExtension(path) == ".fogprofile";
         }

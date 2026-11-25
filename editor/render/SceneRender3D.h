@@ -68,7 +68,7 @@ namespace jasperengine::editor{
         GizmoLineBatch reflectionProbeLines;
         // a selected Local Volumetric Fog's outer shape and its inner (blend distance) one
         GizmoLineBatch fogVolumeLines;
-        // a selected Fog Zone's shape and, fainter, its blend shell (docs/specs/vapor.md R27)
+        // a selected Fog Zone's shape and, fainter, its blend shell (docs/specs/S101-vapor.md R27)
         GizmoLineBatch fogZoneLines;
         GizmoLineBatch controllerLines;
         GizmoLineBatch waterVolumeLines;

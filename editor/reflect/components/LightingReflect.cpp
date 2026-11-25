@@ -193,7 +193,7 @@ namespace {
         JE_FIELD(FogComponent, type, .enumDesc = &enums::kFogType,
                  .tooltip = "Linear, Exponential, Exponential Squared: fog by distance. Height: physically based fog, dense up to the Base "
                             "Height and thinning above it, lit by the sun, with an optional volumetric part."),
-        // docs/specs/vapor.md R39: written only when set, so a Fog without one is as it was
+        // docs/specs/S101-vapor.md R39: written only when set, so a Fog without one is as it was
         JE_FIELD(FogComponent, profile, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault, .asset = AssetKind::FogProfile,
                  .label = "Profile",
                  .tooltip = "A Fog Profile (.fogprofile): the look fields it sets come from it and are shared by every Fog and Fog Zone "

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Inspector's Fog Profile parts (docs/specs/vapor.md R23-R27):
+// The Inspector's Fog Profile parts (docs/specs/S101-vapor.md R23-R27):
 // - the Profile row of a Fog and a Fog Zone: the asset field with its menu (None, the built-ins,
 //   the project's .fogprofile files) and a .fogprofile dropped on it, Used by N, New, Duplicate
 //   and Unlink, each one undo step (LinkFogProfileCmd), disabled while playing;

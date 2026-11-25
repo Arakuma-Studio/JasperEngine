@@ -30,7 +30,7 @@ namespace {
         std::vector<ShaderKey> keys;
         for (ShaderType type : ATMOSPHERE_TYPES)
             keys.push_back(ShaderPool::getShaderKey(type, 0));
-        // the fog's 'Pnt' variant: a shadowed point fog light (docs/specs/vapor.md R14)
+        // the fog's 'Pnt' variant: a shadowed point fog light (docs/specs/S101-vapor.md R14)
         keys.push_back(ShaderPool::getShaderKey(ShaderType::VOLUMETRIC_FOG, 1));
         // a lit PBR mesh (punctual, shadows, normals, fog, IBL) and an unlit one: the fog carries the height fog
         const uint64_t lit = ShaderPool::getMeshProperties(false, true, false, true, true, true, false, false, false, false, false,
@@ -67,7 +67,7 @@ TEST(AtmosphereShaderBuild, EveryProgramEveryBackend){
     }
 }
 
-// docs/specs/vapor.md R19: on GLES3 (and WebGL2) the fog pass with the point lights' shadows fits
+// docs/specs/S101-vapor.md R19: on GLES3 (and WebGL2) the fog pass with the point lights' shadows fits
 // the 16 fragment texture units and the 224 fragment uniform vectors every device has; without
 // a shadowed point light (the plain variant) it declares neither the point block nor its atlas
 TEST(AtmosphereShaderBuild, FogPointShadowsFitGles3Limits){

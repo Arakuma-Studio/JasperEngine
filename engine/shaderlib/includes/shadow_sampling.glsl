@@ -382,7 +382,7 @@ float shadowSpot(int slot, vec3 lightPosition, vec3 worldPos, vec3 worldNormal, 
 }
 
 // SHADOW_RAY_TAPS (volumetric_fog.frag only): the ray lookups of the fog lights and the softer sun
-// shafts (docs/specs/vapor.md R14, R15). Every other includer keeps the one-tap lookup it had, so
+// shafts (docs/specs/S101-vapor.md R14, R15). Every other includer keeps the one-tap lookup it had, so
 // its programs preprocess as before (ShaderZeroCost.DefaultVariantsUnchanged)
 #ifdef SHADOW_RAY_TAPS
 // The main directional light at a world position (1 lit, 0 shadowed) through one comparison
@@ -427,7 +427,7 @@ float sampleDirectionalShadow1(vec3 worldPos){
 }
 
 // two taps offsetTexels apart from worldPos's, either side (the softer light shafts,
-// docs/specs/vapor.md R15)
+// docs/specs/S101-vapor.md R15)
 float sampleDirectionalShadow2(vec3 worldPos, vec2 offsetTexels){
     return shadowDirectionalRay(worldPos, true, offsetTexels);
 }

@@ -1,4 +1,4 @@
-"""Vapor's Fog Profiles and Fog Zones through MCP (docs/specs/vapor.md R31-R35, R43, AC12, AC13):
+"""Vapor's Fog Profiles and Fog Zones through MCP (docs/specs/S101-vapor.md R31-R35, R43, AC12, AC13):
 linking a built-in makes its project copy in the same undo step, edit_fog_profile edits the file
 as one undo step of the project, a Fog Zone's weight follows the camera in get_atmosphere_info,
 the profile and zone diagnostics come and go with their cause, unlinking keeps the look,

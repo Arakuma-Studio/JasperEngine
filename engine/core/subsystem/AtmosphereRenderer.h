@@ -117,7 +117,7 @@ namespace jasperengine{
     } volumetric_composite_t;
 
     // What a view's last frame ran (get_atmosphere_info)
-    // A point or spot light the volumetric fog considered in the last frame (docs/specs/vapor.md
+    // A point or spot light the volumetric fog considered in the last frame (docs/specs/S101-vapor.md
     // R13, R14, R17). reason is empty when scattered, else why not: "intensity",
     // "volumetric_intensity", "distance", "frustum" or "tier_cap".
     struct AtmosphereFogLight{
@@ -295,7 +295,7 @@ namespace jasperengine{
         // scene is still loading: RenderSystem::isAllLoaded)
         bool isLoading() const { return loading; }
 
-        // The fog lights of a view (docs/specs/vapor.md R13): lit (intensity and volumetric
+        // The fog lights of a view (docs/specs/S101-vapor.md R13): lit (intensity and volumetric
         // intensity above 0), their bounding sphere (range; unlimited: everywhere) in the frustum
         // and within maxDistance, the nearest first, at most cap. considered gets one record per
         // light, in the given order, with the reason of those not selected (shadowed is left

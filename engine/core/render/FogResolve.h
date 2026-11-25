@@ -4,7 +4,7 @@
 #ifndef FOG_RESOLVE_H
 #define FOG_RESOLVE_H
 
-// One view's fog look (docs/specs/vapor.md R7-R11, R43). Layers apply in order, each for the
+// One view's fog look (docs/specs/S101-vapor.md R7-R11, R43). Layers apply in order, each for the
 // fields it sets:
 //   1. the Fog's own fields;
 //   2. its linked profile (a runtime one replaces the saved one while set);

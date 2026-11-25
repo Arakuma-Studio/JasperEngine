@@ -4,7 +4,7 @@
 // Particle systems on the headless device (docs/specs/S20-particles.md AC6, AC8): one golden per
 // render mode family: the billboard alignments, stretched billboards, mesh particles, frame
 // blending, six-way lighting, soft particles with the near fade, and trails and ribbons, and
-// particles in a ground mist taking the meshes' height fog (docs/specs/vapor.md AC8). Each
+// particles in a ground mist taking the meshes' height fog (docs/specs/S101-vapor.md AC8). Each
 // system is seeked to a fixed time with a fixed seed and paused, so every frame draws the same
 // particles. Goldens in engine/tests/core/golden/particles_*.png, made on glcore
 // (JASPER_TEST_UPDATE_GOLDEN=1) and matched on the other backends within the cross-backend bound.

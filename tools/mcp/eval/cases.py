@@ -1453,7 +1453,7 @@ CASES = [
                          "4/4 with the next; 0/4 when it names create_entity only.",
         "text_at_issue": "get_scene_settings' next in a 3D scene without a Fog ('No Fog in this scene: fog, haze or mist is a "
                          "Fog GameObject, not a scene setting ...'); list_atmosphere_presets' fog result (the built-in ids)",
-        "source": "eval runs of this case on docs/specs/vapor.md R37's surface (every sample opened get_scene_settings first)",
+        "source": "eval runs of this case on docs/specs/S101-vapor.md R37's surface (every sample opened get_scene_settings first)",
         "prompt": "Add a soft morning haze over the level.",
         "mocks": [
             {"tool": "get_scene_settings", "after": "create_entity", "result": {"recorded": "get_scene_settings_fog"}},
@@ -1499,7 +1499,7 @@ CASES = [
                          "apply_atmosphere_preset sentence on Fog Zones: agents found fog_zone through create_entity's types and "
                          "list_component_types anyway (3/3), so the sentence was cut and this case guards the route.",
         "text_at_issue": "create_entity's type fog_zone; list_component_types' Fog Zone; docs/mcp/guide/atmosphere.md Fog Zones",
-        "source": "docs/specs/vapor.md R37 (the first new case): a fog for one cave goes through a Fog Zone",
+        "source": "docs/specs/S101-vapor.md R37 (the first new case): a fog for one cave goes through a Fog Zone",
         "prompt": "Inside the cave (the Cave GameObject, a hollow rock box around x=40) the fog should be thick and dark green "
                   "whenever the camera is in there. Outside it the level keeps its light haze. Set that up.",
         "mocks": [
@@ -1551,7 +1551,7 @@ CASES = [
                          "For this scene only: edit_fog_profile {path: <a new .fogprofile>, from: {profile}}, then "
                          "apply_atmosphere_preset'); edit_fog_profile description ('It changes every user: for one scene only, "
                          "create a copy (from: {profile}) and link that.')",
-        "source": "docs/specs/vapor.md R37 (the third new case), R43",
+        "source": "docs/specs/S101-vapor.md R37 (the third new case), R43",
         "prompt": "Make the fog in Main much denser: attenuation distance 30. Level2 uses the same fog profile and must keep "
                   "its look.",
         # the shared profile, as the editor copied builtin night on first use
@@ -1616,7 +1616,7 @@ CASES = [
         "text_at_issue": "get_atmosphere_info description ('... diagnostics: why fog does not show or looks wrong, each with "
                          "its fix. Call it first when fog is missing ...'); its result's diagnostics (scene_view_fog_disabled) "
                          "and next ('set_scene_camera {display: {disable_fog: false}}'); docs/mcp/guide/atmosphere.md Diagnostics",
-        "source": "docs/specs/vapor.md R37 (the second case): an agent reads diagnostics and fixes the named cause",
+        "source": "docs/specs/S101-vapor.md R37 (the second case): an agent reads diagnostics and fixes the named cause",
         "prompt": "I added a height fog to Main (the Fog GameObject), but I can't see any fog in the editor. Fix it.",
         "mocks": [
             {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings_fog"}},

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Fog Profiles and Fog Zones in Lua (docs/specs/vapor.md R36, R43): FogProfile (load, builtin,
+// Fog Profiles and Fog Zones in Lua (docs/specs/S101-vapor.md R36, R43): FogProfile (load, builtin,
 // get, isSet, clone; a clone's set and clear), Fog's profile, blendTo, blending, getResolved,
 // clearOverride and clearOverrides, and the FogZone GameObject. Colours are sRGB here, as Fog's
 // own colour properties; the files and the components hold them linear.

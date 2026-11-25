@@ -7380,7 +7380,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         // the fluids too: back to the edit-mode start, not the game's last frame
         restartFluids(sceneProject->scene);
         // and the fog: its blends, runtime profile and script writes were the Play's (the
-        // snapshot's decode keeps what it does not hold, docs/specs/vapor.md R43)
+        // snapshot's decode keeps what it does not hold, docs/specs/S101-vapor.md R43)
         FogScene::resetRuntime(sceneProject->scene);
 
         sceneProject->playState = ScenePlayState::STOPPED;

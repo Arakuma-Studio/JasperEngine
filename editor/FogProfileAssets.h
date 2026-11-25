@@ -3,7 +3,7 @@
 
 #pragma once
 
-// The project's Fog Profiles (docs/specs/vapor.md R1-R6, R23, R31-R33) for the inspectors, the
+// The project's Fog Profiles (docs/specs/S101-vapor.md R1-R6, R23, R31-R33) for the inspectors, the
 // commands and MCP: listing them, the one way a profile is named (a .fogprofile path, or
 // "builtin:<id>", which resolves through the project's copy of that built-in,
 // assets/FogProfiles/<id>.fogprofile, made on first use and reused afterwards), who uses one,

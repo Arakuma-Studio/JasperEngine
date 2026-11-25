@@ -1030,7 +1030,7 @@ namespace jasperengine::editor{
         // Cast Shadows, the capsule list (up to 8) and Fit To Skeleton, each an undo step
         void drawCapsuleShadowCasterComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        // ---- Fog Profiles (InspectorFogProfiles.cpp, docs/specs/vapor.md R23-R27)
+        // ---- Fog Profiles (InspectorFogProfiles.cpp, docs/specs/S101-vapor.md R23-R27)
         // (shared: the state's type stays out of this header)
         std::shared_ptr<InspectorFogState> fogState;
         InspectorFogState& fogProfileState();
@@ -1057,7 +1057,7 @@ namespace jasperengine::editor{
         Command* fogProfileEditCmd = nullptr;
         // drawn by the next propertyHeader before the row's label (the Fog's Set by profile box)
         std::function<void()> propertyLabelPrefix;
-        // the atmosphere's diagnostics about entity (docs/specs/vapor.md R28), as help boxes;
+        // the atmosphere's diagnostics about entity (docs/specs/S101-vapor.md R28), as help boxes;
         // volumeSetup adds the scene's and the Fog's reasons a Local Volumetric Fog does not show;
         // tableRow puts them in a row of their own under the open table's values
         void drawAtmosphereDiagnostics(SceneProject* sceneProject, Entity entity, bool volumeSetup, bool tableRow = false);

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The atmosphere's diagnostics (docs/specs/vapor.md R17, AC9): each test builds the state that
+// The atmosphere's diagnostics (docs/specs/S101-vapor.md R17, AC9): each test builds the state that
 // raises one code, expects it, fixes the cause and expects it gone. Fog Profiles are set in the
 // library (no files). The view's last frame is an
 // AtmosphereInfo built here (what RenderSystem::getAtmosphereInfo would hand over).

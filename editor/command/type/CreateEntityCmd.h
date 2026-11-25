@@ -139,7 +139,7 @@ namespace jasperengine::editor{
         TITLE_ART_SPRITE,
         // not a GameObject: the Hierarchy's "3D Object > Vehicle..." makes the rig (VehicleRig.h, S96)
         VEHICLE_RIG,
-        // GameObject > Effects > Fog Zone (docs/specs/vapor.md R27): a Transform and a Fog Zone
+        // GameObject > Effects > Fog Zone (docs/specs/S101-vapor.md R27): a Transform and a Fog Zone
         FOG_ZONE
     };
 

@@ -6,9 +6,6 @@ plus ten domain reports). OpenEngine's source is available read-only at
 `/var/lib/orquester/workspaces/jaspersito/JasperEngine-2/external/OpenEngine`. It is reference material: copy or adapt code where it is good, write better code where
 we can. Specs describe WHAT and the acceptance bar, not a step-by-step implementation plan.
 
-New specs are not numbered: name the file after the feature (`vapor.md`), and use that name in
-the index's ID column.
-
 ## Global decisions (apply to every spec)
 
 - **C++20** is the engine/editor/project standard (S01 lands first). Use C++20 freely (concepts,
@@ -150,7 +147,7 @@ the index's ID column.
 | BF23 | Fixes from the authoring audit: sub-emitter drawing, silent agent failures in the graph and particle tools, Animator window bugs, doc drift; lands before S90 and S91 | Authoring (fixes first) |
 | S90 | Procedural Material: `.procmat` node graphs baked in the editor to 8-bit textures and a `.material`, evaluated on GPU, then software renderer, then a CPU SPIR-V interpreter; node library ported as data from Material Maker behind a licence deny-list | Authoring (spec-first) |
 | S91 | Effect authoring on S20: Particle Effect window, timing bars, `preview_particle_effect` filmstrip and checks, sub-emitter drawing, distortion, ring renderer, triggers, dynamic parameters, sprite-sheet bake; ideas only from Effekseer | Authoring (spec-first) |
-| vapor | Fog Profiles (Vapor ideas, `vapor.md`): `.fogprofile` assets with per-field overrides linked from Fog, camera-blended Fog Zones, `blendTo`, Lit colour mode, fog lights on every tier with shadows, softer shafts, particle height fog, atmosphere diagnostics and opacity estimates | Atmosphere follow-up (spec-first) |
+| S101 | Fog Profiles (Vapor ideas): `.fogprofile` assets with per-field overrides linked from Fog, camera-blended Fog Zones, `blendTo`, Lit colour mode, fog lights on every tier with shadows, softer shafts, particle height fog, atmosphere diagnostics and opacity estimates | Atmosphere follow-up (spec-first) |
 | T1 | Terrain operations and authoring: one operation engine and surface query behind brushes, MCP, Lua and bakes; delta undo, spaced stamps; Create Terrain, overlays, Raw import/export; `edit_terrain`, `visualize_terrain`, richer `sample_terrain`; Lua height queries and runtime edits | 5 (terrain; spec-first) |
 | T2 | Noise graphs and terrain generation: deterministic noise library (`engine/core/noise`, golden hashes on every target), `.noisegraph` (first real graph kind), compiler with ranges and profile, erosion, `generate_terrain`, `preview_noise_graph`, presets, GraphCanvas pins, Noise Graph window, Lua `Noise`/`NoiseGraph`, player module `JASPERENGINE_NOISE` | 5 (terrain; spec-first) |
 | T3 | Terrain materials and holes: Quality tiers (High, Medium, Low with a hard fetch budget), top-N layer cap, macro variation, distance resampling, cliff projection, macro normal map, 12 layers, compressed layer arrays, off-screen shadow casters; holes that agree across rendering, collision, navmesh, picking, foliage and splines | 5 (terrain; spec-first) |

@@ -3460,7 +3460,7 @@ OVERRIDES[('Palette', 'getRamp')] = {
 PROPERTY_OVERRIDES[('Palette', 'variants')] = ('string[]', True)
 PROPERTY_OVERRIDES[('Palette', 'ramps')] = ('string[]', True)
 
-# Fog Profiles (docs/specs/vapor.md R36, R43; FogClassesLua.cpp): the field functions read a field
+# Fog Profiles (docs/specs/S101-vapor.md R36, R43; FogClassesLua.cpp): the field functions read a field
 # name and a value of that field's type from the Lua stack (colours sRGB, as Fog's properties)
 _FOG_VALUE = 'number|boolean|Vector3|FogColorMode'
 _FOG_PROFILE = 'FogProfile|string|nil'

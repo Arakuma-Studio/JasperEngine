@@ -647,7 +647,7 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
     block.camera = Vector4(cameraForward(camera), orthographic ? 1.0f : 0.0f);
     // light shafts: the main directional light's cascades of this camera pass (S10's
     // u_fs_shadow_data, includes/shadow_sampling.glsl sampleDirectionalShadow1 and 2); with them
-    // the fog lights' shadows (docs/specs/vapor.md R14)
+    // the fog lights' shadows (docs/specs/S101-vapor.md R14)
     const RenderSystem::CameraShadows& shadows = rs->ps();
     const fs_shadow_data_t& shadowData = shadows.fs_shadow_data;
     const bool fogShadows = fog->lightShafts && rs->hasShadows;

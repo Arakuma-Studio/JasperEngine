@@ -2,8 +2,8 @@
 the menus create, every new field settable with one undo step each, the presets (list, apply as
 one named undo step), the Scene view's Fog and Clouds toggles (that view only), the Inspector's
 height fog foldouts and the project's per-platform Atmosphere Quality. Fog presets are Fog Profiles
-(docs/specs/vapor.md R32): applying one links it. The Lit colour mode
-(docs/specs/vapor.md R12, R30): its fields with one undo step each, and its Inspector rows shown
+(docs/specs/S101-vapor.md R32): applying one links it. The Lit colour mode
+(docs/specs/S101-vapor.md R12, R30): its fields with one undo step each, and its Inspector rows shown
 only in Lit, in place of the unused Color.
 
 Runs in one new empty project; tests run in order and share the editor.
@@ -112,7 +112,7 @@ async def test_presets(ed: Editor):
     ed.check_eq([p["id"] for p in cloud_presets["presets"]], ["custom", "sparse", "cloudy", "overcast", "stormy"],
                 "Custom and four cloud looks")
 
-    # a fog preset links the Fog to that built-in profile's project copy (docs/specs/vapor.md R32)
+    # a fog preset links the Fog to that built-in profile's project copy (docs/specs/S101-vapor.md R32)
     before = await values(ed, s["fog"], "fog")
     applied = await ed.call("apply_atmosphere_preset", scene=s["scene"], entity=s["fog"], preset="ground_mist")
     ed.check(applied["changed"], "the preset changed the fog")

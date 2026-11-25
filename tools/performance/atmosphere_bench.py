@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The atmosphere's performance gate (docs/specs/S12-atmosphere.md R18, R19, AC10; docs/specs/vapor.md R22).
+"""The atmosphere's performance gate (docs/specs/S12-atmosphere.md R18, R19, AC10; docs/specs/S101-vapor.md R22).
 
     uv run --no-project --with-requirements tools/mcp/requirements.txt \\
         python tools/performance/atmosphere_bench.py [--width 1920 --height 1080] [--frames 300] [--json out.json]
@@ -109,7 +109,7 @@ CONFIGS = [
     ("clouds_low", {"type": "height", "skyFill": True, "volumetric": False}, True, "low"),
     ("clouds_medium", {"type": "height", "skyFill": True, "volumetric": False}, True, "medium"),
     ("clouds_high", {"type": "height", "skyFill": True, "volumetric": False}, True, "high"),
-    # the shadowed fog lights (vapor.md R22), each after its baseline: the same lights unscattered
+    # the shadowed fog lights (S101-vapor.md R22), each after its baseline: the same lights unscattered
     ("fog_spots1_low_base", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "low"),
     ("fog_spots1_low", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "low"),
     ("fog_spots2_medium_base", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "medium"),

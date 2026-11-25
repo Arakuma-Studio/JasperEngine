@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Fog Profiles and Fog Zones in Lua (docs/specs/vapor.md R36, R43, AC13's engine part):
+// Fog Profiles and Fog Zones in Lua (docs/specs/S101-vapor.md R36, R43, AC13's engine part):
 // FogProfile.load / builtin, get, isSet, clone with set and clear (the shared ones read-only),
 // Fog.profile, blendTo on game time, blending, getResolved, the runtime writes and their clears,
 // and FogZone's fields.

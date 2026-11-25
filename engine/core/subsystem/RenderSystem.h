@@ -2012,7 +2012,7 @@ namespace jasperengine{
 		// volumetric fog, clouds and their composites (AtmosphereRenderer)
 		height_fog_t passHeightFog;
 		AtmosphereRenderer atmosphere;
-		// the fog look the passes read (docs/specs/vapor.md R7, R11): the scene's first Fog
+		// the fog look the passes read (docs/specs/S101-vapor.md R7, R11): the scene's first Fog
 		// itself, or its resolve at the camera being drawn when a profile, a blend, a Fog Zone
 		// or a runtime write layers on it (render/FogResolve.h); null without a Fog
 		struct FogLook;
@@ -3851,7 +3851,7 @@ namespace jasperengine{
 		void setPreviewAtmosphereQuality(int quality);
 		// what the atmosphere ran in the last frame of a view (0: the frame's own)
 		const AtmosphereInfo& getAtmosphereInfo(uint32_t viewId = 0);
-		// the fog look the frame's passes read (docs/specs/vapor.md R7): the scene's first Fog
+		// the fog look the frame's passes read (docs/specs/S101-vapor.md R7): the scene's first Fog
 		// itself when nothing layers on it (R11), else its resolve at the main camera; null
 		// without a Fog. A view drawn from another camera resolves its own (Fog Zones).
 		const FogComponent* getFogLook() const { return frameFog; }

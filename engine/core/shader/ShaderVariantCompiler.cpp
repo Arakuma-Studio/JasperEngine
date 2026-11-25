@@ -560,7 +560,7 @@ void addParticlesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & (1 << 9)) {                                                    // 'Fog'
         defs.push_back({"HAS_FOG", "1"});
         // the height fog as the mesh variants take it, chosen by its block at run time
-        // (includes/fog.glsl, docs/specs/vapor.md R16)
+        // (includes/fog.glsl, docs/specs/S101-vapor.md R16)
         defs.push_back({"HAS_HEIGHT_FOG", "1"});
     }
     if (prop & (1 << 10)) defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'

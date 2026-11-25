@@ -5,7 +5,7 @@
 // Volumetric Fog, Volumetric Clouds and the Light's volumetric intensity round-trips; a distance
 // fog writes exactly the keys it always wrote; an old scene's Fog loads with the new defaults;
 // an older editor keeps a height fog's fields as unknown data (S03 preservation, no format
-// version change: docs/data-safety.md). The Fog's profile and the Fog Zone (docs/specs/vapor.md
+// version change: docs/data-safety.md). The Fog's profile and the Fog Zone (docs/specs/S101-vapor.md
 // R39, R40, AC1) are written only when set, without a version change.
 
 #include "Stream.h"
@@ -187,7 +187,7 @@ TEST(StreamAtmosphere, SerializeLightVolumetricIntensity){
     EXPECT_FLOAT_EQ(back.volumetricIntensity, 2.5f);
 }
 
-// docs/specs/vapor.md R12, R39: the Lit colour mode's fields are written only away from their
+// docs/specs/S101-vapor.md R12, R39: the Lit colour mode's fields are written only away from their
 // defaults (a scene without Lit is written as it was) and read back when set
 TEST(StreamAtmosphere, SerializeLitFieldsOmitIfDefault){
     FogComponent fog = everyHeightFogField();

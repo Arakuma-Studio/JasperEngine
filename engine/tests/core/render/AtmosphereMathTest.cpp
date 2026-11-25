@@ -5,7 +5,7 @@
 // closed-form optical depth against a numeric integration of the density, the composition of
 // ray segments the volumetric fog's handoff relies on (docs/specs/S12-atmosphere.md AC3), the
 // phase function, the Sky Map's hemi-octahedral mapping and the Local Volumetric Fog volumes'
-// density and selection (AC7), and the Lit colour mode's light (docs/specs/vapor.md AC5).
+// density and selection (AC7), and the Lit colour mode's light (docs/specs/S101-vapor.md AC5).
 
 #include "render/AtmosphereMath.h"
 #include "component/CameraComponent.h"
@@ -191,7 +191,7 @@ TEST(AtmosphereMath, HorizonRingBlendsByAzimuth){
     EXPECT_NEAR(between.y, 0.5f, 1e-5f);
 }
 
-// docs/specs/vapor.md R12, AC5: Lit fog's light is albedo × (sun·inscatter·HG + scene ambient ×
+// docs/specs/S101-vapor.md R12, AC5: Lit fog's light is albedo × (sun·inscatter·HG + scene ambient ×
 // ambient multiplier) + emissive; the analytic fog reads it as one colour and one sun colour
 TEST(AtmosphereMath, LitColourFromAmbientAndSun){
     FogComponent fog = heightFog();
@@ -299,7 +299,7 @@ TEST(Atmosphere, VolumeSelection){
     EXPECT_EQ(ties[selected[0]].entity, 3u);
 }
 
-// why each volume was left out (docs/specs/vapor.md R17's volume_culled)
+// why each volume was left out (docs/specs/S101-vapor.md R17's volume_culled)
 TEST(Atmosphere, VolumeSelectionReasons){
     Plane planes[6];
     atmosphereMathBoxFrustum(planes);

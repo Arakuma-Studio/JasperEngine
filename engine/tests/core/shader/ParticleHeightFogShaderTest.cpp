@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The fogged particle variants take the height fog as the mesh's do (docs/specs/vapor.md R16): the
+// The fogged particle variants take the height fog as the mesh's do (docs/specs/S101-vapor.md R16): the
 // 'Fog' bit compiles includes/height_fog.glsl in with the distance fog, u_fs_heightFog choosing at
 // run time, in the built-in shader and library:particles, for quads, meshes, trails and pixel
 // particles. A fogless variant reads no height fog. The heaviest fogged variants stay within what

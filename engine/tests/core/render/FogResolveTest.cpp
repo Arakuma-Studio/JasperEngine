@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The fog resolve (docs/specs/vapor.md R7-R11, R21, R43, AC3): the layer order, the blend rules,
+// The fog resolve (docs/specs/S101-vapor.md R7-R11, R21, R43, AC3): the layer order, the blend rules,
 // the Fog Zones' weight and order, blendTo, and the runtime writes layer; its cost with 16 zones
 // and a blend (FogResolveBench).
 

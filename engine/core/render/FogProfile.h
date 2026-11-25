@@ -4,7 +4,7 @@
 #ifndef FOG_PROFILE_H
 #define FOG_PROFILE_H
 
-// The Fog Profile asset (docs/specs/vapor.md R1-R6): a fog look shared by every Fog and Fog Zone
+// The Fog Profile asset (docs/specs/S101-vapor.md R1-R6): a fog look shared by every Fog and Fog Zone
 // that links it. Each look field is either set by the profile (an override) or left to whatever
 // is beneath it. FogProfileIO reads and writes the .fogprofile JSON, FogProfiles holds the
 // built-ins, FogProfileLibrary is the runtime cache by asset path. The resolve that layers the
@@ -121,7 +121,7 @@ namespace jasperengine{
         bool operator!=(const FogProfileData& other) const { return !(*this == other); }
     };
 
-    // The .fogprofile file (docs/specs/vapor.md §6.2): JSON, {"version", "name", "description"?,
+    // The .fogprofile file (docs/specs/S101-vapor.md §6.2): JSON, {"version", "name", "description"?,
     // "fields": {<field>: <value>}} with fields in FogField order, colours as linear [r, g, b],
     // colorMode as "color" / "sky" / "lit". Its GUID is in its .meta (S04).
     class JASPERENGINE_API FogProfileIO{

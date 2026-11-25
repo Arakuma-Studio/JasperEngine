@@ -5,7 +5,7 @@
 // perspective, orthographic and Sky colour mode (AC4), the volumetric fog's handoff to the
 // analytic fog (AC5), light shafts (AC6), Local Volumetric Fog volumes (AC7), the clouds in both
 // modes with converged frames bit-identical (AC8), the zero-cost rule (AC2), transparents (AC16)
-// and the RGBA8 targets (R14); the Lit colour mode under day and night (docs/specs/vapor.md AC5)
+// and the RGBA8 targets (R14); the Lit colour mode under day and night (docs/specs/S101-vapor.md AC5)
 // and with volumes (AC17). Goldens in engine/tests/core/golden/atmosphere_*.png, made on
 // glcore (JASPER_TEST_UPDATE_GOLDEN=1) and matched on Vulkan.
 
@@ -184,7 +184,7 @@ namespace {
             fog.setMaxFogDistance(3000.0f);
         }
 
-        // a Lit fog of the valley: its look comes from the scene's light (docs/specs/vapor.md R12)
+        // a Lit fog of the valley: its look comes from the scene's light (docs/specs/S101-vapor.md R12)
         void litFog(Fog& fog){
             valleyFog(fog);
             fog.setColorMode(FogColorMode::LIT);
@@ -363,7 +363,7 @@ TEST_F(AtmosphereGpu, VolumetricFogHandsOffToTheAnalyticFog){
         EXPECT_LE(difference, 2.0) << AtmosphereTiers::getName(quality);
     }
 
-    // the Lit colour mode hands off the same (docs/specs/vapor.md R12, AC17): the march scatters
+    // the Lit colour mode hands off the same (docs/specs/S101-vapor.md R12, AC17): the march scatters
     // the untinted light by the albedo and adds the emissive, as the analytic fog has them folded
     Engine::setAtmosphereQuality(AtmosphereQuality::HIGH);
     fog.setVolumetric(false);
@@ -391,7 +391,7 @@ TEST_F(AtmosphereGpu, VolumetricFogHandsOffToTheAnalyticFog){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// docs/specs/vapor.md AC5: one Lit fog under a noon sun and on a moonlit night takes each
+// docs/specs/S101-vapor.md AC5: one Lit fog under a noon sun and on a moonlit night takes each
 // scene's light; its Color is not used
 TEST_F(AtmosphereGpu, LitFogDay){
     JASPER_REQUIRE_GPU();
@@ -510,7 +510,7 @@ TEST_F(AtmosphereGpu, LightShafts){
         EXPECT_LE(shadowed, lit * 0.85) << AtmosphereTiers::getName(quality);
         EXPECT_GOLDEN_OPTIONS(goldens[index++], atmosphereGoldenTolerance());
         // the two rotated sun taps and the 5x5 denoise are static per pixel: a frame is the one
-        // before it (S12 R12, docs/specs/vapor.md AC7)
+        // before it (S12 R12, docs/specs/S101-vapor.md AC7)
         GpuEnvironment::drawFrames(1);
         EXPECT_TRUE(readAtmosphereTarget() == image) << AtmosphereTiers::getName(quality);
 
@@ -590,7 +590,7 @@ TEST_F(AtmosphereGpu, LocalVolumetricFog){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// docs/specs/vapor.md AC17: a white Local Volumetric Fog inside green Lit fog scatters the
+// docs/specs/S101-vapor.md AC17: a white Local Volumetric Fog inside green Lit fog scatters the
 // light white: the fog's albedo tints the fog, not the volume
 TEST_F(AtmosphereGpu, LitVolumeNotDoubleTinted){
     JASPER_REQUIRE_GPU();
@@ -839,7 +839,7 @@ TEST_F(AtmosphereGpu, TransparentsTakeTheAnalyticFog){
 namespace {
 
     // the valley fog written into the component itself: a running scene's Fog setters go to the
-    // runtime layer (docs/specs/vapor.md R43), which is a layer to resolve
+    // runtime layer (docs/specs/S101-vapor.md R43), which is a layer to resolve
     FogComponent& valleyFogComponent(Scene& scene, Fog& fog){
         FogComponent& component = scene.getComponent<FogComponent>(fog.getEntity());
         component.type = FogType::HEIGHT;
@@ -854,7 +854,7 @@ namespace {
     }
 
 
-    // docs/specs/vapor.md AC6: a ceiling (the wall between the light and the view) with one
+    // docs/specs/S101-vapor.md AC6: a ceiling (the wall between the light and the view) with one
     // hole under a point or spot light above it; the camera, below, looks along the room. The
     // light reaches the fog below only through the hole: a lit column in the middle of the view,
     // and none to its sides, where an unshadowed light shines through the ceiling.

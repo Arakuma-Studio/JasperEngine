@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Fog Profile asset (docs/specs/vapor.md R1-R6, AC1, AC2): its canonical JSON, the warning for
+// The Fog Profile asset (docs/specs/S101-vapor.md R1-R6, AC1, AC2): its canonical JSON, the warning for
 // what it holds that this engine does not read, overrides by presence, the built-ins against the
 // presets they re-express, and the library a game reads them through.
 

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Fog Profile commands (docs/specs/vapor.md R23, R24, AC11) on a headless project: an edit of
+// The Fog Profile commands (docs/specs/S101-vapor.md R23, R24, AC11) on a headless project: an edit of
 // a .fogprofile is one step that undo puts back byte for byte, a drag merges, a creation keeps
 // its GUID on redo and its undo deletes the file; ticking and unticking a row is a round trip;
 // Link copies a built-in on first use and switches a non-Height Fog to Height in the same step;

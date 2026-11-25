@@ -24,7 +24,7 @@ Fog::Fog(Fog&& rhs) noexcept = default;
 Fog& Fog::operator=(Fog&& rhs) noexcept = default;
 
 // The look fields: while the game runs, a write goes to the runtime layer above the profile and
-// the zones (docs/specs/vapor.md R43) and a read shows it; otherwise they are the Fog's own.
+// the zones (docs/specs/S101-vapor.md R43) and a read shows it; otherwise they are the Fog's own.
 
 Vector3 Fog::getColor() const{
     const FogComponent& fog = getComponent<FogComponent>();

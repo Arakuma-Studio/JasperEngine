@@ -96,7 +96,7 @@ namespace jasperengine{
 		AtmosphereQualityOverride qualityOverride = AtmosphereQualityOverride::PROJECT;
 
 		// a Fog Profile (.fogprofile, assets-relative, or builtin:<id>): the look fields it sets
-		// come from it, the others from this Fog (docs/specs/vapor.md R7)
+		// come from it, the others from this Fog (docs/specs/S101-vapor.md R7)
 		AssetRef profile;
 
 		FogRuntimeSlot runtime;

@@ -14,7 +14,7 @@ namespace jasperengine{
         SPHERE
     };
 
-    // A place with a fog look of its own (docs/specs/vapor.md R9, R40): a box or a sphere of size
+    // A place with a fog look of its own (docs/specs/S101-vapor.md R9, R40): a box or a sphere of size
     // (local, times the Transform's scale, rotated with it, as Local Volumetric Fog) whose
     // profile's overrides blend over the scene's fog by where the camera is. The weight is
     // weight x clamp(1 - d / blendDistance, 0, 1), d the camera's distance to the shape (0

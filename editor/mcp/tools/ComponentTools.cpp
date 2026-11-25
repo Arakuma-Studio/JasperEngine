@@ -511,7 +511,7 @@ Json readBack(Project* project, SceneProject* scene, Entity entity, const std::v
 }
 
 // A Fog look field its profile sets: a write would not show beneath the profile, so it is refused
-// with both ways to change it (docs/specs/vapor.md R43); "" when every change writes normally.
+// with both ways to change it (docs/specs/S101-vapor.md R43); "" when every change writes normally.
 // A call that links or unlinks the profile itself writes against what it links.
 std::string profileSetFogFieldError(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
                                     const std::vector<McpValues::Change>& changes) {

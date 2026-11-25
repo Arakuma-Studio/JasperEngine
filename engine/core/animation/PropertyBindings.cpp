@@ -166,7 +166,7 @@ namespace {
     }
 
     // a Fog look field: in a running game the write goes to the runtime layer above its profile
-    // and zones, so it always shows (docs/specs/vapor.md R43); a read shows that write
+    // and zones, so it always shows (docs/specs/S101-vapor.md R43); a read shows that write
     template<FogField Field>
     bool readFogField(Scene* scene, Entity entity, const PropertyParams&, float* out){
         FogComponent* fog = scene ? scene->findComponent<FogComponent>(entity) : nullptr;

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 //
-// .fogprofile files (docs/specs/vapor.md R5, S05): the profile library reads the file again, and
+// .fogprofile files (docs/specs/S101-vapor.md R5, S05): the profile library reads the file again, and
 // every Fog and Fog Zone using it takes the new values on the next frame (they look their
 // profile up each frame they resolve). A profile nothing has read yet is left for its first use.
 

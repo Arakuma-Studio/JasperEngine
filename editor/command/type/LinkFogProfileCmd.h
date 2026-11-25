@@ -15,7 +15,7 @@ namespace jasperengine::editor {
 
     class Project;
 
-    // Link, New, Duplicate and Unlink of a Fog's or Fog Zone's profile (docs/specs/vapor.md R23,
+    // Link, New, Duplicate and Unlink of a Fog's or Fog Zone's profile (docs/specs/S101-vapor.md R23,
     // R27, R32) as one undo step: the reference set by a PropertyCmd on every GameObject given,
     // a built-in's first use copied into assets/FogProfiles/<id>.fogprofile (FogProfileAssetCmd)
     // and a Fog not of Type Height switched to Height when the profile sets height fields, all in

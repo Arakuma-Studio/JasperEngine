@@ -3,7 +3,7 @@
 
 // BF23 F1: RenderSystem loads a sub-emitter child's own Renderer, so an export has to ship its
 // shader variants too (ShaderVariantCollector), down the levels EmitterRuntime binds. The
-// fogged particle variants' height fog (docs/specs/vapor.md R16) is cached under its own version.
+// fogged particle variants' height fog (docs/specs/S101-vapor.md R16) is cached under its own version.
 
 #include "shader/ShaderVariantCollector.h"
 

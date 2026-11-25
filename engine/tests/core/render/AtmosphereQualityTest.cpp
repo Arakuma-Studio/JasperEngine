@@ -26,7 +26,7 @@ TEST(AtmosphereTiers, MatchTheSpecTable){
     const AtmosphereTier low = AtmosphereTiers::get(AtmosphereQuality::LOW);
     EXPECT_EQ(low.fogDivisor, 4);
     EXPECT_EQ(low.fogSteps, 16);
-    // docs/specs/vapor.md R13 gave Low one fog light (S12 had none)
+    // docs/specs/S101-vapor.md R13 gave Low one fog light (S12 had none)
     EXPECT_EQ(low.fogLocalLights, 1);
     EXPECT_EQ(low.fogVolumes, 2);
     EXPECT_EQ(low.cloudsAuto, CloudsRendering::SKY_MAP);
@@ -67,7 +67,7 @@ TEST(AtmosphereTiers, MatchTheSpecTable){
     }
 }
 
-// docs/specs/vapor.md R13: point and spot lights scatter on every tier
+// docs/specs/S101-vapor.md R13: point and spot lights scatter on every tier
 TEST(AtmosphereQualityTest, FogLightTiers){
     EXPECT_EQ(AtmosphereTiers::get(AtmosphereQuality::OFF).fogLocalLights, 0);
     EXPECT_EQ(AtmosphereTiers::get(AtmosphereQuality::LOW).fogLocalLights, 1);
@@ -76,7 +76,7 @@ TEST(AtmosphereQualityTest, FogLightTiers){
     EXPECT_EQ(ATMOSPHERE_MAX_FOG_LIGHTS, 4);
 }
 
-// docs/specs/vapor.md R15: two sun taps a step on Medium and High; one and the 5x5 denoise on Low
+// docs/specs/S101-vapor.md R15: two sun taps a step on Medium and High; one and the 5x5 denoise on Low
 TEST(AtmosphereQualityTest, SofterShaftTiers){
     const AtmosphereTier low = AtmosphereTiers::get(AtmosphereQuality::LOW);
     const AtmosphereTier medium = AtmosphereTiers::get(AtmosphereQuality::MEDIUM);

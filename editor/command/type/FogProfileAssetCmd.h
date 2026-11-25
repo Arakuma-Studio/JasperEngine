@@ -17,7 +17,7 @@ namespace jasperengine::editor{
 
     class Project;
 
-    // An edit of a .fogprofile asset (docs/specs/vapor.md R5, R24, R26, R33): the file's canonical
+    // An edit of a .fogprofile asset (docs/specs/S101-vapor.md R5, R24, R26, R33): the file's canonical
     // JSON (FogProfileIO::write) before and after. Executing writes the file and hands the profile
     // to the engine's library, so every Fog and Fog Zone using it shows it on the next frame. A
     // drag merges into one step. An empty `before` creates the file, with a GUID that stays the

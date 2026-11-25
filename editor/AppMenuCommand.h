@@ -177,7 +177,7 @@ namespace jasperengine::editor {
         AssetsCreateTileset,
         AssetsCreateTitleArt,         // Assets > Create > Title Art (S80)
         TitleArtBakeAll,              // the command palette's "Title Art: Bake All" (S80 §6.13)
-        AssetsCreateFogProfile        // Assets > Create > Fog Profile (docs/specs/vapor.md R26)
+        AssetsCreateFogProfile        // Assets > Create > Fog Profile (docs/specs/S101-vapor.md R26)
     };
 
 }

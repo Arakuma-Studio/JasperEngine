@@ -78,7 +78,7 @@ RECORD = {
     "get_atmosphere_info_fog_hidden": ("get_atmosphere_info", {"view": "scene"}),
     "scene_view_enable_fog": ("set_scene_camera", {"display": {"disable_fog": False}}),
     "get_atmosphere_info_fog_shown": ("get_atmosphere_info", {"view": "scene"}),
-    # Fog Profiles (docs/specs/vapor.md R31-R33, R43): the Fog and a Fog Zone share builtin night's copy, so
+    # Fog Profiles (docs/specs/S101-vapor.md R31-R33, R43): the Fog and a Fog Zone share builtin night's copy, so
     # set_properties refuses a field it sets; a copy for the Fog alone; the zone takes a profile of its own
     "list_atmosphere_presets_fog": ("list_atmosphere_presets", {"kind": "fog"}),
     "apply_fog_profile_night": ("apply_atmosphere_preset", {"entity": "Fog", "preset": "night"}),

@@ -32,7 +32,7 @@ namespace jasperengine{
         float maxOpacity = 1.0f;
     };
 
-    // The light of a height fog in the Lit colour mode (FogColorMode::LIT, docs/specs/vapor.md
+    // The light of a height fog in the Lit colour mode (FogColorMode::LIT, docs/specs/S101-vapor.md
     // R12). The volumetric march scatters ambient and sun by the medium's albedo per step, so a
     // Local Volumetric Fog volume scatters them by its own; the analytic fog reads one colour
     // and one sun colour (includes/height_fog.glsl), so it takes them with the albedo folded in.

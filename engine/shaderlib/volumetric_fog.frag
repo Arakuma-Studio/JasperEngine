@@ -5,7 +5,7 @@
 // analytic fog cannot have: the sun's shadow (light shafts: one shadow tap per step on Low, two
 // rotated ones on Medium and High), a density noise, Local Volumetric Fog volumes and point and
 // spot lights (1, 2 or 4 by tier), shadowed by one tap per step when they cast shadows and light
-// shafts are on (docs/specs/vapor.md R13-R15). SHADOW_DATA_POINT (the 'Pnt' variant) adds the
+// shafts are on (docs/specs/S101-vapor.md R13-R15). SHADOW_DATA_POINT (the 'Pnt' variant) adds the
 // point lights' shadow block and atlas, bound only when a shadowed point light is selected.
 // Output (S, T) of that part of the ray; the composite puts it in place of the analytic fog the
 // opaque surfaces took over the same part (volumetric_composite.frag), so the two never overlap.
@@ -16,7 +16,7 @@
 // Without shadow, noise and volumes the steps telescope to L (1 - T) exactly: the image
 // equals the analytic fog's (docs/specs/S12-atmosphere.md R6).
 //
-// The Lit colour mode (docs/specs/vapor.md R12): the height fog block of this pass carries the
+// The Lit colour mode (docs/specs/S101-vapor.md R12): the height fog block of this pass carries the
 // light untinted (ambient as the fog colour, the sun as it is), and each step scatters it by
 // the albedo of the media there, mixed by their share of the extinction; the fog's emissive is
 // added by the global medium's share alone. A volume is so tinted by its own albedo only.

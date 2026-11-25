@@ -3,7 +3,7 @@
 //
 // The built-ins bright_haze, murky, infernal and toxic take the looks of Vapor's Bright, Murky,
 // Hell and Poison settings (github.com/ArthurBrussee/Vapor, MIT): the ideas only, the values are
-// tuned for this fog's medium (docs/specs/vapor.md §4).
+// tuned for this fog's medium (docs/specs/S101-vapor.md §4).
 
 #include "FogProfile.h"
 

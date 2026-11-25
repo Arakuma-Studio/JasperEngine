@@ -33,7 +33,7 @@ namespace jasperengine{
         SCREEN    // a quarter-resolution march per pixel, in front of far geometry; main camera
     };
 
-    // What a tier runs (docs/specs/S12-atmosphere.md R11, docs/specs/vapor.md R13, R15).
+    // What a tier runs (docs/specs/S12-atmosphere.md R11, docs/specs/S101-vapor.md R13, R15).
     // Volumetric fog: its targets at 1/fogDivisor of the colour pass per axis, fogSteps march
     // steps, fogLocalLights point/spot lights, fogVolumes Local Volumetric Fog volumes, the sun's
     // shadow taps per step (light shafts) and the denoise's radius (1: 3x3, 2: 5x5). Clouds: the mode AUTO picks, the Sky

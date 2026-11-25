@@ -209,6 +209,19 @@ The first open applies rendering migrations that change how a scene looks, on pu
 - **Sub-emitters** (BF23): a sub-emitter's particles were simulated but never drawn. Effects with
   sub-emitters now show them, each with its child effect's Renderer, so they may look different and
   cost what they always should have; they count against the world particle budget.
+- **Fog** (S101): nothing is migrated and no stored value changes meaning, but scenes with fog look
+  different, old and new alike:
+  - A point or spot light with Shadows on no longer shines through walls in the volumetric fog: its
+    shadows reach the fog while the Fog's **Light Shafts** is on.
+  - At Low and Medium atmosphere quality the volumetric fog now scatters the nearest 1 and 2 point or
+    spot lights in view (High still 4; origin/main scattered none below High). A light's
+    **Volumetric Intensity** 0 keeps it out of the fog. This is a GPU cost on the tiers phones and
+    the web use.
+  - Sun shafts are softer: two shadow taps on Medium and High, a 5x5 denoise on Low.
+  - Particles under a Height fog take the height fog, as meshes do (they took the Fog's linear
+    range before).
+  - A Fog with a preset applied the old way keeps its own values and stays unlinked from any Fog
+    Profile; an agent's `apply_atmosphere_preset` now links a profile instead of copying values.
 
 The upgrade test takes screenshots at the same game frames in both editors and compares them at one
 size (480x270: the Game view's size follows each editor's layout, 904x509 against 869x489 here).

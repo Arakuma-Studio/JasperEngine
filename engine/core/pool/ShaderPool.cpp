@@ -816,7 +816,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // Lok (the look program), Mfl (the solver with manual filtering)
         case ShaderType::FLUID:  return 2;
         case ShaderType::SHADOW_CACHE: return 1;
-        // 'Pnt': the point lights' shadows (a shadowed point fog light, docs/specs/vapor.md R14)
+        // 'Pnt': the point lights' shadows (a shadowed point fog light, docs/specs/S101-vapor.md R14)
         case ShaderType::VOLUMETRIC_FOG: return 1;
         // the source's texture type: 2D (none), array, cube or 3D
         case ShaderType::PASS_PREVIEW: return 3;

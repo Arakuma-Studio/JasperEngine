@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The atmosphere (docs/specs/S12-atmosphere.md, docs/specs/vapor.md R31-R34): the Fog Profiles
+// The atmosphere (docs/specs/S12-atmosphere.md, docs/specs/S101-vapor.md R31-R34): the Fog Profiles
 // (built-in and the project's), linking a Fog or a Fog Zone to one, editing one, the Volumetric
 // Clouds presets, and what a view's height fog, volumetric fog and clouds ran last frame with the
 // fog's resolved look. The components' fields themselves are set_properties' (Catalog).
@@ -611,7 +611,7 @@ void getAtmosphereInfoTool(const CallPtr& call) {
         text += std::string(", clouds ") + mode;
 
     // the fog's profile, the Fog Zones and a running blend at the view's camera, and with resolved
-    // each look field and its layer (docs/specs/vapor.md R34)
+    // each look field and its layer (docs/specs/S101-vapor.md R34)
     const Vector3 camera = viewCameraPosition(project, scene, view);
     const Entity fogEntity = FogScene::findFog(scene->scene);
     const FogComponent* fog = fogEntity != NULL_ENTITY ? &scene->scene->getComponent<FogComponent>(fogEntity) : nullptr;
@@ -640,7 +640,7 @@ void getAtmosphereInfoTool(const CallPtr& call) {
     if (fog && args.value("resolved", false))
         data["resolved"] = resolvedLookJson(scene->scene, *fog, camera);
 
-    // why the fog shows less (or more) than expected, and how dense it is (docs/specs/vapor.md R17, R18)
+    // why the fog shows less (or more) than expected, and how dense it is (docs/specs/S101-vapor.md R17, R18)
     AtmosphereDiagnosticsInput input;
     input.scene = scene->scene;
     input.info = &info;

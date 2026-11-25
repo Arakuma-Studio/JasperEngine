@@ -73,7 +73,7 @@ namespace {
             {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
             // .mesh assets (S98 F1): binary, so their GUID is in a .meta
             {{AssetType::Mesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".mesh"}},
-            // Fog Profiles (docs/specs/vapor.md R1): the file holds no GUID, its .meta does
+            // Fog Profiles (docs/specs/S101-vapor.md R1): the file holds no GUID, its .meta does
             {{AssetType::FogProfile, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".fogprofile"}},
         };
         return table;

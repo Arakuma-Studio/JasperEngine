@@ -253,7 +253,7 @@ namespace jasperengine::editor{
         // S96 vehicles: Unity's WheelCollider, and an engine and gear box driving them
         WheelColliderComponent,
         VehicleDrivetrainComponent,
-        // a place with its own fog look, blended by the camera's position (docs/specs/vapor.md R40)
+        // a place with its own fog look, blended by the camera's position (docs/specs/S101-vapor.md R40)
         FogZoneComponent
     };
 
