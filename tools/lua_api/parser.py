@@ -2106,6 +2106,11 @@ OVERRIDES.update({
         'overloads': [([('obj', 'EntityHandle|ScriptInstance'), ('scene', 'Scene')], 'boolean')]},
 })
 
+# Mesh Space Rotation (docs/specs/mesh-space-rotation.md R14): read from the stack so that
+# `enabled` is required and the layer is an index or a name
+OVERRIDES[('Animator', 'setLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string'), ('enabled', 'boolean')], '')]}
+OVERRIDES[('Animator', 'getLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string')], 'boolean')]}
+
 # Line and Trail Renderers (lines and trails spec 6.6): the points by 0-based index (Unity's
 # SetPosition / GetPosition); an index out of range raises an error naming positionCount.
 # setPosition(x, y[, z]) is still the GameObject's own position

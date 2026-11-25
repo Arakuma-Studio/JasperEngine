@@ -4,6 +4,9 @@
 // S77 R36, R37, R40, R49, AC17: makeSnapshot puts what the last update left in world space and mm;
 // foot contact comes only from the Animator's legs; the field table and the live JSON hold the same
 // keys; the overlay pass takes no snapshot and draws no line while every toggle is off.
+// Mesh Space Rotation (docs/specs/mesh-space-rotation.md R29, R30, AC19, AC20): Torso Direction
+// draws two axes per boundary bone of the selected Animator, records only while it draws, and
+// nothing while off; the warning's rule on generic and humanoid rigs.
 
 #include <gtest/gtest.h>
 
@@ -13,7 +16,9 @@
 #include "animation/AnimatorAssetIO.h"
 #include "animation/AnimatorDebug.h"
 #include "animation/AnimatorInstance.h"
+#include "animation/AvatarMaskWeights.h"
 #include "animation/CompiledController.h"
+#include "pose/HumanBones.h"
 #include "component/AnimatorComponent.h"
 #include "component/Transform.h"
 #include "object/Animator.h"
@@ -46,6 +51,24 @@ namespace {
         t.channel = ClipChannel::Position;
         t.keys = std::move(keys);
         return t;
+    }
+
+    Quaternion debugTurn(float degrees, float x, float y, float z){
+        const float half = degrees * 3.14159265358979f / 360.0f;
+        return Quaternion(std::cos(half), x * std::sin(half), y * std::sin(half), z * std::sin(half));
+    }
+
+    // bones held at rotations for a second
+    ClipData debugHoldRotations(const std::vector<std::pair<std::string, Quaternion>>& rotations){
+        ClipData data;
+        data.wrap = ClipWrapMode::Loop;
+        for (const auto& r : rotations){
+            const std::vector<float> q = {r.second.x, r.second.y, r.second.z, r.second.w};
+            ClipTrackData t = debugTrack(r.first, {debugKey(0, q), debugKey(1, q)});
+            t.channel = ClipChannel::Rotation;
+            data.tracks.push_back(t);
+        }
+        return data;
     }
 
     // Hero (x = 10) -> Hips -> Thigh -> Shin -> Foot: a 0.9 m leg from (10.1, 1, 0) down
@@ -374,4 +397,203 @@ TEST_F(AnimatorDebugTest, OverlayPassDoesNothingWhileOff){
     EXPECT_EQ(draws, 1);
     EXPECT_EQ(pass.snapshots(), 1u);
     EXPECT_EQ(pass.lines(), lines);
+}
+
+// AC20 (R30): the spec's AC4 setup, its Spine the one boundary bone. Off (or nothing selected)
+// nothing is drawn and the runtime records nothing; on, the selected Animator gets the corrected
+// axis at once and the ghost without the pass from the next update: two axes per boundary bone
+TEST_F(AnimatorDebugTest, TorsoDirectionDrawsTwoAxesPerBoundaryBoneOfTheSelectedAnimator){
+    const Entity spine = node(hips, "Spine", Vector3(0, 0.3f, 0));
+    (void)spine;
+    const std::string run = directory.write("run.anim", anim::writeClip(debugHoldRotations({{"Hips", debugTurn(90, 0, 1, 0)}}))).generic_string();
+    const std::string attack = directory.write("attack.anim", anim::writeClip(debugHoldRotations(
+        {{"Hips", debugTurn(-20, 0, 1, 0)}, {"Hips/Spine", debugTurn(40, 1, 0, 0)}}))).generic_string();
+    AvatarMaskDef mask;
+    mask.defaultWeight = 0.0f;
+    mask.paths.push_back({"Hips/Spine", 1.0f, true});
+    ControllerDef controller;
+    for (const std::string& clip : {run, attack}){
+        LayerDef layer;
+        layer.name = clip == run ? "Base Layer" : "Upper Body";
+        StateDef state;
+        state.name = layer.name;
+        state.motion.clip.path = clip;
+        layer.machine.defaultState = state.name;
+        layer.machine.states = {state};
+        controller.layers.push_back(layer);
+    }
+    controller.layers[1].mask.path = directory.write("spine.mask", anim::writeMask(mask)).generic_string();
+    controller.layers[1].meshSpaceRotation = true;
+    scene.addComponent<AnimatorComponent>(root, {});
+    AnimatorComponent& component = scene.getComponent<AnimatorComponent>(root);
+    component.controller = directory.write("torso.controller", anim::writeController(controller)).generic_string();
+    component.needsLoad = true;
+    step(0.0f);
+    step(0.02f);
+    resolveTransforms();
+    AnimatorInstance& instance = *component.runtime;
+    ASSERT_TRUE(instance.layerMeshSpaceApplies(1));
+    ASSERT_EQ(instance.layerBoundaryBones(1).size(), 1u);
+
+    AnimatorOverlayPass pass;
+    int draws = 0;
+    std::vector<AnimatorOverlayLine> drawn;
+    const AnimatorOverlayPass::Draw draw = [&](Entity, const std::vector<AnimatorOverlayLine>& lines){
+        draws++;
+        drawn = lines;
+    };
+    pass.update(&scene, {root, hips}, AnimatorOverlayFlags(), draw, {root});
+    EXPECT_EQ(draws, 0);
+    EXPECT_EQ(pass.lines(), 0u) << "off: no line";
+    EXPECT_FALSE(instance.meshSpaceDebug()) << "off: nothing recorded";
+    AnimatorOverlayFlags torso;
+    torso.torsoDirection = true;
+    pass.update(&scene, {root, hips}, torso, draw, {});
+    EXPECT_EQ(draws, 0) << "only the selected Animators";
+    EXPECT_FALSE(instance.meshSpaceDebug());
+
+    pass.update(&scene, {root, hips}, torso, draw, {root});
+    EXPECT_EQ(draws, 1);
+    EXPECT_TRUE(instance.meshSpaceDebug()) << "recording while it draws the Animator";
+    ASSERT_EQ(drawn.size(), kTorsoAxisLines) << "no update recorded the ghost yet: the corrected axis only";
+    step(0.02f);
+    pass.update(&scene, {root, hips}, torso, draw, {root});
+    ASSERT_EQ(drawn.size(), 2 * kTorsoAxisLines) << "two axes per boundary bone";
+    EXPECT_EQ(pass.snapshots(), 0u) << "Torso Direction takes no IK snapshot";
+    // rest rotations are identity, so an axis is the bone's rig rotation turning +Z: the layer's
+    // (hips -20 degrees, spine 40) with the pass, the base's hips under it without
+    const Vector3 at(10.0f, 1.3f, 0.0f);
+    const Vector3 corrected = (debugTurn(-20, 0, 1, 0) * debugTurn(40, 1, 0, 0)) * Vector3(0, 0, 1);
+    const Vector3 ghost = (debugTurn(90, 0, 1, 0) * debugTurn(40, 1, 0, 0)) * Vector3(0, 0, 1);
+    for (size_t k = 0; k < 2; k++){
+        const Vector4& color = k == 0 ? overlaycolor::applied : overlaycolor::rejected;
+        for (size_t i = 0; i < kTorsoAxisLines; i++) EXPECT_EQ(drawn[k * kTorsoAxisLines + i].color, color) << "axis " << k << ", line " << i;
+        // its shaft
+        const AnimatorOverlayLine& shaft = drawn[k * kTorsoAxisLines];
+        const Vector3 expected = at + (k == 0 ? corrected : ghost) * kTorsoAxisLength;
+        EXPECT_NEAR((shaft.a - at).length(), 0.0f, 1e-4f) << "from the spine, under the Animator's Transform";
+        EXPECT_NEAR((shaft.b - expected).length(), 0.0f, 1e-4f) << (k == 0 ? "the corrected axis" : "the ghost");
+    }
+
+    const uint64_t lines = pass.lines();
+    pass.update(&scene, {root, hips}, AnimatorOverlayFlags(), draw, {root});
+    EXPECT_EQ(draws, 2);
+    EXPECT_EQ(pass.lines(), lines);
+    EXPECT_FALSE(instance.meshSpaceDebug()) << "off again: the recording stops";
+}
+
+// R29 on a bound instance made by hand: the warning names the humanoid's Spine, Chest or Upper
+// Chest, or on a generic rig the bone under one the mask leaves out; an Additive layer, the option
+// on, weight 0 or a boundary elsewhere on a humanoid give none
+TEST(AnimatorMeshSpaceWarning, NamesTheTorsoWhereTheMaskStarts){
+    ControllerDef def;
+    def.layers.resize(2);
+    def.layers[0].name = "Base Layer";
+    def.layers[1].name = "Upper Body";
+    AnimatorInstance instance;
+    instance.controller = compileController(def);
+    instance.bound = true;
+    for (const char* name : {"B-hips", "B-spine", "B-chest"}){
+        RigBone bone;
+        bone.name = name;
+        bone.parent = (int)instance.rig.bones.size() - 1;
+        instance.rig.bones.push_back(bone);
+        instance.rig.parents.push_back(bone.parent);
+    }
+    instance.layers.resize(2);
+    instance.layers[1].weight = 1.0f;
+    instance.layers[1].mask = {0.0f, 1.0f, 1.0f};
+    instance.layers[1].boundaryBones = {1};
+    EXPECT_EQ(meshSpaceBoundaryNames(instance, 1), std::vector<std::string>{"B-spine"});
+
+    std::vector<MeshSpaceWarning> warnings = meshSpaceWarnings(def, instance);
+    ASSERT_EQ(warnings.size(), 1u) << "a generic rig: the child of the hips the mask leaves out";
+    EXPECT_EQ(warnings[0].layer, 1);
+    EXPECT_EQ(warnings[0].message, "Layer 'Upper Body': the mask starts at B-spine, so the torso follows the base layer's hips. "
+                                   "Turn on Mesh Space Rotation to keep this layer's direction.");
+    instance.humanoid.valid = true;
+    for (pose::HumanBone slot : {pose::HumanBone::Spine, pose::HumanBone::Chest, pose::HumanBone::UpperChest}){
+        instance.humanoid.slotBones.fill(-1);
+        instance.humanoid.slotBones[(size_t)pose::HumanBone::Hips] = 0;
+        instance.humanoid.slotBones[(size_t)slot] = 1;
+        warnings = meshSpaceWarnings(def, instance);
+        ASSERT_EQ(warnings.size(), 1u) << pose::humanBoneName(slot);
+        const char* label = slot == pose::HumanBone::Spine ? "Spine" : slot == pose::HumanBone::Chest ? "Chest" : "Upper Chest";
+        EXPECT_EQ(warnings[0].message, std::string("Layer 'Upper Body': the mask starts at ") + label +
+                                       ", so the torso follows the base layer's hips. Turn on Mesh Space Rotation to keep this layer's direction.");
+    }
+    instance.humanoid.slotBones.fill(-1);
+    instance.humanoid.slotBones[(size_t)pose::HumanBone::Hips] = 0;
+    instance.humanoid.slotBones[(size_t)pose::HumanBone::LeftUpperLeg] = 1;
+    EXPECT_TRUE(meshSpaceWarnings(def, instance).empty()) << "a humanoid's boundary outside the torso";
+    instance.humanoid.slotBones[(size_t)pose::HumanBone::LeftUpperLeg] = -1;
+    instance.humanoid.slotBones[(size_t)pose::HumanBone::Spine] = 1;
+
+    ControllerDef changed = def;
+    changed.layers[1].meshSpaceRotation = true;
+    EXPECT_TRUE(meshSpaceWarnings(changed, instance).empty()) << "the option on";
+    instance.setLayerMeshSpaceRotation(1, true);
+    EXPECT_TRUE(meshSpaceWarnings(def, instance).empty()) << "the runtime's value: a Lua override that turns it on";
+    instance.setLayerMeshSpaceRotation(1, false);
+    EXPECT_EQ(meshSpaceWarnings(def, instance).size(), 1u) << "the override off: the warning is back";
+    changed = def;
+    changed.layers[1].blending = AnimatorLayerBlending::Additive;
+    EXPECT_TRUE(meshSpaceWarnings(changed, instance).empty()) << "an Additive layer";
+    instance.layers[1].weight = 0.0f;
+    EXPECT_TRUE(meshSpaceWarnings(def, instance).empty()) << "weight 0";
+    instance.layers[1].weight = 1.0f;
+    instance.bound = false;
+    EXPECT_TRUE(meshSpaceWarnings(def, instance).empty()) << "not bound";
+}
+
+// R29's one rule: the warning shows only where the mask starts at a torso bone under a torso bone
+// it leaves out (by humanoid slot, else by name), named at the first such start in rig order. A
+// mask that takes the hips under B-root or Armature, or one from an arm, splits no torso
+TEST(AnimatorMeshSpaceWarning, OnlyWhereTheMaskSplitsTheTorso){
+    ControllerDef def;
+    def.layers.resize(2);
+    def.layers[0].name = "Base Layer";
+    def.layers[1].name = "Upper Body";
+    auto rigged = [&](const std::vector<std::pair<std::string, int>>& bones){
+        AnimatorInstance instance;
+        instance.controller = compileController(def);
+        instance.bound = true;
+        for (const auto& entry : bones){
+            RigBone bone;
+            bone.name = entry.first;
+            bone.parent = entry.second;
+            instance.rig.bones.push_back(bone);
+            instance.rig.parents.push_back(entry.second);
+        }
+        instance.layers.resize(2);
+        instance.layers[1].weight = 1.0f;
+        return instance;
+    };
+    auto warned = [&](AnimatorInstance& instance, const std::vector<float>& mask){
+        instance.layers[1].mask = mask;
+        anim::maskBoundaryBones(mask.data(), instance.rig.parents.data(), mask.size(), -1, instance.layers[1].boundaryBones);
+        const std::vector<MeshSpaceWarning> warnings = meshSpaceWarnings(def, instance);
+        if (warnings.empty()) return std::string();
+        const std::string& message = warnings[0].message;
+        const size_t at = message.find("starts at ");
+        return at == std::string::npos ? message : message.substr(at + 10, message.find(',', at) - at - 10);
+    };
+
+    // a B- rig without a humanoid: B-root > B-hips > B-thigh.L, B-hips > B-spine > B-chest > B-shoulder.L
+    AnimatorInstance generic = rigged({{"B-root", -1}, {"B-hips", 0}, {"B-thigh.L", 1}, {"B-spine", 1}, {"B-chest", 3}, {"B-shoulder.L", 4}});
+    EXPECT_EQ(warned(generic, {0, 1, 1, 1, 1, 1}), "") << "the whole body under B-root: the hips are in the mask";
+    EXPECT_EQ(warned(generic, {0, 0, 0, 0, 0, 1}), "") << "an arm mask: the torso is not split";
+    EXPECT_EQ(warned(generic, {0, 0, 0, 1, 1, 1}), "B-spine");
+    EXPECT_EQ(warned(generic, {0, 0, 1, 1, 1, 1}), "B-spine") << "the first start that splits the torso, not the first start";
+
+    // a humanoid: Armature > Hips > Spine > LeftShoulder
+    AnimatorInstance human = rigged({{"Armature", -1}, {"Hips", 0}, {"Spine", 1}, {"LeftShoulder", 2}});
+    human.humanoid.valid = true;
+    human.humanoid.slotBones.fill(-1);
+    human.humanoid.slotBones[(size_t)pose::HumanBone::Hips] = 1;
+    human.humanoid.slotBones[(size_t)pose::HumanBone::Spine] = 2;
+    human.humanoid.slotBones[(size_t)pose::HumanBone::LeftShoulder] = 3;
+    EXPECT_EQ(warned(human, {0, 1, 1, 1}), "") << "the whole body under Armature";
+    EXPECT_EQ(warned(human, {0, 0, 0, 1}), "") << "an arm mask";
+    EXPECT_EQ(warned(human, {0, 0, 1, 1}), "Spine");
 }

@@ -121,7 +121,7 @@ vec4 fx_gauss() {
         float w = exp(k * float(i * i));
         ws += w;
         if (!repeatEdges && (q.x < frame.x || q.y < frame.y || q.x > frame.z || q.y > frame.w)) continue;
-        acc += texture(TA_TEX0, repeatEdges ? clamp(q, frame.xy, frame.zw) : q) * w;
+        acc += textureLod(TA_TEX0, repeatEdges ? clamp(q, frame.xy, frame.zw) : q, 0.0) * w;
     }
     return acc / ws;
 }

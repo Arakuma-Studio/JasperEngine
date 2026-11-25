@@ -125,6 +125,14 @@ behaviour and are not written while at their defaults.
 
 **Soften** stays off by default, because it changes where feet land.
 
+### Humanoid rigs named `B-` (Mesh Space Rotation)
+
+- Rigs whose bones are named with a `B-` prefix (`B-hips`, `B-spine`, `B-upperArm.L`) are detected as humanoids
+  with no `.humanoid` map when they are imported from now on, and a bone named `proxy` is never mapped. A model
+  already in the project keeps what it was (a `B-` rig: not a humanoid, its masks' body parts fall back to their
+  default weight) until you reimport it (Project window > Reimport); its Avatar notes say so. The import writes
+  `"name_rules": 2` into the model's `.humanoid` file; commit it with the model.
+
 ## Fixed for the upgrade
 
 The upgrade test found these, fixed in this editor (each with a test that failed before):

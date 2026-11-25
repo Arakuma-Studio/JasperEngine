@@ -40,11 +40,15 @@ namespace jasperengine { namespace test {
         bool isTouchDevice() override { return touchDevice; }
         float getScreenDpi() override { return screenDpi; }
 
+        // a window with nothing to draw into (minimized), on any backend: the swapchain reported
+        // invalid with its size and formats still set, as VulkanContext and D3D11Context report it
+        bool swapchainInvalid = false;
+        sg_swapchain getSokolSwapchain() override;
+
 #if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)
-        // the device of the headless VulkanContext; the swapchain is never acquired, so
+        // the device of the headless VulkanContext; the swapchain is never acquired (invalid), so
         // nothing is ever presented
         sg_environment getSokolEnvironment() override;
-        sg_swapchain getSokolSwapchain() override;
 #elif defined(SOKOL_METAL) && defined(JASPER_TEST_HAS_GPU)
         // the headless Metal device; no swapchain pass is ever begun (frames render into the
         // GpuEnvironment target)
