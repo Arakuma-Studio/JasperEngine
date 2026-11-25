@@ -423,7 +423,6 @@ const ComponentDesc kFogZoneDesc{
     .type = ComponentType::FogZoneComponent, .cppName = "FogZoneComponent", .key = "fogzone", .displayName = "Fog Zone", .icon = ICON_FA_SMOG,
     .body = JE_STRUCT_DESC(FogZoneComponent, "FogZoneComponent", kFogZoneFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(FogZoneComponent),
-    .codegenVar = "fogzone",
 };
 
 const ComponentDesc kVolumetricCloudsDesc{
