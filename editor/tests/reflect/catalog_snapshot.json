@@ -12969,6 +12969,7 @@
     "gamepadCursor",
     "inputSurface",
     "interactive",
+    "isMenu",
     "msaaSamples",
     "pixelRatio",
     "renderMode",
@@ -12999,6 +13000,11 @@
      true
     ],
     "interactive": [
+     0,
+     0,
+     true
+    ],
+    "isMenu": [
      0,
      0,
      true
@@ -13056,6 +13062,11 @@
      true
     ],
     "interactive": [
+     0,
+     0,
+     true
+    ],
+    "isMenu": [
      0,
      0,
      true
@@ -34052,6 +34063,11 @@
     true
    ],
    "interactive": [
+    0,
+    0,
+    true
+   ],
+   "isMenu": [
     0,
     0,
     true
