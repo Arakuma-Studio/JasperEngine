@@ -640,7 +640,7 @@ namespace {
         return tail.data().size();
     }
 
-    // the bytes format 1.9 appends after them (Environment Lighting's ambientMode and gradient)
+    // the bytes format 1.10 appends after them (Environment Lighting's ambientMode and gradient)
     size_t ambientTailBytes(const Scene& scene) {
         jasperengine::cook::StringTable none;
         jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
@@ -976,7 +976,7 @@ TEST(CookedScene, SceneSettingsKeepCanvasScaler) {
     EXPECT_EQ(old.getCanvasScaler(), defaults.canvasScaler);
 }
 
-// S99 R30: Environment Lighting's ambientMode and the Gradient's colours survive a cook (format 1.9,
+// S99 R30: Environment Lighting's ambientMode and the Gradient's colours survive a cook (format 1.10,
 // after the Canvas Scaler); an older record (without them) keeps the Color source and the default gradient
 TEST(CookedScene, SceneSettingsKeepAmbientGradient) {
     DecodedScene source = emptyScene();
@@ -1166,7 +1166,7 @@ namespace {
 // offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    ASSERT_EQ(FORMAT_MINOR, 9) << "the 1.4 layout below is 1.9's without its Water Wakes and physics world values and the 1.7 and 1.9 "
+    ASSERT_EQ(FORMAT_MINOR, 10) << "the 1.4 layout below is 1.10's without its Water Wakes and physics world values and the 1.7 and 1.10 "
                                   "additions (asMinor6): cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;

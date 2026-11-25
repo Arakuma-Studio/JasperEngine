@@ -439,8 +439,11 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
   The sky's prefiltered map still gives reflections; the SH's specular term Lit adds for the folded
   lights then includes the gradient too, a small extra ambient specular. Particles and the clouds take
   the gradient's average.
-- **W7: cooked scenes.** The source and the gradient are appended to the scene settings record as format
-  1.6 (`CookedScene.h` `FORMAT_MINOR`); a 1.5 record reads as Color with the default gradient.
+- **W7: cooked scenes.** The ambientMode and the gradient are appended to the scene settings record as format
+  1.10 (`CookedScene.h` `FORMAT_MINOR`, the next free minor after S96's 1.6, S98's 1.7, S78's 1.8 and S92's 1.9);
+  an older record reads as Color with the default gradient. With S98 every build loads the cooked scene, so
+  compiled builds take them from there (no generated scene code). Numbers taken at landing: shader cache
+  `v70`, `AssetType::IesProfile = 36`, the variant hash's environment bits 36 and 37.
 - **W7: Remove Sun Disc per image.** The cook sees one image at a time: a cross finds the disc across its
   six faces, but a six-file sky finds it in each face file on its own, so a disc split by a face edge
   is removed in each face where that face's part is distinct (20x its mean). An image without a

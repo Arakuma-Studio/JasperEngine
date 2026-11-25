@@ -174,7 +174,7 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.f32(scaler.matchWidthOrHeight);
     w.u8(static_cast<uint8_t>(scaler.physicalUnit));
     w.f32(scaler.fallbackScreenDPI);
-    // format 1.9 (S99 R30): Environment Lighting's ambientMode and the Gradient's colours (sRGB)
+    // format 1.10 (S99 R30): Environment Lighting's ambientMode and the Gradient's colours (sRGB)
     w.u8(static_cast<uint8_t>(scene.getAmbientMode()));
     write(w, scene.getAmbientSkyColor());
     write(w, scene.getAmbientEquatorColor());
@@ -323,7 +323,7 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     if (unit <= static_cast<uint8_t>(PhysicalUnit::Picas)) scaler.physicalUnit = static_cast<PhysicalUnit>(unit);
     scaler.fallbackScreenDPI = r.f32();
     if (scaler != CanvasScalerSettings()) scene.setCanvasScaler(scaler);
-    // an older record ends here: the Color source and the default gradient (format 1.9)
+    // an older record ends here: the Color source and the default gradient (format 1.10)
     if (r.atEnd()) return;
     const uint8_t ambientMode = r.u8();
     if (ambientMode <= static_cast<uint8_t>(AmbientMode::GRADIENT))
