@@ -26,7 +26,7 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
-using titleart::Json;
+using TitleArtDocumentJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 
 namespace {
 
@@ -138,7 +138,7 @@ TEST_F(TitleArtDocumentTest, EditIsOneNamedStepAndUndoRestoresTheFile) {
     });
     TitleArtEditOptions options;
     options.origin = TitleArtChangeOrigin::Agent;
-    const TitleOpsResult result = document->edit(Json{{"op", "set"}, {"layer", "Title"}, {"values", {{"opacity", 0.5}}}}, options);
+    const TitleOpsResult result = document->edit(TitleArtDocumentJson{{"op", "set"}, {"layer", "Title"}, {"values", {{"opacity", 0.5}}}}, options);
     ASSERT_TRUE(result.ok) << result.error();
     EXPECT_EQ(titleArtDocumentTopName(), "Set Opacity");
     EXPECT_GT(document->revision(), rev);
@@ -161,7 +161,7 @@ TEST_F(TitleArtDocumentTest, ExpectRevAndDryRun) {
     const std::string before = titleArtDocumentReadAll(document->absolutePath());
     TitleArtEditOptions stale;
     stale.expectRev = (int64_t)document->revision() + 5;
-    const TitleOpsResult refused = document->edit(Json{{"op", "set"}, {"layer", "Title"}, {"values", {{"opacity", 0.5}}}}, stale);
+    const TitleOpsResult refused = document->edit(TitleArtDocumentJson{{"op", "set"}, {"layer", "Title"}, {"values", {{"opacity", 0.5}}}}, stale);
     EXPECT_FALSE(refused.ok);
     ASSERT_FALSE(refused.problems.empty());
     EXPECT_EQ(refused.problems[0].code, "rev_mismatch");
@@ -169,7 +169,7 @@ TEST_F(TitleArtDocumentTest, ExpectRevAndDryRun) {
     TitleArtEditOptions dry;
     dry.dryRun = true;
     dry.expectRev = (int64_t)document->revision();
-    const TitleOpsResult preview = document->edit(Json{{"op", "set"}, {"layer", "Title"}, {"values", {{"opacity", 0.5}}}}, dry);
+    const TitleOpsResult preview = document->edit(TitleArtDocumentJson{{"op", "set"}, {"layer", "Title"}, {"values", {{"opacity", 0.5}}}}, dry);
     EXPECT_TRUE(preview.ok);
     EXPECT_EQ(preview.doc.layers()[0]["opacity"], 0.5);
     EXPECT_EQ(titleArtDocumentReadAll(document->absolutePath()), before) << "a dry run writes nothing";
@@ -180,7 +180,7 @@ TEST_F(TitleArtDocumentTest, CommitTextRestoresAVersionAsOneStep) {
     std::shared_ptr<TitleArtDocument> document = titleArtDocumentCreate(dir + "/logo.titleart");
     ASSERT_TRUE(document);
     const std::string original = document->text();
-    ASSERT_TRUE(document->edit(Json{{"op", "set"}, {"layer", "Title"}, {"values", {{"text", "Jackpot"}}}}).ok);
+    ASSERT_TRUE(document->edit(TitleArtDocumentJson{{"op", "set"}, {"layer", "Title"}, {"values", {{"text", "Jackpot"}}}}).ok);
     const size_t position = titleArtDocumentHistory()->position();
     std::string error;
     ASSERT_TRUE(document->commitText(original, "Restore This Version", &error)) << error;
@@ -210,7 +210,7 @@ TEST_F(TitleArtDocumentTest, OutsideChangesReloadAndNewerVersionsAreReadOnly) {
     EXPECT_FALSE(document->editable());
     EXPECT_EQ(document->versionRead(), 99);
     EXPECT_NE(document->versionError().find("version 99"), std::string::npos);
-    const TitleOpsResult refused = document->edit(Json{{"op", "set"}, {"layer", "Title"}, {"values", {{"opacity", 0.5}}}});
+    const TitleOpsResult refused = document->edit(TitleArtDocumentJson{{"op", "set"}, {"layer", "Title"}, {"values", {{"opacity", 0.5}}}});
     ASSERT_FALSE(refused.ok);
     EXPECT_EQ(refused.problems[0].code, "read_only");
     std::string error;

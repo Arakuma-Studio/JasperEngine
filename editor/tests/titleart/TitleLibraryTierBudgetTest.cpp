@@ -37,7 +37,7 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titlelibrary;
-using titleart::Json;
+using TitleLibraryTierBudgetJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 using titleart::TitleArtDoc;
 using titleart::TitleTier;
 namespace fs = std::filesystem;
@@ -93,23 +93,23 @@ namespace {
         titleart::NewTitleArtOptions options;
         if (!c.isTemplate) options.text = c.sample;
         const TitleArtDoc start = titleart::makeNewTitleArt(options);
-        const Json op = c.isTemplate ? Json{{"op", "apply_template"}, {"template", c.ref}, {"keep_text", false}, {"language", c.sample}}
-                                     : Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", c.ref}, {"apply_font", true}};
-        const TitleOpsResult r = TitleArtOps::apply(start, Json::array({op}), TitleOpsOptions{0x86});
+        const TitleLibraryTierBudgetJson op = c.isTemplate ? TitleLibraryTierBudgetJson{{"op", "apply_template"}, {"template", c.ref}, {"keep_text", false}, {"language", c.sample}}
+                                     : TitleLibraryTierBudgetJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", c.ref}, {"apply_font", true}};
+        const TitleOpsResult r = TitleArtOps::apply(start, TitleLibraryTierBudgetJson::array({op}), TitleOpsOptions{0x86});
         EXPECT_TRUE(r.ok) << c.ref << ": " << r.error();
         return r.doc;
     }
 
-    std::vector<const Json*> layers3D(const TitleArtDoc& doc) {
-        std::vector<const Json*> out;
-        titleart::forEachLayer(doc.root, [&](const Json& layer, const Json*, int) {
+    std::vector<const TitleLibraryTierBudgetJson*> layers3D(const TitleArtDoc& doc) {
+        std::vector<const TitleLibraryTierBudgetJson*> out;
+        titleart::forEachLayer(doc.root, [&](const TitleLibraryTierBudgetJson& layer, const TitleLibraryTierBudgetJson*, int) {
             if (titleart::layerTypeHasStyle(titleart::layerTypeOf(layer)) && layer.value("dimension", std::string("2d")) == "3d") out.push_back(&layer);
             return true;
         });
         return out;
     }
 
-    titleart::three_d::TitleMeshRequest titleLibraryTierBudgetRequestOf(const Json& layer, const TitleArtDoc& doc, const titleart::AssetResolver& assets, TitleTier tier) {
+    titleart::three_d::TitleMeshRequest titleLibraryTierBudgetRequestOf(const TitleLibraryTierBudgetJson& layer, const TitleArtDoc& doc, const titleart::AssetResolver& assets, TitleTier tier) {
         auto content = titleart::makeGeometryTitleContentProvider();
         titleart::three_d::TitleMeshRequest request;
         request.source = titleart::three_d::collectTitleSource(layer, doc, *content, &assets, nullptr);
@@ -145,9 +145,9 @@ TEST_F(TitleLibraryTierBudget, TheLibrarysHeaviestItemsFitEveryTierWithTheirStac
     int overWithoutBudget = 0;
     for (const TitleLibraryTierBudgetCase& c : CASES) {
         const TitleArtDoc doc = titleLibraryTierBudgetDocumentOf(c);
-        const std::vector<const Json*> layers = layers3D(doc);
+        const std::vector<const TitleLibraryTierBudgetJson*> layers = layers3D(doc);
         ASSERT_FALSE(layers.empty()) << c.ref;
-        for (const Json* layer : layers) {
+        for (const TitleLibraryTierBudgetJson* layer : layers) {
             std::array<float, 4> silhouette{};      // High's xy bounds (High drops no band here)
             for (TitleTier tier : {TitleTier::High, TitleTier::Medium, TitleTier::Low}) {
                 const std::string what = std::string(c.ref) + " (" + c.sample + ") '" + layer->value("name", std::string()) + "' at " + titleart::titleTierName(tier);

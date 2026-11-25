@@ -25,7 +25,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleFxPresetsJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 
 namespace {
 
@@ -72,11 +72,11 @@ TEST(TitleFxPresetsTest, EveryPresetIsValid) {
             EXPECT_TRUE(snakeCase(p.id));
             EXPECT_TRUE(ids.insert(p.id).second) << "the id is used twice";
             EXPECT_FALSE(p.name.empty());
-            Json params = titleart::defaultParams(def->params);
+            TitleFxPresetsJson params = titleart::defaultParams(def->params);
             for (auto it = p.params.begin(); it != p.params.end(); ++it) {
                 const titleart::ParamDef* param = titleart::findParam(def->params, it.key());
                 ASSERT_NE(param, nullptr) << it.key() << " is not a parameter of " << type;
-                Json value = it.value();
+                TitleFxPresetsJson value = it.value();
                 std::vector<titleart::TitleWarning> warnings;
                 titleart::NormalizeContext context;
                 context.warnings = &warnings;
@@ -119,13 +119,13 @@ TEST(TitleFxPresetsTest, RecipesAndStyleSettings) {
         ASSERT_NE(titleart::findEffect(r.type), nullptr) << r.type;
         if (r.preset) { EXPECT_NE(TitleFxPresets::find(r.type, r.preset), nullptr) << r.preset; }
         const titleart::EffectDef* def = titleart::findEffect(r.type);
-        const Json params = titleFxRecipeParams(r);
+        const TitleFxPresetsJson params = titleFxRecipeParams(r);
         ASSERT_TRUE(params.is_object());
         EXPECT_FALSE(params.empty());
         for (auto it = params.begin(); it != params.end(); ++it) {
             const titleart::ParamDef* param = titleart::findParam(def->params, it.key());
             ASSERT_NE(param, nullptr) << it.key();
-            Json value = it.value();
+            TitleFxPresetsJson value = it.value();
             std::vector<titleart::TitleWarning> warnings;
             titleart::NormalizeContext context;
             context.warnings = &warnings;
@@ -142,18 +142,18 @@ TEST(TitleFxPresetsTest, RecipesAndStyleSettings) {
 
 TEST(TitleFxPresetsTest, AddEffectAppliesAPreset) {
     const titleart::TitleArtDoc doc = oneTitle();
-    const TitleOpsResult r = TitleArtOps::apply(doc, Json{{"op", "add_effect"}, {"layer", "Title"}, {"type", "light_glow"}, {"preset", "soft_bloom"},
+    const TitleOpsResult r = TitleArtOps::apply(doc, TitleFxPresetsJson{{"op", "add_effect"}, {"layer", "Title"}, {"type", "light_glow"}, {"preset", "soft_bloom"},
                                                           {"params", {{"intensity", 2}}}});
     ASSERT_TRUE(r.ok) << r.error();
-    const Json& params = r.doc.layers()[0]["effects"][0]["params"];
+    const TitleFxPresetsJson& params = r.doc.layers()[0]["effects"][0]["params"];
     EXPECT_EQ(params["radius"], 120);
     EXPECT_EQ(params["falloff"], 70);
     EXPECT_EQ(params["intensity"], 2) << "the op's params win over the preset";
-    const TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "add_effect"}, {"layer", "Title"}, {"type", "light_glow"}, {"preset", "soft_blom"}});
+    const TitleOpsResult bad = TitleArtOps::apply(doc, TitleFxPresetsJson{{"op", "add_effect"}, {"layer", "Title"}, {"type", "light_glow"}, {"preset", "soft_blom"}});
     ASSERT_FALSE(bad.ok);
     ASSERT_NE(titleFxPresetsFailure(bad), nullptr);
     EXPECT_EQ(titleFxPresetsFailure(bad)->nearest, "soft_bloom");
-    const TitleOpsResult typo = TitleArtOps::apply(doc, Json{{"op", "add_effect"}, {"layer", "Title"}, {"type", "lite_glow"}});
+    const TitleOpsResult typo = TitleArtOps::apply(doc, TitleFxPresetsJson{{"op", "add_effect"}, {"layer", "Title"}, {"type", "lite_glow"}});
     ASSERT_FALSE(typo.ok);
     EXPECT_EQ(titleFxPresetsFailure(typo)->nearest, "light_glow");
 }
@@ -161,18 +161,18 @@ TEST(TitleFxPresetsTest, AddEffectAppliesAPreset) {
 TEST(TitleFxPresetsTest, ApplyRecipeIsOneNamedStep) {
     registerTitleFxOps();
     const titleart::TitleArtDoc doc = oneTitle();
-    const TitleOpsResult r = TitleArtOps::apply(doc, Json{{"op", "apply_recipe"}, {"layer", "Title"}, {"recipe", "long_shadow"}});
+    const TitleOpsResult r = TitleArtOps::apply(doc, TitleFxPresetsJson{{"op", "apply_recipe"}, {"layer", "Title"}, {"recipe", "long_shadow"}});
     ASSERT_TRUE(r.ok) << r.error();
     EXPECT_EQ(r.undoName, "Long Shadow");
-    const Json& fx = r.doc.layers()[0]["effects"][0];
+    const TitleFxPresetsJson& fx = r.doc.layers()[0]["effects"][0];
     EXPECT_EQ(fx["type"], "extrude");
     EXPECT_EQ(fx["params"]["length"], 260);
     EXPECT_EQ(fx["params"]["shading"], 0);
-    const TitleOpsResult shine = TitleArtOps::apply(doc, Json{{"op", "apply_recipe"}, {"layer", "Title"}, {"recipe", "shine"}});
+    const TitleOpsResult shine = TitleArtOps::apply(doc, TitleFxPresetsJson{{"op", "apply_recipe"}, {"layer", "Title"}, {"recipe", "shine"}});
     ASSERT_TRUE(shine.ok) << shine.error();
     EXPECT_EQ(shine.doc.layers()[0]["effects"][0]["params"]["style"], "sweep");
     EXPECT_EQ(shine.doc.layers()[0]["effects"][0]["params"]["mode"], "light");
-    const TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "apply_recipe"}, {"layer", "Title"}, {"recipe", "long_shadw"}});
+    const TitleOpsResult bad = TitleArtOps::apply(doc, TitleFxPresetsJson{{"op", "apply_recipe"}, {"layer", "Title"}, {"recipe", "long_shadw"}});
     ASSERT_FALSE(bad.ok);
     EXPECT_EQ(titleFxPresetsFailure(bad)->nearest, "long_shadow");
 }
