@@ -144,8 +144,8 @@
             "reason": "grandfathered by S31: 1977 chars when the limits were set, +5%"
         },
         "build_project": {
-            "limit": 1951,
-            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list; build-and-run-on-device added run_device and patch (core paid for them: run_build lost its result field list); 1951 measured after mcp-budget-trim cut the job sentence and what method already says (the craftsman merge took core over 99,000); S98 cut 'Saves scenes first' (a build saves nothing)"
+            "limit": 1931,
+            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list; build-and-run-on-device added run_device and patch (core paid for them: run_build lost its result field list); 1951 measured after mcp-budget-trim cut the job sentence and what method already says (the craftsman merge took core over 99,000); 1931 measured once S98 cut 'Saves scenes first' (a build saves nothing)"
         },
         "send_input": {
             "limit": 2000,

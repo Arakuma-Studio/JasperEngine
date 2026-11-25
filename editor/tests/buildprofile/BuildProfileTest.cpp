@@ -119,7 +119,7 @@ namespace {
         } else if (row.type == "int" || row.type == "number" || row.type == "float") {
             changedNumber(current, row.type == "int", values);
         } else if (row.type == "string" || row.type == "path") {
-            for (const char* value : {"art/icon.png", "Profile Value", "1.2.3", "com.studio.profile", "#ff0000", ""})
+            for (const char* value : {"art/icon.png", "Profile Value", "1.2.3", "com.studio.profile", "#ff0000", ".profile", ""})
                 if (current != mcp::Json(value)) values.push_back(value);
             if (current.is_string()) values.push_back(current.get<std::string>() + "1");
         } else if (row.type == "list") {
