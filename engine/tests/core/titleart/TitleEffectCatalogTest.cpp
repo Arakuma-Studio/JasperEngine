@@ -27,6 +27,8 @@
 #include <set>
 #include <sstream>
 
+namespace TitleEffectCatalogTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -36,7 +38,7 @@ namespace {
                                                    "color_overlay", "gradient_overlay", "adjust", "pattern_overlay", "gaussian_blur"};
 
     std::filesystem::path repoRoot() {
-        return std::filesystem::path(test::testPaths().sourceDir) / ".." / ".." / "..";
+        return std::filesystem::path(jasperengine::test::testPaths().sourceDir) / ".." / ".." / "..";
     }
 
     std::string titleEffectCatalogReadText(const std::filesystem::path& path) {
@@ -324,7 +326,7 @@ TEST(TitleEffectCatalogTest, SchemaFragmentsAndRows) {
 TEST(TitleEffectCatalogTest, DocsPageIsUpToDate) {
     const std::string generated = titleEffectDocsMarkdown(TitleEffectRegistry::get());
     const std::filesystem::path path = repoRoot() / TITLE_EFFECT_DOCS_PATH;
-    if (test::isGoldenUpdateMode()) std::ofstream(path, std::ios::binary) << generated;
+    if (jasperengine::test::isGoldenUpdateMode()) std::ofstream(path, std::ios::binary) << generated;
     ASSERT_TRUE(std::filesystem::exists(path)) << path.string();
     EXPECT_EQ(titleEffectCatalogReadText(path), generated) << TITLE_EFFECT_DOCS_PATH
                                          << " is stale: rerun with JASPER_TEST_UPDATE_GOLDEN=1 (UNIT_TEST_ARGS=--gtest_filter=TitleEffectCatalogTest.*)";
@@ -356,7 +358,7 @@ TEST(TitleEffectCatalogTest, DrivesEverySurface) {
 
 // AC24's list check: every case has its reference and every reference a case
 TEST(TitleEffectCatalogTest, GoldenListMatchesTheReferences) {
-    const std::filesystem::path dir = std::filesystem::path(test::testPaths().goldenDir) / "titleart" / "effects";
+    const std::filesystem::path dir = std::filesystem::path(jasperengine::test::testPaths().goldenDir) / "titleart" / "effects";
     ASSERT_TRUE(std::filesystem::is_directory(dir)) << dir.string();
     std::set<std::string> cases;
     for (const std::string& c : titleGoldenCases(TitleEffectRegistry::get())) cases.insert(c.substr(c.find('/') + 1));
@@ -440,3 +442,5 @@ TEST(TitleEffectCatalogTest, AdjustmentToneCurves) {
     EXPECT_TRUE(titleAdjustmentIsIdentity(effectsOnly));
     EXPECT_EQ(titleAdjustOp(effectsOnly), TitleAdjustOp::None);
 }
+
+}  // namespace TitleEffectCatalogTest_cpp

@@ -47,9 +47,11 @@ def scenes_of(project: Path) -> list[str]:
 
 
 def generated_files(project: Path) -> dict[str, bytes]:
-    """{relative path: bytes} of what the editor generated for the project's code"""
+    """{relative path: bytes} of what the editor generated for the project's code; not an atomic write's
+    temporary sibling (".x.cpp.<pid>-<n>.je-tmp"): a frame writing another scene's source renames it away"""
     root = project / ".jasperengine" / "generated"
-    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()} if root.is_dir() else {}
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*"))
+            if p.is_file() and not p.name.endswith(".je-tmp")} if root.is_dir() else {}
 
 
 def differences(before: dict[str, bytes], after: dict[str, bytes]) -> list[str]:

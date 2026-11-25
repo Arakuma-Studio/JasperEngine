@@ -98,13 +98,12 @@ def animations(rest):
     return [("Walk", walk), ("Idle", idle), (None, unnamed), ("Wave", wave), ("Wave", wave2)]
 
 
-def build():
-    g = json.loads(mh.build_gltf("hero"))
-    g["asset"]["generator"] = "pose-animation fixture make_animated_hero.py"
+def append_animations(g, animations_):
+    """Packs `animations_` ([(name or None, [(node name, path, interpolation, times, values)])]) into
+    g's buffer 0 and sets g["animations"]."""
     head = "data:application/octet-stream;base64,"
     data = bytearray(base64.b64decode(g["buffers"][0]["uri"][len(head):]))
     node_index = {n["name"]: i for i, n in enumerate(g["nodes"])}
-    rest = {n["name"]: n.get("translation", [0.0, 0.0, 0.0]) for n in g["nodes"]}
 
     def add(floats, kind, count, minmax=None):
         while len(data) % 4:
@@ -119,7 +118,7 @@ def build():
         return len(g["accessors"]) - 1
 
     out = []
-    for name, channels in animations(rest):
+    for name, channels in animations_:
         samplers, targets = [], []
         for node, path, interpolation, times, values in channels:
             times = [mh.r6(t) for t in times]
@@ -139,6 +138,13 @@ def build():
         out.append(animation)
     g["animations"] = out
     g["buffers"][0] = {"byteLength": len(data), "uri": head + base64.b64encode(bytes(data)).decode()}
+
+
+def build():
+    g = json.loads(mh.build_gltf("hero"))
+    g["asset"]["generator"] = "pose-animation fixture make_animated_hero.py"
+    rest = {n["name"]: n.get("translation", [0.0, 0.0, 0.0]) for n in g["nodes"]}
+    append_animations(g, animations(rest))
     # the same key order as make_humanoids.py's files, animations after the skins
     order = ["asset", "scene", "scenes", "nodes", "meshes", "skins", "animations", "materials", "accessors",
              "bufferViews", "buffers"]
@@ -146,7 +152,7 @@ def build():
     return (json.dumps(g, indent=1) + "\n").encode()
 
 
-def validate_animations(raw):
+def validate_animations(raw, expected_clips=EXPECTED_CLIPS):
     errors = []
     g = json.loads(raw)
     head = "data:application/octet-stream;base64,"
@@ -170,8 +176,8 @@ def validate_animations(raw):
     for i, n in enumerate(clips):
         if n in clips[:i]:
             clips[i] = f"{n} {clips[:i].count(n) + 1}"
-    if clips != EXPECTED_CLIPS:
-        errors.append(f"sub-clip names {clips}, expected {EXPECTED_CLIPS}")
+    if clips != expected_clips:
+        errors.append(f"sub-clip names {clips}, expected {expected_clips}")
     for i, a in enumerate(animations):
         for j, c in enumerate(a["channels"]):
             where = f"animation {clips[i] if i < len(clips) else i} channel {j}"

@@ -11,6 +11,7 @@
 
 #include "Engine.h"
 #include "pool/AnimationClipPoolTesting.h"
+#include "support/AllocationCounter.h"
 
 #include <atomic>
 #include <chrono>
@@ -123,6 +124,60 @@ namespace {
         }
     };
 
+}
+
+// Mesh Space Rotation (docs/specs/mesh-space-rotation.md AC11, R20-R22): the pass's scratch is
+// two rig-sized rotation arrays, sized at the bind only when a layer runs the pass (none for an
+// Animator whose option is off), and an update allocates nothing after the bind, the Torso
+// Direction recording on or off
+TEST_F(AnimatorHotPath, MeshSpaceRotationAllocatesNothingAfterTheBind){
+    const std::string base = clip("base", animatorHotPathTurn("Hips", 30.0f));
+    ClipData upperData = animatorHotPathTurn("Hips", -60.0f);
+    upperData.tracks.push_back(animatorHotPathTurn("Hips/Spine", 40.0f).tracks[0]);
+    const std::string upper = clip("upper", upperData);
+    AvatarMaskDef mask;
+    mask.defaultWeight = 0.0f;
+    mask.paths.push_back({"Hips/Spine", 1.0f, true});
+    const std::string maskPath = maskFile("spine", mask);
+    auto layered = [&](const std::string& name, bool meshSpace){
+        ControllerDef def = controller({}, {state("Base", base)});
+        LayerDef layer;
+        layer.name = "Upper";
+        layer.mask.path = maskPath;
+        layer.meshSpaceRotation = meshSpace;
+        layer.machine.states.push_back(state("Upper", upper));
+        def.layers.push_back(layer);
+        return controllerFile(name, def);
+    };
+    animator(layered("on", true));
+    animator(layered("off", false), addTwin());
+    step(0.0);
+    ASSERT_TRUE(instance(root).bound);
+    ASSERT_TRUE(instance(twin).bound);
+    EXPECT_TRUE(instance(root).layerMeshSpaceApplies(1));
+    EXPECT_EQ(instance(root).meshSpaceScratchBytes(), 2 * instance(root).rig.bones.size() * sizeof(Quaternion));
+    EXPECT_EQ(instance(twin).meshSpaceScratchBytes(), 0u) << "the option off: no scratch";
+    EXPECT_EQ(instance(twin).layerBoundaryBones(1).size(), 1u) << "the boundary bones are listed all the same";
+    for (int i = 0; i < 120; i++) step(kHotPathDt);
+    // the recording's checks run on every build (sanitizers included); the counts where it can count
+    const bool counts = testsupport::countsAllocations();
+    if (counts){
+        testsupport::AllocationCountScope scope;
+        for (int i = 0; i < 600; i++) step(kHotPathDt);
+        EXPECT_EQ(scope.count(), 0u);
+    }
+    instance(root).setMeshSpaceDebug(true);
+    EXPECT_EQ(instance(root).layerMeshSpaceUnpassed(1), nullptr) << "nothing recorded before an update";
+    step(kHotPathDt);
+    if (counts){
+        testsupport::AllocationCountScope scope;
+        for (int i = 0; i < 120; i++) step(kHotPathDt);
+        EXPECT_EQ(scope.count(), 0u) << "the recording allocates in its setter only";
+    }
+    ASSERT_NE(instance(root).layerMeshSpaceUnpassed(1), nullptr);
+    EXPECT_EQ(instance(root).layerMeshSpaceUnpassed(1)->size(), 1u);
+    EXPECT_EQ(instance(twin).layerMeshSpaceUnpassed(1), nullptr) << "a layer the pass does not run on records nothing";
+    if (!counts) GTEST_SKIP() << "this build cannot count allocations (the recording was checked)";
 }
 
 // AC6: a layer of weight 0 costs no sampling, and its time still runs: when its weight comes up

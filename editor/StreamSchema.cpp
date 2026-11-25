@@ -4,6 +4,7 @@
 #include "StreamSchema.h"
 #include "component/TerrainComponent.h"
 #include "render/LodFade.h"
+#include "physics/WorldSettings.h"
 
 #include "reflect/Enums.h"
 
@@ -93,6 +94,15 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             return keys;
         }();
         return material;
+    }
+    if (kind == RootKind::SceneSettings) {
+        // and the physics world settings (S96), one key per field of their table
+        static const std::vector<std::string> sceneSettings = [] {
+            std::vector<std::string> keys = lookup(tables, RootKind::SceneSettings);
+            for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) keys.push_back(field.key);
+            return keys;
+        }();
+        return sceneSettings;
     }
     return lookup(tables, kind);
 }

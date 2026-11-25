@@ -21,7 +21,8 @@ says `animator.hands_over`).
 
 Tools (group `animation`): `get_animator` (read), `edit_animator_controller`, `edit_avatar_mask`,
 `edit_montage` (each call one project undo step: `undo {scope: "project"}`), `control_animator`
-(drive it: play mode or the edit preview) and `sample_animation_pose` (bone world transforms). The
+(drive it: play mode or the edit preview) and `sample_animation_pose` (bone transforms, world or `space:
+"model"`). The
 files are canonical JSON: read them if you like, edit them with the tools (they validate, keep
 unknown keys and the undo history).
 
@@ -48,7 +49,7 @@ unknown keys and the undo history).
 | op | fields |
 |---|---|
 | `add_parameter` / `set_parameter` / `remove_parameter` / `rename_parameter` | `name`, `type` (float, int, bool, trigger), `default`, `new_name` (a rename follows into conditions, trees and state multipliers; a removal takes the conditions reading it and clears the trees and multipliers) |
-| `add_layer` / `set_layer` / `remove_layer` | `name`, `weight`, `blending` (override, additive), `mask` (.mask path or null), `slot` (montage slot); the last layer stays |
+| `add_layer` / `set_layer` / `remove_layer` | `name`, `weight`, `blending` (override, additive), `mask` (.mask path or null), `slot` (montage slot), `mesh_space_rotation` (below); the last layer stays |
 | `add_state` / `set_state` / `remove_state` | `name`, `layer`, `machine` ("Combat/Inner"), `clip` or `blend_tree`, `position`, `speed`, `speed_parameter`, `time_parameter`, `cycle_offset`, `loop` (inherit, loop, once, ping_pong, clamp_forever, repeat), `tag`, `additive_reference` (first_frame, rest, time, clip: the .anim's own), `additive_time`, `mirror`, `foot_ik`, `retarget` (humanoid playback: left/right swapped, the feet to the clip's foot goals, retargeted even with the Animator's retarget off), `default: true`; a removal takes the transitions into it |
 | `add_sub_state_machine` / `remove_sub_state_machine` | `name`, `layer`, `machine`, `position` |
 | `add_transition` / `set_transition` / `remove_transition` | `from` (a state, `Any State`, `Entry`, `Exit:<machine>`), `to` (a state, a sub-state machine, `Exit`, `/State` from the layer root), `index`, `conditions [{parameter, mode, threshold}]`, `has_exit_time`, `exit_time`, `fixed_duration`, `duration`, `offset`, `interruption_source` (none, current, next, current_then_next, next_then_current), `ordered_interruption`, `can_transition_to_self`, `mute` |
@@ -78,6 +79,17 @@ else (a humanoid rig) its body part, else `default`. Parts: `root` (root motion;
 `right_arm` (shoulder to forearm), `left_hand` / `right_hand` (the hand bone), `left_fingers` /
 `right_fingers` (below the hand), `left_leg` / `right_leg`; a part not set weighs `default`.
 Animators' layers and Animation Player layers read the same masks.
+
+**Mesh Space Rotation.** When an upper-body layer's torso turns with the base layer's hips instead of where its
+own clip faces (a mask that starts at the spine over a run), run `check_animation {entity, layer_blend: {layer}}`
+and apply its finding's `next`: `set_layer {mesh_space_rotation: true}` makes the bones where the mask starts or
+stops keep the layer's direction relative to the character (Override layers above 0 only; translation stays
+local). Rerun it: `layer_blend.max_angle_deg` (each listed bone against the layer's own clip where the mask takes
+it, the layers below where not) and `facing_delta_deg` (the chest on the ground plane) drop to about 0.
+`layer_blend {base_state, state, times, bones}` default to the layers' default states, 5 times over the state and
+the mask's edge bones with their children; `limits.layer_twist_deg` (5) raises `anim-layer-twist`.
+`get_animation {entity}` lists those edge bones (`animator.mask_coverage[].boundary_bones`) and
+`sample_animation_pose {space: "model", solo_layer}` the layer's own pose, unmasked.
 
 ```json
 {"format": "jasperengine.mask", "version": 2, "default": 0,

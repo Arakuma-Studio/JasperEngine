@@ -24,6 +24,8 @@
 #include <gtest/gtest.h>
 
 #include <map>
+#include <memory>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -51,19 +53,20 @@ namespace {
 
     class CompatElementTest : public RuntimeContextTest {
     protected:
-        void TearDown() override{
-            for (auto& entry : listening)
-                entry.first->RemoveEventListener(entry.second.first, entry.second.second);
-            listening.clear();
-            RuntimeContextTest::TearDown();
+        // A recorder of the fixture: it outlives the documents, whose unloading (show, TearDown)
+        // tells each listener it is detached (EventListener::OnDetach). One on the test body's
+        // stack was gone when TearDown detached it: a call through its dead frame (a wild jump
+        // under ASan).
+        Recorder& recorder(){
+            recorders.push_back(std::make_unique<Recorder>());
+            return *recorders.back();
         }
 
-        void listen(Rml::Element* element, const std::string& type, Recorder& recorder){
-            element->AddEventListener(type, &recorder);
-            listening.push_back({element, {type, &recorder}});
+        void listen(Rml::Element* element, const std::string& type, Recorder& events){
+            element->AddEventListener(type, &events);
         }
 
-        std::vector<std::pair<Rml::Element*, std::pair<std::string, Recorder*>>> listening;
+        std::vector<std::unique_ptr<Recorder>> recorders;
     };
 
     const char* kControls = "input, button, select, textarea, a, summary, label, img { display: inline-block; } "
@@ -79,7 +82,7 @@ TEST_F(CompatElementTest, ButtonSubmitsItsFormWithNameAndValue){
                    "<button id='plain' type='button'>B</button></form>"
                    "<button id='outside' form='f' name='out' value='o'>Out</button>", kControls), nullptr);
     ASSERT_NE(rmlui_dynamic_cast<HtmlButtonElement*>(byId("go")), nullptr);
-    Recorder submits;
+    Recorder& submits = recorder();
     listen(byId("f"), "submit", submits);
 
     click(byId("go"));
@@ -116,7 +119,8 @@ TEST_F(CompatElementTest, ButtonCentersItsContentVertically){
 
 TEST_F(CompatElementTest, DisabledButtonGetsNoClick){
     ASSERT_NE(show("<form id='f'><button id='go' disabled=''>Go</button></form>", kControls), nullptr);
-    Recorder submits, clicks;
+    Recorder& submits = recorder();
+    Recorder& clicks = recorder();
     listen(byId("f"), "submit", submits);
     listen(byId("go"), "click", clicks);
     EXPECT_TRUE(byId("go")->IsPseudoClassSet("disabled"));
@@ -134,7 +138,7 @@ TEST_F(CompatElementTest, DisabledButtonGetsNoClick){
 
 TEST_F(CompatElementTest, EnterAndSpaceActivateButtons){
     ASSERT_NE(show("<form id='f'><button id='go'>Go</button></form>", kControls), nullptr);
-    Recorder submits;
+    Recorder& submits = recorder();
     listen(byId("f"), "submit", submits);
     ASSERT_TRUE(byId("go")->Focus(true));
     key(Rml::Input::KI_RETURN);
@@ -166,7 +170,7 @@ TEST_F(CompatElementTest, ResetRestoresInitialValues){
     frame();
     EXPECT_TRUE(box->HasAttribute("checked"));
 
-    Recorder resets;
+    Recorder& resets = recorder();
     listen(byId("f"), "reset", resets);
     click(byId("reset"));
     EXPECT_EQ(resets.events.size(), 1u);
@@ -221,7 +225,7 @@ TEST_F(CompatElementTest, AnchorsNavigateAndScroll){
                    "<a id='jump' href='#far'>jump</a><a id='none'>no href</a>"
                    "<div style='height: 2000px;'/><div id='far' style='height: 20px;'>far</div>",
                    std::string(kControls) + "body { overflow-y: auto; } scrollbarvertical { width: 10px; } sliderbar { height: 20px; }"), nullptr);
-    Recorder navigations;
+    Recorder& navigations = recorder();
     listen(document, "htmlnavigate", navigations);
 
     click(byId("doc"));
@@ -251,7 +255,7 @@ TEST_F(CompatElementTest, AnchorsNavigateAndScroll){
     ASSERT_TRUE(byId("doc")->Focus(true));
     key(Rml::Input::KI_RETURN);
     EXPECT_EQ(navigations.events.size(), 3u);
-    Recorder clicks;
+    Recorder& clicks = recorder();
     clicks.prevent = true;
     listen(byId("ext"), "click", clicks);
     click(byId("ext"));
@@ -324,7 +328,8 @@ TEST_F(CompatElementTest, NumberInputFiltersStepsAndClamps){
 TEST_F(CompatElementTest, ImplicitSubmissionAndKeyboardToggles){
     ASSERT_NE(show("<form id='f'><input id='t' name='t'/><input id='c' type='checkbox'/><button id='go' name='go' value='1'>Go</button></form>"
                    "<form id='g'><input id='only' name='only' value='v'/></form>", kControls), nullptr);
-    Recorder submits, gsubmits;
+    Recorder& submits = recorder();
+    Recorder& gsubmits = recorder();
     listen(byId("f"), "submit", submits);
     listen(byId("g"), "submit", gsubmits);
     click(byId("t"));
@@ -363,7 +368,7 @@ TEST_F(CompatElementTest, DetailsToggle){
                    "details[open] > summary { list-style-type: disclosure-open; } details:not([open]) > div { display: none; }"), nullptr);
     auto* details = rmlui_dynamic_cast<HtmlDetailsElement*>(byId("d"));
     ASSERT_NE(details, nullptr);
-    Recorder toggles;
+    Recorder& toggles = recorder();
     listen(details, "toggle", toggles);
     EXPECT_FALSE(details->isOpen());
     EXPECT_EQ(rmlui_dynamic_cast<HtmlListItemElement*>(byId("s"))->getMarkerText(), "\xE2\x96\xB8 ");
@@ -405,7 +410,8 @@ TEST_F(CompatElementTest, DialogShowCloseAndCancel){
                    std::string(kControls) + "dialog { display: none; } dialog[open] { display: block; }"), nullptr);
     auto* dialog = rmlui_dynamic_cast<HtmlDialogElement*>(byId("d"));
     ASSERT_NE(dialog, nullptr);
-    Recorder closes, cancels;
+    Recorder& closes = recorder();
+    Recorder& cancels = recorder();
     listen(dialog, "close", closes);
     listen(dialog, "cancel", cancels);
 
@@ -623,7 +629,7 @@ TEST_F(CompatElementTest, LabelsActivateTheirHtmlControl){
     EXPECT_EQ(rmlui_dynamic_cast<HtmlLabelElement*>(byId("forDiv"))->getControl(), nullptr);
 
     // the label's click still reaches its ancestors, then activates the checkbox
-    Recorder outerClicks;
+    Recorder& outerClicks = recorder();
     listen(byId("outer"), "click", outerClicks);
     const Rml::Vector2f at = wrap->GetAbsoluteOffset(Rml::BoxArea::Border) + Rml::Vector2f(190, 10);
     context->ProcessMouseMove((int)at.x, (int)at.y, 0);
@@ -638,7 +644,7 @@ TEST_F(CompatElementTest, LabelsActivateTheirHtmlControl){
     EXPECT_TRUE(byId("box2")->HasAttribute("checked"));
     click(byId("forOff"));
     EXPECT_FALSE(byId("off")->HasAttribute("checked"));
-    Recorder divClicks;
+    Recorder& divClicks = recorder();
     listen(byId("plain"), "click", divClicks);
     click(byId("forDiv"));
     EXPECT_TRUE(divClicks.events.empty());
