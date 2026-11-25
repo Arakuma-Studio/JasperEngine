@@ -582,10 +582,12 @@ Per package, before merging:
   build in its cooked scene (no generated `scene->setFixedTimestep` line), and Project Settings >
   Time and Input > Simulate Touch From Mouse in `game.json` (`cook::makeGameConfig`), which
   `player::runGame` applies before the first scene, as in the prebuilt player.
-- **The LuaBridge workaround stays until S92 lands.** WP-1 left `engine/libs/luabridge3/LuaBridge.h`
-  untouched (S92 owns its patch) and hardens LuaBridge's class tables from
-  `LuaBinding.cpp` (`hardenClassTables`) instead. S92 fixes the same crashes inside LuaBridge;
-  once both are on `main` the workaround is removable in one commit.
+- **The LuaBridge workaround is gone (S92 landed).** WP-1 left `engine/libs/luabridge3/LuaBridge.h`
+  untouched (S92 owns its patch) and hardened LuaBridge's class tables from `LuaBinding.cpp`
+  (`hardenClassTables`) meanwhile. With S92's fix inside LuaBridge on `main`, the workaround is
+  removed: it also wrapped every binary metamethod, which hid S92's overload set from its
+  `LuaBindingBench.OverloadMisses`. AC-2's sweep (`LuaMath.WrongCallsRaise`) covers both crashes
+  without it.
 - **AC-2 under ASan found a Debug-only abort.** The ASan unit build is Debug, and there
   `Vector2`/`Vector4` division by a zero scalar asserted (the sweep divides by 0 from Lua). Release
   already gave infinities, and `Vector3` never asserted, so the asserts are gone: every vector
