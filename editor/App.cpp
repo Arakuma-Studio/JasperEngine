@@ -6191,9 +6191,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (BLIT 'Gli' 20) and the screen transition program.
     // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
-    // v66: Vapor's particle height fog (docs/specs/S101-vapor.md R16): the fogged particle variants
-    //      (PARTICLES 'Fog') carry the height fog (HAS_HEIGHT_FOG, u_fs_heightFog) as the mesh's do.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v66";
+    // v75: S101 Vapor's particle height fog (after V1's v74; docs/specs/S101-vapor.md R16): the fogged particle
+    //      variants (PARTICLES 'Fog') carry the height fog (HAS_HEIGHT_FOG, u_fs_heightFog) as the mesh's do.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v75";
 }
 
 void editor::App::pushTabNotificationStyle(){

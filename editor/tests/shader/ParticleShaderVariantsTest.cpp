@@ -99,10 +99,10 @@ TEST(ParticleShaderVariants, ASoftChildGivesTheMeshesTheirDepthPrograms){
     particles::ParticleEffectLibrary::clear();
 }
 
-// the fogged particle variants carry the height fog from v66 (after S50's v65) or later: an older cache
-// holds 'Fog' particle programs that take a height fog's linear fields instead
+// the fogged particle variants carry the height fog from v75 (S101, after V1's v74) or later: an older
+// cache holds 'Fog' particle programs that take a height fog's linear fields instead
 TEST(ParticleShaderVariants, ShaderCacheVersionCoversTheHeightFog){
     const std::string name = editor::App::getUserShaderCacheDir().filename().string();
     ASSERT_EQ(name.rfind('v', 0), 0u) << name;
-    EXPECT_GE(std::stoi(name.substr(1)), 66) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 75) << name;
 }

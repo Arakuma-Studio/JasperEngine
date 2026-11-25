@@ -170,7 +170,7 @@ Read for ideas only. The architecture is not taken.
 
 ### Functional: the profile asset
 
-- **R1** `AssetType::FogProfile = 35` (`"fog_profile"`, extension `.fogprofile`).
+- **R1** `AssetType::FogProfile = 41` (`"fog_profile"`, extension `.fogprofile`).
   - It is versioned, canonical JSON, with its GUID in `.meta` (S04).
   - A field present in `fields` is an override. An absent field is not.
   - Loading ignores unknown fields with one console warning per file.
