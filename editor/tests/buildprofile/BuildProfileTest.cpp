@@ -669,12 +669,12 @@ TEST(BuildProfileCompile, GameConfigHasTheSceneListAndTheProfilesSettings) {
     snapshot->setCanvasSize(320, 200);
     snapshot->setLightMode(LightMode::TILED);
     const std::set<uint32_t> shipped = {level, hud};
-    cook::GameConfigTarget target;
+    editor::cook::GameConfigTarget target;
     target.startScene = level;
     target.settings = snapshot.get();
     target.scenes = &shipped;
 
-    const player::PlayerConfig profile = cook::makeGameConfig(project, target);
+    const player::PlayerConfig profile = editor::cook::makeGameConfig(project, target);
     EXPECT_NE(profile.findScene(level), nullptr);
     EXPECT_NE(profile.findScene(hud), nullptr) << "the scene Level1 involves ships with it";
     EXPECT_EQ(profile.findScene(menu), nullptr);
@@ -685,9 +685,9 @@ TEST(BuildProfileCompile, GameConfigHasTheSceneListAndTheProfilesSettings) {
     EXPECT_EQ(profile.lightMode, LightMode::TILED);
 
     // without a profile: every scene, the project's own settings
-    cook::GameConfigTarget own;
+    editor::cook::GameConfigTarget own;
     own.startScene = menu;
-    const player::PlayerConfig game = cook::makeGameConfig(project, own);
+    const player::PlayerConfig game = editor::cook::makeGameConfig(project, own);
     for (uint32_t id : {menu, level, hud, bonus}) EXPECT_NE(game.findScene(id), nullptr) << id;
     EXPECT_EQ(game.startScene, menu);
     EXPECT_NE(game.canvasWidth, 320u);
