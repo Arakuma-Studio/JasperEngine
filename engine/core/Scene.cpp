@@ -327,6 +327,24 @@ SceneColorScale Scene::getSceneColorScale() const{
     return settings.sceneColorScale;
 }
 
+void Scene::setHtmlUiRenderMode(UIRenderMode mode){
+    settings.htmlUiRenderMode = mode;
+}
+
+UIRenderMode Scene::getHtmlUiRenderMode() const{
+    return settings.htmlUiRenderMode;
+}
+
+void Scene::setHtmlUiMsaaSamples(int samples){
+    // UIDocumentSystem hands it to the screen context each frame; the context makes its target
+    // again when the count it resolves to changes
+    settings.htmlUiMsaaSamples = samples >= 8 ? 8 : samples >= 4 ? 4 : samples >= 2 ? 2 : samples >= 1 ? 1 : 0;
+}
+
+int Scene::getHtmlUiMsaaSamples() const{
+    return settings.htmlUiMsaaSamples;
+}
+
 void Scene::setPlanarReflectionResolution(PlanarReflectionResolution resolution){
     settings.planarReflectionResolution = resolution;
 }
@@ -686,6 +704,23 @@ Vector3 Scene::getAmbientLight2DColor() const{
 
 Vector3 Scene::getAmbientLight2DColorLinear() const{
     return settings.ambientLight2DColor;
+}
+
+void Scene::setLight2DSteps(int steps){
+    // on and off is a variant of the 2D-lit meshes (RenderSystem::update), the count a uniform
+    settings.light2DSteps = std::clamp(steps, 0, 16);
+}
+
+int Scene::getLight2DSteps() const{
+    return settings.light2DSteps;
+}
+
+void Scene::setAmbientLight2DWithoutLights(bool enabled){
+    settings.ambientLight2DWithoutLights = enabled;
+}
+
+bool Scene::isAmbientLight2DWithoutLights() const{
+    return settings.ambientLight2DWithoutLights;
 }
 
 void Scene::setShadow2DQuality(ShadowQuality quality){

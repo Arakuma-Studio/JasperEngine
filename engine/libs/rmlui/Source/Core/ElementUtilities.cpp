@@ -184,16 +184,21 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 			// out after it is measured) and the ink overflow of the content (shadows, outlines): they drew outside an
 			// 'overflow: hidden' box.
 			bool disable_scissor_clipping = false;
+			// Fork (S92-F3): a clip without border-radius under a transform that only scales and translates is its projected
+			// rectangle, a scissor (no clip mask; the edges rounded to whole pixels below), whatever the content holds.
+			RenderManager::AxisAlignedTransform axis_aligned;
+			bool projected = false;
 
 			if (out_clip_mask_list)
 			{
 				const TransformState* transform_state = clipping_element->GetTransformState();
 				const Matrix4f* transform = (transform_state ? transform_state->GetTransform() : nullptr);
 				const bool has_border_radius = clip_computed.has_border_radius();
+				projected = (transform && !has_border_radius && RenderManager::GetAxisAlignedTransform(transform, axis_aligned));
 
 				// If the element has border-radius we always use a clip mask, since we can't easily predict if content is located on the curved
 				// region to be clipped; with a transform too, the scissor cannot follow it.
-				if (has_border_radius || transform)
+				if ((has_border_radius || transform) && !projected)
 				{
 					Geometry* clip_geometry = clipping_element->GetElementBackgroundBorder()->GetClipGeometry(clipping_element, clip_area);
 					const ClipMaskOperation clip_operation = (out_clip_mask_list->empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
@@ -210,7 +215,7 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 				// If we only have border-radius then we add this element to the scissor region as well as the clip mask. This may help with e.g.
 				// culling text render calls. However, when we have a transform, the element cannot be added to the scissor region since its geometry
 				// may be projected entirely elsewhere.
-				if (transform)
+				if (transform && !projected)
 					disable_scissor_clipping = true;
 			}
 
@@ -254,6 +259,8 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 						p0.y = -unbounded, p1.y = unbounded;
 					element_region = Rectanglef::FromCorners(p0, p1);
 				}
+				if (projected)
+					element_region = axis_aligned.Map(element_region);
 
 				clip_region = element_region.IntersectIfValid(clip_region);
 			}
@@ -314,6 +321,24 @@ bool ElementUtilities::GetRenderClippingRegion(Element* element, RenderManager& 
 		if (window.Valid())
 		{
 			scissor_region = (scissoring_enabled ? scissor_region.Intersect(window) : window);
+			scissoring_enabled = true;
+		}
+	}
+
+	// Fork (S92-F2): within the clip-path shapes pushed outside the element (at this clip root's depth: one pushed outside a
+	// deeper effects layer clips that layer's composite).
+	for (const RenderManager::ShapeClip& shape_clip : render_manager.GetShapeClips())
+	{
+		if (shape_clip.clip_root_depth != render_manager.GetClipRootDepth())
+			continue;
+		for (ClipMaskGeometry mask : shape_clip.masks)
+		{
+			mask.operation = (clip_mask_list.empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
+			clip_mask_list.push_back(mask);
+		}
+		if (shape_clip.bounds.Valid())
+		{
+			scissor_region = (scissoring_enabled ? scissor_region.Intersect(shape_clip.bounds) : shape_clip.bounds);
 			scissoring_enabled = true;
 		}
 	}

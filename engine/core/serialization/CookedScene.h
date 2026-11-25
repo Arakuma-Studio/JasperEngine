@@ -44,8 +44,9 @@ namespace jasperengine {
         // Wakes' map (water-boats); 6: the Box2D sub-steps and the physics world settings, and the scene
         // hierarchy (S96); 7: a Mesh Renderer's .mesh asset (S98 F1: its geometry is not in the scene), the
         // scene resources' VATs, masks, controllers and bitmap fonts (S98 REQ-52), the scene's own Canvas
-        // Scaler (S98 D1)
-        constexpr uint16_t FORMAT_MINOR = 7;
+        // Scaler (S98 D1); 8: the Light Steps and the 2D ambient without a Light 2D (S78); 9: the screen HTML
+        // UI documents' render mode and MSAA samples (S92)
+        constexpr uint16_t FORMAT_MINOR = 9;
         // Content minors past the cooked files' layout: what a build's game.json uses. A build stamps one
         // only when it uses it, so a build that does not stays playable by every runtime of FORMAT_MINOR.
         // 11: game.json's buildProfile and defines (build-profiles: a runtime of 10 or older ignores them and

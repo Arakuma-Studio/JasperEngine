@@ -29,7 +29,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using PachislopImportJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 namespace fs = std::filesystem;
 
 namespace {
@@ -110,7 +110,7 @@ namespace {
     // the report's (code or field) of each note, sorted
     std::vector<std::string> noteKeys(const TitleCreateResult& r) {
         std::vector<std::string> keys;
-        for (const Json& n : r.notes) {
+        for (const PachislopImportJson& n : r.notes) {
             const std::string code = n.value("code", std::string());
             keys.push_back(code.empty() ? n.value("action", std::string()) + ":" + n.value("field", std::string()) : code);
         }
@@ -207,21 +207,21 @@ TEST_F(PachislopImportTest, BuiltinFontsComeFromTheFontPackOncePerProject) {
 
 TEST_F(PachislopImportTest, AV4CharacterScaleKeepsEveryGlyphWhereV4DrewIt) {
     // v4: "ABC" with B scaled 1.5 and offset; v5 reflows the line, the import moves it back
-    const Json chars = Json{{"1", Json{{"dx", 2}, {"dy", 1}, {"scale", 1.5}, {"rotate", 0}}}};
-    const Json layer = Json{{"id", "0000aa01"}, {"name", "T"}, {"kind", "title2d"}, {"visible", true}, {"blend", "normal"},
-                            {"transform", Json{{"x", 30}, {"y", -10}, {"rotZ", 0}, {"scale", 1}, {"opacity", 1}}}, {"effects", Json::array()},
-                            {"source", Json{{"kind", "text"}, {"text", "ABC"}, {"fontId", "dela-gothic-one"}, {"size", 200}, {"tracking", 0},
+    const PachislopImportJson chars = PachislopImportJson{{"1", PachislopImportJson{{"dx", 2}, {"dy", 1}, {"scale", 1.5}, {"rotate", 0}}}};
+    const PachislopImportJson layer = PachislopImportJson{{"id", "0000aa01"}, {"name", "T"}, {"kind", "title2d"}, {"visible", true}, {"blend", "normal"},
+                            {"transform", PachislopImportJson{{"x", 30}, {"y", -10}, {"rotZ", 0}, {"scale", 1}, {"opacity", 1}}}, {"effects", PachislopImportJson::array()},
+                            {"source", PachislopImportJson{{"kind", "text"}, {"text", "ABC"}, {"fontId", "dela-gothic-one"}, {"size", 200}, {"tracking", 0},
                                             {"lineHeight", 1.1}, {"align", "center"}, {"vertical", false}, {"shear", 0}, {"chars", chars}}},
-                            {"style", Json{{"face", Json{{"fill", Json{{"kind", "solid"}, {"color", "#ffffff"}}}}}, {"rims", Json::array()}}}};
-    const Json file = Json{{"format", "pslot"}, {"version", 4},
-                           {"project", Json{{"version", 4}, {"name", "Scale"}, {"comp", Json{{"width", 1280}, {"height", 720}}}, {"layers", Json::array({layer})}}},
-                           {"fonts", Json::array()}, {"assets", Json::array()}};
+                            {"style", PachislopImportJson{{"face", PachislopImportJson{{"fill", PachislopImportJson{{"kind", "solid"}, {"color", "#ffffff"}}}}}, {"rims", PachislopImportJson::array()}}}};
+    const PachislopImportJson file = PachislopImportJson{{"format", "pslot"}, {"version", 4},
+                           {"project", PachislopImportJson{{"version", 4}, {"name", "Scale"}, {"comp", PachislopImportJson{{"width", 1280}, {"height", 720}}}, {"layers", PachislopImportJson::array({layer})}}},
+                           {"fonts", PachislopImportJson::array()}, {"assets", PachislopImportJson::array()}};
     const fs::path source = project / "scale.pslot.json";
     std::ofstream(source) << file.dump();
     const TitleCreateResult r = import(source, "scale");
     writeFiles(r);
     bool noted = false;
-    for (const Json& n : r.notes) noted = noted || n.value("what", std::string()).find("Per-character scale") != std::string::npos;
+    for (const PachislopImportJson& n : r.notes) noted = noted || n.value("what", std::string()).find("Per-character scale") != std::string::npos;
     EXPECT_TRUE(noted);
 
     class Resolver : public titleart::AssetResolver {
@@ -243,11 +243,11 @@ TEST_F(PachislopImportTest, AV4CharacterScaleKeepsEveryGlyphWhereV4DrewIt) {
         fs::path assets;
     } resolver(project / "assets");
 
-    const Json& imported = r.doc.root["layers"][0];
+    const PachislopImportJson& imported = r.doc.root["layers"][0];
     // v4's positions: every scale 1 (v4 laid the line out unscaled), the stored offsets, the stored position
-    Json v4 = imported;
-    v4["chars"] = Json{{"1", Json{{"offset", Json::array({2, 1})}, {"scale", 1}}}};
-    v4["transform"]["position"] = Json::array({30, -10});
+    PachislopImportJson v4 = imported;
+    v4["chars"] = PachislopImportJson{{"1", PachislopImportJson{{"offset", PachislopImportJson::array({2, 1})}, {"scale", 1}}}};
+    v4["transform"]["position"] = PachislopImportJson::array({30, -10});
     titleart::TitleTextLayout layout(&resolver);
     std::map<uint32_t, std::pair<double, double>> want;
     for (const auto& c : layout.layout(v4).clusters) want[c.index] = {30 + c.emCell.x + c.emCell.width / 2, -10 + c.emCell.y + c.emCell.height / 2};
@@ -261,15 +261,15 @@ TEST_F(PachislopImportTest, AV4CharacterScaleKeepsEveryGlyphWhereV4DrewIt) {
 
 TEST_F(PachislopImportTest, ReimportPachislop3DNeedsAKeptStyle) {
     titleart::TitleArtDoc doc = titleart::makeNewTitleArt();
-    const TitleOpsResult none = TitleArtOps::apply(doc, Json{{"op", "reimport_pachislop_3d"}, {"layer", "Title"}});
+    const TitleOpsResult none = TitleArtOps::apply(doc, PachislopImportJson{{"op", "reimport_pachislop_3d"}, {"layer", "Title"}});
     ASSERT_FALSE(none.ok);
     EXPECT_EQ(none.problems.front().code, pachislop::mapperHas3D() ? "bad_layer" : "not_available");
     if (!pachislop::mapperHas3D()) return;
-    doc.root["layers"][0]["pachislop_style3d"] = Json{{"depth", 12}, {"face", Json{{"preset", "gold"}, {"color", "#ffcc33"}}}, {"bands", Json::array()}};
+    doc.root["layers"][0]["pachislop_style3d"] = PachislopImportJson{{"depth", 12}, {"face", PachislopImportJson{{"preset", "gold"}, {"color", "#ffcc33"}}}, {"bands", PachislopImportJson::array()}};
     titleart::normalizeTitleArt(doc, nullptr);
-    const TitleOpsResult r = TitleArtOps::apply(doc, Json{{"op", "reimport_pachislop_3d"}});
+    const TitleOpsResult r = TitleArtOps::apply(doc, PachislopImportJson{{"op", "reimport_pachislop_3d"}});
     ASSERT_TRUE(r.ok) << r.error();
-    const Json& layer = r.doc.root["layers"][0];
+    const PachislopImportJson& layer = r.doc.root["layers"][0];
     EXPECT_FALSE(layer.contains("pachislop_style3d"));
     EXPECT_EQ(layer["dimension"], "3d");
     EXPECT_TRUE(layer["style_3d"].is_object());
@@ -285,11 +285,11 @@ TEST_F(PachislopImportTest, RefusesOldNewerAndOtherFiles) {
         EXPECT_FALSE(TitleArtOps::createFrom(request(source, "x"), out, code, error));
         return code + ": " + error;
     };
-    const Json comp = Json{{"width", 100}, {"height", 100}};
-    EXPECT_NE(attempt(Json{{"format", "pslot"}, {"version", 3}, {"project", Json{{"version", 3}, {"comp", comp}, {"layers", Json::array()}}}}.dump())
+    const PachislopImportJson comp = PachislopImportJson{{"width", 100}, {"height", 100}};
+    EXPECT_NE(attempt(PachislopImportJson{{"format", "pslot"}, {"version", 3}, {"project", PachislopImportJson{{"version", 3}, {"comp", comp}, {"layers", PachislopImportJson::array()}}}}.dump())
                   .find("This is a version 3 project; this version of the app opens version 4 to 11 projects only"),
               std::string::npos);
-    EXPECT_EQ(attempt(Json{{"format", "pslot"}, {"version", 12}, {"project", Json{{"version", 12}, {"comp", comp}, {"layers", Json::array()}}}}.dump())
+    EXPECT_EQ(attempt(PachislopImportJson{{"format", "pslot"}, {"version", 12}, {"project", PachislopImportJson{{"version", 12}, {"comp", comp}, {"layers", PachislopImportJson::array()}}}}.dump())
                   .rfind("pachislop_version_newer", 0),
               0u);
     EXPECT_EQ(attempt("{\"format\": \"pslot\", broken").rfind("not_json", 0), 0u);

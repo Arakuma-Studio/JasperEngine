@@ -109,9 +109,9 @@ def err(text):
     return {"text": text, "is_error": True}
 
 
-def real(result):
-    """A hand-written result in the editor's shape: it goes out with its structuredContent, the part Claude Code shows."""
-    return {**result, "real": True}
+def real(text, structured):
+    """A result as the editor sends it: a client like Claude Code shows the model only the structuredContent"""
+    return {**ok(text, structured), "real": True}
 
 
 RENAME_DIALOG = {"kind": "modal", "title": "Rename File", "message": "Rename 'RenameMe.lua' to:", "choices": ["ok", "cancel"],
@@ -172,8 +172,8 @@ def console_result(entries, next_cursor):
     """read_console in its real shape: the text lists the entries, structuredContent holds them."""
     errors = sum(1 for e in entries if e["level"] == "error")
     lines = "".join(f"\n[{e['level']} #{e['id']}] {e['message']}" for e in entries)
-    return real(ok(f"{len(entries)} entries ({errors} error(s), 0 warning(s)):{lines}\nnext_cursor: {next_cursor}",
-                   {"entries": entries, "next_cursor": next_cursor}))
+    return real(f"{len(entries)} entries ({errors} error(s), 0 warning(s)):{lines}\nnext_cursor: {next_cursor}",
+                   {"entries": entries, "next_cursor": next_cursor})
 
 
 # journal_before_the_error: the Gameplay Journal's lines, the script error, and a per-frame print that fills the
@@ -190,6 +190,42 @@ SCRIPT_ERROR = _log(412, 2410, "lua", "Script crash in scene 'Forest2': scripts/
                                       "(field 'lock')", "error")
 PLAY_STOP = _log(413, 2411, "journal", "engine.play state=stop")
 PATH_SPAM = [_log(eid, 2405 + (eid - 301) // 20, "lua", "enemy 3: path recomputed (12 nodes)") for eid in range(301, 412)]
+
+def scene_2d(entities):
+    """S78: the editor's answers about an open 2D scene "Main" holding `entities` [(id, path, components text,
+    components {name: values}, name regex)] (world.py's scene is 3D, without them)"""
+    tree = "\n".join(f"{path} [{eid}] {comps}" for eid, path, comps, _, _ in entities)
+    mocks = [
+        {"tool": "get_scene_tree", "result": ok(
+            f"Scene 1 \"Main\" (2D, {len(entities)} GameObjects). Each line: Name [id] components (flags); children indented.\n" + tree,
+            {"entity_count": len(entities), "scene_id": 1, "scene_name": "Main", "tree": tree, "truncated": False})},
+        {"tool": "find_entities", "result": ok(
+            f"{len(entities)} GameObject(s) match:\n" + tree, {"entities": [{"id": e[0], "path": e[1]} for e in entities]})},
+    ]
+    for eid, path, comps, values, names in entities:
+        # shaped like the real get_entity (world.py's), so it goes out as structuredContent with the values
+        mocks.append({"tool": "get_entity", "args": {"entity": f"re:(?i)^({eid}|{names})$"}, "result": {**ok(
+            f"{path} [{eid}] components: {comps}\n{json.dumps(values)}",
+            {"id": eid, "name": path, "path": path, "active": True, "active_in_hierarchy": True, "layer": 0, "tag": "",
+             "scene_id": 1, "child_count": 0, "components": values}), "real": True}})
+    mocks += [
+        {"tool": "list_scenes", "result": ok("1 scene(s):\n1 \"Main\" 2D scenes/Main.scene open selected start",
+                                             {"scenes": [{"id": 1, "name": "Main", "type": "2D", "opened": True, "selected": True}],
+                                              "selected_scene_id": 1})},
+        {"tool": "editor_status", "result": ok("Project \"Space Dodge\" at the current directory. 1 scene(s), selected: 1 \"Main\" (2D). Edit mode.",
+                                               {"project": {"name": "Space Dodge", "path": "."}, "playing": False,
+                                                "scenes": [{"id": 1, "name": "Main", "type": "2D", "selected": True}]})},
+    ]
+    return mocks
+
+
+SCENE_2D_BASE = [(10, "Main Camera", "camera transform", {"camera": {"type": "orthographic"}}, "main camera"),
+                 (11, "Ground", "sprite transform", {"sprite": {"texture": "assets/sprites/ground.png", "width": 640, "height": 64}}, "ground")]
+LAMP_64 = (30, "Lamp", "light2d transform", {"transform": {"position": [300.0, 0.0, 0.0]},
+                                             "light2d": {"enabled": True, "color": [1.0, 1.0, 1.0], "intensity": 1.0, "range": 900.0,
+                                                         "falloff": 1.0, "height": 64.0, "shadows": False}}, "lamp")
+BOSS_512 = (20, "Boss", "sprite transform", {"sprite": {"texture": "assets/sprites/boss.png", "width": 512, "height": 512}}, "boss")
+
 
 
 CASES = [
@@ -3210,11 +3246,11 @@ CASES = [
         "source": "docs/specs/build-and-run-on-device.md R21, R22",
         "prompt": "My Android phone is plugged in with USB debugging on. Put the current build of the game on it and start it.",
         "mocks": [
-            {"tool": "get_build_info", "args": {"devices": True}, "result": real(ok("Host linux. 2 usable Run Device(s) of 2.", {
+            {"tool": "get_build_info", "args": {"devices": True}, "result": real("Host linux. 2 usable Run Device(s) of 2.", {
                 "host_platform": "linux",
                 "devices": [{"id": "R58M123ABC", "platform": "android", "kind": "device", "name": "Galaxy S23", "state": "device",
                              "usable": True, "abi": "arm64-v8a", "os_version": "34"},
-                            {"id": "web", "platform": "web", "kind": "browser", "name": "Default browser", "state": "ready", "usable": True}]}))},
+                            {"id": "web", "platform": "web", "kind": "browser", "name": "Default browser", "state": "ready", "usable": True}]})},
             {"tool": "get_build_info", "result": {"recorded": "build_info_mobile"}},
             {"tool": "build_project", "args": {"run_device": "re:^(R58M123ABC|auto)$"}, "result": ok(
                 "Build android (Release): succeeded - Built android (prebuilt player android-universal-gles3-development) in /work/out. "
@@ -5831,6 +5867,260 @@ CASES = [
                    "must_not_call": ["create_entity"]},
         "max_turns": 12,
     },
+    # S78 WP-B
+    {
+        "id": "guard_s78_stone_floor_uses_stones",
+        "kind": "guard",
+        "what_happened": "New preset and setting (S78): a floor tile of light stones between dark gaps came out flat with "
+                         "tile (an opaque tile has no silhouette); the stones preset (gaps) gives every stone its own rim. "
+                         "The default preset's no_alpha fix now names it.",
+        "text_at_issue": "jasper://docs/sprite-normals 'Stone floors: gaps'; no_alpha fix 'For tiles use edges wrap or extend; for "
+                         "stones or bricks between dark gaps the stones preset (gaps).'",
+        "source": "S78 R9, R11, R25 (new preset, guide and fix text); no failure on record",
+        "groups_enabled": ["assets_pipeline"],
+        "prompt": "Our seamless 32 px floor tile assets/ground/cobbles.png still looks flat under the 2D lights with the tile "
+                  "preset. Make a normal map where every cobble catches the light on its own, and write it.",
+        "mocks": [
+            {"tool": "read_file", "args": {"path": "re:sprite-normals"}, "result": ok(
+                "## Stone floors: gaps\nA tile of stones or bricks between dark gaps comes out flat with `tile` (an opaque tile "
+                "has no silhouette): use `preset: \"stones\"`. `gaps: {share: 0..0.9}` (default 0, off) makes the darkest `share` "
+                "of each frame's pixels gaps: outside the shape, so every stone gets its own rim.")},
+            {"tool": "generate_sprite_normals", "args": {"preset": "stones", "output": "*"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset stones, radius 4.8 px) in 0.01 s. "
+                "Hint: Looks fine. Wrote assets/ground/cobbles_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/ground/cobbles_normal.png"], "undo": [{"scope": "project", "name": "Generate Normal Map cobbles_normal.png"}],
+                 "settings": {"preset": "stones", "edges": "wrap", "profile": "dome", "gaps": {"share": 0.3}}, "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"gaps": "*"}, "output": "*"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset tile, radius 4.8 px) in 0.01 s. "
+                "Wrote assets/ground/cobbles_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/ground/cobbles_normal.png"], "settings": {"preset": "tile", "edges": "wrap", "gaps": {"share": 0.3}},
+                 "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"preset": "stones"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset stones, radius 4.8 px) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"preset": "stones", "edges": "wrap", "profile": "dome", "gaps": {"share": 0.3}}, "hint": "Looks fine.",
+                 "warnings": [], "default_output": {"normal": "assets/ground/cobbles_normal.png"},
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/ground/cobbles_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"gaps": "*"}}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"gaps": {"share": 0.3}}, "hint": "Looks fine.", "warnings": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/ground/cobbles_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset default, radius 4.8 px) in 0.01 s. "
+                "Wrote assets/ground/cobbles_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/ground/cobbles_normal.png"], "settings": {"preset": "default", "edges": "transparent"},
+                 "hint": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps).",
+                 "warnings": [{"kind": "no_alpha", "message": "The image has no transparent pixels: volume only bevels its border.",
+                               "fix": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps)."}]})},
+            {"tool": "generate_sprite_normals", "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset default, radius 4.8 px) in 0.01 s.",
+                {"written": False, "settings": {"preset": "default", "edges": "transparent"},
+                 "hint": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps).",
+                 "warnings": [{"kind": "no_alpha", "message": "The image has no transparent pixels: volume only bevels its border.",
+                               "fix": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps)."}],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/ground/cobbles_normal.png) to write exactly this."})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "generate_sprite_normals", "args": {"preset": "stones", "output": "*"}}]},
+                              {"calls": [{"tool": "generate_sprite_normals", "args": {"params": {"gaps": "*"}, "output": "*"}}]}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_s78_sprite_normals_preview_then_write_from_next",
+        "kind": "guard",
+        "what_happened": "generate_sprite_normals without output previews and writes nothing; the write step was only in the "
+                         "result's text, which a client like Claude Code does not show next to structuredContent (S78 R22).",
+        "text_at_issue": "generate_sprite_normals structuredContent next: 'Preview only, nothing written: call again with the same "
+                         "arguments plus output (true for ...) to write exactly this.'",
+        "source": "S78 R22 (text moved into structuredContent); docs/mcp/conventions.md results rule",
+        "groups_enabled": ["assets_pipeline"],
+        "prompt": "Preview a normal map for the sprite image assets/sprites/hero.png with the defaults. If the preview reports "
+                  "no problem, keep it: the map belongs next to the image.",
+        "mocks": [
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": real(
+                "Normal map of assets/sprites/hero.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. "
+                "Wrote assets/sprites/hero_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/hero_normal.png"], "undo": [{"scope": "project", "name": "Generate Normal Map hero_normal.png"}],
+                 "settings": {"preset": "default"}, "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "result": real(
+                "Normal map of assets/sprites/hero.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. Hint: Looks fine. "
+                "Preview only, nothing written: call again with the same arguments plus output (true for assets/sprites/hero_normal.png) "
+                "to write exactly this.",
+                {"written": False, "settings": {"preset": "default"}, "hint": "Looks fine.", "warnings": [],
+                 "default_output": {"normal": "assets/sprites/hero_normal.png", "atlas": None, "height": None, "frames_json": None},
+                 "sheet_legend": {"rows": "the frames", "columns": ["colour", "normal", "lit from the top-left", "lit from the top-right",
+                                                                   "lit from the bottom-right", "lit from the bottom-left"],
+                                  "light_elevation_deg": 34, "light_steps": 0},
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/hero_normal.png) to write exactly this."})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sprite_normals", "args": {"output": "*"}}], "max_calls": {"generate_sprite_normals": 3},
+                   "must_not_call": ["write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_s78_boxy_crate_follows_the_fix",
+        "kind": "guard",
+        "what_happened": "New warning (S78): a crate on the default preset (rounded at pixel-art sizes, inflate above) bulges into "
+                         "a pillow; boxy says so and names the fix (preset props, or profile bevel with a radius).",
+        "text_at_issue": "generate_sprite_normals warning boxy: 'Use preset props, or profile bevel with radius 1.'",
+        "source": "S78 R13 (new warning text); no failure on record",
+        "groups_enabled": ["assets_pipeline"],
+        "prompt": "Make a normal map for the sprite assets/sprites/block_07.png and write it. Fix any problem the tool reports "
+                  "about the map before you write it.",
+        "mocks": [
+            {"tool": "generate_sprite_normals", "args": {"preset": "props", "output": "*"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "props", "profile": "dome"},
+                 "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}, "output": "*"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "default", "profile": "bevel", "radius": 1},
+                 "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"preset": "props"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"preset": "props", "profile": "dome"}, "hint": "Looks fine.", "warnings": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"preset": "default", "profile": "bevel", "radius": 1}, "hint": "Looks fine.", "warnings": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "default", "profile": "auto"},
+                 "profile_resolved": ["rounded"], "hint": "Use preset props, or profile bevel with radius 1.",
+                 "warnings": [{"kind": "boxy", "message": "1 sprite fills its box like a crate or panel, and the rounded profile bulges a box into a pillow.",
+                               "fix": "Use preset props, or profile bevel with radius 1."}]})},
+            {"tool": "generate_sprite_normals", "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s.",
+                {"written": False, "settings": {"preset": "default", "profile": "auto"}, "profile_resolved": ["rounded"],
+                 "hint": "Use preset props, or profile bevel with radius 1.",
+                 "warnings": [{"kind": "boxy", "message": "1 sprite fills its box like a crate or panel, and the rounded profile bulges a box into a pillow.",
+                               "fix": "Use preset props, or profile bevel with radius 1."}],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "generate_sprite_normals", "args": {"preset": "props", "output": "*"}}]},
+                              {"calls": [{"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}, "output": "*"}}]}]},
+        "max_turns": 12,
+    },
+    # S78 WP-C: a light too low over a large sprite is a generate_sprite_normals warning naming the height
+    {
+        "id": "guard_light_low_big_sprite",
+        "kind": "guard",
+        "what_happened": "New warning (S78): the editor's Light 2D height 64 is low over a 512 px sprite (it lights it from the "
+                         "side only); generate_sprite_normals warns light_low naming the height to set.",
+        "text_at_issue": "generate_sprite_normals warning light_low: 'Light 2D \"Lamp\" sits lower than half the sprite's larger "
+                         "side (512 world units), so it lights it from the side only.' Fix: 'Set its Height to at least 512 (the "
+                         "sprite's larger side).'",
+        "source": "S78 R14 (new warning text); no failure on record",
+        "prompt": "The GameObject \"Boss\" in the open 2D scene is a 512x512 sprite (assets/sprites/boss.png) lit by the Light 2D "
+                  "\"Lamp\". Give it a normal map, apply it, and make sure the lamp really shows the relief on the boss.",
+        "mocks": [
+            {"tool": "generate_sprite_normals", "args": {"output": True}, "result": ok(
+                "Normal map of assets/sprites/boss.png (512x512, 1 frame, preset auto, radius 9 px) in 0.80 s. Hint: Looks fine. "
+                "Wrote assets/sprites/boss_normal.png (undo with scope project) and applied it to Boss (undo with scope scene).\n"
+                "Warning: light_low: Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so it lights "
+                "it from the side only. Fix: Set its Height to at least 512 (the sprite's larger side).",
+                {"source": {"path": "assets/sprites/boss.png", "kind": "sprite", "width": 512, "height": 512},
+                 "files": ["assets/sprites/boss_normal.png"], "hint": "Looks fine.",
+                 "warnings": [{"kind": "light_low",
+                               "message": "Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so "
+                                          "it lights it from the side only.",
+                               "fix": "Set its Height to at least 512 (the sprite's larger side)."}]})},
+            {"tool": "generate_sprite_normals", "result": ok(
+                "Normal map of assets/sprites/boss.png (512x512, 1 frame, preset auto, radius 9 px) in 0.80 s. Hint: Looks fine. "
+                "Preview only, nothing written: call again with the same arguments plus output (true for "
+                "assets/sprites/boss_normal.png) to write exactly this.\n"
+                "Warning: light_low: Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so it lights "
+                "it from the side only. Fix: Set its Height to at least 512 (the sprite's larger side).",
+                {"source": {"path": "assets/sprites/boss.png", "kind": "sprite", "width": 512, "height": 512}, "hint": "Looks fine.",
+                 "default_output": {"normal": "assets/sprites/boss_normal.png", "atlas": None, "height": None, "frames_json": None},
+                 "warnings": [{"kind": "light_low",
+                               "message": "Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so "
+                                          "it lights it from the side only.",
+                               "fix": "Set its Height to at least 512 (the sprite's larger side)."}]})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step). New values: "
+                                                    "{\"light2d\":{\"height\":512.0}}",
+                                                    {"scene_id": 1, "entities": [{"id": 30, "name": "Lamp"}],
+                                                     "values": {"light2d": {"height": 512.0}}})},
+            *scene_2d(SCENE_2D_BASE + [BOSS_512, LAMP_64]),
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"light2d": {"height": "*"}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:height"}]}}]}]},
+        "max_turns": 14,
+    },
+    # S78 WP-A
+    {
+        "id": "guard_light_steps",
+        "kind": "guard",
+        "what_happened": "New setting (S78): the stepped, banded 2D lighting of pixel-art games is the scene's Light Steps "
+                         "(light_2d_steps), one value for every Light 2D; without it agents fork library:sprite to quantize "
+                         "the light in GLSL, which leaves the tiles and every other 2D-lit surface smooth.",
+        "text_at_issue": "set_scene_settings names (light_2d_steps: 'Light Steps: each Light 2D's light in this many hard bands, "
+                         "0-16 (0 off: smooth)')",
+        "source": "docs/specs/S78-sprite-normals-improvements.md R1-R4 (new setting text); no failure on record",
+        "prompt": "Our 2D pixel-art level is lit by Light 2Ds and the sprites have normal maps. Make the lighting look stepped, "
+                  "in about 6 hard bands like classic pixel-art lighting, on every sprite and tile.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nlight_2d_steps = 6",
+                {"scene_id": 1, "settings": {"light_2d_steps": 6}})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_color = [1, 1, 1] (2D ambient light color [r,g,b] (sRGB))\n"
+                "ambient_light_2d_intensity = 1 (2D ambient light intensity)\n"
+                "light_2d_steps = 0 (Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth))\n"
+                "shadows_2d_quality = low (2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high))",
+                {"scene_id": 1, "settings": {"ambient_light_2d_color": [1, 1, 1], "ambient_light_2d_intensity": 1.0,
+                                             "light_2d_steps": 0, "shadows_2d_quality": "low"}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["light_2d_steps"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Level\" (scenes/Level.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"light_2d_steps": 6}}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(frag|glsl)$"}}]},
+        "max_turns": 10,
+    },
+    # S78 R7 at the main merge (old scenes keep their look)
+    {
+        "id": "guard_ambient_2d_without_lights",
+        "kind": "guard",
+        "what_happened": "New setting (S78): a scene saved before S78 keeps ambient_light_2d_without_lights off, so its dark "
+                         "2D ambient leaves unlit sprites untinted while it has no Light 2D; turning it on is the fix. Without "
+                         "the setting's text agents add a Light 2D out of range or tint every sprite's material instead.",
+        "text_at_issue": "get_scene_settings (ambient_light_2d_without_lights: 'the 2D ambient tints unlit 2D objects with no "
+                         "Light 2D in the scene too (on in new scenes; off in scenes saved before it, as they were drawn)')",
+        "source": "docs/specs/S78-sprite-normals-improvements.md Deviations, R7 (new setting text); no failure on record",
+        "prompt": "In our old 2D level I set a dark blue 2D ambient for a night look, but the sprites still draw at full "
+                  "brightness. The level has no 2D lights and shouldn't get any. Make the ambient darken the sprites.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_without_lights = true",
+                {"scene_id": 1, "settings": {"ambient_light_2d_without_lights": True}})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_color = [0.3, 0.3, 0.4] (2D ambient light color [r,g,b] (sRGB))\n"
+                "ambient_light_2d_intensity = 1 (2D ambient light intensity)\n"
+                "light_2d_steps = 0 (Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth))\n"
+                "ambient_light_2d_without_lights = false (the 2D ambient tints unlit 2D objects with no Light 2D in the scene "
+                "too (on in new scenes; off in scenes saved before it, as they were drawn))\n"
+                "shadows_2d_quality = low (2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high))",
+                {"scene_id": 1, "settings": {"ambient_light_2d_color": [0.3, 0.3, 0.4], "ambient_light_2d_intensity": 1.0,
+                                             "light_2d_steps": 0, "ambient_light_2d_without_lights": False,
+                                             "shadows_2d_quality": "low"}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["ambient_light_2d_without_lights"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Level\" (scenes/Level.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_light_2d_without_lights": True}}}],
+                   "must_not_call": [{"tool": "create_entity", "args": {"type": "light_2d"}}]},
+        "max_turns": 10,
+    },
     # -- S48 Pixel FX: the "Other areas" entry and capture_contact_sheet's lint and preview-then-write ----------------
     {
         "id": "guard_contact_sheet_lint",
@@ -6305,7 +6595,7 @@ CASES = [
         "prompt": "My testers pulled the crash folders off their phones and PCs into /home/me/crashes/forest-run (the game's "
                   "crash folder, with reports/ inside). Version 1.4 went out last week: which crash is new in 1.4?",
         "mocks": [
-            {"tool": "get_crash_reports", "args": {"group": True}, "result": real(ok(
+            {"tool": "get_crash_reports", "args": {"group": True}, "result": real(
                 "5 groups of 212 reports in /home/me/crashes/forest-run/reports.", {
                     "folder": "/home/me/crashes/forest-run/reports", "reports_read": 212, "session": "20261118T090000Z-4410",
                     "notice_open": False,
@@ -6330,8 +6620,8 @@ CASES = [
                         {"signature": "abnormal_exit", "kind": "abnormal_exit", "count": 12, "versions": {"1.3": 7, "1.4": 5},
                          "platforms": {"unknown": 12}, "first_seen": "2026-10-03T07:00:00Z", "last_seen": "2026-11-15T22:10:00Z",
                          "report_ids": ["20261115T221000Z-6120"], "unresolved": False},
-                    ]}))},
-            {"tool": "get_crash_reports", "result": real(ok(
+                    ]})},
+            {"tool": "get_crash_reports", "result": real(
                 "10 reports in /home/me/crashes/forest-run/reports.", {
                     "folder": "/home/me/crashes/forest-run/reports", "session": "20261118T090000Z-4410", "notice_open": False,
                     "reports": [{"id": f"2026111{d}T0{h}0000Z-{4000 + d * 10 + h}", "kind": "crash", "time": f"2026-11-1{d}T0{h}:00:30Z",
@@ -6343,7 +6633,7 @@ CASES = [
                                     (8, 6, "unhandled Windows exception", "1.3"), (7, 9, "unhandled Windows exception", "1.4"),
                                     (7, 5, "SIGSEGV (invalid memory access)", "1.3"), (7, 2, "unhandled Windows exception", "1.4"),
                                     (6, 8, "SIGSEGV (invalid memory access)", "1.4"), (6, 4, "unhandled Windows exception", "1.3"),
-                                    (6, 1, "unhandled exception: vector too long", "1.4"), (5, 9, "unhandled Windows exception", "1.3")]]}))},
+                                    (6, 1, "unhandled exception: vector too long", "1.4"), (5, 9, "unhandled Windows exception", "1.3")]]})},
         ],
         "checks": {"calls": [{"tool": "get_crash_reports", "args": {"folder": "re:forest-run", "group": True}}],
                    "reply_must": [r"vector|_Xlength|Level::load|terminate"]},
@@ -6367,7 +6657,7 @@ CASES = [
         "mocks": [
             {"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}, "result": ok("nil", {"values": []})},
             {"tool": "wait", "result": ok("Waited 2 frames: the condition holds.", {"frames": 2, "met": True})},
-            {"tool": "search_engine_api", "args": {"query": "re:(?i)report|crash|problem|feedback|screenshot"}, "result": real(ok(
+            {"tool": "search_engine_api", "args": {"query": "re:(?i)report|crash|problem|feedback|screenshot"}, "result": real(
                 "API symbols for the query:\n- Crash.beginReport(fn, options) [Function]\n- Crash.createReport(options) [Function]",
                 {"docs": [{"doc": "jasper://docs/lua-api/2-15-crash-static-reports-of-earlier-ses",
                            "section": "2.15 Crash (static): reports of earlier sessions, the report hook, tags", "line": 24,
@@ -6377,7 +6667,7 @@ CASES = [
                              {"detail": "Crash.createReport(options: CrashReportOptions) -> CrashReport|nil, string|nil -- Writes a user "
                                         "report (<session>-user<N>: user.txt, device.json, journal.txt, log-tail.txt, screenshot.jpg)",
                               "kind": "Function"},
-                             {"detail": "Crash.cancelReport() -- Drops the draft Crash.beginReport captured", "kind": "Function"}]}))},
+                             {"detail": "Crash.cancelReport() -- Drops the draft Crash.beginReport captured", "kind": "Function"}]})},
             {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}, "result": ok(
                 "{id = \"20261120T101500Z-4242-user1\", kind = \"user\", category = \"other\", files = {\"device.json\", "
                 "\"journal.txt\", \"log-tail.txt\", \"screenshot.jpg\", \"user.txt\"}}",
@@ -6529,7 +6819,7 @@ CASES = [
         "source": "docs/specs/build-size-tools.md R7, R33, R38",
         "prompt": "Our web build is bigger than yesterday's. Find out what grew.",
         "mocks": [
-            {"tool": "get_build_report", "args": {"compare_to": "*"}, "result": real(ok(
+            {"tool": "get_build_report", "args": {"compare_to": "*"}, "result": real(
                 "Build Report web 20261119-142233-prebuilt: 142.0 MB (+3.2 MB vs 20261118-101500-prebuilt); textures +2.9 MB "
                 "(1 grown, 1 added); audio +0.3 MB (1 grown).",
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
@@ -6544,11 +6834,11 @@ CASES = [
                                     {"change": "grown", "key": "assets/music/theme.ogg", "path": "assets/music/theme.ogg",
                                      "category": "audio", "before": 2097152, "after": 2411724, "delta": 314572}],
                                 "counts": {"added": 1, "removed": 0, "grown": 2, "shrunk": 0, "unchanged": 812},
-                                "partial": False, "platform_differs": False, "truncated": False}}))},
-            {"tool": "get_build_report", "result": real(ok(
+                                "partial": False, "platform_differs": False, "truncated": False}})},
+            {"tool": "get_build_report", "result": real(
                 "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
-                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}}))},
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
             {"tool": "get_build_info", "result": ok(
                 "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
                 "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2,
@@ -6572,7 +6862,7 @@ CASES = [
                   "textures/old_logo.png.meta": "metaVersion: 1\nguid: 7c1f0d2e9a4b4c55b8e61a3f0d9e2b47\nimport:\n  textureImporter:\n"
                                                 "    version: 1\n    type: default\n"},
         "mocks": [
-            {"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}, "result": real(ok(
+            {"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}, "result": real(
                 "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792},
                  "referenced_by": [{"file": "assets/je-cooked/web/77c.ktx2", "asset": "textures/old_logo.png", "reason": "reached",
@@ -6581,11 +6871,11 @@ CASES = [
                                         {"asset": "materials/splash.material", "field": "entity:14/MeshComponent.submeshes[0].material",
                                          "kind": "mesh_material_file", "object": "Credits/Logo"},
                                         {"asset": "scenes/Credits.scene", "field": "project/scenes[2].filepath", "kind": "scene_list"},
-                                        {"asset": "project.yaml", "field": "", "kind": "root"}]}]}))},
-            {"tool": "get_build_report", "result": real(ok(
+                                        {"asset": "project.yaml", "field": "", "kind": "root"}]}]})},
+            {"tool": "get_build_report", "result": real(
                 "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
-                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}}))},
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
             {"tool": "get_build_info", "result": ok(
                 "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
                 "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2,
@@ -6880,5 +7170,65 @@ CASES = [
                               {"calls": [{"tool": "run_command", "args": {"id": "gameobject.create.3DObject.vehicle"}}]}],
                    "must_not_call": [{"tool": "add_component", "args": {"component": "re:(?i)joint"}}, "set_joint"]},
         "max_turns": 16,
+    },
+    {
+        "id": "guard_html_ui_render_mode_camera",
+        "kind": "guard",
+        "what_happened": "S92 moved screen HTML UI documents after post-processing (Screen Space - Overlay). A HUD meant to "
+                         "look like it is on the CRT then stays sharp; the switch is the scene setting html_ui_render_mode, "
+                         "not a shader fork or a document filter.",
+        "text_at_issue": "set_scene_settings html_ui_render_mode help: 'where screen HTML UI documents composite: overlay "
+                         "(default: after post-processing, at output resolution), camera (in the camera pass: render scale "
+                         "and post apply)'",
+        "source": "S92 R13, R14 (ledger U34); no failure on record",
+        "prompt": "The scene has the CRT effect on, but the HTML HUD on top is perfectly sharp and does not get the "
+                  "scanlines. I want the HUD to go through the CRT look like the rest of the screen.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\npost_processing = {crt_enabled: true}\nhtml_ui_render_mode = overlay\n"
+                "html_ui_msaa_samples = 0",
+                {"scene_id": 1, "settings": {"post_processing": {"crt_enabled": True}, "html_ui_render_mode": "overlay",
+                                             "html_ui_msaa_samples": 0},
+                 "schema": {"html_ui_render_mode": {"type": "enum", "default": "overlay", "options": ["overlay", "camera"],
+                            "help": "where screen HTML UI documents composite: overlay (default: after post-processing, at "
+                                    "output resolution), camera (in the camera pass: render scale and post apply)"}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["html_ui_render_mode"]})},
+            {"tool": "screenshot", "result": ok("Game view screenshot (640x360).", {"view": "game"})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"html_ui_render_mode": "camera"}}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(css|html)$"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_html_ui_msaa_scene_not_document",
+        "kind": "guard",
+        "what_happened": "A screen-mode UI Document shares the scene's target: its own msaaSamples does nothing. The "
+                         "set_properties result's next names the scene setting html_ui_msaa_samples.",
+        "text_at_issue": "set_properties next: 'msaaSamples applies to Texture-mode documents only; a screen document's "
+                         "MSAA is the scene's: set_scene_settings {html_ui_msaa_samples}.'",
+        "source": "S92 R17, R18 (ledger U37); no failure on record",
+        "prompt": "Turn MSAA off (1 sample) for the HUD UI Document (GameObject 12, screen mode) in this scene: it costs "
+                  "too much on phones.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok(
+                "GameObject 12 \"HUD\": transform, uidocument (filename assets/ui/hud.html, renderMode screen, msaaSamples 0).",
+                {"id": 12, "components": {"uidocument": {"filename": "assets/ui/hud.html", "renderMode": "screen",
+                                                         "msaaSamples": 0}}})},
+            {"tool": "set_properties", "result": ok(
+                "Set 1 property on 1 GameObject(s) (one undo step). New values: {\"uidocument\":{\"msaaSamples\":1}}",
+                {"scene_id": 1, "entities": [{"id": 12}], "values": {"uidocument": {"msaaSamples": 1}},
+                 "next": "msaaSamples applies to Texture-mode documents only; a screen document's MSAA is the scene's: "
+                         "set_scene_settings {html_ui_msaa_samples}."})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nhtml_ui_msaa_samples = 0",
+                {"scene_id": 1, "settings": {"html_ui_msaa_samples": 0},
+                 "schema": {"html_ui_msaa_samples": {"type": "int", "default": 0, "help":
+                     "MSAA samples of the screen HTML UI documents: 0 project default, 1, 2, 4, 8"}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["html_ui_msaa_samples"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"html_ui_msaa_samples": 1}}}]},
+        "max_turns": 10,
     },
 ]

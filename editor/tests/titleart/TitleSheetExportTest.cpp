@@ -20,7 +20,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleSheetExportJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 namespace fs = std::filesystem;
 
 namespace {
@@ -34,11 +34,11 @@ namespace {
         }
         void TearDown() override { fs::remove_all(dir); }
 
-        std::unique_ptr<TitleExportContext> context(const std::string& format, Json options = Json::object()) {
+        std::unique_ptr<TitleExportContext> context(const std::string& format, TitleSheetExportJson options = TitleSheetExportJson::object()) {
             auto ctx = std::make_unique<TitleExportContext>();
             ctx->request.document = dir / "win.titleart";
             ctx->request.relative = "win.titleart";
-            ctx->request.doc = titleart::parseTitleArtJson(Json{{"format", titleart::TITLE_ART_FORMAT}, {"version", 1}}).doc;
+            ctx->request.doc = titleart::parseTitleArtJson(TitleSheetExportJson{{"format", titleart::TITLE_ART_FORMAT}, {"version", 1}}).doc;
             ctx->request.format = format;
             ctx->request.options = std::move(options);
             ctx->request.out = dir;
@@ -71,9 +71,9 @@ namespace {
             return f;
         }
 
-        Json readJson(const std::string& name) const {
+        TitleSheetExportJson readJson(const std::string& name) const {
             std::ifstream in(dir / name);
-            return Json::parse(in);
+            return TitleSheetExportJson::parse(in);
         }
 
         std::string readAll(const std::string& name) const {
@@ -115,16 +115,16 @@ TEST_F(TitleSheetExportTest, SheetIsAGridNamedByItsCell) {
     const Png png = readPng("win@16x8.png");
     EXPECT_EQ(png.width, 48) << "ceil(sqrt(5)) columns of 16";
     EXPECT_EQ(png.height, 16) << "two rows of 8";
-    const Json j = readJson("win.sheet.json");
+    const TitleSheetExportJson j = readJson("win.sheet.json");
     EXPECT_EQ(j["format"], "jasperengine.titleart.sheet");
     ASSERT_EQ(j["frames"].size(), 5u);
     EXPECT_EQ(j["frames"][4]["filename"], "win_0004");
-    EXPECT_EQ(j["frames"][4]["frame"], (Json{{"x", 16}, {"y", 8}, {"w", 16}, {"h", 8}}));
+    EXPECT_EQ(j["frames"][4]["frame"], (TitleSheetExportJson{{"x", 16}, {"y", 8}, {"w", 16}, {"h", 8}}));
     EXPECT_EQ(j["frames"][0]["duration"], 33) << "1000 / 30 ms, rounded";
-    EXPECT_EQ(j["frames"][0]["sourceSize"], (Json{{"w", 16}, {"h", 8}}));
+    EXPECT_EQ(j["frames"][0]["sourceSize"], (TitleSheetExportJson{{"w", 16}, {"h", 8}}));
     EXPECT_EQ(j["meta"]["image"], "win@16x8.png");
-    EXPECT_EQ(j["meta"]["size"], (Json{{"w", 48}, {"h", 16}}));
-    EXPECT_EQ(j["meta"]["frameTags"][0], (Json{{"name", "idle"}, {"from", 0}, {"to", 4}, {"direction", "forward"}}));
+    EXPECT_EQ(j["meta"]["size"], (TitleSheetExportJson{{"w", 48}, {"h", 16}}));
+    EXPECT_EQ(j["meta"]["frameTags"][0], (TitleSheetExportJson{{"name", "idle"}, {"from", 0}, {"to", 4}, {"direction", "forward"}}));
     // the frame's pixels are in its cell: frame 4 (colour 120) starts one column past its inset
     EXPECT_EQ(png.at(16 + 1 + 1, 8 + 1)[0], 120);
     EXPECT_EQ(png.at(16 + 1 + 1, 8 + 1)[3], 255);
@@ -132,7 +132,7 @@ TEST_F(TitleSheetExportTest, SheetIsAGridNamedByItsCell) {
 }
 
 TEST_F(TitleSheetExportTest, ColumnsAndLanguageNames) {
-    auto ctx = context("sheet", Json{{"columns", 2}});
+    auto ctx = context("sheet", TitleSheetExportJson{{"columns", 2}});
     TitleSheetFrames f = frames(3, 10, 10, 0);
     f.language = "pt-BR";
     ASSERT_TRUE(writeTitleSheetFrames(*ctx, "sheet", f)) << ctx->result.error;
@@ -158,12 +158,12 @@ TEST_F(TitleSheetExportTest, AtlasPacksTrimmedFramesDeterministically) {
     ASSERT_TRUE(writeTitleSheetFrames(*first, "atlas", f)) << first->result.error;
     const std::string json = readAll("win.atlas.json");
     const std::string page = readAll("win_page0.png");
-    auto second = context("atlas", Json{{"overwrite", true}});
+    auto second = context("atlas", TitleSheetExportJson{{"overwrite", true}});
     ASSERT_TRUE(writeTitleSheetFrames(*second, "atlas", f)) << second->result.error;
     EXPECT_EQ(readAll("win.atlas.json"), json) << "the same frames pack the same";
     EXPECT_EQ(readAll("win_page0.png"), page);
 
-    const Json j = readJson("win.atlas.json");
+    const TitleSheetExportJson j = readJson("win.atlas.json");
     EXPECT_EQ(j["format"], "jasperengine.titleart.atlas");
     ASSERT_EQ(j["frames"].size(), 6u);
     const Png png = readPng("win_page0.png");
@@ -172,11 +172,11 @@ TEST_F(TitleSheetExportTest, AtlasPacksTrimmedFramesDeterministically) {
     };
     std::vector<Box> boxes;
     for (auto it = j["frames"].begin(); it != j["frames"].end(); ++it) {
-        const Json& e = it.value();
+        const TitleSheetExportJson& e = it.value();
         const Box b{e["frame"]["x"].get<int>(), e["frame"]["y"].get<int>(), e["frame"]["w"].get<int>(), e["frame"]["h"].get<int>()};
         boxes.push_back(b);
         EXPECT_TRUE(e["trimmed"].get<bool>()) << it.key();
-        EXPECT_EQ(e["sourceSize"], (Json{{"w", 32}, {"h", 24}}));
+        EXPECT_EQ(e["sourceSize"], (TitleSheetExportJson{{"w", 32}, {"h", 24}}));
         EXPECT_EQ(e["spriteSourceSize"]["w"], b.w);
         EXPECT_EQ(e["spriteSourceSize"]["y"], 3) << "the inset trimmed";
         EXPECT_EQ(e["duration"], 33);
@@ -199,18 +199,18 @@ TEST_F(TitleSheetExportTest, AtlasPacksTrimmedFramesDeterministically) {
 }
 
 TEST_F(TitleSheetExportTest, AtlasSplitsPagesAndRefusesWhatCannotFit) {
-    auto ctx = context("atlas", Json{{"max_atlas", 64}});
+    auto ctx = context("atlas", TitleSheetExportJson{{"max_atlas", 64}});
     ASSERT_TRUE(writeTitleSheetFrames(*ctx, "atlas", frames(8, 40, 40, 0))) << ctx->result.error;
-    const Json j = readJson("win.atlas.json");
+    const TitleSheetExportJson j = readJson("win.atlas.json");
     EXPECT_GT(j["meta"]["pages"].size(), 1u) << "eight 44 px frames do not fit one 64 px page";
-    for (const Json& p : j["meta"]["pages"]) {
+    for (const TitleSheetExportJson& p : j["meta"]["pages"]) {
         EXPECT_TRUE(fs::exists(dir / p["image"].get<std::string>()));
         EXPECT_LE(p["size"]["w"].get<int>(), 64);
     }
-    auto refused = context("atlas", Json{{"max_atlas", 64}, {"overwrite", true}});
+    auto refused = context("atlas", TitleSheetExportJson{{"max_atlas", 64}, {"overwrite", true}});
     EXPECT_FALSE(writeTitleSheetFrames(*refused, "atlas", frames(1, 100, 10, 0)));
     EXPECT_EQ(refused->result.code, "atlas_too_small");
-    auto manyPages = context("atlas", Json{{"max_atlas", 64}, {"overwrite", true}});
+    auto manyPages = context("atlas", TitleSheetExportJson{{"max_atlas", 64}, {"overwrite", true}});
     EXPECT_FALSE(writeTitleSheetFrames(*manyPages, "atlas", frames(17, 60, 60, 0)));
     EXPECT_EQ(manyPages->result.code, "atlas_too_many_pages");
 }
@@ -221,18 +221,18 @@ TEST(TitleSheetFrameTimes, OnceIncludesItsEndAndALoopDoesNot) {
     TitleAnimInfo info;
     info.duration = 1.0;
     info.loop = false;
-    ASSERT_TRUE(titleAnimFrameTimes(info, 4.0, Json(), times, error)) << error;
+    ASSERT_TRUE(titleAnimFrameTimes(info, 4.0, TitleSheetExportJson(), times, error)) << error;
     EXPECT_EQ(times, (std::vector<double>{0.0, 0.25, 0.5, 0.75, 1.0}));
     info.loop = true;
-    ASSERT_TRUE(titleAnimFrameTimes(info, 4.0, Json(), times, error)) << error;
+    ASSERT_TRUE(titleAnimFrameTimes(info, 4.0, TitleSheetExportJson(), times, error)) << error;
     EXPECT_EQ(times, (std::vector<double>{0.0, 0.25, 0.5, 0.75}));
-    ASSERT_TRUE(titleAnimFrameTimes(info, 4.0, Json(2), times, error)) << error;
+    ASSERT_TRUE(titleAnimFrameTimes(info, 4.0, TitleSheetExportJson(2), times, error)) << error;
     EXPECT_EQ(times.size(), 2u);
-    ASSERT_TRUE(titleAnimFrameTimes(info, 4.0, Json::array({1, 2}), times, error)) << error;
+    ASSERT_TRUE(titleAnimFrameTimes(info, 4.0, TitleSheetExportJson::array({1, 2}), times, error)) << error;
     EXPECT_EQ(times, (std::vector<double>{0.25, 0.5}));
-    EXPECT_FALSE(titleAnimFrameTimes(info, 4.0, Json(0), times, error));
-    EXPECT_FALSE(titleAnimFrameTimes(info, 4.0, Json::array({2, 1}), times, error));
-    EXPECT_FALSE(titleAnimFrameTimes(info, 4.0, Json("all"), times, error));
+    EXPECT_FALSE(titleAnimFrameTimes(info, 4.0, TitleSheetExportJson(0), times, error));
+    EXPECT_FALSE(titleAnimFrameTimes(info, 4.0, TitleSheetExportJson::array({2, 1}), times, error));
+    EXPECT_FALSE(titleAnimFrameTimes(info, 4.0, TitleSheetExportJson("all"), times, error));
 }
 
 TEST(TitleSheetFrameTimes, AtMost1024Frames) {
@@ -241,9 +241,9 @@ TEST(TitleSheetFrameTimes, AtMost1024Frames) {
     TitleAnimInfo info;
     info.duration = 100.0;
     info.loop = true;
-    ASSERT_TRUE(titleAnimFrameTimes(info, 30.0, Json(1024), times, error)) << error;
+    ASSERT_TRUE(titleAnimFrameTimes(info, 30.0, TitleSheetExportJson(1024), times, error)) << error;
     EXPECT_EQ(times.size(), 1024u);
-    EXPECT_FALSE(titleAnimFrameTimes(info, 30.0, Json(1025), times, error));
+    EXPECT_FALSE(titleAnimFrameTimes(info, 30.0, TitleSheetExportJson(1025), times, error));
     EXPECT_NE(error.find("at most 1024"), std::string::npos) << error;
-    EXPECT_FALSE(titleAnimFrameTimes(info, 30.0, Json(), times, error)) << "3,000 frames by default";
+    EXPECT_FALSE(titleAnimFrameTimes(info, 30.0, TitleSheetExportJson(), times, error)) << "3,000 frames by default";
 }

@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 10
 guid: 815356118a9741500cbe8a3a12d6acc1
 id: 1505940115
 name: Ramp
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

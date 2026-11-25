@@ -1792,7 +1792,10 @@ namespace jasperengine::editor{
         static constexpr std::array<FoliageQuality, 3> defaultFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
         static constexpr std::array<FoliageQuality, 3> newProjectFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::LOW, FoliageQuality::LOW};
         static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
-        static constexpr int defaultHtmlUiMsaaSamples = 4;
+        // S92 R16: new projects are Auto (0: 1 sample on phones and the web, 4 on desktop); a
+        // project.yaml without the key had 4
+        static constexpr int defaultHtmlUiMsaaSamples = 0;
+        static constexpr int legacyHtmlUiMsaaSamples = 4;
         static constexpr int defaultPixelsPerUnit = 1;
         static constexpr int minPixelsPerUnit = 1;
         static constexpr int maxPixelsPerUnit = 256;
@@ -1869,6 +1872,8 @@ namespace jasperengine::editor{
         // a project script sets the scene's maxLightsPerObject (the export then ships the lit
         // variants of every light capacity tier, see ShaderVariantCollector)
         bool scriptsSetLightCapacity() const;
+        // a script sets the 2D ambient or the Light Steps (S78: variants of the 2D-lit meshes)
+        bool scriptsSetLight2D() const;
         // a project script sets the scene's post-processing (both states of its colour variant bit ship)
         bool scriptsSetShadowQuality() const;
         bool scriptsSetPostProcessing() const;
@@ -1967,8 +1972,8 @@ namespace jasperengine::editor{
         void setGamepadCursorSettings(const GamepadCursorSettings& settings);
         const GamepadCursorSettings& getGamepadCursorSettings() const;
 
-        // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
-        // them), applied to the editor's documents at once and written into exports
+        // MSAA samples of the HTML UI targets (0 = Auto, else 1, 2, 4 or 8; others round down to
+        // one of them), applied to the editor's documents at once and written into exports
         void setHtmlUiMsaaSamples(int samples);
         int getHtmlUiMsaaSamples() const;
         // Pixels Per Unit (S41, 1-256, clamped): applied to the editor's scenes at once and written into exports

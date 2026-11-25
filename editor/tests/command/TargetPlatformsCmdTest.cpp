@@ -21,7 +21,7 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
-    std::string readText(const std::filesystem::path& path) {
+    std::string targetPlatformsReadText(const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary);
         std::stringstream text;
         text << in.rdbuf();
@@ -30,7 +30,7 @@ namespace {
 
     // export.targetPlatforms as project.yaml holds it ("" when the key is absent)
     std::string savedTargets(const std::filesystem::path& root) {
-        const YAML::Node yaml = YAML::Load(readText(root / "project.yaml"));
+        const YAML::Node yaml = YAML::Load(targetPlatformsReadText(root / "project.yaml"));
         if (!yaml["export"] || !yaml["export"]["targetPlatforms"]) return "";
         std::string names;
         for (const YAML::Node& name : yaml["export"]["targetPlatforms"]) names += (names.empty() ? "" : ",") + name.as<std::string>();

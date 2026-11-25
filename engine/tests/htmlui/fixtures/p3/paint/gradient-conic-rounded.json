@@ -1,0 +1,10 @@
+{
+ "comment": "S92 R7: conic gradients (smooth, hard quarters in an ellipse, repeating in a bordered box) and repeating linear and radial gradients on rounded boxes, drawn as gradient primitives (no mask layer). Tolerance: the curves' edge pixels, which the engine covers analytically from the rounded rectangle's distance over a one-pixel ramp and Skia by the covered area: scattered single pixels and short runs differ by up to about 40 levels (no shape difference; the gradients' colours match). Measured 0.199 % on glcore and 0.197 % on Vulkan (the mask layers of the mesh path before S92: 0.178 %); the limit is that plus about 10 %, the cluster limit stays at the default (16 px).",
+ "viewport": [
+  340,
+  170
+ ],
+ "tolerance": {
+  "badPercent": 0.22
+ }
+}

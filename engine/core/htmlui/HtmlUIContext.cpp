@@ -451,7 +451,6 @@ void HtmlUIContext::update(){
         context->Update();
         htmlui::HtmlL10n::update();
     }
-    markUpdated();
 }
 
 bool HtmlUIContext::processMouseMove(Rml::Vector2f position, int modifiers){

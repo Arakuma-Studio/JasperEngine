@@ -3754,9 +3754,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setPlayerCrash(crash);
     }
 
-    if (node["htmlUiMsaaSamples"].IsDefined()) {
-        project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
-    }
+    // S92 R16: a project saved without the key had 4 samples (new projects are Auto, 0)
+    project->setHtmlUiMsaaSamples(node["htmlUiMsaaSamples"].IsDefined() ? YamlNumbers::as<int>(node["htmlUiMsaaSamples"])
+                                                                         : Project::legacyHtmlUiMsaaSamples);
 
     // S56: a project saved before it has no device block, and gets the defaults
     {
@@ -5348,6 +5348,11 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     // written only when not the default (half), so scenes saved before it existed re-save unchanged
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         sceneNode["sceneColorScale"] = sceneColorScaleToString(scene->getSceneColorScale());
+    // the screen HTML UI documents (S92): written only away from their defaults
+    if (scene->getHtmlUiRenderMode() != SceneSettings().htmlUiRenderMode)
+        sceneNode["htmlUiRenderMode"] = StreamSchema::uiRenderMode().toString(scene->getHtmlUiRenderMode());
+    if (scene->getHtmlUiMsaaSamples() != SceneSettings().htmlUiMsaaSamples)
+        sceneNode["htmlUiMsaaSamples"] = scene->getHtmlUiMsaaSamples();
     // planar reflections: written only away from their defaults
     if (scene->getPlanarReflectionResolution() != SceneSettings().planarReflectionResolution)
         sceneNode["planarReflectionResolution"] = StreamSchema::planarReflectionResolution().toString(scene->getPlanarReflectionResolution());
@@ -5388,6 +5393,13 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["capsuleShadowSoftness"] = YamlNumbers::text(scene->getCapsuleShadowSoftness());
     sceneNode["ambientLight2DIntensity"] = scene->getAmbientLight2DIntensity();
     sceneNode["ambientLight2DColor"] = encodeVector3(scene->getAmbientLight2DColor());
+    // Light Steps (S78 R1): written only when on, so scenes saved before them re-save unchanged
+    if (scene->getLight2DSteps() != SceneSettings().light2DSteps)
+        sceneNode["light2DSteps"] = scene->getLight2DSteps();
+    // the 2D ambient without a Light 2D (S78 R6, R7): a scene without the key is off (it was drawn so
+    // before S78); new scenes are on, which is written
+    if (scene->isAmbientLight2DWithoutLights())
+        sceneNode["ambientLight2DWithoutLights"] = true;
     sceneNode["shadow2DQuality"] = shadowQualityToString(scene->getShadow2DQuality());
     sceneNode["ssaoEnabled"] = scene->isSSAOEnabled();
     sceneNode["ssaoRadius"] = scene->getSSAORadius();
@@ -5520,6 +5532,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
     // absent = the default (half): it is only written when it differs
     scene->setSceneColorScale(node["sceneColorScale"] ? decodeEnum(node, "sceneColorScale", StreamSchema::sceneColorScale()) : SceneSettings().sceneColorScale);
+    // the screen HTML UI documents: absent = the defaults (Screen Space - Overlay, the project's samples)
+    scene->setHtmlUiRenderMode(node["htmlUiRenderMode"] ? decodeEnum(node, "htmlUiRenderMode", StreamSchema::uiRenderMode()) : SceneSettings().htmlUiRenderMode);
+    scene->setHtmlUiMsaaSamples(node["htmlUiMsaaSamples"] ? YamlNumbers::as<int>(node["htmlUiMsaaSamples"]) : SceneSettings().htmlUiMsaaSamples);
     // planar reflections: absent = the defaults
     const SceneSettings planarDefaults;
     scene->setPlanarReflectionResolution(node["planarReflectionResolution"]
@@ -5570,6 +5585,8 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     } else if (node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(decodeVector3(node["ambientLight2DColor"]));
     }
+    scene->setLight2DSteps(node["light2DSteps"] ? YamlNumbers::as<int>(node["light2DSteps"]) : SceneSettings().light2DSteps);
+    scene->setAmbientLight2DWithoutLights(node["ambientLight2DWithoutLights"] && YamlNumbers::as<bool>(node["ambientLight2DWithoutLights"]));
 
     if (node["shadow2DQuality"]) {
         scene->setShadow2DQuality(decodeEnum(node, "shadow2DQuality", StreamSchema::shadowQuality()));

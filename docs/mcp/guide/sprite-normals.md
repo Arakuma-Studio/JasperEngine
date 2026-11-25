@@ -13,8 +13,8 @@ may differ by 1 per channel).
 ## When it shows
 
 Lights need height > 0: only 2D lights read sprite normal maps, and a Light 2D lights a normal map only when its `height` is above 0
-(lights made by the editor get 64; older ones keep 0). Sprites without a normal map are lit the same at any
-height. Lower `ambient_light_2d_intensity` (0.2-0.4) to see the light at all. To give a light height:
+(new lights get 64; loaded ones keep theirs). Sprites without a normal map are lit the same at any
+height. Darken a bright 2D ambient (`ambient_high`) to see the light at all. To give a light height:
 
 ```json
 {"tool": "set_properties", "arguments": {"entity": "Light 2D", "values": {"light2d": {"height": 64}}}}
@@ -22,8 +22,8 @@ height. Lower `ambient_light_2d_intensity` (0.2-0.4) to see the light at all. To
 
 ## The loop: preview, then write
 
-1. Call **without `output`**: nothing is written. You get a lit contact sheet (image), `metrics`, `assessment`,
-   a `hint`, `warnings` with fixes and `default_output` (the files `output: true` would write).
+1. Call **without `output`**: nothing is written. You get a lit contact sheet (image, read with `sheet_legend`),
+   `metrics`, `assessment`, a `hint`, `warnings` with fixes, `default_output` and `next` (how to write it).
 2. Look at the sheet; adjust `preset` / `params` until the hint says "Looks fine." or you like the light.
 3. Call again with **the same arguments + `output: true`** (add `apply: true` on a GameObject source): exactly the
    previewed pixels are written, as PNGs carrying their recipe, as one undo step (`undo {scope: "project"}`); apply
@@ -40,8 +40,8 @@ The run is a job: past `timeout_seconds` (default 120) the call returns `{job_id
 |---|---|---|
 | `source` (required) | | An image file (`.png` APNG included, `.gif`, `.jpg`, `.tga`, `.bmp`, `.psd`), or a GameObject (id, path, unique name, `{id\|name\|path}`) that is a Sprite, a Polygon or a Tilemap: its colour texture is the source, a Sprite's frames the cells |
 | `scene` | selected | the scene of a GameObject source and of `apply` |
-| `preset` | `default` | `soft`, `default`, `crisp`, `detailed`, `chunky`, `toon`, `painted`, `props`, `tile` (below) |
-| `params` | `{}` | overrides: `strength`, `detail`, `smoothing`, `volume`, `radius`, `softness`, `alpha_threshold`, `profile`, `edges`, `resolution_scale`, `soft_edge`, `ignore_outline`, `regions`, `quantize` (Toon steps, below), `version`; an unknown key or a value out of range is refused |
+| `preset` | `default` | `soft`, `default`, `crisp`, `detailed`, `chunky`, `toon`, `painted`, `props`, `tile`, `stones` (below) |
+| `params` | `{}` | overrides: `strength`, `detail`, `smoothing`, `volume`, `radius`, `softness`, `alpha_threshold`, `profile`, `edges`, `resolution_scale`, `soft_edge`, `ignore_outline`, `regions`, `quantize` (Toon steps, below), `gaps` (below), `version`; `light_steps` 0..16 (the sheet's lit columns only, below); an unknown key or a value out of range is refused |
 | `frames` | `"auto"` | `"auto"`, `"none"`, a grid `{tile_size: N or [w, h], columns, rows, count, offset: [x, y], padding: [x, y]}` (as `set_sprite_frames.slice`) or `{cells: [[x, y, w, h], ...]}` |
 | `directx` | false | green down (Unreal); the engine reads OpenGL |
 | `height` | false | also a 16-bit grey height map |
@@ -76,9 +76,10 @@ keeps its place.
 | `painted` | 1.5 | 3 | 1.0 | 1.15 | painted, vector and organic art at any size: `profile` `inflate` |
 | `props` | 1.5 | 3 | 0.5 | 0.7 | crates, panels, coins, buttons: `profile` `dome`, `softness` 1 (a round rim, a flat face) |
 | `tile` | 2.0 | 3 | 1.0 | 1.15 | seamless textures: `edges` `wrap` (the painted relief only) |
+| `stones` | 2.0 | 3 | 1.0 | 1.15 | floors and walls of stones or bricks between dark gaps: `edges` `wrap`, `profile` `dome`, `gaps` `{share: 0.3}`, `softness` 1.5 |
 
-All presets: `softness` 1.15 (props 1), `radius` auto, `profile` auto (painted inflate, props dome), `edges`
-transparent (tile wrap), `resolution_scale` auto; only `toon` quantizes. Explicit `params` override the preset.
+All presets: `softness` 1.15 (props 1, stones 1.5), `radius` auto, `profile` auto (painted inflate, props and stones dome),
+`edges` transparent (tile and stones wrap), `resolution_scale` auto; only `toon` quantizes, only `stones` has gaps. Explicit `params` override the preset.
 The last three were tuned on high-resolution sprites (below); the first six are the pixel-art presets, and at
 128 px or less they give what they always gave (only the auto radius moved slightly).
 
@@ -199,6 +200,20 @@ Quantized normals on any preset: `{"source": "Hero", "preset": "crisp", "params"
 off on `toon`: `{"params": {"quantize": {"directions": 0}}}`. The recipe records `quantize` when it is on (or the
 preset's is), so `regenerate` gives the same pixels.
 
+## Stone floors: gaps
+
+A tile of stones or bricks between dark gaps comes out flat with `tile` (an opaque tile has no silhouette):
+use `preset: "stones"`. `gaps: {share: 0..0.9}` (default 0, off) makes the darkest `share` of each frame's pixels
+(their lightness, slightly blurred) gaps: outside the shape, so every stone gets its own rim and `profile`,
+`radius` and `edges` work per stone. Gap pixels keep their alpha and get normals. Raise `share` when stones
+merge, lower it when stones lose their dark edges; the result's warning `gaps_unmatched` (a flat or evenly lit
+image: nothing darker to cut) names the fix. A bright-grout tile is not for gaps.
+
+```json
+{"source": "assets/ground/stone_floor.png", "preset": "stones"}
+{"source": "assets/ground/bricks.png", "preset": "stones", "params": {"gaps": {"share": 0.2}}, "output": true}
+```
+
 ## Sprites, sheets, animations, tiles
 
 - `frames: "auto"`: a Sprite source uses its frames (`from: "sprite"`), a GIF/APNG its frames, else the whole
@@ -215,7 +230,9 @@ preset's is), so `regenerate` gives the same pixels.
 ## Reading the result
 
 The contact sheet: per frame (at most 8, spread evenly; `frames.sheet_note` says which) a row of colour, normal,
-then lit from the top-left, top-right, bottom-right, bottom-left (the engine's 2D light formula).
+then lit from the top-left, top-right, bottom-right, bottom-left (the engine's 2D light formula, 34° above the
+sprite); `sheet_legend` says the same. `params.light_steps: N` lights those columns in N bands as a scene's Light
+Steps does (default: the target scene's Light Steps); `sheet_legend.light_steps` is the count used.
 
 | metric | means | warned when |
 |---|---|---|
@@ -304,13 +321,15 @@ Errors (`isError`, `errors: [{kind, message, fix, field?}]`; nothing is written)
 | `write_failed` / `failed` | the disk or the generator failed | check the path; call again |
 
 Warnings (in `warnings`, `{kind, message, fix}`): from the image `no_alpha` (no transparent pixel with edges
-transparent: use `extend`/`wrap` for tiles), `mostly_flat` (above 128 px with most of the sprite soft: try
-`soft_edge: "solid"`), `too_steep`, `noisy`, `creased`, `streaky`, `leaning`, `soft_edges`,
-`frames_touch_edges` (use `extend` when the art continues past the cell), `outline_not_found`, `region_unmatched`;
+transparent: use `extend`/`wrap` for tiles, `stones` for stones between dark gaps), `mostly_flat` (above 128 px
+with most of the sprite soft: try `soft_edge: "solid"`), `too_steep`, `noisy`, `boxy` (a sprite filling its box,
+a crate or panel, on `rounded`/`inflate`: follow its fix, `preset: "props"` or `profile: "bevel"` with the radius
+it names), `creased`, `streaky`, `leaning`, `soft_edges`, `frames_touch_edges` (use `extend` when the art continues
+past the cell), `outline_not_found`, `region_unmatched`, `gaps_unmatched`;
 from the paint `paint_empty_selection` (an op selected nothing), `paint_layout_changed` (other frames than when it was
 painted), `paint_hidden_pixels` (painted pixels now transparent), `paint_unreadable` (a damaged layer, dropped);
-from the scene `no_light`, `no_light_height`, `ambient_high`, `size_mismatch`, `filter_mismatch`,
-`material_linked` (save the material file), `too_many_frames`, `directx_in_engine`, `shader_ignores_normals`,
+from the scene `no_light`, `no_light_height`, `light_low` (raise the lights it names), `ambient_high`,
+`size_mismatch`, `filter_mismatch`, `material_linked` (save the material file), `too_many_frames`, `directx_in_engine`, `shader_ignores_normals`,
 `zero_delay`.
 
 ## Using it on a GameObject

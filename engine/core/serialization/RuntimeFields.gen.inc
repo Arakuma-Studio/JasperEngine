@@ -1988,6 +1988,7 @@ const FieldEntry kBody_UIDocumentComponent_fields[] = {
     JE_RF(UIDocumentComponent, pixelRatio, 0x9ecbc5dbu, Float),
     JE_RF(UIDocumentComponent, isMenu, 0xe9c0839fu, Bool),
     JE_RF(UIDocumentComponent, gamepadCursor, 0x7c5c9c11u, Bool),
+    JE_RF(UIDocumentComponent, msaaSamples, 0x16930f21u, Int),
 };
 const StructTable kBody_UIDocumentComponent{"uidocument", kBody_UIDocumentComponent_fields, std::size(kBody_UIDocumentComponent_fields)};
 

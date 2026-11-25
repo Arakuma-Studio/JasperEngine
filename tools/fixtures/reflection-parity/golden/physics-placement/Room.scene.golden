@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 10
 guid: 4422b16152ca8525c5897b17dadd6a26
 id: 1099496347
 name: Room
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

@@ -40,6 +40,10 @@ namespace jasperengine{
         bool isMenu = false;
         // while the player uses a gamepad, the left stick moves a pointer over the screen's documents (GamepadCursor)
         bool gamepadCursor = false;
+        // S92: TEXTURE mode, the MSAA samples of its own context's target: 0 = the scene's
+        // htmlUiMsaaSamples, else 1, 2, 4 or 8. Screen documents share the scene's context: the
+        // scene setting decides for them
+        int msaaSamples = 0;
         FunctionSubscribe<void()> onLoad;                           // after every (re)load
         FunctionSubscribe<void()> onUnload;
 

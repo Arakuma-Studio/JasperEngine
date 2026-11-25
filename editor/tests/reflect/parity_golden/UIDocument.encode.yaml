@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 5a6093184ded8d88
+digest 28ac5b70836f3951
 --- 0
 enabled: true
 filename: ui/menu.html
@@ -8,7 +8,7 @@ interactive: false
 textureWidth: 11
 textureHeight: 0
 pixelRatio: 1e-45
-isMenu: true
+msaaSamples: -9
 --- 1
 enabled: false
 filename: a b/c.png
@@ -19,7 +19,7 @@ textureWidth: 5
 textureHeight: -45581
 inputSurface: 88
 pixelRatio: 95
-gamepadCursor: true
+msaaSamples: 16
 --- 2
 enabled: false
 filename: ""
@@ -28,8 +28,7 @@ textureWidth: 3
 textureHeight: 94072
 inputSurface: 4
 pixelRatio: 3e+38
-isMenu: true
-gamepadCursor: true
+msaaSamples: 16
 --- 3
 enabled: false
 filename: textures/a.png
@@ -40,6 +39,7 @@ textureWidth: 20
 textureHeight: -19
 inputSurface: 275
 pixelRatio: 112.42857
+msaaSamples: -2
 --- 4
 enabled: true
 filename: fonts/Main.ttf
@@ -48,7 +48,7 @@ interactive: false
 textureWidth: 16
 textureHeight: 20
 inputSurface: 369
-gamepadCursor: true
+msaaSamples: -17
 --- 5
 enabled: true
 filename: fonts/Main.ttf
@@ -59,7 +59,7 @@ textureWidth: 0
 textureHeight: 11
 inputSurface: 122
 pixelRatio: 9267.8
-gamepadCursor: true
+msaaSamples: 20
 --- 6
 enabled: true
 filename: ""
@@ -68,8 +68,7 @@ textureWidth: -16
 textureHeight: -4
 inputSurface: 212
 pixelRatio: -83.42857
-isMenu: true
-gamepadCursor: true
+msaaSamples: 8
 --- 7
 enabled: false
 filename: ui/menu.html
@@ -79,4 +78,4 @@ renderMode: texture
 textureWidth: 11
 textureHeight: -14
 pixelRatio: -19.428572
-gamepadCursor: true
+msaaSamples: 8

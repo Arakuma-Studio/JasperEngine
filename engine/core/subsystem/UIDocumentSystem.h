@@ -86,7 +86,14 @@ namespace jasperengine{
 
         // RenderSystem hooks; one-line delegations to the context
         void renderOffscreen(const Rect& viewRect);                 // context->render(viewRect)
-        void drawComposite(PipelineType colorPipeline, bool flipY); // context->composite(...)
+        // the screen documents filling the pass's viewport: the camera pass of a Screen Space -
+        // Camera scene, or the pass that writes the main camera's output (S92 R13: the uber pass,
+        // a blit) of a Screen Space - Overlay one; msaaSamples as below. viewCanvasWidth and
+        // viewCanvasHeight: the canvas the camera shows (the editor's Game view outside Play frames
+        // the project canvas, which the documents' layout may not be): the documents' frame keeps
+        // its canvas pixels' size in it from the top-left corner; 0 fills the viewport
+        void drawComposite(PipelineType colorPipeline, bool flipY, int msaaSamples = 1, float viewCanvasWidth = 0.0f,
+                           float viewCanvasHeight = 0.0f);
 
         // Engine::system* hooks, canvas coordinates (top-left origin, y down); true = consumed
         bool eventOnPointerDown(int button, float x, float y, int mods);
@@ -122,19 +129,23 @@ namespace jasperengine{
         // ---- phase 1. Declared by the wave-0 commit, defined by each package in its own .cpp ----
 
         // --- p1-render (UIDocumentSystemRender.cpp, §3.5) ---
-        // camera-aware composite: UI and orthographic cameras draw the canvas rectangle in world
-        // space (the editor's Scene view shows it in place), perspective ones fill the viewport
-        // like drawComposite(PipelineType, bool). msaaSamples: the camera pass's sample count when
-        // colorPipeline is PIP_MSAA* (the post-processed camera's multisampled scene target)
+        // camera-aware composite: with throughCamera (the editor's Scene view, and every view of a
+        // Screen Space - Camera scene, as before S92), UI and orthographic cameras draw the canvas
+        // rectangle in world space, so the document shows in place; a perspective camera, and
+        // every camera of a Screen Space - Overlay game view (S92 R15), fill the viewport like
+        // drawComposite(PipelineType, bool, int, float, float). msaaSamples: the camera pass's sample
+        // count when colorPipeline is PIP_MSAA* (the post-processed camera's multisampled scene target)
         void drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY,
-                           int msaaSamples = 1);
+                           int msaaSamples = 1, bool throughCamera = false, float viewCanvasWidth = 0.0f, float viewCanvasHeight = 0.0f);
         const HtmlUIRenderStats& getRenderStats() const;    // last frame, summed over the scene's contexts
         // the last frame of the context that draws the entity's document (its own in texture mode,
         // else the screen context; empty without one)
         HtmlUIRenderStats getRenderStats(Entity entity) const;
-        // MSAA samples of every UI target (1/2/4/8, default 4): the exported entry to
-        // HtmlUIContext::setPreferredSampleCount for the editor's project setting and the
-        // generated game init code (neither can reach the internal HtmlUIContext)
+        // MSAA samples of the UI targets (0 = Auto: 1 on Android, iOS and the web, 4 on desktop;
+        // else 1/2/4/8; default 4): the exported entry to HtmlUIContext::setPreferredSampleCount
+        // for the editor's project setting and the generated game init code (neither can reach
+        // the internal HtmlUIContext). A scene's htmlUiMsaaSamples and a texture-mode document's
+        // msaaSamples replace it for their context (renderOffscreen hands them over)
         static void setPreferredSampleCount(int samples);
         static int getPreferredSampleCount();
         // S16 (D1, R13): the glyph atlas budget in MiB (0: the platform's default), SDF primitives

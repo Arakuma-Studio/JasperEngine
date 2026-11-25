@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 10
 guid: ff547c86809f5b04f18dbb93d4a741a7
 id: 2558263988
 name: Stack
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

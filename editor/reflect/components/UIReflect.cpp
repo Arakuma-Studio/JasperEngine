@@ -356,6 +356,11 @@ namespace {
                  .tooltip = "Back goes here first; opening it releases the game's held input; Pause On Focus Loss does not fire while it shows."),
         JE_FIELD(UIDocumentComponent, gamepadCursor, .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
                  .tooltip = "While the player uses a gamepad, the stick moves a pointer over this document."),
+        // S92 R18: read each frame by UIDocumentSystem (no reload); another count goes to the one below it
+        JE_FIELD(UIDocumentComponent, msaaSamples, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | Clamped,
+                 .min = 0.0f, .max = 8.0f, .label = "Anti-aliasing (MSAA)",
+                 .tooltip = "Texture mode: MSAA samples of the document's texture, 0 (the scene's), 1, 2, 4 or 8. Screen documents use the scene's.",
+                 .visibleIf = &documentInTexture),
     };
 
     // the old one's runtime state (its loaded document) stays while the file and render settings do

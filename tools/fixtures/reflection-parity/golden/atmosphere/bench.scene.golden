@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 10
 guid: 5a8340b00ae91e3756ead7ddaa1a5fcd
 id: 910579834
 name: AtmosphereBench
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

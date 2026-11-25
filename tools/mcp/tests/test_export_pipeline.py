@@ -48,8 +48,10 @@ S: dict = {}
 
 SPAWNER = """local Spawner = {}
 function Spawner:init()
-  -- an object no authored GameObject draws like: its variant exists only during Play
+  -- an object no authored GameObject draws like: its variant exists only during Play. Kept in
+  -- self: the wrapper owns its entity, which goes when the collector takes it (lua-api guide)
   local sphere = Primitive(self.scene)
+  self.sphere = sphere
   sphere:createSphere(1)
   local m = sphere:getMaterial()
   m.clearcoatEnabled = true
@@ -68,6 +70,7 @@ return Spawner
 SECOND_SPAWNER = """local SecondSpawner = {}
 function SecondSpawner:init()
   local sphere = Primitive(self.scene)
+  self.sphere = sphere
   sphere:createSphere(1)
   local m = sphere:getMaterial()
   m.sheenEnabled = true

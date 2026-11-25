@@ -214,6 +214,8 @@ TEST(RenderBatch, UntexturedJoinsWhiteTexels){
 
 TEST(RenderBatch, RunCacheHitAndInvalidation){
     JASPER_REQUIRE_GPU();
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     PrimitivesMode vertexRuns(false);
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
@@ -276,6 +278,8 @@ TEST(RenderBatch, RunCacheHitAndInvalidation){
 
 TEST(RenderBatch, NoMergeAcrossLayersFiltersShadersOrStencil){
     JASPER_REQUIRE_GPU();
+    // every frame's own layer passes, not results drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     PrimitivesMode vertexRuns(false);
     RenderTestContext test(320, 180);
     ASSERT_TRUE(test.isValid());

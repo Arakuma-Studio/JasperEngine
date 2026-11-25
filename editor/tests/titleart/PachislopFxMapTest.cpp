@@ -13,7 +13,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using PachislopFxMapJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 
 TEST(PachislopFxMapTest, EveryEntryNamesOurParams) {
     const auto& map = pachislopEffectMap();
@@ -42,22 +42,22 @@ TEST(PachislopFxMapTest, EveryEntryNamesOurParams) {
 }
 
 TEST(PachislopFxMapTest, Converts) {
-    const PachislopFxConversion extrude = convertPachislopEffect("extrude2d", Json{{"light", -120}, {"length", 30}});
+    const PachislopFxConversion extrude = convertPachislopEffect("extrude2d", PachislopFxMapJson{{"light", -120}, {"length", 30}});
     ASSERT_TRUE(extrude.ok) << extrude.error;
     EXPECT_EQ(extrude.type, "extrude");
     EXPECT_EQ(extrude.params["light_angle"], 120.0);
-    const PachislopFxConversion shatter = convertPachislopEffect("shatter", Json{{"x", 40}, {"y", -10}, {"cracksOnly", true}});
+    const PachislopFxConversion shatter = convertPachislopEffect("shatter", PachislopFxMapJson{{"x", 40}, {"y", -10}, {"cracksOnly", true}});
     ASSERT_TRUE(shatter.ok) << shatter.error;
-    EXPECT_EQ(shatter.params["impact"], Json::array({40, -10}));
+    EXPECT_EQ(shatter.params["impact"], PachislopFxMapJson::array({40, -10}));
     EXPECT_EQ(shatter.params["cracks_only"], true);
-    const PachislopFxConversion glitch = convertPachislopEffect("glitch", Json{{"amount", 0.5}});
+    const PachislopFxConversion glitch = convertPachislopEffect("glitch", PachislopFxMapJson{{"amount", 0.5}});
     ASSERT_TRUE(glitch.ok);
     EXPECT_EQ(glitch.params["mode"], "slices");
-    const PachislopFxConversion halftone = convertPachislopEffect("halftone", Json{{"mode", "softLight"}, {"color", "#FF2A6D"}});
+    const PachislopFxConversion halftone = convertPachislopEffect("halftone", PachislopFxMapJson{{"mode", "softLight"}, {"color", "#FF2A6D"}});
     ASSERT_TRUE(halftone.ok);
     EXPECT_EQ(halftone.params["mode"], "soft_light");
     EXPECT_EQ(halftone.params["color"], "#FF2A6D") << "colours are not option names";
     EXPECT_EQ(halftone.params["dot"], "round");
-    EXPECT_FALSE(convertPachislopEffect("deepGlow", Json{{"bogus", 1}}).ok);
-    EXPECT_FALSE(convertPachislopEffect("notAnEffect", Json::object()).ok);
+    EXPECT_FALSE(convertPachislopEffect("deepGlow", PachislopFxMapJson{{"bogus", 1}}).ok);
+    EXPECT_FALSE(convertPachislopEffect("notAnEffect", PachislopFxMapJson::object()).ok);
 }

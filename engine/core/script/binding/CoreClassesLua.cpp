@@ -2552,6 +2552,14 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HALF", SceneColorScale::HALF)
         .endNamespace();
 
+    // where the scene's screen HTML UI documents composite (Scene.htmlUiRenderMode): OVERLAY after
+    // post-processing at the output resolution, CAMERA in the camera pass before it
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIRenderMode")
+        .addVariable("OVERLAY", UIRenderMode::OVERLAY)
+        .addVariable("CAMERA", UIRenderMode::CAMERA)
+        .endNamespace();
+
     // the resolution of the water reflection passes (Scene.planarReflectionResolution)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("PlanarReflectionResolution")
@@ -3985,6 +3993,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("ambientLight2DIntensity", &Scene::getAmbientLight2DIntensity, (void (Scene::*)(float))&Scene::setAmbientLight2D)
         .addFunction("getAmbientLight2DColorLinear", &Scene::getAmbientLight2DColorLinear)
         .addFunction("setAmbientLight2D", (void (Scene::*)(float, Vector3))&Scene::setAmbientLight2D)
+        // the bands each Light 2D's light is quantized into, 0 (off) to 16
+        .addProperty("light2DSteps", &Scene::getLight2DSteps, &Scene::setLight2DSteps)
+        // a tinting 2D ambient on the unlit 2D materials of a scene without a Light 2D
+        .addProperty("ambientLight2DWithoutLights", &Scene::isAmbientLight2DWithoutLights, &Scene::setAmbientLight2DWithoutLights)
         .addProperty("shadow2DQuality", &Scene::getShadow2DQuality, &Scene::setShadow2DQuality)
         .addProperty("gravity2D", &Scene::getGravity2D, (void (Scene::*)(Vector2))&Scene::setGravity2D)
         .addFunction("setGravity2D",
@@ -4048,6 +4060,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("crossFadeDuration", &Scene::getMeshLodCrossFadeDuration, &Scene::setMeshLodCrossFadeDuration)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
         .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
+        // the screen HTML UI documents: their composite (UIRenderMode) and MSAA samples (0: the project's)
+        .addProperty("htmlUiRenderMode", &Scene::getHtmlUiRenderMode, &Scene::setHtmlUiRenderMode)
+        .addProperty("htmlUiMsaaSamples", &Scene::getHtmlUiMsaaSamples, &Scene::setHtmlUiMsaaSamples)
         // water planar reflections (library:water's PLANAR_REFLECTION; a quality menu sets OFF)
         .addProperty("planarReflectionResolution", &Scene::getPlanarReflectionResolution, &Scene::setPlanarReflectionResolution)
         .addProperty("planarReflectionLayers", &Scene::getPlanarReflectionLayers, &Scene::setPlanarReflectionLayers)

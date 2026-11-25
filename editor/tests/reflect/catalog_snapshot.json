@@ -12892,7 +12892,7 @@
     "gamepadCursor",
     "inputSurface",
     "interactive",
-    "isMenu",
+    "msaaSamples",
     "pixelRatio",
     "renderMode",
     "sortOrder",
@@ -12926,8 +12926,8 @@
      0,
      true
     ],
-    "isMenu": [
-     0,
+    "msaaSamples": [
+     8,
      0,
      true
     ],
@@ -12983,8 +12983,8 @@
      0,
      true
     ],
-    "isMenu": [
-     0,
+    "msaaSamples": [
+     8,
      0,
      true
     ],
@@ -33954,8 +33954,8 @@
     0,
     true
    ],
-   "isMenu": [
-    0,
+   "msaaSamples": [
+    8,
     0,
     true
    ],

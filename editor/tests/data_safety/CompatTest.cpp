@@ -107,6 +107,16 @@ namespace {
         return out;
     }
 
+    // The input without the render mode scene format 10 writes into an older scene (S92: its screen
+    // documents keep the camera pass), when the input did not name one
+    std::string withoutHtmlUiRenderModeMigration(const std::string& text, const std::string& original) {
+        if (original.find("htmlUiRenderMode:") != std::string::npos)
+            return text;
+        const std::string line = "\n  htmlUiRenderMode: camera\n";
+        const size_t at = text.find(line);
+        return at == std::string::npos ? text : text.substr(0, at + 1) + text.substr(at + line.size());
+    }
+
     // The input's lines without the transforms' derived values, which saves no longer write
     // (scene format 4, docs/specs/S29-version-control.md R20)
     std::string withoutDerivedTransform(const std::string& text) {
@@ -299,9 +309,14 @@ TEST(Compat, CorpusRoundTrip) {
                                    (original.find("particlesystem:") == std::string::npos || original.find("inlineEffect:") != std::string::npos);
         if (editorWritten) {
             const std::string difference =
-                compatFirstDifference(withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first))))),
+                compatFirstDifference(withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(
+                                          withoutHtmlUiRenderModeMigration(withoutVersionLine(first), original))))),
                                 withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original))))));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
+            // an older scene keeps the camera pass its screen documents drew in
+            if (StreamMigrations::readVersion(DocumentKind::Scene, YAML::Load(original)) < 10 && original.find("htmlUiRenderMode:") == std::string::npos){
+                EXPECT_NE(first.find("\n  htmlUiRenderMode: camera\n"), std::string::npos) << "the render mode was not migrated";
+            }
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";
             EXPECT_EQ(first.rfind("formatVersion: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) + "\n", 0), 0u);
         }
