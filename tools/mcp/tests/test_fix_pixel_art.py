@@ -98,7 +98,9 @@ def pixels_sha(png: bytes) -> str:
 
 
 def files_in(project: Path, folder: str = ART) -> set[str]:
-    return {p.name for p in (project / folder).iterdir() if p.is_file() and not p.name.endswith(".meta")}
+    # not the metas, nor the importer's atomic write of one (".x.meta.<pid>-<n>.je-tmp", renamed away on its thread)
+    return {p.name for p in (project / folder).iterdir()
+            if p.is_file() and not p.name.endswith(".meta") and not (p.name.endswith(".je-tmp") and ".meta." in p.name)}
 
 
 def write_hero(ed: Editor) -> None:

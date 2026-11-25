@@ -91,6 +91,7 @@
 #include "object/ui/CanvasGroup.h"
 #include "object/PixelPerfectCamera.h"
 #include "AudioSource.h"
+#include "AudioSourceSlots.h"
 #include "Engine.h"
 #include "ObjectManager.h"
 #include "PrefabAsset.h"
@@ -104,6 +105,7 @@
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"
 #include "Joint2D.h"
+#include "component/Rigidbody2DComponent.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
 #include "Collision2D.h"
@@ -115,6 +117,8 @@
 #include "ControllerColliderHit.h"
 #include "Joint3D.h"
 #include "Ragdoll.h"
+#include "physics/RagdollBuilder.h"
+#include "component/RigidbodyComponent.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
 #include "Collision.h"
@@ -409,6 +413,53 @@ namespace {
         const std::string group = lua_isstring(L, 5) ? lua_tostring(L, 5) : "";
         AudioSource::playClipAtPoint(scene, path, position.value(), volume, group);
         return 0;
+    }
+
+    // ---- S97 WP-B: a source's own effects (docs/specs/S97-audio-gaps.md REQ-41)
+
+    int luaPushSourceEffect(lua_State* L, const AudioSourceEffect& effect){
+        if (!effect.isValid() || !luabridge::push(L, effect)) lua_pushnil(L);
+        return 1;
+    }
+
+    // sound:addEffect(type) -> AudioSourceEffect | nil (not a source's effect, or 4 already)
+    int luaAudioAddEffect(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        return luaPushSourceEffect(L, self->addEffect(luaL_checkstring(L, 2)));
+    }
+
+    // sound:getEffect(indexOrType) -> AudioSourceEffect | nil (index 1-based; a type: the first of it)
+    int luaAudioGetEffect(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        if (lua_type(L, 2) == LUA_TNUMBER) return luaPushSourceEffect(L, self->getEffect((int)lua_tointeger(L, 2)));
+        return luaPushSourceEffect(L, self->getEffect(std::string(luaL_checkstring(L, 2))));
+    }
+
+    // sound:removeEffect(indexOrType) -> boolean
+    int luaAudioRemoveEffect(lua_State* L){
+        AudioSource* self = luaAudioSelf(L);
+        if (lua_type(L, 2) == LUA_TNUMBER) lua_pushboolean(L, self->removeEffect((int)lua_tointeger(L, 2)));
+        else lua_pushboolean(L, self->removeEffect(std::string(luaL_checkstring(L, 2))));
+        return 1;
+    }
+
+    // AudioSourceEffect:setParameter(name, value [, seconds [, opts]]) -> boolean
+    int luaSourceEffectSetParameter(lua_State* L){
+        AudioSourceEffect* self = luabridge::detail::Userdata::get<AudioSourceEffect>(L, 1, false);
+        const std::string name = luaL_checkstring(L, 2);
+        const float value = (float)luaL_checknumber(L, 3);
+        const float seconds = (float)luaL_optnumber(L, 4, 0.0);
+        lua_pushboolean(L, self && self->setParameter(name, value, seconds, luaAudioOpt(L, 5, "unscaled")));
+        return 1;
+    }
+
+    // AudioSourceEffect:getParameter(name) -> number | nil
+    int luaSourceEffectGetParameter(lua_State* L){
+        AudioSourceEffect* self = luabridge::detail::Userdata::get<AudioSourceEffect>(L, 1, true);
+        float value = 0.0f;
+        if (self && self->getParameter(luaL_checkstring(L, 2), value)) lua_pushnumber(L, value);
+        else lua_pushnil(L);
+        return 1;
     }
 
 }
@@ -840,6 +891,193 @@ namespace {
             throw std::runtime_error(std::string(what) + ": a GameObject of the same scene, or nil");
         }
         return entity;
+    }
+
+    // Ragdoll.create's options.bones keys (Unity RagdollBuilder's fields) and the builder's slots
+    const std::pair<const char*, const char*> ragdollBoneKeys[] = {
+        {"pelvis", "pelvis"}, {"leftHips", "left_hips"}, {"leftKnee", "left_knee"}, {"leftFoot", "left_foot"},
+        {"rightHips", "right_hips"}, {"rightKnee", "right_knee"}, {"rightFoot", "right_foot"},
+        {"leftArm", "left_arm"}, {"leftElbow", "left_elbow"}, {"rightArm", "right_arm"},
+        {"rightElbow", "right_elbow"}, {"middleSpine", "middle_spine"}, {"head", "head"}};
+
+    // a GameObject below (or at) root by name, NULL_ENTITY when none
+    Entity ragdollBoneByName(Scene* scene, Entity root, const std::string& name){
+        auto transforms = scene->getComponentArray<Transform>();
+        if (!transforms->hasEntity(root)){
+            return NULL_ENTITY;
+        }
+        const size_t first = transforms->getIndex(root);
+        const size_t last = scene->findBranchLastIndex(root);
+        for (size_t i = first; i <= last && i < transforms->size(); i++){
+            const Entity candidate = transforms->getEntity(i);
+            if (scene->getEntityName(candidate) == name){
+                return candidate;
+            }
+        }
+        return NULL_ENTITY;
+    }
+
+    // The world poses of root's ancestors and branch as of now: the bones are found and sized
+    // from them, and a model instantiated this frame has only its local ones until the
+    // transform update
+    void refreshBranchWorldPoses(Scene* scene, Entity root){
+        RenderSystem* render = scene->getSystem<RenderSystem>().get();
+        std::vector<Entity> ancestors;
+        for (Entity e = scene->getComponent<Transform>(root).parent; e != NULL_ENTITY; ){
+            const Transform* transform = scene->findComponent<Transform>(e);
+            if (!transform){
+                break;
+            }
+            ancestors.push_back(e);
+            e = transform->parent;
+        }
+        for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it){
+            render->updateTransform(scene->getComponent<Transform>(*it), *it);
+        }
+        auto transforms = scene->getComponentArray<Transform>();
+        const size_t first = transforms->getIndex(root);
+        const size_t last = scene->findBranchLastIndex(root);
+        // parents come before their children in the array
+        for (size_t i = first; i <= last && i < transforms->size(); i++){
+            render->updateTransform(transforms->getComponentFromIndex(i), transforms->getEntity(i));
+        }
+    }
+
+    // the keys of a Lua table that are not in `known` (iterated with the raw C API: LuaRef has
+    // no pairs here)
+    std::vector<std::string> luaUnknownTableKeys(lua_State* L, const luabridge::LuaRef& table, const std::vector<std::string>& known){
+        std::vector<std::string> unknown;
+        const int top = lua_gettop(L);
+        table.push(L);
+        const int index = lua_gettop(L);
+        lua_pushnil(L);
+        while (lua_next(L, index) != 0){
+            lua_pop(L, 1);
+            const std::string key = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : std::string("(not a name)");
+            if (std::find(known.begin(), known.end(), key) == known.end()){
+                unknown.push_back(key);
+            }
+        }
+        lua_settop(L, top);
+        return unknown;
+    }
+
+    // Ragdoll.create(root [, options]): Unity's Ragdoll Wizard on a live character, all its parts
+    // made before the next step (RagdollBuilder::build + apply)
+    Ragdoll luaRagdollCreate(luabridge::LuaRef rootArg, std::optional<luabridge::LuaRef> optionsArg, lua_State* L){
+        Scene* scene = nullptr;
+        Entity root = NULL_ENTITY;
+        const int top = lua_gettop(L);
+        rootArg.push(L);
+        const bool isObject = luaObjectArg(L, lua_gettop(L), scene, root);
+        lua_settop(L, top);
+        if (!isObject || !scene || !scene->isEntityCreated(root) || !scene->findComponent<Transform>(root)){
+            throw std::runtime_error("Ragdoll.create: argument 1 must be the character's root GameObject");
+        }
+
+        RagdollBuildSettings settings;
+        // made at run time to fall: simulated unless asked otherwise
+        settings.startSimulated = true;
+        RagdollBones bones = RagdollBuilder::guessBones(scene, root);
+
+        if (optionsArg && !optionsArg->isNil()){
+            const luabridge::LuaRef& options = *optionsArg;
+            if (!options.isTable()){
+                throw std::runtime_error("Ragdoll.create: options must be a table {bones, totalMass, start, selfCollision, flipForward}");
+            }
+            const std::vector<std::string> unknown = luaUnknownTableKeys(L, options, {"bones", "totalMass", "start", "selfCollision", "flipForward"});
+            if (!unknown.empty()){
+                throw std::runtime_error("Ragdoll.create: unknown option \"" + unknown.front() + "\" (bones, totalMass, start, selfCollision, flipForward)");
+            }
+            const luabridge::LuaRef totalMass = options["totalMass"];
+            if (!totalMass.isNil()){
+                if (!totalMass.isNumber() || !(totalMass.unsafe_cast<float>() > 0.0f) || !std::isfinite(totalMass.unsafe_cast<float>())){
+                    throw std::runtime_error("Ragdoll.create: options.totalMass must be a number of kg above 0");
+                }
+                settings.totalMass = totalMass.unsafe_cast<float>();
+            }
+            const luabridge::LuaRef start = options["start"];
+            if (!start.isNil()){
+                const std::string value = start.isString() ? start.tostring() : std::string();
+                if (value != "animated" && value != "simulated"){
+                    throw std::runtime_error("Ragdoll.create: options.start must be \"animated\" or \"simulated\"");
+                }
+                settings.startSimulated = value == "simulated";
+            }
+            for (const char* flag : {"selfCollision", "flipForward"}){
+                const luabridge::LuaRef value = options[flag];
+                if (value.isNil()){
+                    continue;
+                }
+                if (!value.isBool()){
+                    throw std::runtime_error(std::string("Ragdoll.create: options.") + flag + " must be a boolean");
+                }
+                (std::string(flag) == "selfCollision" ? settings.selfCollision : settings.flipForward) = value.unsafe_cast<bool>();
+            }
+            const luabridge::LuaRef given = options["bones"];
+            if (!given.isNil()){
+                if (!given.isTable()){
+                    throw std::runtime_error("Ragdoll.create: options.bones must be a table {pelvis = GameObject or name, leftHips = ..., ...}");
+                }
+                std::vector<std::string> keys;
+                for (const auto& [key, slot] : ragdollBoneKeys){
+                    keys.push_back(key);
+                }
+                const std::vector<std::string> unknownBones = luaUnknownTableKeys(L, given, keys);
+                if (!unknownBones.empty()){
+                    throw std::runtime_error("Ragdoll.create: options.bones has no slot \"" + unknownBones.front() +
+                                             "\" (pelvis, leftHips, leftKnee, leftFoot, rightHips, rightKnee, rightFoot, leftArm, leftElbow, rightArm, rightElbow, middleSpine, head)");
+                }
+                for (const auto& [key, slot] : ragdollBoneKeys){
+                    const luabridge::LuaRef value = given[key];
+                    if (value.isNil()){
+                        continue;
+                    }
+                    Entity bone = NULL_ENTITY;
+                    if (value.isString()){
+                        bone = ragdollBoneByName(scene, root, value.tostring());
+                        if (bone == NULL_ENTITY){
+                            throw std::runtime_error(std::string("Ragdoll.create: options.bones.") + key + ": no GameObject \"" + value.tostring() +
+                                                     "\" below \"" + scene->getEntityName(root) + "\"");
+                        }
+                    }else{
+                        Scene* boneScene = nullptr;
+                        value.push(L);
+                        const bool boneObject = luaObjectArg(L, lua_gettop(L), boneScene, bone);
+                        lua_settop(L, top);
+                        if (!boneObject || boneScene != scene || !scene->isEntityCreated(bone)){
+                            throw std::runtime_error(std::string("Ragdoll.create: options.bones.") + key + " must be a GameObject of the root's scene or its name");
+                        }
+                    }
+                    bones.slot(slot) = bone;
+                }
+            }
+        }
+
+        // the bones a ragdoll cannot do without, by the names options.bones takes
+        std::string missing;
+        for (const auto& [key, slot] : ragdollBoneKeys){
+            const std::string name(slot);
+            if (name != "pelvis" && name != "left_hips" && name != "left_knee" && name != "right_hips" && name != "right_knee"){
+                continue;
+            }
+            const Entity bone = bones.slot(name);
+            if (bone == NULL_ENTITY || !scene->isEntityCreated(bone) || !scene->findComponent<Transform>(bone)){
+                missing += (missing.empty() ? "" : ", ") + std::string(key);
+            }
+        }
+        if (!missing.empty()){
+            throw std::runtime_error("Ragdoll.create: \"" + scene->getEntityName(root) + "\" has no bone found for " + missing +
+                                     " (a ragdoll needs the pelvis, both hips and both knees): name them in options.bones");
+        }
+
+        refreshBranchWorldPoses(scene, root);
+        const RagdollBuildResult result = RagdollBuilder::build(scene, root, bones, settings);
+        std::string error = result.error;
+        if (!result.ok || !RagdollBuilder::apply(scene, root, result, &error)){
+            throw std::runtime_error("Ragdoll.create: " + error);
+        }
+        return Ragdoll(scene, root);
     }
 }
 #endif
@@ -1575,6 +1813,19 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             }
             return Joint2D(scene, self->getEntity());
         })
+        // a child joint GameObject with bodyA = this (Unity AddComponent<HingeJoint2D>())
+        .addFunction("addJoint2D", +[](GameObject* self, Joint2DType type) -> Joint2D {
+            Scene* scene = self->getScene();
+            if ((int)type < (int)Joint2DType::DISTANCE || (int)type > (int)Joint2DType::MOTOR){
+                throw std::runtime_error("GameObject:addJoint2D: the type is a Joint2DType (Joint2DType.WHEEL, ...)");
+            }
+            if (!scene || !scene->isEntityCreated(self->getEntity()) || !scene->findComponent<Rigidbody2DComponent>(self->getEntity())){
+                throw std::runtime_error("GameObject:addJoint2D: \"" + (scene ? scene->getEntityName(self->getEntity()) : std::string("?")) +
+                                         "\" has no Rigidbody 2D: give it one first (go:getRigidbody2D())");
+            }
+            return self->addJoint2D(type);
+        })
+        .addFunction("getJoints2D", &GameObject::getJoints2D)
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         .addFunction("getRigidbody", &GameObject::getRigidbody)
@@ -1591,6 +1842,19 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             }
             return Joint3D(scene, self->getEntity());
         })
+        // a child joint GameObject with bodyA = this (Unity AddComponent<HingeJoint>())
+        .addFunction("addJoint3D", +[](GameObject* self, Joint3DType type) -> Joint3D {
+            Scene* scene = self->getScene();
+            if ((int)type < (int)Joint3DType::FIXED || (int)type > (int)Joint3DType::PULLEY){
+                throw std::runtime_error("GameObject:addJoint3D: the type is a Joint3DType (Joint3DType.HINGE, ...)");
+            }
+            if (!scene || !scene->isEntityCreated(self->getEntity()) || !scene->findComponent<RigidbodyComponent>(self->getEntity())){
+                throw std::runtime_error("GameObject:addJoint3D: \"" + (scene ? scene->getEntityName(self->getEntity()) : std::string("?")) +
+                                         "\" has no Rigidbody: give it one first (go:getRigidbody())");
+            }
+            return self->addJoint3D(type);
+        })
+        .addFunction("getJoints3D", &GameObject::getJoints3D)
         // the Ragdoll of the GameObject, nil when it has none
         .addFunction("getRagdoll", +[](GameObject* self) -> std::optional<Ragdoll> {
             Scene* scene = self->getScene();
@@ -2211,6 +2475,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("autoTransparency", &Mesh::isAutoTransparency, &Mesh::setAutoTransparency)
         .addProperty("customShader", &Mesh::getCustomShader, &Mesh::setCustomShader)
         .addProperty("customDepthShader", &Mesh::getCustomDepthShader, &Mesh::setCustomDepthShader)
+        // the .mesh asset its geometry comes from ("meshes/rock.mesh"), read at once; "" keeps the
+        // geometry as the mesh's own
+        .addProperty("meshAsset", &Mesh::getMeshAsset, &Mesh::setMeshAsset)
         .addFunction("setShaderUniform",
             luabridge::overload<const std::string&, const Vector4&>(&Mesh::setShaderUniform),
             luabridge::overload<const std::string&, const Vector3&>(&Mesh::setShaderUniform),
@@ -4239,6 +4506,18 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerBlendMode(std::string(lua_tostring(L, 2)));
             return self->getLayerBlendMode((int)luaL_checkinteger(L, 2));
         })
+        // Mesh Space Rotation of a layer (index or name): authored like the Inspector's checkbox,
+        // unlike the runtime setters above (docs/specs/mesh-space-rotation.md R17)
+        .addFunction("setLayerMeshSpaceRotation", +[](AnimationPlayer* self, lua_State* L) {
+            luaL_checktype(L, 3, LUA_TBOOLEAN);
+            const bool enabled = lua_toboolean(L, 3) != 0;
+            if (lua_type(L, 2) == LUA_TSTRING) self->setLayerMeshSpaceRotation(std::string(lua_tostring(L, 2)), enabled);
+            else self->setLayerMeshSpaceRotation((int)luaL_checkinteger(L, 2), enabled);
+        })
+        .addFunction("getLayerMeshSpaceRotation", +[](const AnimationPlayer* self, lua_State* L) -> bool {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerMeshSpaceRotation(std::string(lua_tostring(L, 2)));
+            return self->getLayerMeshSpaceRotation((int)luaL_checkinteger(L, 2));
+        })
         .addFunction("stopLayer", +[](AnimationPlayer* self, lua_State* L) {
             const bool faded = lua_isnumber(L, 3);
             const float fade = faded ? (float)lua_tonumber(L, 3) : 0.0f;
@@ -4462,6 +4741,19 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getLayerWeight", +[](const Animator* self, lua_State* L) -> float {
             const int layer = lua_type(L, 2) == LUA_TSTRING ? self->getLayerIndex(lua_tostring(L, 2)) : (int)luaL_checkinteger(L, 2);
             return self->getLayerWeight(layer);
+        })
+        // Mesh Space Rotation (docs/specs/mesh-space-rotation.md R14): a runtime override of this
+        // Animator, a layer by index or by name (an unknown one warned once, as on the Animation
+        // Player); `enabled` is required (nil is not false), as the Animation Player's
+        .addFunction("setLayerMeshSpaceRotation", +[](Animator* self, lua_State* L) {
+            luaL_checktype(L, 3, LUA_TBOOLEAN);
+            const bool enabled = lua_toboolean(L, 3) != 0;
+            if (lua_type(L, 2) == LUA_TSTRING) self->setLayerMeshSpaceRotation(std::string(lua_tostring(L, 2)), enabled);
+            else self->setLayerMeshSpaceRotation((int)luaL_checkinteger(L, 2), enabled);
+        })
+        .addFunction("getLayerMeshSpaceRotation", +[](const Animator* self, lua_State* L) -> bool {
+            if (lua_type(L, 2) == LUA_TSTRING) return self->getLayerMeshSpaceRotation(std::string(lua_tostring(L, 2)));
+            return self->getLayerMeshSpaceRotation((int)luaL_checkinteger(L, 2));
         })
         .addFunction("playMontage",
             luabridge::overload<const std::string&>(&Animator::playMontage),
@@ -4774,6 +5066,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity), void (*) (Scene*, bool)> ()
         .addFunction("loadSound", &AudioSource::loadSound)
         .addFunction("destroySound", &AudioSource::destroySound)
+        // read-only: Unloaded, Loading (from loadSound until ready), Loaded or Failed
+        .addProperty("loadState", &AudioSource::getLoadState)
         .addFunction("getGameObject", &AudioSource::getGameObject)
         .addFunction("play", &AudioSource::play)
         .addFunction("pause", &AudioSource::pause)
@@ -4785,6 +5079,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isPaused", &AudioSource::isPaused)
         .addFunction("isStopped", &AudioSource::isStopped)
         .addProperty("sound3D", &AudioSource::isSound3D, &AudioSource::setSound3D)
+        // 0 = 2D .. 1 = 3D (Unity's spatialBlend); a source without a Transform is 2D
+        .addProperty("spatialBlend", &AudioSource::getSpatialBlend, &AudioSource::setSpatialBlend)
         .addProperty("clockedSound", &AudioSource::isClockedSound, &AudioSource::setClockedSound)
         .addProperty("volume", &AudioSource::getVolume, &AudioSource::setVolume)
         .addProperty("speed", &AudioSource::getSpeed, &AudioSource::setSpeed)
@@ -4821,7 +5117,28 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isFading", &AudioSource::isFading)
         .addFunction("getVoiceCount", &AudioSource::getVoiceCount)
         .addStaticFunction("playClipAtPoint", &luaAudioPlayClipAtPoint)
+        .addStaticFunction("getAll", &AudioSourceSlots::getAll)
+        .addStaticFunction("add", &AudioSourceSlots::add)
+        .addStaticFunction("remove", &AudioSourceSlots::remove)
         .addFunction("getAudioSourceComponent", &AudioSource::getComponent<AudioSourceComponent>)
+        // S97 WP-B: its own effects
+        .addFunction("addEffect", &luaAudioAddEffect)
+        .addFunction("getEffect", &luaAudioGetEffect)
+        .addFunction("removeEffect", &luaAudioRemoveEffect)
+        .addFunction("getEffectCount", &AudioSource::getEffectCount)
+        .endClass();
+
+    // an effect of an Audio Source's own list (S97 REQ-41), as AudioMixerEffect is a group's
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AudioSourceEffect>("AudioSourceEffect")
+        .addProperty("type", &AudioSourceEffect::getType)
+        .addProperty("index", &AudioSourceEffect::getIndex)
+        .addProperty("bypass", &AudioSourceEffect::getBypass, &AudioSourceEffect::setBypass)
+        .addProperty("wet", &AudioSourceEffect::getWet, &AudioSourceEffect::setWet)
+        .addFunction("isValid", &AudioSourceEffect::isValid)
+        .addFunction("hasParameter", &AudioSourceEffect::hasParameter)
+        .addFunction("setParameter", &luaSourceEffectSetParameter)
+        .addFunction("getParameter", &luaSourceEffectGetParameter)
         .endClass();
 
     // CharacterController(2D).move's result, Unity's CollisionFlags
@@ -5045,8 +5362,25 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isColliderSensorEvents", 
             luabridge::overload<>(&Rigidbody2D::isColliderSensorEvents),
             luabridge::overload<size_t>(&Rigidbody2D::isColliderSensorEvents))
-        .addProperty("position", &Rigidbody2D::getPosition, &Rigidbody2D::setPosition)
-        .addProperty("angle", &Rigidbody2D::getAngle, &Rigidbody2D::setAngle)
+        .addProperty("position", &Rigidbody2D::getPosition, (void(Rigidbody2D::*)(Vector2))&Rigidbody2D::setPosition)
+        .addProperty("angle", &Rigidbody2D::getAngle, (void(Rigidbody2D::*)(float))&Rigidbody2D::setAngle)
+        // S96 WP-C: teleports that may slide, Unity's MovePosition / MoveRotation / Move, and
+        // colliders joining an ancestor's body
+        .addFunction("setPosition", +[](Rigidbody2D* self, Vector2 position, std::optional<bool> interpolate) {
+            self->setPosition(position, interpolate.value_or(false));
+        })
+        .addFunction("setAngle", +[](Rigidbody2D* self, float angle, std::optional<bool> interpolate) {
+            self->setAngle(angle, interpolate.value_or(false));
+        })
+        .addFunction("movePosition", &Rigidbody2D::movePosition)
+        .addFunction("moveRotation", &Rigidbody2D::moveRotation)
+        .addFunction("movePositionAndRotation", &Rigidbody2D::movePositionAndRotation)
+        .addProperty("attachToParentBody", &Rigidbody2D::isAttachToParentBody, &Rigidbody2D::setAttachToParentBody)
+        .addProperty("attachedRigidbody", +[](const Rigidbody2D* self) -> std::optional<Rigidbody2D> {
+            const Entity body = self->getAttachedBody();
+            if (body == NULL_ENTITY) return std::nullopt;
+            return Rigidbody2D(self->getScene(), body);
+        })
         .addProperty("linearVelocity", &Rigidbody2D::getLinearVelocity, &Rigidbody2D::setLinearVelocity)
         .addProperty("angularVelocity", &Rigidbody2D::getAngularVelocity, &Rigidbody2D::setAngularVelocity)
         .addProperty("linearDamping", &Rigidbody2D::getLinearDamping, &Rigidbody2D::setLinearDamping)
@@ -5054,6 +5388,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("enableSleep", &Rigidbody2D::isEnableSleep, &Rigidbody2D::setEnableSleep)
         .addProperty("awake", &Rigidbody2D::isAwake, &Rigidbody2D::setAwake)
         .addProperty("fixedRotation", &Rigidbody2D::isFixedRotation, &Rigidbody2D::setFixedRotation)
+        // not capped by the scene's physics2DMaxRotation (wheels)
+        .addProperty("allowFastRotation", &Rigidbody2D::isAllowFastRotation, &Rigidbody2D::setAllowFastRotation)
         .addProperty("bullet", &Rigidbody2D::isBullet, &Rigidbody2D::setBullet)
         .addProperty("type", &Rigidbody2D::getType, &Rigidbody2D::setType)
         .addProperty("enabled", &Rigidbody2D::isEnabled, &Rigidbody2D::setEnabled)
@@ -5156,6 +5492,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Joint2D, EntityHandle>("Joint2D")
         .addConstructor <void (Scene*), void (Scene*, Entity)> ()
+        .addProperty("gameObject", &Joint2D::getGameObject)
+        // GameObject.destroy of the joint's GameObject, after delay seconds
+        .addFunction("destroy", +[](Joint2D* self, std::optional<float> delay) { self->destroy(delay.value_or(0.0f)); })
         // as before local anchors: world points, the other fields as Box2D had them
         .addFunction("setDistanceJoint",
             luabridge::overload<Entity, Entity>(&Joint2D::setDistanceJoint),
@@ -5444,8 +5783,25 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("buoyancy", &Rigidbody::getBuoyancy, &Rigidbody::setBuoyancy)
         .addProperty("waterDrag", &Rigidbody::getWaterDrag, &Rigidbody::setWaterDrag)
         .addProperty("waterAngularDrag", &Rigidbody::getWaterAngularDrag, &Rigidbody::setWaterAngularDrag)
-        .addProperty("position", &Rigidbody::getPosition, &Rigidbody::setPosition)
-        .addProperty("rotation", &Rigidbody::getRotation, &Rigidbody::setRotation)
+        .addProperty("position", &Rigidbody::getPosition, (void(Rigidbody::*)(Vector3))&Rigidbody::setPosition)
+        .addProperty("rotation", &Rigidbody::getRotation, (void(Rigidbody::*)(Quaternion))&Rigidbody::setRotation)
+        // S96 WP-C: teleports that may slide, Unity's MovePosition / MoveRotation / Move, and
+        // colliders joining an ancestor's body
+        .addFunction("setPosition", +[](Rigidbody* self, Vector3 position, std::optional<bool> interpolate) {
+            self->setPosition(position, interpolate.value_or(false));
+        })
+        .addFunction("setRotation", +[](Rigidbody* self, Quaternion rotation, std::optional<bool> interpolate) {
+            self->setRotation(rotation, interpolate.value_or(false));
+        })
+        .addFunction("movePosition", &Rigidbody::movePosition)
+        .addFunction("moveRotation", &Rigidbody::moveRotation)
+        .addFunction("movePositionAndRotation", &Rigidbody::movePositionAndRotation)
+        .addProperty("attachToParentBody", &Rigidbody::isAttachToParentBody, &Rigidbody::setAttachToParentBody)
+        .addProperty("attachedRigidbody", +[](const Rigidbody* self) -> std::optional<Rigidbody> {
+            const Entity body = self->getAttachedBody();
+            if (body == NULL_ENTITY) return std::nullopt;
+            return Rigidbody(self->getScene(), body);
+        })
         .addProperty("linearVelocity", &Rigidbody::getLinearVelocity, &Rigidbody::setLinearVelocity)
         .addFunction("setLinearVelocityClamped", &Rigidbody::setLinearVelocityClamped)
         .addProperty("angularVelocity", &Rigidbody::getAngularVelocity, &Rigidbody::setAngularVelocity)
@@ -5470,6 +5826,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Joint3D, EntityHandle>("Joint3D")
         .addConstructor <void (Scene*), void (Scene*, Entity)> ()
+        .addProperty("gameObject", &Joint3D::getGameObject)
+        // GameObject.destroy of the joint's GameObject, after delay seconds
+        .addFunction("destroy", +[](Joint3D* self, std::optional<float> delay) { self->destroy(delay.value_or(0.0f)); })
         // as before local anchors: world points and axes, the other fields as Jolt had them
         .addFunction("setFixedJoint", &Joint3D::setFixedJoint)
         .addFunction("setDistanceJoint",
@@ -5584,6 +5943,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Ragdoll, EntityHandle>("Ragdoll")
         .addConstructor <void (Scene*, Entity)> ()
+        .addStaticFunction("create", &luaRagdollCreate)
         .addProperty("enabled", &Ragdoll::isEnabled, &Ragdoll::setEnabled)
         .addProperty("simulated", &Ragdoll::isSimulated, &Ragdoll::setSimulated)
         .addFunction("setSimulated", &Ragdoll::setSimulated)

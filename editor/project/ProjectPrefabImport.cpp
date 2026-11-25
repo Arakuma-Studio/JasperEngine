@@ -5,11 +5,11 @@
 // removed branches back, prefab order placement, and the Play-mode prefab factories.
 
 #include "Project.h"
+#include "cook/SceneCooker.h"
 #include "component/PrefabComponent.h"
 #include "util/FileUtils.h"
 #include "util/WorldTransforms.h"
 #include "ProjectPrefabInternal.h"
-#include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
 #include "PrefabManager.h"
@@ -18,11 +18,15 @@
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
 #include "component/MeshComponent.h"
+#include "Catalog.h"
+#include "DocumentFile.h"
 #include <cstdlib>
 
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <map>
+#include <optional>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -40,7 +44,6 @@ void editor::Project::updateScenePrefabs(SceneProject* sceneProject) {
         if (prefab.instances.find(sceneProject->id) != prefab.instances.end()) {
             PrefabSceneInfo info;
             info.prefabPath = prefabPath;
-            info.functionName = Factory::prefabToFunctionName(prefabPath);
             info.guid = getPrefabGuid(prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
         }
@@ -59,7 +62,6 @@ void editor::Project::updateScenePrefabs(SceneProject* sceneProject) {
         if (!listed) {
             PrefabSceneInfo info;
             info.prefabPath = missing.path;
-            info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             info.guid = missing.guid;
             sceneProject->prefabs.push_back(std::move(info));
         }
@@ -765,6 +767,11 @@ bool editor::Project::readPrefabFile(const std::filesystem::path& filepath, Pref
         prefab.loadReport = std::move(loadReport);
         logLoadReport(prefab.loadReport);
         resolveRegistryPrefabRefs(prefab.registry.get());
+        // its linked .material files as they are now, not the copies the file embeds (S98 REQ-29),
+        // unless the file is older than that and keeps its copies
+        if (prefab.followMaterialFiles) {
+            applyLinkedMaterialFiles(prefab.registry.get());
+        }
         if (prefab.root == NULL_ENTITY) {
             Out::error("Prefab %s has no GameObject", filepath.string().c_str());
             return false;
@@ -774,6 +781,53 @@ bool editor::Project::readPrefabFile(const std::filesystem::path& filepath, Pref
         Out::error("Failed to load prefab file %s: %s", filepath.string().c_str(), e.what());
         return false;
     }
+}
+
+bool editor::Project::applyLinkedMaterialFiles(EntityRegistry* registry, bool updateRender) const {
+    if (!registry) {
+        return false;
+    }
+    // each file read once per registry: many submeshes share a material
+    std::map<std::string, std::optional<Material>> files;
+    bool changed = false;
+    auto meshes = registry->getComponentArray<MeshComponent>();
+    for (size_t i = 0; i < meshes->size(); i++) {
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        const Entity entity = meshes->getEntity(i);
+        uint64_t updateFlags = 0;
+        for (unsigned int submeshIndex = 0; submeshIndex < mesh.numSubmeshes; submeshIndex++) {
+            Material& material = mesh.submeshes[submeshIndex].material;
+            if (material.name.empty()) continue;
+            const std::string normalizedPath = fs::path(material.name).lexically_normal().generic_string();
+            auto found = files.find(normalizedPath);
+            if (found == files.end()) {
+                std::optional<Material> read;
+                const fs::path materialPath = getProjectPath() / normalizedPath;
+                std::error_code ec;
+                if (fs::is_regular_file(materialPath, ec)) {
+                    try {
+                        read = Stream::decodeMaterial(DocumentFiles::read(materialPath, DocumentKind::Material).root);
+                    } catch (const std::exception& e) {
+                        Out::error("Error loading linked material file '%s': %s", materialPath.string().c_str(), e.what());
+                    }
+                }
+                found = files.emplace(normalizedPath, std::move(read)).first;
+            }
+            if (!found->second) continue;
+            Material fileMaterial = *found->second;
+            fileMaterial.name = AssetRef(normalizedPath, material.name.guid);
+            if (material != fileMaterial) {
+                updateFlags |= Catalog::getMaterialUpdateFlags(material, fileMaterial);
+                material = fileMaterial;
+                mesh.submeshes[submeshIndex].needUpdateTexture = true;
+                changed = true;
+            }
+        }
+        if (updateFlags && updateRender) {
+            Catalog::updateEntity(registry, entity, updateFlags);
+        }
+    }
+    return changed;
 }
 
 editor::Prefab* editor::Project::loadPrefabAsset(const std::filesystem::path& filepath) {
@@ -2015,7 +2069,7 @@ std::map<std::filesystem::path, std::shared_ptr<editor::BakedPrefab>> editor::Pr
             Out::error("Export of prefab %s: %s", path.string().c_str(), e.what());
         }
 
-        // The slots, as Generator's subtree sizes count them
+        // The slots: each prefab's members in registry order, then each nested prefab's
         std::unordered_set<std::string> visiting;
         std::function<void(const std::filesystem::path&, Entity)> walk = [&](const std::filesystem::path& prefabPath, Entity localRoot) {
             auto it = prefabAssets.find(prefabPath);
@@ -2024,12 +2078,14 @@ std::map<std::filesystem::path, std::shared_ptr<editor::BakedPrefab>> editor::Pr
             }
             Prefab& prefab = it->second;
             const Prefab::Instance* instance = localRoot != NULL_ENTITY ? findInstanceAt(&scratch, localRoot, prefabPath) : nullptr;
-            const std::vector<Entity> members = Factory::getPrefabMemberEntities(prefab.registry.get(), prefab.registryEntities, prefab.root);
+            std::vector<Entity> members;
+            for (Entity entity : prefab.registryEntities) {
+                if (entity != prefab.root) members.push_back(entity);
+            }
             for (Entity registryEntity : members) {
                 result->slots.push_back(instance ? instance->getLocalEntity(registryEntity) : NULL_ENTITY);
             }
             // a variant: its base's GameObjects (the instance at the same root) come next
-            // (Generator counts them the same way, Factory::getPrefabBasePath)
             if (const PrefabComponent* base = prefab.getBaseComponent(); base && !base->path.empty()) {
                 walk(base->path, instance ? localRoot : NULL_ENTITY);
             }

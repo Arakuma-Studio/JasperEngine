@@ -145,9 +145,14 @@ namespace jasperengine::editor {
         bool m_stripEngineCode = true;
         // Download Budget (S99 R11) per ModelFamily, applied as one undo step
         double m_downloadBudgetMB[kModelFamilyCount] = {};
+        // S98 REQ-8: Player > Build (one undo step on Apply), and the globs typed but not added yet
+        AssetStrippingSettings m_assetStripping;
+        char m_alwaysIncludeInput[256] = {0};
+        char m_excludeInput[256] = {0};
         int m_androidPackageFormatIndex = 0;   // apk, aab
         fs::path m_androidKeystorePath;
         char m_androidKeystoreAliasBuffer[128] = {0};
+        char m_androidDebugPackageSuffixBuffer[64] = {0};
         char m_iosTeamIdBuffer[32] = {0};
         int m_iosExportMethodIndex = 0;        // development, ad-hoc, app-store, enterprise
         bool m_allowInsecureHttp = false;
@@ -291,6 +296,8 @@ namespace jasperengine::editor {
         void drawPlayerSettings();
         // Default Orientation, Allowed Orientations, Keep Screen On, Target Frame Rate (rows of the open table)
         void drawPresentationSettings();
+        // Player > Build: Asset Stripping, Always Include, Exclude From Build
+        void drawAssetStrippingSettings();
         void drawGraphicsSettings();
         void drawShaderCreationSettings();
         void drawShaderGlobals();

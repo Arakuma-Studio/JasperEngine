@@ -4,7 +4,6 @@
 // T5 AC39, AC44: what a scene file and the generated code keep of foliage, and the values nothing may
 // renumber. A scene from before T5 loads with defaults that change nothing, and saves the same version.
 
-#include "Factory.h"
 #include "Project.h"
 #include "Scene.h"
 #include "Stream.h"
@@ -117,29 +116,6 @@ TEST(StreamTerrainFoliage, SaveAndLoadRoundTrip) {
     EXPECT_EQ(loaded.treePrototypes[0].collision, TerrainTreeCollision::Capsule);
     EXPECT_FLOAT_EQ(loaded.foliageLayers[0].minDrawDistance, 12.0f);
     EXPECT_EQ(loaded.treeData.str(), "terrain/island.jetrees");
-}
-
-TEST(StreamTerrainFoliage, FactoryEmitsTheNewFields) {
-    TerrainComponent terrain;
-    terrain.treeDistance = 321.0f;
-    terrain.maxMeshTrees = 77;
-    TerrainTreePrototype prototype;
-    prototype.id = 3;
-    prototype.collisionRadius = 0.75f;
-    terrain.treePrototypes.push_back(prototype);
-    TerrainFoliageLayer layer;
-    layer.windBend = 0.6f;
-    terrain.foliageLayers.push_back(layer);
-    Scene scene;
-    Terrain terrainObject(&scene);
-    const Entity entity = terrainObject.getEntity();
-    scene.getComponent<TerrainComponent>(entity) = terrain;
-    const std::string code = Factory::createTerrainComponent(0, &scene, entity, std::filesystem::temp_directory_path());
-    EXPECT_NE(code.find("treeDistance"), std::string::npos) << code;
-    EXPECT_NE(code.find("maxMeshTrees"), std::string::npos);
-    EXPECT_NE(code.find("treePrototypes"), std::string::npos);
-    EXPECT_NE(code.find("collisionRadius"), std::string::npos);
-    EXPECT_NE(code.find("windBend"), std::string::npos);
 }
 
 TEST(AssetTypes, TreeDataValueIs30) {

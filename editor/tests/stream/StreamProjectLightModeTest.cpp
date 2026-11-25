@@ -59,20 +59,3 @@ TEST(StreamProjectLightMode, RoundTripsAndAppliesAtOnce) {
     EXPECT_EQ(loaded.getLightMode(), LightMode::AUTOMATIC);
 }
 
-TEST(StreamProjectLightMode, ExportCarriesIt) {
-    LightModeRestore restore;
-    for (LightMode mode : {LightMode::AUTOMATIC, LightMode::TILED}) {
-        LightingTiers::setLightMode(mode);
-        jasperengine::test::TempDir dir;
-        Generator generator;
-        generator.configure({}, "game", {}, {}, dir.path(), dir.path() / ".jasperengine", dir.path() / "assets", dir.path() / "lua", {}, 20,
-                            Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(), TagsAndLayers(), 4,
-                            ThreadingProjectSettings(), HtmlUiRenderSettings());
-        std::ifstream in(dir.path() / ".jasperengine" / "generated" / "main.cpp");
-        ASSERT_TRUE(in.good());
-        std::stringstream text;
-        text << in.rdbuf();
-        const bool written = text.str().find("LightingTiers::setLightMode(LightMode::TILED);") != std::string::npos;
-        EXPECT_EQ(written, mode == LightMode::TILED) << LightingTiers::getModeName(mode);
-    }
-}

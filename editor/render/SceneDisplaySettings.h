@@ -42,6 +42,8 @@ namespace jasperengine::editor{
         bool showIK              = false;
         bool showRootMotion      = false;
         bool showFootTrails      = false;
+        // the selected Animator's Mesh Space Rotation bones (docs/specs/mesh-space-rotation.md R30)
+        bool showTorsoDirection  = false;
         // S41 R21, in a 2D scene whose main camera has a Pixel Perfect Camera: the wheel in whole
         // pixel steps, the art-pixel grid from 6x, the snapped drawables, moves on whole pixels
         bool pixelZoom           = true;

@@ -13,6 +13,8 @@
 #include <cmath>
 #include <vector>
 
+namespace TilemapColliderTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -23,7 +25,7 @@ namespace {
     constexpr int CHUNKS = 64;
     constexpr int TILEMAP_COLLIDER_CELL = 16;
 
-    enum TilemapColliderTestTile : int32_t { FULL = 0, ONE_WAY = 1, SENSOR = 2 };
+    enum TilemapColliderTestTile : int32_t { COLLIDER_TILE_FULL = 0, COLLIDER_TILE_ONE_WAY = 1, COLLIDER_TILE_SENSOR = 2 };
 
     TilesetData tilemapColliderMakeTileset() {
         TilesetData data;
@@ -119,8 +121,8 @@ namespace {
     TileCells makeFloor() {
         TileCells cells(CHUNK_CELLS);
         for (int x = 0; x < CHUNK_CELLS * CHUNKS; x++) {
-            cells.setTile(CellCoord{x, 0}, FULL);
-            cells.setTile(CellCoord{x, 1}, FULL);
+            cells.setTile(CellCoord{x, 0}, COLLIDER_TILE_FULL);
+            cells.setTile(CellCoord{x, 1}, COLLIDER_TILE_FULL);
         }
         return cells;
     }
@@ -205,7 +207,7 @@ TEST(TilemapColliderOneWay, PassesFromBelowAndBlocksFromAbove) {
     const TilesetData tileset = tilemapColliderMakeTileset();
     TileCells cells(CHUNK_CELLS);
     for (int x = 0; x < 32; x++) {
-        cells.setTile(CellCoord{x, 8}, ONE_WAY);   // a platform at y = 144 px across the chunk border
+        cells.setTile(CellCoord{x, 8}, COLLIDER_TILE_ONE_WAY);   // a platform at y = 144 px across the chunk border
     }
     TileColliderSettings settings;
     settings.cells = &cells;
@@ -246,7 +248,7 @@ TEST(TilemapColliderSensors, FireEventsOnABodyPassingThrough) {
     const TilesetData tileset = tilemapColliderMakeTileset();
     TileCells cells(CHUNK_CELLS);
     for (int x = 2; x < 6; x++) {
-        cells.setTile(CellCoord{x, 1}, SENSOR);
+        cells.setTile(CellCoord{x, 1}, COLLIDER_TILE_SENSOR);
     }
     TileColliderSettings settings;
     settings.cells = &cells;
@@ -268,3 +270,5 @@ TEST(TilemapColliderSensors, FireEventsOnABodyPassingThrough) {
     EXPECT_GT(begun, 0);
     (void)box;
 }
+
+}  // namespace TilemapColliderTest_cpp

@@ -27,6 +27,8 @@
 #include <set>
 #include <sstream>
 
+namespace TitleEffectCatalogTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -440,3 +442,5 @@ TEST(TitleEffectCatalogTest, AdjustmentToneCurves) {
     EXPECT_TRUE(titleAdjustmentIsIdentity(effectsOnly));
     EXPECT_EQ(titleAdjustOp(effectsOnly), TitleAdjustOp::None);
 }
+
+}  // namespace TitleEffectCatalogTest_cpp

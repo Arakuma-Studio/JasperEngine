@@ -369,6 +369,8 @@ TEST_F(QuadBatchGpu, SubPixelEnergy) {
         const std::vector<float> px = drawQuads(batch, 64, 64, minPx);
         total = 0;
         vanished = 0;
+        // (an unread target: no pixels to sum)
+        if (px.empty()) return false;
         for (int cy = 0; cy < 16; cy++) {
             for (int cx = 0; cx < 16; cx++) {
                 double cell = 0;
@@ -379,7 +381,7 @@ TEST_F(QuadBatchGpu, SubPixelEnergy) {
                 if (cell <= 0.0) vanished++;
             }
         }
-        return !px.empty();
+        return true;
     };
     double total = 0;
     int vanished = 0;

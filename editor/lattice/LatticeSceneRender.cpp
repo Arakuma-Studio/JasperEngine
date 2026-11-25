@@ -23,6 +23,7 @@
 #include <cfloat>
 #include <cmath>
 #include <functional>
+#include <iterator>
 #include <set>
 
 using namespace jasperengine;
@@ -273,10 +274,8 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
     const int count = rx * ry * rz;
     if (rx < LATTICE_MIN_RESOLUTION || ry < LATTICE_MIN_RESOLUTION || rz < LATTICE_MIN_RESOLUTION || (int)lattice.offsets.size() != count){
         lines.cached = false;
-        lines.overlay->clearLines();
-        lines.depth->clearLines();
-        lines.overlay->setVisible(false);
-        lines.depth->setVisible(false);
+        lines.overlay.clearLines();
+        lines.depth.clearLines();
         return;
     }
 
@@ -299,8 +298,7 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
         if (lines.cached && lines.cachedResolution[0] == rx && lines.cachedResolution[1] == ry && lines.cachedResolution[2] == rz &&
                 lines.cachedModel == transform.modelMatrix && lines.cachedOffsets == lattice.offsets &&
                 lines.cachedSettings.size() == settingsCount && std::equal(settings, settings + settingsCount, lines.cachedSettings.begin())){
-            lines.depth->setVisible(depthTested);
-            lines.overlay->setVisible(true);
+            appendLatticeCage(lines, depthTested);
             return;
         }
         lines.cached = true;
@@ -325,13 +323,13 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
     const float alpha = selected ? 1.0f : unselectedAlpha;
     const Vector4 lineColor = withAlpha(toVector4(view.lineColor), alpha);
     const int thickness = thicknessPx;
-    lines.overlay->clearLines();
-    lines.depth->clearLines();
+    lines.overlay.clearLines();
+    lines.depth.clearLines();
 
     auto addLine = [&](const Vector3& a, const Vector3& b, const Vector4& color){
         if (thickness == 1){
-            lines.depth->addLine(a, b, color);
-            lines.overlay->addLine(a, b, withAlpha(color, overlayFactor));
+            lines.depth.addLine(a, b, color);
+            lines.overlay.addLine(a, b, withAlpha(color, overlayFactor));
             return;
         }
         // thicker lines: parallel copies one pixel apart across the edge on screen
@@ -341,8 +339,8 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
             float shift = (float)n - (float)(thickness - 1) * 0.5f;
             Vector3 oa = side * (billboardScreenScale(a, 1.0f) * shift);
             Vector3 ob = side * (billboardScreenScale(b, 1.0f) * shift);
-            lines.depth->addLine(a + oa, b + ob, color);
-            lines.overlay->addLine(a + oa, b + ob, withAlpha(color, overlayFactor));
+            lines.depth.addLine(a + oa, b + ob, color);
+            lines.overlay.addLine(a + oa, b + ob, withAlpha(color, overlayFactor));
         }
     };
 
@@ -382,8 +380,8 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
     if (deformed && selected){
         const Vector4 restColor = withAlpha(toVector4(view.lineColor), restCageAlpha);
         forEachEdge([&](int a, int b){
-            lines.depth->addLine(rest[(size_t)a], rest[(size_t)b], restColor);
-            lines.overlay->addLine(rest[(size_t)a], rest[(size_t)b], withAlpha(restColor, overlayFactor));
+            lines.depth.addLine(rest[(size_t)a], rest[(size_t)b], restColor);
+            lines.overlay.addLine(rest[(size_t)a], rest[(size_t)b], withAlpha(restColor, overlayFactor));
         });
     }
 
@@ -430,20 +428,26 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
             if (filled){
                 for (int row = 0; row < rows; row++){
                     float t = ((float)row + 0.5f) / (float)rows * 2.0f - 1.0f;
-                    lines.depth->addLine(p - r + u * t, p + r + u * t, color);
-                    lines.overlay->addLine(p - r + u * t, p + r + u * t, withAlpha(color, overlayFactor));
+                    lines.depth.addLine(p - r + u * t, p + r + u * t, color);
+                    lines.overlay.addLine(p - r + u * t, p + r + u * t, withAlpha(color, overlayFactor));
                 }
             }
             const Vector3 corners[4] = {p - r - u, p + r - u, p + r + u, p - r + u};
             for (int c = 0; c < 4; c++){
-                lines.depth->addLine(corners[c], corners[(c + 1) % 4], color);
-                lines.overlay->addLine(corners[c], corners[(c + 1) % 4], withAlpha(color, overlayFactor));
+                lines.depth.addLine(corners[c], corners[(c + 1) % 4], color);
+                lines.overlay.addLine(corners[c], corners[(c + 1) % 4], withAlpha(color, overlayFactor));
             }
         }
     }
 
-    lines.depth->setVisible(depthTested);
-    lines.overlay->setVisible(true);
+    appendLatticeCage(lines, depthTested);
+}
+
+void SceneRender::appendLatticeCage(const LatticeCageLines& lines, bool depthTested){
+    latticeCageOverlay.append(lines.overlay);
+    if (depthTested){
+        latticeCageDepth.append(lines.depth);
+    }
 }
 
 void SceneRender::drawLatticeFalloff(Entity entity, bool visible){
@@ -508,6 +512,8 @@ void SceneRender::updateLatticeCages(const std::vector<Entity>& selEntities, con
 
     std::set<Entity> selected(selEntities.begin(), selEntities.end());
     std::set<Entity> drawn;
+    latticeCageOverlay.begin();
+    latticeCageDepth.begin();
 
     auto draw = [&](Entity entity, bool isSelected){
         if (drawn.count(entity) || !scene->isEntityCreated(entity)){
@@ -521,16 +527,7 @@ void SceneRender::updateLatticeCages(const std::vector<Entity>& selEntities, con
             return;
         }
         drawn.insert(entity);
-        LatticeCageLines& lines = latticeCages[entity];
-        if (!lines.overlay){
-            ScopedDefaultEntityPool toolsPool(*toolslayer.getScene(), EntityPool::System);
-            lines.overlay = new LineRenderer(toolslayer.getScene());
-        }
-        if (!lines.depth){
-            ScopedDefaultEntityPool scenePool(*scene, EntityPool::System);
-            lines.depth = overlay(new LineRenderer(scene));
-        }
-        drawLatticeCage(lines, entity, isSelected, entity == editedLattice);
+        drawLatticeCage(latticeCages[entity], entity, isSelected, entity == editedLattice);
     };
 
     // a selected lattice shows whatever the other overlays are set to
@@ -553,33 +550,25 @@ void SceneRender::updateLatticeCages(const std::vector<Entity>& selEntities, con
     }
 
     for (auto it = latticeCages.begin(); it != latticeCages.end();){
-        if (!drawn.count(it->first)){
-            delete it->second.overlay;
-            delete it->second.depth;
-            it = latticeCages.erase(it);
-        }else{
-            ++it;
-        }
+        it = drawn.count(it->first) ? std::next(it) : latticeCages.erase(it);
     }
+    flushGizmos(latticeCageOverlay);
+    flushGizmos(latticeCageDepth);
 
     drawLatticeFalloff(editedLattice, editedLattice != NULL_ENTITY);
 }
 
 void SceneRender::hideLatticeCages(){
-    for (auto& [entity, lines] : latticeCages){
-        lines.overlay->setVisible(false);
-        lines.depth->setVisible(false);
-    }
+    latticeCageOverlay.hide();
+    latticeCageDepth.hide();
     if (latticeFalloffLines){
         latticeFalloffLines->setVisible(false);
     }
 }
 
 void SceneRender::destroyLatticeCages(){
-    for (auto& [entity, lines] : latticeCages){
-        delete lines.overlay;
-        delete lines.depth;
-    }
+    deleteGizmos(latticeCageOverlay);
+    deleteGizmos(latticeCageDepth);
     latticeCages.clear();
     delete latticeFalloffLines;
     latticeFalloffLines = nullptr;

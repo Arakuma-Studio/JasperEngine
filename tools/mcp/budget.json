@@ -75,7 +75,7 @@
         "animation": {
             "chars": 16000,
             "tools": 13,
-            "spec": "S21's Animator tools, upstream's pose, Vertex Animation and lattice tools, and S77's check_animation and optimize_animation (R55): one tool more than the default count, so an agent reading clip quality need not enable two groups"
+            "spec": "S21's Animator tools, upstream's pose, Vertex Animation and lattice tools, and S77's check_animation and optimize_animation (R55): one tool more than the default count, so an agent reading clip quality need not enable two groups; mesh-space-rotation R34-R36 added fields, no tool (15,104 measured)"
         },
         "editor_ux": {
             "chars": 24000,
@@ -95,6 +95,10 @@
         }
     },
     "exceptions": {
+        "check_animation": {
+            "limit": 1579,
+            "reason": "S77's tool (1382) plus mesh-space-rotation R36's layer_blend check: its enum entry, a free-form layer_blend (the handler checks its members, jasper://docs/animator names them), limits.layer_twist_deg and a sentence, instead of a 14th tool in the animation group (R40); 1579 measured"
+        },
         "visualize_navigation": {
             "limit": 1725,
             "reason": "S74 path filter (agent_type, area_mask) and S75 R33 (frame, island / tile colours, slope and tile label flags, GameObject path ends, the Game view screenshot): 1642 measured + 5 %"
@@ -136,8 +140,8 @@
             "reason": "grandfathered by S31: 1977 chars when the limits were set, +5%"
         },
         "build_project": {
-            "limit": 1933,
-            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list"
+            "limit": 1913,
+            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list, and again when S98 cut 'Saves scenes first' (a build saves nothing)"
         },
         "send_input": {
             "limit": 1990,

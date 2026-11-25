@@ -107,7 +107,11 @@ namespace {
     };
 
     struct EngineRuntimeGuard {
+        Project& project;
         ~EngineRuntimeGuard() {
+            // the project's scenes and their renders go while the engine runs: ~Project, which
+            // comes after this guard, leaves them to the process exit
+            project.releaseScenes();
             ShaderPool::setShaderBuilder(nullptr);
             ShaderBuilder::requestShutdown();
             Engine::systemShutdown();
@@ -263,7 +267,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         Project project;
         auto platform = std::make_unique<Platform>(&project);
         Engine::systemInit(argc, argv, platform.get());
-        EngineRuntimeGuard engineRuntime;
+        EngineRuntimeGuard engineRuntime{project};
         Engine::pauseGameEvents(true);
         Engine::setAsyncLoading(true);
         ShaderPool::setShaderBuilder([projectPtr = &project](ShaderKey shaderKey) -> ShaderBuildResult {
@@ -331,6 +335,8 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
                 report["download_budget"] = {{"budget_bytes", result.downloadBudgetBytes}, {"actual_bytes", actual},
                                              {"over", actual > result.downloadBudgetBytes}};
             }
+            report["stripped_count"] = result.strippedCount;
+            report["stripped_bytes"] = result.strippedBytes;
         }
         if (!ok) report["error"] = error;
         std::printf("%s\n", report.dump(2).c_str());

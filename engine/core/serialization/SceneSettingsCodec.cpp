@@ -146,7 +146,35 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.u8(static_cast<uint8_t>(scene.getWaterWakeResolution()));
     w.f32(scene.getWaterWakeArea());
     w.f32(scene.getWaterWakeFade());
-    // format 1.6 (S99 R30): Environment Lighting's source and the Gradient's colours (sRGB)
+    // format 1.6 (S96): the Box2D sub-steps and the physics world settings, one record per field
+    // {u32 FNV-1a 32 of its key, u8 type, u32 length, value}, 0 ends them; a reader skips a field
+    // it does not know
+    w.svarint(scene.getPhysics2DSubSteps());
+    for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+        const double value = getPhysicsWorldSetting(field, scene.getPhysics2DWorldSettings(), scene.getPhysics3DWorldSettings());
+        w.u32(fnv1a32(field.key));
+        w.u8(static_cast<uint8_t>(field.type));
+        const size_t at = w.beginLength();
+        switch (field.type) {
+            case PhysicsWorldSettingField::Type::Float: w.f32(static_cast<float>(value)); break;
+            case PhysicsWorldSettingField::Type::Int: w.svarint(static_cast<int>(value)); break;
+            case PhysicsWorldSettingField::Type::Bool: w.boolean(value != 0.0); break;
+        }
+        w.endLength(at);
+    }
+    w.u32(0);
+    // format 1.7 (S98 D1): the scene's own Canvas Scaler, which a Compile build's generated scene
+    // code set and its cooked scenes now carry
+    w.boolean(scene.isCanvasScalerUseProjectDefault());
+    const CanvasScalerSettings& scaler = scene.getCanvasScaler();
+    w.u8(static_cast<uint8_t>(scaler.mode));
+    w.f32(scaler.scaleFactor);
+    write(w, scaler.referenceResolution);
+    w.u8(static_cast<uint8_t>(scaler.screenMatchMode));
+    w.f32(scaler.matchWidthOrHeight);
+    w.u8(static_cast<uint8_t>(scaler.physicalUnit));
+    w.f32(scaler.fallbackScreenDPI);
+    // format 1.9 (S99 R30): Environment Lighting's ambientMode and the Gradient's colours (sRGB)
     w.u8(static_cast<uint8_t>(scene.getAmbientMode()));
     write(w, scene.getAmbientSkyColor());
     write(w, scene.getAmbientEquatorColor());
@@ -259,11 +287,47 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
         scene.setWaterWakeResolution(static_cast<WaterWakeResolution>(wakeResolution));
     scene.setWaterWakeArea(r.f32());
     scene.setWaterWakeFade(r.f32());
-    // a 1.5 record ends here: the Color source and the default gradient (format 1.6)
+    // a 1.5 record ends here: the physics world settings keep their defaults (format 1.6)
     if (r.atEnd()) return;
-    const uint8_t source = r.u8();
-    if (source <= static_cast<uint8_t>(AmbientMode::GRADIENT))
-        scene.setAmbientMode(static_cast<AmbientMode>(source));
+    scene.setPhysics2DSubSteps(static_cast<int>(r.svarint()));
+    ScenePhysics2DSettings settings2D;
+    ScenePhysics3DSettings settings3D;
+    while (!r.failed()) {
+        const uint32_t id = r.u32();
+        if (id == 0) break;
+        const auto type = static_cast<PhysicsWorldSettingField::Type>(r.u8());
+        Reader value = r.record();
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            if (fnv1a32(field.key) != id || field.type != type) continue;
+            switch (type) {
+                case PhysicsWorldSettingField::Type::Float: setPhysicsWorldSetting(field, settings2D, settings3D, value.f32()); break;
+                case PhysicsWorldSettingField::Type::Int: setPhysicsWorldSetting(field, settings2D, settings3D, (double)value.svarint()); break;
+                case PhysicsWorldSettingField::Type::Bool: setPhysicsWorldSetting(field, settings2D, settings3D, value.boolean() ? 1.0 : 0.0); break;
+            }
+        }
+    }
+    scene.setPhysics2DWorldSettings(settings2D);
+    scene.setPhysics3DWorldSettings(settings3D);
+    // a 1.6 record ends here: the project's Canvas Scaler (format 1.7)
+    if (r.atEnd()) return;
+    scene.setCanvasScalerUseProjectDefault(r.boolean());
+    CanvasScalerSettings scaler;
+    const uint8_t mode = r.u8();
+    if (mode <= static_cast<uint8_t>(UIScaleMode::ConstantPhysicalSize)) scaler.mode = static_cast<UIScaleMode>(mode);
+    scaler.scaleFactor = r.f32();
+    read(r, scaler.referenceResolution);
+    const uint8_t match = r.u8();
+    if (match <= static_cast<uint8_t>(ScreenMatchMode::Shrink)) scaler.screenMatchMode = static_cast<ScreenMatchMode>(match);
+    scaler.matchWidthOrHeight = r.f32();
+    const uint8_t unit = r.u8();
+    if (unit <= static_cast<uint8_t>(PhysicalUnit::Picas)) scaler.physicalUnit = static_cast<PhysicalUnit>(unit);
+    scaler.fallbackScreenDPI = r.f32();
+    if (scaler != CanvasScalerSettings()) scene.setCanvasScaler(scaler);
+    // an older record ends here: the Color source and the default gradient (format 1.9)
+    if (r.atEnd()) return;
+    const uint8_t ambientMode = r.u8();
+    if (ambientMode <= static_cast<uint8_t>(AmbientMode::GRADIENT))
+        scene.setAmbientMode(static_cast<AmbientMode>(ambientMode));
     Vector3 sky, equator, ground;
     read(r, sky);
     read(r, equator);

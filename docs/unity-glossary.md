@@ -70,6 +70,7 @@ Projects made before the rename are migrated once with
 | Shader Graph / VFX Graph window (a node graph asset opened in its own window: Create Node search, ports and wires, Blackboard) | none (new): **Graph Editor** (Window > Assets > Graph Editor), the window of a graph file of any registered kind (S23's graph model); a kind with a window of its own (Procedural Material) opens there. Wires dragged between ports, a wire dropped on empty canvas opens the node search, the selected node's parameters in the Inspector, Copy / Paste as JSON text, Arrange; see [editor/graph-editor.md](editor/graph-editor.md) |
 | none: Unity has no procedural material authoring built in (Substance materials come from Adobe's plugin, baked to textures) | none (new): **Procedural Material**, a `.procmat` node graph (Assets > Create > Procedural Material; double-click opens the Procedural Material window) baked to ordinary PNGs and a `.material`. Every node shows its image and cost, the preview follows the selection (Pin A and B, a lit ball, a 2×2 tile, an image per output), the graph's Seed with Lock, Reroll and Variations, Exposed Properties and Presets; see [editor/procedural-material.md](editor/procedural-material.md) |
 | Avatar Mask (`.mask`; Assets > Create > Avatar Mask; Humanoid body parts and Transform paths) | none (new): Avatar Mask, a JSON `.mask` (humanoid body parts without the IK goals, hands and fingers apart, weights 0..1; transform paths with a weight and a children flag; a Default weight), set on an Animator layer or an Animation Player layer; see [animator.md](animator.md#layers-and-masks) and [animation-clips.md](animation-clips.md#avatar-masks) |
+| none: Unity has no equivalent (Unreal's Layered Blend Per Bone calls it "Mesh Space Rotation Blend"; Kevin Iglesias' Spine Proxy gets the same result in Unity with an extra `B-spineProxy` bone and a script) | none (new): a layer's **Mesh Space Rotation** (Animator and Animation Player layers; `mesh_space_rotation` in a `.controller`, `meshSpaceRotation` on a player layer; Lua `setLayerMeshSpaceRotation`): the bones where the mask starts or stops keep the layer clip's rotation relative to the character, so an upper-body layer's torso faces where its clip faces over any locomotion, with no extra bone; see [animator.md](animator.md#mesh-space-rotation) |
 
 ## Scripting API (Lua and C++)
 
@@ -147,8 +148,15 @@ Projects made before the rename are migrated once with
 | `OnCollisionEnter/Stay/Exit(Collision)`, `OnTriggerEnter/Stay/Exit(Collider)`, and the `...2D` ones -> `onCollisionEnter/Stay/Exit`, `onTriggerEnter/Stay/Exit`, `onCollisionEnter2D/Stay2D/Exit2D`, `onTriggerEnter2D/Stay2D/Exit2D` (Lua methods called by name, also on disabled scripts; C++ `ScriptBase` overrides); after the fixed step, on the main thread ([physics.md](mcp/guide/physics.md)) | global events only (`beginContact2D`, `onContactAdded3D` on Jolt's job threads) |
 | `Collision` (`gameObject`, `collider`, `rigidbody`, `contactCount`, `GetContact(i)`, `contacts`, `impulse`, `relativeVelocity`), `ContactPoint` (`point`, `normal`, `separation`, `impulse`, `thisCollider`, `otherCollider`), `ContactPoint2D` -> the same names lowerCamelCase (`getContact(i)` 0-based), plus `thisCollider` / `thisRigidbody` | none (new) |
 | `Collision2D.otherCollider` / `otherRigidbody` (Unity: **this** side) -> the same (this side), plus the plain `thisCollider` / `thisRigidbody`; `collider` / `rigidbody` / `gameObject` are the other side's | none (new) |
+| `WheelCollider` (`motorTorque`, `brakeTorque`, `steerAngle`, `suspensionSpring` `JointSpring`, `forwardFriction` / `sidewaysFriction` `WheelFrictionCurve`, `GetGroundHit(out WheelHit)`, `GetWorldPose(out pos, out rot)`, `isGrounded`, `rpm`, `sprungMass`) | none (new): Wheel Collider (`WheelColliderComponent`, Lua `WheelCollider`: `go:getWheelCollider()`), the same names lowerCamelCase; `wc:getGroundHit()` returns the WheelHit or nil, `wc:getWorldPose()` returns position, rotation; plus `driveTransform` (the GameObject follows the pose) and a Vehicle Drivetrain (engine, gear box, differentials) Unity has none of ([physics.md](mcp/guide/physics.md), "Vehicles") |
 | A child GameObject's collider with its own script -> a collider of the body whose `receiver` (Inspector "Send Callbacks To") is that GameObject | none (new) |
+| Colliders on child GameObjects below a Rigidbody (a compound body) -> a Rigidbody (2D) on the child with `attachToParentBody` (Inspector "Attach To Parent Body"): its colliders join the parent's body, its scripts get their callbacks, `Collider.attachedRigidbody` is the parent's | none (new) |
+| `Rigidbody.MovePosition`, `MoveRotation`, `Move`, `Rigidbody2D.MovePosition`, `MoveRotation`, `MovePositionAndRotation` -> `movePosition`, `moveRotation`, `movePositionAndRotation` (interpolated; a kinematic body moves by velocity); a teleport that interpolates -> `setPosition(p, true)` / `setRotation(q, true)` (2D `setAngle(a, true)`) | none (new) |
+| Mesh Collider `convex` on a moving body (one hull) -> Decompose Into Convex Hulls on the Mesh collider (V-HACD, several hulls, baked into the scene; `edit_colliders` `decompose`); a Convex Hull collider is one hull | none (new) |
 | `Physics.IgnoreCollision(a, b, ignore)` / `Physics2D.IgnoreCollision` (colliders) -> `Physics.ignoreCollision(a, b [, ignore])` / `Physics2D.ignoreCollision` on bodies (GameObjects or Rigidbodies): every collider of the pair | none (new) |
+| `Physics.SphereCast`, `BoxCast`, `CapsuleCast` (and `...All`), `OverlapSphere`, `OverlapBox`, `OverlapCapsule`, `CheckSphere`, `CheckBox`, `CheckCapsule`, `ClosestPoint`, `Rigidbody.SweepTest` / `SweepTestAll`, `QueryTriggerInteraction`, `Physics.queriesHitTriggers`, `queriesHitBackfaces` -> the same names lowerCamelCase; casts return the hit or nil (no `out` argument), every query takes an options table last (`ignore`, `triggers`, `hitFromInside`, `hitBackfaces`) | none (new) |
+| `Physics2D.CircleCast`, `BoxCast`, `CapsuleCast` (and `...All`), `OverlapCircle`, `OverlapBox`, `OverlapCapsule`, `OverlapPoint`, `OverlapArea` (and `...All`), `Rigidbody2D.Cast`, `CapsuleDirection2D`, `Physics2D.queriesHitTriggers`, `queriesStartInColliders` -> the same names lowerCamelCase (`rigidbody2d:cast` / `castAll` return hits); `queriesStartInColliders` defaults to **false** (Unity: true), so a ray or cast from inside a collider (a player's ground check) does not hit it | none (new) |
+| `RaycastHit` / `RaycastHit2D` (`point`, `normal`, `distance`, `collider`, `rigidbody`, `transform`) | `RayReturn` (alias `RaycastHit`): the same fields plus `gameObject`, `body` (entity), `colliderIndex`, `hit`; `transform` is the GameObject |
 | `Shader.SetGlobalFloat`, `SetGlobalInt`, `SetGlobalVector`, `SetGlobalColor`, `SetGlobalMatrix`, `SetGlobalFloatArray`, `SetGlobalVectorArray`, `SetGlobalTexture`, `GetGlobal*`, `Shader.PropertyToID` | none (new): `Shader.setGlobalFloat`, `setGlobalInt`, ..., `getGlobal*`, `Shader.propertyToID`, plus `hasGlobal`, `getGlobalNames`, `resetGlobals`; shaders read them as members of a `u_vs_globals` / `u_fs_globals` block (or a texture uniform of the name); C++ `ShaderGlobals` ([shaders guide, Global values](mcp/guide/shaders.md#global-values)) |
 | A material property a global feeds (Unity: the global applies when the material does not define the property) | none (new): an explicit binding, the Inspector's link button on a shader parameter row (`shaderGlobalBindings`, Lua `material:setShaderGlobalBinding(member, global)`) |
 | none: Unity has no per-scene shader property defaults (closest: `Shader.SetGlobal*`, applied when the material leaves the property undefined) | none (new): Scene > Default Shaders > <Shader> Properties, the values every object drawn with the scene's default shader inherits (Revert to Scene Default on an override); Lua `scene:setDefaultShaderUniform(ShaderType.MESH, name, value)`; `set_shader_uniform` `shader_type` |
@@ -255,6 +263,7 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `Time.deltaTime`, `unscaledDeltaTime`, `fixedDeltaTime`, `fixedUnscaledDeltaTime` | `Time.deltaTime`, `Time.unscaledDeltaTime`, `Time.fixedDeltaTime`, `Time.fixedUnscaledDeltaTime` (also `Engine.deltatime`, `Engine.unscaledDeltatime`, `Engine.updateTime`) |
 | `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
 | `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
+| Time settings: Maximum Allowed Timestep (no fixed step dropped within it) | `Time.maximumDeltaTime`: the fixed steps a frame runs at most, whatever the time scale; `Time.maximumFixedStepsPerFrame` above 0 lowers that cap (steps past it: `Time.droppedFixedSteps`) |
 | A shader's `_Time` (game time: held while paused, scaled by `Time.timeScale`); the Scene view's Always Refresh | the engine-written `sceneTime` member of a shader's custom block (`frame.time` stays the wall clock); library:water runs on it, `Water.getTime(scene)`; the Scene view's Rendering > Always Refresh (water, animated tiles and the shaders on the scene clock) |
 | HDRP Planar Reflection Probe (Resolution, Culling Mask, Clipping Planes) on a water surface | library:water's `PLANAR_REFLECTION` feature with the scene's Planar Reflections settings (Resolution, Layers, Shadows, Far Clip Plane, Clip Plane Offset, Max Planes) |
 | HDRP Water Excluder (a boat's hull keeping the water out) | Water Excluder (`WaterExcluderComponent`): Convex Hull of the GameObject's mesh, Box or Sphere; also dry for buoyancy, `Water.sample` and the underwater fade |
@@ -412,7 +421,10 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioMixerSnapshot.TransitionTo`, `AudioMixer.TransitionToSnapshots`, `FindSnapshot` | `AudioMixer.transitionTo(name, seconds [, opts])`, `AudioMixer.transitionToSnapshots(names, weights, seconds)`, snapshots by name |
 | Audio Mixer update mode Normal / Unscaled Time | mixer `updateMode` "scaled" / "unscaled"; per call `{unscaled = true}` |
 | Lowpass / Highpass / Echo / SFX Reverb / ParamEQ / Distortion / Flange / Duck Volume effects | mixer effects `lowpass`, `highpass`, `bandpass`, `echo`, `reverb`, `equalizer`, `distortion`, `flanger`, `lofi`, `bassboost`, `duck`, `limiter` (up to 8 per group) |
+| Audio Low Pass Filter, Audio High Pass Filter, Audio Echo Filter, Audio Distortion Filter, Audio Reverb Filter (components) | effects of the Audio Source itself: `AudioSource.effects` (up to 4, `lowpass`, `highpass`, `echo`, `distortion`, `reverb` and the other mixer effects but `duck` and `limiter`); Add Component keeps Unity's names and adds the effect to the GameObject's Audio Source; Lua `sound:addEffect("lowpass")` -> `AudioSourceEffect` |
+| `AudioLowPassFilter.cutoffFrequency`, `lowpassResonanceQ`; `AudioHighPassFilter.cutoffFrequency`, `highpassResonanceQ` | the effect's `cutoff` and `resonance` (`effect:setParameter("cutoff", 500 [, seconds])`) |
 | `AudioSource.PlayOneShot(clip, volumeScale)` | `sound:playOneShot(path [, volumeScale])` (up to `maxVoices` overlapping voices) |
+| Several `AudioSource`s on one GameObject, `GetComponents<AudioSource>()` | Add Component > Audio Source again (MCP `add_component`: the further one's entity in `added[].audio_source`); Lua `AudioSource.getAll(gameObject)` / `add(gameObject)` / `remove(source)`; a further one is a hidden child entity |
 | `AudioSource.PlayClipAtPoint(clip, position, volume)` | `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` |
 | AudioClip Load Type Decompress On Load / Compressed In Memory / Streaming | `AudioSource.loadType` (`AudioLoadType.DecompressOnLoad` / `CompressedInMemory` / `Streaming`, default `Auto`: streams files of 1 MiB and more): per source, not a clip import setting |
 | `AudioImporter` | `.meta` section `import.audioImporter` (Inspector's Import Settings, MCP `set_audio_import_settings`) |
@@ -420,6 +432,8 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioSource.pitch` | `pitch` (= `speed`) |
 | `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
+| `AudioSource.spatialBlend` (2D / 3D slider) | `spatialBlend` (Inspector Spatial Blend, 0 = 2D .. 1 = 3D); every new Audio Source is a GameObject, 2D at 0; `sound3D` sets 0 or 1 |
+| A looping `AudioSource` made for one sound (`loop = true`, then `Play`) | `Audio.play(path, {loop = true})` -> `SoundHandle` (`stop()` ends it), or an Audio Source with `looping` |
 | volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
 
 ## Terrain
@@ -446,9 +460,10 @@ the `Physics2D` one change it at runtime; in the editor that lasts until Play st
 Changing a GameObject's layer re-filters its Rigidbody (2D) before the next step.
 
 Ray casts take a layer mask (`LayerMask.getMask(...)`, `Physics.ALL_LAYERS`):
-`Physics.raycast(scene, ray [, layerMask])`,
-`Physics.raycast(scene, origin, direction, maxDistance [, layerMask])` and `raycastAll`,
-and the `Physics2D` ones with `Vector2` origin and direction. Without a mask they use
+`Physics.raycast(scene, ray [, layerMask [, options]])`,
+`Physics.raycast(scene, origin, direction, maxDistance [, layerMask [, options]])` and `raycastAll`,
+and the `Physics2D` ones with `Vector2` origin and direction. As in Unity, a 3D ray that starts
+inside a collider does not hit it (`options.hitFromInside` reports it at 0). Without a mask they use
 `DEFAULT_RAYCAST_LAYERS`, every layer but Ignore Raycast; so do the scene queries of
 `Ray:intersects`. With a `Ray`, `distance` is the fraction of `ray.direction`; with an
 origin, a direction and a distance it is in world units (scene units in 2D).
@@ -459,6 +474,7 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 |---|---|
 | `WheelJoint2D`, `HingeJoint2D`, `SliderJoint2D`, `DistanceJoint2D`, `SpringJoint2D`, `FixedJoint2D`, `RelativeJoint2D`, `FrictionJoint2D`, `TargetJoint2D` | one `Joint2D` component (Hierarchy > Physics > Joint 2D) with `type` `WHEEL`, `REVOLUTE`, `PRISMATIC`, `DISTANCE`, `DISTANCE` + `enableSpring`, `WELD`, `MOTOR`, `MOTOR` + `correctionFactor = 0`, `MOUSE` |
 | `connectedBody` | `bodyB` (alias `connectedBody`); the joint's own Rigidbody 2D is `bodyA` |
+| `gameObject.AddComponent<WheelJoint2D>()`, `GetComponents<Joint2D>()` | `go:addJoint2D(Joint2DType.WHEEL)` (a child joint GameObject with bodyA = `go`), `go:getJoints2D()` (the joints whose bodyA is `go`) |
 | `anchor`, `connectedAnchor`, `autoConfigureConnectedAnchor` | `anchorA`, `anchorB` (aliases `anchor`, `connectedAnchor`), `autoAnchors`, with `anchorSpace = LOCAL` |
 | `suspension.frequency`, `suspension.dampingRatio`, `suspension.angle` | `frequency`, `dampingRatio`, `axis` (angle 90 = `(0, 1)`) |
 | `useMotor`, `motor.motorSpeed`, `motor.maxMotorTorque` | `useMotor`, `motorSpeed` (deg/s), `maxMotorTorque` (`maxMotorForce` for sliders and distance) |
@@ -476,6 +492,9 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `collisionDetectionMode` (`CollisionDetectionMode2D`), `sleepMode` (`RigidbodySleepMode2D`) | `collisionDetection`, `sleepingMode` (same enum names) |
 | `isTrigger` (a collider) | the collider's `sensor` (`setColliderTrigger(i, b)`) |
 | Physics 2D settings: Velocity / Position Iterations | the scene's `physics2DSubSteps` (Box2D 3 sub-steps) |
+| Physics 2D settings: Max Rotation Speed (360), Velocity Threshold, Max Translation Speed | the scene's `physics2DMaxRotation` (45 degrees a step, Box2D's default), `physics2DBounceThreshold`, `physics2DMaxLinearSpeed`; the World foldout has Box2D's contact and joint stiffness too |
+| `Rigidbody2D` that must spin past Max Rotation Speed (wheels) | `allowFastRotation` (Box2D's; Unity has no per-body switch) |
+| pixels per unit of 2D physics (Unity: 1 unit = 1 m) | the scene's `physics2DPointsPerMeter` (64) |
 
 ## 3D physics: Unity names and their JasperEngine counterparts
 
@@ -495,8 +514,10 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `CharacterJoint.lowTwistLimit / highTwistLimit / swing1Limit / swing2Limit` | `twistMinAngle / twistMaxAngle / normalHalfConeAngle / planeHalfConeAngle` (Lua aliases of the Unity names) |
 | `ConfigurableJoint.xMotion ... angularZMotion` (`ConfigurableJointMotion`), drives, `targetPosition` / `targetRotation` | the same names (`JointMotion.LOCKED` / `LIMITED` / `FREE`), `useDrive` + stiffness / damping |
 | `enableCollision`, `breakForce`, `breakTorque`, `OnJointBreak(float)` | the same, `breakAction`, `onJointBreak(self, force, joint)` (C++ `onJointBreak(float, Joint3D&)`) |
-| Ragdoll Wizard (GameObject > 3D Object > Ragdoll...) | the same menu, `create_ragdoll` (MCP), the `Ragdoll` component (`simulated`) |
+| Ragdoll Wizard (GameObject > 3D Object > Ragdoll...) | the same menu, `create_ragdoll` (MCP), the `Ragdoll` component (`simulated`); at run time (no Unity API) `Ragdoll.create(root [, options])` |
+| `gameObject.AddComponent<HingeJoint>()`, `GetComponents<Joint>()` | `go:addJoint3D(Joint3DType.HINGE)` (a child joint GameObject with bodyA = `go`), `go:getJoints3D()` (the joints whose bodyA is `go`) |
 | Physics Debugger, `Physics.autoSyncTransforms` | the Game view's Physics toggle, `Physics.debugDraw`; transforms always sync |
+| Physics settings: Default Solver Iterations / Velocity Iterations, Bounce Threshold, Sleep Threshold, Default Contact Offset | the scene's `physics3DPositionIterations` / `physics3DVelocityIterations`, `physics3DBounceThreshold`, `physics3DSleepThreshold`, `physics3DSpeculativeDistance` (Inspector > Scene > Physics > World); `physics3DCollisionSteps` has no Unity name |
 
 In scene and prefab files the component keys follow the class names, e.g.
 `rigidbody2d:`, `audiosource:`, `recttransform:`, `colliders:`, `prefabPath:`.

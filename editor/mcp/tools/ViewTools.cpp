@@ -1121,6 +1121,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"show_ik", &SceneDisplaySettings::showIK},
         {"show_root_motion", &SceneDisplaySettings::showRootMotion},
         {"show_foot_trails", &SceneDisplaySettings::showFootTrails},
+        {"show_torso_direction", &SceneDisplaySettings::showTorsoDirection},
         {"frame_checks", &SceneDisplaySettings::frameChecks},
         // S41 (in a scene with a Pixel Perfect Camera)
         {"pixel_zoom", &SceneDisplaySettings::pixelZoom},

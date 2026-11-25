@@ -36,6 +36,7 @@ namespace{
                 layer.blending = layerDef.blending;
                 layer.mask = layerDef.mask;
                 layer.slot = layerDef.slot;
+                layer.meshSpaceRotation = layerDef.meshSpaceRotation;
                 layer.stateBegin = (uint32_t)out.states.size();
                 out.layers.push_back(layer);
                 const std::string at = "layers[" + std::to_string(l) + "].state_machine";

@@ -856,20 +856,18 @@ void editTitleTool(const CallPtr& call) {
 
     // bake: auto (Auto Bake decides), now (bakes before replying), never (drops a scheduled one)
     const std::string bake = args.value("bake", std::string("auto"));
-    Json bakeJson = Json{{"status", dryRun ? "skipped" : bake == "never" ? "never" : "auto"}};
-    if (!dryRun && bake == "now") {
-        const TitleBakeResult baked = bakeTitleArt(project, file, document->doc(), {});
-        bakeJson = fromOrdered(baked.toJson());
-        bakeJson["status"] = baked.ok ? "baked" : "failed";
-    } else if (!dryRun && (bake == "auto" && args.contains("create"))) {
-        // a new document bakes at once, so a texture exists to place (R7)
-        const TitleBakeResult baked = bakeTitleArt(project, file, document->doc(), {});
-        bakeJson = fromOrdered(baked.toJson());
-        bakeJson["status"] = baked.ok ? "baked" : "failed";
-    }
-    structured["bake"] = bakeJson;
+    // `now`, and a new document under `auto` (a texture exists to place, R7): a job the frames
+    // step, so a bake that meets a program still being built waits for the frames that build it
+    // (S80 Deviation 61)
+    std::shared_ptr<TitleArtBakeJob> baking;
+    if (!dryRun && (bake == "now" || (bake == "auto" && args.contains("create"))))
+        baking = std::make_shared<TitleArtBakeJob>(project, file, document->doc(), TitleBakeOptions{});
+    else
+        structured["bake"] = Json{{"status", dryRun ? "skipped" : bake == "never" ? "never" : "auto"}};
     if (text.empty()) text = "Nothing changed in " + relative;
 
+    std::shared_ptr<FrameTask> rendering;
+    auto reply = std::make_shared<Json>(structured);
     if (args.contains("render") && !dryRun && !(args["render"].is_boolean() && !args["render"].get<bool>())) {
         RenderSpec spec;
         spec.file = file;
@@ -878,17 +876,51 @@ void editTitleTool(const CallPtr& call) {
         spec.rev = document->revision();
         spec.args = args["render"].is_object() ? args["render"] : Json::object();
         static const std::set<std::string> renderKeys = {"max_width", "backgrounds", "crop"};
-        for (auto it = spec.args.begin(); it != spec.args.end(); ++it) {
-            if (!renderKeys.count(it.key())) {
-                structured["render_error"] = "render takes true or {max_width, backgrounds, crop}; '" + it.key() + "' is not one of them";
-                call->ok(text + ".", structured);
+        std::string renderError;
+        for (auto it = spec.args.begin(); it != spec.args.end() && renderError.empty(); ++it) {
+            if (!renderKeys.count(it.key())) renderError = "render takes true or {max_width, backgrounds, crop}; '" + it.key() + "' is not one of them";
+        }
+        if (!renderError.empty()) {
+            (*reply)["render_error"] = renderError;
+        } else {
+            const std::string title = "Render " + relative;
+            rendering = renderTask(call, std::move(spec), reply, text + ". ");
+            if (!rendering) return;
+            if (!baking) {
+                runFrameTask(call, "render_title", title, rendering);
                 return;
             }
         }
-        startRender(call, std::move(spec), structured, text + ". ");
+    }
+    if (!baking) {
+        call->ok(text + ".", *reply);
         return;
     }
-    call->ok(text + ".", structured);
+    auto task = std::make_shared<FrameTask>();
+    std::weak_ptr<FrameTask> weakTask = task;
+    task->tick = [baking, rendering, reply, text, weakTask](McpJob& job) {
+        auto t = weakTask.lock();
+        if (!t) return true;
+        if (!baking->done()) {
+            if (!baking->step(8.0)) {
+                job.setProgress(baking->progress() * (rendering ? 0.5 : 1.0), baking->progressText());
+                return false;
+            }
+            Json baked = fromOrdered(baking->result().toJson());
+            baked["status"] = baking->result().ok ? "baked" : "failed";
+            (*reply)["bake"] = baked;
+        }
+        if (!rendering) {
+            t->text = text + ".";
+            job.succeed(t->text, *reply);
+            return true;
+        }
+        if (!rendering->tick(job)) return false;
+        t->text = rendering->text;
+        t->images = rendering->images;
+        return true;
+    };
+    runFrameTask(call, "edit_title", "Bake " + relative, task);
 }
 
 // ==================================================================== export_title

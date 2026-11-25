@@ -86,15 +86,22 @@ jasperengine_add_test_target(jasperengine-editor-tests
         # whether this build compiles V-HACD (engine/CMakeLists.txt): the test of the build without
         # it is registered only there, not skipped here (S02 R11, no skipped editor test)
         JASPER_TEST_CONVEX_DECOMPOSITION=$<BOOL:${JASPERENGINE_CONVEX_DECOMPOSITION}>
-        # the engine's include directories and definitions, and the compiler (the flags file is
-        # generated below): LineRendererStreamTest compiles Factory's component code
-        JASPER_EDITOR_TEST_ENGINE_FLAGS="${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt"
-        JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}"
 )
 add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper je_vcs_process_helper)
 jasperengine_skip_unity_build(
     REASON "replaces the global operator new and delete: in a batch GCC inlines them into their callers and reports a mismatched new and free"
     SOURCES ${CMAKE_CURRENT_LIST_DIR}/support/AllocationProbe.cpp)
+# Every later batch of 16 moves by one source per test file added before it, and several editor
+# tests (pixelart, titleart, reflect) keep file-scope using-directives whose Json, Kind, RgbaImage
+# or detail meet another test's in a moved batch: S97's tests stay out of the batches
+jasperengine_skip_unity_build(
+    REASON "S97's tests: compiled alone so the batches of the editor tests after them do not move"
+    SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/audio/SoundDropTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/object/AudioSourceSlotsTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/pool/SoundPoolLifetimeTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/subsystem/AudioSourceEffectsTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/subsystem/AudioSpatialBlendTest.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
     # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose
@@ -135,13 +142,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         FOLDER "tests")
     add_dependencies(jasperengine-editor-tests jasperengine-texsynth-oom)
 endif()
-
-# The engine's include directories and definitions, for tests that compile the C++ the editor
-# generates for exports (LineRendererStreamTest: Factory's component code against the engine
-# headers, with the compiler that builds the tests; as a game's code sees them, every component
-# through Scene.h, without the engine's own JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES)
-file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
-"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<FILTER:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,EXCLUDE,^JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES$>,\n>\n")
 
 # The ramp generator's golden lists (S43 AC6): the test's own transcription of Pixelorama's rule
 # without floating-point contraction, as the generator itself (editor/pixelart/PixelArtEditorSources.cmake)

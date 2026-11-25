@@ -27,7 +27,8 @@
 using namespace jasperengine;
 using namespace jasperengine::editor::prefabinternal;
 
-bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode, const std::string& guid){
+bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode, const std::string& guid,
+        const std::unordered_map<Entity, Entity>* registryIds, Entity nextEntity){
     if (!filepath.is_relative()) {
         Out::error("Prefab filepath must be relative: %s", filepath.string().c_str());
         return false;
@@ -109,12 +110,17 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
     // with the project, the instances nested in the selection are their roots only (their
     // GameObjects are their prefabs'); their blocks are not GameObject data of the prefab.
     // References stay the scene's until every GameObject of the new prefab is known.
-    YAML::Node registryNode = clearEntitiesNode(YAML::Clone(entityNode));
+    YAML::Node registryNode = registryIds ? assignEntitiesNode(YAML::Clone(entityNode), *registryIds)
+                                          : clearEntitiesNode(YAML::Clone(entityNode));
     std::vector<Entity> regEntities = Stream::decodeEntitySelection(registryNode, newGroup.registry.get(), &newGroup.registryEntities);
     if (branchEntities.size() != regEntities.size()) {
         Out::error("createPrefab(%s): entity count mismatch: branchEntities=%zu, regEntities=%zu",
             filepath.string().c_str(), branchEntities.size(), regEntities.size());
         return false;
+    }
+    // the ids an overwritten prefab handed out stay taken (stripped ids allocated below)
+    if (nextEntity != NULL_ENTITY && newGroup.registry->getLastEntity() < nextEntity - 1) {
+        newGroup.registry->setLastEntity(nextEntity - 1);
     }
     std::unordered_map<Entity, Entity> localToRegistry;
     for (size_t i = 0; i < branchEntities.size(); ++i) {
@@ -129,7 +135,8 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
 
     // A new asset, a new GUID; a redo gives the file the one it had
     std::string assetGuid = guid;
-    if (!AssetDatabase::isGuid(assetGuid) || !assetDatabase.getPath(assetGuid).empty()) {
+    const std::filesystem::path guidOwner = AssetDatabase::isGuid(assetGuid) ? assetDatabase.getPath(assetGuid) : std::filesystem::path();
+    if (!AssetDatabase::isGuid(assetGuid) || (!guidOwner.empty() && guidOwner.lexically_normal() != filepath.lexically_normal())) {
         do {
             assetGuid = AssetDatabase::generateGuid();
         } while (!assetDatabase.getPath(assetGuid).empty());
@@ -189,6 +196,112 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
     sceneProject->isModified = true;
     sceneProject->structureVersion++;
 
+    return true;
+}
+
+bool editor::Project::overwritePrefab(uint32_t sceneId, const std::filesystem::path& filepath, YAML::Node entityNode,
+        const std::unordered_map<Entity, Entity>& knownIds) {
+    Prefab* existing = loadPrefabAsset(filepath);
+    if (!existing || !existing->registry || !entityNode || !entityNode.IsMap()) {
+        Out::error("Overwrite Prefab: no prefab to overwrite at %s", filepath.string().c_str());
+        return false;
+    }
+    const std::string guid = getPrefabGuid(filepath);
+
+    // The old content's GameObjects by name path from its root, in order (duplicate names
+    // match in turn)
+    const std::string transformKey = Catalog::getComponentName(ComponentType::Transform, true);
+    auto join = [](const std::string& parent, const std::string& name) {
+        return (parent == "/" ? parent : parent + "/") + name;
+    };
+    std::map<std::string, std::vector<Entity>> oldByPath;
+    {
+        std::function<std::string(Entity)> pathOf = [&](Entity entity) -> std::string {
+            if (entity == existing->root) {
+                return "/";
+            }
+            const Entity parent = existing->getRegistryParent(entity);
+            const std::string name = existing->registry->getEntityName(entity);
+            return parent == NULL_ENTITY ? "#" + name : join(pathOf(parent), name);
+        };
+        // a GameObject that keeps its id by identity is not matched by name
+        std::unordered_set<Entity> kept;
+        for (const auto& [local, registry] : knownIds) {
+            kept.insert(registry);
+        }
+        for (Entity entity : existing->registryEntities) {
+            if (!kept.count(entity)) {
+                oldByPath[pathOf(entity)].push_back(entity);
+            }
+        }
+    }
+    std::unordered_map<Entity, Entity> registryIds;
+    Entity nextId = existing->getNextEntity();
+    std::function<void(const YAML::Node&, const std::string&)> assign = [&](const YAML::Node& node, const std::string& path) {
+        if (!node || !node.IsMap()) {
+            return;
+        }
+        if (node["members"] && node["members"].IsSequence()) {
+            for (const YAML::Node& member : node["members"]) {
+                const YAML::Node components = member["components"];
+                const bool isRoot = components && components.IsMap() && components[transformKey];
+                assign(member, isRoot ? std::string("/") : "#" + (member["name"] ? member["name"].as<std::string>() : std::string()));
+            }
+            return;
+        }
+        if (node["entity"]) {
+            const Entity local = node["entity"].as<Entity>();
+            auto known = knownIds.find(local);
+            auto it = oldByPath.find(path);
+            Entity id = NULL_ENTITY;
+            if (known != knownIds.end() && std::find(existing->registryEntities.begin(), existing->registryEntities.end(),
+                                                     known->second) != existing->registryEntities.end()) {
+                id = known->second;
+            } else if (it != oldByPath.end() && !it->second.empty()) {
+                id = it->second.front();
+                it->second.erase(it->second.begin());
+            } else {
+                id = nextId++;
+            }
+            registryIds[local] = id;
+        }
+        if (node["children"] && node["children"].IsSequence()) {
+            for (const YAML::Node& child : node["children"]) {
+                assign(child, join(path, child["name"] ? child["name"].as<std::string>() : std::string()));
+            }
+        }
+    };
+    assign(entityNode, "/");
+
+    // The new content is made as createPrefab makes a prefab; the old entry keeps its
+    // instances and takes the new asset data
+    auto it = prefabAssets.find(filepath);
+    Prefab old = std::move(it->second);
+    prefabAssets.erase(it);
+    if (!createPrefab(sceneId, filepath, entityNode, guid, &registryIds, nextId)) {
+        prefabAssets.emplace(filepath, std::move(old));
+        return false;
+    }
+    Prefab& made = prefabAssets.at(filepath);
+    std::vector<Prefab::Instance> madeInstances = std::move(made.instances[sceneId]);
+    const uint64_t savedAt = made.savedAt;
+    old.takeAssetData(std::move(made));
+    old.isModified = false;
+    old.savedAt = savedAt;
+    for (Prefab::Instance& instance : madeInstances) {
+        instance.instanceId = old.nextInstanceId++;
+        old.instances[sceneId].push_back(std::move(instance));
+    }
+    for (auto& [instanceSceneId, instances] : old.instances) {
+        for (Prefab::Instance& instance : instances) {
+            instance.rootRegistryEntity = old.root;
+        }
+    }
+    prefabAssets.erase(filepath);
+    prefabAssets.emplace(filepath, std::move(old));
+
+    // every open instance, nested ones and variants' included, as a Prefab Mode save does
+    refreshPrefabInstances(filepath);
     return true;
 }
 
@@ -531,6 +644,35 @@ YAML::Node editor::Project::clearEntitiesNode(YAML::Node node) {
     if (node["children"] && node["children"].IsSequence()) {
         for (size_t i = 0; i < node["children"].size(); ++i) {
             node["children"][i] = clearEntitiesNode(node["children"][i]);
+        }
+    }
+
+    return node;
+}
+
+YAML::Node editor::Project::assignEntitiesNode(YAML::Node node, const std::unordered_map<Entity, Entity>& ids) {
+    if (!node || !node.IsMap())
+        return node;
+
+    if (node["members"] && node["members"].IsSequence()) {
+        for (size_t i = 0; i < node["members"].size(); ++i) {
+            node["members"][i] = assignEntitiesNode(node["members"][i], ids);
+        }
+        return node;
+    }
+
+    if (node["entity"]) {
+        auto it = ids.find(node["entity"].as<Entity>());
+        if (it != ids.end()) {
+            node["entity"] = it->second;
+        } else {
+            node.remove("entity");
+        }
+    }
+
+    if (node["children"] && node["children"].IsSequence()) {
+        for (size_t i = 0; i < node["children"].size(); ++i) {
+            node["children"][i] = assignEntitiesNode(node["children"][i], ids);
         }
     }
 

@@ -72,7 +72,8 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
 
 Picking (S26): `JASPER_PICK_SIMD=scalar|avx2|neon` forces the mesh BVH's slab test path; `MeshPose.MatchesGpuSkinning` is a GPU suite (the
 CPU pose against the skinned shaders, glcore and Vulkan). `JASPER_PICK_BUILD_DELAY_MS=<ms>` holds
-every background mesh BVH build pending that long: the MCP tests use it to see the Scene view's
+every background mesh BVH build pending that long (the wait runs on a blocking thread, so it holds no
+Background gate slot other loads queue for): the MCP tests use it to see the Scene view's
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 `JASPER_TEXTURE_LOAD_DELAY_MS=<ms>` holds every async texture decode that long: a screenshot must
 then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
@@ -118,7 +119,11 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   (`build/web-mesh-raycast`, the web image; up to date after the first time) for
   `test_mesh_raycast.py`'s web latency gate. The Linux image carries the suite's test tools
   (lua-language-server, clangd, FFmpeg with AV1, chrome-headless-shell), so none of their tests
-  skips there. See `docs/mcp/README.md` for writing MCP tests.
+  skips there. See `docs/mcp/README.md` for writing MCP tests. A project the harness creates
+  (`Editor(create=True)`) keeps the flat layout the tests are written against, its assets and
+  scripts at its root: the harness sets `JASPER_TEST_FLAT_NEW_PROJECT=1` unless the test passes
+  `env={"JASPER_TEST_FLAT_NEW_PROJECT": "0"}`, which gives a new project's real layout (`assets/`,
+  `scripts/`, `test_asset_stripping.py`).
 - `test_audio_meter.py` takes no editor: it compiles `engine/tests/core/audio/AudioMeterProbe.cpp` with
   `AudioMeter.cpp` and `TruePeak.cpp` alone (so it needs a C++ compiler; FFmpeg decodes the fixtures)
   and compares the meter with pyloudnorm (`uv run --with`, pinned in the test).
@@ -250,7 +255,8 @@ The cache cannot hide a bug:
   run tries again.
 - The compiled games (`method="compile"`) build through ccache too: their editors get
   `harness.compile_env(name)`, a user cache (where the kit's compile tree goes) at the fixed path
-  `build/mcp-compile-home/<file>/`, emptied as the file starts, and ccache as CMake's compiler
+  `build/mcp-compile-home/<file>/`, emptied as the file's first editor starts (not as the file loads:
+  any run's `-k` listing loads every file), and ccache as CMake's compiler
   launcher. Each run still configures and compiles a fresh tree and links; an object comes from
   ccache only when its preprocessed source, flags and directory are those it was made from. They
   link without LTO (`JASPERENGINE_RELEASE_LTO=OFF` in the editor's environment, which an exported
@@ -1039,7 +1045,7 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `lint` | the repository's and the workflows' lints |
 | `linux` | `WERROR=1 tools/build.sh linux`; its editor install feeds `mcp` and `smoke` |
 | `unit` (one job per test binary: `core`; `editor-1`, `editor-2`) | `UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun (core); each editor part with `UNIT_SHARD=<k>/2`, after compiling half the objects (`UNIT_BUILD_PART=<k>/2`) and taking the other half from the other part (below) |
-| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter (on a PR: below) without the `*GpuSlow*` suites (the nightly runs them under ASan) |
+| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter (on a PR: below) without the `*GpuSlow*` suites (the nightly runs them under ASan); the editor job prints how much of x86-64's 2 GiB relocation reach its test binary uses (`tools/ci/reloc_reach.py`) |
 | `htmlui` | `JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests` |
 | `mcp` (one job per shard) | `tools/ci/mcp_shard.sh <k> build/ci-plan`: the CI suite's planned files, `-j 2`, without the fixture project |
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
@@ -1169,6 +1175,24 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   median of 2 h (up to 10) while the merge queue stalled behind them. The queue is the gate: it, a push
   to `main`, full runs and the nightly build `macos` for every change that builds, so a macOS break
   still stops the merge, one queue run later than a PR would have shown it.
+- **macOS in the merge queue** builds only for a macOS-only input. macOS is what caps the queue: 5
+  hosted runners and `je-mac`, a `macos` job a group. Its inputs, wider than a pull request's (the queue
+  is the last gate), are:
+  - `APPLE_INPUTS`, plus Objective-C sources (`*.mm`, `*.m`), Mac and Apple named sources and
+    resources (`*/Mac[A-Z]*`, `*Mac.cpp`, `*/Apple*`, `editor/resources/macos/`), the vendored sokol
+    (its Metal backend), `tools/ci/macos.sh` and the ccache actions it runs;
+  - a C/C++ source whose text, before or after, names `__APPLE__`, `TARGET_OS_`, `SOKOL_METAL` or
+    `__OBJC__`;
+  - a CMake file whose changed lines or their 10 lines of context name an Apple setting (`APPLE`,
+    `IOS`, `CMAKE_OSX`, `Darwin`, `XCODE`, macOS, Metal);
+  - `ci.yml`'s `macos` job or `env` (`tools/ci/plan_lanes.py` `MACOS_PATHS`, `macos_inputs`).
+
+  Without one, the lane is planned off (`queue_off`), so a mac-only break (a compile error or a CPU
+  test) shows on `main` right after the merge, not in the queue. The push to `main` runs the whole lane
+  then (`macos_full`: its CPU tests, the call CLI and the compile smoke, which a push otherwise skips
+  because the queue ran them), and the nightly builds it every night. Replayed over the 40 merges up
+  to #181 (38 that build), the queue would have built `macos` for 13 (34%) and left it out for 25;
+  today's mix was CI-heavy.
 - **iOS in the merge queue** follows the same rule (`lanes.json` `queue_off`, which `Check` accepts as
   a planned skip). `ios` is a compile check of the Xcode project with the same Apple Clang the queue's
   `macos` lane builds every change with, and macOS capacity is the bottleneck. `nightly.yml`'s `ios`
@@ -1230,8 +1254,10 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **ccache in CI**: a build runs with no size limit (a cleanup in the middle of a build evicts the
   restored entries it has not reached yet, and each miss then evicts more: a PR that changed one test
   file hit 5 of 5,279 compiles). `ccache-save` then evicts every entry the run neither used nor wrote
-  and prints the rest, the lane's working set, on every run; on `main` it cuts that to the lane's cap
-  (`max-size` in `ci.yml`), oldest-used first, saves it and deletes the lane's older entry (`prune`;
+  and prints the rest, the lane's working set, on every run; on `main` it cuts a working set over the
+  lane's cap (`max-size` in `ci.yml`) to it, oldest-used first, and keeps one under it whole (ccache's
+  cleanup evicts from each of its 16 subdirectories past a 16th of the cap, so under the cap it still
+  cost the next linux build 238 of 5,284 compiles), saves it and deletes the lane's older entry (`prune`;
   the `caches` job, after every lane, deletes them again). Each lane's old and new entries would
   otherwise both live until the push's slowest lane ended, and past the 10 GB GitHub evicts the least
   recently used entries of any lane: during push run 44629653601 the repository held 11.7 GB, two
@@ -1501,47 +1527,6 @@ a service that starts with the machine (macOS: with the user's login) and reconn
 
 The `changes` job's summary and `lanes.json` (`routing`) say where each job went and why.
 
-**The paid tier: Blacksmith.** After GitHub's runners and the user's machines, a Linux or macOS job may
-go to Blacksmith, whose GitHub App is installed on the organization; its runner groups already allow
-public repositories. Its jobs do not count toward GitHub's 60 concurrent jobs, so Linux there frees
-hosted slots for the queue's macOS jobs. Linux goes first: GitHub's cap fills with Linux jobs.
-
-| OS | Label | Like | Price |
-|---|---|---|---|
-| Linux | `blacksmith-4vcpu-ubuntu-2404` | `ubuntu-latest` (4 vCPU) | $0.008 a minute |
-| macOS | `blacksmith-6vcpu-macos-26` | an M4, macOS 26, Xcode 26.6 selected | $0.08 a minute |
-
-Windows has no tier. The plan (`tools/ci/plan_lanes.py` `BLACKSMITH`) routes a job there only when
-all of these hold:
-
-- it is a job of the merge queue or a push to `main` (`BLACKSMITH_EVENTS`: the critical path; a pull
-  request never pays);
-- it is a first attempt, or a rerun the watchdog did not hold (as above);
-- the runner state is fresh and says the hosted runners of its OS are saturated, with at least
-  `BLACKSMITH_MIN_QUEUED` jobs of that OS waiting (Linux 10, macOS 3);
-- no machine of the user's takes it (busy, offline, unfit, disabled, or past what it takes of one
-  plan);
-- the state does not have it paused.
-
-- **Kill switch**: `gh variable set BLACKSMITH_OVERFLOW --body off` stops it from the next run on;
-  `gh variable delete BLACKSMITH_OVERFLOW` lets it run again.
-- **Spend limit**: $20 a month, set in the Blacksmith dashboard. Past it Blacksmith takes no job. A
-  job queued 10 min on a Blacksmith label gets its run cancelled and rerun on GitHub's runners (the
-  state's `hosted_only`, as for a lost runner), and the dispatcher pauses the tier for 6 h
-  (`blacksmith.ok` false in the state, said in the plan's routing notes), so the next runs do not
-  wait there either.
-- **Safety**: the same routing rules as the self-hosted tier (never a fork's pull request, the state
-  from `ci-runner-state`), and `free-disk` does nothing on a self-hosted-environment runner, which a
-  Blacksmith VM is. A Blacksmith VM runs none of the machines' hooks. What keeps a fork's own
-  `ci.yml` from asking for its label is GitHub's approval of every outside contributor's run, and the
-  spend limit.
-- **Caches**: a Blacksmith VM restores no GitHub cache entry (its `actions/cache` is its own store,
-  inferred from "Cache not found"), so its builds are cold until a push to `main` there saves one.
-  Only a `je-*` machine keeps a ccache of its own.
-- **Measured**: the `macos` lane took 43.4 min there, about $3.47 (run 45229221354, cold). The Linux
-  lane took 57.2 min, about $0.46 (run 45248117157, cold: no cache entry; the image pulled in 9 s).
-- **Testing it**: `gh workflow run ci.yml --ref <branch> -f self_hosted='linux=blacksmith-4vcpu-ubuntu-2404 macos=blacksmith-6vcpu-macos-26'`.
-
 **The planner overflows too.** `changes` cannot route itself, and on 2026-11-23 it waited up to an
 hour for a hosted Linux runner (79 Linux jobs queued, the oldest for 4 h), so no plan ran at all. The
 dispatcher sets the repository variable `SELF_HOSTED_PLANNER` to `je-linux` while hosted Linux is
@@ -1564,17 +1549,26 @@ runs, and force-pushes the state to `ci-runner-state` as one parentless commit. 
 touches a run it did not route): a job queued 10 min for a runner that is offline or gone, or running
 on one offline for 3 min, or failed because its runner went away ("lost communication", "shutdown
 signal", read as soon as the job ends), gets its run cancelled and, once stopped, rerun whole (`gh run rerun`): the rerun plans on
-GitHub's runners only. A merge-queue run is cancelled and its pull request put back in the queue (the
-queue removed the group, so a rerun would build nothing); a pull request's run that a newer push
-superseded is not rerun.
+GitHub's runners only. A pull request's run that a newer push superseded is not rerun.
+
+**A merge-queue run is cancelled only when its job cannot finish.** A cancel fails its `Check`: the
+queue removes the pull request, and every group behind it restarts (run 45310250691, #153's group:
+about 2 h lost for a job that would have waited). So the dispatcher cancels a queue run only:
+
+- when one of its jobs already failed because its runner went away (the group is red anyway);
+- or when a job has been queued for a runner gone 30 min (`QUEUE_OFFLINE_LIMIT`), not 10.
+
+It does not cancel one for a runner that went offline mid-job, since GitHub fails that job itself
+and the first case follows. It never cancels one for an idle runner, a busy planner or anything that
+only makes it wait. After such a cancel the pull request goes back to the front of the queue
+(`enqueuePullRequest` with `jump: true`, unless it is queued already): a rerun of a removed group
+builds nothing.
 
 **Re-routing a waiting job.** A plan routes once, so a job queued on a hosted label stays there even
 when an overflow runner becomes idle. When a trusted run's job has waited 15 min
 (`IDLE_REROUTE_WAIT`) for a hosted runner while an overflow runner that would take it (`OVERFLOW`) is
 online, idle, fit and not disabled, the dispatcher cancels the run and reruns it, so its plan routes
-it there; the merge queue's runs first, one run per idle runner a minute. A merge-queue run's pull
-request goes back to the front of the queue (`enqueuePullRequest` with `jump: true`): it was building
-there. The runs moved off a runner that went away are listed in the state's `hosted_only` for a day,
+it there, one run per idle runner a minute. Never a merge-queue run's (above). The runs moved off a runner that went away are listed in the state's `hosted_only` for a day,
 and their reruns plan hosted only. Each run gets at most one reroute of each kind, and none for an idle
 runner after one for a lost runner: never a loop. All of it shares the limit of 6 actions an hour, each
 logged to the host's `je-runner-dispatch.log`. With no state for 5 min (the host, `gh` or the cron is down) every

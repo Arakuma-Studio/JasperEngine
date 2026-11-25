@@ -94,9 +94,10 @@ ENGINE_TARGET=jasperengine-project
 # AC7 of docs/specs/S02-build-ci-tests.md: what an unfiltered run must at least execute
 CORE_MIN_TESTS=300
 EDITOR_MIN_TESTS=150
-# jasperengine-htmlui-tests skips these on purpose (docs/html-ui/phase-6-acceptance.md §4.2), and
-# upstream's opt-in EffectFluidProfile.LiveCost (JASPER_EFFECT_FLUID_PROFILE=1)
-HTMLUI_MAX_SKIPPED=75
+# jasperengine-htmlui-tests skips 9 on purpose (CI runs 45037289790 OpenGL, 45017712750 Vulkan): the 8
+# VatEndToEndTest.* without tools/vat_e2e.sh's bundle and HtmlUIRenderPerf.ProfileTarget without
+# JASPER_HTMLUI_PROFILE=1; one more for headroom, so a run whose GPU tests skip ("no GPU") fails.
+HTMLUI_MAX_SKIPPED=10
 
 usage() {
     sed -n '2,80p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -829,6 +830,8 @@ android)
     # The NDK app/build.gradle pins, installed before Gradle when the SDK lacks it: the Android Gradle
     # plugin's own download of it has no retry (main's run 44404218432 failed on a Premature EOF)
     run bash -euo pipefail -c "
+        # the NDK and CMake the template pins are the image's (no download in a fresh container)
+        tools/ci/check_android_image.sh
         cd engine/workspaces/androidstudio
         ndk=\$(sed -n 's/^ *ndkVersion = \"\\(.*\\)\"\$/\\1/p' app/build.gradle)
         [[ -n \"\$ndk\" ]] || { echo 'no ndkVersion in app/build.gradle' >&2; exit 1; }

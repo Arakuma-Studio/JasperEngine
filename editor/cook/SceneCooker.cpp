@@ -5,7 +5,6 @@
 
 #include "Catalog.h"
 #include "Configs.h"
-#include "Factory.h"
 #include "Project.h"
 #include "Stream.h"
 #include "reflect/Reflect.h"
@@ -17,6 +16,9 @@
 #include "util/ProjectUtils.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "resources/sky/Daylight_Box_Back_png.h"
 #include "resources/sky/Daylight_Box_Bottom_png.h"
@@ -26,7 +28,10 @@
 #include "resources/sky/Daylight_Box_Top_png.h"
 
 #include <algorithm>
+#include <memory>
+#include <new>
 #include <unordered_map>
+#include <unordered_set>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -54,6 +59,50 @@ namespace {
         return false;
     }
 
+    // A copy of the component with each value the engine recomputes now (a field's derivedIf: a
+    // camera sized by the canvas) at its default, as a document leaves it out: what the editor's
+    // view made of it is no part of the game, and two builds of the project are the same bytes
+    // (S98 REQ-5). Null when nothing is derived.
+    struct DerivedReset {
+        const reflect::ComponentDesc* desc = nullptr;
+        unsigned char* bytes = nullptr;
+        ~DerivedReset() {
+            if (!bytes) return;
+            desc->body.ops->destroy(bytes);
+            ::operator delete(bytes, std::align_val_t(64));
+        }
+    };
+
+    const void* withDerivedDefaults(const reflect::ComponentDesc& desc, const void* component, DerivedReset& reset) {
+        bool derived = false;
+        for (const reflect::FieldDesc& field : desc.body.fields)
+            derived = derived || (field.derivedIf && field.derivedIf(component));
+        if (!derived || !desc.body.defaults) return component;
+        reset.desc = &desc;
+        reset.bytes = static_cast<unsigned char*>(::operator new(desc.body.ops->size, std::align_val_t(64)));
+        if (desc.body.ops->copyConstruct) {
+            desc.body.ops->copyConstruct(reset.bytes, component);
+        } else {
+            desc.body.ops->construct(reset.bytes);
+            desc.body.ops->copy(reset.bytes, component);
+        }
+        void* defaults = const_cast<void*>(desc.body.defaults());
+        for (const reflect::FieldDesc& field : desc.body.fields) {
+            if (field.derivedIf && field.derivedIf(component)) field.ops->copy(field.ref(reset.bytes), field.ref(defaults));
+        }
+        return reset.bytes;
+    }
+
+    // a texture's sampler settings alone: what a game builds the rest of (a font atlas, a sprite sheet's page)
+    Texture samplerOnly(const Texture& texture) {
+        Texture sampler;
+        sampler.setMinFilter(texture.getMinFilter());
+        sampler.setMagFilter(texture.getMagFilter());
+        sampler.setWrapU(texture.getWrapU());
+        sampler.setWrapV(texture.getWrapV());
+        return sampler;
+    }
+
     const rt::ComponentTable* tableOf(ComponentType type) {
         const reflect::ComponentDesc* desc = reflect::find(type);
         return desc ? rt::findComponentTable(fnv1a32(desc->key)) : nullptr;
@@ -70,12 +119,30 @@ namespace {
     // `skip` leaves one out, a Transform is written without its parent when `noParent`
     void writeComponents(rt::Writer& w, EntityRegistry* registry, Entity entity, bool skipPrefabLink, bool noParent) {
         std::vector<std::pair<const rt::ComponentTable*, const void*>> written;
+        std::vector<std::unique_ptr<DerivedReset>> resets;
+        // a mesh's vertex counts as its load gives them, set on the component for the write and put
+        // back after
+        MeshComponent* counted = nullptr;
+        std::vector<unsigned int> drawnCounts;
         for (ComponentType type : Catalog::findComponents(registry, entity)) {
             if (skipPrefabLink && type == ComponentType::PrefabComponent) continue;
             const rt::ComponentTable* table = tableOf(type);
             if (!table) continue;
             const void* component = table->find(registry, entity);
-            if (component) written.emplace_back(table, component);
+            if (!component) continue;
+            if (const reflect::ComponentDesc* desc = reflect::find(type)) {
+                resets.push_back(std::make_unique<DerivedReset>());
+                component = withDerivedDefaults(*desc, component, *resets.back());
+            }
+            if (type == ComponentType::MeshComponent) {
+                // set when a frame draws the mesh: a build writes what its load gives (as a save does)
+                counted = const_cast<MeshComponent*>(static_cast<const MeshComponent*>(component));
+                for (unsigned int s = 0; s < counted->numSubmeshes; s++) {
+                    drawnCounts.push_back(counted->submeshes[s].vertexCount);
+                    counted->submeshes[s].vertexCount = MeshSystem::loadedVertexCount(*counted, counted->submeshes[s]);
+                }
+            }
+            written.emplace_back(table, component);
         }
         w.varint(written.size());
         rt::WriteContext ctx;
@@ -89,12 +156,13 @@ namespace {
                        !registry->findComponent<SpriteComponent>(entity)->sheet.empty()) {
                 // a sheet sprite's page is its sheet's (S44 R48): the game resolves it, never the editor's cache path
                 MeshComponent copy = *static_cast<const MeshComponent*>(component);
-                Texture pageless;
-                pageless.setMinFilter(copy.submeshes[0].material.baseColorTexture.getMinFilter());
-                pageless.setMagFilter(copy.submeshes[0].material.baseColorTexture.getMagFilter());
-                pageless.setWrapU(copy.submeshes[0].material.baseColorTexture.getWrapU());
-                pageless.setWrapV(copy.submeshes[0].material.baseColorTexture.getWrapV());
-                copy.submeshes[0].material.baseColorTexture = pageless;
+                copy.submeshes[0].material.baseColorTexture = samplerOnly(copy.submeshes[0].material.baseColorTexture);
+                rt::writeComponent(w, *table, &copy, ctx);
+            } else if (std::string_view(table->cppName) == "UIComponent" && registry->findComponent<TextComponent>(entity)) {
+                // a Text's texture is its font atlas, which the game builds: only its sampler ships
+                // (Stream::encodeUIComponent saves the same)
+                UIComponent copy = *static_cast<const UIComponent*>(component);
+                copy.texture = samplerOnly(copy.texture);
                 rt::writeComponent(w, *table, &copy, ctx);
             } else if (std::string_view(table->cppName) == "MeshComponent" && registry->findComponent<SpriteComponent>(entity) &&
                        registry->findComponent<SpriteComponent>(entity)->inlineAtlas) {
@@ -122,6 +190,7 @@ namespace {
                 rt::writeComponent(w, *table, component, ctx);
             }
         }
+        for (size_t s = 0; counted && s < drawnCounts.size(); s++) counted->submeshes[s].vertexCount = drawnCounts[s];
     }
 
 }
@@ -196,6 +265,30 @@ std::vector<uint8_t> editor::cook::SceneCooker::cookScene(Scene* scene, uint32_t
         rt::write(w, resources.sounds);
         rt::write(w, resources.models);
         rt::write(w, resources.clips);
+        // format minor 7
+        rt::write(w, resources.vats);
+        rt::write(w, resources.masks);
+        rt::write(w, resources.controllers);
+        rt::write(w, resources.bitmapFonts);
+        w.endLength(at);
+    }
+
+    // format 1.6: the hierarchy, each child after its parent in Transform order (a Transform is
+    // cooked without its parent; a 1.5 player reads no hierarchy and ignores this record)
+    {
+        std::unordered_set<Entity> cooked(ordered.begin(), ordered.end());
+        if (systemCamera) cooked.insert(camera);
+        std::vector<std::pair<Entity, Entity>> links;
+        for (Entity entity : ordered) {
+            const Transform* transform = scene->findComponent<Transform>(entity);
+            if (transform && transform->parent != NULL_ENTITY && cooked.count(transform->parent)) links.emplace_back(entity, transform->parent);
+        }
+        const size_t at = w.beginLength();
+        w.varint(links.size());
+        for (const auto& [child, parent] : links) {
+            w.entity(child);
+            w.entity(parent);
+        }
         w.endLength(at);
     }
 
@@ -312,18 +405,35 @@ bool editor::cook::SceneCooker::cookProject(Project* project, std::vector<editor
                                     std::string& error) {
     bool defaultSky = false;
     for (const SceneProject& sceneProject : project->getScenes()) {
+        if (!sceneProject.inBuild) continue;   // opened without being listed (S98 REQ-28)
         if (!sceneProject.scene) {
             error = "scene " + sceneProject.name + " is not loaded for the cook";
             return false;
         }
         defaultSky = defaultSky || usesDefaultSky(sceneProject.scene);
-        files.push_back({"scenes/" + std::to_string(sceneProject.id) + ".jscn",
-                         cookScene(sceneProject.scene, sceneProject.id, sceneProject.entities, project->getSceneCamera(&sceneProject),
-                                   Project::collectResourcesInRegistry(sceneProject.scene))});
+        // as authored (S98 REQ-5): the scene decoded from what its file would hold now, so what the
+        // editor's drawing or loading made of it is no part of the build
+        std::vector<uint8_t> bytes;
+        const bool cooked = project->withAuthoredScene(const_cast<SceneProject*>(&sceneProject), [&](SceneProject& authored) {
+            bytes = cookScene(authored.scene, sceneProject.id, authored.entities, project->getSceneCamera(&authored),
+                              Project::collectResourcesInRegistry(authored.scene));
+        }, error);
+        if (!cooked) return false;
+        files.push_back({"scenes/" + std::to_string(sceneProject.id) + ".jscn", std::move(bytes)});
     }
 
+    defaultSky = cookPrefabs(project, files, prefabs) || defaultSky;
+    if (defaultSky) {
+        for (CookedFileBytes& file : defaultSkyFiles()) files.push_back(std::move(file));
+    }
+    return true;
+}
+
+bool editor::cook::SceneCooker::cookPrefabs(Project* project, std::vector<editor::cook::CookedFileBytes>& files,
+                                            std::vector<editor::cook::CookedPrefabInfo>& prefabs) {
     // the build's prefabs, by PrefabManager id (their position in collectAllPrefabs + 1), from
     // their baked instances
+    bool defaultSky = false;
     project->loadBuildPrefabs();
     const auto baked = project->bakePrefabsForExport();
     const std::vector<PrefabSceneInfo> all = project->collectAllPrefabs();
@@ -339,8 +449,5 @@ bool editor::cook::SceneCooker::cookProject(Project* project, std::vector<editor
         prefabs.push_back(std::move(info));
         defaultSky = defaultSky || (bakedIt != baked.end() && bakedIt->second && usesDefaultSky(bakedIt->second->scene.get()));
     }
-    if (defaultSky) {
-        for (CookedFileBytes& file : defaultSkyFiles()) files.push_back(std::move(file));
-    }
-    return true;
+    return defaultSky;
 }

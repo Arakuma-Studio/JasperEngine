@@ -72,3 +72,21 @@ void reload::reloadModels(Context& ctx, const std::vector<fs::path>& files) {
         });
     }
 }
+
+// .mesh files (S98 F1, model/MeshAsset.h) another program changed: every Mesh Renderer of the open
+// scenes and prefab stages showing one reads it again on the next frame (the editor's own writes
+// do it themselves: MeshAssetFiles::write). Beside the models: a file of its own would add an
+// editor unit that reads MeshComponent.h (tools/check_fanout.py).
+void reload::reloadMeshAssets(Context& ctx, const std::vector<fs::path>& files) {
+    for (const fs::path& path : files) {
+        const std::string assetPath = ctx.project.normalizeToAssetsRelative(path).generic_string();
+        for (SceneProject* sceneProject : ctx.project.getScenesAndPrefabStages()) {
+            if (!sceneProject->scene) continue;
+            if (std::shared_ptr<MeshSystem> meshSystem = sceneProject->scene->findSystem<MeshSystem>()) {
+                meshSystem->invalidateMeshAsset(assetPath);
+                sceneProject->needUpdateRender = true;
+            }
+        }
+        ctx.service.recordDone("mesh", path, 0.0);
+    }
+}

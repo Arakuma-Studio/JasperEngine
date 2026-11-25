@@ -23,6 +23,7 @@
 #include "window/EditorFilePicker.h"
 #include "thread/ResourceProgress.h"
 #include "Project.h"
+#include "McpModelImport.h"
 #include "util/ProjectFileWrites.h"
 #include "profiler/Profile.h"
 #include "profiler/FrameTimes.h"
@@ -1748,6 +1749,8 @@ std::string McpServer::currentProjectPath() const {
 void McpServer::tick() {
     if (!started) return;
     if (ctx) McpAutoSync::get().prepare(*ctx);
+    // the FBX import batch's job follows the queue (editor_status, get_job)
+    if (ctx) syncModelImportJob(*ctx);
     if (instanceRecord.active()) instanceRecord.projectChanged(currentProjectPath());
     if (deferred.empty()) return;
 

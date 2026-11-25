@@ -214,6 +214,59 @@ std::vector<TextReference> TextReferences::scanLua(const std::string& text) {
     return found;
 }
 
+std::vector<std::string> TextReferences::scanStringLiterals(const std::string& text, bool lua) {
+    std::vector<std::string> found;
+    // Lua's long brackets: [[, [=[, [==[ ... (also after "--", a block comment)
+    auto longBracket = [&](size_t at, size_t& level) {
+        if (at >= text.size() || text[at] != '[') return false;
+        size_t i = at + 1;
+        while (i < text.size() && text[i] == '=') i++;
+        if (i >= text.size() || text[i] != '[') return false;
+        level = i - at - 1;
+        return true;
+    };
+    auto longClose = [&](size_t from, size_t level) { return text.find("]" + std::string(level, '=') + "]", from); };
+    for (size_t i = 0; i < text.size(); i++) {
+        const char c = text[i];
+        size_t level = 0;
+        if (lua && c == '-' && text.compare(i, 2, "--") == 0) {
+            if (longBracket(i + 2, level)) {
+                const size_t close = longClose(i + 4 + level, level);
+                i = close == std::string::npos ? text.size() : close + level + 1;
+            } else {
+                const size_t newline = text.find('\n', i);
+                i = newline == std::string::npos ? text.size() : newline;
+            }
+            continue;
+        }
+        if (!lua && c == '/' && text.compare(i, 2, "//") == 0) {
+            const size_t newline = text.find('\n', i);
+            i = newline == std::string::npos ? text.size() : newline;
+            continue;
+        }
+        if (!lua && c == '/' && text.compare(i, 2, "/*") == 0) {
+            const size_t close = text.find("*/", i + 2);
+            i = close == std::string::npos ? text.size() : close + 1;
+            continue;
+        }
+        if (lua && longBracket(i, level)) {
+            const size_t begin = i + 2 + level;
+            const size_t close = longClose(begin, level);
+            if (close == std::string::npos) break;
+            found.push_back(text.substr(begin, close - begin));
+            i = close + level + 1;
+            continue;
+        }
+        if (c != '"' && c != '\'') continue;
+        size_t end = i + 1;
+        while (end < text.size() && text[end] != c && text[end] != '\n') end += text[end] == '\\' ? 2 : 1;
+        if (end >= text.size()) break;
+        if (text[end] == c) found.push_back(text.substr(i + 1, end - i - 1));
+        i = end;
+    }
+    return found;
+}
+
 std::vector<TextReference> TextReferences::scanShader(const std::string& text) {
     std::vector<TextReference> found;
     uint32_t line = 1;

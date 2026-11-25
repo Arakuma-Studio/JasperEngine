@@ -30,6 +30,7 @@
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "util/WorldTransforms.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
@@ -51,7 +52,6 @@
 #include "lattice/LatticeTypes.h"
 #include "object/CameraFollow.h"
 #include "object/CameraShaker.h"
-#include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/MeshSystem.h"
@@ -2358,6 +2358,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showRootMotion"] = ds.showRootMotion;
     if (ds.showFootTrails)
         sceneNode["showFootTrails"] = ds.showFootTrails;
+    if (ds.showTorsoDirection)
+        sceneNode["showTorsoDirection"] = ds.showTorsoDirection;
     if (ds.drawMode != ViewDrawMode::SHADED)
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
@@ -2411,6 +2413,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     ds.showIK = node["showIK"] ? YamlNumbers::as<bool>(node["showIK"]) : false;
     ds.showRootMotion = node["showRootMotion"] ? YamlNumbers::as<bool>(node["showRootMotion"]) : false;
     ds.showFootTrails = node["showFootTrails"] ? YamlNumbers::as<bool>(node["showFootTrails"]) : false;
+    ds.showTorsoDirection = node["showTorsoDirection"] ? YamlNumbers::as<bool>(node["showTorsoDirection"]) : false;
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
@@ -3051,6 +3054,11 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             }
             if (budgetNode.size()) exportNode["downloadBudgetMB"] = budgetNode;
         }
+        // S98 REQ-8: written only when set, so an old project's file stays as it was
+        const AssetStrippingSettings& stripping = project->getAssetStripping();
+        if (stripping.mode == AssetStrippingMode::ReferencedOnly) exportNode["assetStripping"] = "referencedOnly";
+        if (!stripping.alwaysInclude.empty()) exportNode["alwaysInclude"] = stripping.alwaysInclude;
+        if (!stripping.exclude.empty()) exportNode["exclude"] = stripping.exclude;
         // Player > Target Platforms: only when not all six, in BuildPlatform order
         if (project->getTargetPlatforms() != Project::allTargetPlatforms) {
             YAML::Node targetsNode(YAML::NodeType::Sequence);
@@ -3259,6 +3267,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             keystoreNode["alias"] = android.keystoreAlias;
             androidNode["keystore"] = keystoreNode;
         }
+        if (!android.debugPackageSuffix.empty()) androidNode["debugPackageSuffix"] = android.debugPackageSuffix;
         encodeStringList(androidNode, "gradleDependencies", android.gradleDependencies);
         encodeStringList(androidNode, "gradleRepositories", android.gradleRepositories);
         encodeStringList(androidNode, "gradleProperties", android.gradleProperties);
@@ -3354,6 +3363,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (audio.maxRealVoices != defaults.maxRealVoices) audioNode["maxRealVoices"] = audio.maxRealVoices;
         if (audio.maxVoices != defaults.maxVoices) audioNode["maxVoices"] = audio.maxVoices;
         if (audio.seed != defaults.seed) audioNode["seed"] = audio.seed;
+        if (audio.unusedClipCacheMb != defaults.unusedClipCacheMb) audioNode["unusedClipCacheMb"] = audio.unusedClipCacheMb;
         if (audio.captureMaxSeconds != defaults.captureMaxSeconds) audioNode["captureMaxSeconds"] = audio.captureMaxSeconds;
         if (audio.captureKeep != defaults.captureKeep) audioNode["captureKeep"] = audio.captureKeep;
         if (audio.captureStems != defaults.captureStems) audioNode["captureStems"] = audio.captureStems;
@@ -3448,7 +3458,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // one entry per file: two scenes on one file would each load and overwrite the other
         std::unordered_map<std::string, const SceneProject*> listedFiles;
         for (const auto& sceneProject : project->getScenes()) {
-            if (sceneProject.filepath.empty()) {
+            // untitled, or opened without joining the build (S98 REQ-28: the workspace has it)
+            if (sceneProject.filepath.empty() || !sceneProject.inBuild) {
                 continue;
             }
             const auto [listed, added] = listedFiles.emplace(project->sceneFileKey(sceneProject.filepath), &sceneProject);
@@ -4027,7 +4038,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         // Player > Target Platforms; missing: all six (every project before it). Unknown names are
         // dropped, and a list left empty targets all six, each with a warning
         uint8_t targets = Project::allTargetPlatforms;
-        const YAML::Node targetsNode = node["export"] && node["export"].IsMap() ? node["export"]["targetPlatforms"] : YAML::Node();
+        // without an export map the key is missing: YAML::Node() is a defined null, read as "not a list"
+        const YAML::Node targetsNode = node["export"] && node["export"].IsMap() ? node["export"]["targetPlatforms"]
+                                                                                : YAML::Node(YAML::NodeType::Undefined);
         if (targetsNode && targetsNode.IsSequence()) {
             targets = 0;
             for (const YAML::Node& entry : targetsNode) {
@@ -4081,6 +4094,20 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             const char* family = modelFamilyName((ModelFamily)f);
             const double megabytes = budgetNode && budgetNode.IsMap() ? decodeFiniteDouble(budgetNode[family], 0.0) : 0.0;
             project->setDownloadBudgetMB((ModelFamily)f, std::max(0.0, megabytes));
+        }
+        {
+            // S98 REQ-50: absent keys are Ship All Assets and empty lists
+            AssetStrippingSettings stripping;
+            const YAML::Node& mode = exportNode["assetStripping"];
+            if (mode && mode.IsScalar() && mode.as<std::string>() == "referencedOnly") stripping.mode = AssetStrippingMode::ReferencedOnly;
+            for (const char* key : {"alwaysInclude", "exclude"}) {
+                const YAML::Node& list = exportNode[key];
+                if (!list || !list.IsSequence()) continue;
+                std::vector<std::string>& globs = std::string(key) == "exclude" ? stripping.exclude : stripping.alwaysInclude;
+                for (const YAML::Node& item : list)
+                    if (item.IsScalar() && !item.as<std::string>().empty()) globs.push_back(item.as<std::string>());
+            }
+            project->setAssetStripping(stripping);
         }
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
@@ -4288,6 +4315,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (androidNode["keystore"]["path"]) android.keystorePath = FileUtils::pathFromUtf8(portablePath(androidNode["keystore"]["path"].as<std::string>()));
             if (androidNode["keystore"]["alias"]) android.keystoreAlias = androidNode["keystore"]["alias"].as<std::string>();
         }
+        if (androidNode["debugPackageSuffix"]) android.debugPackageSuffix = androidNode["debugPackageSuffix"].as<std::string>();
         android.gradleDependencies = decodeStringList(androidNode["gradleDependencies"]);
         android.gradleRepositories = decodeStringList(androidNode["gradleRepositories"]);
         android.gradleProperties = decodeStringList(androidNode["gradleProperties"]);
@@ -4379,6 +4407,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (audioNode["maxRealVoices"]) audio.maxRealVoices = YamlNumbers::as<int>(audioNode["maxRealVoices"]);
             if (audioNode["maxVoices"]) audio.maxVoices = YamlNumbers::as<int>(audioNode["maxVoices"]);
             if (audioNode["seed"]) audio.seed = YamlNumbers::as<int>(audioNode["seed"]);
+            if (audioNode["unusedClipCacheMb"]) audio.unusedClipCacheMb = YamlNumbers::as<int>(audioNode["unusedClipCacheMb"]);
             if (audioNode["captureMaxSeconds"]) audio.captureMaxSeconds = YamlNumbers::as<int>(audioNode["captureMaxSeconds"]);
             if (audioNode["captureKeep"]) audio.captureKeep = YamlNumbers::as<int>(audioNode["captureKeep"]);
             if (audioNode["captureStems"]) audio.captureStems = audioNode["captureStems"].as<bool>();
@@ -4548,6 +4577,27 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
             if (loadedScene.sceneType == SceneType::SCENE_3D) {
                 static_cast<SceneRender3D*>(loadedScene.sceneRender)->setWalkSpeedOffset(walkSpeedOffset);
+            }
+        }
+    }
+
+    // The tabs of scene files project.yaml does not list: opened out of the build (S98 REQ-28),
+    // as they were when the project closed
+    if (hasTabs) {
+        for (const TabEntry& tab : workspace.getTabs()) {
+            if (tab.type != TabType::SCENE || tab.filepath.empty() || fs::path(tab.filepath).extension() != ".scene" ||
+                listedFiles.count(project->sceneFileKey(tab.filepath))) {
+                continue;
+            }
+            const fs::path scenePath = project->getProjectPath() / tab.filepath;
+            std::error_code ec;
+            if (!fs::is_regular_file(scenePath, ec) || project->findSceneByPath(scenePath) != NULL_PROJECT_SCENE) {
+                continue;
+            }
+            if (project->loadScene(scenePath, true, true, true)) {
+                if (SceneProject* opened = project->getScene(project->findSceneByPath(scenePath))) {
+                    opened->inBuild = false;
+                }
             }
         }
     }
@@ -4877,7 +4927,6 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
             } else {
                 info.prefabPath = pathNode.as<std::string>();
             }
-            info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
         }
     }
@@ -4992,6 +5041,8 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
 
     CameraTextureLink::resolve(sceneProject->scene);
     reportUnknownSortingLayers(sceneProject->scene);
+    // a broken Audio Source slot loads as an ordinary GameObject, never failing the load (S97 REQ-29)
+    AudioSourceSlots::repair(sceneProject->scene);
 }
 
 void editor::Stream::reportUnknownSortingLayers(Scene* scene){
@@ -5173,6 +5224,19 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         sceneNode["physics2DSubSteps"] = scene->getPhysics2DSubSteps();
+    // S96: the world settings away from their defaults, a flat key each (old scenes keep none)
+    {
+        const SceneSettings defaults;
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            const double value = getPhysicsWorldSetting(field, scene->getPhysics2DWorldSettings(), scene->getPhysics3DWorldSettings());
+            if (value == getPhysicsWorldSetting(field, defaults.physics2DWorld, defaults.physics3DWorld)) continue;
+            switch (field.type) {
+                case PhysicsWorldSettingField::Type::Float: sceneNode[field.key] = (float)value; break;
+                case PhysicsWorldSettingField::Type::Int: sceneNode[field.key] = (int)value; break;
+                case PhysicsWorldSettingField::Type::Bool: sceneNode[field.key] = value != 0.0; break;
+            }
+        }
+    }
     sceneNode["fixedResolutionEnabled"] = scene->isFixedResolutionEnabled();
     sceneNode["fixedResolutionWidth"] = scene->getFixedResolutionWidth();
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
@@ -5379,6 +5443,20 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
     scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
     scene->setPhysics2DSubSteps(node["physics2DSubSteps"] ? YamlNumbers::as<int>(node["physics2DSubSteps"]) : SceneSettings().physics2DSubSteps);
+    // S96: the world settings; an absent key is its default (StreamSchema lists the keys)
+    {
+        SceneSettings settings;
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            const YAML::Node value = node[field.key];
+            if (!value) continue;
+            const double number = field.type == PhysicsWorldSettingField::Type::Bool ? (YamlNumbers::as<bool>(value) ? 1.0 : 0.0)
+                                : field.type == PhysicsWorldSettingField::Type::Int ? (double)YamlNumbers::as<int>(value)
+                                : (double)YamlNumbers::as<float>(value);
+            setPhysicsWorldSetting(field, settings.physics2DWorld, settings.physics3DWorld, number);
+        }
+        scene->setPhysics2DWorldSettings(settings.physics2DWorld);
+        scene->setPhysics3DWorldSettings(settings.physics3DWorld);
+    }
 
     // absent restores the defaults, so decoding into a reused scene (play restore) is exact
     scene->setCanvasScaler(decodeCanvasScaler(node["canvasScaler"]));

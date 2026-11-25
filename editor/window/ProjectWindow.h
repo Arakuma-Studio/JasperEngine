@@ -66,6 +66,7 @@ namespace jasperengine::editor {
         NOISE_GRAPH,        // .noisegraph (the Noise Graph window)
         TILESET,            // .tileset (the Tileset Editor; a thumbnail of its tiles)
         TITLE_ART,          // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
+        MESH_ASSET,         // .mesh (S98 F1; get_asset_info, the Mesh Renderer's Mesh field): an icon
         IES_PROFILE         // .ies (S99: the Inspector's polar plot and metadata)
     };
 
@@ -190,6 +191,9 @@ namespace jasperengine::editor {
         std::vector<uint8_t> paletteIconPixels;
         Texture tilesetIcon;
         std::vector<uint8_t> tilesetIconPixels;
+        // a wireframe for .mesh files (S98 F1)
+        Texture meshAssetIcon;
+        std::vector<uint8_t> meshAssetIconPixels;
         std::vector<uint8_t> animationClipIconPixels;
         // and a crowd of three figures for .vat files (vertex animation spec 5.3)
         Texture vertexAnimationIcon;
@@ -456,6 +460,8 @@ namespace jasperengine::editor {
         std::vector<std::pair<Guid, std::string>> selectedAssets() const;
         void setLabelOnSelection(const std::string& label, bool on);
         void renderLabelsMenu();
+        // Exclude From Build / Always Include in Build for the selection (or the clicked item)
+        void renderBuildInclusionMenu(const std::filesystem::path& clicked);
         void renderLabelItems();
         float renderLabelStrip(ImVec2 barMin, float barHeight, float right);
         void drawItemLabels(const FileEntry& entry, ImVec2 min, ImVec2 max, bool listView);

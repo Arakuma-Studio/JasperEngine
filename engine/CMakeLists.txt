@@ -387,6 +387,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         if(EXISTS "${PROJECT_ROOT}/lua")
             set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file \"${EM_PRELOAD_ROOT}/lua@/\"")
         endif()
+        # game.json and the cooked scenes and prefabs (S98 D1): the content root is the assets' folder
+        if(EXISTS "${PROJECT_ROOT}/content")
+            set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file \"${EM_PRELOAD_ROOT}/content@/\"")
+        endif()
 
         list(APPEND PLATFORM_SOURCE
             ${PLATFORM_ROOT}/JasperEngineWeb.cpp
@@ -526,6 +530,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         if(EXISTS "${PROJECT_ROOT}/lua")
             set(LUA_DEST_DIR ${CMAKE_BINARY_DIR}/$<CONFIG>/lua)
         endif()
+        set(CONTENT_DEST_DIR ${CMAKE_BINARY_DIR}/$<CONFIG>)
 
         set(PLATFORM_EXEC_FLAGS WIN32)
 
@@ -610,6 +615,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         if(EXISTS "${PROJECT_ROOT}/lua")
             set(LUA_DEST_DIR ${CMAKE_BINARY_DIR}/lua)
         endif()
+        set(CONTENT_DEST_DIR ${CMAKE_BINARY_DIR})
 
         add_definitions("-DJASPERENGINE_LINUX")
 
@@ -737,6 +743,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             if(EXISTS "${PROJECT_ROOT}/lua")
                 set(LUA_DEST_DIR ${CMAKE_BINARY_DIR}/lua)
             endif()
+            set(CONTENT_DEST_DIR ${CMAKE_BINARY_DIR})
 
             # Gamepads come from the same GameController code iOS and the editor use
             include_directories(${JASPERENGINE_ROOT}/platform/apple)
@@ -1400,6 +1407,7 @@ set(JASPERENGINE_SRCS
     core/player/ContentManifest.cpp
     core/player/Launch.cpp
     core/player/LaunchOptions.cpp
+    core/player/GameRunner.cpp
     core/player/PlayerConfig.cpp
     core/player/PlayerModules.cpp
     core/player/RunControl.cpp
@@ -1419,6 +1427,7 @@ set(JASPERENGINE_SRCS
     core/audio/AudioMixerIO.cpp
     core/audio/AudioTap.cpp
     core/audio/SoloudEngineFile.cpp
+    core/audio/SourceEffects.cpp
     core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
     core/input/InputManagerFormat.cpp
@@ -1643,6 +1652,7 @@ set(JASPERENGINE_SRCS
     core/io/JPak.cpp
     core/io/FileUtils.cpp
     core/io/ResourcePack.cpp
+    core/io/StrippedAssets.cpp
     core/io/watch/ExpectedWriteLedger.cpp
     core/io/watch/FileChangeCoalescer.cpp
     core/io/watch/FileIdentity.cpp
@@ -1720,6 +1730,8 @@ set(JASPERENGINE_SRCS
     core/object/TerrainOpsJson.cpp
     core/object/Tilemap.cpp
     core/object/sound/AudioSource.cpp
+    core/object/sound/AudioSourceSlots.cpp
+    core/object/sound/AudioSourceEffect.cpp
     core/object/environment/Fog.cpp
     core/object/environment/LocalVolumetricFog.cpp
     core/object/environment/ReflectionProbe.cpp
@@ -1773,15 +1785,19 @@ set(JASPERENGINE_SRCS
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
     core/registry/SortingLayers.cpp
+    core/physics/AttachedColliders.cpp
     core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
     core/physics/JoltTerrainRefresh.cpp
     core/physics/PhysicsDebugLines.cpp
     core/physics/PhysicsMaterial.cpp
+    core/physics/PhysicsQueries2D.cpp
+    core/physics/PhysicsQueries3D.cpp
     core/physics/RagdollBuilder.cpp
     core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
+    core/physics/WorldSettings.cpp
     core/render/AtmosphereMath.cpp
     core/render/FrameReadback.cpp
     core/render/AtmosphereNoise.cpp
@@ -1846,6 +1862,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/TitleArtClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
+    core/script/binding/PhysicsQueriesLua.cpp
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/TerrainClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
@@ -1910,6 +1927,13 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemJoints3D.cpp
     core/subsystem/PhysicsSystemRagdoll.cpp
     core/subsystem/PhysicsSystemDebugDraw.cpp
+    # S96 vehicles: their 3D parts are under JASPERENGINE_PHYSICS_3D inside the files
+    core/subsystem/VehicleSystem.cpp
+    core/physics/WheelColliderController.cpp
+    core/object/physics/WheelCollider.cpp
+    core/object/physics/VehicleDrivetrain.cpp
+    core/script/binding/VehicleClassesLua.cpp
+    core/subsystem/PhysicsSystemWorldSettings.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
     core/subsystem/RenderSystemFoliage.cpp
@@ -1936,6 +1960,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
     core/model/CookedModels.cpp
+    core/model/MeshAsset.cpp
     core/model/ModelCpuData.cpp
     core/texture/BasisTranscode.cpp
     core/texture/CookedTextures.cpp
@@ -2624,7 +2649,9 @@ endif()
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     jasperengine_glob_escape(PROJECT_ROOT_GLOB "${PROJECT_ROOT}")
-    file(GLOB_RECURSE PROJECT_SOURCE ${PROJECT_ROOT_GLOB}/*.cpp)
+    # re-globbed at each build: a C++ script added since the tree was configured (an incremental
+    # Gradle .cxx or CMake tree) is compiled without a reconfigure
+    file(GLOB_RECURSE PROJECT_SOURCE CONFIGURE_DEPENDS ${PROJECT_ROOT_GLOB}/*.cpp)
     # the native plugins' platform folders belong to Gradle / Xcode (and the macOS block the
     # export adds); plugins/native/cpp ships as a script root under scripts/
     foreach(native_source IN LISTS PROJECT_SOURCE)
@@ -2728,8 +2755,24 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # library too, ahead of core/, letting a project header shadow an engine one.
     # @JASPERENGINE_SCRIPT_DIRS@
 
-    if(DEFINED ASSETS_DEST_DIR OR DEFINED LUA_DEST_DIR)
+    set(JE_PROJECT_CONTENT FALSE)
+    if(EXISTS "${PROJECT_ROOT}/content")
+        set(JE_PROJECT_CONTENT TRUE)
+    endif()
+    if(DEFINED ASSETS_DEST_DIR OR DEFINED LUA_DEST_DIR OR (JE_PROJECT_CONTENT AND DEFINED CONTENT_DEST_DIR))
         install(TARGETS ${APP_NAME} RUNTIME DESTINATION bin)
+    endif()
+
+    # game.json and the cooked scenes and prefabs every game loads (S98 D1), at its content root:
+    # the folder of assets/ (an Apple bundle's resources)
+    if(JE_PROJECT_CONTENT AND NOT DEFINED BUNDLE_RESOURCES_DIR AND DEFINED CONTENT_DEST_DIR)
+        add_custom_command(
+            TARGET ${APP_NAME} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E remove_directory ${CONTENT_DEST_DIR}/scenes
+            COMMAND "${CMAKE_COMMAND}" -E remove_directory ${CONTENT_DEST_DIR}/prefabs
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PROJECT_ROOT}/content ${CONTENT_DEST_DIR}
+        )
+        install(DIRECTORY ${PROJECT_ROOT}/content/ DESTINATION bin)
     endif()
 
     if(DEFINED ASSETS_DEST_DIR)
@@ -2756,7 +2799,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         install(DIRECTORY ${LUA_DEST_DIR} DESTINATION bin)
     endif()
 
-    # Apple apps read the assets and scripts from inside their bundle
+    # Apple apps read the assets, the scripts and the cooked content from inside their bundle
     if(DEFINED BUNDLE_RESOURCES_DIR)
         foreach(PROJECT_CONTENT assets lua)
             if(EXISTS "${PROJECT_ROOT}/${PROJECT_CONTENT}")
@@ -2767,6 +2810,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 )
             endif()
         endforeach()
+        if(JE_PROJECT_CONTENT)
+            add_custom_command(
+                TARGET ${APP_NAME} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E remove_directory ${BUNDLE_RESOURCES_DIR}/scenes
+                COMMAND "${CMAKE_COMMAND}" -E remove_directory ${BUNDLE_RESOURCES_DIR}/prefabs
+                COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PROJECT_ROOT}/content ${BUNDLE_RESOURCES_DIR}
+            )
+        endif()
     endif()
 
     set_target_properties(
@@ -2787,7 +2838,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # PLATFORM_PROPERTIES, whose LINK_DEPENDS of the crash pre-js would replace them)
     if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         set(EM_PRELOAD_DEPENDS)
-        foreach(preloadDir assets lua)
+        foreach(preloadDir assets lua content)
             if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
                 jasperengine_glob_escape(preloadGlob "${PROJECT_ROOT}/${preloadDir}")
                 file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${preloadGlob}/*")

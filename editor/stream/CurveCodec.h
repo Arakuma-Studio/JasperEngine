@@ -36,13 +36,6 @@ namespace jasperengine::editor::curvecodec {
     mcp::Json minMaxGradientToJson(const particles::MinMaxGradient& value);
     bool minMaxGradientFromJson(const mcp::Json& json, particles::MinMaxGradient& value, std::string& reason);
 
-    // The exported code's expression of a curve:
-    // Curve({CurveKey{0.0f, 0.0f, 1.0f, 1.0f, 0}, ...}) with the wraps set by a lambda when not clamp
-    std::string curveCppLiteral(const Curve& curve);
-    // ... of a gradient: Gradient::twoColors / constant when it is one, else a lambda filling
-    // its keys (sRGB-encoded colours), mode and linear flag
-    std::string gradientCppLiteral(const Gradient& gradient);
-
     // The JSON Schema of a curve (MCP tool and property schemas)
     mcp::Json curveSchema();
     mcp::Json gradientSchema();

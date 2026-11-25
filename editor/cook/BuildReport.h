@@ -31,6 +31,14 @@ namespace jasperengine::editor {
         uint64_t sourceBytes = 0;
     };
 
+    // An asset the build left out (S98 REQ-10): project-relative, its bytes on disk, and why
+    // ("unreferenced" under Asset Stripping: Referenced Only, or "excluded: <glob>")
+    struct BuildReportLeftOut {
+        std::string path;
+        uint64_t bytes = 0;
+        std::string reason;
+    };
+
     class BuildReport {
     public:
         static constexpr const char* kFileName = "build-report.json";
@@ -43,6 +51,11 @@ namespace jasperengine::editor {
         std::vector<BuildReportFile> largest;
         // a web build's download estimate (S99 R10: webDownloadGzipBytes); 0 for other builds
         uint64_t downloadBytesGzip = 0;
+        std::vector<BuildReportLeftOut> leftOut;    // in path order
+
+        // the stripped ("unreferenced") and excluded totals
+        size_t leftOutCount() const { return leftOut.size(); }
+        uint64_t leftOutBytes() const;
 
         // the categories in display order
         static const std::vector<std::string>& categoryNames();

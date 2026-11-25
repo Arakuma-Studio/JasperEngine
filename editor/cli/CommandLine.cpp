@@ -6,6 +6,7 @@
 #include "animation/ClipOptimize.h"
 #include "animation/ClipStatistics.h"
 #include "animation/ModelSubClips.h"
+#include "pose/HumanoidMap.h"
 #include "util/SHA1.h"
 #include "media/VideoFormats.h"
 #include "htmlui/compat/CompatApi.h"
@@ -25,7 +26,6 @@
 #include "Platform.h"
 #include "Project.h"
 #include "Stream.h"
-#include "Factory.h"
 #include "Catalog.h"
 #include "command/CommandHistory.h"
 #include "command/type/AddComponentCmd.h"
@@ -157,6 +157,9 @@ struct ExportCliOptions {
     fs::path luaDir;
     std::string startScene;
     std::set<ShaderBackend> backends;
+    // --platform: the backends of that platform's Source Code preset, unless --backend gives some
+    bool hasPlatform = false;
+    BuildPlatform platform = BuildPlatform::Linux;
     std::set<ShaderKey> shaderKeys;
     std::vector<std::string> shaderSpecs;   // as given: expanded again once the engine (and project) is up
     bool help = false;
@@ -179,7 +182,11 @@ struct ShaderCliOptions {
 };
 
 struct EngineRuntimeGuard {
+    Project& project;
     ~EngineRuntimeGuard() {
+        // the project's scenes and their renders go while the engine runs: ~Project, which
+        // comes after this guard, leaves them to the process exit
+        project.releaseScenes();
         ShaderPool::setShaderBuilder(nullptr);
         ShaderBuilder::requestShutdown();
         Engine::systemShutdown();
@@ -358,6 +365,8 @@ static void printUsage(const std::string& commandName) {
         << "      --assets <path>         Asset directory, relative to the project or absolute.\n"
         << "      --lua <path>            Lua directory, relative to the project or absolute.\n"
         << "      --start-scene <id|name> Start scene override.\n"
+        << "      --platform <id>         windows, linux, macos, android, ios or web: the backends that platform\n"
+        << "                              builds with (android, web: opengles only).\n"
         << "      --backend <list>        opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all. Can repeat.\n"
         << "      --shader <spec>         Shader type and optional properties, e.g. mesh:Uv1,Nor. Can repeat.\n"
         << "                              UI effects: uieffect/<name>[:Flt] (Flt: the filter form), uieffect/all.\n"
@@ -367,7 +376,7 @@ static void printUsage(const std::string& commandName) {
         << "  -h, --help                  Show this help.\n\n"
         << "--project and --out are absolute or relative to the current directory; --assets and --lua\n"
         << "are relative to the project (as in project.yaml).\n"
-        << "If no --backend is provided, all supported backends are used.\n"
+        << "--backend wins over --platform. With neither, all supported backends are used.\n"
         << "If no --shader is provided, the shaders the scenes and prefabs need are exported, with the\n"
         << "shaders added to or removed from the build in the Build Settings window.\n"
         << "For standalone shader generation, use `" << commandName << " shaders`.\n";
@@ -456,6 +465,13 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
         } else if (arg == "--start-scene") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             options.startScene = value;
+        } else if (arg == "--platform") {
+            if (!requireValue(argc, argv, i, value, error)) return false;
+            if (!parseBuildPlatform(value, options.platform)) {
+                error = "Unknown platform: " + value + " (windows, linux, macos, android, ios, web)";
+                return false;
+            }
+            options.hasPlatform = true;
         } else if (arg == "--backend") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             if (!parseBackendList(value, options.backends, error)) return false;
@@ -489,6 +505,9 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
     if (options.targetDir.empty() && !options.listScenes) {
         error = "Missing required --out path.";
         return false;
+    }
+    if (options.backends.empty() && options.hasPlatform) {
+        options.backends = sourceExportBackends(options.platform);
     }
     if (options.backends.empty()) {
         addAllSupportedBackends(options.backends);
@@ -692,7 +711,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(true);
 
@@ -853,7 +872,7 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(true);
 
@@ -1062,7 +1081,7 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 //   addObject {entity (the parent, may be empty), name} (a plain child GameObject with a Transform) |
 //   setRef {entity, component, property, target (a dump path or empty)} (an override on an
 //       instance's GameObject) | addLocalComponent / removeLocalComponent {entity, component} (the
-//       GameObject only, for record*Component) | bake {out} (each prefab's generated source) |
+//       GameObject only, for record*Component) |
 //   replace {entity, prefab, match: name|hierarchy|none, keepOverrides, renameRoot} (ReplacePrefabCmd) |
 //   unpackMissing {entity} (UnpackMissingPrefabCmd) | preview {entity, prefab} (a thumbnail's instance, listed) |
 //   move {entity, target, insertion: before|after|into} (MoveEntityOrderCmd, a Hierarchy drag) |
@@ -1226,16 +1245,6 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             for (size_t i = 0; i < entries.size(); i++) {
                 std::cout << "  " << entries[i]->info.id << " " << entries[i]->name()
                           << (i < history.appliedCount() ? "" : " (redo)") << "\n";
-            }
-            continue;
-        }
-        if (name == "bake") {
-            // what the export generates for each prefab (build_prefab_*), from its baked instance
-            const fs::path out = resolveOpsPath(op["out"].as<std::string>());
-            fs::create_directories(out);
-            for (const auto& [path, baked] : project.bakePrefabsForExport()) {
-                FileUtils::writeFile(out / (Factory::prefabToFileName(path) + ".cpp"), Factory::createPrefab(path, *baked, project.getProjectPath(), out,
-                    [&project](const fs::path& p) { return project.getPrefabGuid(p); }));
             }
             continue;
         }
@@ -1799,7 +1808,7 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
@@ -2020,7 +2029,7 @@ static int runAssets(int argc, char** argv, const std::string& commandName) {
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
@@ -2111,7 +2120,7 @@ static int runCookTextures(int argc, char** argv, const std::string& commandName
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
@@ -3027,6 +3036,43 @@ VideoCheck checkVideoPlayers(const fs::path& root) {
     return check;
 }
 
+// The shallowest weighted path entry of a paths-only mask that splits the torso: its parent path
+// weighs 0 by the mask's rule (its entry, else the nearest ancestor's with children, else the
+// default), and both names are torso bones by the humanoid auto-detect's reading
+// (pose::isTorsoBoneName: "Hips/Spine", "B-hips/B-spine"). A mask that takes the hips under
+// `Armature` or `B-root`, or starts at an arm, does not ("" when none; an entry at the masked
+// root's top has no parent bone)
+std::string maskEntryUnderUnweightedParent(const anim::AvatarMaskDef& mask) {
+    auto weightOf = [&](const std::string& path) {
+        const int own = mask.findPath(path);
+        if (own >= 0) return mask.paths[(size_t)own].weight;
+        for (size_t slash = path.rfind('/'); slash != std::string::npos && slash > 0; slash = path.rfind('/', slash - 1)) {
+            const int above = mask.findPath(path.substr(0, slash));
+            if (above >= 0 && mask.paths[(size_t)above].children) return mask.paths[(size_t)above].weight;
+        }
+        const int top = mask.findPath("");
+        return top >= 0 && mask.paths[(size_t)top].children ? mask.paths[(size_t)top].weight : mask.defaultWeight;
+    };
+    auto lastName = [](const std::string& path) {
+        const size_t slash = path.rfind('/');
+        return slash == std::string::npos ? path : path.substr(slash + 1);
+    };
+    std::string found;
+    size_t foundDepth = 0;
+    for (const anim::MaskPathDef& entry : mask.paths) {
+        const size_t slash = entry.path.rfind('/');
+        if (!(entry.weight > 0.0f) || slash == std::string::npos || slash == 0) continue;
+        const std::string parent = entry.path.substr(0, slash);
+        if (weightOf(parent) != 0.0f || !pose::isTorsoBoneName(lastName(parent)) || !pose::isTorsoBoneName(lastName(entry.path))) continue;
+        const size_t depth = (size_t)std::count(entry.path.begin(), entry.path.end(), '/');
+        if (found.empty() || depth < foundDepth) {
+            found = entry.path;
+            foundDepth = depth;
+        }
+    }
+    return found;
+}
+
 // Avatar Masks (.mask: the format) and Animator Controllers (.controller: the format and
 // anim::validateController, with the clips it names read here: .anim files parsed, model
 // sub-clips looked up in the model). Version 1 files (S21's or upstream's dialect) are read by
@@ -3136,11 +3182,31 @@ void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& mask
         }
         // the masks its layers name
         for (size_t l = 0; l < data.layers.size(); l++) {
-            const std::string& mask = data.layers[l].mask.path;
+            const anim::LayerDef& layer = data.layers[l];
+            const std::string& mask = layer.mask.path;
+            const fs::path maskFile = (assets / fs::u8path(mask)).lexically_normal();
             std::error_code ec;
-            if (!mask.empty() && !fs::is_regular_file((assets / fs::u8path(mask)).lexically_normal(), ec)) {
+            if (!mask.empty() && !fs::is_regular_file(maskFile, ec)) {
                 check.findings.push_back({"anim", rel, 0, 0, "error", "layers[" + std::to_string(l) + "].mask: '" + mask +
                                           "' does not exist (paths are relative to the assets folder)"});
+                continue;
+            }
+            if (mask.empty() || l == 0 || layer.blending != AnimatorLayerBlending::Override || layer.meshSpaceRotation) continue;
+            std::string maskText;
+            const anim::MaskParseResult maskParsed = ProjectChecks::readFile(maskFile, maskText) ? anim::parseMask(maskText) : anim::MaskParseResult();
+            if (!maskParsed.ok || maskParsed.data.usesHumanoid()) continue;
+            if (const std::string entry = maskEntryUnderUnweightedParent(maskParsed.data); !entry.empty()) {
+                ProjectChecks::Finding finding;
+                finding.tool = "anim";
+                finding.path = rel;
+                finding.severity = "warning";
+                finding.code = "anim-mask-root-inherits";
+                finding.message = "layers[" + std::to_string(l) + "] '" + layer.name + "': its mask '" + mask + "' weighs '" + entry +
+                                  "' but not its parent, so on a rig shaped like the mask's paths that bone follows the layers below "
+                                  "(a torso turned by the base layer's hips); this is about the mask's shape, the rig is not read";
+                finding.suggestion = "turn on Mesh Space Rotation on the layer (edit_animator_controller {path, ops: [{op: \"set_layer\", layer: \"" +
+                                     layer.name + "\", mesh_space_rotation: true}]})";
+                check.findings.push_back(std::move(finding));
             }
         }
     }
@@ -3291,7 +3357,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
@@ -3887,7 +3953,7 @@ int CommandLine::bakeProceduralMaterialOnCpu(int argc, char** argv, const fs::pa
     Project project;
     auto platform = std::make_unique<Platform>(&project);
     Engine::systemInit(argc, argv, platform.get());
-    EngineRuntimeGuard engineRuntime;
+    EngineRuntimeGuard engineRuntime{project};
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
     // no editor came up, so none holds the project; every file below is written all or nothing

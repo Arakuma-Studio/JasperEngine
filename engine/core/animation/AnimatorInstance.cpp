@@ -382,6 +382,18 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
         }
     }
 
+    // Mesh Space Rotation's boundary bones (D2): where the mask starts, and where it stops right
+    // under that (the one rule the Animation Player and the editor share); a body-part mask's
+    // body starts at the avatar's hips
+    for (size_t l = 0; l < layers.size(); l++){
+        AnimatorLayerRun& run = layers[l];
+        run.boundaryBones.clear();
+        if (l == 0 || !run.masked) continue;
+        const AvatarMaskDef* mask = l < masks.size() ? masks[l].get() : nullptr;
+        const int hips = mask && mask->usesHumanoid() && humanoid.valid ? humanoid.slotBones[(size_t)pose::HumanBone::Hips] : -1;
+        maskBoundaryBones(run.mask.data(), rig.parents.data(), boneCount, hips, run.boundaryBones);
+    }
+
     // bones written to their entities
     writeMask.assign(boneCount, component.writeBones == AnimatorWriteBones::All);
     if (component.writeBones == AnimatorWriteBones::Exposed){
@@ -434,6 +446,7 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
     }
 
     bound = true;
+    updateMeshSpace();
     for (size_t s = 0; s < clips.size(); s++){
         clips[s].bound = false;
         if (clips[s].clip) bindClip(s, component);
@@ -663,6 +676,102 @@ float anim::AnimatorInstance::getLayerWeight(int layer) const{
 
 int anim::AnimatorInstance::getLayerIndex(const std::string& name) const{
     return controller ? controller->findLayer(name) : -1;
+}
+
+// ---------------------------------------------------------------- Mesh Space Rotation
+
+bool anim::AnimatorInstance::layerMeshSpaceRotation(int layer) const{
+    if (layer < 0 || (size_t)layer >= layers.size()) return false;
+    const int8_t runtime = layers[(size_t)layer].meshSpaceOverride;
+    if (runtime >= 0) return runtime != 0;
+    return controller && (size_t)layer < controller->layers.size() && controller->layers[(size_t)layer].meshSpaceRotation;
+}
+
+void anim::AnimatorInstance::setLayerMeshSpaceRotation(int layer, bool enabled){
+    if (layer < 0 || (size_t)layer >= layers.size()) return;
+    layers[(size_t)layer].meshSpaceOverride = enabled ? 1 : 0;
+    updateMeshSpace();
+}
+
+bool anim::AnimatorInstance::layerMeshSpaceApplies(int layer) const{
+    // D5: layer 0 has nothing below it, an Additive layer adds deltas
+    if (layer <= 0 || (size_t)layer >= layers.size() || !controller || (size_t)layer >= controller->layers.size()) return false;
+    return controller->layers[(size_t)layer].blending == AnimatorLayerBlending::Override && layerMeshSpaceRotation(layer) &&
+           !layers[(size_t)layer].boundaryBones.empty();
+}
+
+const std::vector<uint16_t>& anim::AnimatorInstance::layerBoundaryBones(int layer) const{
+    static const std::vector<uint16_t> none;
+    if (layer < 0 || (size_t)layer >= layers.size()) return none;
+    return layers[(size_t)layer].boundaryBones;
+}
+
+void anim::AnimatorInstance::setMeshSpaceDebug(bool debug){
+    meshSpaceDebugOn = debug;
+    updateMeshSpace();
+}
+
+const std::vector<Quaternion>* anim::AnimatorInstance::layerMeshSpaceUnpassed(int layer) const{
+    if (layer < 0 || (size_t)layer >= layers.size()) return nullptr;
+    const AnimatorLayerRun& run = layers[(size_t)layer];
+    return evaluations > 0 && run.meshSpaceRecordedAt == evaluations ? &run.meshSpaceUnpassed : nullptr;
+}
+
+size_t anim::AnimatorInstance::meshSpaceScratchBytes() const{
+    return (meshSpaceBelow.capacity() + meshSpaceLayer.capacity()) * sizeof(Quaternion);
+}
+
+const anim::Pose& anim::AnimatorInstance::layerOutput(int layer) const{
+    if (layer < 0 || (size_t)layer >= layers.size()) return rig.rest;
+    return layers[(size_t)layer].output;
+}
+
+int anim::AnimatorInstance::humanoidSlotOf(int bone) const{
+    if (!humanoid.valid || bone < 0) return -1;
+    for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
+        if (humanoid.slotBones[(size_t)s] == bone) return s;
+    }
+    return -1;
+}
+
+// R21, R22: the scratch exists only while some layer runs the pass; sized here (bind, the
+// setters: the main thread), never in an update
+void anim::AnimatorInstance::updateMeshSpace(){
+    bool any = false;
+    for (size_t l = 0; l < layers.size(); l++){
+        AnimatorLayerRun& run = layers[l];
+        run.meshSpaceActive = bound && layerMeshSpaceApplies((int)l);
+        any = any || run.meshSpaceActive;
+        run.meshSpaceRecordedAt = 0;
+        if (meshSpaceDebugOn && run.meshSpaceActive) run.meshSpaceUnpassed.assign(run.boundaryBones.size(), Quaternion());
+        else std::vector<Quaternion>().swap(run.meshSpaceUnpassed);
+    }
+    if (any){
+        meshSpaceBelow.assign(rig.bones.size(), Quaternion());
+        meshSpaceLayer.assign(rig.bones.size(), Quaternion());
+    }else{
+        std::vector<Quaternion>().swap(meshSpaceBelow);
+        std::vector<Quaternion>().swap(meshSpaceLayer);
+    }
+}
+
+// R6: the rig rotations under the layer and of the layer's own pose (its hips included, the mask
+// notwithstanding) before the blend, the blend unchanged, then the boundary bones turned back to
+// the rotation relative to the rig that the blend gives them
+void anim::AnimatorInstance::blendMeshSpace(AnimatorLayerRun& run, const float* mask, const float* channelMask){
+    const int* parents = rig.parents.data();
+    const size_t count = (size_t)run.boundaryBones.back() + 1;
+    poseRigRotations(finalPose, parents, count, meshSpaceBelow.data());
+    poseRigRotations(run.output, parents, count, meshSpaceLayer.data());
+    poseBlend(finalPose, finalPose, run.output, run.weight, mask, channelMask);
+    if (meshSpaceDebugOn && run.meshSpaceUnpassed.size() == run.boundaryBones.size()){
+        // spaceRotation is free until runIK fills it after the combine
+        poseRigRotations(finalPose, parents, count, spaceRotation.data());
+        for (size_t i = 0; i < run.boundaryBones.size(); i++) run.meshSpaceUnpassed[i] = spaceRotation[run.boundaryBones[i]];
+        run.meshSpaceRecordedAt = evaluations;
+    }
+    poseMeshSpaceRotation(finalPose, parents, run.boundaryBones.data(), run.boundaryBones.size(), mask, run.weight,
+                          meshSpaceBelow.data(), meshSpaceLayer.data());
 }
 
 size_t anim::AnimatorInstance::montageClipSlot(const AnimatorAssetRef& ref){
@@ -1744,6 +1853,9 @@ void anim::AnimatorInstance::update(const AnimatorComponent& component, const An
             const float* channelMask = run.masked ? run.channelMask.data() : nullptr;
             if (controller->layers[l].blending == AnimatorLayerBlending::Additive){
                 poseAdditive(finalPose, finalPose, run.output, run.weight, mask, channelMask);
+            }else if (run.meshSpaceActive && !meshSpaceBypassed){
+                // before the next layer blends: it sees the corrected pose (R9)
+                blendMeshSpace(run, mask, channelMask);
             }else{
                 poseBlend(finalPose, finalPose, run.output, run.weight, mask, channelMask);
             }

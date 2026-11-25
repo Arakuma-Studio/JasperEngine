@@ -149,19 +149,36 @@ void SokolCamera::startRenderPass(TextureRender* texture, size_t face, int mip){
     beginPass(texturePass);
 }
 
+namespace {
+    // A window with nothing to draw into (minimized, a Vulkan image not acquired) reports its
+    // swapchain invalid with its size and formats still set (VulkanContext, D3D11Context). sokol
+    // skips such a pass only with every other field unset: a debug sokol fails the begin, and
+    // sg_end_pass then ends a swapchain pass that never began (an abort on Vulkan)
+    sg_swapchain passSwapchain(){
+        sg_swapchain swapchain = System::instance().getSokolSwapchain();
+        if (swapchain.invalid){
+            swapchain = {};
+            swapchain.invalid = true;
+        }
+        return swapchain;
+    }
+}
+
 void SokolCamera::startRenderPass(int width, int height){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     pass.attachments = {};
-    pass.swapchain = System::instance().getSokolSwapchain();
-    pass.swapchain.width = width;
-    pass.swapchain.height = height;
+    pass.swapchain = passSwapchain();
+    if (!pass.swapchain.invalid){
+        pass.swapchain.width = width;
+        pass.swapchain.height = height;
+    }
     beginPass(pass);
 }
 
 void SokolCamera::startRenderPass(){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     pass.attachments = {};
-    pass.swapchain = System::instance().getSokolSwapchain();
+    pass.swapchain = passSwapchain();
     beginPass(pass);
 }
 

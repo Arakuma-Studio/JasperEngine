@@ -817,6 +817,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cli/TitleArtCli.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
+    ${EDITOR_DIR}/cook/GameConfig.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
     ${EDITOR_DIR}/cook/TerrainWorldCooker.cpp
     ${EDITOR_DIR}/cook/VoxelVolumeCook.cpp
@@ -838,6 +839,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/platform/AndroidTools.cpp
     ${EDITOR_DIR}/platform/PinnedDownload.cpp
     ${EDITOR_DIR}/platform/AndroidPackager.cpp
+    ${EDITOR_DIR}/platform/AndroidIcons.cpp
     ${EDITOR_DIR}/platform/WindowsResources.cpp
     ${EDITOR_DIR}/platform/MacBundle.cpp
     ${EDITOR_DIR}/platform/IosProject.cpp
@@ -845,7 +847,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/AppCommands.cpp
     ${EDITOR_DIR}/AppSettings.cpp
     ${EDITOR_DIR}/Theme.cpp
-    ${EDITOR_DIR}/Factory.cpp
     ${EDITOR_DIR}/Out.cpp
     ${EDITOR_DIR}/Platform.cpp
     ${EDITOR_DIR}/Project.cpp
@@ -872,7 +873,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/Resolve.cpp
     ${EDITOR_DIR}/reflect/YamlCodec.cpp
     ${EDITOR_DIR}/reflect/Schema.cpp
-    ${EDITOR_DIR}/reflect/Codegen.cpp
     ${EDITOR_DIR}/reflect/Remap.cpp
     ${EDITOR_DIR}/reflect/Properties.cpp
     ${EDITOR_DIR}/reflect/PostProcessingReflect.cpp
@@ -884,6 +884,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
     ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
     ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
+    ${EDITOR_DIR}/reflect/components/VehicleReflect.cpp
     ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
     ${EDITOR_DIR}/reflect/components/SplinesReflect.cpp
     ${EDITOR_DIR}/reflect/components/VoxelReflect.cpp
@@ -931,6 +932,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Exporter.cpp
     ${EDITOR_DIR}/ExporterPrebuilt.cpp
     ${EDITOR_DIR}/ShippingTypes.cpp
+    ${EDITOR_DIR}/export/AssetStripping.cpp
     ${EDITOR_DIR}/export/ExportFiles.cpp
     ${EDITOR_DIR}/util/BuildDiagnostics.cpp
 
@@ -947,6 +949,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp
     ${EDITOR_DIR}/mcp/McpJobs.cpp
+    ${EDITOR_DIR}/mcp/McpModelImport.cpp
     ${EDITOR_DIR}/mcp/McpRefs.cpp
     ${EDITOR_DIR}/mcp/McpRegistry.cpp
     ${EDITOR_DIR}/mcp/McpSchema.cpp
@@ -1009,6 +1012,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PhysicsQueryTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
@@ -1076,6 +1080,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/asset/AssetMeta.cpp
     ${EDITOR_DIR}/asset/AssetRefSchema.cpp
     ${EDITOR_DIR}/asset/AssetTypes.cpp
+    ${EDITOR_DIR}/asset/MeshAssetFiles.cpp
     ${EDITOR_DIR}/asset/ContentHash.cpp
     ${EDITOR_DIR}/asset/DepEdge.cpp
     ${EDITOR_DIR}/asset/MissingAssetTracker.cpp
@@ -1105,6 +1110,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ProjectFileWrites.cpp
     ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
     ${EDITOR_DIR}/util/RagdollWizard.cpp
+    ${EDITOR_DIR}/util/VehicleRig.cpp
     ${EDITOR_DIR}/window/dialog/RagdollWizardDialog.cpp
     ${EDITOR_DIR}/window/dialog/CreateTerrainDialog.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
@@ -1269,6 +1275,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/model/ModelCookQueue.cpp
     ${EDITOR_DIR}/model/ModelCooker.cpp
     ${EDITOR_DIR}/model/ModelExport.cpp
+    ${EDITOR_DIR}/model/FbxImportQueue.cpp
     ${EDITOR_DIR}/model/ModelHeader.cpp
     ${EDITOR_DIR}/model/ModelImportSettings.cpp
     ${EDITOR_DIR}/model/ModelPreviewRaster.cpp
@@ -1301,6 +1308,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorUpstream.cpp
     ${EDITOR_DIR}/window/InspectorButton.cpp
     ${EDITOR_DIR}/window/InspectorPhysics.cpp
+    ${EDITOR_DIR}/window/InspectorVehicle.cpp
     ${EDITOR_DIR}/window/InspectorAnimation.cpp
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
     ${EDITOR_DIR}/window/InspectorLattice.cpp
@@ -1484,6 +1492,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
     ${EDITOR_DIR}/command/type/RemovePreservedComponentCmd.cpp
     ${EDITOR_DIR}/command/type/CreateEntityCmd.cpp
+    ${EDITOR_DIR}/command/type/AudioSourceSlotCmd.cpp
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
     ${EDITOR_DIR}/command/type/AddActionFrameCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
@@ -1496,6 +1505,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ObjectTransformCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveChildSceneCmd.cpp
     ${EDITOR_DIR}/command/type/SetChildSceneStartActiveCmd.cpp
+    ${EDITOR_DIR}/command/type/DecomposeColliderCmd.cpp
     ${EDITOR_DIR}/command/type/EntityNameCmd.cpp
     ${EDITOR_DIR}/command/type/ImportPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveEntityFromPrefabCmd.cpp
@@ -1513,6 +1523,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
     ${EDITOR_DIR}/window/InspectorIesProfile.cpp
+    ${EDITOR_DIR}/window/InspectorAudioEffects.cpp
+    ${EDITOR_DIR}/audio/SourceEffectEdit.cpp
     ${EDITOR_DIR}/window/AudioCapturesWindow.cpp
     ${EDITOR_DIR}/window/SoundBrowserWindow.cpp
     ${EDITOR_DIR}/audio/SoundDrop.cpp
@@ -1559,7 +1571,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
+    ${EDITOR_DIR}/command/type/AssetStrippingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/AndroidSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp

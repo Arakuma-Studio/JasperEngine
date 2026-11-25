@@ -11,6 +11,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace TitleArtMigrationsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 namespace fs = std::filesystem;
@@ -124,3 +126,5 @@ TEST_F(TitleArtMigrationsTest, EveryFixtureLoads) {
     }
     EXPECT_GE(loaded, 3u);
 }
+
+}  // namespace TitleArtMigrationsTest_cpp

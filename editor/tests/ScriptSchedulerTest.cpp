@@ -37,6 +37,7 @@
 #include <string>
 #include <vector>
 #include "log/Logger.h"
+#include "support/EditorTestSupport.h"
 
 using namespace jasperengine;
 
@@ -93,6 +94,8 @@ namespace {
             if (scene) LuaBinding::cleanupLuaScripts(scene.get());
             scene.reset();
             Engine::onFixedUpdate.remove("test");
+            Engine::setMaxFixedStepsPerFrame(0);
+            Engine::resetDroppedFixedSteps();
             Engine::pauseGameEvents(true);
             Engine::setFixedDeltatime(0.0);
             Engine::setTimeScale(1.0f);
@@ -329,6 +332,77 @@ TEST_F(CoroutineTest, AFixedWaitRecordedInAStepResumesInTheNextStep) {
     start();
     frames(2);
     EXPECT_EQ(log(), "step1 step2 co2");
+}
+
+// S96 REQ-36, REQ-37 (AC-30): the steps a frame may run follow Time.maximumDeltaTime, so a 0.25 s
+// frame at 400 Hz runs its 100 steps and drops none; Time.maximumFixedStepsPerFrame caps them, the
+// drops are counted (Time.droppedFixedSteps) and logged once. Red: the old fixed cap of 100 warned
+// on that frame (and on every frame of the capped run)
+TEST_F(CoroutineTest, FixedStepCapFollowsMaximumDeltaTime) {
+    int steps = 0;
+    Engine::onFixedUpdate.add("test", std::function<void()>([&steps](){ steps++; }));
+    Engine::setUpdateTime(1.0f / 400.0f);
+    Engine::setFixedDeltatime(0.25);
+    Engine::resetDroppedFixedSteps();
+    EXPECT_GE(Engine::getFixedStepCap(), 101);
+    EXPECT_EQ(eval("return Time.maximumFixedStepsPerFrame"), "0");
+
+    // the first frame takes what earlier frames left over; from the second, 0.25 s a frame
+    frames(1);
+    for (int frame = 0; frame < 3; frame++) {
+        steps = 0;
+        frames(1);
+        EXPECT_GE(steps, 100);
+        EXPECT_LE(steps, 101);
+    }
+    EXPECT_EQ(Engine::getDroppedFixedSteps(), 0u);
+    EXPECT_EQ(countOf(logged(), "fixed step(s):"), 0u) << logged();
+
+    ASSERT_EQ(run("Time.maximumFixedStepsPerFrame = 10"), "");
+    EXPECT_EQ(Engine::getFixedStepCap(), 10);
+    steps = 0;
+    frames(5);
+    EXPECT_EQ(steps, 50);
+    // about 90 a frame (0.25 s is 100 steps)
+    EXPECT_GE(Engine::getDroppedFixedSteps(), 449u);
+    EXPECT_LE(Engine::getDroppedFixedSteps(), 451u);
+    EXPECT_EQ(eval("return Time.droppedFixedSteps"), std::to_string(Engine::getDroppedFixedSteps()));
+    const std::string log = logged();
+    EXPECT_EQ(countOf(log, "fixed step(s):"), 1u) << log;
+    EXPECT_NE(log.find("Time.maximumFixedStepsPerFrame"), std::string::npos);
+    EXPECT_NE(log.find("Time.maximumDeltaTime"), std::string::npos);
+
+    // negative is automatic; a Play start (Engine::resetApplicationState) resets the cap and the count
+    ASSERT_EQ(run("Time.maximumFixedStepsPerFrame = -3"), "");
+    EXPECT_EQ(eval("return Time.maximumFixedStepsPerFrame"), "0");
+    Engine::setMaxFixedStepsPerFrame(10);
+    Engine::resetApplicationState();
+    EXPECT_EQ(Engine::getMaxFixedStepsPerFrame(), 0);
+    EXPECT_EQ(Engine::getDroppedFixedSteps(), 0u);
+
+    // the cap is a hard bound (the spiral-of-death guard): neither a time scale nor a script raises
+    // it. Red: time scale 20 let the 0.25 s frame run 2002 steps, and a script's 100000 was taken as is
+    const int bound = Engine::getFixedStepCap();
+    EXPECT_LE(bound, 102);
+    Engine::setTimeScale(20.0f);
+    EXPECT_EQ(Engine::getFixedStepCap(), bound) << "time scale 20";
+    ASSERT_EQ(run("Time.maximumFixedStepsPerFrame = 100000"), "");
+    EXPECT_EQ(Engine::getFixedStepCap(), bound) << "a script's cap above the bound";
+    steps = 0;
+    frames(1);
+    EXPECT_EQ(steps, bound) << "20 x 0.25 s is 2000 steps: the frame runs the bound and drops the rest";
+    EXPECT_GE(Engine::getDroppedFixedSteps(), 1800u);
+    ASSERT_EQ(run("Time.maximumFixedStepsPerFrame = 3"), "");
+    EXPECT_EQ(Engine::getFixedStepCap(), 3) << "a lower cap still applies";
+    Engine::setTimeScale(1.0f);
+
+    // the drops emptied the accumulator: one 60 Hz frame leaves the part of a step every other test
+    // starts from (a 1/60 s double frame is a hair short of the 1/60 s float step)
+    Engine::setUpdateTime(1.0f / 60.0f);
+    Engine::setFixedDeltatime(1.0 / 60.0);
+    steps = 0;
+    frames(1);
+    EXPECT_EQ(steps, 0);
 }
 
 TEST_F(CoroutineTest, NoFixedStepAtTimeScaleZero) {
@@ -1156,8 +1230,11 @@ TEST_F(CoroutineTest, ManyWaitingCoroutinesAndTimersCostLittlePerFrame) {
     frames(20);
     const double perFrameMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count() / 20.0;
     std::printf("[ScriptScheduler] 10000 coroutines waiting seconds + 1000 timers: %.3f ms per frame (whole frame)\n", perFrameMs);
-    // the spec's target is 0.3 ms on desktop; generous here (shared, loaded test machines)
-    EXPECT_LT(perFrameMs, 5.0);
+    // the spec's target is 0.3 ms on desktop; a wall-clock budget: enforced where perfSlack()
+    // asks for it (the benchmark run)
+    if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(perFrameMs, 5.0 * slack);
+    }
     EXPECT_EQ(ScriptScheduler::coroutineCount(), 10000u);
 }
 
@@ -1306,7 +1383,11 @@ TEST_F(CoroutineTest, DeactivatingGameObjectsWithoutCoroutinesIsCheapWithManyCor
     }
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
     std::printf("[ScriptScheduler] 1000 deactivations with 10000 coroutines elsewhere: %.3f ms\n", ms);
-    EXPECT_LT(ms, 20.0);   // was O(all coroutines) each: ~250 ms
+    // was O(all coroutines) each: ~250 ms; a wall-clock budget: enforced where perfSlack() asks
+    // for it (the benchmark run)
+    if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(ms, 20.0 * slack);
+    }
     EXPECT_EQ(ScriptScheduler::coroutineCount(), 10000u);
 }
 

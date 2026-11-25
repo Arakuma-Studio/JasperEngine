@@ -4,16 +4,20 @@
 #include "AndroidPackager.h"
 #include "util/NativePlugins.h"
 
+#include "AndroidIcons.h"
 #include "Exporter.h"
 #include "Out.h"
 #include "util/PlatformRules.h"
 #include "io/AtomicFile.h"
 #include "platform/AndroidTools.h"
+#include "util/FileUtils.h"
 #include "util/ZipArchive.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -165,6 +169,34 @@ namespace {
 
 }
 
+const char* const platform::kAndroidIgnoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~";
+const char* const platform::kAndroidContentPack = "game_content";
+
+bool platform::isIgnoredAndroidAsset(const std::string& name) {
+    std::string lower = name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    const std::string pattern = kAndroidIgnoreAssetsPattern;
+    size_t start = 0;
+    while (start <= pattern.size()) {
+        const size_t end = std::min(pattern.find(':', start), pattern.size());
+        std::string token = pattern.substr(start, end - start);
+        start = end + 1;
+        if (!token.empty() && token[0] == '!') token.erase(0, 1);
+        std::transform(token.begin(), token.end(), token.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (token.empty()) continue;
+        // a leading or trailing * (the only wildcards the pattern uses)
+        if (token.front() == '*') {
+            const std::string tail = token.substr(1);
+            if (lower.size() >= tail.size() && lower.compare(lower.size() - tail.size(), tail.size(), tail) == 0) return true;
+        } else if (token.back() == '*') {
+            if (lower.compare(0, token.size() - 1, token, 0, token.size() - 1) == 0) return true;
+        } else if (lower == token) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string platform::describeKeystoreFailure(const std::string& output, const fs::path& keystore, const std::string& alias) {
     const auto says = [&output](const char* text) { return output.find(text) != std::string::npos; };
     if (says("keystore password was incorrect") || says("password was incorrect"))
@@ -222,8 +254,8 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
         }
         return out;
     };
-    const bool launcher = !package.settings.launcherIcon.empty();
-    const bool adaptive = !package.settings.adaptiveIconForeground.empty() && !package.settings.adaptiveIconBackground.empty();
+    const bool hasIcon = !package.settings.launcherIcon.empty() ||
+                         (!package.settings.adaptiveIconForeground.empty() && !package.settings.adaptiveIconBackground.empty());
     // the default orientation, or auto-rotation within the allowed ones (the user's rotation lock kept)
     bool unsupportedRotation = false;
     const int requestedOrientation = PlatformRules::androidRequestedOrientation(package.presentation.defaultOrientation,
@@ -240,7 +272,9 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
     replaceAll(manifest, "{{LABEL}}", Exporter::escapeXml(package.label));
     replaceAll(manifest, "{{PERMISSIONS}}", permissions);
     replaceAll(manifest, "{{ALLOW_BACKUP}}", package.settings.allowBackup ? "true" : "false");
-    replaceAll(manifest, "{{ICON}}", (launcher && !adaptive) ? "@drawable/ic_launcher_game" : adaptive ? "@mipmap/ic_launcher_game" : "@mipmap/ic_launcher");
+    // the game's icons (writeAndroidLauncherIcons ic_launcher_game), the round one an attribute of
+    // its own after the marker's (a runtime's template has no marker for it)
+    replaceAll(manifest, "{{ICON}}", hasIcon ? "@mipmap/ic_launcher_game\"\n        android:roundIcon=\"@mipmap/ic_launcher_game_round" : "@mipmap/ic_launcher");
     replaceAll(manifest, "{{THEME}}", package.settings.fullscreen ? "@style/AppTheme" : "@style/AppThemeWindowed");
     replaceAll(manifest, "{{ORIENTATION}}", orientation.empty() ? "" : "\n            android:screenOrientation=\"" + orientation + "\"");
     replaceAll(manifest, "{{FULLSCREEN}}", package.settings.fullscreen ? "true" : "false");
@@ -312,6 +346,9 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
     fs::remove_all(package.workDir, ec);
     fs::create_directories(package.workDir, ec);
 
+    // Debug Package Suffix: a package the debug key signs installs beside the release one
+    const std::string applicationId = package.applicationId + (package.keystore.empty() ? package.settings.debugPackageSuffix : std::string());
+
     // before any work: the signing key, and for a bundle the bundletool jar
     SigningKey key;
     if (!prepareSigningKey(package, tools, runner, warnings, key, error)) return false;
@@ -337,61 +374,61 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
         return false;
     }
 
-    // 2. the icons: compiled into flat files of their own
-    std::vector<std::string> flats;
-    auto compileIcon = [&](const fs::path& source, const std::string& resourcePath) -> bool {
-        const fs::path file = source.is_absolute() ? source : package.projectPath / source;
-        if (!fs::is_regular_file(file, ec)) {
-            error = "Android icon not found: " + file.string();
-            return false;
-        }
-        const fs::path target = package.workDir / "res" / resourcePath;
-        fs::create_directories(target.parent_path(), ec);
-        fs::copy_file(file, target, fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            error = "cannot stage the icon " + file.string();
-            return false;
-        }
-        const fs::path flatDir = package.workDir / "flat";
-        fs::create_directories(flatDir, ec);
-        if (!run(runner, {tools.aapt2.path.string(), "compile", target.string(), "-o", flatDir.string()}, package.workDir, error)) return false;
-        return true;
-    };
+    // 2. the icons: every density, round and adaptive, compiled into flat files of their own
     const AndroidProjectSettings& settings = package.settings;
-    const bool adaptive = !settings.adaptiveIconForeground.empty() && !settings.adaptiveIconBackground.empty();
-    if (!settings.launcherIcon.empty() && !adaptive) {
-        if (!compileIcon(settings.launcherIcon, "drawable/ic_launcher_game.png")) return false;
+    std::vector<std::string> flats;
+    {
+        AndroidIcons icons;
+        if (!writeAndroidLauncherIcons(settings, package.projectPath, package.workDir / "res", "ic_launcher_game", icons, error)) return false;
+        if (!icons.files.empty()) {
+            const fs::path flatZip = package.workDir / "icons-flat.zip";
+            if (!run(runner, {tools.aapt2.path.string(), "compile", "--dir", (package.workDir / "res").string(), "-o", flatZip.string()},
+                     package.workDir, error))
+                return false;
+            flats.push_back(flatZip.string());
+        }
     }
-    if (adaptive) {
-        if (!compileIcon(settings.adaptiveIconForeground, "drawable/ic_launcher_game_foreground.png")) return false;
-        if (!compileIcon(settings.adaptiveIconBackground, "drawable/ic_launcher_game_background.png")) return false;
-        const fs::path xml = package.workDir / "res" / "mipmap-anydpi-v26" / "ic_launcher_game.xml";
-        fs::create_directories(xml.parent_path(), ec);
-        io::writeFileAtomic(xml, "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
-                                 "<adaptive-icon xmlns:android=\"http://schemas.android.com/apk/res/android\">\n"
-                                 "    <background android:drawable=\"@drawable/ic_launcher_game_background\" />\n"
-                                 "    <foreground android:drawable=\"@drawable/ic_launcher_game_foreground\" />\n"
-                                 "</adaptive-icon>\n");
-        if (!run(runner, {tools.aapt2.path.string(), "compile", xml.string(), "-o", (package.workDir / "flat").string()}, package.workDir, error))
-            return false;
-    }
-    for (const auto& entry : fs::directory_iterator(package.workDir / "flat", ec)) flats.push_back(entry.path().string());
     if (cancelled()) {
         error = "Build cancelled";
         return false;
     }
 
-    // 3. the link: the player's resources with their stable ids, the game's content as assets/game
+    // 3. the game's content as assets/game, without the names Android's asset filter leaves out
     const fs::path assets = package.workDir / "assets";
     if (!copyTree(package.contentDir, assets / "game", error)) return false;
+    std::vector<std::string> content, ignored;
+    for (auto it = fs::recursive_directory_iterator(assets, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        const std::string relative = FileUtils::pathToGenericUtf8(it->path().lexically_relative(assets));
+        if (isIgnoredAndroidAsset(FileUtils::pathToUtf8(it->path().filename()))) {
+            // named as the content has it (below assets/game)
+            ignored.push_back(FileUtils::pathToGenericUtf8(it->path().lexically_relative(assets / "game")));
+            if (it->is_directory(ec)) it.disable_recursion_pending();
+            continue;
+        }
+        if (it->is_regular_file(ec)) content.push_back(relative);
+    }
+    for (const std::string& relative : ignored) fs::remove_all(assets / "game" / FileUtils::pathFromUtf8(relative), ec);
+    if (!ignored.empty()) {
+        std::string list;
+        for (size_t i = 0; i < ignored.size() && i < 5; i++) list += (i ? ", " : "") + ignored[i];
+        if (ignored.size() > 5) list += " and " + std::to_string(ignored.size() - 5) + " more";
+        warnings.push_back({"W-ANDROID-ASSET-IGNORED", "Android packages leave out hidden and version control files: " + list +
+                                                           " (rename them if the game reads them)"});
+    }
+
+    // 4. the link: the player's resources with their stable ids; an APK's content goes with them,
+    // a bundle's into the asset pack (5)
     const fs::path linked = package.workDir / (bundle ? "base-proto.zip" : "base.apk");
     std::vector<std::string> link = {tools.aapt2.path.string(), "link", "-I", tools.androidJar.string(), "--manifest", manifestPath.string(),
                                      "--stable-ids", (package.runtimeDir / "stable-ids.txt").string(), "--rename-manifest-package",
-                                     package.applicationId, "--min-sdk-version", std::to_string(settings.minSdk), "--target-sdk-version",
+                                     applicationId, "--min-sdk-version", std::to_string(settings.minSdk), "--target-sdk-version",
                                      std::to_string(settings.targetSdk), "--version-code", std::to_string(package.versionCode),
-                                     "--version-name", package.versionName, "--auto-add-overlay", "-A", assets.string(), "-o",
-                                     linked.string()};
+                                     "--version-name", package.versionName, "--auto-add-overlay", "-o", linked.string()};
     if (bundle) link.push_back("--proto-format");
+    else {
+        link.push_back("-A");
+        link.push_back(assets.string());
+    }
     link.push_back((package.runtimeDir / "res-flat.zip").string());
     for (const std::string& flat : flats) {
         link.push_back("-R");
@@ -403,22 +440,32 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
         return false;
     }
 
-    // 4. the code: the dex files, and the libraries of the selected ABIs (stored, not compressed)
-    ZipReader linkedZip;
-    if (!linkedZip.open(linked, error)) return false;
+    // a module's entries from aapt2's output (a bundle module keeps its manifest under manifest/);
+    // JASPER_TEST_ANDROID_DROP_ENTRY leaves one out, for the content check's test
+    const char* dropVariable = std::getenv("JASPER_TEST_ANDROID_DROP_ENTRY");
+    const std::string dropEntry = dropVariable ? dropVariable : "";
+    auto copyLinked = [&](const fs::path& from, ZipWriter& writer, bool assetPack) -> bool {
+        ZipReader zip;
+        if (!zip.open(from, error)) return false;
+        for (const ZipEntryInfo& entry : zip.entries()) {
+            if (entry.directory || entry.name == dropEntry) continue;
+            // an asset pack holds assets alone
+            if (assetPack && entry.name == "resources.pb") continue;
+            std::vector<uint8_t> bytes;
+            if (!zip.read(entry.name, bytes, error)) return false;
+            std::string name = entry.name;
+            if (bundle && name == "AndroidManifest.xml") name = "manifest/AndroidManifest.xml";
+            const bool store = entry.stored || name == "resources.arsc";
+            if (!writer.add(name, bytes.data(), bytes.size(), store, error)) return false;
+        }
+        return true;
+    };
+
+    // the code: the dex files, and the libraries of the selected ABIs (stored, not compressed)
     const fs::path assembled = package.workDir / (bundle ? "base.zip" : "unaligned.apk");
     ZipWriter writer;
     if (!writer.open(assembled, error)) return false;
-    for (const ZipEntryInfo& entry : linkedZip.entries()) {
-        if (entry.directory) continue;
-        std::vector<uint8_t> bytes;
-        if (!linkedZip.read(entry.name, bytes, error)) return false;
-        std::string name = entry.name;
-        // a bundle module keeps its manifest under manifest/
-        if (bundle && name == "AndroidManifest.xml") name = "manifest/AndroidManifest.xml";
-        const bool store = entry.stored || name == "resources.arsc";
-        if (!writer.add(name, bytes.data(), bytes.size(), store, error)) return false;
-    }
+    if (!copyLinked(linked, writer, false)) return false;
     for (const auto& entry : fs::directory_iterator(package.runtimeDir, ec)) {
         const std::string name = entry.path().filename().string();
         if (name.rfind("classes", 0) != 0 || entry.path().extension() != ".dex") continue;
@@ -444,11 +491,55 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
         return false;
     }
 
+    // every content file in the finished package, at `prefix` + its path below assets/
+    auto checkContent = [&](const std::string& prefix) -> bool {
+        ZipReader zip;
+        if (!zip.open(package.output, error)) return false;
+        std::set<std::string> names;
+        for (const ZipEntryInfo& entry : zip.entries()) names.insert(entry.name);
+        std::vector<std::string> missing;
+        for (const std::string& relative : content)
+            if (!names.count(prefix + relative)) missing.push_back(prefix + relative);
+        if (missing.empty()) return true;
+        error = package.output.filename().string() + " lacks " + std::to_string(missing.size()) + " file(s) of the game's content:";
+        for (size_t i = 0; i < missing.size() && i < 20; i++) error += "\n  - " + missing[i];
+        if (missing.size() > 20) error += "\n  (and " + std::to_string(missing.size() - 20) + " more)";
+        return false;
+    };
+
     if (bundle) {
-        // 5. a bundle: bundletool builds it, jarsigner signs it
+        // 5. a bundle: the content as the install-time asset pack (Play Asset Delivery: the base
+        // module stays under Google Play's 200 MB; the pack installs with the app, read through
+        // AAssetManager at the same paths), bundletool builds it, jarsigner signs it
+        const fs::path packManifest = package.workDir / "game_content-manifest.xml";
+        const std::string packXml =
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+            "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n"
+            "    xmlns:dist=\"http://schemas.android.com/apk/distribution\"\n"
+            "    package=\"" + Exporter::escapeXml(applicationId) + "\" split=\"" + kAndroidContentPack + "\">\n"
+            "    <dist:module dist:type=\"asset-pack\">\n"
+            "        <dist:fusing dist:include=\"true\" />\n"
+            "        <dist:delivery>\n"
+            "            <dist:install-time />\n"
+            "        </dist:delivery>\n"
+            "    </dist:module>\n"
+            "</manifest>\n";
+        if (!io::writeFileAtomic(packManifest, packXml).ok()) {
+            error = "cannot write " + packManifest.string();
+            return false;
+        }
+        const fs::path packLinked = package.workDir / "game_content-proto.zip";
+        if (!run(runner, {tools.aapt2.path.string(), "link", "--proto-format", "-I", tools.androidJar.string(), "--manifest", packManifest.string(),
+                          "-A", assets.string(), "-o", packLinked.string()},
+                 package.workDir, error))
+            return false;
+        const fs::path packModule = package.workDir / (std::string(kAndroidContentPack) + ".zip");
+        ZipWriter packWriter;
+        if (!packWriter.open(packModule, error) || !copyLinked(packLinked, packWriter, true) || !packWriter.finish(error)) return false;
+
         const fs::path unsignedBundle = package.workDir / "unsigned.aab";
-        if (!run(runner, {tools.java.path.string(), "-jar", bundletool.string(), "build-bundle", "--modules=" + assembled.string(),
-                          "--output=" + unsignedBundle.string(), "--overwrite"},
+        if (!run(runner, {tools.java.path.string(), "-jar", bundletool.string(), "build-bundle",
+                          "--modules=" + assembled.string() + "," + packModule.string(), "--output=" + unsignedBundle.string(), "--overwrite"},
                  package.workDir, error))
             return false;
         // (no -sigalg: the one that fits the key, which may be EC)
@@ -457,7 +548,7 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
                           package.output.string(), unsignedBundle.string(), key.alias},
                  package.workDir, error))
             return false;
-        return true;
+        return checkContent(std::string(kAndroidContentPack) + "/assets/");
     }
 
     // 5. an APK: aligned (native libraries on 16 KB pages), signed, verified
@@ -476,5 +567,5 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
     if (!run(runner, sign, package.workDir, error)) return false;
     fs::remove(package.output.string() + ".idsig", ec);
     if (!run(runner, {tools.apksigner.path.string(), "verify", "--verbose", package.output.string()}, package.workDir, error)) return false;
-    return true;
+    return checkContent("assets/");
 }

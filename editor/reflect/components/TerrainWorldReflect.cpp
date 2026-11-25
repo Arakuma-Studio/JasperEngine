@@ -13,8 +13,8 @@ namespace jasperengine::editor::reflect {
 
 namespace {
 
-    constexpr uint32_t kOmit = OmitIfDefault | EmptyIsDefault | CodegenIfChanged;
-    constexpr uint32_t kOmitFloat = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | CodegenIfChanged;
+    constexpr uint32_t kOmit = OmitIfDefault | EmptyIsDefault;
+    constexpr uint32_t kOmitFloat = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault;
 
     constexpr FieldDesc kTerrainWorldFields[] = {
         JE_FIELD(TerrainWorldComponent, enabled, .flags = kOmit),
@@ -47,7 +47,6 @@ const ComponentDesc kTerrainWorldDesc{
     .displayName = "Terrain World", .icon = ICON_FA_MAP,
     .body = JE_STRUCT_DESC(TerrainWorldComponent, "TerrainWorldComponent", kTerrainWorldFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(TerrainWorldComponent),
-    .codegenVar = "terrainWorld",
 };
 
 }
