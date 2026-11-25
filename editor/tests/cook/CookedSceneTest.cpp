@@ -998,10 +998,10 @@ TEST(CookedScene, SceneSettingsKeepCanvasScaler) {
     EXPECT_EQ(got.getCanvasScaler(), scaler);
     EXPECT_EQ(got.getPhysics2DSubSteps(), 9);
 
-    // the 1.6 record: the same bytes without it; the physics world still reads
+    // the 1.6 record: the same bytes without it (and the newer values); the physics world still reads
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r16(std::span<const uint8_t>(bytes.data(), bytes.size() - canvasScalerTailBytes(*scene)), strings.strings(),
-                                   [](uint32_t id) { return static_cast<Entity>(id); });
+    jasperengine::cook::Reader r16(std::span<const uint8_t>(bytes.data(), bytes.size() - canvasScalerTailBytes(*scene) - fixedTimestepTailBytes(*scene)),
+                                   strings.strings(), [](uint32_t id) { return static_cast<Entity>(id); });
     jasperengine::cook::readSceneSettings(r16, *older.scene->scene);
     ASSERT_FALSE(r16.failed()) << r16.error();
     const SceneSettings defaults;
