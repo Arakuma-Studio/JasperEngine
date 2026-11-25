@@ -3962,23 +3962,23 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Send Input";
         tool.description =
             "Input into the running game. events in order, {type, ...} (first action: default):\nkey: key "
-            "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
+            "(space, a, f1), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
             "[shift,ctrl,alt,super]\ntext: text, per_unit (per UTF-16 unit); ime: text, cursor; ime_commit: text; ime_cancel\n"
             "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
             "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
-            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document CSS selector"
-            "\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
+            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget/to_target: UI Document CSS selector"
+            "\ngamepad: gamepad (0), button (a, dpad_up) + action, or axis (left_x..right_trigger) + "
             "value, x, y/target: warp cursor, or action connect|disconnect\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
             "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|view_lost|view_restored|orientation "
             "(+orientation)|back\nwait: frames, ms, or until (Lua; frames caps)\nshot: name. release_all.\n"
             "space: canvas px, normalized/safe_area 0..1, view = Game view px. "
-            "down holds until up/release_all/stop.";
+            "down holds until up/release_all.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
             {"file", string("Script .input.json.")},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "safe_area", "view"}), "canvas")},
             {"gap_frames", withDefault(integer("Between events.", 0, 1000), 1)},
-            {"frames_after", withDefault(integer("Run before replying.", 0, 100000), 1)},
+            {"frames_after", withDefault(integer("Before replying.", 0, 100000), 1)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth}
         });
