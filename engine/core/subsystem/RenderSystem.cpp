@@ -9127,13 +9127,15 @@ void RenderSystem::offerDrawBatch(ObjectRender& render, ObjectRender* variant, i
 
 namespace {
     // what a draw of the submesh binds and applies of its material, as a sort key (draws of one
-    // material sort together: a batch is drawn from consecutive draws)
+    // material sort together: a batch is drawn from consecutive draws). The textures are peeked:
+    // getRender here took a removed render target's new version before the draw, which then kept
+    // binding its freed image
     uint32_t materialKey(Submesh& submesh){
         Material& material = submesh.material;
         uint32_t key = VisibleList::mixKey(0, (uint64_t)(uintptr_t)submesh.shader.get());
-        key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.baseColorTexture.getRender(nullptr));
-        key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.normalTexture.getRender(nullptr));
-        key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.metallicRoughnessTexture.getRender(nullptr));
+        key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.baseColorTexture.peekRender());
+        key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.normalTexture.peekRender());
+        key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.metallicRoughnessTexture.peekRender());
         uint32_t factor[4];
         std::memcpy(factor, &material.baseColorFactor, sizeof(factor));
         key = VisibleList::mixKey(key, ((uint64_t)factor[0] << 32) | factor[1]);

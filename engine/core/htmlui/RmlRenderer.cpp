@@ -1006,7 +1006,9 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, c
     const TextureFilter filter = nearest ? TextureFilter::NEAREST : TextureFilter::LINEAR;
 
     HtmlUIFileLog::recordLazyFile(this, source);   // hot reload: images are loaded at draw time
+    // the decoded pixels are copied into the GPU texture below: this copy frees them
     TextureData data;
+    data.setDataOwned(true);
     bool loaded = false;
     if (htmlui::compat::VirtualFiles::isVirtual(source)){
         // a "?svgScale=" suffix stays meaningful for virtual SVGs
