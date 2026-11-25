@@ -343,17 +343,6 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
             config.simulateTouchFromMouse = input->value("simulateTouchFromMouse", false);
-        }
-        if (const auto time = in.find("time"); time != in.end() && time->is_object()) {
-            // a step the engine refuses keeps the default
-            auto seconds = [&](const char* key, double fallback) {
-                const auto value = time->find(key);
-                if (value == time->end() || !value->is_number()) return fallback;
-                const double v = value->get<double>();
-                return v > 0.0 && std::isfinite(v) ? v : fallback;
-            };
-            config.fixedTimestep = seconds("fixedTimestep", config.fixedTimestep);
-            config.maximumDeltaTime = seconds("maximumDeltaTime", config.maximumDeltaTime);
             if (const auto cursor = input->find("gamepadCursor"); cursor != input->end() && cursor->is_object()){
                 GamepadCursorSettings& c = config.gamepadCursor;
                 c.speed = cursor->value("speed", c.speed);
@@ -367,6 +356,17 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                     (*hot)[0].is_number() && (*hot)[1].is_number())
                     c.hotSpot = Vector2((*hot)[0].get<float>(), (*hot)[1].get<float>());
             }
+        }
+        if (const auto time = in.find("time"); time != in.end() && time->is_object()) {
+            // a step the engine refuses keeps the default
+            auto seconds = [&](const char* key, double fallback) {
+                const auto value = time->find(key);
+                if (value == time->end() || !value->is_number()) return fallback;
+                const double v = value->get<double>();
+                return v > 0.0 && std::isfinite(v) ? v : fallback;
+            };
+            config.fixedTimestep = seconds("fixedTimestep", config.fixedTimestep);
+            config.maximumDeltaTime = seconds("maximumDeltaTime", config.maximumDeltaTime);
         }
         if (const auto voxel = in.find("voxel"); voxel != in.end()) {
             config.voxelMaxDimension = voxel->value("maxDimension", 0);
