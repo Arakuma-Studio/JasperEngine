@@ -380,6 +380,8 @@ TEST(StreamScene, AmbientWithoutLightsOffInScenesFromBefore){
     EXPECT_EQ(offYaml.find("ambientLight2DWithoutLights"), std::string::npos) << offYaml;
     Stream::decodeScene(&read, YAML::Load(offYaml));
     EXPECT_FALSE(read.isAmbientLight2DWithoutLights());
+}
+
 // S96 (REQ-30..REQ-35, AC-28): the physics world settings are written as flat keys only away from
 // their defaults, read back, and a scene without them (every scene before them) takes the defaults;
 // the generated scene code sets the changed ones; each is a scene setting of Catalog (MCP, Inspector)
