@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorFrame.h"
+#include "test/TestRun.h"
 #include "terrain/TerrainMapPersistence.h"
 #include "render/SystemRender.h"
 #include "shader/ShaderWarmup.h"
@@ -141,7 +142,8 @@ bool EditorFrame::run(EditorFrameState& state){
     // stall the event loop that serves clipboard requests. While playing, the game's
     // Engine.vSyncCount decides (it starts from the project's VSync setting).
     const FramePacing& pacing = Engine::getFramePacing();
-    const bool vsync = (app->isBenchmarkMode() || app->isRecording()) ? false : (playSessionActive
+    // a test run renders one game frame per editor frame, unthrottled (project-test-runner R14)
+    const bool vsync = (app->isBenchmarkMode() || app->isRecording() || gametests::TestRun::get().running()) ? false : (playSessionActive
         ? pacing.swapInterval > 0
         : AppSettings::getEditorVSyncEnabled());
     const bool frameSync = state.focused && vsync;

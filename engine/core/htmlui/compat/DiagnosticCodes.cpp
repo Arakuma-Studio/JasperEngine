@@ -252,7 +252,7 @@ namespace {
          "The media query was rewritten to the engine's syntax (range syntax to min-/max-, comma lists to separate blocks, "
          "prefers-color-scheme to themes, ...)."},
         {codes::MediaStatic, I, false, "media-static", "Media feature evaluated statically",
-         "The media feature has one fixed value in the engine (hover, pointer, color, ...); the message gives the value used."},
+         "The media feature has one fixed value in the engine (any-hover, any-pointer, color, ...); the message gives the value used."},
         {codes::ImportProblem, W, true, "import-problem", "@import problem",
          "An @import cycle (Error: the repeated import is dropped), a missing imported file, or an @import nested too deeply "
          "(Warning)."},
@@ -324,6 +324,11 @@ namespace {
          "CSS rules that target elements inside an SVG are not applied; style the shapes with SVG attributes, or set fill and "
          "stroke on the <svg> element."},
 
+        // ---- LOC (game-ui-localization.md R11)
+        {codes::L10nChildElements, W, false, "l10n-child-elements", "Localised element with child elements",
+         "An element with data-l10n-id gets the message as its text, so it must hold only text: its child elements would be "
+         "replaced. The element is left as written. Put the key on the innermost element that holds the text, or split the "
+         "sentence into keys (data-l10n-args passes values)."},
         // ---- FX (phase 5: the UI effects, effect() and @effect)
         {codes::EffectUnknown, E, false, "effect-unknown", "Unknown effect",
          "effect() names no built-in effect and no effect declared with @effect; the layer or filter is dropped. The suggestion "
@@ -455,6 +460,7 @@ const char* jasperengine::htmlui::compat::diagAreaName(DiagArea area){
         case DiagArea::IMP: return "IMP";
         case DiagArea::SVG: return "SVG";
         case DiagArea::FX: return "FX";
+        case DiagArea::LOC: return "LOC";
     }
     return "GEN";
 }

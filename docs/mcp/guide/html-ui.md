@@ -326,6 +326,15 @@ Lucide and LottieFiles player `<script>`s are not needed: both are built in (an 
 `<noscript>` content shows. Duplicate ids warn (`HTMLUI-HTML-0011`): `getElementById` finds
 the first.
 
+### Localised text: `data-l10n-id`
+
+`<button data-l10n-id="ui.menu.play">Play</button>` shows the String Table message of that key in the
+game language; `data-l10n-args='{"count": 3}'` gives its arguments and `data-l10n-attr-<name>`
+(`placeholder`, `title`, `alt`, `aria-label`, `value`) sets an attribute. The element holds only
+text (child elements: `HTMLUI-LOC-0001`, left as written); `translate="no"` keeps a subtree out of
+the literal-text scan. Lua: `element:setLocalized(key, args)`, `doc:translate()`. Tables and checks:
+jasper://docs/localization.
+
 ### `.rml` documents: RmlUi's own dialect
 
 A file named `.rml` is not translated: RmlUi's own loader reads it. Use it for documents written
@@ -392,7 +401,8 @@ Native or exactly rewritten, as in Chrome:
   as in a browser.
 - **At-rules**: `@media` (width, height, aspect-ratio, orientation, resolution, range syntax,
   `prefers-color-scheme` and `prefers-reduced-motion` switched from Lua; `hover` and `pointer`
-  evaluated once at load: `none`/`coarse` on touch devices), `@supports` (evaluated against
+  follow the last pointer used, live: `none`/`coarse` after a finger, `hover`/`fine` after the
+  mouse; `any-hover` and `any-pointer` are the device's, at load), `@supports` (evaluated against
   the engine's tables), `@layer`, `@import`, CSS nesting, `@keyframes`, `@starting-style`,
   `@font-face`, `@property` (registered: typed, animated, `inherits: false`; see "Animating custom
   properties (@property)").
@@ -690,7 +700,7 @@ A listener gets a `UIEvent`: `type`, `target`, `currentTarget`, `eventPhase` (1 
 `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`, `key` (browser key names:
 `"Enter"`, `"Escape"`, `"ArrowUp"`, `"a"`), `code` (`"KeyA"`; a gamepad's `"GamepadA"`, ...),
 `keyCode` (`Input.KEY_*`), `repeat` (`event["repeat"]`), `gamepad` (the pad's id, -1 for the
-keyboard), `pointerId`, `pointerType` (`"mouse"`, `"touch"`, `"pen"`), `isPrimary`, `buttons` (1
+keyboard), `enterKeyHint` (the soft keyboard's action key, "Text fields"), `pointerId`, `pointerType` (`"mouse"`, `"touch"`, `"pen"`), `isPrimary`, `buttons` (1
 left, 2 right, 4 middle), `pressure` (0.5 while pressed), `width`, `height`, `fingerId` (the
 `Input` finger id, -1 for the mouse), `data` (`textinput`), `animationName`, `propertyName`,
 `elapsedTime`, `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`, and
@@ -1570,7 +1580,7 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
 |---|---|---|---|
 | d-pad, left stick | `"ArrowUp"` ... `"ArrowRight"` | `"GamepadDPadUp"` ..., `"GamepadLeftThumbstickUp"` ... | moves the focus to the nearest element that way and scrolls it into view; a focused range adjusts with left/right, an open select moves through its options |
 | A | `"Enter"` | `"GamepadA"` | activates the focused element as the keyboard does (Enter: a click on press; Space on a checkbox or radio: a toggle on release; a select opens and chooses); `:active` while held; on a text field it opens the virtual keyboard |
-| B | `"Escape"` | `"GamepadB"` | closes an open select or a modal `<dialog>`; otherwise nothing: your menu closes on it |
+| B | `"Escape"` | `"GamepadB"` | closes an open select or a modal `<dialog>`; otherwise it is Back first (below, "Back and menus"), then nothing: your menu closes on it |
 | X, Y, shoulders, triggers, View, Menu, Guide, stick buttons | the `code` | `"GamepadX"`, `"GamepadY"`, `"GamepadLeftShoulder"`, `"GamepadRightShoulder"`, `"GamepadLeftTrigger"`, `"GamepadRightTrigger"`, `"GamepadView"` (Back), `"GamepadMenu"` (Start), `"GamepadGuide"`, `"GamepadLeftThumbstickButton"`, `"GamepadRightThumbstickButton"` | none |
 
 - `event.gamepad` is the pad's id (`-1` for the keyboard), `event.keyCode` the keyboard key it
@@ -1599,13 +1609,64 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
   gamepad is used, so style it (`.btn:focus-visible`).
 - Documents on meshes get the gamepad like the keys: the one that took the last press.
 
+### Gamepad cursor
+
+Turn on **Gamepad Cursor** on a UI Document (`set_properties UIDocument gamepadCursor true`,
+Lua `doc.gamepadCursor = true`) for menus a pad player should point at, not only Tab through.
+While the input scheme is Gamepad (jasper://docs/input "Input scheme") and such a document
+shows (screen mode, interactive), the engine draws a pointer above every document:
+
+- The left stick moves it (Project Settings > Input > Gamepad Cursor: Cursor Speed at a 1080 px
+  tall canvas, Acceleration Time, slower over buttons, links, form controls and component UI
+  Buttons by Slow Over Controls, Deadzone); it starts on the focused element, else where it
+  was, else the canvas centre.
+- A is a mouse click at it (`pointerType "mouse"`, `:hover` follows it); holding A drags
+  ranges, scroll boxes, `drag` sources and `setPointerCapture` sliders. The right stick scrolls
+  under it (Scroll Speed lines/s). The d-pad moves the focus as above (from the element under
+  the cursor when nothing is focused) and the cursor jumps to it; so does `el:focus()`.
+- The sticks, A, B and the d-pad are the UI's while it shows: the game sees them at rest, input
+  actions that ignore UI input skip them. B is Back. It never moves `Input.getMousePosition()`,
+  presses `Input.getMouseButton`, fires `Engine.onMouse*` or changes the scheme; a real mouse
+  move switches the scheme, which hides it (a held A ends with `pointercancel`, no click).
+- Lua `GamepadCursor.isActive()`, `GamepadCursor.position` (set warps), `.enabled`, `.speed`,
+  `.scrollSpeed` (this Play only). Agents: `send_input` gamepad events take `x, y` or `target`
+  to warp it first; `inspect_ui` returns `gamepad_cursor {active, x, y, over}`.
+
+### Back and menus
+
+**Is Menu.** Mark pause menus, dialogs and settings screens Is Menu (`isMenu`); HUDs stay off.
+`Engine.isMenuShowing()` is true while a shown, interactive Is Menu document exists. A menu
+appearing releases what the game held in the next frame: keys and buttons come up, the game's
+and the HUD's fingers are cancelled (on-screen sticks let go), nothing is replayed after.
+
+**Back** is Android's Back button, Escape and gamepad B (never a repeat), and
+`send_input {type: "app", action: "back"}`:
+
+1. An open select or a modal `<dialog>` holding the focus closes as today; that is not a Back.
+2. The top menu document (highest sort order, top scene first) gets a cancelable, bubbling
+   `back` event at its focused element, else its root. `event:preventDefault()` takes it;
+   otherwise it closes an open select, else the topmost open modal `<dialog>`.
+3. Not taken: `Engine.onBack(source)` (`"back_button"`, `"escape"`, `"gamepad"`, `"agent"`);
+   one subscriber takes it.
+4. Not taken: Escape and B go on as keys; Android's Back presses Escape, as before.
+
+A taken Escape or B reaches no `keydown` and not the game.
+
+```lua
+menu:addEventListener("back", function(event)
+    closeMenu()
+    event:preventDefault()
+end)
+Engine.onBack = function(source) openPauseMenu() end
+```
+
 ### Touch, text fields and the cursor
 
 **Touch.** Every finger is a pointer of its own: its own `:hover` (only while it is down),
 `:active`, capture, drag and click. Two fingers press two buttons; lifting one releases and
 clicks only its own. Hover-only affordances do not exist on touch: show them by default or on
-`:focus`/`:active`, or use `@media (hover: hover)`, evaluated once at load (false on touch
-devices). A finger that starts on a scrollable box pans it once it moves past a few pixels,
+`:focus`/`:active`, or use `@media (hover: hover)`, which follows the last pointer used (false
+after a finger, true after the mouse, also on a touch device with a mouse attached). A finger that starts on a scrollable box pans it once it moves past a few pixels,
 where `touch-action` allows (then it gets `pointercancel` and loses `:active`); on-screen
 controls and game surfaces use `touch-action: none`. Linux desktops have no multi-touch: the
 Game view's Simulate Touch with an Alt-pinned finger and `send_input` cover testing.
@@ -1649,7 +1710,7 @@ pointer that presses it; three fingers on three controls work at once.
 
 | Element | Attributes (defaults) | State and events |
 |---|---|---|
-| `onscreen-stick` | `mode` (`fixed`, `floating`: the base appears under the finger, `dynamic`: it follows past `move-threshold`), `handle-range` (1), `dead-zone` (0), `move-threshold` (1), `axes` (`both`, `horizontal`, `vertical`), `snap-x`, `snap-y`, `horizontal-action` (`Horizontal`), `vertical-action` (`Vertical`), `visibility` (`always`, `touch-devices-only`) | `data-pressed`, `data-x`, `data-y` (-1..1, y up); `:active` while held; `stickstart`, `stickmove`, `stickend` (`event.detail.x` / `.y`) |
+| `onscreen-stick` | `mode` (`fixed`, `floating`: the base appears under the finger, `dynamic`: it follows past `move-threshold`), `handle-range` (1), `dead-zone` (0), `move-threshold` (1), `axes` (`both`, `horizontal`, `vertical`), `snap-x`, `snap-y`, `horizontal-action` (`Horizontal`), `vertical-action` (`Vertical`), `visibility` (`always`, `touch-devices-only`, `touch-scheme`: while the player uses touch) | `data-pressed`, `data-x`, `data-y` (-1..1, y up); `:active` while held; `stickstart`, `stickmove`, `stickend` (`event.detail.x` / `.y`) |
 | `onscreen-button` | `action` (`Fire1`), `value` (1; -1 on an axis), `press-on-enter`, `release-on-leave`, `visibility` | `data-pressed`, `:active`; the usual pointer and click events |
 | `touch-area` | `horizontal-action` (`Mouse X`), `vertical-action` (`Mouse Y`), `sensitivity` (0.1), `invert-x`, `invert-y`, `visibility` | `data-pressed`; `areadrag` (`event.detail.dx` / `.dy`, document px) |
 
@@ -1657,10 +1718,42 @@ A stick without children gets `<div class="stick-base"><div class="stick-knob"><
 (a 160 px translucent circle and a 64 px knob from the UA sheet; give your own children these
 classes to restyle). The stick maths is Joystick Pack's in document px: the base's half width is
 the radius; the knob moves with `transform: translate(...)`. Released, removed, hidden with
-`display: none`, or with its document hidden or unloaded, a control clears what it wrote.
+`display: none` or by its `visibility`, or with its document hidden or unloaded, a control
+clears what it wrote.
+
+**Input scheme.** Every document's `<html>` carries `data-input-scheme` (`keyboard-mouse`,
+`gamepad`, `touch`) and `data-gamepad-family` (`xbox`, `playstation`, `nintendo`, `generic`),
+updated the frame the player switches device (jasper://docs/input), so CSS alone follows it:
+`html[data-input-scheme="touch"] .kbd-hint { display: none; }`. A script that sets them is
+overwritten at the next change. `<input-prompt action="Gameplay/Jump">` shows the action's binding
+for the scheme in use ("Space", "Cross", "Touch"; `scheme="gamepad"` and the others pin one) and
+sets `data-glyph` (a glyph key such as `gamepad/playstation/cross`), `data-scheme` and
+`data-empty` (no binding for that scheme); it follows rebinding too. Children you give it replace
+the text, the attributes still update: `<input-prompt action="Gameplay/Jump"><img class="glyph"></input-prompt>`
+with CSS on `[data-glyph="..."]` shows your art.
 
 **Text fields.** Focusing one opens the virtual keyboard (Android, iOS, Web) and places the IME
-window at the caret. Composition shows inside the field on Windows, macOS, iOS, Android and
+window at the caret. The field picks the keyboard (desktop platforms ignore it):
+
+| Attribute | Keyboard |
+|---|---|
+| `type` | `email`, `url`, `tel`: their keyboards; `search`: the search keyboard and key; `number`: digits when `step` is whole and `min` ≥ 0, else a decimal pad (with a minus while `min` is absent or negative); `password`: secure, no suggestions; `<textarea>`: multi-line, the Enter key |
+| `inputmode` | `text`, `decimal`, `numeric`, `tel`, `search`, `email`, `url` override it; `none` shows no keyboard (hardware keys still type) |
+| `enterkeyhint` | the action key: `enter`, `done`, `go`, `next`, `previous`, `search`, `send` |
+| `autocapitalize` | `off`/`none` (default), `on`/`sentences`, `words`, `characters` |
+| `autocorrect` | `on`: suggestions (Android; iOS and the web keep no text to correct, so stay off); default off |
+| `maxlength` | the keyboard stops there too |
+
+The action key arrives as an Enter `keydown` on the field with `event.enterKeyHint` ("next",
+"send", ...; "" for the platform's default key); `preventDefault()` stops what follows. Otherwise
+`next` / `previous` focus the next / previous text field in tab order (none: the field blurs),
+`done` blurs (the keyboard closes), and `go`, `search`, `send`, `enter` or none submit an
+`<input>`'s form as Enter does, then blur; in a `<textarea>` the key breaks the line. A hardware
+Enter on a field with `enterkeyhint` does the same (as Chrome on Android with a Bluetooth
+keyboard); without one, it submits as before. Moving between fields keeps the keyboard open and
+changes it; the field's value stays the truth: text it rejects (`maxlength`, a number filter, a
+script setting `value`) is sent back to the Android and iOS keyboards. `inspect_ui` reports the
+focused field's keyboard as `focus`; the Game view shows it in a chip during Play. Composition shows inside the field on Windows, macOS, iOS, Android and
 Web; on Linux the input method draws it, and in the editor's Game view composed text arrives
 committed. Ctrl/Cmd + C/X/V/A copy, cut, paste and select all. `System.setClipboardText` /
 `System.getClipboardText` reach the system clipboard (asynchronous on Web).
@@ -1965,7 +2058,7 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `hud` | health and shield bars, score and timer, minimap, ammo, ability cooldowns, damage flash; data binding (`{{ }}`, `data-style-width`, `data-class-*`) | within_viewport, no_overlap, text_fits, contrast with background, visible |
 | `inventory` | a CSS grid of slots from `data-for`, HTML5 drag and drop (`draggable`, `dropzone`, `dataTransfer`, the ghost and drop classes), rich tooltips from `setTooltip`, equipment | count, no_overlap, within_parent, within_viewport, text_fits, visible |
 | `settings` | tabs, sliders, switches, selects, key bindings; two-way `data-value`/`data-checked` | visible, no_overlap, min_size, text_fits, within_parent, within_viewport |
-| `dialogue` | portrait, typewriter text, choices; `onUpdate` timing | text_fits, within_viewport, contrast, no_overlap, min_size |
+| `dialogue` | portrait, typewriter text, choices; `onUpdate` timing; the view of a Dialogue Runner (its conversation is `<stem>_assets/demo.dialogue`, edit it with `edit_graph`) | text_fits, within_viewport, contrast, no_overlap, min_size |
 | `shop` | filter chips, cards with `data-for` + `data-if`, buy buttons disabled by `data-attr-disabled`, a quantity dialog, an animated gold counter | text_fits, no_overlap, within_parent, contrast, min_size, within_viewport |
 | `toasts` | toasts created from Lua (`createElement`, `appendChild`), enter and exit animations | within_viewport, no_overlap, text_fits, contrast |
 | `loading` | progress bar, Lottie spinner, rotating tips, "press any key" | visible, text_fits, within_viewport |
@@ -1974,6 +2067,11 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `chat_log` | Markdown messages of any height in a `<list-view item-height="auto" anchor="end">`, a composer, teammates writing on game time | contrast, min_size, text_fits, virtual_window, visible, within_viewport |
 | `quest_log` | chapters and quests in a `<tree-view>` with keyboard and gamepad navigation, a `<markdown src>` journal | text_fits, virtual_window, visible, within_viewport |
 | `blank` | an empty page with a heading (the default template; no script) | visible |
+
+The `dialogue` example shows the lines of its GameObject's Dialogue Runner (`runner.onLine` drives
+`say`, a choice calls `runner:choose(i)`, Space or a click `runner:advance()`, a line's voice plays
+through `Audio`); a runner without a dialogue gets the demo conversation. Give the runner your own
+`.dialogue` and the same view plays it (`jasper://docs/dialogue`).
 
 Each example's Lua class is `<Name>UI`, gets the document with
 `UIDocument(self.scene, self.entity)`, looks elements up through an asserting `byId`, and binds

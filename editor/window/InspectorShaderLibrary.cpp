@@ -74,6 +74,7 @@ namespace {
             case BlendMode::LIGHT_PREMULTIPLIED: return "Light (premultiplied)";
             case BlendMode::MAX_PREMULTIPLIED: return "Max (premultiplied)";
             case BlendMode::ERASE_PREMULTIPLIED: return "Erase (premultiplied)";
+            case BlendMode::MULTIPLY_2X: return "Multiply 2x";
         }
         return "Alpha";
     }

@@ -57,6 +57,11 @@ add_test(NAME native-crash-reports COMMAND ${Python3_EXECUTABLE} -I
     ${CMAKE_CURRENT_SOURCE_DIR}/../crash/test_crash.py $<TARGET_FILE:jasperengine-crash-test>
     --symbolicate ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/symbolicate.py ${JASPER_CRASH_TEST_FLAGS})
 set_tests_properties(native-crash-reports PROPERTIES TIMEOUT 180)
+# journal.txt beside crash.txt, from the fatal handler (docs/specs/shipped-game-diagnostics.md AC5)
+add_test(NAME native-crash-journal COMMAND ${Python3_EXECUTABLE} -I
+    ${CMAKE_CURRENT_SOURCE_DIR}/../crash/test_crash.py $<TARGET_FILE:jasperengine-crash-test>
+    --symbolicate ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/symbolicate.py --journal)
+set_tests_properties(native-crash-journal PROPERTIES TIMEOUT 60)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT JASPERENGINE_UNITY_BUILD)
     add_test(NAME posix-crash-signal-safety COMMAND ${Python3_EXECUTABLE} -I
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/check_posix_symbols.py
@@ -156,6 +161,10 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
+file(GLOB JASPERENGINE_DIALOGUE_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/dialogue/*.cpp)
+jasperengine_skip_unity_build(
+    REASON "the dialogue tests use the namespace dialogue, whose Value another test of a batch declares for itself (ComponentArrayTest)"
+    SOURCES ${JASPERENGINE_DIALOGUE_TESTS})
 
 # The noise suites compile kernels' arithmetic in their own units and compare it with the library's, so
 # they take the same flag. The golden cases are shared with tools/noise/golden, and the presets are
@@ -207,6 +216,8 @@ jasperengine_add_test_target(jasperengine-core-tests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/android
         # WebKeyMap.h, the web platform's key map (plain C++)
         ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/emscripten
+        # TextTraitsMap.h, the iOS text field's traits (plain C++)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/apple/ios
     DEFINITIONS
         # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
         JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."
@@ -323,7 +334,11 @@ add_executable(je-bench-foliage ${CMAKE_CURRENT_SOURCE_DIR}/bench/FoliageBench.c
 add_executable(je-bench-terrain ${CMAKE_CURRENT_SOURCE_DIR}/bench/TerrainBench.cpp)
 # je-bench-late-transforms: the late transform pass and the on-demand world pose (S95 REQ-33, REQ-35, AC-9)
 add_executable(je-bench-late-transforms ${CMAKE_CURRENT_SOURCE_DIR}/bench/LateTransformPassBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
-set(CORE_BENCH_TARGETS je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio je-bench-foliage je-bench-terrain je-bench-late-transforms)
+# je-bench-physics-query: the spatial query budgets (docs/specs/spatial-queries.md R19, AC14)
+add_executable(je-bench-physics-query ${CMAKE_CURRENT_SOURCE_DIR}/bench/PhysicsQueryBench.cpp)
+# je-bench-culling: the Culling Group and Simulation Culling budgets (culling-group-and-simulation-distance R22)
+add_executable(je-bench-culling ${CMAKE_CURRENT_SOURCE_DIR}/bench/CullingBench.cpp)
+set(CORE_BENCH_TARGETS je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio je-bench-foliage je-bench-terrain je-bench-physics-query je-bench-culling je-bench-late-transforms)
 # je-bench-voxel: the Voxel Volume budgets (T6 R55, R56)
 if(JASPERENGINE_VOXEL)
     add_executable(je-bench-voxel ${CMAKE_CURRENT_SOURCE_DIR}/bench/VoxelBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})

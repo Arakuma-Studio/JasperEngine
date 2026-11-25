@@ -3,6 +3,12 @@
 
 #include "util/CppIdentifier.h"
 #include "pixelart/BitmapFontCreate.h"
+#include "localization/StringTableDocument.h"
+#include "dialogue/DialogueEditor.h"
+#include "dialogue/DialogueKind.h"
+#include "dialogue/DialogueProgram.h"
+#include "localization/StringTableEditCmd.h"
+#include "window/LocalizationTablesWindow.h"
 #include "animation/AnimatorAssetDocument.h"
 #include "window/NoiseGraphWindow.h"
 #include "window/PoseAnimationWindow.h"
@@ -1317,6 +1323,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.40f, 0.20f, 0.60f, 1.0f));
         case FileType::COLOR_LUT:
             return ImGui::GetColorU32(ImVec4(0.06f, 0.46f, 0.43f, 1.0f));
+        case FileType::IES_PROFILE:
+            return ImGui::GetColorU32(ImVec4(0.95f, 0.78f, 0.25f, 1.0f));
         case FileType::POSE_ANIMATION:
             return ImGui::GetColorU32(ImVec4(0.23f, 0.43f, 0.65f, 1.0f));
         case FileType::HUMANOID:
@@ -1429,6 +1437,33 @@ void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
                 }
             }
             ImGui::EndMenu();
+        }
+        ImGui::EndMenu();
+    }
+    // Dialogue (dialogue-graphs.md R22): an entry `start` wired to an empty line, namespace from the name
+    if (ImGui::MenuItem(ICON_FA_COMMENTS " Dialogue")) {
+        assetsCreateDialogue(directory);
+        ImGui::CloseCurrentPopup();
+    }
+    // Localization > String Table (game-ui-localization.md R29): namespace from the name, source
+    // language from the project default; one undo step
+    if (ImGui::BeginMenu(ICON_FA_LANGUAGE " Localization")) {
+        if (ImGui::MenuItem("String Table")) {
+            fs::path owner = directory / "New String Table.stringtable";
+            for (int n = 1; fs::exists(owner); n++) owner = directory / ("New String Table " + std::to_string(n) + ".stringtable");
+            l10n::StringTableSet set;
+            std::string error;
+            std::string ns = l10n::namespaceFromStem(owner.stem().string());
+            for (int n = 2; !l10n::namespaceOwner(project->getProjectPath(), ns).empty(); n++) {
+                ns = l10n::namespaceFromStem(owner.stem().string()) + "_" + std::to_string(n);
+            }
+            if (!l10n::createTable(project->getProjectPath(), owner, ns, project->getLocalizationSettings().effectiveDefault(), set, error) ||
+                    !l10n::commitSet(project, nullptr, set, "Create String Table " + set.table.ns, &error)) {
+                Backend::getApp().registerAlert("Create String Table", error);
+            } else {
+                Backend::getApp().getLocalizationTablesWindow()->open(owner);
+            }
+            ImGui::CloseCurrentPopup();
         }
         ImGui::EndMenu();
     }
@@ -3290,6 +3325,8 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }else if (Util::isColorLutFile(fileEntry.extension)){
             fileEntry.type = FileType::COLOR_LUT;
             fileEntry.icon = lutIcon.getRender();
+        }else if (Util::isIesFile(fileEntry.extension)){
+            fileEntry.type = FileType::IES_PROFILE;
         }else if (Util::isPoseAnimationFile(fileEntry.extension)){
             fileEntry.type = FileType::POSE_ANIMATION;
             fileEntry.icon = poseAnimationIcon.getRender();
@@ -5212,6 +5249,27 @@ void editor::ProjectWindow::assetsCreateProceduralMaterial(const fs::path& direc
     selectCreated(directory, relative.filename().string(), true);
 }
 
+void editor::ProjectWindow::assetsCreateDialogue(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(directory, "New Dialogue", ".dialogue");
+    const fs::path file = project->getProjectPath() / relative;
+    dialogue::registerDialogueKind();
+    graph::Graph created;
+    created.kind = dialogue::KIND_ID;
+    created.kindVersion = 1;
+    dialogues::prepareNew(project, file, created, true);
+    std::string error;
+    if (!ProjectFileWrites::writeUndoable(project, {{file, graph::save(created)}}, error)) {
+        Backend::getApp().registerAlert("Create Dialogue", error);
+        return;
+    }
+    selectCreated(directory, relative.filename().string(), true);
+}
+
 void editor::ProjectWindow::assetsCreateAnimationClip(const fs::path& directory) {
     if (!fs::is_directory(directory)) {
         Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
@@ -5746,6 +5804,11 @@ void editor::ProjectWindow::assetsOpenSelected() {
 }
 
 void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& filePath) {
+    // a String Table opens the Localization Tables window on it (game-ui-localization.md R29)
+    if (filePath.extension() == l10n::STRINGTABLE_EXTENSION) {
+        Backend::getApp().getLocalizationTablesWindow()->open(filePath);
+        return;
+    }
     if (file.type == FileType::IMAGE) {
         imageViewerWindow->openFile(filePath);
     } else if (file.type == FileType::SCENE) {

@@ -1583,6 +1583,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawShakePresetAsset(asset);
         return true;
     }
+    // an .ies: its polar plot and metadata (InspectorIesProfile.cpp)
+    if (Util::isIesFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawIesProfileAsset(asset);
+        return true;
+    }
     // a .soundevent: its editor (InspectorSoundEvent.cpp)
     if (Util::isSoundEventFile(file)){
         std::error_code ec;

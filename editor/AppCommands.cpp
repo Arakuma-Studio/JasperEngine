@@ -15,6 +15,7 @@
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
+#include "recorder/RecordInput.h"
 #include "window/ProjectWindow.h"
 #include "render/SceneRender.h"
 #include "window/AnimationWindow.h"
@@ -226,6 +227,10 @@ void editor::App::registerCommands(){
          [this]() { return mainToolbar->canPause() && !mainToolbar->isPaused(); });
     bind("playmode.stop", [this](const CommandArgs&) { mainToolbar->stopSession(); },
          [this]() { return mainToolbar->canStopSession(); });
+    bind("playmode.recordInput", [](const CommandArgs&) { recordinput::RecordInput::get().toggle(); },
+         []() { return recordinput::RecordInput::get().canToggle(); });
+    bind("playmode.replayInput", [this](const CommandArgs&) { mainToolbar->replayInput(); },
+         [this]() { return !mainToolbar->isInPlayMode() && mainToolbar->canTogglePlay(); });
     bind("playmode.releaseCursor", [this](const CommandArgs&) { playInput->releaseCursor(); },
          [this]() {
              const MouseMode mode = Engine::getMouseMode();

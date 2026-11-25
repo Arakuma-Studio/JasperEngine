@@ -60,6 +60,16 @@ namespace jasperengine::diag::crash::detail {
 
         Tag tags[kTagCount];
 
+        // the Gameplay Journal (diag/Journal.h), copied at install when configured before it:
+        // journal.txt is its header, "dropped: N", "---" and the ring's whole entries
+        char* journal = nullptr;
+        size_t journalCapacity = 0;
+        std::atomic<uint64_t>* journalCursor = nullptr;
+        std::atomic<uint64_t>* journalWritten = nullptr;
+        char journalHeader[512] = {0};
+        size_t journalHeaderLength = 0;
+        char journalFile[kPathBytes] = {0};
+
         // The first entry reports. Other threads wait up to eight seconds for reportDone
         // before chaining; recursive faults on the reporting thread terminate immediately.
         std::atomic<int64_t> reportingThread{0};
@@ -123,6 +133,36 @@ namespace jasperengine::diag::crash::detail {
             return appendDecimal(out, capacity, length, static_cast<uint64_t>(-(value + 1)) + 1);
         }
         return appendDecimal(out, capacity, length, static_cast<uint64_t>(value));
+    }
+
+    // The journal ring's readable bytes, ring positions [begin, end): past a cursor that wrapped,
+    // the oldest entry may be overwritten in part, so they start after its end. entries counts
+    // the whole lines starting with '+' (a reader drops a torn one). No allocation: the signal
+    // path calls it.
+    struct JournalSpan {
+        uint64_t begin = 0;
+        uint64_t end = 0;
+        uint64_t entries = 0;
+    };
+
+    inline JournalSpan journalSpan(const char* ring, size_t capacity, uint64_t cursor) {
+        JournalSpan span;
+        span.end = cursor;
+        if (!ring || capacity == 0 || cursor == 0) return span;
+        uint64_t at = cursor > capacity ? cursor - capacity : 0;
+        if (cursor > capacity) {
+            while (at < cursor && ring[at % capacity] != '\n') at++;
+            if (at < cursor) at++;
+        }
+        span.begin = at;
+        bool lineStart = true, entry = false;
+        for (; at < cursor; at++) {
+            const char c = ring[at % capacity];
+            if (lineStart) entry = c == '+';
+            lineStart = c == '\n';
+            if (lineStart && entry) span.entries++;
+        }
+        return span;
     }
 
     // "0x" and the lowercase hex digits, no padding

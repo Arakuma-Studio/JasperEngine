@@ -140,6 +140,16 @@
 
 namespace jasperengine {
     class Scheduler;
+    enum class InputSourceTag : uint8_t;   // input/InputScheme.h
+    enum class EnterKey : uint8_t;         // input/TextEntry.h
+    struct TextEntryTraits;
+
+    // what pressed Back (Engine::systemBack); named in Lua by backSourceName
+    enum class BackSource : uint8_t { BackButton, Escape, Gamepad, Agent };
+    // who took the last Back: an open <select> or modal <dialog> as a key (not a Back), the top menu
+    // document's `back` event, Engine.onBack, or nobody (the source's own path ran; not "None": X11
+    // defines it)
+    enum class BackRoute : uint8_t { Unconsumed, Key, Document, Game };
 
     class JASPERENGINE_API Scene;
 
@@ -337,6 +347,7 @@ namespace jasperengine {
         };
 
     private:
+        friend class GamepadCursor;
         // TEST-ONLY seam: a view loaded without a GPU (canvas refresh tests)
         friend struct EngineTestAccess;
 
@@ -414,6 +425,8 @@ namespace jasperengine {
         static double pinnedShaderTime;
         // read by Log from any thread (the frame of a line)
         static std::atomic<uint64_t> gameFrames;
+        // every frame run, paused or not (getFrameIndex)
+        static uint64_t frameIndex;
         static double unscaledDeltatime;
         static double unscaledTime;
         static double fixedTime;
@@ -493,6 +506,10 @@ namespace jasperengine {
         static bool captureFrame;
         // the composite of the frame that just drew, for the run control's screenshot
         static bool readCompositeFrame(std::vector<uint8_t>& rgba, int& width, int& height, std::string& error);
+        // a user report's capture frame (Crash.beginReport): drawn offscreen, read after it
+        static bool userCaptureFrame;
+        // that frame: the composite, or the host's own target (the editor's Game view)
+        static bool readUserReportFrame(std::vector<uint8_t>& rgba, int& width, int& height, std::string& error);
 
         static bool transformCoordPos(float& x, float& y);
         // ui-multitouch D6: a pointer ends without a click in the documents and the component
@@ -500,6 +517,16 @@ namespace jasperengine {
         // pointerOrButton is the mouse button), or every pointer (pause, focus loss)
         static void cancelUIPointer(int pointerOrButton, bool touch);
         static void cancelAllUIPointers();
+        // isMenuShowing turned true (the next latch): what the game and the non-menu UI hold lets go
+        static void releaseInputForMenu();
+        // The gamepad cursor's pointer (GamepadCursor, D8): the documents' mouse pointer with the left
+        // button, then the component UI and the documents on meshes, in the mouse's order; never
+        // Input, the game's events or the input scheme. True when the UI took it
+        enum CursorPhase { CURSOR_DOWN, CURSOR_UP, CURSOR_MOVE };
+        static bool dispatchCursorPointer(CursorPhase phase, float x, float y);
+        static bool dispatchCursorMove(float x, float y);
+        // wheel lines (GLFW's signs: up and left are positive) at the documents' mouse pointer
+        static bool dispatchCursorWheel(float dx, float dy);
         // systemDraw: a high surrogate that never got its low one is typed as U+FFFD
         static void flushCharInput();
         // whole typed code points to Input.inputString, the documents, onCharInput and the
@@ -523,6 +550,8 @@ namespace jasperengine {
         // the snapshot with the debug overlay's Scene on top when it has one (keys: only while
         // a field of the overlay has the focus)
         static std::vector<Scene*> getInputScenes(bool keys);
+        // the same (keys false) into out, top layer first, reusing its storage (the gamepad cursor's frame)
+        static void getInputScenesTopFirst(std::vector<Scene*>& out);
         static bool ensureCompositeFramebuffer();
         static void beginCompositeFramebuffer();
         // a screen transition may draw this frame through the composite target (Vulkan,
@@ -871,6 +900,9 @@ namespace jasperengine {
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();
         static uint64_t getGameFrames();
+        // Frames the engine has run, paused, held or in the editor's edit mode too: the key of
+        // what a cache keeps for one frame (main thread)
+        static uint64_t getFrameIndex();
 
         // The frame delta before timeScale (Unity's Time.unscaledDeltaTime): the measured frame
         // time capped by maxDeltatime, or the fixed frame delta when set; 0 while the app is
@@ -1101,6 +1133,11 @@ namespace jasperengine {
         // The browser's pointer lock became active or ended (pointerlockchange)
         static void systemPointerLockChanged(bool locked);
 
+        // What the platform knows of the next touch, mouse or key event (InputSchemeTracker):
+        // a finger that is a mouse, an engine-made key, the input device id. Each systemTouch*,
+        // systemMouse* and systemKey* call resets it to None, -1 once it is done
+        static void setInputSource(InputSourceTag tag, int deviceId = -1);
+
         static void systemTouchStart(int pointer, float x, float y);
         static void systemTouchEnd(int pointer, float x, float y);
         static void systemTouchMove(int pointer, float x, float y);
@@ -1131,6 +1168,21 @@ namespace jasperengine {
         static void systemImeComposition(const std::string& utf8, int cursorCodepoints);
         // drops the current composition, restoring the text it replaced
         static void systemImeCancel();
+        // A soft keyboard that keeps the text (Android, iOS) reports its state: UTF-16 units, the
+        // selection and the composing region in units (-1: none). Diffed against what it held
+        // (TextInputSync) into caret moves, backspaces, text input and composition for the field
+        // (text-entry D3); the field's real text goes back at the next flush when it differs (R4)
+        static void systemTextInputState(const std::u16string& units, int selectionStart, int selectionEnd,
+                                         int composingStart, int composingEnd);
+        // the soft keyboard was given this text (UTF-8), caret in code points, nothing composed
+        static void resetTextInputState(const std::string& utf8, size_t caret);
+        // The soft keyboard's action key (text-entry R3, D2): Enter on the focused field, with
+        // event.enterKeyHint, cancelable; unless prevented, the hint's default action. A component
+        // InputField submits; with no field the game gets an Enter press
+        static void systemEditorAction(EnterKey key);
+        // the focused text field (a document's or a component InputField) and the traits it asks of
+        // the soft keyboard; keyboardOpen: the keyboard is shown for it (Game view, inspect_ui)
+        static bool getTextEntryFocus(TextEntryTraits& traits, bool& keyboardOpen);
         // a document text field has focus: platforms route IME composition to it
         static bool wantsTextComposition();
         // the caret area of the focused document text field, canvas coordinates; converted
@@ -1148,6 +1200,24 @@ namespace jasperengine {
         static void systemGamepadButtonDown(int gamepad, int button);
         static void systemGamepadButtonUp(int gamepad, int button);
         static void systemGamepadAxisMove(int gamepad, int axis, float value);
+        // Back (docs/mcp/guide/html-ui.md "Back and menus"): Android's Back button, Escape and gamepad B
+        // downs (not repeats), send_input app: back. An open <select> or modal <dialog> where the key
+        // would go closes as today (not a Back); else the top menu document gets a cancelable `back`
+        // event, then Engine.onBack (consumed with a subscriber). True: consumed. Not consumed, the
+        // Back button and the agent press Escape (released next frame), as Android always did
+        static bool systemBack(BackSource source);
+        static BackRoute getLastBackRoute();
+        // "back_button", "escape", "gamepad", "agent"
+        static const char* backSourceName(BackSource source);
+        // a shown, interactive UIDocument with Is Menu exists in an input scene (cached: documents
+        // report their changes)
+        static bool isMenuShowing();
+        // a shown, interactive, screen-mode UIDocument with Gamepad Cursor exists (cached as isMenuShowing)
+        static bool isGamepadCursorShown();
+        // Project Settings > Player > Pause On Focus Loss: onPauseRequested fires on a focus loss, an
+        // app pause and the Gamepad scheme's pad disconnecting while no menu shows
+        static void setPauseOnFocusLoss(bool enabled);
+        static bool isPauseOnFocusLoss();
         // an element of a document has focus, or a component UI Button is selected, so the d-pad,
         // the left stick and A go to the UI (a game that polls Input can check it)
         static bool wantsGamepadNavigation();
@@ -1212,6 +1282,10 @@ namespace jasperengine {
         // the action's name; fired before onUpdate (Input::beginFrame)
         static FunctionSubscribe<void(const std::string&)> onButtonDown;
         static FunctionSubscribe<void(const std::string&)> onButtonUp;
+        // Back reached the game (systemBack): "back_button", "escape", "gamepad", "agent"
+        static FunctionSubscribe<void(const std::string&)> onBack;
+        // Pause On Focus Loss, no menu showing: "focus_lost", "app_paused", "gamepad_disconnected"
+        static FunctionSubscribe<void(const std::string&)> onPauseRequested;
 
     };
     

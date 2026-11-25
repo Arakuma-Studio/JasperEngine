@@ -1,0 +1,11 @@
+{
+  "description": "tools/test-projects/savegame (WEB_PROJECT=savegame tools/build.sh web): SaveGame writes slot1, onComplete fires after the IndexedDB sync, then the gate reloads the page in the same profile and the game reads slot1 back from IndexedDB. No pixel check: the scene is empty.",
+  "isolated": true,
+  "reload_after": "savegame: big ok",
+  "console": [
+    {"text": "savegame: written", "level": "log"},
+    {"text": "savegame: big ok", "level": "log"},
+    {"text": "savegame: read ok gen 1", "level": "log"}
+  ],
+  "ordered": true
+}

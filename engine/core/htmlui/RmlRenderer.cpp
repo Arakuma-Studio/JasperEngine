@@ -1024,6 +1024,9 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, c
         Log::error("[HTML UI] could not load image '%s'", source.c_str());
         return 0;
     }
+    // the decoded pixels are this function's alone (the texture gets a premultiplied copy): a
+    // TextureData frees them only when it owns them
+    data.setDataOwned(true);
 
     const int width = data.getWidth();
     const int height = data.getHeight();

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "AppSettings.h"
+#include "recorder/RecordInput.h"
 #include "Exporter.h"
 #include "Generator.h"
 #include "imgui.h"
@@ -40,6 +41,9 @@ namespace jasperengine::editor {
         std::string m_ffmpegOverride;
         // S30: the shipping tools (AppSettings external tool paths) and the installed player runtimes
         std::map<std::string, std::string> m_toolPaths;
+        // Preferences > External Tools > adb: where it was found for the path shown (looked up on change)
+        std::string m_adbChecked = "\x01";
+        std::string m_adbFound;
         std::vector<PlayerInfo> m_playerRuntimes;
         std::string m_playerRuntimeStatus;
         std::string m_ffmpegStatus;
@@ -75,6 +79,8 @@ namespace jasperengine::editor {
         std::string m_smartMergeStatus;
         LatticeViewSettings m_lattice;
         SceneViewSettings m_sceneView;
+        // Play Mode > Record Input (input-recorder-and-input-scripts R37): the project's
+        recordinput::Settings m_recordInput;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -107,6 +113,7 @@ namespace jasperengine::editor {
         void drawPixelArtSettings();
         void drawVersionControlSettings();
         void drawAdvancedSettings();
+        void drawPlayModeSettings();
         bool applySettings();
 
     public:

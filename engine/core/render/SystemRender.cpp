@@ -498,6 +498,10 @@ std::string SystemRender::getApiVersion(){
     return SokolSystem::getApiVersion();
 }
 
+std::string SystemRender::getDriverVersion(){
+    return SokolSystem::getDriverVersion();
+}
+
 const char* SystemRender::getBackendName(){
     return SokolSystem::getBackendName();
 }

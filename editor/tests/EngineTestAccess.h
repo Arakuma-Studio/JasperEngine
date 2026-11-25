@@ -15,5 +15,6 @@ namespace jasperengine {
             return previous;
         }
         static void updateGamepadNavigation() { Engine::updateGamepadNavigation(); }
+        static bool cursorMove(float x, float y) { return Engine::dispatchCursorPointer(Engine::CURSOR_MOVE, x, y); }
     };
 }

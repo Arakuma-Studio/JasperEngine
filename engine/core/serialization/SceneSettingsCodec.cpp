@@ -180,6 +180,11 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     // format 1.9 (S92): the screen HTML UI documents' composite and MSAA samples
     w.u8(static_cast<uint8_t>(scene.getHtmlUiRenderMode()));
     w.u8(static_cast<uint8_t>(scene.getHtmlUiMsaaSamples()));
+    // format 1.10 (S99 R30): Environment Lighting's ambientMode and the Gradient's colours (sRGB)
+    w.u8(static_cast<uint8_t>(scene.getAmbientMode()));
+    write(w, scene.getAmbientSkyColor());
+    write(w, scene.getAmbientEquatorColor());
+    write(w, scene.getAmbientGroundColor());
     // format 1.13 (S95): the Fixed Timestep override
     w.f32(scene.getFixedTimestep());
 }
@@ -343,7 +348,19 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     if (uiRenderMode <= static_cast<uint8_t>(UIRenderMode::CAMERA))
         scene.setHtmlUiRenderMode(static_cast<UIRenderMode>(uiRenderMode));
     scene.setHtmlUiMsaaSamples(r.u8());
-    // a 1.9 to 1.12 record ends here: the project's fixed step (format 1.13)
+    // an older record ends here: the Color source and the default gradient (format 1.10)
+    if (r.atEnd()) return;
+    const uint8_t ambientMode = r.u8();
+    if (ambientMode <= static_cast<uint8_t>(AmbientMode::GRADIENT))
+        scene.setAmbientMode(static_cast<AmbientMode>(ambientMode));
+    Vector3 sky, equator, ground;
+    read(r, sky);
+    read(r, equator);
+    read(r, ground);
+    scene.setAmbientSkyColor(sky);
+    scene.setAmbientEquatorColor(equator);
+    scene.setAmbientGroundColor(ground);
+    // a 1.10 to 1.12 record ends here: the project's fixed step (format 1.13)
     if (r.atEnd()) return;
     scene.setFixedTimestep(r.f32());
 }

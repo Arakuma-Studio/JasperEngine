@@ -34,12 +34,15 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementText.h>
 #include <RmlUi/Core/Elements/ElementFormControl.h>
+#include <RmlUi/Core/Elements/ElementFormControlInput.h>
+#include <RmlUi/Core/Input.h>
 #include <RmlUi/Core/Event.h>
 #include <RmlUi/Core/EventListener.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <ctime>
 #include <deque>
 #include <map>
@@ -67,16 +70,13 @@ namespace {
     constexpr uint64_t burstLines = 20;         // more lines than this waiting is a burst
     constexpr double searchDelay = 0.15;        // the search applies once typing pauses
 
-    const Rml::EventId capturedEvents[] = {Rml::EventId::Change, Rml::EventId::Scroll, Rml::EventId::Mousedown,
-                                           Rml::EventId::Dragstart, Rml::EventId::Drag, Rml::EventId::Dragend};
+    constexpr size_t historyLines = 32;         // command lines Up/Down walk
+    constexpr double doubleTabSeconds = 1.0;    // a second Tab within this lists the candidates
+    constexpr size_t chipCount = 8;             // suggestion chips under the field (touch devices)
 
-    struct Command {
-        std::string name;
-        std::string description;
-        std::function<void(const std::vector<std::string>&)> function;
-        std::string ownerTag;
-        bool builtIn = false;
-    };
+    const Rml::EventId capturedEvents[] = {Rml::EventId::Change, Rml::EventId::Scroll, Rml::EventId::Mousedown,
+                                           Rml::EventId::Dragstart, Rml::EventId::Drag, Rml::EventId::Dragend,
+                                           Rml::EventId::Keydown};
 
     // one row of the console list: a line of the log, or (collapsed) every buffered line with
     // its text. Every row the filters let through is kept; those in view have an element.
@@ -186,6 +186,18 @@ namespace {
         bool tapArmed = false;
         double tapStart = 0.0;
 
+        // the command field (session only): the lines run, oldest first; the one Up/Down shows
+        // (history.size(): the line being typed, kept in historyDraft); the last Tab
+        std::vector<std::string> history;
+        size_t historyAt = 0;
+        std::string historyDraft;
+        double lastTab = -10.0;
+        // the suggestion chips shown, and the part of the line a tapped one replaces
+        std::vector<std::string> chips;
+        size_t chipsStart = 0, chipsEnd = 0;
+        // the command bar shows for this state of console::commandsEnabled (-1: a new document)
+        int commandBarShown = -1;
+
         // the popup's place (fraction of the height) and its drag
         float popupTop = 0.45f;
         bool popupDragging = false;
@@ -193,8 +205,6 @@ namespace {
         float popupDragStartTop = 0.0f;
         bool popupDragged = false;
         float appliedPopupTop = -1.0f;
-
-        std::vector<Command> commands;
 
         DebugOverlay::InsetsFunction safeArea = &screenSafeAreaInsets;
         std::string appliedInsets;
@@ -299,52 +309,6 @@ namespace {
         if (!entry.stackTrace.empty())
             text += "\n" + entry.stackTrace;
         return text;
-    }
-
-    bool validCommandName(const std::string& name){
-        if (name.empty())
-            return false;
-        for (char c : name){
-            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-'))
-                return false;
-        }
-        return true;
-    }
-
-    // words of a command line; "double" or 'single' quotes group words
-    std::vector<std::string> splitCommandLine(const std::string& line){
-        std::vector<std::string> words;
-        std::string word;
-        bool inWord = false;
-        char quote = 0;
-        for (char c : line){
-            if (quote){
-                if (c == quote){
-                    quote = 0;
-                }else{
-                    word += c;
-                }
-                continue;
-            }
-            if (c == '"' || c == '\''){
-                quote = c;
-                inWord = true;
-                continue;
-            }
-            if (c == ' ' || c == '\t'){
-                if (inWord){
-                    words.push_back(word);
-                    word.clear();
-                    inWord = false;
-                }
-                continue;
-            }
-            word += c;
-            inWord = true;
-        }
-        if (inWord)
-            words.push_back(word);
-        return words;
     }
 
     Rml::Element* byId(const char* id){
@@ -845,6 +809,7 @@ namespace {
         for (Rml::EventId id : capturedEvents)
             s.document->AddEventListener(id, &s.listener, true);
         s.rebuild = true;
+        s.commandBarShown = -1;
         s.layoutChanged = true;
         s.nextText = 0.0;
         s.nextGraph = 0.0;
@@ -1087,113 +1052,6 @@ namespace {
         buildDocument();
     }
 
-    // ---- commands
-
-    void builtInCommands(){
-        OverlayState& s = state();
-        auto add = [&s](const std::string& name, const std::string& description, std::function<void(const std::vector<std::string>&)> function){
-            Command command;
-            command.name = name;
-            command.description = description;
-            command.function = std::move(function);
-            command.builtIn = true;
-            s.commands.push_back(std::move(command));
-        };
-        add("help", "lists the commands", [](const std::vector<std::string>&){
-            std::string text = "Commands:";
-            for (const auto& [name, description] : DebugOverlay::getCommands())
-                text += "\n  " + name + (description.empty() ? std::string() : " - " + description);
-            Log::print("%s", text.c_str());
-        });
-        add("clear", "clears the console (the log buffer)", [](const std::vector<std::string>&){
-            Log::clearEntries();
-        });
-        add("stats", "stats off|fps|full: the stats panel", [](const std::vector<std::string>& args){
-            const std::string mode = args.empty() ? std::string() : lower(args[0]);
-            if (mode == "off") DebugOverlay::setStatsMode(Stats::Off);
-            else if (mode == "fps") DebugOverlay::setStatsMode(Stats::Fps);
-            else if (mode == "full") DebugOverlay::setStatsMode(Stats::Full);
-            else if (mode.empty()) DebugOverlay::cycleStatsMode();
-            else Log::warn("stats: off, fps or full (not '%s')", args[0].c_str());
-        });
-        add("timescale", "timescale <x>: Engine.timeScale (0 freezes, 1 normal)", [](const std::vector<std::string>& args){
-            if (args.empty()){
-                Log::print("timescale %g", Engine::getTimeScale());
-                return;
-            }
-            char* end = nullptr;
-            const double value = std::strtod(args[0].c_str(), &end);
-            if (!end || *end != '\0' || !std::isfinite(value)){
-                Log::warn("timescale: '%s' is not a number", args[0].c_str());
-                return;
-            }
-            Engine::setTimeScale((float)value);
-            Log::print("timescale %g", Engine::getTimeScale());
-        });
-        add("scene", "scene <name>: loads that scene (SceneManager.loadScene)", [](const std::vector<std::string>& args){
-            if (args.empty()){
-                Log::warn("scene: give the name of a scene");
-                return;
-            }
-            std::string name = args[0];
-            for (size_t i = 1; i < args.size(); i++)
-                name += " " + args[i];
-            if (!SceneManager::loadScene(name))
-                Log::warn("scene: no scene named '%s'", name.c_str());
-        });
-        add("lua", "lua <code>: runs Lua (Project Settings > Debug > Allow Lua Commands)", [](const std::vector<std::string>& args){
-            if (!state().settings.allowLua){
-                Log::warn("lua: Lua commands are off (Project Settings > Debug > Allow Lua Commands)");
-                return;
-            }
-            lua_State* L = LuaBinding::getLuaState();
-            if (!L){
-                Log::warn("lua: no Lua state");
-                return;
-            }
-            std::string code;
-            for (size_t i = 0; i < args.size(); i++)
-                code += (i ? " " : "") + args[i];
-            const int top = lua_gettop(L);
-            // an expression prints its value, as Lua's own prompt does
-            const std::string expression = "return " + code;
-            if (luaL_loadbuffer(L, expression.c_str(), expression.size(), "=console") != LUA_OK){
-                lua_pop(L, 1);
-                if (luaL_loadbuffer(L, code.c_str(), code.size(), "=console") != LUA_OK){
-                    const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
-                    lua_settop(L, top);
-                    Log::error("%s", error.c_str());
-                    return;
-                }
-            }
-            if (LuaBinding::pcallWithTraceback(L, 0, LUA_MULTRET) != LUA_OK){
-                const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
-                lua_settop(L, top);
-                Log::error("Lua Error: %s", error.c_str());
-                return;
-            }
-            std::string results;
-            for (int i = top + 1; i <= lua_gettop(L); i++){
-                size_t length = 0;
-                const char* text = luaL_tolstring(L, i, &length);
-                if (i > top + 1) results += "\t";
-                results.append(text, length);
-                lua_pop(L, 1);
-            }
-            lua_settop(L, top);
-            if (!results.empty())
-                Log::print("%s", results.c_str());
-        });
-    }
-
-    Command* findCommand(const std::string& name){
-        for (Command& command : state().commands){
-            if (command.name == name)
-                return &command;
-        }
-        return nullptr;
-    }
-
     // ---- console actions
 
     void copyToClipboard(){
@@ -1238,13 +1096,185 @@ namespace {
         Log::print("log saved to %s", systemPath.empty() ? name : systemPath.c_str());
     }
 
+    // ---- the command field: completion, history, chips
+
+    // RmlUi's text positions count characters; the console's count bytes (UTF-8)
+    size_t byteOffset(const std::string& text, int characters){
+        size_t at = 0;
+        for (int n = 0; at < text.size() && n < characters; n++){
+            at++;
+            while (at < text.size() && (static_cast<unsigned char>(text[at]) & 0xC0) == 0x80)
+                at++;
+        }
+        return at;
+    }
+
+    int characterCount(const std::string& text, size_t bytes){
+        int count = 0;
+        for (size_t i = 0; i < bytes && i < text.size(); i++){
+            if ((static_cast<unsigned char>(text[i]) & 0xC0) != 0x80)
+                count++;
+        }
+        return count;
+    }
+
+    Rml::ElementFormControlInput* commandInput(){
+        return rmlui_dynamic_cast<Rml::ElementFormControlInput*>(byId("command"));
+    }
+
+    // the bytes of the command line before the cursor
+    size_t commandCursor(const std::string& line){
+        Rml::ElementFormControlInput* input = commandInput();
+        if (!input)
+            return line.size();
+        int start = 0, end = 0;
+        input->GetSelection(&start, &end, nullptr);
+        return byteOffset(line, end);
+    }
+
+    void setCommandLine(const std::string& line, size_t cursor){
+        Rml::ElementFormControlInput* input = commandInput();
+        if (!input)
+            return;
+        input->SetValue(line);
+        const int at = characterCount(line, cursor);
+        input->SetSelectionRange(at, at);
+    }
+
+    std::string chipWord(const std::string& candidate){
+        if (candidate.find_first_of(" \t\"") == std::string::npos)
+            return candidate;
+        std::string out = "\"";
+        for (char c : candidate){
+            if (c == '"' || c == '\\')
+                out += '\\';
+            out += c;
+        }
+        return out + "\"";
+    }
+
+    void showChips(const std::vector<std::string>& candidates){
+        OverlayState& s = state();
+        Rml::Element* box = byId("chips");
+        if (!box)
+            return;
+        s.chips.assign(candidates.begin(), candidates.begin() + static_cast<std::ptrdiff_t>(std::min(candidates.size(), chipCount)));
+        while (box->GetNumChildren() > 0)
+            box->RemoveChild(box->GetChild(0));
+        for (size_t i = 0; i < s.chips.size(); i++){
+            Rml::Element* chip = box->AppendChild(s.document->CreateElement("div"));
+            chip->SetId("chip-" + std::to_string(i));
+            chip->SetClass("btn", true);
+            chip->SetClass("chip", true);
+            chip->AppendChild(s.document->CreateTextNode(s.chips[i]));
+        }
+        setHidden(box, s.chips.empty());
+    }
+
+    // touch devices: the candidates for the word being typed, as chips under the field
+    void updateChips(){
+        OverlayState& s = state();
+        if (!System::hasInstance() || !System::instance().isTouchDevice())
+            return;
+        const std::string line = inputValue("command");
+        const size_t cursor = commandCursor(line);
+        const console::Completion completion = console::complete(line, cursor);
+        s.chipsStart = completion.start;
+        s.chipsEnd = cursor;
+        showChips(line.empty() ? std::vector<std::string>() : completion.candidates);
+    }
+
+    void applyChip(size_t index){
+        OverlayState& s = state();
+        if (index >= s.chips.size())
+            return;
+        const std::string line = inputValue("command");
+        const size_t start = std::min(s.chipsStart, line.size());
+        const size_t end = std::min(std::max(s.chipsEnd, start), line.size());
+        const std::string inserted = chipWord(s.chips[index]) + " ";
+        setCommandLine(line.substr(0, start) + inserted + line.substr(end), start + inserted.size());
+        if (Rml::Element* field = byId("command"))
+            field->Focus();
+        updateChips();
+    }
+
+    // Tab: the completion's replacement; a Tab that changes nothing, or a second one within a
+    // second, lists the candidates as one console line
+    void completeCommandField(){
+        OverlayState& s = state();
+        const std::string line = inputValue("command");
+        const size_t cursor = commandCursor(line);
+        const console::Completion completion = console::complete(line, cursor);
+        const std::string completed = line.substr(0, completion.start) + completion.replacement + line.substr(cursor);
+        const bool changed = completed != line;
+        const bool again = s.clock - s.lastTab <= doubleTabSeconds;
+        s.lastTab = s.clock;
+        if (changed)
+            setCommandLine(completed, completion.start + completion.replacement.size());
+        if ((!changed || again) && !completion.candidates.empty()){
+            std::string text;
+            for (const std::string& candidate : completion.candidates)
+                text += (text.empty() ? "" : "  ") + candidate;
+            Log::print("%s", text.c_str());
+            s.stickToBottom = true;
+        }
+        updateChips();
+    }
+
+    // Up (-1) and Down (+1) through the lines run; past the newest, the line being typed
+    void walkHistory(int direction){
+        OverlayState& s = state();
+        if (s.history.empty())
+            return;
+        s.historyAt = std::min(s.historyAt, s.history.size());
+        if (s.historyAt == s.history.size())
+            s.historyDraft = inputValue("command");
+        if (direction < 0){
+            if (s.historyAt == 0)
+                return;
+            s.historyAt--;
+        }else{
+            if (s.historyAt == s.history.size())
+                return;
+            s.historyAt++;
+        }
+        const std::string& line = s.historyAt == s.history.size() ? s.historyDraft : s.history[s.historyAt];
+        setCommandLine(line, line.size());
+        updateChips();
+    }
+
     void runCommandField(){
+        OverlayState& s = state();
         const std::string line = inputValue("command");
         if (line.empty())
             return;
         setInputValue("command", "");
-        DebugOverlay::executeCommand(line);
-        state().stickToBottom = true;
+        if (s.history.empty() || s.history.back() != line){
+            s.history.push_back(line);
+            if (s.history.size() > historyLines)
+                s.history.erase(s.history.begin());
+        }
+        s.historyAt = s.history.size();
+        s.historyDraft.clear();
+        showChips({});
+        console::execute(line, console::Source::Overlay);
+        s.stickToBottom = true;
+    }
+
+    // Console Commands off: no command field (the game may turn them on while it runs)
+    void updateCommandBar(){
+        OverlayState& s = state();
+        const bool shown = console::commandsEnabled();
+        // (a frame looks up nothing while the state stays)
+        if (s.commandBarShown == (shown ? 1 : 0))
+            return;
+        Rml::Element* bar = byId("commandbar");
+        if (!bar)
+            return;
+        s.commandBarShown = shown ? 1 : 0;
+        setHidden(bar, !shown);
+        if (!shown)
+            showChips({});
     }
 
     // the row of an element of the window (the rows do not change between two updates)
@@ -1307,6 +1337,8 @@ namespace {
                     s.fullHeight = !s.fullHeight;
                 }else if (button == "close"){
                     DebugOverlay::hideConsole();
+                }else if (button.compare(0, 5, "chip-") == 0){
+                    applyChip(static_cast<size_t>(std::strtoul(button.c_str() + 5, nullptr, 10)));
                 }else if (Rml::Element* rowElement = nullptr; Row* row = rowOf(target, rowElement)){
                     row->expanded = !row->expanded;
                     if (row->expanded) s.expandedRows++;
@@ -1326,8 +1358,26 @@ namespace {
                     // applied once typing pauses (a rebuild reads the whole buffer)
                     s.pendingSearch = lower(inputValue("search"));
                     s.searchAt = s.clock + searchDelay;
-                }else if (target->GetId() == "command" && event.GetParameter<bool>("linebreak", false)){
-                    runCommandField();
+                }else if (target->GetId() == "command"){
+                    if (event.GetParameter<bool>("linebreak", false))
+                        runCommandField();
+                    else
+                        updateChips();
+                }
+                break;
+            }
+            case Rml::EventId::Keydown: {
+                // the command field's Tab, Up and Down: caught on the way down, so the document
+                // does not move the focus and the field does not move its cursor
+                if (!target || target->GetId() != "command")
+                    break;
+                const int key = event.GetParameter<int>("key_identifier", Rml::Input::KI_UNKNOWN);
+                if (key == Rml::Input::KI_TAB){
+                    completeCommandField();
+                    event.StopPropagation();
+                }else if (key == Rml::Input::KI_UP || key == Rml::Input::KI_DOWN){
+                    walkHistory(key == Rml::Input::KI_UP ? -1 : 1);
+                    event.StopPropagation();
                 }
                 break;
             }
@@ -1407,6 +1457,7 @@ void DebugOverlay::configure(const DebugOverlaySettings& settings){
     s.toggleKey = parseKeySetting(settings.toggleKey, "the toggle key");
     s.statsKey = parseKeySetting(settings.statsKey, "the stats key");
     s.statsMode = settings.stats;
+    console::setCommandsEnabled(settings.commands);
     s.consoleVisible = false;
     s.loadFailed = false;
     s.warnedDisabled = false;
@@ -1434,6 +1485,8 @@ void DebugOverlay::updateSettings(const DebugOverlaySettings& settings){
     }
     if (settings.enabled != before.enabled)
         setEnabled(settings.enabled);
+    if (settings.commands != before.commands)
+        console::setCommandsEnabled(settings.commands);
     s.layoutChanged = true;
 }
 
@@ -1541,112 +1594,6 @@ void DebugOverlay::cycleStatsMode(){
 void DebugOverlay::setSafeAreaInsetsProvider(InsetsFunction provider){
     state().safeArea = provider;
     state().layoutChanged = true;
-}
-
-// ---------------------------------------------------------------- commands
-
-bool DebugOverlay::addCommand(const std::string& name, const std::string& description,
-                              std::function<void(const std::vector<std::string>&)> function, const std::string& ownerTag){
-    OverlayState& s = state();
-    if (s.commands.empty())
-        builtInCommands();
-    if (!validCommandName(name)){
-        Log::error("DebugOverlay.addCommand: '%s' is not a command name (lower-case letters, digits, '_' and '-')", name.c_str());
-        return false;
-    }
-    if (!function){
-        Log::error("DebugOverlay.addCommand: '%s' has no function", name.c_str());
-        return false;
-    }
-    if (Command* existing = findCommand(name)){
-        if (existing->builtIn){
-            Log::error("DebugOverlay.addCommand: '%s' is a built-in command", name.c_str());
-            return false;
-        }
-        existing->description = description;
-        existing->function = std::move(function);
-        existing->ownerTag = ownerTag;
-        return true;
-    }
-    Command command;
-    command.name = name;
-    command.description = description;
-    command.function = std::move(function);
-    command.ownerTag = ownerTag;
-    s.commands.push_back(std::move(command));
-    return true;
-}
-
-void DebugOverlay::removeCommand(const std::string& name){
-    std::vector<Command>& commands = state().commands;
-    commands.erase(std::remove_if(commands.begin(), commands.end(), [&name](const Command& c){ return !c.builtIn && c.name == name; }),
-                   commands.end());
-}
-
-bool DebugOverlay::hasCommand(const std::string& name){
-    if (state().commands.empty())
-        builtInCommands();
-    return findCommand(name) != nullptr;
-}
-
-std::vector<std::pair<std::string, std::string>> DebugOverlay::getCommands(){
-    OverlayState& s = state();
-    if (s.commands.empty())
-        builtInCommands();
-    std::vector<std::pair<std::string, std::string>> out;
-    for (const Command& command : s.commands){
-        if (command.name == "lua" && !s.settings.allowLua)
-            continue;
-        out.push_back({command.name, command.description});
-    }
-    return out;
-}
-
-void DebugOverlay::executeCommand(const std::string& line){
-    OverlayState& s = state();
-    if (s.commands.empty())
-        builtInCommands();
-    const std::vector<std::string> words = splitCommandLine(line);
-    if (words.empty())
-        return;
-    Log::print("> %s", line.c_str());
-    const std::string name = lower(words[0]);
-    Command* command = findCommand(name);
-    if (!command){
-        Log::warn("unknown command '%s' (type help)", words[0].c_str());
-        return;
-    }
-    // `lua`: the code as typed, quotes included
-    std::vector<std::string> args;
-    if (name == "lua"){
-        const size_t at = line.find_first_not_of(" \t");
-        const size_t afterName = at == std::string::npos ? std::string::npos : line.find_first_of(" \t", at);
-        if (afterName != std::string::npos){
-            const size_t codeStart = line.find_first_not_of(" \t", afterName);
-            if (codeStart != std::string::npos)
-                args.push_back(line.substr(codeStart));
-        }
-    }else{
-        args.assign(words.begin() + 1, words.end());
-    }
-    // a copy: the command may remove itself
-    std::function<void(const std::vector<std::string>&)> function = command->function;
-    function(args);
-}
-
-void DebugOverlay::removeCommandsByTag(const std::string& substring){
-    if (substring.empty())
-        return;
-    std::vector<Command>& commands = state().commands;
-    commands.erase(std::remove_if(commands.begin(), commands.end(), [&substring](const Command& c){
-        return !c.builtIn && !c.ownerTag.empty() && c.ownerTag.find(substring) != std::string::npos;
-    }), commands.end());
-}
-
-void DebugOverlay::removeOwnedCommands(){
-    std::vector<Command>& commands = state().commands;
-    commands.erase(std::remove_if(commands.begin(), commands.end(), [](const Command& c){ return !c.builtIn && !c.ownerTag.empty(); }),
-                   commands.end());
 }
 
 // ---------------------------------------------------------------- engine hooks
@@ -1801,6 +1748,7 @@ void DebugOverlay::update(double unscaledDelta){
         updateRows();
         syncWindow();
         updateCounts();
+        updateCommandBar();
     }
     if (popupWanted())
         updatePopup();
@@ -1865,7 +1813,11 @@ void DebugOverlay::shutdown(){
     OverlayState& s = state();
     destroyScene();
     resetGestures();
-    removeOwnedCommands();
+    console::endSession();
+    s.history.clear();
+    s.historyAt = 0;
+    s.historyDraft.clear();
+    s.chips.clear();
     s.enabled = false;
     s.consoleVisible = false;
     s.statsMode = Stats::Off;
@@ -1892,8 +1844,15 @@ namespace {
 
 }
 
-void DebugOverlay::configure(const DebugOverlaySettings& settings){ settingsOfNoOverlay() = settings; }
-void DebugOverlay::updateSettings(const DebugOverlaySettings& settings){ settingsOfNoOverlay() = settings; }
+void DebugOverlay::configure(const DebugOverlaySettings& settings){
+    settingsOfNoOverlay() = settings;
+    console::setCommandsEnabled(settings.commands);
+}
+void DebugOverlay::updateSettings(const DebugOverlaySettings& settings){
+    if (settings.commands != settingsOfNoOverlay().commands)
+        console::setCommandsEnabled(settings.commands);
+    settingsOfNoOverlay() = settings;
+}
 const DebugOverlaySettings& DebugOverlay::getSettings(){ return settingsOfNoOverlay(); }
 void DebugOverlay::setEnabled(bool){}
 bool DebugOverlay::isEnabled(){ return false; }
@@ -1905,13 +1864,6 @@ void DebugOverlay::setStatsMode(DebugOverlaySettings::Stats){}
 DebugOverlaySettings::Stats DebugOverlay::getStatsMode(){ return DebugOverlaySettings::Stats::Off; }
 void DebugOverlay::cycleStatsMode(){}
 void DebugOverlay::setSafeAreaInsetsProvider(InsetsFunction){}
-bool DebugOverlay::addCommand(const std::string&, const std::string&, std::function<void(const std::vector<std::string>&)>, const std::string&){ return false; }
-void DebugOverlay::removeCommand(const std::string&){}
-bool DebugOverlay::hasCommand(const std::string&){ return false; }
-std::vector<std::pair<std::string, std::string>> DebugOverlay::getCommands(){ return {}; }
-void DebugOverlay::executeCommand(const std::string&){}
-void DebugOverlay::removeCommandsByTag(const std::string&){}
-void DebugOverlay::removeOwnedCommands(){}
 void DebugOverlay::handleKey(int, int, bool, bool){}
 void DebugOverlay::handleTouch(int, float, float, int){}
 void DebugOverlay::cancelGestures(){}
@@ -1923,6 +1875,48 @@ Scene* DebugOverlay::getScene(){ return nullptr; }
 Entity DebugOverlay::getDocumentEntity(){ return NULL_ENTITY; }
 bool DebugOverlay::hasTextFocus(){ return false; }
 void DebugOverlay::viewDestroyed(){}
-void DebugOverlay::shutdown(){}
+void DebugOverlay::shutdown(){ console::endSession(); }
 
 #endif // JASPERENGINE_HTMLUI
+
+// ---------------------------------------------------------------- commands (every build: the
+// registry is debug/ConsoleCommands, which needs no HTML UI)
+
+bool DebugOverlay::addCommand(const std::string& name, const std::string& description,
+                              std::function<void(const std::vector<std::string>&)> function, const std::string& ownerTag){
+    console::CommandSpec spec;
+    spec.name = name;
+    spec.description = description;
+    spec.ownerTag = ownerTag;
+    if (function){
+        spec.run = [function = std::move(function)](console::Call& call){ function(call.words()); };
+    }
+    return console::add(std::move(spec));
+}
+
+void DebugOverlay::removeCommand(const std::string& name){
+    console::remove(name);
+}
+
+bool DebugOverlay::hasCommand(const std::string& name){
+    return console::find(name) != nullptr;
+}
+
+std::vector<std::pair<std::string, std::string>> DebugOverlay::getCommands(){
+    std::vector<std::pair<std::string, std::string>> out;
+    for (const console::CommandSpec* spec : console::list())
+        out.push_back({spec->name, spec->description});
+    return out;
+}
+
+console::Result DebugOverlay::executeCommand(const std::string& line){
+    return console::execute(line, console::Source::Game);
+}
+
+void DebugOverlay::removeCommandsByTag(const std::string& substring){
+    console::removeByTag(substring);
+}
+
+void DebugOverlay::removeOwnedCommands(){
+    console::removeOwned();
+}

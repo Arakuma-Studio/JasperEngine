@@ -31,8 +31,8 @@ namespace jasperengine {
     // project's or the scene's value in: render scale and MSAA (RenderSystem's post-processing
     // tiers), the shadow tier and distance, the LOD biases (LOD selection multiplies lodBias()
     // into each mesh's, contract C4), Lit Quality, Texture Quality, bloom, SSAO, volumetrics, the
-    // target frame rate, pixel lights and the particle budget. With no tier, no thermal step and
-    // no memory pressure every getter returns its input (one branch).
+    // target frame rate, pixel lights, the particle budget and Cavity's World samples. With no
+    // tier, no thermal step and no memory pressure every getter returns its input (one branch).
     //
     // Main thread. getRevision() goes up with every change, so a consumer that caches what it
     // resolved (RenderSystem's post-processing tiers, the instance views' LODs) checks it once a
@@ -100,11 +100,15 @@ namespace jasperengine {
         static int textureQuality(int projectQuality);
         static bool bloom(bool enabled);
         static bool ssao(bool enabled);
+        // Cavity's World samples (S100) after the tier's cap: the tier never turns Cavity off
+        static int cavityWorldSamples(int samples);
         static AtmosphereQuality volumetrics(AtmosphereQuality quality);
         // -1 (the platform's rate) or a frame rate, as Engine::setTargetFrameRate takes it
         static int targetFrameRate(int fps);
         static int maxPixelLights(int lights);
         static uint32_t particleBudget(uint32_t budget);
+        // the Device Tier's Simulation Distance multiplier (1 without one); not thermal-adjusted
+        static float simulationDistanceScale();
         static uint64_t uploadBudgetBytes();
 
         // the cells in effect now, with where each comes from

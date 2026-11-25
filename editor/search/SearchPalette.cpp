@@ -89,13 +89,14 @@ namespace {
         {"Input Actions", "window.inputActions"}, {"Navigation", "window.navigation"},
         {"Texture Synthesis", "window.textureSynthesis"}, {"Sprite Normal Map", "window.spriteNormals"}, {"Pixel Art Cleanup", "window.pixelArtCleanup"},
         {"Pixel Art Check", "window.pixelArtCheck"}, {"Physics Placement", "window.physicsPlacement"},
-        {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},
+        {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"}, {"Saved Data", "window.savedData"},
         {"Undo History", "window.undoHistory"}, {"Play Mode Changes", "window.playModeChanges"},
         {"Missing Assets", "window.missingAssets"}, {"Graph Editor", "window.graphEditor"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},
         {"Frame Debugger", "window.frameDebugger"}, {"Systems", "window.systems"}, {"Jobs & Memory", "window.jobsMemory"},
-        {"Mesh Optimization Audit", "window.meshAudit"}, {"Build Report", "window.buildReport"}, {"Animation Statistics", "window.animationStatistics"},
+        {"Mesh Optimization Audit", "window.meshAudit"}, {"Build Report", "window.buildReport"}, {"Crash Reports", "window.crashReports"}, {"Animation Statistics", "window.animationStatistics"},
         {"Sprite Preview", "window.spritePreview"}, {"Palette", "window.palette"}, {"Tile Palette", "window.tilePalette"},
         {"Tileset Editor", "window.tilesetEditor"}, {"Title Designer", "window.titleDesigner"},
+        {"Localization Tables", "window.localizationTables"}, {"Dialogue", "window.dialogue"}, {"Test Runner", "window.testRunner"},
     };
 
     // A label drawn with the matched ranges highlighted

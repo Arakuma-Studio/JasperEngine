@@ -369,6 +369,20 @@ namespace jasperengine{
         Vector3 getGlobalIlluminationColor() const;
         Vector3 getGlobalIlluminationColorLinear() const;
 
+        // Environment Lighting > Source and the Gradient's colours (sRGB; the Linear getters as
+        // stored)
+        void setAmbientMode(AmbientMode source);
+        AmbientMode getAmbientMode() const;
+        void setAmbientSkyColor(Vector3 color);
+        Vector3 getAmbientSkyColor() const;
+        Vector3 getAmbientSkyColorLinear() const;
+        void setAmbientEquatorColor(Vector3 color);
+        Vector3 getAmbientEquatorColor() const;
+        Vector3 getAmbientEquatorColorLinear() const;
+        void setAmbientGroundColor(Vector3 color);
+        Vector3 getAmbientGroundColor() const;
+        Vector3 getAmbientGroundColorLinear() const;
+
         // lights each object is lit by (1..16); the other lights reaching it are folded into
         // its spherical-harmonics ambient
         void setMaxLightsPerObject(int maxLightsPerObject);

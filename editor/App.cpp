@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "platform/DeviceRunner.h"
+#include "platform/WebServe.h"
 #include "window/TitleArtInterchangeWindows.h"
 #include "util/ImpostorBaker.h"
 #include "terrain/TerrainMapPersistence.h"
@@ -14,6 +16,9 @@
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
 #include "pool/ShaderPool.h"
+#include "pool/TextureDataPool.h"
+#include "texture/Framebuffer.h"
+#include "util/ProjectFileWrites.h"
 #include "render/SceneRender.h"
 #include "spritenormals/SpriteNormalsWatcher.h"
 #include "pixelart/PixelArtMode.h"
@@ -48,6 +53,9 @@
 #include "window/SceneWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
+#include "window/LocalizationTablesWindow.h"
+#include "dialogue/DialogueEditor.h"
+#include "dialogue/DialogueWindow.h"
 #include "window/InspectorWindowTitleArt.h"
 #include "titleart/designer/TitleCanvasView.h"
 #include "window/SpritePreviewWindow.h"
@@ -83,6 +91,7 @@
 #include "manager/SceneManager.h"
 #include "Engine.h"
 #include "device/Device.h"
+#include "device/GpuQuirks.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
 
@@ -102,12 +111,15 @@
 #include "window/JobsMemoryWindow.h"
 #include "window/MeshAuditWindow.h"
 #include "window/BuildReportWindow.h"
+#include "window/CrashReportsWindow.h"
 #include "window/ImporterFields.h"
 #include "window/AnimationStatisticsWindow.h"
 #include "window/ReduceKeysDialog.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
+#include "profiler/ThreadCpuClock.h"
 #include "profiler/Profiler.h"
 #include "window/PlayModeChangesWindow.h"
 #include "window/UndoHistoryWindow.h"
@@ -122,7 +134,13 @@
 #include "pose/PoseEditSession.h"
 #include "widget/ColorPickerWindow.h"
 #include "util/GraphicUtils.h"
+#include "recorder/CaptureScreenshotsDialog.h"
+#include "recorder/InputCapture.h"
+#include "recorder/RecordInput.h"
 #include "recorder/RecorderSession.h"
+#include "test/PlayData.h"
+#include "test/TestRun.h"
+#include "window/TestRunnerWindow.h"
 #include "hub/HubPaths.h"
 #include "platform/LaunchKeys.h"
 #include "io/AtomicFile.h"
@@ -140,6 +158,7 @@
 #include "shortcuts/PanelClaims.h"
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
+#include "window/SavedDataWindow.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
 #include "model/FbxImportQueue.h"
@@ -310,6 +329,10 @@ editor::App::App(){
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
     titleDesignerWindow = new TitleDesignerWindow(&project);
+    localizationTablesWindow = new LocalizationTablesWindow(&project);
+    // dialogue-graphs.md R19, D6: the kind's edit hooks and lint context, and Window > Dialogue
+    dialogues::install(&project);
+    dialogueWindow = new DialogueWindow(&project);
     // the Inspector's Open in Title Designer and a double-click open the window (S82 R1, R62)
     InspectorWindowTitleArt::setOpenInDesigner([this](const std::filesystem::path& document) {
         std::string error;
@@ -330,6 +353,7 @@ editor::App::App(){
     jobsMemoryWindow = new JobsMemoryWindow();
     meshAuditWindow = new MeshAuditWindow(&project);
     buildReportWindow = new BuildReportWindow(&project);
+    crashReportsWindow = new CrashReportsWindow(&project);
     animationStatisticsWindow = new AnimationStatisticsWindow(&project);
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
@@ -348,6 +372,7 @@ editor::App::App(){
         StatusBar::setTransientMessage(def.name + ": " + reason, 4.0);
     });
     bookmarksWindow = new BookmarksWindow(&project);
+    savedDataWindow = new SavedDataWindow(&project);
     // Stop found edits that can be kept: the window opens, or after an agent's Stop the
     // Console says where they are (S24 R30)
     PlayChangeReview::get().onPending = [this](uint32_t sceneId, size_t rows) {
@@ -842,10 +867,12 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.project", windowMenuLabel(ProjectWindow::WINDOW_NAME)),
             catalogItem("window.console", windowMenuLabel(ConsoleWindow::WINDOW_NAME)),
             catalogItem("window.bookmarks", windowMenuLabel(BookmarksWindow::WINDOW_NAME)),
+            catalogItem("window.savedData", windowMenuLabel(SavedDataWindow::WINDOW_NAME)),
             catalogItem("window.undoHistory", windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
             catalogItem("window.playModeChanges", windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME)),
             catalogItem("window.colorPicker"),
-            catalogItem("window.recorder", windowMenuLabel(RecorderWindow::WINDOW_NAME))
+            catalogItem("window.recorder", windowMenuLabel(RecorderWindow::WINDOW_NAME)),
+            catalogItem("window.testRunner", windowMenuLabel(TestRunnerWindow::WINDOW_NAME))
         }),
         menuSubmenu("Animation", {
             catalogItem("window.animation", windowMenuLabel(AnimationWindow::WINDOW_NAME)),
@@ -883,11 +910,14 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME)),
             catalogItem("window.meshAudit", windowMenuLabel(MeshAuditWindow::WINDOW_NAME)),
             catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME)),
+            catalogItem("window.crashReports", windowMenuLabel(CrashReportsWindow::WINDOW_NAME)),
             catalogItem("window.animationStatistics", windowMenuLabel(AnimationStatisticsWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.titleDesigner", windowMenuLabel(TitleDesignerWindow::WINDOW_NAME)),
+        catalogItem("window.localizationTables", windowMenuLabel(LocalizationTablesWindow::WINDOW_NAME)),
+        catalogItem("window.dialogue", windowMenuLabel(DialogueWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("2D", {
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
@@ -1029,6 +1059,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleRecorder:
             recorderWindow.setOpen(!recorderWindow.isOpen());
             break;
+        case AppMenuCommand::ToggleTestRunner:
+            TestRunnerWindow::get().setOpen(!TestRunnerWindow::get().isOpen());
+            break;
         case AppMenuCommand::ToggleRecording:
             toggleRecording();
             break;
@@ -1165,6 +1198,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleBuildReport:
             showEditorWindow(buildReportWindow);
             break;
+        case AppMenuCommand::ToggleCrashReports:
+            showEditorWindow(crashReportsWindow);
+            break;
         case AppMenuCommand::ToggleAnimationStatistics:
             showEditorWindow(animationStatisticsWindow);
             break;
@@ -1189,6 +1225,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleGraphEditor:
             graphEditorWindow->setOpen(true);
             graphEditorWindow->requestFocus();
+            break;
+        case AppMenuCommand::ToggleDialogue:
+            dialogueWindow->setOpen(true);
+            dialogueWindow->requestFocus();
             break;
         case AppMenuCommand::ToggleAudioCaptures:
             audioCapturesWindow->open();
@@ -1598,8 +1638,14 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::SearchAll:
             searchPalette->open();
             break;
+        case AppMenuCommand::ToggleSavedData:
+            showEditorWindow(savedDataWindow);
+            break;
         case AppMenuCommand::ToggleBookmarks:
             showEditorWindow(bookmarksWindow);
+            break;
+        case AppMenuCommand::ToggleLocalizationTables:
+            showEditorWindow(localizationTablesWindow);
             break;
         case AppMenuCommand::LayoutApply:
             layouts.requestSwitch(command.payload);
@@ -1919,8 +1965,33 @@ void editor::App::showFooter(){
                  frameStats.drawCalls, (unsigned long long)frameStats.triangles);
         indicators.emplace_back(statText, textCol);
 
+        // S99 R16: the running MCP jobs that have an estimate (record_game, build_project...): their
+        // progress, or the share of the estimate elapsed, and the time left
+        struct JobBar {
+            float share = 0.0f;
+            std::string overlay;
+            std::string tooltip;
+        };
+        std::vector<JobBar> jobBars;
+        for (const mcp::JobPtr& job : mcp::McpServer::get().jobs().list()) {
+            if (job->finished() || jobBars.size() == 2) break;   // the running ones come first
+            mcp::JobEstimate estimate;
+            if (!job->estimate(estimate)) continue;
+            const double elapsed = job->elapsedSeconds();
+            const double progress = job->progress();
+            const double left = mcp::jobRemainingSeconds(estimate.seconds, elapsed, progress);
+            JobBar bar;
+            bar.share = static_cast<float>(progress >= 0.0 ? progress : (estimate.seconds > 0.0 ? std::min(0.99, elapsed / estimate.seconds) : 0.0));
+            bar.overlay = job->title() + " \xC2\xB7 " + (left >= 0.5 ? mcp::formatJobDuration(left) + " left" : std::string("finishing"));
+            bar.tooltip = job->title() + " (MCP " + job->id() + ")\nEstimated " + mcp::formatJobDuration(estimate.seconds) + " from the " +
+                          (estimate.basis == "history" ? "last runs" : "cost model") + ", " + estimate.confidence + " confidence; " +
+                          mcp::formatJobDuration(elapsed) + " elapsed";
+            jobBars.push_back(std::move(bar));
+        }
+        const float jobBarWidth = Theme::dpi(300.0f);
+
         const float gap = Theme::dpi(14.0f);
-        float indicatorsWidth = 0.0f;
+        float indicatorsWidth = static_cast<float>(jobBars.size()) * (jobBarWidth + gap);
         for (const auto& indicator : indicators) {
             indicatorsWidth += ImGui::CalcTextSize(indicator.first.c_str()).x + gap;
         }
@@ -1974,8 +2045,16 @@ void editor::App::showFooter(){
         } else {
             ImGui::SameLine();
         }
-        for (size_t i = 0; i < indicators.size(); i++) {
+        for (size_t i = 0; i < jobBars.size(); i++) {
             if (i > 0) ImGui::SameLine(0.0f, gap);
+            // no frame padding: the bar sits on the footer's text line
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
+            ImGui::ProgressBar(jobBars[i].share, ImVec2(jobBarWidth, ImGui::GetTextLineHeight()), jobBars[i].overlay.c_str());
+            ImGui::PopStyleVar();
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", jobBars[i].tooltip.c_str());
+        }
+        for (size_t i = 0; i < indicators.size(); i++) {
+            if (i > 0 || !jobBars.empty()) ImGui::SameLine(0.0f, gap);
             ImGui::TextColored(indicators[i].second, "%s", indicators[i].first.c_str());
             if (i == missingIndicator) {
                 if (ImGui::IsItemHovered()) {
@@ -2397,6 +2476,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(UndoHistoryWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PlayModeChangesWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(BookmarksWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(SavedDataWindow::WINDOW_NAME, dock_id_middle_bottom);
     // Systems: an eight-column table, wide enough only here (in the Inspector's column the
     // system names and the Enabled checkboxes were cut off)
     ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
@@ -3254,6 +3334,7 @@ void editor::App::show(){
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     titleDesignerWindow->show();
+    localizationTablesWindow->show();
     // S87: Import Title Art, its report and the Title Designer's Export
     drawTitleArtInterchangeWindows(&project);
     // also the tick of the Scene view's physics sessions, with the panel closed too
@@ -3269,6 +3350,7 @@ void editor::App::show(){
     jobsMemoryWindow->show();
     meshAuditWindow->show();
     buildReportWindow->show();
+    crashReportsWindow->show();
     animationStatisticsWindow->show();
     profilerWindow->show();
     frameDebuggerWindow->show();
@@ -3278,6 +3360,7 @@ void editor::App::show(){
     navigationWindow->show();
     playModeChangesWindow->show();
     bookmarksWindow->show();
+    savedDataWindow->show();
     codeEditor->show();
     {
         JE_PROFILE_SCOPE("Game Window");
@@ -3300,6 +3383,21 @@ void editor::App::show(){
     recorderWindow.setProjectPath(project.getProjectPath());
     recorderWindow.show();
     if (isRecording()) requestRedraw();
+    // Record Input and Replay Input (input-recorder-and-input-scripts R13, R21): the session's
+    // start, the recording's write, the replay's shots; then the Capture Screenshots runs
+    recordinput::RecordInput::get().loadSettings(project.getProjectPath());
+    recordinput::RecordInput::get().tick();
+    recordinput::InputCapture::get().tick();
+    recordinput::CaptureScreenshotsDialog::get().show(&project);
+    if (recordinput::RecordInput::get().isRecording() || recordinput::RecordInput::get().isReplaying() || recordinput::InputCapture::get().active())
+        requestRedraw();
+
+    // the project's tests (project-test-runner): a run's next frame, Play Data's session folder,
+    // the Test Runner window
+    gametests::TestRun::get().tick();
+    gametests::PlayData::get().update(&project);
+    TestRunnerWindow::get().show(*this, &project);
+    if (gametests::TestRun::get().running()) requestRedraw();
 
     // S27: the field windows after every window with a field (a field takes its window's
     // changes on its next draw, before the window ends a session); the Gradient Editor's colour
@@ -3437,6 +3535,19 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
                 benchmarkOut = CommandLine::absoluteArgPath(value);
         } else if (arg == "--ui-stats") {
             benchmarkUiStats = true;
+        } else if (arg == "--gpu-quirk" || arg.rfind("--gpu-quirk=", 0) == 0) {
+            // a GPU quirk forced on or off for the run (before the render device is set up)
+            const char* value = arg.size() > 11 ? argv[i] + 12 : requireValue(i, "--gpu-quirk");
+            if (value) {
+                std::vector<GpuQuirkOverride> overrides;
+                std::string error;
+                if (!GpuQuirks::parseOverrides(value, overrides, error)) {
+                    failBenchmark("--gpu-quirk: " + error);
+                    return;
+                }
+                benchmarkGpuQuirks.insert(benchmarkGpuQuirks.end(), overrides.begin(), overrides.end());
+                GpuQuirks::setCommandLineOverrides(benchmarkGpuQuirks);
+            }
         } else if (arg == "--gpu-passes") {
             benchmarkGpuPasses = true;
         } else if (arg == "--profile") {
@@ -3766,7 +3877,12 @@ void editor::App::toggleRecording() {
 }
 
 void editor::App::playStarting(uint32_t) {
+    // Play Data (project-test-runner R21): the folder data:// is for this session
+    std::string playDataError;
+    if (!gametests::PlayData::get().sessionStarting(&project, gametests::PlayData::selected(&project), playDataError))
+        Out::error("Play Data: %s (the session uses the project's data)", playDataError.c_str());
     recorder::RecorderSession::get().onPlayStarting(recorderWindow.settings());
+    recordinput::RecordInput::get().playStarting();
     if (pixelart::PixelArtMode::get().playHookRegistered()) pixelart::PixelArtMode::get().playStarting(&project);
 }
 
@@ -3809,6 +3925,35 @@ void editor::App::setupRecorder() {
     host.maxTextureSize = []() { return sg_query_limits().max_image_size_2d; };
     recorder::RecorderSession::get().setHost(std::move(host));
     recorderWindow.openPreferences = [this]() { editorSettingsWindow.open(&project, "External Tools"); };
+
+    recordinput::RecordInput::Host input;
+    input.project = [this]() { return &project; };
+    input.readGameView = [this](std::vector<uint8_t>& rgba, int& width, int& height) {
+        Framebuffer* framebuffer = gameWindow->getFramebuffer();
+        if (!framebuffer || !framebuffer->isCreated() || !GraphicUtils::readFramebufferRGBA(framebuffer, rgba)) return false;
+        width = static_cast<int>(framebuffer->getWidth());
+        height = static_cast<int>(framebuffer->getHeight());
+        return true;
+    };
+    input.assetsIdle = []() { return ShaderPool::isCreationIdle() && TextureDataPool::getLoadingCount() == 0; };
+    // one undo step (Edit > Undo removes the recording)
+    input.writer = [this](const std::filesystem::path& path, const std::string& text, std::string& error) {
+        return ProjectFileWrites::writeUndoable(&project, {{path, text}}, error, nullptr, nullptr, {}, false,
+                                                "Record Input " + FileUtils::pathToUtf8(path.filename()));
+    };
+    recordinput::RecordInput::get().setHost(std::move(input));
+
+    recordinput::InputCapture::Host capture;
+    capture.setGameRenderSize = [this](int w, int h) { gameWindow->setRenderSizeOverride(w, h); };
+    capture.stopPlay = [this]() { mainToolbar->stopSession(); };
+    capture.playStopped = [this]() {
+        if (project.getPlaySessionSceneId() != NULL_PROJECT_SCENE) return false;
+        for (const SceneProject& scene : project.getScenes()) {
+            if (scene.playState != ScenePlayState::STOPPED) return false;
+        }
+        return true;
+    };
+    recordinput::InputCapture::get().setHost(std::move(capture));
 }
 
 void editor::App::setupProjectHub() {
@@ -4179,6 +4324,9 @@ void editor::App::processProjectChange() {
     if (project.isAnyScenePlaying()) return;
     // the old project's save dialogs never act on the next one
     cancelSaveDialogs();
+    // its device runs and the web server of its Build And Run (docs/specs/build-and-run-on-device.md R10)
+    platform::DeviceRuns::get().stopAll();
+    platform::WebServe::get().stop();
 
     // Menu and dialog callbacks queue the change. Run it between frames so the
     // loading pump can draw without nesting ImGui frames or invalidating scene UI.
@@ -5145,6 +5293,7 @@ void editor::App::tickBenchmark() {
                 benchmarkCaptureId = profiler::startCapture((uint32_t)std::min(benchmarkMeasureFrames, 600));
             }
             benchmarkMeasureStart = std::chrono::steady_clock::now();
+            benchmarkThreadCpuStart = ThreadCpuClock::nowMs();
         }
         return;
     }
@@ -5170,6 +5319,7 @@ void editor::App::tickBenchmark() {
         }
         collectBenchmarkGpuFrame();
         if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames) {
+            benchmarkThreadCpuEnd = ThreadCpuClock::nowMs();
             benchmarkLastFrame = FrameTimes::currentFrame();
             benchmarkPhase = 3;
             benchmarkDrainFrames = 0;
@@ -5311,6 +5461,21 @@ void editor::App::finishBenchmark() {
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    // the main thread's own CPU per measured frame (its thread clock: what it computed, without its
+    // waits on the driver, locks and I/O), and the device it ran on (R36)
+    if (benchmarkThreadCpuStart >= 0.0 && benchmarkThreadCpuEnd >= benchmarkThreadCpuStart && n > 0)
+        json << ",\n  \"mainThreadCpuMs\": {\"mean\": " << (benchmarkThreadCpuEnd - benchmarkThreadCpuStart) / static_cast<double>(n) << "}";
+    else
+        json << ",\n  \"mainThreadCpuMs\": {\"mean\": null}";
+    {
+        json << ",\n  \"device\": {\"gpu\": \"" << jsonEscape(Device::getGpuName()) << "\", \"driver\": \""
+             << jsonEscape(SystemRender::getDriverVersion()) << "\", \"tier\": \"" << DeviceNames::tier(Device::getTier())
+             << "\", \"quirks\": [";
+        const std::vector<std::string> quirks = GpuQuirks::activeNames();
+        for (size_t i = 0; i < quirks.size(); i++)
+            json << (i ? ", " : "") << "\"" << quirks[i] << "\"";
+        json << "]}";
+    }
     // the scenes' draw and the commit of each measured frame (the render submission, S55 R9)
     json << ",\n  \"renderCpuMs\": {\"median\": " << stat(benchmarkRenderCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkRenderCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkRenderCpuMs) << "}";
@@ -5510,6 +5675,8 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    platform::DeviceRuns::get().stopAll();
+    platform::WebServe::get().stop();
     if (!editor::texsynth::SynthesisRun::cancelAll()) {
         Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
     }
@@ -6211,7 +6378,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      for its own sources at the time: a shared cache of either must not serve the other's programs.)
     // v68: S92's HTMLUI_POST: a layer composite's rectangle clip in the passthrough (v_dst, params.w).
     // v69: S92's u_fs_htmluiClip: a convex polygon (clip-path polygon(), includes/htmlui_sdf.glsl).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v69";
+    // v70: S99's Area Lights and IES Profiles (after S78's v66 and S92's v69): the built-in Lit's
+    //      USE_AREA_LIGHTS ('Ar') and USE_IES ('Ie') defines (includes/area_lights.glsl, u_lightProfiles in
+    //      includes/lights.glsl).
+    // v71: S100's Cavity (after S78's v66, S92's v69 and S99's v70): DEPTH 'Cvn' 26 (DEPTH_NORMALS:
+    //      includes/depth_normals.glsl, depth.vert, includes/surface_depth_vs.glsl and the wrapped
+    //      fragment stage) and the CAVITY type.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v71";
 }
 
 void editor::App::pushTabNotificationStyle(){

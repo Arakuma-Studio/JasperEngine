@@ -19,6 +19,8 @@
 #include "script/LuaBinding.h"
 #include "../ecs/EcsTestUtil.h"
 #include "LogCapture.h"
+#include "TestSystem.h"
+#include "support/TestTempDir.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -380,3 +382,47 @@ TEST(LuaHierarchy, CameraUseTargetSwitchesToRotation){
     camera.updateCamera();
     EXPECT_EQ(camera.getViewMatrix(), Matrix4::lookAtMatrix(transform.worldPosition, Vector3(1, 2, 3), Vector3(0, 1, 0)));
 }
+
+// main.lua runs before the game's init sets a scene, so Engine.getScene() is nil there: an object
+// made with it is a Lua error naming the fix, not an entity written through a null Scene (a crash
+// here; on the web a page that hung before its first frame)
+TEST(LuaHierarchy, ObjectsMadeWithoutASceneFail){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+    for (const char* code : {"GameObject(nil)", "GameObject(nil, 1)", "Sprite(nil)", "Camera(nil)", "AudioSource(nil, true)",
+                             "PositionTween(nil)", "CullingGroup(nil)"}) {
+        const std::string error = runHierarchyLua(L, std::string("local object = ") + code);
+        EXPECT_NE(error.find("the scene is nil"), std::string::npos) << code << ": " << error;
+    }
+
+    // a scene still makes them, over a new entity or one it has
+    Scene scene;
+    const Entity existing = named(scene, "Existing");
+    luabridge::setGlobal(L, &scene, "testScene");
+    EXPECT_EQ(runHierarchyLua(L, "local made = GameObject(testScene); assert(made.entity ~= nil)\n"
+                        "local over = GameObject(testScene, " + std::to_string(existing) + "); assert(over.entity == " +
+                        std::to_string(existing) + ")\n"
+                        "local sound = AudioSource(testScene, false); assert(sound.entity ~= nil)"), "");
+    lua_pushnil(L);
+    lua_setglobal(L, "testScene");
+}
+
+// main.lua's error (here the object of the test above, made at init) is logged and the game runs
+// on in the same state: closing it left the binding's state pointer dangling, which every later
+// script and frame then used (a crash on desktop, a hung web page)
+TEST(LuaHierarchy, AFailingMainLuaKeepsTheState){
+    test::TestTempDir dir("lua-main-error");
+    test::TestTempDir::write(dir / "main.lua", "Before = 1\nlocal menu = UIDocument(Engine.getScene())\nAfter = 2\n");
+    const std::string luaDir = dir.path().string();
+    test::TestSystem::get().setPathProvider({nullptr, [luaDir]() { return luaDir; }, nullptr});
+    LuaBinding::recreateLuaState();
+    LuaBinding::init();
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+    EXPECT_EQ(runHierarchyLua(L, "assert(Before == 1, 'what main.lua ran before its error stays')\n"
+                        "assert(After == nil, 'nothing after it ran')\n"
+                        "local scene = GameObject ~= nil\nassert(scene, 'the bindings are still there')"), "");
+    test::TestSystem::get().clearPathProvider();
+    LuaBinding::recreateLuaState();
+}
+

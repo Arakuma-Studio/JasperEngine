@@ -9,6 +9,7 @@
 #include "SokolPassRecorder.h"
 #include "SokolSystem.h"
 #include "render/SystemRender.h"
+#include "device/GpuQuirks.h"
 
 #include "sokol_gfx.h"
 #include <cmath>
@@ -42,6 +43,11 @@ SokolCamera::~SokolCamera(){
 }
 
 void SokolCamera::setClearColor(Vector4 clearColor){
+#if JASPERENGINE_GPU_QUIRK_TEST_HOOKS
+    // the test-only quirk that changes what a frame shows (GpuQuirksGpu's red control)
+    if (GpuQuirks::active(GpuQuirk::TestTint))
+        clearColor = Vector4(1.0f - clearColor.x, clearColor.y, 1.0f - clearColor.z, clearColor.w);
+#endif
     pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
     pass.action.colors[0].clear_value = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
 }

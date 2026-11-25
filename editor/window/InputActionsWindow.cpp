@@ -12,6 +12,7 @@
 #include "command/type/InputActionsEditCmd.h"
 #include "external/IconsFontAwesome6.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 #include "input/InputControlPath.h"
 #include "util/ProjectChecks.h"
 
@@ -994,7 +995,13 @@ void InputActionsWindow::drawDebug(){
         return;
     }
     ImGui::Text("Playing with %s%s", InputActions::getAssetPath().c_str(), InputActions::isRebinding() ? "  (rebinding)" : "");
-    if (!ImGui::BeginTable("##InputDebug", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY))
+    // the input scheme: what the game treats as the device in use (bindings of the others dimmed below)
+    const int pad = InputSchemeTracker::getLastGamepad();
+    const std::string padText = pad >= 0 ? std::string(InputSchemeTracker::familyName(InputSchemeTracker::getGamepadFamily())) + " (id " + std::to_string(pad) + ")"
+                                         : std::string("none");
+    ImGui::Text("Scheme: %s \xC2\xB7 Pointer: %s \xC2\xB7 Pad: %s", InputSchemeTracker::groupName(InputSchemeTracker::getCurrent()),
+                InputSchemeTracker::groupName(InputSchemeTracker::getPointer()), padText.c_str());
+    if (!ImGui::BeginTable("##InputDebug", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY))
         return;
     ImGui::TableSetupColumn("Action");
     ImGui::TableSetupColumn("Value");
@@ -1002,6 +1009,7 @@ void InputActionsWindow::drawDebug(){
     ImGui::TableSetupColumn("Edges");
     ImGui::TableSetupColumn("Consumed By");
     ImGui::TableSetupColumn("Raw This Frame");
+    ImGui::TableSetupColumn("Bindings");
     ImGui::TableHeadersRow();
     for (const InputActions::MapState& map : InputActions::getMapStates()){
         ImGui::TableNextRow();
@@ -1038,6 +1046,17 @@ void InputActionsWindow::drawDebug(){
                 }
             }
             ImGui::TextUnformatted(raw.c_str());
+            ImGui::TableSetColumnIndex(6);
+            bool first = true;
+            for (const InputBinding& binding : action->getBindings()){
+                if (!first) ImGui::SameLine();
+                first = false;
+                // outside the current scheme: dimmed (it still works: the scheme never filters)
+                if (InputActions::isBindingInScheme(binding.getId()))
+                    ImGui::TextUnformatted(binding.getDisplayName().c_str());
+                else
+                    ImGui::TextDisabled("%s", binding.getDisplayName().c_str());
+            }
         }
     }
     ImGui::EndTable();

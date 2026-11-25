@@ -110,6 +110,13 @@ namespace {
         (void)note;
         reportThermal();
     }];
+    // the user's languages changed in System Settings (game-ui-localization.md R10)
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSCurrentLocaleDidChangeNotification object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification* note) {
+        (void)note;
+        System::instance().notifyLocalesMayHaveChanged();
+    }];
     WindowMac::setDrawableResizeCallback([](int, int) {
         Engine::systemViewChanged();
     });

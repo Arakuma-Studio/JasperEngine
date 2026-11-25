@@ -69,6 +69,8 @@
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
+#include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
@@ -245,6 +247,10 @@ EntityRegistry::EntityRegistry() {
     registerComponent<WheelColliderComponent>(ComponentOrder::Insertion, "WheelColliderComponent");
     registerComponent<VehicleDrivetrainComponent>(ComponentOrder::Insertion, "VehicleDrivetrainComponent");
 #endif
+    // culling-group-and-simulation-distance R10: after the last one, so no ComponentType moves
+    registerComponent<SimulationCullingComponent>(ComponentOrder::Insertion, "SimulationCullingComponent");
+    // dialogue-graphs.md R13: after the last one, so no ComponentType moves (registered without the module too)
+    registerComponent<DialogueRunnerComponent>(ComponentOrder::Insertion, "DialogueRunnerComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

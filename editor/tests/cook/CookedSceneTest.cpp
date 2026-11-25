@@ -658,6 +658,17 @@ namespace {
         return tail.data().size();
     }
 
+    // the bytes format 1.10 appends after them (Environment Lighting's ambientMode and gradient)
+    size_t ambientTailBytes(const Scene& scene) {
+        jasperengine::cook::StringTable none;
+        jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
+        tail.u8(static_cast<uint8_t>(scene.getAmbientMode()));
+        jasperengine::cook::write(tail, scene.getAmbientSkyColor());
+        jasperengine::cook::write(tail, scene.getAmbientEquatorColor());
+        jasperengine::cook::write(tail, scene.getAmbientGroundColor());
+        return tail.data().size();
+    }
+
     // the bytes format 1.13 appends after them (the Fixed Timestep override)
     size_t fixedTimestepTailBytes(const Scene& scene) {
         jasperengine::cook::StringTable none;
@@ -707,9 +718,9 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     // (1.3) the five default shaders' property values, none set here
     jasperengine::cook::Writer v13(none, [](Entity e) { return static_cast<uint32_t>(e); });
     for (int type = 0; type < 5; type++) jasperengine::cook::write(v13, ShaderUniformValues());
-    // (1.4) the planar reflections, (1.5) the Water Wakes' map, (1.6) the physics world, (1.7) the
-    // Canvas Scaler and (1.8, 1.9, 1.13) the Light Steps, the HTML UI and the Fixed Timestep after them
-    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene) + physicsWorldTailBytes(*scene) + canvasScalerTailBytes(*scene) + (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + fixedTimestepTailBytes(*scene));
+    // (1.4) the planar reflections, (1.5) the Water Wakes' map, (1.6) the physics world and (1.7) the
+    // Canvas Scaler after them
+    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene) + physicsWorldTailBytes(*scene) + canvasScalerTailBytes(*scene) + (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + ambientTailBytes(*scene) + fixedTimestepTailBytes(*scene));
     ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size() + v13.data().size() + v14);
 
     // the 1.1 record: the same bytes without the cross-fade (and the 1.3 and 1.4 values)
@@ -844,7 +855,7 @@ TEST(CookedScene, SceneSettingsKeepPlanarReflections) {
     // the 1.3 record: the same bytes without the planar reflections (and the newer values)
     DecodedScene older = emptyScene();
     jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene) - waterWakeTailBytes(*scene) -
-                                                                                physicsWorldTailBytes(*scene) - canvasScalerTailBytes(*scene) - (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + fixedTimestepTailBytes(*scene))),
+                                                                                physicsWorldTailBytes(*scene) - canvasScalerTailBytes(*scene) - (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + ambientTailBytes(*scene) + fixedTimestepTailBytes(*scene))),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r13, *older.scene->scene);
     ASSERT_FALSE(r13.failed()) << r13.error();
@@ -895,7 +906,7 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     // reflections still read
     DecodedScene older = emptyScene();
     jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene) - physicsWorldTailBytes(*scene) -
-                                                                                canvasScalerTailBytes(*scene) - (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + fixedTimestepTailBytes(*scene))),
+                                                                                canvasScalerTailBytes(*scene) - (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + ambientTailBytes(*scene) + fixedTimestepTailBytes(*scene))),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r14, *older.scene->scene);
     ASSERT_FALSE(r14.failed()) << r14.error();
@@ -972,7 +983,7 @@ TEST(CookedScene, SceneSettingsKeepPhysicsWorld) {
     jasperengine::cook::writeSceneSettings(w, *scene);
     const std::vector<uint8_t>& bytes = w.data();
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r15(std::span<const uint8_t>(bytes.data(), bytes.size() - physicsWorldTailBytes(*scene) - canvasScalerTailBytes(*scene) - (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + fixedTimestepTailBytes(*scene))),
+    jasperengine::cook::Reader r15(std::span<const uint8_t>(bytes.data(), bytes.size() - physicsWorldTailBytes(*scene) - canvasScalerTailBytes(*scene) - (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + ambientTailBytes(*scene) + fixedTimestepTailBytes(*scene))),
                                    strings.strings(), [](uint32_t id) { return static_cast<Entity>(id); });
     jasperengine::cook::readSceneSettings(r15, *older.scene->scene);
     ASSERT_FALSE(r15.failed()) << r15.error();
@@ -1015,7 +1026,7 @@ TEST(CookedScene, SceneSettingsKeepCanvasScaler) {
 
     // the 1.6 record: the same bytes without it (and the newer values); the physics world still reads
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r16(std::span<const uint8_t>(bytes.data(), bytes.size() - canvasScalerTailBytes(*scene) - (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + fixedTimestepTailBytes(*scene))), strings.strings(),
+    jasperengine::cook::Reader r16(std::span<const uint8_t>(bytes.data(), bytes.size() - canvasScalerTailBytes(*scene) - (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + ambientTailBytes(*scene) + fixedTimestepTailBytes(*scene))), strings.strings(),
                                    [](uint32_t id) { return static_cast<Entity>(id); });
     jasperengine::cook::readSceneSettings(r16, *older.scene->scene);
     ASSERT_FALSE(r16.failed()) << r16.error();
@@ -1067,7 +1078,7 @@ TEST(CookedScene, SceneSettingsKeepLightSteps) {
     // the 1.7 record: the same bytes without them (and the newer values); the physics world still reads
     DecodedScene older = emptyScene();
     older.scene->scene->setAmbientLight2DWithoutLights(true);
-    jasperengine::cook::Reader r17(std::span<const uint8_t>(bytes.data(), bytes.size() - (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + fixedTimestepTailBytes(*scene))),
+    jasperengine::cook::Reader r17(std::span<const uint8_t>(bytes.data(), bytes.size() - (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + ambientTailBytes(*scene) + fixedTimestepTailBytes(*scene))),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r17, *older.scene->scene);
     ASSERT_FALSE(r17.failed()) << r17.error();
@@ -1109,8 +1120,7 @@ TEST(CookedScene, SceneSettingsKeepHtmlUi) {
 
     // the 1.8 record: the same bytes without them (and the 1.13 value); the Water Wakes still read
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r15(std::span<const uint8_t>(bytes.data(), bytes.size() - htmlUiTailBytes(*scene) - fixedTimestepTailBytes(*scene)), strings.strings(),
-                                   entityOf);
+    jasperengine::cook::Reader r15(std::span<const uint8_t>(bytes.data(), bytes.size() - htmlUiTailBytes(*scene) - ambientTailBytes(*scene) - fixedTimestepTailBytes(*scene)), strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r15, *older.scene->scene);
     ASSERT_FALSE(r15.failed()) << r15.error();
     const SceneSettings defaults;
@@ -1118,6 +1128,57 @@ TEST(CookedScene, SceneSettingsKeepHtmlUi) {
     ASSERT_EQ(defaults.htmlUiRenderMode, UIRenderMode::OVERLAY) << "the older record must not just read the default";
     EXPECT_EQ(older.scene->scene->getHtmlUiRenderMode(), UIRenderMode::CAMERA);
     EXPECT_EQ(older.scene->scene->getHtmlUiMsaaSamples(), defaults.htmlUiMsaaSamples);
+}
+
+// S99 R30: Environment Lighting's ambientMode and the Gradient's colours survive a cook (format 1.10,
+// after S92's HTML UI render mode); an older record (without them) keeps the Color source and the default gradient
+TEST(CookedScene, SceneSettingsKeepAmbientGradient) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    scene->setPhysics2DSubSteps(9);
+    scene->setAmbientMode(AmbientMode::GRADIENT);
+    scene->setAmbientSkyColor(Vector3(0.2f, 0.4f, 0.9f));
+    scene->setAmbientEquatorColor(Vector3(0.5f, 0.5f, 0.5f));
+    scene->setAmbientGroundColor(Vector3(0.3f, 0.2f, 0.1f));
+
+    jasperengine::cook::StringTable strings;
+    jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
+    jasperengine::cook::writeSceneSettings(w, *scene);
+    const std::vector<uint8_t>& bytes = w.data();
+    auto entityOf = [](uint32_t id) { return static_cast<Entity>(id); };
+    auto expectNear = [](const Vector3& a, const Vector3& b) {
+        EXPECT_NEAR(a.x, b.x, 1e-4f);
+        EXPECT_NEAR(a.y, b.y, 1e-4f);
+        EXPECT_NEAR(a.z, b.z, 1e-4f);
+    };
+
+    DecodedScene loaded = emptyScene();
+    jasperengine::cook::Reader r(std::span<const uint8_t>(bytes.data(), bytes.size()), strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r, *loaded.scene->scene);
+    ASSERT_FALSE(r.failed()) << r.error();
+    EXPECT_TRUE(r.atEnd());
+    EXPECT_EQ(loaded.scene->scene->getAmbientMode(), AmbientMode::GRADIENT);
+    expectNear(loaded.scene->scene->getAmbientSkyColor(), Vector3(0.2f, 0.4f, 0.9f));
+    expectNear(loaded.scene->scene->getAmbientEquatorColor(), Vector3(0.5f, 0.5f, 0.5f));
+    expectNear(loaded.scene->scene->getAmbientGroundColor(), Vector3(0.3f, 0.2f, 0.1f));
+
+    // the prebuilt player's path
+    DecodedScene player;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
+    EXPECT_EQ(player.scene->scene->getAmbientMode(), AmbientMode::GRADIENT);
+    expectNear(player.scene->scene->getAmbientGroundColor(), Vector3(0.3f, 0.2f, 0.1f));
+
+    // the older record: the same bytes without them; the settings before them still read
+    DecodedScene older = emptyScene();
+    jasperengine::cook::Reader rOld(std::span<const uint8_t>(bytes.data(), bytes.size() - ambientTailBytes(*scene) - fixedTimestepTailBytes(*scene)), strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(rOld, *older.scene->scene);
+    ASSERT_FALSE(rOld.failed()) << rOld.error();
+    const SceneSettings defaults;
+    const Scene& old = *older.scene->scene;
+    EXPECT_EQ(old.getPhysics2DSubSteps(), 9);
+    EXPECT_EQ(old.getAmbientMode(), AmbientMode::COLOR);
+    expectNear(old.getAmbientSkyColorLinear(), defaults.ambientSkyColor);
 }
 
 // S97 REQ-29: the cook writes the editor's scene as it is, and an edit after the editor's load can
@@ -1141,6 +1202,27 @@ TEST(CookedScene, BrokenAudioSourceSlotsLoadRepaired) {
     jasperengine::Logger::flush();
     EXPECT_EQ(loaded.scene->scene->getComponent<AudioSourceComponent>(stray).slot, 0) << "an ordinary GameObject now";
     EXPECT_EQ(log.count(D_LOG_WARN, "'Stray'"), 1u) << "named in a warning";
+}
+
+// S100: Cavity's post-processing fields reach a build in its cooked scene (the field table's records,
+// keyed by name hash): a Compile build loads the same cooked scene, no scene code is generated (S98 D1)
+TEST(CookedScene, SceneSettingsKeepCavity) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    PostProcessingSettings settings;
+    settings.cavityEnabled = true;
+    settings.cavityType = CavityType::WORLD;
+    settings.cavityScreenWidth = 3.0f;
+    settings.cavityWorldRadius = 0.5f;
+    settings.cavityWorldSamples = 16;
+    settings.cavityMaxPixelRadius = 0.0f;
+    settings.cavityDebug = true;
+    scene->setPostProcessing(settings);
+
+    DecodedScene player;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
+    EXPECT_TRUE(player.scene->scene->getPostProcessing() == settings);
 }
 
 // A newer minor adds only length-prefixed fields: a player reads its content without them and warns
@@ -1198,9 +1280,10 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
         out[7] = static_cast<uint8_t>(minor >> 8);
         return out;
     };
-    const std::string newerVersion = std::to_string(FORMAT_MAJOR) + "." + std::to_string(FORMAT_MINOR + 1);
+    // newer than any content this player reads (CONTENT_MINOR: the cooked files' layout and what game.json adds)
+    const std::string newerVersion = std::to_string(FORMAT_MAJOR) + "." + std::to_string(CONTENT_MINOR + 1);
     const std::string warning = "content " + newerVersion + " was made by a newer editor; features newer than " + contentFormatVersion() + " are skipped";
-    const std::vector<uint8_t> newer = withVersion(FORMAT_MAJOR, static_cast<uint16_t>(FORMAT_MINOR + 1));
+    const std::vector<uint8_t> newer = withVersion(FORMAT_MAJOR, static_cast<uint16_t>(CONTENT_MINOR + 1));
     std::string error;
     for (int i = 0; i < 2; i++) {
         DecodedScene loaded = emptyScene();
@@ -1236,7 +1319,7 @@ namespace {
 
     // A 1.13 scene cooked with no VATs, masks, controllers or bitmap fonts as a 1.6 editor laid it
     // out: the settings record (the first) without its 1.7 and later values (settingsTail bytes:
-    // canvasScalerTailBytes + lightStepsTailBytes + htmlUiTailBytes + fixedTimestepTailBytes), the resources record (the fourth) without those four empty lists
+    // canvasScalerTailBytes + lightStepsTailBytes + htmlUiTailBytes + ambientTailBytes + fixedTimestepTailBytes), the resources record (the fourth) without those four empty lists
     // that end it (the hierarchy record after it is 1.6's)
     std::vector<uint8_t> asMinor6(std::vector<uint8_t> bytes, size_t settingsTail) {
         using namespace jasperengine::cook;
@@ -1269,7 +1352,7 @@ TEST(CookedScene, ReadsAnOlderMinorsContent) {
     scene->setWaterWakeArea(32.0f);
     scene->setFixedTimestep(0.01f);
     scene->setLight2DSteps(6);
-    const std::vector<uint8_t> bytes = asMinor6(editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{}), canvasScalerTailBytes(*scene) + (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + fixedTimestepTailBytes(*scene)));
+    const std::vector<uint8_t> bytes = asMinor6(editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{}), canvasScalerTailBytes(*scene) + (lightStepsTailBytes(*scene) + htmlUiTailBytes(*scene) + ambientTailBytes(*scene) + fixedTimestepTailBytes(*scene)));
     const size_t cut = waterWakeTailBytes(*scene) + physicsWorldTailBytes(*scene);
     const uint32_t settingsLength = readLe32(bytes.data() + HEADER_BYTES);
     ASSERT_GT(settingsLength, cut);
@@ -1330,7 +1413,7 @@ TEST(CookedScene, SceneResourcesKeepEveryList) {
     older.controllers.clear();
     older.bitmapFonts.clear();
     const std::vector<uint8_t> v16 = asMinor6(editor::cook::SceneCooker::cookScene(source.scene->scene, 4242, {}, NULL_ENTITY, older),
-                                             canvasScalerTailBytes(*source.scene->scene) + (lightStepsTailBytes(*source.scene->scene) + htmlUiTailBytes(*source.scene->scene) + fixedTimestepTailBytes(*source.scene->scene)));
+                                             canvasScalerTailBytes(*source.scene->scene) + (lightStepsTailBytes(*source.scene->scene) + htmlUiTailBytes(*source.scene->scene) + ambientTailBytes(*source.scene->scene) + fixedTimestepTailBytes(*source.scene->scene)));
     const SceneResources readOlder = CookedSceneLoader::sceneResources(std::span<const uint8_t>(v16.data(), v16.size()));
     EXPECT_EQ(readOlder.models, resources.models);
     EXPECT_EQ(readOlder.clips, resources.clips);

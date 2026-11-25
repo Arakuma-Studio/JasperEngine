@@ -59,6 +59,8 @@ namespace jasperengine{
         static HtmlUIEventListener* find(uint64_t id);
         // the listeners attached to element, in attach order
         static std::vector<HtmlUIEventListener*> listenersOf(Rml::Element* element);
+        // a live listener attached to element matches: no copy of the list (hit tests, the gamepad cursor)
+        static bool anyListenerOf(Rml::Element* element, bool (*match)(const HtmlUIEventListener& listener));
         // every listener attached to element or one of its descendants
         static std::vector<HtmlUIEventListener*> listenersIn(Rml::Element* root);
         static size_t liveCount();

@@ -144,6 +144,7 @@ namespace jasperengine{
         static bool isCpuDevice();
         // the context's API version ("OpenGL ES 3.2 Mesa ...", "Vulkan 1.3.255")
         static std::string getApiVersion();
+        static std::string getDriverVersion();
         static void setDrawListEnabled(bool enabled);
 
         // GPU timing runs while a consumer holds it (the profiler recording, dynamic resolution)

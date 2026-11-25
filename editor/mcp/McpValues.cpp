@@ -9,6 +9,7 @@
 #include "audio/SourceEffectEdit.h"
 #include "component/Transform.h"
 #include "util/ProjectChecks.h"
+#include "render/IesProfile.h"
 #include "component/CanvasGroupComponent.h"
 #include "camera/ShakePresets.h"
 #include "camera/ShakePreset.h"
@@ -308,6 +309,7 @@ bool isAssetPathProperty(ComponentType component, const std::string& propertyNam
     return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
            (component == ComponentType::AudioSourceComponent && propertyName == "event") ||
            (component == ComponentType::AnimatorComponent && propertyName == "controller") ||
+           (component == ComponentType::LightComponent && propertyName == "iesProfile") ||
            isPlayerClipProperty(component, propertyName) || isVertexAnimationProperty(component, propertyName) ||
            isPhysicsMaterialProperty(component, propertyName);
 }
@@ -373,7 +375,7 @@ bool submeshMaterialIndex(const std::string& name, unsigned int& index) {
     size_t pos = prefix.size();
     size_t end = pos;
     while (end < name.size() && std::isdigit(static_cast<unsigned char>(name[end]))) end++;
-    if (end == pos || name.compare(end, std::string::npos, "].material") != 0) return false;
+    if (end == pos || end - pos > 9 || name.compare(end, std::string::npos, "].material") != 0) return false;
     index = static_cast<unsigned int>(std::stoul(name.substr(pos, end - pos)));
     return true;
 }
@@ -625,6 +627,14 @@ const EnumOptions& litQualityOptions() {
     return options;
 }
 
+const EnumOptions& ambientModeOptions() {
+    static const EnumOptions options = {
+        {(int)AmbientMode::COLOR, "color", "Color"},
+        {(int)AmbientMode::GRADIENT, "gradient", "Gradient"}
+    };
+    return options;
+}
+
 const EnumOptions& planarReflectionResolutionOptions() {
     static const EnumOptions options = {
         {(int)PlanarReflectionResolution::OFF, "off", "Off"},
@@ -683,7 +693,7 @@ bool splitPath(const std::string& path, std::vector<PathSegment>& out) {
             size_t end = path.find(']', i);
             if (end == std::string::npos || end == i + 1) return false;
             const std::string digits = path.substr(i + 1, end - i - 1);
-            if (!std::all_of(digits.begin(), digits.end(), [](unsigned char d) { return std::isdigit(d); })) return false;
+            if (digits.size() > 9 || !std::all_of(digits.begin(), digits.end(), [](unsigned char d) { return std::isdigit(d); })) return false;
             out.push_back({std::string(), std::stol(digits)});
             i = end;
         } else {
@@ -849,6 +859,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
         {"water_wake_resolution", &waterWakeResolutionOptions()},
         {"lit_quality", &litQualityOptions()},
+        {"ambient_mode", &ambientModeOptions()},
         {"light_unit", &tableOptions(reflect::enums::kLightUnit)},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},
         // framebuffers have no mipmaps
@@ -976,7 +987,9 @@ bool McpValues::enumFromJson(const Json& value, const EnumOptions& options, int&
             }
         }
     }
-    error = "\"" + value.get<std::string>() + "\" is not one of: " + namesText() + ".";
+    std::vector<std::string> names;
+    for (const EnumOption& option : options) names.push_back(option.name);
+    error = "\"" + value.get<std::string>() + "\" is not one of: " + namesText() + NearestIdentifierSuffix(value.get<std::string>(), names) + ".";
     return false;
 }
 
@@ -3117,6 +3130,24 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 }
             }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
+            // a light's IES Profile (S99 R36): an .ies file the renderer reads (TILT=NONE, Type C)
+            if (component == ComponentType::LightComponent && propertyName == "iesProfile" && !text.empty()) {
+                std::string contents;
+                IesProfile profile;
+                std::string why;
+                if (!Util::isIesFile(text)) {
+                    error = "iesProfile: '" + text + "' is no .ies file: import an IESNA LM-63 file with import_files.";
+                    return nullptr;
+                }
+                if (!ProjectChecks::readFile(project->resolveAssetPath(text), contents)) {
+                    error = "iesProfile: '" + text + "' cannot be read: import it with import_files.";
+                    return nullptr;
+                }
+                if (!IesProfile::parse(contents, profile, why)) {
+                    error = "iesProfile: '" + text + "': " + why + ".";
+                    return nullptr;
+                }
+            }
             // an Asset script property is project-relative: a GUID given names its file
             if (stringType == PropertyType::Asset && propertyName.compare(0, 8, "scripts[") == 0 && Guid::isValidText(text)) {
                 const fs::path found = project->getAssetDatabase().getPath(Guid::parse(text));
@@ -4422,7 +4453,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                                 names.push_back(name);
                             }
                             error = "Unknown property \"" + edit.property + "\" of " + componentLabel + " on " + label +
-                                    NearestNameSuffix(edit.property, names) + ". Properties: " + propertyNamesText(scene, entity, component) +
+                                    NearestIdentifierSuffix(edit.property, names) + ". Properties: " + propertyNamesText(scene, entity, component) +
                                     " (custom ones also by their scene-file keys, see get_entity detail=\"yaml\").";
                             // the Vertex Animator's edit-mode Preview is a runtime flag, never saved
                             // (no undo step, no scene change): its route is Lua

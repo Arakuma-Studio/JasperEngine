@@ -102,6 +102,9 @@ namespace {
         // the water variants' 'Wex' and 'Wwk' (RenderSystem::update: the component counted, enabled or not)
         FACT_WATER_EXCLUDERS = 1u << 16,
         FACT_WATER_WAKES     = 1u << 17,
+        // S99: an Area Light, a spot or point light with an IES Profile (RenderSystem::checkLightsAndShadow)
+        FACT_AREA_LIGHTS     = 1u << 18,
+        FACT_IES_PROFILES    = 1u << 19,
     };
 
     // whether a shader reference reads the scene depth with these features (manifest @require
@@ -163,8 +166,14 @@ namespace {
                 if (light->type != LightType::DIRECTIONAL){
                     facts |= FACT_LOCAL_LIGHTS;
                 }
-                if (light->shadows && light->contactShadows && light->type != LightType::POINT){
+                if (light->shadows && light->contactShadows && light->type != LightType::POINT && light->type != LightType::AREA){
                     facts |= FACT_CONTACT_LIGHT;
+                }
+                if (light->type == LightType::AREA){
+                    facts |= FACT_AREA_LIGHTS;
+                }
+                if ((light->type == LightType::SPOT || light->type == LightType::POINT) && !light->iesProfile.empty()){
+                    facts |= FACT_IES_PROFILES;
                 }
             }
             if (registry->findComponent<CapsuleShadowCasterComponent>(entity)){
@@ -282,6 +291,10 @@ namespace {
         environment.oit = (facts & FACT_OIT_CAMERA) != 0;
         environment.waterExclusion = (facts & FACT_WATER_EXCLUDERS) != 0;
         environment.waterWake = (facts & FACT_WATER_WAKES) != 0;
+        environment.areaLights = (facts & FACT_AREA_LIGHTS) != 0;
+        environment.iesProfiles = (facts & FACT_IES_PROFILES) != 0;
+        // S100: Cavity's depth programs with normals ('Cvn'; collectSceneUnderTier adds a script's switch)
+        environment.cavityNormals = scene->getPostProcessing().cavityEnabled;
         return environment;
     }
 
@@ -294,7 +307,8 @@ namespace {
             (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
             (e.oit ? (1u << 29) : 0u) | (e.waterExclusion ? (1u << 30) : 0u) | (e.waterWake ? (1u << 31) : 0u) |
             (e.directionalLightsOnly ? (1ull << 32) : 0ull) |
-            (e.ambient2D ? (1ull << 40) : 0ull) | (e.light2DSteps ? (1ull << 41) : 0ull) |
+            (e.areaLights ? (1ull << 36) : 0ull) | (e.iesProfiles ? (1ull << 37) : 0ull) |
+            (e.ambient2D ? (1ull << 40) : 0ull) | (e.light2DSteps ? (1ull << 41) : 0ull) | (e.cavityNormals ? (1ull << 38) : 0ull) |
             // T3 R34: the tier a build may force
             (e.terrainForced ? (1ull << (static_cast<int>(e.terrainForcedTier) + 33)) : 0ull);
     }
@@ -1382,6 +1396,11 @@ const std::vector<std::string>& editor::ShaderVariantCollector::getScriptableEff
     return fields;
 }
 
+const std::vector<std::string>& editor::ShaderVariantCollector::getScriptableCavityFields(){
+    static const std::vector<std::string> fields = {"cavityEnabled", "cavityType"};
+    return fields;
+}
+
 std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const PostProcessingSettings& settings, bool scriptsSetPostProcessing,
                                                                          const std::vector<std::string>& namedFields){
     std::set<uint32_t> features;
@@ -1394,9 +1413,15 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
     if (!scriptsSetPostProcessing)
         return features;
 
-    // the switches: the ones the scripts name, else all of them
+    // the switches: the ones the scripts name, else all of them (the names may hold Cavity's,
+    // getScriptableCavityFields, which no uber variant follows)
+    std::vector<std::string> named;
+    for (const std::string& name : namedFields){
+        if (std::find(getScriptableEffectFields().begin(), getScriptableEffectFields().end(), name) != getScriptableEffectFields().end())
+            named.push_back(name);
+    }
     std::vector<const PostProcessingSettings::Field*> switches;
-    const std::vector<std::string>& candidates = namedFields.empty() ? getScriptableEffectFields() : namedFields;
+    const std::vector<std::string>& candidates = named.empty() ? getScriptableEffectFields() : named;
     for (const std::string& name : candidates){
         const PostProcessingSettings::Field* field = PostProcessingSettings::findField(name);
         // the bool switches, and the render scale (below 1 runs the uber pass: its upscale); the
@@ -1441,7 +1466,7 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
         };
         add(settings);
     }
-    if (!namedFields.empty() && switches.size() <= 4){
+    if (!named.empty() && switches.size() <= 4){
         // every combination of the few switches the scripts name
         for (uint32_t mask = 1; mask < (1u << switches.size()); mask++)
             add(flipped(mask));
@@ -1560,9 +1585,27 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
         }
     }
 
-    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
-                                                                                  shadowHQStates(scene, scriptsSetShadowQuality),
-                                                                                  scriptsSetLitQuality, mobilePbrTier, terrainTiers, scriptsSetLight2D);
+    std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
+                                                                            shadowHQStates(scene, scriptsSetShadowQuality),
+                                                                            scriptsSetLitQuality, mobilePbrTier, terrainTiers, scriptsSetLight2D);
+    // S100: a script naming cavityEnabled may switch Cavity, whose depth programs differ ('Cvn'):
+    // both states ship; one naming cavityType may pick any type. A script that names neither
+    // keeps the scene's, so touching post-processing alone ships no Cavity variant
+    auto scriptsName = [&](const std::string& field){
+        return scriptsSetPostProcessing &&
+               std::find(scriptPostProcessingFields.begin(), scriptPostProcessingFields.end(), field) != scriptPostProcessingFields.end();
+    };
+    const bool cavity = scene->getPostProcessing().cavityEnabled;
+    const bool scriptsSwitchCavity = scriptsName(getScriptableCavityFields()[0]);
+    const bool scriptsPickCavityType = scriptsName(getScriptableCavityFields()[1]);
+    if (scriptsSwitchCavity){
+        const size_t own = environments.size();
+        for (size_t e = 0; e < own; e++){
+            MeshShaderEnvironment other = environments[e];
+            other.cavityNormals = !other.cavityNormals;
+            environments.push_back(other);
+        }
+    }
 
     Collector collector(scene, environments, postColor, keys, projectRoot);
     collector.collect(sceneContent);
@@ -1583,6 +1626,14 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
     }
     if (allFacts & FACT_OIT_CAMERA){
         keys.insert(ShaderPool::getShaderKey(ShaderType::LIGHTING_PASS, 1));
+    }
+    // S100's Cavity: the scene's type, every type when a script may pick one
+    if (cavity || scriptsSwitchCavity){
+        const CavityType type = scene->getPostProcessing().cavityType;
+        for (CavityType candidate : {CavityType::SCREEN, CavityType::WORLD, CavityType::BOTH}){
+            if (scriptsPickCavityType || candidate == type)
+                keys.insert(ShaderPool::getShaderKey(ShaderType::CAVITY, ShaderPool::getCavityProperties(candidate != CavityType::WORLD, candidate != CavityType::SCREEN)));
+        }
     }
     if (scene->isSSREnabled()){
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR, 0));

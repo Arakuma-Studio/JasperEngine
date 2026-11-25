@@ -62,7 +62,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
     static const std::map<RootKind, std::vector<std::string>> tables = {
         {RootKind::Scene, {"formatVersion", "guid", "formerGuids", "labels", "id", "name", "scene", "sceneType", "mainCamera", "maxValues", "shaderKeys",
             "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "imports", "entities"}},
-        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "ambientLight2DWithoutLights", "backgroundColor", "capsuleShadowIntensity", "capsuleShadowSoftness", "capsuleShadowsEnabled", "defaultLinesShader", "defaultLinesShaderUniforms", "defaultMeshShader", "defaultMeshShaderUniforms", "defaultPointsShader", "defaultPointsShaderUniforms", "defaultSkyShader", "defaultSkyShaderUniforms", "defaultUIShader", "defaultUIShaderUniforms", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "htmlUiMsaaSamples", "htmlUiRenderMode", "light2DSteps", "lightState", "litQuality", "maxLightsPerObject", "maxPlanarReflections", "meshLodCrossFade", "meshLodCrossFadeDuration", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "planarReflectionClipOffset", "planarReflectionFarClip", "planarReflectionLayers", "planarReflectionResolution", "planarReflectionShadows", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness", "waterWakeArea", "waterWakeFade", "waterWakeResolution",
+        {RootKind::SceneSettings, {"ambientEquatorColor", "ambientGroundColor", "ambientLight2DColor", "ambientLight2DIntensity", "ambientLight2DWithoutLights", "ambientMode", "ambientSkyColor", "backgroundColor", "capsuleShadowIntensity", "capsuleShadowSoftness", "capsuleShadowsEnabled", "defaultLinesShader", "defaultLinesShaderUniforms", "defaultMeshShader", "defaultMeshShaderUniforms", "defaultPointsShader", "defaultPointsShaderUniforms", "defaultSkyShader", "defaultSkyShaderUniforms", "defaultUIShader", "defaultUIShaderUniforms", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "htmlUiMsaaSamples", "htmlUiRenderMode", "light2DSteps", "lightState", "litQuality", "maxLightsPerObject", "maxPlanarReflections", "meshLodCrossFade", "meshLodCrossFadeDuration", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "planarReflectionClipOffset", "planarReflectionFarClip", "planarReflectionLayers", "planarReflectionResolution", "planarReflectionShadows", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness", "waterWakeArea", "waterWakeFade", "waterWakeResolution",
             // upstream's scene settings (SYNC#4): written away from their defaults
             "canvasScaler", "physics2DSubSteps",
             // S95: the scene's Fixed Timestep override
@@ -78,6 +78,8 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor",
             // upstream's project.yaml blocks (SYNC#4): the editor writes and reads them
             "audio", "physics3DWorld", "playerCrash", "presentation", "shaderGlobals", "uiScale",
+            // Project Settings > Physics / Physics 2D > Queries Hit Triggers (spatial queries)
+            "physicsQueries",
             // S87: Project Settings > Localization
             "localization",
             // S95: Project Settings > Time and Input > Simulate Touch From Mouse
@@ -518,6 +520,14 @@ const EnumTable<LitQuality>& StreamSchema::litQuality() {
         {LitQuality::STANDARD, "standard"},
         {LitQuality::HIGH, "high"},
     }, LitQuality::STANDARD);
+    return table;
+}
+
+const EnumTable<AmbientMode>& StreamSchema::ambientMode() {
+    static const EnumTable<AmbientMode> table("AmbientMode", {
+        {AmbientMode::COLOR, "color"},
+        {AmbientMode::GRADIENT, "gradient"},
+    }, AmbientMode::COLOR);
     return table;
 }
 

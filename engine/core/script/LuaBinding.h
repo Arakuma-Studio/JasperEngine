@@ -42,7 +42,8 @@ namespace jasperengine {
 
         static int luaRegisterEvent(lua_State* L);
         static int luaRegisterEngineEvent(lua_State* L);
-        static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive);
+        static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive,
+                                        int32_t priority = 0);
         static int luaUnregisterEvent(lua_State* L);
         static int luaUnregisterEngineEvent(lua_State* L);
         // Pushes the tag RegisterEvent / RegisterEngineEvent give a subscription
@@ -98,6 +99,9 @@ namespace jasperengine {
         static void registerGameplayClasses(lua_State *L);
         // S96: Physics / Physics2D shape queries, RaycastHit fields (PhysicsQueriesLua.cpp)
         static void registerPhysicsQueryClasses(lua_State *L);
+        // spatial queries beside S96's: the NonAlloc overlaps, Physics.debugDrawQueries, MeshRaycast
+        // overlaps (PhysicsQueryLua.cpp)
+        static void registerSpatialQueryClasses(lua_State *L);
         static void registerNavigationClasses(lua_State *L);
         // S76: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride (NavigationComponentsLua.cpp)
         static void registerNavigationComponentClasses(lua_State *L);
@@ -116,6 +120,7 @@ namespace jasperengine {
         static void registerSortingClasses(lua_State *L);
         // S48: HitStop and HitStopExempt (HitStopClassesLua.cpp)
         static void registerHitStopClasses(lua_State *L);
+        static void registerCullingClasses(lua_State *L);
         // S48: Transition, TransitionHandle, TransitionKind, PixelFX.glitch (TransitionClassesLua.cpp)
         static void registerTransitionClasses(lua_State *L);
         // S48: PixelFX.play, PixelFX.set and PixelFXHandle (PixelFxClassesLua.cpp)
@@ -124,6 +129,13 @@ namespace jasperengine {
         static void registerTilemapClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
         static void registerDataAssetClasses(lua_State *L);
+        // InputRecording and InputReplay (InputRecordingClassesLua.cpp)
+        static void registerInputRecordingClasses(lua_State *L);
+        static void registerLocalizationClasses(lua_State *L);
+        static void registerSaveGameClasses(lua_State *L);
+        // dialogue-graphs.md R27: Dialogue and DialogueRunner (DialogueClassesLua.cpp); without the
+        // module, the stubs below
+        static void registerDialogueClasses(lua_State *L);
 #ifdef JASPERENGINE_PHYSICS_3D
         // S96: WheelCollider, VehicleDrivetrain and their value types (VehicleClassesLua.cpp)
         static void registerVehicleClasses(lua_State *L);
@@ -139,8 +151,6 @@ namespace jasperengine {
 #endif
         static void registerCoroutineClasses(lua_State *L);
         static void registerScriptClasses(lua_State *L);
-
-        static void init();
 
         // Shader library values from Lua (binding directory). A Material is a copy
         // (Mesh:getMaterial): the shader its submesh draws with when the material names none
@@ -162,6 +172,11 @@ namespace jasperengine {
         static void releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry);
 
     public:
+        // runs the project's main.lua (Engine starts the project with it; tests run it too)
+        static void init();
+
+        // the names without the module: any use logs once that it is not compiled (R15)
+        static void registerDialogueStubs(lua_State *L);
         LuaBinding();
         virtual ~LuaBinding();
         

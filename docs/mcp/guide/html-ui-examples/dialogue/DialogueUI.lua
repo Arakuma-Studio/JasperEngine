@@ -1,8 +1,10 @@
--- Dialogue logic: attach to the GameObject that has the UI Document (dialogue.html).
+-- Dialogue view: attach to the GameObject that has the UI Document (dialogue.html). It shows the
+-- lines of the GameObject's Dialogue Runner (one is added when it has none, playing the demo
+-- conversation assets/demo.dialogue, a .dialogue graph: edit it in Window > Dialogue).
 -- DialogueUI:say(speaker, text, choices) shows a line; it types at 40 characters per second of
--- game time. A click or Space completes the line, then advances. Choices (a list of strings)
--- appear when the line is complete; picking one logs "dialogue: choice <n>" and follows the
--- conversation table below.
+-- game time. A click or Space completes the line, then advances. Choices appear when the line is
+-- complete; picking one logs "dialogue: choice <n>" and chooses it on the runner. A line's voice
+-- plays through Audio.
 ---@class DialogueUI : ScriptInstance
 local DialogueUI = {
     properties = {}
@@ -10,18 +12,8 @@ local DialogueUI = {
 
 local CHARS_PER_SECOND = 40
 
--- The demo conversation: each node is a line, with choices (and where each leads) or a next node
-local CONVERSATION = {
-    start = { speaker = "Captain Mira",
-              text = "The archive doors are sealed and the tide is rising. We have one shot at this. How do we get in?",
-              choices = { { "Blow the doors with a charge.", "blast" },
-                          { "Look for the old maintenance shaft.", "shaft" },
-                          { "Wait for the tide to turn.", "wait" } } },
-    blast = { speaker = "Captain Mira", text = "Loud, but it works. Everyone, stand back from the doors!", next = "after" },
-    shaft = { speaker = "Captain Mira", text = "Good eye. The grate is rusted through. Follow me, and keep your light low.", next = "after" },
-    wait = { speaker = "Captain Mira", text = "Then we wait. But the watch changes at dawn, and we will not be alone.", next = "after" },
-    after = { speaker = "Narrator", text = "Somewhere below, something old stirs in the dark." },
-}
+-- The demo conversation, beside the document (create_ui_document renames assets/ with the document)
+local DEMO_DIALOGUE = "assets/demo.dialogue"
 
 ---@param doc UIDocument
 ---@param id string
@@ -38,7 +30,7 @@ function DialogueUI:init()
     self.length = 0         -- in characters (UTF-8)
     self.shown = 0          -- characters typed so far (fractional)
     self.choices = {}
-    self.node = nil
+    self.line = nil         -- the runner's line on show
 
     -- Made once, so adding them again after a reload is ignored
     self.onBoxClick = function()
@@ -57,14 +49,22 @@ function DialogueUI:init()
     RegisterEngineEvent(self, "onUpdate")
     RegisterEvent(self, self.doc.onLoad, "onDocumentLoad")
     self:onDocumentLoad()
-    self:play("start")
+
+    -- the runner: the GameObject's own, else one with the demo conversation
+    self.runner = DialogueRunner(self.scene, self.entity)
+    if self.runner.dialogue == "" then
+        local folder = self.doc.filename:match("^(.*)/") or ""
+        self.runner.dialogue = (folder ~= "" and folder .. "/" or "") .. DEMO_DIALOGUE
+    end
+    RegisterEvent(self, self.runner.onLine, "onLine")
+    if not self.runner.isRunning then self.runner:start() end
 end
 
 -- After the first load and every reload: listeners, and the current line again
 function DialogueUI:onDocumentLoad()
     byId(self.doc, "dialogue"):addEventListener("click", self.onBoxClick)
     self.doc:addEventListener("keydown", self.onKeyDown)
-    if self.node then self:render() end
+    if self.line then self:render() end
 end
 
 ---@param speaker string
@@ -79,12 +79,20 @@ function DialogueUI:say(speaker, text, choices)
     self:render()
 end
 
----@param id string a key of CONVERSATION
-function DialogueUI:play(id)
-    self.node = CONVERSATION[id]
+-- Each line the runner reaches (also sent again when its text changes: a hot reload, a language)
+---@param runner DialogueRunner
+---@param line DialogueLine
+function DialogueUI:onLine(runner, line)
+    self:show(line)
+end
+
+---@param line DialogueLine
+function DialogueUI:show(line)
+    self.line = line
     local choices = {}
-    for i, choice in ipairs(self.node.choices or {}) do choices[i] = choice[1] end
-    self:say(self.node.speaker, self.node.text, choices)
+    for i, option in ipairs(line.options) do choices[i] = option.text end
+    if line.voice and Audio then Audio.play(line.voice) end
+    self:say(line.speakerName, line.text, choices)
 end
 
 ---@return boolean
@@ -97,8 +105,8 @@ function DialogueUI:advance()
     if not self:typed() then
         self.shown = self.length
         self:render()
-    elseif #self.choices == 0 and self.node and self.node.next then
-        self:play(self.node.next)
+    elseif #self.choices == 0 and self.runner.state == "line" then
+        self.runner:advance()
     end
 end
 
@@ -106,9 +114,7 @@ end
 function DialogueUI:pick(index)
     if not self:typed() or not self.choices[index] then return end
     Log.print("dialogue: choice " .. index)
-    if self.node and self.node.choices then
-        self:play(self.node.choices[index][2])
-    end
+    self.runner:choose(self.line.options[index].index)
 end
 
 function DialogueUI:onUpdate()
@@ -128,7 +134,7 @@ function DialogueUI:render()
 
     local done = self:typed()
     local box = byId(doc, "dialogue")
-    box.classList:toggle("waiting", done and #self.choices == 0 and self.node ~= nil and self.node.next ~= nil)
+    box.classList:toggle("waiting", done and #self.choices == 0 and self.line ~= nil and self.runner.state == "line")
 
     local list = byId(doc, "choices")
     local shownChoices = done and #self.choices or 0

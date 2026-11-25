@@ -139,6 +139,12 @@ LRESULT CALLBACK windowProc(HWND handle, UINT message,
                              SWP_NOZORDER | SWP_NOACTIVATE);
             }
             return 0;
+        case WM_SETTINGCHANGE:
+            // the user's languages (Settings > Time & Language): "intl" (game-ui-localization.md R10)
+            if (lParam && lstrcmpiW(reinterpret_cast<LPCWSTR>(lParam), L"intl") == 0) {
+                System::instance().notifyLocalesMayHaveChanged();
+            }
+            break;
         case WM_MOVE:
         case WM_DISPLAYCHANGE:
             WindowWin::updateCursorClip();

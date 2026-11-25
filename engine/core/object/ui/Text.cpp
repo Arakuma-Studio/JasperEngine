@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Text.h"
+#include "localization/Localization.h"
 #include "component/TextComponent.h"
 #include "shader/ShaderGlobals.h"
 
@@ -50,6 +51,23 @@ bool Text::load(){
 
     auto renderSystem = scene->getSystem<RenderSystem>();
     return renderSystem->loadUI(entity, ui, renderSystem->getScenePipelines(), true);
+}
+
+void Text::setLocalized(const std::string& key, const LocalizationArgs& args){
+    TextComponent& textcomp = getComponent<TextComponent>();
+    textcomp.localizationKey = key;
+    textcomp.textArgs = args;
+    // taken again at the next update, now that key or arguments changed
+    textcomp.localizationGeneration = Localization::getGeneration() + 1;
+    markChanged<TextComponent>();
+}
+
+void Text::setLocalizationKey(const std::string& key){
+    setLocalized(key, getComponent<TextComponent>().textArgs);
+}
+
+std::string Text::getLocalizationKey() const{
+    return getComponent<TextComponent>().localizationKey;
 }
 
 void Text::setFixedSize(bool fixedSize){

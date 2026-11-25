@@ -45,6 +45,9 @@ async def test_sheet_atlas_sequence_of_a_moving_title(ed: Editor):
     await setup(ed)
     r = await ed.call("export_title", path=DOC, format="sheet", options={"fps": 10, "columns": 3, "overwrite": True})
     ed.check(r.get("ok"), f"exported: {r}")
+    # S99 R14: the job's report (measured against the estimate given at submit)
+    report = r.get("report") or {}
+    ed.check(report.get("estimated_seconds", 0) > 0 and report.get("seconds", -1) >= 0 and report.get("fallbacks") == [], f"a report: {r}")
     ed.check_eq(r.get("frame_count"), 6, f"a once animation of 0.5 s at 10 fps has 6 frames (0 ... 0.5): {r}")
     pngs = [f for f in r["files"] if f.endswith(".png")]
     jsons = [f for f in r["files"] if f.endswith(".sheet.json")]
