@@ -13,6 +13,7 @@
 #include "util/FontFace.h"
 
 #include "hb.h"
+#include "support/AllocationCounter.h"
 
 #include <chrono>
 #include <cmath>
@@ -403,10 +404,14 @@ TEST_F(TitleTextLayoutTest, Budget) {
     layout.layout(layer);
     const double cachedMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - cachedStart).count();
     std::printf("[ budget   ] 64 CJK glyphs, two fallback fonts: %.3f ms, cached %.3f ms\n", ms, cachedMs);
+    // a wall-clock budget: enforced where perfSlack() asks for it (the benchmark run); the
+    // cached layout's being the cheaper is a ratio, checked everywhere
+    if (const double slack = testsupport::perfSlack(); slack > 0.0) {
 #ifdef NDEBUG
-    EXPECT_LE(ms, 6.0);
+        EXPECT_LE(ms, 6.0 * slack);
 #else
-    EXPECT_LE(ms, 60.0);
+        EXPECT_LE(ms, 60.0 * slack);
 #endif
+    }
     EXPECT_LT(cachedMs, ms);
 }

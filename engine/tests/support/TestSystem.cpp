@@ -43,13 +43,20 @@ int TestSystem::getScreenHeight(){
     return screenHeight;
 }
 
+sg_swapchain TestSystem::getSokolSwapchain(){
+#if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)
+    sg_swapchain swapchain = VulkanContext::swapchain();
+#else
+    sg_swapchain swapchain = System::getSokolSwapchain();
+#endif
+    if (swapchainInvalid)
+        swapchain.invalid = true;
+    return swapchain;
+}
+
 #if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)
 sg_environment TestSystem::getSokolEnvironment(){
     return VulkanContext::environment();
-}
-
-sg_swapchain TestSystem::getSokolSwapchain(){
-    return VulkanContext::swapchain();
 }
 #elif defined(SOKOL_METAL) && defined(JASPER_TEST_HAS_GPU)
 sg_environment TestSystem::getSokolEnvironment(){

@@ -265,7 +265,7 @@ void main() {
 // anti-aliased through its own gradient (the elements' bevels would light an aliased step).
 // p[2].zw amount, edge px; p[3] = (length px, lane px, seed x, seed y); p[4].xy the frame
 // corner from the layer origin, frame px.
-float taUnion(vec2 q) { return texture(TA_TEX0, q / vec2(textureSize(TA_TEX0, 0))).r; }
+float taUnion(vec2 q) { return textureLod(TA_TEX0, q / vec2(textureSize(TA_TEX0, 0)), 0.0).r; }
 float taExitDist(vec2 p, vec2 dir, float maxD) {
     float stepL = max(maxD / 48.0, 0.75);
     float t = 0.0;

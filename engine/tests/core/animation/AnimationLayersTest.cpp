@@ -37,11 +37,10 @@
 
 #include "lua.hpp"
 #include "LuaBridge.h"
+#include "support/AllocationCounter.h"
 
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
-#include <thread>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -1091,15 +1090,11 @@ TEST_F(Layers, PerformanceBudget){
     }
     ASSERT_LT(players[0].getStateInfo("Run").weight, 1.0f);
     std::printf("[ perf ] 40 characters x 65 bones, masked layer, crossfade: %.3f ms per frame\n", ms);
-    // the budget is the update's cost, not an overloaded host's scheduling (as CanvasGroupTest):
-    // over it on an overloaded host says nothing (skipped); under it passes whatever the load
-#if defined(__unix__) || defined(__APPLE__)
-    double load[1] = {0.0};
-    if (ms >= BUDGET_MS && getloadavg(load, 1) == 1 && load[0] > (double)std::thread::hardware_concurrency()){
-        GTEST_SKIP() << "load average " << load[0] << " above " << std::thread::hardware_concurrency() << " cores (measured " << ms << " ms)";
+    // the budget is the update's cost, not a loaded host's scheduling: enforced where
+    // perfSlack() asks for it (the benchmark run), printed always
+    if (const double slack = testsupport::perfSlack(); slack > 0.0){
+        EXPECT_LT(ms, BUDGET_MS * slack) << ms << " ms per frame";
     }
-#endif
-    EXPECT_LT(ms, BUDGET_MS) << ms << " ms per frame";
 }
 
 TEST_F(Layers, RemovingALayerShiftsRuntimeMoves){
