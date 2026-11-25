@@ -174,7 +174,7 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.f32(scaler.matchWidthOrHeight);
     w.u8(static_cast<uint8_t>(scaler.physicalUnit));
     w.f32(scaler.fallbackScreenDPI);
-    // format 1.10 (S95): the Fixed Timestep override
+    // format 1.13 (S95): the Fixed Timestep override
     w.f32(scene.getFixedTimestep());
 }
 
@@ -320,7 +320,7 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     if (unit <= static_cast<uint8_t>(PhysicalUnit::Picas)) scaler.physicalUnit = static_cast<PhysicalUnit>(unit);
     scaler.fallbackScreenDPI = r.f32();
     if (scaler != CanvasScalerSettings()) scene.setCanvasScaler(scaler);
-    // a 1.7 to 1.9 record ends here: the project's fixed step (format 1.10)
+    // a 1.7 to 1.12 record ends here: the project's fixed step (format 1.13)
     if (r.atEnd()) return;
     scene.setFixedTimestep(r.f32());
 }

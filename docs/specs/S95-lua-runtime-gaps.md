@@ -572,12 +572,12 @@ Per package, before merging:
 
 ### Integration
 
-- **Cooked scene format.** `main` reads and writes 1.6 (S96); S98 takes 1.7 and #3/#163 1.8 (the
-  landing order's ledger). This spec takes 1.9 (WP-5: script list properties, their element types a
-  tail after a Script component's scripts) and 1.10 (WP-3: the scene's Fixed Timestep, the last
-  value of the settings record), contrary to REQ-37's "no version bump": the cooked format is
-  positional, so a new value is a new minor (the YAML scene and project keys stay optional, with
-  defaults, unversioned). The reader takes 1.5 to 1.10.
+- **Cooked scene format.** `main` reads and writes 1.6 (S96); the landing order's ledger gives 1.7
+  to S98, 1.8 to 1.11 to #3, #10, #149 and #163, and this spec 1.12 (WP-5: script list properties,
+  their element types a tail after a Script component's scripts) and 1.13 (WP-3: the scene's Fixed
+  Timestep, the last value of the settings record), contrary to REQ-37's "no version bump": the
+  cooked format is positional, so a new value is a new minor (the YAML scene and project keys stay
+  optional, with defaults, unversioned). The reader takes 1.5 to 1.13.
 - **Compile builds read the settings as data (S98).** The scene's Fixed Timestep reaches a Compile
   build in its cooked scene (no generated `scene->setFixedTimestep` line), and Project Settings >
   Time and Input > Simulate Touch From Mouse in `game.json` (`cook::makeGameConfig`), which
@@ -651,12 +651,12 @@ Per package, before merging:
 - **The class index.** Exports write `je-dataassets.json` (class to assets) for
   `DataAsset.loadAll`; editor Play builds the index from the project.
 - **Data classes leave Add Script**: a `---@dataasset` module is not offered as a component.
-- **`AssetType::DataAsset = 38`** (after S98's Mesh 35 and #163's 36 and 37, the landing order's ledger).
+- **`AssetType::DataAsset = 39`** (after S98's Mesh 35, #149's 36 and #163's 37 and 38, the landing order's ledger).
 - **References load with the asset.** References to other Data Assets load together with the asset
   that holds them (cycles handled), not lazily per field: a lazy proxy would break `pairs` and `#list`.
 - **Stored type name** is `data_asset`; `assetType = "dataasset"` is accepted as an alias.
 - **Lists are for Lua scripts and data classes only**, not C++ `DPROPERTY` fields.
-- **Cooked format:** element types are written after the scripts, so content cooked at 1.5 to 1.8 still reads.
+- **Cooked format:** element types are written after the scripts, so content cooked at 1.5 to 1.11 still reads.
 
 ### WP-6 String Tables
 
@@ -668,7 +668,7 @@ Per package, before merging:
   drops the rest (the one-file format, `{form: text}` plurals, `data-loc`, `"Table:key"`, the
   cross-table duplicate check, the `.meta` GUID). This branch drops its WP-6 implementation
   (REQ-25 to REQ-30, AC-22) so that one lands; S10 closes with it. `AssetType::StringTable` is
-  that spec's (36), and WP-5's `DataAsset` is 38.
+  that spec's (37), and WP-5's `DataAsset` is 39.
 
 ### WP-2 Frame order and transforms
 

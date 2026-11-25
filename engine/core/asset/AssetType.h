@@ -52,8 +52,8 @@ namespace jasperengine {
         NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
         TitleArt = 34,              // a .titleart Title Art document (S80; its GUID in its JSON)
         Mesh = 35,                  // a .mesh mesh asset (S98 F1; its GUID in its .meta)
-        // 36, 37: #163's String Table and Dialogue (reserved)
-        DataAsset = 38              // a .dataasset Data Asset (S95 REQ-21; its GUID in its .meta)
+        // 36: #149's IES Profile, 37, 38: #163's String Table and Dialogue (reserved)
+        DataAsset = 39              // a .dataasset Data Asset (S95 REQ-21; its GUID in its .meta)
     };
     // the highest value present (a sibling's reserved value below it may still be missing)
     inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::DataAsset);

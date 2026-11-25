@@ -314,7 +314,7 @@ namespace jasperengine::cook {
         }
     };
 
-    // a Script component's scripts, then (content 1.9, S95) the element type of each property in
+    // a Script component's scripts, then (content 1.12, S95) the element type of each property in
     // order: content cooked before ends after the scripts, and its properties read as Float lists
     // never come (1.5 had no lists)
     template<>

@@ -25,8 +25,8 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
         if (value == 27) {
             continue;
         }
-        // 36 and 37 are reserved for #163's String Table and Dialogue, which may land after this
-        if ((value == 36 || value == 37) && std::string(assetTypeName(static_cast<AssetType>(value))) == "unknown") {
+        // 36 to 38 are reserved for #149's IES Profile and #163's String Table and Dialogue
+        if (value >= 36 && value <= 38 && std::string(assetTypeName(static_cast<AssetType>(value))) == "unknown") {
             continue;
         }
         const AssetType type = static_cast<AssetType>(value);
@@ -43,6 +43,6 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
     EXPECT_EQ(static_cast<int>(AssetType::Mesh), 35) << "the numbers are a file format: append only";
     EXPECT_EQ(assetTypeFromName("mesh"), AssetType::Mesh);
     EXPECT_EQ(assetTypeFromName("data_asset"), AssetType::DataAsset);
-    EXPECT_EQ(static_cast<int>(AssetType::DataAsset), 38) << "the numbers are a file format: append only";
+    EXPECT_EQ(static_cast<int>(AssetType::DataAsset), 39) << "the numbers are a file format: append only";
     EXPECT_EQ(assetTypeFromName("nothing"), AssetType::Unknown);
 }

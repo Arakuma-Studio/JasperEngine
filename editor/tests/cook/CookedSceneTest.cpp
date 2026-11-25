@@ -640,7 +640,7 @@ namespace {
         return tail.data().size();
     }
 
-    // the bytes format 1.10 appends after them (the Fixed Timestep override)
+    // the bytes format 1.13 appends after them (the Fixed Timestep override)
     size_t fixedTimestepTailBytes(const Scene& scene) {
         jasperengine::cook::StringTable none;
         jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
@@ -690,7 +690,7 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     jasperengine::cook::Writer v13(none, [](Entity e) { return static_cast<uint32_t>(e); });
     for (int type = 0; type < 5; type++) jasperengine::cook::write(v13, ShaderUniformValues());
     // (1.4) the planar reflections, (1.5) the Water Wakes' map, (1.6) the physics world, (1.7) the
-    // Canvas Scaler and (1.10) the Fixed Timestep after them
+    // Canvas Scaler and (1.13) the Fixed Timestep after them
     const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene) + physicsWorldTailBytes(*scene) + canvasScalerTailBytes(*scene) +
                        fixedTimestepTailBytes(*scene);
     ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size() + v13.data().size() + v14);
@@ -891,8 +891,8 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
 }
 
-// S95 REQ-13: the scene's Fixed Timestep survives a cook (format 1.10, after the Canvas Scaler); a
-// 1.6 to 1.9 record leaves the project's (0)
+// S95 REQ-13: the scene's Fixed Timestep survives a cook (format 1.13, after the Canvas Scaler); a
+// 1.6 to 1.12 record leaves the project's (0)
 TEST(CookedScene, SceneSettingsKeepFixedTimestep) {
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
@@ -1125,7 +1125,7 @@ namespace {
         for (int i = 0; i < 8; i++) bytes[20 + i] = static_cast<uint8_t>(stringsOffset >> (8 * i));
     }
 
-    // A 1.10 scene cooked with no VATs, masks, controllers or bitmap fonts as a 1.6 editor laid it
+    // A 1.13 scene cooked with no VATs, masks, controllers or bitmap fonts as a 1.6 editor laid it
     // out: the settings record (the first) without its 1.7 and newer values (settingsTail bytes:
     // canvasScalerTailBytes and fixedTimestepTailBytes), the resources record (the fourth) without those four empty lists
     // that end it (the hierarchy record after it is 1.6's)
@@ -1150,8 +1150,8 @@ namespace {
 // offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    // 1.9 (S95 REQ-20) adds only to Script components, which this scene has none of
-    ASSERT_EQ(FORMAT_MINOR, 10) << "the 1.4 layout below is 1.10's without its Water Wakes and physics world values and 1.7's and 1.10's additions "
+    // 1.12 (S95 REQ-20) adds only to Script components, which this scene has none of
+    ASSERT_EQ(FORMAT_MINOR, 13) << "the 1.4 layout below is 1.13's without its Water Wakes and physics world values and 1.7's and 1.13's additions "
                                    "(asMinor6): cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
