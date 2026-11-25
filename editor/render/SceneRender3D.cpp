@@ -21,10 +21,6 @@
 #include "profiler/Profile.h"
 #include "pose/PoseViewport.h"
 
-#include "resources/icons/sun-icon_png.h"
-#include "resources/icons/bulb-icon_png.h"
-#include "resources/icons/spot-icon_png.h"
-
 #include "Project.h"
 #include "LineDrawUtils.h"
 #include "util/Angle.h"
@@ -38,6 +34,8 @@
 #include "util/WaterExclusion.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "Engine.h"
 #include "subsystem/WaterInteractionSystem.h"
 #include <cmath>
 #include <cstdint>
@@ -93,87 +91,17 @@ editor::SceneRender3D::~SceneRender3D(){
     delete lines;
     delete selLines;
 
-    for (auto& pair : lightObjects) {
-        delete pair.second.icon;
-        delete pair.second.lines;
+    const RenderSystem& render = *scene->getSystem<RenderSystem>();
+    deleteGizmos(icons, render);
+    for (GizmoLineBatch* batch : lineBatches()) {
+        deleteGizmos(*batch, render);
     }
+}
 
-    for (auto& pair : cameraObjects) {
-        delete pair.second.icon;
-        delete pair.second.lines;
-    }
-
-    for (auto& pair : soundObjects) {
-        delete pair.second.icon;
-    }
-
-    for (auto& pair : bodyObjects) {
-        delete pair.second.lines;
-    }
-
-    for (auto& pair : jointLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : boneLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : linePointLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : polygonPointLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : trackLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : reflectionProbeLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : fogVolumeLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : controllerLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : animatorLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : waterVolumeLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : waterExcluderLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : waterWakeLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : buoyancyLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : particleLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : forceFieldLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : capsuleShadowLines) {
-        delete pair.second;
-    }
+std::vector<editor::GizmoLineBatch*> editor::SceneRender3D::lineBatches(){
+    return {&lightLines, &cameraLines, &bodyLines, &jointLines, &boneLines, &linePointLines, &polygonPointLines, &trackLines,
+            &reflectionProbeLines, &fogVolumeLines, &controllerLines, &waterVolumeLines, &waterExcluderLines, &waterWakeLines,
+            &buoyancyLines, &wheelLines, &particleLines, &forceFieldLines, &animatorLines, &capsuleShadowLines};
 }
 
 void editor::SceneRender3D::createLines(){
@@ -223,56 +151,8 @@ void editor::SceneRender3D::createLines(){
     lines->addLine(Vector3(0, -gridSize, 0), Vector3(0, gridSize, 0), Vector4(0.5, 1.0, 0.5, 1.0));
 }
 
-bool editor::SceneRender3D::instanciateLightObject(Entity entity){
-    if (lightObjects.find(entity) == lightObjects.end()) {
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        lightObjects[entity].icon = overlay(new Sprite(scene));
-        lightObjects[entity].lines = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool editor::SceneRender3D::instanciateCameraObject(Entity entity){
-    if (cameraObjects.find(entity) == cameraObjects.end()) {
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        cameraObjects[entity].icon = overlay(new Sprite(scene));
-        cameraObjects[entity].lines = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool editor::SceneRender3D::instanciateSoundObject(Entity entity){
-    if (soundObjects.find(entity) == soundObjects.end()) {
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        soundObjects[entity].icon = overlay(new Sprite(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool editor::SceneRender3D::instanciateBodyObject(Entity entity){
-    if (bodyObjects.find(entity) == bodyObjects.end()) {
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        bodyObjects[entity].lines = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
 void editor::SceneRender3D::createOrUpdateReflectionProbeLines(Entity entity, const Transform& transform, const ReflectionProbeComponent& probe, bool visible){
-    LineRenderer* probeLines = reflectionProbeLines[entity];
-    probeLines->clearLines();
-    probeLines->setVisible(transform.visible && visible);
+    GizmoLineBatch* probeLines = &reflectionProbeLines;
     if (!transform.visible || !visible) return;
 
     Vector3 center = transform.modelMatrix * probe.boxOffset;
@@ -315,7 +195,8 @@ void editor::SceneRender3D::createOrUpdateReflectionProbeLines(Entity entity, co
 namespace {
 
     // the 12 edges of an axis-aligned box
-    void addBoxLines(LineRenderer* lines, const Vector3& lo, const Vector3& hi, const Vector4& color){
+    template<typename Lines>
+    void addBoxLines(Lines* lines, const Vector3& lo, const Vector3& hi, const Vector4& color){
         const Vector3 c[8] = {
             Vector3(lo.x, lo.y, lo.z), Vector3(hi.x, lo.y, lo.z), Vector3(hi.x, hi.y, lo.z), Vector3(lo.x, hi.y, lo.z),
             Vector3(lo.x, lo.y, hi.z), Vector3(hi.x, lo.y, hi.z), Vector3(hi.x, hi.y, hi.z), Vector3(lo.x, hi.y, hi.z)
@@ -325,7 +206,8 @@ namespace {
     }
 
     // a square of the plane around a point, and its normal
-    void addPlaneLines(LineRenderer* lines, const Vector3& point, const Vector3& normal, float size, const Vector4& color){
+    template<typename Lines>
+    void addPlaneLines(Lines* lines, const Vector3& point, const Vector3& normal, float size, const Vector4& color){
         auto [n, right, forward] = editor::LineDrawUtils::makeBasis(normal);
         const Vector3 a = point + (right + forward) * size, b = point + (right - forward) * size;
         const Vector3 c = point - (right + forward) * size, d = point - (right - forward) * size;
@@ -339,9 +221,7 @@ namespace {
 }
 
 void editor::SceneRender3D::createOrUpdateParticleLines(Entity entity, const Transform& transform, const ParticleSystemComponent& particles, bool visible){
-    LineRenderer* lines = particleLines[entity];
-    lines->clearLines();
-    lines->setVisible(transform.visible && visible);
+    GizmoLineBatch* lines = &particleLines;
     if (!transform.visible || !visible) return;
     const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles);
     if (!document) return;
@@ -385,9 +265,7 @@ void editor::SceneRender3D::createOrUpdateParticleLines(Entity entity, const Tra
 }
 
 void editor::SceneRender3D::createOrUpdateForceFieldLines(Entity entity, const Transform& transform, const ForceFieldComponent& field, bool visible){
-    LineRenderer* lines = forceFieldLines[entity];
-    lines->clearLines();
-    lines->setVisible(transform.visible && visible);
+    GizmoLineBatch* lines = &forceFieldLines;
     if (!transform.visible || !visible) return;
 
     const Matrix4 rotation = transform.worldRotation.getRotationMatrix();
@@ -452,9 +330,7 @@ void editor::SceneRender3D::createOrUpdateForceFieldLines(Entity entity, const T
 }
 
 void editor::SceneRender3D::createOrUpdateFogVolumeLines(Entity entity, const Transform& transform, const LocalVolumetricFogComponent& volume, bool visible){
-    LineRenderer* lines = fogVolumeLines[entity];
-    lines->clearLines();
-    lines->setVisible(transform.visible && visible);
+    GizmoLineBatch* lines = &fogVolumeLines;
     if (!transform.visible || !visible) return;
 
     // the volume's frame: its Transform's position and rotation, its size times the scale
@@ -506,9 +382,7 @@ void editor::SceneRender3D::createOrUpdateFogVolumeLines(Entity entity, const Tr
 // A Water Volume: the box of water under its surface (in the GameObject's frame, as WaterSystem
 // tests it) and the flat surface itself, crossed; an infinite one as a wide surface only
 void editor::SceneRender3D::createOrUpdateWaterVolumeLines(Entity entity, const Transform& transform, const WaterVolumeComponent& volume, bool visible, bool highlighted){
-    LineRenderer* lines = waterVolumeLines[entity];
-    lines->clearLines();
-    lines->setVisible(transform.visible && visible);
+    GizmoLineBatch* lines = &waterVolumeLines;
     if (!transform.visible || !visible) return;
 
     const float alpha = highlighted ? 1.0f : 0.4f;
@@ -546,9 +420,7 @@ void editor::SceneRender3D::createOrUpdateWaterVolumeLines(Entity entity, const 
 // A Water Excluder: its box, the three circles of its sphere, or its hull's edges (orange: where
 // no water is drawn and nothing floats)
 void editor::SceneRender3D::createOrUpdateWaterExcluderLines(Entity entity, const Transform& transform, const WaterExcluderComponent& excluder, bool visible, bool highlighted){
-    LineRenderer* lines = waterExcluderLines[entity];
-    lines->clearLines();
-    lines->setVisible(transform.visible && visible);
+    GizmoLineBatch* lines = &waterExcluderLines;
     if (!transform.visible || !visible) return;
 
     const float alpha = highlighted ? 1.0f : 0.4f;
@@ -597,9 +469,7 @@ void editor::SceneRender3D::createOrUpdateWaterExcluderLines(Entity entity, cons
 // A selected Water Wake's waterline footprint: the ellipse its wake starts from (cyan), with its
 // length axis
 void editor::SceneRender3D::createOrUpdateWaterWakeLines(Entity entity, const Transform& transform, const WaterWakeComponent& wake, bool visible){
-    LineRenderer* lines = waterWakeLines[entity];
-    lines->clearLines();
-    lines->setVisible(transform.visible && visible);
+    GizmoLineBatch* lines = &waterWakeLines;
     std::shared_ptr<WaterInteractionSystem> system = scene->findSystem<WaterInteractionSystem>();
     if (!transform.visible || !visible || !system) return;
 
@@ -618,9 +488,7 @@ void editor::SceneRender3D::createOrUpdateWaterWakeLines(Entity entity, const Tr
 
 // A Buoyancy's columns: each from its bottom up the colliders' height, as WaterSystem samples
 void editor::SceneRender3D::createOrUpdateBuoyancyLines(Entity entity, const Transform& transform, const BuoyancyComponent& buoyancy, bool visible, bool highlighted){
-    LineRenderer* lines = buoyancyLines[entity];
-    lines->clearLines();
-    lines->setVisible(transform.visible && visible);
+    GizmoLineBatch* lines = &buoyancyLines;
     if (!transform.visible || !visible) return;
 
     Vector3 min, max;
@@ -638,13 +506,76 @@ void editor::SceneRender3D::createOrUpdateBuoyancyLines(Entity entity, const Tra
     }
 }
 
+// A Wheel Collider as the physics builds it: the wheel's circle at rest (its target position of the
+// travel under the body's weight) facing its forward, and the suspension travel down the body's
+// down axis; in Play the circle at its pose (getWorldPose), its contact and the force there
+void editor::SceneRender3D::createOrUpdateWheelLines(Entity entity, const Transform& transform, const WheelColliderComponent& wheel, bool visible, bool highlighted){
+    GizmoLineBatch* lines = &wheelLines;
+    if (!transform.visible || !visible) return;
+
+    // the body's up (the nearest Rigidbody above), else the parent's
+    Quaternion bodyRotation = transform.worldRotation;
+    for (Entity parent = transform.parent; parent != NULL_ENTITY;){
+        const Transform* parentTransform = scene->findComponent<Transform>(parent);
+        if (!parentTransform) break;
+        bodyRotation = parentTransform->worldRotation;
+        if (scene->findComponent<RigidbodyComponent>(parent)) break;
+        parent = parentTransform->parent;
+    }
+    const Vector3 up = (bodyRotation * Vector3(0.0f, 1.0f, 0.0f)).normalized();
+    Vector3 forward = transform.worldRotation * Vector3(0.0f, 0.0f, 1.0f);
+    forward = forward - up * forward.dotProduct(up);
+    forward = forward.squaredLength() > 1.0e-8f ? forward.normalized() : bodyRotation * Vector3(0.0f, 0.0f, 1.0f);
+
+    const float alpha = highlighted ? 1.0f : 0.4f;
+    const Vector4 color = wheel.enabled ? Vector4(0.45f, 0.95f, 0.35f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    const Vector4 travelColor = wheel.enabled ? Vector4(1.0f, 0.75f, 0.25f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    const float radius = std::max(0.0f, wheel.radius);
+    const float travel = std::max(0.0f, wheel.suspensionDistance);
+    // the read-outs are the last step's: after Stop they are left from Play
+    const bool running = wheel.wheelIndex >= 0 && Engine::isSceneRunning(scene);
+
+    Vector3 center;
+    Vector3 wheelUp = up;
+    Vector3 wheelForward = forward;
+    Vector3 attach;
+    if (running){
+        center = wheel.worldPosePosition;
+        wheelUp = wheel.worldPoseRotation * Vector3(0.0f, 1.0f, 0.0f);
+        wheelForward = wheel.worldPoseRotation * Vector3(0.0f, 0.0f, 1.0f);
+        attach = center + up * (travel * (1.0f - wheel.suspensionCompression));
+    }else{
+        attach = transform.modelMatrix * wheel.center;
+        center = attach - up * (travel * (1.0f - std::clamp(wheel.suspensionSpring.targetPosition, 0.0f, 1.0f)));
+    }
+    const int segments = 32;
+    auto point = [&](float a){ return center + (wheelUp * std::cos(a) + wheelForward * std::sin(a)) * radius; };
+    for (int i = 0; i < segments; i++)
+        lines->addLine(point(6.28318530718f * (float)i / (float)segments), point(6.28318530718f * (float)(i + 1) / (float)segments), color);
+    // a spoke shows the spin
+    lines->addLine(center, point(0.0f), color);
+    lines->addLine(attach, attach - up * travel, travelColor);
+    const float tick = std::max(0.02f, radius * 0.2f);
+    const Vector3 side = up.crossProduct(forward);
+    lines->addLine(attach - side * tick, attach + side * tick, travelColor);
+    lines->addLine(attach - up * travel - side * tick, attach - up * travel + side * tick, travelColor);
+
+    if (running && wheel.isGrounded){
+        const Vector4 contactColor(1.0f, 0.2f, 0.2f, 1.0f);
+        const Vector3 p = wheel.hit.point;
+        lines->addLine(p - side * tick, p + side * tick, contactColor);
+        lines->addLine(p - wheelForward * tick, p + wheelForward * tick, contactColor);
+        // the push, a metre per sprung weight
+        const float weight = std::max(1.0f, wheel.sprungMass * 9.81f);
+        lines->addLine(p, p + wheel.hit.normal * std::min(3.0f, wheel.hit.force / weight), contactColor);
+    }
+}
+
 // The upright capsule a CharacterController moves (as CharacterControllerSystem sizes it: radius by
 // the larger of the X and Z scales, height by Y, no rotation), the band of the step it climbs over
 // its feet, and the cone of the steepest slope it walks
 void editor::SceneRender3D::createOrUpdateControllerLines(Entity entity, const Transform& transform, const CharacterControllerComponent& controller, bool visible, bool highlighted){
-    LineRenderer* lines = controllerLines[entity];
-    lines->clearLines();
-    lines->setVisible(transform.visible && visible);
+    GizmoLineBatch* lines = &controllerLines;
     if (!transform.visible || !visible) return;
 
     const Vector3 scale(std::fabs(transform.worldScale.x), std::fabs(transform.worldScale.y), std::fabs(transform.worldScale.z));
@@ -715,9 +646,7 @@ void editor::SceneRender3D::createOrUpdateControllerLines(Entity entity, const T
 // two ends and a point on its surface for the radius
 void editor::SceneRender3D::createOrUpdateCapsuleShadowLines(Entity entity, const Transform& transform, const CapsuleShadowCasterComponent& caster,
                                                              bool visible, bool selected){
-    LineRenderer* lines = capsuleShadowLines[entity];
-    lines->clearLines();
-    lines->setVisible(transform.visible && visible);
+    GizmoLineBatch* lines = &capsuleShadowLines;
     if (!transform.visible || !visible) return;
 
     const float alpha = selected ? 1.0f : 0.5f;
@@ -792,10 +721,7 @@ void editor::SceneRender3D::createOrUpdateCapsuleShadowLines(Entity entity, cons
 // (orientation-independent in 3D); the sub-selected endpoint is drawn bigger
 // and in the selection color
 void editor::SceneRender3D::createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible){
-    LineRenderer* handlesObj = linePointLines[entity];
-
-    handlesObj->clearLines();
-    handlesObj->setVisible(transform.visible && visible);
+    GizmoLineBatch* handlesObj = &linePointLines;
 
     if (!transform.visible || !visible){
         return;
@@ -823,10 +749,7 @@ void editor::SceneRender3D::createOrUpdateLinePointLines(Entity entity, const Tr
 // vertex handles for a selected Polygon / MeshPolygon entity, drawn as small
 // 3-axis crosses; the sub-selected vertex is drawn bigger and in the selection color
 void editor::SceneRender3D::createOrUpdatePolygonPointLines(Entity entity, const Transform& transform, const std::vector<PolygonPoint>& points, bool isMesh, bool visible){
-    LineRenderer* handlesObj = polygonPointLines[entity];
-
-    handlesObj->clearLines();
-    handlesObj->setVisible(transform.visible && visible);
+    GizmoLineBatch* handlesObj = &polygonPointLines;
 
     if (!transform.visible || !visible){
         return;
@@ -849,27 +772,11 @@ void editor::SceneRender3D::createOrUpdatePolygonPointLines(Entity entity, const
     }
 }
 
-bool editor::SceneRender3D::instanciateTrackLines(Entity entity){
-    if (trackLines.find(entity) == trackLines.end()) {
-        // tools-layer scene so the path stays visible on top of scene geometry
-        // (waypoints usually sit exactly on floors/meshes), like bone lines
-        ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
-        trackLines[entity] = new LineRenderer(toolslayer.getScene());
-
-        return true;
-    }
-
-    return false;
-}
-
 // path of a selected TranslateTracks entity: a polyline through its keyframe
 // values (in the action target's parent space) with small 3-axis cross handles;
 // the sub-selected point is drawn bigger and in the selection color
 void editor::SceneRender3D::createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible){
-    LineRenderer* trackObj = trackLines[entity];
-
-    trackObj->clearLines();
-    trackObj->setVisible(visible);
+    GizmoLineBatch* trackObj = &trackLines;
 
     if (!visible){
         return;
@@ -901,22 +808,8 @@ void editor::SceneRender3D::createOrUpdateTrackLines(Entity entity, const Transl
     }
 }
 
-bool editor::SceneRender3D::instanciateBoneLines(Entity entity){
-    if (boneLines.find(entity) == boneLines.end()) {
-        ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
-        boneLines[entity] = new LineRenderer(toolslayer.getScene());
-
-        return true;
-    }
-
-    return false;
-}
-
 void editor::SceneRender3D::createOrUpdateBoneLines(Entity entity, const ModelComponent& model, bool visible, bool highlighted){
-    LineRenderer* boneLinesObj = boneLines[entity];
-
-    boneLinesObj->clearLines();
-    boneLinesObj->setVisible(visible);
+    GizmoLineBatch* boneLinesObj = &boneLines;
 
     if (!visible){
         return;
@@ -988,14 +881,10 @@ void editor::SceneRender3D::createOrUpdateBoneLines(Entity entity, const ModelCo
 }
 
 void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transform& transform, const RigidbodyComponent& body, bool visible, bool highlighted) {
-    BodyObjects& bo = bodyObjects[entity];
-
-    bo.lines->clearLines();
-    bo.lines->setVisible(transform.visible && visible);
-
     if (!transform.visible || !visible || body.colliders.empty()) {
         return;
     }
+    BodyObjects& bo = bodyObjects[entity];
 
     float alpha = highlighted ? 1.0f : 0.35f;
     const Vector4 bodyColor(0.2f, 0.95f, 0.95f, alpha);
@@ -1009,7 +898,7 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
     pose.scale = transform.worldScale;
     PhysicsDebugLines::bodyEdges(scene, entity, transform, body, pose, bo.shapeEdgeCaches,
         [&](const Vector3& a, const Vector3& b, size_t collider) {
-            bo.lines->addLine(a, b, (collider < body.colliders.size() && body.colliders[collider].isTrigger) ? triggerColor : bodyColor);
+            bodyLines.addLine(a, b, (collider < body.colliders.size() && body.colliders[collider].isTrigger) ? triggerColor : bodyColor);
         });
 
     // the centre of mass of the selected body: given, or computed from primitive colliders
@@ -1035,18 +924,15 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
         }
         if (hasCenter) {
             const Vector3 world = transform.worldPosition + transform.worldRotation * center;
-            PhysicsDebugLines::crossMark(world, 0.08f, [&](const Vector3& a, const Vector3& b) { bo.lines->addLine(a, b, centerColor); });
-            LineDrawUtils::addRing3D(bo.lines, world, Vector3(0, 1, 0), 0.06f, centerColor, 12);
-            LineDrawUtils::addRing3D(bo.lines, world, Vector3(1, 0, 0), 0.06f, centerColor, 12);
+            PhysicsDebugLines::crossMark(world, 0.08f, [&](const Vector3& a, const Vector3& b) { bodyLines.addLine(a, b, centerColor); });
+            LineDrawUtils::addRing3D(&bodyLines, world, Vector3(0, 1, 0), 0.06f, centerColor, 12);
+            LineDrawUtils::addRing3D(&bodyLines, world, Vector3(1, 0, 0), 0.06f, centerColor, 12);
         }
     }
 }
 
 void editor::SceneRender3D::createOrUpdateJointLines(Entity entity, const Joint3DComponent& joint, bool visible, bool highlighted){
-    LineRenderer* jointLinesObj = jointLines[entity];
-
-    jointLinesObj->clearLines();
-    jointLinesObj->setVisible(visible);
+    GizmoLineBatch* jointLinesObj = &jointLines;
 
     if (!visible){
         return;
@@ -1074,96 +960,21 @@ void editor::SceneRender3D::createOrUpdateJointLines(Entity entity, const Joint3
     });
 }
 
-void editor::SceneRender3D::createOrUpdateLightIcon(Entity entity, const Transform& transform, LightType lightType, bool newLight) {
-    LightObjects& lo = lightObjects[entity];
+namespace {
 
-    if (newLight) {
-        TextureData iconData;
-        if (lightType == LightType::DIRECTIONAL) {
-            iconData.loadTextureFromMemory(sun_icon_png, sun_icon_png_len);
-            lo.icon->setTexture("editor:resources:sun_icon", iconData);
-        } else if (lightType == LightType::POINT) {
-            iconData.loadTextureFromMemory(bulb_icon_png, bulb_icon_png_len);
-            lo.icon->setTexture("editor:resources:bulb_icon", iconData);
-        } else if (lightType == LightType::SPOT) {
-            iconData.loadTextureFromMemory(spot_icon_png, spot_icon_png_len);
-            lo.icon->setTexture("editor:resources:spot_icon", iconData);
-        }
-
-        lo.icon->setBillboard(true);
-        lo.icon->setSize(128, 128);
-        lo.icon->setReceiveLights(false);
-        lo.icon->setCastShadows(false);
-        lo.icon->setReceiveShadows(false);
-        lo.icon->setPivotPreset(PivotPreset::CENTER);
+    // a light's shape is drawn in its own space, then placed at its position and rotation
+    Matrix4 lightGizmoMatrix(const Transform& transform){
+        return Matrix4::composeTRS(transform.worldPosition, transform.worldRotation, Vector3(1.0f, 1.0f, 1.0f));
     }
 
-    // Update light icon position
-    lo.icon->setPosition(transform.worldPosition);
-    lo.icon->setVisible(transform.visible);
-    lo.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
 }
 
-void editor::SceneRender3D::createOrUpdateCameraIcon(Entity entity, const Transform& transform, bool newCamera) {
-    CameraObjects& co = cameraObjects[entity];
-
-    if (newCamera) {
-        setupCameraIcon(co);
-        co.icon->setBillboard(true);
-    }
-
-    // Update camera icon position
-    co.icon->setPosition(transform.worldPosition);
-    co.icon->setVisible(transform.visible);
-    co.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
-}
-
-void editor::SceneRender3D::createOrUpdateSoundIcon(Entity entity, const Transform& transform, bool newSound) {
-    SoundObjects& so = soundObjects[entity];
-
-    if (newSound) {
-        setupSoundIcon(so);
-        so.icon->setBillboard(true);
-    }
-
-    so.icon->setPosition(transform.worldPosition);
-    so.icon->setVisible(transform.visible);
-    so.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
-}
-
-void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fullFrustum, bool isMainCamera) {
-    CameraObjects& co = cameraObjects[entity];
-
-    co.lines->setPosition(transform.worldPosition);
-    co.lines->setVisible(transform.visible);
-
-    Quaternion rotation;
-    rotation.fromRotationMatrix(cameraComponent.viewMatrix.inverse());
-    co.lines->setRotation(rotation);
-
-    updateCameraFrustum(co, cameraComponent, isMainCamera, fullFrustum);
-}
-
-
-void editor::SceneRender3D::createDirectionalLightArrow(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected) {
-    LightObjects& lo = lightObjects[entity];
-
-    lo.lines->setPosition(transform.worldPosition);
-    lo.lines->setRotation(transform.worldRotation);
-    lo.lines->setVisible(isSelected);
-
+void editor::SceneRender3D::createDirectionalLightArrow(const Transform& transform, const LightComponent& light) {
     if (light.direction == Vector3::ZERO){
         return;
     }
-
-    if (lo.type == light.type && lo.direction == light.direction) {
-        return;
-    }
-
-    lo.type = light.type;
-    lo.direction = light.direction;
-
-    lo.lines->clearLines();
+    GizmoLineList local;
+    GizmoLineList* lo = &local;
 
     Vector3 position = Vector3(0, 0, 0);  // Start position
     float arrowLength = 4.0f;  // Length of the main arrow shaft
@@ -1175,7 +986,7 @@ void editor::SceneRender3D::createDirectionalLightArrow(Entity entity, const Tra
 
     // Main arrow shaft
     Vector3 endPos = position + direction * arrowLength;
-    lo.lines->addLine(position, endPos, arrowColor);
+    lo->addLine(position, endPos, arrowColor);
 
     // Use the same local projection frame as runtime lighting and shadows.
     Vector3 up = light.getLocalSpotProjectionUp();
@@ -1191,39 +1002,27 @@ void editor::SceneRender3D::createDirectionalLightArrow(Entity entity, const Tra
     Vector3 arrowHead4 = arrowHeadBase - up * arrowHeadWidth;
 
     // Draw arrow head lines
-    lo.lines->addLine(endPos, arrowHead1, arrowColor);
-    lo.lines->addLine(endPos, arrowHead2, arrowColor);
-    lo.lines->addLine(endPos, arrowHead3, arrowColor);
-    lo.lines->addLine(endPos, arrowHead4, arrowColor);
+    lo->addLine(endPos, arrowHead1, arrowColor);
+    lo->addLine(endPos, arrowHead2, arrowColor);
+    lo->addLine(endPos, arrowHead3, arrowColor);
+    lo->addLine(endPos, arrowHead4, arrowColor);
 
     // Connect arrow head base points to form a diamond
-    lo.lines->addLine(arrowHead1, arrowHead2, arrowColor);
-    lo.lines->addLine(arrowHead2, arrowHead3, arrowColor);
-    lo.lines->addLine(arrowHead3, arrowHead4, arrowColor);
-    lo.lines->addLine(arrowHead4, arrowHead1, arrowColor);
+    lo->addLine(arrowHead1, arrowHead2, arrowColor);
+    lo->addLine(arrowHead2, arrowHead3, arrowColor);
+    lo->addLine(arrowHead3, arrowHead4, arrowColor);
+    lo->addLine(arrowHead4, arrowHead1, arrowColor);
 
     // Optional: Add some additional lines for better visualization
-    lo.lines->addLine(arrowHead1, arrowHead3, arrowColor * 0.7f); // Cross lines with slightly dimmer color
-    lo.lines->addLine(arrowHead2, arrowHead4, arrowColor * 0.7f);
+    lo->addLine(arrowHead1, arrowHead3, arrowColor * 0.7f); // Cross lines with slightly dimmer color
+    lo->addLine(arrowHead2, arrowHead4, arrowColor * 0.7f);
+    lightLines.addLines(local, lightGizmoMatrix(transform));
 }
 
-void editor::SceneRender3D::createPointLightSphere(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected) {
-    LightObjects& lo = lightObjects[entity];
-
-    lo.lines->setPosition(transform.worldPosition);
-    lo.lines->setRotation(transform.worldRotation);
-    lo.lines->setVisible(isSelected);
-
+void editor::SceneRender3D::createPointLightSphere(const Transform& transform, const LightComponent& light) {
     float range = (light.range > 0.0f) ? light.range : camera->getFarClip();
-
-    if (lo.type == light.type && lo.range == range) {
-        return;
-    }
-
-    lo.type = light.type;
-    lo.range = range;
-
-    lo.lines->clearLines();
+    GizmoLineList local;
+    GizmoLineList* lo = &local;
 
     Vector3 position = Vector3(0, 0, 0);  // Start position
     Vector4 sphereColor = Vector4(0.0, 1.0, 1.0, 0.8); // Cyan color for point light
@@ -1241,7 +1040,7 @@ void editor::SceneRender3D::createPointLightSphere(Entity entity, const Transfor
         Vector3 point1 = position + Vector3(std::cos(angle1) * range, std::sin(angle1) * range, 0);
         Vector3 point2 = position + Vector3(std::cos(angle2) * range, std::sin(angle2) * range, 0);
 
-        lo.lines->addLine(point1, point2, sphereColor);
+        lo->addLine(point1, point2, sphereColor);
     }
 
     // XZ plane circle
@@ -1252,7 +1051,7 @@ void editor::SceneRender3D::createPointLightSphere(Entity entity, const Transfor
         Vector3 point1 = position + Vector3(std::cos(angle1) * range, 0, std::sin(angle1) * range);
         Vector3 point2 = position + Vector3(std::cos(angle2) * range, 0, std::sin(angle2) * range);
 
-        lo.lines->addLine(point1, point2, sphereColor);
+        lo->addLine(point1, point2, sphereColor);
     }
 
     // YZ plane circle
@@ -1263,43 +1062,20 @@ void editor::SceneRender3D::createPointLightSphere(Entity entity, const Transfor
         Vector3 point1 = position + Vector3(0, std::cos(angle1) * range, std::sin(angle1) * range);
         Vector3 point2 = position + Vector3(0, std::cos(angle2) * range, std::sin(angle2) * range);
 
-        lo.lines->addLine(point1, point2, sphereColor);
+        lo->addLine(point1, point2, sphereColor);
     }
+    lightLines.addLines(local, lightGizmoMatrix(transform));
 }
 
-void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected) {
-    LightObjects& lo = lightObjects[entity];
-
-    lo.lines->setPosition(transform.worldPosition);
-    lo.lines->setRotation(transform.worldRotation);
-    lo.lines->setVisible(isSelected);
-
+void editor::SceneRender3D::createSpotLightCones(const Transform& transform, const LightComponent& light) {
     if (light.direction == Vector3::ZERO){
         return;
     }
 
+    // with light.range 0 the shadow camera's far is the camera's
     float range = (light.range > 0.0f) ? light.range : camera->getFarClip();
-
-    // if light.range = 0.0 then light.shadowCameraNearFar.y is camera.farClip
-    if (lo.type == light.type && 
-        lo.innerConeCos == light.innerConeCos && 
-        lo.outerConeCos == light.outerConeCos && 
-        lo.direction == light.direction && 
-        lo.range == range &&
-        lo.spotMaskReady == light.spotMaskReady &&
-        lo.spotMaskAspect == light.spotMaskAspect) {
-        return;
-    }
-
-    lo.type = light.type;
-    lo.innerConeCos = light.innerConeCos;
-    lo.outerConeCos = light.outerConeCos;
-    lo.direction = light.direction;
-    lo.range = range;
-    lo.spotMaskReady = light.spotMaskReady;
-    lo.spotMaskAspect = light.spotMaskAspect;
-
-    lo.lines->clearLines();
+    GizmoLineList local;
+    GizmoLineList* lo = &local;
 
     Vector3 position = Vector3(0,0,0);  // Start position
     Vector3 direction = light.direction.normalized();
@@ -1332,10 +1108,11 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
         };
 
         for (int i = 0; i < 4; i++){
-            lo.lines->addLine(position, corners[i], outerConeColor);
-            lo.lines->addLine(corners[i], corners[(i + 1) % 4], outerConeColor);
+            lo->addLine(position, corners[i], outerConeColor);
+            lo->addLine(corners[i], corners[(i + 1) % 4], outerConeColor);
         }
-        lo.lines->addLine(position, endPos, Vector4(0.8, 0.8, 0.8, 1.0));
+        lo->addLine(position, endPos, Vector4(0.8, 0.8, 0.8, 1.0));
+        lightLines.addLines(local, lightGizmoMatrix(transform));
         return;
     }
 
@@ -1349,10 +1126,10 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
         Vector3 point2 = endPos + (right * std::cos(angle2) + up * std::sin(angle2)) * outerRadius;
 
         // Lines from light position to circle points
-        lo.lines->addLine(position, point1, outerConeColor);
+        lo->addLine(position, point1, outerConeColor);
 
         // Circle at the end of the cone
-        lo.lines->addLine(point1, point2, outerConeColor);
+        lo->addLine(point1, point2, outerConeColor);
     }
 
     // Draw inner cone
@@ -1365,127 +1142,34 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
         Vector3 point2 = endPos + (right * std::cos(angle2) + up * std::sin(angle2)) * innerRadius;
 
         // Lines from light position to circle points
-        lo.lines->addLine(position, point1, innerConeColor);
+        lo->addLine(position, point1, innerConeColor);
 
         // Circle at the end of the cone
-        lo.lines->addLine(point1, point2, innerConeColor);
+        lo->addLine(point1, point2, innerConeColor);
     }
 
     // Draw central direction line
-    lo.lines->addLine(position, endPos, Vector4(0.8, 0.8, 0.8, 1.0));
+    lo->addLine(position, endPos, Vector4(0.8, 0.8, 0.8, 1.0));
+    lightLines.addLines(local, lightGizmoMatrix(transform));
 }
 
 void editor::SceneRender3D::dropGoneGizmos(){
     SceneRender::dropGoneGizmos();
 
     const RenderSystem& render = *scene->getSystem<RenderSystem>();
-    dropGoneGizmos(lightObjects, render, &LightObjects::icon, &LightObjects::lines);
-    dropGoneGizmos(cameraObjects, render, &CameraObjects::icon, &CameraObjects::lines);
-    dropGoneGizmos(soundObjects, render, &SoundObjects::icon);
-    dropGoneGizmos(bodyObjects, render, &BodyObjects::lines);
-    dropGoneGizmos(jointLines, render);
-    dropGoneGizmos(boneLines, render);
-    dropGoneGizmos(linePointLines, render);
-    dropGoneGizmos(polygonPointLines, render);
-    dropGoneGizmos(trackLines, render);
-    dropGoneGizmos(reflectionProbeLines, render);
-    dropGoneGizmos(capsuleShadowLines, render);
-    dropGoneGizmos(animatorLines, render);
+    dropGoneGizmos(icons, render);
+    for (GizmoLineBatch* batch : lineBatches()) {
+        dropGoneGizmos(*batch, render);
+    }
 }
 
 void editor::SceneRender3D::hideAllGizmos(){
     SceneRender::hideAllGizmos();
 
     lines->setVisible(false);
-    for (auto& pair : lightObjects) {
-        pair.second.icon->setVisible(false);
-        pair.second.lines->setVisible(false);
-    }
-    for (auto& pair : cameraObjects) {
-        pair.second.icon->setVisible(false);
-        pair.second.lines->setVisible(false);
-    }
-    for (auto& pair : soundObjects) {
-        pair.second.icon->setVisible(false);
-    }
-    for (auto& pair : bodyObjects) {
-        pair.second.lines->setVisible(false);
-    }
-    for (auto& pair : jointLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : boneLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : linePointLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : polygonPointLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : trackLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : reflectionProbeLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : fogVolumeLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : controllerLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : animatorLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : waterVolumeLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : waterExcluderLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : waterWakeLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : buoyancyLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : particleLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : forceFieldLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : capsuleShadowLines) {
-        pair.second->setVisible(false);
-    }
-}
-
-void editor::SceneRender3D::hideEntityGizmos(Entity entity){
-    SceneRender::hideEntityGizmos(entity);
-
-    auto hide = [entity](std::map<Entity, LineRenderer*>& lines) {
-        auto it = lines.find(entity);
-        if (it != lines.end()) it->second->setVisible(false);
-    };
-    if (auto light = lightObjects.find(entity); light != lightObjects.end()) {
-        light->second.icon->setVisible(false);
-        light->second.lines->setVisible(false);
-    }
-    if (auto cameraObject = cameraObjects.find(entity); cameraObject != cameraObjects.end()) {
-        cameraObject->second.icon->setVisible(false);
-        cameraObject->second.lines->setVisible(false);
-    }
-    if (auto sound = soundObjects.find(entity); sound != soundObjects.end()) {
-        sound->second.icon->setVisible(false);
-    }
-    if (auto body = bodyObjects.find(entity); body != bodyObjects.end()) {
-        body->second.lines->setVisible(false);
-    }
-    for (auto* lines : {&jointLines, &boneLines, &linePointLines, &polygonPointLines, &trackLines, &reflectionProbeLines,
-                        &fogVolumeLines, &controllerLines, &waterVolumeLines, &buoyancyLines, &particleLines, &forceFieldLines,
-                        &capsuleShadowLines}) {
-        hide(*lines);
+    icons.hide();
+    for (GizmoLineBatch* batch : lineBatches()) {
+        batch->hide();
     }
 }
 
@@ -1608,90 +1292,73 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         return selectedAncestors.find(ancestor) != selectedAncestors.end();
     };
 
-    std::set<Entity> currentIconLights;
-    std::set<Entity> currentIconCameras;
-    std::set<Entity> currentIconSounds;
-    std::set<Entity> currentBodyObjects;
-    std::set<Entity> currentJointObjects;
-    std::set<Entity> currentBoneModels;
-    std::set<Entity> currentLinePoints;
-    std::set<Entity> currentParticleShapes;
-    std::set<Entity> currentPolygonPoints;
-    std::set<Entity> currentTrackLines;
-    std::set<Entity> currentReflectionProbes;
-    std::set<Entity> currentFogVolumes;
-    std::set<Entity> currentControllers;
-    std::set<Entity> currentWaterVolumes;
-    std::set<Entity> currentWaterExcluders;
-    std::set<Entity> currentWaterWakes;
-    std::set<Entity> currentBuoyancies;
-    std::set<Entity> currentParticleSystems;
-    std::set<Entity> currentForceFields;
-    std::set<Entity> currentCapsuleCasters;
     // force fields show with a selected Particle System (the panel's Show Force Fields)
     bool particleSelected = false;
     for (Entity selected : selectedEntities){
         if (scene->isEntityCreated(selected) && scene->findComponent<ParticleSystemComponent>(selected)) particleSelected = true;
     }
 
+    // every kind's batch is rebuilt from the entities each update; a batch is written to its
+    // renderer only when what it draws changed
+    icons.begin();
+    particleShapeLines.begin();
+    for (GizmoLineBatch* batch : lineBatches()) {
+        batch->begin();
+    }
+    std::set<Entity> currentBodyObjects;
+    const float iconScale = 0.25f;
+
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
 
-        // what an inactive GameObject has stays made (no churn when it toggles), hidden below
-        const bool active = gizmoActive(entity);
+        // Unity draws no gizmo for a GameObject inactive in hierarchy (the icon picker refuses it too)
+        if (!gizmoActive(entity)) {
+            if (signature.test(scene->getComponentId<RigidbodyComponent>())) currentBodyObjects.insert(entity);
+            continue;
+        }
 
         if (signature.test(scene->getComponentId<LightComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             LightComponent& light = scene->getComponent<LightComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            bool isSelected = selectedEntities.find(entity) != selectedEntities.end();
-
-            currentIconLights.insert(entity);
-            bool newLight = instanciateLightObject(entity) || lightObjects[entity].type != light.type;
-            if (light.type == LightType::DIRECTIONAL){
-                createOrUpdateLightIcon(entity, transform, LightType::DIRECTIONAL, newLight);
-                createDirectionalLightArrow(entity, transform, light, isSelected);
-            }else if (light.type == LightType::POINT){
-                createOrUpdateLightIcon(entity, transform, LightType::POINT, newLight);
-                createPointLightSphere(entity, transform, light, isSelected);
-            }else if (light.type == LightType::SPOT){
-                createOrUpdateLightIcon(entity, transform, LightType::SPOT, newLight);
-                createSpotLightCones(entity, transform, light, isSelected);
+            const bool isSelected = selectedEntities.find(entity) != selectedEntities.end();
+            const bool knownType = light.type == LightType::DIRECTIONAL || light.type == LightType::POINT || light.type == LightType::SPOT;
+            if (knownType && transform.visible && !displaySettings.hideLightIcons) {
+                const GizmoIcon icon = light.type == LightType::DIRECTIONAL ? GizmoIcon::Sun : (light.type == LightType::POINT ? GizmoIcon::Bulb : GizmoIcon::Spot);
+                icons.add(icon, transform.worldPosition, billboardScreenScale(transform.worldPosition, iconScale));
             }
-
-            if (displaySettings.hideLightIcons && lightObjects.find(entity) != lightObjects.end()) {
-                lightObjects[entity].icon->setVisible(false);
+            // a selected light shows its shape
+            if (isSelected){
+                if (light.type == LightType::DIRECTIONAL){
+                    createDirectionalLightArrow(transform, light);
+                }else if (light.type == LightType::POINT){
+                    createPointLightSphere(transform, light);
+                }else if (light.type == LightType::SPOT){
+                    createSpotLightCones(transform, light);
+                }
             }
         }
 
         if (signature.test(scene->getComponentId<CameraComponent>()) && signature.test(scene->getComponentId<Transform>())) {
-            if (entity != camera->getEntity()) {
+            if (entity != camera->getEntity() && !displaySettings.hideCameraView) {
                 Transform& transform = scene->getComponent<Transform>(entity);
                 CameraComponent& cameraComp = scene->getComponent<CameraComponent>(entity);
-
-                currentIconCameras.insert(entity);
-                bool newCamera = instanciateCameraObject(entity);
-                createOrUpdateCameraIcon(entity, transform, newCamera);
-                // a selected camera shows its whole frustum, near to far (Unity)
-                const bool cameraSelected = selectedEntities.find(entity) != selectedEntities.end();
-                createCameraFrustum(entity, transform, cameraComp, cameraSelected, mainCamera == entity);
-
-                if (displaySettings.hideCameraView) {
-                    cameraObjects[entity].icon->setVisible(false);
-                    cameraObjects[entity].lines->setVisible(false);
+                if (transform.visible) {
+                    icons.add(GizmoIcon::Camera, transform.worldPosition, billboardScreenScale(transform.worldPosition, iconScale));
+                    // a selected camera shows its whole frustum, near to far (Unity)
+                    const bool cameraSelected = selectedEntities.find(entity) != selectedEntities.end();
+                    Quaternion rotation;
+                    rotation.fromRotationMatrix(cameraComp.viewMatrix.inverse());
+                    drawCameraFrustumLines(cameraLines, cameraComp, mainCamera == entity, cameraSelected,
+                                           Matrix4::composeTRS(transform.worldPosition, rotation, Vector3(1.0f, 1.0f, 1.0f)));
                 }
             }
         }
 
         if (signature.test(scene->getComponentId<AudioSourceComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             Transform& transform = scene->getComponent<Transform>(entity);
-
-            currentIconSounds.insert(entity);
-            bool newSound = instanciateSoundObject(entity);
-            createOrUpdateSoundIcon(entity, transform, newSound);
-
-            if (displaySettings.hideSoundIcons && soundObjects.find(entity) != soundObjects.end()) {
-                soundObjects[entity].icon->setVisible(false);
+            if (transform.visible && !displaySettings.hideSoundIcons) {
+                icons.add(GizmoIcon::Sound, transform.worldPosition, billboardScreenScale(transform.worldPosition, iconScale));
             }
         }
 
@@ -1700,7 +1367,6 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             RigidbodyComponent& body = scene->getComponent<RigidbodyComponent>(entity);
 
             currentBodyObjects.insert(entity);
-            instanciateBodyObject(entity);
             bool highlighted = isDescendantSelected(entity);
             bool isVisible = displaySettings.showAllBodies || highlighted;
 
@@ -1708,64 +1374,40 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         }
 
         if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
-            updateParticleShapeLines(entity, selectedEntities.find(entity) != selectedEntities.end(), currentParticleShapes);
+            updateParticleShapeLines(entity, selectedEntities.find(entity) != selectedEntities.end());
         }
 
         if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             LineRendererComponent& linesComp = scene->getComponent<LineRendererComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-
-            currentLinePoints.insert(entity);
-            ensureOverlayLines(linePointLines, entity);
-            bool highlighted = isDescendantSelected(entity);
-
-            createOrUpdateLinePointLines(entity, transform, linesComp, highlighted);
+            createOrUpdateLinePointLines(entity, transform, linesComp, isDescendantSelected(entity));
         }
 
         if (signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             PolygonComponent& polygon = scene->getComponent<PolygonComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-
-            currentPolygonPoints.insert(entity);
-            ensureOverlayLines(polygonPointLines, entity);
-            bool highlighted = isDescendantSelected(entity);
-
-            createOrUpdatePolygonPointLines(entity, transform, polygon.points, false, highlighted);
+            createOrUpdatePolygonPointLines(entity, transform, polygon.points, false, isDescendantSelected(entity));
         }else if (signature.test(scene->getComponentId<MeshPolygonComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             MeshPolygonComponent& polygon = scene->getComponent<MeshPolygonComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-
-            currentPolygonPoints.insert(entity);
-            ensureOverlayLines(polygonPointLines, entity);
-            bool highlighted = isDescendantSelected(entity);
-
-            createOrUpdatePolygonPointLines(entity, transform, polygon.points, true, highlighted);
+            createOrUpdatePolygonPointLines(entity, transform, polygon.points, true, isDescendantSelected(entity));
         }
 
         if (signature.test(scene->getComponentId<TranslateTracksComponent>())) {
             TranslateTracksComponent& tracks = scene->getComponent<TranslateTracksComponent>(entity);
-
-            currentTrackLines.insert(entity);
-            instanciateTrackLines(entity);
             // the tracks entity has no Transform, so gate on direct selection
-            bool isSelected = selectedEntities.find(entity) != selectedEntities.end();
-
-            createOrUpdateTrackLines(entity, tracks, isSelected);
+            createOrUpdateTrackLines(entity, tracks, selectedEntities.find(entity) != selectedEntities.end());
         }
 
         if (signature.test(scene->getComponentId<LocalVolumetricFogComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             LocalVolumetricFogComponent& volume = scene->getComponent<LocalVolumetricFogComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-            currentFogVolumes.insert(entity);
-            ensureOverlayLines(fogVolumeLines, entity);
             createOrUpdateFogVolumeLines(entity, transform, volume, selectedEntities.find(entity) != selectedEntities.end());
         }
 
         if (signature.test(scene->getComponentId<WaterVolumeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             const WaterVolumeComponent& volume = scene->getComponent<WaterVolumeComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-            currentWaterVolumes.insert(entity);
-            ensureOverlayLines(waterVolumeLines, entity);
             const bool highlighted = isDescendantSelected(entity);
             createOrUpdateWaterVolumeLines(entity, transform, volume, displaySettings.showAllBodies || highlighted, highlighted);
         }
@@ -1773,8 +1415,6 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         if (signature.test(scene->getComponentId<WaterExcluderComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             const WaterExcluderComponent& excluder = scene->getComponent<WaterExcluderComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-            currentWaterExcluders.insert(entity);
-            ensureOverlayLines(waterExcluderLines, entity);
             const bool highlighted = isDescendantSelected(entity);
             createOrUpdateWaterExcluderLines(entity, transform, excluder, displaySettings.showAllBodies || highlighted, highlighted);
         }
@@ -1782,25 +1422,32 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         if (signature.test(scene->getComponentId<WaterWakeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             const WaterWakeComponent& wake = scene->getComponent<WaterWakeComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-            currentWaterWakes.insert(entity);
-            ensureOverlayLines(waterWakeLines, entity);
             createOrUpdateWaterWakeLines(entity, transform, wake, isDescendantSelected(entity));
         }
 
         if (signature.test(scene->getComponentId<BuoyancyComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             const BuoyancyComponent& buoyancy = scene->getComponent<BuoyancyComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-            currentBuoyancies.insert(entity);
-            ensureOverlayLines(buoyancyLines, entity);
             const bool highlighted = isDescendantSelected(entity);
             createOrUpdateBuoyancyLines(entity, transform, buoyancy, displaySettings.showAllBodies || highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<WheelColliderComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const WheelColliderComponent& wheel = scene->getComponent<WheelColliderComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            // the wheel, what is under it, or the vehicle above it selected
+            bool highlighted = isDescendantSelected(entity);
+            for (Entity parent = transform.parent; !highlighted && parent != NULL_ENTITY;){
+                highlighted = selectedEntities.find(parent) != selectedEntities.end();
+                const Transform* parentTransform = scene->findComponent<Transform>(parent);
+                parent = parentTransform ? parentTransform->parent : NULL_ENTITY;
+            }
+            createOrUpdateWheelLines(entity, transform, wheel, displaySettings.showAllBodies || highlighted, highlighted);
         }
 
         if (signature.test(scene->getComponentId<CharacterControllerComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             const CharacterControllerComponent& controller = scene->getComponent<CharacterControllerComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-            currentControllers.insert(entity);
-            ensureOverlayLines(controllerLines, entity);
             const bool highlighted = isDescendantSelected(entity);
             createOrUpdateControllerLines(entity, transform, controller, displaySettings.showAllBodies || highlighted, highlighted);
         }
@@ -1808,23 +1455,17 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         if (signature.test(scene->getComponentId<CapsuleShadowCasterComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             const CapsuleShadowCasterComponent& caster = scene->getComponent<CapsuleShadowCasterComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-            currentCapsuleCasters.insert(entity);
-            ensureOverlayLines(capsuleShadowLines, entity);
             // shown while it or one of its bones is selected; the handles with it selected
             createOrUpdateCapsuleShadowLines(entity, transform, caster, isDescendantSelected(entity),
                                              selectedEntities.find(entity) != selectedEntities.end());
         }
 
         if (signature.test(scene->getComponentId<ParticleSystemComponent>()) && signature.test(scene->getComponentId<Transform>())) {
-            currentParticleSystems.insert(entity);
-            ensureOverlayLines(particleLines, entity);
             createOrUpdateParticleLines(entity, scene->getComponent<Transform>(entity), scene->getComponent<ParticleSystemComponent>(entity),
                                         selectedEntities.find(entity) != selectedEntities.end());
         }
 
         if (signature.test(scene->getComponentId<ForceFieldComponent>()) && signature.test(scene->getComponentId<Transform>())) {
-            currentForceFields.insert(entity);
-            ensureOverlayLines(forceFieldLines, entity);
             const bool shown = selectedEntities.find(entity) != selectedEntities.end() || (particleSelected && ParticleEffectOverlay::gizmos().forceFields);
             createOrUpdateForceFieldLines(entity, scene->getComponent<Transform>(entity), scene->getComponent<ForceFieldComponent>(entity), shown);
         }
@@ -1832,16 +1473,11 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         if (signature.test(scene->getComponentId<ReflectionProbeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             ReflectionProbeComponent& probe = scene->getComponent<ReflectionProbeComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
-            currentReflectionProbes.insert(entity);
-            ensureOverlayLines(reflectionProbeLines, entity);
             createOrUpdateReflectionProbeLines(entity, transform, probe, selectedEntities.find(entity) != selectedEntities.end());
         }
 
         if (signature.test(scene->getComponentId<Joint3DComponent>())) {
             Joint3DComponent& joint = scene->getComponent<Joint3DComponent>(entity);
-
-            currentJointObjects.insert(entity);
-            ensureOverlayLines(jointLines, entity);
 
             bool isSelectedJoint = selectedEntities.find(entity) != selectedEntities.end();
             bool isBodyASelected = joint.bodyA != NULL_ENTITY && isDescendantSelected(joint.bodyA);
@@ -1856,201 +1492,31 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             ModelComponent& model = scene->getComponent<ModelComponent>(entity);
 
             if (!model.bonesIdMapping.empty()) {
-                currentBoneModels.insert(entity);
-                instanciateBoneLines(entity);
-
                 bool isSelected = isDescendantSelected(entity);
                 bool isVisible = displaySettings.showAllBones || isSelected;
 
                 createOrUpdateBoneLines(entity, model, isVisible, isSelected);
             }
         }
-
-        if (!active) {
-            hideEntityGizmos(entity);
-        }
     }
 
     // Gizmos > Animation (S77 R49): with every toggle off the pass takes no snapshot and draws nothing
-    const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails};
-    std::set<Entity> currentAnimatorLines;
-    animatorOverlay->update(scene, entities, animatorFlags, [&](Entity entity, const std::vector<anim::AnimatorOverlayLine>& drawn){
-        // in the tools layer, as the skeleton overlay: drawn over the meshes the chains run inside
-        if (animatorLines.find(entity) == animatorLines.end()) {
-            ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
-            animatorLines[entity] = new LineRenderer(toolslayer.getScene());
-        }
-        currentAnimatorLines.insert(entity);
-        LineRenderer* overlayLines = animatorLines[entity];
-        overlayLines->clearLines();
-        for (const anim::AnimatorOverlayLine& line : drawn) overlayLines->addLine(line.a, line.b, line.color);
-        overlayLines->setVisible(true);
-    });
-    for (auto it = animatorLines.begin(); it != animatorLines.end();) {
-        if (currentAnimatorLines.find(it->first) == currentAnimatorLines.end()) {
-            delete it->second;
-            it = animatorLines.erase(it);
-        } else {
-            ++it;
-        }
+    // (Torso Direction: the selected Animators only)
+    const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails,
+                                                   displaySettings.showTorsoDirection};
+    animatorOverlay->update(scene, entities, animatorFlags, [&](Entity, const std::vector<anim::AnimatorOverlayLine>& drawn){
+        for (const anim::AnimatorOverlayLine& line : drawn) animatorLines.addLine(line.a, line.b, line.color);
+    }, selEntities);
+
+    // the edge caches of bodies that are gone
+    for (auto itBody = bodyObjects.begin(); itBody != bodyObjects.end();) {
+        itBody = currentBodyObjects.count(itBody->first) ? std::next(itBody) : bodyObjects.erase(itBody);
     }
 
-    // Remove sun icons for entities that are no longer directional lights
-    auto it = lightObjects.begin();
-    while (it != lightObjects.end()) {
-        if (currentIconLights.find(it->first) == currentIconLights.end()) {
-            delete it->second.icon;
-            delete it->second.lines;
-            it = lightObjects.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    // Remove camera icons
-    auto itCam = cameraObjects.begin();
-    while (itCam != cameraObjects.end()) {
-        if (currentIconCameras.find(itCam->first) == currentIconCameras.end()) {
-            delete itCam->second.icon;
-            delete itCam->second.lines;
-            itCam = cameraObjects.erase(itCam);
-        } else {
-            ++itCam;
-        }
-    }
-
-    auto itSound = soundObjects.begin();
-    while (itSound != soundObjects.end()) {
-        if (currentIconSounds.find(itSound->first) == currentIconSounds.end()) {
-            delete itSound->second.icon;
-            itSound = soundObjects.erase(itSound);
-        } else {
-            ++itSound;
-        }
-    }
-
-    auto itBody = bodyObjects.begin();
-    while (itBody != bodyObjects.end()) {
-        if (currentBodyObjects.find(itBody->first) == currentBodyObjects.end()) {
-            delete itBody->second.lines;
-            itBody = bodyObjects.erase(itBody);
-        } else {
-            ++itBody;
-        }
-    }
-
-    auto itJoint = jointLines.begin();
-    while (itJoint != jointLines.end()) {
-        if (currentJointObjects.find(itJoint->first) == currentJointObjects.end()) {
-            delete itJoint->second;
-            itJoint = jointLines.erase(itJoint);
-        } else {
-            ++itJoint;
-        }
-    }
-
-    auto itBone = boneLines.begin();
-    while (itBone != boneLines.end()) {
-        if (currentBoneModels.find(itBone->first) == currentBoneModels.end()) {
-            delete itBone->second;
-            itBone = boneLines.erase(itBone);
-        } else {
-            ++itBone;
-        }
-    }
-
-    dropParticleShapeLines(currentParticleShapes);
-
-    auto itLinePoints = linePointLines.begin();
-    while (itLinePoints != linePointLines.end()) {
-        if (currentLinePoints.find(itLinePoints->first) == currentLinePoints.end()) {
-            delete itLinePoints->second;
-            itLinePoints = linePointLines.erase(itLinePoints);
-        } else {
-            ++itLinePoints;
-        }
-    }
-
-    auto itPolygonPoints = polygonPointLines.begin();
-    while (itPolygonPoints != polygonPointLines.end()) {
-        if (currentPolygonPoints.find(itPolygonPoints->first) == currentPolygonPoints.end()) {
-            delete itPolygonPoints->second;
-            itPolygonPoints = polygonPointLines.erase(itPolygonPoints);
-        } else {
-            ++itPolygonPoints;
-        }
-    }
-
-    auto itTrackLines = trackLines.begin();
-    while (itTrackLines != trackLines.end()) {
-        if (currentTrackLines.find(itTrackLines->first) == currentTrackLines.end()) {
-            delete itTrackLines->second;
-            itTrackLines = trackLines.erase(itTrackLines);
-        } else {
-            ++itTrackLines;
-        }
-    }
-
-    for (const auto& pair : {std::make_pair(&waterVolumeLines, &currentWaterVolumes), std::make_pair(&waterExcluderLines, &currentWaterExcluders),
-                             std::make_pair(&waterWakeLines, &currentWaterWakes),
-                             std::make_pair(&buoyancyLines, &currentBuoyancies)}) {
-        for (auto it = pair.first->begin(); it != pair.first->end();) {
-            if (pair.second->find(it->first) == pair.second->end()) {
-                delete it->second;
-                it = pair.first->erase(it);
-            } else {
-                ++it;
-            }
-        }
-    }
-
-    for (auto it = controllerLines.begin(); it != controllerLines.end();) {
-        if (currentControllers.find(it->first) == currentControllers.end()) {
-            delete it->second;
-            it = controllerLines.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    for (auto it = capsuleShadowLines.begin(); it != capsuleShadowLines.end();) {
-        if (currentCapsuleCasters.find(it->first) == currentCapsuleCasters.end()) {
-            delete it->second;
-            it = capsuleShadowLines.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    for (auto it = fogVolumeLines.begin(); it != fogVolumeLines.end();) {
-        if (currentFogVolumes.find(it->first) == currentFogVolumes.end()) {
-            delete it->second;
-            it = fogVolumeLines.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    for (auto* map : {&particleLines, &forceFieldLines}) {
-        const std::set<Entity>& current = map == &particleLines ? currentParticleSystems : currentForceFields;
-        for (auto it = map->begin(); it != map->end();) {
-            if (current.find(it->first) == current.end()) {
-                delete it->second;
-                it = map->erase(it);
-            } else {
-                ++it;
-            }
-        }
-    }
-
-    auto itProbeLines = reflectionProbeLines.begin();
-    while (itProbeLines != reflectionProbeLines.end()) {
-        if (currentReflectionProbes.find(itProbeLines->first) == currentReflectionProbes.end()) {
-            delete itProbeLines->second;
-            itProbeLines = reflectionProbeLines.erase(itProbeLines);
-        } else {
-            ++itProbeLines;
-        }
+    flushGizmos(icons);
+    flushGizmos(particleShapeLines);
+    for (GizmoLineBatch* batch : lineBatches()) {
+        flushGizmos(*batch);
     }
 }
 

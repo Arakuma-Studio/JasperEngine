@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 10
 guid: 9881b90d074c33a513001465bb7d3d23
 id: 1
 name: Prefab Scene
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: auto
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]
@@ -33,13 +34,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_2d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 128
 shaderKeys:
   - type: mesh
     properties: 3073
@@ -74,7 +68,7 @@ entities:
         path: prefabs/Rock.prefab
         guid: be6090bd331dae57064d1f63cc9ada05
     prefabInstance:
-      version: 9
+      version: 10
       memberIds:
         - [1001, 1103]
         - [1002, 1002]
@@ -208,9 +202,6 @@ entities:
               verticesAABB:
                 min: [-20, -0, 0]
                 max: [20, 90, 0]
-              worldAABB:
-                min: [220, 80, 0]
-                max: [260, 170, 0]
               receiveLights: false
               receiveIBL: false
               castShadows: false
@@ -258,7 +249,6 @@ entities:
                     name: ""
                   textureRect: [0, 0, 1, 1]
                   primitiveType: triangles
-                  vertexCount: 6
                   faceCulling: false
                   textureShadow: true
                   hasTexCoord1: true
@@ -274,15 +264,6 @@ entities:
                   hasMorphTangent: false
               normAdjustJoint: 1
               normAdjustWeight: 1
-              aabb:
-                min: [-44, 0, 0]
-                max: [44, 73, 0]
-              verticesAABB:
-                min: [-44, 0, 0]
-                max: [44, 73, 0]
-              worldAABB:
-                min: [63.6, 400, 0]
-                max: [116.4, 443.8, 0]
               receiveLights: false
               receiveIBL: false
               castShadows: false
@@ -325,7 +306,7 @@ entities:
         path: prefabs/Rock.prefab
         guid: be6090bd331dae57064d1f63cc9ada05
     prefabInstance:
-      version: 9
+      version: 10
       memberIds:
         - [1001, 1104]
         - [1002, 1105]
@@ -356,7 +337,7 @@ entities:
         path: prefabs/Tower.prefab
         guid: a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
     prefabInstance:
-      version: 9
+      version: 10
       memberIds:
         - [1001, 1106]
         - [1002, 1107]
@@ -501,9 +482,6 @@ entities:
                   verticesAABB:
                     min: [-20, -0, 0]
                     max: [20, 90, 0]
-                  worldAABB:
-                    min: [565, 130, 0]
-                    max: [585, 175, 0]
                   receiveLights: false
                   receiveIBL: false
                   castShadows: false
@@ -551,7 +529,6 @@ entities:
                         name: ""
                       textureRect: [0, 0, 1, 1]
                       primitiveType: triangles
-                      vertexCount: 6
                       faceCulling: false
                       textureShadow: true
                       hasTexCoord1: true
@@ -567,15 +544,6 @@ entities:
                       hasMorphTangent: false
                   normAdjustJoint: 1
                   normAdjustWeight: 1
-                  aabb:
-                    min: [-44, 0, 0]
-                    max: [44, 73, 0]
-                  verticesAABB:
-                    min: [-44, 0, 0]
-                    max: [44, 73, 0]
-                  worldAABB:
-                    min: [519, 190, 0]
-                    max: [541, 208.25, 0]
                   receiveLights: false
                   receiveIBL: false
                   castShadows: false
@@ -616,7 +584,7 @@ entities:
         path: prefabs/Castle.prefab
         guid: b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
     prefabInstance:
-      version: 9
+      version: 10
       memberIds:
         - [1001, 1111]
         - [1002, 1112]
@@ -653,7 +621,7 @@ entities:
         path: prefabs/Gem.prefab
         guid: 6a121bc13079cc89021cde9df07e3778
     prefabInstance:
-      version: 9
+      version: 10
       memberIds:
         - [1050, 1118]
   - type: Entity
@@ -688,7 +656,6 @@ entities:
               name: ""
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             hasTexCoord1: true
@@ -704,15 +671,6 @@ entities:
             hasMorphTangent: false
         normAdjustJoint: 1
         normAdjustWeight: 1
-        aabb:
-          min: [-30, 0, 0]
-          max: [30, 60, 0]
-        verticesAABB:
-          min: [-30, 0, 0]
-          max: [30, 60, 0]
-        worldAABB:
-          min: [1150, 500, 0]
-          max: [1210, 560, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: false

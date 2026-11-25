@@ -107,7 +107,7 @@ namespace {
         return out;
     }
 
-    // The input without the render mode scene format 9 writes into an older scene (S92: its screen
+    // The input without the render mode scene format 10 writes into an older scene (S92: its screen
     // documents keep the camera pass), when the input did not name one
     std::string withoutHtmlUiRenderModeMigration(const std::string& text, const std::string& original) {
         if (original.find("htmlUiRenderMode:") != std::string::npos)
@@ -314,7 +314,7 @@ TEST(Compat, CorpusRoundTrip) {
                                 withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original))))));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
             // an older scene keeps the camera pass its screen documents drew in
-            if (StreamMigrations::readVersion(DocumentKind::Scene, YAML::Load(original)) < 9 && original.find("htmlUiRenderMode:") == std::string::npos){
+            if (StreamMigrations::readVersion(DocumentKind::Scene, YAML::Load(original)) < 10 && original.find("htmlUiRenderMode:") == std::string::npos){
                 EXPECT_NE(first.find("\n  htmlUiRenderMode: camera\n"), std::string::npos) << "the render mode was not migrated";
             }
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";

@@ -48,6 +48,8 @@
 #include <thread>
 #include <vector>
 
+namespace AsyncCreateTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -206,6 +208,20 @@ TEST(PipelineRecord, RefusesWhatItCannotRead){
     EXPECT_FALSE(SokolPipelineRecord::fromJson(R"({"depth":{"write":"yes"}})", desc, &error));
 }
 
+namespace {
+
+    // a saved list's pipeline desc of the shader with that key (the first)
+    nlohmann::json pipelineOf(const nlohmann::json& list, const std::string& key){
+        for (const nlohmann::json& pipeline : list["pipelines"]){
+            const size_t shader = pipeline["shader"].get<size_t>();
+            if (list["shaders"][shader]["key"] == key)
+                return pipeline["desc"];
+        }
+        return nlohmann::json();
+    }
+
+}
+
 TEST(ShaderWarmup, ReadShaderKeysLeavesTheLoadedList){
     const std::string loaded = R"({"version":1,"family":"gl","shaders":[{"key":"0x20000001","custom":""}],"pipelines":[]})";
     std::string error;
@@ -270,12 +286,13 @@ TEST(ShaderWarmup, UpgradesThreeAttachmentGBufferRecords){
 
     const nlohmann::json saved = nlohmann::json::parse(ShaderWarmup::saveToString());
     ASSERT_EQ(saved["pipelines"].size(), 2u);
-    // the G-buffer's is the layout the engine asks for now, the other kept as recorded
+    // the G-buffer's is the layout the engine asks for now, the other kept as recorded (the list
+    // is written sorted: found by its shader's key)
     sg_pipeline_desc read = {};
-    ASSERT_TRUE(SokolPipelineRecord::fromJson(saved["pipelines"][0]["desc"].dump(), read, &error)) << error;
-    EXPECT_TRUE(SokolPipelineCache::descEqual(read, current)) << saved["pipelines"][0]["desc"].dump();
-    ASSERT_TRUE(SokolPipelineRecord::fromJson(saved["pipelines"][1]["desc"].dump(), read, &error)) << error;
-    EXPECT_TRUE(SokolPipelineCache::descEqual(read, old)) << saved["pipelines"][1]["desc"].dump();
+    ASSERT_TRUE(SokolPipelineRecord::fromJson(pipelineOf(saved, gbufferKey).dump(), read, &error)) << error;
+    EXPECT_TRUE(SokolPipelineCache::descEqual(read, current)) << pipelineOf(saved, gbufferKey).dump();
+    ASSERT_TRUE(SokolPipelineRecord::fromJson(pipelineOf(saved, meshKey).dump(), read, &error)) << error;
+    EXPECT_TRUE(SokolPipelineCache::descEqual(read, old)) << pipelineOf(saved, meshKey).dump();
     ShaderWarmup::clear();
 }
 
@@ -308,10 +325,10 @@ TEST(ShaderWarmup, UpgradesR8OcclusionGBufferRecords){
     const nlohmann::json saved = nlohmann::json::parse(ShaderWarmup::saveToString());
     ASSERT_EQ(saved["pipelines"].size(), 2u);
     sg_pipeline_desc read = {};
-    ASSERT_TRUE(SokolPipelineRecord::fromJson(saved["pipelines"][0]["desc"].dump(), read, &error)) << error;
-    EXPECT_TRUE(SokolPipelineCache::descEqual(read, current)) << saved["pipelines"][0]["desc"].dump();
-    ASSERT_TRUE(SokolPipelineRecord::fromJson(saved["pipelines"][1]["desc"].dump(), read, &error)) << error;
-    EXPECT_TRUE(SokolPipelineCache::descEqual(read, old)) << saved["pipelines"][1]["desc"].dump();
+    ASSERT_TRUE(SokolPipelineRecord::fromJson(pipelineOf(saved, gbufferKey).dump(), read, &error)) << error;
+    EXPECT_TRUE(SokolPipelineCache::descEqual(read, current)) << pipelineOf(saved, gbufferKey).dump();
+    ASSERT_TRUE(SokolPipelineRecord::fromJson(pipelineOf(saved, meshKey).dump(), read, &error)) << error;
+    EXPECT_TRUE(SokolPipelineCache::descEqual(read, old)) << pipelineOf(saved, meshKey).dump();
     ShaderWarmup::clear();
 }
 
@@ -325,6 +342,49 @@ TEST(ShaderWarmup, SkipsMalformedEntriesAndUnknownVersions){
     EXPECT_EQ(ShaderWarmup::getShaderCount(), 1u);
     EXPECT_EQ(ShaderWarmup::getPipelineCount(), 1u);
     EXPECT_EQ(ShaderWarmup::getSkippedCount(), 4u);
+    ShaderWarmup::clear();
+}
+
+TEST(ShaderWarmup, AddsVariantsWithoutPipelines){
+    // what the editor's Play drew with and no scene holds (S98 REQ-27): a variant without a
+    // pipeline, added once
+    const std::string record = SokolPipelineRecord::toJson(sampleDesc());
+    const ShaderKey recorded = ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(6));
+    const std::string list = R"({"version":1,"shaders":[{"key":")" + ShaderPool::getShaderKeyText(recorded) +
+                             R"(","custom":""}],"pipelines":[{"shader":0,"family":"gl","desc":)" + record + "}]}";
+    std::string error;
+    ASSERT_TRUE(ShaderWarmup::loadFromString(list, &error)) << error;
+    const ShaderKey drawn = ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(6) | shaderPropertyBit(7));
+    EXPECT_EQ(ShaderWarmup::addShaderKeys({recorded, drawn, drawn}), 1u) << "only the variant the list lacks";
+    EXPECT_EQ(ShaderWarmup::addShaderKeys({drawn}), 0u);
+    EXPECT_EQ(ShaderWarmup::getShaderCount(), 2u);
+    EXPECT_EQ(ShaderWarmup::getPipelineCount(), 1u) << "no pipeline comes with it";
+
+    std::vector<ShaderKey> keys;
+    ASSERT_TRUE(ShaderWarmup::readShaderKeys(ShaderWarmup::saveToString(), keys, &error)) << error;
+    EXPECT_NE(std::find(keys.begin(), keys.end(), ShaderPool::normalizeKey(drawn)), keys.end()) << "the export reads it";
+    ShaderWarmup::clear();
+}
+
+TEST(ShaderWarmup, SavesTheSameBytesWhateverTheOrderFound){
+    // a committed ShaderWarmup.json changes only when an entry is new, not with the order a
+    // session found its entries in
+    const std::string record = SokolPipelineRecord::toJson(sampleDesc());
+    const std::string a = ShaderPool::getShaderKeyText(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(3)));
+    const std::string b = ShaderPool::getShaderKeyText(ShaderPool::getShaderKey(ShaderType::GBUFFER, shaderPropertyBit(1)));
+    const std::string c = ShaderPool::getShaderKeyText(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(12)));
+    const std::string first = R"({"version":1,"shaders":[{"key":")" + b + R"(","custom":""},{"key":")" + a + R"(","custom":""},{"key":")" + c +
+                              R"(","custom":""}],"pipelines":[{"shader":1,"family":"gl","desc":)" + record + "}]}";
+    const std::string second = R"({"version":1,"shaders":[{"key":")" + c + R"(","custom":""},{"key":")" + a + R"(","custom":""},{"key":")" + b +
+                               R"(","custom":""}],"pipelines":[{"shader":1,"family":"gl","desc":)" + record + "}]}";
+    std::string error;
+    ASSERT_TRUE(ShaderWarmup::loadFromString(first, &error)) << error;
+    const std::string fromFirst = ShaderWarmup::saveToString();
+    ASSERT_TRUE(ShaderWarmup::loadFromString(second, &error)) << error;
+    EXPECT_EQ(ShaderWarmup::saveToString(), fromFirst);
+    const nlohmann::json saved = nlohmann::json::parse(fromFirst);
+    ASSERT_EQ(saved["pipelines"].size(), 1u);
+    EXPECT_EQ(saved["shaders"][saved["pipelines"][0]["shader"].get<size_t>()]["key"], a) << "a pipeline keeps its shader";
     ShaderWarmup::clear();
 }
 
@@ -957,7 +1017,7 @@ TEST_F(AsyncCreateGpu, AScreenshotWaitsForAVariantCompilingAtRuntime){
     EXPECT_TRUE(SystemRender::isGpuCreationIdle()) << "nothing is being created on the GPU meanwhile";
     EXPECT_FALSE(ShaderPool::isCreationIdle()) << "the compile is counted";
 
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     player::LaunchOptions options;
     options.screenshotFrame = 1;
     options.screenshot = dir.path() / "compiled.png";
@@ -992,3 +1052,5 @@ TEST_F(AsyncCreateGpu, AScreenshotWaitsForAVariantCompilingAtRuntime){
     EXPECT_EQ(player::RunControl::finish(), player::EXIT_OK);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace AsyncCreateTest_cpp

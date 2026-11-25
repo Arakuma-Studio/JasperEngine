@@ -26,21 +26,6 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::player::PlayerConfig;
 
-namespace {
-    std::string generatedMain(const PlayerSettings& playerSettings){
-        jasperengine::test::TempDir dir;
-        Generator generator;
-        generator.configure({}, "game", {}, {}, dir.path(), dir.path() / ".jasperengine", dir.path() / "assets", dir.path() / "lua", {}, 20,
-                            Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(), TagsAndLayers(), 4,
-                            ThreadingProjectSettings(), HtmlUiRenderSettings(), PbrTier::REDUCED, ShaderCreationProjectSettings(), false, {},
-                            playerSettings);
-        std::ifstream in(dir.path() / ".jasperengine" / "generated" / "main.cpp");
-        std::stringstream text;
-        text << in.rdbuf();
-        return text.str();
-    }
-}
-
 TEST(StreamProjectDynamicBatching, OldProjectsBatch){
     Project project;
     project.setDynamicBatching(false);
@@ -70,11 +55,6 @@ TEST(StreamProjectDynamicBatching, RoundTripsAndApplies){
 }
 
 TEST(StreamProjectDynamicBatching, ExportsCarryIt){
-    PlayerSettings settings;
-    EXPECT_EQ(generatedMain(settings).find("setDynamicBatchingDefault"), std::string::npos) << "on is the engine's default";
-    settings.dynamicBatching = false;
-    EXPECT_NE(generatedMain(settings).find("Engine::setDynamicBatchingDefault(false);"), std::string::npos);
-
     PlayerConfig config;
     config.dynamicBatching = false;
     PlayerConfig read;

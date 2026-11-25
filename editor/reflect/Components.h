@@ -6,6 +6,8 @@
 // The component descriptions (editor/reflect/components/*.cpp) and what their tables share.
 // Registry.cpp lists them; nothing else names them directly (reflect::find(ComponentType)).
 
+#include <new>
+
 #include "reflect/Field.h"
 #include "reflect/Enums.h"
 
@@ -29,6 +31,11 @@ namespace jasperengine::editor::reflect {
         template<typename T>
         void removeComponent(EntityRegistry* registry, Entity entity) {
             registry->removeComponent<T>(entity);
+        }
+
+        template<typename T>
+        void defaultInitialise(void* at) {
+            new (at) T;
         }
 
         template<typename T>
@@ -151,15 +158,19 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kTilemapCollider2DDesc;
     // editor/titleart/runtime/TitleArtRendererReflect.cpp (S81)
     extern const ComponentDesc kTitleArtRendererDesc;
+    // VehicleReflect.cpp (S96)
+    extern const ComponentDesc kWheelColliderDesc;
+    extern const ComponentDesc kVehicleDrivetrainDesc;
 
 }
 
-// find, add, remove and componentId of a component type (designated initializers of ComponentDesc)
+// find, add, remove, componentId and defaultInitialise of a component type (designated initializers of ComponentDesc)
 #define JE_COMPONENT_ACCESS(T) \
     .find = &::jasperengine::editor::reflect::detail::findComponent<T>, \
     .add = &::jasperengine::editor::reflect::detail::addComponent<T>, \
     .remove = &::jasperengine::editor::reflect::detail::removeComponent<T>, \
-    .componentId = &::jasperengine::editor::reflect::detail::componentIdOf<T>
+    .componentId = &::jasperengine::editor::reflect::detail::componentIdOf<T>, \
+    .defaultInitialise = &::jasperengine::editor::reflect::detail::defaultInitialise<T>
 
 // A component's own whole-component codec: the Stream encode/decode pair it always had
 #define JE_STREAM_CODEC(T, encodeFn, decodeFn) \
@@ -169,12 +180,3 @@ namespace jasperengine::editor::reflect {
         [](const YAML::Node& node, void* comp, const ::jasperengine::editor::reflect::DecodeContext& ctx) { \
             *static_cast<T*>(comp) = ::jasperengine::editor::Stream::decodeFn(node, static_cast<const T*>(ctx.old)); } }
 
-// The exported code of a component its own Factory::createX writes (with or without the project path)
-#define JE_FACTORY_CODEGEN(fn) \
-    [](::jasperengine::EntityRegistry* registry, ::jasperengine::Entity entity, const ::jasperengine::editor::reflect::CodegenContext& ctx) { \
-        return ::jasperengine::editor::Factory::fn(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting, \
-                                                   ctx.entityVarNames); }
-#define JE_FACTORY_CODEGEN_PATH(fn) \
-    [](::jasperengine::EntityRegistry* registry, ::jasperengine::Entity entity, const ::jasperengine::editor::reflect::CodegenContext& ctx) { \
-        return ::jasperengine::editor::Factory::fn(ctx.indentSpaces, registry, entity, ctx.projectPath, ctx.sceneName, ctx.entityName, \
-                                                   ctx.assignExisting, ctx.entityVarNames); }

@@ -97,11 +97,14 @@ ModelAuditRow ModelAudit::row(Project& project, const std::string& assetPath, Mo
     row.projectPath = project.normalizeToProjectRelative(absolute).generic_string();
     const fs::path read = FbxImporter::isFbxFile(absolute) ? project.getImportedModelPath(absolute) : absolute;
     row.headerRead = readModelHeader(read, row.header, row.headerError);
+    if (read != absolute)
+        row.importWarnings = FbxImporter::getImportWarnings(read);
     std::string error;
     row.storedRead = modelSettingsOf(project, assetPath, row.stored, &error);
     if (!row.storedRead)
         row.headerError = "its import settings cannot be read: " + error;
     row.resolved = row.stored.resolve(family, project.getModelSettings());
+    row.materialCreationMode = row.stored.materialCreationMode.value_or(project.getModelSettings().materialCreationMode);
     ModelCookQueue& queue = ModelCookQueue::get();
     row.hasState = queue.getProject() == &project && queue.getState(assetPath, family, row.state);
     ModelUsageIndex& usage = ModelUsageIndex::get();
@@ -168,6 +171,9 @@ std::vector<ModelIssue> ModelAudit::issues(const ModelAuditRow& row){
         issue->fix = ModelIssue::Fix::Reimport;
         issue->fixLabel = "Reimport";
     }
+    // the FBX import's report, a line each (the Console has one line per import)
+    for (const std::string& warning : row.importWarnings)
+        add("fbx-import-warning", "warning", name + ": " + warning);
     if (row.hasState && row.state.status == ModelCookStatus::Cooked && row.state.record.passThrough && !row.state.record.warnings.empty())
         add("mesh-pass-through", "warning", name + ": " + row.state.record.warnings.front());
     const long long triangles = row.triangles();
@@ -294,6 +300,7 @@ Json ModelAudit::toJson(const ModelAuditRow& row, bool details){
     if (!details)
         return out;
     out["settings"] = {{"resolved", resolvedJson(row.resolved)}, {"stored", storedJson(row.stored)}};
+    out["settings"]["resolved"]["material_creation_mode"] = materialCreationModeName(row.materialCreationMode);
     out["read_write"] = {{"keep", row.readWrite.keep}, {"reasons", row.readWrite.reasons}};
     Json diagnostics = Json::array();
     for (const GltfDiagnostic& diagnostic : row.diagnostics)

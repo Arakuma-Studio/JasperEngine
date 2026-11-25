@@ -32,6 +32,7 @@ namespace jasperengine{
     struct WaterVolumeComponent;
     struct WaterExcluderComponent;
     struct WaterWakeComponent;
+    struct WheelColliderComponent;
 }
 
 namespace jasperengine::anim{
@@ -40,22 +41,7 @@ namespace jasperengine::anim{
 
 namespace jasperengine::editor{
 
-    struct LightObjects{
-        Sprite* icon = nullptr;
-        LineRenderer* lines = nullptr;
-
-        LightType type;
-        float innerConeCos = 0.0f;
-        float outerConeCos = 0.0f;
-        Vector3 direction = Vector3::ZERO;
-        float range = 0.0f;
-        bool spotMaskReady = false;
-        float spotMaskAspect = 1.0f;
-    };
-
     struct BodyObjects{
-        LineRenderer* lines = nullptr;
-
         // Mesh and hull shapes walk their whole source buffer to build these, so they
         // are kept until the signature of what feeds them changes.
         std::vector<PhysicsDebugLines::EdgeCache> shapeEdgeCaches;
@@ -66,32 +52,40 @@ namespace jasperengine::editor{
 
         LineRenderer* lines;
 
-        std::map<Entity, LightObjects> lightObjects;
-        std::map<Entity, CameraObjects> cameraObjects;
-        std::map<Entity, SoundObjects> soundObjects;
+        // one batch per gizmo kind for every GameObject (S98 REQ-30): in this scene (depth
+        // tested) unless made for the tools layer (drawn over the meshes they run inside)
+        GizmoIconBatch icons{true};
+        GizmoLineBatch lightLines;
+        GizmoLineBatch cameraLines;
+        GizmoLineBatch bodyLines;
         std::map<Entity, BodyObjects> bodyObjects;
-        std::map<Entity, LineRenderer*> jointLines;
-        std::map<Entity, LineRenderer*> boneLines;
-        std::map<Entity, LineRenderer*> linePointLines;
-        std::map<Entity, LineRenderer*> polygonPointLines;
-        std::map<Entity, LineRenderer*> trackLines;
-        std::map<Entity, LineRenderer*> reflectionProbeLines;
+        GizmoLineBatch jointLines;
+        GizmoLineBatch boneLines{true};
+        GizmoLineBatch linePointLines;
+        GizmoLineBatch polygonPointLines;
+        GizmoLineBatch trackLines{true};
+        GizmoLineBatch reflectionProbeLines;
         // a selected Local Volumetric Fog's outer shape and its inner (blend distance) one
-        std::map<Entity, LineRenderer*> fogVolumeLines;
-        std::map<Entity, LineRenderer*> controllerLines;
-        std::map<Entity, LineRenderer*> waterVolumeLines;
-        std::map<Entity, LineRenderer*> waterExcluderLines;
-        std::map<Entity, LineRenderer*> waterWakeLines;
-        std::map<Entity, LineRenderer*> buoyancyLines;
+        GizmoLineBatch fogVolumeLines;
+        GizmoLineBatch controllerLines;
+        GizmoLineBatch waterVolumeLines;
+        GizmoLineBatch waterExcluderLines;
+        GizmoLineBatch waterWakeLines;
+        GizmoLineBatch buoyancyLines;
+        // S96: the Wheel Colliders' circles, travels and (in Play) contacts
+        GizmoLineBatch wheelLines;
         // a selected Particle System's emitter shape, bounds and collision planes; a Force
         // Field's shape (S20 R28: the Particle Effect panel's gizmo toggles)
-        std::map<Entity, LineRenderer*> particleLines;
-        std::map<Entity, LineRenderer*> forceFieldLines;
-        // Gizmos > Animation (S77 R49): one line set per Animator (tools layer), from the overlay pass
-        std::map<Entity, LineRenderer*> animatorLines;
+        GizmoLineBatch particleLines;
+        GizmoLineBatch forceFieldLines;
+        // Gizmos > Animation (S77 R49): every Animator's lines (tools layer), from the overlay pass
+        GizmoLineBatch animatorLines{true};
         std::unique_ptr<anim::AnimatorOverlayPass> animatorOverlay;
         // a highlighted Capsule Shadow Caster's capsules, with the selected one's handles
-        std::map<Entity, LineRenderer*> capsuleShadowLines;
+        GizmoLineBatch capsuleShadowLines;
+
+        // every batch, for the passes that treat them alike (begin, flush, hide, sweep)
+        std::vector<GizmoLineBatch*> lineBatches();
 
         ViewportGizmo viewgizmo;
 
@@ -103,20 +97,11 @@ namespace jasperengine::editor{
         float lastGridFarClip = 0.0f;
 
         void createLines();
-        bool instanciateLightObject(Entity entity);
-        bool instanciateCameraObject(Entity entity);
-        bool instanciateSoundObject(Entity entity);
-        bool instanciateBodyObject(Entity entity);
-        bool instanciateBoneLines(Entity entity);
         void createOrUpdateBoneLines(Entity entity, const ModelComponent& model, bool visible, bool highlighted);
-        void createOrUpdateLightIcon(Entity entity, const Transform& transform, LightType lightType, bool newLight);
-        void createOrUpdateCameraIcon(Entity entity, const Transform& transform, bool newCamera);
-        void createOrUpdateSoundIcon(Entity entity, const Transform& transform, bool newSound);
         void createOrUpdateBodyLines(Entity entity, const Transform& transform, const RigidbodyComponent& body, bool visible, bool highlighted);
         void createOrUpdateJointLines(Entity entity, const Joint3DComponent& joint, bool visible, bool highlighted);
         void createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible);
         void createOrUpdatePolygonPointLines(Entity entity, const Transform& transform, const std::vector<PolygonPoint>& points, bool isMesh, bool visible);
-        bool instanciateTrackLines(Entity entity);
         void createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible);
         void createOrUpdateReflectionProbeLines(Entity entity, const Transform& transform, const ReflectionProbeComponent& probe, bool visible);
         void createOrUpdateFogVolumeLines(Entity entity, const Transform& transform, const LocalVolumetricFogComponent& volume, bool visible);
@@ -124,18 +109,17 @@ namespace jasperengine::editor{
         void createOrUpdateWaterExcluderLines(Entity entity, const Transform& transform, const WaterExcluderComponent& excluder, bool visible, bool highlighted);
         void createOrUpdateWaterWakeLines(Entity entity, const Transform& transform, const WaterWakeComponent& wake, bool visible);
         void createOrUpdateBuoyancyLines(Entity entity, const Transform& transform, const BuoyancyComponent& buoyancy, bool visible, bool highlighted);
+        void createOrUpdateWheelLines(Entity entity, const Transform& transform, const WheelColliderComponent& wheel, bool visible, bool highlighted);
         void createOrUpdateControllerLines(Entity entity, const Transform& transform, const CharacterControllerComponent& controller, bool visible, bool highlighted);
         void createOrUpdateCapsuleShadowLines(Entity entity, const Transform& transform, const CapsuleShadowCasterComponent& caster, bool visible, bool selected);
         void createOrUpdateParticleLines(Entity entity, const Transform& transform, const ParticleSystemComponent& particles, bool visible);
         void createOrUpdateForceFieldLines(Entity entity, const Transform& transform, const ForceFieldComponent& field, bool visible);
-        void createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fullFrustum, bool isMainCamera);
-        void createDirectionalLightArrow(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
-        void createPointLightSphere(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
-        void createSpotLightCones(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
+        void createDirectionalLightArrow(const Transform& transform, const LightComponent& light);
+        void createPointLightSphere(const Transform& transform, const LightComponent& light);
+        void createSpotLightCones(const Transform& transform, const LightComponent& light);
 
     protected:
         void hideAllGizmos() override;
-        void hideEntityGizmos(Entity entity) override;
         void dropGoneGizmos() override;
         using SceneRender::dropGoneGizmos;
         void drawOverlayTargets() override;

@@ -67,7 +67,8 @@ static void b2IntegrateVelocitiesTask( int startIndex, int endIndex, b2StepConte
 	b2Vec2 gravity = context->world->gravity;
 	float h = context->h;
 	float maxLinearSpeed = context->maxLinearVelocity;
-	float maxAngularSpeed = B2_MAX_ROTATION * context->inv_dt;
+	// JASPER PATCH: max rotation
+	float maxAngularSpeed = context->world->maxRotation * context->inv_dt;
 	float maxLinearSpeedSquared = maxLinearSpeed * maxLinearSpeed;
 	float maxAngularSpeedSquared = maxAngularSpeed * maxAngularSpeed;
 

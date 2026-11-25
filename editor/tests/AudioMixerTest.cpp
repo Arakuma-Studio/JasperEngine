@@ -880,6 +880,24 @@ TEST_F(AudioSourceTest, MovedVoicesFollowTheirSourceToAnotherScene) {
     EXPECT_FALSE(soloud().isValidVoiceHandle(handle));
 }
 
+// S97 REQ-22 (AC21): a free voice of a clip loops until stopped
+TEST_F(AudioSourceTest, FreeVoiceLoopsUntilStopped) {
+    audioMixerWriteTone(root / "assets" / "blip.wav", 0.1);
+    ASSERT_EQ(luaL_dostring(L,
+        "loopedBlip = Audio.play('blip.wav', {loop = true})\n"
+        "onceBlip = Audio.play('blip.wav')\n"
+        "assert(loopedBlip:isValid() and onceBlip:isValid())\n"), LUA_OK) << lua_tostring(L, -1);
+    run(1.0);
+    ASSERT_EQ(luaL_dostring(L,
+        "assert(loopedBlip:isPlaying(), 'the loop plays on past its 0.1 s')\n"
+        "assert(not onceBlip:isValid(), 'without loop it ended')\n"
+        "loopedBlip:stop()\n"), LUA_OK) << lua_tostring(L, -1);
+    run(0.05);
+    ASSERT_EQ(luaL_dostring(L,
+        "assert(not loopedBlip:isPlaying())\n"
+        "loopedBlip = nil; onceBlip = nil\n"), LUA_OK) << lua_tostring(L, -1);
+}
+
 // ================================================================== review regressions
 
 TEST_F(AudioMixerRuntimeTest, ALiveEditKeepsTheVoiceBuffersWhenTheVoiceLimitStays) {
@@ -1081,6 +1099,38 @@ TEST(AudioSourceSerializationTest, AbsentMixerKeysAreTheirDefaultsOverAnExisting
     EXPECT_EQ(again.loadType, AudioLoadType::Streaming);
 }
 
+// S97 REQ-44 (AC29): a scene saved before S97 has none of its keys; decoded over an edited source
+// (an undo, a prefab override) they are their defaults, and the defaults are not written
+TEST(AudioSourceSerializationTest, AbsentS97KeysAreTheirDefaults) {
+    AudioSourceComponent edited;
+    edited.filename = "engine.ogg";
+    AudioSourceEffectDef lowpass;
+    lowpass.type = "lowpass";
+    lowpass.params["cutoff"] = 800.0f;
+    edited.effects.push_back(lowpass);
+    edited.spatialBlend = 0.25f;
+    edited.slot = 2;
+    AudioSourceComponent plain;
+    plain.filename = "engine.ogg";
+    const YAML::Node node = encodeAudioSource(plain);
+    EXPECT_FALSE(node["effects"]) << "defaults are not written";
+    EXPECT_FALSE(node["spatialBlend"]);
+    EXPECT_FALSE(node["slot"]);
+    const AudioSourceComponent restored = decodeAudioSource(node, &edited);
+    EXPECT_TRUE(restored.effects.empty());
+    EXPECT_FLOAT_EQ(restored.spatialBlend, 1.0f) << "an old source with a Transform stays 3D";
+    EXPECT_EQ(restored.slot, 0);
+    // and the other way
+    const YAML::Node written = encodeAudioSource(edited);
+    ASSERT_TRUE(written["effects"]);
+    const AudioSourceComponent again = decodeAudioSource(written, &plain);
+    ASSERT_EQ(again.effects.size(), 1u);
+    EXPECT_EQ(again.effects[0].type, "lowpass");
+    EXPECT_FLOAT_EQ(again.effects[0].params.at("cutoff"), 800.0f);
+    EXPECT_FLOAT_EQ(again.spatialBlend, 0.25f);
+    EXPECT_EQ(again.slot, 2);
+}
+
 // ================================================================== AudioLuaTest
 
 TEST_F(AudioLuaTest, LuaDrivesTheMixerAndSources) {
@@ -1143,36 +1193,6 @@ TEST_F(AudioLuaTest, LuaDrivesTheMixerAndSources) {
 }
 
 // ================================================================== GeneratorAudioTest
-
-TEST(GeneratorAudioTest, InitConfiguresTheVoicesAndLoadsTheMixer) {
-    EXPECT_EQ(Generator::audioInitSource(AudioSettings()), "") << "the defaults: nothing";
-    AudioSettings settings;
-    settings.mixer = "audio/Main.mixer";
-    settings.maxRealVoices = 16;
-    settings.maxVoices = 100;
-    settings.sampleRate = 48000;
-    const std::string source = Generator::audioInitSource(settings);
-    EXPECT_NE(source.find("AudioSystem::configure({16, 100, 48000});"), std::string::npos) << source;
-    EXPECT_NE(source.find("AudioMixer::load(\"audio/Main.mixer\");"), std::string::npos) << source;
-    EXPECT_LT(source.find("AudioSystem::configure"), source.find("AudioMixer::load"));
-
-    // main.cpp has them before the first scene loads
-    const fs::path project = fs::temp_directory_path() / ("jasper-generator-audio-" + std::to_string(::getpid()));
-    fs::remove_all(project);
-    fs::create_directories(project / "assets");
-    const fs::path internal = project / ".jasperengine";
-    Generator generator;
-    const std::vector<SceneBuildInfo> scenes = {SceneBuildInfo{1, "Level", {1}, {1}, true}};
-    generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17,
-                        Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(),
-                        TagsAndLayers(), 4, ThreadingProjectSettings(), HtmlUiRenderSettings(), PbrTier::REDUCED,
-                        ShaderCreationProjectSettings(), false, {}, PlayerSettings(), settings);
-    const std::string mainCpp = scriptdata::readFile(internal / "generated" / "main.cpp");
-    const size_t load = mainCpp.find("AudioMixer::load(\"audio/Main.mixer\")");
-    ASSERT_NE(load, std::string::npos);
-    EXPECT_LT(load, mainCpp.find("SceneManager::loadScene"));
-    fs::remove_all(project);
-}
 
 // ================================================================== BF14: audio and engine bug fixes
 // (found comparing the unmerged snd/sound-layer branch with this engine)
@@ -1334,23 +1354,6 @@ TEST_F(AudioSourceTest, PlayStartAndStopRestoreTheGlobalVolume) {
 }
 
 // ---- B13: an exported game keeps a saved Paused state --------------------------------------------
-
-TEST(AudioSourceSerializationTest, AnExportedSourceKeepsItsSavedState) {
-    const reflect::ComponentDesc& desc = *reflect::find(ComponentType::AudioSourceComponent);
-    reflect::CodegenContext ctx;
-    ctx.variable = "audio";
-    AudioSourceComponent audio;
-    audio.state = AudioSourceState::Paused;
-    std::string code = reflect::cppAssignments(desc, &audio, ctx);
-    EXPECT_NE(code.find("audio.state = AudioSourceState::Paused;"), std::string::npos) << "as the editor's Play loads it:\n" << code;
-    EXPECT_EQ(code.find("startTrigger"), std::string::npos);
-
-    // Playing starts through startTrigger, from Stopped
-    audio.state = AudioSourceState::Playing;
-    code = reflect::cppAssignments(desc, &audio, ctx);
-    EXPECT_NE(code.find("audio.state = AudioSourceState::Stopped;"), std::string::npos) << code;
-    EXPECT_NE(code.find("audio.startTrigger = true;"), std::string::npos) << code;
-}
 
 // ---- B6: the platform's pause is not the game's pauseAll ----------------------------------------
 
@@ -1798,24 +1801,6 @@ TEST_F(AudioMixerRuntimeTest, TheLoudnessReadingHoldsTheCeilingWhereverItJoins) 
     EXPECT_EQ(over, 0) << "joins over -0.9 dBTP; the worst read " << worst;
     EXPECT_LE(atOutput.result().truePeakDb, -0.9);
     EXPECT_GT(atOutput.result().truePeakDb, -3.0);
-}
-
-TEST(GeneratorAudioTest, TheOutputStageAndTheIosSessionReachTheExportedInit) {
-    AudioSettings settings;
-    settings.outputStage = "linear";
-    settings.iosSessionCategory = "ambient";
-    EXPECT_NE(Generator::audioInitSource(settings).find(
-                  "AudioSystem::configure({32, 256, 0, AudioOutputStage::Linear, IosAudioSession::Ambient});"), std::string::npos)
-        << Generator::audioInitSource(settings);
-    settings.outputStage = "roundoff";
-    settings.iosSessionCategory = "solo_ambient";
-    EXPECT_NE(Generator::audioInitSource(settings).find("AudioOutputStage::Roundoff, IosAudioSession::SoloAmbient"), std::string::npos);
-    settings.iosSessionCategory = "playback";
-    EXPECT_NE(Generator::audioInitSource(settings).find("IosAudioSession::Playback"), std::string::npos);
-    // the settings that only measure change no code
-    AudioSettings measuring;
-    measuring.loudnessTargetLufs = -14.0f;
-    EXPECT_EQ(Generator::audioInitSource(measuring), "");
 }
 
 TEST(PlayerConfigAudioTest, TheOutputStageAndTheIosSessionTravelInGameJson) {

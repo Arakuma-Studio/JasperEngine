@@ -37,6 +37,7 @@ std::string reload::kindOf(const fs::path& path) {
     if (ext == ".voxelvolume") return "voxel";
     if (Util::isPaletteFile(text)) return "palette";
     if (Util::isTilesetFile(text)) return "tileset";
+    if (Util::isMeshAssetFile(text)) return "mesh";
     if (Util::isShaderFile(text)) return "shader";
     if (Util::isAudioFile(text)) return "audio";
     if (Util::isFontFile(text)) return "font";

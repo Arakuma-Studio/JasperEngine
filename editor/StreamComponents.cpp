@@ -67,6 +67,14 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     YAML::Node node;
     node["enabled"] = YamlNumbers::text(mesh.enabled);
 
+    // S98 F1: the geometry of a .mesh asset is the file's, so neither its buffers nor what they
+    // give (bounds, vertex counts) are written: a save is the same whether the file was read yet
+    if (!mesh.meshAsset.empty()) {
+        encodeAssetRef(node, "meshAsset", mesh.meshAsset);
+        encodeBuffers = false;
+        encodeGeneratedValues = false;
+    }
+
     if (encodeBuffers){
         node["buffer"] = encodeInterleavedBuffer(mesh.buffer);
         node["indices"] = encodeIndexBuffer(mesh.indices);
@@ -185,6 +193,13 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     // Use old values as defaults if provided
     if (oldMesh) {
         mesh = *oldMesh;
+    }
+
+    // S98 F1 (omitted when none): another file, or none, is read again by MeshSystem
+    const std::string readAsset = mesh.meshAsset.path;
+    mesh.meshAsset = node["meshAsset"] ? decodeAssetRef(node, "meshAsset") : AssetRef();
+    if (mesh.meshAsset.empty() || mesh.meshAsset.path != readAsset) {
+        mesh.loadedMeshAsset.clear();
     }
 
     // Decode buffers using generic methods
@@ -1451,6 +1466,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
     node["linearDamping"] = body.linearDamping;
     node["angularDamping"] = body.angularDamping;
     node["fixedRotation"] = body.fixedRotation;
+    // S96: written only when set (an older editor keeps it as unknown data)
+    if (body.allowFastRotation) {
+        node["allowFastRotation"] = true;
+    }
     node["collisionDetection"] = collisionDetection2DToString(body.collisionDetection);
     node["sleepingMode"] = sleepMode2DToString(body.sleepingMode);
     node["useAutoMass"] = body.useAutoMass;
@@ -1460,6 +1479,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
     node["autoInertia"] = body.autoInertia;
     node["inertia"] = body.inertia;
     node["material"] = body.material;
+    // S96 WP-C: written only when set
+    if (body.attachToParentBody) {
+        node["attachToParentBody"] = true;
+    }
 
     YAML::Node shapesNode;
     for (const Collider2D& collider : body.colliders) {
@@ -1521,6 +1544,7 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
     if (node["linearDamping"]) body.linearDamping = YamlNumbers::as<float>(node["linearDamping"]);
     if (node["angularDamping"]) body.angularDamping = YamlNumbers::as<float>(node["angularDamping"]);
     if (node["fixedRotation"]) body.fixedRotation = YamlNumbers::as<bool>(node["fixedRotation"]);
+    if (node["allowFastRotation"]) body.allowFastRotation = YamlNumbers::as<bool>(node["allowFastRotation"]);
     if (node["collisionDetection"]) body.collisionDetection = stringToCollisionDetection2D(node["collisionDetection"].as<std::string>());
     if (node["sleepingMode"]) body.sleepingMode = stringToSleepMode2D(node["sleepingMode"].as<std::string>());
     if (node["useAutoMass"]) body.useAutoMass = YamlNumbers::as<bool>(node["useAutoMass"]);
@@ -1531,6 +1555,7 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
     if (node["inertia"]) body.inertia = YamlNumbers::as<float>(node["inertia"]);
     // keys written only when set: absent is the default, also over an existing component
     body.material = node["material"] ? node["material"].as<std::string>() : std::string();
+    body.attachToParentBody = node["attachToParentBody"] ? YamlNumbers::as<bool>(node["attachToParentBody"]) : false;
 
     if (node["colliders"]) {
         const YAML::Node collidersNode = node["colliders"];
@@ -1638,6 +1663,10 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     node["allowSleeping"] = body.allowSleeping;
     node["collideKinematicVsNonDynamic"] = body.collideKinematicVsNonDynamic;
     node["interpolation"] = rigidbodyInterpolationToString(body.interpolation);
+    // S96 WP-C: written only when set
+    if (body.attachToParentBody) {
+        node["attachToParentBody"] = true;
+    }
     if (body.overrideMassProperties) {
         node["overrideMassProperties"] = true;
         node["solidBoxSize"] = encodeVector3(body.solidBoxSize);
@@ -1749,6 +1778,8 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["allowSleeping"]) body.allowSleeping = YamlNumbers::as<bool>(node["allowSleeping"]);
     if (node["collideKinematicVsNonDynamic"]) body.collideKinematicVsNonDynamic = YamlNumbers::as<bool>(node["collideKinematicVsNonDynamic"]);
     if (node["interpolation"]) body.interpolation = stringToRigidbodyInterpolation(node["interpolation"].as<std::string>());
+    // keys written only when set: absent is the default, also over an existing component
+    body.attachToParentBody = node["attachToParentBody"] ? YamlNumbers::as<bool>(node["attachToParentBody"]) : false;
     if (node["overrideMassProperties"]) body.overrideMassProperties = YamlNumbers::as<bool>(node["overrideMassProperties"]);
     if (node["solidBoxSize"]) body.solidBoxSize = decodeVector3(node["solidBoxSize"]);
     if (node["solidBoxDensity"]) body.solidBoxDensity = YamlNumbers::as<float>(node["solidBoxDensity"]);
@@ -3108,7 +3139,8 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
     // Layer (a missing key decodes to that default)
     const bool defaultLayers = player.layers.empty() ||
         (player.layers.size() == 1 && player.layers[0].name == anim::BASE_LAYER_NAME && player.layers[0].mask.empty() &&
-         player.layers[0].maskGuid.empty() && player.layers[0].weight == 1.0f && player.layers[0].blend == AnimationLayerBlend::Override);
+         player.layers[0].maskGuid.empty() && player.layers[0].weight == 1.0f && player.layers[0].blend == AnimationLayerBlend::Override &&
+         !player.layers[0].meshSpaceRotation);
     if (!defaultLayers) {
         YAML::Node layersNode(YAML::NodeType::Sequence);
         for (const AnimationPlayerLayer& layer : player.layers) {
@@ -3118,6 +3150,8 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
             if (layer.blend != AnimationLayerBlend::Override) layerNode["blend"] = anim::layerBlendName(layer.blend);
             if (!layer.mask.empty()) layerNode["mask"] = layer.mask;
             if (!layer.maskGuid.empty()) layerNode["maskGuid"] = layer.maskGuid;
+            // mesh-space-rotation spec R44: written only when set (an old scene re-saves byte for byte)
+            if (layer.meshSpaceRotation) layerNode["meshSpaceRotation"] = YamlNumbers::text(true);
             layersNode.push_back(layerNode);
         }
         node["layers"] = layersNode;
@@ -3244,6 +3278,14 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
                 }
                 layer.mask = text("mask");
                 layer.maskGuid = text("maskGuid");
+                const YAML::Node meshSpace = layerNode["meshSpaceRotation"];
+                if (meshSpace && meshSpace.IsScalar() && !meshSpace.Scalar().empty()) {
+                    try {
+                        layer.meshSpaceRotation = YamlNumbers::as<bool>(meshSpace);
+                    } catch (const YAML::Exception&) {
+                        layer.meshSpaceRotation = false;
+                    }
+                }
             } else {
                 continue;
             }

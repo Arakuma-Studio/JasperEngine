@@ -142,7 +142,10 @@ namespace jasperengine{
         void finalize(Job& job, float dt);
         // the update's audio cues, then the state_exit stops of the states and montages that ended (S40 R4-R7)
         void fireCues(Entity entity, anim::AnimatorInstance& instance);
+#if !JASPERENGINE_SOUND_LAYER
+        // a build without the soundlayer module met audio cues (S40 §6.6), said once
         bool warnedNoSoundLayer = false;
+#endif
         void release(Entity entity, anim::AnimatorInstance& instance);
         void setSkinsDriven(anim::AnimatorInstance& instance, bool driven);
         std::string modelPathOf(Entity entity) const;

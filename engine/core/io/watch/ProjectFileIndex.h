@@ -53,6 +53,11 @@ namespace jasperengine {
         // with one Moved per entry under it). The index takes what is on disk.
         std::vector<FileChange> diff(const std::filesystem::path& dir, const std::atomic<bool>* cancel = nullptr);
 
+        // What a polling backend of `dir` (the root, or a linked folder) starts from: the entries under
+        // it as an index rooted at `as` (the folder's real path), without what walks entered through
+        // the links below it, which have backends of their own
+        ProjectFileIndex pollingBaseline(const std::filesystem::path& dir, const std::filesystem::path& as) const;
+
         // Whether the index holds exactly what is on disk now (tests)
         bool matchesDisk() const;
 

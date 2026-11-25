@@ -6618,6 +6618,11 @@ typedef struct {
     bool valid;
     GLuint vao;     // global mutated vertex-array-object
     GLuint fb;      // global mutated framebuffer
+    // JasperEngine: msaa framebuffers: one more mutated framebuffer per MSAA sample count (index
+    // log2(count) - 1: 2, 4, 8, 16), made at the first pass of that count; fb takes the
+    // single-sampled passes, cur_fb is the one the open pass bound (PATCHES.md)
+    GLuint msaa_fb[4];
+    GLuint cur_fb;
     _sg_gl_cache_t cache;
     bool ext_anisotropic;
     GLint max_anisotropy;
@@ -10818,6 +10823,12 @@ _SOKOL_PRIVATE void _sg_gl_discard_backend(void) {
     if (_sg.gl.fb) {
         glDeleteFramebuffers(1, &_sg.gl.fb);
     }
+    // JasperEngine: msaa framebuffers
+    for (int i = 0; i < 4; i++) {
+        if (_sg.gl.msaa_fb[i]) {
+            glDeleteFramebuffers(1, &_sg.gl.msaa_fb[i]);
+        }
+    }
     if (_sg.gl.vao) {
         glDeleteVertexArrays(1, &_sg.gl.vao);
     }
@@ -11678,6 +11689,29 @@ _SOKOL_PRIVATE void _sg_gl_handle_memory_barriers(const _sg_shader_t* shd, const
 }
 #endif
 
+// JasperEngine: msaa framebuffers. The framebuffer an offscreen pass mutates: fb for single-sampled
+// attachments, one per sample count for multisampled ones. With one framebuffer for all, the Android
+// emulator's guest GLES encoder (which answers glCheckFramebufferStatus from its own tracking) kept a
+// 4-sample depth-stencil renderbuffer of an HTML UI pass in the depth slot after the next pass
+// detached it (renderbuffer 0) and attached a 1-sample texture: every later single-sampled pass was
+// GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE, and the scene went undrawn. A framebuffer that only ever
+// holds attachments of one sample count cannot mix counts, whatever a driver keeps.
+_SOKOL_PRIVATE GLuint _sg_gl_pass_framebuffer(const _sg_attachments_ptrs_t* atts) {
+    const _sg_view_t* view = (atts->num_color_views > 0) ? atts->color_views[0] : atts->ds_view;
+    const int sample_count = view ? _sg_image_ref_ptr(&view->cmn.img.ref)->cmn.sample_count : 1;
+    int index = -1;
+    for (int count = sample_count; count > 1; count >>= 1) {
+        index++;
+    }
+    if ((index < 0) || (index >= 4)) {
+        return _sg.gl.fb;
+    }
+    if (0 == _sg.gl.msaa_fb[index]) {
+        glGenFramebuffers(1, &_sg.gl.msaa_fb[index]);
+    }
+    return _sg.gl.msaa_fb[index];
+}
+
 _SOKOL_PRIVATE void _sg_gl_begin_pass(const sg_pass* pass, const _sg_attachments_ptrs_t* atts) {
     SOKOL_ASSERT(pass && atts);
     _SG_GL_CHECK_ERROR();
@@ -11706,7 +11740,8 @@ _SOKOL_PRIVATE void _sg_gl_begin_pass(const sg_pass* pass, const _sg_attachments
         #if defined(SOKOL_GLCORE)
         glEnable(GL_FRAMEBUFFER_SRGB);
         #endif
-        glBindFramebuffer(GL_FRAMEBUFFER, _sg.gl.fb);
+        _sg.gl.cur_fb = _sg_gl_pass_framebuffer(atts); // JasperEngine: msaa framebuffers
+        glBindFramebuffer(GL_FRAMEBUFFER, _sg.gl.cur_fb); // JasperEngine: msaa framebuffers
         for (int i = 0; i < atts->num_color_views; i++) {
             const _sg_view_t* view = atts->color_views[i];
             const GLenum gl_att_type = (GLenum)(GL_COLOR_ATTACHMENT0 + i);
@@ -11866,7 +11901,7 @@ _SOKOL_PRIVATE void _sg_gl_end_render_pass(const _sg_attachments_ptrs_t* atts) {
             const _sg_view_t* rsv_view = atts->resolve_views[i];
             if (rsv_view && rsv_view->gl.msaa_resolve_frame_buffer) {
                 if (!fb_read_bound) {
-                    glBindFramebuffer(GL_READ_FRAMEBUFFER, _sg.gl.fb);
+                    glBindFramebuffer(GL_READ_FRAMEBUFFER, _sg.gl.cur_fb); // JasperEngine: msaa framebuffers
                     fb_read_bound = true;
                 }
                 const _sg_image_t* rsv_img = _sg_image_ref_ptr(&rsv_view->cmn.img.ref);
@@ -11884,7 +11919,7 @@ _SOKOL_PRIVATE void _sg_gl_end_render_pass(const _sg_attachments_ptrs_t* atts) {
         #if defined(SOKOL_GLES3)
         // need to restore framebuffer binding before invalidate if the MSAA resolve had changed the binding
         if (fb_draw_bound) {
-            glBindFramebuffer(GL_FRAMEBUFFER, _sg.gl.fb);
+            glBindFramebuffer(GL_FRAMEBUFFER, _sg.gl.cur_fb); // JasperEngine: msaa framebuffers
         }
         GLenum invalidate_atts[SG_MAX_COLOR_ATTACHMENTS + 2] = { 0 };
         int att_index = 0;

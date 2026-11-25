@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 10
 guid: c2ba539b03625bda4dcfb084de9d6862
 id: 1212407318
 name: Phase3A
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]
@@ -163,7 +164,6 @@ entities:
         enabled: true
         type: directional
         direction: [-0.4, -1, -0.6]
-        worldDirection: [-0.4, -1, -0.6]
         color: [1, 1, 1]
         range: 100
         intensity: 3
@@ -332,9 +332,6 @@ entities:
         verticesAABB:
           min: [-10, 0, -5]
           max: [10, 0, 5]
-        worldAABB:
-          min: [-10, 0, -7]
-          max: [10, 0, 3]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -406,9 +403,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [-6.225649, 0, -3.3096054]
-          max: [-2.7743514, 1.8, -1.8903944]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -496,9 +490,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [1.7, 0, -1]
-          max: [2.7, 0.4, -0.20000002]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -586,9 +577,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [5.45359, 0, -3.04641]
-          max: [6.54641, 1, -1.9535899]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -877,9 +865,6 @@ entities:
         verticesAABB:
           min: [-0.55, 0, -0.55]
           max: [0.55, 0, 0.55]
-        worldAABB:
-          min: [-2.15, -0.34999996, 0.39999998]
-          max: [-1.05, 0.74999994, 0.40000004]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1030,9 +1015,6 @@ entities:
         verticesAABB:
           min: [-0.55, 0, -0.55]
           max: [0.55, 0, 0.55]
-        worldAABB:
-          min: [-0.85, -0.34999996, 0.39999998]
-          max: [0.25, 0.74999994, 0.40000004]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1104,9 +1086,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [0.32189113, -0.049999982, -2.878109]
-          max: [1.2781088, 0.65, -1.9218912]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1200,9 +1179,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [-1.0999999, -1.3, -3.8999999]
-          max: [1.5, 1.3, -1.3]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1302,9 +1278,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [2.8000002, -0.5, 0]
-          max: [4, 0.5, 1.2]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1405,9 +1378,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [1.3426787, -0.40000004, -1.4573214]
-          max: [3.0573215, 0.8, 0.25732136]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1508,9 +1478,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [5.3, -0.19999999, -3.2]
-          max: [6.7, 1.2, -1.8]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1612,9 +1579,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [3.8, -0.5, -2]
-          max: [5.4, 0.5, -0.40000004]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1796,9 +1760,6 @@ entities:
         verticesAABB:
           min: [-1.2, 0, -0.8]
           max: [1.2, 0, 0.8]
-        worldAABB:
-          min: [5.3999996, -0.29999995, -2.2]
-          max: [7.8, 1.3, -2.2]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1964,9 +1925,6 @@ entities:
         verticesAABB:
           min: [-0.8, 0, -0.6]
           max: [0.8, 0, 0.6]
-        worldAABB:
-          min: [6.7999997, -0.19999996, -0.20000003]
-          max: [8.4, 1, -0.19999997]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -2132,9 +2090,6 @@ entities:
         verticesAABB:
           min: [-0.4, 0, -1.3]
           max: [0.4, 0, 1.3]
-        worldAABB:
-          min: [7.925112, -0.32187974, -3.2529817]
-          max: [8.874887, 2.3218799, -2.3470182]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -2166,12 +2121,7 @@ entities:
         cullingMask: 4294967295
         target: [1.3, 0, -1.6]
         up: [0, 1, 0]
-        leftClip: <view>
-        rightClip: <view>
-        bottomClip: <view>
-        topClip: <view>
         yfov: 0.75
-        aspect: <view>
         nearClip: 0.2
         farClip: 200
         renderToTexture: false

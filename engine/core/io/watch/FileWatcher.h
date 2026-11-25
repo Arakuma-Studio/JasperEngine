@@ -130,6 +130,8 @@ namespace jasperengine {
 
     }
 
+    class ProjectFileIndex;
+
     // One watched root, recursively, on one thread (S05 D2). Implementations live in
     // backends/: inotify, ReadDirectoryChangesW, FSEvents, polling and null.
     class JASPERENGINE_API FileWatcher {
@@ -165,6 +167,9 @@ namespace jasperengine {
 
         static std::unique_ptr<FileWatcher> createNative();          // nullptr where there is none
         static std::unique_ptr<FileWatcher> createPolling(std::chrono::milliseconds interval);
+        // Polling from `baseline`, an index of the root start() gets, instead of a walk of its own:
+        // what differs from it is reported
+        static std::unique_ptr<FileWatcher> createPolling(std::chrono::milliseconds interval, ProjectFileIndex baseline);
         static std::unique_ptr<FileWatcher> createNull();
         // Whether this platform has a native backend at all
         static bool hasNative();

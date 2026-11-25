@@ -83,6 +83,67 @@ root; a part can weigh a fraction), else the mask's **Default**. **Root Hierarch
 root part the GameObject and what lies between it and the hips. Animation Player layers use the
 same masks. The **Preview Model** builds the transform tree and figure from a model or prefab.
 
+### Mesh Space Rotation
+
+An upper-body layer over locomotion (an attack, a reload, a wave masked from the spine up) blends
+each bone in its parent's space, so the spine inherits the run's hip twist and a sword swing lands
+off to the side. Turn on **Mesh Space Rotation** on the layer (the Inspector of a selected layer,
+under Mask): the bones where the mask starts or stops keep the rotation the layer's clip gives them
+relative to the character, not to their parent. The torso faces where the attack faces and the legs
+keep facing where the run faces. It needs no extra bone, export or script: it works for every clip
+and rig, and a rig's `B-spineProxy` bone (Unity's Spine Proxy) is not needed. Unreal calls it Mesh
+Space Rotation Blend.
+
+| Without (Compare on): the torso turns with the run's hips, the attack swings off to the side | With: the torso faces where the attack faces (green), the legs keep running to the side; red is where it would face without |
+|---|---|
+| ![Without Mesh Space Rotation](img/animator/mesh-space-rotation-before.png) | ![With Mesh Space Rotation](img/animator/mesh-space-rotation-after.png) |
+
+A run on the base layer, an attack on an Upper Body layer masked from `B-spine`, Gizmos > Animation >
+Torso Direction on. The layer's Inspector, and the Problems strip warning about a second layer with
+the option off:
+
+![The layer Inspector with Mesh Space Rotation on, Applies at: B-spine, and the Problems strip's warning with Fix](img/animator/mesh-space-rotation-inspector.png)
+
+- It is off by default. It applies to Override layers above the base layer; on the base layer and
+  on Additive layers the checkbox is disabled (a value set in the file is kept and ignored).
+- In Preview or Play, the line under it names the GameObjects it applies at ("Applies at: B-spine"
+  for a mask from the spine, "Applies at: B-thigh.L, B-thigh.R" for a mask with Body on and the legs
+  off); otherwise it says "Applies where the mask starts or stops".
+- When a bound Animator has an Override layer above 0 with weight whose mask starts inside the
+  torso (at a torso bone under one it leaves out: a humanoid's Hips, Spine, Chest or Upper Chest;
+  on a generic rig, bones named like them, such as `B-hips` and `B-spine`) and the option is off, the Animator's Inspector and the Animator window's Problems strip warn:
+  "Layer 'Upper Body': the mask starts at Spine, so the torso follows the base layer's hips. Turn on
+  Mesh Space Rotation to keep this layer's direction." **Fix** turns the option on (one undo step);
+  a click on the warning in the strip selects the layer. Nothing is ever turned on by itself; the
+  option on, or the layer Additive, clears the warning.
+- **Compare** in the Animator window's toolbar, while previewing, shows the pose without the option
+  while it is on. It is never saved and turns off when Preview stops.
+- Gizmos > Animation > **Torso Direction** shows it on the selected Animator (see
+  [Seeing IK and root motion](#seeing-ik-and-root-motion)).
+- From Lua, `animator:setLayerMeshSpaceRotation("Upper Body", true)` turns it on for that Animator
+  only, until its controller loads again; `getLayerMeshSpaceRotation` reads it.
+- Animation Player layers have the same option, in its Inspector's Layers table
+  ([Layers and masks](animation-clips.md#layers-and-masks)), and give the same pose as an Animator
+  with the same rig, clips, mask and weight.
+
+Limits:
+
+- Only rotation: translation stays local. A crouch or a lunge the attack makes with its hips'
+  position is not carried over.
+- A hip spin past 180 degrees in the upper-body clip turns the torso a full turn over still legs.
+- It applies where the mask starts, and where it stops right under its start (the legs under the
+  hips of a mask with Body on, the spine under the hips of a lower-body mask). Bones the mask
+  leaves out further down follow their parent, as in Unity: fingers left out of an arm mask follow
+  the hand.
+- A path mask that is on from the GameObject down (not a body-part one) starts at the first node
+  under it, often `Armature`, so legs it leaves out follow the layer's hips: start the mask at the
+  hips to keep the base's legs.
+- Inside the mask, fractional weights blend locally; only the bones where the weight rises, and
+  where it drops right under a rise, get the rotation relative to the character.
+- The chain above a boundary bone is assumed to have uniform scale.
+- The warning may show on a layer where local blending is what you want: it only proposes. Leave
+  the option off (or make the layer Additive).
+
 ## Montages
 
 An **Animation Montage** (`.montage`) is a one-shot clip played on a layer whose **slot** it names
@@ -195,8 +256,8 @@ from those constraints (Foot Lock's contact, Foot IK's ground with the animated 
 its planted height): without them there is no slide reading, never a guess. These are the numbers
 `get_animator` reports; the same code makes both.
 
-The Scene view's **Gizmos > Animation** draws them for every Animator (all off, saved with the
-workspace; nothing is computed while they are off):
+The Scene view's **Gizmos > Animation** draws them for every Animator, Torso Direction for the
+selected one (all off, saved with the workspace; nothing is computed while they are off):
 
 - **IK**: the target as a cross, green when reached and red when not, with a line to the end; the
   chain in cyan; a pole as a diamond with a dashed line to the middle bone; Foot IK's ray in yellow,
@@ -205,6 +266,10 @@ workspace; nothing is computed while they are off):
 - **Root Motion**: the root's last 2 seconds in red, and in green where its speed and turn lead in 1 s.
 - **Foot Trails**: each Foot IK and Foot Lock foot's last 2 seconds: green planted, yellow to red as
   a planted foot slides faster, dim white in the air.
+- **Torso Direction**: for the selected Animator only, at each bone where a layer's Mesh Space
+  Rotation applies, the way the character's front points at that bone: green with the option, red
+  where it would point without it (from the next update after it turns on). Its recording runs
+  only while the gizmo draws that Animator.
 
 ## Humanoids and retargeting
 

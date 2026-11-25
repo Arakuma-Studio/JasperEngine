@@ -18,12 +18,24 @@ namespace jasperengine::editor{
     class Util{
 
     private:
+        // fs::path::extension's rule on the text itself: a fs::path made of a name that is not
+        // UTF-8 throws on Windows, where the text converts to UTF-16
         static std::string fileExtension(const std::string& path) {
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
+#if defined(_WIN32)
+            const size_t slash = path.find_last_of("/\\");
+#else
+            const size_t slash = path.find_last_of('/');
+#endif
+            const std::string_view name = std::string_view(path).substr(slash == std::string::npos ? 0 : slash + 1);
+            const size_t dot = name.find_last_of('.');
+            std::string ext;
+            if (dot != std::string_view::npos && dot > 0 && name != "..") {
+                ext = std::string(name.substr(dot));
+            } else if (!path.empty() && path[0] == '.') {
                 ext = path;
             }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            // ASCII only: a byte of a UTF-8 sequence stays as it is
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(c < 0x80 ? std::tolower(c) : c); });
             return ext;
         }
 
@@ -227,6 +239,11 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".titleart";
         }
 
+        // a Mesh Renderer's geometry in a file of its own (S98 F1, model/MeshAsset.h)
+        inline static bool isMeshAssetFile(const std::string& path) {
+            return fileExtension(path) == ".mesh";
+        }
+
         // a Procedural Material's node graph (S90): editor-only, its bakes are what ships
         inline static bool isProceduralMaterialFile(const std::string& path) {
             return fileExtension(path) == ".procmat";
@@ -264,7 +281,7 @@ namespace jasperengine::editor{
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
                    isAnimationClipFile(path) || isAnimatorAssetFile(path) ||
-                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path);
+                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path) || isMeshAssetFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

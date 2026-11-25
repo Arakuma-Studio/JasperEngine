@@ -41,11 +41,14 @@
 #include "animation/ClipStatistics.h"
 #include "animation/ControllerDef.h"
 #include "animation/ModelSubClips.h"
+#include "animation/PreviewOwner.h"
 #include "command/type/ClipSceneActions.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "io/FileData.h"
 #include "pool/AnimationClipPool.h"
+#include "pose/HumanBones.h"
+#include "subsystem/AnimatorSystem.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 
@@ -244,6 +247,7 @@ const CheckRow kChecks[] = {
     {"root_motion"},
     {"foot_sliding"},
     {"transition"},
+    {"layer_blend"},
 };
 
 std::vector<std::string> checkNames() {
@@ -803,6 +807,374 @@ void recordAnimator(const CallPtr& call, SceneProject* sceneProject, Entity enti
     replyWhenJobDone(call, state->job, wait, timeout, jobReply);
 }
 
+// ---- layer_blend: a masked layer's blend against the layer's own clip, a time at a time
+
+constexpr double LAYER_TWIST_LIMIT_DEG = 5.0;
+constexpr size_t LAYER_BLEND_TIMES = 5;
+// the latest time layer_blend samples (what layer_blend.times accepts)
+constexpr float LAYER_BLEND_MAX_TIME = 600.0f;
+
+double degrees(double radians) {
+    return radians * 180.0 / 3.14159265358979323846;
+}
+
+double rounded4(double value) {
+    return std::round(value * 1e4) / 1e4;
+}
+
+// the angle between two rotations, in double (float acos loses what is under a few 1e-3 degrees)
+double angleBetween(const Quaternion& a, const Quaternion& b) {
+    const double dot = (double)a.w * b.w + (double)a.x * b.x + (double)a.y * b.y + (double)a.z * b.z;
+    // the vector part of conj(a) * b
+    const double vx = (double)a.w * b.x - (double)b.w * a.x - ((double)a.y * b.z - (double)a.z * b.y);
+    const double vy = (double)a.w * b.y - (double)b.w * a.y - ((double)a.z * b.x - (double)a.x * b.z);
+    const double vz = (double)a.w * b.z - (double)b.w * a.z - ((double)a.x * b.y - (double)a.y * b.x);
+    return degrees(2.0 * std::atan2(std::sqrt(vx * vx + vy * vy + vz * vz), std::fabs(dot)));
+}
+
+// the yaw between two directions on the ground plane (rig space, y up); none when one is vertical
+std::optional<double> groundAngle(const Vector3& a, const Vector3& b) {
+    const double ax = a.x, az = a.z, bx = b.x, bz = b.z;
+    if (std::hypot(ax, az) < 1e-4 || std::hypot(bx, bz) < 1e-4) return std::nullopt;
+    return std::fabs(degrees(std::atan2(ax * bz - az * bx, ax * bx + az * bz)));
+}
+
+struct LayerBlendCall {
+    McpContext* ctx = nullptr;
+    JobPtr job;
+    Project* project = nullptr;
+    uint32_t sceneId = 0;
+    Entity entity = NULL_ENTITY;
+    std::shared_ptr<std::atomic<bool>> cancel;
+    int layer = -1;
+    std::string layerName;
+    std::string baseState;              // as given ("": the base layer's default state)
+    std::string state;                  // as given ("": the layer's default state)
+    std::string controller;             // project-relative
+    std::vector<float> times;
+    std::vector<int> bones;             // the rig bones compared
+    std::vector<std::string> names;     // as given, else their paths
+    std::vector<std::string> boundary;  // the layer's boundary bones' paths
+    int chest = -1;                     // the bone whose forward axis gives facing_delta_deg
+    Vector3 chestForward = Vector3(0, 0, 1);    // its local axis that is the rig's forward at rest
+    double limitDeg = LAYER_TWIST_LIMIT_DEG;
+    bool meshSpace = false;
+    std::string baseFull, stateFull;    // the states played, full paths
+    size_t done = 0;
+    Json samples = Json::array();
+    double maxAngle = 0.0;
+    std::string worstBone;
+    float worstTime = 0.0f;
+    std::optional<double> facing;
+};
+
+using LayerBlendCallPtr = std::shared_ptr<LayerBlendCall>;
+
+// What one evaluation reads: the final pose, the layer's own and the layers' below it, rig space
+struct LayerBlendPose {
+    std::vector<Quaternion> blended;
+    std::vector<Quaternion> solo;
+    std::vector<Quaternion> below;
+    std::vector<float> mask;            // per bone (1 without a mask)
+    float weight = 1.0f;
+};
+
+// Plays the two states from their start on the GameObject's Animator in edit mode and evaluates
+// its layer stack `time` s in, the scene put back after (the pose tools' preview rule); with
+// `prepare` it only binds and checks what `call` names, filling in the defaults
+bool evaluateLayerBlend(LayerBlendCall& call, float time, bool prepare, LayerBlendPose* out, std::string& error) {
+    SceneProject* sceneProject = call.project->getScene(call.sceneId);
+    Scene* scene = sceneProject ? sceneProject->scene : nullptr;
+    if (!scene || !scene->isEntityCreated(call.entity) || !scene->findComponent<AnimatorComponent>(call.entity)) {
+        error = "the GameObject or its Animator went away";
+        return false;
+    }
+    if (sceneProject->playState != ScenePlayState::STOPPED) {
+        error = "layer_blend evaluates in edit mode: stop play first";
+        return false;
+    }
+    AnimatorSystem* system = scene->getSystem<AnimatorSystem>().get();
+    const PreviewOwner::Token token = PreviewOwner::acquire(call.sceneId, call.entity, scene, "check_animation layer_blend",
+                                                            [system, entity = call.entity]() { system->restorePreview(entity); });
+    auto done = [&](bool ok) {
+        system->restorePreview(call.entity);
+        PreviewOwner::release(token);
+        return ok;
+    };
+    if (!system->preview(call.entity, 0.0f, &error)) return done(false);
+    anim::AnimatorInstance* instance = scene->getComponent<AnimatorComponent>(call.entity).runtime.get();
+    if (!instance || !instance->bound || !instance->controller) {
+        error = "the Animator is not bound yet (models or clips loading)";
+        return done(false);
+    }
+    const anim::CompiledController& controller = *instance->controller;
+    if (prepare) {
+        call.layer = instance->getLayerIndex(call.layerName);
+        std::string names;
+        for (const anim::CompiledLayer& layer : controller.layers) names += (names.empty() ? "" : ", ") + layer.name;
+        if (call.layer < 0) error = "no layer \"" + call.layerName + "\" (layers: " + names + ")";
+        else if (call.layer == 0) error = "\"" + call.layerName + "\" is layer 0: nothing is below it to blend over; name a layer above it (" + names + ")";
+        else if (controller.layers[(size_t)call.layer].blending != AnimatorLayerBlending::Override) {
+            error = "\"" + call.layerName + "\" is Additive: it adds rotations to the pose below, so there is no direction of its own to compare";
+        }
+        auto known = [&](const std::string& name, int layer) {
+            if (!error.empty() || name.empty() || controller.findState(name, layer) >= 0) return;
+            error = "no state \"" + name + "\" on layer \"" + controller.layers[(size_t)layer].name + "\"";
+        };
+        known(call.baseState, 0);
+        known(call.state, call.layer);
+        if (!error.empty()) return done(false);
+    } else if ((size_t)call.layer >= instance->layers.size() || (size_t)call.layer >= controller.layers.size()) {
+        error = "the controller changed while it was sampled";
+        return done(false);
+    }
+    const size_t count = instance->rig.bones.size();
+    if (prepare) {
+        call.meshSpace = instance->layerMeshSpaceRotation(call.layer);
+        const std::vector<uint16_t>& boundary = instance->layerBoundaryBones(call.layer);
+        for (uint16_t bone : boundary) call.boundary.push_back(instance->rig.bones[bone].path);
+        if (call.names.empty()) {
+            // the bones where the mask starts or stops, and their children
+            std::vector<bool> listed(count, false);
+            for (uint16_t bone : boundary) listed[bone] = true;
+            for (size_t b = 0; b < count; b++) {
+                const int parent = instance->rig.parents[b];
+                if (parent >= 0 && std::find(boundary.begin(), boundary.end(), (uint16_t)parent) != boundary.end()) listed[b] = true;
+            }
+            for (size_t b = 0; b < count; b++) {
+                if (!listed[b]) continue;
+                call.bones.push_back((int)b);
+                call.names.push_back(instance->rig.bones[b].path);
+            }
+        } else {
+            std::vector<std::string> unknown;
+            for (const std::string& name : call.names) {
+                const int bone = instance->resolveBone(name);
+                if (bone < 0 || (size_t)bone >= count) unknown.push_back(name);
+                else call.bones.push_back(bone);
+            }
+            if (!unknown.empty()) {
+                std::string list;
+                for (const std::string& name : unknown) list += (list.empty() ? "" : ", ") + ("\"" + name + "\"");
+                error = "bones: no bone " + list + " on this rig (paths from the Animator's GameObject, or humanoid slots like chest)";
+                return done(false);
+            }
+        }
+        // the torso's facing: the humanoid's chest (upper chest, chest, spine), else the first boundary bone
+        for (pose::HumanBone slot : {pose::HumanBone::UpperChest, pose::HumanBone::Chest, pose::HumanBone::Spine}) {
+            if (call.chest < 0 && instance->humanoid.valid) call.chest = instance->humanoid.slotBones[(size_t)slot];
+        }
+        if (call.chest < 0 && !boundary.empty()) call.chest = boundary.front();
+        if (call.chest >= 0) {
+            std::vector<Quaternion> rest(count);
+            anim::poseRigRotations(instance->rig.rest, instance->rig.parents.data(), count, rest.data());
+            const Quaternion r = rest[(size_t)call.chest];
+            call.chestForward = Quaternion(r.w, -r.x, -r.y, -r.z) * Vector3(0, 0, 1);
+        }
+    }
+    instance->restart();
+    if (!call.baseState.empty()) instance->play(call.baseState, 0, 0.0f);
+    if (!call.state.empty()) instance->play(call.state, call.layer, 0.0f);
+    system->preview(call.entity, 0.0f, &error);
+    if (prepare) {
+        call.baseFull = instance->currentState(0).fullPath;
+        call.stateFull = instance->currentState(call.layer).fullPath;
+        if (call.times.empty()) {
+            // one cycle of the layer's state as it plays: its length at its speed (and speed
+            // parameter) and the Animator's; a state that does not advance gives its start alone
+            const anim::AnimatorInstance::StateInfo info = instance->currentState(call.layer);
+            const float rate = std::fabs(info.speed * scene->getComponent<AnimatorComponent>(call.entity).speed);
+            const float length = info.length > 0.0f && rate > 0.0f && std::isfinite(rate) ? std::min(info.length / rate, LAYER_BLEND_MAX_TIME) : 0.0f;
+            for (size_t k = 0; k < LAYER_BLEND_TIMES; k++) call.times.push_back(length > 0.0f ? length * (float)k / (float)(LAYER_BLEND_TIMES - 1) : 0.0f);
+            if (length <= 0.0f) call.times.resize(1);
+        }
+        return done(true);
+    }
+    // seconds into both states, in steps of at most 1/60 s as the game advances
+    if (time > 0.0f) {
+        const int steps = std::max(1, (int)std::ceil(time / (1.0f / 60.0f)));
+        for (int i = 0; i < steps; i++) system->preview(call.entity, time / (float)steps, &error);
+    }
+    const anim::AnimatorLayerRun& run = instance->layers[(size_t)call.layer];
+    out->blended = instance->rigRotations();
+    out->solo.assign(count, Quaternion());
+    anim::poseRigRotations(instance->layerOutput(call.layer), instance->rig.parents.data(), count, out->solo.data());
+    out->mask = run.mask.empty() ? std::vector<float>(count, 1.0f) : std::vector<float>(run.mask.begin(), run.mask.begin() + (std::ptrdiff_t)count);
+    out->weight = run.weight;
+    // the layers below alone: this layer and those above it at weight 0, evaluated again at the same time
+    std::vector<float> weights;
+    for (size_t l = (size_t)call.layer; l < instance->layers.size(); l++) {
+        weights.push_back(instance->getLayerWeight((int)l));
+        instance->setLayerWeight((int)l, 0.0f);
+    }
+    system->preview(call.entity, 0.0f, &error);
+    out->below = instance->rigRotations();
+    for (size_t l = (size_t)call.layer; l < instance->layers.size(); l++) instance->setLayerWeight((int)l, weights[l - (size_t)call.layer]);
+    return done(true);
+}
+
+void finishLayerBlend(const LayerBlendCallPtr& state) {
+    std::vector<ProjectChecks::Finding> findings;
+    Json next;
+    if (state->maxAngle > state->limitDeg) {
+        char angle[32];
+        std::snprintf(angle, sizeof(angle), "%.1f", state->maxAngle);
+        const std::string where = "layer '" + state->layerName + "': " + state->worstBone + " is " + angle +
+                                  " degrees from where the blend should turn it (limit " + formattedLimit(state->limitDeg) + ")";
+        if (!state->meshSpace) {
+            next = {{"tool", "edit_animator_controller"},
+                    {"arguments", {{"path", state->controller},
+                                   {"ops", Json::array({{{"op", "set_layer"}, {"layer", state->layerName}, {"mesh_space_rotation", true}}})}}}};
+            findings.push_back(finding(state->controller, "warning", "anim-layer-twist",
+                                       where + ": the mask starts or stops below a bone it leaves out, so that bone follows the other side's "
+                                       "rotation (an upper body turned by the base layer's hips)",
+                                       "turn on Mesh Space Rotation on the layer: " + next["tool"].get<std::string>() + " " + next["arguments"].dump()));
+        } else {
+            findings.push_back(finding(state->controller, "warning", "anim-layer-twist",
+                                       where + " with Mesh Space Rotation on: fractional mask weights blend locally inside the mask, "
+                                       "and a hip turn past 180 degrees between the clips twists the torso",
+                                       "check the mask's weights (get_animation {mask, root}) and the two clips' hip rotations"));
+        }
+    }
+    Json findingsJson = Json::array();
+    for (const ProjectChecks::Finding& item : findings) {
+        Json f = ProjectChecks::toJson(item);
+        if (!next.is_null()) f["next"] = next;
+        findingsJson.push_back(f);
+    }
+    Json blend = {{"layer", state->layerName}, {"base_state", state->baseFull}, {"state", state->stateFull},
+                  {"mesh_space_rotation", state->meshSpace}, {"boundary_bones", state->boundary},
+                  {"max_angle_deg", rounded4(state->maxAngle)}, {"worst_bone", state->worstBone.empty() ? Json(nullptr) : Json(state->worstBone)},
+                  {"facing_delta_deg", state->facing ? Json(rounded4(*state->facing)) : Json(nullptr)}, {"samples", state->samples}};
+    Json result = {{"ok", findings.empty()}, {"layer_blend", blend}, {"findings", findingsJson}};
+    char numbers[96];
+    std::snprintf(numbers, sizeof(numbers), "%.2f degrees at %.2f s", state->maxAngle, state->worstTime);
+    std::string text = "layer_blend: '" + state->layerName + "' (" + state->stateFull + ") over " + state->baseFull + ": " +
+                       (state->bones.empty() ? std::string("no bone to compare (the layer's mask has no edge on this rig; pass bones)")
+                                             : state->worstBone + " off by " + numbers);
+    if (state->facing) {
+        std::snprintf(numbers, sizeof(numbers), "%.2f", *state->facing);
+        text += ", chest facing " + std::string(numbers) + " degrees off";
+    }
+    text += "; Mesh Space Rotation " + std::string(state->meshSpace ? "on" : "off") + "; ok: " + (findings.empty() ? "true" : "false") + ".";
+    if (!next.is_null()) text += "\nnext: " + next["tool"].get<std::string>() + " " + next["arguments"].dump();
+    state->job->succeed(text, result);
+}
+
+void layerBlendTick(const LayerBlendCallPtr& state) {
+    if (state->cancel->load()) {
+        state->job->markCancelled("Cancelled; check_animation writes nothing.");
+        return;
+    }
+    const float time = state->times[state->done];
+    LayerBlendPose pose;
+    std::string error;
+    if (!evaluateLayerBlend(*state, time, false, &pose, error)) {
+        state->job->fail("layer_blend: " + error + ".");
+        return;
+    }
+    Json bones = Json::object();
+    double worst = -1.0;
+    std::string worstBone;
+    for (size_t i = 0; i < state->bones.size(); i++) {
+        const size_t b = (size_t)state->bones[i];
+        // where the blend should put it: the layer's own rotation where the mask takes the bone,
+        // the layers' below where it does not (in between: their nlerp, as the pass computes)
+        const Quaternion target = anim::poseBlendRotation(pose.below[b], pose.solo[b], std::clamp(pose.weight * pose.mask[b], 0.0f, 1.0f));
+        const double angle = angleBetween(pose.blended[b], target);
+        bones[state->names[i]] = rounded4(angle);
+        if (angle > worst) {
+            worst = angle;
+            worstBone = state->names[i];
+        }
+    }
+    Json sample = {{"time", rounded4(time)}, {"max_angle_deg", worst < 0.0 ? Json(nullptr) : Json(rounded4(worst))}, {"bones", bones}};
+    if (state->chest >= 0) {
+        const size_t c = (size_t)state->chest;
+        const Quaternion target = anim::poseBlendRotation(pose.below[c], pose.solo[c], std::clamp(pose.weight * pose.mask[c], 0.0f, 1.0f));
+        const std::optional<double> facing = groundAngle(pose.blended[c] * state->chestForward, target * state->chestForward);
+        sample["facing_delta_deg"] = facing ? Json(rounded4(*facing)) : Json(nullptr);
+        if (facing && (!state->facing || *facing > *state->facing)) state->facing = facing;
+    }
+    state->samples.push_back(sample);
+    if (worst >= 0.0 && (state->worstBone.empty() || worst > state->maxAngle)) {
+        state->maxAngle = worst;
+        state->worstBone = worstBone;
+        state->worstTime = time;
+    }
+    state->done++;
+    if (state->done >= state->times.size()) {
+        finishLayerBlend(state);
+        return;
+    }
+    state->job->setProgress((double)state->done / (double)state->times.size(), "sampling");
+    state->ctx->app().requestRedraw();
+    getEditorHost().enqueueMainThreadTask([state]() { layerBlendTick(state); });
+}
+
+void checkLayerBlend(const CallPtr& call, SceneProject* sceneProject, Entity entity, const Json& given, double limitDeg) {
+    auto state = std::make_shared<LayerBlendCall>();
+    state->ctx = &call->ctx();
+    state->project = call->ctx().project();
+    state->sceneId = sceneProject->id;
+    state->entity = entity;
+    state->limitDeg = limitDeg;
+    const AnimatorComponent* animator = sceneProject->scene->findComponent<AnimatorComponent>(entity);
+    if (!animator) {
+        call->fail("layer_blend: the GameObject has no Animator (get_animator {entity}).");
+        return;
+    }
+    state->controller = state->project->assetHintToProjectPath(animator->controller.path, AssetPathBase::Assets);
+    // (the listing keeps layer_blend free-form to stay small: its members are checked here)
+    const char* const usage = " (layer_blend {layer, base_state?, state?, times?: [s], bones?: [paths or slots]}).";
+    if (!given.is_object() || !given.contains("layer") || !given["layer"].is_string()) {
+        call->fail(std::string("layer_blend needs layer: the name of a masked layer above the base layer (get_animator {controller})") + usage);
+        return;
+    }
+    for (auto it = given.begin(); it != given.end(); ++it) {
+        const Json& v = it.value();
+        const std::string& key = it.key();
+        bool ok = false;
+        if (key == "layer" || key == "base_state" || key == "state") ok = v.is_string();
+        else if (key == "times") ok = v.is_array() && std::all_of(v.begin(), v.end(), [](const Json& t) {
+            return t.is_number() && t.get<double>() >= 0.0 && t.get<double>() <= (double)LAYER_BLEND_MAX_TIME; });
+        else if (key == "bones") ok = v.is_array() && std::all_of(v.begin(), v.end(), [](const Json& b) { return b.is_string(); });
+        else {
+            call->fail("layer_blend: unknown key \"" + key + "\"" + usage);
+            return;
+        }
+        if (!ok) {
+            call->fail("layer_blend." + key + ": " + (key == "times" ? "seconds from 0 to 600" : key == "bones" ? "strings" : "a string") + usage);
+            return;
+        }
+    }
+    state->layerName = given["layer"].get<std::string>();
+    state->baseState = given.value("base_state", std::string());
+    state->state = given.value("state", std::string());
+    if (given.contains("times")) {
+        for (const Json& t : given["times"]) state->times.push_back(t.get<float>());
+        std::sort(state->times.begin(), state->times.end());
+    }
+    if (given.contains("bones")) {
+        for (const Json& b : given["bones"]) state->names.push_back(b.get<std::string>());
+    }
+    std::string error;
+    if (!evaluateLayerBlend(*state, 0.0f, true, nullptr, error)) {
+        call->fail("layer_blend: " + error + ".");
+        return;
+    }
+    state->cancel = std::make_shared<std::atomic<bool>>(false);
+    state->job = call->ctx().jobs().create("check_animation", "Check Animation");
+    auto cancel = state->cancel;
+    state->job->setCancelHandler([cancel]() { cancel->store(true); });
+    state->job->setProgress(0.0, "sampling");
+    const bool wait = !call->args().contains("wait") || call->args()["wait"].get<bool>();
+    const double timeout = call->args().contains("timeout_seconds") ? call->args()["timeout_seconds"].get<double>() : 120.0;
+    layerBlendTick(state);
+    call->detach();
+    replyWhenJobDone(call, state->job, wait, timeout, jobReply);
+}
+
 ToolResult jobReply(const McpJob& finished) {
     Json result = finished.result();
     result["job_id"] = finished.id();
@@ -901,6 +1273,17 @@ void checkAnimationTool(const CallPtr& call) {
             return;
         }
         recordAnimator(call, sceneProject, entity, args["record_seconds"].get<double>(), request->limits.footSlideMm);
+        return;
+    }
+    if (args.contains("layer_blend") || request->checks.count("layer_blend")) {
+        // the Animator's layer stack, not clips: it runs alone
+        if (entity == NULL_ENTITY || !args.contains("layer_blend")) {
+            call->fail("layer_blend compares a masked layer of a GameObject's Animator with its own clip: pass entity and "
+                       "layer_blend {layer} (base_state, state, times and bones are optional).");
+            return;
+        }
+        const double limit = args.contains("limits") ? args["limits"].value("layer_twist_deg", LAYER_TWIST_LIMIT_DEG) : LAYER_TWIST_LIMIT_DEG;
+        checkLayerBlend(call, sceneProject, entity, args["layer_blend"], limit);
         return;
     }
     if (args.contains("transition")) {
@@ -1280,7 +1663,7 @@ void optimizeAnimationTool(const CallPtr& call) {
     state->ctx = &call->ctx();
     state->root = project->getProjectPath();
     std::string error;
-    for (const Json& given : args["clips"]) {
+    for (const Json& given : args.value("clips", Json::array())) {
         NamedClip clip;
         if (!resolveNamedClip(project, given.get<std::string>(), clip, error)) {
             call->fail("clips: " + error);
@@ -1296,6 +1679,11 @@ void optimizeAnimationTool(const CallPtr& call) {
     if (args.contains("skin_distance_mm")) state->reduction.skinDistanceMm = args["skin_distance_mm"].get<double>();
     if (args.contains("joints")) {
         for (const Json& joint : args["joints"]) {
+            if (!joint.is_object() || !joint.contains("path") || !joint["path"].is_string() || !joint.contains("tolerance_mm") ||
+                !joint["tolerance_mm"].is_number()) {
+                call->fail("joints: give each entry a path (the bone's path) and a tolerance_mm (0.01 to 100).");
+                return;
+            }
             state->reduction.joints.push_back({joint["path"].get<std::string>(), joint["tolerance_mm"].get<double>()});
         }
     }
@@ -1377,8 +1765,9 @@ void registerAnimationQualityTools(McpRegistry& registry) {
         tool.title = "Check Animation";
         tool.description =
             "What clips cost and how good they are, measured through the runtime sampler: Memory, keys, Loop Match, root motion, "
-            "error against compare_to. Empty clips: the project, largest first. ok false is a successful call with findings. "
-            "Writes nothing. Guide: jasper://docs/animation.";
+            "error against compare_to; layer_blend {layer}: how far a masked Animator layer turns the torso off its own clip. Empty "
+            "clips: the project, largest first. ok false is a successful call with findings. Writes nothing. Guide: "
+            "jasper://docs/animation.";
         tool.inputSchema = object({
             {"clips", array(stringItem, ".anim, model#Clip, or a model (all its clips).")},
             {"entity", entityOrIndex},
@@ -1390,7 +1779,9 @@ void registerAnimationQualityTools(McpRegistry& registry) {
             {"feet", array(stringItem, "")},
             {"move_speed", number("m/s")},
             {"record_seconds", number("")},
-            {"limits", object({{"error_mm", number("")}, {"foot_slide_mm", number("")}, {"root_drift_mm", number("")}, {"pop_mm", number("")}})},
+            {"layer_blend", anyObject("")},
+            {"limits", object({{"error_mm", number("")}, {"foot_slide_mm", number("")}, {"root_drift_mm", number("")}, {"pop_mm", number("")},
+                               {"layer_twist_deg", number("")}})},
             {"top", withDefault(integer("", 1, 1000), (int)DEFAULT_TOP)},
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number("", 1, 3600), 120)}

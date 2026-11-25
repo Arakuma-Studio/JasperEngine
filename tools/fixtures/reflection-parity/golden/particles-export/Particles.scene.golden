@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 10
 guid: 7c734271a1338c26e76b34070c83450a
 id: 1
 name: Particles
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: auto
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]
@@ -33,13 +34,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_3d
 mainCamera: 1000
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 128
 shaderKeys:
   - type: blit
   - type: blit
@@ -82,12 +76,7 @@ entities:
         cullingMask: 4294967295
         target: [0, 1, 0]
         up: [0, 1, 0]
-        leftClip: <view>
-        rightClip: <view>
-        bottomClip: <view>
-        topClip: <view>
         yfov: 0.75
-        aspect: <view>
         nearClip: 0.1
         farClip: 100
         renderToTexture: false

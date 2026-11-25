@@ -1,5 +1,8 @@
 """Script lifecycle parity (script-lifecycle 12): the same scripted scene (Lua and C++ scripts) logs
-the same lifecycle in editor Play and in an exported Linux player, a scene reload included.
+the same lifecycle in editor Play and in an exported Linux player, a scene reload included. The
+player builds its scenes and prefabs from their cooked files (S98 D1, AC3): a C++ script's
+GameObject-pointer property reaches its target, and a prefab a script instantiates at runtime starts
+its C++ script.
 
 The Desktop build compiles the game (a C++ script ships only in a compiled game): set
 JASPER_SLOW_BUILD=1 to run it. It compiles as test_build.py's do: through ccache, a job per CPU of the
@@ -27,6 +30,12 @@ function Parity:init() print("parity init " .. self.gameObject.name) end
 function Parity:onEnable() print("parity enable " .. self.gameObject.name) end
 function Parity:start()
     print("parity start " .. self.gameObject.name)
+    -- in the scene the reload made, which lives on (one instantiated before it goes with it)
+    if self.gameObject.name == "Parent" and parityReloaded and not paritySpawned then
+        paritySpawned = true
+        local spawned = GameObject.instantiate("prefabs/Spawnee.prefab")
+        print("cooked spawned " .. tostring(spawned ~= nil))
+    end
     if not parityReloaded and self.gameObject.name == "Parent" then
         parityReloaded = true
         SceneManager.loadScene(SceneManager.currentSceneName)
@@ -39,9 +48,14 @@ return Parity
 
 CPP_HEADER = """#pragma once
 #include "ScriptBase.h"
+#include "ScriptProperty.h"
+#include "GameObject.h"
 
 class CppParity : public jasperengine::ScriptBase {
 public:
+    DPROPERTY("Buddy")
+    jasperengine::GameObject* buddy = nullptr;
+
     CppParity(jasperengine::Scene* scene, jasperengine::Entity entity);
     void init() override;
     void onEnable() override;
@@ -59,10 +73,46 @@ using namespace jasperengine;
 CppParity::CppParity(Scene* scene, Entity entity): ScriptBase(scene, entity) {}
 void CppParity::init() { Log::print("parity cpp init"); }
 void CppParity::onEnable() { Log::print("parity cpp enable"); }
-void CppParity::start() { Log::print("parity cpp start"); }
+void CppParity::start() {
+    Log::print("parity cpp start");
+    Log::print("cooked buddy %s", buddy ? buddy->getName().c_str() : "none");
+}
 void CppParity::onDisable() { Log::print("parity cpp disable"); }
 void CppParity::onDestroy() { Log::print("parity cpp destroy"); }
 """
+
+SPAWN_HEADER = """#pragma once
+#include "ScriptBase.h"
+
+class CppSpawned : public jasperengine::ScriptBase {
+public:
+    CppSpawned(jasperengine::Scene* scene, jasperengine::Entity entity);
+    void init() override;
+};
+"""
+
+SPAWN_SOURCE = """#include "CppSpawned.h"
+#include "Log.h"
+
+using namespace jasperengine;
+
+CppSpawned::CppSpawned(Scene* scene, Entity entity): ScriptBase(scene, entity) {}
+void CppSpawned::init() { Log::print("cooked spawn init"); }
+"""
+
+# what the cooked content adds, in Play and the player alike: the pointer property set, the
+# instantiated prefab's C++ script started
+COOKED = ["cooked buddy Parent", "cooked spawned true", "cooked spawn init"]
+
+
+def cooked_lines(lines) -> list[str]:
+    out = []
+    for line in lines:
+        at = line.find("cooked ")
+        if at >= 0:
+            out.append(line[at:].strip())
+    return out
+
 
 # both reach this point: two loads of the scene, the first unloaded in between (the C++ script
 # is the Child's second script: component order within each pass)
@@ -91,6 +141,14 @@ async def test_play_and_export_log_the_same_lifecycle(ed: Editor):
     await ed.call("attach_script", entity=child, path="Parity.lua")
     await ed.call("create_script", kind="cpp_script", name="CppParity", entity=child,
                   header_content=CPP_HEADER, source_content=CPP_SOURCE)
+    spawnee = (await ed.call("create_entity", name="Spawnee", type="empty"))["entity_id"]
+    await ed.call("create_script", kind="cpp_script", name="CppSpawned", entity=spawnee,
+                  header_content=SPAWN_HEADER, source_content=SPAWN_SOURCE)
+    await ed.call("create_prefab", entity=spawnee, path="prefabs/Spawnee.prefab")
+    # no scene holds it: the build ships it as a standalone prefab (a Lua path names nothing)
+    await ed.call("set_standalone_prefab", prefab="prefabs/Spawnee.prefab", standalone=True)
+    await ed.call("delete_entities", entities=[spawnee])
+    await ed.call("set_script_properties", entity=child, script="CppParity", values={"buddy": parent})
     saved = await ed.call("save_project", untitled_scene_dir="scenes")
     await ed.call("edit_build_scenes", action="set_start", scene=saved["scenes_in_build"][0]["id"])
     await ed.call("set_project_settings", values={
@@ -101,13 +159,16 @@ async def test_play_and_export_log_the_same_lifecycle(ed: Editor):
     })
 
     await ed.console_since(None)
-    await ed.call("eval_lua", code="parityReloaded = nil", allow_edit_mode=True)
+    await ed.call("eval_lua", code="parityReloaded = nil paritySpawned = nil", allow_edit_mode=True)
     started = await ed.call_raw("play", {"action": "start", "auto_pause": True, "fixed_fps": 60, "timeout_seconds": 900},
                                 timeout=1000)
     ed.check(not started.is_error, started.text[:1500])
     try:
-        await ed.call("wait", frames=4)
-        play = parity_lines(e["message"] for e in await ed.console_since())
+        # (the prefab is instantiated in the second load's start: its script's init comes after)
+        await ed.call("wait", frames=30)
+        messages = [e["message"] for e in await ed.console_since()]
+        play = parity_lines(messages)
+        play_cooked = cooked_lines(messages)
     finally:
         await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
     ed.check_eq(play[:len(EXPECTED)], EXPECTED, "editor Play")
@@ -129,6 +190,11 @@ async def test_play_and_export_log_the_same_lifecycle(ed: Editor):
     ed.check(not raw.is_error, raw.text)
     log = raw.value["log"]
     exported = parity_lines(log if isinstance(log, list) else str(log).splitlines())
-    print("[test] exported player:", exe, exported)
+    print("[test] exported player:", exe, exported, cooked_lines(log if isinstance(log, list) else str(log).splitlines()))
+    print("[test] editor Play cooked lines:", play_cooked)
     ed.check_eq(exported[:len(EXPECTED)], EXPECTED, "exported player")
     ed.check_eq(exported[:len(EXPECTED)], play[:len(EXPECTED)], "editor Play and the export agree")
+    exported_cooked = cooked_lines(log if isinstance(log, list) else str(log).splitlines())
+    for line in COOKED:
+        ed.check_in(line, play_cooked, "editor Play")
+        ed.check_in(line, exported_cooked, "exported player (cooked scenes and prefabs)")

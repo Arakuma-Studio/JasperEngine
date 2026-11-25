@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 10
 guid: 9833476a37f04d96e0e409177f514f7a
 id: 1
 name: Nested Scene
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: auto
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]
@@ -33,13 +34,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_2d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 128
 shaderKeys:
   - type: mesh
     properties: 3073
@@ -79,7 +73,6 @@ entities:
               name: ""
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             hasTexCoord1: true
@@ -95,15 +88,6 @@ entities:
             hasMorphTangent: false
         normAdjustJoint: 1
         normAdjustWeight: 1
-        aabb:
-          min: [-200, 0, 0]
-          max: [200, 60, 0]
-        verticesAABB:
-          min: [-200, 0, 0]
-          max: [200, 60, 0]
-        worldAABB:
-          min: [50, 60, 0]
-          max: [450, 120, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: false
@@ -175,7 +159,6 @@ entities:
                   name: ""
                 textureRect: [0, 0, 1, 1]
                 primitiveType: triangles
-                vertexCount: 6
                 faceCulling: false
                 textureShadow: true
                 hasTexCoord1: true
@@ -191,15 +174,6 @@ entities:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            aabb:
-              min: [-60, 0, 0]
-              max: [60, 260, 0]
-            verticesAABB:
-              min: [-60, 0, 0]
-              max: [60, 260, 0]
-            worldAABB:
-              min: [190, 120, 0]
-              max: [310, 380, 0]
             receiveLights: false
             receiveIBL: false
             castShadows: false
@@ -253,7 +227,6 @@ entities:
                       name: ""
                     textureRect: [0, 0, 1, 1]
                     primitiveType: triangles
-                    vertexCount: 6
                     faceCulling: false
                     textureShadow: true
                     hasTexCoord1: true
@@ -269,15 +242,6 @@ entities:
                     hasMorphTangent: false
                 normAdjustJoint: 1
                 normAdjustWeight: 1
-                aabb:
-                  min: [-40, 0, 0]
-                  max: [40, 40, 0]
-                verticesAABB:
-                  min: [-40, 0, 0]
-                  max: [40, 40, 0]
-                worldAABB:
-                  min: [210, 100, 0]
-                  max: [290, 140, 0]
                 receiveLights: false
                 receiveIBL: false
                 castShadows: false
@@ -370,7 +334,6 @@ entities:
                       name: ""
                     textureRect: [0, 0, 1, 1]
                     primitiveType: triangles
-                    vertexCount: 6
                     faceCulling: false
                     textureShadow: true
                     hasTexCoord1: true
@@ -386,15 +349,6 @@ entities:
                     hasMorphTangent: false
                 normAdjustJoint: 1
                 normAdjustWeight: 1
-                aabb:
-                  min: [-30, 0, 0]
-                  max: [30, 140, 0]
-                verticesAABB:
-                  min: [-30, 0, 0]
-                  max: [30, 140, 0]
-                worldAABB:
-                  min: [340, 270, 0]
-                  max: [400, 410, 0]
                 receiveLights: false
                 receiveIBL: false
                 castShadows: false
@@ -448,7 +402,6 @@ entities:
                           name: ""
                         textureRect: [0, 0, 1, 1]
                         primitiveType: triangles
-                        vertexCount: 6
                         faceCulling: false
                         textureShadow: true
                         hasTexCoord1: true
@@ -464,15 +417,6 @@ entities:
                         hasMorphTangent: false
                     normAdjustJoint: 1
                     normAdjustWeight: 1
-                    aabb:
-                      min: [-15, 0, 0]
-                      max: [15, 80, 0]
-                    verticesAABB:
-                      min: [-15, 0, 0]
-                      max: [15, 80, 0]
-                    worldAABB:
-                      min: [415, 310, 0]
-                      max: [445, 390, 0]
                     receiveLights: false
                     receiveIBL: false
                     castShadows: false
@@ -525,7 +469,6 @@ entities:
                           name: ""
                         textureRect: [0, 0, 1, 1]
                         primitiveType: triangles
-                        vertexCount: 6
                         faceCulling: false
                         textureShadow: true
                         hasTexCoord1: true
@@ -541,15 +484,6 @@ entities:
                         hasMorphTangent: false
                     normAdjustJoint: 1
                     normAdjustWeight: 1
-                    aabb:
-                      min: [-60, 0, 0]
-                      max: [60, 40, 0]
-                    verticesAABB:
-                      min: [-60, 0, 0]
-                      max: [60, 40, 0]
-                    worldAABB:
-                      min: [230, 310, 0]
-                      max: [350, 350, 0]
                     receiveLights: false
                     receiveIBL: false
                     castShadows: false
@@ -629,7 +563,6 @@ entities:
                           name: ""
                         textureRect: [0, 0, 1, 1]
                         primitiveType: triangles
-                        vertexCount: 6
                         faceCulling: false
                         textureShadow: true
                         hasTexCoord1: true
@@ -645,15 +578,6 @@ entities:
                         hasMorphTangent: false
                     normAdjustJoint: 1
                     normAdjustWeight: 1
-                    aabb:
-                      min: [-44, 0, 0]
-                      max: [44, 73, 0]
-                    verticesAABB:
-                      min: [-44, 0, 0]
-                      max: [44, 73, 0]
-                    worldAABB:
-                      min: [326, 450, 0]
-                      max: [414, 523, 0]
                     receiveLights: false
                     receiveIBL: false
                     castShadows: false
@@ -707,7 +631,6 @@ entities:
                               name: ""
                             textureRect: [0, 0, 1, 1]
                             primitiveType: triangles
-                            vertexCount: 6
                             faceCulling: false
                             textureShadow: true
                             hasTexCoord1: true
@@ -723,15 +646,6 @@ entities:
                             hasMorphTangent: false
                         normAdjustJoint: 1
                         normAdjustWeight: 1
-                        aabb:
-                          min: [-15, 0, 0]
-                          max: [15, 60, 0]
-                        verticesAABB:
-                          min: [-15, 0, 0]
-                          max: [15, 60, 0]
-                        worldAABB:
-                          min: [415, 450, 0]
-                          max: [445, 510, 0]
                         receiveLights: false
                         receiveIBL: false
                         castShadows: false
@@ -784,7 +698,6 @@ entities:
                               name: ""
                             textureRect: [0, 0, 1, 1]
                             primitiveType: triangles
-                            vertexCount: 6
                             faceCulling: false
                             textureShadow: true
                             hasTexCoord1: true
@@ -800,15 +713,6 @@ entities:
                             hasMorphTangent: false
                         normAdjustJoint: 1
                         normAdjustWeight: 1
-                        aabb:
-                          min: [-10, 0, 0]
-                          max: [10, 40, 0]
-                        verticesAABB:
-                          min: [-10, 0, 0]
-                          max: [10, 40, 0]
-                        worldAABB:
-                          min: [300, 450, 0]
-                          max: [320, 490, 0]
                         receiveLights: false
                         receiveIBL: false
                         castShadows: false
@@ -866,7 +770,6 @@ entities:
                               name: ""
                             textureRect: [0, 0, 1, 1]
                             primitiveType: triangles
-                            vertexCount: 6
                             faceCulling: false
                             textureShadow: true
                             hasTexCoord1: true
@@ -882,15 +785,6 @@ entities:
                             hasMorphTangent: false
                         normAdjustJoint: 1
                         normAdjustWeight: 1
-                        aabb:
-                          min: [-10, 0, 0]
-                          max: [10, 30, 0]
-                        verticesAABB:
-                          min: [-10, 0, 0]
-                          max: [10, 30, 0]
-                        worldAABB:
-                          min: [360, 410, 0]
-                          max: [380, 440, 0]
                         receiveLights: false
                         receiveIBL: false
                         castShadows: false
@@ -930,12 +824,7 @@ entities:
                         cullingMask: 4294967295
                         target: [0, 0, 0]
                         up: [0, 1, 0]
-                        leftClip: <view>
-                        rightClip: <view>
-                        bottomClip: <view>
-                        topClip: <view>
                         yfov: 0.75
-                        aspect: <view>
                         nearClip: -10
                         farClip: 10
                         renderToTexture: true
@@ -996,7 +885,6 @@ entities:
               name: ""
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 6
             faceCulling: false
             textureShadow: true
             hasTexCoord1: true
@@ -1012,15 +900,6 @@ entities:
             hasMorphTangent: false
         normAdjustJoint: 1
         normAdjustWeight: 1
-        aabb:
-          min: [-150, 0, 0]
-          max: [150, 30, 0]
-        verticesAABB:
-          min: [-150, 0, 0]
-          max: [150, 30, 0]
-        worldAABB:
-          min: [750, 30, 0]
-          max: [1050, 60, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: false

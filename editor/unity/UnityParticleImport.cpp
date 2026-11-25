@@ -60,9 +60,9 @@ namespace {
     // counter-clockwise here; Z rotations and Z angular speeds change sign. If a capture from
     // Unity shows otherwise, only this changes.
     constexpr float ROTATION_SIGN = -1.0f;
-    constexpr float PI = 3.14159265358979323846f;
+    constexpr float UNITY_PARTICLE_PI = 3.14159265358979323846f;
     // Unity stores rotations and angular speeds in radians; S20's are degrees
-    constexpr float RAD_TO_DEG = 180.0f / PI;
+    constexpr float RAD_TO_DEG = 180.0f / UNITY_PARTICLE_PI;
 
     // ------------------------------------------------------------------ the object graph
 
@@ -660,18 +660,18 @@ namespace {
             e.z = std::atan2(r10, r00);
         }else if (r20 < 0.0f){
             e.x = std::atan2(r01, r02);
-            e.y = PI * 0.5f;
+            e.y = UNITY_PARTICLE_PI * 0.5f;
             e.z = 0.0f;
         }else{
             e.x = std::atan2(-r01, -r02);
-            e.y = -PI * 0.5f;
+            e.y = -UNITY_PARTICLE_PI * 0.5f;
             e.z = 0.0f;
         }
-        return e * (180.0f / PI);
+        return e * (180.0f / UNITY_PARTICLE_PI);
     }
 
     Quaternion axisAngle(const Vector3& axis, float degrees){
-        const float half = degrees * PI / 360.0f;
+        const float half = degrees * UNITY_PARTICLE_PI / 360.0f;
         return Quaternion(std::cos(half), axis.x * std::sin(half), axis.y * std::sin(half), axis.z * std::sin(half));
     }
 
@@ -1429,7 +1429,7 @@ namespace {
         n.scrollSpeed = readMinMaxCurve(noise["scrollSpeed"], ctx, "noise scroll");
         n.positionAmount = readMinMaxCurve(noise["positionAmount"], ctx, "noise position", 1.0f, 1.0f);
         // degrees in Unity, radians per second at amount 1 here (as the roll the noise turns)
-        n.rotationAmount = readMinMaxCurve(noise["rotationAmount"], ctx, "noise rotation", ROTATION_SIGN * PI / 180.0f);
+        n.rotationAmount = readMinMaxCurve(noise["rotationAmount"], ctx, "noise rotation", ROTATION_SIGN * UNITY_PARTICLE_PI / 180.0f);
         n.sizeAmount = readMinMaxCurve(noise["sizeAmount"], ctx, "noise size");
         if (n.enabled){
             note(ctx, "noise-pattern", "the noise uses the engine's own 3D noise: the same parameters, another pattern" +

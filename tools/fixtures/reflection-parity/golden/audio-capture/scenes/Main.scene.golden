@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 10
 guid: eae9b3490159503b38ae9e91d480a3e1
 id: 2579869450
 name: Main
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: off
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]

@@ -14,6 +14,7 @@
 #include "mcp/McpContext.h"
 #include "mcp/McpDialogs.h"
 #include "mcp/McpJobs.h"
+#include "mcp/McpModelImport.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
@@ -23,6 +24,7 @@
 #include "util/ScriptStatus.h"
 
 #include "App.h"
+#include "Engine.h"
 #include "search/SearchPalette.h"
 #include "widget/ColorPickerWindow.h"
 #include "widget/CurveField.h"
@@ -677,9 +679,18 @@ void reportEditorStatus(const CallPtr& call) {
         else if (scene->playState != ScenePlayState::STOPPED) playing = true;
     }
 
+    // the FBX imports (S98 REQ-33): models still converting, with done/total
+    const JobPtr importJob = syncModelImportJob(ctx);
+    const Project::ModelImportProgress imports = project->getModelImportProgress();
     Json jobs = Json::array();
     for (const JobPtr& job : ctx.jobs().list()) {
-        if (!job->finished()) jobs.push_back(job->toJson(0));
+        if (job->finished()) continue;
+        Json item = job->toJson(0);
+        if (job == importJob) {
+            item["done"] = imports.done;
+            item["total"] = imports.total;
+        }
+        jobs.push_back(item);
     }
 
     const McpServerStatus status = server.status();
@@ -798,6 +809,8 @@ void reportEditorStatus(const CallPtr& call) {
         {"status_message", StatusBar::getTransientMessage()},
         {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
+        // fixed steps the per-frame cap dropped in this Play (Time.maximumFixedStepsPerFrame, S96)
+        {"physics", {{"dropped_fixed_steps", Engine::getDroppedFixedSteps()}}},
         // false: minimized or hidden, nothing is drawn (screenshots fail; a playing game updates)
         {"window", {{"visible", app.isWindowVisible()}}},
         {"dialog", dialog},
@@ -819,7 +832,15 @@ void reportEditorStatus(const CallPtr& call) {
     text += playing ? ". Playing." : ".";
     if (!unsavedScenes.empty()) text += " Unsaved scenes: " + unsavedScenes.dump() + ".";
     if (!jobs.empty()) text += " Running jobs: " + std::to_string(jobs.size()) + ".";
+    if (importJob) {
+        text += " Importing models: " + std::to_string(imports.done) + "/" + std::to_string(imports.total) + " (job " + importJob->id() +
+                "); they appear when ready.";
+    }
     if (!dialog.is_null()) text += " Open dialog: \"" + info.title + "\".";
+    if (Engine::getDroppedFixedSteps() > 0) {
+        text += " Dropped fixed steps: " + std::to_string(Engine::getDroppedFixedSteps()) +
+                " (frames needed more than the cap: Time.maximumDeltaTime's, or Time.maximumFixedStepsPerFrame when lower).";
+    }
     call->ok(text, data);
 }
 

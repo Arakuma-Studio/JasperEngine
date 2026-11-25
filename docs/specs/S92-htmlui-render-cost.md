@@ -583,8 +583,8 @@ which are rounded rectangles.
 
 - **R37** New fields are optional with defaults:
   - scene `htmlUiRenderMode` (default `overlay`) and `htmlUiMsaaSamples` (default 0). Absent used to
-    mean the camera pass, so the render mode bumps the scene format (8 -> 9): an older scene gets
-    `htmlUiRenderMode: camera` written in by its migration, and a cooked record older than 1.6 reads
+    mean the camera pass, so the render mode bumps the scene format (9 -> 10, after S98's 8 -> 9): an older scene gets
+    `htmlUiRenderMode: camera` written in by its migration, and a cooked record older than 1.9 reads
     as Camera (Deviations, Integration);
   - component `msaaSamples` (default 0);
   - the project's `htmlUiMsaaSamples` accepts 0 (a missing key decodes as 4).
@@ -1079,12 +1079,12 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   gate's other scenes pass against their goldens. On a real Mali or Adreno device: unverified (risk 4).
 - **Old scenes keep their render mode (lead's decision, replaces D4's "old ones too").** An absent
   `htmlUiRenderMode` used to mean the camera pass and means Overlay now, which AGENTS.md counts as a
-  changed meaning. Scene format 8 -> 9 (`sceneV8ToV9` in `editor/StreamMigrations.cpp`) writes
+  changed meaning. Scene format 9 -> 10 (`sceneV9ToV10` in `editor/StreamMigrations.cpp`, after S98's 8 -> 9) writes
   `htmlUiRenderMode: camera` into an older scene's settings map, unless it names a mode; a scene with no
   settings map is left alone, since adding one would change how its other absent keys decode. A cooked
-  record older than 1.6 reads as Camera (`SceneSettingsCodec.cpp`). New scenes, the templates and scenes
+  record older than 1.9 reads as Camera (`SceneSettingsCodec.cpp`). New scenes, the templates and scenes
   made at runtime get Overlay. Fixture `editor/tests/fixtures/migrations/scene-v8-html-ui.scene`; tests
-  `StreamMigrations.SceneV8ToV9KeepsTheCameraRenderMode`, `Migrations.SceneV8ToV9KeepsTheCameraRenderMode`,
+  `StreamMigrations.SceneV9ToV10KeepsTheCameraRenderMode`, `Migrations.OlderScenesKeepTheCameraRenderMode`,
   `CookedScene.SceneSettingsKeepHtmlUi` and `CookedScene.ReadsAnOlderMinorsContent`.
 - **R15/R57 is Screen Space - Overlay's (lead's decision).** Before S92 a game view drew the screen
   documents through a UI or orthographic camera (the canvas in world space), so an older scene whose
@@ -1093,6 +1093,12 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   placement through the camera in every view (`RenderSystem` passes `throughCamera` to
   `UIDocumentSystem::drawComposite`); Overlay keeps R15. Test `HtmlUIScene.CameraModeKeepsTheDocumentsInTheCanvasOfItsCamera`
   (a panned UI camera moves the documents in Camera mode, not in Overlay).
+- **Numbers at landing (the lead's order: S98, S78, then S92; `NUMBERS.md`).** Scene format 10 (S98 took 9),
+  cooked scene minor 1.9 (S96 1.6, S98 1.7, S78 1.8; S92's two values end the settings record, after
+  S78's Light Steps), built-in shader cache v69 (S78 took v66; v67 and v68 stay skipped: S92's own
+  intermediate programs may be in a host's shared cache under them). S98 deletes the generated
+  per-scene C++: the scene's render mode and samples reach a Compile build through the cooked scene,
+  the project's HTML UI MSAA through `game.json` (`PlayerConfig::htmlUiMsaa`, applied by `GameRunner`).
 - **Verification on the merged tree.** `WERROR=1 tools/build.sh linux` (no warning from S92's sources);
   `htmlui-tests` with S92's suites (frame reuse, layer cost, P1, primitives, clips, records, filters,
   batches, renderer, integration, particles, the scene composite, every `*Golden*` but the effect

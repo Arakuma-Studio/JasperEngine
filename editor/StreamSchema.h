@@ -37,6 +37,9 @@
 
 namespace jasperengine{
     enum class LodFadeMode;
+    enum class PivotPreset;
+    enum class RigidbodyMotionQuality;
+    enum class ScriptType;
     // T3's terrain settings (component/TerrainComponent.h, component/TerrainSurfaceLayer.h)
     enum class TerrainQualitySetting : int;
     enum class TerrainOffscreenShadows : int;

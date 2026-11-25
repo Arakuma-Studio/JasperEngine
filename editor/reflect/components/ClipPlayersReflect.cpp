@@ -9,7 +9,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/PoseAnimatorComponent.h"
@@ -28,7 +27,7 @@ namespace {
         // clamped to 0..1 by its decode and updateEntity
         JE_FIELD(PoseAnimatorComponent, weight, .flags = Clamped, .updateFlags = UpdateFlags_PoseAnimator_Reload, .min = 0.0f, .max = 1.0f,
                  .tooltip = "Blend over what the other animation wrote this frame."),
-        JE_FIELD(PoseAnimatorComponent, poseFrameRate, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
+        JE_FIELD(PoseAnimatorComponent, poseFrameRate, .flags = OmitIfDefault, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
                  .tooltip = "Frames per second the pose holds on (0: smooth). Each track steps from its previous key, so every key shows; held drawings.", .drawer = "poseFrameRate"),
     };
 
@@ -81,6 +80,10 @@ namespace {
         JE_FIELD(AnimationPlayerLayer, mask, .flags = OmitIfDefault, .updateFlags = kPlayerReload, .asset = AssetKind::AvatarMask,
                  .tooltip = "An Avatar Mask (.mask): which GameObjects the layer animates, and how much."),
         JE_FIELD(AnimationPlayerLayer, maskGuid, .flags = OmitIfDefault, .updateFlags = kPlayerReload, .label = "Mask GUID"),
+        // mesh-space-rotation spec R15, R44: written when true; ignored on layer 0 and Additive layers
+        JE_FIELD(AnimationPlayerLayer, meshSpaceRotation, .flags = OmitIfDefault, .updateFlags = kPlayerReload,
+                 .tooltip = "Bones where the mask starts or stops keep this layer's direction relative to the character, instead of following "
+                            "their parent."),
     };
 
 }
@@ -104,7 +107,7 @@ namespace {
         JE_FIELD(AnimationPlayerComponent, playAutomatically),
         JE_FIELD(AnimationPlayerComponent, speed),
         JE_FIELD(AnimationPlayerComponent, defaultFadeTime, .unit = Unit::Seconds),
-        JE_FIELD(AnimationPlayerComponent, poseFrameRate, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
+        JE_FIELD(AnimationPlayerComponent, poseFrameRate, .flags = OmitIfDefault, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
                  .tooltip = "Frames per second the poses hold on (0: smooth). Each track steps from its previous key, so every key shows; fades step too, events fire at their true times.", .drawer = "poseFrameRate"),
     };
 
@@ -172,7 +175,6 @@ const ComponentDesc kPoseAnimatorDesc{
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(PoseAnimatorComponent),
     .codec = &kPoseAnimatorCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createPoseAnimatorComponent),
     .extraKeys = kPoseAnimatorKnownKeys,
 };
 
@@ -183,7 +185,6 @@ const ComponentDesc kAnimationPlayerDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(AnimationPlayerComponent),
     .codec = &kAnimationPlayerCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createAnimationPlayerComponent),
     .extraKeys = kAnimationPlayerKnownKeys,
 };
 
@@ -194,7 +195,6 @@ const ComponentDesc kVertexAnimatorDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(VertexAnimatorComponent),
     .codec = &kVertexAnimatorCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createVertexAnimatorComponent),
     .extraKeys = kVertexAnimatorKnownKeys,
 };
 

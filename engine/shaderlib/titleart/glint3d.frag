@@ -89,7 +89,7 @@ void main() {
         if (o > radius) break;
         float x = float(o);
         float w = exp(-0.5 * x * x / (sigma * sigma));
-        s += texture(sampler2D(u_tgSrc, u_tgSrc_smp), uv + tg.p1.xy * x).rgb * w;
+        s += textureLod(sampler2D(u_tgSrc, u_tgSrc_smp), uv + tg.p1.xy * x, 0.0).rgb * w;
         ws += w;
     }
     frag_color = vec4(s / ws, 1.0);

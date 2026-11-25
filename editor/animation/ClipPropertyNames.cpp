@@ -14,7 +14,7 @@ using namespace jasperengine::editor;
 
 namespace{
 
-    std::string lowered(const std::string& text){
+    std::string clipPropertyLowered(const std::string& text){
         std::string out;
         for (char c : text){
             if (c != ' ' && c != '_') out += (char)std::tolower((unsigned char)c);
@@ -116,15 +116,15 @@ bool ClipPropertyNames::resolve(const std::string& component, const std::string&
     const std::string scriptSuffix = " (Script)";
     if (component.size() > scriptSuffix.size() && component.compare(component.size() - scriptSuffix.size(), scriptSuffix.size(), scriptSuffix) == 0){
         outComponent = "script:" + component.substr(0, component.size() - scriptSuffix.size());
-    }else if (lowered(component) == "gameobject"){
+    }else if (clipPropertyLowered(component) == "gameobject"){
         outComponent = "gameobject";
     }else if (component.compare(0, 7, "script:") != 0 && !rowsOf(component)){
         // a display name or another spelling of a key ("Image", "Light 2D", "RectTransform")
-        const std::string wanted = lowered(component);
+        const std::string wanted = clipPropertyLowered(component);
         for (int i = 0; i < ComponentTypeCount; i++){
             const ComponentType type = static_cast<ComponentType>(i);
-            if (lowered(Catalog::getComponentDisplayName(type)) != wanted && Catalog::getComponentName(type, true) != wanted &&
-                lowered(Catalog::getComponentName(type, false)) != wanted) continue;
+            if (clipPropertyLowered(Catalog::getComponentDisplayName(type)) != wanted && Catalog::getComponentName(type, true) != wanted &&
+                clipPropertyLowered(Catalog::getComponentName(type, false)) != wanted) continue;
             const std::string key = Catalog::getComponentName(type, true);
             if (std::find(std::begin(uiGraphics), std::end(uiGraphics), type) != std::end(uiGraphics)){
                 // a UI element's graphic: ui (a Button's state colours stay button.*)

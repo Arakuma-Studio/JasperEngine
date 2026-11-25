@@ -23,6 +23,15 @@ with open(os.environ["FAKE_GH_LOG"], "a") as log:
     log.write(json.dumps(sys.argv[1:]) + "\n")
 state = json.load(open(state_path)) if os.path.exists(state_path) else {}
 args = sys.argv[1:]
+# as the real gh: without GH_REPO or -R the repository comes from the working directory's git remote
+def in_checkout(d):
+    while not os.path.exists(os.path.join(d, ".git")):
+        if os.path.dirname(d) == d:
+            return False
+        d = os.path.dirname(d)
+    return True
+if not os.environ.get("GH_REPO") and "-R" not in args and not in_checkout(os.getcwd()):
+    sys.stderr.write("failed to determine base repo: not a git repository\n"); sys.exit(1)
 def save():
     json.dump(state, open(state_path, "w"))
 if args[:2] == ["release", "view"]:
@@ -64,6 +73,9 @@ class PrEvidence(unittest.TestCase):
         self.log = root / "gh.log"
         self.files = root / "files"
         self.files.mkdir()
+        # a checkout to run from, so gh can find the repository with no GH_REPO
+        self.checkout = root / "checkout"
+        (self.checkout / ".git").mkdir(parents=True)
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -77,7 +89,8 @@ class PrEvidence(unittest.TestCase):
     def run_script(self, *args: str) -> subprocess.CompletedProcess:
         env = dict(os.environ, PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}",
                    FAKE_GH_STATE=str(self.state), FAKE_GH_LOG=str(self.log))
-        return subprocess.run(["bash", str(SCRIPT), *args], env=env, capture_output=True, text=True)
+        env.pop("GH_REPO", None)
+        return subprocess.run(["bash", str(SCRIPT), *args], env=env, capture_output=True, text=True, cwd=self.checkout)
 
     def calls(self) -> list[list[str]]:
         if not self.log.exists():

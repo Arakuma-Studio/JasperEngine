@@ -14,6 +14,7 @@
 #include "tiny_gltf.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <map>
 #include <unordered_map>
@@ -416,7 +417,14 @@ std::shared_ptr<PoseSkin> pose::buildSkinFromGltf(const tinygltf::Model& gltf, c
 
 bool pose::resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
                            std::string* error, std::vector<std::string>* notes){
-    out = autoDetectHumanoid(skeleton, notes);
+    // the naming rules the model was imported with: a model imported before a rules change keeps
+    // the map it had (said, with the way to the new one)
+    const int rules = overrides.detectNameRules();
+    out = autoDetectHumanoid(skeleton, notes, rules);
+    if (notes && rules < HUMANOID_NAME_RULES && autoDetectHumanoid(skeleton, nullptr, HUMANOID_NAME_RULES).bones != out.bones){
+        notes->push_back("auto-detect reads this model's bone names as when it was imported; Reimport the model to apply "
+                         "the current naming (B- bone names, proxy bones never mapped)");
+    }
 
     for (int s = 0; s < HUMAN_BONE_COUNT; s++){
         const std::optional<std::string>& value = overrides.bones[s];
@@ -453,6 +461,44 @@ bool pose::resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& ov
     // the body map stands; bad hands and head overrides go back to auto-detect
     resolveExtraBonesOrAuto(skeleton, out, overrides.extraBones, extra, extraError, notes);
     return true;
+}
+
+void pose::noteSpineProxies(Scene* scene, Entity model, const HumanoidMap& map, std::vector<std::string>& notes){
+    const ModelComponent* modelComponent = scene && scene->isEntityCreated(model) ? scene->findComponent<ModelComponent>(model) : nullptr;
+    if (!modelComponent || !modelComponent->gltfModel) return;
+    // nodes and animations only, without the pooled-glTF lock: loads append buffers to a pooled
+    // parse, never nodes or animations
+    const tinygltf::Model& gltf = *modelComponent->gltfModel;
+    const int count = (int)gltf.nodes.size();
+    std::vector<bool> animated(count, false);
+    for (const tinygltf::Animation& animation : gltf.animations){
+        for (const tinygltf::AnimationChannel& channel : animation.channels){
+            if (channel.target_node >= 0 && channel.target_node < count) animated[channel.target_node] = true;
+        }
+    }
+    // loadGLTF's parents: the last node listing a node as a child
+    std::vector<int> parents(count, -1);
+    for (int i = 0; i < count; i++){
+        for (int child : gltf.nodes[i].children){
+            if (child >= 0 && child < count) parents[child] = i;
+        }
+    }
+    const std::string& hips = map.bones[boneIndex(HumanBone::Hips)];
+    for (int i = 0; i < count; i++){
+        if (!animated[i]) continue;
+        const std::string& name = gltf.nodes[i].name;
+        std::string lowered = name;
+        std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        if (lowered.find("spine") == std::string::npos || lowered.find("proxy") == std::string::npos) continue;
+        bool underHips = false;
+        int guard = 0;
+        for (int p = parents[i]; p >= 0 && guard++ < count && !underHips; p = parents[p]){
+            underHips = !hips.empty() && gltf.nodes[p].name == hips;
+        }
+        if (underHips) continue;
+        notes.push_back(name + " is a spine proxy bone for Unity's Spine Proxy. JasperEngine does not need it: "
+                        "turn on Mesh Space Rotation on the layer instead.");
+    }
 }
 
 bool pose::humanoidSidecarStamp(const std::string& modelPath, std::string& stamp, std::string* error){

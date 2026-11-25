@@ -55,7 +55,7 @@ TEST(Migrations, SceneV0ToV1) {
 // S92: a scene saved before the render mode existed (an editor-written 8, with a screen document)
 // loads in Screen Space - Camera, the mode it drew in, and writes it on its next save; a new scene
 // has the new default, Screen Space - Overlay, and writes nothing for it
-TEST(Migrations, SceneV8ToV9KeepsTheCameraRenderMode) {
+TEST(Migrations, OlderScenesKeepTheCameraRenderMode) {
     DecodedScene decoded = decodeSceneFile(fixture("migrations/scene-v8-html-ui.scene"));
     EXPECT_EQ(decoded.report.dropped(), 0u);
     EXPECT_EQ(decoded.report.versionRead, 8);

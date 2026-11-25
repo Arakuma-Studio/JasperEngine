@@ -9,10 +9,21 @@
 #include "object/physics/Buoyancy.h"
 #include "object/physics/CharacterController.h"
 #include "object/physics/CharacterController2D.h"
+#ifdef JASPERENGINE_PHYSICS_2D
+#include "object/physics/Joint2D.h"
+#include "component/Joint2DComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+#include "object/physics/Joint3D.h"
+#include "component/Joint3DComponent.h"
+#include "component/RigidbodyComponent.h"
+#endif
 #include "object/spline/Spline.h"
 #include "object/spline/SplineAnimate.h"
 #include "object/spline/SplineExtrude.h"
 #include "object/spline/SplineInstantiate.h"
+#include "object/sound/AudioSourceSlots.h"
 
 #include "subsystem/RenderSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -314,7 +325,8 @@ void GameObject::removeParent(){
 
 namespace {
     // the direct children of `entity` with a Transform, in Hierarchy order: its branch follows it
-    // in the Transform array (parents before children), children are the ones it parents
+    // in the Transform array (parents before children), children are the ones it parents. A further
+    // Audio Source of `entity` is a component in Unity, not a child: its slot entity is left out.
     std::vector<Entity> directChildren(Scene* scene, Entity entity){
         std::vector<Entity> children;
         auto transforms = scene->getComponentArray<Transform>();
@@ -323,8 +335,11 @@ namespace {
         const size_t start = transforms->getIndex(entity);
         const size_t last = scene->findBranchLastIndex(entity);
         for (size_t i = start + 1; i <= last && i < transforms->size(); i++){
-            if (transforms->getComponentFromIndex(i).parent == entity)
-                children.push_back(transforms->getEntity(i));
+            if (transforms->getComponentFromIndex(i).parent != entity)
+                continue;
+            const Entity child = transforms->getEntity(i);
+            if (!AudioSourceSlots::isSlot(scene, child))
+                children.push_back(child);
         }
         return children;
     }
@@ -470,6 +485,32 @@ void GameObject::removeCharacterController2D(){
     if (scene->findComponent<CharacterController2DComponent>(entity))
         scene->removeComponent<CharacterController2DComponent>(entity);
 }
+
+Joint2D GameObject::addJoint2D(Joint2DType type){
+    if (!scene->findComponent<Rigidbody2DComponent>(entity) || !scene->findComponent<Transform>(entity)){
+        Log::error("addJoint2D: %s has no Rigidbody 2D", scene->getEntityName(entity).c_str());
+        return Joint2D(scene, NULL_ENTITY);
+    }
+    // its own GameObject under the body, as the editor makes joints: it goes with the body
+    const Entity joint = scene->createEntity();
+    scene->addComponent<Transform>(joint, Transform());
+    scene->setEntityName(joint, "Joint 2D");
+    scene->addEntityChild(entity, joint, false);
+    Joint2DComponent component = makeJoint2D(type);
+    component.bodyA = entity;
+    scene->addComponent<Joint2DComponent>(joint, component);
+    return Joint2D(scene, joint);
+}
+
+std::vector<Joint2D> GameObject::getJoints2D() const{
+    std::vector<Joint2D> joints;
+    auto array = scene->getComponentArray<Joint2DComponent>();
+    for (size_t i = 0; i < array->size(); i++){
+        if (array->getComponentFromIndex(i).bodyA == entity)
+            joints.emplace_back(scene, array->getEntity(i));
+    }
+    return joints;
+}
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -491,6 +532,31 @@ CharacterController GameObject::getCharacterController(){
 void GameObject::removeCharacterController(){
     if (scene->findComponent<CharacterControllerComponent>(entity))
         scene->removeComponent<CharacterControllerComponent>(entity);
+}
+
+Joint3D GameObject::addJoint3D(Joint3DType type){
+    if (!scene->findComponent<RigidbodyComponent>(entity) || !scene->findComponent<Transform>(entity)){
+        Log::error("addJoint3D: %s has no Rigidbody", scene->getEntityName(entity).c_str());
+        return Joint3D(scene, NULL_ENTITY);
+    }
+    const Entity joint = scene->createEntity();
+    scene->addComponent<Transform>(joint, Transform());
+    scene->setEntityName(joint, "Joint 3D");
+    scene->addEntityChild(entity, joint, false);
+    Joint3DComponent component = makeJoint3D(type);
+    component.bodyA = entity;
+    scene->addComponent<Joint3DComponent>(joint, component);
+    return Joint3D(scene, joint);
+}
+
+std::vector<Joint3D> GameObject::getJoints3D() const{
+    std::vector<Joint3D> joints;
+    auto array = scene->getComponentArray<Joint3DComponent>();
+    for (size_t i = 0; i < array->size(); i++){
+        if (array->getComponentFromIndex(i).bodyA == entity)
+            joints.emplace_back(scene, array->getEntity(i));
+    }
+    return joints;
 }
 
 Buoyancy GameObject::getBuoyancy(){

@@ -253,7 +253,7 @@ TEST(SceneDiff, PrefabsListIsKeyedByGuid) {
 
 TEST(SceneDiff, MigratesBaseline) {
     // a v0 baseline: the old default shadow quality (low) reads as auto after migration, the
-    // derived values go, the screen documents keep the camera pass (S92, format 9); only the real
+    // derived values go, the screen documents keep the camera pass (S92, format 10); only the real
     // edit remains
     const std::string v0 = "id: 1\nname: Test\nscene:\n  shadowQuality: low\nsceneType: scene_3d\nentities:\n" +
                            entity(10, "A", "[0, 0, 0]", "        worldPosition: [0, 0, 0]\n");

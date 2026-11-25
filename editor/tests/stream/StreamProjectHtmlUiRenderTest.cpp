@@ -4,12 +4,12 @@
 // project.yaml's HTML UI rendering fields (S16 R25, R30, AC19): htmlUiGlyphAtlasMiB,
 // htmlUiSdfPrimitives and htmlUiTransformAwareText take their defaults when a project saved before
 // them loads, round-trip, are clamped into their range, are undoable through
-// HtmlUiRenderSettingsCmd and reach an exported player through the generated main.cpp. S92 (R16,
-// AC15): htmlUiMsaaSamples takes 0 (Auto, new projects), a project without it has 4, and both
-// exports carry the value. The scene's HTML UI settings are undoable through ScenePropertyCmd
+// HtmlUiRenderSettingsCmd and reach an exported player through game.json (S98 D1). S92 (R16,
+// AC15): htmlUiMsaaSamples takes 0 (Auto, new projects), a project without it has 4, and game.json
+// carries the value. The scene's HTML UI settings are undoable through ScenePropertyCmd
 // (the scene Inspector's and set_scene_settings' edit).
 
-#include "Generator.h"
+#include "cook/GameConfig.h"
 #include "Project.h"
 #include "Stream.h"
 #include "Workspace.h"
@@ -17,12 +17,7 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "player/PlayerConfig.h"
 
-#include "TempDir.h"
-
 #include <gtest/gtest.h>
-
-#include <fstream>
-#include <sstream>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -82,23 +77,6 @@ TEST(StreamProjectHtmlUiRender, CommandIsUndoable) {
     EXPECT_TRUE(project.getHtmlUiRenderSettings() == before);
 }
 
-TEST(StreamProjectHtmlUiRender, ExportCarriesThem) {
-    jasperengine::test::TempDir dir;
-    Generator generator;
-    HtmlUiRenderSettings settings;
-    settings.glyphAtlasMiB = 24;
-    settings.sdfPrimitives = false;
-    settings.transformAwareText = true;
-    generator.configure({}, "game", {}, {}, dir.path(), dir.path() / ".jasperengine", dir.path() / "assets", dir.path() / "lua", {}, 20,
-                        Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(), TagsAndLayers(), 4,
-                        ThreadingProjectSettings(), settings);
-    std::ifstream in(dir.path() / ".jasperengine" / "generated" / "main.cpp");
-    ASSERT_TRUE(in.good());
-    std::stringstream text;
-    text << in.rdbuf();
-    EXPECT_NE(text.str().find("UIDocumentSystem::setHtmlUiRenderOptions(24, false, true);"), std::string::npos);
-}
-
 TEST(StreamProjectHtmlUiRender, MsaaAutoForNewProjectsFourWithoutTheKey) {
     Project project;
     EXPECT_EQ(project.getHtmlUiMsaaSamples(), 0) << "a new project is Auto";
@@ -124,22 +102,15 @@ TEST(StreamProjectHtmlUiRender, MsaaAutoForNewProjectsFourWithoutTheKey) {
 }
 
 TEST(StreamProjectHtmlUiRender, ExportsCarryMsaaAuto) {
-    jasperengine::test::TempDir dir;
-    Generator generator;
-    generator.configure({}, "game", {}, {}, dir.path(), dir.path() / ".jasperengine", dir.path() / "assets", dir.path() / "lua", {}, 20,
-                        Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(), TagsAndLayers(),
-                        Project().getHtmlUiMsaaSamples());
-    std::ifstream in(dir.path() / ".jasperengine" / "generated" / "main.cpp");
-    ASSERT_TRUE(in.good());
-    std::stringstream text;
-    text << in.rdbuf();
-    EXPECT_NE(text.str().find("UIDocumentSystem::setPreferredSampleCount(0);"), std::string::npos);
+    // every build reads game.json (S98 D1): a new project's Auto (0) is what it carries
+    Project project;
+    const jasperengine::player::PlayerConfig game = makeGameConfig(project, GameConfigTarget());
+    EXPECT_EQ(game.htmlUiMsaa, 0);
 
-    // the prebuilt player's game.json: 0 written and read; a game.json without it is Auto too
+    // 0 written and read; a game.json without it is Auto too
     using jasperengine::player::PlayerConfig;
     PlayerConfig config;
     EXPECT_EQ(config.htmlUiMsaa, 0);
-    config.htmlUiMsaa = 0;
     PlayerConfig read;
     read.htmlUiMsaa = 4;
     std::string error;

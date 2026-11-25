@@ -128,15 +128,19 @@ async def test_setup(ed: Editor):
                                                                 "post_processing": {"palette": S["pico"], "palette_enabled": False}})
     texture_value = {"path": HERO_PNG, "min_filter": "nearest", "mag_filter": "nearest"}
     for name, at in (("Hero", HERO_AT), ("Villain", VILLAIN_AT)):
-        made = await ed.call("create_entity", scene=scene, type="sprite", name=name, position=[at[0], at[1], 0],
-                             values={"mesh": {M + "baseColorTexture": texture_value},
-                                     "sprite": {"pivotPreset": "center", "width": 64, "height": 64}})
-        entity = made["entity_id"]
-        S[name] = entity
-        await ed.call("set_properties", scene=scene, entity=entity, values={"mesh": {M + "shader": "library:sprite"}})
-        await ed.call("set_properties", scene=scene, entity=entity, values={"mesh": {
-            M + "shaderFeatures": ["PALETTE_SWAP"],
-            M + "shaderPalettes": {"u_palette": {"source": S["asset_path"]}}}})
+        # in one batch, so no frame runs between the calls: the Sprite's mesh gets its submesh at its
+        # first frame, and an edit of submeshes[0].material before that must reach it all the same
+        made = await ed.call("batch", calls=[
+            {"tool": "create_entity", "arguments": {
+                "scene": scene, "type": "sprite", "name": name, "position": [at[0], at[1], 0],
+                "values": {"mesh": {M + "baseColorTexture": texture_value},
+                           "sprite": {"pivotPreset": "center", "width": 64, "height": 64}}}},
+            {"tool": "set_properties", "arguments": {"scene": scene, "entity": name, "values": {"mesh": {M + "shader": "library:sprite"}}}},
+            {"tool": "set_properties", "arguments": {"scene": scene, "entity": name, "values": {"mesh": {
+                M + "shaderFeatures": ["PALETTE_SWAP"],
+                M + "shaderPalettes": {"u_palette": {"source": S["asset_path"]}}}}}}])
+        ed.check_eq(made["failed"], 0, f"{name}: created and bound in one batch: {[r for r in made['results'] if not r.get('ok')]}")
+        S[name] = made["results"][0]["structured"]["entity_id"]
     await ed.call("select_scene", scene=scene)
 
 
