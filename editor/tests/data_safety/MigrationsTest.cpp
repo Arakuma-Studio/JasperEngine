@@ -6,6 +6,7 @@
 #include "support/EditorTestSupport.h"
 
 #include "DocumentFile.h"
+#include "Scene.h"
 #include "util/Prefab.h"
 
 #include <gtest/gtest.h>
@@ -32,9 +33,11 @@ TEST(Migrations, SceneV0ToV1) {
     // and nothing else changes but what the later migrations change (scene 1 -> 2: the old
     // default shadow quality Low is Auto, a light's shadow bias is in texels; 3 -> 4: the
     // transforms' derived values are not written; 5 -> 6: the Line and Trail Renderers' curves
-    // in S27's form, none here) and what a frame computes (a Light's world direction, S63)
+    // in S27's form, none here; 8 -> 9: the screen documents keep Screen Space - Camera) and what
+    // a frame computes (a Light's world direction, S63)
     YAML::Node expected = YAML::Load(readText(fixture("migrations/scene-v0.scene")));
     expected["scene"]["shadowQuality"] = "auto";
+    expected["scene"]["htmlUiRenderMode"] = "camera";
     for (YAML::Node entity : expected["entities"]) {
         if (entity["components"] && entity["components"]["light"] && entity["components"]["light"]["shadowBias"])
             entity["components"]["light"]["shadowBias"] = 1.0f;
@@ -47,6 +50,34 @@ TEST(Migrations, SceneV0ToV1) {
     }
     std::string why;
     EXPECT_TRUE(structurallyEqual(withoutKey(saved, "formatVersion"), expected, &why)) << why;
+}
+
+// S92: a scene saved before the render mode existed (an editor-written 8, with a screen document)
+// loads in Screen Space - Camera, the mode it drew in, and writes it on its next save; a new scene
+// has the new default, Screen Space - Overlay, and writes nothing for it
+TEST(Migrations, OlderScenesKeepTheCameraRenderMode) {
+    DecodedScene decoded = decodeSceneFile(fixture("migrations/scene-v8-html-ui.scene"));
+    EXPECT_EQ(decoded.report.dropped(), 0u);
+    EXPECT_EQ(decoded.report.versionRead, 8);
+    ASSERT_EQ(decoded.report.infos(), 1u);
+    EXPECT_EQ(decoded.report.issues[0].kind, LoadIssueKind::Migrated);
+    EXPECT_FALSE(decoded.scene->isModified);
+    ASSERT_TRUE(decoded.scene && decoded.scene->scene);
+    EXPECT_EQ(decoded.scene->scene->getHtmlUiRenderMode(), UIRenderMode::CAMERA);
+
+    const YAML::Node saved = encodeScene(decoded);
+    EXPECT_EQ(saved["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
+    EXPECT_EQ(saved["scene"]["htmlUiRenderMode"].as<std::string>(), "camera");
+    DecodedScene again = decodeSceneText(DocumentFiles::text(saved), "scene-v8-html-ui.scene");
+    EXPECT_EQ(again.report.versionRead, StreamMigrations::currentVersion(DocumentKind::Scene));
+    EXPECT_EQ(again.scene->scene->getHtmlUiRenderMode(), UIRenderMode::CAMERA);
+
+    DecodedScene fresh = decodeSceneText(DocumentFiles::text(encodeScene(decoded)), "fresh.scene");
+    fresh.scene->scene->setHtmlUiRenderMode(SceneSettings().htmlUiRenderMode);
+    const YAML::Node freshSaved = encodeScene(fresh);
+    EXPECT_FALSE(freshSaved["scene"]["htmlUiRenderMode"]);
+    DecodedScene reopened = decodeSceneText(DocumentFiles::text(freshSaved), "fresh.scene");
+    EXPECT_EQ(reopened.scene->scene->getHtmlUiRenderMode(), UIRenderMode::OVERLAY);
 }
 
 TEST(Migrations, NewerFormatGated) {

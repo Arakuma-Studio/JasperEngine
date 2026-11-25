@@ -639,9 +639,18 @@ inline int raise_lua_error(lua_State* L, const char* fmt, ...)
     std::abort();
 }
 
-[[noreturn]] LUABRIDGE_COLD_NOINLINE inline void raise_exception_error(lua_State* L, const std::exception& e)
+// JasperEngine (S92 R26): a C++ exception becomes a Lua error in two steps. Its message goes onto
+// the Lua stack inside the handler; the error is raised after the handler ends. A longjmp out of a
+// catch block would leave the exception alive and the runtime's caught-exception stack holding it.
+LUABRIDGE_COLD_NOINLINE inline bool push_exception_message(lua_State* L, const std::exception& e)
 {
-    raise_lua_error(L, "%s", e.what());
+    lua_pushstring(L, e.what());
+    return true;
+}
+
+[[noreturn]] LUABRIDGE_COLD_NOINLINE inline void raise_pushed_error(lua_State* L)
+{
+    raise_lua_error(L, "%s", lua_tostring(L, -1));
     std::abort();
 }
 
@@ -2961,6 +2970,35 @@ public:
 namespace luabridge {
 namespace detail {
 
+// JasperEngine (S92 R26, docs/specs/S92-htmlui-render-cost.md): while a call's arguments decode,
+// a bound class that does not match is recorded here instead of raising, so the error is raised
+// once the arguments decoded so far are destroyed (lua_error is a longjmp: it runs no destructor).
+// The record applies only to the frame that opened it: its token sits in that frame's stack slot,
+// so a call nested in a decode (a __gc run by an allocation) still raises in place. A token is
+// never reused, so a record left behind by a longjmp out of a decode (a memory error) never matches.
+struct ArgumentDecodeScope
+{
+    lua_State* L = nullptr;
+    int slot = 0;
+    void* token = nullptr;
+    bool failed = false;
+    int index = 0;
+    const char* expected = nullptr;
+    const char* got = nullptr;
+};
+
+struct ArgumentDecodeState
+{
+    ArgumentDecodeScope scope;
+    std::uintptr_t serial = 0;
+};
+
+inline ArgumentDecodeState& argument_decode_state() noexcept
+{
+    static thread_local ArgumentDecodeState state;
+    return state;
+}
+
 class Userdata
 {
 private:
@@ -2976,11 +3014,13 @@ private:
                               const void* registryClassKey,
                               bool canBeConst)
     {
+        const bool fullUserdata = lua_type(L, index) == LUA_TUSERDATA;
+
         const int result = lua_getmetatable(L, index); 
         if (result == 0 || !lua_istable(L, -1))
         {
             lua_rawgetp(L, LUA_REGISTRYINDEX, registryClassKey); 
-            return throwBadArg(L, index);
+            return badArgument(L, index);
         }
 
         lua_rawgetp(L, -1, getConstKey()); 
@@ -2998,6 +3038,15 @@ private:
         {
             if (lua_rawequal(L, -1, -2)) 
             {
+                // JasperEngine (S92, S95 REQ-2): only a full userdata is an object. A class's
+                // metatable is a table whose own metatable is that class's: it matched here, and
+                // its null userdata pointer was used as the object
+                if (! fullUserdata)
+                {
+                    lua_pop(L, 1); 
+                    return badArgument(L, index);
+                }
+
                 lua_pop(L, 2); 
                 return static_cast<Userdata*>(lua_touserdata(L, index));
             }
@@ -3008,7 +3057,7 @@ private:
             {
                 
                 lua_pop(L, 2); 
-                return throwBadArg(L, index);
+                return badArgument(L, index);
             }
 
             lua_remove(L, -2); 
@@ -3018,6 +3067,9 @@ private:
 
     static bool isInstance(lua_State* L, int index, const void* registryKey)
     {
+        if (lua_type(L, index) != LUA_TUSERDATA)
+            return false;
+
         const auto result = lua_getmetatable(L, index); 
         if (result == 0)
             return false;
@@ -3053,11 +3105,42 @@ private:
 
     }
 
+    // the class table getClass pushed is on the top of the stack
+    static Userdata* badArgument(lua_State* L, int index)
+    {
+        ArgumentDecodeScope& scope = argument_decode_state().scope;
+        if (scope.L != L || lua_gettop(L) < scope.slot || lua_touserdata(L, scope.slot) != scope.token)
+            return throwBadArg(L, index);
+
+        const int top = lua_gettop(L);
+        if (! scope.failed)
+        {
+            scope.failed = true;
+            scope.index = index;
+            badArgumentNames(L, index, scope.expected, scope.got);
+        }
+
+        lua_settop(L, top - 1);
+        return nullptr;
+    }
+
     static Userdata* throwBadArg(lua_State* L, int index)
+    {
+        const char* expected = nullptr;
+        const char* got = nullptr;
+        badArgumentNames(L, index, expected, got);
+
+        luaL_argerror(L, index, lua_pushfstring(L, "%s expected, got %s", expected, got));
+        return nullptr;
+    }
+
+    // Both names stay valid after the stack is popped: they are the type names held by class
+    // metatables, which the registry keeps, or lua_typename's static strings
+    static void badArgumentNames(lua_State* L, int index, const char*& expected, const char*& got)
     {
         LUABRIDGE_ASSERT(lua_istable(L, -1) || lua_isnil(L, -1)); 
 
-        const char* expected = 0;
+        expected = nullptr;
         if (lua_isnil(L, -1)) 
         {
             expected = "unregistered class";
@@ -3069,7 +3152,7 @@ private:
             lua_pop(L, 1); 
         }
 
-        const char* got = nullptr;
+        got = nullptr;
         if (lua_isuserdata(L, index))
         {
             lua_getmetatable(L, index); 
@@ -3090,9 +3173,6 @@ private:
             lua_pop(L, 1); 
             got = lua_typename(L, lua_type(L, index));
         }
-
-        luaL_argerror(L, index, lua_pushfstring(L, "%s expected, got %s", expected, got));
-        return nullptr;
     }
 
 public:
@@ -3113,6 +3193,17 @@ public:
         auto* clazz = getClass(L, index, detail::getConstRegistryKey<T>(), detail::getClassRegistryKey<T>(), canBeConst);
         if (! clazz)
             return nullptr;
+
+        return static_cast<T*>(clazz->getPointer());
+    }
+
+    // JasperEngine (S92, S95 REQ-2): a member call's object, argument 1. Unlike get, nil is not
+    // a null object: it raises the bad-self error any other value that is not a T raises
+    template <class T>
+    static T* getSelf(lua_State* L, bool canBeConst)
+    {
+        auto* clazz = getClass(L, 1, detail::getConstRegistryKey<T>(), detail::getClassRegistryKey<T>(), canBeConst);
+        LUABRIDGE_ASSERT(clazz != nullptr);
 
         return static_cast<T*>(clazz->getPointer());
     }
@@ -5988,10 +6079,176 @@ auto make_arguments_list_impl([[maybe_unused]] lua_State* L, std::index_sequence
     return tupleize(unwrap_argument_or_error<std::tuple_element_t<Indices, ArgsPack>>(L, Indices, Start)...);
 }
 
+// JasperEngine (S92 R26): arguments that may hold memory (a std::string, a container, a LuaRef)
+// decode into a result first, inside an ArgumentDecodeScope; a failure is raised by
+// raise_argument_decode_failure once they are destroyed. A pack of trivially destructible values
+// leaves nothing behind a longjmp, so it keeps the decoder that raises in place.
+template <class T>
+using decoded_argument_t = std::decay_t<decltype(*Stack<T>::get(std::declval<lua_State*>(), 0))>;
+
+template <class T>
+constexpr bool argument_decodes_in_place()
+{
+    using U = remove_cvref_t<T>;
+    using C = std::remove_cv_t<std::remove_pointer_t<U>>;
+
+    if constexpr (! std::is_trivially_destructible_v<decoded_argument_t<T>>)
+        return false;
+    else if constexpr (std::is_arithmetic_v<U> || std::is_enum_v<U> || std::is_pointer_v<U>)
+        return true;
+    else if constexpr (std::is_class_v<C>)
+        return IsUserdata<C>::value && ! IsContainer<C>::value;
+    else
+        return false;
+}
+
+template <class ArgsPack, std::size_t... Indices>
+constexpr bool arguments_decode_in_place(std::index_sequence<Indices...>)
+{
+    return (argument_decodes_in_place<std::tuple_element_t<Indices, ArgsPack>>() && ...);
+}
+
+template <class ArgsPack>
+inline constexpr bool arguments_decode_in_place_v = arguments_decode_in_place<ArgsPack>(std::make_index_sequence<std::tuple_size_v<ArgsPack>>());
+
+struct ArgumentDecodeFailure
+{
+    bool failed = false;
+    int argument = 0;       // Error decoding argument #argument: ec
+    std::error_code ec;
+    bool badClass = false;  // luaL_argerror(index, "<expected> expected, got <got>")
+    int index = 0;
+    const char* expected = nullptr;
+    const char* got = nullptr;
+};
+
+template <class T>
+std::optional<decoded_argument_t<T>> decode_argument(lua_State* L, std::size_t index, std::size_t start, const ArgumentDecodeScope& scope, void* token, ArgumentDecodeFailure& failure)
+{
+    if (failure.failed)
+        return std::nullopt;
+
+    // the token's slot is the first one past the call's arguments: what lies beyond them reads as
+    // "none" one slot higher, as it did without the token
+    const int stackIndex = static_cast<int>(index + start);
+    const int readIndex = stackIndex >= scope.slot ? stackIndex + 1 : stackIndex;
+
+    auto result = Stack<T>::get(L, readIndex);
+    if (scope.token == token && scope.failed)
+    {
+        failure.failed = true;
+        failure.badClass = true;
+        failure.index = scope.index == readIndex ? stackIndex : scope.index;
+        failure.expected = scope.expected;
+        failure.got = scope.got;
+        return std::nullopt;
+    }
+
+    if (! result)
+    {
+        failure.failed = true;
+        failure.argument = static_cast<int>(index + 1);
+        failure.ec = result.error();
+        return std::nullopt;
+    }
+
+    return std::optional<decoded_argument_t<T>>(std::move(*result));
+}
+
+// Same evaluation order as make_arguments_list_impl (the compiler's order of a call's arguments),
+// so the argument reported is the one stock LuaBridge reports
+template <class ArgsPack, std::size_t Start, std::size_t... Indices>
+auto decode_arguments_impl(lua_State* L, ArgumentDecodeFailure& failure, std::index_sequence<Indices...>)
+{
+    ArgumentDecodeState& state = argument_decode_state();
+    const ArgumentDecodeScope outer = state.scope;
+    void* const token = reinterpret_cast<void*>(++state.serial);
+
+    lua_pushlightuserdata(L, token);
+    state.scope = ArgumentDecodeScope();
+    state.scope.L = L;
+    state.scope.slot = lua_gettop(L);
+    state.scope.token = token;
+
+    auto decoded = tupleize(decode_argument<std::tuple_element_t<Indices, ArgsPack>>(L, Indices, Start, state.scope, token, failure)...);
+
+    lua_settop(L, state.scope.slot - 1);
+    state.scope = outer;
+    return decoded;
+}
+
+// Decodes ArgsPack from the stack, from index Start, without raising: tuple<optional<value>...>,
+// every optional set unless failure says why not
+template <class ArgsPack, std::size_t Start>
+auto decode_arguments(lua_State* L, ArgumentDecodeFailure& failure)
+{
+    return decode_arguments_impl<ArgsPack, Start>(L, failure, std::make_index_sequence<std::tuple_size_v<ArgsPack>>());
+}
+
+// numbered: a call's argument ("Error decoding argument #n: ..."), else a property's value (the
+// error code's message alone), as each raised before
+[[noreturn]] LUABRIDGE_COLD_NOINLINE inline void raise_argument_decode_failure(lua_State* L, const ArgumentDecodeFailure& failure, bool numbered)
+{
+    if (failure.badClass)
+        luaL_argerror(L, failure.index, lua_pushfstring(L, "%s expected, got %s", failure.expected, failure.got));
+
+    if (numbered)
+        raise_argument_error(L, failure.argument, failure.ec);
+
+    raise_error_code(L, failure.ec);
+}
+
+template <class Decoded, std::size_t... Indices>
+auto unwrap_decoded_arguments(Decoded&& decoded, std::index_sequence<Indices...>)
+{
+    return tupleize(std::move(*std::get<Indices>(decoded))...);
+}
+
 template <class ArgsPack, std::size_t Start>
 auto make_arguments_list(lua_State* L)
 {
-    return make_arguments_list_impl<ArgsPack, Start>(L, std::make_index_sequence<std::tuple_size_v<ArgsPack>>());
+    using Sequence = std::make_index_sequence<std::tuple_size_v<ArgsPack>>;
+
+    if constexpr (arguments_decode_in_place_v<ArgsPack>)
+    {
+        return make_arguments_list_impl<ArgsPack, Start>(L, Sequence());
+    }
+    else
+    {
+        ArgumentDecodeFailure failure;
+        {
+            auto decoded = decode_arguments<ArgsPack, Start>(L, failure);
+            if (! failure.failed)
+                return unwrap_decoded_arguments(std::move(decoded), Sequence());
+        }
+
+        raise_argument_decode_failure(L, failure, true);
+    }
+}
+
+// A property setter's new value, at Index
+template <class T, std::size_t Index>
+auto decode_property_value(lua_State* L)
+{
+    if constexpr (argument_decodes_in_place<T>())
+    {
+        auto result = Stack<T>::get(L, static_cast<int>(Index));
+        if (! result)
+            raise_error_code(L, result.error());
+
+        return std::move(*result);
+    }
+    else
+    {
+        ArgumentDecodeFailure failure;
+        {
+            auto decoded = decode_arguments<std::tuple<T>, Index>(L, failure);
+            if (! failure.failed)
+                return std::move(*std::get<0>(decoded));
+        }
+
+        raise_argument_decode_failure(L, failure, false);
+    }
 }
 
 template <std::size_t Index = 0, class... Types>
@@ -6441,13 +6698,10 @@ inline int newindex_metamethod(lua_State* L)
     return 0;
 }
 
+// JasperEngine (S92 R26): formatted by Lua, so no std::stringstream is alive when the error leaves
 inline int read_only_error(lua_State* L)
 {
-    std::stringstream ss;
-
-    ss << "'" << lua_tostring(L, lua_upvalueindex(1)) << "' is read-only";
-
-    raise_lua_error(L, "%s", ss.str().c_str());
+    raise_lua_error(L, "'%s' is read-only", lua_tostring(L, lua_upvalueindex(1)));
 
     return 0;
 }
@@ -6535,13 +6789,14 @@ struct property_getter
 {
     static int call(lua_State* L)
     {
-        C* c = Userdata::get<C>(L, 1, true);
+        C* c = Userdata::getSelf<C>(L, true);
 
         T C::** mp = static_cast<T C::**>(lua_touserdata(L, lua_upvalueindex(1)));
 
         Result result;
 
 #if LUABRIDGE_HAS_EXCEPTIONS
+        bool threw = false;
         try
         {
 #endif
@@ -6551,8 +6806,11 @@ struct property_getter
         }
         catch (const std::exception& e)
         {
-            raise_exception_error(L, e);
+            threw = push_exception_message(L, e);
         }
+
+        if (threw)
+            raise_pushed_error(L);
 #endif
 
         if (! result)
@@ -6591,11 +6849,7 @@ struct property_setter<T, void>
         T* ptr = static_cast<T*>(lua_touserdata(L, lua_upvalueindex(1)));
         LUABRIDGE_ASSERT(ptr != nullptr);
 
-        auto result = Stack<T>::get(L, 1);
-        if (! result)
-            raise_error_code(L, result.error());
-
-        *ptr = std::move(*result);
+        *ptr = decode_property_value<T, 1>(L);
 
         return 0;
     }
@@ -6606,26 +6860,26 @@ struct property_setter
 {
     static int call(lua_State* L)
     {
-        C* c = Userdata::get<C>(L, 1, false);
+        C* c = Userdata::getSelf<C>(L, false);
 
         T C::** mp = static_cast<T C::**>(lua_touserdata(L, lua_upvalueindex(1)));
 
 #if LUABRIDGE_HAS_EXCEPTIONS
+        bool threw = false;
         try
         {
 #endif
-            auto result = Stack<T>::get(L, 2);
-            if (! result)
-                raise_error_code(L, result.error());
-
-            c->** mp = std::move(*result);
+            c->** mp = decode_property_value<T, 2>(L);
 
 #if LUABRIDGE_HAS_EXCEPTIONS
         }
         catch (const std::exception& e)
         {
-            raise_exception_error(L, e);
+            threw = push_exception_message(L, e);
         }
+
+        if (threw)
+            raise_pushed_error(L);
 #endif
 
         return 0;
@@ -6657,6 +6911,7 @@ struct function
         Result result;
 
 #if LUABRIDGE_HAS_EXCEPTIONS
+        bool threw = false;
         try
         {
 #endif
@@ -6666,8 +6921,11 @@ struct function
         }
         catch (const std::exception& e)
         {
-            raise_exception_error(L, e);
+            threw = push_exception_message(L, e);
         }
+
+        if (threw)
+            raise_pushed_error(L);
 #endif
 
         if (! result)
@@ -6682,6 +6940,7 @@ struct function
         Result result;
 
 #if LUABRIDGE_HAS_EXCEPTIONS
+        bool threw = false;
         try
         {
 #endif
@@ -6693,8 +6952,11 @@ struct function
         }
         catch (const std::exception& e)
         {
-            raise_exception_error(L, e);
+            threw = push_exception_message(L, e);
         }
+
+        if (threw)
+            raise_pushed_error(L);
 #endif
 
         if (! result)
@@ -6711,6 +6973,7 @@ struct function<void, ArgsPack, Start>
     static int call(lua_State* L, F&& func)
     {
 #if LUABRIDGE_HAS_EXCEPTIONS
+        bool threw = false;
         try
         {
 #endif
@@ -6720,8 +6983,11 @@ struct function<void, ArgsPack, Start>
         }
         catch (const std::exception& e)
         {
-            raise_exception_error(L, e);
+            threw = push_exception_message(L, e);
         }
+
+        if (threw)
+            raise_pushed_error(L);
 #endif
 
         return 0;
@@ -6731,6 +6997,7 @@ struct function<void, ArgsPack, Start>
     static int call(lua_State* L, T* ptr, F&& func)
     {
 #if LUABRIDGE_HAS_EXCEPTIONS
+        bool threw = false;
         try
         {
 #endif
@@ -6742,8 +7009,11 @@ struct function<void, ArgsPack, Start>
         }
         catch (const std::exception& e)
         {
-            raise_exception_error(L, e);
+            threw = push_exception_message(L, e);
         }
+
+        if (threw)
+            raise_pushed_error(L);
 #endif
 
         return 0;
@@ -6757,7 +7027,7 @@ int invoke_member_function(lua_State* L)
 
     LUABRIDGE_ASSERT(isfulluserdata(L, lua_upvalueindex(1)));
 
-    T* ptr = Userdata::get<T>(L, 1, false);
+    T* ptr = Userdata::getSelf<T>(L, false);
 
     const F& func = *static_cast<const F*>(lua_touserdata(L, lua_upvalueindex(1)));
     LUABRIDGE_ASSERT(func != nullptr);
@@ -6772,7 +7042,7 @@ int invoke_const_member_function(lua_State* L)
 
     LUABRIDGE_ASSERT(isfulluserdata(L, lua_upvalueindex(1)));
 
-    const T* ptr = Userdata::get<T>(L, 1, true);
+    const T* ptr = Userdata::getSelf<T>(L, true);
 
     const F& func = *static_cast<const F*>(lua_touserdata(L, lua_upvalueindex(1)));
     LUABRIDGE_ASSERT(func != nullptr);
@@ -6787,12 +7057,13 @@ int invoke_member_cfunction(lua_State* L)
 
     LUABRIDGE_ASSERT(isfulluserdata(L, lua_upvalueindex(1)));
 
-    T* t = Userdata::get<T>(L, 1, false);
+    T* t = Userdata::getSelf<T>(L, false);
 
     const F& func = *static_cast<const F*>(lua_touserdata(L, lua_upvalueindex(1)));
     LUABRIDGE_ASSERT(func != nullptr);
 
 #if LUABRIDGE_HAS_EXCEPTIONS
+    bool threw = false;
     try
     {
 #endif
@@ -6802,8 +7073,11 @@ int invoke_member_cfunction(lua_State* L)
     }
     catch (const std::exception& e)
     {
-        raise_exception_error(L, e);
+        threw = push_exception_message(L, e);
     }
+
+    if (threw)
+        raise_pushed_error(L);
     
     return 0;
 #endif
@@ -6816,12 +7090,13 @@ int invoke_const_member_cfunction(lua_State* L)
 
     LUABRIDGE_ASSERT(isfulluserdata(L, lua_upvalueindex(1)));
 
-    const T* t = Userdata::get<T>(L, 1, true);
+    const T* t = Userdata::getSelf<T>(L, true);
 
     const F& func = *static_cast<const F*>(lua_touserdata(L, lua_upvalueindex(1)));
     LUABRIDGE_ASSERT(func != nullptr);
 
 #if LUABRIDGE_HAS_EXCEPTIONS
+    bool threw = false;
     try
     {
 #endif
@@ -6831,8 +7106,11 @@ int invoke_const_member_cfunction(lua_State* L)
     }
     catch (const std::exception& e)
     {
-        raise_exception_error(L, e);
+        threw = push_exception_message(L, e);
     }
+
+    if (threw)
+        raise_pushed_error(L);
     
     return 0;
 #endif
@@ -6863,6 +7141,35 @@ int invoke_proxy_functor(lua_State* L)
     return function<typename FnTraits::result_type, typename FnTraits::argument_types, 1>::call(L, func);
 }
 
+// JasperEngine (S92, S95 REQ-2): a function bound as a member of a class takes the object as
+// its first argument. A pointer parameter takes nil as a null object; for the object, nil is the
+// bad-self error a member function raises
+template <class Self>
+inline void check_proxy_self([[maybe_unused]] lua_State* L)
+{
+    if constexpr (std::is_pointer_v<Self>)
+    {
+        if (lua_isnil(L, 1))
+            Userdata::getSelf<std::remove_cv_t<std::remove_pointer_t<Self>>>(L, true);
+    }
+}
+
+template <class F>
+int invoke_proxy_member_function(lua_State* L)
+{
+    check_proxy_self<function_argument_or_void_t<0, F>>(L);
+
+    return invoke_proxy_function<F>(L);
+}
+
+template <class F>
+int invoke_proxy_member_functor(lua_State* L)
+{
+    check_proxy_self<function_argument_or_void_t<0, std::remove_reference_t<F>>>(L);
+
+    return invoke_proxy_functor<F>(L);
+}
+
 #if LUABRIDGE_SAFE_LUA_C_EXCEPTION_HANDLING && LUABRIDGE_HAS_EXCEPTIONS
 inline int invoke_safe_cfunction(lua_State* L)
 {
@@ -6870,14 +7177,18 @@ inline int invoke_safe_cfunction(lua_State* L)
 
     auto func = lua_tocfunction(L, lua_upvalueindex(1));
 
+    bool threw = false;
     try
     {
         return func(L);
     }
     catch (const std::exception& e)
     {
-        raise_exception_error(L, e);
+        threw = push_exception_message(L, e);
     }
+
+    if (threw)
+        raise_pushed_error(L);
 
     return 0;
 }
@@ -6911,6 +7222,92 @@ int invoke_proxy_destructor(lua_State* L)
     return 1;
 }
 
+// Pre-check of an overload: can its arguments possibly decode? A false means Stack<T>::get would fail for
+// certain, so the call would only raise (through luaL_argerror for a userdata parameter: lua_getinfo plus a walk of
+// package.loaded in pushglobalfuncname, about 100 microseconds per miss) and the dispatcher can skip it without
+// running it. A true says nothing: the overload still runs under lua_pcall as it always did. This is deliberately
+// NOT Stack<T>::isInstance for every type: get is what decides a call, and it is laxer than isInstance for bool
+// (anything converts), std::string (numbers convert), pointers (nil) and enums (EnumWrapper takes anything). A type
+// not listed here answers true, the old behaviour. Never raises, leaves the stack balanced.
+using overload_check_t = bool (*)(lua_State*);
+
+template <class T>
+inline bool overload_arg_may_decode([[maybe_unused]] lua_State* L, [[maybe_unused]] int index)
+{
+    using U = remove_cvref_t<T>;
+    using C = std::remove_cv_t<std::remove_pointer_t<U>>;
+
+    if constexpr (std::is_same_v<U, bool> || std::is_same_v<U, lua_State*>)
+    {
+        return true;
+    }
+    else if constexpr (std::is_arithmetic_v<U> || std::is_same_v<U, const char*>)
+    {
+        return static_cast<bool>(Stack<U>::get(L, index));
+    }
+    else if constexpr (std::is_same_v<U, std::string>)
+    {
+        const int type = lua_type(L, index);
+        return type == LUA_TSTRING || type == LUA_TNUMBER;
+    }
+    else if constexpr (std::is_class_v<C> && IsUserdata<C>::value && !IsContainer<C>::value)
+    {
+        // nil: a pointer takes it, a reference fails with its own message: leave that to the real decoder
+        return lua_isnil(L, index) || Userdata::isInstance<C>(L, index);
+    }
+    else
+    {
+        return true;
+    }
+}
+
+template <class ArgsPack, std::size_t Start, std::size_t... Indices>
+inline bool overload_args_may_decode_impl([[maybe_unused]] lua_State* L, std::index_sequence<Indices...>)
+{
+    return (overload_arg_may_decode<std::tuple_element_t<Indices, ArgsPack>>(L, static_cast<int>(Indices + Start)) && ...);
+}
+
+// Same pack and same Start as the make_arguments_list<ArgsPack, Start> of the overload it guards
+template <class ArgsPack, std::size_t Start>
+inline bool overload_args_may_decode(lua_State* L)
+{
+    const bool mayDecode = overload_args_may_decode_impl<ArgsPack, Start>(L, std::make_index_sequence<std::tuple_size_v<ArgsPack>>());
+
+#if ! defined(NDEBUG) || defined(LUABRIDGE_FORCE_ASSERT_RELEASE)
+    // JasperEngine (S92 R27): a check that says no must only skip a call that fails to decode
+    if (! mayDecode)
+    {
+        ArgumentDecodeFailure failure;
+        static_cast<void>(decode_arguments<ArgsPack, Start>(L, failure));
+        LUABRIDGE_ASSERT(failure.failed);
+    }
+#endif
+
+    return mayDecode;
+}
+
+// Sets entry[3] of the overload entry on the top of the stack (no entry[3]: always tried, as before)
+template <class ArgsPack, std::size_t Start>
+inline void set_overload_check(lua_State* L)
+{
+    lua_pushlightuserdata(L, reinterpret_cast<void*>(static_cast<overload_check_t>(&overload_args_may_decode<ArgsPack, Start>)));
+    lua_rawseti(L, -2, 3);
+}
+
+template <class T, class F>
+inline void set_member_overload_check(lua_State* L)
+{
+    if constexpr (! is_any_cfunction_pointer_v<F>)
+        set_overload_check<function_arguments_t<F>, (std::is_member_function_pointer_v<F> ? 2 : 1)>(L);
+}
+
+template <class F>
+inline void set_function_overload_check(lua_State* L)
+{
+    if constexpr (! is_any_cfunction_pointer_v<F>)
+        set_overload_check<function_arguments_t<F>, 1>(L);
+}
+
 template <bool Member>
 inline int try_overload_functions(lua_State* L)
 {
@@ -6922,33 +7319,39 @@ inline int try_overload_functions(lua_State* L)
     const int idx_overloads = nargs + 1;
     const int num_overloads = get_length(L, idx_overloads);
 
-    lua_createtable(L, num_overloads, 0);
-    const int idx_errors = nargs + 2;
-    int nerrors = 0;
+    // error messages of overloads that really ran and failed; a table only once one has
+    lua_pushnil(L);
+    const int idx_raised = nargs + 2;
 
-    lua_pushnil(L);  
-    while (lua_next(L, idx_overloads) != 0)
+    // First pass: nothing is built for the overloads a call cannot match
+    for (int overload = 1; overload <= num_overloads; ++overload)
     {
+        lua_rawgeti(L, idx_overloads, overload);
         LUABRIDGE_ASSERT(lua_istable(L, -1));
 
         lua_rawgeti(L, -1, 1);
         LUABRIDGE_ASSERT(lua_isnumber(L, -1));
-
         const int overload_arity = static_cast<int>(lua_tointeger(L, -1));
+        lua_pop(L, 1);
+
         if (overload_arity >= 0 && overload_arity != effective_args)
         {
-            
-            lua_pushfstring(L, "Skipped overload #%d with unmatched arity of %d instead of %d", nerrors, overload_arity, effective_args);
-            lua_rawseti(L, idx_errors, ++nerrors);
-
-            lua_pop(L, 2); 
+            lua_pop(L, 1);
             continue;
         }
 
-        lua_pop(L, 1); 
+        lua_rawgeti(L, -1, 3);
+        const auto check = reinterpret_cast<overload_check_t>(lua_touserdata(L, -1));
+        lua_pop(L, 1);
 
-        lua_pushnumber(L, 2);
-        lua_gettable(L, -2);
+        if (check != nullptr && ! check(L))
+        {
+            lua_pop(L, 1);
+            continue;
+        }
+
+        lua_rawgeti(L, -1, 2);
+        lua_remove(L, -2);
         LUABRIDGE_ASSERT(lua_isfunction(L, -1));
 
         for (int i = 1; i <= nargs; ++i)
@@ -6956,21 +7359,73 @@ inline int try_overload_functions(lua_State* L)
 
         const int err = lua_pcall(L, nargs, LUA_MULTRET, 0);
         if (err == LUABRIDGE_LUA_OK)
+            return lua_gettop(L) - idx_raised;
+
+        if (err != LUA_ERRRUN)
+            return lua_error_x(L);
+
+        if (lua_isnil(L, idx_raised))
         {
-            
-            return lua_gettop(L) - nargs - 4; 
-        }
-        else if (err == LUA_ERRRUN)
-        {
-            
-            lua_rawseti(L, idx_errors, ++nerrors);
-        }
-        else
-        {
-            return lua_error_x(L);  
+            lua_createtable(L, 0, 1);
+            lua_replace(L, idx_raised);
         }
 
-        lua_pop(L, 1); 
+        lua_rawseti(L, idx_raised, overload);
+    }
+
+    // Every overload failed: this is a wrong call, an error is raised either way, so now pay for the message. An
+    // overload the check skipped runs to produce its own error text, so the message is the same as ever.
+    lua_createtable(L, num_overloads, 0);
+    const int idx_errors = nargs + 3;
+    int nerrors = 0;
+
+    for (int overload = 1; overload <= num_overloads; ++overload)
+    {
+        lua_rawgeti(L, idx_overloads, overload);
+
+        lua_rawgeti(L, -1, 1);
+        const int overload_arity = static_cast<int>(lua_tointeger(L, -1));
+        lua_pop(L, 1);
+
+        if (overload_arity >= 0 && overload_arity != effective_args)
+        {
+            lua_pushfstring(L, "Skipped overload #%d with unmatched arity of %d instead of %d", nerrors, overload_arity, effective_args);
+            lua_rawseti(L, idx_errors, ++nerrors);
+            lua_pop(L, 1);
+            continue;
+        }
+
+        if (lua_istable(L, idx_raised))
+        {
+            lua_rawgeti(L, idx_raised, overload);
+            if (! lua_isnil(L, -1))
+            {
+                lua_rawseti(L, idx_errors, ++nerrors);
+                lua_pop(L, 1);
+                continue;
+            }
+            lua_pop(L, 1);
+        }
+
+        lua_rawgeti(L, -1, 2);
+        lua_remove(L, -2);
+
+        for (int i = 1; i <= nargs; ++i)
+            lua_pushvalue(L, i);
+
+        const int err = lua_pcall(L, nargs, LUA_MULTRET, 0);
+        if (err == LUABRIDGE_LUA_OK)
+        {
+            // JasperEngine (S92 R27): only a check that said no for a call that decodes gets here; in a
+            // release build the call still runs rather than being dropped
+            LUABRIDGE_ASSERT(err != LUABRIDGE_LUA_OK);
+            return lua_gettop(L) - idx_errors;
+        }
+
+        if (err != LUA_ERRRUN)
+            return lua_error_x(L);
+
+        lua_rawseti(L, idx_errors, ++nerrors);
     }
 
     lua_Debug debug;
@@ -6984,7 +7439,7 @@ inline int try_overload_functions(lua_State* L)
     }
     lua_concat(L, nerrors * 2 + 1);
 
-    return lua_error_x(L); 
+    return lua_error_x(L);
 }
 
 inline void push_function(lua_State* L, lua_CFunction fp, const char* debugname)
@@ -7039,7 +7494,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(T*, Params...), const c
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7048,7 +7503,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(T&, Params...), const c
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7057,7 +7512,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(T*, Params...) noexcept
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7066,7 +7521,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(T&, Params...) noexcept
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7075,7 +7530,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(const T*, Params...), c
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7084,7 +7539,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(const T&, Params...), c
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7093,7 +7548,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(const T*, Params...) no
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class ReturnType, class... Params>
@@ -7102,7 +7557,7 @@ void push_member_function(lua_State* L, ReturnType (*fp)(const T&, Params...) no
     using FnType = decltype(fp);
 
     lua_pushlightuserdata(L, reinterpret_cast<void*>(fp));
-    lua_pushcclosure_x(L, &invoke_proxy_function<FnType>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<FnType>, debugname, 1);
 }
 
 template <class T, class F, class = std::enable_if<
@@ -7115,7 +7570,7 @@ void push_member_function(lua_State* L, F&& f, const char* debugname)
     static_assert(std::is_same_v<T, remove_cvref_t<std::remove_pointer_t<function_argument_or_void_t<0, F>>>>);
 
     lua_newuserdata_aligned<F>(L, std::forward<F>(f));
-    lua_pushcclosure_x(L, &invoke_proxy_functor<F>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_functor<F>, debugname, 1);
 }
 
 template <class T, class U, class ReturnType, class... Params>
@@ -7270,56 +7725,56 @@ template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C*), const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C&), const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C&)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C&)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C*, lua_State*), const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C*, lua_State*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C*, lua_State*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C&, lua_State*), const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C&, lua_State*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C&, lua_State*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C*) noexcept, const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C*) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C*) noexcept>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C&) noexcept, const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C&) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C&) noexcept>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C*, lua_State*) noexcept, const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_getter(lua_State* L, T (*getter)(const C&, lua_State*) noexcept, const char* debugname)
 {
     lua_pushlightuserdata(L, reinterpret_cast<void*>(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<T (*)(const C&, lua_State*) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<T (*)(const C&, lua_State*) noexcept>, debugname, 1);
 }
 
 template <class C>
@@ -7336,7 +7791,7 @@ void push_class_property_getter(lua_State* L, T getter, const char* debugname)
     static_assert(std::is_same_v<std::decay_t<std::remove_reference_t<std::remove_pointer_t<FirstArg>>>, C>);
 
     lua_newuserdata_aligned<T>(L, std::move(getter));
-    lua_pushcclosure_x(L, &invoke_proxy_functor<T>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_functor<T>, debugname, 1);
 }
 
 template <class T, class = std::enable_if_t<
@@ -7425,56 +7880,56 @@ template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C*, T), const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C*, T)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C*, T)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C&, T), const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C&, T)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C&, T)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C*, T, lua_State*), const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C*, T, lua_State*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C*, T, lua_State*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C&, T, lua_State*), const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C&, T, lua_State*)>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C&, T, lua_State*)>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C*, T) noexcept, const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C*, T) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C*, T) noexcept>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C&, T) noexcept, const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C&, T) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C&, T) noexcept>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C*, T, lua_State*) noexcept, const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C*, T, lua_State*) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C*, T, lua_State*) noexcept>, debugname, 1);
 }
 
 template <class C, class T>
 void push_class_property_setter(lua_State* L, void (*setter)(C&, T, lua_State*) noexcept, const char* debugname)
 {
     lua_pushlightuserdata( L, reinterpret_cast<void*>(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_function<void (*)(C&, T, lua_State*) noexcept>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_function<void (*)(C&, T, lua_State*) noexcept>, debugname, 1);
 }
 
 template <class C>
@@ -7491,7 +7946,7 @@ void push_class_property_setter(lua_State* L, T setter, const char* debugname)
     static_assert(std::is_same_v<std::decay_t<std::remove_pointer_t<FirstArg>>, C>);
 
     lua_newuserdata_aligned<T>(L, std::move(setter));
-    lua_pushcclosure_x(L, &invoke_proxy_functor<T>, debugname, 1);
+    lua_pushcclosure_x(L, &invoke_proxy_member_functor<T>, debugname, 1);
 }
 
 inline void push_property_readonly(lua_State* L, const char* debugname)
@@ -7562,6 +8017,7 @@ int constructor_container_proxy(lua_State* L)
     T* object = nullptr;
     
 #if LUABRIDGE_HAS_EXCEPTIONS
+    bool threw = false;
     try
     {
 #endif
@@ -7571,8 +8027,11 @@ int constructor_container_proxy(lua_State* L)
     }
     catch (const std::exception& e)
     {
-        raise_exception_error(L, e);
+        threw = push_exception_message(L, e);
     }
+
+    if (threw)
+        raise_pushed_error(L);
 #endif
 
     auto result = UserdataSharedHelper<C, false>::push(L, object);
@@ -7582,32 +8041,49 @@ int constructor_container_proxy(lua_State* L)
     return 1;
 }
 
+// JasperEngine (S92 R26): the decoded arguments live in a block of their own, so every error is
+// raised after they are destroyed
 template <class T, class Args>
 int constructor_placement_proxy(lua_State* L)
 {
-    auto args = make_arguments_list<Args, 2>(L);
-
     std::error_code ec;
-    auto* value = UserdataValue<T>::place(L, ec);
-    if (! value)
-        raise_lua_error(L, "%s", ec.message().c_str());
-
+    bool placed = false;
 #if LUABRIDGE_HAS_EXCEPTIONS
-    try
-    {
+    bool threw = false;
 #endif
 
-        constructor<T, Args>::construct(value->getObject(), std::move(args));
+    {
+        auto args = make_arguments_list<Args, 2>(L);
+
+        auto* value = UserdataValue<T>::place(L, ec);
+        if (value)
+        {
+            placed = true;
 
 #if LUABRIDGE_HAS_EXCEPTIONS
-    }
-    catch (const std::exception& e)
-    {
-        raise_exception_error(L, e);
-    }
+            try
+            {
 #endif
-        
-    value->commit();
+                constructor<T, Args>::construct(value->getObject(), std::move(args));
+                value->commit();
+
+#if LUABRIDGE_HAS_EXCEPTIONS
+            }
+            catch (const std::exception& e)
+            {
+                threw = push_exception_message(L, e);
+            }
+#endif
+        }
+    }
+
+    if (! placed)
+        raise_error_code(L, ec);
+
+#if LUABRIDGE_HAS_EXCEPTIONS
+    if (threw)
+        raise_pushed_error(L);
+#endif
 
     return 1;
 }
@@ -7625,30 +8101,45 @@ struct constructor_forwarder
         using FnTraits = function_traits<F>;
         using FnArgs = remove_first_type_t<typename FnTraits::argument_types>;
 
-        auto args = make_arguments_list<FnArgs, 2>(L);
-
         std::error_code ec;
-        auto* value = UserdataValue<T>::place(L, ec);
-        if (! value)
-            raise_lua_error(L, "%s", ec.message().c_str());
-
+        bool placed = false;
         T* object = nullptr;
-        
 #if LUABRIDGE_HAS_EXCEPTIONS
-        try
-        {
-#endif
-            object = placement_constructor<T>::construct(value->getObject(), m_func, std::move(args));
-
-#if LUABRIDGE_HAS_EXCEPTIONS
-        }
-        catch (const std::exception& e)
-        {
-            raise_exception_error(L, e);
-        }
+        bool threw = false;
 #endif
 
-        value->commit();
+        {
+            auto args = make_arguments_list<FnArgs, 2>(L);
+
+            auto* value = UserdataValue<T>::place(L, ec);
+            if (value)
+            {
+                placed = true;
+
+#if LUABRIDGE_HAS_EXCEPTIONS
+                try
+                {
+#endif
+                    object = placement_constructor<T>::construct(value->getObject(), m_func, std::move(args));
+                    value->commit();
+
+#if LUABRIDGE_HAS_EXCEPTIONS
+                }
+                catch (const std::exception& e)
+                {
+                    threw = push_exception_message(L, e);
+                }
+#endif
+            }
+        }
+
+        if (! placed)
+            raise_error_code(L, ec);
+
+#if LUABRIDGE_HAS_EXCEPTIONS
+        if (threw)
+            raise_pushed_error(L);
+#endif
 
         return object;
     }
@@ -7695,6 +8186,7 @@ struct factory_forwarder
         T* object = nullptr;
         
 #if LUABRIDGE_HAS_EXCEPTIONS
+        bool threw = false;
         try
         {
 #endif
@@ -7704,14 +8196,17 @@ struct factory_forwarder
         }
         catch (const std::exception& e)
         {
-            raise_exception_error(L, e);
+            threw = push_exception_message(L, e);
         }
+
+        if (threw)
+            raise_pushed_error(L);
 #endif
 
         std::error_code ec;
         auto* value = UserdataValueExternal<T>::place(L, object, m_dealloc, ec);
         if (! value)
-            raise_lua_error(L, "%s", ec.message().c_str());
+            raise_error_code(L, ec);
 
         return object;
     }
@@ -7734,27 +8229,45 @@ struct container_forwarder
         using FnTraits = function_traits<F>;
         using FnArgs = typename FnTraits::argument_types;
 
-        C object;
+        // the container lives in a block of its own, so no error is raised while it holds the object
+        std::error_code ec;
+#if LUABRIDGE_HAS_EXCEPTIONS
+        bool threw = false;
+#endif
+
+        {
+            C object;
         
 #if LUABRIDGE_HAS_EXCEPTIONS
-        try
-        {
+            try
+            {
 #endif
-            object = container_constructor<C>::construct(m_func, make_arguments_list<FnArgs, 2>(L));
+                object = container_constructor<C>::construct(m_func, make_arguments_list<FnArgs, 2>(L));
 
 #if LUABRIDGE_HAS_EXCEPTIONS
+            }
+            catch (const std::exception& e)
+            {
+                threw = push_exception_message(L, e);
+            }
+
+            if (! threw)
+#endif
+            {
+                auto result = UserdataSharedHelper<C, false>::push(L, object);
+                if (result)
+                    return object;
+
+                ec = result.error();
+            }
         }
-        catch (const std::exception& e)
-        {
-            raise_exception_error(L, e);
-        }
+
+#if LUABRIDGE_HAS_EXCEPTIONS
+        if (threw)
+            raise_pushed_error(L);
 #endif
 
-        auto result = UserdataSharedHelper<C, false>::push(L, object);
-        if (! result)
-            raise_error_code(L, result.error());
-
-        return object;
+        raise_error_code(L, ec);
     }
 
 private:
@@ -9464,6 +9977,7 @@ class Namespace : public detail::Registrar
                     lua_pushinteger(L, 2);
                     detail::push_function(L, std::move(functions), name);
                     lua_settable(L, -3);
+                    detail::set_function_overload_check<Functions>(L);
 
                     lua_rawseti(L, -2, idx);
                     ++idx;
@@ -9571,6 +10085,7 @@ class Namespace : public detail::Registrar
                         lua_pushinteger(L, 2);
                         detail::push_member_function<T>(L, std::move(functions), name);
                         lua_settable(L, -3);
+                        detail::set_member_overload_check<T, Functions>(L);
 
                         lua_rawseti(L, -2, idx);
                         ++idx;
@@ -9606,6 +10121,7 @@ class Namespace : public detail::Registrar
                         lua_pushinteger(L, 2);
                         detail::push_member_function<T>(L, std::move(functions), name);
                         lua_settable(L, -3);
+                        detail::set_member_overload_check<T, Functions>(L);
 
                         lua_rawseti(L, -2, idx);
                         ++idx;
@@ -9652,6 +10168,7 @@ class Namespace : public detail::Registrar
                     lua_pushinteger(L, 2);
                     lua_pushcclosure_x(L, &detail::constructor_placement_proxy<T, detail::function_arguments_t<Functions>>, className, 0);
                     lua_settable(L, -3);
+                    detail::set_overload_check<detail::function_arguments_t<Functions>, 2>(L);
                     lua_rawseti(L, -2, idx);
                     ++idx;
 
@@ -9707,6 +10224,8 @@ class Namespace : public detail::Registrar
                     lua_newuserdata_aligned<F>(L, F(std::move(functions)));
                     lua_pushcclosure_x(L, &detail::invoke_proxy_constructor<F>, className, 1);
                     lua_settable(L, -3);
+                    if constexpr (! detail::is_any_cfunction_pointer_v<Functions>)
+                        detail::set_overload_check<detail::remove_first_type_t<detail::function_arguments_t<Functions>>, 2>(L);
                     lua_rawseti(L, -2, idx);
                     ++idx;
 
@@ -10223,6 +10742,7 @@ public:
                 lua_pushinteger(L, 2);
                 detail::push_function(L, std::move(functions), name);
                 lua_settable(L, -3);
+                detail::set_function_overload_check<Functions>(L);
 
                 lua_rawseti(L, -2, idx);
                 ++idx;

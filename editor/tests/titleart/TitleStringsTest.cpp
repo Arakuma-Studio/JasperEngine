@@ -20,7 +20,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleStringsJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 using titleart::TitleArtDoc;
 namespace fs = std::filesystem;
 
@@ -35,15 +35,15 @@ namespace {
             fs::create_directories(dir / "assets" / "titles");
             options.projectPath = dir.string();
             options.documentPath = (dir / "assets" / "titles" / "logo.titleart").string();
-            Json root = Json{{"format", titleart::TITLE_ART_FORMAT}, {"version", 1}};
-            root["layers"] = Json::array({Json{{"id", "0000000a"}, {"type", "text"}, {"name", "Headline"}, {"text", "BIG WIN"},
+            TitleStringsJson root = TitleStringsJson{{"format", titleart::TITLE_ART_FORMAT}, {"version", 1}};
+            root["layers"] = TitleStringsJson::array({TitleStringsJson{{"id", "0000000a"}, {"type", "text"}, {"name", "Headline"}, {"text", "BIG WIN"},
                                                {"translator_note", "Main title, max one line"}, {"max_chars", 12}},
-                                          Json{{"id", "0000000b"}, {"type", "text"}, {"name", "Sub"}, {"text", "a \"quoted\", line\nand more"}}});
+                                          TitleStringsJson{{"id", "0000000b"}, {"type", "text"}, {"name", "Sub"}, {"text", "a \"quoted\", line\nand more"}}});
             doc = titleart::parseTitleArtJson(root).doc;
-            doc = TitleArtOps::apply(doc, Json::array({Json{{"op", "add_language"}, {"code", "de"}, {"source", "en"}},
-                                                       Json{{"op", "add_language"}, {"code", "ja"}},
-                                                       Json{{"op", "set_translation"}, {"layer", "Headline"}, {"language", "de"}, {"text", "GROSSER GEWINN"}},
-                                                       Json{{"op", "set_translation"}, {"layer", "Headline"}, {"language", "ja"},
+            doc = TitleArtOps::apply(doc, TitleStringsJson::array({TitleStringsJson{{"op", "add_language"}, {"code", "de"}, {"source", "en"}},
+                                                       TitleStringsJson{{"op", "add_language"}, {"code", "ja"}},
+                                                       TitleStringsJson{{"op", "set_translation"}, {"layer", "Headline"}, {"language", "de"}, {"text", "GROSSER GEWINN"}},
+                                                       TitleStringsJson{{"op", "set_translation"}, {"layer", "Headline"}, {"language", "ja"},
                                                             {"text", "\xe5\xa4\xa7\xe5\xbd\x93\xe3\x82\x8a"}}}),
                                      options).doc;
         }
@@ -55,13 +55,13 @@ namespace {
             return p.string();
         }
 
-        TitleOpsResult import(const std::string& file, Json extra = Json::object()) {
-            Json op = Json{{"op", "import_strings"}, {"file", file}};
+        TitleOpsResult import(const std::string& file, TitleStringsJson extra = TitleStringsJson::object()) {
+            TitleStringsJson op = TitleStringsJson{{"op", "import_strings"}, {"file", file}};
             for (auto it = extra.begin(); it != extra.end(); ++it) op[it.key()] = it.value();
             return TitleArtOps::apply(doc, op, options);
         }
 
-        const Json& layer(const TitleArtDoc& d, const char* id) { return *titleart::findLayer(d.root, id); }
+        const TitleStringsJson& layer(const TitleArtDoc& d, const char* id) { return *titleart::findLayer(d.root, id); }
 
         fs::path dir;
         TitleArtDoc doc;
@@ -113,12 +113,12 @@ TEST_F(TitleStringsTest, CsvReports) {
     EXPECT_EQ(layer(r.doc, "0000000a")["translations"]["de"]["text"], "GROSSER GEWINN");
     EXPECT_EQ(layer(r.doc, "0000000b")["translations"]["de"]["status"], "needs_review");
     std::set<std::string> codes;
-    for (const Json& n : r.reports["0"]["notes"]) codes.insert(n["code"].get<std::string>());
+    for (const TitleStringsJson& n : r.reports["0"]["notes"]) codes.insert(n["code"].get<std::string>());
     EXPECT_TRUE(codes.count("unknown_key"));
     EXPECT_TRUE(codes.count("unknown_language")) << "fr is not a language of the title";
     EXPECT_TRUE(codes.count("source_changed"));
     // add_languages adds fr
-    r = import(write("report.csv", csv), Json{{"add_languages", true}});
+    r = import(write("report.csv", csv), TitleStringsJson{{"add_languages", true}});
     ASSERT_TRUE(r.ok);
     EXPECT_TRUE(titleart::findTitleLanguage(r.doc.root, "fr"));
     EXPECT_EQ(layer(r.doc, "0000000a")["translations"]["fr"]["text"], "GROS GAIN");
@@ -169,7 +169,7 @@ TEST_F(TitleStringsTest, XliffImportStates) {
     ASSERT_TRUE(r.ok) << r.error();
     EXPECT_EQ(layer(r.doc, "0000000a")["translations"]["de"]["status"], "needs_review");
     bool refused = false;
-    for (const Json& n : r.reports["0"]["notes"]) refused = refused || n["code"] == "inline_markup";
+    for (const TitleStringsJson& n : r.reports["0"]["notes"]) refused = refused || n["code"] == "inline_markup";
     EXPECT_TRUE(refused) << "a unit with inline markup is refused";
     EXPECT_FALSE(layer(r.doc, "0000000b")["translations"].contains("de"));
 

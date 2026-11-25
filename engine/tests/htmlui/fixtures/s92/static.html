@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>S92: static</title>
+<!-- S92 R29 (docs/specs/S92-htmlui-render-cost.md): boxes and text, no layer: idle is 0 passes and 0 draws.
+     Drawn at 1280x720, pixel ratio 1; #tick is the element another frame changes (the warm column). -->
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; font-family: sans-serif; color: #ffffff; }
+  #tick { position: absolute; left: 1180px; top: 680px; font-size: 16px; }
+  .box { position: absolute; width: 180px; height: 90px; background-color: #2a6fdb; border: 3px solid #0c2a5a; }
+  .label { position: absolute; font-size: 22px; }
+</style>
+</head>
+<body>
+  <div class="box" style="left: 40px; top: 40px"></div>
+  <div class="box" style="left: 260px; top: 40px; background-color: #db6f2a"></div>
+  <div class="box" style="left: 480px; top: 40px; background-color: #2adb6f"></div>
+  <div class="label" style="left: 40px; top: 160px">Score 1280</div>
+  <div class="label" style="left: 40px; top: 200px">Coins 42</div>
+  <span id="tick">0</span>
+</body>
+</html>

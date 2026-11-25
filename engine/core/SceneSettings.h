@@ -79,6 +79,15 @@ namespace jasperengine{
         HIGH        // 512
     };
 
+    // Where the scene's screen HTML UI documents composite (Unity's Canvas Render Mode): OVERLAY
+    // after post-processing, at the output resolution (Screen Space - Overlay); CAMERA in the
+    // camera pass, before post, at the render scale (Screen Space - Camera). Stored as ints:
+    // append only.
+    enum class UIRenderMode {
+        OVERLAY,
+        CAMERA
+    };
+
     // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
     enum class SceneColorScale {
         FULL,   // the camera pass's resolution
@@ -429,6 +438,11 @@ namespace jasperengine{
         // resolution of the scene-colour copy that shaders requiring scenecolor sample (shader
         // library phase 3): FULL = the camera pass's resolution, HALF = half of it (default; mobile)
         SceneColorScale sceneColorScale = SceneColorScale::HALF;
+
+        // the screen HTML UI documents (S92): where they composite, and their target's MSAA samples
+        // (0: the project's htmlUiMsaaSamples, else 1, 2, 4 or 8)
+        UIRenderMode htmlUiRenderMode = UIRenderMode::OVERLAY;
+        int htmlUiMsaaSamples = 0;
 
         // Planar reflections (RenderSystem's water reflection passes, one per water height and
         // viewing camera): their resolution, the layers they draw (with the viewer's culling

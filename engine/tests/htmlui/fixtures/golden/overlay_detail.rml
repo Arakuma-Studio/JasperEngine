@@ -1,0 +1,32 @@
+<html>
+<head>
+    <title>overlay detail</title>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="golden.css"/>
+    <style>
+        /* S92 (HtmlUIScene.*): an opaque document over the whole canvas with one-pixel detail, so
+           a composite before a scaled or filtered post pass shows as changed pixels */
+        body { background-color: #3060c0; }
+        .line { top: 40px; width: 1px; height: 120px; background-color: #ffffff; }
+        #l0 { left: 100px; }
+        #l1 { left: 103px; }
+        #l2 { left: 106px; }
+        #l3 { left: 109px; }
+        #row { left: 200px; top: 80px; width: 240px; height: 1px; background-color: #ffff00; }
+        .mark { width: 20px; height: 20px; }
+        #tl { left: 0px; top: 0px; background-color: #ff0000; }
+        #br { right: 0px; bottom: 0px; background-color: #00ff00; }
+        #label { left: 200px; top: 200px; font-size: 16px; color: #ffffff; }
+    </style>
+</head>
+<body>
+    <div id="l0" class="abs line"/>
+    <div id="l1" class="abs line"/>
+    <div id="l2" class="abs line"/>
+    <div id="l3" class="abs line"/>
+    <div id="row" class="abs"/>
+    <div id="tl" class="abs mark"/>
+    <div id="br" class="abs mark"/>
+    <div id="label" class="abs">Overlay 1px</div>
+</body>
+</html>

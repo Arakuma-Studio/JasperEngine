@@ -12850,6 +12850,7 @@
     "filename",
     "inputSurface",
     "interactive",
+    "msaaSamples",
     "pixelRatio",
     "renderMode",
     "sortOrder",
@@ -12875,6 +12876,11 @@
     ],
     "interactive": [
      0,
+     0,
+     true
+    ],
+    "msaaSamples": [
+     8,
      0,
      true
     ],
@@ -12922,6 +12928,11 @@
     ],
     "interactive": [
      0,
+     0,
+     true
+    ],
+    "msaaSamples": [
+     8,
      0,
      true
     ],
@@ -33591,6 +33602,11 @@
    ],
    "interactive": [
     0,
+    0,
+    true
+   ],
+   "msaaSamples": [
+    8,
     0,
     true
    ],

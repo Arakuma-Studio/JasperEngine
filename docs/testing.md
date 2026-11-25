@@ -357,7 +357,8 @@ then screenshots the device (`adb exec-out screencap`) and checks it with
 `debug.jasperengine.scene` set to it (a test project reads it, `JASPERENGINE_SCENE` elsewhere),
 each run checked on its own in `--out/<scene>/`; `{scene}` in an expectation is the run's scene.
 The gate's project is `tools/test-projects/render-gate`: a lit 3D scene (`lit3d`), 2D and UI
-(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`) and Title Art
+(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`), the JasperArcade port's
+scaled list of filtered rows clipped by its viewport (`htmlui-u27`, S92 R11) and Title Art
 Renderers (`titleart`, S81; run it also with `--setprop debug.jasperengine.titleart_rgba8=1` against
 the same golden), goldens in its `golden/`:
 
@@ -365,7 +366,7 @@ the same golden), goldens in its `golden/`:
 ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android
 tools/android-emulator-test.sh build/android-render-gate/app-debug.apk \
     --expect-file tools/test-projects/render-gate/android-expect.txt \
-    --scene lit3d --scene ui2d --scene htmlui --scene titleart --golden tools/test-projects/render-gate/golden
+    --scene lit3d --scene ui2d --scene htmlui --scene htmlui-u27 --scene titleart --golden tools/test-projects/render-gate/golden
 ```
 
 `ANDROID_ABIS=x86_64` builds only the emulator's ABI (a quarter of the build).
@@ -701,6 +702,16 @@ in the commit why it changed:
 ```sh
 JASPER_TEST_UPDATE_GOLDEN=1 UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=RenderGpu.*' tools/build.sh unit-tests
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=RenderGpu.*' tools/build.sh unit-tests
+```
+
+An HTML UI frame that records what the last drawn one did is not replayed (S92 R1). A test that
+counts a replay's passes, draws or caches frame after frame turns that off for its scope
+(`FrameReuseMode replayed(false)`, `TestRenderCommon.h`). `JASPER_HTMLUI_VERIFY_KEPT=1` makes the
+golden harnesses draw a second frame and compare every kept frame with a fresh replay; a
+difference fails the comparison and logs `[HTML UI] kept frame differs`:
+
+```sh
+JASPER_HTMLUI_VERIFY_KEPT=1 HTMLUI_TEST_ARGS='--gtest_filter=*Golden*:RenderP1*:RenderPrimitive.*:RenderClip.*:RenderFilter*' tools/build.sh htmlui-tests
 ```
 
 The cooked fixtures of the texture format test (`engine/tests/core/fixtures/texture_formats/`, S14

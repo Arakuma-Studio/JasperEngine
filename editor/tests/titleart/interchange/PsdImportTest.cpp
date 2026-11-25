@@ -25,7 +25,7 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
-using titleart::Json;
+using PsdImportJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 
 namespace {
 
@@ -59,18 +59,18 @@ namespace {
         }
     };
 
-    const Json* layerNamed(const Json& list, const std::string& name) {
-        for (const Json& l : list) {
+    const PsdImportJson* layerNamed(const PsdImportJson& list, const std::string& name) {
+        for (const PsdImportJson& l : list) {
             if (l.value("name", std::string()) == name) return &l;
             if (l.contains("children")) {
-                if (const Json* found = layerNamed(l["children"], name)) return found;
+                if (const PsdImportJson* found = layerNamed(l["children"], name)) return found;
             }
         }
         return nullptr;
     }
 
     bool noted(const TitleCreateResult& r, const std::string& text, const std::string& code = {}) {
-        for (const Json& n : r.notes) {
+        for (const PsdImportJson& n : r.notes) {
             const std::string line = n.value("what", std::string());
             if (line.find(text) != std::string::npos && (code.empty() || n.value("code", std::string()) == code)) return true;
         }
@@ -92,12 +92,12 @@ TEST_F(PsdImportTest, LayeredRgb8) {
     std::string code, error;
     ASSERT_TRUE(import("layers8.psd", r, code, error)) << code << ": " << error;
     EXPECT_EQ(r.kind, "psd");
-    const Json& root = r.doc.root;
+    const PsdImportJson& root = r.doc.root;
     EXPECT_EQ(root["canvas"]["width"], 64);
     EXPECT_EQ(root["global_light"]["angle"].get<double>(), 120);
-    const Json& layers = root["layers"];
+    const PsdImportJson& layers = root["layers"];
     // groups: the pass-through group with its two children, drawn Normal with a note
-    const Json* group = layerNamed(layers, "Group");
+    const PsdImportJson* group = layerNamed(layers, "Group");
     ASSERT_NE(group, nullptr);
     EXPECT_EQ((*group)["type"], "group");
     EXPECT_EQ((*group)["blend"], "normal");
@@ -105,21 +105,21 @@ TEST_F(PsdImportTest, LayeredRgb8) {
     EXPECT_EQ((*group)["children"][0]["name"], "Masked");
     EXPECT_TRUE(noted(r, "pass-through group drawn as Normal"));
     // masks and clipping
-    const Json* masked = layerNamed(layers, "Masked");
+    const PsdImportJson* masked = layerNamed(layers, "Masked");
     ASSERT_NE(masked, nullptr);
     EXPECT_EQ((*masked)["type"], "image");
     ASSERT_EQ((*masked)["masks"].size(), 1u);
     EXPECT_EQ((*masked)["masks"][0]["type"], "image");
     EXPECT_FALSE((*masked)["masks"][0]["linked"].get<bool>());
     EXPECT_EQ((*masked)["masks"][0]["channel"], "luminance");
-    const Json* clipped = layerNamed(layers, "Clipped");
+    const PsdImportJson* clipped = layerNamed(layers, "Clipped");
     ASSERT_NE(clipped, nullptr);
     EXPECT_TRUE((*clipped)["clip"].get<bool>());
     EXPECT_EQ((*clipped)["blend"], "screen");
     EXPECT_NEAR((*clipped)["opacity"].get<double>(), 128 / 255.0, 1e-6);
     EXPECT_DOUBLE_EQ((*clipped)["size"].get<double>(), 16.0) << "trimmed to its alpha: 16 x 16 of 32 x 16";
     // the text layer
-    const Json* title = layerNamed(layers, "Title");
+    const PsdImportJson* title = layerNamed(layers, "Title");
     ASSERT_NE(title, nullptr);
     EXPECT_EQ((*title)["type"], "text");
     EXPECT_EQ((*title)["text"], "BIG WIN");
@@ -133,29 +133,29 @@ TEST_F(PsdImportTest, LayeredRgb8) {
     EXPECT_TRUE(noted(r, "2 style runs"));
     // the 13 adjustments, the unsupported one dropped
     std::set<std::string> types;
-    for (const Json& l : layers) {
+    for (const PsdImportJson& l : layers) {
         if (l["type"] == "adjustment") types.insert(l["adjustment"]["type"].get<std::string>());
     }
     EXPECT_EQ(types, (std::set<std::string>{"levels", "curves", "hue_saturation", "brightness_contrast", "exposure", "vibrance", "color_balance",
                                             "black_white", "photo_filter", "gradient_map", "invert", "posterize", "threshold"}));
     EXPECT_EQ(layerNamed(layers, "Adjust selc"), nullptr);
     EXPECT_TRUE(noted(r, "'selc' has no Title Art equivalent"));
-    const Json* levels = layerNamed(layers, "Adjust levl");
+    const PsdImportJson* levels = layerNamed(layers, "Adjust levl");
     ASSERT_NE(levels, nullptr);
     EXPECT_DOUBLE_EQ((*levels)["adjustment"]["channels"]["rgb"]["in_black"].get<double>(), 10.0);
     EXPECT_DOUBLE_EQ((*levels)["adjustment"]["channels"]["rgb"]["gamma"].get<double>(), 1.2);
-    const Json* hue = layerNamed(layers, "Adjust hue2");
+    const PsdImportJson* hue = layerNamed(layers, "Adjust hue2");
     EXPECT_DOUBLE_EQ((*hue)["adjustment"]["hue"].get<double>(), 30.0);
     EXPECT_DOUBLE_EQ((*layerNamed(layers, "Adjust post"))["adjustment"]["levels"].get<double>(), 5.0);
     // fill layers
-    const Json* solid = layerNamed(layers, "Solid Fill");
+    const PsdImportJson* solid = layerNamed(layers, "Solid Fill");
     ASSERT_NE(solid, nullptr);
     EXPECT_EQ((*solid)["type"], "generator");
     EXPECT_EQ((*solid)["generator"]["type"], "fill");
     EXPECT_EQ((*solid)["generator"]["params"]["color"], "#0ac81e");
     EXPECT_EQ((*layerNamed(layers, "Gradient Fill"))["generator"]["params"]["kind"], "radial");
     // blend, visibility, fill opacity and knockout
-    const Json* hidden = layerNamed(layers, "Hidden Styled");
+    const PsdImportJson* hidden = layerNamed(layers, "Hidden Styled");
     ASSERT_NE(hidden, nullptr);
     EXPECT_FALSE((*hidden)["visible"].get<bool>());
     EXPECT_EQ((*hidden)["blend"], "multiply");
@@ -163,7 +163,7 @@ TEST_F(PsdImportTest, LayeredRgb8) {
     EXPECT_TRUE((*hidden)["style"]["knockout"].get<bool>());
     EXPECT_EQ((*hidden)["effects"][0]["type"], "drop_shadow");
     // a vector mask rasterised, a blend Title Art lacks drawn Normal
-    const Json* vector = layerNamed(layers, "Vector Masked");
+    const PsdImportJson* vector = layerNamed(layers, "Vector Masked");
     ASSERT_NE(vector, nullptr);
     ASSERT_EQ((*vector)["masks"].size(), 1u);
     EXPECT_TRUE(noted(r, "vector mask rasterised"));
@@ -245,39 +245,39 @@ TEST_F(PsdImportTest, ApplyAndImportStyleOps) {
     options.documentPath = (project / "assets" / "titles" / "logo.titleart").string();
     options.projectPath = project.string();
     options.assetsPath = (project / "assets").string();
-    TitleOpsResult applied = TitleArtOps::apply(doc, Json{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", psdImportFixture("styles.asl")},
+    TitleOpsResult applied = TitleArtOps::apply(doc, PsdImportJson{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", psdImportFixture("styles.asl")},
                                                           {"style", "Shadows"}}, options);
     ASSERT_TRUE(applied.ok) << applied.error();
-    const Json& title = applied.doc.root["layers"][0];
+    const PsdImportJson& title = applied.doc.root["layers"][0];
     ASSERT_EQ(title["effects"].size(), 3u);
     // px params scale with the layer's size (200) over the reference (100)
-    const Json* drop = nullptr;
-    for (const Json& e : title["effects"]) {
+    const PsdImportJson* drop = nullptr;
+    for (const PsdImportJson& e : title["effects"]) {
         if (e["type"] == "drop_shadow" && !drop) drop = &e;
     }
     ASSERT_NE(drop, nullptr);
     EXPECT_DOUBLE_EQ((*drop)["params"]["distance"].get<double>(), 4.0) << "2 px at 100 px is 4 px at 200 px";
     EXPECT_EQ(applied.undoName, "Apply Photoshop Style Shadows");
     EXPECT_TRUE(applied.reports.contains("0"));
-    TitleOpsResult bitmap = TitleArtOps::apply(doc, Json{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", psdImportFixture("styles.asl")},
+    TitleOpsResult bitmap = TitleArtOps::apply(doc, PsdImportJson{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", psdImportFixture("styles.asl")},
                                                          {"style", "Bitmap Pattern"}}, options);
     ASSERT_TRUE(bitmap.ok) << bitmap.error();
     ASSERT_EQ(bitmap.files.size(), 1u);
     EXPECT_NE(bitmap.files[0].path.generic_string().find("logo_assets"), std::string::npos);
     EXPECT_NE(bitmap.files[0].path.generic_string().find("patterns"), std::string::npos);
     EXPECT_EQ(bitmap.doc.root["layers"][0]["style"]["face"]["pattern"]["kind"], "custom");
-    TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", psdImportFixture("styles.asl")}, {"style", "Nope"}},
+    TitleOpsResult bad = TitleArtOps::apply(doc, PsdImportJson{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", psdImportFixture("styles.asl")}, {"style", "Nope"}},
                                             options);
     ASSERT_FALSE(bad.ok);
     // import_ps_styles: one .titlelook per style in the project's library
-    TitleOpsResult looks = TitleArtOps::apply(doc, Json{{"op", "import_ps_styles"}, {"file", psdImportFixture("styles.asl")}}, options);
+    TitleOpsResult looks = TitleArtOps::apply(doc, PsdImportJson{{"op", "import_ps_styles"}, {"file", psdImportFixture("styles.asl")}}, options);
     ASSERT_TRUE(looks.ok) << looks.error();
     size_t titlelooks = 0;
     for (const TitleOpFile& f : looks.files) {
         const std::string filePath = f.path.generic_string();
         if (filePath.size() > 10 && filePath.compare(filePath.size() - 10, 10, ".titlelook") == 0) {
             titlelooks++;
-            const Json look = Json::parse(f.content);
+            const PsdImportJson look = PsdImportJson::parse(f.content);
             EXPECT_EQ(look["format"], "jasperengine.titlelook");
             EXPECT_EQ(look["family"], "custom");
             EXPECT_EQ(look["tags"][0], "photoshop");

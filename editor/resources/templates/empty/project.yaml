@@ -9,7 +9,7 @@ foliageQuality:
   desktop: high
   mobile: low
   web: low
-htmlUiMsaaSamples: 4
+htmlUiMsaaSamples: 0
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
 htmlUiTransformAwareText: true
@@ -32,7 +32,7 @@ versionControl:
   lfs: true
 export:
   assetStripping: referencedOnly
-startSceneId: 1948248456
+startSceneId: 3035739784
 mesh:
   animationEntities: auto
 audio:
@@ -41,4 +41,4 @@ audio:
   iosSessionCategory: ambient
 scenes:
   - filepath: assets/scenes/Main.scene
-    filepathGuid: 149e9e2b7295b85a6a48cdc199e88e4e
+    filepathGuid: 846896d51fd1955a201c2b62e21e87d9

@@ -25,9 +25,21 @@ struct ClipShape {
 	Array<Vector2f, 4> radii = {};    // top-left, top-right, bottom-right, bottom-left: horizontal (x) and vertical (y); a corner
 	                                  // with a radius <= 0 is square
 	const Matrix4f* transform = nullptr; // the transform the mask is drawn with (nullptr: none), valid during the call only
+	// Fork (S92-F6): a convex polygon of polygon_points (3 to MaxPolygonPoints, relative to the mask's translation, in
+	// order around it) instead of the rectangle, which then bounds it (radii unused); 0: the rectangle
+	static constexpr int MaxPolygonPoints = 16;
+	int polygon_points = 0;
+	Array<Vector2f, MaxPolygonPoints> polygon = {};
 };
 inline bool operator==(const ClipShape& a, const ClipShape& b)
 {
+	if (a.polygon_points != b.polygon_points)
+		return false;
+	for (int i = 0; i < a.polygon_points; i++)
+	{
+		if (a.polygon[i] != b.polygon[i])
+			return false;
+	}
 	return a.rect.TopLeft() == b.rect.TopLeft() && a.rect.BottomRight() == b.rect.BottomRight() && a.radii == b.radii &&
 		a.transform == b.transform;
 }
@@ -56,7 +68,8 @@ struct BoxPrimitive {
 	CompiledShaderHandle shader = {};    // Gradient: its compiled shader (RenderInterface::SupportsGradientPrimitive)
 	Vector2f gradient_origin;            // Gradient: where the shader's (0, 0) is relative to border_box's top-left (a
 	                                     // background image tile's origin; zero for a decorator's fill area)
-	Vector2f gradient_repeat;            // Gradient: the period of its tiles along each axis (0: one tile)
+	Vector2f gradient_repeat;            // Gradient: the period of its tiles along each axis (0: one tile; fork, S92-F1:
+	                                     // negative, one tile of that length from the origin and nothing beyond it)
 };
 
 /**
@@ -172,6 +185,8 @@ public:
 	/// with PushLayer() are the size of the viewport. On return 'region' holds what the layer covers (the render interface
 	/// may crop it, to its largest texture for instance), invalid when the layer is an ordinary one: the default, which
 	/// calls PushLayer(). Composites between layers of different regions place their content by window coordinates.
+	/// Fork (S92-F4): also called for a region within the viewport (an element's layer: its filter, mask or shadow),
+	/// which the render interface may draw into a layer of that region's size.
 	virtual LayerHandle PushLayerRegion(Rectanglei& region);
 	/// Composite two layers with the given blend mode and apply filters.
 	/// @param[in] source The source layer.

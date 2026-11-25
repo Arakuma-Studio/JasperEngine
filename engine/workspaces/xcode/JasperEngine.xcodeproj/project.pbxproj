@@ -5027,6 +5027,10 @@
 		4A534E47DFC0058357C0EBDF /* VertexColorRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470433EF71AEAF5357 /* VertexColorRenderer.h */; };
 		4A534E47F8A62B18DE9B0CC4 /* VertexColorScene.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470D8BF64D5C088B30 /* VertexColorScene.h */; };
 		4A534E473CD8708B9ABAD9C1 /* VertexColorSceneDetail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E9B6AC51D8900FED /* VertexColorSceneDetail.h */; };
+		4A534E474F0C1FAE254222FD /* RmlRendererFrame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */; };
+		4A534E476FED1ADCC1068DC5 /* RmlRendererFrame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */; };
+		4A534E472A46CF1186D6EE02 /* RmlRendererLayerCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */; };
+		4A534E4773FFCEFA2D4C0157 /* RmlRendererLayerCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */; };
 		4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477CE603833084E5A8 /* PortableMath.h */; };
 		4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
 		4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472C361D2083EA2902 /* SourceEffects.cpp */; };
@@ -9718,6 +9722,8 @@
 		4A534E470433EF71AEAF5357 /* VertexColorRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexColorRenderer.h; sourceTree = "<group>"; };
 		4A534E470D8BF64D5C088B30 /* VertexColorScene.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexColorScene.h; sourceTree = "<group>"; };
 		4A534E47E9B6AC51D8900FED /* VertexColorSceneDetail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexColorSceneDetail.h; sourceTree = "<group>"; };
+		4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlRendererFrame.cpp; sourceTree = "<group>"; };
+		4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlRendererLayerCache.cpp; sourceTree = "<group>"; };
 		4A534E477CE603833084E5A8 /* PortableMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PortableMath.h; sourceTree = "<group>"; };
 		4A534E472C361D2083EA2902 /* SourceEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SourceEffects.cpp; sourceTree = "<group>"; };
 		4A534E47B1F841A698A325CD /* AudioSourceSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSourceSlots.cpp; sourceTree = "<group>"; };
@@ -14823,6 +14829,8 @@
 				4A534E47535074DEA48446A6 /* controls */,
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
+				4A534E47B4A070BD4B33AD98 /* RmlRendererFrame.cpp */,
+				4A534E47B5CFDA566D36880C /* RmlRendererLayerCache.cpp */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -19974,6 +19982,8 @@
 				4A534E53C03D3EB8C0BF0F2E /* VertexColorSelect.cpp in Sources */,
 				4A534E536DC75A2F78C40A4A /* VertexColorSplit.cpp in Sources */,
 				4A534E53AFF5F6BD94B65944 /* VertexColorTypes.cpp in Sources */,
+				4A534E474F0C1FAE254222FD /* RmlRendererFrame.cpp in Sources */,
+				4A534E472A46CF1186D6EE02 /* RmlRendererLayerCache.cpp in Sources */,
 				4A534E473FC421205A7F6DC5 /* SourceEffects.cpp in Sources */,
 				4A534E47658745C89C2BDB53 /* AudioSourceSlots.cpp in Sources */,
 				4A534E4743598FBB3BBF4FF0 /* AudioSourceEffect.cpp in Sources */,
@@ -21001,6 +21011,8 @@
 				4A534E53E6BBE380A9D15BC9 /* VertexColorSelect.cpp in Sources */,
 				4A534E531E93DE5B167C22BC /* VertexColorSplit.cpp in Sources */,
 				4A534E53A6DFD9C2ACCC28FA /* VertexColorTypes.cpp in Sources */,
+				4A534E476FED1ADCC1068DC5 /* RmlRendererFrame.cpp in Sources */,
+				4A534E4773FFCEFA2D4C0157 /* RmlRendererLayerCache.cpp in Sources */,
 				4A534E47B40C6FEAF3511F4E /* SourceEffects.cpp in Sources */,
 				4A534E477A815E01C762ACD7 /* AudioSourceSlots.cpp in Sources */,
 				4A534E47534C04BECC846CE3 /* AudioSourceEffect.cpp in Sources */,

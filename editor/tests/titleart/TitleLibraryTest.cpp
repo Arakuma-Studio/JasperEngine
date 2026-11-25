@@ -24,7 +24,7 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titlelibrary;
-using titleart::Json;
+using TitleLibraryJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 using titleart::TitleArtDoc;
 namespace fs = std::filesystem;
 
@@ -111,11 +111,11 @@ namespace {
         return parsed.doc;
     }
 
-    std::string titleLibraryMember(const Json& layer, const char* key) {
+    std::string titleLibraryMember(const TitleLibraryJson& layer, const char* key) {
         return layer.contains(key) ? titleart::writeTitleArtJson(layer[key]) : std::string("<absent>");
     }
 
-    TitleOpsResult titleLibraryApplyOps(const TitleArtDoc& doc, const Json& ops, uint64_t seed = 7) {
+    TitleOpsResult titleLibraryApplyOps(const TitleArtDoc& doc, const TitleLibraryJson& ops, uint64_t seed = 7) {
         TitleOpsOptions o;
         o.idSeed = seed;
         return TitleArtOps::apply(doc, ops, o);
@@ -133,20 +133,20 @@ TEST_F(TitleLibraryFixture, LookRoundTripsCanonically) {
     ASSERT_TRUE(again.ok);
     EXPECT_EQ(writeLook(again.look), text);
     // sparse: the bevel's defaults and the rims' ids are not written
-    const Json root = Json::parse(text);
+    const TitleLibraryJson root = TitleLibraryJson::parse(text);
     EXPECT_FALSE(root["style"]["face"]["bevel"].contains("size"));
     EXPECT_FALSE(root["style"]["rims"][0].contains("id"));
     EXPECT_TRUE(root["style"]["face"]["bevel"]["enabled"].get<bool>());
 }
 
 TEST_F(TitleLibraryFixture, UnknownMembersAndTypesSurvive) {
-    Json j = Json::parse(GOLD_LOOK);
-    j["future_member"] = Json{{"x", 1}};
-    j["effects"].push_back(Json{{"type", "effect_from_the_future"}, {"params", {{"strength", 3}}}});
+    TitleLibraryJson j = TitleLibraryJson::parse(GOLD_LOOK);
+    j["future_member"] = TitleLibraryJson{{"x", 1}};
+    j["effects"].push_back(TitleLibraryJson{{"type", "effect_from_the_future"}, {"params", {{"strength", 3}}}});
     j["style"]["face"]["sparkle_v2"] = true;
     LookParseResult parsed = parseLookJson(j);
     ASSERT_TRUE(parsed.ok);
-    const Json out = Json::parse(writeLook(parsed.look));
+    const TitleLibraryJson out = TitleLibraryJson::parse(writeLook(parsed.look));
     EXPECT_EQ(out["future_member"]["x"], 1);
     EXPECT_EQ(out["effects"][1]["type"], "effect_from_the_future");
     EXPECT_EQ(out["effects"][1]["params"]["strength"], 3);
@@ -154,7 +154,7 @@ TEST_F(TitleLibraryFixture, UnknownMembersAndTypesSurvive) {
 }
 
 TEST_F(TitleLibraryFixture, NewerVersionIsReadOnly) {
-    Json j = Json::parse(GOLD_LOOK);
+    TitleLibraryJson j = TitleLibraryJson::parse(GOLD_LOOK);
     j["version"] = TITLE_LOOK_VERSION + 1;
     LookParseResult parsed = parseLookJson(j);
     ASSERT_TRUE(parsed.ok);
@@ -166,10 +166,10 @@ TEST_F(TitleLibraryFixture, NewerVersionIsReadOnly) {
 TEST_F(TitleLibraryFixture, TemplateKeepsItsMemberAfterGuid) {
     TitleTemplate t;
     t.doc = titleart::makeNewTitleArt();
-    t.meta = Json{{"id", "minimal/test"}, {"name", {{"en", "Test"}}}, {"family", "minimal"},
-                  {"placeholders", Json::array({Json{{"name", "text"}, {"role", "title"}, {"sample", {{"en", "HERO"}, {"ja", "英雄"}}}}})}};
+    t.meta = TitleLibraryJson{{"id", "minimal/test"}, {"name", {{"en", "Test"}}}, {"family", "minimal"},
+                  {"placeholders", TitleLibraryJson::array({TitleLibraryJson{{"name", "text"}, {"role", "title"}, {"sample", {{"en", "HERO"}, {"ja", "英雄"}}}}})}};
     const std::string text = writeTemplate(t);
-    const Json root = Json::parse(text);
+    const TitleLibraryJson root = TitleLibraryJson::parse(text);
     auto it = root.begin();
     std::vector<std::string> keys;
     for (; it != root.end(); ++it) keys.push_back(it.key());
@@ -186,16 +186,16 @@ TEST_F(TitleLibraryFixture, TemplateKeepsItsMemberAfterGuid) {
 // the step a v1 look would change (the red control)
 TEST_F(TitleLibraryFixture, TitleLookMigrationsTestDefaultChangeKeepsOldLooks) {
     // a v1 look that omits rims[0].join (S80's default "miter")
-    const Json v1 = Json::parse(R"({"format": "jasperengine.titlelook", "version": 1, "id": "metal/x", "dimension": "2d",
+    const TitleLibraryJson v1 = TitleLibraryJson::parse(R"({"format": "jasperengine.titlelook", "version": 1, "id": "metal/x", "dimension": "2d",
                                     "style": {"rims": [{"width": 2}]}})");
     // the hypothetical v2 changes the default join to "round"; the step fills the v1 default
     titleart::MigrationStep step;
     step.from = 1;
     step.to = 2;
     step.name = "test_join_default";
-    step.apply = [](Json& root, titleart::MigrationLog& log) {
+    step.apply = [](TitleLibraryJson& root, titleart::MigrationLog& log) {
         if (!root.contains("style") || !root["style"].contains("rims")) return;
-        for (Json& rim : root["style"]["rims"]) {
+        for (TitleLibraryJson& rim : root["style"]["rims"]) {
             if (!rim.contains("join")) {
                 rim["join"] = "miter";
                 log.note("style.rims: join miter (the v1 default)");
@@ -203,7 +203,7 @@ TEST_F(TitleLibraryFixture, TitleLookMigrationsTestDefaultChangeKeepsOldLooks) {
         }
     };
     auto runV2 = [&](bool withStep) {
-        Json root = v1;
+        TitleLibraryJson root = v1;
         titleart::TitleJsonMigrations table(TITLE_LOOK_FORMAT, 1);
         if (withStep) {
             EXPECT_TRUE(table.add(step));
@@ -213,16 +213,16 @@ TEST_F(TitleLibraryFixture, TitleLookMigrationsTestDefaultChangeKeepsOldLooks) {
             EXPECT_TRUE(table.run(root, 1, 2, log, nullptr));
         }
         // the v2 reader: a rim without `join` takes the new default
-        const Json& rim = root["style"]["rims"][0];
+        const TitleLibraryJson& rim = root["style"]["rims"][0];
         return rim.value("join", std::string("round"));
     };
     EXPECT_EQ(runV2(true), "miter");
     EXPECT_NE(runV2(false), "miter");      // red control: the old look would render round joins
     // the step is idempotent
-    Json twice = v1;
+    TitleLibraryJson twice = v1;
     titleart::MigrationLog log;
     step.apply(twice, log);
-    const Json once = twice;
+    const TitleLibraryJson once = twice;
     step.apply(twice, log);
     EXPECT_EQ(once, twice);
 }
@@ -258,7 +258,7 @@ TEST_F(TitleLibraryFixture, Availability) {
     ASSERT_NE(drip, nullptr);
     EXPECT_FALSE(drip->available);
     EXPECT_EQ(drip->unavailableReason, "needs effect drips (S83)");
-    TitleOpsResult r = titleLibraryApplyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "horror/test-drip"}});
+    TitleOpsResult r = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "horror/test-drip"}});
     EXPECT_FALSE(r.ok);
     ASSERT_FALSE(r.problems.empty());
     EXPECT_EQ(r.problems.back().code, "library_item_unavailable");
@@ -268,10 +268,10 @@ TEST_F(TitleLibraryFixture, Availability) {
 
 TEST_F(TitleLibraryFixture, LookKeepsContract) {
     const TitleArtDoc before = keptDoc();
-    TitleOpsResult r = titleLibraryApplyOps(before, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult r = titleLibraryApplyOps(before, TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     ASSERT_TRUE(r.ok) << r.error();
-    const Json* b = titleart::findLayer(before.root, "00000001");
-    const Json* a = titleart::findLayer(r.doc.root, "00000001");
+    const TitleLibraryJson* b = titleart::findLayer(before.root, "00000001");
+    const TitleLibraryJson* a = titleart::findLayer(r.doc.root, "00000001");
     ASSERT_TRUE(a && b);
     for (const char* key : {"id", "type", "name", "visible", "locked", "guide", "blend", "opacity", "clip", "transform", "masks", "text", "size",
                             "tracking", "line_height", "align", "h_scale", "shear", "warp", "distort", "weight", "font", "fallback_fonts"}) {
@@ -281,17 +281,17 @@ TEST_F(TitleLibraryFixture, LookKeepsContract) {
     EXPECT_EQ((*a)["look"]["id"], "metal/test-gold");
     // red control: an apply that loses the masks is caught by the same comparison
     setDropMasksForTesting(true);
-    TitleOpsResult broken = titleLibraryApplyOps(before, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult broken = titleLibraryApplyOps(before, TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     setDropMasksForTesting(false);
     ASSERT_TRUE(broken.ok);
-    const Json* c = titleart::findLayer(broken.doc.root, "00000001");
+    const TitleLibraryJson* c = titleart::findLayer(broken.doc.root, "00000001");
     EXPECT_NE(titleLibraryMember(*c, "masks"), titleLibraryMember(*b, "masks"));
 }
 
 TEST_F(TitleLibraryFixture, PxScaleByRefSize) {
-    TitleOpsResult r = titleLibraryApplyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult r = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     ASSERT_TRUE(r.ok) << r.error();
-    const Json* a = titleart::findLayer(r.doc.root, "00000001");
+    const TitleLibraryJson* a = titleart::findLayer(r.doc.root, "00000001");
     // size 400 on a look authored for 200: px params double
     EXPECT_DOUBLE_EQ((*a)["effects"][0]["params"]["size"].get<double>(), 40.0);
     // the part effect landed on the second rim's id
@@ -303,15 +303,15 @@ TEST_F(TitleLibraryFixture, PxScaleByRefSize) {
 TEST_F(TitleLibraryFixture, OwnedGeneratorsReplaced) {
     TitleArtDoc doc = keptDoc();
     // a user's own generator following the layer
-    doc.root["layers"].push_back(Json{{"id", "000000aa"}, {"type", "generator"}, {"name", "Mine"}, {"follow", "00000001"},
-                                      {"generator", {{"type", "glints"}, {"params", Json::object()}}}});
+    doc.root["layers"].push_back(TitleLibraryJson{{"id", "000000aa"}, {"type", "generator"}, {"name", "Mine"}, {"follow", "00000001"},
+                                      {"generator", {{"type", "glints"}, {"params", TitleLibraryJson::object()}}}});
     titleart::normalizeTitleArt(doc, nullptr);
-    TitleOpsResult once = titleLibraryApplyOps(doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult once = titleLibraryApplyOps(doc, TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     ASSERT_TRUE(once.ok) << once.error();
-    TitleOpsResult twice = titleLibraryApplyOps(once.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult twice = titleLibraryApplyOps(once.doc, TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     ASSERT_TRUE(twice.ok);
     int owned = 0, mine = 0;
-    titleart::forEachLayer(twice.doc.root, [&](const Json& l, const Json*, int) {
+    titleart::forEachLayer(twice.doc.root, [&](const TitleLibraryJson& l, const TitleLibraryJson*, int) {
         if (l.value("type", std::string()) != "generator") return true;
         if (l["look"].value("owner", std::string()) == "00000001") owned++;
         if (l.value("id", std::string()) == "000000aa") mine++;
@@ -323,27 +323,27 @@ TEST_F(TitleLibraryFixture, OwnedGeneratorsReplaced) {
 
 TEST_F(TitleLibraryFixture, AutoGroup) {
     // group effects need the auto group: created, then dissolved by a look without them
-    Json j = Json::parse(GOLD_LOOK);
+    TitleLibraryJson j = TitleLibraryJson::parse(GOLD_LOOK);
     j["id"] = "metal/test-grouped";
-    j["group_effects"] = Json::array({Json{{"type", "outer_glow"}, {"params", Json::object()}}});
+    j["group_effects"] = TitleLibraryJson::array({TitleLibraryJson{{"type", "outer_glow"}, {"params", TitleLibraryJson::object()}}});
     auto files = builtins();
     files["looks/metal/test-grouped.titlelook"] = j.dump();
     TitleLibrary::get().setBuiltinsForTesting(files);
-    TitleOpsResult grouped = titleLibraryApplyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-grouped"}});
+    TitleOpsResult grouped = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-grouped"}});
     ASSERT_TRUE(grouped.ok) << grouped.error();
     ASSERT_EQ(grouped.doc.root["layers"].size(), 1u);
-    const Json& group = grouped.doc.root["layers"][0];
+    const TitleLibraryJson& group = grouped.doc.root["layers"][0];
     EXPECT_EQ(group["type"], "group");
     EXPECT_EQ(group["name"], "Title FX");
     EXPECT_EQ(group["look"]["owner"], "00000001");
     ASSERT_EQ(group["effects"].size(), 1u);
     EXPECT_TRUE(group["effects"][0]["from_look"].get<bool>());
     // reused by the same look
-    TitleOpsResult again = titleLibraryApplyOps(grouped.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-grouped"}});
+    TitleOpsResult again = titleLibraryApplyOps(grouped.doc, TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-grouped"}});
     ASSERT_TRUE(again.ok);
     EXPECT_EQ(again.details["0"]["group"], "kept");
     // dissolved by a look without group effects
-    TitleOpsResult plain = titleLibraryApplyOps(again.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}});
+    TitleOpsResult plain = titleLibraryApplyOps(again.doc, TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}});
     ASSERT_TRUE(plain.ok) << plain.error();
     EXPECT_EQ(plain.details["0"]["group"], "dissolved");
     EXPECT_EQ(plain.doc.root["layers"][0]["type"], "text");
@@ -356,24 +356,24 @@ TEST_F(TitleLibraryFixture, KeepColorScheme) {
     auto files = builtins();
     files["color-schemes/test-red.titlecolors"] = scheme;
     TitleLibrary::get().setBuiltinsForTesting(files);
-    TitleOpsResult schemed = titleLibraryApplyOps(keptDoc(), Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}},
-                                                           Json{{"op", "apply_color_scheme"}, {"layer", "Title"}, {"color_scheme", "test-red"}}}));
+    TitleOpsResult schemed = titleLibraryApplyOps(keptDoc(), TitleLibraryJson::array({TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}},
+                                                           TitleLibraryJson{{"op", "apply_color_scheme"}, {"layer", "Title"}, {"color_scheme", "test-red"}}}));
     ASSERT_TRUE(schemed.ok) << schemed.error();
     EXPECT_EQ(titleart::findLayer(schemed.doc.root, "00000001")->at("look")["color_scheme"], "test-red");
-    TitleOpsResult kept = titleLibraryApplyOps(schemed.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}});
+    TitleOpsResult kept = titleLibraryApplyOps(schemed.doc, TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}});
     ASSERT_TRUE(kept.ok);
     EXPECT_TRUE(kept.details["0"]["kept_color_scheme"].get<bool>());
     EXPECT_EQ(titleart::findLayer(kept.doc.root, "00000001")->at("look")["color_scheme"], "test-red");
-    TitleOpsResult cleared = titleLibraryApplyOps(schemed.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}, {"keep_color_scheme", false}});
+    TitleOpsResult cleared = titleLibraryApplyOps(schemed.doc, TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}, {"keep_color_scheme", false}});
     ASSERT_TRUE(cleared.ok);
     EXPECT_EQ(titleart::findLayer(cleared.doc.root, "00000001")->at("look")["color_scheme"], "");
 }
 
 TEST_F(TitleLibraryFixture, FreshLinks) {
-    Json j = Json::parse(GOLD_LOOK);
+    TitleLibraryJson j = TitleLibraryJson::parse(GOLD_LOOK);
     j["id"] = "metal/test-linked";
     j["style"]["rims"][1]["material"]["link"] = "gold";
-    j["links"] = Json{{"gold", {{"name", "Gold"}}}};
+    j["links"] = TitleLibraryJson{{"gold", {{"name", "Gold"}}}};
     auto files = builtins();
     files["looks/metal/test-linked.titlelook"] = j.dump();
     TitleLibrary::get().setBuiltinsForTesting(files);
@@ -382,8 +382,8 @@ TEST_F(TitleLibraryFixture, FreshLinks) {
     doc.root["layers"][1]["id"] = "00000002";
     doc.root["layers"][1]["name"] = "Second";
     titleart::normalizeTitleArt(doc, nullptr);
-    TitleOpsResult r = titleLibraryApplyOps(doc, Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-linked"}},
-                                               Json{{"op", "apply_look"}, {"layer", "Second"}, {"look", "metal/test-linked"}}}));
+    TitleOpsResult r = titleLibraryApplyOps(doc, TitleLibraryJson::array({TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-linked"}},
+                                               TitleLibraryJson{{"op", "apply_look"}, {"layer", "Second"}, {"look", "metal/test-linked"}}}));
     ASSERT_TRUE(r.ok) << r.error();
     const std::string a = titleart::findLayer(r.doc.root, "00000001")->at("style")["rims"][1]["material"]["link"].get<std::string>();
     const std::string b = titleart::findLayer(r.doc.root, "00000002")->at("style")["rims"][1]["material"]["link"].get<std::string>();
@@ -397,24 +397,24 @@ TEST_F(TitleLibraryFixture, FreshLinks) {
 
 TEST_F(TitleLibraryFixture, Deterministic) {
     // the same look on the same document with two id seeds: equal after id normalisation
-    TitleOpsResult a = titleLibraryApplyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}}, 11);
-    TitleOpsResult b = titleLibraryApplyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}}, 99);
+    TitleOpsResult a = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}}, 11);
+    TitleOpsResult b = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}}, 99);
     ASSERT_TRUE(a.ok && b.ok);
-    auto strip = [](Json v) {
-        std::function<void(Json&)> walk = [&](Json& x) {
+    auto strip = [](TitleLibraryJson v) {
+        std::function<void(TitleLibraryJson&)> walk = [&](TitleLibraryJson& x) {
             if (x.is_object()) {
-                Json out = Json::object();
+                TitleLibraryJson out = TitleLibraryJson::object();
                 for (auto it = x.begin(); it != x.end(); ++it) {
                     std::string k = it.key();
                     if (k.rfind("rim:", 0) == 0) k = "rim:*";
-                    Json value = it.value();
+                    TitleLibraryJson value = it.value();
                     if (k == "id" || k == "owner" || k == "follow" || k == "guid") value = "*";
                     walk(value);
                     out[k] = value;
                 }
                 x = out;
             } else if (x.is_array()) {
-                for (Json& e : x) walk(e);
+                for (TitleLibraryJson& e : x) walk(e);
             }
         };
         walk(v);
@@ -426,13 +426,13 @@ TEST_F(TitleLibraryFixture, Deterministic) {
 TEST_F(TitleLibraryFixture, PreviewWritesNothing) {
     TitleArtDoc out;
     std::string error;
-    ASSERT_TRUE(preview(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}, {"apply_font", true}}, out, nullptr, &error)) << error;
+    ASSERT_TRUE(preview(keptDoc(), TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}, {"apply_font", true}}, out, nullptr, &error)) << error;
     std::error_code ec;
     EXPECT_FALSE(fs::exists(scratch / "project" / "assets" / "TitleArt", ec));
 }
 
 TEST_F(TitleLibraryFixture, TemplateBuildsAreReproducible) {
-    const Json recipe = Json::parse(R"({"id": "minimal/test-built", "name": {"en": "Built", "ja": "作成"}, "family": "minimal",
+    const TitleLibraryJson recipe = TitleLibraryJson::parse(R"({"id": "minimal/test-built", "name": {"en": "Built", "ja": "作成"}, "family": "minimal",
         "tags": ["a", "b", "c"], "texts": {"text": {"en": "HERO", "ja": "英雄"}},
         "ops": [{"op": "add_layer", "type": "text", "name": "Subtitle", "text": "SUB"},
                 {"op": "apply_look", "layer": "Title", "look": "metal/test-gold"}]})");
@@ -448,7 +448,7 @@ TEST_F(TitleLibraryFixture, TemplateBuildsAreReproducible) {
 // ---- AC5: capture ----
 
 TEST_F(TitleLibraryFixture, CaptureRoundTripsALook) {
-    TitleOpsResult applied = titleLibraryApplyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult applied = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     ASSERT_TRUE(applied.ok) << applied.error();
     // capture at the look's own size: ref_size 400 and every px value doubled, so re-applying to
     // a layer of size 400 gives the same document
@@ -462,41 +462,41 @@ TEST_F(TitleLibraryFixture, CaptureRoundTripsALook) {
     EXPECT_EQ(captured.member("style")["rims"].size(), 2u);
     EXPECT_EQ(captured.member("generators").size(), 1u);
     auto files = builtins();
-    Json cj = captured.root;
+    TitleLibraryJson cj = captured.root;
     cj["id"] = "metal/captured";
     files["looks/metal/captured.titlelook"] = writeLook(TitleLook{cj});
     TitleLibrary::get().setBuiltinsForTesting(files);
-    TitleOpsResult again = titleLibraryApplyOps(applied.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/captured"}});
+    TitleOpsResult again = titleLibraryApplyOps(applied.doc, TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/captured"}});
     ASSERT_TRUE(again.ok) << again.error();
-    const Json* a = titleart::findLayer(applied.doc.root, "00000001");
-    const Json* b = titleart::findLayer(again.doc.root, "00000001");
+    const TitleLibraryJson* a = titleart::findLayer(applied.doc.root, "00000001");
+    const TitleLibraryJson* b = titleart::findLayer(again.doc.root, "00000001");
     EXPECT_EQ(titleart::writeTitleArtJson(sparseObject((*a)["style"], "style2d", true)), titleart::writeTitleArtJson(sparseObject((*b)["style"], "style2d", true)));
     EXPECT_EQ((*a)["effects"][0]["params"], (*b)["effects"][0]["params"]);
 }
 
 TEST_F(TitleLibraryFixture, SaveLookProjectAndUserScopes) {
-    TitleOpsResult saved = titleLibraryApplyOps(keptDoc(), Json{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}});
+    TitleOpsResult saved = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}});
     ASSERT_TRUE(saved.ok) << saved.error();
     ASSERT_FALSE(saved.files.empty());
     EXPECT_EQ(saved.files.back().path, TitleLibrary::get().scopeDir(LibraryScope::Project, LibraryKind::Look) / "my-look.titlelook");
     EXPECT_TRUE(saved.files.back().undoable);
-    TitleOpsResult user = titleLibraryApplyOps(keptDoc(), Json{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}, {"scope", "user"}});
+    TitleOpsResult user = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}, {"scope", "user"}});
     ASSERT_TRUE(user.ok);
     EXPECT_FALSE(user.files.back().undoable);
     // an existing id needs overwrite
     fs::create_directories(TitleLibrary::get().scopeDir(LibraryScope::Project, LibraryKind::Look));
     std::ofstream(TitleLibrary::get().scopeDir(LibraryScope::Project, LibraryKind::Look) / "my-look.titlelook") << saved.files.back().content;
-    TitleOpsResult clash = titleLibraryApplyOps(keptDoc(), Json{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}});
+    TitleOpsResult clash = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}});
     EXPECT_FALSE(clash.ok);
     EXPECT_EQ(clash.problems.back().code, "library_item_exists");
-    TitleOpsResult builtin = titleLibraryApplyOps(keptDoc(), Json{{"op", "delete_library_item"}, {"ref", "metal/test-gold"}});
+    TitleOpsResult builtin = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "delete_library_item"}, {"ref", "metal/test-gold"}});
     EXPECT_FALSE(builtin.ok);
     EXPECT_EQ(builtin.problems.back().code, "library_item_builtin");
 }
 
 TEST_F(TitleLibraryFixture, SaveTemplateNeedsAPlaceholder) {
     TitleArtDoc doc = keptDoc();
-    TitleOpsResult r = titleLibraryApplyOps(doc, Json{{"op", "save_template"}, {"name", "Mine"}});
+    TitleOpsResult r = titleLibraryApplyOps(doc, TitleLibraryJson{{"op", "save_template"}, {"name", "Mine"}});
     EXPECT_FALSE(r.ok);
     ASSERT_FALSE(r.problems.empty());
     EXPECT_EQ(r.problems.back().code, "template_without_placeholder");
@@ -550,7 +550,7 @@ TEST(TitleLibraryCommitted, EveryBuiltInParses) {
         } else if (path.rfind(".titlecolors") != std::string::npos) {
             titleart::ColorScheme s;
             std::vector<std::string> warnings;
-            ASSERT_TRUE(titleart::parseColorScheme(Json::parse(text), s, &warnings)) << path;
+            ASSERT_TRUE(titleart::parseColorScheme(TitleLibraryJson::parse(text), s, &warnings)) << path;
             for (const std::string& w : warnings) ADD_FAILURE() << path << ": " << w;
             EXPECT_EQ(titleart::writeColorSchemeText(s), text) << path << " is not canonical";
             schemes++;
@@ -561,17 +561,17 @@ TEST(TitleLibraryCommitted, EveryBuiltInParses) {
 
 // the look's `cjk` member thins rims only on Japanese text; Latin keeps the look as designed
 TEST_F(TitleLibraryFixture, CjkScaleAppliesOnlyToJapaneseText) {
-    Json look = Json::parse(GOLD_LOOK);
+    TitleLibraryJson look = TitleLibraryJson::parse(GOLD_LOOK);
     look["id"] = "metal/test-cjk";
-    look["style"]["rims"] = Json::array({Json{{"width", 8.0}}});
-    look["cjk"] = Json{{"rim_scale", 0.5}};
+    look["style"]["rims"] = TitleLibraryJson::array({TitleLibraryJson{{"width", 8.0}}});
+    look["cjk"] = TitleLibraryJson{{"rim_scale", 0.5}};
     auto files = builtins();
     files["looks/metal/test-cjk.titlelook"] = look.dump();
     TitleLibrary::get().setBuiltinsForTesting(files);
     const auto widthOn = [&](const std::string& text) {
         TitleArtDoc doc = keptDoc();
         doc.root["layers"][0]["text"] = text;
-        const TitleOpsResult r = titleLibraryApplyOps(doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-cjk"}});
+        const TitleOpsResult r = titleLibraryApplyOps(doc, TitleLibraryJson{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-cjk"}});
         EXPECT_TRUE(r.ok) << r.error();
         return r.doc.root["layers"][0]["style"]["rims"][0]["width"].get<double>();
     };
@@ -593,11 +593,11 @@ TEST_F(TitleLibraryFixture, TemplateCjkAppliesOnlyToJapaneseText) {
     files["templates/casino/test-cjk.titletemplate"] = TEMPLATE;
     TitleLibrary::get().setBuiltinsForTesting(files);
     const auto applied = [&](const char* language) {
-        const TitleOpsResult r = titleLibraryApplyOps(keptDoc(), Json{{"op", "apply_template"}, {"template", "casino/test-cjk"}, {"language", language}});
+        const TitleOpsResult r = titleLibraryApplyOps(keptDoc(), TitleLibraryJson{{"op", "apply_template"}, {"template", "casino/test-cjk"}, {"language", language}});
         EXPECT_TRUE(r.ok) << r.error();
-        return r.ok ? r.doc.root["layers"][0]["style"] : Json::object();
+        return r.ok ? r.doc.root["layers"][0]["style"] : TitleLibraryJson::object();
     };
-    const Json en = applied("en"), ja = applied("ja");
+    const TitleLibraryJson en = applied("en"), ja = applied("ja");
     EXPECT_DOUBLE_EQ(en["rims"][0]["width"].get<double>(), 8.0);
     EXPECT_DOUBLE_EQ(en["face"]["bevel"]["highlight_opacity"].get<double>(), 0.8);
     EXPECT_DOUBLE_EQ(ja["rims"][0]["width"].get<double>(), 4.0);

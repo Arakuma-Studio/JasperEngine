@@ -6299,4 +6299,64 @@ CASES = [
                    "must_not_call": [{"tool": "add_component", "args": {"component": "re:(?i)joint"}}, "set_joint"]},
         "max_turns": 16,
     },
+    {
+        "id": "guard_html_ui_render_mode_camera",
+        "kind": "guard",
+        "what_happened": "S92 moved screen HTML UI documents after post-processing (Screen Space - Overlay). A HUD meant to "
+                         "look like it is on the CRT then stays sharp; the switch is the scene setting html_ui_render_mode, "
+                         "not a shader fork or a document filter.",
+        "text_at_issue": "set_scene_settings html_ui_render_mode help: 'where screen HTML UI documents composite: overlay "
+                         "(default: after post-processing, at output resolution), camera (in the camera pass: render scale "
+                         "and post apply)'",
+        "source": "S92 R13, R14 (ledger U34); no failure on record",
+        "prompt": "The scene has the CRT effect on, but the HTML HUD on top is perfectly sharp and does not get the "
+                  "scanlines. I want the HUD to go through the CRT look like the rest of the screen.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\npost_processing = {crt_enabled: true}\nhtml_ui_render_mode = overlay\n"
+                "html_ui_msaa_samples = 0",
+                {"scene_id": 1, "settings": {"post_processing": {"crt_enabled": True}, "html_ui_render_mode": "overlay",
+                                             "html_ui_msaa_samples": 0},
+                 "schema": {"html_ui_render_mode": {"type": "enum", "default": "overlay", "options": ["overlay", "camera"],
+                            "help": "where screen HTML UI documents composite: overlay (default: after post-processing, at "
+                                    "output resolution), camera (in the camera pass: render scale and post apply)"}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["html_ui_render_mode"]})},
+            {"tool": "screenshot", "result": ok("Game view screenshot (640x360).", {"view": "game"})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"html_ui_render_mode": "camera"}}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(css|html)$"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_html_ui_msaa_scene_not_document",
+        "kind": "guard",
+        "what_happened": "A screen-mode UI Document shares the scene's target: its own msaaSamples does nothing. The "
+                         "set_properties result's next names the scene setting html_ui_msaa_samples.",
+        "text_at_issue": "set_properties next: 'msaaSamples applies to Texture-mode documents only; a screen document's "
+                         "MSAA is the scene's: set_scene_settings {html_ui_msaa_samples}.'",
+        "source": "S92 R17, R18 (ledger U37); no failure on record",
+        "prompt": "Turn MSAA off (1 sample) for the HUD UI Document (GameObject 12, screen mode) in this scene: it costs "
+                  "too much on phones.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok(
+                "GameObject 12 \"HUD\": transform, uidocument (filename assets/ui/hud.html, renderMode screen, msaaSamples 0).",
+                {"id": 12, "components": {"uidocument": {"filename": "assets/ui/hud.html", "renderMode": "screen",
+                                                         "msaaSamples": 0}}})},
+            {"tool": "set_properties", "result": ok(
+                "Set 1 property on 1 GameObject(s) (one undo step). New values: {\"uidocument\":{\"msaaSamples\":1}}",
+                {"scene_id": 1, "entities": [{"id": 12}], "values": {"uidocument": {"msaaSamples": 1}},
+                 "next": "msaaSamples applies to Texture-mode documents only; a screen document's MSAA is the scene's: "
+                         "set_scene_settings {html_ui_msaa_samples}."})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nhtml_ui_msaa_samples = 0",
+                {"scene_id": 1, "settings": {"html_ui_msaa_samples": 0},
+                 "schema": {"html_ui_msaa_samples": {"type": "int", "default": 0, "help":
+                     "MSAA samples of the screen HTML UI documents: 0 project default, 1, 2, 4, 8"}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["html_ui_msaa_samples"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"html_ui_msaa_samples": 1}}}]},
+        "max_turns": 10,
+    },
 ]
