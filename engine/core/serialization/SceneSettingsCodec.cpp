@@ -174,12 +174,17 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.f32(scaler.matchWidthOrHeight);
     w.u8(static_cast<uint8_t>(scaler.physicalUnit));
     w.f32(scaler.fallbackScreenDPI);
-    // format 1.9 (S92, after S78's 1.8 Light Steps): the screen HTML UI documents' composite and MSAA samples
+    // format 1.8 (S78): the Light Steps, the 2D ambient without a Light 2D
+    w.svarint(scene.getLight2DSteps());
+    w.boolean(scene.isAmbientLight2DWithoutLights());
+    // format 1.9 (S92): the screen HTML UI documents' composite and MSAA samples
     w.u8(static_cast<uint8_t>(scene.getHtmlUiRenderMode()));
     w.u8(static_cast<uint8_t>(scene.getHtmlUiMsaaSamples()));
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
+    // a record before 1.8 was cooked from a scene whose 2D ambient never tinted without a Light 2D
+    scene.setAmbientLight2DWithoutLights(false);
     Vector4 backgroundColor;
     read(r, backgroundColor);
     scene.setBackgroundColor(backgroundColor);
@@ -324,6 +329,11 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     if (unit <= static_cast<uint8_t>(PhysicalUnit::Picas)) scaler.physicalUnit = static_cast<PhysicalUnit>(unit);
     scaler.fallbackScreenDPI = r.f32();
     if (scaler != CanvasScalerSettings()) scene.setCanvasScaler(scaler);
+    // a 1.7 record ends here: the Light Steps are off and the 2D ambient leaves a scene without a
+    // Light 2D as it was drawn (format 1.8)
+    if (r.atEnd()) return;
+    scene.setLight2DSteps(static_cast<int>(r.svarint()));
+    scene.setAmbientLight2DWithoutLights(r.boolean());
     // a 1.8 record ends here: the screen documents stay in the camera pass (above) and keep the
     // default samples, the project's (format 1.9)
     if (r.atEnd()) return;
