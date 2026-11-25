@@ -251,7 +251,11 @@ article's *look* and its pitfalls caught early:
   file without the key reads off, so a scene saved before S78 with a tinting 2D ambient and no Light 2D
   draws as it did, also when a script changes the ambient later, and re-saves unchanged. No value changes
   meaning, so the scene format keeps its version (a migration that wrote the key into every older scene
-  broke the data-safety corpus: a re-save may change only the version line). Cooked format 1.6 carries it
-  after the Light Steps; a record before 1.6 reads off.
+  broke the data-safety corpus: a re-save may change only the version line). Cooked format 1.8 (after #8's 1.6 and #18's 1.7) carries it
+  after the Light Steps; a record before 1.8 reads off. The lead approved this handling.
+- **R1, R3 (numbers at landing):** S78 landed after S96 (#8) and S98 (#18): cooked scene format 1.8 (the
+  Light Steps and Ambient Without Lights after S98's Canvas Scaler), shader cache v66, MESH bit 55.
+- **Compile builds (S98 D1):** S98 removed the generated per-scene C++ (`editor/Factory.cpp`); the two
+  lines S78 added there are carried by the cooked scene settings (1.8) every build loads.
 - **AC6:** `SpriteNormalsGapsTest.cpp` is in `jasperengine-editor-tests` (`editor/tests/`), not
   `jasperengine-spritenormals-tests`: that target does not link and no CI lane builds it.
