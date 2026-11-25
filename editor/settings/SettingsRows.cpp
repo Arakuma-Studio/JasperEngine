@@ -3265,6 +3265,8 @@ std::vector<Setting> mcpSettingsTable() {
             };
         }
         audioInt("audio.max_voices", "Voices playing at all (default 256); past it the least important (AudioSource priority) stops.", 1, 1000, &AudioSettings::maxVoices);
+        audioInt("audio.unused_clip_cache", "MiB of clips nothing plays that stay loaded (default 16), the least recently used dropped first; "
+                 "0 drops a clip when its last source or voice lets it go.", 0, 4096, &AudioSettings::unusedClipCacheMb);
         audioInt("audio.seed", "The seed of Sound Event picks in a run without a device (default 1), so it repeats. A run with a device draws its own.", 0, 2147483647LL, &AudioSettings::seed);
         audioInt("audio.capture_max_seconds", "Seconds of audio a Play's capture keeps (default 120); its events go on being logged after them.", 1, 3600, &AudioSettings::captureMaxSeconds);
         audioInt("audio.capture_keep", "Capture sessions kept in the project (default 3); the oldest goes first.", 1, 20, &AudioSettings::captureKeep);
@@ -4474,6 +4476,7 @@ const Placement placements[] = {
     {"audio.music_group", "Audio", "", "Music Group", "mixer group music track playlist playMusic stinger"},
     {"audio.max_real_voices", "Audio", "", "Max Real Voices", "voices virtual virtualised polyphony"},
     {"audio.max_voices", "Audio", "", "Max Voices", "voices polyphony priority"},
+    {"audio.unused_clip_cache", "Audio", "", "Unused Clip Cache (MiB)", "memory cache clips unload decode budget"},
     {"audio.sample_rate", "Audio", "", "Sample Rate", "hz 22050 44100 48000 output frequency"},
     {"audio.seed", "Audio", "", "Random Seed", "seed sound event random shuffle deterministic repeat"},
     {"audio.capture_max_seconds", "Audio", "Capture and QA", "Capture Max Seconds", "capture session length truncate"},

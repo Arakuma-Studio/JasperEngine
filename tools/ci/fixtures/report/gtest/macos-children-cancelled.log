@@ -1,0 +1,84 @@
+[==========] Running 5237 tests from 798 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from RuntimeFields
+[ RUN      ] RuntimeFields.Generated
+[       OK ] RuntimeFields.Generated (1 ms)
+[----------] 1 test from RuntimeFields (1 ms total)
+
+[----------] 3 tests from AppSettings
+[ RUN      ] AppSettings.MergeConcurrent
+Note: Google Test filter = AppSettings.MergeConcurrent
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from AppSettings
+[ RUN      ] AppSettings.MergeConcurrent
+[       OK ] AppSettings.MergeConcurrent (188 ms)
+[ RUN      ] AppSettings.CorruptFileIsSetAside
+(WARN): Editor settings "/var/folders/q2/p1t6rgxj5fj32g1dc7dmd49r0000gn/T/jasper-settings-44900-41/settings.yaml" could not be read (yaml-cpp: error at line 2, column 3: end of sequence flow not found); set aside as "/var/folders/q2/p1t6rgxj5fj32g1dc7dmd49r0000gn/T/jasper-settings-44900-41/settings.yaml.corrupt-20261120-004516", starting from defaults.
+[       OK ] AppSettings.CorruptFileIsSetAside (5 ms)
+[ RUN      ] AppSettings.AutosaveIntervalClamped
+[       OK ] AppSettings.AutosaveIntervalClamped (0 ms)
+[----------] 3 tests from AppSettings (194 ms total)
+
+[----------] 2 tests from Compat
+[----------] 2 tests from ProjectTemplates (33 ms total)
+
+[----------] 6 tests from CrashLeftovers
+[ RUN      ] CrashLeftovers.AZipImportKilledMidway
+Note: Google Test filter = CrashLeftovers.AZipImportKilledMidway
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CrashLeftovers
+[ RUN      ] CrashLeftovers.AZipImportKilledMidway
+Removed /var/folders/q2/p1t6rgxj5fj32g1dc7dmd49r0000gn/T/jasper-crash-zip-44900-107/Projects/Game.importing, left by a stopped import or template copy
+[       OK ] CrashLeftovers.AZipImportKilledMidway (312 ms)
+[ RUN      ] CrashLeftovers.ATemplateCopyKilledMidway
+Note: Google Test filter = CrashLeftovers.ATemplateCopyKilledMidway
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CrashLeftovers
+[ RUN      ] CrashLeftovers.ATemplateCopyKilledMidway
+Removed /var/folders/q2/p1t6rgxj5fj32g1dc7dmd49r0000gn/T/jasper-crash-template-44900-108/Projects/New.importing, left by a stopped import or template copy
+[       OK ] CrashLeftovers.ATemplateCopyKilledMidway (222 ms)
+[ RUN      ] CrashLeftovers.ASaveAsTemplateKilledMidway
+Note: Google Test filter = CrashLeftovers.ASaveAsTemplateKilledMidway
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CrashLeftovers
+[ RUN      ] CrashLeftovers.ASaveAsTemplateKilledMidway
+Removed /var/folders/q2/p1t6rgxj5fj32g1dc7dmd49r0000gn/T/jasper-crash-save-44900-109/settings/templates/.staging/saved.importing, left by a stopped import or template copy
+[       OK ] CrashLeftovers.ASaveAsTemplateKilledMidway (306 ms)
+[ RUN      ] CrashLeftovers.TheNextStartRemovesWhatTheJournalNames
+Note: Google Test filter = CrashLeftovers.TheNextStartRemovesWhatTheJournalNames
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CrashLeftovers
+[ RUN      ] CrashLeftovers.TheNextStartRemovesWhatTheJournalNames
+[       OK ] CrashLeftovers.TheNextStartRemovesWhatTheJournalNames (203 ms)
+[ RUN      ] CrashLeftovers.ALiveOwnerInAnotherProcessIsNeverTouched
+Note: Google Test filter = CrashLeftovers.ALiveOwnerInAnotherProcessIsNeverTouched
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CrashLeftovers
+[ RUN      ] CrashLeftovers.ALiveOwnerInAnotherProcessIsNeverTouched
+Removed /var/folders/q2/p1t6rgxj5fj32g1dc7dmd49r0000gn/T/jasper-crash-journal-44900-110/Anywhere/Game.importing, left by a stopped import or template copy
+[       OK ] CrashLeftovers.ALiveOwnerInAnotherProcessIsNeverTouched (236 ms)
+[ RUN      ] CrashLeftovers.AGitImportKilledMidway
+Note: Google Test filter = CrashLeftovers.AGitImportKilledMidway
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CrashLeftovers
+[ RUN      ] CrashLeftovers.AGitImportKilledMidway
+Removed /var/folders/q2/p1t6rgxj5fj32g1dc7dmd49r0000gn/T/jasper-crash-live-44900-111/Projects/Game.importing, left by a stopped import or template copy
+[       OK ] CrashLeftovers.AGitImportKilledMidway (461 ms)
+[----------] 6 tests from CrashLeftovers (1743 ms total)
+
+[----------] 7 tests from StagingFolders
+[ RUN      ] StagingFolders.Names
+Removed /var/folders/q2/p1t6rgxj5fj32g1dc7dmd49r0000gn/T/jasper-crash-git-44900-112/Projects/Game.importing, left by a stopped import or template copy
+[       OK ] StagingFolders.Names (0 ms)
+[ RUN      ] StagingFolders.AClaimOwnsItsFolderUntilReleased
+[       OK ] StagingFolders.AClaimOwnsItsFolderUntilReleased (1 ms)
+[ RUN      ] StagingFolders.AFolderWithoutAMarkerIsKeptAndReported
+[       OK ] StagingFolders.AFolderWithoutAMarkerIsKeptAndReported (2 ms)
+[ RUN      ] StagingFolders.OnlyOurMarkerCounts

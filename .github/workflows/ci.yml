@@ -36,7 +36,7 @@ on:
         type: boolean
         default: false
       self_hosted:
-        description: "Test the overflow runners: <job>=<je-mac|je-linux|je-win|blacksmith-6vcpu-macos-26> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
+        description: "Test the overflow runners: <job>=<je-mac|je-linux|je-win> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
         type: string
         default: ''
 
@@ -167,8 +167,6 @@ jobs:
           # the overflow runners (docs/testing.md "Overflow runners"): the ones taken out; a fork's pull
           # request never gets one. Their state is fetched below, as the plan starts
           RUNNER_DISABLED: ${{ vars.SELF_HOSTED_DISABLED }}
-          # the paid tier (Blacksmith) after GitHub's runners and the user's machines: off stops it
-          BLACKSMITH: ${{ vars.BLACKSMITH_OVERFLOW }}
           # off: a pull request runs its blocking lanes only, as the merge queue (docs/testing.md "What each event runs")
           PR_ADVISORY: ${{ vars.PR_ADVISORY_LANES }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -187,7 +185,7 @@ jobs:
           esac
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
                 --advisory "$ADVISORY_LANES" --runner-state "$RUNNER_TEMP/runner-state.json"
-                --runner-disabled "$RUNNER_DISABLED" --blacksmith "$BLACKSMITH" --pr-advisory "${PR_ADVISORY:-on}" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
+                --runner-disabled "$RUNNER_DISABLED" --pr-advisory "${PR_ADVISORY:-on}" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
                 --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --run-id "$GITHUB_RUN_ID" --self-hosted "$SELF_HOSTED")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
           [[ -f build/ci-inputs/coverage-map.json ]] && args+=(--coverage-map build/ci-inputs/coverage-map.json)
@@ -607,6 +605,11 @@ jobs:
           [[ -n "$f" ]] || f="*"
           if [[ "$f" == *-* ]]; then f="$f:*GpuSlow*"; else f="$f-*GpuSlow*"; fi
           tools/ci/logged.sh "asan-$SUITE" "${BUILD_ONLY}SANITIZE=address,undefined UNIT_SUITE=$SUITE UNIT_TEST_ARGS=$(printf %q "--gtest_filter=$f") tools/build.sh unit-tests"
+      # the editor tests' binary is the largest we link: past 2 GiB from its first loaded section to its
+      # last, x86-64's 32-bit PC-relative relocations no longer reach and the link fails
+      - name: Relocation reach of the test binary
+        if: always() && matrix.suite == 'editor'
+        run: python3 tools/ci/reloc_reach.py build/linux/editor-tests-address-undefined/jasperengine-editor-tests | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: ./.github/actions/ccache-save
         if: always()
@@ -1060,6 +1063,18 @@ jobs:
       # reported apart (windows-editor-tests, in ADVISORY_LANES while the suite settles on Windows): the
       # leg's build gates, its test run is listed; a hang costs TEST_TIMEOUT, not the leg. While advisory
       # it runs in the advisory run, not in the merge queue; never on push (build_only)
+      # the version control tests' svn and svnadmin (the Linux image and the macOS job have them; the
+      # runner image does not): SlikSVN's command-line client, whose installer puts them in its bin
+      - name: Subversion
+        if: matrix.part == 'editor' && !contains(fromJSON(needs.changes.outputs.build_only), 'windows-editor-tests')
+        run: |
+          bin='C:\Program Files\SlikSvn\bin'
+          if ! command -v svnadmin > /dev/null; then
+              tools/ci/retry.sh choco install sliksvn --no-progress -y
+              echo "$bin" >> "$GITHUB_PATH"
+              PATH="$(cygpath -u "$bin"):$PATH"
+          fi
+          svn --version --quiet && svnadmin --version --quiet
       - name: Editor unit tests (CPU suites)
         id: editor-tests
         if: matrix.part == 'editor' && !contains(fromJSON(needs.changes.outputs.build_only), 'windows-editor-tests')

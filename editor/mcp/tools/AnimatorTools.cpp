@@ -52,6 +52,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <set>
 #include <tuple>
 
@@ -466,6 +467,7 @@ Json controllerJson(const ControllerDef& def) {
                   {"state_machine", machineJson(layer.machine)}};
         if (!layer.mask.empty()) l["mask"] = layer.mask.path;
         if (!layer.slot.empty()) l["slot"] = layer.slot;
+        l["mesh_space_rotation"] = layer.meshSpaceRotation;
         layers.push_back(l);
     }
     return Json{{"parameters", parameters}, {"layers", layers}};
@@ -513,7 +515,7 @@ bool resolveAnimator(const CallPtr& call, AnimatorTarget& target) {
         call->fail(McpRefs::notOpenError(target.project, *target.scene));
         return false;
     }
-    target.entity = McpRefs::resolveEntity(target.scene, args["entity"], error);
+    target.entity = McpRefs::resolveEntity(target.scene, args.contains("entity") ? args["entity"] : Json(), error);
     if (target.entity == NULL_ENTITY) {
         call->fail(error);
         return false;
@@ -820,7 +822,8 @@ bool checkOpFields(const Json& op, std::string& error) {
         {"loop", Str}, {"tag", Str}, {"additive_reference", Str}, {"additive_time", Num}, {"from", Str}, {"to", Str},
         {"index", Num}, {"conditions", Arr}, {"has_exit_time", Bool}, {"exit_time", Num}, {"fixed_duration", Bool},
         {"duration", Num}, {"offset", Num}, {"interruption_source", Str}, {"ordered_interruption", Bool},
-        {"can_transition_to_self", Bool}, {"mute", Bool}, {"motion", Obj}, {"mirror", Bool}, {"foot_ik", Bool}, {"retarget", Bool}};
+        {"can_transition_to_self", Bool}, {"mute", Bool}, {"motion", Obj}, {"mirror", Bool}, {"foot_ik", Bool}, {"retarget", Bool},
+        {"mesh_space_rotation", Bool}};
     for (auto it = op.begin(); it != op.end(); ++it) {
         auto found = std::find_if(fields.begin(), fields.end(), [&](const auto& f) { return it.key() == f.first; });
         if (found == fields.end()) {
@@ -963,6 +966,7 @@ bool applyOp(Project* project, ControllerDef& def, const Json& op, std::vector<s
             }
         }
         if (op.contains("slot")) layer->slot = op["slot"].get<std::string>();
+        if (op.contains("mesh_space_rotation")) layer->meshSpaceRotation = op["mesh_space_rotation"].get<bool>();
         changes.push_back("set_layer " + layer->name);
         return true;
     }
@@ -1615,6 +1619,7 @@ void sampleAnimationPoseTool(const CallPtr& call) {
     const Json& args = call->args();
     AnimatorTarget target;
     if (!resolveAnimator(call, target)) return;
+    const std::string space = args.value("space", std::string("world"));
     AnimatorSystem* system = target.scene->scene->getSystem<AnimatorSystem>().get();
     const bool live = target.playing || previewing(target.scene->id, target.entity);
     const bool posing = args.contains("state") || args.contains("parameters") || args.contains("time");
@@ -1660,6 +1665,33 @@ void sampleAnimationPoseTool(const CallPtr& call) {
             for (int i = 0; i < steps; i++) system->preview(target.entity, time / (float)steps, &error);
         }
     }
+    // solo_layer: that layer's own pose alone, unmasked (the reference a masked layer's blend is
+    // compared with), in rig space like the final pose
+    std::vector<Vector3> positions = instance->rigPositions();
+    std::vector<Quaternion> rotations = instance->rigRotations();
+    int solo = -1;
+    if (args.contains("solo_layer")) {
+        const std::string name = args["solo_layer"].get<std::string>();
+        solo = instance->getLayerIndex(name);
+        std::string why;
+        if (solo < 0) {
+            for (const CompiledLayer& layer : instance->controller->layers) why += (why.empty() ? "" : ", ") + layer.name;
+            why = "no layer \"" + name + "\" (layers: " + why + ")";
+        } else if (instance->controller->layers[(size_t)solo].blending == AnimatorLayerBlending::Additive) {
+            why = "\"" + name + "\" is Additive: its output is a delta on the layers below, not a pose";
+        } else if (!instance->layers[(size_t)solo].hasOutput || instance->layers[(size_t)solo].outputSkipped) {
+            why = "\"" + name + "\" has weight 0, so its pose is not evaluated: give it a weight (control_animator {layer_weights})";
+        }
+        if (!why.empty()) {
+            if (sandbox) system->restorePreview(target.entity);
+            call->fail("solo_layer: " + why + ".");
+            return;
+        }
+        const size_t count = instance->rig.bones.size();
+        std::vector<Affine> world(count);
+        std::vector<Vector3> scales(count);
+        poseToRigSpace(instance->layerOutput(solo), instance->rig.parents.data(), RigSpace{world.data(), positions.data(), rotations.data(), scales.data()});
+    }
     const Transform& root = target.scene->scene->getComponent<Transform>(target.entity);
     std::vector<std::string> wanted;
     if (args.contains("bones")) {
@@ -1673,19 +1705,23 @@ void sampleAnimationPoseTool(const CallPtr& call) {
     std::vector<std::string> unknown;
     for (const std::string& name : wanted) {
         const int index = instance->resolveBone(name);
-        if (index < 0 || (size_t)index >= instance->rigPositions().size()) {
+        if (index < 0 || (size_t)index >= positions.size()) {
             unknown.push_back(name);
             continue;
         }
-        const Vector3 p = root.modelMatrix * instance->rigPositions()[(size_t)index];
-        const Quaternion q = (root.worldRotation * instance->rigRotations()[(size_t)index]).normalized();
+        const bool model = space == "model";
+        const Vector3 p = model ? positions[(size_t)index] : root.modelMatrix * positions[(size_t)index];
+        const Quaternion q = model ? rotations[(size_t)index].normalized() : (root.worldRotation * rotations[(size_t)index]).normalized();
         bones[name] = {{"position", {p.x, p.y, p.z}}, {"rotation", {q.x, q.y, q.z, q.w}}};
     }
-    Json out = {{"bones", bones}, {"state", instance->currentState(0).fullPath}, {"normalized_time", instance->currentState(0).normalizedTime}};
+    Json out = {{"bones", bones}, {"space", space}, {"state", instance->currentState(0).fullPath},
+                {"normalized_time", instance->currentState(0).normalizedTime}};
+    if (solo >= 0) out["solo_layer"] = instance->controller->layers[(size_t)solo].name;
     if (!unknown.empty()) out["unknown_bones"] = unknown;
     if (sandbox) system->restorePreview(target.entity);
     call->ok(std::to_string(bones.size()) + " bone(s) of \"" + target.scene->scene->getEntityName(target.entity) + "\" at " +
-             out["state"].get<std::string>() + (sandbox ? " (evaluated in edit mode, scene unchanged)." : "."), out);
+             out["state"].get<std::string>() + (solo >= 0 ? ", layer \"" + out["solo_layer"].get<std::string>() + "\" alone" : std::string()) +
+             (space == "model" ? ", in the Animator's space" : "") + (sandbox ? " (evaluated in edit mode, scene unchanged)." : "."), out);
 }
 
 } // namespace
@@ -1803,9 +1839,11 @@ void registerAnimatorTools(McpRegistry& registry) {
         tool.description =
             "World position and rotation [x,y,z,w] of an Animator's bones in its evaluated pose. Edit mode: state, parameters and "
             "time (seconds) choose the pose and the scene is restored after; play mode: the live pose. bones: paths or humanoid "
-            "slots (left_hand); default every slot (humanoid) or every bone.";
+            "slots (left_hand); default every slot (humanoid) or every bone. space model: relative to the Animator's GameObject. "
+            "solo_layer: that layer's pose alone, unmasked.";
         tool.inputSchema = object({{"entity", entityRef()}, {"scene", sceneRef()}, {"state", string("")}, {"layer", integer("")},
-                                   {"parameters", anyObject("")}, {"time", number("", 0, 600)}, {"bones", array(string(""), "")}}, {"entity"});
+                                   {"parameters", anyObject("")}, {"time", number("", 0, 600)}, {"bones", array(string(""), "")},
+                                   {"space", withDefault(stringEnum("", {"world", "model"}), "world")}, {"solo_layer", string("")}}, {"entity"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.allowedWhilePlaying = true;
@@ -1848,7 +1886,16 @@ ControllerClipInfo clipInfo(Project* project, const std::string& clip) {
 }
 
 std::vector<ClipWarning> validate(Project* project, const ControllerDef& def) {
-    return validateController(def, [project](const std::string& clip) { return clipInfo(project, clip); });
+    std::vector<ClipWarning> out = validateController(def, [project](const std::string& clip) { return clipInfo(project, clip); });
+    // kept in the file and ignored by the runtime (mesh-space-rotation D5): said, never refused
+    for (size_t l = 0; l < def.layers.size(); l++) {
+        const LayerDef& layer = def.layers[l];
+        if (!layer.meshSpaceRotation || (l > 0 && layer.blending == AnimatorLayerBlending::Override)) continue;
+        out.push_back({"layers[" + std::to_string(l) + "].mesh_space_rotation",
+                       l == 0 ? "has no effect on layer 0: no layer is below it to keep a direction against"
+                              : "has no effect on an Additive layer: it adds rotations to the pose below, so there is no direction of its own to keep"});
+    }
+    return out;
 }
 
 Json usersJson(Project* project, const std::vector<AnimatorAssetUser>& users) {
@@ -1912,9 +1959,11 @@ std::vector<std::pair<std::string, Entity>> boundTargets(Project* project, Scene
     return targets;
 }
 
-// a masked layer's coverage of what its clips animate (the Inspector's Bindings line)
+// a masked layer's coverage of what its clips animate (the Inspector's Bindings line); with a
+// `player`, the GameObjects where Mesh Space Rotation applies on its rig as paths from `root` (the
+// Animation Player's Inspector line: an Animator lists its bound rig's instead)
 Json maskCoverageEntry(Project* project, Scene* scene, Entity root, const std::string& layer, const std::string& mask,
-                       const std::vector<std::string>& clips) {
+                       const std::vector<std::string>& clips, const AnimationPlayerComponent* player = nullptr) {
     Json entry = {{"layer", layer}};
     std::string error;
     std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project, mask, &error);
@@ -1936,6 +1985,14 @@ Json maskCoverageEntry(Project* project, Scene* scene, Entity root, const std::s
         warnings.push_back({{"path", "body_parts"}, {"message", "the root has no humanoid rig (" + result.rigError + "): the body parts do not apply"}});
     }
     entry["warnings"] = warnings;
+    if (player) {
+        std::map<Entity, std::string> pathOf;
+        for (const std::pair<std::string, Entity>& path : anim::descendantPaths(scene, root)) pathOf[path.second] = path.first;
+        Json bones = Json::array();
+        const std::vector<Entity> animated = animlayersui::playerAnimatedTargets(project, scene, root, *player);
+        for (Entity bone : animlayersui::meshSpaceBoundary(scene, root, document->mask(), animated)) bones.push_back(pathOf[bone]);
+        entry["boundary_bones"] = bones;
+    }
     return entry;
 }
 
@@ -2109,7 +2166,7 @@ void addPlayerLayers(Project* project, SceneProject* scene, Entity root, Json& i
         }
         Json layer = {{"index", l}, {"name", layers[l].name}, {"weight", r6(l == 0 ? 1.0f : layers[l].weight)},
                       {"blend", layerBlendName(l == 0 ? AnimationLayerBlend::Override : layers[l].blend)},
-                      {"mask", assetJson(project, layers[l].mask)}, {"states", states}};
+                      {"mask", assetJson(project, layers[l].mask)}, {"mesh_space_rotation", layers[l].meshSpaceRotation}, {"states", states}};
         if (playing && l < player.runtime->layers.size()) {
             const LayerRuntime& runtime = player.runtime->layers[l];
             layer["live_weight"] = r6(player.runtime->layerWeight((int)l));
@@ -2128,10 +2185,53 @@ void addPlayerLayers(Project* project, SceneProject* scene, Entity root, Json& i
     // the masked layers' coverage (the Inspector's Bindings lines)
     Json coverage = Json::array();
     for (size_t l = 0; l < layers.size(); l++) {
-        if (!layers[l].mask.empty()) coverage.push_back(maskCoverageEntry(project, engineScene, root, layers[l].name, layers[l].mask,
-                                                                          playerClips(player, (int)l)));
+        if (layers[l].mask.empty()) continue;
+        Json entry = maskCoverageEntry(project, engineScene, root, layers[l].name, layers[l].mask, playerClips(player, (int)l), &player);
+        entry["mesh_space_rotation"] = layers[l].meshSpaceRotation;
+        coverage.push_back(entry);
     }
     if (!coverage.empty()) item["mask_coverage"] = coverage;
+}
+
+Json animatorLayers(Project* project, SceneProject* scene, Entity entity) {
+    Scene* engineScene = scene->scene;
+    Entity root = entity;
+    while (root != NULL_ENTITY && !engineScene->findComponent<AnimatorComponent>(root)) {
+        const Transform* transform = engineScene->findComponent<Transform>(root);
+        root = transform ? transform->parent : NULL_ENTITY;
+    }
+    if (root == NULL_ENTITY) return nullptr;
+    const AnimatorComponent& animator = engineScene->getComponent<AnimatorComponent>(root);
+    Json item = {{"entity", McpRefs::entityJson(scene, root)}, {"controller", assetJson(project, animator.controller.path)}};
+    std::shared_ptr<AnimatorAssetDocument> document =
+        animator.controller.path.empty() ? nullptr : AnimatorAssetDocument::open(project, animator.controller.path, nullptr);
+    if (!document || !document->loadError().empty()) return item;
+    const ControllerDef& def = document->controller();
+    // the boundary bones are the bound rig's: in edit mode bind once, then put the scene back,
+    // unless someone previews this Animator (the Animator window, preview_animator): binding
+    // and restoring would end their preview, so its runtime is read as it is
+    AnimatorSystem* system = engineScene->getSystem<AnimatorSystem>().get();
+    const bool live = scene->playState != ScenePlayState::STOPPED || PreviewOwner::ownerOf(scene->id, root).token != 0;
+    const bool inspected = !live && system->preview(root, 0.0f, nullptr);
+    const AnimatorInstance* instance = animator.runtime.get();
+    const bool bound = instance && instance->bound && instance->controller && instance->controller->layers.size() == def.layers.size();
+    Json coverage = Json::array();
+    for (size_t l = 0; l < def.layers.size(); l++) {
+        const LayerDef& layer = def.layers[l];
+        if (layer.mask.empty()) continue;
+        Json entry = maskCoverageEntry(project, engineScene, root, layer.name, layer.mask.path, animatorClips(project, animator, (int)l));
+        // the runtime's value (a Lua override in play), else the file's
+        entry["mesh_space_rotation"] = bound ? instance->layerMeshSpaceRotation((int)l) : layer.meshSpaceRotation;
+        if (bound) {
+            Json bones = Json::array();
+            for (uint16_t bone : instance->layerBoundaryBones((int)l)) bones.push_back(instance->rig.bones[bone].path);
+            entry["boundary_bones"] = bones;
+        }
+        coverage.push_back(entry);
+    }
+    if (inspected) system->restorePreview(root);
+    if (!coverage.empty()) item["mask_coverage"] = coverage;
+    return item;
 }
 
 bool checkMaskText(const std::string& text, std::vector<std::string>& warnings, std::string& error) {

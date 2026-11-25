@@ -557,6 +557,8 @@ compiles under WERROR (`it17.off.log`).
 
 ## Deviations
 
+- **Superseded by S97 D9: §4.2 "no per-clip load type".** A clip's import settings now hold `load_type`
+  (`docs/specs/S97-audio-gaps.md` REQ-16): a source's own Load Type wins, then the clip's, then Auto by size.
 - **The class is `AudioClipSource` (R10)**, in `engine/core/audio/ClipSource.{h,cpp}`: `jasperengine::ClipSource` is already an
   enum of the animation clips (`animation/AnimationClip.h`). S37, S39 and S40 read "ClipSource" as this class.
 - **`AssetMeta::isKnown` is unchanged (R8).** The spec asked it to list `provenance`, but that list holds the sections

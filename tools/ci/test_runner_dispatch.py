@@ -123,22 +123,6 @@ class Stuck(unittest.TestCase):
         # gone (unregistered)
         self.assertIn("offline", rd.stuck({}, [job("je-win", ago=3600)], {}, {}, NOW))
 
-    def test_a_job_blacksmith_does_not_take_goes_hosted_and_pauses_it(self):
-        # (past the spend limit Blacksmith takes no job: it would wait forever)
-        label = rd.BLACKSMITH["linux"]
-        self.assertEqual(rd.os_of([label]), ("linux", label))
-        why = rd.stuck({}, [job(label, ago=rd.QUEUED_LIMIT, name="linux")], {}, {}, NOW)
-        self.assertIn("Blacksmith took no job", why)
-        self.assertEqual(rd.stuck({}, [job(label, ago=60, name="linux")], {}, {}, NOW), "")
-        # not a hosted job: it neither saturates nor counts
-        s = rd.compute_state(RUNNERS, [job(label, ago=600)], {}, NOW)
-        self.assertEqual(s["os"]["linux"]["queued"], 0)
-        self.assertEqual(rd.paused({}, NOW), {"ok": True})
-        p = rd.paused({"blacksmith_paused_until": NOW + 60, "blacksmith_paused_why": "12:00"}, NOW)
-        self.assertFalse(p["ok"])
-        self.assertIn("12:00", p["why"])
-        self.assertEqual(rd.paused({"blacksmith_paused_until": NOW - 1}, NOW), {"ok": True})
-
     def test_a_planner_behind_a_busy_runner_goes_hosted(self):
         busy = {"je-linux": {"online": True, "busy": True}}
         planner = job("je-linux", ago=rd.PLANNER_WAIT, name="changes")
@@ -170,7 +154,7 @@ class Idle(unittest.TestCase):
     RUNNERS = {"je-mac": {"online": True, "busy": False, "fit": True}, "je-win": {"online": True, "busy": False, "fit": True},
                "je-linux": {"online": True, "busy": False, "fit": False}}
 
-    def make_run(self, event="merge_group", head="Arakuma-Studio/JasperEngine"):
+    def make_run(self, event="push", head="Arakuma-Studio/JasperEngine"):
         return {"id": 5, "event": event, "repository": {"full_name": "Arakuma-Studio/JasperEngine"},
                 "head_repository": {"full_name": head}}
 
@@ -204,6 +188,25 @@ class Idle(unittest.TestCase):
         self.assertEqual(rd.waiting_for_idle(self.make_run(), mac, self.RUNNERS, "", NOW, {"je-mac"}), ("", ""))
         # a same-repository pull request may
         self.assertEqual(rd.waiting_for_idle(self.make_run("pull_request"), mac, self.RUNNERS, "", NOW, set())[1], "je-mac")
+
+    def test_a_merge_queue_run_is_cancelled_only_when_its_job_cannot_finish(self):
+        # (run 45310250691, #153's group: an idle reroute cancelled it, failed its Check, removed the pull
+        # request and restarted every group behind it, about 2 h)
+        mac = [job("macos-latest", ago=3600, name="macos")]
+        self.assertEqual(rd.waiting_for_idle(self.make_run("merge_group"), mac, self.RUNNERS, "", NOW, set()), ("", ""))
+        queue = {"event": "merge_group"}
+        offline = {"je-mac": {"online": False}}
+        queued = [job("je-mac", ago=3600, name="macos")]
+        # queued for an offline runner: only once it has been gone QUEUE_OFFLINE_LIMIT (it may come back)
+        self.assertEqual(rd.stuck(queue, queued, offline, {"je-mac": NOW - rd.QUEUE_OFFLINE_LIMIT + 60}, NOW), "")
+        self.assertIn("offline", rd.stuck(queue, queued, offline, {"je-mac": NOW - rd.QUEUE_OFFLINE_LIMIT}, NOW))
+        self.assertIn("offline", rd.stuck({"event": "push"}, queued, offline, {"je-mac": NOW - 60}, NOW))
+        # running on a runner that went away: GitHub fails the job itself; the lost path then re-enqueues
+        running = [job("je-mac", "in_progress", runner="je-mac", name="macos")]
+        self.assertEqual(rd.stuck(queue, running, offline, {"je-mac": NOW - 7200}, NOW), "")
+        self.assertIn("offline for", rd.stuck({"event": "push"}, running, offline, {"je-mac": NOW - rd.OFFLINE_LIMIT}, NOW))
+        notes = {7: ["The self-hosted runner: je-mac lost communication with the server."]}
+        self.assertIn("lost communication", rd.lost([job("je-mac", "completed", conclusion="failure", id_=7)], notes.get))
 
 
 class FakeGh:

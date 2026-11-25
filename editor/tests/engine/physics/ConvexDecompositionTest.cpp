@@ -185,8 +185,9 @@ namespace {
 
     const DecompositionParams LOW = DecompositionParams::fromQuality(DecompositionQuality::LOW);
 
+    // pause 0 spins: it sees a state that lasts only a moment
     template <typename Predicate>
-    bool waitUntil(std::chrono::milliseconds limit, Predicate done) {
+    bool waitUntil(std::chrono::milliseconds limit, Predicate done, std::chrono::milliseconds pause = std::chrono::milliseconds(2)) {
     #if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
         // V-HACD in a sanitizer's Debug build takes many times as long (the limits measure
         // nothing: the quick-cancel checks keep their own budgets)
@@ -196,7 +197,10 @@ namespace {
         while (!done()) {
             if (Clock::now() > end)
                 return false;
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            if (pause.count() > 0)
+                std::this_thread::sleep_for(pause);
+            else
+                std::this_thread::yield();
         }
         return true;
     }
@@ -725,10 +729,12 @@ TEST(ConvexDecomposition, RequestLandsInMemoryAndOnDisk) {
         const uint64_t key = cache.request(mesh.positions, mesh.indices, LOW);
         EXPECT_EQ(key, expectedKey);
         EXPECT_NE(cache.status(key), DecompositionStatus::NONE);
-        ASSERT_TRUE(waitUntil(std::chrono::seconds(5), [&]() { return cache.completionVersion() != version; }));
+        // the first moment it is READY, the job is no longer pending, is counted and is saved
+        ASSERT_TRUE(waitUntil(std::chrono::seconds(5), [&]() { return cache.status(key) != DecompositionStatus::PENDING; },
+                              std::chrono::milliseconds(0)));
+        EXPECT_EQ(cache.pendingCount(), 0u);
         EXPECT_EQ(cache.completionVersion(), version + 1);
         EXPECT_EQ(cache.status(key), DecompositionStatus::READY);
-        EXPECT_EQ(cache.pendingCount(), 0u);
         EXPECT_EQ(cache.failureReason(key), "");
         std::vector<ConvexHullPoints> hulls;
         ASSERT_TRUE(cache.find(key, hulls));

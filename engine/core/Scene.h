@@ -406,6 +406,50 @@ namespace jasperengine{
         void setPhysics2DSubSteps(int subSteps);
         int getPhysics2DSubSteps() const;
 
+        // S96 WP-E: forwarders to PhysicsSystem::setWorldSettings2D/3D: the 2D world's units,
+        // rotation cap and tuning and the 3D solver (physics/WorldSettings.h; a value out of its
+        // range is clamped)
+        void setPhysics2DWorldSettings(const ScenePhysics2DSettings& settings);
+        const ScenePhysics2DSettings& getPhysics2DWorldSettings() const;
+        void setPhysics3DWorldSettings(const ScenePhysics3DSettings& settings);
+        const ScenePhysics3DSettings& getPhysics3DWorldSettings() const;
+        void setPhysics2DPointsPerMeter(float pointsPerMeter);
+        float getPhysics2DPointsPerMeter() const;
+        void setPhysics2DMaxRotation(float maxRotation);
+        float getPhysics2DMaxRotation() const;
+        void setPhysics2DContactHertz(float contactHertz);
+        float getPhysics2DContactHertz() const;
+        void setPhysics2DContactDampingRatio(float contactDampingRatio);
+        float getPhysics2DContactDampingRatio() const;
+        void setPhysics2DContactPushSpeed(float contactPushSpeed);
+        float getPhysics2DContactPushSpeed() const;
+        void setPhysics2DJointHertz(float jointHertz);
+        float getPhysics2DJointHertz() const;
+        void setPhysics2DJointDampingRatio(float jointDampingRatio);
+        float getPhysics2DJointDampingRatio() const;
+        void setPhysics2DBounceThreshold(float bounceThreshold);
+        float getPhysics2DBounceThreshold() const;
+        void setPhysics2DMaxLinearSpeed(float maxLinearSpeed);
+        float getPhysics2DMaxLinearSpeed() const;
+        void setPhysics2DWarmStarting(bool warmStarting);
+        bool isPhysics2DWarmStarting() const;
+        void setPhysics2DContinuous(bool continuous);
+        bool isPhysics2DContinuous() const;
+        void setPhysics2DSleep(bool sleep);
+        bool isPhysics2DSleep() const;
+        void setPhysics3DVelocityIterations(int velocityIterations);
+        int getPhysics3DVelocityIterations() const;
+        void setPhysics3DPositionIterations(int positionIterations);
+        int getPhysics3DPositionIterations() const;
+        void setPhysics3DBounceThreshold(float bounceThreshold);
+        float getPhysics3DBounceThreshold() const;
+        void setPhysics3DSleepThreshold(float sleepThreshold);
+        float getPhysics3DSleepThreshold() const;
+        void setPhysics3DSpeculativeDistance(float speculativeDistance);
+        float getPhysics3DSpeculativeDistance() const;
+        void setPhysics3DCollisionSteps(int collisionSteps);
+        int getPhysics3DCollisionSteps() const;
+
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;
 

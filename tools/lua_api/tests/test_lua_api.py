@@ -158,6 +158,10 @@ class Emitters(unittest.TestCase):
             self.assertIn('onReload', files['Script.lua'])
             self.assertIn('ScriptReloadInfo', files['Script.lua'])
             self.assertIn('function Editor.call(tool, args, callback) end', files['EditorScript.lua'])
+            # a layer by index or name (docs/specs/mesh-space-rotation.md AC13)
+            self.assertIn('---@param layer integer|string\n---@param enabled boolean\nfunction Animator:setLayerMeshSpaceRotation(layer, enabled) end',
+                          files['Animator.lua'])
+            self.assertIn('function Animator:getLayerMeshSpaceRotation(layer) end', files['Animator.lua'])
             self.assertIn('HtmlUITypes.lua', files)
             self.assertFalse(any('-- unresolved:' in text for text in files.values()))
             self.assertTrue(os.path.exists(os.path.join(tmp, 'lua', stubs.LUALS_PLUGIN_NAME)))

@@ -884,6 +884,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
     ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
     ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
+    ${EDITOR_DIR}/reflect/components/VehicleReflect.cpp
     ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
     ${EDITOR_DIR}/reflect/components/SplinesReflect.cpp
     ${EDITOR_DIR}/reflect/components/VoxelReflect.cpp
@@ -1007,6 +1008,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PhysicsQueryTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
@@ -1103,6 +1105,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ProjectFileWrites.cpp
     ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
     ${EDITOR_DIR}/util/RagdollWizard.cpp
+    ${EDITOR_DIR}/util/VehicleRig.cpp
     ${EDITOR_DIR}/window/dialog/RagdollWizardDialog.cpp
     ${EDITOR_DIR}/window/dialog/CreateTerrainDialog.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
@@ -1296,6 +1299,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorUpstream.cpp
     ${EDITOR_DIR}/window/InspectorButton.cpp
     ${EDITOR_DIR}/window/InspectorPhysics.cpp
+    ${EDITOR_DIR}/window/InspectorVehicle.cpp
     ${EDITOR_DIR}/window/InspectorAnimation.cpp
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
     ${EDITOR_DIR}/window/InspectorLattice.cpp
@@ -1479,6 +1483,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
     ${EDITOR_DIR}/command/type/RemovePreservedComponentCmd.cpp
     ${EDITOR_DIR}/command/type/CreateEntityCmd.cpp
+    ${EDITOR_DIR}/command/type/AudioSourceSlotCmd.cpp
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
     ${EDITOR_DIR}/command/type/AddActionFrameCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
@@ -1491,6 +1496,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ObjectTransformCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveChildSceneCmd.cpp
     ${EDITOR_DIR}/command/type/SetChildSceneStartActiveCmd.cpp
+    ${EDITOR_DIR}/command/type/DecomposeColliderCmd.cpp
     ${EDITOR_DIR}/command/type/EntityNameCmd.cpp
     ${EDITOR_DIR}/command/type/ImportPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveEntityFromPrefabCmd.cpp
@@ -1507,6 +1513,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/window/InspectorAudioEffects.cpp
+    ${EDITOR_DIR}/audio/SourceEffectEdit.cpp
     ${EDITOR_DIR}/window/AudioCapturesWindow.cpp
     ${EDITOR_DIR}/window/SoundBrowserWindow.cpp
     ${EDITOR_DIR}/audio/SoundDrop.cpp

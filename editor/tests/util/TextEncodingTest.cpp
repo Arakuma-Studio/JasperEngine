@@ -12,6 +12,7 @@
 #include "util/CommandRunner.h"
 #include "util/FileUtils.h"
 #include "util/TextEncoding.h"
+#include "util/Util.h"
 
 #include "support/TestTempDir.h"
 
@@ -89,6 +90,20 @@ TEST(TextEncoding, PathConversionsKeepNamesThatAreNotUtf8) {
     for (const fs::directory_entry& entry : fs::directory_iterator(dir.path())) names.push_back(FileUtils::pathToUtf8(entry.path().filename()));
     EXPECT_EQ(names, std::vector<std::string>{"x\xED\xA0\x80y"});
 #endif
+}
+
+// The asset type checks read a name's extension from its text: a name that is not UTF-8 (a stray
+// byte, a lone surrogate) is typed as any other, never thrown (on Windows its fs::path threw)
+TEST(TextEncoding, AssetTypeChecksTakeNamesThatAreNotUtf8) {
+    EXPECT_NO_THROW(EXPECT_TRUE(Util::isImageFile("assets/caf\xE9.PNG")));
+    EXPECT_NO_THROW(EXPECT_TRUE(Util::isImageFile("assets/\xC0\xAF\xE2\x82/x.png")));
+    EXPECT_NO_THROW(EXPECT_TRUE(Util::isSceneFile("a\xED\xA0\x80z.Scene")));
+    EXPECT_NO_THROW(EXPECT_FALSE(Util::isImageFile("caf\xE9.png.txt")));
+    // and fs::path::extension's rule: a dot file has none, a bare extension is itself
+    EXPECT_FALSE(Util::isImageFile("assets/.png"));
+    EXPECT_FALSE(Util::isImageFile("assets.png/image"));
+    EXPECT_TRUE(Util::isImageFile(".png"));
+    EXPECT_TRUE(Util::isImageFile("C:\\art\\a.b\\x.PNG"));
 }
 
 // A Chinese and emoji name in a project folder named in Portuguese and Japanese: the asset

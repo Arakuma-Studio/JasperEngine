@@ -5,6 +5,8 @@
 #include "registry/SortingLayers.h"
 #include "pixelart/BitmapFont.h"
 #include "component/ButtonComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "audio/SourceEffectEdit.h"
 #include "component/Transform.h"
 #include "util/ProjectChecks.h"
 #include "component/CanvasGroupComponent.h"
@@ -1429,6 +1431,7 @@ Json playerLayersToJson(Project* project, const std::vector<AnimationPlayerLayer
         Json item{{"name", layer.name}, {"weight", layer.weight}, {"blend", anim::layerBlendName(layer.blend)},
                   {"mask", layer.mask.empty() ? std::string() : McpValues::assetPathToJson(project, layer.mask)}};
         if (!layer.maskGuid.empty()) item["maskGuid"] = layer.maskGuid;
+        if (layer.meshSpaceRotation) item["meshSpaceRotation"] = true;
         list.push_back(item);
     }
     return list;
@@ -1624,7 +1627,7 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
 bool normalizePlayerLayers(Project* project, const AnimationPlayerComponent* current, YAML::Node value, std::string& error) {
     const YAML::Node& constValue = value;
     const YAML::Node layers = constValue["layers"];
-    const char* const shape = "layers must be a list of {name, weight, blend, mask}, e.g. [{\"name\": \"Base Layer\"}, "
+    const char* const shape = "layers must be a list of {name, weight, blend, mask, meshSpaceRotation}, e.g. [{\"name\": \"Base Layer\"}, "
                               "{\"name\": \"Holding\", \"weight\": 1, \"mask\": \"assets/anim/arm.mask\"}].";
     size_t count = 1;
     if (layers && !layers.IsNull()){
@@ -1643,9 +1646,20 @@ bool normalizePlayerLayers(Project* project, const AnimationPlayerComponent* cur
             } else if (item.IsMap()) {
                 for (auto it = item.begin(); it != item.end(); ++it) {
                     const std::string key = it->first.as<std::string>();
-                    if (key != "name" && key != "weight" && key != "blend" && key != "mask" && key != "maskGuid") {
-                        error = at + ": unknown key \"" + key + "\" (a layer is {name, weight, blend, mask}; its maskGuid follows the mask).";
+                    if (key != "name" && key != "weight" && key != "blend" && key != "mask" && key != "maskGuid" && key != "meshSpaceRotation") {
+                        error = at + ": unknown key \"" + key + "\" (a layer is {name, weight, blend, mask, meshSpaceRotation}; its maskGuid follows "
+                                "the mask).";
                         return false;
+                    }
+                    if (key == "meshSpaceRotation") {
+                        // mesh-space-rotation spec R39: kept (and ignored) on the base layer and on additive layers
+                        bool on = false;
+                        if (!it->second.IsScalar() || !YamlNumbers::readPlain(it->second.Scalar(), on)) {
+                            error = at + ".meshSpaceRotation must be true or false.";
+                            return false;
+                        }
+                        if (on) entry[key] = YamlNumbers::text(true);
+                        continue;
                     }
                     if (!it->second.IsScalar() && !it->second.IsNull()) {
                         error = at + "." + key + " must be a " + (key == "weight" ? "number" : "string") + ".";
@@ -2618,6 +2632,13 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         }
         if (ref && isPlayerLayerBlendProperty(ctx.component, name)) {
             return anim::layerBlendName(*static_cast<AnimationLayerBlend*>(ref));
+        }
+        // an Audio Source's effects and their parameters (S97): small, read as the scene file has
+        // them, so a running source's list shows the values heard now (get_runtime_entity)
+        if (ref && ctx.component == ComponentType::AudioSourceComponent) {
+            const reflect::ComponentDesc* desc = reflect::find(ctx.component);
+            const reflect::FieldDesc* field = desc ? reflect::findField(*desc, name) : nullptr;
+            if (field && field->ops && field->ops->toYaml) return yamlToJson(field->ops->toYaml(*field, ref, reflect::EncodeContext{}));
         }
         bool found = false;
         return readYamlProperty(ctx, name, found);
@@ -3911,7 +3932,8 @@ static std::vector<McpValues::Change> withPlayerLayerList(Project* project, Scen
     auto isBaseField = [](const McpValues::Change& change) {
         return change.component == ComponentType::AnimationPlayerComponent && change.op == "set" &&
                (change.property == "layers[0].name" || change.property == "layers[0].weight" ||
-                change.property == "layers[0].blend" || change.property == "layers[0].mask");
+                change.property == "layers[0].blend" || change.property == "layers[0].mask" ||
+                change.property == "layers[0].meshSpaceRotation");
     };
     bool fields = false;
     for (const McpValues::Change& change : changes) {
@@ -3923,6 +3945,7 @@ static std::vector<McpValues::Change> withPlayerLayerList(Project* project, Scen
     for (const AnimationPlayerLayer& layer : anim::playerLayers(*player)) {
         Json item = {{"name", layer.name}, {"weight", layer.weight}, {"blend", anim::layerBlendName(layer.blend)}};
         if (!layer.mask.empty()) item["mask"] = McpValues::assetPathToJson(project, layer.mask);
+        if (layer.meshSpaceRotation) item["meshSpaceRotation"] = true;
         list.push_back(item);
     }
     std::vector<McpValues::Change> out;
@@ -4104,6 +4127,15 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 error = label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
                         "components).";
                 return false;
+            }
+            // an Audio Source's own effects name types and parameters a source has (S97 REQ-42)
+            if (component == ComponentType::AudioSourceComponent) {
+                const AudioSourceComponent& audio = scene->scene->getComponent<AudioSourceComponent>(entity);
+                for (const Change& change : changes) {
+                    if (change.component == component && !SourceEffectEdit::checkChange(audio, change.property, change.op, change.value, error)) {
+                        return false;
+                    }
+                }
             }
             if (component == ComponentType::RectTransformComponent) {
                 for (const Change& change : changes) {
