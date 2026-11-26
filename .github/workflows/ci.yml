@@ -36,7 +36,7 @@ on:
         type: boolean
         default: false
       self_hosted:
-        description: "Test the overflow runners: <job>=<je-mac|je-linux|je-win> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
+        description: "Test the overflow or Namespace runners: <job>=<je-mac|je-linux|je-win|namespace> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
         type: string
         default: ''
 
@@ -84,13 +84,18 @@ jobs:
   changes:
     name: changes
     # the planner too can overflow (docs/testing.md "Overflow runners"): tools/ci/runner_dispatch.py names a
-    # Linux overflow runner in SELF_HOSTED_PLANNER while hosted Linux is saturated and it is online, and a run
-    # reads `vars` as it is created, as this job is queued. Not a push (it waits ADMISSION_SECONDS), a fork's
-    # pull request or a rerun (the watchdog's, when the runner went away)
+    # Linux overflow runner in SELF_HOSTED_PLANNER while hosted Linux is saturated and it is online (or
+    # ubuntu-latest while Namespace's Linux runners are down), and a run reads `vars` as it is created, as
+    # this job is queued. Not a push (it waits ADMISSION_SECONDS), a fork's pull request or a rerun (the
+    # watchdog's, when the runner went away). Else Namespace's (NAMESPACE_RUNNERS on or naming linux,
+    # docs/testing.md "Namespace runners"), on the same terms but a push's
     runs-on: >-
       ${{ github.event_name != 'push' && github.run_attempt == 1 && vars.SELF_HOSTED_PLANNER
       && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-      && vars.SELF_HOSTED_PLANNER || 'ubuntu-latest' }}
+      && vars.SELF_HOSTED_PLANNER
+      || github.run_attempt == 1 && (vars.NAMESPACE_RUNNERS == 'on' || contains(vars.NAMESPACE_RUNNERS, 'linux'))
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && 'nscloud-ubuntu-24.04-amd64-4x8' || 'ubuntu-latest' }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -167,6 +172,8 @@ jobs:
           # the overflow runners (docs/testing.md "Overflow runners"): the ones taken out; a fork's pull
           # request never gets one. Their state is fetched below, as the plan starts
           RUNNER_DISABLED: ${{ vars.SELF_HOSTED_DISABLED }}
+          # on, or the OSes whose jobs run on Namespace's runners (docs/testing.md "Namespace runners"); unset: none
+          NAMESPACE: ${{ vars.NAMESPACE_RUNNERS }}
           # off: a pull request runs its blocking lanes only, as the merge queue (docs/testing.md "What each event runs")
           PR_ADVISORY: ${{ vars.PR_ADVISORY_LANES }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -185,7 +192,7 @@ jobs:
           esac
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
                 --advisory "$ADVISORY_LANES" --runner-state "$RUNNER_TEMP/runner-state.json"
-                --runner-disabled "$RUNNER_DISABLED" --pr-advisory "${PR_ADVISORY:-on}" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
+                --runner-disabled "$RUNNER_DISABLED" --namespace "$NAMESPACE" --pr-advisory "${PR_ADVISORY:-on}" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
                 --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --run-id "$GITHUB_RUN_ID" --self-hosted "$SELF_HOSTED")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
           [[ -f build/ci-inputs/coverage-map.json ]] && args+=(--coverage-map build/ci-inputs/coverage-map.json)
@@ -957,8 +964,16 @@ jobs:
           lane: android
           max-size: 0.3G
           toolchain: ${{ steps.image.outputs.tag }}
-      # Gradle's distribution and dependencies (tools/build.sh sets GRADLE_USER_HOME=build/.cache/gradle)
+      # Gradle's distribution and dependencies (tools/build.sh sets GRADLE_USER_HOME=build/.cache/gradle):
+      # on the lane's Namespace cache volume when it has one (ccache-restore), else the Actions cache
+      - uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        if: env.JASPER_CCACHE_VOLUME == '1'
+        with:
+          path: |
+            build/.cache/gradle/caches
+            build/.cache/gradle/wrapper
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: env.JASPER_CCACHE_VOLUME != '1'
         with:
           path: |
             build/.cache/gradle/caches
@@ -972,7 +987,7 @@ jobs:
         run: tools/ci/logged.sh android-build "${ABIS}tools/build.sh android"
 
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && env.JASPER_CCACHE_VOLUME != '1'
         with:
           path: |
             build/.cache/gradle/caches

@@ -1002,7 +1002,7 @@ def windows_legs(event: str, plan: dict | None, result: dict, inputs: dict[str, 
 
 # where a job runs (ci.yml's runs-on reads lanes.json runs_on by job: a lane's name, or <lane>-<entry> for a
 # matrix job: unit-editor-1, asan-core, mcp-3, windows-engine-d3d11): GitHub's hosted runner of its OS,
-# unless an overflow runner takes it (docs/testing.md "Overflow runners")
+# unless Namespace's (NAMESPACE_VARIABLE, below) or an overflow runner takes it (docs/testing.md "Overflow runners")
 HOSTED = {"linux": "ubuntu-latest", "windows": "windows-latest", "macos": "macos-latest"}
 # the overflow runners, by label: their OS and the jobs each may take, best first (each runs one at a
 # time). je-win (8 cores, 7 GB) takes the engine legs; the editor's MSVC build does not fit
@@ -1022,6 +1022,79 @@ TAKES = {"je-mac": 2}
 STATE_BRANCH = "ci-runner-state"
 DISABLED_VARIABLE = "SELF_HOSTED_DISABLED"
 WINDOWS_PARTS = ("editor", "engine-glcore", "engine-d3d11", "engine-vulkan")
+
+# Namespace's runners (docs/testing.md "Namespace runners"): the repository variable NAMESPACE_VARIABLE, `on`
+# or the OSes it takes (`linux macos`), puts every job of those OSes on a Namespace machine, labelled here
+# (no dashboard profile): nscloud-<os>-<arch>-<vCPU>x<GB>, sized by the job, and the cache volume of its
+# lane (the ccache lane's: ccache-restore keeps the cache there), committed by jobs of main only (PRs and
+# the queue restore, as from the Actions cache). Unset or `off`: today's labels, exactly
+NAMESPACE_VARIABLE = "NAMESPACE_RUNNERS"
+NAMESPACE_OSES = ("linux", "windows", "macos")
+NAMESPACE_MACHINE = {"linux": "nscloud-ubuntu-24.04-amd64", "windows": "nscloud-windows-2022-amd64",
+                     "macos": "nscloud-macos-tahoe-arm64"}
+NAMESPACE_PREFIXES = ("nscloud-", "namespace-profile-")
+NAMESPACE_OS_OF = {"nscloud-ubuntu-": "linux", "nscloud-windows-": "windows", "nscloud-macos-": "macos"}
+# the forced dispatch's label (parse_force) for a job's Namespace machine
+NAMESPACE_FORCE = "namespace"
+# vCPU x GB by job (a matrix job by its lane's prefix), else its OS's default: the long builds the most
+# cores (linux, unit and asan compile 2,700-3,900 units; the Windows editor and OpenGL legs are the lane's
+# longest), the MCP shards the 16 GB of a hosted runner they run -j 2 on. The disk comes with the shape
+# (32 GB and 8 per max(vCPU, GB / 2)) and free-disk does nothing there: smoke and android (33 and 44 GB
+# used, docs/testing.md "Job setup") take 8x32's 160. Namespace queues a job past the plan's concurrency
+# (Linux 160 vCPU on Business), so a larger shape only costs a run its parallelism
+NAMESPACE_SHAPES = {"lint": "4x8", "linux": "16x32", "unit-": "16x32", "asan-core": "16x32", "asan-editor": "16x64",
+                    "htmlui": "8x16", "smoke": "8x32", "web": "8x16", "android": "8x32", "mcp-": "4x16",
+                    "windows-editor": "16x32", "windows-engine-glcore": "16x32", "macos": "12x28", "ios": "6x14"}
+NAMESPACE_DEFAULT_SHAPE = {"linux": "4x16", "windows": "8x16", "macos": "6x14"}
+# the jobs with a cache volume, by tag (its ccache lane; mcp's holds the images only). Not Windows: the
+# docs name no cache volume there (its lanes keep the Actions cache), nor ios (its Xcode cache is the
+# nightly's Actions cache entry), nor lint
+NAMESPACE_CACHE = {"linux": "linux", "unit-core": "unit-core", "unit-editor-": "unit-editor", "asan-core": "asan-core",
+                   "asan-editor": "asan-editor", "htmlui": "htmlui", "smoke": "smoke", "web": "web", "android": "android",
+                   "mcp-": "mcp", "macos": "macos"}
+# the smallest volume Namespace makes; the largest lane holds an image (2.3-4.1 GB) and a 2.2 GB ccache
+NAMESPACE_CACHE_GB = 20
+
+
+def by_job(table: dict, job: str):
+    """table's entry for job: its own, else the longest prefix (a `-` key) it starts with."""
+    if job in table:
+        return table[job]
+    keys = [k for k in table if k.endswith("-") and job.startswith(k)]
+    return table[max(keys, key=len)] if keys else None
+
+
+def namespace_oses(text: str) -> set[str]:
+    """NAMESPACE_VARIABLE's OSes: `on`, all; else the OSes it names; unset, `off` or anything else, none."""
+    words = set(text.lower().replace(",", " ").split())
+    return set(NAMESPACE_OSES) if "on" in words else words & set(NAMESPACE_OSES)
+
+
+def namespace_labels(job: str, os_: str):
+    """The job's runs-on on Namespace: its machine label, and its lane's cache volume (Linux: with the
+    container images) that only main's jobs commit; the second editor part commits none (ccache-save
+    trims the first's, the lead's, which holds both parts' objects)."""
+    machine = f"{NAMESPACE_MACHINE[os_]}-{by_job(NAMESPACE_SHAPES, job) or NAMESPACE_DEFAULT_SHAPE[os_]}"
+    tag = by_job(NAMESPACE_CACHE, job)
+    if not tag:
+        return machine
+    labels = [f"{machine}-with-cache", f"nscloud-cache-tag-jasperengine-{tag}", f"nscloud-cache-size-{NAMESPACE_CACHE_GB}gb",
+              "nscloud-cache-allow-commit-from-main"]
+    if os_ == "linux":
+        labels.append("nscloud-container-image-cache")
+    part = job.rsplit("-", 1)[-1]
+    if job.startswith("unit-") and part.isdigit() and part != "1":
+        labels.append("nscloud-cache-exp-do-not-commit")
+    return labels
+
+
+def namespace_os(labels) -> str:
+    """The OS of a Namespace job's runs-on labels (nscloud-<os>-...), "" for any other job."""
+    for label in labels if isinstance(labels, list) else [labels]:
+        for prefix, os_ in NAMESPACE_OS_OF.items():
+            if str(label).startswith(prefix):
+                return os_
+    return ""
 
 
 def planned_jobs(doc: dict) -> dict[str, str]:
@@ -1061,14 +1134,15 @@ def trusted(trigger: str, head_repo: str, repo: str) -> str:
 
 
 def parse_force(text: str) -> tuple[dict[str, str], list[str]]:
-    """The self_hosted dispatch input: `<job>=<label> ...`; the entries it cannot use, said."""
+    """The self_hosted dispatch input: `<job>=<label> ...`, a label an overflow runner's or NAMESPACE_FORCE
+    (the job's Namespace machine); the entries it cannot use, said."""
     force, bad = {}, []
     for item in text.replace(",", " ").split():
         job, _, label = item.partition("=")
-        if label in OVERFLOW:
+        if label in OVERFLOW or label == NAMESPACE_FORCE:
             force[job] = label
         else:
-            bad.append(f"{item}: not <job>=<{'|'.join(OVERFLOW)}>")
+            bad.append(f"{item}: not <job>=<{'|'.join((*OVERFLOW, NAMESPACE_FORCE))}>")
     return force, bad
 
 
@@ -1090,14 +1164,18 @@ def restrict_to_forced(result: dict, force: dict[str, str]) -> None:
 
 
 def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str, repo: str, attempt: int,
-          disabled: str = "", force: dict[str, str] | None = None, run_id: str = "") -> tuple[dict[str, str], list[str]]:
+          disabled: str = "", force: dict[str, str] | None = None, run_id: str = "",
+          namespace: str = "") -> tuple[dict[str, str], list[str]]:
     """runs_on of each planned job and why. A job goes to an overflow runner only when the run may use one
     (trusted), on its first attempt (a rerun, which the watchdog makes when a runner went away, stays
     hosted), when state (STATE_BRANCH's state.json: tools/ci/runner_dispatch.py, at most STATE_MAX_AGE old) says
     the hosted runners of its OS are saturated (the merge queue, the critical path: macOS as soon as a
     hosted macOS job waits) and the runner is online, idle and fit, and it is not in disabled
     (SELF_HOSTED_DISABLED: labels, or `all`); each runner takes TAKES jobs (default one). force (a dispatch's
-    self_hosted input, first attempt only) puts those jobs on those runners whatever the state says."""
+    self_hosted input, first attempt only) puts those jobs on those runners whatever the state says.
+    namespace (NAMESPACE_VARIABLE) puts a trusted run's jobs of its OSes on Namespace instead of GitHub's
+    runners, unless the rerun is one the watchdog moved off (hosted_only) or the state says Namespace is
+    down for that OS; an overflow runner then takes none of them."""
     runs_on = {job: HOSTED[os_] for job, os_ in jobs.items()}
     why = trusted(trigger, head_repo, repo)
     if why:
@@ -1107,29 +1185,51 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
     held = {str(r) for r in state.get("hosted_only") or []} if isinstance(state, dict) else set()
     if attempt > 1 and (not run_id or str(run_id) in held or force):
         return runs_on, [f"hosted only: attempt {attempt} (a rerun after a runner went away stays on GitHub's runners)"]
+    t = state.get("t") if isinstance(state, dict) else None
+    fresh = isinstance(t, (int, float)) and -60 <= now - t <= STATE_MAX_AGE
+    notes = []
+    # Namespace: the variable decides, a stale or missing state does not stop it (it needs no host of
+    # ours); a fresh one that says Namespace is down for an OS keeps that OS's jobs on GitHub's runners
+    oses = namespace_oses(namespace)
+    down = {o: e for o, e in ((state or {}).get("namespace") or {}).items() if isinstance(e, dict) and e.get("down")} \
+        if fresh and isinstance(state, dict) else {}
+    for os_ in sorted(oses & set(down)):
+        notes.append(f"namespace {os_}: GitHub's runners ({down[os_].get('why') or 'down'}, tools/ci/runner_dispatch.py)")
+    on = oses - set(down)
+    for job, os_ in jobs.items():
+        if os_ in on:
+            runs_on[job] = namespace_labels(job, os_)
+    if on:
+        notes.append(f"namespace: the {', '.join(o for o in NAMESPACE_OSES if o in on)} jobs on Namespace ({NAMESPACE_VARIABLE})")
     if force:
-        notes = []
         for job, label in sorted(force.items()):
+            os_ = jobs.get(job)
             if trigger != "workflow_dispatch":
                 notes.append(f"{job}={label} ignored: only a workflow_dispatch forces a runner")
-            elif job not in jobs or jobs[job] != OVERFLOW[label][0]:
+            elif label == NAMESPACE_FORCE:
+                if os_:
+                    runs_on[job] = namespace_labels(job, os_)
+                    notes.append(f"{job} on Namespace: forced (self_hosted)")
+                else:
+                    notes.append(f"{job}={label} ignored: no job {job} in this plan")
+            elif os_ != OVERFLOW[label][0]:
                 notes.append(f"{job}={label} ignored: no {OVERFLOW[label][0]} job {job} in this plan")
             else:
                 runs_on[job] = label
                 notes.append(f"{job} on {label}: forced (self_hosted)")
         return runs_on, notes
     off = set(disabled.replace(",", " ").split())
+    lead = "no overflow runner" if on else "hosted only"
     if "all" in off:
-        return runs_on, [f"hosted only: {DISABLED_VARIABLE} is all"]
-    t = state.get("t") if isinstance(state, dict) else None
-    if not isinstance(t, (int, float)) or not -60 <= now - t <= STATE_MAX_AGE:
-        return runs_on, ["hosted only: " + ("no runner state" if t is None else
-                                            f"the runner state is {now - t:.0f} s old (over {STATE_MAX_AGE})")]
-    notes = []
+        return runs_on, notes + [f"{lead}: {DISABLED_VARIABLE} is all"]
+    if not fresh:
+        return runs_on, notes + [f"{lead}: " + ("no runner state" if t is None else
+                                                f"the runner state is {now - t:.0f} s old (over {STATE_MAX_AGE})")]
     for label, (os_, order) in OVERFLOW.items():
         runner = (state.get("runners") or {}).get(label) or {}
         hosted = (state.get("os") or {}).get(os_) or {}
-        candidates = [j for j in order if j in jobs]
+        # (a job on Namespace is not GitHub's to wait for)
+        candidates = [j for j in order if j in jobs and runs_on[j] == HOSTED[os_]]
         if not candidates:
             continue
         if label in off:
@@ -1276,12 +1376,14 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--runner-state", type=Path, help=f"state.json of the branch {STATE_BRANCH} (tools/ci/runner_dispatch.py)")
     ap.add_argument("--pr-advisory", default="on", help=f"{PR_ADVISORY_VARIABLE}: off runs a pull request's blocking lanes only")
     ap.add_argument("--runner-disabled", default="", help=f"{DISABLED_VARIABLE}: overflow runner labels to leave alone, or all")
+    ap.add_argument("--namespace", default="", help=f"{NAMESPACE_VARIABLE}: on, or the OSes ({' '.join(NAMESPACE_OSES)}) whose jobs "
+                    "run on Namespace's runners; unset or off, none")
     ap.add_argument("--trigger", default="", help="github.event_name (an overflow runner takes no fork's pull request)")
     ap.add_argument("--head-repo", default="", help="a pull request's head repository (github.event.pull_request.head.repo.full_name)")
     ap.add_argument("--repo", default="", help="github.repository")
     ap.add_argument("--run-attempt", type=int, default=1, help="github.run_attempt (a rerun stays hosted)")
     ap.add_argument("--self-hosted", default="", help="a dispatch's self_hosted input: <job>=<label> ...: those jobs' lanes "
-                    "only, forced onto those runners on the first attempt")
+                    f"only, forced onto those runners (or {NAMESPACE_FORCE}: Namespace's) on the first attempt")
     args = ap.parse_args(argv)
 
     out = args.out_dir.resolve()
@@ -1360,7 +1462,7 @@ def main(argv: list[str]) -> int:
                "checks": {"modules_off": plan["modules_off"] if plan else "", "navigation_off": bool(plan and plan["navigation_off"])}}
         doc["runs_on"], doc["routing"] = route(planned_jobs(doc), load_state(args.runner_state), time.time(), args.trigger,
                                                args.head_repo, args.repo, args.run_attempt, args.runner_disabled, force,
-                                               run_id=str(args.run_id or ""))
+                                               run_id=str(args.run_id or ""), namespace=args.namespace)
         write_selection(doc, args.event, plan, result, ci, tests, args.inputs_manifest, out)
         doc["shadow"] = shadow_selection(shadow_plan, ci, left_out, nightly_out, definition(shadow_plan)) if shadow_plan else None
         doc["shadow_why"] = "" if shadow_plan else shadow_why
