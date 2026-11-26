@@ -278,7 +278,7 @@ TEST_F(CompatElementTest, ExternalLinkOpensUrl){
     ASSERT_EQ(opened.size(), 2u);
     EXPECT_EQ(opened[1], "mailto:support@example.com");
 
-    Recorder navigations;
+    Recorder& navigations = recorder();
     navigations.prevent = true;
     listen(document, "htmlnavigate", navigations);
     click(byId("ext"));
