@@ -48,16 +48,16 @@ namespace jasperengine{
 
             bool is2D() const { return type >= Type::Point2D; }
 
-            static QueryShape sphere(const Vector3& center, float radius);
-            static QueryShape box(const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation);
-            static QueryShape capsule(const Vector3& point1, const Vector3& point2, float radius);
-            static QueryShape point(const Vector3& point);
+            JASPERENGINE_API static QueryShape sphere(const Vector3& center, float radius);
+            JASPERENGINE_API static QueryShape box(const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation);
+            JASPERENGINE_API static QueryShape capsule(const Vector3& point1, const Vector3& point2, float radius);
+            JASPERENGINE_API static QueryShape point(const Vector3& point);
             // 2D, as PhysicsQueries2D takes them: sizes whole, angles in the engine's angle unit
-            static QueryShape point2D(const Vector2& point);
-            static QueryShape circle2D(const Vector2& center, float radius);
-            static QueryShape box2D(const Vector2& center, const Vector2& size, float angle);
-            static QueryShape capsule2D(const Vector2& center, const Vector2& size, CapsuleDirection2D direction, float angle);
-            static QueryShape area2D(const Vector2& pointA, const Vector2& pointB);
+            JASPERENGINE_API static QueryShape point2D(const Vector2& point);
+            JASPERENGINE_API static QueryShape circle2D(const Vector2& center, float radius);
+            JASPERENGINE_API static QueryShape box2D(const Vector2& center, const Vector2& size, float angle);
+            JASPERENGINE_API static QueryShape capsule2D(const Vector2& center, const Vector2& size, CapsuleDirection2D direction, float angle);
+            JASPERENGINE_API static QueryShape area2D(const Vector2& pointA, const Vector2& pointB);
         };
 
         // One collider an overlap found: its GameObject and its index there (a ColliderRef's or a
