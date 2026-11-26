@@ -168,6 +168,7 @@ TEST(CompatAnimationNative, TimingFunctionsPassThroughWithoutApproximation){
         EXPECT_NE(Rml::Factory::InstanceStyleSheetString(out.rcss), nullptr) << out.rcss;
         EXPECT_EQ(HtmlUI::getSystemInterface().getWarningCount(), warningsBefore) << out.rcss;
     }
+    HtmlUI::release();
 }
 
 // A property declared as a CSS-wide keyword ('font: inherit' on a button) transitions from and to what the
