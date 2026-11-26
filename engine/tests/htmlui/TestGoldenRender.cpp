@@ -8,6 +8,7 @@
 // at dp ratios and image-color (s93_*).
 
 #include "TestGoldenCommon.h"
+#include "TestRenderCommon.h"
 
 #include "HtmlUIContext.h"
 #include "HtmlUIImageCache.h"
@@ -312,6 +313,8 @@ TEST_F(FullPathGoldenTest, Transform){
 // S93 R30 (AC34): multiply blends with a copy of the backdrop, plus-lighter adds without one (fixed function), normal
 // draws as before; the colours are Compositing 1's: multiply (0x40,0x80,0xc0) x (0xc0,0x80,0x40), plus-lighter their sum
 TEST_F(FullPathGoldenTest, MixBlendModeBackdropCopies){
+    // every frame replayed: a frame S92 keeps (the same as the last one) draws nothing, so its stats count no copy
+    FrameReuseMode replayed(false);
     SceneFixture fixture;
     UIDocument document = fixture.addDocument("golden/mix_blend.html");
     ASSERT_TRUE(fixture.waitUntilLoaded());

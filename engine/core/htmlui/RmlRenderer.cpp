@@ -2552,10 +2552,10 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
     // S93 R30: a CSS blend mode reads the destination, which it cannot while drawing into it: the destination's
     // pixels under the composite are copied into a free post-process target first (the backdrop), and the blend
     // program draws the source's part of source-over-backdrop with premultiplied blending, which adds the backdrop's
-    // part (so where the source has no coverage nothing changes). Between layers of the same frame only (a region
-    // layer's composite blends as normal)
-    const bool ordinary = !isRegionLayer(source) && !isRegionLayer(destination);
-    if ((int)blendMode >= (int)Rml::BlendMode::Multiply && ordinary && postTargetIn(context.postSet, 0) && postTargetIn(context.postSet, 1) &&
+    // part (so where the source has no coverage nothing changes). The backdrop is copied in the source's pixels, the
+    // post-process targets' frame, so both are read at the same coordinates: S92's region layers (sized to their
+    // element) blend too
+    if ((int)blendMode >= (int)Rml::BlendMode::Multiply && postTargetIn(context.postSet, 0) && postTargetIn(context.postSet, 1) &&
         postTargetIn(context.postSet, 2)){
         ensureLayerCleared(destination);
         ensureResolved(*destinationLayer);
@@ -2563,12 +2563,19 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
         PostDraw copy;
         copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
         copy.source = &destinationLayer->getRender().getColorTexture();
-        copy.scissor = destinationScissor;
+        placeByFrames(copy, destinationFrame, sourceFrame);
+        const Rml::Vector2i shift = destinationFrame.p0 - sourceFrame.p0;
+        copy.scissor = intersect(Rml::Rectanglei::FromCorners(destinationScissor.p0 + shift, destinationScissor.p1 + shift),
+                                 Rml::Rectanglei::FromSize(sourceFrame.Size()));
+        if (isEmpty(copy.scissor))
+            return;
         drawPost(backdrop, LoadAction::CLEAR, copy, postTargetState(BlendMode::NONE));
         stats.blendBackdropCopies++;
         draw.variant = (int)HtmlUIPostVariant::BLEND_MODE;
         draw.mask = &backdrop.getRender().getColorTexture();
         draw.params.params[0] = (float)((int)blendMode - (int)Rml::BlendMode::Multiply + 1);
+        if (!applyCompositeClip(draw, destinationFrame))
+            return;
         if (clipMaskEnabled)
             ensureMask(destination);
         drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(BlendMode::PREMULTIPLIED));
