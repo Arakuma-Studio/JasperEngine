@@ -5,12 +5,14 @@
 // set_properties (every property type), set_transform, list_component_types
 #include "pixelart/PixelPerfectEditor.h"
 #include "McpTools.h"
+#include "MeshColorTools.h"
 #include "component/TrailRendererComponent.h"
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
 #include "component/AudioSourceComponent.h"
 #include "object/sound/AudioSourceSlots.h"
+#include "component/UIDocumentComponent.h"
 #include "component/ParticleSystemComponent.h"
 
 #include "mcp/McpCall.h"
@@ -360,6 +362,12 @@ void getEntityTool(const CallPtr& call) {
         components[name] = props;
     }
     data["components"] = components;
+    // V1 R124: per submesh, what has vertex colors and what is painted (edit mode only: the facade reads the edited scene)
+    auto wanted = [&filter](ComponentType type) { return filter.empty() || std::find(filter.begin(), filter.end(), type) != filter.end(); };
+    if (detail != "summary" && scene->playState == ScenePlayState::STOPPED &&
+        (wanted(ComponentType::MeshComponent) || wanted(ComponentType::ModelComponent) || wanted(ComponentType::VertexColorsComponent))) {
+        if (Json colors = vertexColorTargetsJson(project, scene->id, entity); !colors.is_null()) data["vertex_colors"] = colors;
+    }
     // several Audio Sources (S97 REQ-28): its own, then its slots, each addressed by its entity
     if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::AudioSourceComponent) != filter.end()) {
         const std::vector<Entity> slots = AudioSourceSlots::getSlots(registry, entity);
@@ -570,6 +578,17 @@ void setPropertiesTool(const CallPtr& call) {
                                " part(s) (" + refs + "): set the mesh on them, or use the Model API in Lua");
         }
     }
+    // S92 R18: a screen document draws in the scene's shared target, so its own count does nothing
+    const bool screenMsaa = std::any_of(changes.begin(), changes.end(), [&](const McpValues::Change& c) {
+        if (c.component != ComponentType::UIDocumentComponent || c.property != "msaaSamples") return false;
+        return std::any_of(entities.begin(), entities.end(), [&](Entity entity) {
+            const UIDocumentComponent* document = current->scene->findComponent<UIDocumentComponent>(entity);
+            return document && document->renderMode == UIDocumentRenderMode::SCREEN;
+        });
+    });
+    if (screenMsaa)
+        data["next"] = "msaaSamples applies to Texture-mode documents only; a screen document's MSAA is the scene's: "
+                       "set_scene_settings {html_ui_msaa_samples}.";
     std::string warningText;
     if (!warnings.empty()) {
         data["warnings"] = warnings;

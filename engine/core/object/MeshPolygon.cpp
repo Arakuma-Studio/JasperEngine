@@ -5,6 +5,7 @@
 #include "MeshPolygon.h"
 
 #include "Engine.h"
+#include "component/MeshComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "subsystem/MeshSystem.h"
 

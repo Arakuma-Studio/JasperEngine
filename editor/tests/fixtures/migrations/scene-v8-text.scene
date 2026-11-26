@@ -1,0 +1,66 @@
+formatVersion: 8
+id: 9408
+name: Text v8
+scene:
+  backgroundColor: [0.25, 0.45, 0.65, 1]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Plaque
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      text:
+        text: "12"
+        fontSize: 20
+        multiline: true
+        maxTextSize: 100
+        fixedWidth: false
+        fixedHeight: false
+        pivotBaseline: true
+        pivotCentered: true
+    children:
+      - type: Entity
+        entity: 1002
+        name: Caption
+        components:
+          transform:
+            position: [0, -1, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+          text:
+            text: Door
+            fontSize: 20
+            multiline: true
+            maxTextSize: 100
+            fixedWidth: false
+            fixedHeight: false
+            pivotBaseline: false
+            pivotCentered: false
+  - type: Entity
+    entity: 1003
+    name: SignInstance
+    components:
+      transform:
+        position: [2, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      prefab:
+        name: Sign
+        path: prefabs/Sign.prefab
+        guid: 1c9b7a0e4f2d4c3b8a6e5d4c3b2a1908
+    prefabInstance:
+      version: 3
+      overrides:
+        - registryEntity: 1001
+          components:
+            text:
+              pivotCentered: false
+          properties:
+            text:
+              - pivotCentered
+              - text

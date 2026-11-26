@@ -16,7 +16,11 @@ def main():
     parser.add_argument("--symbolicate", type=Path, required=True)
     parser.add_argument("--expect-asan", action="store_true")
     parser.add_argument("--mode", action="append", help="run selected subprocess modes")
+    parser.add_argument("--journal", action="store_true",
+                        help="only the Gameplay Journal's crash dump: segv after three journal entries")
     args = parser.parse_args()
+    if args.journal:
+        return journal_crash(args)
     modes = ["segv", "abort", "terminate", "stack_overflow", "worker_segv", "worker_stack_overflow", "fpe", "guard_worker", "concurrent", "recursive"]
     if os.name == "nt":
         modes.extend(["pure_call", "recursive_abort", "cached_thread_name"])
@@ -107,6 +111,32 @@ def main():
                         assert sum("=>" in line and "debugSegv(" in line for line in named.stdout.splitlines()) == 1, named.stdout
                     assert "debugSegv" in named.stdout or mode not in ("segv", "worker_segv", "guard_worker"), named.stdout
             print(f"PASS native crash: {mode}")
+    return 0
+
+
+def journal_crash(args):
+    """journal.txt in the crash folder (docs/specs/shipped-game-diagnostics.md R7, AC5): written by
+    the fatal handler after log-tail.txt, the header prepared at install, then the entries."""
+    with tempfile.TemporaryDirectory(prefix="je-native-crash-journal-") as root:
+        env = dict(os.environ, JASPERENGINE_CRASH_REPORT_DIR=root)
+        env["ASAN_OPTIONS"] = env.get("ASAN_OPTIONS", "") + ":abort_on_error=0:exitcode=77:disable_coredump=1"
+        result = subprocess.run([str(args.binary.resolve()), "--mode", "segv", "--journal", "--out", root],
+                                capture_output=True, text=True, timeout=12, env=env)
+        assert result.returncode != 0, result
+        files = list(Path(root).glob("reports/*/journal.txt"))
+        assert len(files) == 1, (result.returncode, result.stderr[-3000:], list(Path(root).rglob("*")))
+        text = files[0].read_text()
+        head, _, body = text.partition("\n---\n")
+        assert head.startswith("JasperEngine journal v1\n"), text
+        for key in ("product: jasperengine-crash-test", "version: test", "session: ", "started: ", "capacity: 16384", "dropped: 0"):
+            assert "\n" + key in head, (key, text)
+        entries = body.splitlines()
+        assert len(entries) == 3, text
+        expected = ["test.one n=1", "test.two name=forest-2 seed=42", "test.three hard=true"]
+        for line, want in zip(entries, expected):
+            assert re.fullmatch(r"\+\d+\.\d{3} f\d+ " + re.escape(want), line), (line, text)
+        assert (files[0].parent / "crash.txt").is_file()
+        print("PASS native crash: journal")
     return 0
 
 

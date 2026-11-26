@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: 1082f39094f679d9fd1c631216e5bc6a
 id: 2685538481
 name: TableCrate
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

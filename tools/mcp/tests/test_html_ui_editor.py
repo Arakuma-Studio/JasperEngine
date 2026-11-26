@@ -38,7 +38,7 @@ BLUE = (0, 0, 255)
 CENTER = (640, 360)
 
 DEFAULTS = {"interactive": True, "renderMode": "screen", "textureWidth": 1024, "textureHeight": 1024,
-            "pixelRatio": 0.0}
+            "pixelRatio": 0.0, "updateMode": "unscaled", "pixelsPerUnit": 100.0, "billboard": False}
 
 
 async def doc_values(ed: Editor, entity, scene=None) -> dict:
@@ -98,11 +98,13 @@ async def test_component_type_info(ed: Editor):
     props = one["properties"]
     for name, kind in (("filename", "asset"), ("sortOrder", "int"), ("enabled", "bool"),
                        ("interactive", "bool"), ("renderMode", "enum"), ("textureWidth", "int"),
-                       ("textureHeight", "int"), ("inputSurface", "entity"), ("pixelRatio", "float")):
+                       ("textureHeight", "int"), ("inputSurface", "entity"), ("pixelRatio", "float"),
+                       ("updateMode", "enum"), ("pixelsPerUnit", "float"), ("billboard", "bool")):
         ed.check(name in props, f"{name} missing: {sorted(props)}")
         ed.check(kind in props[name]["type"].lower(), f"{name} type {props[name]['type']}")
-    ed.check_eq(sorted(props["renderMode"].get("options", [])), ["screen", "texture"],
+    ed.check_eq(sorted(props["renderMode"].get("options", [])), ["screen", "texture", "world"],
                 f"renderMode values: {props['renderMode']}")
+    ed.check_eq(sorted(props["updateMode"].get("options", [])), ["game", "unscaled"], f"updateMode values: {props['updateMode']}")
     ed.check_eq(props["textureWidth"].get("default"), 1024)
     ed.check_eq(props["interactive"].get("default"), True)
     ed.check_eq(props["sortOrder"].get("default"), 0)
@@ -151,9 +153,9 @@ async def test_set_every_field(ed: Editor):
     ed.check_eq((v["textureWidth"], v["textureHeight"]), (8192, 1), "clamped texture size")
 
     # a render mode that does not exist is refused, naming the valid ones
-    msg = await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"renderMode": "world"}},
+    msg = await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"renderMode": "hologram"}},
                         expect_error=True)
-    ed.check("screen" in msg and "texture" in msg, f"renderMode error: {msg}")
+    ed.check("screen" in msg and "texture" in msg and "world" in msg, f"renderMode error: {msg}")
 
     await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"filename": ""}})
     ed.check_eq((await doc_values(ed, S["doc"]))["filename"], "", "empty source is allowed")

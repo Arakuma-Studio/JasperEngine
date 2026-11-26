@@ -5,6 +5,7 @@
 #include "../../Include/RmlUi/Core/Types.h"
 
 namespace Rml {
+class RenderManager;
 using RenderBoxList = Vector<RenderBox>;
 struct BoxShadowGeometryInfo {
 	ColourbPremultiplied background_color;
@@ -20,13 +21,16 @@ struct BoxShadowGeometryInfo {
 	// shared with an element drawn at this one.
 	bool feathering = true;
 	float feather_unit = 1.f;
+	// Fork (S93 R27): the render manager the texture is made by and drawn with. Contexts have their own render managers
+	// (a screen document and a texture-mode one), whose texture handles do not mix; set by BoxShadowCache.
+	const RenderManager* render_manager = nullptr;
 };
 inline bool operator==(const BoxShadowGeometryInfo& a, const BoxShadowGeometryInfo& b)
 {
 	return a.background_color == b.background_color && a.border_colors == b.border_colors &&
 		a.texture_dimensions == b.texture_dimensions && a.element_offset_in_texture == b.element_offset_in_texture &&
 		a.padding_render_boxes == b.padding_render_boxes && a.border_render_boxes == b.border_render_boxes && a.shadow_list == b.shadow_list &&
-		a.opacity == b.opacity && a.feathering == b.feathering && a.feather_unit == b.feather_unit;
+		a.opacity == b.opacity && a.feathering == b.feathering && a.feather_unit == b.feather_unit && a.render_manager == b.render_manager;
 }
 inline bool operator!=(const BoxShadowGeometryInfo& a, const BoxShadowGeometryInfo& b)
 {
@@ -35,7 +39,10 @@ inline bool operator!=(const BoxShadowGeometryInfo& a, const BoxShadowGeometryIn
 
 class Geometry;
 class CallbackTexture;
-class RenderManager;
+
+// Fork (S93 R24): which of an element's box shadows a texture holds. CSS paints the inset ones above the background
+// images, so an element with images draws them from a texture of their own after the images.
+enum class BoxShadowPart { All, Outer, Inset };
 
 class GeometryBoxShadow {
 public:
@@ -57,8 +64,9 @@ public:
 	/// @param[in] background_color The background colour of the element.
 	/// @param[in] border_colors The border colours of the element.
 	/// @param[in] opacity The computed opacity of the element.
+	/// @param[in] part The shadows to keep (fork, S93 R24).
 	static BoxShadowGeometryInfo Resolve(Element* element, ColourbPremultiplied background_color,
-		const Array<ColourbPremultiplied, 4>& border_colors, float opacity);
+		const Array<ColourbPremultiplied, 4>& border_colors, float opacity, BoxShadowPart part = BoxShadowPart::All);
 
 	/// Generate the texture and geometry for a box shadow and including the element's background and border.
 	/// @param[out] out_shadow_texture The target texture, assumes pointer stability during the lifetime of the shadow geometry.

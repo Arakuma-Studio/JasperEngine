@@ -1,0 +1,25 @@
+{
+  "description": "tools/test-projects/localization (WEB_PROJECT=localization tools/build.sh web): String Tables read as JSON, the game language resolved from navigator.languages ['de'] (game-ui-localization.md R7), then re-resolved when the page dispatches languagechange with ['ja'] half a second after the game printed its first text (R10, AC15). No pixel check: the scene is empty.",
+  "isolated": true,
+  "init_script": "(function(){ var langs = ['de']; var changed = false; Object.defineProperty(Navigator.prototype, 'languages', {get: function(){ return langs; }, configurable: true}); Object.defineProperty(Navigator.prototype, 'language', {get: function(){ return langs[0]; }, configurable: true}); var log = console.log; console.log = function(){ var text = Array.prototype.join.call(arguments, ' '); if (!changed && text.indexOf('[gate] l10n ') >= 0) { changed = true; setTimeout(function(){ langs = ['ja']; window.dispatchEvent(new Event('languagechange')); }, 500); } return log.apply(console, arguments); }; })();",
+  "seconds": 8,
+  "console": [
+    {
+      "text": "[Localization] language de",
+      "level": "log"
+    },
+    {
+      "text": "[gate] l10n Spielen",
+      "level": "log"
+    },
+    {
+      "text": "[Localization] language ja",
+      "level": "log"
+    },
+    {
+      "text": "[gate] l10n changed ja プレイ",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}

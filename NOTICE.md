@@ -191,7 +191,7 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | Code | Location | Used for |
 |---|---|---|
 | `Apps/Editor/Source/Diagnostics/MainThreadHangWatchdog.{h,cpp}` (the heartbeat armed by the first beat, the poll, the re-report interval, the "recovered after" line, the shutdown window, the job-occupancy section; adapted) and `Tests/Editor/MainThreadHangWatchdogTests.cpp` (ported cases) | `engine/core/diag/HangWatchdog.*`, `engine/tests/core/diag/HangWatchdogTest.cpp` | the main-thread hang watchdog (S28) |
-| `Engine/Modules/Types/Include/Types/NearestName.h` (copied, namespace changed) | `engine/core/util/NearestName.h` | "did you mean" suggestions of the scene load report (S03), graph issues and particle effect patches (BF23) |
+| `Engine/Modules/Types/Include/Types/NearestName.h` (copied, namespace changed; our `NearestIdentifier` added at its end) | `engine/core/util/NearestName.h` | "did you mean" suggestions of the scene load report (S03), graph issues, particle effect patches (BF23) and MCP errors (S99) |
 | `Engine/Modules/NativeScripting/Include/NativeScripting/NativeScriptingABI.h` (the `GE_ToolchainFingerprint` fill, adapted and extended) | `engine/core/script/ToolchainFingerprint.h` | the toolchain fingerprint of C++ script libraries (S23) |
 | `Apps/Editor/Source/ScriptEditor/SourceLocation.cpp` (the path-start scan and the `:L:C` / `(L,C)` readers, adapted and extended) | `editor/util/SourceLocation.*` | the Console's source-location parser (S23) |
 | `Engine/Modules/FileWatcher` (FileWatcher, FileIdentity), `Engine/Include/Assets/ExpectedWriteLedger.h` (+ its tests), `Engine/Modules/AssetCore/.../SharedFileRead.*` (adapted, headers kept) | `engine/core/io/watch/`, `engine/tests/core/io/watch/ExpectedWriteLedgerTest.cpp` | the file watcher's rename pairing and delete hold, file identities, the self-write ledger, share-delete reads on Windows (S05) |
@@ -547,6 +547,50 @@ Ported or copied, each file keeping the original notice next to ours:
 | The `dual_grid_4x4` template: `frameByMask`, the mask bit order, frame 12 as the second surface (`engine/core/tilemap/TerrainTemplates.cpp`) | [SpriteCook skills](https://github.com/spritecook/skills) `skills/spritecook-use-dual-grid-tilesets/SKILL.md` | MIT, Copyright (c) 2025 SpriteCook |
 
 The `blob_47` sheet layout follows cr31's "Blob" Wang tileset page (minimum 7x7 packing, found by Caeles at OpenGameArt.org), and `blob_47_godot` follows the layout of Godot's "3x3 minimal" autotile template; both are layouts of index numbers, no code or image from them ships here. `tileset::cellHash` uses the block step and finaliser of MurmurHash3 (Austin Appleby, public domain).
+
+## Area Lights' LTC tables (S99)
+
+`engine/core/render/LtcLut.h` holds the fitted GGX tables `fit/results/ltc_1.dds` and `ltc_2.dds` of
+[selfshadow/ltc_code](https://github.com/selfshadow/ltc_code) at `31e5e96b54f98f33098f8503003119ba2231a1c6`,
+converted bit for bit by `tools/gen_ltc_lut.py`, for the High Lit Quality's Area Lights. The shading code
+(`engine/shaderlib/includes/area_lights.glsl`, `engine/core/render/AreaLightMath.cpp`) is ours, after the paper:
+Real-Time Polygonal-Light Shading with Linearly Transformed Cosines. Eric Heitz, Jonathan Dupuy, Stephen Hill and
+David Neubelt. ACM Transactions on Graphics (Proceedings of ACM SIGGRAPH 2016) 35(4), 2016. The tables' licence
+(BSD-2-Clause with a request to cite the paper):
+
+```
+Copyright (c) 2017, Eric Heitz, Jonathan Dupuy, Stephen Hill and David Neubelt.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* If you use (or adapt) the source code in your own work, please include a 
+  reference to the paper:
+
+  Real-Time Polygonal-Light Shading with Linearly Transformed Cosines.
+  Eric Heitz, Jonathan Dupuy, Stephen Hill and David Neubelt.
+  ACM Transactions on Graphics (Proceedings of ACM SIGGRAPH 2016) 35(4), 2016.
+  Project page: https://eheitzresearch.wordpress.com/415-2/
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
 
 ## Ideas re-implemented, no code copied
 

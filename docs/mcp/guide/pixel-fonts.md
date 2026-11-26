@@ -74,6 +74,8 @@ sit on a pixel grid (`pixel_grid_detected`). If they do, wrap it in a `.bitmapfo
 
 - A Text draws at k = max(1, round(fontSize / native size)). Set `fontSize` to native x k
   (`18` for a 9 px font at x2).
+- With `autoSize` and a fixed width or height, k is the largest scale whose native x k lies in
+  `fontSizeMin`..`fontSizeMax` and fits the box; `fontSize` is not used.
 - Read `pixelScale` and `effectiveFontSize` (Lua) or check the Inspector's note.
 - `outlineWidth` (0, 1 or 2) and `shadowOffset` are whole font pixels. `outlineNeighbors` is 4
   or 8. Shadow softness and dilate do not apply.

@@ -283,6 +283,11 @@ bool QualityResolver::ssao(bool enabled){
     return enabled && !resolvedCell(DeviceOverride::SSAO).has_value();
 }
 
+int QualityResolver::cavityWorldSamples(int samples){
+    const auto& c = resolvedCell(DeviceOverride::Cavity);
+    return c ? std::min(samples, (int)*c) : samples;
+}
+
 AtmosphereQuality QualityResolver::volumetrics(AtmosphereQuality quality){
     return resolvedCell(DeviceOverride::Volumetrics).has_value() ? AtmosphereQuality::OFF : quality;
 }
@@ -306,6 +311,11 @@ int QualityResolver::maxPixelLights(int lights){
 uint32_t QualityResolver::particleBudget(uint32_t budget){
     const auto& c = resolvedCell(DeviceOverride::ParticleBudget);
     return c ? std::min(budget, (uint32_t)*c) : budget;
+}
+
+float QualityResolver::simulationDistanceScale(){
+    const auto& c = resolvedCell(DeviceOverride::SimulationDistance);
+    return c ? std::clamp(*c, 0.25f, 1.0f) : 1.0f;
 }
 
 uint64_t QualityResolver::uploadBudgetBytes(){

@@ -8,8 +8,10 @@
 #include "htmlui/compat/Hash.h"
 #include "yaml-cpp/yaml.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iterator>
+#include <vector>
 #include <system_error>
 
 #ifdef _WIN32
@@ -25,11 +27,47 @@ namespace fs = std::filesystem;
 
 namespace jasperengine::editor::builtplayers {
 
+    namespace {
+        // a folder's identity (an .app): its files in order, each with its hash
+        Fingerprint treeFingerprint(Fingerprint f) {
+            std::error_code ec;
+            std::vector<fs::path> files;
+            for (fs::recursive_directory_iterator it(f.resolved, fs::directory_options::none, ec), end; it != end; it.increment(ec)) {
+                if (ec) return f;
+                if (it->is_regular_file(ec)) files.push_back(it->path());
+            }
+            std::sort(files.begin(), files.end());
+            std::string listing;
+            for (const fs::path& file : files) {
+                std::ifstream in(file, std::ios::binary);
+                if (!in) return f;
+                const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                f.size += bytes.size();
+                const auto written = fs::last_write_time(file, ec).time_since_epoch().count();
+                f.mtime = std::max<std::int64_t>(f.mtime, static_cast<std::int64_t>(written));
+                listing += FileUtils::pathToGenericUtf8(file.lexically_relative(f.resolved)) + "\n" +
+                           jasperengine::htmlui::compat::sha256Hex(bytes) + "\n";
+            }
+            f.sha256 = jasperengine::htmlui::compat::sha256Hex(listing);
+            f.valid = !files.empty() && !f.sha256.empty();
+            return f;
+        }
+    }
+
     Fingerprint fingerprintOf(const fs::path& exe) {
         Fingerprint f;
         f.resolved = safewrite::resolvedPath(exe);
         if (f.resolved.empty()) return f;
         std::error_code ec;
+        if (fs::is_directory(f.resolved, ec)) {
+#ifndef _WIN32
+            struct stat st{};
+            if (::stat(f.resolved.c_str(), &st) != 0) return f;
+            f.dev = static_cast<std::uint64_t>(st.st_dev);
+            f.ino = static_cast<std::uint64_t>(st.st_ino);
+#endif
+            return treeFingerprint(f);
+        }
         if (!fs::is_regular_file(f.resolved, ec)) return f;
 #ifdef _WIN32
         f.size = static_cast<std::uint64_t>(fs::file_size(f.resolved, ec));
@@ -97,6 +135,20 @@ namespace jasperengine::editor::builtplayers {
             return FileUtils::writeFileReplacing(file, YAML::Dump(root) + "\n");
         } catch (const std::exception&) {
             return false;
+        }
+    }
+
+    fs::path recordedPath(const fs::path& internalDir, const std::string& mode) {
+        try {
+            const fs::path file = recordFile(internalDir);
+            std::error_code ec;
+            if (!fs::is_regular_file(file, ec)) return {};
+            std::ifstream in(file, std::ios::binary);
+            const YAML::Node root = YAML::Load(in);
+            if (!root.IsMap() || !root[mode] || !root[mode]["resolved"]) return {};
+            return FileUtils::pathFromUtf8(root[mode]["resolved"].as<std::string>());
+        } catch (const std::exception&) {
+            return {};
         }
     }
 

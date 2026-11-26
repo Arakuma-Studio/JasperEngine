@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Contract (docs/specs/S87-title-localisation-interchange.md R39, R44, R49, D7, D10)
-// - Purpose: our layered PSD writer (version 1, RGB, 8 or 16 bits, at most 30,000 px a side):
+// - Purpose: our layered PSD writer (version 1, RGB, 8 or 16 bits, at most 30,000 px a side;
+//   PsdWriteDocument::psb writes the same document as a PSB, version 2, S94 F48):
 //   the merged image (8-bit PackBits, 16-bit raw), resources 0x03ED (resolution), 0x040F (the
 //   embedded ICC profile, IccSrgb.h by default) and 0x0421 (version info, hasRealMergedData 1),
 //   one record per layer (Pascal ASCII name with '?' for other characters plus `luni`, `lyid`
@@ -32,6 +33,7 @@
 namespace jasperengine::editor::psd {
 
     constexpr int PSD_MAX_SIDE = 30000;
+    constexpr int PSB_MAX_SIDE = 300000;
 
     // a compressed channel on disk (compression tag and payload)
     struct PsdSpooledChannel {
@@ -89,6 +91,9 @@ namespace jasperengine::editor::psd {
     struct PsdWriteDocument {
         int width = 0, height = 0;
         int bitDepth = 8;                          // 8 or 16
+        // a Large Document (PSB, version 2: 8-byte section and channel lengths, 4-byte PackBits
+        // row counts, up to PSB_MAX_SIDE px a side); written from memory only, never spooled
+        bool psb = false;
         double dpi = 72.0;
         std::vector<uint8_t> icc;                  // empty: the generated sRGB profile
         std::vector<PsdWriteLayer> layers;         // bottom first
@@ -97,7 +102,7 @@ namespace jasperengine::editor::psd {
         uint64_t mergedOffset = 0, mergedLength = 0;
     };
 
-    // false with `error` (psd_too_large, bad_bit_depth, bad_pixels: one sentence)
+    // false with `error` (psd_too_large, bad_bit_depth, bad_pixels, psb_spooled: one sentence)
     bool writePsd(const PsdWriteDocument& doc, std::vector<uint8_t>& out, std::string& error);
 
     // the layer's pixel channels, trimmed as writePsd trims them, into the spool

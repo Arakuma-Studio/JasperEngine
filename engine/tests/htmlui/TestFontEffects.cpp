@@ -6,6 +6,7 @@
 
 #include "harness/RecordingRenderInterface.h"
 #include "harness/TestSystem.h"
+#include "compat/PerfFixtures.h"
 
 #include "HtmlUI.h"
 #include "RmlFile.h"
@@ -17,12 +18,14 @@
 #include "util/TextShaper.h"
 
 #include <RmlUi/Core.h>
+#include <RmlUi/Core/ConvolutionFilter.h>
 #include <RmlUi/Core/FontEffect.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
 
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdio>
 #include <set>
 #include <string>
 #include <vector>
@@ -545,4 +548,131 @@ TEST(RmlFontEffectsRasterScale, PerContextRasterScale){
     Rml::RemoveContext("font-scale-other");
     Rml::Shutdown();
     FontRegistry::clear();
+}
+
+// S93 (R11, AC15): outline is a distance-transform dilation (FontEffectOutline), compared here with the dense kernel RmlUi
+// ran before (ConvolutionFilter, FilterOperation::Dilation, its weights as FontEffectOutline::Initialise set them)
+namespace {
+
+    class FontEffects : public RmlFontEffectsTest {
+    protected:
+        struct Coverage {
+            std::vector<unsigned char> pixels;
+            int width = 0, height = 0, xoff = 0, yoff = 0;
+        };
+
+        static Coverage rasterize(uint32_t codepoint, int size){
+            std::shared_ptr<FontFace> roboto = FontRegistry::getBuiltInLatin();
+            Coverage coverage;
+            roboto->rasterizeGlyph(roboto->getGlyphIndex(codepoint), roboto->scaleForEmSize((float)size), coverage.pixels, coverage.width,
+                                   coverage.height, coverage.xoff, coverage.yoff);
+            return coverage;
+        }
+
+        // the alpha RmlUi's dense kernel gave the glyph outlined by `width`
+        static std::vector<unsigned char> denseOutline(const Coverage& coverage, int width){
+            Rml::ConvolutionFilter filter;
+            filter.Initialise(width, Rml::FilterOperation::Dilation);
+            for (int x = -width; x <= width; ++x){
+                for (int y = -width; y <= width; ++y){
+                    float weight = 1.0f;
+                    const float distance = std::sqrt(float(x * x + y * y));
+                    if (distance > width)
+                        weight = std::max((float)(width + 1) - distance, 0.0f);
+                    filter[x + width][y + width] = weight;
+                }
+            }
+            const Rml::Vector2i dimensions(coverage.width + 2 * width, coverage.height + 2 * width);
+            std::vector<unsigned char> rgba((size_t)dimensions.x * (size_t)dimensions.y * 4, 0);
+            filter.Run(rgba.data(), dimensions, dimensions.x * 4, Rml::ColorFormat::RGBA8, coverage.pixels.data(),
+                       Rml::Vector2i(coverage.width, coverage.height), Rml::Vector2i(width), Rml::ColorFormat::A8);
+            std::vector<unsigned char> alpha((size_t)dimensions.x * (size_t)dimensions.y);
+            for (size_t i = 0; i < alpha.size(); i++)
+                alpha[i] = rgba[i * 4 + 3];
+            return alpha;
+        }
+
+        // the engine's outline bitmap of the glyph (RmlFontEffects::generate through the parsed effect)
+        static bool outline(const Rml::FontEffect& effect, const Coverage& coverage, RmlFontEffects::Bitmap& bitmap){
+            const Rml::FontGlyph glyph = RmlFontEffects::wrapCoverage(coverage.pixels.data(), coverage.width, coverage.height, coverage.xoff,
+                                                                      coverage.yoff, 0);
+            return RmlFontEffects::generate(effect, glyph, bitmap);
+        }
+    };
+
+}
+
+TEST_F(FontEffects, DilationMatchesKernel){
+    // 20 glyphs, sizes 12 to 324 px, outline widths 1 to 24 px (the widths spread over the sizes, so the dense reference
+    // stays affordable)
+    const char* characters = "AgQ@&8sW%e1Bx?{#Mjy5";
+    for (int i = 0; i < 20; i++){
+        const int size = 12 + i * (324 - 12) / 19;
+        const int width = 1 + (i * 7) % 24;
+        const Coverage coverage = rasterize((uint32_t)characters[i], size);
+        ASSERT_GT(coverage.width, 0) << characters[i];
+        Rml::FontEffectList effects = parse("outline(" + std::to_string(width) + "px #ffffff)");
+        ASSERT_EQ(effects.size(), 1u);
+        RmlFontEffects::Bitmap bitmap;
+        ASSERT_TRUE(outline(*effects[0], coverage, bitmap));
+        const std::vector<unsigned char> reference = denseOutline(coverage, width);
+        ASSERT_EQ(bitmap.width, coverage.width + 2 * width);
+        ASSERT_EQ(bitmap.height, coverage.height + 2 * width);
+        ASSERT_EQ(reference.size(), (size_t)bitmap.width * (size_t)bitmap.height);
+
+        // every pixel the kernel fills is filled (within 8 of 255); the inked area is the kernel's within 1 %; the
+        // antialiased edge may differ (D6)
+        double area = 0.0, referenceArea = 0.0;
+        int worstFull = 255, worstEdge = 0;
+        for (size_t p = 0; p < reference.size(); p++){
+            const int ours = bitmap.rgba[p * 4 + 3];
+            ASSERT_EQ(bitmap.rgba[p * 4], bitmap.rgba[p * 4 + 3]);   // premultiplied white
+            if (reference[p] == 255)
+                worstFull = std::min(worstFull, ours);
+            worstEdge = std::max(worstEdge, std::abs(ours - (int)reference[p]));
+            area += ours;
+            referenceArea += reference[p];
+        }
+        std::printf("[outline] '%c' %d px, width %d: area %.4f of the kernel's, fill >= %d, largest edge difference %d\n", characters[i],
+                    size, width, area / referenceArea, worstFull, worstEdge);
+        EXPECT_GE(worstFull, 255 - 8) << characters[i] << " at " << size << " px, width " << width;
+        EXPECT_NEAR(area / referenceArea, 1.0, 0.01) << characters[i] << " at " << size << " px, width " << width;
+    }
+}
+
+TEST_F(FontEffects, OutlineBitmap324Under1_5ms){
+    // R40: one 324 px glyph outlined by 15 px, one thread (the dense kernel took about a second)
+    const Coverage coverage = rasterize('G', 324);
+    ASSERT_GT(coverage.width, 150);
+    Rml::FontEffectList effects = parse("outline(15px #000000)");
+    ASSERT_EQ(effects.size(), 1u);
+    // enforced by the benchmark run (JASPER_HTMLUI_PERF_SLACK set, docs/testing.md), elsewhere printed
+    const double slack = test::compat::benchmarkPerfSlack();
+    const double budget = 1.5 * (slack > 0.0 ? slack : 1.0);
+    const double ms = test::compat::gatedCpuMs([&](){
+        RmlFontEffects::Bitmap bitmap;
+        outline(*effects[0], coverage, bitmap);
+    }, 1, budget);
+    std::printf("[bench] FontEffects.OutlineBitmap324Under1_5ms: %.3f ms (budget 1.5 ms%s)\n", ms,
+                slack > 0.0 ? "" : ", not enforced: JASPER_HTMLUI_PERF_SLACK unset");
+    if (slack > 0.0){
+        EXPECT_LE(ms, budget);
+    }
+}
+
+TEST_F(RmlFontEffectsTest, SharedEffectBitmapMovesWithTheOffset){
+    // S93 R12: the glow's offset moves its quad over the outline's bitmap; the colour is the quad's
+    Rml::FontFaceHandle face = handle("sans-serif", 32);
+    Generated outlined = generate(face, prepare(face, parse("outline(3px #ff0000)")), "A");
+    Generated glowing = generate(face, prepare(face, parse("glow(3px 0px 5px -2px #0000ff)")), "A");
+    ASSERT_EQ(outlined.meshes.size(), 2u);
+    ASSERT_EQ(glowing.meshes.size(), 2u);
+    EXPECT_EQ(engine.getEffectGlyphCount(), 1u);
+    for (int corner = 0; corner < 4; corner++){
+        EXPECT_EQ(glowing.vertex(0, 0, corner).position, outlined.vertex(0, 0, corner).position + Rml::Vector2f(5, -2));
+        EXPECT_EQ(glowing.vertex(0, 0, corner).tex_coord, outlined.vertex(0, 0, corner).tex_coord);
+    }
+    EXPECT_EQ(outlined.vertex(0, 0, 0).colour.red, 255);
+    EXPECT_EQ(glowing.vertex(0, 0, 0).colour.blue, 255);
+    EXPECT_EQ(glowing.vertex(0, 0, 0).colour.red, 0);
 }

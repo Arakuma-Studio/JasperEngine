@@ -144,6 +144,10 @@ namespace jasperengine::editor::mcp {
         // A RectTransform property the entity's Safe Area component drives (anchors, offsets,
         // size): the error that refuses setting it, "" when it is free
         static std::string safeAreaDrivenError(Scene* scene, Entity entity, const std::string& property);
+        // A model's node GameObject without a Mesh whose mesh the model's own GameObject draws (a
+        // lone mesh baked into the root, spec S94 F45): the error that names the root and Preserve
+        // Hierarchy, "" for any other GameObject
+        static std::string modelNodeMeshError(SceneProject* scene, Entity entity);
 
         // parseChanges without the renamed names mapped to the current ones
         static bool parseChangesAsGiven(const Json& changes, std::vector<Change>& out, std::string& error);

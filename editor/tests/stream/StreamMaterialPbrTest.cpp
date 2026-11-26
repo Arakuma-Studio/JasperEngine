@@ -184,3 +184,38 @@ TEST(StreamMaterialPbr, ALobesMapThatFailedToLoadKeepsItsFile){
     const Material read = Stream::decodeMaterial(reread(Stream::encodeMaterial(material)));
     EXPECT_EQ(read.pbr.get().clearcoat.map.getPath(), missing);
 }
+
+// V1 R70, R130: the Vertex Color section, written only away from Tint (a file saved before it is
+// written again byte for byte), by name, read back whole; a name this editor does not know keeps the
+// default. Every build reads it from the cooked scene (CookedScene.MaterialKeepsItsVertexColorSection)
+TEST(StreamMaterialPbr, VertexColorSectionRoundTrips){
+    Material tint;
+    tint.pbr.edit().vertexColor = MaterialPbrExtensions::VertexColor();
+    EXPECT_FALSE(Stream::encodeMaterial(tint)["pbr"]) << "Tint writes nothing";
+
+    Material material;
+    MaterialPbrExtensions::VertexColor& vertexColor = material.pbr.edit().vertexColor;
+    vertexColor.use = VertexColorUse::MASKS;
+    vertexColor.alphaOpacity = false;
+    vertexColor.r = VertexColorTarget::OCCLUSION;
+    vertexColor.b = VertexColorTarget::ROUGHNESS_REPLACE;
+    vertexColor.a = VertexColorTarget::EMISSION;
+    const YAML::Node node = reread(Stream::encodeMaterial(material));
+    ASSERT_TRUE(node["pbr"]["vertexColor"]);
+    const YAML::Node section = node["pbr"]["vertexColor"];
+    EXPECT_EQ(section.size(), 5u) << "g is None: not written";
+    EXPECT_EQ(section["use"].as<std::string>(), "masks");
+    EXPECT_FALSE(section["alphaOpacity"].as<bool>());
+    EXPECT_EQ(section["r"].as<std::string>(), "occlusion");
+    EXPECT_EQ(section["b"].as<std::string>(), "roughness_replace");
+    EXPECT_EQ(section["a"].as<std::string>(), "emission");
+    EXPECT_FALSE(section["g"]);
+    const Material read = Stream::decodeMaterial(node);
+    EXPECT_EQ(read.pbr->vertexColor, vertexColor);
+    EXPECT_EQ(read, material);
+
+    const Material unknown = Stream::decodeMaterial(YAML::Load("pbr:\n  vertexColor:\n    use: multiply\n    r: wetness\n    g: metallic\n"));
+    EXPECT_EQ(unknown.pbr->vertexColor.use, VertexColorUse::TINT);
+    EXPECT_EQ(unknown.pbr->vertexColor.r, VertexColorTarget::NONE);
+    EXPECT_EQ(unknown.pbr->vertexColor.g, VertexColorTarget::METALLIC);
+}

@@ -3,6 +3,7 @@
 
 #include "EditorSettingsWindow.h"
 #include "platform/ExternalTools.h"
+#include "platform/DeviceList.h"
 #include "object/Lattice.h"
 #include "window/CodeEditor.h"
 #include "window/EditorModal.h"
@@ -73,6 +74,7 @@ namespace {
         Diagnostics,
         ShaderCache,
         VersionControl,
+        PlayMode,
         Count
     };
 
@@ -220,7 +222,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_ffmpegOverride = AppSettings::getFfmpegPath();
     refreshFfmpegStatus();
     m_toolPaths.clear();
-    for (const char* tool : {"androidSdk", "jdk", "steamcmd", "rcodesign", pixelart::aseprite::kAsepriteToolKey}) m_toolPaths[tool] = AppSettings::getExternalToolPath(tool);
+    for (const char* tool : {"androidSdk", "jdk", "adb", "steamcmd", "rcodesign", pixelart::aseprite::kAsepriteToolKey}) m_toolPaths[tool] = AppSettings::getExternalToolPath(tool);
     refreshPlayerRuntimes();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
     m_projectHubAlways = AppSettings::getProjectHubAlways();
@@ -257,6 +259,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_smartMergeStatus.clear();
     m_lattice = AppSettings::getLatticeViewSettings();
     m_sceneView = AppSettings::getSceneViewSettings();
+    m_recordInput = recordinput::RecordInput::get().settings();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
     refreshEmsdkStatus();
 }
@@ -379,6 +382,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::Diagnostics: drawDiagnosticsSettings(); break;
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
         case PreferencesCategory::VersionControl: drawVersionControlSettings(); break;
+        case PreferencesCategory::PlayMode: drawPlayModeSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -718,6 +722,57 @@ void EditorSettingsWindow::drawSceneViewSettings() {
     });
 }
 
+void EditorSettingsWindow::drawPlayModeSettings() {
+    prefsDrawSettingsPanel("##EditorPlayModeSettingsPanel", [this]() {
+        const recordinput::Settings defaults;
+        if (!sectionRow("Record Input")) return;
+        if (settingsui::beginRow("preferences.record_input.frame_rate")) {
+            if (prefsBeginSettingsRow("Frame Rate", "The fixed frame rate a recorded Play runs at; its replays run at it too.",
+                                      m_recordInput.frameRate != defaults.frameRate)) {
+                m_recordInput.frameRate = defaults.frameRate;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+            if (ImGui::InputInt("##RecordInputFrameRate", &m_recordInput.frameRate)) m_recordInput.frameRate = std::clamp(m_recordInput.frameRate, 1, 240);
+            ImGui::SameLine();
+            ImGui::TextDisabled("fps");
+        }
+        if (settingsui::beginRow("preferences.record_input.checkpoint_frames")) {
+            if (prefsBeginSettingsRow("Checkpoint Every", "Frames between the state checkpoints a replay compares to find where it diverged (0: none).",
+                                      m_recordInput.checkpointFrames != defaults.checkpointFrames)) {
+                m_recordInput.checkpointFrames = defaults.checkpointFrames;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+            if (ImGui::InputInt("##RecordInputCheckpoints", &m_recordInput.checkpointFrames, 10, 60))
+                m_recordInput.checkpointFrames = std::clamp(m_recordInput.checkpointFrames, 0, 100000);
+            ImGui::SameLine();
+            ImGui::TextDisabled(m_recordInput.checkpointFrames == 0 ? "off" : "frames");
+        }
+        if (settingsui::beginRow("preferences.record_input.probes")) {
+            if (prefsBeginSettingsRow("Probes", "GameObject paths (\"Player\", \"Enemies/Bat (3)\") whose positions each checkpoint stores, "
+                                      "named in a divergence. Empty: the first 16 that move, chosen when recording starts.",
+                                      !m_recordInput.probes.empty())) {
+                m_recordInput.probes.clear();
+            }
+            int removed = -1;
+            for (size_t i = 0; i < m_recordInput.probes.size(); i++) {
+                ImGui::PushID(static_cast<int>(i));
+                char buffer[256];
+                std::snprintf(buffer, sizeof(buffer), "%s", m_recordInput.probes[i].c_str());
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - Theme::dpi(30.0f));
+                if (ImGui::InputText("##RecordInputProbe", buffer, sizeof(buffer))) m_recordInput.probes[i] = buffer;
+                ImGui::SameLine();
+                if (ImGui::Button(ICON_FA_MINUS "##RecordInputProbeRemove")) removed = static_cast<int>(i);
+                ImGui::PopID();
+            }
+            if (removed >= 0) m_recordInput.probes.erase(m_recordInput.probes.begin() + removed);
+            if (m_recordInput.probes.empty()) ImGui::TextDisabled("Automatic (empty)");
+            ImGui::BeginDisabled(m_recordInput.probes.size() >= static_cast<size_t>(recordinput::MAX_PROBES));
+            if (ImGui::Button(ICON_FA_PLUS " Add Probe##RecordInputProbeAdd")) m_recordInput.probes.emplace_back();
+            ImGui::EndDisabled();
+        }
+    });
+}
+
 void EditorSettingsWindow::drawAssetPipelineSettings() {
     prefsDrawSettingsPanel("##EditorAssetPipelinePanel", [this]() {
         if (settingsui::beginRow("preferences.auto_refresh")) {
@@ -907,6 +962,8 @@ void EditorSettingsWindow::drawShippingSettings() {
          "The Android SDK of prebuilt Android builds: build-tools 35+ (aapt2, zipalign, apksigner) and the target platform. "
          "Empty means ANDROID_HOME, then ANDROID_SDK_ROOT. No NDK or Gradle is needed.", true},
         {"preferences.jdk_path", "jdk", "JDK", "The JDK whose keytool, jarsigner and java sign Android builds. Empty means JAVA_HOME, then PATH.", true},
+        {"preferences.adb_path", "adb", "adb", "adb of Build And Run on Android devices and emulators. Empty means the Android SDK's "
+         "platform-tools/adb, then PATH.", false},
         {"preferences.steamcmd_path", "steamcmd", "SteamCMD", "steamcmd for publish steam-upload. Empty means STEAMCMD_HOME, then PATH.", false},
         {"preferences.rcodesign_path", "rcodesign", "rcodesign", "rcodesign signs macOS builds on any computer (codesign does on a Mac). Empty means PATH.", false},
     };
@@ -918,6 +975,15 @@ void EditorSettingsWindow::drawShippingSettings() {
         drawPathPicker((std::string("##ShippingTool") + row.tool).c_str(), (std::string("Browse##") + row.tool).c_str(),
                        (std::string("Auto##") + row.tool).c_str(), display, !value.empty(), row.directory,
                        [&value](const std::string& selected) { value = selected; }, [&value]() { value.clear(); });
+        if (std::string(row.tool) == "adb") {
+            // where Build And Run finds it now (the preference applied when saved)
+            if (m_adbChecked != value) {
+                m_adbChecked = value;
+                m_adbFound = platform::adbLocation().path.string();
+            }
+            if (!m_adbFound.empty()) ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " %s", m_adbFound.c_str());
+            else ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Not found: install Android SDK Platform-Tools");
+        }
     }
 
     if (settingsui::beginRow("preferences.player_runtimes")) {
@@ -1498,6 +1564,7 @@ bool EditorSettingsWindow::applySettings() {
         }
     }
     AppSettings::setSceneViewSettings(m_sceneView);
+    if (std::string error; !recordinput::RecordInput::get().setSettings(m_recordInput, error)) Out::error("Record Input settings: %s", error.c_str());
     AppSettings::setHtmlUiAutoImport(m_htmlUiAutoImport);
     // the watcher starts again on the project when how it watches changed
     static const char* const watcherNames[] = {"auto", "native", "polling"};

@@ -58,6 +58,11 @@ namespace jasperengine::editor{
         static bool hostFocusKnown;
         // send_input {type: "app", action: "hide"}: the game updates without drawing
         static bool gameHiddenSimulated;
+        // send_input {type: "app", action: "view_lost" / "view_restored"} (setViewLostSimulated)
+        static bool viewLostSimulated;
+        static bool viewLossPaused;
+        static int viewLostCount;
+        static int viewRestoredCount;
 
     protected:
         bool platformOpenURL(const std::string& url) override;
@@ -106,6 +111,16 @@ namespace jasperengine::editor{
         // drawing (its Game view keeps the last frame) while the window stays visible; ends with Play
         static void setGameHiddenSimulated(bool hidden);
         static bool isGameHiddenSimulated();
+        // send_input {type: "app", action: "view_lost" / "view_restored"}: the running scenes'
+        // GPU objects released and made again (Engine::releaseScenesGpu / restoreScenesGpu), as an
+        // Android window or a lost WebGL context has them; meanwhile the game neither updates nor
+        // draws (its Game view keeps the last frame). pausedByLoss: the loss paused the app
+        // (Engine::systemPause), so the restore resumes it. Ends with Play
+        static void setViewLostSimulated(bool lost, bool pausedByLoss = false);
+        static bool isViewLostSimulated();
+        static bool isViewLossPaused();
+        static int getViewLostCount();
+        static int getViewRestoredCount();
 
         // the host browser is never started: MCP --headless, or Linux without a display
         static bool isHeadless();
@@ -148,6 +163,7 @@ namespace jasperengine::editor{
         int64_t getAppBuild() override;
         std::string getAppIdentifier() override;
         std::string getAppName() override;
+        bool playsBuildProfile() const;
         std::string getOperatingSystem() override;
         std::string getOperatingSystemVersion() override;
         std::string getDeviceModel() override;

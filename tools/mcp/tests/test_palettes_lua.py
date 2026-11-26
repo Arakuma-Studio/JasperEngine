@@ -144,6 +144,25 @@ async def test_setup(ed: Editor):
     await ed.call("select_scene", scene=scene)
 
 
+async def test_binding_set_before_the_sprites_first_frame(ed: Editor):
+    """A Sprite's one submesh is made by its first frame (MeshSystem::prepareSpriteMesh). A binding set
+    in the batch that makes it (no frame) goes through the Mesh's scene-file encoding, which had no
+    submesh then: "Unknown property", as test_setup met whenever CI's slow frames came after its call"""
+    scene = S["scene"]
+    binding = {"mesh": {M + "shaderFeatures": ["PALETTE_SWAP"], M + "shaderPalettes": {"u_palette": {"source": S["asset_path"]}}}}
+    try:
+        # (off the canvas: the next tests sample the hero and the villain)
+        r = await ed.call("batch", calls=[
+            {"tool": "create_entity", "arguments": {"scene": scene, "type": "sprite", "name": "Unframed", "select": False,
+                                                    "position": [-1000, -1000, 0]}},
+            {"tool": "set_properties", "arguments": {"scene": scene, "entity": "Unframed", "values": binding}}])
+        ed.check_eq(r.get("failed"), 0, f"batch: {[x for x in r['results'] if not x.get('ok')]}")
+        got = await ed.call("get_entity", scene=scene, entity="Unframed", properties=[M + "shaderPalettes"])
+        ed.check(S["asset_path"] in json.dumps(got["components"]), f"the binding is set: {json.dumps(got['components'])[:400]}")
+    finally:
+        await ed.call("delete_entities", scene=scene, entities=["Unframed"])
+
+
 async def test_get_entity_row_names(ed: Editor):
     got = await ed.call("get_entity", scene=S["scene"], entity=S["Hero"], components=["mesh"])
     rows = got.get("palette_rows")

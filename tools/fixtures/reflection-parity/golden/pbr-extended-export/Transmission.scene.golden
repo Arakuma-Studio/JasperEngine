@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: 33f66ffad68db21b96d301737b305bed
 id: 1966622498
 name: Transmission
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

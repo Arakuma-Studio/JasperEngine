@@ -66,6 +66,9 @@ namespace jasperengine::editor {
 
 #undef JASPER_STREAM_ENUM
 
+        static YAML::Node encodeScriptProperty(const ScriptProperty& prop){ return Stream::encodeScriptProperty(prop); }
+        static ScriptProperty decodeScriptProperty(const YAML::Node& node){ return Stream::decodeScriptProperty(node); }
+
         static const char* colorFormatToString(ColorFormat format){ return Stream::colorFormatToString(format); }
         static ColorFormat stringToColorFormat(const std::string& text, int channels){ return Stream::stringToColorFormat(text, channels); }
         static std::string colorWriteToString(int colorWrite){ return Stream::colorWriteToString(colorWrite); }

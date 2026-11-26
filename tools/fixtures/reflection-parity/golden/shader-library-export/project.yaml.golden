@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: ShaderLibraryExport
 canvasWidth: 1280
 canvasHeight: 720
@@ -14,7 +14,10 @@ windowWidth: 1280
 windowHeight: 720
 windowResizable: true
 luaDir: .
+transparencySortMode: perspective
 startSceneId: 2154334445
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: Lit.scene
     filepathGuid: 89a155aeb4e0410d00800e38a0d80b96

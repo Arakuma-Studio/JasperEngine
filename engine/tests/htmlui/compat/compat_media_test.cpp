@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+#include <optional>
+
 using namespace jasperengine::htmlui::compat;
 
 namespace {
@@ -19,13 +21,19 @@ namespace {
         bool touch = false;
     };
 
-    std::string run(const char* query, bool touch, std::vector<Diagnostic>* diagnostics = nullptr){
+    // touch: a touch device at load (its pointer a finger, as HtmlUIContext compiles it then);
+    // pointer: the pointer in use when it differs (input-device-awareness R17)
+    std::string run(const char* query, bool touch, std::vector<Diagnostic>* diagnostics = nullptr, MediaResult* out = nullptr,
+                    std::optional<bool> coarsePointer = std::nullopt){
         SourceFiles files;
         const uint32_t file = files.add("t.css", query);
         DiagnosticSink sink(files);
         CompatOptions options;
         options.touchDevice = touch;
+        options.coarsePointer = coarsePointer.value_or(touch);
         const MediaResult result = MediaQuery::normalize(query, options, &sink, SourceRef{file, 0, (uint32_t)std::string(query).size()});
+        if (out)
+            *out = result;
         if (diagnostics)
             *diagnostics = sink.take();
         if (result.never)
@@ -115,8 +123,15 @@ TEST(CompatMedia, Diagnostics){
     ASSERT_EQ(diagnostics.size(), 1u);
     EXPECT_EQ(diagnostics[0].code, codes::MediaNormalized);
 
+    // hover and pointer follow the pointer in use (input-device-awareness R17, a deliberate change:
+    // they were evaluated at load and reported as static); any-hover still is
     run("(hover: hover)", false, &diagnostics);
     bool staticReported = false;
+    for (const Diagnostic& d : diagnostics)
+        staticReported = staticReported || d.code == codes::MediaStatic;
+    EXPECT_FALSE(staticReported);
+    run("(any-hover: hover)", false, &diagnostics);
+    staticReported = false;
     for (const Diagnostic& d : diagnostics)
         staticReported = staticReported || d.code == codes::MediaStatic;
     EXPECT_TRUE(staticReported);
@@ -125,6 +140,26 @@ TEST(CompatMedia, Diagnostics){
     ASSERT_FALSE(diagnostics.empty());
     EXPECT_EQ(diagnostics[0].code, codes::MediaFeatureUnsupported);
     EXPECT_EQ(diagnostics[0].severity, Severity::Warning);
+}
+
+// input-device-awareness AC13: hover and pointer read the pointer in use and mark the result;
+// any-hover and any-pointer keep reading the device; a theme with hover stays expressible
+TEST(CompatMedia, HoverFollowsPointer){
+    MediaResult result;
+    // a touch device whose player took the mouse
+    EXPECT_EQ(run("(hover: hover)", true, nullptr, &result, false), "all");
+    EXPECT_TRUE(result.dependsOnPointer);
+    EXPECT_EQ(run("(pointer: fine)", true, nullptr, &result, false), "all");
+    EXPECT_TRUE(result.dependsOnPointer);
+    EXPECT_EQ(run("(any-hover: hover)", true, nullptr, &result, false), "never");
+    EXPECT_FALSE(result.dependsOnPointer);
+    EXPECT_EQ(run("(any-pointer: coarse)", true, nullptr, &result, false), "all");
+    EXPECT_FALSE(result.dependsOnPointer);
+    EXPECT_EQ(run("(min-width: 1px)", true, nullptr, &result, false), "(min-width: 1px)");
+    EXPECT_FALSE(result.dependsOnPointer);
+    EXPECT_EQ(run("(prefers-color-scheme: dark) and (hover: hover)", false, nullptr, &result), "(theme: dark)");
+    EXPECT_TRUE(result.dependsOnPointer);
+    EXPECT_EQ(run("(prefers-color-scheme: dark) and (hover: hover)", false, nullptr, &result, true), "never");
 }
 
 TEST(CompatMedia, Conjoin){

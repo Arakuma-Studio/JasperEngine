@@ -654,7 +654,8 @@ TEST_F(LogListenerTest, OpenOnErrorTurnedOnLater) {
     EXPECT_TRUE(DebugOverlay::isConsoleVisible());
 }
 
-// 12. commands: words to the function; unknown names; `lua` only with allowLua
+// 12. commands: words to the function; unknown names; `lua` only with allowLua (the registry's own
+// tests: engine/tests/core/debug/ConsoleCommandsTest.cpp)
 TEST_F(LogListenerTest, ConsoleCommands) {
     std::vector<std::string> got;
     ASSERT_TRUE(DebugOverlay::addCommand("god", "god mode", [&got](const std::vector<std::string>& args) { got = args; }));
@@ -693,8 +694,12 @@ TEST_F(LogListenerTest, ConsoleCommands) {
     Engine::setTimeScale(1.0f);
     DebugOverlay::executeCommand("stats full");
     EXPECT_EQ(DebugOverlay::getStatsMode(), DebugOverlaySettings::Stats::Full);
-    DebugOverlay::executeCommand("help");
-    EXPECT_NE(Log::getEntries(1)[0].message.find("god - god mode"), std::string::npos);
+    // help prints one line per command (dev-console-for-agents R8), each with its [help] prefix
+    const console::Result help = DebugOverlay::executeCommand("help");
+    EXPECT_NE(std::find(help.lines.begin(), help.lines.end(), "god - god mode"), help.lines.end());
+    bool logged = false;
+    for (const LogEntry& entry : Log::getEntries()) logged = logged || entry.message == "[help] god - god mode";
+    EXPECT_TRUE(logged);
     DebugOverlay::removeCommand("god");
     EXPECT_FALSE(DebugOverlay::hasCommand("god"));
 }

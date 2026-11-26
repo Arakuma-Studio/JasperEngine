@@ -130,7 +130,7 @@ Vector4 Vector4::operator * ( const Vector4& rhs) const{
 }
 
 Vector4 Vector4::operator / ( const float fScalar ) const{
-    assert( fScalar != 0.0 );
+    // a zero scalar gives infinities or NaN, as Vector3 and Unity do: Lua scripts reach this (S95 REQ-2)
     
     float fInv = 1.0f / fScalar;
     
@@ -257,7 +257,7 @@ Vector4& Vector4::operator *= ( const Vector4& rkVector ){
 }
 
 Vector4& Vector4::operator /= ( const float fScalar ){
-    assert( fScalar != 0.0 );
+    // a zero scalar gives infinities or NaN, as Vector3 and Unity do: Lua scripts reach this (S95 REQ-2)
     
     float fInv = 1.0f / fScalar;
     

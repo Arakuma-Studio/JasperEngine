@@ -5,6 +5,7 @@
 #define HTMLUITEXTURE_H
 
 #include "Export.h"
+#include "HtmlUIImageCache.h"
 #include "render/Render.h"
 #include "render/TextureRender.h"
 #include "texture/Framebuffer.h"
@@ -22,7 +23,9 @@ namespace jasperengine {
     // RGBA8 (or R8 coverage): each upload path premultiplies, the shaders never do.
     // RmlRenderer::ReleaseTexture deletes the struct, which destroys what it owns.
     struct JASPERENGINE_API HtmlUITexture {
-        enum class Kind : uint8_t { STATIC, DYNAMIC, RENDER_TARGET, EXTERNAL };
+        // SHARED (S93 D9): a renderer's handle onto an image of HtmlUIImageCache, which owns the
+        // GPU texture (no renderer destroys it); `render` is set once the image is uploaded
+        enum class Kind : uint8_t { STATIC, DYNAMIC, RENDER_TARGET, EXTERNAL, SHARED };
         // how draws read it (S16): premultiplied RGBA; R8 coverage whose .r tints every channel
         // (glyph atlas pages); an MTSDF glyph page (RGBA8 distances, the HTMLUI_PRIM glyph mode)
         enum class Sample : uint8_t { RGBA, COVERAGE, MSDF };
@@ -52,12 +55,27 @@ namespace jasperengine {
         TextureRender* render = nullptr;            // sampled texture
         std::unique_ptr<TextureRender> ownedRender; // STATIC/DYNAMIC created by the UI code
         std::unique_ptr<Framebuffer> ownedTarget;   // RENDER_TARGET (SaveLayerAsTexture)
+        std::shared_ptr<HtmlUIImageCache::Reference> image;   // SHARED
         int width = 0, height = 0;
         bool dead = false;                          // GPU object dropped by view loss (phase-0 releaseGpuResources)
         uint64_t lastUpdateFrame = UINT64_MAX;      // DYNAMIC: one sg_update_image per frame
         // RENDER_TARGET of a <video> (phase 6): the dynamic R8 Y, U and V planes its frames are
         // converted from (RmlRenderer::queueVideoConversion), owned and released with it
         std::unique_ptr<TextureRender> planes[3];
+
+        // S92 (R1): what a frame signature knows of the texels. The serial is unique over the
+        // process (an address reused after a release never matches); the content version is
+        // bumped by every change of the texels: update(), a <video> frame's conversion, a saved
+        // layer copied in (RmlRenderer). liveContent: texels that change without either (a
+        // <video>'s texture, an engine render target): a frame that draws it is always drawn
+        const uint64_t serial = nextSerial();
+        uint64_t contentVersion = 0;
+        bool liveContent = false;
+        // S92 R9: a small static texture's texels and sampling, hashed when it was made (0: not),
+        // for the content version it was hashed at: equal elements' textures (a clip-path's mask
+        // raster each) key their layer scopes the same
+        uint64_t pixelHash = 0;
+        uint64_t pixelHashVersion = 0;
 
         HtmlUITexture() = default;
         HtmlUITexture(const HtmlUITexture&) = delete;
@@ -80,6 +98,9 @@ namespace jasperengine {
         bool update(const void* data, size_t size);
         // DYNAMIC: update() would upload this frame
         bool canUpdate() const;
+
+    private:
+        static uint64_t nextSerial();
     };
 
 }

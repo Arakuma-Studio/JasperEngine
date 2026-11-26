@@ -276,7 +276,7 @@ bool UILottieElement::load(){
     // queued, not dispatched: loading may run inside a layout pass (GetIntrinsicDimensions);
     // OnUpdate dispatches them
     if (autoplay)
-        playback.play(HtmlUIClock::now(), playbackEvents);
+        playback.play(HtmlUIClock::now(this), playbackEvents);
     queuePlaybackEvents();
     holdPending();
 
@@ -464,7 +464,7 @@ void UILottieElement::dispatchPlaybackEvents(){
 
 void UILottieElement::advance(){
     // events stay queued until the caller (or the next OnUpdate) dispatches them
-    playback.update(HtmlUIClock::now(), playbackEvents);
+    playback.update(HtmlUIClock::now(this), playbackEvents);
     if (playback.getCurrentFrame() != rasterizedFrame)
         frameDirty = true;
 }
@@ -723,7 +723,7 @@ void UILottieElement::play(){
     if (!loaded)
         return;
     advance();
-    playback.play(HtmlUIClock::now(), playbackEvents);
+    playback.play(HtmlUIClock::now(this), playbackEvents);
     afterControl();
 }
 
@@ -732,7 +732,7 @@ void UILottieElement::pause(){
     if (!loaded)
         return;
     advance();
-    playback.pause(HtmlUIClock::now(), playbackEvents);
+    playback.pause(HtmlUIClock::now(this), playbackEvents);
     afterControl();
 }
 
@@ -741,7 +741,7 @@ void UILottieElement::stop(){
     if (!loaded)
         return;
     advance();
-    playback.stop(HtmlUIClock::now(), playbackEvents);
+    playback.stop(HtmlUIClock::now(this), playbackEvents);
     afterControl();
 }
 
@@ -750,7 +750,7 @@ void UILottieElement::seek(float seconds){
     if (!loaded)
         return;
     advance();
-    playback.seek(seconds, HtmlUIClock::now());
+    playback.seek(seconds, HtmlUIClock::now(this));
     afterControl();
 }
 
@@ -759,7 +759,7 @@ void UILottieElement::setFrame(float frame){
     if (!loaded)
         return;
     advance();
-    playback.setFrame(frame, HtmlUIClock::now());
+    playback.setFrame(frame, HtmlUIClock::now(this));
     afterControl();
 }
 

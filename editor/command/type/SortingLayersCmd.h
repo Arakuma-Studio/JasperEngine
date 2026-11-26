@@ -20,7 +20,10 @@ namespace jasperengine::editor{
         TransparencySortMode mode = TransparencySortMode::DEFAULT;
         Vector3 axis = Vector3(0.0f, 1.0f, 0.0f);
 
+        // the open project's (the engine's SortingLayers)
         static SortingSettings current();
+        // a project's: the open one's, or a Build Profile's settings snapshot's own
+        static SortingSettings of(const Project& project);
         bool operator==(const SortingSettings& o) const { return layers == o.layers && mode == o.mode && axis == o.axis; }
         bool operator!=(const SortingSettings& o) const { return !(*this == o); }
     };

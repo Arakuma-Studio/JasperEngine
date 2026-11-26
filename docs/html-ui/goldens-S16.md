@@ -5,7 +5,7 @@ The golden policy of `docs/specs/S16-ui-render-text.md` (AC2, AC3): the 277 Chro
 self-golden S16 changes has a row here: its name, the default compare metric of the old golden
 against the new image before the update (max channel difference / mean / bad pixels) and of the
 new golden after (always a pass), the category (`sdf-aa`, `analytic-clip`, `analytic-shadow`,
-`exact-scale-text`, `gpu-text-effect`), the reason, and for fixtures that
+`exact-scale-text`, `gpu-text-effect`, `filter-blur`), the reason, and for fixtures that
 `tools/htmlui/render-reference.mjs` can render, the mean difference against Chromium (new <= old).
 "Before" is the default compare of the old golden against the S16 image (glcore, llvmpipe);
 "n/a (engine scene)": an RML scene of the engine's suites, which the Chromium script does not
@@ -39,13 +39,29 @@ that every changed golden has its row. More than 60 updates need a separate revi
 | `s17/views_scrolled` | 39 / 0.058 / 207 | 0 / 0.000 / 0 | `sdf-aa` | S17's scrolled grid view: its tiles' backgrounds are primitives cut to the scissor, so the row above the pane no longer shows llvmpipe's 4-sample leak across the scissor's top (the glyphs, exact quads, still do) | n/a (engine scene) |
 | `examples/inventory` | 231 / 1.582 / 12721 | 0 / 0.000 / 0 | `exact-scale-text` | S17's play golden (`test_html_ui_examples.py`, at most 1 % of the pixels apart; 1.09 % against S16) predates S16: the labels drawn at their on-screen scale, the gradients and boxes as primitives, and the hovered slot's tooltip placed 18 px higher from its laid-out size (deterministic over two runs, the same with S16's paint shortcuts off) | n/a (engine scene) |
 | `examples/server_browser` | 169 / 1.880 / 20429 | 0 / 0.000 / 0 | `exact-scale-text` | S17's play golden predates S16 (1.58 % against S16): the table's labels sit on whole target pixels at the game view's scale (moved by under a pixel) | n/a (engine scene) |
+| `p1/texture_effects` | 255 / 1.920 / 451 | 0 / 0.000 / 0 | `filter-blur` | S92 B2's blur (`07480e8ef`): the two halvings are one pass of four bilinear taps without the 8-bit intermediate, so the 6 px blur's outermost ring reaches one pixel further: 448 of the 451 bad pixels have alpha 0-2 in both images (the straight colour of a pixel the old blur left at alpha 0 is white at alpha 1-2), alpha differs by at most 8; 3 pixels of the turned panel's edge by the text outline differ by 43; reviewed by eye, no visible change | n/a (engine scene) |
 
 ## New goldens
 
 | Golden | Test | What it shows |
 |---|---|---|
+| `p1/shared_shadow` | `TextureModeTest.SharedSheetDecoratorsPerRenderManager` | S93 R27: a screen document's texture box shadow and gradient decorator, drawn after the texture-mode document of the same sheet went |
+| `text_autosize` | `FullPathGoldenTest.TextAutosizeFits` | S93 R31: `text-autosize` fitting a short word, a long word, a paragraph in a fixed box and a heading whose box follows its height |
+| `l10n/pseudo_en_xa` | `GoldenText.PseudoLocaleEnXa` | game-ui-localization.md AC9: a keyed settings panel in the en-XA pseudo-locale (accented, 40 % longer, bracketed), Roboto Bold |
+| `l10n/pseudo_ar_xb` | `GoldenText.PseudoLocaleArXb` | the same panel in ar-XB: the text right to left and the root's direction rtl |
+| `gamepad_cursor` | `FullPathGoldenTest.GamepadCursorDrawnOnTop` | text-entry-gamepad-cursor-back-button AC15: the built-in gamepad cursor arrow, its tip at (190, 140), drawn over a component Image and an HTML UI document's panel |
+| `gamepad_cursor_texture` | `FullPathGoldenTest.GamepadCursorDrawnOnTop` | the same with a project texture (`common/checker.png`) at 48 px, its hot spot (24, 24) centred on (420, 200) |
 | `s51/bitmap_fonts` | `TestBitmapFonts.ScalesAndEffects` | S51 bitmap faces (a `.bitmapfont` and a `.fnt`) at 1x, 2x, 3x their native size, a pixel outline, a sharp shadow, a glow dropped |
 | `s51/bitmap_fonts_1_5x` | `TestBitmapFonts.PixelRatioOneAndAHalf` | the same document at pixel ratio 1.5: every font pixel round(k x 1.5) device pixels |
 | `p1/rounded_clip_1x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | a rounded `overflow: hidden` clip done in the shaders at one sample: its curve antialiased |
 | `p1/rounded_clip_4x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | the same at four samples |
 | `p1/rounded_clip_nested` | `RenderClip.NestedRoundedClipsUseTheStencil` | three nested rounded clips: the stencil path |
+| `s93/fallback_glyph` | `TextFeatureGoldenTest.FallbackGlyphGetsEffect` | S93 R16: "CAÑÓN" in a face without Ó (Ahem less U+00D3): the Ó from the built-in Roboto, synthetic bold for the bold text and the same orange outline as its neighbours; the regular "ÓN" below without either |
+| `s93_atlas_regions` | `GoldenRender.AtlasRegions` | S93 R20: `#xywh=` (pixels, percent) and `#sprite=` regions of one atlas on `img`, a repeated `background-image`, `border-image` and `mask-image`; the test also requires it pixel-equal to the same pixels as separate files |
+| `s93_image_color` | `GoldenRender.ImageColorTintsBackgroundAndBorderImage` | S93 R22: `image-color` multiplying a `background-image`, a 9-slice `border-image` and an `img`, not a `mask-image` |
+| `p6/world_space_occluded` | `WorldSpaceDocumentTest.WorldSpaceDocumentIsOccluded` | S93 R36: a World Space UI Document (red and blue quadrants on a transparent body) depth tested among the scene's objects: a cube in front hides part of the red quadrant, the blue quadrant hides a cube behind it |
+| `s92/clip_path_shapes_1x` | `RenderClip.ClipPathBasicShapesAreAnalytic` | S92 R8: `clip-path` `inset() round`, `circle()` and `ellipse()` clipped in the shaders without a layer, a child crossing each shape, at one sample |
+| `s92/clip_path_shapes_4x` | `RenderClip.ClipPathBasicShapesAreAnalytic` | the same at four samples |
+| `s92/u27_scaled_scroll` | `RenderClip.TextInScaledScrollWithFilterLayers` | S92 R11, the JasperArcade port's U27: a scaled panel's `overflow: hidden` list of filtered tiles and text, clipped by a scissor (no stencil) |
+| `s92/u27_rotated_scroll` | `RenderClip.RotatedClipKeepsStencil` | the same list turned: its clip stays a stencil mask |
+| `overlay_camera_mode_scaled` | `HtmlUIScene.CameraModeKeepsOldPlacement` | S92 R14: Screen Space - Camera at `render_scale` 0.5, the document scaled down and up with the scene as before S92 (captured with the old placement) |

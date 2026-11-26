@@ -36,6 +36,9 @@ namespace jasperengine{
         // (or 0); getGamepad() the pad's id (Input), -1 for the keyboard
         std::string getKey() const; std::string getCode() const; int getKeyCode() const; bool isRepeat() const;
         int getGamepad() const;
+        // an Enter keydown of the soft keyboard's action key or of a field with an enterkeyhint: the
+        // hint ("next", "send", ...; "" for the platform's default key); "" on other events
+        std::string getEnterKeyHint() const;
         bool getCtrlKey() const; bool getShiftKey() const; bool getAltKey() const; bool getMetaKey() const;
 
         // pointer position in document px; button in DOM numbering (0 left, 1 middle, 2 right)

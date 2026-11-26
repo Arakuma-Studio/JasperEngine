@@ -8,7 +8,8 @@
 // `jasperengine.spritesheet` v1; SpriteSheetPool shares one per path.
 //
 // Coordinates are pixels, origin top-left, y down (Aseprite's and PNG's); sprites convert once
-// per frame (SpriteFrameGeometry). Every value is an integer. A frame name is unique in its sheet.
+// per frame (SpriteFrameGeometry). Every value is an integer but a skin's weights (S94 F49). A
+// frame name is unique in its sheet.
 // Thread-safety: a plain value; a sheet the pool hands out is immutable (shared_ptr<const>).
 
 #ifndef SPRITE_SHEET_H
@@ -23,11 +24,45 @@
 #include "json.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace jasperengine{
+
+    // A bone of a sprite's skeleton (docs/specs/S94-rendering-anim-gaps.md F49, Unity's SpriteBone):
+    // from its head to its tail, in the frame's source pixels (top-left origin, y down, as the rest
+    // of the sheet). A Sprite Skin binds one GameObject Transform per bone, in this order.
+    struct JASPERENGINE_API SpriteBone{
+        std::string name;
+        int parent = -1;                  // index of the parent bone, -1 for a root
+        Vector2 head;
+        Vector2 tail;
+    };
+
+    // up to four bones moving one vertex, weights summing to 1 (unused slots: bone 0, weight 0)
+    constexpr int SPRITE_SKIN_MAX_INFLUENCES = 4;
+    // the bones a sprite skeleton may have (the palette is one matrix per bone)
+    constexpr int SPRITE_SKIN_MAX_BONES = 256;
+    constexpr size_t SPRITE_SKIN_MAX_VERTICES = 65535;
+
+    struct JASPERENGINE_API SpriteVertexWeights{
+        uint8_t bones[SPRITE_SKIN_MAX_INFLUENCES] = {0, 0, 0, 0};
+        float weights[SPRITE_SKIN_MAX_INFLUENCES] = {0.0f, 0.0f, 0.0f, 0.0f};
+    };
+
+    // A frame's optional geometry for 2D skinning (F49): a triangle mesh over the frame's pixels
+    // with its skeleton and per-vertex bone weights. Vertices are source pixels like the bones;
+    // `weights` is empty (an unweighted mesh, drawn rigid) or one entry per vertex.
+    struct JASPERENGINE_API SpriteSkinGeometry{
+        std::vector<SpriteBone> bones;
+        std::vector<Vector2> vertices;
+        std::vector<uint16_t> indices;    // triangles
+        std::vector<SpriteVertexWeights> weights;
+
+        bool drawable() const { return vertices.size() >= 3 && indices.size() >= 3; }
+    };
 
     struct JASPERENGINE_API SpriteFrame{
         std::string name;                 // display name ("hero 3", "Body/3"), unique in the sheet
@@ -40,6 +75,9 @@ namespace jasperengine{
         Vector2 pivot;                    // in source pixels, from the top-left
         Vector4 border;                   // 9-slice: left, top, right, bottom pixels
         uint32_t durationMs = 100;
+        // F49: the frame's skinning geometry (null: none, the frame draws as its quad); shared and
+        // never changed in place, so copies of a frame (atlas remaps) keep it for free
+        std::shared_ptr<const SpriteSkinGeometry> skin;
     };
 
     struct JASPERENGINE_API SpritePage{

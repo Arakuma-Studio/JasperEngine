@@ -253,13 +253,14 @@ TEST(SceneDiff, PrefabsListIsKeyedByGuid) {
 
 TEST(SceneDiff, MigratesBaseline) {
     // a v0 baseline: the old default shadow quality (low) reads as auto after migration, the
-    // derived values go; only the real edit remains
+    // derived values go, the screen documents keep the camera pass (S92, format 10); only the real
+    // edit remains
     const std::string v0 = "id: 1\nname: Test\nscene:\n  shadowQuality: low\nsceneType: scene_3d\nentities:\n" +
                            entity(10, "A", "[0, 0, 0]", "        worldPosition: [0, 0, 0]\n");
     SceneYamlModel base = model(v0);
     EXPECT_TRUE(base.migration.migrated());
     EXPECT_EQ(base.formatVersion, StreamMigrations::currentVersion(DocumentKind::Scene));
-    const std::string current = versionLine() + "id: 1\nname: Test\nscene:\n  shadowQuality: auto\nsceneType: scene_3d\nentities:\n" +
+    const std::string current = versionLine() + "id: 1\nname: Test\nscene:\n  shadowQuality: auto\n  htmlUiRenderMode: camera\nsceneType: scene_3d\nentities:\n" +
                                 entity(10, "A", "[4, 0, 0]");
     const SceneDiffResult result = diffScenes(base, model(current));
     ASSERT_EQ(result.objects.size(), 1u);

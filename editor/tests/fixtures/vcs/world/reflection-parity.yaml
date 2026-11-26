@@ -89,6 +89,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 22, 0, 0, 1]
+  DialogueRunnerComponent:
+    position: [107, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 107, 0, 0, 1]
   FluidSimulationComponent:
     position: [53, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -254,6 +259,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 81, 0, 0, 1]
+  OutlineComponent:
+    position: [108, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 108, 0, 0, 1]
   PanelComponent:
     position: [31, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -364,6 +374,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 50, 0, 0, 1]
+  SimulationCullingComponent:
+    position: [106, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 106, 0, 0, 1]
   SkyboxComponent:
     position: [7, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -409,6 +424,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 42, 0, 0, 1]
+  SpriteSkinComponent:
+    position: [109, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 109, 0, 0, 1]
   TerrainComponent:
     position: [5, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -494,6 +514,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 78, 0, 0, 1]
+  VertexColorsComponent:
+    position: [110, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 110, 0, 0, 1]
   VideoPlayerComponent:
     position: [88, 0, 0]
     rotation: [1, 0, 0, 0]

@@ -3,7 +3,6 @@
 
 #include "HtmlTextEffects.h"
 
-#include "Engine.h"
 #include "htmlui/HtmlUIClock.h"
 #include "htmlui/compat/css/ColorValue.h"
 #include "htmlui/compat/runtime/CompatProperties.h"
@@ -304,7 +303,7 @@ Rml::Element* HtmlTextEffects::findRoot(Rml::Element* text) const{
 }
 
 double HtmlTextEffects::now(const Scope& scope) const{
-    return scope.gameTime ? Engine::getGameTime() : HtmlUIClock::now();
+    return HtmlUIClock::now(scope.clock);
 }
 
 bool HtmlTextEffects::animates(const Scope& scope) const{
@@ -342,9 +341,11 @@ const void* HtmlTextEffects::GetTextEffect(Rml::ElementText& text, int& first_in
     Scope& scope = scopes[root];
     const bool fresh = !scope.root;
     // the clock first: a start is read on the clock the effect runs on
-    const bool gameTime = lower(stringProperty(text, compat::CompatProperty::TextEffectTime)) == "game";
-    const bool clockChanged = gameTime != scope.gameTime;
-    scope.gameTime = gameTime;
+    const std::string time = lower(stringProperty(text, compat::CompatProperty::TextEffectTime));
+    const UIDocumentUpdateMode clock = time == "game" ? UIDocumentUpdateMode::GAME_TIME
+                                       : time == "ui" ? UIDocumentUpdateMode::UNSCALED_TIME : HtmlUIClock::modeOf(root);
+    const bool clockChanged = clock != scope.clock;
+    scope.clock = clock;
     if (fresh || scope.value != value){
         std::string error;
         HtmlTextEffect parsed;

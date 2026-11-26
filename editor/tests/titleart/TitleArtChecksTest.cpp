@@ -8,7 +8,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleArtChecksJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 
 namespace {
 
@@ -27,7 +27,7 @@ namespace {
             r.method = "count";
             if (status != TitleCheckStatus::Pass) {
                 r.at = {{0, 0, 64, 64}};
-                r.fix = Json{{"ops", Json::array({Json{{"op", "set"}, {"values", {{"seed", 2}}}}})}};
+                r.fix = TitleArtChecksJson{{"ops", TitleArtChecksJson::array({TitleArtChecksJson{{"op", "set"}, {"values", {{"seed", 2}}}}})}};
             }
             out.push_back(r);
         };
@@ -80,19 +80,19 @@ TEST_F(TitleArtChecksTest, AReportTakesTheWorstAndAlwaysCarriesTheGuidance) {
     TitleCheckContext context{doc, "assets/logo.titleart"};
     TitleCheckReport report = TitleArtChecks::run(selected, context);
     EXPECT_EQ(report.verdict, TitleCheckStatus::Warn);
-    const Json json = report.toJson();
+    const TitleArtChecksJson json = report.toJson();
     EXPECT_EQ(json["verdict"], "WARN");
     EXPECT_EQ(json["guidance"], TitleArtChecks::guidance());
     ASSERT_EQ(json["checks"].size(), 2u);
     EXPECT_EQ(json["checks"][1]["id"], "test_warn");
     EXPECT_EQ(json["checks"][1]["fix"]["ops"][0]["op"], "set");
-    EXPECT_EQ(json["checks"][1]["at"][0]["crop"], Json::array({0, 0, 64, 64}));
+    EXPECT_EQ(json["checks"][1]["at"][0]["crop"], TitleArtChecksJson::array({0, 0, 64, 64}));
     EXPECT_EQ(json["look"].size(), 1u);
     context.options.failOnWarn = true;
     EXPECT_EQ(TitleArtChecks::run(selected, context).verdict, TitleCheckStatus::Fail);
     // a passing report says the same
     ASSERT_TRUE(TitleArtChecks::select({"test_ok"}, selected, error, valid));
-    const Json passed = TitleArtChecks::run(selected, context).toJson();
+    const TitleArtChecksJson passed = TitleArtChecks::run(selected, context).toJson();
     EXPECT_EQ(passed["verdict"], "PASS");
     EXPECT_NE(passed["guidance"].get<std::string>().find("does not mean the title looks good"), std::string::npos);
 }

@@ -170,6 +170,19 @@ float Skybox::getRotation() const{
     return sky.rotation;
 }
 
+void Skybox::setVisible(bool visible){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
+
+    sky.visible = visible;
+    markChanged<SkyboxComponent>();
+}
+
+bool Skybox::isVisible() const{
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
+
+    return sky.visible;
+}
+
 void Skybox::setCustomShader(const std::string& path){
     SkyboxComponent& sky = getComponent<SkyboxComponent>();
 

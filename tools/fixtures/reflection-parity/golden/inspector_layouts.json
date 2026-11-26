@@ -1353,6 +1353,14 @@
   {
    "component": "camera",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Size",
+   "path": "orthographicSize",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
    "kind": "Float",
    "label": "Left",
    "path": "left",
@@ -1502,6 +1510,14 @@
    "kind": "Direction",
    "label": "Up",
    "path": "up",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Size",
+   "path": "orthographicSize",
    "read_only": false
   },
   {
@@ -5493,6 +5509,14 @@
   {
    "component": "light",
    "group": "",
+   "kind": "Asset",
+   "label": "IES Profile",
+   "path": "iesProfile",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
    "kind": "FloatPositive",
    "label": "Volumetric Intensity",
    "path": "volumetricIntensity",
@@ -7327,6 +7351,14 @@
   {
    "component": "light",
    "group": "",
+   "kind": "Asset",
+   "label": "IES Profile",
+   "path": "iesProfile",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
    "kind": "FloatPositive",
    "label": "Volumetric Intensity",
    "path": "volumetricIntensity",
@@ -7617,6 +7649,14 @@
   {
    "component": "sprite",
    "group": "",
+   "kind": "Vector2",
+   "label": "Size",
+   "path": "size",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
    "kind": "Enum",
    "label": "Pivot",
    "path": "pivotPreset",
@@ -7628,6 +7668,14 @@
    "kind": "Float",
    "label": "Texture Scale",
    "path": "textureScaleFactor",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Bool",
+   "label": "Flip X",
+   "path": "flipX",
    "read_only": false
   },
   {
@@ -8207,6 +8255,14 @@
   {
    "component": "text",
    "group": "",
+   "kind": "Enum",
+   "label": "Font Size Unit",
+   "path": "fontSizeUnit",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "",
    "kind": "Bool",
    "label": "Multiline",
    "path": "multiline",
@@ -8230,18 +8286,10 @@
   },
   {
    "component": "text",
-   "group": "Pivot",
+   "group": "Auto Size",
    "kind": "Bool",
-   "label": "Baseline",
-   "path": "pivotBaseline",
-   "read_only": false
-  },
-  {
-   "component": "text",
-   "group": "Pivot",
-   "kind": "Bool",
-   "label": "Center",
-   "path": "pivotCentered",
+   "label": "Auto Size",
+   "path": "autoSize",
    "read_only": false
   },
   {
@@ -8702,6 +8750,30 @@
    "component": "uidocument",
    "group": "",
    "kind": "Enum",
+   "label": "Update Mode",
+   "path": "updateMode",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Bool",
+   "label": "Is Menu",
+   "path": "isMenu",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Bool",
+   "label": "Gamepad Cursor",
+   "path": "gamepadCursor",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Enum",
    "label": "Render Mode",
    "path": "renderMode",
    "read_only": false
@@ -8776,6 +8848,30 @@
    "component": "uidocument",
    "group": "",
    "kind": "Enum",
+   "label": "Update Mode",
+   "path": "updateMode",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Bool",
+   "label": "Is Menu",
+   "path": "isMenu",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Bool",
+   "label": "Gamepad Cursor",
+   "path": "gamepadCursor",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Enum",
    "label": "Render Mode",
    "path": "renderMode",
    "read_only": false
@@ -8802,6 +8898,14 @@
    "kind": "LocalEntity",
    "label": "Input Surface",
    "path": "inputSurface",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Enum",
+   "label": "Anti-aliasing (MSAA)",
+   "path": "msaaSamples",
    "read_only": false
   },
   {

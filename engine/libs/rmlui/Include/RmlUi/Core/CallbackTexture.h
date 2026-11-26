@@ -83,9 +83,9 @@ private:
  */
 class RMLUICORE_API CallbackTextureSource {
 public:
-	CallbackTextureSource() = default;
+	CallbackTextureSource();
 	CallbackTextureSource(CallbackTextureFunction&& callback);
-	~CallbackTextureSource() = default;
+	~CallbackTextureSource();
 
 	CallbackTextureSource(const CallbackTextureSource&) = delete;
 	CallbackTextureSource& operator=(const CallbackTextureSource&) = delete;
@@ -94,6 +94,11 @@ public:
 	CallbackTextureSource& operator=(CallbackTextureSource&& other) noexcept;
 
 	Texture GetTexture(RenderManager& render_manager) const;
+
+	/// Fork (S93 R13): releases the textures every live source made for the render manager, which is about to be destroyed.
+	/// A source may outlive the render managers it drew for (the font engine keeps its glyph pages across contexts):
+	/// Rml::ReleaseRenderManagers and Rml::Shutdown call this for each render manager they destroy.
+	static void ReleaseRenderManager(RenderManager* render_manager);
 
 private:
 	CallbackTextureFunction callback;

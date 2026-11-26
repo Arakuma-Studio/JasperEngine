@@ -79,6 +79,9 @@ using namespace jasperengine::test::effects;
 using namespace jasperengine::htmlui;
 namespace hc = jasperengine::htmlui::compat;
 
+// Release builds only: a Debug build (every sanitizer build) has no test here to use the helpers
+#ifdef NDEBUG
+
 namespace {
 
     // the calling thread's CPU time in ms (the process's where the platform has no thread clock)
@@ -492,8 +495,6 @@ namespace {
 
 }
 
-#ifdef NDEBUG
-
 TEST(EffectPerfTest, GridSteadyStateAndBudgets){
     printLoadAverage("GridSteadyStateAndBudgets");
     Grid grid;
@@ -663,6 +664,8 @@ TEST(EffectPerfTest, StatefulSteadyState){
 }
 
 TEST(EffectPerfTest, CostTable){
+    // the cost of replayed frames: S92 R1 keeps the unchanged fill document's (no pass, no draw)
+    FrameReuseMode replayed(false);
     printLoadAverage("CostTable");
     EffectScene fill(1024, 1024, 4);
     EffectScene scene(1024, 1024, 4);

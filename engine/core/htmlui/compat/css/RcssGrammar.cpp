@@ -123,6 +123,8 @@ namespace {
         {"max-width", "kw:none|length_percent"},
         {"min-height", "length_percent"},
         {"min-width", "length_percent"},
+        // the fork's (S93 R30)
+        {"mix-blend-mode", "kw:normal,multiply,screen,overlay,darken,lighten,color-dodge,color-burn,hard-light,soft-light,difference,exclusion,hue,saturation,color,luminosity,plus-lighter"},
         {"nav", "box:kw:none,auto,horizontal,vertical,tree-order|string"},
         {"nav-down", "kw:none,auto,horizontal,vertical,tree-order|string"},
         {"nav-left", "kw:none,auto,horizontal,vertical,tree-order|string"},
@@ -149,6 +151,12 @@ namespace {
         {"quotes", "string"},
         {"right", "kw:auto|length_percent"},
         {"row-gap", "length_percent"},
+        // engine extensions (S93 R8): drag scrolling physics; scroll-elasticity is a <time> the fork reads from its text
+        {"scroll-deceleration-rate", "kw:auto|number"},
+        {"scroll-drag", "kw:touch,pointer"},
+        {"scroll-elasticity", "string"},
+        {"scroll-inertia", "kw:auto,none"},
+        {"scroll-movement", "kw:clamped,elastic,unrestricted"},
         {"scrollbar-margin", "length"},
         {"stroke", "kw:none,currentcolor|color"},
         {"stroke-dasharray", "string"},
@@ -158,6 +166,8 @@ namespace {
         {"stroke-width", "number_length_percent"},
         {"tab-index", "kw:none,auto"},
         {"text-align", "kw:left,right,center,justify"},
+        // the fork's (S93 R31): none | <length> <length>
+        {"text-autosize", "string"},
         {"text-decoration", "kw:none,underline,overline,line-through"},
         {"text-overflow", "kw:clip,ellipsis|string"},
         // fork S16-F3

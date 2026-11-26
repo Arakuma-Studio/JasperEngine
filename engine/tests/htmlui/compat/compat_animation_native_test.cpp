@@ -13,12 +13,16 @@
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/css/CssRewriter.h"
 
+#include "harness/RecordingRenderInterface.h"
 #include "HtmlUI.h"
+#include "HtmlUIClock.h"
 #include "RmlSystem.h"
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Animation.h>
 #include <RmlUi/Core/ComputedValues.h>
+#include <RmlUi/Core/Context.h>
+#include <RmlUi/Core/ElementDocument.h>
 
 #include <gtest/gtest.h>
 
@@ -164,6 +168,51 @@ TEST(CompatAnimationNative, TimingFunctionsPassThroughWithoutApproximation){
         EXPECT_NE(Rml::Factory::InstanceStyleSheetString(out.rcss), nullptr) << out.rcss;
         EXPECT_EQ(HtmlUI::getSystemInterface().getWarningCount(), warningsBefore) << out.rcss;
     }
+}
+
+// A property declared as a CSS-wide keyword ('font: inherit' on a button) transitions from and to what the
+// keyword stands for (FORK.md P3-A3 fix): the after-change values were the keyword itself, which the font size
+// computed as 0 px (RMLUI_ERROR in a debug RmlUi), so the parent's change never transitioned.
+TEST(CompatAnimationNative, InheritKeywordTransitionsTheInheritedValue){
+    ASSERT_TRUE(HtmlUI::acquire());
+    std::vector<std::string> errors;
+    HtmlUI::getSystemInterface().setLogListener([&errors](Rml::Log::Type type, const std::string& message){
+        if (type == Rml::Log::LT_ERROR || type == Rml::Log::LT_ASSERT)
+            errors.push_back(message);
+    });
+    HtmlUIClock::setFixedTime(0.0);
+    test::RecordingRenderInterface recording;
+    Rml::Context* context = Rml::CreateContext("animation-native-inherit", Rml::Vector2i(400, 300), &recording);
+    ASSERT_NE(context, nullptr);
+    Rml::ElementDocument* document = context->LoadDocumentFromMemory(
+        "<rml><head><style>"
+        "body { font-size: 10px; } body.big { font-size: 20px; }"
+        "#child { font-size: inherit; transition: font-size 1s linear; }"
+        "</style></head><body><div id='child'/></body></rml>");
+    ASSERT_NE(document, nullptr);
+    document->Show();
+    context->Update();
+    Rml::Element* child = document->GetElementById("child");
+    ASSERT_NE(child, nullptr);
+    EXPECT_FLOAT_EQ(child->GetComputedValues().font_size(), 10.0f);
+
+    document->SetClass("big", true);
+    context->Update();
+    HtmlUIClock::setFixedTime(0.5);
+    context->Update();
+    EXPECT_NEAR(child->GetComputedValues().font_size(), 15.0f, 0.01f) << "half way from the parent's old size to its new one";
+    HtmlUIClock::setFixedTime(1.1);
+    context->Update();
+    EXPECT_FLOAT_EQ(child->GetComputedValues().font_size(), 20.0f);
+    EXPECT_TRUE(errors.empty()) << errors.front();
+
+    document->Close();
+    context->Update();
+    Rml::RemoveContext("animation-native-inherit");
+    Rml::ReleaseTextures(&recording);
+    Rml::ReleaseRenderManagers();
+    HtmlUIClock::reset();
+    HtmlUI::getSystemInterface().setLogListener(nullptr);
     HtmlUI::release();
 }
 

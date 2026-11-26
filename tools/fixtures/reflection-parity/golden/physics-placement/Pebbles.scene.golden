@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: d3b47554805d165d7bca8f6a611ca93d
 id: 2550074908
 name: Pebbles
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

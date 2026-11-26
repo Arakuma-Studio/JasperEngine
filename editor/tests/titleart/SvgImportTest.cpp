@@ -20,7 +20,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using SvgImportJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 namespace fs = std::filesystem;
 
 namespace {
@@ -102,8 +102,8 @@ namespace {
 
         titleart::TitleArtDoc emptyDoc() const {
             titleart::TitleArtDoc doc = titleart::makeNewTitleArt();
-            doc.root["layers"] = Json::array();
-            doc.root["exposed"] = Json::array();
+            doc.root["layers"] = SvgImportJson::array();
+            doc.root["exposed"] = SvgImportJson::array();
             titleart::normalizeTitleArt(doc, nullptr);
             return doc;
         }
@@ -167,7 +167,7 @@ TEST_F(SvgImportTest, OpWritesPartsAndLayers) {
     const fs::path outside = root / "downloads" / "logo.svg";
     svgImportWriteText(outside, LOGO);
     const titleart::TitleArtDoc doc = emptyDoc();
-    TitleOpsResult r = TitleArtOps::apply(doc, Json{{"op", "import_svg"}, {"file", outside.string()}, {"split", "groups"}}, options());
+    TitleOpsResult r = TitleArtOps::apply(doc, SvgImportJson{{"op", "import_svg"}, {"file", outside.string()}, {"split", "groups"}}, options());
     ASSERT_TRUE(r.ok) << r.error();
     EXPECT_EQ(r.undoName, "Import SVG (logo.svg)");
     // the original copied into logo_assets/, then its three parts
@@ -175,11 +175,11 @@ TEST_F(SvgImportTest, OpWritesPartsAndLayers) {
     EXPECT_EQ(fs::path(r.files[0].path).filename(), "logo.svg");
     EXPECT_EQ(fs::path(r.files[0].path).parent_path().filename(), "logo_assets");
     EXPECT_EQ(fs::path(r.files[1].path).filename(), "logo_back.svg");
-    const Json& group = r.doc.root["layers"][0];
+    const SvgImportJson& group = r.doc.root["layers"][0];
     EXPECT_EQ(group["type"], "group");
     EXPECT_EQ(group["name"], "logo");
     ASSERT_EQ(group["children"].size(), 3u);
-    const Json& back = group["children"][0];
+    const SvgImportJson& back = group["children"][0];
     EXPECT_EQ(back["type"], "vector");
     EXPECT_EQ(back["svg"]["path"], "titles/logo_assets/logo_back.svg");
     EXPECT_DOUBLE_EQ(back["size"].get<double>(), 160.0) << "the viewport's larger side: native size";
@@ -190,7 +190,7 @@ TEST_F(SvgImportTest, OpWritesPartsAndLayers) {
     // inside the assets: referenced in place, parts beside it; importing again writes nothing new
     const fs::path inside = root / "assets" / "art" / "badge.svg";
     svgImportWriteText(inside, LOGO);
-    r = TitleArtOps::apply(doc, Json{{"op", "import_svg"}, {"file", "assets/art/badge.svg"}, {"split", "paths"}, {"name", "Badge"}}, options());
+    r = TitleArtOps::apply(doc, SvgImportJson{{"op", "import_svg"}, {"file", "assets/art/badge.svg"}, {"split", "paths"}, {"name", "Badge"}}, options());
     ASSERT_TRUE(r.ok) << r.error();
     ASSERT_EQ(r.files.size(), 5u);
     for (const TitleOpFile& f : r.files) {
@@ -198,20 +198,20 @@ TEST_F(SvgImportTest, OpWritesPartsAndLayers) {
         svgImportWriteText(fs::path(f.path), f.content);
     }
     EXPECT_EQ(r.doc.root["layers"][0]["name"], "Badge");
-    r = TitleArtOps::apply(doc, Json{{"op", "import_svg"}, {"file", inside.string()}, {"split", "paths"}}, options());
+    r = TitleArtOps::apply(doc, SvgImportJson{{"op", "import_svg"}, {"file", inside.string()}, {"split", "paths"}}, options());
     ASSERT_TRUE(r.ok) << r.error();
     EXPECT_TRUE(r.files.empty()) << "the parts on disk are reused";
     EXPECT_EQ(r.doc.root["layers"][0]["children"][0]["svg"]["path"], "art/badge_Rect_1.svg");
 
     // one layer for split none; bad values name the valid ones
-    r = TitleArtOps::apply(doc, Json{{"op", "import_svg"}, {"file", inside.string()}}, options());
+    r = TitleArtOps::apply(doc, SvgImportJson{{"op", "import_svg"}, {"file", inside.string()}}, options());
     ASSERT_TRUE(r.ok) << r.error();
     EXPECT_EQ(r.doc.root["layers"][0]["svg"]["path"], "art/badge.svg");
     EXPECT_TRUE(r.files.empty());
-    r = TitleArtOps::apply(doc, Json{{"op", "import_svg"}, {"file", inside.string()}, {"split", "lines"}}, options());
+    r = TitleArtOps::apply(doc, SvgImportJson{{"op", "import_svg"}, {"file", inside.string()}, {"split", "lines"}}, options());
     ASSERT_FALSE(r.ok);
     EXPECT_EQ(r.problems.front().code, "bad_value");
-    r = TitleArtOps::apply(doc, Json{{"op", "import_svg"}, {"file", "missing.svg"}}, options());
+    r = TitleArtOps::apply(doc, SvgImportJson{{"op", "import_svg"}, {"file", "missing.svg"}}, options());
     ASSERT_FALSE(r.ok);
     EXPECT_EQ(r.problems.front().code, "file_not_found");
 }
@@ -219,9 +219,9 @@ TEST_F(SvgImportTest, OpWritesPartsAndLayers) {
 TEST_F(SvgImportTest, NotesNameTheirLayer) {
     const fs::path file = root / "assets" / "art" / "hi.svg";
     svgImportWriteText(file, WITH_TEXT);
-    const TitleOpsResult r = TitleArtOps::apply(emptyDoc(), Json{{"op", "import_svg"}, {"file", file.string()}, {"mode", "shape"}}, options());
+    const TitleOpsResult r = TitleArtOps::apply(emptyDoc(), SvgImportJson{{"op", "import_svg"}, {"file", file.string()}, {"mode", "shape"}}, options());
     ASSERT_TRUE(r.ok) << r.error();
-    const Json& notes = r.reports["0"]["notes"];
+    const SvgImportJson& notes = r.reports["0"]["notes"];
     ASSERT_EQ(notes.size(), 3u);
     EXPECT_EQ(notes[0]["layer"], "hi");
     EXPECT_EQ(notes[0]["action"], "dropped");

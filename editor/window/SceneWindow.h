@@ -6,6 +6,7 @@
 #include "imgui.h"
 #include "Project.h"
 #include "object/Camera.h"
+#include "sceneview/FrameChecks.h"
 #include "sceneview/SceneViewController.h"
 #include "window/ParticleEffectOverlay.h"
 #include <map>
@@ -107,6 +108,14 @@ namespace jasperengine::editor {
         bool handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth);
         // the LOD Level legend and the Stats box over the Scene view (spec S54 R11, R12)
         void drawDrawModeOverlays(SceneProject& sceneProject, ImVec2 imageMin, ImVec2 imageMax);
+        // Frame Checks (S99 R9): the view's findings at its bottom-right corner, recomputed at most
+        // every OVERLAY_REFRESH_SECONDS while the overlay is on (off: nothing runs)
+        struct FrameChecksOverlay {
+            double refreshedAt = -1.0;
+            std::vector<framechecks::Finding> findings;
+        };
+        std::map<uint32_t, FrameChecksOverlay> frameChecksOverlay;
+        void drawFrameChecks(SceneProject& sceneProject, ImVec2 viewMin, ImVec2 viewSize);
         // the Paint Dye brush's circle (splatRadius) over the image, under the pointer
         void drawFluidBrushCursor(SceneProject* sceneProject);
         // UI tests (UIProbe): the view's rectangle and the selected fluid's Sprite on it

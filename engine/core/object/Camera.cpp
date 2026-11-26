@@ -8,6 +8,8 @@
 #include "Engine.h"
 #include "subsystem/RenderSystem.h"
 #include "component/Transform.h"
+#include "Log.h"
+#include "Scene.h"
 
 using namespace jasperengine;
 
@@ -111,6 +113,35 @@ bool Camera::isAutoResize() const{
     return camera.autoResize;
 }
 
+void Camera::setOrthographicSize(float size){
+    CameraComponent& camera = getComponent<CameraComponent>();
+
+    if (!std::isfinite(size) || size < 0.0f){
+        Log::error("Camera orthographicSize must be 0 (off) or more, not %f", size);
+        return;
+    }
+    if (camera.orthographicSize != size){
+        camera.orthographicSize = size;
+
+        // the aspect of what it draws into now (the clips follow it from the next update)
+        if (size > 0.0f){
+            if (camera.renderToTexture)
+                scene->getSystem<RenderSystem>()->updateCameraSize(entity);
+            else if (scene->getCamera() == entity)
+                scene->updateCameraSize();
+        }
+
+        camera.needUpdate = true;
+        markChanged<CameraComponent>();
+    }
+}
+
+float Camera::getOrthographicSize() const{
+    CameraComponent& camera = getComponent<CameraComponent>();
+
+    return camera.orthographicSize;
+}
+
 void Camera::setNearClip(float nearValue){
     CameraComponent& camera = getComponent<CameraComponent>();
 
@@ -151,7 +182,9 @@ void Camera::setLeftClip(float left){
     if (camera.leftClip != left){
         camera.leftClip = left;
 
+        // bounds set by hand: neither the canvas nor an Orthographic Size overwrites them
         camera.autoResize = false;
+        camera.orthographicSize = 0.0f;
 
         camera.needUpdate = true;
         markChanged<CameraComponent>();
@@ -170,7 +203,9 @@ void Camera::setRightClip(float right){
     if (camera.rightClip != right){
         camera.rightClip = right;
 
+        // bounds set by hand: neither the canvas nor an Orthographic Size overwrites them
         camera.autoResize = false;
+        camera.orthographicSize = 0.0f;
 
         camera.needUpdate = true;
         markChanged<CameraComponent>();
@@ -189,7 +224,9 @@ void Camera::setBottomClip(float bottom){
     if (camera.bottomClip != bottom){
         camera.bottomClip = bottom;
 
+        // bounds set by hand: neither the canvas nor an Orthographic Size overwrites them
         camera.autoResize = false;
+        camera.orthographicSize = 0.0f;
 
         camera.needUpdate = true;
         markChanged<CameraComponent>();
@@ -208,7 +245,9 @@ void Camera::setTopClip(float top){
     if (camera.topClip != top){
         camera.topClip = top;
 
+        // bounds set by hand: neither the canvas nor an Orthographic Size overwrites them
         camera.autoResize = false;
+        camera.orthographicSize = 0.0f;
 
         camera.needUpdate = true;
         markChanged<CameraComponent>();
@@ -302,10 +341,16 @@ Vector3 Camera::getTarget() const{
 }
 
 void Camera::disableTarget(){
+    setUseTarget(false);
+}
+
+void Camera::setUseTarget(bool useTarget){
     CameraComponent& camera = getComponent<CameraComponent>();
-    camera.useTarget = false;
-    camera.needUpdate = true;
-    markChanged<CameraComponent>();
+    if (camera.useTarget != useTarget){
+        camera.useTarget = useTarget;
+        camera.needUpdate = true;
+        markChanged<CameraComponent>();
+    }
 }
 
 bool Camera::isUsingTarget() const{

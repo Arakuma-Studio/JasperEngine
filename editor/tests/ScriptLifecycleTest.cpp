@@ -1028,6 +1028,34 @@ TEST_F(ScriptLifecycleTest, EventListenersDoNotKeepReleasedScriptsAlive) {
     lua("shared = nil; weakRefs = nil");
 }
 
+// a CancellableEvent whose deciding listener's script is destroyed by an earlier listener of the
+// same invoke: that listener does not run and the invoke's result is the remaining listeners'
+// (cancellable-prioritised-events AC9, R14)
+TEST_F(ScriptLifecycleTest, CancellableEventOwnerReleased) {
+    writeScript("Shield1",
+        "local M = {}\n"
+        "function M:init() gate:addListener(self, 'absorb', 5); RegisterEvent(self, gate, 'report', nil, Event.MONITOR) end\n"
+        "function M:absorb(e) log[#log + 1] = 'absorb'; e:cancel() end\n"
+        "function M:report(e) log[#log + 1] = 'report' end\n"
+        "return M\n");
+    lua("gate = CancellableEvent()");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    addScript(scene, x, "Shield1");
+    setScene("testScene", scene);
+    LuaBinding::initializeLuaScripts(scene);
+    EXPECT_EQ(lua("return gate:invoke()"), "true");
+    EXPECT_EQ(takeLog(), "absorb report");
+    EXPECT_EQ(lua("return gate.cancelledBy"), "Shield1:absorb");
+    lua("gate:addListener(function(e) log[#log + 1] = 'destroyer'; "
+        "GameObject.destroyImmediate(GameObject(testScene, " + std::to_string(x) + ")) end, 10)");
+    EXPECT_EQ(lua("return gate:invoke()"), "false") << "the destroyed script's listener did not veto";
+    EXPECT_EQ(takeLog(), "destroyer");
+    EXPECT_EQ(lua("return gate.listenerCount"), "1");
+    EXPECT_EQ(lua("return tostring(gate.cancelledBy)"), "nil");
+    lua("gate = nil");
+}
+
 // writing the enabled flag as the Inspector's command does (then refreshEntity): callbacks that
 // instantiate many GameObjects (the component arrays move) or destroy one at once are safe
 TEST_F(ScriptLifecycleTest, EnabledWriteRunsCallbacksThatMoveComponents) {
@@ -1146,4 +1174,35 @@ TEST_F(ScriptLifecycleTest, CppOverridesLearnedWhenSent) {
     EXPECT_FALSE(ScriptMessages::receivers(scene, p) & scriptMessageBit(ScriptMessage::ApplicationQuit));
     ScriptRuntime::unloadScenes({scene});
     scriptLifecycleDeleteCppScripts(scene);
+}
+
+// S95 AC-7 (ledger S27, "a later instance read a stale class-table field"): fields a script sets
+// on its table at the top level are per instance, for two instances of the file and for one
+// GameObject.instantiate makes later, even after another instance changed its own
+TEST_F(ScriptLifecycleTest, TopLevelClassFieldsPerInstance) {
+    writeScript("Limits",
+        "local M = {}\n"
+        "M.LIMIT = 5\n"
+        "M.cache = {}\n"
+        "function M:init()\n"
+        "    log[#log + 1] = self.gameObject.name .. ':' .. tostring(M.LIMIT) .. ',' .. tostring(self.LIMIT) .. ','\n"
+        "        .. tostring(next(self.cache) == nil) .. ',' .. tostring(rawequal(self.cache, M.cache))\n"
+        "    M.LIMIT = M.LIMIT + 1\n"
+        "    self.cache[self.gameObject.name] = true\n"
+        "end\n"
+        "function M:start()\n"
+        "    if self.gameObject.name == 'A' then GameObject.instantiate(self) end\n"
+        "end\n"
+        "return M\n");
+    Scene* scene = newScene();
+    const Entity a = entity(scene, "A");
+    const Entity b = entity(scene, "B");
+    addScript(scene, a, "Limits");
+    addScript(scene, b, "Limits");
+    setScene("testScene", scene);
+    LuaBinding::initializeLuaScripts(scene);
+    EXPECT_EQ(takeLog(), "A:5,5,true,true B:5,5,true,true") << "each instance runs the chunk: its own LIMIT and cache";
+    frame();
+    EXPECT_EQ(takeLog(), "A(Clone):5,5,true,true") << "a copy made after A changed its fields starts from the file's values";
+    EXPECT_EQ(lua("return GameObject(testScene, " + std::to_string(a) + "):getScript('Limits').LIMIT"), "6");
 }

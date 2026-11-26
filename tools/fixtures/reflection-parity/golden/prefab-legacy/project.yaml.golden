@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: PrefabLegacy
 canvasWidth: 1280
 canvasHeight: 720
@@ -15,7 +15,10 @@ windowHeight: 720
 windowResizable: true
 assetsDir: assets
 luaDir: scripts
+transparencySortMode: perspective
 startSceneId: 1
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: Prefab Scene.scene
     filepathGuid: 9881b90d074c33a513001465bb7d3d23

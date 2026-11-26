@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: UI
 canvasWidth: 1920
 canvasHeight: 1080
@@ -9,7 +9,7 @@ foliageQuality:
   desktop: high
   mobile: low
   web: low
-htmlUiMsaaSamples: 4
+htmlUiMsaaSamples: 0
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
 htmlUiTransformAwareText: true
@@ -32,13 +32,14 @@ versionControl:
   lfs: true
 export:
   assetStripping: referencedOnly
-startSceneId: 38200180
+startSceneId: 1786302292
 mesh:
   animationEntities: auto
+  preserveHierarchyForNewModels: true
 audio:
   mixer: audio/Main.mixer
   outputStage: linear
   iosSessionCategory: ambient
 scenes:
   - filepath: assets/scenes/Main.scene
-    filepathGuid: 62a424f04674623f303b464c0ef8c663
+    filepathGuid: 099969e867182cb8de1d308701f07804

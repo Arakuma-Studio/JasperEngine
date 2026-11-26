@@ -120,6 +120,7 @@ namespace jasperengine{
         Rml::Context* context = nullptr;           // the RmlUi model exists in it
         Rml::DataModelHandle handle;
         std::vector<std::string> boundEvents;      // event names bound in the RmlUi model
+        int l10nListener = -1;                     // game-ui-localization.md R15: the l10n transform's language changes
 
         ~HtmlUIDataModelRecord();
         UIValue* variable(const std::string& name);

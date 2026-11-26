@@ -3,9 +3,11 @@
 
 #include "Sprite.h"
 #include <algorithm>
+#include <cmath>
 
 #include "component/ShadowCaster2DComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/Transform.h"
 #include "util/Color.h"
 #include "subsystem/MeshSystem.h"
@@ -16,6 +18,7 @@
 #include "sprite/SpriteSheetPool.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cmath>
 
 using namespace jasperengine;
@@ -51,7 +54,7 @@ bool Sprite::createSprite(){
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
     MeshComponent& mesh = getComponent<MeshComponent>();
 
-    return scene->getSystem<MeshSystem>()->createOrUpdateSprite(spritecomp, mesh);
+    return scene->getSystem<MeshSystem>()->createOrUpdateSprite(spritecomp, mesh, scene->findComponent<SpriteSkinComponent>(entity));
 }
 
 ShadowCaster2D Sprite::getShadowCaster2D(){
@@ -124,6 +127,44 @@ void Sprite::setFlipY(bool flipY){
         spritecomp.needUpdateSprite = true;
         markChanged<SpriteComponent>();
     }
+}
+
+void Sprite::setFlipX(bool flipX){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+
+    if (spritecomp.flipX != flipX){
+        spritecomp.flipX = flipX;
+
+        spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
+    }
+}
+
+bool Sprite::isFlipX() const{
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+
+    return spritecomp.flipX;
+}
+
+void Sprite::setQuadSize(Vector2 size){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+
+    if (!std::isfinite(size.x) || !std::isfinite(size.y) || size.x < 0.0f || size.y < 0.0f){
+        Log::error("Sprite size must be 0 (from width and height) or more on each axis, not (%f, %f)", size.x, size.y);
+        return;
+    }
+    if (spritecomp.size != size){
+        spritecomp.size = size;
+
+        spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
+    }
+}
+
+Vector2 Sprite::getQuadSize() const{
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+
+    return spritecomp.size;
 }
 
 bool Sprite::isFlipY() const{

@@ -1,6 +1,7 @@
 #include "../../Include/RmlUi/Core/CallbackTexture.h"
 #include "../../Include/RmlUi/Core/Texture.h"
 #include "RenderManagerAccess.h"
+#include <unordered_set>
 
 namespace Rml {
 
@@ -108,11 +109,36 @@ RenderManager& CallbackTextureInterface::GetRenderManager() const
 	return render_manager;
 }
 
-CallbackTextureSource::CallbackTextureSource(CallbackTextureFunction&& callback) : callback(std::move(callback)) {}
+namespace {
+	// Fork (S93 R13): the live sources (main thread, as every render resource); never destroyed, as sources held by statics
+	// may go after it
+	std::unordered_set<const CallbackTextureSource*>& LiveSources()
+	{
+		static auto* sources = new std::unordered_set<const CallbackTextureSource*>();
+		return *sources;
+	}
+} // namespace
+
+CallbackTextureSource::CallbackTextureSource()
+{
+	LiveSources().insert(this);
+}
+
+CallbackTextureSource::CallbackTextureSource(CallbackTextureFunction&& callback) : callback(std::move(callback))
+{
+	LiveSources().insert(this);
+}
+
+CallbackTextureSource::~CallbackTextureSource()
+{
+	LiveSources().erase(this);
+}
 
 CallbackTextureSource::CallbackTextureSource(CallbackTextureSource&& other) noexcept :
 	callback(std::move(other.callback)), textures(std::move(other.textures))
-{}
+{
+	LiveSources().insert(this);
+}
 
 CallbackTextureSource& CallbackTextureSource::operator=(CallbackTextureSource&& other) noexcept
 {
@@ -127,6 +153,17 @@ Texture CallbackTextureSource::GetTexture(RenderManager& render_manager) const
 	if (!texture)
 		texture = render_manager.MakeCallbackTexture(callback);
 	return Texture(texture);
+}
+
+void CallbackTextureSource::ReleaseRenderManager(RenderManager* render_manager)
+{
+	// (a copy: a released texture's render interface may destroy a source)
+	const std::unordered_set<const CallbackTextureSource*> sources = LiveSources();
+	for (const CallbackTextureSource* source : sources)
+	{
+		if (LiveSources().count(source))
+			source->textures.erase(render_manager);
+	}
 }
 
 } // namespace Rml

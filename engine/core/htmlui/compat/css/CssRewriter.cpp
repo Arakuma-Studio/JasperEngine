@@ -485,7 +485,16 @@ namespace {
 
     // MediaQuery::normalize of an @media rule's prelude, kept by the prelude's text when it
     // reported nothing (the result depends on the text and the options alone)
-    MediaResult mediaOf(Session& session, const Rule& rule){
+    MediaResult mediaOf(Session& session, const Rule& rule);
+
+    // the compile follows the pointer in use when a query read hover or pointer (DocumentLoader)
+    MediaResult notedMedia(Session& session, MediaResult result){
+        if (result.dependsOnPointer && session.result)
+            session.result->dependsOnPointer = true;
+        return result;
+    }
+
+    MediaResult mediaOfPrelude(Session& session, const Rule& rule){
         if (rule.preludeText.empty())
             return MediaQuery::normalize(rule.prelude, rule.preludeRef, session.options, session.sink);
         bool made = false;
@@ -501,6 +510,10 @@ namespace {
         if (kept)
             return *kept;
         return MediaQuery::normalize(rule.prelude, rule.preludeRef, session.options, session.sink);
+    }
+
+    MediaResult mediaOf(Session& session, const Rule& rule){
+        return notedMedia(session, mediaOfPrelude(session, rule));
     }
 
     void flatten(Session& session, RuleList& rules, const FlattenScope& scope, bool topLevel);
@@ -1629,8 +1642,10 @@ namespace {
             normalize.calcNative = writesCalcNatively(row->rewrite) ||
                 (row->rewrite == RewriteId::Grid && session.options.fork.has(ForkFeature::Grid)) ||
                 // translate / rotate / scale written as they are: the fork reads them with its transform parser
-                (row->rewrite == RewriteId::IndividualTransform && session.options.fork.has(ForkFeature::IndividualTransforms));
-            normalize.unitsNative = normalize.calcNative;
+                (row->rewrite == RewriteId::IndividualTransform && session.options.fork.has(ForkFeature::IndividualTransforms)) ||
+                // clip-path shapes: the html-shape decorator evaluates them against the reference box (S93, U23)
+                row->rewrite == RewriteId::ClipPath;
+            normalize.unitsNative = normalize.calcNative && row->rewrite != RewriteId::ClipPath;
             // 'translate' combined into transform (no IndividualTransforms): a sum stays for the
             // rewrite to write as one translation per term
             normalize.lengthSums = row->rewrite == RewriteId::IndividualTransform && name == "translate" &&
@@ -2208,6 +2223,8 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
         if (!input.media.empty()){
             SourceRef ref{input.file, input.baseOffset, 0};
             scope.media = MediaQuery::normalize(input.media, impl->options, &impl->sink, ref);
+            if (scope.media.dependsOnPointer)
+                result.dependsOnPointer = true;
         }
         flatten(session, sheet.rules, scope, true);
     }

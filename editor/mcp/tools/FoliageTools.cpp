@@ -104,6 +104,10 @@ void bakeImpostorsFromOps(const CallPtr& call, const TerrainTarget& target, cons
     }
 
     std::shared_ptr<McpJob> job = call->ctx().jobs().create("edit_terrain", "Bake impostors");
+    // S99 R13: impostors x views at the resolution; two atlas PNGs each, about a third of RGBA
+    const int impostors = static_cast<int>(request.prototypes.size());
+    job->estimateFor(target.project->getProjectPath(), "bake_impostors", jobmodel::impostorSeconds(impostors, request.views, request.resolution),
+                     static_cast<uint64_t>(impostors) * 2u * static_cast<uint64_t>(atlasWidth) * static_cast<uint64_t>(atlasHeight) * 4u / 3u);
     Project* project = target.project;
     const uint32_t sceneId = target.scene->id;
     const Entity entity = target.entity;
@@ -118,6 +122,12 @@ void bakeImpostorsFromOps(const CallPtr& call, const TerrainTarget& target, cons
         std::string failure;
         for (const ImpostorBakeResult& result : results) {
             if (!result.error.empty() && failure.empty()) failure = result.error;
+            if (result.unreadPasses > 0) {
+                const int passes = result.views * 2;
+                job->addFallback({"readback", "prototype " + std::to_string(result.prototype) + ": " + std::to_string(passes) + " view passes",
+                                  std::to_string(passes - result.unreadPasses) + " read, " + std::to_string(result.unreadPasses) + " left empty",
+                                  result.unreadReason});
+            }
             entries.push_back({{"prototype", result.prototype}, {"albedo", result.albedoPath}, {"normal", result.normalPath},
                                {"bounds_center", {result.boundsCenter[0], result.boundsCenter[1], result.boundsCenter[2]}},
                                {"size", {result.size[0], result.size[1]}}, {"views", result.views},

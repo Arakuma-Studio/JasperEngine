@@ -14,6 +14,8 @@
 #include "Scene.h"
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIContext.h"
+#include "htmlui/RmlTextInputHandler.h"
+#include "htmlui/TextEntryTraits.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/LuaHooks.h"
@@ -1421,7 +1423,7 @@ bool HtmlUIInspector::documentInfo(Scene* scene, Entity entity, DocumentInfo& ou
     std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
     out.entity = entity;
     out.html = component->filename;
-    out.renderToTexture = component->renderMode == UIDocumentRenderMode::TEXTURE;
+    out.renderToTexture = rendersToTexture(component->renderMode);
     out.visible = component->enabled;
     out.sortOrder = component->sortOrder;
     if (!system)
@@ -1555,6 +1557,23 @@ bool HtmlUIInspector::renderStats(Scene* scene, Entity entity, std::vector<std::
         return false;
     std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
     system->getRenderStats(entity).forEachField([&out](const char* name, uint32_t value){ out.emplace_back(name, value); });
+    return true;
+}
+
+bool HtmlUIInspector::focus(Scene* scene, Entity entity, bool& present, InspectFocus& out, std::string& error){
+    present = false;
+    out = InspectFocus();
+    Doc doc;
+    if (!open(scene, entity, doc, error))
+        return false;
+    Rml::Element* focused = doc.context->getRmlContext()->GetFocusElement();
+    if (!focused || focused->GetOwnerDocument() != doc.document || !htmlui::isTextEntryField(focused))
+        return true;
+    Refs refs(doc);
+    present = true;
+    out.ref = refs.of(focused);
+    out.traits = htmlui::textEntryTraitsOf(focused);
+    out.keyboardOpen = RmlTextInputHandler::getActive() == &doc.context->getTextInputHandler() && RmlTextInputHandler::isKeyboardShown();
     return true;
 }
 

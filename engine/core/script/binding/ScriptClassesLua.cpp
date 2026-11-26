@@ -650,7 +650,22 @@ void LuaBinding::registerScriptClasses(lua_State* L) {
         .addFunction("add", &ScriptEvent::luaAdd)
         .addFunction("remove", &ScriptEvent::luaRemove)
         .addFunction("has", &ScriptEvent::luaHas)
+        .addFunction("getListeners", &ScriptEvent::luaGetListeners)
+        .addFunction("cancel", &ScriptEvent::luaCancel)
         .addProperty("listenerCount", &ScriptEvent::listenerCount)
+        .addStaticProperty("MONITOR", &ScriptEvent::monitorPriority)
         .addFunction("__tostring", &ScriptEvent::luaToString)
+        .endClass()
+        .deriveClass<CancellableScriptEvent, ScriptEvent>("CancellableEvent")
+        .addConstructor<void (*) ()>()
+        .addFunction("invoke", &CancellableScriptEvent::luaInvoke)
+        .addProperty("cancelledBy", &CancellableScriptEvent::cancelledBy)
+        // metamethods are not inherited from Event
+
+        .addFunction("__tostring", &ScriptEvent::luaToString)
+        .endClass()
+        .beginClass<ScriptCancelEventArgs>("CancelEventArgs")
+        .addFunction("cancel", &ScriptCancelEventArgs::luaCancel)
+        .addProperty("cancelled", &ScriptCancelEventArgs::isCancelled)
         .endClass();
 }

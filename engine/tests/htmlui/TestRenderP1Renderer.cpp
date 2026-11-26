@@ -311,8 +311,12 @@ TEST(RenderP1Test, SampleCountChoice){
     EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 4);
     UIDocumentSystem::setPreferredSampleCount(16);
     EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 8);
+    // S92 R16: 0 is Auto (4 on desktop), no longer a count to correct
     UIDocumentSystem::setPreferredSampleCount(0);
-    EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 1);
+    EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 0);
+    EXPECT_EQ(context.getSampleCount(), std::max(FramebufferRender::getMaxMsaaSamples(HtmlUIContext::autoSampleCount(Engine::getPlatform())), 1));
+    UIDocumentSystem::setPreferredSampleCount(-3);
+    EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 0);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI] MSAA sample count"), 3u);
 
     // 8 where the device has it, else the highest count below (lavapipe and llvmpipe: 4); a
@@ -549,6 +553,10 @@ TEST(RenderP1Test, BlurParameters){
 
 TEST(RenderP1Test, PassCounts){
     JASPER_REQUIRE_GPU();
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
+    // every frame's own layer passes, not results drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     const char* head = "<html><head><link type=\"text/css\" href=\"../common/base.css\"/><link type=\"text/css\" href=\"p1.css\"/><style>"
                        "#bg { left: 0px; top: 0px; width: 200px; height: 200px; background-color: #405060; }"
                        "#f { left: 40px; top: 40px; width: 100px; height: 100px; background-color: #e04020; }"
@@ -588,6 +596,10 @@ TEST(RenderP1Test, PassCounts){
 // the one the temporary layer gives, byte for byte (with fusion off, as RmlUi's GL3 renderer draws).
 TEST(RenderP1Test, BackdropCompositeFusedExactly){
     JASPER_REQUIRE_GPU();
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
+    // every frame's own layer passes, not results drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
     const char* head = "<html><head><link type=\"text/css\" href=\"../common/base.css\"/><link type=\"text/css\" href=\"p1.css\"/><style>"
                        ".c { position: absolute; width: 60px; height: 60px; }"
                        "#a { left: 10px; top: 10px; background-color: #e04020; } #b { left: 70px; top: 30px; background-color: #20a0e0; }"

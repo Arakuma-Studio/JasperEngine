@@ -349,7 +349,7 @@ async def test_html_error_reported(ed: Editor):
 
 async def test_orphan_css_checked(ed: Editor):
     await _setup_panel(ed)
-    disk_write(ed, "assets/ui/pick/orphan.css", ".lonely { color: red; }\n.lonely { mix-blend-mode: multiply; }\n")
+    disk_write(ed, "assets/ui/pick/orphan.css", ".lonely { color: red; }\n.lonely { background-blend-mode: multiply; }\n")
     r = await status(ed)
     ext = ext_of(r)
     ed.check(ext is not None, "reported")
@@ -458,7 +458,7 @@ async def test_image_dependency_reload(ed: Editor):
 
 async def test_sync_files_reports_ui(ed: Editor):
     await _setup_panel(ed)
-    disk_write(ed, PANEL_CSS, PANEL_STYLE + ".panel { mix-blend-mode: screen; }\n")
+    disk_write(ed, PANEL_CSS, PANEL_STYLE + ".panel { background-blend-mode: screen; }\n")
     r = await ed.call("sync_files", paths=[PANEL_CSS])
     ed.check(reloaded_htmls({"ui_reloaded": r.get("ui_reloaded", [])}) == [PANEL] or r.get("ui_current") == 1,
              f"sync_files reloads the document: {r}")
@@ -604,5 +604,31 @@ async def test_delete_document_file_during_play(ed: Editor):
         values = (await ed.call("eval_lua", code=(
             "local d = UIDocument(scene, entity('Gone')); local t = d:querySelector('.title'); return d.loaded, t and t.textContent")))["values"]
         ed.check_eq(values, [True, "back"], "the document loads again")
+    finally:
+        await ed.call("play", action="stop")
+
+
+async def test_css_hot_reload_in_play_keeps_rendering(ed: Editor):
+    """S93 R34 (AC38, U25): ten stylesheet rewrites during play: the game keeps running (its frame count advances
+    after each) and the last screenshot shows the last style."""
+    from htmlui_pixels import count_near
+
+    await _setup_panel(ed)
+    await ed.call("play", action="start", scene=P["scene"])
+    try:
+        last = None
+        for i in range(10):
+            color = "#00ff00" if i == 9 else f"#{20 * i:02x}2430"
+            disk_write(ed, PANEL_CSS, PANEL_STYLE.replace("--panel: #1e2430", f"--panel: {color}"))
+            before = (await ed.call("eval_lua", code="return Engine.frameCount"))["values"][0]
+            await ed.call("wait", frames=2)
+            after = (await ed.call("eval_lua", code="return Engine.frameCount"))["values"][0]
+            ed.check(after > before, f"rewrite {i}: the game advances ({before} -> {after})")
+            last = after
+        shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 1280})
+        ed.check(not shot.is_error and shot.images, f"screenshot: {shot.text[:300]}")
+        (ed.scratch.root / "css-reload-in-play.png").write_bytes(shot.images[0][0])
+        ed.check(count_near(shot.images[0][0], (0, 255, 0), tol=30) > 200, "the last style (a green panel) is drawn")
+        ed.check(last is not None, "frames counted")
     finally:
         await ed.call("play", action="stop")

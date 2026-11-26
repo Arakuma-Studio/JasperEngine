@@ -8,3 +8,5 @@ editor/titleart/fx/FxCost.cpp merge=union
 *.otf binary
 *.hdr binary
 *.png binary
+# a .vcolors file is bytes (docs/specs/V1-vertex-colors.md R131)
+*.vcolors binary

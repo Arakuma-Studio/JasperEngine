@@ -72,6 +72,8 @@ void ExportWindow::finishBackgroundWork() {
         m_publishJob->cancel.store(true);
         if (m_publishJob->thread.joinable()) m_publishJob->thread.join();
     }
+    if (m_deviceProbe && m_deviceProbe->thread.joinable()) m_deviceProbe->thread.join();
+    if (m_deviceRunThread.joinable()) m_deviceRunThread.join();
 }
 
 ExportWindow::ShipPlatform ExportWindow::shipPlatform() const {

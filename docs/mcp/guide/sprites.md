@@ -133,6 +133,33 @@ reports `sprite_mode` (the settings, where they come from, the frames) and `pack
 with a `border` can be drawn **Sliced** (`set_properties` `{component: "sprite", property: "drawMode", value: "sliced"}` with a
 `width` and `height`): corners keep their size, edges and centre stretch.
 
+## Photoshop layers: `import_mode: layers`
+
+A `.psd` or `.psb` is one flattened texture by default. `set_texture_import_settings` with
+`settings: {import_mode: "layers"}` makes every visible pixel layer a sprite of one packed sheet
+(the document is its sheet, each frame named after its layer, key `layer:<id>`), and writes
+`<file>.prefab` beside it (`art/hero.psd.prefab`): a Sprite per layer at its place, layer groups as
+parents, stack order as Order in Layer. The result lists `layers` (sprites, prefab, warnings);
+`instantiate_prefab` places them. A reimport (the file saved again) keeps each layer's key and
+prefab GameObject when layers are renamed or reordered. `character_rig: true` adds the layers'
+skin bones to the prefab as GameObjects with each layer's Sprite Skin bound to them.
+
+## Skinning: `edit_sprite_skin`
+
+A Sprite bends with bones (Unity's Sprite Skin). The skin belongs to the frame and lives in the
+meta of its source (a texture, or a PSD/PSB in Layers mode), so every Sprite of that frame shares
+it. Coordinates are the frame's pixels: top-left origin, y down.
+
+1. `bones: {create: [{name, head: [x, y], tail: [x, y], parent?}]}` (`remove: [names]`).
+2. `auto_geometry: true` (or `{cell_size, alpha_tolerance}`): a triangle grid over the opaque pixels.
+3. `auto_weights: true`, or `set_weights: [{bone, weight, vertices | rect}]`; weight 1 on all
+   vertices binds a rigid part to one bone.
+
+One call may do all three, and it is one undo step (scope timeline). It makes a GameObject per
+bone under the Sprite at the rest pose and binds the Sprite Skin (`bind: false` edits the skin
+only). Pose by moving or rotating the bone GameObjects (`set_properties` transform, clips, Lua);
+a call with no edit reads the skin.
+
 ## Atlases
 
 A `.spriteatlas` packs textures, `.aseprite` files and folders of them into a few shared pages,
@@ -164,6 +191,13 @@ Project setting `sprite_atlas.mode` (Project Settings > 2D): `enabled` (the edit
 builds draw from atlases), `enabled_for_builds` (only builds), `disabled`. Exports build each atlas
 for their platform family (`max_size` overrides) and leave out a packed texture that only sprites
 read.
+
+## Flip and Size
+
+`sprite.flipX` mirrors the quad about its pivot (with Sprite Batch, Dynamic Batching and Sliced
+too). `sprite.size` ([x, y], world units, Unity's `SpriteRenderer.size`) sets the quad's size in
+every draw mode, Sliced corners unscaled; an axis at 0 keeps `width`/`height` over Pixels Per Unit.
+Lua: `sprite.flipX`, `sprite.size = Vector2(1, 1)`, `go:setScale(x, y, z)`.
 
 ## Legacy inline frames
 

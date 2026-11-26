@@ -67,6 +67,8 @@ jasperengine_add_test_target(jasperengine-editor-tests
     # (engine/physics: upstream's flat physics tests include "PhysicsTestScene.h" as they did)
     INCLUDES ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR}/engine/tests/core ${CMAKE_CURRENT_LIST_DIR}/engine/physics
         ${CMAKE_SOURCE_DIR}/engine/libs/meshoptimizer
+        # ufbx: FbxImportTest checks the import against ufbx's own skinning evaluation (S94 F41)
+        ${CMAKE_SOURCE_DIR}/libs/ufbx
     ASSET_DIR ${CMAKE_CURRENT_LIST_DIR}/fixtures
     # tinyexr: FloatImageTest writes EXRs with custom channel names through it
     LINK tinyexr
@@ -91,6 +93,9 @@ add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_help
 jasperengine_skip_unity_build(
     REASON "replaces the global operator new and delete: in a batch GCC inlines them into their callers and reports a mismatched new and free"
     SOURCES ${CMAKE_CURRENT_LIST_DIR}/support/AllocationProbe.cpp)
+jasperengine_skip_unity_build(
+    REASON "uses the namespace recordinput, whose Settings the Recorder's tests' namespace recorder also declares"
+    SOURCES ${CMAKE_CURRENT_LIST_DIR}/recorder/RecordInputTest.cpp)
 # Every later batch of 16 moves by one source per test file added before it, and several editor
 # tests (pixelart, titleart, reflect) keep file-scope using-directives whose Json, Kind, RgbaImage
 # or detail meet another test's in a moved batch: S97's tests stay out of the batches
@@ -102,6 +107,15 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_LIST_DIR}/engine/pool/SoundPoolLifetimeTest.cpp
         ${CMAKE_CURRENT_LIST_DIR}/engine/subsystem/AudioSourceEffectsTest.cpp
         ${CMAKE_CURRENT_LIST_DIR}/engine/subsystem/AudioSpatialBlendTest.cpp)
+# the same for V1's tests
+jasperengine_skip_unity_build(
+    REASON "V1's tests: compiled alone so the batches of the editor tests after them do not move"
+    SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/shader/VertexColorVariantsTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/vertexcolor/VertexColorEditingTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/vertexcolor/VertexColorOutputTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/vertexcolor/VertexColorsComponentTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/vertexcolor/VertexPaintToolTest.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
     # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose

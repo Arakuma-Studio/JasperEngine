@@ -115,8 +115,9 @@ public:
     // upstream absorption, StreamMigrations prefab 6 -> 7); 8: Line / Trail Renderer curves and
     // gradients in S27's form (the S27 upstream absorption, prefab 7 -> 8); 9: sprite sheets; 10:
     // Mesh Renderers showing .mesh assets (S98 F1) and linked .material files followed (S98 REQ-29;
-    // prefab 9 -> 10 keeps an older file's embedded copies: followMaterialFiles)
-    static constexpr int FILE_VERSION = 10;
+    // prefab 9 -> 10 keeps an older file's embedded copies: followMaterialFiles); 11: Text alignment
+    // instead of its pivots and Legacy Root Drift (S94, prefab 10 -> 11)
+    static constexpr int FILE_VERSION = 11;
     // the first version with the root-GameObject layout of today (`root`, members as written)
     static constexpr int ROOT_LAYOUT_VERSION = 3;
 

@@ -283,6 +283,10 @@ public:
 	bool AddAnimationKey(const String& property_name, const Property& target_value, float duration, Tween tween = Tween{});
 	bool AddAnimationKey(PropertyId id, const Property& target_value, float duration, Tween tween = Tween{});
 
+	/// Fork (S93-F1): moves the start times of the element's running animations and transitions (not its children's) by
+	/// 'delta' seconds, so that they keep their progress on another clock (ElementDocument::SetAnimationClock).
+	void ShiftAnimationStartTimes(double delta);
+
 	/// Iterator for the local (non-inherited) properties defined on this element.
 	/// @param[in] filter_inherited_by If set, only iterates properties that are inherited by the given element.
 	/// @warning Modifying the element's properties or classes invalidates the iterator.
@@ -423,6 +427,11 @@ public:
 	/// Sets the top scroll offset of the element.
 	/// @param[in] scroll_top The element's new top scroll offset.
 	void SetScrollTop(float scroll_top);
+	/// Fork (S93 R9): how far past its scroll range a scroll container draws its content (px, per axis: negative before the
+	/// start, positive past the end), on top of the scroll offset: the elastic or unrestricted overscroll of drag scrolling
+	/// (ScrollPhysics). The scroll offset stays within its range; 0 for a clamped container.
+	Vector2f GetScrollOverscroll() const { return scroll_overscroll; }
+	void SetScrollOverscroll(Vector2f overscroll);
 	/// Gets the width of the scrollable content of the element; it includes the element padding but not its margin.
 	/// @return The width (in pixels) of the scrollable content of the element.
 	float GetScrollWidth();
@@ -658,6 +667,10 @@ public:
 	/// Fork (P7-L): true when the element is a layout boundary.
 	bool IsLayoutBoundary() const;
 
+	/// Fork (S93 R31): the font size 'text-autosize' fitted the element's text to (its computed font size), 0 when the
+	/// element has no 'text-autosize' or it was not laid out yet.
+	float GetTextAutosizeFontSize() const;
+
 protected:
 	void Update(float dp_ratio, Vector2f vp_dimensions);
 	void Render();
@@ -812,6 +825,9 @@ private:
 	/// their events.
 	void AdvanceAnimations();
 
+	/// Fork (S93-F1): the time the element's animations and transitions run on: its owner document's animation clock.
+	double GetAnimationClockTime();
+
 	/// Follows the element's display (and its ancestors'): CSS animations and transitions stop while it is 'none', and restart after.
 	/// @return True if the element's style must be computed again (shown again: transitions from its @starting-style).
 	bool UpdateAnimationDisplay();
@@ -897,6 +913,8 @@ private:
 
 	// The offset this element adds to its logical children due to scrolling content.
 	Vector2f scroll_offset;
+	// Fork (S93 R9): SetScrollOverscroll, added to the scroll offset of its logical children.
+	Vector2f scroll_overscroll;
 
 	// The size of the element.
 	struct PositionedBox {

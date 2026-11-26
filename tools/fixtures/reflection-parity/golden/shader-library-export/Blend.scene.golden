@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: 68b4ca8069db2d713a77deedde615ebd
 id: 242685459
 name: Blend
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

@@ -19,6 +19,11 @@ public:
 	/// Fork (P7-L): formats a layout boundary (Element::SetLayoutBoundary) and its descendants again in the box it has,
 	/// in place: its size and offset are its parent's, which did not change.
 	static void FormatLayoutBoundary(Element* element);
+
+	/// Fork (S93 R31): formats an element and its descendants again in the box it has (its parent's content box as the
+	/// containing block), without clamping scroll offsets: a trial layout of the text-autosize fit. Returns whether its
+	/// content stays inside its padding box: across, and down too when 'check_height'.
+	static bool FormatInOwnBox(Element* element, bool check_height);
 };
 
 /**

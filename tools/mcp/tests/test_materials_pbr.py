@@ -1,7 +1,7 @@
 """Materials and lighting (docs/specs/S11-materials-lighting.md): the built-in Lit's extended
 lobes through the material `pbr` object and the Catalog paths (partial merges, range errors
 naming the field), get_material_variant (defines, maps, the 3-map budget), set_light_unit
-(the image stays the same), Lit Quality (new scenes High, saved; old scenes Standard,
+(the image stays the same), Area Lights and IES Profiles (S99), Lit Quality (new scenes High, saved; old scenes Standard,
 unchanged), the direct-light energy compensation and the specular anti-aliasing of High, hex
 tiling against repetition, Lua, the presets, and the Khronos sample models: each loads,
 draws, and draws differently with its lobes off; with a golden per model in
@@ -325,6 +325,57 @@ async def test_light_units_preserve(ed: Editor):
     await ed.call("set_scene_settings", settings={"physical_light_ev100": 15})
     await ed.call("set_light_unit", entities=[sun_id, point], unit="engine")
     await ed.call("delete_entities", entity=point)
+
+
+IES_BEAM = """IESNA:LM-63-2002
+[TEST] synthetic, written for this test
+[MANUFAC] Jasper Test Lights
+TILT=NONE
+1 1000 1.0 4 1 1 2 0.1 0.1 0.0
+1.0 1.0 10
+0 30 60 90
+0
+800 400 50 0
+"""
+
+
+async def test_area_light_and_ies_profile(ed: Editor):
+    """S99 AC8: an Area Light and an IES Profile through set_properties: the values read back, the
+    variant takes their defines, the image changes, and a profile with a tilt is refused naming it.
+    Its own scene, so it runs alone too (-k)."""
+    await new_scene(ed, "AreaLights")
+    eid = await make_entity(ed, "Lit", "sphere")
+    await camera_at(ed, (0, 0.5, 3.0), (0, 0, 0))
+    await ed.call("set_properties", entity=eid, values={"mesh": {M + "roughnessFactor": 0.4, M + "metallicFactor": 0}})
+    before = await shot(ed)
+    panel = await make_entity(ed, "Panel", "point_light", position=[0.0, 1.5, 1.0])
+    await ed.call("set_properties", entity=panel, values={"light": {
+        "type": "area", "areaShape": "disc", "areaRadius": 0.4, "direction": [0, -0.8, -0.6], "range": 10, "intensity": 4.0}})
+    light = (await ed.call("get_entity", entity=panel, components=["light"], detail="values"))["components"]
+    light = next(iter(light.values()))
+    ed.check_eq(light.get("type"), "area", f"the type reads back: {light!r}")
+    ed.check_eq(light.get("areaShape"), "disc", "the shape reads back")
+    ed.check(abs(light.get("areaRadius", 0) - 0.4) < 1e-4, f"the radius reads back: {light!r}")
+    out = await ed.call("set_light_unit", entity=panel, unit="nits")
+    ed.check_eq(out["lights"][0]["unit"], "Nits", "an area light takes nits")
+    v = await ready_variant(ed, eid)
+    ed.check(not v["failed"] and "USE_AREA_LIGHTS" in v["defines"], f"the Area Light variant: {v!r}")
+    lit = await shot(ed)
+    ed.check(differing_fraction(before, lit) > 0.005, "the Area Light lights the sphere")
+
+    (ed.project / "lights").mkdir(parents=True, exist_ok=True)
+    (ed.project / "lights/beam.ies").write_text(IES_BEAM)
+    (ed.project / "lights/tilted.ies").write_text(IES_BEAM.replace("TILT=NONE", "TILT=INCLUDE"))
+    spot = await make_entity(ed, "Downlight", "spot_light", position=[0.0, 2.0, 0.5])
+    await ed.call("set_properties", entity=spot, values={"light": {"iesProfile": "lights/beam.ies", "intensity": 3.0}})
+    got = find_key(await ed.call("get_entity", entity=spot, components=["light"], detail="values"), "iesProfile")
+    ed.check(got and got.endswith("lights/beam.ies"), f"the profile reads back: {got!r}")
+    v = await ready_variant(ed, eid)
+    ed.check(not v["failed"] and "USE_IES" in v["defines"], f"the IES variant: {v!r}")
+    await ed.check_error("set_properties", entity=spot, values={"light": {"iesProfile": "lights/tilted.ies"}}, contains="TILT=INCLUDE")
+    await ed.check_error("set_properties", entity=spot, values={"light": {"iesProfile": "textures/cc.png"}}, contains=".ies")
+    await ed.call("delete_entities", entity=spot)
+    await ed.call("delete_entities", entity=panel)
 
 
 async def test_furnace(ed: Editor):

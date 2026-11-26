@@ -29,7 +29,7 @@ RESULTS="${CI_RESULTS:-build/test-results}"
 # does. A script that runs another one for its step exports it, so the log names the outer command.
 if [[ -z "${CI_LOG_COMMAND:-}" ]]; then
     CI_LOG_COMMAND=""
-    for _name in ARCHS EDITOR_TESTS ENGINE_DEBUG_INFO JASPERENGINE_VERSION TEST_SUITES TEST_TIMEOUT WERROR XCODE_JOBS CMAKE_GENERATOR; do
+    for _name in ARCHS EDITOR_TESTS EDITOR_TESTS_BUILD ENGINE_DEBUG_INFO JASPERENGINE_VERSION TEST_SUITES TEST_TIMEOUT WERROR XCODE_CAS XCODE_JOBS CMAKE_GENERATOR; do
         [[ -n "${!_name:-}" ]] && CI_LOG_COMMAND+="$_name=$(printf '%q' "${!_name}") "
     done
     unset _name

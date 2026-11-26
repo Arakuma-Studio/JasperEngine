@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: 2D
 canvasWidth: 1280
 canvasHeight: 720
@@ -9,7 +9,7 @@ foliageQuality:
   desktop: high
   mobile: low
   web: low
-htmlUiMsaaSamples: 4
+htmlUiMsaaSamples: 0
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
 htmlUiTransformAwareText: true
@@ -32,13 +32,14 @@ versionControl:
   lfs: true
 export:
   assetStripping: referencedOnly
-startSceneId: 3832788015
+startSceneId: 3098226526
 mesh:
   animationEntities: auto
+  preserveHierarchyForNewModels: true
 audio:
   mixer: audio/Main.mixer
   outputStage: linear
   iosSessionCategory: ambient
 scenes:
   - filepath: assets/scenes/Main.scene
-    filepathGuid: 707cdf70133ef1f595429b0942ddd7aa
+    filepathGuid: 492f9dd57ae42593822878947d50b461

@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: 9833476a37f04d96e0e409177f514f7a
 id: 1
 name: Nested Scene
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: auto
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]

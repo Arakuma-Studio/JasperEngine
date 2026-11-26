@@ -197,3 +197,28 @@ TEST(TestFontEngine, GlyphsDrawTheSameWhereverTheyArePacked){
     fonts.ReleaseFontResources();
     EXPECT_LE(largestDifference(first, second), 1);
 }
+
+TEST(FontEngineAtlas, EffectBitmapSharedAcrossColourAndOffset){
+    // S93 R12 (AC16): CPU effect bitmaps are keyed by their shape, not their colour or offset: an outline and a glow
+    // without blur of the same width, in two colours and the glow moved, draw from one bitmap per glyph. (Red on base:
+    // two, keyed by each effect's fingerprint.)
+    JASPER_REQUIRE_GPU();
+    RmlFontEngine& fonts = HtmlUI::getFontEngine();
+    const bool gpuEffects = RmlFontEngine::isGpuTextEffects();
+    RmlFontEngine::setGpuTextEffectsForTesting(false);   // the CPU path: effect glyphs in RGBA8 pages
+    {
+        RenderTestContext test(width, height);
+        ASSERT_TRUE(test.isValid());
+        fonts.ReleaseFontResources();
+        const std::string rml = "<rml><head><style>body { margin: 0; font-family: sans-serif; color: #ffffff; font-size: 48px; } "
+                                "#a { position: absolute; left: 20px; top: 20px; font-effect: outline(4px #ff0000); } "
+                                "#b { position: absolute; left: 200px; top: 20px; font-effect: glow(4px 0px 3px 2px #0000ff); }"
+                                "</style></head><body><p id=\"a\">A</p><p id=\"b\">A</p></body></rml>";
+        ASSERT_NE(test.loadFromMemory(rml, "render/effect-share.rml"), nullptr);
+        ASSERT_TRUE(test.renderUntilDrawn());
+        EXPECT_EQ(fonts.getEffectGlyphCount(), 1u);
+        EXPECT_EQ(fonts.getEffectPageCount(), 1u);
+    }
+    fonts.ReleaseFontResources();
+    RmlFontEngine::setGpuTextEffectsForTesting(gpuEffects);
+}

@@ -12,6 +12,7 @@
 #include "meshoptimizer.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -20,6 +21,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -155,6 +157,119 @@ namespace {
         root[key].push_back(name);
     }
 
+    // the custom attribute an FBX import numbers its smoothing groups with (GlbBuilder)
+    constexpr const char* kSmoothingGroupSemantic = "_SMOOTHING_GROUP";
+
+    // Normals Calculate with an explicit weighting (spec S94 F43), per corner of `corners` (a
+    // triangle list over the vertices): a corner's normal sums the faces that share its smoothed
+    // vertex, each weighted by its area (and its angle there, Area And Angle). The smoothed vertex
+    // is the corner's smoothing group when `groups` is given, else the corners around one
+    // position joined across the edges whose faces bend less than the crease.
+    std::vector<float> calculateNormals(const std::vector<uint32_t>& corners, const std::vector<float>& positions, float creaseRadians,
+                                        NormalsWeighting weighting, const std::vector<float>* groups){
+        const size_t faceCount = corners.size() / 3;
+        std::vector<float> faceNormals(faceCount * 3, 0.0f), areas(faceCount, 0.0f), angles(corners.size(), 0.0f);
+        auto at = [&](uint32_t v, int c){ return positions[(size_t)v * 3 + (size_t)c]; };
+        for (size_t f = 0; f < faceCount; f++){
+            float p[3][3];
+            for (int k = 0; k < 3; k++)
+                for (int c = 0; c < 3; c++)
+                    p[k][c] = at(corners[f * 3 + (size_t)k], c);
+            const float e1[3] = {p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]};
+            const float e2[3] = {p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]};
+            const float n[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+            const float length = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+            areas[f] = 0.5f * length;
+            for (int c = 0; c < 3 && length > 0.0f; c++)
+                faceNormals[f * 3 + (size_t)c] = n[c] / length;
+            for (int k = 0; k < 3; k++){
+                const float* a = p[k];
+                const float* b = p[(k + 1) % 3];
+                const float* d = p[(k + 2) % 3];
+                const float u[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+                const float w[3] = {d[0] - a[0], d[1] - a[1], d[2] - a[2]};
+                const float lu = std::sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]);
+                const float lw = std::sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+                const float cosine = lu > 0.0f && lw > 0.0f ? (u[0] * w[0] + u[1] * w[1] + u[2] * w[2]) / (lu * lw) : 1.0f;
+                angles[f * 3 + (size_t)k] = std::acos(std::clamp(cosine, -1.0f, 1.0f));
+            }
+        }
+        std::vector<uint32_t> parent(corners.size());
+        for (uint32_t i = 0; i < parent.size(); i++)
+            parent[i] = i;
+        auto find = [&](uint32_t i){
+            while (parent[i] != i){
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+            return i;
+        };
+        auto unite = [&](uint32_t a, uint32_t b){
+            a = find(a);
+            b = find(b);
+            if (a != b) parent[std::max(a, b)] = std::min(a, b);
+        };
+        if (groups){
+            std::map<float, uint32_t> first;
+            for (uint32_t c = 0; c < corners.size(); c++){
+                auto [it, added] = first.emplace((*groups)[corners[c]], c);
+                if (!added) unite(c, it->second);
+            }
+        }else{
+            // corners at one position share a welded id; an edge is a pair of them
+            std::map<std::array<float, 3>, uint32_t> weldOf;
+            std::vector<uint32_t> weld(corners.size());
+            for (size_t c = 0; c < corners.size(); c++)
+                weld[c] = weldOf.emplace(std::array<float, 3>{at(corners[c], 0), at(corners[c], 1), at(corners[c], 2)}, (uint32_t)weldOf.size()).first->second;
+            std::map<std::pair<uint32_t, uint32_t>, std::vector<std::pair<uint32_t, uint32_t>>> edges;   // -> (corner at first, corner at second)
+            for (size_t f = 0; f < faceCount; f++){
+                for (int k = 0; k < 3; k++){
+                    uint32_t a = (uint32_t)(f * 3 + (size_t)k), b = (uint32_t)(f * 3 + (size_t)((k + 1) % 3));
+                    if (weld[a] == weld[b]) continue;
+                    if (weld[a] > weld[b]) std::swap(a, b);
+                    edges[{weld[a], weld[b]}].push_back({a, b});
+                }
+            }
+            const float cutoff = std::cos(creaseRadians);
+            for (const auto& [edge, sides] : edges){
+                for (size_t i = 0; i < sides.size(); i++){
+                    for (size_t j = i + 1; j < sides.size(); j++){
+                        const float* ni = &faceNormals[(sides[i].first / 3) * 3];
+                        const float* nj = &faceNormals[(sides[j].first / 3) * 3];
+                        if (ni[0] * nj[0] + ni[1] * nj[1] + ni[2] * nj[2] < cutoff) continue;
+                        unite(sides[i].first, sides[j].first);
+                        unite(sides[i].second, sides[j].second);
+                    }
+                }
+            }
+        }
+        std::vector<float> sums(corners.size() * 3, 0.0f);
+        for (uint32_t c = 0; c < corners.size(); c++){
+            const size_t f = c / 3;
+            const float weight = areas[f] * (weighting == NormalsWeighting::AreaAndAngle ? angles[c] : 1.0f);
+            float* sum = &sums[(size_t)find(c) * 3];
+            for (int k = 0; k < 3; k++)
+                sum[k] += faceNormals[f * 3 + (size_t)k] * weight;
+        }
+        std::vector<float> out(corners.size() * 3, 0.0f);
+        for (uint32_t c = 0; c < corners.size(); c++){
+            const float* sum = &sums[(size_t)find(c) * 3];
+            float length = std::sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
+            const float* source = sum;
+            if (length <= 0.0f){
+                // a degenerate face alone: its own normal (none: up)
+                source = &faceNormals[(c / 3) * 3];
+                length = std::sqrt(source[0] * source[0] + source[1] * source[1] + source[2] * source[2]);
+            }
+            if (length > 0.0f){
+                for (int k = 0; k < 3; k++) out[(size_t)c * 3 + (size_t)k] = source[k] / length;
+            }else{
+                out[(size_t)c * 3 + 1] = 1.0f;
+            }
+        }
+        return out;
+    }
+
     struct Primitive {
         size_t mesh = 0, index = 0;
         int mode = 4;
@@ -162,6 +277,7 @@ namespace {
         std::vector<std::pair<std::string, size_t>> attributes;     // sorted by semantic
         std::vector<std::vector<std::pair<std::string, size_t>>> targets;
         bool blended = false;
+        bool painted = false;           // V1 R9: its vertex and triangle order is its vertex colors'
         std::string foreignExtension;
         int group = -1;
         // the cook's
@@ -190,7 +306,7 @@ namespace {
         std::string filter = "NONE";
         std::vector<uint8_t> encoded;   // the filter's encoding (the codec's input) when filtered
         bool quantized = false;         // a lossy level changed its values
-        bool newAccessor = false;       // made by the cook (Normals Calculate)
+        bool newAccessor = false;       // made by the cook (Normals and Tangents Calculate)
     };
 
     struct Group {
@@ -246,6 +362,9 @@ namespace {
         std::map<std::pair<size_t, size_t>, std::vector<size_t>> foldedFrom;
         std::set<std::pair<size_t, size_t>> foldedPrimitives;
         std::map<std::pair<size_t, size_t>, std::vector<long long>> targetLevels;
+        // the accessors of the attributes the cook removed (dropStreams)
+        std::set<size_t> dropped;
+        bool smoothingGroupsNoted = false;
 
         bool isCancelled() const { return cancelled && cancelled(); }
         bool collect(std::string& error);
@@ -259,6 +378,15 @@ namespace {
         bool foldAuthoredLods(const std::vector<GltfLodChain>& chains, std::string& error);
         void buildLods(Group& group);
         std::vector<float> positionsOf(const Group& group) const;
+        // removes a vertex attribute (every morph target's too) from the group's primitives: its
+        // accessors keep their indices and lose their bytes. Kept when something else reads it.
+        void dropStreams(Group& group, const std::string& semantic);
+        // what Normals None and Tangents None remove, before the passes
+        void dropUnwanted(Group& group);
+        // replaces (or adds) the group's `semantic` with one value per corner of `lists`, then
+        // indexes every stream again (the corners that end up equal share a vertex)
+        void setCornerStream(Group& group, std::vector<std::vector<uint32_t>>& lists, std::vector<std::vector<uint32_t>*>& listRefs,
+                             const std::string& semantic, const std::vector<float>& values, int components);
         ModelGeometryStats sourceStats(std::string& error);
         ModelGeometryStats outputStats(const std::vector<View>& views);
         bool assemble(std::vector<uint8_t>& bin, std::vector<View>& views, std::string& error);
@@ -337,6 +465,7 @@ namespace {
                     size_t material = 0;
                     info.blended = (GltfDocument::getIndex(primitive, "material", material) && blendedMaterials.count(material)) ||
                                    request.blended.count({(int)m, (int)p}) || request.blended.count({-1, (int)p});
+                    info.painted = request.painted.count({(int)m, (int)p}) || request.painted.count({-1, (int)p}) || request.painted.count({-1, -1});
                     if (primitive.contains("extensions") && primitive["extensions"].is_object()){
                         for (auto it = primitive["extensions"].begin(); it != primitive["extensions"].end(); ++it){
                             if (it.key() == "KHR_draco_mesh_compression"){
@@ -464,6 +593,8 @@ namespace {
             for (size_t p : group.primitives){
                 const Primitive& primitive = primitives[p];
                 if (primitive.mode != 4) lock("it is not a triangle list");
+                // its vertex colors key on the source's order (V1 R9, D11): no pass may move a vertex or a triangle
+                if (primitive.painted) lock("it is painted with vertex colors");
                 if (!primitive.foreignExtension.empty()) lock("it has the extension " + primitive.foreignExtension);
                 if (primitive.indices && (indexGroup[*primitive.indices] == -2 || otherUse[*primitive.indices] ||
                                           !vertexGroups[*primitive.indices].empty()))
@@ -528,6 +659,79 @@ namespace {
         return {};
     }
 
+    void Cook::dropStreams(Group& group, const std::string& semantic){
+        Json& root = doc.json();
+        for (auto it = group.streams.begin(); it != group.streams.end();){
+            if (it->semantic != semantic || it->accessor >= sourceAccessors || otherUse[it->accessor] || indexUse[it->accessor]){
+                ++it;
+                continue;
+            }
+            dropped.insert(it->accessor);
+            for (size_t p : group.primitives){
+                Json& json = root["meshes"][primitives[p].mesh]["primitives"][primitives[p].index];
+                if (it->target < 0) json["attributes"].erase(semantic);
+                else if (json.contains("targets") && (size_t)it->target < json["targets"].size()) json["targets"][(size_t)it->target].erase(semantic);
+            }
+            it = group.streams.erase(it);
+        }
+    }
+
+    void Cook::dropUnwanted(Group& group){
+        if (settings.normals == ModelNormals::None){
+            dropStreams(group, "NORMAL");
+            dropStreams(group, "TANGENT");
+        }else if (settings.tangents == ModelTangents::None){
+            dropStreams(group, "TANGENT");
+        }
+    }
+
+    void Cook::setCornerStream(Group& group, std::vector<std::vector<uint32_t>>& lists, std::vector<std::vector<uint32_t>*>& listRefs,
+                               const std::string& semantic, const std::vector<float>& values, int components){
+        std::vector<uint32_t> all;
+        for (const std::vector<uint32_t>& list : lists)
+            all.insert(all.end(), list.begin(), list.end());
+        // every stream per corner
+        for (Stream& stream : group.streams){
+            std::vector<uint8_t> corners(all.size() * stream.layout.elementSize);
+            for (size_t c = 0; c < all.size(); c++)
+                std::memcpy(corners.data() + c * stream.layout.elementSize, stream.data.data() + (size_t)all[c] * stream.layout.elementSize,
+                            stream.layout.elementSize);
+            stream.data.swap(corners);
+            stream.layout.count = all.size();
+        }
+        auto target = std::find_if(group.streams.begin(), group.streams.end(), [&](const Stream& s){ return s.semantic == semantic && s.target < 0; });
+        if (target == group.streams.end()){
+            Stream stream;
+            stream.semantic = semantic;
+            stream.newAccessor = true;
+            group.streams.push_back(stream);
+            target = group.streams.end() - 1;
+        }
+        target->layout.componentType = gltf::FLOAT;
+        target->layout.components = components;
+        target->layout.normalized = false;
+        target->layout.count = all.size();
+        target->layout.elementSize = (size_t)components * sizeof(float);
+        target->data.resize(values.size() * sizeof(float));
+        std::memcpy(target->data.data(), values.data(), target->data.size());
+        group.vertexCount = all.size();
+        size_t at = 0;
+        for (std::vector<uint32_t>& list : lists){
+            for (uint32_t& index : list)
+                index = (uint32_t)at++;
+        }
+        std::vector<uint32_t> identity;
+        for (const std::vector<uint32_t>& list : lists)
+            identity.insert(identity.end(), list.begin(), list.end());
+        std::vector<uint32_t> remap(group.vertexCount);
+        std::vector<meshopt_Stream> streams;
+        for (const Stream& stream : group.streams)
+            streams.push_back({stream.data.data(), stream.layout.elementSize, stream.layout.elementSize});
+        const size_t unique = meshopt_generateVertexRemapMulti(remap.data(), identity.data(), identity.size(), group.vertexCount,
+                                                               streams.data(), streams.size());
+        applyRemap(group, listRefs, remap, unique);
+    }
+
     bool Cook::processGroup(Group& group, std::string& error){
         std::vector<std::vector<uint32_t>> lists(group.primitives.size());
         for (size_t i = 0; i < group.primitives.size(); i++){
@@ -562,7 +766,8 @@ namespace {
             }
         }
         auto ownerOf = [&](size_t list){ return list < group.primitives.size() ? list : levelOf[list - group.primitives.size()].first; };
-        const bool reorder = settings.optimizeMesh != OptimizeMesh::Nothing || settings.normals == ModelNormals::Calculate;
+        const bool reorder = settings.optimizeMesh != OptimizeMesh::Nothing || settings.normals == ModelNormals::Calculate ||
+                             settings.tangents == ModelTangents::Calculate;
         std::vector<std::vector<uint32_t>*> listRefs;
         for (std::vector<uint32_t>& list : lists)
             listRefs.push_back(&list);
@@ -579,7 +784,10 @@ namespace {
             return streams;
         };
 
-        // Normals: Calculate, per corner across the creases, then indexed again over every stream
+        // Normals: Calculate, per corner across the creases (or the FBX's smoothing groups), then
+        // indexed again over every stream
+        const auto smoothingStream = std::find_if(group.streams.begin(), group.streams.end(),
+                                                  [](const Stream& s){ return s.semantic == kSmoothingGroupSemantic && s.target < 0; });
         if (settings.normals == ModelNormals::Calculate){
             const std::vector<float> positions = positionsOf(group);
             if (positions.empty()){
@@ -587,45 +795,50 @@ namespace {
                                           " kept its normals: its positions are not three floats");
             }else{
                 const std::vector<uint32_t> all = combined();
+                const bool wantsGroups = settings.smoothnessSource != SmoothnessSource::FromAngle;
+                const bool useGroups = wantsGroups && smoothingStream != group.streams.end();
+                if (wantsGroups && !useGroups && !smoothingGroupsNoted){
+                    smoothingGroupsNoted = true;
+                    record.warnings.push_back(request.assetPath + " has no smoothing groups (a glTF, or an FBX without them): its normals "
+                                              "follow the Smoothing Angle");
+                }
+                const float crease = settings.smoothingAngle * 3.14159265358979f / 180.0f;
                 std::vector<float> normals(all.size() * 3);
-                meshopt_generateNormals(normals.data(), all.data(), all.size(), positions.data(), group.vertexCount, sizeof(float) * 3,
-                                        settings.smoothingAngle * 3.14159265358979f / 180.0f, 0.0f);
-                // every stream per corner
-                for (Stream& stream : group.streams){
-                    std::vector<uint8_t> corners(all.size() * stream.layout.elementSize);
-                    for (size_t c = 0; c < all.size(); c++)
-                        std::memcpy(corners.data() + c * stream.layout.elementSize, stream.data.data() + (size_t)all[c] * stream.layout.elementSize,
-                                    stream.layout.elementSize);
-                    stream.data.swap(corners);
-                    stream.layout.count = all.size();
+                if (useGroups){
+                    const std::vector<float> ids = floatsOf(smoothingStream->data, smoothingStream->layout);
+                    normals = calculateNormals(all, positions, crease, settings.normalsWeighting.value_or(NormalsWeighting::AreaAndAngle), &ids);
+                }else if (settings.normalsWeighting){
+                    normals = calculateNormals(all, positions, crease, *settings.normalsWeighting, nullptr);
+                }else{
+                    // a section without Normals Weighting cooks as earlier versions did
+                    meshopt_generateNormals(normals.data(), all.data(), all.size(), positions.data(), group.vertexCount, sizeof(float) * 3,
+                                            crease, 0.0f);
                 }
-                auto normal = std::find_if(group.streams.begin(), group.streams.end(), [](const Stream& s){ return s.semantic == "NORMAL" && s.target < 0; });
-                if (normal == group.streams.end()){
-                    Stream stream;
-                    stream.semantic = "NORMAL";
-                    stream.newAccessor = true;
-                    group.streams.push_back(stream);
-                    normal = group.streams.end() - 1;
-                }
-                normal->layout.componentType = gltf::FLOAT;
-                normal->layout.components = 3;
-                normal->layout.normalized = false;
-                normal->layout.count = all.size();
-                normal->layout.elementSize = 12;
-                normal->data.resize(normals.size() * sizeof(float));
-                std::memcpy(normal->data.data(), normals.data(), normal->data.size());
-                group.vertexCount = all.size();
-                size_t at = 0;
-                for (std::vector<uint32_t>& list : lists){
-                    for (uint32_t& index : list)
-                        index = (uint32_t)at++;
-                }
-                const std::vector<uint32_t> identity = combined();
-                std::vector<uint32_t> remap(group.vertexCount);
-                const std::vector<meshopt_Stream> streams = streamsOf();
-                const size_t unique = meshopt_generateVertexRemapMulti(remap.data(), identity.data(), identity.size(), group.vertexCount,
-                                                                       streams.data(), streams.size());
-                applyRemap(group, listRefs, remap, unique);
+                setCornerStream(group, lists, listRefs, "NORMAL", normals, 3);
+            }
+        }
+        dropStreams(group, kSmoothingGroupSemantic);
+        // Tangents: Calculate, MikkTSpace over the normals and the first UV set
+        if (settings.tangents == ModelTangents::Calculate && settings.normals != ModelNormals::None){
+            const std::vector<float> positions = positionsOf(group);
+            auto streamOf = [&](const char* semantic) -> const Stream* {
+                for (const Stream& stream : group.streams)
+                    if (stream.semantic == semantic && stream.target < 0) return &stream;
+                return nullptr;
+            };
+            const Stream* normal = streamOf("NORMAL");
+            const Stream* uv = streamOf("TEXCOORD_0");
+            const std::string label = meshLabel(doc.json(), primitives[group.primitives[0]].mesh, primitives[group.primitives[0]].index);
+            if (positions.empty() || !normal || !uv || normal->layout.components != 3 || uv->layout.components != 2 || !normal->encoded.empty()){
+                record.warnings.push_back(label + " got no calculated tangents: they need positions, normals and a first UV set");
+            }else{
+                const std::vector<float> normals = floatsOf(normal->data, normal->layout);
+                const std::vector<float> uvs = floatsOf(uv->data, uv->layout);
+                const std::vector<uint32_t> all = combined();
+                std::vector<float> tangents(all.size() * 4);
+                meshopt_generateTangents(tangents.data(), all.data(), all.size(), positions.data(), group.vertexCount, sizeof(float) * 3,
+                                         normals.data(), sizeof(float) * 3, uvs.data(), sizeof(float) * 2, meshopt_TangentCompatible);
+                setCornerStream(group, lists, listRefs, "TANGENT", tangents, 4);
             }
         }
         if (isCancelled())
@@ -822,7 +1035,8 @@ namespace {
             const Primitive& primitive = primitives[p];
             if (!primitive.indexed)
                 continue;
-            if (primitive.mode != 4 || primitive.list.size() % 3 != 0)
+            // a painted primitive keeps its corners where they are (assemble encodes it as a sequence)
+            if (primitive.mode != 4 || primitive.list.size() % 3 != 0 || primitive.painted)
                 return;
             const size_t key = primitive.indices && !primitive.newIndices ? *primitive.indices : std::numeric_limits<size_t>::max() - p;
             auto [at, added] = offsets.emplace(key, all.size());
@@ -1242,20 +1456,23 @@ namespace {
                 primitive.indexAccessor = *primitive.indices;
             }
         }
-        // the calculated normals of primitives that had none
+        // the calculated normals and tangents of primitives that had none
         for (Group& group : groups){
             for (Stream& stream : group.streams){
                 if (!stream.newAccessor)
                     continue;
-                stream.accessor = addAccessor(Json{{"componentType", gltf::FLOAT}, {"count", stream.layout.count}, {"type", "VEC3"}});
+                stream.accessor = addAccessor(Json{{"componentType", gltf::FLOAT}, {"count", stream.layout.count},
+                                                   {"type", stream.layout.components == 4 ? "VEC4" : "VEC3"}});
                 stream.newAccessor = false;
                 for (size_t p : group.primitives)
-                    root["meshes"][primitives[p].mesh]["primitives"][primitives[p].index]["attributes"]["NORMAL"] = stream.accessor;
+                    root["meshes"][primitives[p].mesh]["primitives"][primitives[p].index]["attributes"][stream.semantic] = stream.accessor;
             }
         }
         // the source accessors of folded MSFT_lod levels nothing else reads: no bytes (an accessor
         // without a bufferView is valid glTF, and they keep their indices)
         std::vector<bool> foldedAway(accessorCount, false);
+        for (size_t a : dropped)
+            if (a < accessorCount) foldedAway[a] = true;
         if (!foldedPrimitives.empty()){
             auto dropIfUnused = [&](size_t a){
                 if (a < sourceAccessors && !otherUse[a] && !indexUse[a] && vertexGroups[a].empty())
@@ -1450,7 +1667,9 @@ namespace {
                     indices.offsets.push_back(indices.data.size());
                     indices.data.insert(indices.data.end(), data[primitive.indexAccessor].begin(), data[primitive.indexAccessor].end());
                     indices.count += layouts[primitive.indexAccessor].count;
-                    indices.triangles = indices.triangles && primitive.mode == 4 && primitive.list.size() % 3 == 0;
+                    // a painted primitive's corners are its vertex colors' (V1 R3): the sequence codec, which keeps
+                    // every triangle's corner order, where the triangle codec would rotate them
+                    indices.triangles = indices.triangles && primitive.mode == 4 && primitive.list.size() % 3 == 0 && !primitive.painted;
                     indices.stride = layouts[primitive.indexAccessor].elementSize;
                     placed[primitive.indexAccessor] = true;
                 }
@@ -1761,8 +1980,11 @@ namespace {
         for (Group& group : groups){
             if (!readGroup(group, error))
                 return false;
+            dropUnwanted(group);
             if (!group.locked && !processGroup(group, error))
                 return false;
+            // the smoothing groups were for Normals Calculate: never shipped
+            dropStreams(group, kSmoothingGroupSemantic);
             if (isCancelled()){
                 error = "cancelled";
                 return false;
@@ -1913,7 +2135,7 @@ bool ModelCooker::planKey(ModelCookCache& cache, const ModelCookRequest& request
         error = "cannot read " + request.assetPath + " or one of its buffers";
         return false;
     }
-    key = ModelCookCache::key(sha, request.settings, request.family, request.blended);
+    key = ModelCookCache::key(sha, request.settings, request.family, request.blended, request.painted);
     return true;
 }
 

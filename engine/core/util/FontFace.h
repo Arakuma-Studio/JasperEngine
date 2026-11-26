@@ -66,6 +66,7 @@ namespace jasperengine {
         int getUnitsPerEm() const;
         int getAscender() const; int getDescender() const; int getLineGap() const;   // hhea, font units (descender negative)
         int getXHeight() const;            // OS/2 sxHeight (version >= 2), else bbox of 'x', else 0.5 * ascender
+        int getCapHeight() const;          // OS/2 sCapHeight (version >= 2), else bbox of 'H', else 0.7 em
         int getUnderlinePosition() const;  // post, negative below baseline; 0 if no post table
         int getUnderlineThickness() const; // post; 0 if no post table
         bool hasPostTable() const;
@@ -118,6 +119,7 @@ namespace jasperengine {
         int descender = 0;
         int lineGap = 0;
         int xHeight = 0;
+        int capHeight = 0;
         int underlinePosition = 0;
         int underlineThickness = 0;
         bool postTable = false;

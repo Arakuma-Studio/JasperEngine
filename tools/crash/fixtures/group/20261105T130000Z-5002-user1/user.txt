@@ -1,0 +1,14 @@
+JasperEngine user report v1
+product: Forest Run
+version: 1.4
+build_id: 9a8b7c6d5e4f30211203f4e5d6c7b8a9
+platform: android-arm64
+backend: gles3
+session: 20261105T130000Z-5002
+time: 2026-11-05T13:05:00Z
+category: gameplay
+level: forest-2
+field.difficulty: hard
+note:
+The bridge disappears when I jump on it twice.
+It happened on the second level.

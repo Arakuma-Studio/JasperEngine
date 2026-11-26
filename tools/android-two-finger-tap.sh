@@ -2,6 +2,8 @@
 # Two fingers touching the screen of the running emulator together, then lifting together: the
 # Linux multi-touch protocol (type B) through `adb shell sendevent` on the emulator's touch device.
 # tools/android-emulator-test.sh --two-finger-tap runs it inside its container, after the launch.
+# Then a mouse tap and a touchscreen tap in the middle of the screen (the input scheme's switches,
+# tools/test-projects/input/android-expect.txt).
 set -euo pipefail
 
 # the input device nodes are root's: adbd as root (the emulator's aosp_atd image allows it; the
@@ -49,3 +51,14 @@ awk -v wanted="$device" '/^add device/ { current = $4 } current == wanted' <<< "
 adb shell "$down"
 sleep 0.3
 adb shell "$up"
+
+# the input scheme: a mouse (its pointers have the mouse tool type), then a finger, in the middle of the
+# screen: `input` takes display pixels (`wm size`), not the touch device's axis range above
+size="$(adb shell wm size | tr -d '\r' | awk -F': ' '/Override size/ { o = $2 } /Physical size/ { p = $2 } END { print (o != "" ? o : p) }')"
+screen_w="${size%x*}" screen_h="${size#*x}"
+[[ "$screen_w" =~ ^[0-9]+$ && "$screen_h" =~ ^[0-9]+$ ]] || { echo "android-two-finger-tap: no screen size from wm size ($size)" >&2; exit 2; }
+echo "android-two-finger-tap: mouse and touchscreen taps at ($(( screen_w / 2 )), $(( screen_h / 2 ))) of ${screen_w}x${screen_h}"
+sleep 2
+adb shell input mouse tap $(( screen_w / 2 )) $(( screen_h / 2 )) || true
+sleep 2
+adb shell input touchscreen tap $(( screen_w / 2 )) $(( screen_h / 2 )) || true

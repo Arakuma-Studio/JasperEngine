@@ -123,6 +123,11 @@ public:
 	/// @note All existing FontFaceHandles and FontEffectsHandles are considered invalid after this call.
 	virtual void ReleaseFontResources();
 
+	/// Fork (S93 R13): a render manager is about to be destroyed (its last context went: Rml::ReleaseRenderManagers,
+	/// Rml::Shutdown). Its textures in every CallbackTextureSource are already released; the engine forgets what it keeps
+	/// per render manager (a later one may reuse the address). Font resources are no longer released with render managers.
+	virtual void ReleaseRenderManager(RenderManager& render_manager);
+
 	/// Fork (S16-F3): transform-aware text. The render manager's raster scale (device pixels per document pixel) that the
 	/// larger singular value of an element's transform multiplies into its TextShapingContext::raster_scale. The default, 0:
 	/// text is rasterized at the font engine's own scale whatever the transform (RmlUi's behaviour).

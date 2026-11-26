@@ -19,6 +19,7 @@
 #include "command/type/InputActionsEditCmd.h"
 #include "input/InputActionAssetJson.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 #include "input/InputControlPath.h"
 #include "object/environment/Water.h"
 #include "component/MeshComponent.h"
@@ -34,6 +35,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -369,6 +371,17 @@ void getInputStateTool(const CallPtr& call) {
         if (InputActions::isLoaded()) text += "\nactions " + data["actions"]["maps"].dump();
         else text += "\nno Input Actions asset loaded";
     }
+    // the input scheme: what the game treats as the device in use (send_input switches it)
+    const std::optional<InputScheme> forced = InputSchemeTracker::getOverride();
+    const int pad = InputSchemeTracker::getLastGamepad();
+    const std::string current = InputSchemeTracker::groupName(InputSchemeTracker::getCurrent());
+    data["scheme"] = {{"current", current},
+                      {"pointer", InputSchemeTracker::groupName(InputSchemeTracker::getPointer())},
+                      {"gamepad", pad >= 0 ? Json(pad) : Json()},
+                      {"gamepad_family", InputSchemeTracker::familyName(InputSchemeTracker::getGamepadFamily())},
+                      {"override", forced ? Json(InputSchemeTracker::groupName(*forced)) : Json()}};
+    data["changes"] = InputSchemeTracker::getChangeCount();
+    text += "\nscheme " + current + (forced ? " (forced)" : "") + ", " + std::to_string(InputSchemeTracker::getChangeCount()) + " changes";
     if (text.size() > 8000) text = text.substr(0, 8000) + " ... (see structuredContent)";
     call->ok(text, data);
 }
@@ -527,7 +540,8 @@ void registerGameplayTools(McpRegistry& registry) {
             "What the game reads from Input at the last frame that ran: levels (held), the frame's edges "
             "(down/up: getKeyDown/getKeyUp), mouse delta and scroll delta, pointer lock, touches with "
             "phases, gamepads, and the Input Actions maps (priority, enabled, blocked) with each action's value, "
-            "phase and consumer. auto_pause + send_input frames_after 0: the frame the input landed in.";
+            "phase and consumer. auto_pause + "
+            "send_input frames_after 0: the frame the input landed in.";
         tool.inputSchema = object({
             {"fields", array(stringEnum("", {"raw", "touches", "gamepads", "actions"}), "Default: all.")}
         });

@@ -25,7 +25,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using PachislopGeneratorMapJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 using titleart::ParamDef;
 using titleart::ParamKind;
 using titleart::ParamUnit;
@@ -38,24 +38,24 @@ namespace {
                                                            "shockwave", "magicCircle", "brushSwirl", "glints", "lensFlare",
                                                            "backlight", "fire", "smoke", "corona", "lightning"};
 
-    const Json& pachislopGeneratorMapFixture() {
-        static const Json parsed = []() {
+    const PachislopGeneratorMapJson& pachislopGeneratorMapFixture() {
+        static const PachislopGeneratorMapJson parsed = []() {
             std::ifstream in(std::string(JASPER_EDITOR_TEST_FIXTURES) + "/../titleart/fixtures/pachislop-generator-presets.json");
             std::stringstream text;
             text << in.rdbuf();
-            return Json::parse(text.str(), nullptr, false);
+            return PachislopGeneratorMapJson::parse(text.str(), nullptr, false);
         }();
         return parsed;
     }
 
     // Pachislop's param keys by generator type
-    Json paramKeys() {
-        return pachislopGeneratorMapFixture().is_object() ? pachislopGeneratorMapFixture().value("_param_keys", Json::object()) : Json::object();
+    PachislopGeneratorMapJson paramKeys() {
+        return pachislopGeneratorMapFixture().is_object() ? pachislopGeneratorMapFixture().value("_param_keys", PachislopGeneratorMapJson::object()) : PachislopGeneratorMapJson::object();
     }
 
     // the fixture's presets: "<pachislopType>/<presetId>" -> its params
-    std::vector<std::pair<std::string, const Json*>> pachislopPresets() {
-        std::vector<std::pair<std::string, const Json*>> out;
+    std::vector<std::pair<std::string, const PachislopGeneratorMapJson*>> pachislopPresets() {
+        std::vector<std::pair<std::string, const PachislopGeneratorMapJson*>> out;
         if (!pachislopGeneratorMapFixture().is_object()) return out;
         for (auto it = pachislopGeneratorMapFixture().begin(); it != pachislopGeneratorMapFixture().end(); ++it) {
             if (it.key().empty() || it.key()[0] == '_') continue;
@@ -66,7 +66,7 @@ namespace {
 
     // where `a` (the conversion) and `b` (the preset file) differ, ignoring key order and integer
     // vs float; "" when they are the same
-    std::string difference(const Json& a, const Json& b, const std::string& path) {
+    std::string difference(const PachislopGeneratorMapJson& a, const PachislopGeneratorMapJson& b, const std::string& path) {
         if (a.is_number() && b.is_number()) {
             return a.get<double>() == b.get<double>() ? std::string() : path + ": converted " + a.dump() + ", the file has " + b.dump();
         }
@@ -142,9 +142,9 @@ static std::map<std::string, std::string> presetSources(const std::string& type)
     std::ifstream in(std::string(JASPER_EDITOR_TEST_FIXTURES) + "/../../resources/titleart/fx-presets/" + type + ".yaml");
     std::stringstream text;
     text << in.rdbuf();
-    const Json file = Json::parse(text.str(), nullptr, false);
+    const PachislopGeneratorMapJson file = PachislopGeneratorMapJson::parse(text.str(), nullptr, false);
     if (!file.is_object() || !file.contains("presets")) return out;
-    for (const Json& p : file["presets"]) out[p.value("id", std::string())] = p.value("source", std::string());
+    for (const PachislopGeneratorMapJson& p : file["presets"]) out[p.value("id", std::string())] = p.value("source", std::string());
     return out;
 }
 
@@ -172,12 +172,12 @@ TEST(PachislopGeneratorMapTest, EveryPresetIdMapsToOurs) {
 }
 
 TEST(PachislopGeneratorMapTest, EveryParamKeyLandsOnOurs) {
-    const Json keys = paramKeys();
+    const PachislopGeneratorMapJson keys = paramKeys();
     for (const TitlePachislopRow& row : titlePachislopGeneratorRows()) {
         const titleart::GeneratorDef& def = ours(row);
         ASSERT_TRUE(keys.contains(row.pachislop)) << row.pachislop;
         std::set<std::string> theirs;
-        for (const Json& k : keys[row.pachislop]) {
+        for (const PachislopGeneratorMapJson& k : keys[row.pachislop]) {
             const std::string key = k.get<std::string>();
             theirs.insert(key);
             const std::string at = row.pachislop + "." + key;
@@ -251,27 +251,27 @@ TEST(PachislopGeneratorMapTest, PresetsConvertToOurPresetFiles) {
 TEST(PachislopGeneratorMapTest, ConvertsTheRules) {
     std::vector<std::string> notes;
     // follow -> the layer member, angles negated, camelCase -> snake_case, companionOf a note
-    const Json layer = Json::parse(R"({"kind": "generator", "companionOf": "t1",
+    const PachislopGeneratorMapJson layer = PachislopGeneratorMapJson::parse(R"({"kind": "generator", "companionOf": "t1",
         "generator": {"type": "fire", "params": {"follow": "t1", "angle": 90, "overEdge": true}}})");
     const TitlePachislopGenerator fire = convertPachislopGeneratorLayer(layer, &notes);
     EXPECT_EQ(fire.type, "fire");
     EXPECT_EQ(fire.follow, "t1");
-    EXPECT_EQ(difference(fire.params, Json::parse(R"({"angle": -90, "over_edge": true})"), "fire"), "");
+    EXPECT_EQ(difference(fire.params, PachislopGeneratorMapJson::parse(R"({"angle": -90, "over_edge": true})"), "fire"), "");
     ASSERT_EQ(notes.size(), 1u);
     EXPECT_NE(notes[0].find("t1"), std::string::npos) << notes[0];
 
     // half a pair keeps our default's other component; renames and value maps
     notes.clear();
-    const TitlePachislopGenerator flare = convertPachislopGenerator("lensFlare", Json::parse(R"({"y": 10})"), &notes);
+    const TitlePachislopGenerator flare = convertPachislopGenerator("lensFlare", PachislopGeneratorMapJson::parse(R"({"y": 10})"), &notes);
     const ParamDef* position = titleart::findParam(titleart::findGenerator("lens_flare")->params, "position");
     ASSERT_TRUE(position);
-    EXPECT_EQ(difference(flare.params["position"], Json::array({position->defaultValue[0], 10}), "position"), "");
-    const TitlePachislopGenerator aura = convertPachislopGenerator("corona", Json::parse(R"({"mode": "aura", "aura": "weak"})"), &notes);
-    EXPECT_EQ(difference(aura.params, Json::parse(R"({"mode": "rising", "strength": "weak"})"), "aura"), "");
+    EXPECT_EQ(difference(flare.params["position"], PachislopGeneratorMapJson::array({position->defaultValue[0], 10}), "position"), "");
+    const TitlePachislopGenerator aura = convertPachislopGenerator("corona", PachislopGeneratorMapJson::parse(R"({"mode": "aura", "aura": "weak"})"), &notes);
+    EXPECT_EQ(difference(aura.params, PachislopGeneratorMapJson::parse(R"({"mode": "rising", "strength": "weak"})"), "aura"), "");
     EXPECT_TRUE(notes.empty());
 
     // numbered rows: as many as `rows` says, the rest of each row our default, row angles negated
-    const TitlePachislopGenerator circle = convertPachislopGenerator("magicCircle", Json::parse(R"({"rows": "2", "row2Angle": 30, "text": "eto"})"), &notes);
+    const TitlePachislopGenerator circle = convertPachislopGenerator("magicCircle", PachislopGeneratorMapJson::parse(R"({"rows": "2", "row2Angle": 30, "text": "eto"})"), &notes);
     ASSERT_TRUE(circle.params["rows"].is_array());
     ASSERT_EQ(circle.params["rows"].size(), 2u);
     const ParamDef* rows = titleart::findParam(titleart::findGenerator("magic_circle")->params, "rows");
@@ -282,11 +282,11 @@ TEST(PachislopGeneratorMapTest, ConvertsTheRules) {
     EXPECT_TRUE(notes.empty());
 
     // what has no counterpart is dropped with a note
-    const TitlePachislopGenerator unknown = convertPachislopGenerator("shockwave", Json::parse(R"({"noSuchParam": 1, "radius": 200})"), &notes);
-    EXPECT_EQ(difference(unknown.params, Json::parse(R"({"radius": 200})"), "shockwave"), "");
+    const TitlePachislopGenerator unknown = convertPachislopGenerator("shockwave", PachislopGeneratorMapJson::parse(R"({"noSuchParam": 1, "radius": 200})"), &notes);
+    EXPECT_EQ(difference(unknown.params, PachislopGeneratorMapJson::parse(R"({"radius": 200})"), "shockwave"), "");
     ASSERT_EQ(notes.size(), 1u);
     EXPECT_NE(notes[0].find("noSuchParam"), std::string::npos) << notes[0];
     notes.clear();
-    EXPECT_EQ(convertPachislopGenerator("patternFill", Json::object(), &notes).type, "");
+    EXPECT_EQ(convertPachislopGenerator("patternFill", PachislopGeneratorMapJson::object(), &notes).type, "");
     EXPECT_EQ(notes.size(), 1u);
 }
