@@ -1909,6 +1909,11 @@ const FieldEntry kBody_TextComponent_fields[] = {
     JE_RF(TextComponent, anchorHorizontal, 0xbab89cadu, Enum),
     JE_RF(TextComponent, anchorVertical, 0x512f54c7u, Enum),
     JE_RF(TextComponent, fontSizeUnit, 0xd180defau, Enum),
+    JE_RF(TextComponent, horizontalAlignment, 0x4cfaeba5u, Enum),
+    JE_RF(TextComponent, verticalAlignment, 0x4ee575efu, Enum),
+    JE_RF(TextComponent, autoSize, 0xf43e5aceu, Bool),
+    JE_RF(TextComponent, fontSizeMin, 0x064720c8u, UInt),
+    JE_RF(TextComponent, fontSizeMax, 0xfc5c2bc2u, UInt),
     JE_RF(TextComponent, outlineWidth, 0x5563a8d2u, Float),
     JE_RF(TextComponent, outlineColor, 0x6b800909u, Vector4),
     JE_RF(TextComponent, outlineNeighbors, 0x15f6a8cdu, Int),
@@ -2030,6 +2035,9 @@ const FieldEntry kBody_UIDocumentComponent_fields[] = {
     JE_RF(UIDocumentComponent, isMenu, 0xe9c0839fu, Bool),
     JE_RF(UIDocumentComponent, gamepadCursor, 0x7c5c9c11u, Bool),
     JE_RF(UIDocumentComponent, msaaSamples, 0x16930f21u, Int),
+    JE_RF(UIDocumentComponent, updateMode, 0x48bad56eu, Enum),
+    JE_RF(UIDocumentComponent, pixelsPerUnit, 0xb5e6283eu, Float),
+    JE_RF(UIDocumentComponent, billboard, 0x18df0bf3u, Bool),
 };
 const StructTable kBody_UIDocumentComponent{"uidocument", kBody_UIDocumentComponent_fields, std::size(kBody_UIDocumentComponent_fields)};
 
