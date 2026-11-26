@@ -56,6 +56,11 @@ using Clock = std::chrono::steady_clock;
 
 namespace {
 
+    // Each recorded frame samples k / fps plus this: start + k / fps rounds up or down depending on
+    // the take's start, which decided whether a frame exactly at an authored boundary (a step, a
+    // child starting at 900 ms: frame 27 at 30 fps) was before or after it, differently per take
+    constexpr double RECORDER_BOUNDARY_NUDGE = 1e-7;
+
     void appendPng(void* context, void* data, int size) {
         auto* out = static_cast<std::string*>(context);
         out->append(static_cast<const char*>(data), (size_t)size);
@@ -893,16 +898,18 @@ void RecorderSession::prepareFrame() {
     if (!recording() || !host.isPlaying() || Engine::isSimulationHeld() || Engine::isPaused()) return;
     const uint64_t frames = Engine::getGameFrames();
     const uint64_t index = frames >= gameFramesAtStart ? frames - gameFramesAtStart : 0;
-    HtmlUIClock::setFixedTime(recordingUiStart + (double)index / current.frameRate);
+    HtmlUIClock::setFixedTime(recordingUiStart + (double)index / current.frameRate + RECORDER_BOUNDARY_NUDGE);
     // game time moves by the scaled step of each recorded frame (Engine.timeScale read per frame)
     if (index > recordingGameFrame) {
         recordingGameTime += (double)(index - recordingGameFrame) * Engine::getTimeScale() / current.frameRate;
         recordingGameFrame = index;
     }
-    HtmlUIClock::setFixedGameTime(recordingGameTime);
+    HtmlUIClock::setFixedGameTime(recordingGameTime + RECORDER_BOUNDARY_NUDGE);
     if (!animationClocksAligned) {
         // frame zero: CSS and both anime clocks at their initial values
-        AnimEngine::instance().alignClockSources(HtmlUIClock::now(), HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME));
+        // anime's timers start at the frame's unnudged time, as the documents' CSS does
+        AnimEngine::instance().alignClockSources(HtmlUIClock::now() - RECORDER_BOUNDARY_NUDGE,
+                                                 HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME) - RECORDER_BOUNDARY_NUDGE);
         animationClocksAligned = true;
     }
 }
