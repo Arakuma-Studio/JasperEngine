@@ -554,7 +554,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `all` | native | the fork resets every property (not direction or custom properties; CssWideKeywords, phase 3); without it written per property, inherit approximated (inherited properties only); common in button resets |  |
 | `anchor-name` | unsupported | anchor positioning is not supported (HTMLUI-CSS-0002) | position the element with absolute offsets (computed from Lua if they depend on another element) |
 | `anchor-scope` | unsupported | anchor positioning is not supported (HTMLUI-CSS-0002) | position the element with absolute offsets (computed from Lua if they depend on another element) |
-| `animation` | native | directions, fill modes, fractional counts and easing played by the fork as in CSS (AnimationLonghands, TimingFunctions) |  |
+| `animation` | native | CSS animation shorthand; exact easing, times normalized to seconds. |  |
 | `animation-composition` | native | add and accumulate composite as replace (note) | combine the effects in one set of keyframes |
 | `animation-delay` | native | merged into the shorthand; base rule when alone |  |
 | `animation-delay-end` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | use animation-delay |
@@ -569,7 +569,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `animation-range-end` | unsupported | scroll-driven animations are not supported (Warning) (HTMLUI-CSS-0002) | drive the animation from Lua (anime API) |
 | `animation-range-start` | unsupported | scroll-driven animations are not supported (Warning) (HTMLUI-CSS-0002) | drive the animation from Lua (anime API) |
 | `animation-timeline` | unsupported | scroll-driven animations are not supported (Warning) (HTMLUI-CSS-0002) | drive the animation from Lua (anime API) |
-| `animation-timing-function` | native | merged into the shorthand; base rule when alone |  |
+| `animation-timing-function` | native | CSS easing list evaluated exactly; kept as a longhand. |  |
 | `appearance` | rewritten | none / auto write the control companions; exact for the UA-styled controls |  |
 | `aspect-ratio` | native | as in CSS (BoxParity); on img/svg without it the intrinsic ratio applies | set an explicit height, or height: 0; padding-bottom: <ratio %> |
 | `azimuth` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
@@ -718,7 +718,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `break-before` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 | `break-inside` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 
-### Properties: caption-side to container
+### Properties: caption-side to contain-intrinsic-width
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
@@ -730,7 +730,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `chains` | unsupported | template layout (draft) is not supported (HTMLUI-CSS-0002) | lay out the content with flex or block elements |
 | `clear` | native | inline-start/inline-end -> left/right |  |
 | `clip` | unsupported | CSS 2.1 rect() clipping is never passed through: RmlUi's clip property means something else; clip: auto dropped silently (HTMLUI-CSS-0002) | use clip-path: inset(...), or overflow: hidden on a wrapper |
-| `clip-path` | emulated | basic shapes exact through the html-shape decorator, which also clips hit testing (calc() lengths included); url() unsupported |  |
+| `clip-path` | emulated | basic shapes exact through the html-shape decorator, which also clips hit testing (calc() lengths included); inset, circle, ellipse and polygons with the same vertex count interpolate in animations and transitions (linear calc() unit by unit); url() unsupported |  |
 | `clip-rule` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
 | `color` | native | every CSS Color 4 syntax normalized to hex; the current color companion follows it |  |
 | `color-adjust` | ignored | legacy alias of print-color-adjust; printing only (HTMLUI-CSS-0003) |  |
@@ -766,12 +766,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `contain-intrinsic-inline-size` | ignored | rendering optimization hint; no visible effect in a game UI (HTMLUI-CSS-0003) |  |
 | `contain-intrinsic-size` | ignored | rendering optimization hint; no visible effect in a game UI (HTMLUI-CSS-0003) |  |
 | `contain-intrinsic-width` | ignored | rendering optimization hint; no visible effect in a game UI (HTMLUI-CSS-0003) |  |
-| `container` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 
-### Properties: container-name to corner-top-shape
+### Properties: container to corner-top-right-shape
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `container` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 | `container-name` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 | `container-type` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 | `content` | native | only meaningful on ::before/::after (and ::marker with ListMarkers), which need the fork; ignored elsewhere |  |
@@ -810,12 +810,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `corner-top-left-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
 | `corner-top-right` | unsupported | corner shorthand (draft) is not supported (HTMLUI-CSS-0002) | use border-radius |
 | `corner-top-right-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
-| `corner-top-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
 
-### Properties: counter-increment to cursor
+### Properties: corner-top-shape to cursor
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `corner-top-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
 | `counter-increment` | native | without the fork's PseudoElements only the implicit list-item counter is emulated (ol start, li value, reversed) | number the items with ol / li, or write the numbers in the markup |
 | `counter-reset` | native | without the fork's PseudoElements only the implicit list-item counter is emulated (ol start, li value, reversed) | number the items with ol / li, or write the numbers in the markup |
 | `counter-set` | native | without the fork's PseudoElements only the implicit list-item counter is emulated (ol start, li value, reversed) | number the items with ol / li, or write the numbers in the markup |
@@ -1370,12 +1370,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `transform-origin-y` | native | RmlUi engine extension (longhand) |  |
 | `transform-origin-z` | native | RmlUi engine extension (longhand) |  |
 | `transform-style` | unsupported | 3D rendering contexts are not supported (Info) (HTMLUI-CSS-0002) | flatten the scene: put the perspective on each transformed element |
-| `transition` | native | ms -> s, property names mapped to what compat writes; entries and easing played by the fork as in CSS (AnimationLonghands, TimingFunctions) |  |
+| `transition` | native | CSS transition shorthand; exact easing, times normalized to seconds and property names mapped. |  |
 | `transition-behavior` | native | allow-discrete transitions discrete properties, as in CSS (AnimationLonghands) |  |
 | `transition-delay` | native | merged into the shorthand; base rule when alone |  |
 | `transition-duration` | native | merged into the shorthand; base rule when alone |  |
 | `transition-property` | native | merged into the shorthand; base rule when alone |  |
-| `transition-timing-function` | native | merged into the shorthand; base rule when alone |  |
+| `transition-timing-function` | native | CSS easing list evaluated exactly; kept as a longhand. |  |
 | `translate` | native | applied by the fork before transform, as in CSS (IndividualTransforms) |  |
 
 ### Properties: u-z
@@ -1496,16 +1496,16 @@ Values of a property that are not handled like the property's other values; `<..
 | `animation-fill-mode` | `forwards` | native | final keyframe applied by the AnimationFill runtime |  |
 | `animation-iteration-count` | `0` | native | no iterations: the animation is dropped |  |
 | `animation-iteration-count` | `<number>` | native | fractional counts are rounded (Info); integers native |  |
-| `animation-timing-function` | `cubic-bezier()` | native | as in CSS (TimingFunctions) |  |
-| `animation-timing-function` | `ease` | native | as in CSS (TimingFunctions) |  |
-| `animation-timing-function` | `ease-in` | native | as in CSS (TimingFunctions) |  |
-| `animation-timing-function` | `ease-in-out` | native | as in CSS (TimingFunctions) |  |
-| `animation-timing-function` | `ease-out` | native | as in CSS (TimingFunctions) |  |
-| `animation-timing-function` | `linear` | native | as in CSS (TimingFunctions) |  |
-| `animation-timing-function` | `linear()` | native | as in CSS (TimingFunctions) |  |
-| `animation-timing-function` | `step-end` | native | stepped easing as in CSS (TimingFunctions) |  |
-| `animation-timing-function` | `step-start` | native | stepped easing as in CSS (TimingFunctions) |  |
-| `animation-timing-function` | `steps()` | native | stepped easing as in CSS (TimingFunctions) |  |
+| `animation-timing-function` | `cubic-bezier()` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `ease` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `ease-in` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `ease-in-out` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `ease-out` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `linear` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `linear()` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `step-end` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `step-start` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `steps()` | native | CSS easing evaluated exactly. |  |
 | `appearance` | `auto` | rewritten | the UA control look written into the companions |  |
 | `appearance` | `none` | rewritten | each control as Chromium's html.css styles it without its theme (exact): checkboxes and radios bare and sized by their content, selects keep their 1px border on ButtonFace without arrow or inner padding, buttons a 2px outset border, progress bars a gray bar with a green value |  |
 
@@ -1827,16 +1827,16 @@ Values of a property that are not handled like the property's other values; `<..
 | `text-wrap-style` | `balance` | ignored | line balancing refinement; ignored (Info) (HTMLUI-CSS-0005) |  |
 | `text-wrap-style` | `pretty` | ignored | line balancing refinement; ignored (Info) (HTMLUI-CSS-0005) |  |
 | `text-wrap-style` | `stable` | ignored | line balancing refinement; ignored (Info) (HTMLUI-CSS-0005) |  |
-| `transition-timing-function` | `cubic-bezier()` | native | as in CSS (TimingFunctions) |  |
-| `transition-timing-function` | `ease` | native | as in CSS (TimingFunctions) |  |
-| `transition-timing-function` | `ease-in` | native | as in CSS (TimingFunctions) |  |
-| `transition-timing-function` | `ease-in-out` | native | as in CSS (TimingFunctions) |  |
-| `transition-timing-function` | `ease-out` | native | as in CSS (TimingFunctions) |  |
-| `transition-timing-function` | `linear` | native | as in CSS (TimingFunctions) |  |
-| `transition-timing-function` | `linear()` | native | as in CSS (TimingFunctions) |  |
-| `transition-timing-function` | `step-end` | native | stepped easing as in CSS (TimingFunctions) |  |
-| `transition-timing-function` | `step-start` | native | stepped easing as in CSS (TimingFunctions) |  |
-| `transition-timing-function` | `steps()` | native | stepped easing as in CSS (TimingFunctions) |  |
+| `transition-timing-function` | `cubic-bezier()` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `ease` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `ease-in` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `ease-in-out` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `ease-out` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `linear` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `linear()` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `step-end` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `step-start` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `steps()` | native | CSS easing evaluated exactly. |  |
 | `visibility` | `collapse` | rewritten | collapse drawn as hidden |  |
 
 ### Values: w
@@ -1897,7 +1897,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `counter()` | native | with content only, which needs the fork |  |
 | `counters()` | native | with content only, which needs the fork |  |
 | `cross-fade()` | unsupported | image function not supported; layer dropped (HTMLUI-CSS-0015) | use url() or a gradient |
-| `cubic-bezier()` | native | as in CSS (TimingFunctions) |  |
+| `cubic-bezier()` | native | CSS easing evaluated exactly. |  |
 | `drop-shadow()` | rewritten | arguments reordered for RmlUi |  |
 | `effect()` | rewritten | phase-5 UI effects in background-image, background, mask-image, filter and backdrop-filter (jasper://docs/html-ui-effects); elsewhere dropped (HTMLUI-FX-0002) |  |
 | `element()` | unsupported | image function not supported; layer dropped (HTMLUI-CSS-0015) | use url() or a gradient |
@@ -1919,7 +1919,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `lab()` | native | normalized to #rrggbbaa (gamut-clipped to sRGB), relative colors with a static origin; with a var() the fork substitutes at runtime it is written for the fork (ColorFunctions, in the colour, border, outline, background, text-shadow and text-decoration properties) |  |
 | `lch()` | native | normalized to #rrggbbaa (gamut-clipped to sRGB), relative colors with a static origin; with a var() the fork substitutes at runtime it is written for the fork (ColorFunctions, in the colour, border, outline, background, text-shadow and text-decoration properties) |  |
 | `light-dark()` | approximated | the light scheme value is used (Info) (HTMLUI-CSS-0005) |  |
-| `linear()` | native | as in CSS (TimingFunctions) |  |
+| `linear()` | native | CSS easing evaluated exactly. |  |
 | `linear-gradient()` | rewritten | native decorator with normalized arguments |  |
 | `local()` | rewritten | @font-face source selection |  |
 | `log()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
@@ -1970,7 +1970,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `skewX()` | native |  |  |
 | `skewY()` | native |  |  |
 | `sqrt()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
-| `steps()` | native | as in CSS (TimingFunctions) |  |
+| `steps()` | native | CSS easing evaluated exactly. |  |
 | `tan()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
 | `tech()` | rewritten | @font-face source selection |  |
 | `translate()` | native |  |  |
@@ -2184,7 +2184,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `@decorator` | native | RmlUi extension |  |
 | `@document` | unsupported | contents dropped (Warning) (HTMLUI-AT-0001) | put the rules in the stylesheet of the document they target |
 | `@effect` | rewritten | declares a project UI effect (phase 5): { src: url(<file>.frag) }, hoisted; problems are HTMLUI-FX-0012 to 0014 |  |
-| `@font-face` | rewritten | TTF/OTF source selection and descriptors |  |
+| `@font-face` | rewritten | TTF/OTF/WOFF/WOFF2 source selection and descriptors |  |
 | `@font-feature-values` | ignored | font features are not supported; dropped (Info) (HTMLUI-AT-0001) |  |
 | `@font-palette-values` | ignored | font palettes are not supported; dropped (Info) (HTMLUI-AT-0001) |  |
 | `@import` | rewritten | inlined with its media, layer and supports conditions |  |
@@ -2314,7 +2314,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-CSS-0019` | info | **Easing approximated** (`easing-approximated`): The easing function was replaced by the nearest built-in tween; the message names it and the largest error. |
 | `HTMLUI-CSS-0020` | warning | **steps() approximated** (`steps-approximated`): steps(), step-start and step-end are replaced by a linear easing until the layout library supports them. |
 | `HTMLUI-CSS-0021` | by case (warning) | **Animation approximated** (`animation-approximated`): Part of an animation is approximated: per-keyframe easing dropped, a fractional iteration count rounded, the backwards fill mode not applied during the delay, ... |
-| `HTMLUI-CSS-0022` | by case (warning) | **Font source** (`font-source`): An @font-face source was skipped (WOFF/WOFF2/SVG/EOT, local(): Info), or the rule has no TrueType/OpenType or bitmap font (.bitmapfont, .fnt) source and was dropped (Warning). Convert the font to TTF or OTF; remote fonts are imported as TTF by the editor. |
+| `HTMLUI-CSS-0022` | by case (warning) | **Font source** (`font-source`): An @font-face source was skipped (SVG/EOT, local(): Info), or the rule has no supported vector or bitmap font (.bitmapfont, .fnt) source and was dropped (Warning). Provide TTF, OTF, WOFF, WOFF2 or a bitmap font; remote fonts are imported by the editor. |
 | `HTMLUI-CSS-0023` | info | **Unknown font family** (`unknown-font-family`): No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the engine's fallback font. |
 | `HTMLUI-CSS-0024` | warning | **Blurred effect on a bitmap font** (`bitmap-font-effect`): A rule with a bitmap font family (.bitmapfont or .fnt @font-face) has a glow, a blur or a blurred text-shadow: a pixel font draws only pixel outlines and sharp shadows, so the effect is dropped. Use font-effect: outline(1px <colour>) or a text-shadow without blur. |
 
@@ -2408,7 +2408,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-IMP-0004` | info | **Imported** (`imported`): A remote resource was downloaded into assets/htmlui-imports/ and recorded in the manifest. |
 | `HTMLUI-IMP-0005` | error | **curl missing** (`curl-missing`): The editor downloads through the curl executable, which was not found. Install curl and make sure it is on the PATH. |
 | `HTMLUI-IMP-0006` | warning | **Font variant unavailable** (`font-variant-unavailable`): The font provider does not offer a requested weight or style; the text falls back to the nearest available one. |
-| `HTMLUI-IMP-0007` | warning | **WOFF only** (`woff-only`): The remote font is only available as WOFF/WOFF2, which the engine cannot read. Provide a TTF or OTF version. |
+| `HTMLUI-IMP-0007` | warning | **WOFF only** (`woff-only`): Legacy diagnostic, no longer emitted: WOFF and WOFF2 fonts are imported as they are. |
 | `HTMLUI-IMP-0008` | info | **License note** (`license-note`): The license of an imported resource was recorded, or it is unknown and must be verified before shipping. |
 | `HTMLUI-IMP-0009` | warning | **Manifest file missing** (`manifest-file-missing`): An import manifest entry points to a file that does not exist; re-import the resource (load the document in the editor, jasperengine-editor import-ui, or MCP import_files from_document). |
 | `HTMLUI-IMP-0010` | warning | **Video not converted** (`video-not-converted`): The importer kept a video the engine cannot play because no FFmpeg with an AV1 encoder was found (JASPER_FFMPEG, the editor setting, then PATH). Install FFmpeg with SVT-AV1 (or libaom-av1, rav1e) and libopus and import it again, or run the command in the message. FFmpeg is the user's own tool, run as a separate program; the engine never links or ships it. |
