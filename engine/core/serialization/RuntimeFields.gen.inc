@@ -3018,6 +3018,7 @@ const FieldEntry kBody_VertexColorsComponent_fields[] = {
     JE_RF(VertexColorsComponent, channelNames, 0xc794fd86u, Array),
 };
 const StructTable kBody_VertexColorsComponent{"vertexcolors", kBody_VertexColorsComponent_fields, std::size(kBody_VertexColorsComponent_fields)};
+
 const FieldEntry kBody_FogZoneComponent_fields[] = {
     JE_RF(FogZoneComponent, shape, 0x1862110au, Enum),
     JE_RF(FogZoneComponent, size, 0xc3d4c9e8u, Vector3),
