@@ -39,6 +39,9 @@ namespace jasperengine{
         float bpm = 0.0f;
         int beatsPerBar = 4;
         int64_t firstBeatFrame = 0;
+        // Force To Mono: a file of several channels plays as one, the mean of its channels per
+        // frame (AudioClipSource); a mono file ignores it. Only a true value changes hash().
+        bool forceMono = false;
         // how the clip is held when a source does not choose (its Load Type Auto), and for free
         // voices, one-shots, events and music (S97 REQ-16); the value-initialised Auto sizes it.
         // It never changes the samples: not in hash()

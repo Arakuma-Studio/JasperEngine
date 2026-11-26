@@ -70,6 +70,8 @@
 #include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
+#include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
@@ -247,6 +249,10 @@ EntityRegistry::EntityRegistry() {
     registerComponent<WheelColliderComponent>(ComponentOrder::Insertion, "WheelColliderComponent");
     registerComponent<VehicleDrivetrainComponent>(ComponentOrder::Insertion, "VehicleDrivetrainComponent");
 #endif
+    // culling-group-and-simulation-distance R10: after the last one, so no ComponentType moves
+    registerComponent<SimulationCullingComponent>(ComponentOrder::Insertion, "SimulationCullingComponent");
+    // dialogue-graphs.md R13: after the last one, so no ComponentType moves (registered without the module too)
+    registerComponent<DialogueRunnerComponent>(ComponentOrder::Insertion, "DialogueRunnerComponent");
     // S94 F22: after the last one, so no ComponentType moves
     registerComponent<OutlineComponent>(ComponentOrder::Insertion, "OutlineComponent");
     // S94 F49: after the last one, so no ComponentType moves
@@ -377,6 +383,7 @@ bool EntityRegistry::changeTransformChildren(Entity entity){
         if (childTransform.parent == entity) {
             childTransform.parent = newParent;
             childTransform.needUpdate = true;
+            transformArray->markChanged(transformArray->getEntity(i));
             // no visibility cascade: the children and theirs keep their own flags
             hadChildren = true;
         }
@@ -1109,6 +1116,9 @@ void EntityRegistry::setEntityChild(Entity parent, Entity child, bool changeTran
                 }
             }
         }
+        // Changed<Transform>: a reparenting after the scenes' update is drawn that frame (the late
+        // transform pass, S95 REQ-5)
+        componentManager.getComponentArray<Transform>()->markChanged(child);
     }
 
 }

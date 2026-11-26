@@ -4,7 +4,9 @@
 // query_physics (docs/specs/S96-physics-gaps.md REQ-17): the running game's physics world asked
 // what Lua's Physics / Physics2D queries ask (ray, sphere, box, capsule and point casts,
 // overlaps and checks) with the same options, and the shapes and hits drawn for a few seconds
-// in the Game view's physics debug lines.
+// in the Game view's physics debug lines. docs/specs/spatial-queries.md R25 adds mode verify (an
+// overlap compared with PhysicsQueryReference's body-by-body sweep) and dimension drawn
+// (MeshRaycast's bounds overlaps: what is drawn, trees included, in edit mode too).
 #include "McpTools.h"
 #include "PlayViewCommon.h"
 
@@ -18,9 +20,14 @@
 #include "Configs.h"
 #include "Project.h"
 #include "Scene.h"
+#include "component/TerrainWorldComponent.h"
+#include "picking/MeshRaycast.h"
 #include "physics/PhysicsDebugLines.h"
 #include "physics/PhysicsQueries2D.h"
 #include "physics/PhysicsQueries3D.h"
+#include "physics/PhysicsQueryReference.h"
+#include "terrain/FoliageTypes.h"
+#include "terrainworld/TerrainWorldTrees.h"
 #include "registry/PhysicsLayers.h"
 #include "registry/TagManager.h"
 #include "subsystem/PhysicsSystem.h"
@@ -203,9 +210,100 @@ void shapeLines(QueryLines& lines, const QueryArgs& q, const Vector3& offset, fl
     }
 }
 
+// dimension drawn: MeshRaycast's bounds overlap of what is drawn (no colliders, edit mode too)
+void queryDrawnTool(const CallPtr& call, Project* project) {
+    const Json& args = call->args();
+    const std::string shape = args.value("shape", std::string("ray"));
+    if (args.value("mode", std::string("cast")) != "overlap" || (shape != "sphere" && shape != "box")) {
+        call->fail("dimension drawn answers mode overlap with shape sphere or box (bounds); for a ray against what is drawn use raycast_meshes.");
+        return;
+    }
+    std::string error;
+    const bool playing = project->getPlaySessionSceneId() != NULL_PROJECT_SCENE;
+    const Json sceneArg = args.contains("scene") ? args["scene"] : Json();
+    SceneProject* sp = playing ? w3::resolveRuntimeScene(project, sceneArg, error) : McpRefs::resolveScene(project, sceneArg, error);
+    if (!sp) {
+        call->fail(error);
+        return;
+    }
+    if (!sp->scene) {
+        call->fail(McpRefs::notOpenError(project, *sp));
+        return;
+    }
+    Scene* scene = sp->scene;
+    Vector3 origin, halfExtents;
+    float radius = 0.0f;
+    Quaternion rotation = Quaternion::IDENTITY;
+    if (!readQueryVector(args, "origin", false, origin, error) ||
+        (shape == "sphere" && !readQueryNumber(args, "radius", radius, error)) ||
+        (shape == "box" && !readQueryVector(args, "half_extents", false, halfExtents, error))) {
+        call->fail(error);
+        return;
+    }
+    if (shape == "box" && args.contains("rotation") && !McpValues::parseQuaternion(args["rotation"], rotation, &error)) {
+        call->fail("rotation: " + error);
+        return;
+    }
+    MeshRaycastOptions options = MeshRaycast::overlapOptions();
+    options.current = true;
+    uint32_t layerMask = LAYER_MASK_DEFAULT_RAYCAST;
+    if (args.contains("layer_mask") && !readQueryLayerMask(args["layer_mask"], layerMask, error)) {
+        call->fail(error);
+        return;
+    }
+    if (args.contains("ignore")) {
+        for (const Json& ref : args["ignore"]) {
+            const Entity entity = playing ? w3::resolveLiveEntity(project, sp, ref, error) : McpRefs::resolveEntity(sp, ref, error);
+            if (entity == NULL_ENTITY) {
+                call->fail("ignore: " + error);
+                return;
+            }
+            options.ignore.push_back(entity);
+        }
+    }
+    std::vector<MeshOverlapHit> drawn;
+    if (shape == "box") MeshRaycast::overlapBox(scene, origin, halfExtents, rotation, drawn, layerMask, options);
+    else MeshRaycast::overlapSphere(scene, origin, radius, drawn, layerMask, options);
+    Json list = Json::array();
+    for (const MeshOverlapHit& hit : drawn) {
+        Json item = {{"entity", hit.entity}, {"name", McpRefs::entityPath(sp, hit.entity)}, {"kind", pickKindName(hit.kind)}};
+        if (hit.instance >= 0) item["instance"] = hit.instance;
+        if (hit.kind == PickKind::TREE || hit.kind == PickKind::DETAIL) {
+            // the entity is the Terrain; a tree as raycast_meshes and edit_terrain name it
+            item["prototype"] = hit.prototype;
+            if (hit.kind == PickKind::TREE) {
+                item["tree_id"] = scene->findComponent<TerrainWorldComponent>(hit.entity)
+                    ? terrainWorldTreeId(terraincore::TileCoord::fromKey(terraincore::treeIdRegion(hit.foliageId)), terraincore::treeIdRecord(hit.foliageId))
+                    : hit.foliageId;
+            }
+        }
+        list.push_back(item);
+    }
+    Json data = {{"dimension", "drawn"}, {"shape", shape}, {"mode", "overlap"}, {"hits", list}};
+    if (list.empty()) {
+        call->ok("Nothing drawn overlaps.", data);
+        return;
+    }
+    // the hits in the text too: a client that shows the model only the text still names them
+    std::string text = std::to_string(list.size()) + " drawn object(s) overlap:";
+    const size_t shown = std::min<size_t>(list.size(), 20);
+    for (size_t i = 0; i < shown; i++) {
+        const Json& item = list[i];
+        text += (i ? ", " : " ") + item["name"].get<std::string>();
+        if (item.contains("tree_id")) text += " tree " + std::to_string(item["tree_id"].get<long long>());
+        else if (item["kind"] != "mesh") text += " " + item["kind"].get<std::string>();
+    }
+    if (shown < list.size()) text += ", ...";
+    call->ok(text + ".", data);
+}
+
 void queryPhysicsTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
+    if (project && args.value("dimension", std::string()) == "drawn") {
+        queryDrawnTool(call, project);
+        return;
+    }
     if (!project || project->getPlaySessionSceneId() == NULL_PROJECT_SCENE) {
         call->fail("query_physics reads the running physics world: start Play first (play).");
         return;
@@ -224,6 +322,8 @@ void queryPhysicsTool(const CallPtr& call) {
     q.shape = args.value("shape", std::string("ray"));
     q.mode = args.value("mode", std::string("cast"));
     const bool cast = q.mode == "cast" || q.mode == "cast_all";
+    // verify: the overlap, and PhysicsQueryReference's sweep of every body compared with it
+    const bool verify = q.mode == "verify";
     if (q.shape == "ray" && !cast) {
         call->fail("A ray only casts: mode cast or cast_all (an overlap needs sphere, box, capsule or point).");
         return;
@@ -418,6 +518,35 @@ void queryPhysicsTool(const CallPtr& call) {
         any = !colliders.empty();
     }
 
+    Json verified;
+    if (verify) {
+        physics::QueryShape shape;
+        if (q.is2D) {
+            if (q.shape == "sphere") shape = physics::QueryShape::circle2D(origin2, q.radius);
+            else if (q.shape == "box" && q.hasPoints) shape = physics::QueryShape::area2D(Vector2(q.pointA.x, q.pointA.y), Vector2(q.pointB.x, q.pointB.y));
+            else if (q.shape == "box") shape = physics::QueryShape::box2D(origin2, size2, q.angle);
+            else if (q.shape == "capsule") shape = physics::QueryShape::capsule2D(origin2, size2, capsuleDirection, q.angle);
+            else shape = physics::QueryShape::point2D(origin2);
+        } else {
+            if (q.shape == "sphere") shape = physics::QueryShape::sphere(q.origin, q.radius);
+            else if (q.shape == "box") shape = physics::QueryShape::box(q.origin, q.halfExtents, q.rotation);
+            else if (q.shape == "capsule") shape = physics::QueryShape::capsule(q.pointA, q.pointB, q.radius);
+            else shape = physics::QueryShape::point(q.origin);
+        }
+        std::vector<physics::QueryCollider> found, reference;
+        for (const auto& [entity, index] : colliders) found.push_back({entity, index});
+        physics::referenceOverlap(scene, shape, options, reference);
+        const physics::ReferenceDiff diff = physics::compare(found, reference);
+        auto named = [&](const std::vector<physics::QueryCollider>& items) {
+            Json out = Json::array();
+            for (const physics::QueryCollider& item : items) {
+                out.push_back({{"entity", item.entity}, {"name", McpRefs::entityPath(sp, item.entity)}, {"collider", item.index}});
+            }
+            return out;
+        };
+        verified = {{"reference_count", diff.referenceCount}, {"missing", named(diff.missing)}, {"extra", named(diff.extra)}, {"ok", diff.ok()}};
+    }
+
     // draw: the shape at its start (and, cast, at its end or first hit), the hits
     size_t drawn = 0;
     if (args.value("draw", false) && physics) {
@@ -482,6 +611,12 @@ void queryPhysicsTool(const CallPtr& call) {
         data["hits"] = list;
         text = list.empty() ? std::string("Nothing overlaps.") : std::to_string(list.size()) + " collider(s) overlap.";
     }
+    if (verify) {
+        data["verify"] = verified;
+        text += verified["ok"].get<bool>() ? " The brute-force sweep agrees."
+                                           : " The brute-force sweep differs: " + std::to_string(verified["missing"].size()) + " missing, " +
+                                                 std::to_string(verified["extra"].size()) + " extra.";
+    }
     if (drawn > 0) data["drawn_lines"] = drawn;
     call->ok(text, data);
 }
@@ -496,13 +631,13 @@ void registerPhysicsQueryTools(McpRegistry& registry) {
     tool.name = "query_physics";
     tool.title = "Query Physics";
     tool.description =
-        "The running game's colliders (Play only), as Lua's Physics queries: ray/sphere/box/capsule/point cast, cast_all, "
-        "overlap or check; 2D in points (sphere = circle). draw: shows it 3 s in the Game view.";
+        "The running game's colliders (Play only): ray/sphere/box/capsule/point cast, cast_all, overlap or check; verify "
+        "compares an overlap with a brute-force sweep. 2D in points. drawn: mesh/tree bounds, edit mode too.";
     tool.inputSchema = object({
         {"scene", sceneRef()},
-        {"dimension", stringEnum("", {"2d", "3d"})},
+        {"dimension", stringEnum("", {"2d", "3d", "drawn"})},
         {"shape", stringEnum("", {"ray", "sphere", "box", "capsule", "point"})},
-        {"mode", withDefault(stringEnum("", {"cast", "cast_all", "overlap", "check"}), "cast")},
+        {"mode", withDefault(stringEnum("", {"cast", "cast_all", "overlap", "check", "verify"}), "cast")},
         {"origin", vector},
         {"direction", vector},
         {"max_distance", number("")},

@@ -127,6 +127,11 @@ double AudioSource::getLength(){
     return audio.length;
 }
 
+int AudioSource::getChannels() const{
+    const AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
+    return audio.sample ? (int)audio.sample->mChannels : 0;
+}
+
 double AudioSource::getPlayingTime(){
     AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 

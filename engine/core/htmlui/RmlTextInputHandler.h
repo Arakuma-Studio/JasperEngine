@@ -7,6 +7,7 @@
 #include "Export.h"
 
 #include "math/Rect.h"
+#include "input/TextEntry.h"
 
 #include <RmlUi/Core/Header.h>
 #include <RmlUi/Core/Types.h>
@@ -56,9 +57,22 @@ namespace jasperengine {
         // inside its focus event, before Context::GetFocusElement returns it (and the
         // component UI of other scenes may hide the keyboard later in the same press).
         // requestKeyboard asks again for the active field (a press on a focused field reopens
-        // a keyboard the user dismissed); UIDocumentSystem::update flushes.
+        // a keyboard the user dismissed); UIDocumentSystem::update flushes. A blur hides the
+        // keyboard at the flush too, unless a field took the focus meanwhile: moving between
+        // fields only changes the traits (text-entry R5). While a field stays focused, the flush
+        // re-sends changed traits (an attribute set by a script) and, where the soft keyboard
+        // keeps the text (System::keepsVirtualKeyboardText), sends the field's value and caret
+        // back when they differ from what the keyboard last held (R4, D5): once a frame at most.
         void requestKeyboard();
         void flushKeyboard();
+
+        // the soft keyboard (one for the app): shown for a document field, with these traits
+        static bool isKeyboardShown();
+        static const TextEntryTraits& getKeyboardTraits();
+
+        // the soft keyboard now holds this text (UTF-8) and selection (code points): its last
+        // snapshot (Engine::systemTextInputState), for the active handler
+        static void noteKeyboardText(const std::string& utf8, int selectionStart, int selectionEnd);
 
         // RmlSystem::ActivateKeyboard: the caret of the active field, context pixels
         void setCaret(Rml::Vector2f position, float lineHeight);
@@ -75,6 +89,9 @@ namespace jasperengine {
         Rml::Context* context = nullptr;
         Rml::TextInputContext* inputContext = nullptr;
         std::function<Rect(const Rect&)> canvasMapper;
+
+        void showKeyboard(Rml::Element* field);
+        void resyncKeyboard(Rml::Element* field);
 
         bool keyboardPending = false;
         bool composing = false;

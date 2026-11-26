@@ -10,6 +10,7 @@
 #include "audio/SourceEffectEdit.h"
 #include "component/Transform.h"
 #include "util/ProjectChecks.h"
+#include "render/IesProfile.h"
 #include "component/CanvasGroupComponent.h"
 #include "camera/ShakePresets.h"
 #include "camera/ShakePreset.h"
@@ -43,6 +44,7 @@
 #include "tiny_gltf.h"
 #include "component/TerrainComponent.h"
 #include "component/ScriptComponent.h"
+#include "dataasset/DataAssets.h"
 #include "component/TextComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/UIDocumentComponent.h"
@@ -309,6 +311,7 @@ bool isAssetPathProperty(ComponentType component, const std::string& propertyNam
     return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
            (component == ComponentType::AudioSourceComponent && propertyName == "event") ||
            (component == ComponentType::AnimatorComponent && propertyName == "controller") ||
+           (component == ComponentType::LightComponent && propertyName == "iesProfile") ||
            isPlayerClipProperty(component, propertyName) || isVertexAnimationProperty(component, propertyName) ||
            isPhysicsMaterialProperty(component, propertyName);
 }
@@ -374,7 +377,7 @@ bool submeshMaterialIndex(const std::string& name, unsigned int& index) {
     size_t pos = prefix.size();
     size_t end = pos;
     while (end < name.size() && std::isdigit(static_cast<unsigned char>(name[end]))) end++;
-    if (end == pos || name.compare(end, std::string::npos, "].material") != 0) return false;
+    if (end == pos || end - pos > 9 || name.compare(end, std::string::npos, "].material") != 0) return false;
     index = static_cast<unsigned int>(std::stoul(name.substr(pos, end - pos)));
     return true;
 }
@@ -626,6 +629,14 @@ const EnumOptions& litQualityOptions() {
     return options;
 }
 
+const EnumOptions& ambientModeOptions() {
+    static const EnumOptions options = {
+        {(int)AmbientMode::COLOR, "color", "Color"},
+        {(int)AmbientMode::GRADIENT, "gradient", "Gradient"}
+    };
+    return options;
+}
+
 const EnumOptions& planarReflectionResolutionOptions() {
     static const EnumOptions options = {
         {(int)PlanarReflectionResolution::OFF, "off", "Off"},
@@ -642,6 +653,14 @@ const EnumOptions& waterWakeResolutionOptions() {
         {(int)WaterWakeResolution::LOW, "low", "Low (128)"},
         {(int)WaterWakeResolution::MEDIUM, "medium", "Medium (256)"},
         {(int)WaterWakeResolution::HIGH, "high", "High (512)"}
+    };
+    return options;
+}
+
+const EnumOptions& uiRenderModeOptions() {
+    static const EnumOptions options = {
+        {(int)UIRenderMode::OVERLAY, "overlay", "Screen Space - Overlay"},
+        {(int)UIRenderMode::CAMERA, "camera", "Screen Space - Camera"}
     };
     return options;
 }
@@ -676,7 +695,7 @@ bool splitPath(const std::string& path, std::vector<PathSegment>& out) {
             size_t end = path.find(']', i);
             if (end == std::string::npos || end == i + 1) return false;
             const std::string digits = path.substr(i + 1, end - i - 1);
-            if (!std::all_of(digits.begin(), digits.end(), [](unsigned char d) { return std::isdigit(d); })) return false;
+            if (digits.size() > 9 || !std::all_of(digits.begin(), digits.end(), [](unsigned char d) { return std::isdigit(d); })) return false;
             out.push_back({std::string(), std::stol(digits)});
             i = end;
         } else {
@@ -838,9 +857,11 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"shadow_debug_view", &shadowDebugViewOptions()},
         {"shadow_tier", &shadowTierOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
+        {"ui_render_mode", &uiRenderModeOptions()},
         {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
         {"water_wake_resolution", &waterWakeResolutionOptions()},
         {"lit_quality", &litQualityOptions()},
+        {"ambient_mode", &ambientModeOptions()},
         {"light_unit", &tableOptions(reflect::enums::kLightUnit)},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},
         // framebuffers have no mipmaps
@@ -970,7 +991,9 @@ bool McpValues::enumFromJson(const Json& value, const EnumOptions& options, int&
             }
         }
     }
-    error = "\"" + value.get<std::string>() + "\" is not one of: " + namesText() + ".";
+    std::vector<std::string> names;
+    for (const EnumOption& option : options) names.push_back(option.name);
+    error = "\"" + value.get<std::string>() + "\" is not one of: " + namesText() + NearestIdentifierSuffix(value.get<std::string>(), names) + ".";
     return false;
 }
 
@@ -2588,8 +2611,50 @@ Json McpValues::readYamlProperty(ReadContext& ctx, const std::string& name, bool
     return yamlToJson(node);
 }
 
+namespace {
+
+// The declared property a "scripts[N].<name>" names, null for any other property
+const ScriptProperty* findScriptPropertyNamed(Scene* scene, Entity entity, ComponentType component, const std::string& name) {
+    if (component != ComponentType::ScriptComponent || !scene || name.rfind("scripts[", 0) != 0) return nullptr;
+    const size_t close = name.find("].");
+    if (close == std::string::npos) return nullptr;
+    char* end = nullptr;
+    const unsigned long index = std::strtoul(name.c_str() + 8, &end, 10);
+    if (end != name.c_str() + close) return nullptr;
+    const std::string field = name.substr(close + 2);
+    ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+    if (!scripts || index >= scripts->scripts.size()) return nullptr;
+    for (const ScriptProperty& prop : scripts->scripts[index].properties) {
+        if (prop.name == field) return &prop;
+    }
+    return nullptr;
+}
+
+// a list script property's value (S95 REQ-20): its elements as single values read
+Json scriptListToJson(Project* project, SceneProject* scene, const ScriptProperty& prop, const ScriptPropertyList& list) {
+    Json items = Json::array();
+    ScriptProperty element = prop;
+    element.type = prop.elementType;
+    for (const ScriptPropertyElement& item : list.items) {
+        if (const EntityReference* ref = std::get_if<EntityReference>(&item)) {
+            items.push_back(McpValues::entityReferenceToJson(project, scene, *ref));
+        } else {
+            items.push_back(DataAssets::toJson(project, element, scriptPropertyValueOf(item)));
+        }
+    }
+    return items;
+}
+
+} // namespace
+
 Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const PropertyData& property, bool readDefault) {
     void* ref = readDefault ? property.def : property.ref;
+    if (property.type == PropertyType::Custom && ref && ctx.scene) {
+        const ScriptProperty* prop = findScriptPropertyNamed(ctx.scene->scene, ctx.entity, ctx.component, name);
+        if (prop && prop->type == ScriptPropertyType::List) {
+            return scriptListToJson(ctx.project, ctx.scene, *prop, *static_cast<ScriptPropertyList*>(ref));
+        }
+    }
     if (property.type == PropertyType::Custom) {
         // an Animation Player entry's wrap has a default ("default"), like an enum
         if (readDefault){
@@ -3072,6 +3137,24 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 }
             }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
+            // a light's IES Profile (S99 R36): an .ies file the renderer reads (TILT=NONE, Type C)
+            if (component == ComponentType::LightComponent && propertyName == "iesProfile" && !text.empty()) {
+                std::string contents;
+                IesProfile profile;
+                std::string why;
+                if (!Util::isIesFile(text)) {
+                    error = "iesProfile: '" + text + "' is no .ies file: import an IESNA LM-63 file with import_files.";
+                    return nullptr;
+                }
+                if (!ProjectChecks::readFile(project->resolveAssetPath(text), contents)) {
+                    error = "iesProfile: '" + text + "' cannot be read: import it with import_files.";
+                    return nullptr;
+                }
+                if (!IesProfile::parse(contents, profile, why)) {
+                    error = "iesProfile: '" + text + "': " + why + ".";
+                    return nullptr;
+                }
+            }
             // an Asset script property is project-relative: a GUID given names its file
             if (stringType == PropertyType::Asset && propertyName.compare(0, 8, "scripts[") == 0 && Guid::isValidText(text)) {
                 const fs::path found = project->getAssetDatabase().getPath(Guid::parse(text));
@@ -3080,6 +3163,17 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                     return nullptr;
                 }
                 text = FileUtils::pathToGenericUtf8(found);
+            }
+            // a Data Asset property takes a .dataasset of its class (S95 REQ-22)
+            if (const ScriptProperty* dataProp = stringType == PropertyType::Asset ? findScriptPropertyNamed(scene->scene, entity, component, propertyName) : nullptr;
+                    dataProp && dataProp->isDataAssetReference() && !text.empty()) {
+                ScriptPropertyValue checked;
+                std::string why;
+                if (!DataAssets::fromJson(project, *dataProp, Json(text), true, checked, why)) {
+                    error = propertyName + ": " + why + " (make one with edit_data_asset).";
+                    return nullptr;
+                }
+                return new PropertyCmd<AssetRef>(project, sceneId, entity, component, propertyName, std::get<AssetRef>(checked), onChanged);
             }
             // a foliage layer's FBX mesh loads from its import, queued here the first time: the layer
             // draws once it lands (S98 REQ-32)
@@ -3515,6 +3609,32 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                     return nullptr;
                 }
                 return new PropertyCmd<AnimationLayerBlend>(project, sceneId, entity, component, propertyName, blend, onChanged);
+            }
+            if (const ScriptProperty* listProp = findScriptPropertyNamed(scene->scene, entity, component, propertyName);
+                    listProp && listProp->type == ScriptPropertyType::List) {
+                // the whole list: each element as its single property takes it (S95 REQ-20)
+                if (!value.is_array()) {
+                    error = "Property " + propertyName + " is a list: give an array of its elements.";
+                    return nullptr;
+                }
+                ScriptPropertyList list;
+                for (size_t i = 0; i < value.size(); i++) {
+                    ScriptPropertyElement element;
+                    std::string why;
+                    if (listProp->elementType == ScriptPropertyType::EntityReference) {
+                        Entity target = NULL_ENTITY;
+                        if (!value[i].is_null() && (target = McpRefs::resolveEntity(scene, value[i], why)) == NULL_ENTITY) {
+                            error = "Property " + propertyName + "[" + std::to_string(i) + "]: " + why;
+                            return nullptr;
+                        }
+                        element = EntityReference{target, 0};
+                    } else if (!DataAssets::elementFromJson(project, *listProp, value[i], true, element, why)) {
+                        error = "Property " + propertyName + "[" + std::to_string(i) + "]: " + why;
+                        return nullptr;
+                    }
+                    list.items.push_back(std::move(element));
+                }
+                return new PropertyCmd<ScriptPropertyList>(project, sceneId, entity, component, propertyName, list, onChanged);
             }
             if (isScriptPrefabProperty(scene->scene, entity, component, propertyName)) {
                 PrefabAsset prefab;
@@ -4391,7 +4511,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                                 names.push_back(name);
                             }
                             error = "Unknown property \"" + edit.property + "\" of " + componentLabel + " on " + label +
-                                    NearestNameSuffix(edit.property, names) + ". Properties: " + propertyNamesText(scene, entity, component) +
+                                    NearestIdentifierSuffix(edit.property, names) + ". Properties: " + propertyNamesText(scene, entity, component) +
                                     " (custom ones also by their scene-file keys, see get_entity detail=\"yaml\").";
                             // the Vertex Animator's edit-mode Preview is a runtime flag, never saved
                             // (no undo step, no scene change): its route is Lua

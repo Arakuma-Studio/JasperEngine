@@ -501,6 +501,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::WaterVolumeComponent: return &InspectorWindow::drawWaterVolumeComponent;
         case ComponentType::WaterExcluderComponent: return &InspectorWindow::drawWaterExcluderComponent;
         case ComponentType::WaterWakeComponent: return &InspectorWindow::drawWaterWakeComponent;
+        case ComponentType::SimulationCullingComponent: return &InspectorWindow::drawSimulationCullingComponent;
+        case ComponentType::DialogueRunnerComponent: return &InspectorWindow::drawDialogueRunnerComponent;
         case ComponentType::BuoyancyComponent: return &InspectorWindow::drawBuoyancyComponent;
         case ComponentType::WheelColliderComponent: return &InspectorWindow::drawWheelColliderComponent;
         case ComponentType::VehicleDrivetrainComponent: return &InspectorWindow::drawVehicleDrivetrainComponent;

@@ -341,10 +341,16 @@ Vector3 Camera::getTarget() const{
 }
 
 void Camera::disableTarget(){
+    setUseTarget(false);
+}
+
+void Camera::setUseTarget(bool useTarget){
     CameraComponent& camera = getComponent<CameraComponent>();
-    camera.useTarget = false;
-    camera.needUpdate = true;
-    markChanged<CameraComponent>();
+    if (camera.useTarget != useTarget){
+        camera.useTarget = useTarget;
+        camera.needUpdate = true;
+        markChanged<CameraComponent>();
+    }
 }
 
 bool Camera::isUsingTarget() const{

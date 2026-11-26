@@ -12,6 +12,7 @@ namespace jasperengine{
     enum class LightType;
     enum class LightShading;
     enum class LightUnit;
+    enum class AreaLightShape;
 
     class JASPERENGINE_API Light: public GameObject{
     public:
@@ -82,6 +83,20 @@ namespace jasperengine{
         float getInnerConeAngle() const;
         void setOuterConeAngle(float outer);
         float getOuterConeAngle() const;
+
+        // An Area Light's shape and size (metres; not the transform's scale), S99 R32
+        void setAreaShape(AreaLightShape shape);
+        AreaLightShape getAreaShape() const;
+        void setAreaWidth(float width);
+        float getAreaWidth() const;
+        void setAreaHeight(float height);
+        float getAreaHeight() const;
+        void setAreaRadius(float radius);
+        float getAreaRadius() const;
+
+        // A spot or point light's IES Profile (an .ies file's path; "" for none), S99 R37
+        void setIesProfile(const std::string& path);
+        std::string getIesProfile() const;
 
         void setSpotMask(const std::string& texture);
         void setSpotMask(const std::string& id, TextureData data);

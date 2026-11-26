@@ -86,7 +86,8 @@ void editor::InspectorWindow::drawOnScreenStickComponent(ComponentType cpType, S
     };
     static std::vector<editor::EnumEntry> entriesVisibility = {
         { (int)OnScreenVisibility::ALWAYS, "Always" },
-        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" },
+        { (int)OnScreenVisibility::TOUCH_SCHEME, "Touch Scheme" }
     };
     const std::vector<std::string> actions = inputActionNames(project, true);
 
@@ -98,7 +99,7 @@ void editor::InspectorWindow::drawOnScreenStickComponent(ComponentType cpType, S
     settingsAxes.enumEntries = &entriesAxes;
     RowSettings settingsVisibility;
     settingsVisibility.enumEntries = &entriesVisibility;
-    settingsVisibility.help = "Touch Devices Only hides it where System.isTouchDevice() is false (the Game view's Simulate Touch counts as touch).";
+    settingsVisibility.help = "Touch Devices Only hides it where System.isTouchDevice() is false (the Game view's Simulate Touch counts as touch). Touch Scheme: shown while the player is using touch (InputActions.currentScheme).";
     RowSettings settingsRange;
     settingsRange.stepSize = 0.01f;
     settingsRange.secondColSize = 6 * ImGui::GetFontSize();
@@ -141,7 +142,8 @@ void editor::InspectorWindow::drawOnScreenStickComponent(ComponentType cpType, S
 void editor::InspectorWindow::drawOnScreenButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     static std::vector<editor::EnumEntry> entriesVisibility = {
         { (int)OnScreenVisibility::ALWAYS, "Always" },
-        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" },
+        { (int)OnScreenVisibility::TOUCH_SCHEME, "Touch Scheme" }
     };
     const std::vector<std::string> actions = inputActionNames(project, false);
 
@@ -161,6 +163,7 @@ void editor::InspectorWindow::drawOnScreenButtonComponent(ComponentType cpType, 
     settingsLeaves.help = "A finger that slides off it releases it.";
     RowSettings settingsVisibility;
     settingsVisibility.enumEntries = &entriesVisibility;
+    settingsVisibility.help = "Touch Devices Only hides it where System.isTouchDevice() is false (the Game view's Simulate Touch counts as touch). Touch Scheme: shown while the player is using touch (InputActions.currentScheme).";
 
     beginTable(cpType, getLabelSize("Release On Leave"));
     propertyRow(RowPropertyType::String, cpType, "action", "Action", sceneProject, entities, settingsAction);
@@ -180,7 +183,8 @@ void editor::InspectorWindow::drawOnScreenButtonComponent(ComponentType cpType, 
 void editor::InspectorWindow::drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     static std::vector<editor::EnumEntry> entriesVisibility = {
         { (int)OnScreenVisibility::ALWAYS, "Always" },
-        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" }
+        { (int)OnScreenVisibility::TOUCH_DEVICES_ONLY, "Touch Devices Only" },
+        { (int)OnScreenVisibility::TOUCH_SCHEME, "Touch Scheme" }
     };
     const std::vector<std::string> actions = inputActionNames(project, true);
 
@@ -194,6 +198,7 @@ void editor::InspectorWindow::drawTouchAreaComponent(ComponentType cpType, Scene
     settingsSensitivity.help = "Canvas pixels to action units; 0.1 is the default Mouse X/Y sensitivity, so a drag feels like the mouse.";
     RowSettings settingsVisibility;
     settingsVisibility.enumEntries = &entriesVisibility;
+    settingsVisibility.help = "Touch Devices Only hides it where System.isTouchDevice() is false (the Game view's Simulate Touch counts as touch). Touch Scheme: shown while the player is using touch (InputActions.currentScheme).";
 
     beginTable(cpType, getLabelSize("Horizontal Action"));
     propertyRow(RowPropertyType::String, cpType, "horizontalAction", "Horizontal Action", sceneProject, entities, settingsAction);

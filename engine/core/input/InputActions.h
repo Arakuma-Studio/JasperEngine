@@ -277,10 +277,39 @@ namespace jasperengine {
         static void setOverrideStore(std::shared_ptr<InputOverrideStore> store);   // null: UserSettings
 
         // ---- display
-        // "Space", "Ctrl+S", "Left Stick", "W/A/S/D" (gamepad names follow the connected pad:
-        // Cross, Circle... on a PlayStation pad)
+        // "Space", "Ctrl+S", "Left Stick", "W/A/S/D" (gamepad names follow the family of the map's
+        // pad, else of the pad last used, else of the first connected one: Cross, Circle... on a
+        // PlayStation pad, B (south), A (east)... on a Nintendo one, LB, RT, View... on an Xbox one)
         static std::string getBindingDisplayName(const std::string& bindingId);
         static std::string getControlDisplayName(const std::string& path, int mods = 0);
+        // the display name of the action's first binding for the scheme ("Keyboard&Mouse",
+        // "Gamepad", "Touch"; "" the current one), "" when it has none: a binding belongs to the
+        // schemes its groups name, with no groups to its control's device (a composite's first
+        // part's); virtual controls to every scheme. Overrides applied
+        static std::string getActionDisplayName(const std::string& action, const std::string& scheme = "");
+        // the same binding's glyph key ("keyboard/space", "gamepad/playstation/cross", "touch/tap";
+        // a composite's parts joined by "+"; docs/mcp/guide/input.md lists them), "" when none
+        static std::string getActionGlyph(const std::string& action, const std::string& scheme = "");
+        static std::string getBindingGlyph(const std::string& bindingId);
+        // the binding belongs to the scheme ("" the current one), as getActionDisplayName counts it
+        static bool isBindingInScheme(const std::string& bindingId, const std::string& scheme = "");
+        // bumped by every change of the bindings (a load, an edit, an override, setBindings)
+        static uint32_t getBindingRevision();
+
+        // ---- the input scheme (InputSchemeTracker): what the player last really used. Never a
+        // filter: every binding stays live whatever the scheme
+        // "Keyboard&Mouse", "Gamepad" or "Touch" (the binding group names)
+        static std::string getCurrentScheme();
+        // "Keyboard&Mouse" or "Touch": the last pointer device used
+        static std::string getCurrentPointer();
+        // "Xbox", "PlayStation", "Nintendo" or "Generic": of the pad last used, else of the first connected one
+        static std::string getGamepadFamily();
+        // the pad that last switched or held the Gamepad scheme, -1 before any
+        static int getLastGamepad();
+        // forces the scheme from the next frame ("" back to the tracked one); false for an unknown name
+        static bool setSchemeOverride(const std::string& scheme);
+        // "" when not forced
+        static std::string getSchemeOverride();
 
         // ---- S25: a control path some binding of an enabled map uses (game shortcuts first)
         static bool isControlBound(const std::string& path);

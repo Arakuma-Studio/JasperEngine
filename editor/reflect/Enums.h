@@ -39,6 +39,8 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kForceFieldKind;
     extern const EnumDesc kWaterVolumeWaves;
     extern const EnumDesc kWaterExcluderShape;
+    extern const EnumDesc kSimulationState;
+    extern const EnumDesc kSimulationCullReason;
     extern const EnumDesc kBuoyancyColumns;
     // S96 vehicles (VehicleReflect.cpp)
     extern const EnumDesc kVehicleTransmissionMode;
@@ -89,6 +91,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kLightUnit;
     extern const EnumDesc kLightShading;
     extern const EnumDesc kLightType;
+    extern const EnumDesc kAreaLightShape;
     extern const EnumDesc kLodFadeMode;
     extern const EnumDesc kMaterialAlphaMode;
     extern const EnumDesc kMaterialBlendMode;
@@ -128,6 +131,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kTextureAlphaBorder;
     extern const EnumDesc kTextureFilter;
     extern const EnumDesc kTextureWrap;
+    extern const EnumDesc kInputFieldKeyboardType;
     extern const EnumDesc kUIDocumentRenderMode;
     extern const EnumDesc kUIDocumentUpdateMode;
     extern const EnumDesc kTextHorizontalAlignment;

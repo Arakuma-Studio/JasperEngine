@@ -119,6 +119,11 @@ AudioClipSource::AudioClipSource(std::shared_ptr<SoLoud::AudioSource> sample, co
         seekDecodes = seekByDecoding || wavStream->mFiletype == SoLoud::WAVSTREAM_MP3 ||
                       wavStream->mFiletype == SoLoud::WAVSTREAM_FLAC;
     }
+    fileChannels = mChannels;
+    if (settings.forceMono && fileChannels > 1) {
+        downmix = true;
+        mChannels = 1;
+    }
     applyRegion();
 }
 
@@ -181,6 +186,10 @@ double AudioClipSource::getDefaultLoopPoint() const{
 
 unsigned int AudioClipSource::getChannels() const{
     return mChannels;
+}
+
+unsigned int AudioClipSource::getFileChannels() const{
+    return fileChannels;
 }
 
 float AudioClipSource::getSampleRate() const{
@@ -298,7 +307,10 @@ unsigned int AudioClipSourceInstance::getAudio(float* buffer, unsigned int sampl
     // a local: the buffer could alias the member, which would keep the loops from vectorizing (R31)
     const float gain = parent->gain;
 
-    if (parent->samples) {
+    if (parent->samples && parent->downmix) {
+        mixDown(buffer, parent->samples + position, parent->fileChannels, parent->fileFrames, count,
+                (gained ? gain : 1.0f) / (float)parent->fileChannels);
+    }else if (parent->samples) {
         const float* data = parent->samples;
         for (unsigned int c = 0; c < mChannels; c++) {
             float* out = buffer + (size_t)c * bufferSize;
@@ -325,6 +337,13 @@ unsigned int AudioClipSourceInstance::getAudio(float* buffer, unsigned int sampl
                 got = std::min(stream->getAudio(scratch, chunk, chunk), chunk);
                 exhausted = got < chunk;
             }
+            if (parent->downmix) {
+                float* out = buffer + written;
+                mixDown(out, scratch, parent->fileChannels, chunk, got, (gained ? gain : 1.0f) / (float)parent->fileChannels);
+                std::memset(out + got, 0, sizeof(float) * (chunk - got));
+                written += chunk;
+                continue;
+            }
             for (unsigned int c = 0; c < mChannels; c++) {
                 float* out = buffer + (size_t)c * bufferSize + written;
                 std::memcpy(out, scratch + (size_t)c * chunk, sizeof(float) * got);
@@ -348,6 +367,19 @@ unsigned int AudioClipSourceInstance::getAudio(float* buffer, unsigned int sampl
     shortRead = count < samplesToRead;
     atLoopEnd = toLoopEnd && position == parent->loopEndFrame;
     return count;
+}
+
+void AudioClipSourceInstance::mixDown(float* out, const float* planes, unsigned int channels, size_t pitch, unsigned int frames, float scale){
+    std::memcpy(out, planes, sizeof(float) * frames);
+    for (unsigned int c = 1; c < channels; c++) {
+        const float* from = planes + (size_t)c * pitch;
+        for (unsigned int i = 0; i < frames; i++) {
+            out[i] += from[i];
+        }
+    }
+    for (unsigned int i = 0; i < frames; i++) {
+        out[i] *= scale;
+    }
 }
 
 void AudioClipSourceInstance::applyFades(float* buffer, unsigned int count, unsigned int bufferSize, bool toLoopEnd){

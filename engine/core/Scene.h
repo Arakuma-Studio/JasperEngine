@@ -159,6 +159,11 @@ namespace jasperengine{
 
         void load();
         void destroy();
+        // A view loss (Engine::systemViewDestroyed / systemViewLoaded): every system releases
+        // (restores) its GPU objects and keeps its CPU state (SubSystem::releaseGpu); destroy()
+        // is the real teardown
+        void releaseGpu();
+        void restoreGpu();
         void draw();
         void update(double dt);
         void fixedUpdate(double dt);
@@ -251,6 +256,14 @@ namespace jasperengine{
 
         void setSceneColorScale(SceneColorScale scale);
         SceneColorScale getSceneColorScale() const;
+
+        // The screen HTML UI documents (SceneSettings, S92): read each frame, no reload. Samples:
+        // 0 = the project's, else 1, 2, 4 or 8 (another count goes to the one below it); a change
+        // makes the next frame recreate the document target
+        void setHtmlUiRenderMode(UIRenderMode mode);
+        UIRenderMode getHtmlUiRenderMode() const;
+        void setHtmlUiMsaaSamples(int samples);
+        int getHtmlUiMsaaSamples() const;
 
         // Planar reflections (SceneSettings): read each frame by RenderSystem, no reload
         void setPlanarReflectionResolution(PlanarReflectionResolution resolution);
@@ -356,6 +369,20 @@ namespace jasperengine{
         Vector3 getGlobalIlluminationColor() const;
         Vector3 getGlobalIlluminationColorLinear() const;
 
+        // Environment Lighting > Source and the Gradient's colours (sRGB; the Linear getters as
+        // stored)
+        void setAmbientMode(AmbientMode source);
+        AmbientMode getAmbientMode() const;
+        void setAmbientSkyColor(Vector3 color);
+        Vector3 getAmbientSkyColor() const;
+        Vector3 getAmbientSkyColorLinear() const;
+        void setAmbientEquatorColor(Vector3 color);
+        Vector3 getAmbientEquatorColor() const;
+        Vector3 getAmbientEquatorColorLinear() const;
+        void setAmbientGroundColor(Vector3 color);
+        Vector3 getAmbientGroundColor() const;
+        Vector3 getAmbientGroundColorLinear() const;
+
         // lights each object is lit by (1..16); the other lights reaching it are folded into
         // its spherical-harmonics ambient
         void setMaxLightsPerObject(int maxLightsPerObject);
@@ -414,6 +441,10 @@ namespace jasperengine{
         void setPhysics2DSubSteps(int subSteps);
         int getPhysics2DSubSteps() const;
 
+        // Fixed Timestep override while this is the main scene (seconds; 0 = the project's).
+        // Applied when a load makes it the main scene, not by this setter
+        void setFixedTimestep(float seconds);
+        float getFixedTimestep() const;
         // S96 WP-E: forwarders to PhysicsSystem::setWorldSettings2D/3D: the 2D world's units,
         // rotation cap and tuning and the 3D solver (physics/WorldSettings.h; a value out of its
         // range is clamped)

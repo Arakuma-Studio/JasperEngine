@@ -142,6 +142,10 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     // Escape in the Game view does it too (Unity), the key still reaching the game
     b.add("playmode.releaseCursor", "Release Game Cursor", C::Global).description =
         "Give a cursor the running game captured back to the editor; click the Game view to return it";
+    // the toolbar's Record Input and its menu (input-recorder-and-input-scripts R36)
+    b.add("playmode.recordInput", "Record Input", C::Global).description =
+        "Before Play: arm or disarm recording the game's input into a .input.json from Play's start; while recording: Stop Recording";
+    b.add("playmode.replayInput", "Replay Input...", C::Global).description = "Replay a .input.json from Play's start in a new session";
     CommandDef& maximize = b.menu("playmode.maximizeOnPlay", "Maximize On Play", AppMenuCommand::ToggleMaximizeOnPlay, C::Global, "F11");
     maximize.description = "Fill the editor with the Game view while playing (the Game view toolbar's toggle)";
     // macOS takes F11 for Show Desktop: Control+Cmd+F, the Mac's full-screen key, comes first there
@@ -252,12 +256,19 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.profiler", "Profiler", AppMenuCommand::ToggleProfiler, C::Editor, "Ctrl+7");
     b.menu("window.console", "Console", AppMenuCommand::ToggleConsole, C::Editor, "Ctrl+Shift+C");
     b.menu("window.bookmarks", "Bookmarks", AppMenuCommand::ToggleBookmarks);
+    b.menu("window.localizationTables", "Localization Tables", AppMenuCommand::ToggleLocalizationTables).description =
+        "String Tables: keys, translations, coverage and this Play's misses";
+    b.menu("window.savedData", "Saved Data", AppMenuCommand::ToggleSavedData);
+    b.menu("window.dialogue", "Dialogue", AppMenuCommand::ToggleDialogue).description =
+        "Dialogue graphs: lines, choices, branches, a preview without Play";
     b.menu("window.undoHistory", "Undo History", AppMenuCommand::ToggleUndoHistory);
     b.menu("window.playModeChanges", "Play Mode Changes", AppMenuCommand::TogglePlayModeChanges);
     b.menu("window.colorPicker", "Color Picker", AppMenuCommand::ToggleColorPicker).description =
         "The Color window on its own: eyedropper, swatches, hexadecimal";
     b.menu("window.recorder", "Recorder", AppMenuCommand::ToggleRecorder).description =
         "Record the Game view to a PNG sequence or a movie";
+    b.menu("window.testRunner", "Test Runner", AppMenuCommand::ToggleTestRunner).description =
+        "The project's tests (Tests/*.test.lua): Edit Mode and Play Mode cases, results and goldens";
     b.menu("recorder.toggle", "Start Recording", AppMenuCommand::ToggleRecording, C::Global, "F10").description =
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
@@ -301,6 +312,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.jobsMemory", "Jobs & Memory", AppMenuCommand::ToggleJobsMemory);
     b.menu("window.meshAudit", "Mesh Optimization Audit", AppMenuCommand::ToggleMeshAudit);
     b.menu("window.buildReport", "Build Report", AppMenuCommand::ToggleBuildReport);
+    b.menu("window.crashReports", "Crash Reports", AppMenuCommand::ToggleCrashReports).description =
+        "Crash, hang and user reports of the editor or a game, grouped by signature";
     b.menu("window.animationStatistics", "Animation Statistics", AppMenuCommand::ToggleAnimationStatistics);
     b.menu("window.mcpActivity", "MCP Server", AppMenuCommand::ToggleMcpActivity);
     b.menu("window.vcs.commit", "Commit", AppMenuCommand::ToggleVcsCommit);

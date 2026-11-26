@@ -63,6 +63,8 @@
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
 #include "component/TitleArtRendererComponent.h"
+#include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteSkinComponent.h"
 #include "component/SpriteAnimationComponent.h"

@@ -7,6 +7,7 @@
 // every GL mode drawing the LitCube golden, and a stand-in while a variant is pending (GPU).
 
 #include "Engine.h"
+#include "device/GpuQuirks.h"
 #include "Scene.h"
 #include "object/Camera.h"
 #include "object/Light.h"
@@ -811,6 +812,45 @@ TEST_F(AsyncCreateGpu, WarmDrawsNeverRunOnASoftwareGl){
     SokolAsyncCreate::setSettings(settings);
     EXPECT_FALSE(SokolAsyncCreate::warmDrawsActive()) << "off when not asked for";
     SokolAsyncCreate::setSettings(kept);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// The three S32 decisions come from the GPU quirks (R17-R19, AC19): on a software GL the
+// resolution activates them and the mode is not the worker; with gl_no_compile_threads forced off
+// (JASPERENGINE_GPU_QUIRKS, as the editor and tests take it) the driver's compile threads are on in
+// parallel mode while the worker context stays off
+TEST_F(AsyncCreateGpu, SoftwareGlDecisionsComeFromQuirks){
+    JASPER_REQUIRE_GPU();
+    ASSERT_TRUE(GpuQuirks::isResolved()) << "resolved when the render system was set up";
+    if (!SokolAsyncCreate::isSoftwareGl()){
+        // a hardware GL: the software-GL rule does not apply
+        EXPECT_FALSE(GpuQuirks::state(GpuQuirk::GlNoWorkerContext).source == "rule");
+        EXPECT_FALSE(GpuQuirks::state(GpuQuirk::GlNoCompileThreads).source == "rule");
+        return;
+    }
+    EXPECT_TRUE(GpuQuirks::active(GpuQuirk::GlNoWorkerContext));
+    EXPECT_TRUE(GpuQuirks::active(GpuQuirk::GlNoCompileThreads));
+    restartCreation(nullptr);
+    EXPECT_NE(SokolAsyncCreate::getMode(), GpuCreationMode::GlWorker);
+    restartCreation("parallel");
+    EXPECT_FALSE(SokolAsyncCreate::compileThreadsEnabled());
+
+    setEnv("JASPERENGINE_GPU_QUIRKS", "gl_no_compile_threads:off");
+    GpuQuirks::install(GpuQuirks::resolve(GpuQuirks::runningDevice(), GpuQuirks::builtInRules(), GpuQuirks::environmentOverrides()));
+    setEnv("JASPERENGINE_GPU_QUIRKS", nullptr);
+    EXPECT_EQ(GpuQuirks::state(GpuQuirk::GlNoCompileThreads).source, "forced_off");
+    restartCreation("parallel");
+    if (SokolAsyncCreate::getMode() == GpuCreationMode::GlParallel){
+        EXPECT_TRUE(SokolAsyncCreate::compileThreadsEnabled());
+    }
+    restartCreation(nullptr);
+    EXPECT_NE(SokolAsyncCreate::getMode(), GpuCreationMode::GlWorker) << "the worker context stays off";
+
+    // the process's own set again, and the creation without the threads
+    GpuQuirks::install(GpuQuirks::resolve(GpuQuirks::runningDevice(), GpuQuirks::builtInRules(), GpuQuirks::environmentOverrides()));
+    restartCreation("parallel");
+    EXPECT_FALSE(SokolAsyncCreate::compileThreadsEnabled());
+    restartCreation(nullptr, nullptr);
     EXPECT_NO_ENGINE_ERRORS();
 }
 #endif

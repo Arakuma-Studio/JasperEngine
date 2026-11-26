@@ -96,6 +96,17 @@ namespace jasperengine{
         static bool isDebugDraw();
         static void setDebugDrawContacts(bool debugDrawContacts);
         static bool isDebugDrawContacts();
+        // The spatial queries of the main thread, drawn for 1 s through the same lines (Game view
+        // Physics > Queries, Lua Physics.debugDrawQueries, configure_game_view
+        // physics_debug_queries). Off: nothing is recorded.
+        static void setDebugDrawQueries(bool debugDrawQueries);
+        static bool isDebugDrawQueries();
+
+        // Every spatial query and the hits it returned since start, both worlds (the
+        // "Physics queries" monitors take per-frame differences)
+        static uint64_t getQueryCount();
+        static uint64_t getQueryHitCount();
+        static void countQuery(size_t hits);
 
         // Unity Physics.queriesHitTriggers (true) and queriesHitBackfaces (false): the defaults of
         // the queries' triggers (USE_GLOBAL) and hitBackfaces options, process-wide

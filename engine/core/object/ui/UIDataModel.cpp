@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "localization/Localization.h"
 #include "UIDataModel.h"
 #include "HtmlUIScriptInternal.h"
 #include "HtmlUIValueDefinition.h"
@@ -157,6 +158,28 @@ bool HtmlUIDataModelRecord::attach(Rml::Context* target){
         definitions[key] = std::move(definition);
     }
 
+    // game-ui-localization.md R15: {{ 'shop.coins' | l10n('count', coins) }}; a game without String
+    // Tables registers nothing
+    if (Localization::isActive()){
+        constructor.RegisterTransformFunc("l10n", [](const Rml::VariantList& arguments) -> Rml::Variant {
+            if (arguments.empty())
+                return Rml::Variant();
+            LocalizationArgs args;
+            for (size_t i = 1; i + 1 < arguments.size(); i += 2){
+                const Rml::Variant& value = arguments[i + 1];
+                const std::string name = arguments[i].Get<Rml::String>();
+                if (value.GetType() == Rml::Variant::STRING) args.emplace_back(name, value.Get<Rml::String>());
+                else if (value.GetType() == Rml::Variant::DOUBLE || value.GetType() == Rml::Variant::FLOAT) args.emplace_back(name, value.Get<double>());
+                else args.emplace_back(name, static_cast<int64_t>(value.Get<int64_t>()));
+            }
+            return Rml::Variant(Localization::get(arguments[0].Get<Rml::String>(), args));
+        });
+        l10nListener = Localization::addListener([this](const std::string&){
+            if (handle)
+                handle.DirtyAllVariables();
+        });
+    }
+
     context = target;
     handle = constructor.GetModelHandle();
     boundEvents.clear();
@@ -212,6 +235,10 @@ void HtmlUIDataModelRecord::bindEventName(const std::string& eventName){
 }
 
 void HtmlUIDataModelRecord::detach(){
+    if (l10nListener >= 0){
+        Localization::removeListener(l10nListener);
+        l10nListener = -1;
+    }
     if (context){
         context->RemoveDataModel(name);
     }

@@ -1,0 +1,4 @@
+# tools/android-emulator-test.sh --ordered --expect-file: the localization test project on an emulator
+# in English; --locale-change ja-JP then needs "[Localization] language ja" in the same run.
+I/JasperEngine: [Localization] language en
+I/JasperEngine: [gate] l10n Play

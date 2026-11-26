@@ -3,6 +3,7 @@
 #include "../../Include/RmlUi/Core/CompiledFilterShader.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
 #include "../../Include/RmlUi/Core/RenderInterface.h"
+#include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/Texture.h"
 #include "../../Include/RmlUi/Core/Types.h"
 #include "BackgroundLayerValues.h"
@@ -66,6 +67,12 @@ public:
 	// boxes and positioned in the boxes of 'area_element' (the root element, when the body's background is the canvas's).
 	void Render(Element* element, const Rectanglef* canvas = nullptr, Element* area_element = nullptr);
 
+	// Fork (S92-F2): mask layers that are one decorator image whose mask is a rounded rectangle (Decorator::
+	// GetMaskClipShape): the clips that cut what the mask would, at the element's place (its border box's offset and its
+	// transform): the shape, and the layer's rounded clip box when the layer is masked by it. False otherwise (the mask is
+	// drawn through a layer).
+	bool GetClipShapes(Element* element, ClipMaskGeometryList& out);
+
 private:
 	// One image of a cross-fade: its tiles, their colour weighted.
 	struct FadeImage {
@@ -79,7 +86,12 @@ private:
 		CompiledShader shader;
 		SharedPtr<const Decorator> decorator;
 		uintptr_t decorator_data = 0;
+		BoxArea clip_area = BoxArea::Border; // a decorator's (fork, S92-F2: the rounded clip box of GetClipShapes)
 		Geometry clip_mask; // rounded clip box: the anti-aliased shape the layer is masked with
+		// Fork (S92-F4): the clip box's fill area (relative to the element's border offset) and its box: the window of
+		// the mask's layers.
+		Rectanglef clip_rect;
+		int clip_box_index = 0;
 		SharedPtr<void> image_owner; // the application's image (ImageSourceHandler)
 		// A cross-fade (an interpolated background-image): the images added in a layer (BlendMode::Plus), as Chromium's
 		// CrossfadeGeneratedImage draws them.

@@ -5,6 +5,7 @@
 //
 
 #include "FileData.h"
+#include "io/UserDataOverride.h"
 #include "Data.h"
 #include "ResourcePack.h"
 #include "System.h"
@@ -116,6 +117,21 @@ std::string FileData::getFilePathExtension(const std::string &filepath) {
     return "";
 }
 
+namespace {
+    std::string& userDataOverride() {
+        static std::string* folder = new std::string();
+        return *folder;
+    }
+}
+
+void jasperengine::setUserDataOverride(const std::string& folder) {
+    userDataOverride() = folder;
+}
+
+const std::string& jasperengine::getUserDataOverride() {
+    return userDataOverride();
+}
+
 std::string FileData::getSystemPath(std::string path){
     // Return full/absolute paths unchanged
     if (beginWith(path, "/") || (path.length() > 1 && path[1] == ':')){
@@ -124,7 +140,8 @@ std::string FileData::getSystemPath(std::string path){
 
     if (beginWith(path, "data://")){
         path = path.substr(7, path.length());
-        return System::instance().getUserDataPath() + "/" + FileData::simplifyPath(path);
+        const std::string& sandbox = getUserDataOverride();
+        return (sandbox.empty() ? System::instance().getUserDataPath() : sandbox) + "/" + FileData::simplifyPath(path);
     }
     if (beginWith(path, "asset://")){
         path = path.substr(8, path.length());

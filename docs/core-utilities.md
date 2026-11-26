@@ -136,6 +136,30 @@ The engine's existing events are `FunctionSubscribe` (tagged subscribers, Lua bi
 
 `ThreadSafeSignal` takes subscribers and invokes from any thread (a copy-on-write snapshot).
 
+**Cancellable events.** `CancellableEvent<Args...>` (`engine/core/util/CancellableEvent.h`) asks its
+listeners before a change. A listener is `void(CancelEventArgs&, Args...)`; `subscribe(fn, priority,
+ownerKey)` returns a `Subscription`; `[[nodiscard]] bool emit(Args...)` returns true when one called
+`e.cancel()`, and then the caller must not apply the change:
+
+```cpp
+CancellableEvent<int> onDamaging("onDamaging");
+Subscription shield = onDamaging.subscribe([](CancelEventArgs& e, int amount) { if (amount < 5) e.cancel(); }, 10);
+if (!onDamaging.emit(amount)) hp -= amount;
+```
+
+Listeners run by priority (`EventPriority::Min`..`Max`, default 0), highest first, ties in the order
+added; after a cancel the deciding listeners left are skipped, then the `EventPriority::Monitor`
+listeners run with `e.isCancelled()` final. A monitor's `cancel()` is ignored and logged once per
+event. With no listener `emit` is one test and makes no `CancelEventArgs`. Re-entrancy, owners and
+the crash guard are `Signal`'s and `FunctionSubscribe::call`'s. `Signal` and `FunctionSubscribe`
+take no priority (their `SlotList` slot has one, always 0: add order). Lua's `CancellableEvent()`
+is the script side (`docs/mcp/guide/lua-api.md`).
+
+No engine event is cancellable: each one reports something that already happened. An engine event
+made cancellable later must (a) be a `CancellableEvent`, (b) obey `emit`'s result at every call site,
+(c) ship a test that installs a cancelling listener and asserts the change did not happen, and
+(d) bind its Lua side so listeners get a `CancelEventArgs`.
+
 **Owners.** A subscription can name an owner key (the address of a script instance or a Lua
 table). `SubscriptionOwnerIndex::releaseOwner(key)` removes every subscription of that owner, in
 every event, and cancels its timers: script release does this (Lua scripts by their table,

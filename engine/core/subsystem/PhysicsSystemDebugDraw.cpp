@@ -12,8 +12,10 @@
 #include "component/Transform.h"
 #include "object/LineRenderer.h"
 #include "physics/PhysicsDebugLines.h"
+#include "physics/PhysicsQueryDebug.h"
 #include "registry/PhysicsLayers.h"
 #include "subsystem/VehicleSystem.h"
+#include "Engine.h"
 
 #include <algorithm>
 #include <chrono>
@@ -149,6 +151,13 @@ void PhysicsSystem::recordDebugContact3D(const JPH::ContactManifold& manifold){
 }
 #endif
 
+PhysicsQueryDebug& PhysicsSystem::getQueryDebug(){
+    if (!queryDebug){
+        queryDebug = std::make_unique<PhysicsQueryDebug>();
+    }
+    return *queryDebug;
+}
+
 namespace {
     double debugLinesClock(){
         return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -176,7 +185,15 @@ bool PhysicsSystem::pruneTimedDebugLines(){
 void PhysicsSystem::updateDebugLines(){
     const bool on = Physics::isDebugDraw();
     const bool timed = pruneTimedDebugLines();
-    if (!on && !timed){
+    // the queries Physics.debugDrawQueries recorded draw on their own
+    bool queries = false;
+    double now = 0.0;
+    if (queryDebug){
+        now = Engine::getUnscaledTime();
+        queryDebug->releaseIfIdle(now, Physics::isDebugDrawQueries());
+        queries = queryDebug->liveCount(now) > 0;
+    }
+    if (!on && !timed && !queries){
         if (debugLinesShown && debugLinesEntity != NULL_ENTITY && scene->isEntityCreated(debugLinesEntity)){
             LineRenderer lines(scene, debugLinesEntity);
             lines.clearLines();
@@ -203,6 +220,11 @@ void PhysicsSystem::updateDebugLines(){
     lines.setVisible(true);
     debugLinesShown = true;
 
+    if (queries){
+        queryDebug->forEachLive(now, [&](const PhysicsQueryDebug::Entry& entry){
+            PhysicsQueryDebug::emitLines(entry, [&](const Vector3& a, const Vector3& b, const Vector4& color){ lines.addLine(a, b, color); });
+        });
+    }
     for (const TimedDebugLine& line : timedDebugLines){
         lines.addLine(line.from, line.to, line.color);
     }

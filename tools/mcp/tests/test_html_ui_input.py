@@ -37,6 +37,7 @@ HTML = """<html>
         input { width: 400px; height: 36px; background-color: #303030; color: #ffffff; font-size: 20px; }
         #first { left: 40px; top: 140px; }
         #second { left: 40px; top: 200px; }
+        #mail { left: 40px; top: 260px; }
         #scroller { left: 600px; top: 40px; width: 200px; height: 100px; overflow: auto; background-color: #000000; }
         .stripe { position: relative; width: 180px; height: 100px; }
         #s1 { background-color: #ff0000; }
@@ -56,6 +57,7 @@ HTML = """<html>
     <div id="button"></div>
     <input type="text" id="first" value=""/>
     <input type="text" id="second" value=""/>
+    <input type="email" id="mail" enterkeyhint="send" maxlength="32" autocapitalize="words" value=""/>
     <div id="scroller"><div class="stripe" id="s1"></div><div class="stripe" id="s2"></div><div class="stripe" id="s3"></div></div>
     <div id="touchA"></div>
     <div id="touchB"></div>
@@ -160,12 +162,16 @@ LIGHT = (160, 160, 160)
 P_BUTTON = (140, 70)
 P_FIRST = (60, 158)
 P_SECOND = (60, 218)
+P_MAIL = (60, 278)
 P_SCROLL = (700, 90)
 P_TOUCH_A = (675, 340)
 P_TOUCH_B = (875, 340)
 P_BODY = (1100, 600)
 
 TEXT = "héllo \U0001F600"   # héllo 😀
+
+# the scene and the document's GameObject, set by setup_and_play
+S = {}
 
 
 async def shoot(ed: Editor, label: str) -> Shot:
@@ -229,6 +235,7 @@ async def setup_and_play(ed: Editor):
                   values={"uidocument": {"filename": POPUP_DOC, "sortOrder": 10, "enabled": False}})
     await ed.call("create_script", kind="lua", name="PopupProbe", content=POPUP_PROBE, scene=scene, entity=popup)
     await ed.call("save_scene", scene=scene, path="scenes/HtmlUiInput")
+    S.update(scene=scene, menu=menu)
 
     started = await ed.call("play", action="start", scene=scene)
     ed.check(started, "play started")
@@ -306,6 +313,26 @@ async def test_escape_not_consumed(ed: Editor):
     await send(ed, {"type": "mouse", "action": "click", "x": P_BODY[0], "y": P_BODY[1]},
                {"type": "key", "key": "q"})
     ed.check_eq(await probe(ed, "keyDowns"), keys + 2, "a letter with no field focused")
+
+
+async def test_text_entry_traits(ed: Editor):
+    """text-entry AC20: inspect_ui reports the focused field's soft keyboard."""
+    await send(ed, {"type": "mouse", "action": "click", "x": P_MAIL[0], "y": P_MAIL[1]})
+    r = await ed.call("inspect_ui", scene=S["scene"], entity=S["menu"], selector="#mail", depth=0)
+    focus = r.get("focus")
+    ed.check(focus is not None, f"inspect_ui has no focus while #mail is focused: {sorted(r)}")
+    ed.check_eq(focus["ref"], "#mail", "the focused field")
+    ed.check_eq(focus["keyboard"], "email", "type=email: the e-mail keyboard")
+    ed.check_eq(focus["enter_key"], "send", "enterkeyhint=send")
+    ed.check_eq(focus["max_length"], 32, "maxlength")
+    ed.check_eq(focus["autocapitalize"], "words", "autocapitalize")
+    ed.check_eq(focus["secure"], False, "not a password")
+    ed.check_eq(focus["keyboard_open"], True, "the keyboard is shown for it")
+
+    # blurred: no focus
+    await send(ed, {"type": "mouse", "action": "click", "x": P_BODY[0], "y": P_BODY[1]})
+    r = await ed.call("inspect_ui", scene=S["scene"], entity=S["menu"], selector="#mail", depth=0)
+    ed.check("focus" not in r, f"inspect_ui reports a focus with nothing focused: {r.get('focus')}")
 
 
 async def test_wheel_scrolls(ed: Editor):

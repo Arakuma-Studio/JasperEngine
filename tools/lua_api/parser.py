@@ -1990,6 +1990,17 @@ OVERRIDES[('HtmlUI', 'prewarmText')] = {
     'doc': ['Makes the glyphs of a text (base, distance and font-effect glyphs) on background jobs before it is shown, at the',
             'scale of every context drawing now; raises an error for bad options or a font-effect that does not parse.'],
     'overloads': [([('options', 'UIPrewarmTextOptions')], 'UIPrewarm')]}
+
+# S95 REQ-1: Quaternion.euler reads its order by hand (an enum argument takes any value)
+OVERRIDES[('Quaternion', 'euler')] = {
+    'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('order?', 'RotationOrder')], 'Quaternion')]}
+
+# S95 REQ-3: GameObject's transform members are nil only on an entity without a Transform (an
+# action, a tween); typed as before, so a script reading go.position needs no nil check
+for _name, _type in (('getWorldPosition', 'Vector3'), ('getWorldRotation', 'Quaternion'), ('getWorldScale', 'Vector3')):
+    OVERRIDES[('GameObject', _name)] = {'doc': ['Current (composed when it moved since the last transform pass); nil without a Transform.'],
+                                        'overloads': [([], _type)]}
+
 # S96 REQ-29: the Ragdoll wizard at run time, its arguments read by hand (LuaRef)
 OVERRIDES[('Ragdoll', 'create')] = {
     'doc': ["Unity's Ragdoll Wizard on a live character: bodies, colliders and joints on its bones, all made before",
@@ -2007,6 +2018,17 @@ OVERRIDES[('TerrainWorld', 'onAreaReady')] = {
     'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('callback', 'fun()')], '')]}
 OVERRIDES[('TerrainWorld', 'getStats')] = {'overloads': [([], 'TerrainWorldStats')]}
 
+OVERRIDES[('System', 'showVirtualKeyboard')] = {
+    'doc': ['Opens the soft keyboard (Android, iOS, the web) for text the script handles itself. `options` picks',
+            'the keyboard with the HTML attribute values; without them the platform\'s plain keyboard. HTML text',
+            'fields and the component InputField open theirs on their own.'],
+    'overloads': [([('text?', 'string'), ('options?', 'VirtualKeyboardOptions')], '')],
+}
+OVERRIDES[('System', 'updateVirtualKeyboardText')] = {
+    'doc': ['Replaces the text the soft keyboard holds (Android, iOS), caret in code points (default: the end):',
+            'after the script changed what was typed.'],
+    'overloads': [([('text', 'string'), ('caret?', 'integer')], '')],
+}
 OVERRIDES[('Screen', 'setExtraInsets')] = {
     'doc': ['Space the game keeps free per edge on top of the device insets (a banner ad): every safe-area',
             'consumer includes it (Screen.safeArea, the Safe Area component, HTML env()). `unit` is',
@@ -2061,9 +2083,12 @@ OVERRIDES.update({
         'overloads': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any[]')]},
     ('Event', 'addListener'): {
         'doc': ["Adds a listener (Unity's AddListener / C# `+=`): a function, or a method of a script instance",
-                "(`ev:addListener(self, \"onScore\")`), which is dropped once that script is destroyed. Adding the",
-                "same one again does nothing."],
-        'overloads': [([('fn', 'function')], ''), ([('owner', 'table'), ('methodName', 'string')], '')]},
+                "(`ev:addListener(self, \"onScore\")`), which is dropped once that script is destroyed. Listeners run by",
+                "`priority` (default 0, -1000000..1000000), highest first, equal ones in the order added; `Event.MONITOR`",
+                "runs after every other one. Adding the same one again does nothing, whatever its priority: remove it",
+                "first to change it."],
+        'overloads': [([('fn', 'function'), ('priority?', 'integer')], ''),
+                      ([('owner', 'table'), ('methodName', 'string'), ('priority?', 'integer')], '')]},
     ('Event', 'removeListener'): {
         'doc': ["Removes a listener added with the same arguments (C# `-=`); true if one was removed."],
         'overloads': [([('fn', 'function')], 'boolean'), ([('owner', 'table'), ('methodName', 'string')], 'boolean')]},
@@ -2071,21 +2096,41 @@ OVERRIDES.update({
         'doc': ["Removes every listener."],
         'overloads': [([], '')]},
     ('Event', 'invoke'): {
-        'doc': ["Calls the listeners in the order they were added with these arguments. A listener's error is",
-                "logged with its traceback and the others still run; one added meanwhile runs from the next invoke."],
+        'doc': ["Calls the listeners by priority with these arguments. A listener's error is logged with its",
+                "traceback and the others still run; one added meanwhile runs from the next invoke."],
         'overloads': [([('...', 'any')], '')]},
     ('Event', 'add'): {
-        'doc': ["Subscribes `fn` under `tag` (the event object protocol RegisterEvent uses); replaces that tag's."],
-        'overloads': [([('tag', 'string'), ('fn', 'function')], 'boolean')]},
+        'doc': ["Subscribes `fn` under `tag` (the event object protocol RegisterEvent uses); replaces that tag's,",
+                "which takes the new `priority` (default 0)."],
+        'overloads': [([('tag', 'string'), ('fn', 'function'), ('priority?', 'integer')], 'boolean')]},
     ('Event', 'remove'): {
         'doc': ["Removes the subscription with `tag`; true if there was one."],
         'overloads': [([('tag', 'string')], 'boolean')]},
     ('Event', 'has'): {
         'doc': ["Whether a subscription with `tag` exists."],
         'overloads': [([('tag', 'string')], 'boolean')]},
+    ('Event', 'getListeners'): {
+        'doc': ["The listeners in the order they run: `name` is \"Class:method\" for a script's method (also",
+                "RegisterEvent's), the tag of another tagged one, \"function <source>:<line>\" for a function."],
+        'overloads': [([], '{name: string, priority: integer, monitor: boolean}[]')]},
+    ('Event', 'cancel'): {
+        'doc': ["Always an error: a CancellableEvent's listener cancels through its first argument (`e:cancel()`)."],
+        'overloads': [([], '')]},
     ('Event', '__tostring'): {
         'doc': [],
         'overloads': [([], 'string')]},
+    ('CancellableEvent', '__tostring'): {
+        'doc': [],
+        'overloads': [([], 'string')]},
+    ('CancellableEvent', 'invoke'): {
+        'doc': ["Calls the listeners as `fn(e, ...)` by priority until one calls `e:cancel()`, then the MONITOR",
+                "listeners. True when one cancelled: then do not apply the change."],
+        'overloads': [([('...', 'any')], 'boolean')],
+        'nodiscard': True},
+    ('CancelEventArgs', 'cancel'): {
+        'doc': ["Vetoes the change (nothing undoes it); the deciding listeners left are skipped. An error in a",
+                "MONITOR listener or after the invoke ended."],
+        'overloads': [([], '')]},
     # persistence (DontDestroyOnLoad)
     ('GameObject', 'dontDestroyOnLoad'): {
         'doc': ["Unity's DontDestroyOnLoad (also the global `DontDestroyOnLoad`): the root GameObject of `obj` (a",
@@ -2150,6 +2195,12 @@ OVERRIDES[('NoiseGraph', 'sampleGrid')] = {'doc': ['A grid of at most 4,000,000 
 OVERRIDES[('NoiseGraph', 'sampleGridAsync')] = {'doc': ['The same bits as sampleGrid on small jobs, which keep the frame and work without worker threads.'],
                                                 'overloads': [([('args', 'NoiseGridArgs')], 'NoiseGridTask')]}
 OVERRIDES[('NoiseGridTask', 'result')] = {'doc': ['The grid once done; nil before, or after cancel.'], 'overloads': [([], 'NoiseGrid?')]}
+# dialogue-graphs.md R27: DialogueRunner's lua_CFunctions (DialogueClassesLua.cpp); DialogueLine in stubs/Dialogue.lua
+OVERRIDES[('DialogueRunner', 'start')] = {'doc': ['Starts at an entry ("" or nil: Start Entry, else `start`, else the lowest id) with message arguments that',
+                                                  'win over variables ({player = "Ana"}). False when there is no dialogue or no such entry.'],
+                                          'overloads': [([('entry?', 'string'), ('args?', 'table<string, string|number|boolean>')], 'boolean')]}
+OVERRIDES[('DialogueRunner', 'setArg')] = {'doc': ['A message argument for this conversation ({name} in a text, {name} in an expression).'],
+                                           'overloads': [([('name', 'string'), ('value', 'string|number|boolean')], '')]}
 OVERRIDES[('ParticleSystemModule', 'setBursts')] = {
     'doc': ['ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01, probability = 1}, ...}): replaces',
             'the bursts (count a number or a MinMaxCurve; cycles 0 repeats forever). Version 2 systems only.'],
@@ -2876,7 +2927,11 @@ PROPERTY_OVERRIDES = {
     ('UIPrewarm', 'onDone'): ('fun()|nil', False),
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
+    # dialogue-graphs.md R8: the last line shown (stubs/Dialogue.lua: DialogueLine)
+    ('DialogueRunner', 'currentLine'): ('DialogueLine?', True),
     ('Mesh', 'material'): ('Material', True),
+    # the active GPU quirks' names
+    ('Device', 'gpuQuirks'): ('string[]', True),
     # the Particle System module views (binding/stubs/ParticleSystemModules.lua, from
     # tools/gen_particle_stubs.py): live views, not copies
     **{('ParticleSystem', _m): ('ParticleSystem' + _m[0].upper() + _m[1:] + 'Module', False) for _m in (
@@ -2884,6 +2939,10 @@ PROPERTY_OVERRIDES = {
         'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
         'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'collision', 'trails',
         'customData', 'externalForces', 'renderer', 'pixelArt')},
+    # S95 REQ-3: typed as before (nil only without a Transform), copies as before
+    **{('GameObject', _m): (_t, True) for _m, _t in (
+        ('position', 'Vector3'), ('rotation', 'Quaternion'), ('scale', 'Vector3'), ('localMatrix', 'Matrix4'),
+        ('modelMatrix', 'Matrix4'), ('normalMatrix', 'Matrix4'))},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
     # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
@@ -3060,6 +3119,28 @@ OVERRIDES[('Physics', 'closestPoint')] = {
     'doc': ['The point of a convex collider nearest to `point`, `point` itself inside (Unity Physics.ClosestPoint);',
             'an error for a mesh or heightfield collider.'],
     'overloads': [([('scene', 'Scene'), ('point', 'Vector3'), ('collider', 'Collider')], 'Vector3')]}
+# spatial-queries: the NonAlloc overlaps (PhysicsQueryLua.cpp) beside S96's; options as theirs
+for _name, _args, _after in (
+        ('Sphere', [('center', 'Vector3'), ('radius', 'number')], []),
+        ('Box', [('center', 'Vector3'), ('halfExtents', 'Vector3')], [('orientation?', 'Quaternion')]),
+        ('Capsule', [('point1', 'Vector3'), ('point2', 'Vector3'), ('radius', 'number')], [])):
+    OVERRIDES[('Physics', 'overlap' + _name + 'NonAlloc')] = {
+        'doc': [f'Physics.overlap{_name} into `results`: the colliders\' GameObject ids (entries past the count cleared, so',
+                '#results is the count), their collider indices into `colliders` when given. Returns the count; no garbage',
+                'once the tables have grown.'],
+        'overloads': [([('scene', 'Scene')] + _args + [('results', 'SpatialQueryResults')] + _after + _Q3 +
+                       [('colliders?', 'SpatialQueryColliders')], 'integer')]}
+for _name, _args in (
+        ('Point', [('point', 'Vector2')]),
+        ('Circle', [('point', 'Vector2'), ('radius', 'number')]),
+        ('Box', [('point', 'Vector2'), ('size', 'Vector2'), ('angle', 'number')]),
+        ('Capsule', [('point', 'Vector2'), ('size', 'Vector2'), ('capsuleDirection', 'integer'), ('angle', 'number')]),
+        ('Area', [('pointA', 'Vector2'), ('pointB', 'Vector2')])):
+    OVERRIDES[('Physics2D', 'overlap' + _name + 'NonAlloc')] = {
+        'doc': [f'Physics2D.overlap{_name}All into `results` (GameObject ids; #results is the count after), collider',
+                'indices into `colliders` when given. Returns the count; no garbage once the tables have grown.'],
+        'overloads': [([('scene', 'Scene')] + _args + [('results', 'SpatialQueryResults')] + _Q2 +
+                       [('colliders?', 'SpatialQueryColliders')], 'integer')]}
 
 # S26: MeshRaycast, the triangle-exact raycast without physics (Physics.raycast's arguments)
 _MESH_RAYCAST_OPTIONS = '{hitBackfaces: boolean?, includeInactive: boolean?, ignore: (EntityHandle|integer)[]?, kinds: integer?}'
@@ -3077,6 +3158,19 @@ OVERRIDES[('MeshRaycast', 'raycastEntity')] = {
     'doc': ['The closest hit of a ray on one GameObject only (distance: the fraction of ray.direction).'],
     'overloads': [([('scene', 'Scene'), ('entity', 'EntityHandle|integer'), ('ray', 'Ray'), ('options?', _MESH_RAYCAST_OPTIONS)],
                    'MeshRaycastHit')]}
+_MESH_OVERLAP_OPTIONS = 'MeshOverlapOptions'
+for _box in (False, True):
+    _args = [('center', 'Vector3'), ('halfExtents', 'Vector3')] if _box else [('center', 'Vector3'), ('radius', 'number')]
+    _name = 'overlapBox' if _box else 'overlapSphere'
+    OVERRIDES[('MeshRaycast', _name)] = {
+        'doc': ['Objects whose world bounds touch the ' + ('oriented box' if _box else 'sphere') + ' (bounds, not triangles), by (entity,',
+                'instance); the bounds of the frame\'s first overlap unless options.current. Default kinds MESH | INSTANCE | BOUNDS.'],
+        'overloads': [([('scene', 'Scene')] + _args + ([('rotation?', 'Quaternion')] if _box else []) +
+                       [('layerMask?', 'integer'), ('options?', _MESH_OVERLAP_OPTIONS)], 'MeshOverlapHit[]')]}
+    OVERRIDES[('MeshRaycast', _name + 'NonAlloc')] = {
+        'doc': ['The objects\' entity ids into `results` (#results is the count after). Returns the count.'],
+        'overloads': [([('scene', 'Scene')] + _args + ([('rotation', 'Quaternion')] if _box else []) +
+                       [('results', 'SpatialQueryResults'), ('layerMask?', 'integer'), ('options?', _MESH_OVERLAP_OPTIONS)], 'integer')]}
 OVERRIDES[('MeshRaycast', 'prepare')] = {
     'doc': ['Builds the triangle trees of these GameObjects\' meshes (all when none) in the background, so a later',
             'raycast does not build them inline.'],
@@ -3223,6 +3317,14 @@ OVERRIDES[('UIDocument', 'createDataModel')] = {
 OVERRIDES[('UIDocument', 'getDataModel')] = {
     'doc': ['The proxy of a data model this document created, or nil.'],
     'overloads': [([('name', 'string')], 'UIDataModel|nil')]}
+# build-profiles: the build's define list and BuildInfo (LuaRef tables; BuildInfo is in
+# engine/core/script/binding/stubs/BuildInfo.lua)
+OVERRIDES[('System', 'getDefines')] = {
+    'doc': ["The build's Scripting Define Symbols (in Play: the active Build Profile's); {} without a profile."],
+    'overloads': [([], 'string[]')]}
+OVERRIDES[('System', 'getBuildInfo')] = {
+    'doc': ['What the build is: its Build Profile, defines, Development Build flag and Patch And Run patch.'],
+    'overloads': [([], 'BuildInfo')]}
 # anim-retarget: addClip's options table, Model:getHumanoidInfo's table (LuaRef in C++)
 OVERRIDES[('AnimationPlayer', 'addClip')] = {
     'doc': ["Adds a clip entry (an authored change: the next update reloads): an asset-relative .anim or",
@@ -3523,6 +3625,8 @@ HTML_UI_FIELD_OVERRIDES = {
     ('UIDocument', 'body'): {'doc': ['the <body> element (the root of an .rml document)']},
     ('UIDocument', 'documentElement'): {'doc': ['the <html> element (CSS :root; the same as body in an .rml document)']},
     ('UIEvent', 'gamepad'): {'doc': ['the id of the gamepad that sent this keydown/keyup (code "GamepadA", ...), -1 for the keyboard']},
+    ('UIEvent', 'enterKeyHint'): {'doc': ['an Enter keydown of the soft keyboard\'s action key or of a field with an enterkeyhint: the hint',
+                                          '("next", "send", ...; "" for the platform\'s default key); preventDefault stops its action']},
 }
 
 # HTML UI (phase 4, p4-guide): the event names of UIElement/UIDocument addEventListener
@@ -3702,6 +3806,7 @@ EVENT_FIELD_ARGS = {
     ('Audio', 'onMusicBeat'): ['bar', 'beat'],
     ('Audio', 'onMusicSection'): ['section', 'clip'],
     ('Device', 'onThermalStateChanged'): ['state'],
+    ('DebugOverlay', 'onCheatUsed'): ['name'],
 }
 
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
@@ -3772,7 +3877,11 @@ class Builder:
                             if cn == vname:
                                 v = cv
                                 break
-                if v is None and expr and not qual:
+                strings = [x for x in expr if x.k == 'str'] if expr else []
+                if v is None and len(strings) == 1:
+                    # a string constant (`std::string("Touch")`: InputScheme, GamepadFamily)
+                    v = literal(strings)
+                elif v is None and expr and not qual:
                     # a literal value (a namespace of plain constants: ParticleSystemStopBehavior)
                     v = eval_int(expr, {}, self.model)
                 vals.append((name, v, call))
@@ -3801,6 +3910,8 @@ class Builder:
                 if not call.targs:
                     for arg in call.args:
                         targ = self.lambda_ctor_targ(arg)
+                        if targ is None:
+                            targ = self.scene_ctor_targ(arg)
                         if targ is not None:
                             c.lua_ctors.append(self.ctor_sig(c, targ))
             fs = re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.cpp) or \
@@ -3813,6 +3924,23 @@ class Builder:
                     self.function_member(c, m)
                 else:
                     self.property_member(c, m)
+
+    @staticmethod
+    def scene_ctor_targ(arg):
+        # script/binding/SceneConstructors.h: sceneconstructors::ofScene<T>() is T(Scene*),
+        # ofEntity<T>() T(Scene*, Entity), ofSceneWith<T, A>() T(Scene*, A); None for other args
+        m = re.match(r'^sceneconstructors::(ofScene|ofEntity|ofSceneWith)<([^,<>]+)(?:,([^<>]+))?>\(\)$',
+                     ''.join(tok.t for tok in arg))
+        if not m:
+            return None
+        line, cond = arg[0].line, arg[0].cond
+        params = ['Scene', '*']
+        if m.group(1) == 'ofEntity':
+            params += [',', 'Entity']
+        elif m.group(1) == 'ofSceneWith' and m.group(3):
+            params += [','] + re.findall(r'[A-Za-z_][A-Za-z0-9_:]*|\S', m.group(3))
+        toks = ['void', '('] + params + [')']
+        return [Tok('id' if re.match(r'[A-Za-z_]', t) else 'op', t, line, cond) for t in toks]
 
     @staticmethod
     def lambda_ctor_targ(arg):
@@ -3912,6 +4040,7 @@ class Builder:
             m.lua_sigs = [self.override_sig(o) for o in ov['overloads']]
             m.doc = m.call.doc + ov.get('doc', [])
             m.is_async = ov.get('async', False)
+            m.nodiscard = ov.get('nodiscard', False)
             return
         sigs = []
         m.cpp_sigs = []
@@ -4113,7 +4242,64 @@ OVERRIDES[('DebugOverlay', 'getStats')] = {
             'frame-time ring (S15), draw calls, memory, audio, physics, entities, coroutines, timers.'],
     'overloads': [([], 'DebugStats')]}
 OVERRIDES[('DebugOverlay', 'addCommand')] = {
-    'doc': ['Adds a console command (name `[a-z0-9_-]+`; re-adding replaces): `fn(args)` gets the words after',
-            'the name. It goes with `owner` (default: the `self` of the calling script method). False for a bad',
-            'or built-in name.'],
-    'overloads': [([('name', 'string'), ('description', 'string?'), ('fn', 'fun(args: string[])'), ('owner?', 'table')], 'boolean')]}
+    'doc': ['Adds a console command: the table form takes typed arguments, aliases, a cheat flag; `run(args, call)` gets',
+            'the arguments by name and by position and returns the result\'s value. The old form\'s `fn(args)` gets the words',
+            'after the name. Re-adding a name replaces it. It goes with `owner` (default: the `self` of the calling script',
+            'method). True, or false and the reason (a bad name, an alias another command holds, `help`).'],
+    'overloads': [([('spec', 'ConsoleCommandSpec')], 'boolean, string?'),
+                  ([('name', 'string'), ('description', 'string?'), ('fn', 'fun(args: string[])'), ('owner?', 'table')], 'boolean, string?')]}
+OVERRIDES[('DebugOverlay', 'executeCommand')] = {
+    'doc': ['Runs a console line as the game\'s own call (Console Commands does not gate it) and returns its result.'],
+    'overloads': [([('line', 'string')], 'ConsoleResult')]}
+OVERRIDES[('DebugOverlay', 'completeCommand')] = {
+    'doc': ['The completion of the word at the cursor (the bytes of `line` before it; default: the end).'],
+    'overloads': [([('line', 'string'), ('cursor?', 'integer')], 'ConsoleCompletion')]}
+OVERRIDES[('DebugOverlay', 'resetCheatsUsed')] = {
+    'doc': ['Clears DebugOverlay.cheatsUsed (a new game); the next cheat fires onCheatUsed again.'],
+    'overloads': [([], '')]}
+OVERRIDES[('DebugOverlay', 'getCommands')] = {
+    'doc': ['Every command listed, sorted by name.'],
+    'overloads': [([], 'ConsoleCommandInfo[]')]}
+
+# Culling Groups and Simulation Culling (engine/core/script/binding/CullingClassesLua.cpp): the
+# lua_CFunctions taking 1-based indices, GameObjects or ids, Lua lists and functions
+_SPHERE_TARGET = 'GameObject|integer'
+OVERRIDES[('CullingGroup', 'setSphereTarget')] = {
+    'doc': ['Sphere `index` follows the GameObject\'s world position plus `offset` at each evaluation;',
+            'a destroyed GameObject\'s sphere keeps its last position.'],
+    'overloads': [([('index', 'integer'), ('target', _SPHERE_TARGET), ('radius', 'number'), ('offset?', 'Vector3')], '')]}
+OVERRIDES[('CullingGroup', 'setSphere')] = {
+    'doc': ['Sets sphere `index` (it stops following).'],
+    'overloads': [([('index', 'integer'), ('sphere', 'BoundingSphere')], '')]}
+OVERRIDES[('CullingGroup', 'getSphere')] = {'overloads': [([('index', 'integer')], 'BoundingSphere')]}
+OVERRIDES[('CullingGroup', 'setBoundingSpheres')] = {
+    'doc': ['Copies the spheres (at most 100,000); they stop following.'],
+    'overloads': [([('spheres', 'BoundingSphere[]')], '')]}
+OVERRIDES[('CullingGroup', 'setBoundingDistances')] = {
+    'doc': ['0 to 8 ascending, positive distances: band 0 below the first, band n at or beyond the last.'],
+    'overloads': [([('distances', 'number[]')], '')]}
+OVERRIDES[('CullingGroup', 'setDistanceReferencePoint')] = {
+    'doc': ['Distances are measured from this point, or from this GameObject (followed). None set: the',
+            'target camera, else the scene\'s main camera.'],
+    'overloads': [([('point', 'Vector3|GameObject|integer')], '')]}
+OVERRIDES[('CullingGroup', 'eraseSwapBack')] = {
+    'doc': ['Removes sphere `index`: the last sphere and its state move into it.'],
+    'overloads': [([('index', 'integer')], '')]}
+OVERRIDES[('CullingGroup', 'isVisible')] = {'overloads': [([('index', 'integer')], 'boolean')]}
+OVERRIDES[('CullingGroup', 'getDistance')] = {
+    'doc': ['The sphere\'s band (0 nearest); -1 before the first evaluation.'],
+    'overloads': [([('index', 'integer')], 'integer')]}
+OVERRIDES[('CullingGroup', 'queryIndices')] = {
+    'doc': ['Fills `out[1..n]` with the 1-based indices of the matching spheres, skipping the first `first`',
+            'matches, and returns n (CullingGroupIndices).'],
+    'overloads': [([('visible', 'boolean'), ('out', 'CullingGroupIndices'), ('first?', 'integer')], 'integer'),
+                  ([('band', 'integer'), ('out', 'CullingGroupIndices'), ('first?', 'integer')], 'integer'),
+                  ([('visible', 'boolean'), ('band', 'integer'), ('out', 'CullingGroupIndices'), ('first?', 'integer')], 'integer')]}
+OVERRIDES[('SimulationCulling', 'addFocus')] = {
+    'doc': ['A simulation focus at a position, or following a GameObject (one per player); its id. At most 16.'],
+    'overloads': [([('scene', 'Scene'), ('focus', 'Vector3|GameObject|integer')], 'integer')]}
+OVERRIDES[('SimulationCulling', 'setGroundCheck')] = {
+    'doc': ['The game\'s own ground check for worlds it streams itself; nil removes it.'],
+    'overloads': [([('scene', 'Scene'), ('check', 'SimulationGroundCheck|nil')], '')]}
+PROPERTY_OVERRIDES[('CullingGroup', 'targetCamera')] = ('integer|nil', False)
+PROPERTY_OVERRIDES[('CullingGroup', 'onStateChanged')] = ('CullingGroupStateChanged|nil', False)

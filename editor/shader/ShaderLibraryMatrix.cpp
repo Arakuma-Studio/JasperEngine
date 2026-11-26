@@ -652,6 +652,24 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         inputs.pbrTransmission = true;
         add(std::string("high quality, all lobes, ") + (lighting == MaterialLighting::PIXEL ? "pixel" : "mixed"), RenderSystem::getSubmeshShaderVariant(high, inputs));
     }
+    // S99: a scene's Area Lights and IES Profiles on the worst variants, Standard and High (the LTC
+    // tables and the profiles share one texture and its sampler)
+    for (bool litHigh : {false, true}){
+        MeshShaderEnvironment profiles = worst;
+        profiles.litQualityHigh = litHigh;
+        profiles.areaLights = true;
+        profiles.iesProfiles = true;
+        const std::string tier = litHigh ? "high quality" : "standard quality";
+        add("area lights and IES profiles, " + tier + ", pixel", RenderSystem::getSubmeshShaderVariant(profiles, mesh));
+        SubmeshShaderInputs inputs = mesh;
+        inputs.lighting = MaterialLighting::MIXED;
+        add("area lights and IES profiles, " + tier + ", mixed", RenderSystem::getSubmeshShaderVariant(profiles, inputs));
+        inputs.material = &all;
+        inputs.pbrTransmission = true;
+        add("area lights and IES profiles, " + tier + ", all lobes", RenderSystem::getSubmeshShaderVariant(profiles, inputs));
+        profiles.tiledLights = true;
+        add("area lights and IES profiles, " + tier + ", tiled", RenderSystem::getSubmeshShaderVariant(profiles, mesh));
+    }
     // IBL alone (no lights): the lobes' environment path
     {
         MeshShaderEnvironment ibl;

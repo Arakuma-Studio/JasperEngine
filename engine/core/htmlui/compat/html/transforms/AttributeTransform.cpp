@@ -314,6 +314,18 @@ namespace {
                 }
                 continue;
             }
+            // game-ui-localization.md R11: the message replaces the element's text, so it holds only text
+            if (name == "data-l10n-id"){
+                for (const auto& child : element.children){
+                    if (child->kind != HtmlNode::Kind::Element)
+                        continue;
+                    context.sink.report(codes::L10nChildElements, where,
+                                        "'" + attribute->value + "' would replace the child <" + child->tag + "> of <" + element.tag + ">: the element is left as written",
+                                        "put data-l10n-id on the element that holds only the text", "", attribute->value);
+                    break;
+                }
+                continue;
+            }
             if (name == "style"){
                 if (!trim(attribute->value).empty()){
                     StyleAttributeSource source;

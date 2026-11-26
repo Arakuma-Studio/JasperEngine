@@ -327,6 +327,38 @@ TEST(StreamScene, WaterWakeSettings){
     EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 120.0f);
 }
 
+// S92 R37: the screen HTML UI documents' render mode and MSAA samples: written only away from
+// their defaults (Screen Space - Overlay, 0 = the project's), read back; a scene without the keys
+// takes the defaults; a sample count that is not 0, 1, 2, 4 or 8 goes to the one below it
+TEST(StreamScene, HtmlUiSettings){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    EXPECT_EQ(plainYaml.find("htmlUi"), std::string::npos) << "defaults are not written";
+
+    Scene scene;
+    scene.setHtmlUiRenderMode(UIRenderMode::CAMERA);
+    scene.setHtmlUiMsaaSamples(2);
+    const YAML::Node encoded = YAML::Load(dumpScene(&scene));
+    EXPECT_EQ(encoded["htmlUiRenderMode"].as<std::string>(), "camera");
+    EXPECT_EQ(encoded["htmlUiMsaaSamples"].as<int>(), 2);
+    Scene read;
+    Stream::decodeScene(&read, encoded);
+    EXPECT_EQ(read.getHtmlUiRenderMode(), UIRenderMode::CAMERA);
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 2);
+    EXPECT_EQ(dumpScene(&read), dumpScene(&scene));
+
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    const SceneSettings defaults;
+    EXPECT_EQ(read.getHtmlUiRenderMode(), defaults.htmlUiRenderMode);
+    EXPECT_EQ(read.getHtmlUiRenderMode(), UIRenderMode::OVERLAY);
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 0);
+
+    Stream::decodeScene(&read, YAML::Load("htmlUiMsaaSamples: 6\n"));
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 4);
+    read.setHtmlUiMsaaSamples(-1);
+    EXPECT_EQ(read.getHtmlUiMsaaSamples(), 0);
+}
+
 // S78 R1, R26: Light Steps, written only away from 0 (scenes saved before re-save unchanged), read
 // back; a scene without the key is off, a stored value out of range is clamped
 TEST(StreamScene, LightStepsSetting){
@@ -439,4 +471,52 @@ TEST(StreamScene, PhysicsWorldSettingsRoundTrip){
     EXPECT_FLOAT_EQ(Catalog::getScenePropertyDefault<float>("physics_2d_points_per_meter"), 64.0f);
     EXPECT_EQ(Catalog::getScenePropertyDefault<int>("physics_3d_velocity_iterations"), 10);
     EXPECT_TRUE(Catalog::getScenePropertyDefault<bool>("physics_2d_warm_starting"));
+}
+
+// Cavity's post-processing fields (S100): written only away from their defaults (older scenes
+// re-save unchanged), read back, and a scene without them takes the defaults
+TEST(StreamScene, CavitySettings){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    EXPECT_EQ(plainYaml.find("cavity"), std::string::npos) << "defaults are not written";
+
+    PostProcessingSettings settings;
+    settings.cavityEnabled = true;
+    settings.cavityType = CavityType::WORLD;
+    settings.cavityScreenRidge = 0.5f;
+    settings.cavityScreenValley = 1.5f;
+    settings.cavityScreenWidth = 2.0f;
+    settings.cavityWorldRadius = 1.25f;
+    settings.cavityWorldRidge = 2.0f;
+    settings.cavityWorldValley = 0.25f;
+    settings.cavityWorldSamples = 16;
+    settings.cavityMaxPixelRadius = 0.0f;
+    settings.cavityDebug = true;
+    Scene scene;
+    scene.setPostProcessing(settings);
+    const std::string yaml = dumpScene(&scene);
+    EXPECT_NE(yaml.find("cavityType: world"), std::string::npos) << yaml;
+    EXPECT_NE(yaml.find("cavityWorldSamples: 16"), std::string::npos) << yaml;
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(yaml));
+    EXPECT_TRUE(read.getPostProcessing() == settings);
+    EXPECT_EQ(dumpScene(&read), yaml);
+
+    // only the changed ones: a scene with Cavity on and the rest at the defaults writes one key
+    PostProcessingSettings onlyOn;
+    onlyOn.cavityEnabled = true;
+    Scene on;
+    on.setPostProcessing(onlyOn);
+    const YAML::Node encoded = Stream::encodePostProcessing(on.getPostProcessing());
+    ASSERT_TRUE(encoded.IsMap());
+    EXPECT_EQ(encoded.size(), 1u) << YAML::Dump(encoded);
+    EXPECT_TRUE(encoded["cavityEnabled"].as<bool>());
+
+    // an old scene (none of the keys) over a changed one: the defaults
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    EXPECT_TRUE(read.getPostProcessing() == PostProcessingSettings());
+
+    // samples other than 4, 8 or 16 snap to one of them
+    YAML::Node odd = YAML::Load("{cavityEnabled: true, cavityWorldSamples: 12}");
+    EXPECT_EQ(Stream::decodePostProcessing(odd).cavityWorldSamples, 8);
 }

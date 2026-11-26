@@ -314,6 +314,21 @@ void UIDocumentSystem::textureDestroyAll(){
     textureState->focus = NULL_ENTITY;
 }
 
+void UIDocumentSystem::textureReleaseGpu(){
+    if (!textureState)
+        return;
+
+    for (auto& pair : textureState->entries){
+        HtmlUITextureDocument& entry = pair.second;
+        entry.context->releaseGpuResources();
+        // the Framebuffer object stays for its consumers; the next render makes its texture again
+        if (entry.target)
+            entry.target->destroy();
+        entry.rendered = false;
+        entry.showing = false;
+    }
+}
+
 void UIDocumentSystem::textureUpdate(){
     if (!textureState)
         return;

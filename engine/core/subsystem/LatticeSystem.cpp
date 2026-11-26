@@ -737,6 +737,8 @@ void LatticeSystem::updateFollowers(){
             }
             current.needUpdate = true;
             render->updateTransform(current, currentEntity);
+            // Changed<Transform>: the late transform pass finds a follower moved there by it
+            transforms->markChangedAt(t);
         }
     }
 }

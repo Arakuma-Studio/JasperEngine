@@ -62,9 +62,11 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
     static const std::map<RootKind, std::vector<std::string>> tables = {
         {RootKind::Scene, {"formatVersion", "guid", "formerGuids", "labels", "id", "name", "scene", "sceneType", "mainCamera", "maxValues", "shaderKeys",
             "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "imports", "entities"}},
-        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "ambientLight2DWithoutLights", "backgroundColor", "capsuleShadowIntensity", "capsuleShadowSoftness", "capsuleShadowsEnabled", "defaultLinesShader", "defaultLinesShaderUniforms", "defaultMeshShader", "defaultMeshShaderUniforms", "defaultPointsShader", "defaultPointsShaderUniforms", "defaultSkyShader", "defaultSkyShaderUniforms", "defaultUIShader", "defaultUIShaderUniforms", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "light2DSteps", "lightState", "litQuality", "maxLightsPerObject", "maxPlanarReflections", "meshLodCrossFade", "meshLodCrossFadeDuration", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "planarReflectionClipOffset", "planarReflectionFarClip", "planarReflectionLayers", "planarReflectionResolution", "planarReflectionShadows", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness", "waterWakeArea", "waterWakeFade", "waterWakeResolution",
+        {RootKind::SceneSettings, {"ambientEquatorColor", "ambientGroundColor", "ambientLight2DColor", "ambientLight2DIntensity", "ambientLight2DWithoutLights", "ambientMode", "ambientSkyColor", "backgroundColor", "capsuleShadowIntensity", "capsuleShadowSoftness", "capsuleShadowsEnabled", "defaultLinesShader", "defaultLinesShaderUniforms", "defaultMeshShader", "defaultMeshShaderUniforms", "defaultPointsShader", "defaultPointsShaderUniforms", "defaultSkyShader", "defaultSkyShaderUniforms", "defaultUIShader", "defaultUIShaderUniforms", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "htmlUiMsaaSamples", "htmlUiRenderMode", "light2DSteps", "lightState", "litQuality", "maxLightsPerObject", "maxPlanarReflections", "meshLodCrossFade", "meshLodCrossFadeDuration", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "planarReflectionClipOffset", "planarReflectionFarClip", "planarReflectionLayers", "planarReflectionResolution", "planarReflectionShadows", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness", "waterWakeArea", "waterWakeFade", "waterWakeResolution",
             // upstream's scene settings (SYNC#4): written away from their defaults
-            "canvasScaler", "physics2DSubSteps"}},
+            "canvasScaler", "physics2DSubSteps",
+            // S95: the scene's Fixed Timestep override
+            "fixedTimestep"}},
         // prefabInstance and the keys written before it (prefabOverrides...), and the keys of
         // the GameObjects a prefab adds to an instance (addedTo, childIndex...)
         {RootKind::Entity, {"type", "entity", "name", "active", "tag", "layer", "components", "children",
@@ -76,8 +78,12 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor",
             // upstream's project.yaml blocks (SYNC#4): the editor writes and reads them
             "audio", "physics3DWorld", "playerCrash", "presentation", "shaderGlobals", "uiScale",
+            // Project Settings > Physics / Physics 2D > Queries Hit Triggers (spatial queries)
+            "physicsQueries",
             // S87: Project Settings > Localization
             "localization",
+            // S95: Project Settings > Time and Input > Simulate Touch From Mouse
+            "time", "simulateTouchFromMouse",
             // Project Settings > Voxels (T6 R7)
             "voxel",
             // Tags and Layers > Sorting Layers and Graphics > Transparency Sort Mode (S52, S94 F5)
@@ -519,6 +525,14 @@ const EnumTable<LitQuality>& StreamSchema::litQuality() {
     return table;
 }
 
+const EnumTable<AmbientMode>& StreamSchema::ambientMode() {
+    static const EnumTable<AmbientMode> table("AmbientMode", {
+        {AmbientMode::COLOR, "color"},
+        {AmbientMode::GRADIENT, "gradient"},
+    }, AmbientMode::COLOR);
+    return table;
+}
+
 const EnumTable<PbrTier>& StreamSchema::pbrTier() {
     static const EnumTable<PbrTier> table("PbrTier", {
         {PbrTier::FULL, "full"},
@@ -651,6 +665,14 @@ const EnumTable<Scaling>& StreamSchema::scalingMode() {
     return table;
 }
 
+const EnumTable<UIRenderMode>& StreamSchema::uiRenderMode() {
+    static const EnumTable<UIRenderMode> table("UIRenderMode", {
+        {UIRenderMode::OVERLAY, "overlay"},
+        {UIRenderMode::CAMERA, "camera"},
+    }, UIRenderMode::OVERLAY);
+    return table;
+}
+
 const EnumTable<SceneColorScale>& StreamSchema::sceneColorScale() {
     static const EnumTable<SceneColorScale> table("SceneColorScale", {
         {SceneColorScale::FULL, "full"},
@@ -702,6 +724,7 @@ const EnumTable<ScriptPropertyType>& StreamSchema::scriptPropertyType() {
         {ScriptPropertyType::EntityReference, "EntityReference"},
         {ScriptPropertyType::Prefab, "Prefab"},
         {ScriptPropertyType::Asset, "Asset"},
+        {ScriptPropertyType::List, "List"},
     }, ScriptPropertyType::Bool);
     return table;
 }

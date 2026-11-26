@@ -19,26 +19,26 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using SvgWriterJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 using titleart::TitleArtDoc;
 
 namespace {
 
-    TitleArtDoc svgWriterDocument(Json layers, int width = 512, int height = 256) {
+    TitleArtDoc svgWriterDocument(SvgWriterJson layers, int width = 512, int height = 256) {
         TitleArtDoc doc = titleart::makeNewTitleArt();
         doc.root["canvas"]["width"] = width;
         doc.root["canvas"]["height"] = height;
         doc.root["layers"] = std::move(layers);
-        doc.root["exposed"] = Json::array();
+        doc.root["exposed"] = SvgWriterJson::array();
         titleart::normalizeTitleArt(doc, nullptr);
         return doc;
     }
 
-    Json star(const std::string& id, const std::string& name) {
-        return Json{{"id", id}, {"type", "shape"}, {"name", name}, {"shape", "star"}, {"size", 120},
+    SvgWriterJson star(const std::string& id, const std::string& name) {
+        return SvgWriterJson{{"id", id}, {"type", "shape"}, {"name", name}, {"shape", "star"}, {"size", 120},
                     {"transform", {{"position", {60, -20}}, {"scale", 1.5}}},
                     {"style", {{"face", {{"fill", {{"kind", "solid"}, {"color", "#ffffff"}}}}},
-                               {"rims", Json::array({Json{{"id", id.substr(0, 7) + "9"}, {"width", 8}, {"join", "round"},
+                               {"rims", SvgWriterJson::array({SvgWriterJson{{"id", id.substr(0, 7) + "9"}, {"width", 8}, {"join", "round"},
                                                          {"material", {{"fill", {{"kind", "solid"}, {"color", "#000000"}}}}}}})}}}};
     }
 
@@ -53,9 +53,9 @@ namespace {
 }
 
 TEST(SvgWriter, StructureAndIds) {
-    Json group = {{"id", "000000a1"}, {"type", "group"}, {"name", "Logo Group"}, {"opacity", 0.5}, {"blend", "screen"},
-                  {"children", Json::array({star("000000b1", "Star"), star("000000c1", "Star")})}};
-    const TitleArtDoc doc = svgWriterDocument(Json::array({group}));
+    SvgWriterJson group = {{"id", "000000a1"}, {"type", "group"}, {"name", "Logo Group"}, {"opacity", 0.5}, {"blend", "screen"},
+                  {"children", SvgWriterJson::array({star("000000b1", "Star"), star("000000c1", "Star")})}};
+    const TitleArtDoc doc = svgWriterDocument(SvgWriterJson::array({group}));
     const TitleSvgResult r = writeTitleSvg(doc, {100, 20, 300, 200}, {}, nullptr);
     ASSERT_TRUE(r.ok) << r.error;
     EXPECT_NE(r.text.find("viewBox=\"100 20 300 200\""), std::string::npos) << "the frame in canvas pixels";
@@ -74,7 +74,7 @@ TEST(SvgWriter, StructureAndIds) {
 
 // the SVG raster of a moved and scaled star with a round rim covers what the geometry covers
 TEST(SvgWriter, TransformsAndRimsMatchTheGeometry) {
-    const TitleArtDoc doc = svgWriterDocument(Json::array({star("000000b1", "Star")}));
+    const TitleArtDoc doc = svgWriterDocument(SvgWriterJson::array({star("000000b1", "Star")}));
     const TitleSvgResult r = writeTitleSvg(doc, CANVAS, {}, nullptr);
     ASSERT_TRUE(r.ok) << r.error;
     // the rim's stroke: 2 x its width (8 % of 120) x the layer scale 1.5
@@ -124,9 +124,9 @@ TEST(SvgWriter, TransformsAndRimsMatchTheGeometry) {
 }
 
 TEST(SvgWriter, RotationAndYDown) {
-    Json bar = {{"id", "000000d1"}, {"type", "shape"}, {"name", "Bar"}, {"shape", "rect"}, {"size", 40}, {"aspect", 4},
+    SvgWriterJson bar = {{"id", "000000d1"}, {"type", "shape"}, {"name", "Bar"}, {"shape", "rect"}, {"size", 40}, {"aspect", 4},
                 {"transform", {{"position", {0, 20}}, {"rotation", 90}}}};
-    const TitleArtDoc doc = svgWriterDocument(Json::array({bar}));
+    const TitleArtDoc doc = svgWriterDocument(SvgWriterJson::array({bar}));
     const TitleSvgResult r = writeTitleSvg(doc, CANVAS, {}, nullptr);
     ASSERT_TRUE(r.ok);
     std::vector<uint8_t> px;
@@ -150,17 +150,17 @@ TEST(SvgWriter, RotationAndYDown) {
 }
 
 TEST(SvgWriter, GradientsWithAlphaAndMidpoints) {
-    Json layer = star("000000b1", "Star");
+    SvgWriterJson layer = star("000000b1", "Star");
     layer["style"]["face"]["fill"] = {{"kind", "linear"}, {"angle", 0},
-                                      {"gradient", {{"stops", Json::array({Json{{"pos", 0}, {"color", "#ff0000"}, {"alpha", 0.25}, {"mid", 0.3}},
-                                                                           Json{{"pos", 1}, {"color", "#0000ff"}, {"alpha", 1}, {"mid", 0.5}}})}}}};
-    Json radial = star("000000c1", "Radial");
+                                      {"gradient", {{"stops", SvgWriterJson::array({SvgWriterJson{{"pos", 0}, {"color", "#ff0000"}, {"alpha", 0.25}, {"mid", 0.3}},
+                                                                           SvgWriterJson{{"pos", 1}, {"color", "#0000ff"}, {"alpha", 1}, {"mid", 0.5}}})}}}};
+    SvgWriterJson radial = star("000000c1", "Radial");
     radial["style"]["face"]["fill"] = {{"kind", "radial"}};
-    Json reflected = star("000000e1", "Reflected");
+    SvgWriterJson reflected = star("000000e1", "Reflected");
     reflected["style"]["face"]["fill"] = {{"kind", "reflected"}};
-    Json angle = star("000000f1", "Angle");
+    SvgWriterJson angle = star("000000f1", "Angle");
     angle["style"]["face"]["fill"] = {{"kind", "angle"}};
-    const TitleSvgResult r = writeTitleSvg(svgWriterDocument(Json::array({layer, radial, reflected, angle})), CANVAS, {}, nullptr);
+    const TitleSvgResult r = writeTitleSvg(svgWriterDocument(SvgWriterJson::array({layer, radial, reflected, angle})), CANVAS, {}, nullptr);
     ASSERT_TRUE(r.ok);
     EXPECT_EQ(svgWriterCount(r.text, "<linearGradient"), 2);
     EXPECT_EQ(svgWriterCount(r.text, "<radialGradient"), 1);
@@ -176,15 +176,15 @@ TEST(SvgWriter, GradientsWithAlphaAndMidpoints) {
 }
 
 TEST(SvgWriter, MasksAndClips) {
-    Json base = star("000000b1", "Base");
-    Json clipped = {{"id", "000000c1"}, {"type", "shape"}, {"name", "Fill"}, {"shape", "rect"}, {"size", 300}, {"clip", true}};
-    Json masked = {{"id", "000000d1"}, {"type", "shape"}, {"name", "Masked"}, {"shape", "ellipse"},
-                   {"masks", Json::array({Json{{"id", "000000d2"}, {"type", "shape"}, {"invert", true}, {"density", 0.5}},
-                                          Json{{"id", "000000d3"}, {"type", "gradient"}, {"shape", "radial"}, {"length", 80}, {"feather", 4}},
-                                          Json{{"id", "000000d4"}, {"type", "image"}}})}};
-    Json plain = {{"id", "000000e1"}, {"type", "shape"}, {"name", "Plain"}};
-    Json onPlain = {{"id", "000000e2"}, {"type", "shape"}, {"name", "On Plain"}, {"clip", true}};
-    const TitleSvgResult r = writeTitleSvg(svgWriterDocument(Json::array({base, clipped, masked, plain, onPlain})), CANVAS, {}, nullptr);
+    SvgWriterJson base = star("000000b1", "Base");
+    SvgWriterJson clipped = {{"id", "000000c1"}, {"type", "shape"}, {"name", "Fill"}, {"shape", "rect"}, {"size", 300}, {"clip", true}};
+    SvgWriterJson masked = {{"id", "000000d1"}, {"type", "shape"}, {"name", "Masked"}, {"shape", "ellipse"},
+                   {"masks", SvgWriterJson::array({SvgWriterJson{{"id", "000000d2"}, {"type", "shape"}, {"invert", true}, {"density", 0.5}},
+                                          SvgWriterJson{{"id", "000000d3"}, {"type", "gradient"}, {"shape", "radial"}, {"length", 80}, {"feather", 4}},
+                                          SvgWriterJson{{"id", "000000d4"}, {"type", "image"}}})}};
+    SvgWriterJson plain = {{"id", "000000e1"}, {"type", "shape"}, {"name", "Plain"}};
+    SvgWriterJson onPlain = {{"id", "000000e2"}, {"type", "shape"}, {"name", "On Plain"}, {"clip", true}};
+    const TitleSvgResult r = writeTitleSvg(svgWriterDocument(SvgWriterJson::array({base, clipped, masked, plain, onPlain})), CANVAS, {}, nullptr);
     ASSERT_TRUE(r.ok);
     EXPECT_EQ(svgWriterCount(r.text, "<mask id="), 3) << "the clip to a rimmed base and two masks";
     EXPECT_EQ(svgWriterCount(r.text, "<clipPath"), 1) << "a face-only base clips with a clip path";
@@ -194,14 +194,14 @@ TEST(SvgWriter, MasksAndClips) {
 }
 
 TEST(SvgWriter, LeftOutStrictAndEmbedded) {
-    Json text = {{"id", "000000b1"}, {"type", "text"}, {"name", "Title"}, {"text", "AB"}, {"size", 80},
-                 {"effects", Json::array({Json{{"id", "000000b2"}, {"type", "outer_glow"}}})},
+    SvgWriterJson text = {{"id", "000000b1"}, {"type", "text"}, {"name", "Title"}, {"text", "AB"}, {"size", 80},
+                 {"effects", SvgWriterJson::array({SvgWriterJson{{"id", "000000b2"}, {"type", "outer_glow"}}})},
                  {"style", {{"face", {{"bevel", {{"enabled", true}}}}}}}};
-    Json image = {{"id", "000000c1"}, {"type", "image"}, {"name", "Photo"}};
-    Json gen = {{"id", "000000d1"}, {"type", "generator"}, {"name", "Rays"}, {"generator", {{"type", "fill"}}}};
-    Json hidden = {{"id", "000000e1"}, {"type", "image"}, {"name", "Hidden"}, {"visible", false}};
-    Json overlay = {{"id", "000000f1"}, {"type", "shape"}, {"name", "Burn"}, {"blend", "linear_burn"}};
-    const TitleArtDoc doc = svgWriterDocument(Json::array({text, image, gen, hidden, overlay}));
+    SvgWriterJson image = {{"id", "000000c1"}, {"type", "image"}, {"name", "Photo"}};
+    SvgWriterJson gen = {{"id", "000000d1"}, {"type", "generator"}, {"name", "Rays"}, {"generator", {{"type", "fill"}}}};
+    SvgWriterJson hidden = {{"id", "000000e1"}, {"type", "image"}, {"name", "Hidden"}, {"visible", false}};
+    SvgWriterJson overlay = {{"id", "000000f1"}, {"type", "shape"}, {"name", "Burn"}, {"blend", "linear_burn"}};
+    const TitleArtDoc doc = svgWriterDocument(SvgWriterJson::array({text, image, gen, hidden, overlay}));
     TitleSvgResult r = writeTitleSvg(doc, CANVAS, {}, nullptr);
     ASSERT_TRUE(r.ok);
     EXPECT_GT(svgWriterCount(r.text, "<path"), 0) << "the text's outlines";
@@ -222,7 +222,7 @@ TEST(SvgWriter, LeftOutStrictAndEmbedded) {
     TitleSvgOptions embed;
     embed.embedRaster = true;
     std::vector<std::string> asked;
-    r = writeTitleSvg(doc, CANVAS, embed, nullptr, [&](const Json& layer, TitleSvgRaster& out) {
+    r = writeTitleSvg(doc, CANVAS, embed, nullptr, [&](const SvgWriterJson& layer, TitleSvgRaster& out) {
         asked.push_back(layer.value("name", std::string()));
         out.png = {0x89, 'P', 'N', 'G'};
         out.frame = {10, 20, 30, 40};

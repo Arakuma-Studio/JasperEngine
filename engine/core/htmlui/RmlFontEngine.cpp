@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RmlFontEngine.h"
+#include "localization/Localization.h"
 #include "pixelart/BitmapFont.h"
 #include "htmlui/HtmlTextEffects.h"
 
@@ -321,6 +322,10 @@ Rml::FontFaceHandle RmlFontEngine::GetFontFaceHandle(const Rml::String& family, 
         key += name + ",";
     }
     key += "|" + std::to_string(italic ? 1 : 0) + "|" + std::to_string(cssWeight) + "|" + std::to_string(size);
+    // game-ui-localization.md R14: the game language's fonts lead the fallbacks (its own Han glyphs)
+    const std::string language = FontRegistry::matchLanguage(Localization::getLanguage());
+    if (!language.empty())
+        key += "|" + language;
 
     auto it = handles.find(key);
     if (it != handles.end())
@@ -361,9 +366,9 @@ Rml::FontFaceHandle RmlFontEngine::GetFontFaceHandle(const Rml::String& family, 
     if (handle->chain.empty()){
         append(FontRegistry::getBuiltInLatin());
     }
-    // the fallback faces of the text's weight and style (R16), then the built-in Roboto's family the same way (a project's
+    // the language's faces, the fallback faces of the text's weight and style (R16), then the built-in Roboto's family the same way (a project's
     // Roboto Bold serves bold text) and the built-in faces
-    for (const std::shared_ptr<FontFace>& face : FontRegistry::getFallbackFaces(cssWeight, italic)){
+    for (const std::shared_ptr<FontFace>& face : FontRegistry::getFallbackFaces(language, cssWeight, italic)){
         append(face);
     }
     append(FontRegistry::find("sans-serif", cssWeight, italic));

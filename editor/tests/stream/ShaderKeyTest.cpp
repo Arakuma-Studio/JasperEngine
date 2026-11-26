@@ -58,7 +58,7 @@ namespace {
         ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT, ShaderType::PROBE_FILTER, ShaderType::FLUID,
         ShaderType::SHADOW_CACHE, ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
         ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE, ShaderType::LIGHTING_PASS,
-        ShaderType::TRANSITION};
+        ShaderType::TRANSITION, ShaderType::CAVITY};
 
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
@@ -442,6 +442,9 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, 0x401 | shaderPropertyBit(47), "mesh_UltVc4Sfr"},
         {ShaderType::MESH, 0x401 | shaderPropertyBit(45) | shaderPropertyBit(48), "mesh_UltVc4PxsSpv"},
         {ShaderType::DEPTH, shaderPropertyBit(19) | shaderPropertyBit(20), "depth_PxsSpv"},
+        // S100's Cavity: the depth programs' normals (DEPTH 26) and the fullscreen draw's terms
+        {ShaderType::DEPTH, shaderPropertyBit(26), "depth_Cvn"},
+        {ShaderType::CAVITY, 0x3, "cavity_ScrWld"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
         {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxsSfxSfrSpvCinWndDthThlTwdTclLst"},

@@ -635,6 +635,7 @@ void create_scene_Main_382528969(Scene* scene){
         // Entity components initialization
         TextComponent text;
         text.text = "HELLO";
+        text.localizationKey = "";
         text.fontSize = 16;
         text.multiline = true;
         text.maxTextSize = 100;

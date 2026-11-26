@@ -77,33 +77,82 @@ loads. It is laid out at the view size, scaled so its text stays legible on any 
 
 ## 4. Commands
 
-The command field at the bottom runs `name args...` (quotes group words). Built-in commands:
+The command field at the bottom runs `name args...`. Quotes group words; inside them `\"` and `\\`
+escape. **Tab** completes the word at the cursor (command names, then the arguments); a Tab that changes
+nothing, or a second Tab within a second, prints the candidates as one line. **Up/Down** walk the last
+32 lines run. On touch screens up to 8 suggestion chips under the field follow the typing; tap one.
+A usage error prints in the warning colour with the usage; an unknown name suggests the nearest one
+(`unknown command 'gve' (did you mean 'give'? type help)`).
 
 | Command | Does |
 |---|---|
-| `help` | lists the commands |
+| `help [name]` | one line per command (aliases, `(cheat)`); `help give` describes one; `help a*` filters |
 | `clear` | clears the log buffer |
-| `stats off\|fps\|full` | the stats panel (no argument: cycles) |
-| `timescale <x>` | sets `Engine.timeScale` (no argument: prints it) |
-| `scene <name>` | `SceneManager.loadScene(name)` |
-| `lua <code>` | runs Lua, printing the results (`lua 1+1` prints 2); only with **Allow Lua Commands** (`debug.overlay_allow_lua`: `development` (default), `always`, `never`) |
+| `stats [off\|fps\|full]` | the stats panel (no argument: cycles) |
+| `timescale [x]` | sets `Engine.timeScale`, 0 to 100 (no argument: prints it); a cheat |
+| `scene <name...>` | `SceneManager.loadScene(name)`; a cheat |
+| `lua <code...>` | runs Lua, printing the results (`lua 1+1` prints 2); only with **Allow Lua Commands** (`debug.overlay_allow_lua`: `development` (default), `always`, `never`); a cheat |
 
-Your own commands, from a script:
+Your own commands, from a script, with typed arguments:
 
 ```lua
 function M:init()
-    DebugOverlay.addCommand("god", "god on|off: no damage", function(args)
-        self.invincible = args[1] ~= "off"
-        print("god mode", self.invincible)
-    end)
+    DebugOverlay.addCommand{
+        name = "give", description = "adds an item", aliases = {"g"}, cheat = true,
+        args = {
+            {name = "item", type = "enum", choices = {"gold", "gem", "key"}},
+            {name = "count", type = "int", optional = true, default = 1, min = 1, max = 999},
+        },
+        run = function(args, call)
+            self.inventory[args.item] = (self.inventory[args.item] or 0) + args.count
+            call:print(("%d %s"):format(args.count, args.item))
+            return self.inventory[args.item]
+        end,
+    }
 end
 ```
 
-`fn(args)` gets the words after the name. A name is `[a-z0-9_-]+`; adding it again replaces the
-command (a built-in name is refused). A command belongs to the script that added it (the `self` of
-the calling method, or the 4th argument `owner`) and goes when that script is released; all script
-commands go when Play stops. `DebugOverlay.removeCommand(name)` removes one,
-`DebugOverlay.executeCommand("stats full")` runs a line as the field does. Output goes to the log.
+Argument types: `string` (a word), `int` (decimal or `0x` hex), `float`, `bool` (`true/false/on/off/
+yes/no/1/0`), `enum` (`choices`, a unique prefix works), `vector3` (`1,0,-2`), `gameobject` (a name,
+a `/`-path or `#id`, as `GameObject.find`; passed as the GameObject) and `rest` (the rest of the line,
+last only). `run(args, call)` gets each argument by name and by position (`args.count`, `args[2]`);
+a bad word never reaches it: the caller gets the error and the usage
+(`give: count must be a whole number from 1 to 999 (got "lots"). Usage: give <item> [count=1]`).
+`call:print(...)` adds a line to the result (logged as `[give] 10 gold`); lines `print` logs during
+the call are lines too. `call:fail(message)` ends with status `failed`; a Lua error gives `error`.
+What `run` returns is the result's `value`. `complete = function(argIndex, prefix, words)` returns
+candidates for an argument (enum, bool and gameobject complete themselves).
+
+The old form `DebugOverlay.addCommand(name, description, fn(words) [, owner])` still works: `fn` gets the
+words as strings. A name is `[a-z0-9_.-]`, 1-48 characters; adding it again replaces the command and
+its aliases. A game command may take a built-in's name (not `help`): a warning says so once, and the
+built-in comes back when the game's command goes. An alias another command holds refuses the whole
+command (`false, "alias 'g' is taken by 'grab'"`). A command belongs to the script that added it (the
+`self` of the calling method, or `owner`) and goes when that script is released; all script commands
+go when Play stops. `DebugOverlay.removeCommand(name)` removes one.
+
+`DebugOverlay.executeCommand("give gold 10")` runs a line and returns
+`{ok, status, command, lines, log, value, error, usage, cheat}`; `status` is `ok`, `unknown`, `usage`,
+`failed`, `error` or `disabled`. `DebugOverlay.getCommands()` lists `{name, description, usage, aliases,
+cheat, builtIn, args}`; `DebugOverlay.completeCommand(line [, cursor])` gives `{replacement,
+candidates, start}`.
+
+**Cheats.** A command with `cheat = true` that ends `ok` sets `DebugOverlay.cheatsUsed` and calls
+`DebugOverlay.onCheatUsed(name)` the first time (turn achievements off, mark the save);
+`DebugOverlay.resetCheatsUsed()` clears it for a new game; Play stop clears it too. It is an
+honest-player signal, not anti-cheat.
+
+**Console Commands** (Project Settings > Debug, `debug.console_commands`: `development` (default),
+`always`, `never`) decides who outside the game's code may type commands: the command field, agents
+(`eval_lua {command}`) and the player's `--command`. Off, the field is hidden and the others get
+status `disabled`. The game's own `DebugOverlay.executeCommand` calls always run, and a script can
+turn the rest on: `DebugOverlay.commandsEnabled = true`.
+
+**`--command "<line>"`** runs a line in a player after its `Engine ready:` line (repeatable, one a
+frame; the web player takes `?command=...`), in players where Console Commands allows it (development
+players by default; elsewhere it exits 2). Each result is logged (`[command] give gold 10: ok`); one
+that is not `ok` logs an error, so `--fail-on-error` exits 3. With `--quit-after`, frames count from
+the last command.
 
 ## 5. The stats panel
 
@@ -183,6 +232,12 @@ LogListenerId any = Log::addListener([](const LogEntry& entry) { /* the logging 
 Log::removeListener(id);
 std::vector<LogEntry> errors = Log::getEntries(20, logLevelBit(LogLevel::Error));
 DebugOverlay::addCommand("spawn", "spawn <n>", [](const std::vector<std::string>& args) { /* ... */ });
+console::CommandSpec give;                 // debug/ConsoleCommands.h: typed arguments, aliases, cheat
+give.name = "give";
+give.args = {{"count", console::ArgType::Int}};
+give.run = [](console::Call& call) { call.print(std::to_string(call.args()[0].i) + " gold"); };
+console::add(give);
+console::Result result = console::execute("give 10");   // result.ok(), result.lines, result.value
 DebugStatsSnapshot stats = DebugStats::sample();
 ```
 
@@ -200,7 +255,12 @@ does not wait, and only no new call starts. Do not hold a lock the listener take
   above (undoable, undo scope project; not during Play, like every setting). Changed in the
   Project Settings window during Play, they apply to the running game at once (the console stays
   open, a stats mode picked stays unless the Stats setting changed).
-  `get_play_state` shows `debug_overlay: {enabled, console_visible, stats}` while playing.
+  `get_play_state` shows `debug_overlay: {enabled, console_visible, stats, commands_enabled,
+  cheats_used}` while playing.
+- Console commands: `eval_lua {command: "give gold 10"}` runs a line as a developer types it and
+  returns `command: {name, status, ok, lines, log, value, error, usage, cheat}`; `eval_lua {command:
+  "help"}` lists the commands in `command.value`. Not `eval_lua {code: "DebugOverlay.executeCommand(...)"}`:
+  that hides the result.
 - In Play: `eval_lua "return DebugOverlay.getStats()"` reads FPS and draw calls;
   `eval_lua "return Log.getEntries(20, {LogLevel.ERROR})"` reads errors with their traces;
   `eval_lua "DebugOverlay.showConsole()"` then `screenshot` shows the console; `send_input` with the

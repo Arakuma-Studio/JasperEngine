@@ -161,6 +161,8 @@ namespace jasperengine::editor::reflect {
     // VehicleReflect.cpp (S96)
     extern const ComponentDesc kWheelColliderDesc;
     extern const ComponentDesc kVehicleDrivetrainDesc;
+    extern const ComponentDesc kSimulationCullingDesc;
+    extern const ComponentDesc kDialogueRunnerDesc;
     // OutlineReflect.cpp (S94)
     extern const ComponentDesc kOutlineDesc;
     // editor/reflect/components/SpriteSkinReflect.cpp (S94 F49)

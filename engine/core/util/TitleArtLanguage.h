@@ -76,6 +76,9 @@ namespace jasperengine{
         using Listener = std::function<void(const std::string& code)>;
         static int addListener(Listener listener);
         static void removeListener(int id);
+        // told on each localesChanged() (game-ui-localization.md R10: Localization re-resolves)
+        static int addLocalesListener(std::function<void()> listener);
+        static void removeLocalesListener(int id);
 
         // the project's `localization.default_language` (the start values of a game, the editor's
         // project settings); "" is the first of `localization.languages`, else "en" (R64), which

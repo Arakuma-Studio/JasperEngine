@@ -76,6 +76,9 @@ namespace jasperengine::htmlui::compat {
         std::vector<Diagnostic> diagnostics;          // compile-time, sorted
         SourceFiles files;
         bool dependsOnViewport = false;
+        // a media query read hover or pointer: compiled per CompatOptions::coarsePointer, the
+        // document swapped for the other variant when the pointer in use changes
+        bool dependsOnPointer = false;
         uint64_t key = 0;                             // cache key (path, contents of every dependency, options)
         std::string rootSignature;                    // the <html> class and attribute names its selectors were banded for
 
@@ -187,6 +190,14 @@ namespace jasperengine::htmlui::compat {
         // the registration of its custom properties)
         static void restyleSheets(Rml::ElementDocument* document, const CompatDocument& compiled);
         static size_t cacheSize();
+        // the cached compile for these options, null when there is none (never compiles). Thread-safe
+        static std::shared_ptr<const CompatDocument> findCompiled(const std::string& htmlPath, const CompatOptions& options);
+        // parses and compiles the compile's sheets for the document now, so a later restyle with it
+        // (the other pointer variant) is a swap of parsed sheets: each document keeps the last few
+        // compiles' (engine-internal, main thread). `scheme`: the root's data-input-scheme the swap
+        // comes with (null: the document's own); the texts never laid out are measured then too
+        static void prewarmSheets(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled,
+                                  const char* scheme = nullptr);
         // compiles the document's source again with `options` and restyles it (restyleForViewport,
         // restyleForRoot)
         static std::shared_ptr<const CompatDocument> restyleWith(Rml::ElementDocument* document,
@@ -208,6 +219,9 @@ namespace jasperengine::htmlui::compat {
         // font check) of a loaded document; empty for others
         static const std::vector<Diagnostic>& diagnosticsOf(const Rml::ElementDocument* document);
         static void addRuntimeDiagnostic(const Rml::ElementDocument* document, const Diagnostic& diagnostic);
+        // the input scheme's root attributes as InputSchemeTracker has them now (every load; a
+        // .rml document and each change through HtmlUIContext)
+        static void applyInputScheme(Rml::ElementDocument* document);
         // focuses the first element with `autofocus` (after the document is shown)
         static void applyAutofocus(Rml::ElementDocument* document);
         // HTMLUI-CSS-0023: families the document names that no @font-face declares and the font
@@ -216,6 +230,10 @@ namespace jasperengine::htmlui::compat {
         // the RML <body> of a compat document is "body#htmlui-root"
         static bool isCompatDocument(const Rml::Element* element);
         static constexpr const char* kRootId = "htmlui-root";
+        // the input scheme's attributes of every document's root (input-device-awareness R14):
+        // their names are in every compile's root signature, their values set live (no recompile)
+        static constexpr const char* kInputSchemeAttribute = "data-input-scheme";
+        static constexpr const char* kGamepadFamilyAttribute = "data-gamepad-family";
         static constexpr const char* kLocationAttribute = "data-htmlui-loc";
     };
 

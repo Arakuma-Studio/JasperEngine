@@ -57,11 +57,18 @@ namespace {
     }
 
     const char* visibilityToString(OnScreenVisibility visibility) {
-        return visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY ? "touch_devices_only" : "always";
+        switch (visibility) {
+            case OnScreenVisibility::TOUCH_DEVICES_ONLY: return "touch_devices_only";
+            case OnScreenVisibility::TOUCH_SCHEME: return "touch_scheme";
+            case OnScreenVisibility::ALWAYS: break;
+        }
+        return "always";
     }
 
     OnScreenVisibility stringToVisibility(const std::string& text) {
-        return text == "touch_devices_only" ? OnScreenVisibility::TOUCH_DEVICES_ONLY : OnScreenVisibility::ALWAYS;
+        if (text == "touch_devices_only") return OnScreenVisibility::TOUCH_DEVICES_ONLY;
+        if (text == "touch_scheme") return OnScreenVisibility::TOUCH_SCHEME;
+        return OnScreenVisibility::ALWAYS;
     }
 
 }

@@ -65,6 +65,7 @@ namespace jasperengine{
 	class CharacterControllerSystem;
 	class VehicleSystem;
 	class WaterSystem;
+	class PhysicsQueryDebug;
 	struct WaterSample;
 	class JoltPairFilter3D;
 	class ContactRecorder3D;
@@ -267,6 +268,8 @@ namespace jasperengine{
 		std::vector<JointBreak3D> pendingJointBreaks3D;
 		// bodies whose type a script changed inside a step, switched right after it
 		std::vector<Entity> pendingTypeChanges3D;
+		// Simulation Culling freezes asked for inside a step, applied right after it
+		std::vector<std::pair<Entity, bool>> pendingFreezes3D;
 #endif
 
 		// the last fixed step (extrapolated bodies are drawn ahead by a part of it)
@@ -282,6 +285,8 @@ namespace jasperengine{
 		// entity of the scene, made when first needed
 		Entity debugLinesEntity = NULL_ENTITY;
 		bool debugLinesShown = false;
+		// the spatial queries drawn by Physics.debugDrawQueries, made by the first one recorded
+		std::unique_ptr<PhysicsQueryDebug> queryDebug;
 #ifdef JASPERENGINE_PHYSICS_3D
 		std::unordered_map<Entity, std::vector<PhysicsDebugLines::EdgeCache>> debugEdgeCaches3D;
 		// the contact points and normals of the last step (Physics.debugDrawContacts), written by
@@ -521,6 +526,14 @@ namespace jasperengine{
 
 		// Removes every event callback, as before the code behind them goes away
 		void clearSubscriptions();
+
+		// Simulation Culling (culling-group-and-simulation-distance D9): a dynamic body is made
+		// kinematic with zero velocity, kept in the broad phase (others collide with it, queries
+		// find it); its velocities and awake state are saved and given back when it thaws. Other
+		// bodies are only marked. Inside a step it waits until the step ends. Without the backend
+		// they do nothing.
+		void setSimulationFrozen3D(Entity entity, bool frozen);
+		void setSimulationFrozen2D(Entity entity, bool frozen);
 
 		// Ends the following of a kinematic body's position and/or rotation (the script took
 		// over that part): the velocity the following set stops, one a script set since stays
@@ -791,6 +804,9 @@ namespace jasperengine{
 		// wall time, Physics.debugDraw on or off (query_physics draw: true)
 		void addTimedDebugLines(const std::vector<std::pair<Vector3, Vector3>>& lines, const Vector4& color, float seconds);
 		Entity getDebugLinesEntity() const { return debugLinesEntity; }
+		// Physics.debugDrawQueries: this scene's recent queries (made on first use; null before)
+		PhysicsQueryDebug& getQueryDebug();
+		const PhysicsQueryDebug* findQueryDebug() const { return queryDebug.get(); }
 
 		// Told by ScriptMessages: a script defining contact messages appeared or went
 		static void onScriptReceiversChanged(Scene* scene, Entity entity);

@@ -48,6 +48,15 @@ namespace jasperengine{
         // textureHeight / pixelsPerUnit, centred on the entity), and turned to the camera
         float pixelsPerUnit = 100.0f;
         bool billboard = false;
+        // Back goes to the top shown menu first, opening one releases the game's held input, and
+        // Pause On Focus Loss does not fire while one shows (Engine::isMenuShowing)
+        bool isMenu = false;
+        // while the player uses a gamepad, the left stick moves a pointer over the screen's documents (GamepadCursor)
+        bool gamepadCursor = false;
+        // S92: TEXTURE mode, the MSAA samples of its own context's target: 0 = the scene's
+        // htmlUiMsaaSamples, else 1, 2, 4 or 8. Screen documents share the scene's context: the
+        // scene setting decides for them
+        int msaaSamples = 0;
         FunctionSubscribe<void()> onLoad;                           // after every (re)load
         FunctionSubscribe<void()> onUnload;
 
@@ -64,6 +73,8 @@ namespace jasperengine{
         int appliedSortOrder = 0;
         bool appliedVisible = false;
         UIDocumentUpdateMode appliedUpdateMode = UIDocumentUpdateMode::UNSCALED_TIME;
+        bool appliedMenu = false;     // counted by Engine::isMenuShowing (shown, interactive, isMenu)
+        bool appliedCursor = false;   // counted by GamepadCursor (shown, interactive, screen, gamepadCursor)
     };
 
 }

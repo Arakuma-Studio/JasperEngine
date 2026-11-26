@@ -90,7 +90,7 @@ namespace {
         "version", "type", "inferredFrom", "shape", "srgb", "alphaSource", "alphaIsTransparency", "readable", "maxSize",
         "resizeFilter", "mipmaps", "mipFilter", "mipLimit", "preserveCoverage", "alphaCutoff", "flipGreen", "channel",
         "quality", "effort", "streamable", "shipSource", "platforms", "pixelArt", "alphaClip", "filterMode", "pixelsPerUnit",
-        "importMode", "characterRig"};
+        "importMode", "characterRig", "removeSunDisc"};
 
     bool isKnownKey(const std::string& key){
         return std::find_if(std::begin(sectionKeys), std::end(sectionKeys), [&](const char* k){ return key == k; }) != std::end(sectionKeys);
@@ -275,6 +275,7 @@ bool TextureImportSettings::parse(const YAML::Node& node, TextureImportSettings&
     r.integer("pixelsPerUnit", out.pixelsPerUnit, 1, 256);
     r.enumeration("importMode", importModeNames, out.importMode);
     r.boolean("characterRig", out.characterRig);
+    r.boolean("removeSunDisc", out.removeSunDisc);
     if (const YAML::Node platforms = node["platforms"]){
         if (!platforms.IsMap()){
             r.fail("platforms", "expected a map of desktop, mobile, android_etc2, web");
@@ -349,6 +350,7 @@ YAML::Node TextureImportSettings::serialize() const{
     if (pixelsPerUnit) node["pixelsPerUnit"] = *pixelsPerUnit;
     if (importMode) node["importMode"] = nameOf(importModeNames, *importMode);
     if (characterRig) node["characterRig"] = *characterRig;
+    if (removeSunDisc) node["removeSunDisc"] = *removeSunDisc;
     YAML::Node platformsNode(YAML::NodeType::Map);
     for (size_t f = 0; f < kTextureFamilyCount; f++){
         const TexturePlatformSettings& p = platforms[f];
@@ -418,6 +420,7 @@ ResolvedTextureSettings TextureImportSettings::resolve(TextureFamily family, con
     r.format = (overrides && p.format) ? *p.format : std::string();
     r.rdo = (overrides && p.rdo) ? *p.rdo : -1.0f;
     r.strategy = project.strategy;
+    r.removeSunDisc = removeSunDisc.value_or(false);
     return r;
 }
 
@@ -474,6 +477,8 @@ std::string ResolvedTextureSettings::canonical() const{
     // older texture resolves to, so those keep their cook keys (S42 R8)
     if (alphaClip)
         out << ",\"alphaClip\":1";
+    if (removeSunDisc)
+        out << ",\"removeSunDisc\":1";
     out << "}";
     return out.str();
 }

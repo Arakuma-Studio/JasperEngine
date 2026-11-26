@@ -21,6 +21,8 @@
 
 using namespace jasperengine::editor::procmat;
 using namespace jasperengine::editor::procmat::test;
+// its own name: another Json is in sight in some unity units
+using ProcMatExpanderJson = jasperengine::editor::procmat::Json;
 
 namespace {
 
@@ -49,7 +51,7 @@ namespace {
     }
 
     void expandPasses(Expander& expander, const std::string& prefix, const SourceRef& root, std::vector<Row>& rows) {
-        std::set<std::pair<Generator*, int>> done;
+        std::set<std::pair<jasperengine::editor::procmat::Generator*, int>> done;
         std::vector<std::pair<std::string, SourceRef>> queue = {{"out", root}};
         while (!queue.empty()) {
             const auto [label, target] = queue.back();
@@ -73,12 +75,12 @@ namespace {
         const char* noises[] = {"fbm4", "voronoi2", "perlin", "bricks3"};
         for (int size : {10, 30, 60, 120, 240}) {
             expander.reset();
-            NodeInstance first = expander.instantiate("perlin", Json::object(), 0.1);
+            NodeInstance first = expander.instantiate("perlin", ProcMatExpanderJson::object(), 0.1);
             SourceRef previous{first.generator, 0, false};
             int count = 1, step = 0;
             while (count < size) {
-                NodeInstance noise = expander.instantiate(noises[step % 4], Json::object(), 0.01 * step);
-                NodeInstance blend = expander.instantiate("blend2", Json::object(), 0.0, 1);
+                NodeInstance noise = expander.instantiate(noises[step % 4], ProcMatExpanderJson::object(), 0.01 * step);
+                NodeInstance blend = expander.instantiate("blend2", ProcMatExpanderJson::object(), 0.0, 1);
                 auto* blendShader = static_cast<ShaderNode*>(blend.generator);
                 blend.generator->setSource(blendShader->inputIndex("b"), previous);
                 blend.generator->setSource(blendShader->inputIndex("l1"), SourceRef{noise.generator, 0, false});
@@ -153,7 +155,7 @@ TEST(ProcMatExpander, ANodeTheLibraryLacksIsAnError) {
     const auto library = procMatExpanderRepositoryLibrary();
     ASSERT_TRUE(library);
     Expander expander(library);
-    EXPECT_THROW(expander.instantiate("not_a_node", Json::object()), ExpansionError);
+    EXPECT_THROW(expander.instantiate("not_a_node", ProcMatExpanderJson::object()), ExpansionError);
 }
 
 TEST(ProcMatExpander, AnInputReadAsATextureNeedsABuffer) {
@@ -161,7 +163,7 @@ TEST(ProcMatExpander, AnInputReadAsATextureNeedsABuffer) {
     ASSERT_TRUE(library);
     std::string nodeId;
     for (const auto& [id, descriptor] : library->descriptors()) {
-        const std::vector<bool> uses = usesTextureAttribute(descriptor, descriptor.value("inputs", Json::array()).size());
+        const std::vector<bool> uses = usesTextureAttribute(descriptor, descriptor.value("inputs", ProcMatExpanderJson::array()).size());
         if (std::find(uses.begin(), uses.end(), true) != uses.end() && descriptor.value("kind", std::string()) == "shader") {
             nodeId = id;
             break;
@@ -169,8 +171,8 @@ TEST(ProcMatExpander, AnInputReadAsATextureNeedsABuffer) {
     }
     ASSERT_FALSE(nodeId.empty()) << "the library has no node reading an input as a texture";
     Expander expander(library);
-    NodeInstance node = expander.instantiate(nodeId, Json::object());
-    NodeInstance source = expander.instantiate("perlin", Json::object());
+    NodeInstance node = expander.instantiate(nodeId, ProcMatExpanderJson::object());
+    NodeInstance source = expander.instantiate("perlin", ProcMatExpanderJson::object());
     expander.connect(node.inputs.at(0), SourceRef{source.generator, 0, false});
     PassBuilder pass;
     EXPECT_THROW(expander.shaderText(*node.outputs.at(0), pass), ExpansionError);

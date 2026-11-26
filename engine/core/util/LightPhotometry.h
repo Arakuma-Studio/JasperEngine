@@ -86,6 +86,8 @@ namespace jasperengine{
                 return true;
             if (type == LightType::DIRECTIONAL)
                 return unit == LightUnit::LUX;
+            if (type == LightType::AREA)
+                return unit == LightUnit::NITS;
             return unit == LightUnit::CANDELA || unit == LightUnit::LUMEN;
         }
 
@@ -94,15 +96,19 @@ namespace jasperengine{
         inline LightUnit validUnit(LightUnit unit, LightType type){
             if (isUnitValid(unit, type))
                 return unit;
+            if (type == LightType::AREA)
+                return LightUnit::NITS;
             return type == LightType::DIRECTIONAL ? LightUnit::LUX : LightUnit::CANDELA;
         }
 
         // A value in a unit as engine units. A lumen is spread over the whole sphere (4 pi), also
         // for a spot, so the cone's angles do not change its brightness (Unity's "reflector" off).
+        // A nit is a candela per square metre of the area light's face.
         inline float toEngineIntensity(float value, LightUnit unit, float ev100){
             switch (unit){
                 case LightUnit::LUX:
-                case LightUnit::CANDELA: return value * exposureScale(ev100);
+                case LightUnit::CANDELA:
+                case LightUnit::NITS:    return value * exposureScale(ev100);
                 case LightUnit::LUMEN:   return value / FOUR_PI * exposureScale(ev100);
                 default:                 return value;
             }
@@ -112,7 +118,8 @@ namespace jasperengine{
         inline float fromEngineIntensity(float engine, LightUnit unit, float ev100){
             switch (unit){
                 case LightUnit::LUX:
-                case LightUnit::CANDELA: return engine / exposureScale(ev100);
+                case LightUnit::CANDELA:
+                case LightUnit::NITS:    return engine / exposureScale(ev100);
                 case LightUnit::LUMEN:   return engine * FOUR_PI / exposureScale(ev100);
                 default:                 return engine;
             }
@@ -168,6 +175,7 @@ namespace jasperengine{
                 case LightUnit::LUX:     return "Lux";
                 case LightUnit::CANDELA: return "Candela";
                 case LightUnit::LUMEN:   return "Lumen";
+                case LightUnit::NITS:    return "Nits";
                 default:                 return "Engine";
             }
         }

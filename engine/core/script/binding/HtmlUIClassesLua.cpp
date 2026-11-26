@@ -14,6 +14,8 @@
 #include "lua.hpp"
 
 #include "LuaBridge.h"
+#include "script/binding/LocalizationArgsLua.h"
+#include "script/binding/SceneConstructors.h"
 #include "LuaBridgeAddon.h"
 #include "LuaComponentSetters.h"
 
@@ -28,6 +30,8 @@
 #include "htmlui/HtmlUIImageCache.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/HtmlUIPrewarm.h"
+#include "htmlui/HtmlL10n.h"
+#include "json.hpp"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
@@ -38,6 +42,7 @@
 #include <cstdio>
 #include <cstring>
 #include <optional>
+#include <variant>
 
 // the HTML UI module (docs/specs/S34-player-size.md R1): the Lua API description reads this condition
 #if JASPERENGINE_HTMLUI
@@ -1356,6 +1361,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("keyCode", &UIEvent::getKeyCode)
         .addProperty("repeat", &UIEvent::isRepeat)
         .addProperty("gamepad", &UIEvent::getGamepad)
+        .addProperty("enterKeyHint", &UIEvent::getEnterKeyHint)
         .addProperty("ctrlKey", &UIEvent::getCtrlKey)
         .addProperty("shiftKey", &UIEvent::getShiftKey)
         .addProperty("altKey", &UIEvent::getAltKey)
@@ -1491,6 +1497,17 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
             return optionalElement(self->querySelector(selector));
         })
         .addFunction("querySelectorAll", &UIElement::querySelectorAll)
+        // game-ui-localization.md R11: writes data-l10n-id (and data-l10n-args) and translates now
+        .addFunction("setLocalized", [](UIElement* self, const std::string& key, lua_State* L) {
+            std::string args;
+            if (lua_istable(L, 3)) {
+                nlohmann::json json = nlohmann::json::object();
+                for (const auto& [name, value] : luaargs::localizationArgs(L, 3))
+                    std::visit([&, &name = name](const auto& v) { json[name] = v; }, value);
+                args = json.dump();
+            }
+            htmlui::HtmlL10n::setLocalized(UIElementAccess::get(*self), key, args);
+        })
         .addFunction("closest", [](const UIElement* self, const std::string& selector) -> std::optional<UIElement> {
             return optionalElement(self->closest(selector));
         })
@@ -1664,6 +1681,8 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("updateMode", &UIDocumentComponent::updateMode, &setTrackedMember<&UIDocumentComponent::updateMode>)
         .addProperty("pixelsPerUnit", &UIDocumentComponent::pixelsPerUnit, &setTrackedMember<&UIDocumentComponent::pixelsPerUnit>)
         .addProperty("billboard", &UIDocumentComponent::billboard, &setTrackedMember<&UIDocumentComponent::billboard>)
+        // S92: a texture-mode document's MSAA samples (0: the scene's); next frame
+        .addProperty("msaaSamples", &UIDocumentComponent::msaaSamples, &setTrackedMember<&UIDocumentComponent::msaaSamples>)
         .addProperty("onLoad", [] (UIDocumentComponent* self, lua_State* L) { return &self->onLoad; }, [] (UIDocumentComponent* self, lua_State* L) { self->onLoad = L; })
         .addProperty("onUnload", [] (UIDocumentComponent* self, lua_State* L) { return &self->onUnload; }, [] (UIDocumentComponent* self, lua_State* L) { self->onUnload = L; })
         .endClass();
@@ -1680,7 +1699,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<UIDocument, GameObject>("UIDocument")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<UIDocument>(), sceneconstructors::ofEntity<UIDocument>())
         .addProperty("filename", &UIDocument::getFilename, &UIDocument::setFilename)
         .addFunction("getUIDocumentComponent", &UIDocument::getComponent<UIDocumentComponent>)
         .addFunction("load", &UIDocument::load)
@@ -1692,6 +1711,8 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("visible", &UIDocument::isVisible, &UIDocument::setVisible)
         .addProperty("sortOrder", &UIDocument::getSortOrder, &UIDocument::setSortOrder)
         .addProperty("updateMode", &UIDocument::getUpdateMode, &UIDocument::setUpdateMode)
+        .addProperty("isMenu", &UIDocument::isMenu, &UIDocument::setMenu)
+        .addProperty("gamepadCursor", &UIDocument::isGamepadCursor, &UIDocument::setGamepadCursor)
         .addFunction("getElementById", [](const UIDocument* self, const std::string& id) -> std::optional<UIElement> {
             return optionalElement(self->getElementById(id));
         })
@@ -1699,6 +1720,11 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
             return optionalElement(self->querySelector(selector));
         })
         .addFunction("querySelectorAll", &UIDocument::querySelectorAll)
+        // game-ui-localization.md R11: collects the keyed elements again after scripts edited data-l10n-* directly
+        .addFunction("translate", [](const UIDocument* self) {
+            Rml::Element* root = UIElementAccess::get(self->getDocumentElement());
+            htmlui::HtmlL10n::translateDocument(root ? root->GetOwnerDocument() : nullptr);
+        })
         // the document element (RML body)
         .addProperty("body", [](const UIDocument* self) -> std::optional<UIElement> { return optionalElement(self->getBody()); })
         // a detached element: insert it with appendChild/insertBefore

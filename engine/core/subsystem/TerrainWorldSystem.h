@@ -63,6 +63,11 @@ namespace jasperengine {
         // MCP ask before the first pump)
         TerrainWorldRuntime* ensureRuntime(Entity entity, std::string* error = nullptr);
         bool hasWorlds() const { return !runtimes.empty(); }
+        // Simulation Culling's ground rule: false when a running world has a present tile not in
+        // memory within `radius` of the world point (TerrainWorldRuntime::isAreaLoaded)
+        bool isAreaLoaded(float x, float z, float radius);
+        // the smallest tile size of the scene's worlds (0 without one)
+        float getTileSize() const;
         // Why a world could not start (its data missing or refused), for the inspector and MCP
         std::string getError(Entity entity) const;
         // The world's data changed under it (a new asset, convert, import): made again at the next pump

@@ -770,6 +770,18 @@ namespace {
                  "follows its .material files");
     }
 
+    // Scene 9 -> 10 (S92): an absent htmlUiRenderMode means Screen Space - Overlay now; before it
+    // the screen documents were composited in the camera pass, so an older scene keeps that.
+    // Every scene the editor saved has its settings map: one without it is left alone, since
+    // adding the map would change how its other absent settings decode.
+    void sceneV9ToV10(YAML::Node& root, MigrationLog& log){
+        YAML::Node settings = root["scene"];
+        if (!settings || !settings.IsMap() || settings["htmlUiRenderMode"])
+            return;
+        settings["htmlUiRenderMode"] = "camera";
+        log.info("HTML UI Render Mode: Screen Space - Camera, as the scene drew its UI before; Screen Space - Overlay is the new scenes' default");
+    }
+
     // ---------------------------------------------------------------- Text alignment (S94 F24)
 
     bool yamlTrue(const YAML::Node& value){
@@ -864,11 +876,6 @@ namespace {
         }
     }
 
-    // Scene 9 -> 10: S92's (#10, htmlUiRenderMode) lands first in the landing order; until it is on
-    // main this branch steps over it, so its own 10 -> 11 runs (replaced by S92's when main has it)
-    void sceneV9ToV10BeforeS92(YAML::Node&, MigrationLog&){
-    }
-
     // Scene 10 -> 11 (S94 F24, F33): Text alignment replaces the two pivot booleans; Animators and
     // Animation Players keep their clips' root drift
     void sceneTextAnchorAndRootDrift(YAML::Node& root, MigrationLog& log){
@@ -936,7 +943,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {6, 7, "Line and Trail Renderer curves and gradients in the editor's curve form", sceneV6ToV7},
         {7, 8, "sprite sheets (identity: an older scene has none)", sheetSpritesIdentity},
         {8, 9, "mesh assets (identity: an older scene holds its meshes' buffers)", meshAssetsIdentity},
-        {9, 10, "S92's HTML UI render mode (on main before this; identity here)", sceneV9ToV10BeforeS92},
+        {9, 10, "HTML UI render mode: older scenes keep Screen Space - Camera", sceneV9ToV10},
         {10, 11, "Text pivots to Text Anchor; Animators keep their root drift", sceneTextAnchorAndRootDrift},
     };
     static const std::vector<Migration> project = {

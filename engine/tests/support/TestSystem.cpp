@@ -211,6 +211,20 @@ std::vector<TestSystem::LogEntry> TestSystem::getLogsSince(size_t sequence) cons
 void TestSystem::showVirtualKeyboard(std::wstring text){
     virtualKeyboardShows++;
     virtualKeyboardText = text;
+    virtualKeyboardTraits = TextEntryTraits();
+}
+
+void TestSystem::showVirtualKeyboard(const std::wstring& text, const TextEntryTraits& traits){
+    virtualKeyboardShows++;
+    virtualKeyboardText = text;
+    virtualKeyboardTraits = traits;
+}
+
+void TestSystem::updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd){
+    virtualKeyboardUpdates++;
+    virtualKeyboardUpdateText = text;
+    virtualKeyboardSelection[0] = selectionStart;
+    virtualKeyboardSelection[1] = selectionEnd;
 }
 
 void TestSystem::hideVirtualKeyboard(){

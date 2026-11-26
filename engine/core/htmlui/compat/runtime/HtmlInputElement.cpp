@@ -84,8 +84,11 @@ public:
                 if (type == "number" && (key == Rml::Input::KI_UP || key == Rml::Input::KI_DOWN)){
                     input->stepBy(key == Rml::Input::KI_UP ? 1 : -1);
                     event.PreventDefault();
-                }else if ((key == Rml::Input::KI_RETURN || key == Rml::Input::KI_NUMPADENTER) && isTextLike(type) && !input->IsDisabled()){
-                    // here, before RmlUi's text widget, which stops the key event
+                }else if ((key == Rml::Input::KI_RETURN || key == Rml::Input::KI_NUMPADENTER) && isTextLike(type) && !input->IsDisabled() &&
+                          !event.GetParameters().count("enterKeyHint")){
+                    // here, before RmlUi's text widget, which stops the key event. An Enter with an
+                    // enterKeyHint (the action key, a field's enterkeyhint) acts once no listener
+                    // prevented it (htmlui::runEnterKeyAction)
                     if (type == "number")
                         input->clampToRange();
                     input->implicitSubmit();

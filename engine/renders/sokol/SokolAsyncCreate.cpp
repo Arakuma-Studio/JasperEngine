@@ -3,6 +3,8 @@
 
 #include "SokolAsyncCreate.h"
 
+#include "device/GpuQuirks.h"
+
 #include "sokol_async.h"
 #include "SokolPipelineCache.h"
 
@@ -172,6 +174,9 @@ namespace {
         ShaderCreationSettings settings;
         GpuCreationMode mode = GpuCreationMode::Sync;
         sgj_async_caps caps = {};
+        // parallel mode enabled the driver's compile threads at setup; and on the context since
+        bool compileThreads = false;
+        bool contextCompileThreads = false;
 
         std::unique_ptr<GpuWorkerContext> workerContext;
         // a creation on the worker starts at least this long after its request (setup)
@@ -254,38 +259,11 @@ namespace {
         s.wake.notify_one();
     }
 
-    // A software GL (llvmpipe, softpipe, SwiftShader) gets no worker context (spec S32 §6.3,
-    // deviation 6): on llvmpipe the render thread crashed drawing programs the worker had drawn
-    // (warm draws; AtmosphereGpu.ScreenCloudsHideFarTerrain) and once hung in a draw after the
-    // worker had linked its programs. JASPER_GL_SOFTWARE_WORKER=1 allows the worker (and its warm
-    // draws) there anyway, for driver investigations
-    bool softwareWorkerAllowed(){
-        static const bool allowed = [](){
-            const char* value = std::getenv("JASPER_GL_SOFTWARE_WORKER");
-            return value && std::string(value) == "1";
-        }();
-        return allowed;
-    }
-
-    // GLES (Android): warm draws wait for a run on Adreno/Mali (the GPU campaign verified desktop
-    // GL on NVIDIA only); JASPER_GL_WARM_DRAWS=1 allows them there, for driver investigations
-    bool glesWarmDrawsAllowed(){
-#if defined(SOKOL_GLES3)
-        static const bool allowed = [](){
-            const char* value = std::getenv("JASPER_GL_WARM_DRAWS");
-            return value && std::string(value) == "1";
-        }();
-        return allowed;
-#else
-        return true;
-#endif
-    }
-
-    // GL warm draws (spec S32 R4): asked for, in worker mode, on a hardware desktop GL
+    // GL warm draws (spec S32 R4): asked for, in worker mode (which gl_no_worker_context keeps
+    // off a software GL), unless gl_no_warm_draws holds them back (GLES until an Adreno/Mali run
+    // verifies them: docs/device-tiers.md "GPU quirks")
     bool warmOn(const State& s){
-        if (s.mode != GpuCreationMode::GlWorker || !s.settings.glWarmDraws || !glesWarmDrawsAllowed())
-            return false;
-        return !s.caps.gl_software || softwareWorkerAllowed();
+        return s.mode == GpuCreationMode::GlWorker && s.settings.glWarmDraws && !GpuQuirks::active(GpuQuirk::GlNoWarmDraws);
     }
 
     // ---------------------------------------------------------------- the worker thread
@@ -672,9 +650,12 @@ namespace {
     // the GL mode of this device, with or without a worker context (see the header)
     GpuCreationMode chooseGlMode(State& s, const std::string& forced){
         bool wantWorker = forced.empty() || forced == "worker";
-        if (wantWorker && s.caps.gl_software && !softwareWorkerAllowed()){
+        // the GPU quirk of a software GL (spec S32 deviation 6): on llvmpipe the render thread
+        // crashed drawing programs the worker had drawn and once hung in a draw
+        if (wantWorker && GpuQuirks::active(GpuQuirk::GlNoWorkerContext)){
             if (forced == "worker")
-                Log::warn("[gpu] JASPER_ASYNC_SHADERS=worker: no worker context on a software GL (JASPER_GL_SOFTWARE_WORKER=1 allows one)");
+                Log::warn("[gpu] JASPER_ASYNC_SHADERS=worker: no worker context (GPU quirk gl_no_worker_context; "
+                          "JASPERENGINE_GPU_QUIRKS=gl_no_worker_context:off allows one)");
             wantWorker = false;
         }
         if (wantWorker){
@@ -707,11 +688,18 @@ namespace {
         // NVIDIA's is none (its glLinkProgram then returns once linked, 2.1 s for a Lit lobe variant
         // on an RTX 3080 Ti, and COMPLETION_STATUS is always true). Only in this mode: with a worker
         // context the setting makes the worker's links return early and the render thread's first
-        // draw wait for them (docs/perf/gpu-campaign.md, S32). Not on a software GL: llvmpipe's
-        // compile was complete at once without them (the CI reference), and with them a lazily
-        // made shader can finish after the frame a test or an export check reads
-        if (!s.caps.gl_software)
+        // draw wait for them (docs/perf/gpu-campaign.md, S32). Not where gl_no_compile_threads
+        // applies (a software GL: llvmpipe's compile was complete at once without them, and with
+        // them a lazily made shader can finish after the frame a test or an export check reads)
+        if (!GpuQuirks::active(GpuQuirk::GlNoCompileThreads)){
             sgj_gl_enable_compile_threads();
+            s.compileThreads = true;
+            s.contextCompileThreads = true;
+        }else if (s.contextCompileThreads){
+            // an earlier setup on this context turned them on (a test forcing the lever both ways)
+            sgj_gl_disable_compile_threads();
+            s.contextCompileThreads = false;
+        }
         return GpuCreationMode::GlParallel;
     }
 
@@ -725,6 +713,7 @@ void SokolAsyncCreate::setup(){
         return;
     s.stats = GpuCreationStats();
     s.frameMainMs = s.frameSpentMs = 0.0;
+    s.compileThreads = false;
     sgj_async_setup();
     s.caps = sgj_async_query_caps();
     const char* delay = std::getenv("JASPER_ASYNC_SHADERS_DELAY_MS");
@@ -1325,6 +1314,10 @@ bool SokolAsyncCreate::waitIdle(double timeoutMs){
             return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+}
+
+bool SokolAsyncCreate::compileThreadsEnabled(){
+    return state().compileThreads;
 }
 
 bool SokolAsyncCreate::isSoftwareGl(){

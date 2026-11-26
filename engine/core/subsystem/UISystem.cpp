@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "UISystem.h"
+#include "localization/Localization.h"
 #include "component/ActionComponent.h"
 #include "component/TweenComponent.h"
 #include "component/ButtonComponent.h"
@@ -9,6 +10,7 @@
 #include "component/CanvasGroupComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InputFieldComponent.h"
+#include "input/TextEntry.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "component/PanelComponent.h"
@@ -285,8 +287,20 @@ std::string UISystem::getFontId(const TextComponent& text) const{
     return getFontId(text, getTextOptions(text));
 }
 
+namespace {
+
+    // game-ui-localization.md R14: a Text without a font uses the game language's first font
+    std::string primaryFontOf(const TextComponent& text){
+        if (!text.font[0].empty() || !Localization::isActive())
+            return text.font[0];
+        const std::vector<std::string> fonts = Localization::getLanguageFonts(Localization::getLanguage());
+        return fonts.empty() ? std::string() : fonts.front();
+    }
+
+}
+
 std::string UISystem::getFontId(const TextComponent& text, const STBTextOptions& options) const{
-    std::string fontId = text.font[0];
+    std::string fontId = primaryFontOf(text);
     if (fontId.empty())
         fontId = "font";
 
@@ -359,9 +373,10 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransform
                 fallbacks.push_back(text.font[i]);
         }
 
-        text.stbtext = FontPool::get(fontId, text.font[0], fallbacks, effectiveFontSize(text), options);
+        const std::string primary = primaryFontOf(text);
+        text.stbtext = FontPool::get(fontId, primary, fallbacks, effectiveFontSize(text), options);
         if (!text.stbtext) {
-            Log::error("Cannot load font atlas from: %s", text.font[0].c_str());
+            Log::error("Cannot load font atlas from: %s", primary.c_str());
             return false;
         }
     }
@@ -1744,6 +1759,12 @@ bool UISystem::handleInputFieldCharInput(InputFieldComponent& inputfield, TextCo
             : 0;
 
         if (text.maxTextSize > 0 && currentCount - selectionSize + insertCount > text.maxTextSize){
+            keyboardResyncPending = System::instance().keepsVirtualKeyboardText();
+            return true;
+        }
+        // Character Limit: typing and pasting stop there (pasted text arrives a character at a time)
+        if (inputfield.characterLimit > 0 && currentCount - selectionSize + insertCount > static_cast<size_t>(inputfield.characterLimit)){
+            keyboardResyncPending = System::instance().keepsVirtualKeyboardText();
             return true;
         }
 
@@ -2035,7 +2056,15 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTran
             destroyText(text);
             loadFontAtlas(text, ui, layout);
         }
-        createText(text, ui, layout);
+        if (!text.localizedPreview.empty()){
+            // Edit mode's message (D-15): drawn, while `text` keeps the authored value
+            std::string authored = std::move(text.text);
+            text.text = text.localizedPreview;
+            createText(text, ui, layout);
+            text.text = std::move(authored);
+        }else{
+            createText(text, ui, layout);
+        }
 
         text.needUpdateText = false;
     }
@@ -2922,6 +2951,41 @@ void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity 
 
             if (noGeometry) text.needUpdateText = true;
 
+            // game-ui-localization.md R14, R16: the key's message and the language font, at start
+            // and after each change of language or tables
+            // (an Inspector or MCP edit of the key marks the text for update, so Edit mode follows it)
+            const bool languageChanged = (!text.localizationKey.empty() || text.font[0].empty()) &&
+                                         text.localizationGeneration != Localization::getGeneration();
+            const bool maybeKeyEdited = text.needUpdateText && (!text.localizationKey.empty() || !text.localizedPreview.empty());
+            // isSceneRunning locks: asked only when one of the cheap tests above holds
+            const bool running = (languageChanged || maybeKeyEdited || !text.localizedPreview.empty()) && Engine::isSceneRunning(scene);
+            if (languageChanged || (maybeKeyEdited && !running) || (running && !text.localizedPreview.empty())){
+                text.localizationGeneration = Localization::getGeneration();
+                std::string message;
+                const bool found = !text.localizationKey.empty() &&
+                                   Localization::translate(text.localizationKey, text.textArgs, message, "Text " + std::to_string(entity));
+                if (running){
+                    // a scene copied from Edit mode for Play draws `text` from now on
+                    if (!text.localizedPreview.empty()){
+                        text.localizedPreview.clear();
+                        text.needUpdateText = true;
+                    }
+                    if (found && message != text.text){
+                        text.text = message;
+                        text.needUpdateText = true;
+                    }
+                }else{
+                    // Edit mode draws the message without writing `text`, which a save keeps (D-15)
+                    if (!found) message.clear();
+                    if (message != text.localizedPreview){
+                        text.localizedPreview = std::move(message);
+                        text.needUpdateText = true;
+                    }
+                }
+                if (languageChanged && text.font[0].empty() && text.loaded)
+                    text.needReloadAtlas = true;
+            }
+
             // a Text Effect needs a colour per vertex: another buffer layout and shader variant
             const bool vertexColor = scene->findComponent<TextEffectComponent>(entity) != nullptr;
             if (text.vertexColor != vertexColor){
@@ -3097,8 +3161,23 @@ void UISystem::calculateUIAABB(UIComponent& ui){
     ui.needUpdateAABB = true;
 }
 
+void UISystem::flushKeyboardResync(){
+    const Entity entity = keyboardResyncField;
+    keyboardResyncField = NULL_ENTITY;
+    const InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity);
+    const UIComponent* ui = scene->findComponent<UIComponent>(entity);
+    const TextComponent* text = inputfield ? scene->findComponent<TextComponent>(inputfield->text) : nullptr;
+    if (!text || !ui || !ui->focused || !System::instance().keepsVirtualKeyboardText())
+        return;
+    bool hadInvalid = false;
+    const std::wstring wide = StringUtils::utf8ToWString(text->text, hadInvalid);
+    System::instance().updateVirtualKeyboardText(wide, inputfield->cursorIndex, inputfield->cursorIndex);
+}
+
 void UISystem::update(double dt){
     pendingImages = false;
+    if (keyboardResyncField != NULL_ENTITY)
+        flushKeyboardResync();
 
     syncCanvasGroups();
 
@@ -3744,6 +3823,40 @@ bool UISystem::isInputFieldFocused(){
     return false;
 }
 
+TextEntryTraits UISystem::inputFieldTraits(const InputFieldComponent& inputfield){
+    TextEntryTraits traits;
+    switch (inputfield.keyboardType){
+        case InputFieldKeyboardType::NUMBER_PAD: traits.keyboard = KeyboardType::Number; break;
+        case InputFieldKeyboardType::DECIMAL_PAD: traits.keyboard = KeyboardType::Decimal; break;
+        case InputFieldKeyboardType::PHONE_PAD: traits.keyboard = KeyboardType::Phone; break;
+        case InputFieldKeyboardType::EMAIL_ADDRESS: traits.keyboard = KeyboardType::Email; break;
+        case InputFieldKeyboardType::URL: traits.keyboard = KeyboardType::Url; break;
+        case InputFieldKeyboardType::SEARCH:
+            traits.keyboard = KeyboardType::Search;
+            traits.enterKey = EnterKey::Search;
+            break;
+        case InputFieldKeyboardType::DEFAULT: break;
+    }
+    traits.secure = inputfield.password;
+    traits.maxLength = inputfield.characterLimit > 0 ? inputfield.characterLimit : -1;
+    return traits;
+}
+
+bool UISystem::getTypingInputFieldTraits(TextEntryTraits& traits) const{
+    auto inputfields = scene->getComponentArray<InputFieldComponent>();
+    for (size_t i = 0; i < inputfields->size(); i++){
+        const Entity entity = inputfields->getEntity(i);
+        const Signature signature = scene->getSignature(entity);
+        if (!signature.test(scene->getComponentId<UIComponent>()))
+            continue;
+        if (scene->getComponent<UIComponent>(entity).focused && isUIActive(entity, signature) && isInteractable(entity)){
+            traits = inputFieldTraits(inputfields->getComponentFromIndex(i));
+            return true;
+        }
+    }
+    return false;
+}
+
 bool UISystem::eventOnCharInput(char32_t codepoint){
     // what the event handlers destroy goes when the dispatch is over
     StructuralDeferScope deferScope(*scene);
@@ -3760,6 +3873,10 @@ bool UISystem::eventOnCharInput(char32_t codepoint){
             if (ui.focused && isUIActive(entity, signature) && isInteractable(entity)){
                 TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
                 if (text && handleInputFieldCharInput(inputfield, *text, ui, codepoint)){
+                    if (keyboardResyncPending){
+                        keyboardResyncPending = false;
+                        keyboardResyncField = entity;
+                    }
                     return true;
                 }
             }

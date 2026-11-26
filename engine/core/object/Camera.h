@@ -86,6 +86,7 @@ namespace jasperengine{
         // Orient the camera from its Transform rotation instead of a target point:
         // forward becomes rotation * Vector3(0, 0, -1).
         void disableTarget();
+        void setUseTarget(bool useTarget);
         bool isUsingTarget() const;
 
         void setUp(Vector3 up);

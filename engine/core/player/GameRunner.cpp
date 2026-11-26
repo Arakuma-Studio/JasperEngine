@@ -8,11 +8,13 @@
 #include "Scene.h"
 #include "Screen.h"
 #include "System.h"
+#include "debug/ConsoleCommands.h"
 #include "debug/DebugOverlay.h"
 #include "device/Device.h"
 #include "input/InputActions.h"
 #include "io/Data.h"
 #include "io/StrippedAssets.h"
+#include "localization/Localization.h"
 #include "manager/PrefabManager.h"
 #include "manager/SceneManager.h"
 #include "native/NativeBridge.h"
@@ -28,9 +30,11 @@
 #include "registry/TagManager.h"
 #include "render/LightingTiers.h"
 #include "render/shadow/ShadowTiers.h"
+#include "save/SaveGameStore.h"
 #include "script/LuaBinding.h"
 #include "serialization/CookedScene.h"
 #include "shader/ShaderGlobals.h"
+#include "subsystem/GamepadCursor.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "terrain/TerrainQuality.h"
@@ -223,7 +227,14 @@ void player::applySettings(const PlayerConfig& game) {
     Engine::setFoliageQualityDefaults(game.foliageQuality[0], game.foliageQuality[1], game.foliageQuality[2], game.foliageQualityUncapped);
     Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
     if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);
+    // Project Settings > Time and Input > Simulate Touch From Mouse, before the first scene's init (S95 REQ-12, REQ-13)
+    Engine::setProjectUpdateTime(game.fixedTimestep);
+    Engine::setMaxDeltatime(static_cast<float>(game.maximumDeltaTime));
+    if (game.simulateTouchFromMouse) Engine::setCallTouchInMouseEvent(true);
+    GamepadCursor::setDefaults(game.gamepadCursor);
     if (!game.inputActions.empty()) InputActions::loadDefault(game.inputActions);
+    // the String Tables' manifest when the game ships any (game-ui-localization.md D5)
+    if (!game.localization.empty()) Localization::loadManifest(game.localization);
     if (game.navigation != nav::NavigationSettings()) nav::setSettings(game.navigation);
 #if JASPERENGINE_VOXEL
     if (game.voxelMaxDimension > 0 || game.voxelCpuBudgetMB > 0 || game.voxelMeshBudgetMB > 0) {
@@ -264,6 +275,7 @@ void player::applySettings(const PlayerConfig& game) {
     // System.getAppName... return where there is no package to ask
     Engine::setVSyncCount(game.vsync ? 1 : 0);
     Engine::setDynamicBatchingDefault(game.dynamicBatching);
+    Engine::setPauseOnFocusLoss(game.pauseOnFocusLoss);
     if (game.hasPlayerSettings) {
         Http::setInsecureHttpAllowed(game.allowInsecureHttp);
         Engine::setTargetFrameRate(game.targetFrameRate);
@@ -291,6 +303,8 @@ void player::applySettings(const PlayerConfig& game) {
         if (game.collision3D[layer] != LAYER_MASK_EVERYTHING) Physics::setLayerCollisionMask(layer, game.collision3D[layer]);
         if (game.collision2D[layer] != LAYER_MASK_EVERYTHING) Physics2D::setLayerCollisionMask(layer, game.collision2D[layer]);
     }
+    Physics::setQueriesHitTriggers(game.queriesHitTriggers3D);
+    Physics2D::setQueriesHitTriggers(game.queriesHitTriggers2D);
 #ifdef JASPERENGINE_PHYSICS_3D
     // before any scene (and its world) is made
     if (game.hasPhysics3DCapacity) PhysicsSystem::setWorldCapacity3D(game.maxBodies3D, game.maxBodyPairs3D, game.maxContactConstraints3D);
@@ -298,18 +312,27 @@ void player::applySettings(const PlayerConfig& game) {
     if (game.particleWorldBudget != 0) particles::ParticleWorld::setProjectBudget(game.particleWorldBudget);
     // the voices and the project's mixer, before the first scene
     applyAudio(game);
+    // Player > Saved Data, before a script can save
+    savegame::configure(game.saveGame);
+    // the Build Profile and its Scripting Define Symbols (System.isDefined)
+    if (!game.buildProfile.empty()) System::setBuildInfo(game.buildProfile, game.defines);
     // declared with their defaults before any scene draws
     if (!game.shaderGlobals.empty()) ShaderGlobals::declare(game.shaderGlobals);
     // Project Settings > Debug, before the first scene (its scripts may read DebugOverlay)
 #if JASPERENGINE_DEVELOPMENT_BUILD || defined(DEBUG)
     Engine::setDevelopmentBuild(true);
 #endif
+    // Project Settings > Debug > Console Commands: whether --command, agents and the console field
+    // run commands ("development" follows the build)
+    const bool commands = game.consoleCommands == "always" || (game.consoleCommands == "development" && Engine::isDevelopmentBuild());
+    console::setCommandsEnabled(commands);
     if (game.hasDebugSettings) {
         Log::setBufferSize(game.logBufferSize);
         Log::setStackTraces(game.logStackTraces);
         DebugOverlaySettings overlay = game.debugOverlay;
         overlay.enabled = resolveBuildMode(game.debugOverlayMode);
         overlay.allowLua = resolveBuildMode(game.debugAllowLuaMode);
+        overlay.commands = commands;
         DebugOverlay::configure(overlay);
     }
 }

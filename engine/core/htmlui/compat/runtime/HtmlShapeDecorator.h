@@ -12,6 +12,7 @@
 #include <RmlUi/Core/Types.h>
 
 #include <string>
+#include <vector>
 
 namespace Rml {
     class Element;
@@ -40,6 +41,14 @@ namespace jasperengine::htmlui::compat {
         // whether a point (px, relative to the reference box's top left) is inside the shape, from
         // the same geometry as toSvg (exact, curves of path() flattened); false when invalid
         bool contains(float width, float height, Rml::Element* element, Rml::Vector2f point) const;
+
+        // The shape as a rectangle with elliptical corners in the reference box (inset(), xywh(), rect(), circle(),
+        // ellipse(): an analytic clip, S92 R8); false for polygon() and path(), and when invalid.
+        bool toRoundedRect(float width, float height, Rml::Element* element, Rml::Rectanglef& rect, Rml::Array<Rml::Vector2f, 4>& radii) const;
+        // polygon() as a convex polygon of at most Rml::ClipShape::MaxPolygonPoints points in the reference box, in
+        // counter-clockwise order (positive area in its coordinates): an analytic clip too (S92); false for another
+        // shape, a concave or self-intersecting polygon, more points, or none of area
+        bool toConvexPolygon(float width, float height, Rml::Element* element, std::vector<Rml::Vector2f>& points) const;
     };
 
     // Rml::Context::SetHitTestShape's hook (S93 R7: clip-path clips hit testing): false when the
@@ -59,6 +68,9 @@ namespace jasperengine::htmlui::compat {
         Rml::DecoratorDataHandle GenerateElementData(Rml::Element* element, Rml::BoxArea paint_area) const override;
         void ReleaseElementData(Rml::DecoratorDataHandle element_data) const override;
         void RenderElement(Rml::Element* element, Rml::DecoratorDataHandle element_data) const override;
+        // S92 R8: the border box's inset(), circle(), ellipse(), xywh(), rect() and a convex polygon() clip analytically
+        bool GetMaskClipShape(Rml::Element* element, Rml::DecoratorDataHandle element_data, Rml::ClipShape& shape,
+                              Rml::Geometry*& geometry) const override;
 
         const BasicShape& getShape() const { return shape; }
         // tests: the SVG and pixel size the element data was rasterized with

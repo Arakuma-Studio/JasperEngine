@@ -7,6 +7,8 @@
 #ifdef ALPHA_CLIP
     #define SURFACE_DEPTH_VARYINGS
     #define SURFACE_DISPLACE
+    // (the hook only writes the frame's varyings: the surface stays, and so does its normal)
+    #define SURFACE_DISPLACE_KEEPS_NORMAL
     #ifndef VERTEX_COLOR
         #define SURFACE_NO_VERTEX_COLOR
     #endif

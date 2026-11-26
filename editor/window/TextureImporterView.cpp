@@ -421,6 +421,11 @@ void TextureImporterView::drawGeneral(const ResolvedTextureSettings& r){
                    textureChannelName(r.channel), "The source channel a single-channel texture keeps.");
     if (r.type == TextureImportType::Normal)
         boolField("Flip Green Channel", "flipGreen", r.flipGreen, "For DirectX-style (Y down) normal maps.");
+    if (r.type == TextureImportType::HDR)
+        boolField("Remove Sun Disc", "removeSunDisc", r.removeSunDisc,
+                  "For a sky whose sun a Directional Light gives (Skybox > Extract Sun): the cook clamps the sun's disc (up to 5 "
+                  "degrees) to the sky around it, so image-based lighting does not count the sun twice. A sky with no distinct sun "
+                  "cooks as it is.");
 }
 
 void TextureImporterView::drawAdvanced(const ResolvedTextureSettings& r){

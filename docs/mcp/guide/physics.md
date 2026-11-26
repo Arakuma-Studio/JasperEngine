@@ -237,7 +237,9 @@ returns the `Ragdoll`, or raises an error naming the bones it could not find. Ca
 `configure_game_view {physics_debug: true}` (Game view toolbar Physics, Lua `Physics.debugDraw =
 true`) draws every collider while playing (green awake, dark green asleep, blue kinematic, grey
 static, yellow triggers), joints in magenta and, with `physics_debug_contacts`, contact points in
-red; 2D too. A screenshot then shows them.
+red; 2D too. A screenshot then shows them. `physics_debug_queries` (toolbar Queries, Lua
+`Physics.debugDrawQueries`) draws the queries scripts run for 1 s: shape, sweep, hits as crosses,
+green with hits, red without.
 
 Each scene's 3D world holds at most Project Settings > Physics > 3D World Capacity: Max Bodies,
 Max Body Pairs, Max Contact Constraints (8192 each, about 3.6 MB per world; `set_project_settings`

@@ -13,6 +13,9 @@
 #include <RmlUi/Core/PropertyDefinition.h>
 #include <RmlUi/Core/PropertyDictionary.h>
 #include <RmlUi/Core/Property.h>
+#include <RmlUi/Core/RenderBox.h>
+#include <RmlUi/Core/RenderInterface.h>
+#include <RmlUi/Core/RenderManager.h>
 
 #include <algorithm>
 #include <array>
@@ -908,6 +911,74 @@ bool BasicShape::contains(float width, float height, Rml::Element* element, Rml:
     return false;
 }
 
+// S92: the analytic clips (R8), from the same geometry as toSvg and contains (S93)
+bool BasicShape::toRoundedRect(float width, float height, Rml::Element* element, Rml::Rectanglef& rect, Rml::Array<Rml::Vector2f, 4>& radii) const{
+    ShapeGeometry g;
+    if (!resolveShapeGeometry(text, width, height, element, g, nullptr))
+        return false;
+    switch (g.kind){
+        case ShapeGeometry::Kind::RoundedRect:
+            rect = Rml::Rectanglef::FromPositionSize(Rml::Vector2f(g.x, g.y), Rml::Vector2f(std::max(g.w, 0.0f), std::max(g.h, 0.0f)));
+            for (size_t corner = 0; corner < 4; corner++)
+                radii[corner] = Rml::Vector2f(g.radii[corner][0], g.radii[corner][1]);
+            return true;
+        case ShapeGeometry::Kind::Circle:
+        case ShapeGeometry::Kind::Ellipse:{
+            const float rx = std::max(g.rx, 0.0f), ry = std::max(g.ry, 0.0f);
+            rect = Rml::Rectanglef::FromPositionSize(Rml::Vector2f(g.cx - rx, g.cy - ry), Rml::Vector2f(2.0f * rx, 2.0f * ry));
+            for (size_t corner = 0; corner < 4; corner++)
+                radii[corner] = Rml::Vector2f(rx, ry);
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+bool BasicShape::toConvexPolygon(float width, float height, Rml::Element* element, std::vector<Rml::Vector2f>& points) const{
+    points.clear();
+    ShapeGeometry g;
+    if (!resolveShapeGeometry(text, width, height, element, g, nullptr) || g.kind != ShapeGeometry::Kind::Polygon)
+        return false;
+    // (the fill rule changes nothing for a convex polygon) a point equal to the one before it adds no edge
+    for (const Rml::Vector2f& point : g.points){
+        if (points.empty() || points.back() != point)
+            points.push_back(point);
+    }
+    if (points.size() > 1 && points.front() == points.back())
+        points.pop_back();
+    const size_t n = points.size();
+    if (n < 3 || n > (size_t)Rml::ClipShape::MaxPolygonPoints){
+        points.clear();
+        return false;
+    }
+    // convex and simple: every turn the same way, and once around (a star turns twice)
+    double area = 0.0, turning = 0.0;
+    int sign = 0;
+    for (size_t i = 0; i < n; i++){
+        const Rml::Vector2f a = points[i], b = points[(i + 1) % n], c = points[(i + 2) % n];
+        area += (double)a.x * b.y - (double)b.x * a.y;
+        const double ex = b.x - a.x, ey = b.y - a.y, fx = c.x - b.x, fy = c.y - b.y;
+        const double cross = ex * fy - ey * fx;
+        if (std::abs(cross) > 1e-9){
+            const int turn = cross > 0.0 ? 1 : -1;
+            if (sign != 0 && turn != sign){
+                points.clear();
+                return false;
+            }
+            sign = turn;
+        }
+        turning += std::atan2(cross, ex * fx + ey * fy);
+    }
+    if (sign == 0 || std::abs(std::abs(turning) - 2.0 * 3.14159265358979323846) > 1e-3 || std::abs(area) < 1e-6){
+        points.clear();
+        return false;
+    }
+    if (area < 0.0)
+        std::reverse(points.begin(), points.end());
+    return true;
+}
+
 // ---------------------------------------------------------------- hit test
 
 namespace {
@@ -982,6 +1053,10 @@ struct HtmlShapeDecorator::Data {
     std::string svg;
     Rml::Vector2i pixels{0, 0};
     Rml::Vector2f offset{0, 0};
+    // S92 R8: a rounded shape of the border box as a clip (relative to the border box), with its mesh for the stencil
+    bool clips = false;
+    Rml::ClipShape clipShape;
+    Rml::Geometry clipGeometry;
 };
 
 HtmlShapeDecorator::HtmlShapeDecorator(BasicShape shape): shape(std::move(shape)) {}
@@ -1016,7 +1091,61 @@ Rml::DecoratorDataHandle HtmlShapeDecorator::GenerateElementData(Rml::Element* e
     Rml::MeshUtilities::GenerateQuad(mesh, box.TopLeft(), box.Size(), Rml::Colourb(255, 255, 255, 255).ToPremultiplied(element->GetDrawOpacity()),
                                      Rml::Vector2f(0, 0), Rml::Vector2f(1, 1));
     data->geometry = renderManager->MakeGeometry(std::move(mesh));
+
+    // the border box's inset(), circle(), ellipse(), xywh() and rect(): a clip (S92 R8), unless the element's opacity
+    // fades the mask (only an opaque mask is a clip)
+    Rml::Rectanglef rect;
+    Rml::Array<Rml::Vector2f, 4> radii;
+    std::vector<Rml::Vector2f> polygon;
+    if (shape.box == Rml::BoxArea::Border && element->GetDrawOpacity() >= 1.0f && shape.toConvexPolygon(box.Width(), box.Height(), element, polygon)){
+        // S92: a convex polygon() too, its bounds the rectangle; a fan of it for the stencil
+        Rml::Vector2f lo = polygon[0], hi = polygon[0];
+        data->clipShape.polygon_points = (int)polygon.size();
+        Rml::Mesh clipMesh;
+        for (size_t i = 0; i < polygon.size(); i++){
+            const Rml::Vector2f point = polygon[i] + box.TopLeft();
+            data->clipShape.polygon[i] = point;
+            lo = Rml::Math::Min(lo, polygon[i]);
+            hi = Rml::Math::Max(hi, polygon[i]);
+            Rml::Vertex vertex;
+            vertex.position = point;
+            vertex.colour = Rml::ColourbPremultiplied(255);
+            clipMesh.vertices.push_back(vertex);
+            if (i >= 2){
+                clipMesh.indices.push_back(0);
+                clipMesh.indices.push_back((int)i - 1);
+                clipMesh.indices.push_back((int)i);
+            }
+        }
+        data->clipShape.rect = Rml::Rectanglef::FromCorners(lo, hi).Translate(box.TopLeft());
+        data->clipGeometry = renderManager->MakeGeometry(std::move(clipMesh));
+        data->clips = (bool)data->clipGeometry;
+    }else if (shape.box == Rml::BoxArea::Border && element->GetDrawOpacity() >= 1.0f && shape.toRoundedRect(box.Width(), box.Height(), element, rect, radii) &&
+        rect.Width() > 0.0f && rect.Height() > 0.0f){
+        data->clipShape.rect = rect.Translate(box.TopLeft());
+        Rml::CornerSizes2 corners;
+        for (size_t corner = 0; corner < 4; corner++){
+            const bool curved = radii[corner].x > 0.0f && radii[corner].y > 0.0f;
+            data->clipShape.radii[corner] = curved ? radii[corner] : Rml::Vector2f(0.0f);
+            corners[corner] = data->clipShape.radii[corner];
+        }
+        Rml::Mesh clipMesh;
+        Rml::MeshUtilities::GenerateBackground(clipMesh, Rml::RenderBox(data->clipShape.rect.Size(), data->clipShape.rect.TopLeft(), Rml::EdgeSizes{},
+                                                                        corners), Rml::ColourbPremultiplied(255));
+        data->clipGeometry = renderManager->MakeGeometry(std::move(clipMesh));
+        data->clips = (bool)data->clipGeometry;
+    }
     return reinterpret_cast<Rml::DecoratorDataHandle>(data);
+}
+
+bool HtmlShapeDecorator::GetMaskClipShape(Rml::Element* /*element*/, Rml::DecoratorDataHandle element_data, Rml::ClipShape& clipShape,
+                                          Rml::Geometry*& geometry) const{
+    Data* data = reinterpret_cast<Data*>(element_data);
+    if (!data || !data->clips)
+        return false;
+    clipShape = data->clipShape;
+    geometry = &data->clipGeometry;
+    return true;
 }
 
 void HtmlShapeDecorator::ReleaseElementData(Rml::DecoratorDataHandle element_data) const{
