@@ -11,9 +11,10 @@
 // Culling Group and one with 1,000 Simulation Culling components. From 4 s of game time (after
 // main.lua's Performance line, so the gate's ordered lines do not race) 200 frames of each scene's
 // evaluation time give the p99, on a Release build (BUILD_TYPE=Release: R22's figures are release
-// ones), at or under the web budgets of R22 (0.5 ms the group, 0.25 ms the
-// simulation): "[gate] culling group p99 within 0.5 ms", "[gate] simulation culling p99 within
-// 0.25 ms". Then the scripted camera move: the group's camera turns away (every sphere becomes
+// ones), printed with R22's web budget (0.5 ms the group, 0.25 ms the simulation). Over the budget is
+// a warning, not a failure: R22's are device figures, and CI's browser renders in software (its p50
+// alone is over them); wall-clock budgets are reported, never asserted (AGENTS.md). Then the
+// scripted camera move: the group's camera turns away (every sphere becomes
 // invisible, no band changes: 10,000 events) and the simulation camera moves 30 m back (the far
 // 500 pass the distance: 500 culled once the 64-a-frame pacing has applied them).
 
@@ -56,11 +57,13 @@ namespace {
     }
 
     void gateBudget(const char* name, const std::vector<double>& sorted, double value, double budget){
-        Log::print("[gate] %s p99 %.4f ms (p50 %.4f) over %d frames", name, value, sorted[sorted.size() / 2], SAMPLES);
+        Log::print("[gate] %s p99 %.4f ms (p50 %.4f) over %d frames, web budget %g ms", name, value, sorted[sorted.size() / 2], SAMPLES,
+                   budget);
         if (value <= budget){
             Log::print("[gate] %s p99 within %g ms", name, budget);
         }else{
-            Log::error("[gate] %s p99 %.4f ms over the %g ms budget", name, value, budget);
+            Log::warn("[gate] %s p99 %.4f ms over the %g ms web budget (a device figure: this browser may render in software)", name,
+                      value, budget);
         }
     }
 
