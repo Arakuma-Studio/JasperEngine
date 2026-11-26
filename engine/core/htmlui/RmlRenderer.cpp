@@ -2554,6 +2554,7 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
     // program draws the source's part of source-over-backdrop with premultiplied blending, which adds the backdrop's
     // part (so where the source has no coverage nothing changes). Between layers of the same frame only (a region
     // layer's composite blends as normal)
+    const bool ordinary = !isRegionLayer(source) && !isRegionLayer(destination);
     if ((int)blendMode >= (int)Rml::BlendMode::Multiply && ordinary && postTargetIn(context.postSet, 0) && postTargetIn(context.postSet, 1) &&
         postTargetIn(context.postSet, 2)){
         ensureLayerCleared(destination);
