@@ -30,7 +30,7 @@ using namespace jasperengine;
 namespace lua_fog_profile_test {
 
     // runs a chunk; "" on success, else the error message
-    std::string runLua(lua_State* L, const std::string& code){
+    std::string fogProfileRunLua(lua_State* L, const std::string& code){
         if (luaL_loadstring(L, code.c_str()) != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK){
             std::string error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "(error)";
             lua_pop(L, 1);
@@ -102,7 +102,7 @@ TEST(LuaFogProfileTest, ProfilesAreReadOnlyAndClonesChange){
         assert(math.abs(FogProfile.load(PROFILE_PATH):get("density") - 0.25) < 1e-6)
         assert(file:isSet("color"))
     )";
-    EXPECT_EQ(runLua(L, script), "");
+    EXPECT_EQ(fogProfileRunLua(L, script), "");
     // clone():set never touches the file
     EXPECT_EQ(dir.read("FogProfiles/file.fogprofile"), original);
     std::shared_ptr<const FogProfileData> fromFile = FogProfileLibrary::get(path);
@@ -128,7 +128,7 @@ TEST(LuaFogProfileTest, FogBlendsAndScriptWritesShow){
     luabridge::setGlobal(L, fog, "fog");
     luabridge::setGlobal(L, zone, "zone");
 
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(fogProfileRunLua(L, R"(
         assert(fog.profile == nil)
         assert(not fog.blending)
         fog:blendTo("FogProfiles/red.fogprofile", 2)
@@ -138,13 +138,13 @@ TEST(LuaFogProfileTest, FogBlendsAndScriptWritesShow){
     )"), "");
     // game time moves the blend (RenderSystem::update)
     FogScene::advance(&scene, 1.0);
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(fogProfileRunLua(L, R"(
         local c = fog:getResolved("color")
         -- half way in linear light, shown in sRGB as Fog's colours are
         assert(math.abs(c.x - 0.5 ^ (1 / 2.2)) < 1e-3, "half way: " .. c.x)
     )"), "");
     FogScene::advance(&scene, 1.5);
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(fogProfileRunLua(L, R"(
         assert(not fog.blending)
         assert(fog.profile.key == "FogProfiles/red.fogprofile", "the blend's end is the runtime profile")
         assert(math.abs(fog:getResolved("color").x - 1) < 1e-4)
