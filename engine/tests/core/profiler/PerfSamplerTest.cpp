@@ -195,6 +195,9 @@ TEST_F(PerfSamplerTest, SkipsHostWorkFrames){
 // AC5: frames that sleep 20 ms and compute 2 ms: the thread clock sees the 2 ms
 TEST_F(PerfSamplerTest, ThreadCpuSeparatesWaitingFromWork){
     ASSERT_TRUE(ThreadCpuClock::isAvailable());
+    // on the sampler's clock before the frames: a loaded machine's sleeps can pass a wall second,
+    // which would close the second early and leave the measured one without frames
+    PerfSampler::tickForTest(1.0);
     PerfSampler::setSampling(true);
     for (int i = 0; i < 10; i++){
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -214,6 +217,23 @@ TEST_F(PerfSamplerTest, ThreadCpuSeparatesWaitingFromWork){
     const std::string json = PerfSampler::toJson(summary);
     EXPECT_NE(json.find("\"main_thread_cpu\":\"thread_clock\""), std::string::npos) << json;
     EXPECT_NE(json.find("\"frame_ms\""), std::string::npos) << json;
+}
+
+// A running game's seconds close on its own frames (no tickForTest): the frame that passes the
+// second is counted in the second it closes, so the newest CPU slot always has frames and the
+// Game view's and the profiler's last-second reading is never the empty -1 right after a rollover
+TEST_F(PerfSamplerTest, WallClockRolloverKeepsTheClosedSecondsCpu){
+    ASSERT_TRUE(ThreadCpuClock::isAvailable());
+    PerfSampler::setSampling(true);
+    const auto start = Clock::now();
+    for (int i = 0; i <= 10; i++){
+        FrameTimeSample sample;
+        sample.frameMs = 100.0f;
+        sample.cpuMs = 2.0f;
+        PerfSampler::onFrame(sample, start + std::chrono::milliseconds(100 * i));
+        if (i < 10) EXPECT_LT(PerfSampler::mainThreadCpuMsLastSecond(), 0.0) << "no second has closed yet (frame " << i << ")";
+    }
+    EXPECT_GE(PerfSampler::mainThreadCpuMsLastSecond(), 0.0) << "the frame at 1 s closed the second it is counted in";
 }
 
 // R5: the thread clock resolves one frame's work: a 3 ms spin reads more than nothing and no more
