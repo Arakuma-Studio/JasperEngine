@@ -81,6 +81,8 @@ bool sgj_gl_issue(const sg_shader_desc* desc, sgj_gl_program* out);
 // then returns before the program is built (the setting reaches the share group), and the render
 // thread's first draw of it waits for the build; false when not available
 bool sgj_gl_enable_compile_threads(void);
+// back to no compile threads, after an enable on the same context (a setup with gl_no_compile_threads)
+void sgj_gl_disable_compile_threads(void);
 // GL_COMPLETION_STATUS_KHR of the program (never waits); true without the extension
 bool sgj_gl_is_complete(const sgj_gl_program* prog);
 // Reads the link status (a wait if the driver is not done) and, linked, hands the program to

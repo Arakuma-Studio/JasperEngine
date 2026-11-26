@@ -27,7 +27,14 @@ namespace jasperengine::player {
         EXIT_SCREENSHOT_FAILED = 4,
         EXIT_CONTENT_MISMATCH = 5,
         EXIT_NOT_READY = 6,
-        EXIT_NO_DISPLAY = 7
+        EXIT_NO_DISPLAY = 7,
+        // the project test runner (docs/specs/project-test-runner.md R27): a case failed, errored or
+        // hung; no case to run (the filter matched nothing, or the content holds no tests)
+        EXIT_TESTS_FAILED = 8,
+        EXIT_NO_TESTS = 9,
+        // --input-script with --quit-after-input (docs/specs/input-recorder-and-input-scripts.md R26)
+        EXIT_INPUT_FAILED = 10,
+        EXIT_INPUT_DIVERGED = 11
     };
 
     // the composited frame: width * height RGBA8, rows top first; false when it cannot be read
@@ -42,6 +49,12 @@ namespace jasperengine::player {
         // Engine::systemInit, after its logger started: the error watch, the fixed frame time,
         // the scripts' arguments
         static void engineStarted();
+        // the frame that logs "Engine ready:": --perf-summary turns sampling on unless the game
+        // called Performance.setSampling already
+        static void engineReady();
+        // Engine::systemShutdown: --perf-summary's file (the web prints it), unless a finished
+        // window was written and nothing was committed since
+        static void writePerfSummary();
 
         // Engine::runFrame, once: --audio-capture's session starts with the start scene's first frame
         static void beginAudioCapture();
@@ -49,7 +62,7 @@ namespace jasperengine::player {
         static bool isHeadless();
         // a frame option is in use (quit, ready wait, screenshot, error watch)
         static bool isActive();
-        // the ready signal must run whatever the environment says
+        // the ready signal must run whatever the environment says (--after-ready, --command)
         static bool wantsReadySignal();
 
         // Engine::runFrame, before the draw: the frame draws into the engine's composite
@@ -58,7 +71,8 @@ namespace jasperengine::player {
         // a screenshot is still to be written (the run draws offscreen from its first frame)
         static bool wantsScreenshot();
         // after the frame drew and committed: readSignalled is the engine's ready state, reader
-        // reads the composite (null when the frame was not offscreen)
+        // reads the composite (null when the frame was not offscreen). From the ready frame it
+        // runs the --command lines, one a frame; the frames count from the one after the last
         static void frameDrawn(bool readySignalled, const FrameReader& reader);
 
         // Engine::quit and the timeouts: ends the run with this code (the first one wins)

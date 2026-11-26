@@ -686,6 +686,25 @@ std::vector<TileCoord> TerrainWorldRuntime::missingTiles(float x, float z, float
     return missing;
 }
 
+bool TerrainWorldRuntime::isAreaLoaded(float x, float z, float radius) const {
+    const float size = worldManifest.lattice.tileSize();
+    if (!(size > 0.0f)) return true;
+    const int reach = static_cast<int>(std::ceil(radius / size)) + 1;
+    const int cx = tileOfLocal(x, size), cz = tileOfLocal(z, size);
+    for (int tz = cz - reach; tz <= cz + reach; tz++) {
+        for (int tx = cx - reach; tx <= cx + reach; tx++) {
+            const TileCoord tile(tx, tz);
+            if (!tile.addressable() || !worldOccupancy.present(tile)) continue;
+            if (boxDistance(x, z, static_cast<float>(tx) * size, static_cast<float>(tz) * size, size) > radius) continue;
+            // a world not streaming yet has none of its present tiles in memory
+            if (!streamer) return false;
+            const TileState state = streamer->state(tile);
+            if (state != TileState::CpuReady && state != TileState::Uploading && state != TileState::Resident) return false;
+        }
+    }
+    return true;
+}
+
 bool TerrainWorldRuntime::isAreaReady(float x, float z, float radius, TerrainWorldReadyLevel level) const {
     return streamer && isReady() && missingTiles(x, z, radius, level).empty();
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HtmlUiExamples.h"
+#include "dialogue/DialogueProgram.h"
 
 #include "util/FileUtils.h"
 
@@ -313,8 +314,12 @@ bool editor::HtmlUiExamples::instantiate(const std::string& name, const std::str
 
     const std::string assetsPrefix = name + "/assets/";
     for (const File& file : files()){
-        if (file.path.compare(0, assetsPrefix.size(), assetsPrefix) == 0)
-            out.files.emplace_back(joinRelative(dir, assetsDir + file.path.substr(assetsPrefix.size())), std::string(file.data));
+        if (file.path.compare(0, assetsPrefix.size(), assetsPrefix) != 0) continue;
+        std::string data(file.data);
+        // a dialogue's String Table namespace is unique in the project: one per document (dialogue-graphs.md R14)
+        if (examplesEndsWith(file.path, ".dialogue"))
+            examplesReplaceAll(data, "\"namespace\": \"" + name + "_", "\"namespace\": \"" + jasperengine::dialogue::namespaceFromStem(stem) + "_");
+        out.files.emplace_back(joinRelative(dir, assetsDir + file.path.substr(assetsPrefix.size())), std::move(data));
     }
 
     if (!luaName.empty()){

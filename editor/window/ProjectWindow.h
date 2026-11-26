@@ -66,7 +66,8 @@ namespace jasperengine::editor {
         NOISE_GRAPH,        // .noisegraph (the Noise Graph window)
         TILESET,            // .tileset (the Tileset Editor; a thumbnail of its tiles)
         TITLE_ART,          // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
-        MESH_ASSET          // .mesh (S98 F1; get_asset_info, the Mesh Renderer's Mesh field): an icon
+        MESH_ASSET,         // .mesh (S98 F1; get_asset_info, the Mesh Renderer's Mesh field): an icon
+        IES_PROFILE         // .ies (S99: the Inspector's polar plot and metadata)
     };
 
     struct FileEntry {
@@ -630,6 +631,8 @@ namespace jasperengine::editor {
         // Assets > Create > Title Art (S80 R7): "New Title Art.titleart", baked at once
         void assetsCreateTitleArt(const fs::path& directory);
         void assetsCreateProceduralMaterial(const fs::path& directory);
+        // dialogue-graphs.md R22: Create > Dialogue
+        void assetsCreateDialogue(const fs::path& directory);
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer(const fs::path& directory);

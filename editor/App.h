@@ -4,6 +4,7 @@
 #pragma once
 
 #include "render/RenderStats.h"
+#include "device/GpuQuirks.h"
 #include "imgui.h"
 #include "json.hpp"
 
@@ -96,6 +97,8 @@ namespace jasperengine::editor{
     class SystemsWindow;
     class SpriteNormalsWindow;
     class TitleDesignerWindow;
+    class DialogueWindow;
+    class LocalizationTablesWindow;
     class SpritePreviewWindow;
     class GameWindow;
     class MainToolbar;
@@ -108,6 +111,7 @@ namespace jasperengine::editor{
     class JobsMemoryWindow;
     class MeshAuditWindow;
     class BuildReportWindow;
+    class CrashReportsWindow;
     class AnimationStatisticsWindow;
     class ProfilerWindow;
     class FrameDebuggerWindow;
@@ -120,6 +124,7 @@ namespace jasperengine::editor{
     class SearchPalette;
     class ShortcutsWindow;
     class BookmarksWindow;
+    class SavedDataWindow;
 
     enum class AlertType {
         Info,
@@ -227,9 +232,14 @@ namespace jasperengine::editor{
         std::vector<std::pair<std::string, double>> benchmarkUiTotals;
         std::chrono::steady_clock::time_point benchmarkWaitStart{};
         std::chrono::steady_clock::time_point benchmarkMeasureStart{};
+        // the main thread's CPU time (its thread clock) at the measure's start and end, ms
+        double benchmarkThreadCpuStart = -1.0;
+        double benchmarkThreadCpuEnd = -1.0;
         // --gpu-passes: the GPU time of every pass of the measured frames (S15); --profile-capture
         // <path>: a .jetrace.json of them
         bool benchmarkGpuPasses = false;
+        // --gpu-quirk name:on|off for the run
+        std::vector<GpuQuirkOverride> benchmarkGpuQuirks;
         bool benchmarkProfile = false;
         std::filesystem::path benchmarkCapturePath;
         uint32_t benchmarkCaptureId = 0;
@@ -287,6 +297,8 @@ namespace jasperengine::editor{
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;
         TitleDesignerWindow* titleDesignerWindow;
+        LocalizationTablesWindow* localizationTablesWindow;
+        DialogueWindow* dialogueWindow;
         // which generated normal maps are stale, and their opt-in auto-regenerate
         SpriteNormalsWatcher* spriteNormalsWatcher;
         SpritePreviewWindow* spritePreviewWindow;
@@ -297,6 +309,7 @@ namespace jasperengine::editor{
         JobsMemoryWindow* jobsMemoryWindow;
         MeshAuditWindow* meshAuditWindow;
         BuildReportWindow* buildReportWindow;
+        CrashReportsWindow* crashReportsWindow;
         AnimationStatisticsWindow* animationStatisticsWindow;
         ProfilerWindow* profilerWindow;
         FrameDebuggerWindow* frameDebuggerWindow;
@@ -312,6 +325,7 @@ namespace jasperengine::editor{
         SearchPalette* searchPalette;
         ShortcutsWindow* shortcutsWindow;
         BookmarksWindow* bookmarksWindow;
+        SavedDataWindow* savedDataWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;
@@ -563,6 +577,7 @@ namespace jasperengine::editor{
         SearchPalette* getSearchPalette() const { return searchPalette; }
         ShortcutsWindow* getShortcutsWindow() const { return shortcutsWindow; }
         BookmarksWindow* getBookmarksWindow() const { return bookmarksWindow; }
+        SavedDataWindow* getSavedDataWindow() const { return savedDataWindow; }
         // Runs a main-menu command as a menu click would (the palette, run_command)
         void runMenuCommand(const PlatformMenuCommand& command) { executeMenuCommand(command); }
         // The main menu as it is now (the palette's commands, run_command's checks)
@@ -740,6 +755,7 @@ namespace jasperengine::editor{
         NoiseGraphWindow* getNoiseGraphWindow() const { return noiseGraphWindow; }
         SystemsWindow* getSystemsWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
+        CrashReportsWindow* getCrashReportsWindow() const { return crashReportsWindow; }
         ProfilerWindow* getProfilerWindow() const { return profilerWindow; }
         FrameDebuggerWindow* getFrameDebuggerWindow() const { return frameDebuggerWindow; }
         UndoHistoryWindow* getUndoHistoryWindow() const { return undoHistoryWindow; }
@@ -750,6 +766,8 @@ namespace jasperengine::editor{
         PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
         SpriteNormalsWindow* getSpriteNormalsWindow() const;
         TitleDesignerWindow* getTitleDesignerWindow() const;
+        LocalizationTablesWindow* getLocalizationTablesWindow() const { return localizationTablesWindow; }
+        DialogueWindow* getDialogueWindow() const { return dialogueWindow; }
         SpriteNormalsWatcher* getSpriteNormalsWatcher() const;
         SpritePreviewWindow* getSpritePreviewWindow() const { return spritePreviewWindow; }
         void openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe) override;

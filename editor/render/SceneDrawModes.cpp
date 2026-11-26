@@ -202,7 +202,7 @@ void editor::drawTerrainOverlayLegend(ImDrawList* drawList, ImVec2 imageMin, ImV
     }
 }
 
-void editor::drawStatsBox(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax, const std::vector<std::string>& lines){
+ImVec2 editor::drawStatsBox(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax, const std::vector<std::string>& lines){
     float boxWidth = 0.0f;
     for (const std::string& line : lines) boxWidth = std::max(boxWidth, ImGui::CalcTextSize(line.c_str()).x);
     const ImVec2 pad = Theme::dpi(ImVec2(10.0f, 8.0f));
@@ -216,6 +216,7 @@ void editor::drawStatsBox(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax
         const ImU32 color = i == 0 ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 255);
         drawList->AddText(ImVec2(boxMin.x + pad.x, boxMin.y + pad.y + lineHeight * (float)i), color, lines[i].c_str());
     }
+    return ImVec2(boxMin.x + pad.x, boxMin.y + pad.y);
 }
 
 void editor::appendMeshStatsLines(std::vector<std::string>& lines, uint64_t vertices, const LodFrameStats& lod, bool lodEnabled){

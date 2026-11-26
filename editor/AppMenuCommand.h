@@ -54,6 +54,7 @@ namespace jasperengine::editor {
         ToggleJobsMemory,
         ToggleMeshAudit,
         ToggleBuildReport,
+        ToggleCrashReports,
         ToggleAnimationStatistics,
         ToggleProfiler,
         ToggleFrameDebugger,
@@ -100,6 +101,9 @@ namespace jasperengine::editor {
         SearchAll,            // S25: Edit > Search All... (the Search palette)
         Shortcuts,            // Edit > Shortcuts...
         ToggleBookmarks,      // Window > General > Bookmarks
+        ToggleLocalizationTables,   // Window > Localization Tables (game-ui-localization.md R28)
+        ToggleSavedData,      // Window > General > Saved Data
+        ToggleDialogue,             // Window > Dialogue (dialogue-graphs.md R19)
         LayoutApply,          // payload: the preset's name (Window > Layouts)
         LayoutSave,
         LayoutRename,         // payload: the preset's name
@@ -176,7 +180,8 @@ namespace jasperengine::editor {
         ToggleTilesetEditor,
         AssetsCreateTileset,
         AssetsCreateTitleArt,         // Assets > Create > Title Art (S80)
-        TitleArtBakeAll               // the command palette's "Title Art: Bake All" (S80 §6.13)
+        TitleArtBakeAll,              // the command palette's "Title Art: Bake All" (S80 §6.13)
+        ToggleTestRunner              // Window > General > Test Runner (project-test-runner R38)
     };
 
 }

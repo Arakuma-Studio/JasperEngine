@@ -94,6 +94,21 @@ extern "C" bool sgj_gl_enable_compile_threads(void){
 #endif
 }
 
+extern "C" void sgj_gl_disable_compile_threads(void){
+#if defined(_SOKOL_ANY_GL) && !defined(__EMSCRIPTEN__)
+    if (!sgjCaps.gl_parallel_compile)
+        return;
+    auto set = reinterpret_cast<MaxShaderCompilerThreadsProc>(sgjGlProc("glMaxShaderCompilerThreadsKHR"));
+    if (!set)
+        set = reinterpret_cast<MaxShaderCompilerThreadsProc>(sgjGlProc("glMaxShaderCompilerThreadsARB"));
+    if (!set)
+        return;
+    // 0: the compiler spawns no threads (KHR_parallel_shader_compile)
+    set(0u);
+    while (glGetError() != GL_NO_ERROR) {}
+#endif
+}
+
 extern "C" void sgj_async_setup(void){
     sgjCaps = {};
 #if defined(_SOKOL_ANY_GL)

@@ -51,10 +51,13 @@ namespace jasperengine {
         VoxelVolume = 32,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
         NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
         TitleArt = 34,              // a .titleart Title Art document (S80; its GUID in its JSON)
-        Mesh = 35                   // a .mesh mesh asset (S98 F1; its GUID in its .meta)
+        Mesh = 35,                  // a .mesh mesh asset (S98 F1; its GUID in its .meta)
+        IesProfile = 36,            // an .ies photometric profile of a light (S99 R36; its GUID in its .meta)
+        StringTable = 37,           // a .stringtable String Table and its .translation files (game-ui-localization.md R41; GUID in its JSON)
+        Dialogue = 38               // a .dialogue dialogue graph (dialogue-graphs.md R30; its GUID in its JSON)
     };
     // the highest value present (a sibling's reserved value below it may still be missing)
-    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::Mesh);
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::Dialogue);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -94,6 +97,9 @@ namespace jasperengine {
             case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::TitleArt: return "title_art";
             case AssetType::Mesh: return "mesh";
+            case AssetType::IesProfile: return "ies_profile";
+            case AssetType::StringTable: return "stringtable";
+            case AssetType::Dialogue: return "dialogue";
             case AssetType::Unknown: break;
         }
         return "unknown";

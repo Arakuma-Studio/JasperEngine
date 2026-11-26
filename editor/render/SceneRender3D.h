@@ -117,6 +117,8 @@ namespace jasperengine::editor{
         void createDirectionalLightArrow(const Transform& transform, const LightComponent& light);
         void createPointLightSphere(const Transform& transform, const LightComponent& light);
         void createSpotLightCones(const Transform& transform, const LightComponent& light);
+        // an Area Light's rectangle or disc and its normal, with its size handles when selected
+        void createAreaLightShape(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
 
     protected:
         void hideAllGizmos() override;

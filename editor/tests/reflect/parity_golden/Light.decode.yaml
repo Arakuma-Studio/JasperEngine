@@ -1,8 +1,8 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 3fe2873a68d4aeba
+digest 43144c248d2ca0f6
 --- 0
 enabled: false
-type: directional
+type: area
 direction: [77, 0, 0]
 worldDirection: [0.4339081, 0.42563942, 0]
 color: [-71.71429, 5711.088, -44]
@@ -29,11 +29,16 @@ contactShadowLength: -94
 contactShadowThickness: 1e-45
 contactShadowSampleCount: 7
 volumetricIntensity: -66
-intensityUnit: lumen
+intensityUnit: candela
 colorTemperature: 1000
+areaShape: disc
+areaWidth: 6102.1255
+areaHeight: -54
+areaRadius: -117.57143
+iesProfile: a b/c.png
 --- 1
 enabled: false
-type: spot
+type: area
 direction: [-0.93121165, 0, 99]
 worldDirection: [-88, 93, 0]
 color: [40, 1429.3596, -43]
@@ -58,8 +63,11 @@ contactShadows: true
 contactShadowLength: 3041.068
 contactShadowSampleCount: -16
 volumetricIntensity: 33
-intensityUnit: lux
+intensityUnit: nits
 colorTemperature: 8442.921
+areaShape: disc
+areaWidth: -0.5027192
+areaHeight: -.inf
 --- 2
 enabled: false
 type: point
@@ -92,11 +100,15 @@ contactShadowLength: 0.8192939
 contactShadowThickness: -92
 contactShadowSampleCount: 15
 volumetricIntensity: 1e-45
-intensityUnit: lumen
 useColorTemperature: true
+areaShape: disc
+areaWidth: 17.285715
+areaHeight: 0.9875748
+areaRadius: 0.44096464
+iesProfile: a b/c.png
 --- 3
 enabled: false
-type: point
+type: directional
 direction: [-0, 1803.9456, -0.38516337]
 worldDirection: [0.2381458, 0, 3e+38]
 color: [7354.887, -20, 1083.3761]
@@ -129,11 +141,13 @@ shadowAngularDiameter: 87
 shadowUpdateMode: onDemand
 contactShadowLength: -0.6123581
 volumetricIntensity: 2165.1846
-intensityUnit: candela
+intensityUnit: lux
 colorTemperature: 1000
+areaWidth: .inf
+iesProfile: fonts/Main.ttf
 --- 4
 enabled: false
-type: point
+type: area
 direction: [-101.42857, 10, 152.4162]
 worldDirection: [286.2003, 3e+38, 0]
 color: [-0.5630322, 2153.3792, 3180.1038]
@@ -161,12 +175,17 @@ contactShadowLength: -0
 contactShadowThickness: -54
 contactShadowSampleCount: -17
 volumetricIntensity: -0.3384584
-intensityUnit: lumen
+intensityUnit: candela
 useColorTemperature: true
 colorTemperature: 3629.2307
+areaShape: disc
+areaWidth: -22
+areaHeight: 6161.0815
+areaRadius: 2898.999
+iesProfile: fonts/Main.ttf
 --- 5
 enabled: true
-type: point
+type: directional
 direction: [-13, 0.7792979, 9332.423]
 worldDirection: [6.714286, -0.5238856, 7023.0464]
 color: [3006.616, 7705.46, -54]
@@ -199,6 +218,9 @@ contactShadowSampleCount: -6
 volumetricIntensity: -0.85480165
 intensityUnit: lux
 useColorTemperature: true
+areaHeight: 72.71429
+areaRadius: -.inf
+iesProfile: sounds/hit.wav
 --- 6
 enabled: false
 type: spot
@@ -239,7 +261,12 @@ contactShadowLength: -32
 contactShadowThickness: -0
 contactShadowSampleCount: 0
 volumetricIntensity: 99
+intensityUnit: nits
 useColorTemperature: true
+areaWidth: 8044.8306
+areaHeight: .inf
+areaRadius: -88
+iesProfile: a b/c.png
 --- 7
 enabled: true
 type: spot
@@ -275,5 +302,9 @@ shadowSourceRadius: -0.19736949
 contactShadows: true
 contactShadowLength: -0.3120192
 volumetricIntensity: -80
+intensityUnit: lux
 useColorTemperature: true
-colorTemperature: 1000
+areaShape: disc
+areaHeight: -.inf
+areaRadius: 0.8137276
+iesProfile: a b/c.png

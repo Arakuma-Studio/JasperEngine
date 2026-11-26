@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "subsystem/GamepadCursor.h"
 #include "terrain/TerrainQuality.h"
 #include "window/GameResolutions.h"
 #include "Scene.h"
@@ -44,7 +45,9 @@
 #include "texture/TextureImportSettings.h"
 #include "titleart/TitleArtSettings.h"
 #include "pixelart/PixelArtSettings.h"
+#include "export/SizeBudgetRow.h"
 #include "model/ModelImportSettings.h"
+#include "SaveGameSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
 #include "util/ApplePrivacy.h"
@@ -55,6 +58,7 @@
 
 #include "yaml-cpp/yaml.h"
 
+#include <array>
 #include <filesystem>
 #include <optional>
 #include <chrono>
@@ -179,6 +183,18 @@ namespace jasperengine::editor{
             return maxBodies == other.maxBodies && maxBodyPairs == other.maxBodyPairs && maxContactConstraints == other.maxContactConstraints;
         }
         bool operator!=(const Physics3DWorldSettings& other) const { return !(*this == other); }
+    };
+
+    // Project Settings > Physics / Physics 2D > Queries Hit Triggers (project.yaml physicsQueries,
+    // written only when one is off): what QueryTriggerInteraction.USE_GLOBAL means in each world
+    struct PhysicsQuerySettings {
+        bool hitTriggers3D = true;
+        bool hitTriggers2D = true;
+
+        bool operator==(const PhysicsQuerySettings& other) const {
+            return hitTriggers3D == other.hitTriggers3D && hitTriggers2D == other.hitTriggers2D;
+        }
+        bool operator!=(const PhysicsQuerySettings& other) const { return !(*this == other); }
     };
 
     // project.yaml held an older editor's Project Settings > Input (Unity's Input Manager as a flat
@@ -673,28 +689,76 @@ namespace jasperengine::editor{
         bool keepScreenOn = true;
         // -1 = the platform's rate
         int targetFrameRate = -1;
+        // Engine.onPauseRequested on a focus loss, an app pause or the gamepad's disconnect while no menu shows
+        bool pauseOnFocusLoss = false;
 
         // the allowed set with a fixed default in it, never empty
         uint8_t effectiveAllowedOrientations() const;
 
         bool operator==(const PresentationSettings& other) const {
             return defaultOrientation == other.defaultOrientation && allowedOrientations == other.allowedOrientations
-                && keepScreenOn == other.keepScreenOn && targetFrameRate == other.targetFrameRate;
+                && keepScreenOn == other.keepScreenOn && targetFrameRate == other.targetFrameRate
+                && pauseOnFocusLoss == other.pauseOnFocusLoss;
         }
         bool operator!=(const PresentationSettings& other) const { return !(*this == other); }
     };
 
-    // Project Settings > Localization (docs/specs/S87-title-localisation-interchange.md R64, D3):
-    // the languages the game ships (empty: every language of every title) and the default one ("":
-    // the first of `languages`, else "en"); names a later project-wide localisation reuses
+    // Project Settings > Localization (docs/specs/S87-title-localisation-interchange.md R64, D3;
+    // game-ui-localization.md R6, R14, R30): the languages the game ships (empty: every language of
+    // every String Table and title) and the default one ("": the first of `languages`, else "en");
+    // whether the game remembers the player's choice, and fonts per language (HTML and Text fallbacks)
     struct LocalizationSettings {
         std::vector<std::string> languages;     // BCP 47, canonical case
         std::string defaultLanguage;
+        bool rememberLanguage = true;
+        // the namespace a key without one reads (game-ui-localization.md R1, D-15); "": the only String Table
+        std::string defaultTable;
+        std::map<std::string, std::vector<std::string>> fonts;     // language -> font asset paths
 
         // the default with its fallbacks applied ("" -> the first language, else "en")
         std::string effectiveDefault() const { return !defaultLanguage.empty() ? defaultLanguage : !languages.empty() ? languages.front() : "en"; }
-        bool operator==(const LocalizationSettings& other) const { return languages == other.languages && defaultLanguage == other.defaultLanguage; }
+        bool operator==(const LocalizationSettings& other) const {
+            return languages == other.languages && defaultLanguage == other.defaultLanguage && rememberLanguage == other.rememberLanguage &&
+                   defaultTable == other.defaultTable && fonts == other.fonts;
+        }
         bool operator!=(const LocalizationSettings& other) const { return !(*this == other); }
+    };
+
+    // Project Settings > Dialogue (docs/specs/dialogue-graphs.md R23, R31): the handler prefixes, variables
+    // and speakers dialogues use, for the editor's completion and lint; the variables' defaults also
+    // reach Play and games (je-dialogue.json). All default empty: an older project writes nothing.
+    struct DialogueSettings {
+        struct Prefix {
+            std::string name;           // "quest"
+            std::string description;
+            std::string hint;           // the arguments ("quest id")
+            bool operator==(const Prefix& other) const { return name == other.name && description == other.description && hint == other.hint; }
+        };
+        struct Variable {
+            std::string name;           // without '$'
+            std::string type = "number";    // number | bool | string
+            std::string defaultValue;   // as typed: "10", "true", "Ana"
+            std::string description;
+            bool operator==(const Variable& other) const {
+                return name == other.name && type == other.type && defaultValue == other.defaultValue && description == other.description;
+            }
+        };
+        struct Speaker {
+            std::string id;             // as lines name it
+            std::string displayKey;     // the String Table key of its shown name ("" = speakers.<id>)
+            bool operator==(const Speaker& other) const { return id == other.id && displayKey == other.displayKey; }
+        };
+        std::vector<Prefix> actionPrefixes;
+        std::vector<Prefix> conditionPrefixes;
+        std::vector<Variable> variables;
+        std::vector<Speaker> speakers;
+
+        bool empty() const { return actionPrefixes.empty() && conditionPrefixes.empty() && variables.empty() && speakers.empty(); }
+        bool operator==(const DialogueSettings& other) const {
+            return actionPrefixes == other.actionPrefixes && conditionPrefixes == other.conditionPrefixes && variables == other.variables &&
+                   speakers == other.speakers;
+        }
+        bool operator!=(const DialogueSettings& other) const { return !(*this == other); }
     };
 
     // Name, identifier, version and build below are overrides: empty (or 0)
@@ -901,10 +965,14 @@ namespace jasperengine::editor{
         bool hangWatchdog = true;        // Development Builds: the main-thread hang watchdog
         int hangSeconds = 5;             // its threshold
         bool webCrashOverlay = true;     // Web: "The game stopped working. [Reload]"
+        static constexpr int maxJournalKiB = 256;
+        int journalKiB = 32;             // the Gameplay Journal's ring (0: off)
+        bool journalEngineEvents = true; // the engine's own engine.* journal entries
 
         bool operator==(const PlayerCrashSettings& other) const {
             return enabled == other.enabled && includeLogTail == other.includeLogTail && dumpWithHeap == other.dumpWithHeap &&
-                   hangWatchdog == other.hangWatchdog && hangSeconds == other.hangSeconds && webCrashOverlay == other.webCrashOverlay;
+                   hangWatchdog == other.hangWatchdog && hangSeconds == other.hangSeconds && webCrashOverlay == other.webCrashOverlay &&
+                   journalKiB == other.journalKiB && journalEngineEvents == other.journalEngineEvents;
         }
     };
 
@@ -984,6 +1052,7 @@ namespace jasperengine::editor{
         // Input: the actions asset Play and the game start with (project-relative, empty for
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
         std::filesystem::path inputActionsAsset;
+        GamepadCursorSettings gamepadCursorSettings;
         float inputDeadzone = 0.15f;
         // Pixel Art: the palette used where none is named (S43 R4b), project-relative, empty for none
         std::filesystem::path defaultPalette;
@@ -1046,6 +1115,7 @@ namespace jasperengine::editor{
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
         Physics3DWorldSettings physics3DWorld;
+        PhysicsQuerySettings physicsQueries;
         // an input node of project.yaml that could not be read (an older editor's Input Manager
         // actions with a typo made by hand): written back as it was until an actions asset is
         // set, so nothing is lost
@@ -1065,20 +1135,30 @@ namespace jasperengine::editor{
         // Build Settings > Development Build (S15 R39): a Release game with the profiler and its
         // --profile options (export: developmentBuild, default off)
         bool developmentBuild = false;
+        // Build Settings > Include Tests (project-test-runner R40, R50): a Development build carries the
+        // test root as tests/ (export: includeTests, default off; release builds leave it out)
+        bool includeTests = false;
         std::string buildMethod = "auto";
         bool packContent = false;
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
         // out the engine modules the project cannot reach (export: stripEngineCode, default on)
         bool stripEngineCode = true;
+        std::vector<SizeBudgetRow> sizeBudgets;
+        bool sizeBudgetFail = false;
         AssetStrippingSettings assetStripping;
         // Project Settings > Player > Publishing Settings > Target Platforms: a bit per BuildPlatform
         // (export: targetPlatforms, written when not all six), never empty
         uint8_t targetPlatforms = allTargetPlatforms;
+        // Project Settings > Player > Publishing Settings > Download Budget (MB) (S99 R11), per
+        // ModelFamily: a build over its family's warns W-BUILD-OVER-BUDGET; 0 is off
+        // (export: downloadBudgetMB, only the families set)
+        std::array<double, kModelFamilyCount> downloadBudgetMB = {};
         // S45 R18: "enabled" | "enabled_for_builds" | "disabled"
         std::string spriteAtlasMode = "enabled";
         ApplicationSettings applicationSettings;
         PresentationSettings presentationSettings;
         LocalizationSettings localizationSettings;
+        DialogueSettings dialogueSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
         WindowsProjectSettings windowsProjectSettings;
@@ -1099,6 +1179,7 @@ namespace jasperengine::editor{
         ParticleQaSettings particleQa;
         procmat::ProcMatQaSettings procMatQa;
         ShaderCreationProjectSettings shaderCreationSettings;
+        SaveGameSettings saveGameSettings;
         AudioSettings audioSettings;
         DebugSettings debugSettings;
         TitleArtProjectSettings titleArtSettings;
@@ -1114,6 +1195,7 @@ namespace jasperengine::editor{
         VoxelProjectSettings voxelSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
         bool simulateTouch;
+        std::string inputSchemeOverride = "auto";
         std::vector<GameResolution> customResolutions;
 
         // True while project.yaml holds the only copy of this user's editor state
@@ -1667,6 +1749,16 @@ namespace jasperengine::editor{
         // see getInspectedAsset()
         std::filesystem::path inspectedAsset;
         SceneProject* materialAssetScene = nullptr;
+        // A build's settings snapshot (makeSettingsSnapshot): its setters keep their values and
+        // apply nothing to the engine, the editor or the files of the project it was made from
+        bool settingsSnapshot = false;
+        // what the engine's SortingLayers holds for the open project, a snapshot's own (a Build
+        // Profile's graphics.transparency_sort_* override)
+        std::vector<SortingLayerInfo> snapshotSortingLayers;
+        TransparencySortMode snapshotSortMode = TransparencySortMode::DEFAULT;
+        Vector3 snapshotSortAxis = Vector3(0.0f, 1.0f, 0.0f);
+        struct SettingsSnapshotTag {};
+        explicit Project(SettingsSnapshotTag);
 
     public:
         // The files a registry's components reference, for SceneManager::preloadScene() (the
@@ -1740,6 +1832,13 @@ namespace jasperengine::editor{
         Project(const Project&) = delete;
         Project& operator=(const Project&) = delete;
 
+        // The settings of `source` as project.yaml holds them, in a Project of its own (Build
+        // Profiles R14): decoded from Stream::encodeProject without its scenes, so no scene opens,
+        // no asset is scanned and nothing is watched. Its setters change only it: a build applies a
+        // profile's overrides here, and the open project, its file and the engine stay as they are.
+        static std::shared_ptr<Project> makeSettingsSnapshot(Project& source);
+        bool isSettingsSnapshot() const { return settingsSnapshot; }
+
         // ---- The project's shader list (docs/specs/S64-shader-lists.md). One source for an export,
         // generate_shaders, get_build_info, Play's startup and the Build Settings window:
         // refreshClosedSceneShaderKeys (not needed right after an export's saves), then
@@ -1784,7 +1883,8 @@ namespace jasperengine::editor{
         bool scriptsSetShadowQuality() const;
         bool scriptsSetPostProcessing() const;
         // the PostProcessingSettings switches project scripts name (ShaderVariantCollector::
-        // getScriptableEffectFields), for the uber variants an export ships
+        // getScriptableEffectFields, getScriptableCavityFields), for the uber and Cavity variants
+        // an export ships
         std::vector<std::string> scriptsPostProcessingFields() const;
         // a project script contains text
         bool scriptsMention(const char* text) const;
@@ -1874,6 +1974,9 @@ namespace jasperengine::editor{
         std::string getInputActionsEnginePath() const;
         void setInputDeadzone(float deadzone);
         float getInputDeadzone() const;
+        // Project Settings > Input > Gamepad Cursor (GamepadCursor's defaults at Play and in the game)
+        void setGamepadCursorSettings(const GamepadCursorSettings& settings);
+        const GamepadCursorSettings& getGamepadCursorSettings() const;
 
         // MSAA samples of the HTML UI targets (0 = Auto, else 1, 2, 4 or 8; others round down to
         // one of them), applied to the editor's documents at once and written into exports
@@ -2023,7 +2126,8 @@ namespace jasperengine::editor{
 
         // Project Settings > Tags and Layers > Sorting Layers and Graphics > Transparency Sort Mode /
         // Axis (spec S52 R1, R4): the engine's SortingLayers holds them (the Inspector, Play and
-        // the render systems read it); setSortingLayers keeps what SortingLayers accepts
+        // the render systems read it); setSortingLayers keeps what SortingLayers accepts. A settings
+        // snapshot holds its own
         void setSortingLayers(const std::vector<SortingLayerInfo>& layers);
         const std::vector<SortingLayerInfo>& getSortingLayers() const;
         void setTransparencySort(TransparencySortMode mode, const Vector3& axis);
@@ -2045,6 +2149,13 @@ namespace jasperengine::editor{
         // Values are clamped to 16.. (and Jolt's body id range); a running Play keeps its world.
         void setPhysics3DWorldSettings(const Physics3DWorldSettings& settings);
         const Physics3DWorldSettings& getPhysics3DWorldSettings() const;
+
+        // Project Settings > Physics / Physics 2D > Queries Hit Triggers, applied to the engine's
+        // Physics / Physics2D.queriesHitTriggers (Play starts from them; exports carry them)
+        void setPhysicsQuerySettings(const PhysicsQuerySettings& settings);
+        const PhysicsQuerySettings& getPhysicsQuerySettings() const;
+        // Puts the project's values back into the engine, undoing what scripts changed in a Play
+        void applyPhysicsQuerySettings() const;
 
         // Project Settings > Input, Unity's Input Manager (docs/specs/S22-gameplay.md "Upstream
         // absorption"): the actions Input.getAxis / getButton read by their flat names, the
@@ -2171,6 +2282,8 @@ namespace jasperengine::editor{
         const DesktopExportSettings& getDesktopExportSettings() const;
         bool isDevelopmentBuild() const { return developmentBuild; }
         void setDevelopmentBuild(bool enabled) { developmentBuild = enabled; }
+        bool isIncludeTests() const { return includeTests; }
+        void setIncludeTests(bool enabled) { includeTests = enabled; }
         // Build Settings > Build Method (S30 R29): auto, prebuilt or compile; Pack Content
         const std::string& getBuildMethod() const { return buildMethod; }
         void setBuildMethod(const std::string& method) { buildMethod = method; }
@@ -2178,8 +2291,15 @@ namespace jasperengine::editor{
         void setPackContent(bool enabled) { packContent = enabled; }
         bool isStripEngineCode() const { return stripEngineCode; }
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
+        // Publishing Settings > Size Budgets (build-size-tools R12): the rows, and When Over Budget (false: warn)
+        const std::vector<SizeBudgetRow>& getSizeBudgets() const { return sizeBudgets; }
+        void setSizeBudgets(const std::vector<SizeBudgetRow>& rows) { sizeBudgets = rows; }
+        bool isSizeBudgetFail() const { return sizeBudgetFail; }
+        void setSizeBudgetFail(bool fail) { sizeBudgetFail = fail; }
         const AssetStrippingSettings& getAssetStripping() const { return assetStripping; }
         void setAssetStripping(const AssetStrippingSettings& settings) { assetStripping = settings; }
+        double getDownloadBudgetMB(ModelFamily family) const { return downloadBudgetMB[(size_t)family]; }
+        void setDownloadBudgetMB(ModelFamily family, double megabytes) { downloadBudgetMB[(size_t)family] = megabytes; }
         // Target Platforms: where the game ships. Build Settings, build_project and get_build_info default
         // to them; any platform still builds. 0 sets all six (a game has a target)
         static constexpr uint8_t allTargetPlatforms = 0x3F;
@@ -2207,6 +2327,8 @@ namespace jasperengine::editor{
         const PresentationSettings& getPresentationSettings() const;
         LocalizationSettings& getLocalizationSettings() { return localizationSettings; }
         const LocalizationSettings& getLocalizationSettings() const { return localizationSettings; }
+        DialogueSettings& getDialogueSettings() { return dialogueSettings; }
+        const DialogueSettings& getDialogueSettings() const { return dialogueSettings; }
         // Play start: Engine.targetFrameRate / vSyncCount, Screen and the application info from
         // these settings, before any script runs (the generated main of an export does the same)
         void applyPresentationSettings();
@@ -2267,6 +2389,10 @@ namespace jasperengine::editor{
         // to the editor at once, asynchronous creation on its next start; exports bake them in
         const ShaderCreationProjectSettings& getShaderCreationSettings() const;
         void setShaderCreationSettings(const ShaderCreationProjectSettings& settings);
+        // Project Settings > Player > Saved Data: Play's SaveGame store takes them at its next
+        // write (savegame::configure), exports bake them in
+        const SaveGameSettings& getSaveGameSettings() const;
+        void setSaveGameSettings(const SaveGameSettings& settings);
         // the project's shader warm-up list (ShaderWarmup), next to project.yaml
         std::filesystem::path getShaderWarmupPath() const;
         // Stop of a Play that recorded: the run's entries merged into the list file
@@ -2379,6 +2505,14 @@ namespace jasperengine::editor{
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;
         void setSimulateTouch(bool simulateTouch);
+        // the Game view's Input Scheme: "auto" (what the player last used) or a forced
+        // "keyboard_mouse", "gamepad" or "touch": set at Play start, at once during Play, cleared at
+        // Play stop (InputSchemeTracker::setOverride). Workspace state, never in builds. False
+        // for another name
+        const std::string& getInputSchemeOverride() const;
+        bool setInputSchemeOverride(const std::string& scheme);
+        // the override above into the running game (Play start)
+        void applyInputSchemeOverride() const;
         // the Game view's custom resolutions (editor workspace, this user's)
         const std::vector<GameResolution>& getCustomResolutions() const;
         void setCustomResolutions(const std::vector<GameResolution>& resolutions);
@@ -3569,6 +3703,8 @@ namespace jasperengine::editor{
 
         void start(uint32_t sceneId);
         void pause(uint32_t sceneId);
+        // the Gameplay Journal's engine.play entry (start, pause, resume, stop)
+        void journalPlay(const char* playState);
         void resume(uint32_t sceneId);
         void stop(uint32_t sceneId);
         void stopActivePlay();

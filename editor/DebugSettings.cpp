@@ -50,7 +50,7 @@ namespace {
 bool DebugSettings::operator==(const DebugSettings& other) const{
     return overlay == other.overlay && toggleKey == other.toggleKey && statsKey == other.statsKey && gesture == other.gesture &&
            popup == other.popup && openOnError == other.openOnError && stats == other.stats && statsCorner == other.statsCorner &&
-           allowLua == other.allowLua && logBufferSize == other.logBufferSize && logStackTraces == other.logStackTraces;
+           allowLua == other.allowLua && consoleCommands == other.consoleCommands && logBufferSize == other.logBufferSize && logStackTraces == other.logStackTraces;
 }
 
 void DebugSettings::sanitize(const std::function<void(const std::string& key, const std::string& value)>& rejected){
@@ -78,6 +78,7 @@ DebugOverlaySettings DebugSettings::toOverlaySettings(bool developmentBuild) con
     settings.stats = stats;
     settings.statsCorner = statsCorner;
     settings.allowLua = allowLua == AllowLua::AllBuilds || (allowLua == AllowLua::Development && developmentBuild);
+    settings.commands = consoleCommands == AllowLua::AllBuilds || (consoleCommands == AllowLua::Development && developmentBuild);
     return settings;
 }
 
@@ -120,6 +121,7 @@ namespace {
         {"debug.overlay_stats", "stats", "stats fps frame time graph"},
         {"debug.overlay_stats_corner", "statsCorner", "stats position corner"},
         {"debug.overlay_allow_lua", "allowLua", "lua console commands"},
+        {"debug.console_commands", "consoleCommands", "console commands cheats agents command line"},
         {"debug.log_buffer_size", "logBufferSize", "log lines buffer entries"},
         {"debug.log_stack_traces", "logStackTraces", "stack trace traceback lua log"},
     };

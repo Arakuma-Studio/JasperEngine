@@ -55,4 +55,13 @@ namespace jasperengine::editor {
         std::string message;
     };
 
+    // S99 R14: a downgrade a build took (a compile instead of the prebuilt player, a bigger player
+    // variant, textures left uncompressed): build_project's report lists them
+    struct BuildFallback {
+        std::string step;
+        std::string from;
+        std::string to;
+        std::string reason;
+    };
+
 }

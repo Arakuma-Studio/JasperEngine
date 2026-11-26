@@ -4,6 +4,7 @@
 #pragma once
 
 #include "McpCall.h"
+#include "McpCallLog.h"
 #include "McpInstances.h"
 #include "McpJobs.h"
 #include "McpJson.h"
@@ -13,6 +14,7 @@
 #include <atomic>
 #include <chrono>
 #include <deque>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -154,7 +156,21 @@ namespace jasperengine::editor::mcp {
         bool httpAllowsChanges() const { return httpChangesAllowed.load(); }
         McpServerStatus status() const;
         std::vector<McpActivityEntry> activity() const;
+        // Clears the finished calls and the per-tool counts
         void clearActivity();
+        // The top-level calls per tool since the start or the last clearActivity (the MCP Server window)
+        std::vector<McpToolCounts::Row> toolCounts() const;
+
+        // --- call log (S99 R17: one argument-free JSON line per tools/call) ---
+        // The file it appends to (empty: off), and why a write turned it off (empty: none)
+        std::filesystem::path callLogPath() const { return callLog.path(); }
+        std::string callLogFailure() const { return callLog.failure(); }
+        // JASPER_MCP_LOG chose the file: the MCP Server window's Log Calls To File does not apply
+        bool callLogFromEnvironment() const { return callLogFromEnv; }
+        // Log Calls To File: on appends to defaultCallLogPath(). Main thread.
+        void setCallLogEnabled(bool enabled);
+        // mcp-calls.jsonl beside settings.yaml and editor.log
+        static std::filesystem::path defaultCallLogPath();
 
         // --- transports ---
         SessionPtr createSession(const std::string& transport);
@@ -312,6 +328,10 @@ namespace jasperengine::editor::mcp {
         mutable std::mutex activityMutex;
         std::deque<McpActivityEntry> activityLog;
         uint64_t activitySeq = 0;
+        McpToolCounts toolCountTable;      // guarded by activityMutex
+
+        McpCallLog callLog;
+        bool callLogFromEnv = false;
 
         void chooseInitialToolGroups();
         Json listTools(const SessionPtr& session, const Json& params) const;
@@ -328,8 +348,12 @@ namespace jasperengine::editor::mcp {
         void onFilePickerOpened();
         // Gates + handler. complete() is already wired into the call.
         void execute(const CallPtr& call, const ToolDef& def);
+        // What an exception thrown out of a handler (or a continuation) tells the agent: the editor's
+        // own faults get a fault id logged with the detail and a read tool to check the state with
+        void failFromException(const CallPtr& call, const std::string& tool, std::exception_ptr error);
+        std::string faultCheckTool(const std::string& tool) const;
         uint64_t beginActivity(const std::string& client, const std::string& tool, const Json& args);
-        void endActivity(uint64_t seq, const ToolResult& result, double durationMs, bool cancelled);
+        void endActivity(uint64_t seq, const std::string& tool, const ToolResult& result, double durationMs, bool cancelled);
         static std::string inflightKey(const std::string& sessionId, const Json& id);
     };
 

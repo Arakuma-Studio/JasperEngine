@@ -1,8 +1,9 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest efc401147bc713b1
+digest 0f0032c3fb0cab66
 --- 0
 font: []
 text: "multi\nline"
+localizationKey: with "quotes"
 fontSize: 3881
 multiline: false
 maxTextSize: 2177
@@ -20,15 +21,18 @@ font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf]
 text: "Hello, YAML: [1, 2]"
 fontSize: 2579
 multiline: false
-maxTextSize: 4618
+maxTextSize: 4294967295
 fixedWidth: true
-fixedHeight: true
+fixedHeight: false
 pivotBaseline: false
 pivotCentered: false
+outlineColor: [90.14286, 5782.803, 1e-45, 17]
+shadowOffset: [0.9141565, 67]
 visibleCharacters: 0
 --- 2
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf]
 text: ""
+localizationKey: "- dash"
 fontSize: 4766
 multiline: false
 maxTextSize: 3760
@@ -51,12 +55,13 @@ multiline: false
 maxTextSize: 4294967295
 fixedWidth: false
 fixedHeight: true
-pivotBaseline: false
+pivotBaseline: true
 pivotCentered: true
-visibleCharacters: 3
+shadowOffset: [0.84386736, 2192.981]
 --- 4
 font: []
 text: "  padded  "
+localizationKey: "Hello, YAML: [1, 2]"
 fontSize: 3049
 multiline: false
 maxTextSize: 33
@@ -73,20 +78,20 @@ shadowSoftness: 0.75127137
 --- 5
 font: ["", fonts/F1.ttf]
 text: "  padded  "
-fontSize: 1007
+fontSize: 3705
 multiline: true
-maxTextSize: 1303
-fixedWidth: false
+maxTextSize: 2422
+fixedWidth: true
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
-outlineColor: [3e+38, -0, 5256.1304, -22.714285]
 shadowEnabled: true
 shadowColor: [-94.57143, -102.28571, 0, 23]
 shadowOffset: [-47, 2822.8708]
 --- 6
 font: [fonts/F0.ttf]
 text: "  padded  "
+localizationKey: "#hash"
 fontSize: 3688
 multiline: true
 maxTextSize: 1703
@@ -104,12 +109,11 @@ font: [fonts/F0.ttf, fonts/F1.ttf]
 text: textures/a.png
 fontSize: 4063
 multiline: true
-maxTextSize: 1284
+maxTextSize: 439
 fixedWidth: true
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
-outlineWidth: 0.44957882
+outlineColor: [-95, 0.80602574, 0.21493345, 3e+38]
 shadowEnabled: true
-shadowColor: [3e+38, 0, 0, 4453.748]
 visibleCharacters: 14

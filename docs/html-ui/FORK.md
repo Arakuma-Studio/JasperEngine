@@ -779,6 +779,30 @@ commits); a review fix of G5-2's boundary order has its own commit.
 | G5-5 | `445de6757` `rmlui: Pointer Events: per-pointer hover, :active, capture, drag, click and touch-action (engine-gaps G5-1..G5-6)`; `ce76b4900` (`rmlui: Pointer Events unit tests`), `e0f6d569b` (`rmlui: Pointer Events unit tests: thin scrollbars in the pan fixture, the mouse's first move`) | `Include/RmlUi/Core/Context.h`, `Source/Core/{Context,ContextPointer}.cpp` | Per-pointer drag: `drag="drag\|drag-drop\|clone"` elements are dragged by the pointer that pressed them (each finger its own; one element by one pointer); `dragstart`/`drag`/`dragend`/`dragover`/`dragout`/`dragdrop`/`dragmove` use that pointer's hover and carry `pointer_id`; a touch's clone sits in the cursor proxy offset by the pointer's distance from the mouse. | upstreamable | `PointerEvents.per_pointer_drag` |
 | G5-6 | `445de6757` `rmlui: Pointer Events: per-pointer hover, :active, capture, drag, click and touch-action (engine-gaps G5-1..G5-6)`; `ce76b4900` (`rmlui: Pointer Events unit tests`), `e0f6d569b` (`rmlui: Pointer Events unit tests: thin scrollbars in the pan fixture, the mouse's first move`) | `Source/Core/ContextPointer.cpp` | Per-pointer click: a pointer released over its press's focus element (or a descendant) clicks it, two fingers click two elements; double click per pointer id (0.5 s, 3 dp, as the mouse's). | upstreamable | `PointerEvents.per_pointer_click` |
 
+## Text entry patches
+
+Feature text-entry-gamepad-cursor-back-button (`docs/specs/text-entry-gamepad-cursor-back-button.md`
+R26: a focused text field left idle costs no allocation per frame).
+
+| Id | Commits | Files | What and why | Upstream | Tests |
+|---|---|---|---|---|---|
+| TE-1 | `rmlui: WidgetTextInput::GetValue names placeholder-shown with a constant (text-entry R26)` | `Source/Core/Elements/WidgetTextInput.cpp` | `GetValue()` asked `IsPseudoClassSet("placeholder-shown")` with a string literal, which builds a 17-character `String` on the heap (past the small-string buffer) on every call; the engine's soft-keyboard resync reads the caret (`GetSelectionRange` → `GetSelection` → `GetValue`) once a frame while a field is focused. A function-local `static const String` instead. | upstreamable (a pure allocation saving) | engine `TextEntryTest.IdleFocusedFieldDoesNotAllocate` (htmlui suite, 600 idle frames, 0 allocations) |
+
+Known allocations left in the fork (not patched): a mouse move through `Context::ProcessMouseMove` allocates
+about 27 times when the hover changes (measured by `InputGamepadCursorTest.CursorFrameBench`: 26.9 per frame
+along a path across twelve buttons, glcore build). The pointer events' parameter `Dictionary`s, the listener
+lists `EventDispatcher` collects per dispatch and the hover chain's sets are built per event. The gamepad
+cursor adds no allocation of its own on top (the bench checks it), and a still or inactive cursor makes none.
+
+## Input-device-awareness patches
+
+Feature input-device-awareness (`docs/specs/input-device-awareness.md` R23, AC14: a pointer switch swaps a
+document's style sheets for the other hover variant's within 1 ms).
+
+| Id | Commits | Files | What and why | Upstream | Tests |
+|---|---|---|---|---|---|
+| IDA-1 | `rmlui: a definition change leaves out the custom properties both definitions declare alike (input-device-awareness R23)` | `Source/Core/ElementStyle.cpp` | `UpdateDefinition` marked every custom property of the old and the new definition as a changed variable, also when both declare it with the same value. A style sheet swapped for one with the same declarations (the engine's pointer variants differ in a few rules; the user-agent sheet gives every element four `--html-*` variables and the root about sixty) then dirtied every variable of every element, the children took them over, and each element computed all its values again (246 of 246 in the bench HUD, a string set built per element). A custom property both declare alike, with a value of plain tokens and the same importance, is left out, as the properties that compare equal already were; one with `var()` or a CSS-wide keyword stays changed (it depends on its context). | upstreamable (the same rule as upstream's for properties) | engine `InputSchemeDocumentTest.HoverFollowsPointer` (a variable both variants declare alike and one they declare apart, read across two swaps), `InputSchemeDocumentTest.SchemeSwitchCost` (the cost) |
+
 ## S92 patches (HTML UI render cost)
 
 The fork side of `docs/specs/S92-htmlui-render-cost.md` (branch `feature/s92-htmlui-render-cost`). S92-F1..F3 are

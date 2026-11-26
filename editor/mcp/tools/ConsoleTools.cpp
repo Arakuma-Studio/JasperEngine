@@ -258,7 +258,7 @@ void readConsoleTool(const CallPtr& call) {
         const auto* cursor = since.get_ptr<const std::string*>();
         if (since.is_number_integer() && since.get<long long>() >= 0) {
             query.since = since.get<uint64_t>();
-        } else if (cursor && !cursor->empty() &&
+        } else if (cursor && !cursor->empty() && cursor->size() < 20 &&
                    std::all_of(cursor->begin(), cursor->end(), [](unsigned char c) { return std::isdigit(c); })) {
             query.since = std::stoull(*cursor);
         } else {
@@ -519,8 +519,8 @@ void registerConsoleTools(McpRegistry& registry) {
         tool.name = "read_console";
         tool.title = "Read Console";
         tool.description =
-            "Read the editor Console (build output, warnings, errors, Lua print/Log, script crashes): entries [{id, "
-            "type, level, category, message, time, frame, source?:{file,line}}] oldest first, next_cursor (pass as since for newer ones; omitted: the newest "
+            "Read the editor Console (build output, warnings, errors, Lua print/Log, script crashes): entries "
+            "oldest first, next_cursor (pass as since for newer ones; omitted: the newest "
             "`limit`), more. play, wait and send_input return their console lines already.";
         tool.inputSchema = object({
             {"since", integer("")},

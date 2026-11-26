@@ -9,6 +9,7 @@
 #include "Log.h"
 #include "log/LogSinks.h"
 #include "util/PlatformRules.h"
+#include "util/TitleArtLanguage.h"
 #include "Screen.h"
 #include <limits>
 #include <mutex>
@@ -21,6 +22,10 @@ using namespace jasperengine;
 
 System* System::systemInstance = nullptr;
 ApplicationInfo System::applicationInfo;
+std::string System::buildProfile;
+std::vector<std::string> System::buildDefines;
+std::unordered_set<std::string> System::buildDefineSet;
+int System::contentPatch = 0;
 
 System& System::instance(){
     if (!systemInstance) {
@@ -101,8 +106,20 @@ void System::showVirtualKeyboard(std::wstring text){
 
 }
 
+void System::showVirtualKeyboard(const std::wstring& text, const TextEntryTraits& traits){
+    showVirtualKeyboard(text);
+}
+
 void System::hideVirtualKeyboard(){
 
+}
+
+void System::updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd){
+
+}
+
+bool System::keepsVirtualKeyboardText(){
+    return false;
 }
 
 void System::setClipboardText(const std::string& utf8){
@@ -179,6 +196,16 @@ std::vector<std::string> System::getPreferredLocales(){
     return {"en-US"};
 }
 
+bool System::notifyLocalesMayHaveChanged(){
+    static std::vector<std::string> last;
+    std::vector<std::string> now = getPreferredLocales();
+    if (now == last) return false;
+    last = std::move(now);
+    Log::verbose("[Localization] the device's languages changed: %s", last.empty() ? "" : last.front().c_str());
+    TitleArtLanguage::localesChanged();
+    return true;
+}
+
 std::string System::getLocale(){
     const std::vector<std::string> locales = getPreferredLocales();
     for (const std::string& locale : locales){
@@ -210,6 +237,32 @@ void System::setApplicationInfo(const ApplicationInfo& info){
 
 const ApplicationInfo& System::getApplicationInfo(){
     return applicationInfo;
+}
+
+void System::setBuildInfo(const std::string& profile, const std::vector<std::string>& defines){
+    buildProfile = profile;
+    buildDefines = defines;
+    buildDefineSet = std::unordered_set<std::string>(defines.begin(), defines.end());
+}
+
+const std::string& System::getBuildProfile(){
+    return buildProfile;
+}
+
+const std::vector<std::string>& System::getDefines(){
+    return buildDefines;
+}
+
+bool System::isDefined(const std::string& symbol){
+    return buildDefineSet.count(symbol) > 0;
+}
+
+void System::setContentPatch(int patch){
+    contentPatch = patch;
+}
+
+int System::getContentPatch(){
+    return contentPatch;
 }
 
 std::string System::getAppVersion(){

@@ -40,7 +40,11 @@ namespace jasperengine::htmlui::compat {
         ForkFeatures fork = ForkFeatures::present();
         CompatSize viewport{1280, 720};      // canvas size in CSS px at load
         float dpRatio = 1.0f;
-        bool touchDevice = false;             // System::isTouchDevice()
+        bool touchDevice = false;             // System::isTouchDevice(): any-hover, any-pointer
+        // the last pointer used is a finger (InputSchemeTracker::getPointer): hover, pointer. A
+        // compile that read them (CompatDocument::dependsOnPointer) is swapped for the other
+        // variant when the pointer changes
+        bool coarsePointer = false;
         std::string colorScheme = "light";    // initial theme activated after load
         bool reducedMotion = false;           // initial "reduced-motion" theme state
         bool verboseDiagnostics = false;      // Info lines logged one by one

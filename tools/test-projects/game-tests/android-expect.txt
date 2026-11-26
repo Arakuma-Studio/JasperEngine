@@ -1,0 +1,4 @@
+# tools/android-emulator-test.sh --setprop "debug.jasperengine.args=--run-tests --test-filter tag:smoke" --expect-file:
+# the Development player's test run (project-test-runner AC13): four smoke cases, none failed
+I/JasperEngine: [test] begin {"cases":4,
+I/JasperEngine: [test] summary {"error":0,"excluded_edit":0,"failed":0,"hung":0,"passed":3,"skipped":1,"total":4}

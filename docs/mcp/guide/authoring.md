@@ -130,6 +130,7 @@ fails), or when your code still does not compile after two fixes. Details:
 - `get_scene_tree` lists every GameObject the scene uses before you press Play.
 - A Scene view screenshot in edit mode shows the level as the person will see it.
 - Play, look at the Game view, and read the Console since your last cursor.
+- Keep what you checked: a case in `Tests/` and `run_tests`.
 
 ## Anti-patterns
 

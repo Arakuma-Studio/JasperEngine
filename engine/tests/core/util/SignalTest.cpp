@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <climits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -161,6 +162,35 @@ TEST(SignalTest, ZeroAllocInvoke) {
     for (int i = 0; i < 1000; i++) signal.invoke(1);
     EXPECT_EQ(count.count(), 0u);
     EXPECT_EQ(sum, 8 * 1001);
+}
+
+// cancellable-prioritised-events R20: no priority keeps add order (Signal, FunctionSubscribe); a
+// priority (CancellableEvent's) goes after the last slot of a priority >= it, also when the slots
+// added during an invoke are merged
+TEST(SignalTest, SlotPriorityDefaultKeepsAppendOrder) {
+    std::string log;
+    Signal<> signal;
+    std::vector<Subscription> subscriptions;
+    for (const char* name : {"a", "b", "c"}) subscriptions.push_back(signal.subscribe([&log, name]() { log += name; }));
+    signal.invoke();
+    EXPECT_EQ(log, "abc");
+
+    auto list = std::make_shared<detail::SlotList<void()>>();
+    auto add = [&](const char* name, int32_t priority) { list->add([&log, name]() { log += name; }, 0, std::string(), priority); };
+    auto invoke = [&]() {
+        log.clear();
+        list->invoke([](auto& slot) { slot.function(); return true; });
+        return log;
+    };
+    add("a", 0);
+    add("b", 0);
+    add("c", 5);
+    add("d", -1);
+    add("e", 5);
+    EXPECT_EQ(invoke(), "ceabd");
+    list->add([&]() { log += "x"; add("f", 5); add("g", 0); add("h", 9); }, 0, std::string(), INT32_MIN);
+    EXPECT_EQ(invoke(), "ceabdx");
+    EXPECT_EQ(invoke(), "hcefabgdx");
 }
 
 TEST(ThreadSafeSignalTest, SubscribeAndInvokeFromThreads) {

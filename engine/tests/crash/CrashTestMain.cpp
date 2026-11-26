@@ -14,10 +14,25 @@
 //   where    writes the reports directory install resolved to DIR/where.txt (DIR may be relative)
 //   ring     logs 300 lines, writes the crash ring to DIR/ring.txt
 //   hang     starts the watchdog (200 ms) and stalls the main thread for 700 ms in a phase
+//   savegame_loop  writes a 4 MiB SaveGame slot (DIR/saves/slot1) again and again until killed
+//            (SaveGameKillSlow); JASPER_SAVEGAME_INPLACE=1 rewrites one file in place instead,
+//            the red control of that test
+//   user     creates --count N user reports (Crash.createReport's C++ side) with a tag and a
+//            field; writes DIR/user-results.txt: "ok <id> <kind>" or "error <reason>" per report,
+//            "reason <reason>" of the first, then "pending <id>..." (this session's pendingReports)
+//   user_bench  creates one user report and writes its time to DIR/user-bench.txt (ms)
+//
+// --journal configures a 16 KiB Gameplay Journal before the install and logs three entries
+// (test.one, test.two, test.three) before the mode runs.
 
 #include "diag/CrashHandler.h"
 #include "diag/detail/CrashState.h"
 #include "diag/HangWatchdog.h"
+#include "jobs/JobSystem.h"
+#include "save/SaveFormat.h"
+#include "save/SaveGameStore.h"
+#include "diag/Journal.h"
+#include "diag/UserReport.h"
 #include "log/Logger.h"
 #include "util/CrashGuard.h"
 #include "thread/ThreadUtil.h"
@@ -30,6 +45,8 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #if defined(_WIN32)
@@ -138,6 +155,32 @@ int main(int argc, char** argv) {
     logging.asyncDrain = false;
     Logger::init(logging);
 
+    if (std::strcmp(mode, "savegame_loop") == 0) {
+        // each snapshot is whole and tells which one it is: {"i": n, "blob": 4 MiB of 'a' + n % 26}
+        savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
+        store.setFolder(root / "saves");
+        const bool inPlace = std::getenv("JASPER_SAVEGAME_INPLACE") != nullptr;
+        for (int64_t i = 1;; i++) {
+            std::string payload;
+            savegame::SaveError error;
+            nlohmann::json value = {{"i", i}, {"blob", std::string(4 * 1024 * 1024, static_cast<char>('a' + i % 26))}};
+            if (!savegame::fromJson(value, payload, error)) return 3;
+            if (inPlace) {
+                savegame::SaveFile file;
+                file.generation = 1;
+                file.sections.push_back({"main", std::make_shared<const std::string>(std::move(payload))});
+                const std::string bytes = savegame::buildSaveFile(file);
+                std::filesystem::create_directories(root / "saves");
+                std::ofstream(root / "saves" / "slot1.g1.jsave", std::ios::binary | std::ios::trunc)
+                    .write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+                continue;
+            }
+            if (!store.write("slot1", "main", std::move(payload), savegame::WriteOptions(), nullptr).ok()) return 3;
+            store.flush("slot1");
+            jobs::drainMainQueue();
+        }
+    }
+
     diag::crash::Config config;
     config.product = "jasperengine-crash-test";
     config.root = root;
@@ -163,8 +206,18 @@ int main(int argc, char** argv) {
         std::signal(SIGABRT, [](int) { Sleep(10000); });
     }
 #endif
+    const bool withJournal = flag(argc, argv, "--journal");
+    if (withJournal) diag::journal::configure(16 << 10);
     diag::crash::install(config);
     log(std::string("crash test mode ") + mode);
+    if (withJournal) {
+        const diag::journal::Field one[] = {{"n", int64_t(1)}};
+        const diag::journal::Field two[] = {{"name", std::string_view("forest-2")}, {"seed", int64_t(42)}};
+        const diag::journal::Field three[] = {{"hard", true}};
+        diag::journal::log("test.one", one);
+        diag::journal::log("test.two", two);
+        diag::journal::log("test.three", three);
+    }
 
     const std::string name = mode;
 #if !defined(_WIN32)
@@ -266,6 +319,38 @@ int main(int argc, char** argv) {
         file << "last " << (last ? last->id : std::string("-")) << "\n";
         for (const diag::crash::ReportInfo& report : diag::crash::listReports()) {
             file << report.id << " " << report.kind << " " << (report.handled ? 1 : 0) << "\n";
+        }
+    } else if (name == "user" || name == "user_bench") {
+        const char* countText = argument(argc, argv, "--count");
+        const int count = name == "user_bench" ? 1 : (countText ? std::atoi(countText) : 1);
+        diag::crash::setTag("build", "nightly");
+        std::ofstream results(root / (name == "user" ? "user-results.txt" : "user-bench.txt"), std::ios::binary);
+        std::string firstReason;
+        for (int i = 0; i < count; i++) {
+            diag::userreport::Options options;
+            options.note = "the door does not open\nsecond line";
+            options.category = "gameplay";
+            options.fields = {{"level", "forest-2"}, {"try", std::to_string(i + 1)}};
+            std::string error;
+            const auto start = std::chrono::steady_clock::now();
+            const std::optional<diag::crash::ReportInfo> report = diag::userreport::create(options, error);
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            if (name == "user_bench") {
+                results << ms << "\n";
+                break;
+            }
+            if (report) {
+                results << "ok " << report->id << " " << report->kind << "\n";
+                if (firstReason.empty()) firstReason = report->reason;
+            } else {
+                results << "error " << error << "\n";
+            }
+        }
+        if (name == "user") {
+            results << "reason " << firstReason << "\n";
+            results << "pending";
+            for (const diag::crash::ReportInfo& report : diag::crash::pendingReports()) results << " " << report.id;
+            results << "\n";
         }
     } else if (name == "where") {
         std::ofstream(root / "where.txt", std::ios::binary) << diag::crash::reportsDirectory().string() << "\n";

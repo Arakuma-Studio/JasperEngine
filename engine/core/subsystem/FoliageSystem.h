@@ -16,6 +16,7 @@
 #include "ecs/ComponentFwd.h"
 #include "ecs/Entity.h"
 #include "jobs/Task.h"
+#include "math/AABB.h"
 #include "math/Matrix4.h"
 #include "math/Plane.h"
 #include "math/Ray.h"
@@ -286,6 +287,25 @@ namespace jasperengine {
         // A cell walk along the ray: bounding spheres; the caller tests triangles. Each candidate, nearest first
         void forEachTreeAlongRay(const Ray& ray, float maxDistance, const std::function<bool(Entity terrain, terraincore::TreeId id, int prototype, const Matrix4& instanceWorld, float sphereDistance)>& visit) const;
         void forEachDetailAlongRay(const Ray& ray, float maxDistance, const std::function<bool(Entity terrain, int layer, const Matrix4& instanceWorld, float sphereDistance)>& visit) const;
+        // What a box walk finds: a resident tree (id, prototype) or a detail instance (id 0, its layer
+        // in prototype), with its world bounds (its LOD0's or layer mesh's box under its matrix)
+        struct FoliageInBox {
+            Entity terrain = NULL_ENTITY;
+            bool tree = true;
+            terraincore::TreeId id = 0;
+            int prototype = -1;
+            AABB bounds;
+        };
+        using FoliageInBoxVisit = void (*)(void* context, const FoliageInBox& found);
+        // A cell walk over the world box: every resident tree (and detail, with details) whose world
+        // bounds may touch it, a superset; the caller tests found.bounds against its shape. Allocates nothing.
+        void forEachFoliageInBox(const AABB& box, bool trees, bool details, FoliageInBoxVisit visit, void* context) const;
+        template<typename Visit>
+        void forEachFoliageInBox(const AABB& box, bool trees, bool details, Visit& visit) const {
+            forEachFoliageInBox(box, trees, details, [](void* context, const FoliageInBox& found) {
+                (*static_cast<Visit*>(context))(found);
+            }, &visit);
+        }
         // Local bounds of a prototype's LOD0; false until it is loaded
         bool getPrototypeBounds(Entity terrainEntity, int prototype, Vector3& center, float& radius) const;
         Entity getPrototypeEntity(Entity terrainEntity, int prototype, int lod = 0) const;

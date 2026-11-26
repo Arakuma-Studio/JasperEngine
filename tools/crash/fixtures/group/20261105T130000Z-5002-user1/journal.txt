@@ -1,0 +1,10 @@
+JasperEngine journal v1
+product: Forest Run
+version: 1.4
+session: 20261105T130000Z-5002
+started: 2026-11-05T13:00:00Z
+capacity: 32768
+dropped: 0
+---
++12.500 f750 engine.scene_loaded ms=410 name=forest-2
++290.031 f17401 level.start hard=true name=forest-2 seed=42

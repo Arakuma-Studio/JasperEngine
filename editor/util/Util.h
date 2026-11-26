@@ -189,6 +189,11 @@ namespace jasperengine::editor{
             return cssExtensions.find(ext) != cssExtensions.end();
         }
 
+        // a light's IES Profile (S99): an IESNA LM-63 photometric file
+        inline static bool isIesFile(const std::string& path) {
+            return fileExtension(path) == ".ies";
+        }
+
         // colour LUTs a scene's post-processing grades with besides image strips (.cube)
         inline static bool isColorLutFile(const std::string& path) {
             return fileExtension(path) == ".cube";
@@ -249,6 +254,11 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".procmat";
         }
 
+        // a dialogue graph (dialogue-graphs.md R30): a graph file with its GUID in its JSON
+        inline static bool isDialogueFile(const std::string& path) {
+            return fileExtension(path) == ".dialogue";
+        }
+
         // the GUID-tracked JSON assets of the animation system: clips, Vertex Animations, Avatar
         // Masks, Animator Controllers (their references follow by GUID: remapClipFilePath)
         inline static bool isGuidJsonAssetFile(const std::string& path) {
@@ -281,7 +291,8 @@ namespace jasperengine::editor{
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
                    isAnimationClipFile(path) || isAnimatorAssetFile(path) ||
-                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path) || isMeshAssetFile(path);
+                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path) || isMeshAssetFile(path) ||
+                   isIesFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

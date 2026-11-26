@@ -182,12 +182,13 @@ JOBS_FLAG=""
 
 # mcp-tests, the full suite: the web build test_mesh_raycast.py's latency gate loads (the
 # mesh-raycast test project for Emscripten, in the web image), built once and kept up to date
-# (ninja, ccache). Before the Linux image is picked below: while it builds, another worktree's
+# (ninja, ccache), in Release: its budgets are release figures (a Debug build's overlap queries took
+# 0.12 ms of spatial-queries' 0.04). Before the Linux image is picked below: while it builds, another worktree's
 # image build may retag the shared name and its old image be pruned.
 # (MCP_SKIP_WEB_BUILD=1: a shard of the suite without test_mesh_raycast.py, tools/mcp/shard.py)
 if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && "${MCP_SKIP_WEB_BUILD:-0}" != 1 && $SHELL_MODE -eq 0 && $EXEC_MODE -eq 0 ]]; then
-    env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE -u JASPER_DOCKER_IMAGE WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
-        || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
+    env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE -u JASPER_DOCKER_IMAGE BUILD_TYPE=Release WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
+        || { echo "mcp-tests: the mesh-raycast web build (BUILD_TYPE=Release WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
 fi
 # Rebuilding an unchanged image is a no-op thanks to the layer cache. The image is tagged with
 # image_hash (above, jasperengine/<target>-build:<12 hex>), and :latest names the newest build (for
@@ -790,9 +791,12 @@ web-gate)
         *)
             [[ "$NAME" =~ ^[A-Za-z0-9_-]+$ && -f "$ROOT/tools/web/gates/$NAME.json" ]] \
                 || { echo "GATE must be sample-project, sample-project-threads or a tools/web/gates/<name>.json" >&2; exit 1; }
-            WEB_DIR="$OUT-$NAME"
+            # a gate of another test project's build names it ("project": savegame-quota runs build/web-savegame)
+            PROJECT_NAME="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("project", sys.argv[2]))' \
+                "$ROOT/tools/web/gates/$NAME.json" "$NAME")"
+            WEB_DIR="$OUT-$PROJECT_NAME"
             # a test project's pthreads build (WEB_THREADS=1 WEB_PROJECT=<name> tools/build.sh web)
-            [[ "${WEB_THREADS:-0}" == 1 ]] && WEB_DIR="$OUT-threads-$NAME" ;;
+            [[ "${WEB_THREADS:-0}" == 1 ]] && WEB_DIR="$OUT-threads-$PROJECT_NAME" ;;
     esac
     SHOT_NAME="$NAME"
     if [[ "${WASM_SIMD:-1}" == 0 ]]; then

@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "object/SimulationCulling.h"
 #include "AnimatorSystem.h"
 #include "audio/AudioMarkers.h"
 #include "audio/TimelineAudio.h"
@@ -425,6 +426,12 @@ bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float 
     job.instance = &instance;
     job.context.dt = dt;
     job.context.sample = true;
+    // Simulation Culling (culling-group-and-simulation-distance D8): Cull Completely while culled
+    if (SimulationCulling::anyActive() && SimulationCulling::isAnimatorCulled(scene, entity)){
+        instance.clearIKResults();
+        stats.culled++;
+        return false;
+    }
     if (component.cullingMode != AnimatorCullingMode::AlwaysAnimate && !visible(instance)){
         instance.clearIKResults();
         if (component.cullingMode == AnimatorCullingMode::CullCompletely){

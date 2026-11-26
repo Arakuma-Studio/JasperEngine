@@ -203,7 +203,7 @@ a sound -> `"AudioSource"`).
 | Function | Meaning |
 |---|---|
 | `RegisterEngineEvent(self, "methodName" [, tag])` | Subscribes `self:methodName(...)` to `Engine.<methodName>`. The method name must equal the Engine event name and must already exist on `self` (error otherwise). |
-| `RegisterEvent(self, eventObject, "methodName" [, tag])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). |
+| `RegisterEvent(self, eventObject, "methodName" [, tag] [, priority])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). `priority` is for an `Event` or `CancellableEvent` only (pass `nil` as the tag: `RegisterEvent(self, ev, "m", nil, 10)`); engine events run in subscription order. |
 | `UnregisterEngineEvent(self, "methodName" [, tag])` | Removes that `RegisterEngineEvent` subscription (same tag); `true` if it existed. Unity's `-=`. |
 | `UnregisterEvent(self, eventObject, "methodName" [, tag])` | Removes that `RegisterEvent` subscription; `true` if it existed. |
 
@@ -231,12 +231,51 @@ function Hud:onDisable() self.health.onDied:removeListener(self, "showGameOver")
 | Member | Meaning |
 |---|---|
 | `Event()` | a new event |
-| `ev:addListener(fn)` / `ev:addListener(self, "method")` | adds a listener (the second form is owned by `self`: removed once that script is released); adding the same one twice is ignored |
+| `ev:addListener(fn [, priority])` / `ev:addListener(self, "method" [, priority])` | adds a listener (the second form is owned by `self`: removed once that script is released); adding the same one twice is ignored, whatever its priority: remove it first to change its priority |
 | `ev:removeListener(fn)` / `ev:removeListener(self, "method")` | `true` if it was there |
 | `ev:removeAllListeners()` | |
-| `ev:invoke(...)` | calls the listeners in add order with these arguments; a listener's error is logged (with its traceback) and the others still run; listeners added during `invoke` run from the next one, removed ones are skipped at once |
+| `ev:invoke(...)` | calls the listeners by priority with these arguments; a listener's error is logged (with its traceback) and the others still run; listeners added during `invoke` run from the next one, removed ones are skipped at once |
 | `ev.listenerCount` | ro |
-| `ev:add(tag, fn)`, `ev:remove(tag)`, `ev:has(tag)` | the event object protocol: `RegisterEvent(self, ev, "method")` / `UnregisterEvent` work on it |
+| `ev:add(tag, fn [, priority])`, `ev:remove(tag)`, `ev:has(tag)` | the event object protocol: `RegisterEvent(self, ev, "method")` / `UnregisterEvent` work on it; a tag added again replaces its listener, with the new priority |
+| `ev:getListeners()` | `{name, priority, monitor}` per listener, in the order they run: `name` is `"Class:method"` for a script's method (`RegisterEvent`'s too), the tag of another tagged listener, `"function <source>:<line>"` for a function |
+
+**Priority.** Every listener form takes an integer `priority` from -1000000 to 1000000 (default 0):
+higher runs first, equal ones in the order added (all 0: add order). `Event.MONITOR` runs after every
+other listener; side effects go in monitors: they run after the decision.
+
+**`CancellableEvent()`**: an `Event` whose listeners may refuse the change before it happens. Read
+`invoke`'s result; when `true`, do not apply the change. Each listener gets a `CancelEventArgs` first,
+then `invoke`'s arguments; `e:cancel()` vetoes, and the deciding listeners after it are skipped. Then
+the `Event.MONITOR` listeners run with `e.cancelled` final (they cannot cancel).
+
+```lua
+function Door:init() self.onOpening = CancellableEvent() end
+function Door:open(by)
+    if self.onOpening:invoke(self, by) then return false end   -- a listener refused
+    self.isOpen = true
+    return true
+end
+
+function Lock:onEnable()
+    self.door = GameObject.findObjectOfType("Door")
+    RegisterEvent(self, self.door.onOpening, "check", nil, 10)
+    RegisterEvent(self, self.door.onOpening, "report", nil, Event.MONITOR)
+end
+function Lock:check(e, door, by) if self.locked then e:cancel() end end
+function Lock:report(e, door, by) if e.cancelled then print("locked") end end
+```
+
+| Member | Meaning |
+|---|---|
+| `ev:invoke(...)` | `true` when a listener cancelled (then do not apply the change), else `false` |
+| `e:cancel()` | vetoes; nothing undoes it. An error in a monitor listener or after its `invoke` ended |
+| `e.cancelled` | ro: whether a listener of this invoke cancelled |
+| `ev.cancelledBy` | ro: the listener (as `getListeners` names it) that cancelled the latest invoke; `nil` when it went ahead |
+| `tostring(ev)` | `CancellableEvent(N listeners, last invoke cancelled by <name>)`, `(…, last invoke went ahead)` or `(…, not invoked yet)` |
+
+A listener that should change a value instead of refusing gets a table: pass `{amount = 10}` to
+`invoke`, let listeners change `amount`, and read it after `invoke`. A plain `Event` has no veto
+(`ev:cancel()` is an error).
 
 Engine events (names valid for `RegisterEngineEvent`; handler arguments in order):
 
@@ -661,6 +700,10 @@ Maps of actions bound to controls, from an `.inputactions` asset (`jasper://docs
 | `InputActions.getBinding(id)` | `InputBinding`: `id`, `path`, `displayName`, `composite`, `overridden`, `getDisplayName()`, `getGroups()`, `getParts()` |
 | `InputActions.getBindingDisplayName(id)`, `getControlDisplayName(path)`, `isControlBound(path)` | "Space", "Ctrl+S", "Left Stick" |
 | `InputActions.defaultDeadzone` | rw, 0.15 |
+| `InputActions.currentScheme`, `currentPointer`, `gamepadFamily`, `lastGamepad` | read-only: `"Keyboard&Mouse"`, `"Gamepad"`, `"Touch"` (`InputScheme.KeyboardMouse`...); `"Xbox"`, `"PlayStation"`, `"Nintendo"`, `"Generic"` (`GamepadFamily.Xbox`...); -1 before any pad |
+| `InputActions.onSchemeChanged = function(scheme, previous) end` | once per frame that switched |
+| `InputActions.setSchemeOverride(scheme or nil)`, `getSchemeOverride()` | forces the scheme; nil: back to the tracked one |
+| `InputActions.getActionDisplayName(action, scheme?)`, `getActionGlyph(action, scheme?)`, `getBindingGlyph(id)` | the action's first binding in the scheme (default current): "Cross", `"gamepad/playstation/cross"`; "" without one |
 
 `InputAction`: `readValue()`, `readVector2()`, `isPressed()`, `wasPressedThisFrame()`,
 `wasReleasedThisFrame()`, `getHeldTime()`, `getPhase()` / `phase` (`InputActionPhase.WAITING`,
@@ -728,8 +771,12 @@ Graphy), details in `jasper://docs/debugging`:
 | `consoleVisible` | ro | |
 | `statsMode` | rw | `DebugOverlay.STATS_OFF`, `STATS_FPS`, `STATS_FULL` (another value raises an error) |
 | `getStats()` | fn | `{fps, frameMs, frameMsAvg, frameMsMin, frameMsMax, frameMs1PercentLow, drawCalls, instances, triangles, processMemoryBytes, luaMemoryBytes, audioVoices, audioVoicesMax, bodies2D, bodies3D, entities, scenes, coroutines, timers, htmlUiDrawCalls}`; works while not enabled |
-| `addCommand(name, description, fn [, owner])` | fn | console command `name args...`: `fn(args)` gets a list of strings; `[a-z0-9_-]+`; removed with its script (`owner`, default the calling method's `self`) |
-| `removeCommand(name)`, `executeCommand(line)` | fn | |
+| `addCommand{name, description, aliases, args, cheat, run, complete, owner}` | fn | a typed console command: `args` `{name, type, optional, default, min, max, choices}` (`string`, `int`, `float`, `bool`, `enum`, `vector3`, `gameobject`, `rest`); `run(args, call)` gets them by name and position, `call:print(...)`, `call:fail(msg)`, its return is the result's `value`; `true` or `false, reason` |
+| `addCommand(name, description, fn [, owner])` | fn | the old form: `fn(args)` gets a list of strings; names `[a-z0-9_.-]`; removed with its script (`owner`, default the calling method's `self`) |
+| `executeCommand(line)` | fn | `{ok, status, command, lines, log, value, error, usage, cheat}`; the game's call, never gated |
+| `completeCommand(line [, cursor])`, `getCommands()`, `removeCommand(name)` | fn | `{replacement, candidates, start}`; `{name, description, usage, aliases, cheat, builtIn, args}` each |
+| `commandsEnabled` | rw | Project Settings > Debug > Console Commands: the field, agents and `--command` may type commands |
+| `cheatsUsed`, `onCheatUsed`, `resetCheatsUsed()` | ro, event, fn | a `cheat = true` command ended ok (the event fires once, with its name) |
 
 ### 2.4 PlayerPrefs / UserSettings (static, persistent key/value)
 
@@ -871,12 +918,54 @@ local Items = require("data.items")
 local price = Items.sword.price
 ```
 
+### 2.4.3 SaveGame (static, save slots)
+
+Game progress goes in `SaveGame`, not in hand-written JSON files: named slots (`slot1`,
+`autosave`; `a-z 0-9 _ -`, at most 48) of namespaces (`main` by default) holding any Lua value
+but functions and other userdata. Vectors, quaternions, integer keys, integers versus floats and
+binary strings come back exactly (Json does not keep them). Writes run off the main thread;
+every write is a new checksummed generation and the newest valid one is read, so a crash or a
+damaged file costs at most the last save. Errors are values `{code, message, path?}`, never raised
+(but wrong argument types). The full guide: `jasper://docs/saved-data`.
+
+| Function | Returns |
+|---|---|
+| `SaveGame.write(slot, value [, opts])` | `true`, or `false, err` (`name`, `encode`, `too_large`, `newer_version`); `opts`: `namespace`, `meta` (save menu data), `requires`, `replaceAll`, `force`, `onComplete(ok, err)`, `owner` |
+| `SaveGame.read(slot [, opts])` | `data, info` (`info.version`, `generation`, `savedAt`, `namespaces`, `meta`, `migratedFrom`, `recoveredFrom`, `problems`), or `nil, err` (`not_found`, `corrupt`, `newer_version`, `migration`) |
+| `SaveGame.readAsync(slot, fn [, opts])` | nothing; `fn(data, info)` later on the main thread |
+| `SaveGame.list()`, `SaveGame.info(slot)` | slots newest first: `slot, version, savedAt, size, generations, namespaces, meta, requires, status` |
+| `SaveGame.exists(slot)`, `delete(slot)`, `flush([slot])`, `unload([slot])` | boolean / `true` or `false, err` |
+| `SaveGame.getBackups(slot)`, `restoreBackup(slot, generation [, onComplete])` | generations `{generation, savedAt, version, size, valid}` / `true` or `false, err` |
+| `SaveGame.version`, `SaveGame.addMigration(fromVersion, fn)` | the data version writes stamp; `fn(namespaces, info)` returns the namespaces upgraded to `fromVersion + 1` |
+| `SaveGame.storage()` | `{used, quota, free}` (-1 when unknown) |
+
+```lua
+SaveGame.version = 2
+SaveGame.addMigration(1, function(ns) ns.main.gold = ns.main.coins or 0; ns.main.coins = nil; return ns end)
+
+local ok, err = SaveGame.write("slot1", {level = "forest", pos = Vector3(4, 0, 2), gold = 120},
+    {meta = {title = "Forest"}, onComplete = function(done, e) if not done then Log.warn(e.message) end end})
+SaveGame.write("slot1", {"sword", "shield"}, {namespace = "inventory"})   -- only this namespace re-encoded
+
+local data, info = SaveGame.read("slot1")
+if not data then Log.warn(info.code .. ": " .. info.message) end
+for _, s in ipairs(SaveGame.list()) do Log.print(s.slot .. " " .. s.status) end
+```
+
+- `write` encodes the value at once (later changes to the table are not saved) and a `read`
+  right after returns it, before it reaches the disk; `onComplete` runs in a later frame.
+- Many writes to one slot coalesce (one file write in flight, one waiting): saving every frame
+  is safe, but save at checkpoints. App pause, quit and Play stop flush what is queued.
+- Big data: split it into namespaces (a write re-encodes only its namespace) or slots.
+
 ### 2.5 System (static)
 
 `System.getScreenWidth()`, `getScreenHeight()`, `isTouchDevice()`, `isFullscreen()`,
 `requestFullscreen()`, `exitFullscreen()`, `isWindowMaximized()`, `maximizeWindow()`,
 `restoreWindow()`, `setWindowSize(w, h)`, `isWindowResizable()`, `setWindowResizable(b)`,
-`setWindowTitle(s)`, `quit()`, `showVirtualKeyboard(text)`, `hideVirtualKeyboard()`,
+`setWindowTitle(s)`, `quit()`, `showVirtualKeyboard(text, options?)` (options
+`{keyboard = "email", enterKey = "send", autocapitalize, autocorrect, secure, multiline, maxLength}`,
+the HTML attribute values), `updateVirtualKeyboardText(text, caret?)`, `hideVirtualKeyboard()`,
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
 `getShaderPath()`, `syncFileSystem()` (Web: stores the `data://` files in IndexedDB now; true),
@@ -948,6 +1037,7 @@ subfolder). Use it for shared helper modules.
 | `Device.setTier(tier)`, `Device.resetTier()` | fn | a graphics menu's tier for the rest of the run, and back |
 | `Device.onThermalStateChanged` | event | `function(state)` |
 | `Device.onLowMemory` | event | a low-memory warning was handled (caches cleared, streamed textures a mip lower) |
+| `Device.gpuQuirks`, `Device.gpuDriver` | ro | the names of the GPU quirks in effect (driver workarounds; no setter), and the driver's version |
 
 ```lua
 Device.onThermalStateChanged = function(state)
@@ -1198,7 +1288,7 @@ Entities are plain integers (`0` = none).
 | `physics2DPointsPerMeter`, `physics2DMaxRotation` (number, rw) | canvas points in a 2D metre (64; a change rebuilds the bodies where they are) and a 2D body's rotation per fixed step at most (45 degrees); `jasper://docs/physics` "World settings" |
 | `physics2DContactHertz`, `physics2DContactDampingRatio`, `physics2DContactPushSpeed`, `physics2DJointHertz`, `physics2DJointDampingRatio`, `physics2DBounceThreshold`, `physics2DMaxLinearSpeed` (number, rw); `physics2DWarmStarting`, `physics2DContinuous`, `physics2DSleep` (bool, rw) | the 2D solver's tuning (Box2D's defaults) |
 | `physics3DVelocityIterations`, `physics3DPositionIterations`, `physics3DCollisionSteps` (integer, rw); `physics3DBounceThreshold`, `physics3DSleepThreshold`, `physics3DSpeculativeDistance` (number, rw) | the 3D solver's settings (Jolt's defaults); out of range values are clamped |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `ambientLight2DWithoutLights` (bool: the 2D ambient tints unlit 2D objects with no Light 2D in the scene too; on in new scenes, off in scenes saved before it), `light2DSteps` (0-16: each Light 2D's light in this many hard bands, 0 off), `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `htmlUiRenderMode` (`UIRenderMode.OVERLAY`, the default: the screen HTML UI documents composite after post-processing at the output resolution; `CAMERA`: in the camera pass, render scale and post apply), `htmlUiMsaaSamples` (their MSAA samples: 0 = the project's, 1, 2, 4, 8; the next frame makes the target again), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `ambientLight2DWithoutLights` (bool: the 2D ambient tints unlit 2D objects with no Light 2D in the scene too; on in new scenes, off in scenes saved before it), `light2DSteps` (0-16: each Light 2D's light in this many hard bands, 0 off), `globalIlluminationColor`, `globalIlluminationIntensity`, `ambientMode` (`AmbientMode.COLOR` / `GRADIENT`: Environment Lighting's source), `ambientSkyColor`, `ambientEquatorColor`, `ambientGroundColor` (the Gradient's colours, sRGB), `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `htmlUiRenderMode` (`UIRenderMode.OVERLAY`, the default: the screen HTML UI documents composite after post-processing at the output resolution; `CAMERA`: in the camera pass, render scale and post apply), `htmlUiMsaaSamples` (their MSAA samples: 0 = the project's, 1, 2, 4, 8; the next frame makes the target again), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA, `CavityType` SCREEN/WORLD/BOTH (`cavityEnabled`, `cavityType`, ...: Blender-style edge highlights on 3D meshes); fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `defaultMeshShader`, `defaultUIShader`, `defaultSkyShader`, `defaultPointsShader`, `defaultLinesShader` (string, rw) | the scene's default shader of each type ("" built-in) |
 | `setDefaultShaderUniform(ShaderType.MESH, name, float/Vector2/3/4)`, `getDefaultShaderUniform(type, name)` (-> Vector4), `hasDefaultShaderUniform(type, name)`, `removeDefaultShaderUniform(type, name)` (-> bool) | a property value of that default shader, inherited by every object without a shader of its own (an object's own value wins; `ShaderType.MESH`/`UI`/`SKYBOX`/`POINTS`/`LINES`; other types log an error). A value changed every frame belongs in `Shader.setGlobal*` |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects (below) |
@@ -1327,6 +1417,7 @@ time (default: the mixer's update mode, scaled). `AudioMixerGroup`: `name`, `id`
 | `ignoreCollision(a, b [, ignore=true])`, `getIgnoreCollision(a, b)` | on both: two GameObjects / bodies (3D: Rigidbody, 2D: Rigidbody 2D) of one scene never collide; runtime only. Error if one has no body of that dimension |
 | `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER` | static props on both |
 | `Physics.debugDraw`, `Physics.debugDrawContacts` | rw static bools: draw the colliders and joints (and contact points) of every playing scene, 3D and 2D (the Game view's Physics toggle) |
+| `Physics.debugDrawQueries` | rw static bool: draw the queries of the main thread for 1 s |
 
 `RayReturn` (ro, Unity's `RaycastHit`): `hit` (bool), `distance`, `point` (Vector3), `normal`
 (Vector3), `body` (Entity), `colliderIndex`, `collider` (`Collider` / `Collider2D`, nil without a
@@ -1362,6 +1453,7 @@ or directions raise an error naming the argument.
 | `Physics2D.overlapCircle(scene, point, radius)`, `overlapBox(scene, point, size, angle)`, `overlapCapsule(scene, point, size, capsuleDirection, angle)`, `overlapPoint(scene, point)`, `overlapArea(scene, pointA, pointB)` | -> the first `Collider2D` (lowest GameObject, then index) or nil; `...All` -> table |
 | `Physics2D.queriesHitTriggers` (true), `Physics2D.queriesStartInColliders` (false) | rw statics; Unity's start-in-colliders default is true |
 | `rigidbody2d:cast(direction, distance [, options])`, `castAll` | the body's shapes moved; never hits the body |
+| `Physics.overlapSphereNonAlloc(scene, center, radius, results [, mask [, options [, colliders]]])`, `overlapBoxNonAlloc(scene, center, halfExtents, results [, orientation, ...])`, `overlapCapsuleNonAlloc`; `Physics2D.overlapPointNonAlloc` ... `overlapAreaNonAlloc(..., results [, mask [, options [, colliders]]])` | GameObject ids into `results` (`#results == count` after), collider indices into `colliders`; returns the count; no garbage once the tables have grown |
 
 ```lua
 -- grounded: a sphere just below the feet, never the player's own body
@@ -1522,6 +1614,27 @@ co:cancel(); co:isActive(); Timer.cancelAll(self)
 
 For delayed destruction `GameObject.destroy(obj, delay)` also works; tweens are Actions.
 
+### 2.13.1 InputRecording (static): record and replay input
+
+```lua
+InputRecording.start({ checkpointFrames = 60 })            -- true | nil, err (one at a time)
+local path = InputRecording.stop("data://recordings/run.input.json")   -- written on a job
+local replay = InputRecording.play("asset://demo/attract.input.json",
+    { loop = true, stopOnRealInput = true, onFinished = function(r) self:showMenu() end })
+InputRecording.checkpoint("score", self.score)            -- a value checkpoints compare
+local _ = replay:isDone(), replay.frame, replay.diverged, InputRecording.frame
+replay:stop(); InputRecording.stopReplay()
+```
+
+- A recording from `start()` is `start: "now"`; `stop()` writes `data://` only (`lua://` and
+  `asset://` are read-only). `maxBytes` caps it (1 MB, at most 16 MB): at the cap it stops with a
+  warning and the file says `truncated: true`.
+- `play(source)` takes a `lua://`, `asset://` or `data://` path, or a decoded file table. While it
+  runs real device input is blocked (`blockRealInput = false` lets it through); with
+  `stopOnRealInput` the first real key, button or touch ends it and reaches the game (attract mode).
+- `replay.diverged` is nil or `{frame, differences}` (recordings with checkpoints, on the platform
+  that recorded them). `Coroutine.waitFor(replay)` waits for it.
+
 ### 2.14 Profiler (static): samples, counters, frame statistics
 
 ```lua
@@ -1550,6 +1663,32 @@ local r = scene:getRenderStats()             -- by pass: mainDrawCalls, shadowDr
 - In a release game (no profiler) the functions do nothing, `enabled` and `gpuTiming` stay false,
   and `frameStats()` still works.
 
+### 2.14.1 Performance (static): gameplay frame times in every build
+
+```lua
+Performance.setSampling(true)                    -- gameplay starts
+Performance.setSampling(false, "menu")           -- the main menu: excluded, named in excluded.reasons
+Performance.onSample(function(s)                 -- every 300 s of gameplay, then a new window
+    Log.print(string.format("p50 %.0f fps, p10 %.0f fps, main thread %.1f ms", s.fps.p50, s.fps.p10, s.mainThreadCpuMs or -1))
+end, 300)
+local s = Performance.getSummary{histogram = true}   -- the window now, not reset
+Performance.reset()                              -- a new window (sampling stays as it is)
+```
+
+| Name | Notes |
+|---|---|
+| `setSampling(on, reason?)`, `isSampling()` | off by default (one branch a frame); off with a reason counts the time in `excluded.reasons` |
+| `getSummary(options?)` | `{seconds, frames, fps {avg, p50, p10}, frameMs {p50, p90, p99, max}, cpuMs {avg, p90}, mainThreadCpuMs, mainThreadCpu, gpuMs?, hitches, excluded {paused, resume, loading, stall, game, reasons}, thermal, tier, tierChanges, gpu, driver, quirks, backend, platform, version, buildId, histogram?}`; with no committed second only `seconds`, `frames`, `excluded` |
+| `onSample(fn, seconds?)` | `fn(summary)` each `seconds` (30..3600, default 300) of committed gameplay; `onSample(nil)` removes it; cleared at Stop |
+| `reset()` | a new window now |
+
+- Only gameplay counts: seconds paused or hidden, the 2 s after a resume, scene loads, stalls of 1 s
+  and seconds the game turned sampling off are discarded whole. `Engine.timeScale = 0` is not
+  excluded: call `setSampling(false, "pause_menu")`.
+- `mainThreadCpuMs` is the frame thread's own CPU (its thread clock): far below `cpuMs.avg`, the frame
+  waits on the driver, locks or I/O. It is nil on the web (`mainThreadCpu = "unavailable"`).
+- The engine sends nothing: the game asks the player before it sends a summary anywhere.
+
 ### 2.15 Crash (static): reports of earlier sessions, the report hook, tags
 
 ```lua
@@ -1570,6 +1709,75 @@ Crash.markHandled("20261026T143200Z-4242")       -- the same by id (false: unkno
 - Pending means from an earlier session and not handled yet; the current session's reports
   appear at the next start.
 - Editor Play reads the editor's own reports (docs/crash-diagnostics.md).
+
+"Report a Problem" (user reports, kind `"user"`): capture, then the game's own form, then write.
+
+```lua
+Crash.beginReport(function(ok, err) openReportForm() end)   -- ok: the frame is in the draft (fn runs a frame later)
+local report, err = Crash.createReport{note = "the door does not open", category = "gameplay", fields = {level = "forest-2"}}
+-- report: {id = "<session>-user1", kind = "user", category = "gameplay", files, ...}; nil, "too_many_pending: ..." past 3
+local bytes = Crash.readReportFile(report.id, "user.txt")   -- an Http body; nil, "not_found"
+Crash.markHandled(report.id)                                -- after the upload; else offered again next start
+Crash.cancelReport()                                        -- drops the draft
+```
+
+- `createReport` options: `note` (required, 4000 bytes), `category` (`[a-z0-9_]{1,32}`), `fields` (16),
+  `screenshot` (true), `logTail`, `done(report, err)` (write on a job). The web keeps them in memory.
+
+**Journal** (static): the Gameplay Journal, recent game events saved with crash, hang and user reports.
+
+```lua
+Journal.log("level.start", {name = "forest-2", seed = 42})   -- kind [A-Za-z0-9_.:-]{1,48}, 12 fields
+local on = Journal.enabled                                   -- read-only property
+Journal.getEntries(20)                                       -- {{time, frame, kind, text}, ...} oldest first
+Journal.getText()                                            -- journal.txt
+Journal.clear()
+```
+
+- Events, not frames. The editor's Console shows each entry in the `journal` category.
+
+### 2.15.1 Localization (static): String Tables and the game language
+
+```lua
+local label = Localization.get("ui.shop.coins", {count = 3})        -- "3 coins"; fallback as 3rd argument
+local lives = Localization.format("{n, plural, one {# life} other {# lives}}", {n = 2})
+Localization.setLanguage("de")                   -- false for a bad tag; "" follows the device again
+print(Localization.language, Localization.languages[1], Localization.getLanguageName("de"))
+Localization.onLanguageChanged = function(code) Log.print("language " .. code) end
+local scan = Localization.scan()                 -- {literal = {...}, missing = {...}} (development)
+```
+
+- Keys are `ns.key`; texts are ICU (`{n, plural, one {...} other {...}}`). Prefer
+  `data-l10n-id` in HTML and a Text's `localizationKey` / `text:setLocalized(key, args)` over
+  setting `text` from `Localization.get`: those follow language changes by themselves.
+- `language`, `languages` and `onLanguageChanged` are fields; `TitleArt.setLanguage` sets the
+  same language. Tables: `edit_string_table`, jasper://docs/localization.
+### 2.15.2 Dialogue (static) and DialogueRunner: dialogue graphs
+
+```lua
+Dialogue.onCondition("shop", function(runner, verb, args)        -- shop.canAfford(5) in a dialogue
+    if verb == "canAfford" then return Dialogue.variables.get("gold") >= args[1] end
+end)
+Dialogue.onAction("shop", function(runner, verb, args)           -- shop.open:weapons
+    if verb == "open" then return "wait" end                     -- the runner waits for resume()
+end)
+local runner = DialogueRunner(self.scene, self.entity)          -- adds a Dialogue Runner if missing
+runner.dialogue = "dialogue/guard.dialogue"
+runner.onLine = function(r, line)                                 -- {node, key, text, speakerName, options...}
+    for _, o in ipairs(line.options) do Log.print(o.index .. ". " .. o.text) end
+end
+runner.onEnd = function(r, result) Log.print("ended: " .. result) end
+runner:start("greet", {player = "Ana"})                          -- {player} in a text, or in an expression
+runner:choose(1)                                                  -- or runner:advance() on a line without choices
+Dialogue.variables.set("gold", 20)
+Dialogue.variables.save("slot1")                                 -- values and visits as SaveGame namespace "dialogue"; load(slot)
+```
+
+- `state` is `idle`, `line`, `waiting` or `ended`; `isRunning`, `currentNode`, `currentLine` (the
+  last line) are fields. Handlers are game-wide, one per prefix, cleared at Stop: register them in
+  `init`. An unregistered prefix makes a condition false and warns once per run.
+- Write conversations as `.dialogue` graphs (`edit_graph`), never as Lua tables; walk them with
+  `run_dialogue` (jasper://docs/dialogue).
 ### 2.16 Time (static, Unity's Time)
 
 The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;
@@ -1633,6 +1841,33 @@ HitStop.play(0.12, {only = {GameObject.find("Hero")}}) -- only the hero freezes
 assert(HitStop.active)
 HitStop.stop()
 ```
+
+#### CullingGroup, BoundingSphere and SimulationCulling
+
+Culling (`docs/scripting/culling-groups.md`): which spheres are on screen and in which distance
+band, and a component that freezes far GameObjects. Sphere indices are 1-based, bands 0-based (0
+nearest, -1 before the first evaluation). Frustum only: no occlusion.
+
+| `CullingGroup(scene)` | Notes |
+|---|---|
+| `setBoundingSphereCount(n)`, `setBoundingSpheres({BoundingSphere...})`, `setSphere(i, s)`, `getSphere(i)` | at most 100,000 spheres; new ones at the origin, radius 0 |
+| `setSphereTarget(i, go \| entity, radius [, offset])` | the sphere follows the GameObject |
+| `eraseSwapBack(i)` | the last sphere and its state move into i |
+| `setBoundingDistances({d1, ...})` | 0 to 8 ascending distances; band b holds [d[b-1], d[b]) |
+| `setDistanceReferencePoint(Vector3 \| go)` | default: the target camera, else the main camera |
+| `onStateChanged = function(index, isVisible, wasVisible, band, previousBand)` | each changed sphere after the evaluation; the first reports all (previousBand -1) |
+| `isVisible(i)`, `getDistance(i)`, `queryIndices(visible \| band \| visible, band, out [, first])` | queryIndices fills out[1..n] and returns n |
+| `enabled`, `targetCamera` (entity or nil = any camera), `bandHysteresis`, `boundingSphereCount` (ro) | |
+| `dispose()`, `isValid()` | made in a script's callback: disposed with the script; at most 256 a scene |
+
+`SimulationCulling(scene, entity)` adds the component when missing: rw `enabled`,
+`simulationDistance`, `reducedRateDistance`, `reducedUpdateInterval`, `hysteresis`, `boundsRadius`,
+`simulateWhenVisible`, `freezeWhenGroundNotLoaded`, `cullScripts`, `cullAnimator`, `cullPhysics`;
+ro `state` ("full", "reduced", "culled"), `reason` ("none", "distance", "ground_not_loaded"),
+`focusDistance`. Statics: `addFocus(scene, Vector3 | go)` (id), `setFocus(scene, id, Vector3)`,
+`removeFocus(scene, id)`, `setCameraIsFocus(scene, bool)`, `isCameraFocus(scene)`, `distanceScale`
+(rw), `setGroundCheck(scene, function(x, y, z, radius) return loaded end | nil)`. Messages:
+`onSimulationCulled(reason)`, `onSimulationResumed()`.
 
 ### 2.17 Coroutines and invoke (Coroutine, self:startCoroutine, self:invoke)
 
@@ -2658,13 +2893,17 @@ last transform update), `color` (Vector3),
 `range`, `intensity`, `innerConeAngle`, `outerConeAngle`, `shadows`, `cameraNear`,
 `cameraFar`, `automaticShadowCamera`, `numCascades` (0: the quality tier's), `cullingMask`, `shading`
 (`LightShading.*`, the stage evaluating it on MIXED-lighting materials), `intensityUnit`
-(`LightUnit.ENGINE`, `LUX` for a directional light, `CANDELA` or `LUMEN` for a point or spot;
-setting the property keeps the number, which then means the new unit),
+(`LightUnit.ENGINE`, `LUX` for a directional light, `CANDELA` or `LUMEN` for a point or spot,
+`NITS` for an area light; setting the property keeps the number, which then means the new unit),
 `useColorTemperature`, `colorTemperature` (Kelvin, 1000-20000, 6500 white; `color` filters
 it); methods `setDirection(x,y,z)`, `setColor(r,g,b)`, `setConeAngle(a)`, `setRange(r)`,
 `setIntensity(i)`, `setIntensityUnit(unit, preserveBrightness)` (true converts the intensity so
 the light stays as bright, through `scene.physicalLightEV100`), `setShadows(b)`,
 `setShadowCameraNearFar(n, f)`.
+Area Light (`LightType.AREA`) rw: `areaShape` (`AreaLightShape.RECTANGLE/DISC`), `areaWidth`,
+`areaHeight` (a Rectangle's), `areaRadius` (a Disc's), metres, not the transform's scale. A spot or
+point light's `iesProfile` (rw, an `.ies` path relative to the assets, `""` for none) shapes it,
+turned with the light; `intensity` stays the profile's peak.
 Shadows (`jasper://docs/shadows`) rw: `shadowType` (`ShadowType.NONE/HARD/SOFT`), `shadowStrength`
 (0-1), `shadowBias` and `shadowNormalBias` (shadow texels), `shadowResolution` (0: the tier's),
 `cascadeSplitMode` (`CascadeSplitMode.AUTO/MANUAL`), `cascadeSplits` (Vector3, fractions of the
@@ -2711,7 +2950,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 | `Panel` (Image) | `title`, `titleColor`, `titleFont`, `titleFontSize`, `headerColor`, `minWidth`, `minHeight`, `canMove`, `canResize`, `canBringToFront` | `getPanelComponent()`, `setMinSize(w,h)` |
 | `Scrollbar` (Image) | `type` (`ScrollbarType.*`), `barSize`, `step`, `barColor`, `barAlpha` | `getScrollbarComponent()`, `setBarTexture(path)` |
 | `Progressbar` (Image) | `type`, `value` (0..1), `fillColor`, `fillAlpha` | `getProgressbarComponent()`, `setFillTexture(path)` |
-| `InputField` (Image) | `text`, `disabled`, `textColor`, `textFont`, `fontSize`, `maxTextSize`, `placeholder`, `placeholderColor`, `password`, `passwordChar`, `cursorIndex`, `cursorColor`, `selectionColor`, `cursorBlink`, `cursorWidth` | `getInputFieldComponent()`, `getTextObject()`, `setSelection(...)` |
+| `InputField` (Image) | `text`, `disabled`, `textColor`, `textFont`, `fontSize`, `maxTextSize`, `placeholder`, `placeholderColor`, `password`, `passwordChar`, `cursorIndex`, `cursorColor`, `selectionColor`, `cursorBlink`, `cursorWidth`; on the component: `keyboardType` (`InputFieldKeyboardType.EMAIL_ADDRESS`, ...: the phone keyboard), `characterLimit` (0 = none) | `getInputFieldComponent()`, `getTextObject()`, `setSelection(...)` |
 | `OnScreenStick` (Image) | `enabled`, `mode` (`OnScreenStickMode.*`), `background`, `handle` (entities), `handleRange`, `deadZone`, `moveThreshold`, `axes` (`OnScreenStickAxes.*`), `snapX`, `snapY`, `hideWhenReleased`, `clampToArea`, `horizontalAction`, `verticalAction`, `visibility`; ro `value` (Vector2, y up), `pressed`, `pointerId`; events `onValueChanged(x, y)`, `onPress`, `onRelease` | `getOnScreenStickComponent()` |
 | `OnScreenButton` (Image) | `enabled`, `action`, `value`, `pressWhenPointerEnters`, `releaseWhenPointerLeaves`, `visibility`; ro `pressed`; events `onPress`, `onRelease` | `getOnScreenButtonComponent()` |
 | `TouchArea` (Image) | `enabled`, `horizontalAction`, `verticalAction`, `sensitivity`, `invertX`, `invertY`, `visibility`; ro `delta` (this frame, canvas px), `pressed`, `pointerId`; event `onDrag(dx, dy)` | `getTouchAreaComponent()` |
@@ -2773,7 +3012,8 @@ false sets 0),
 mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and
 more), `priority` (0 most important .. 256, default 128), `maxVoices` (1..64, default 8),
 `ignoreListenerPause`. Read-only: `loadState` (`AudioLoadState.*`: Loading from `loadSound` until
-the clip is ready, then Loaded or Failed; Unloaded without a request).
+the clip is ready, then Loaded or Failed; Unloaded without a request), `channels` (the loaded
+clip's channels as it plays: 1 under the clip's Force To Mono, 0 with no clip loaded).
 `getAudioSourceComponent().onLoad = function(ok) ... end` runs once for each `loadSound` (and the
 scene's own load of the clip), in a later audio update, never inside the call.
 Sound Events and triggers: `event` (rw: its path; assigning a path or GUID resolves it, `""` clears it;
@@ -3625,6 +3865,19 @@ gate.area = 0 ; gate:remove()
 | NavigationSystem `setAreaInVolume(center, size, area[, {rotation, agentType}])` | a NavAreaOverride (nil for an area outside 0-15): the polygons whose centre lies in the box take `area` until `remove()`; ends at Stop |
 | NavAreaOverride `area`, `center`, `size`, `rotation` | rw; `valid`, `handle`, `appliedPolygons` read; `remove()` |
 
+### 4.23 Test (test files only)
+
+`Test` exists only in the chunks of the project's test files (`Tests/**/*.test.lua`), bound in each
+file's own environment: a game script never sees it, and a game global named `Test` is untouched.
+`Test.case(name, [opts], fn)` registers a case; `Test.config(opts)`, `Test.setup(fn)` and
+`Test.teardown(fn)` apply to the file's cases. Checks: `Test.check(cond, msg)` (goes on),
+`Test.assert(cond, msg)` and `Test.fail(msg)` (end the case), `Test.equal(actual, expected, msg)`
+(deep), `Test.near(a, b, eps, msg)`. Waits (Play Mode only, game time): `Test.waitFrames(n)`,
+`Test.waitGameSeconds(s)`, `Test.waitUntil(pred, {frames, gameSeconds, message})`. Also
+`Test.capture(name)`, `Test.expectError(pattern)`, `Test.skip(reason)`, `Test.log(...)`,
+`Test.target` (`platform`, `backend`, `editor`, `resolution`); the case `t` has `name`, `id`,
+`frame`, `gameTime`. The workflow: `jasper://docs/testing`.
+
 ## 5. Enums (exact Lua spelling; values are integers)
 
 | Namespace | Values |
@@ -3650,7 +3903,7 @@ gate.area = 0 ; gate:remove()
 | `SwingType` | `CONE`, `PYRAMID` |
 | `RigidbodyInterpolation` | `SCENE`, `NONE`, `INTERPOLATE`, `EXTRAPOLATE` |
 | `CameraType` | `CAMERA_UI`, `CAMERA_ORTHO`, `CAMERA_PERSPECTIVE` |
-| `LightType` | `DIRECTIONAL`, `POINT`, `SPOT` |
+| `LightType` | `DIRECTIONAL`, `POINT`, `SPOT`, `AREA` |
 | `JobLane` | `High`, `Normal`, `Background` |
 | `EaseType` | `LINEAR`, `STEP`, `QUAD_IN/OUT/IN_OUT`, `CUBIC_*`, `QUART_*`, `QUINT_*`, `SINE_*`, `EXPO_*`, `CIRC_*`, `ELASTIC_*`, `BACK_*`, `BOUNCE_*` (each `_IN`, `_OUT`, `_IN_OUT`), `CUSTOM`, `CURVE` (the Tween's `curve`) |
 | `WrapMode` | `Clamp` (also `ClampForever`, `Constant`), `Loop`, `PingPong`, `Linear`, `LoopWithOffset` (also `CycleWithOffset`) |
@@ -3671,7 +3924,7 @@ gate.area = 0 ; gate:remove()
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
 | `OnScreenStickMode` | `FIXED`, `FLOATING`, `DYNAMIC` |
 | `OnScreenStickAxes` | `BOTH`, `HORIZONTAL`, `VERTICAL` |
-| `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY` |
+| `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY`, `TOUCH_SCHEME` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED`, `HEIGHT` |
 | `FogColorMode` | `COLOR`, `SKY` |
@@ -3702,14 +3955,17 @@ gate.area = 0 ; gate:remove()
 | `MaterialAlphaMode` | `AUTO`, `ALPHA_OPAQUE`, `MASK`, `BLEND` |
 | `MaterialLighting` | `AUTO`, `PIXEL`, `VERTEX`, `MIXED`, `NONE` |
 | `LightShading` | `BOTH`, `PIXEL`, `VERTEX` |
+| `AreaLightShape` | `RECTANGLE`, `DISC` (`light.areaShape`) |
 | `LightState` | `OFF`, `ON`, `AUTO` |
 | `ShadowQuality` | `NONE`, `LOW`, `MEDIUM`, `HIGH` |
 | `LitQuality` | `STANDARD`, `HIGH` (`scene.litQuality`) |
-| `LightUnit` | `ENGINE`, `LUX`, `CANDELA`, `LUMEN` (`light.intensityUnit`) |
+| `AmbientMode` | `COLOR`, `GRADIENT` (`scene.ambientMode`) |
+| `LightUnit` | `ENGINE`, `LUX`, `CANDELA`, `LUMEN`, `NITS` (`light.intensityUnit`) |
 | `SceneColorScale` | `FULL`, `HALF` |
 | `UIRenderMode` | `OVERLAY`, `CAMERA` (`scene.htmlUiRenderMode`) |
 | `TonemapMode` | `NONE`, `ACES`, `NEUTRAL`, `REINHARD`, `AGX` (`PostProcessingSettings.tonemap`) |
 | `MonochromeMode` | `GRAYSCALE`, `SEPIA` (`PostProcessingSettings.monochromeMode`) |
+| `CavityType` | `SCREEN`, `WORLD`, `BOTH` (`PostProcessingSettings.cavityType`) |
 | `MaterialBlendMode` | `AUTO`, `NONE` (opaque), `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MULTIPLY` |
 | `MaterialCullMode` | `AUTO`, `BACK`, `FRONT`, `OFF` |
 | `MaterialDepthWrite` | `AUTO`, `ENABLED`, `DISABLED` |

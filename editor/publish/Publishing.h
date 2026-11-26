@@ -29,8 +29,10 @@ namespace jasperengine::editor::publish {
         std::string buildDir;                // project-relative (or absolute): the build's output
         std::string executable;              // payload-relative
         std::string depotId;                 // Steam depot
-        std::string deviceProfile;           // "steamdeck"
+        std::string deviceProfile;           // "steamdeck" (S56's tier profile, not a Build Profile)
         std::vector<std::string> requiredFiles;
+        // the Build Profile the build must be of (build-profiles R24); "" none
+        std::string profile;
     };
 
     struct SteamSettings {

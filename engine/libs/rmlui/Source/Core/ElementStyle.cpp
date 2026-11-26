@@ -686,11 +686,26 @@ void ElementStyle::UpdateDefinition()
 		UnorderedSet<String> changed_variables;
 		UnorderedSet<ShorthandId> changed_shorthands;
 
+		// The custom properties both definitions declare alike are left out (fork, IDA-1): a style sheet swapped for one
+		// with the same declarations would otherwise dirty every variable of every element, and the elements below them.
+		// A value of plain tokens is the variable's value; one with var() or a CSS-wide keyword depends on its context
+		// and stays changed, as the properties below.
+		const auto declared_alike = [](const String& name, const Property& property, const ElementDefinition* other) {
+			if (!other || property.unit != Unit::STRING)
+				return false;
+			const UnorderedMap<String, Property>& other_custom_properties = other->GetProperties().GetCustomProperties();
+			auto it = other_custom_properties.find(name);
+			return it != other_custom_properties.end() && it->second == property && it->second.important == property.important;
+		};
+
 		if (definition)
 		{
 			changed_properties = definition->GetPropertyIds();
-			for (const auto& [name, _] : definition->GetProperties().GetCustomProperties())
-				changed_variables.insert(name);
+			for (const auto& [name, property] : definition->GetProperties().GetCustomProperties())
+			{
+				if (!declared_alike(name, property, new_definition.get()))
+					changed_variables.insert(name);
+			}
 			for (const auto& [shorthand_id, _] : definition->GetProperties().GetVarShorthands())
 				changed_shorthands.insert(shorthand_id);
 		}
@@ -698,8 +713,11 @@ void ElementStyle::UpdateDefinition()
 		if (new_definition)
 		{
 			changed_properties |= new_definition->GetPropertyIds();
-			for (const auto& [name, _] : new_definition->GetProperties().GetCustomProperties())
-				changed_variables.insert(name);
+			for (const auto& [name, property] : new_definition->GetProperties().GetCustomProperties())
+			{
+				if (!declared_alike(name, property, definition.get()))
+					changed_variables.insert(name);
+			}
 			for (const auto& [shorthand_id, _] : new_definition->GetProperties().GetVarShorthands())
 				changed_shorthands.insert(shorthand_id);
 		}
