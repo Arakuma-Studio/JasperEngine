@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 0f0032c3fb0cab66
+digest 2a5c4ba9119b8bf8
 --- 0
 font: []
 text: "multi\nline"
@@ -25,8 +25,8 @@ multiline: false
 maxTextSize: 4294967295
 fixedWidth: true
 fixedHeight: false
-pivotBaseline: false
-pivotCentered: false
+anchorHorizontal: right
+anchorVertical: bottom
 outlineColor: [90.14286, 5782.803, 1e-45, 17]
 shadowOffset: [0.9141565, 67]
 visibleCharacters: 0
@@ -56,9 +56,9 @@ multiline: false
 maxTextSize: 4294967295
 fixedWidth: false
 fixedHeight: true
-pivotBaseline: true
-pivotCentered: true
-shadowOffset: [0.84386736, 2192.981]
+anchorHorizontal: left
+anchorVertical: bottom
+shadowColor: [0, 3e+38, 1e-45, -0.8328273]
 --- 4
 font: []
 text: "  padded  "
@@ -84,8 +84,8 @@ multiline: true
 maxTextSize: 2422
 fixedWidth: true
 fixedHeight: true
-pivotBaseline: false
-pivotCentered: false
+anchorHorizontal: right
+anchorVertical: midline
 shadowEnabled: true
 shadowColor: [-94.57143, -102.28571, 0, 23]
 shadowOffset: [-47, 2822.8708]
@@ -113,8 +113,8 @@ multiline: true
 maxTextSize: 439
 fixedWidth: true
 fixedHeight: true
-pivotBaseline: false
-pivotCentered: false
+anchorHorizontal: center
+anchorVertical: midline
 outlineColor: [-95, 0.80602574, 0.21493345, 3e+38]
 shadowEnabled: true
 visibleCharacters: 14

@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 8ad7666989b0774b
+digest 2eb356c60f42b890
 --- 0
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf, fonts/F3.ttf]
 text: "  padded  "

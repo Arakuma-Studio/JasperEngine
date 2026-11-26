@@ -336,8 +336,10 @@ TEST(StreamMigrations, SceneV8TextPivotsBecomeAnchor){
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     ASSERT_TRUE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
-    ASSERT_EQ(result.log.lines.size(), 1u);
-    EXPECT_NE(result.log.lines[0].find("3 Texts'"), std::string::npos) << result.log.lines[0];
+    // S92's 9 -> 10 logs the scene's HTML UI render mode first
+    ASSERT_EQ(result.log.lines.size(), 2u);
+    EXPECT_NE(result.log.lines[0].find("Screen Space - Camera"), std::string::npos) << result.log.lines[0];
+    EXPECT_NE(result.log.lines[1].find("3 Texts'"), std::string::npos) << result.log.lines[1];
 
     const YAML::Node plaque = root["entities"][0]["components"]["text"];
     EXPECT_EQ(plaque["anchorVertical"].as<std::string>(), "baseline");
@@ -384,8 +386,10 @@ TEST(StreamMigrations, SceneV8AnimatorsKeepTheirRootDrift){
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     ASSERT_TRUE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
-    ASSERT_EQ(result.log.lines.size(), 1u);
-    EXPECT_NE(result.log.lines[0].find("2 Animators and Animation Players keep"), std::string::npos) << result.log.lines[0];
+    // S92's 9 -> 10 logs the scene's HTML UI render mode first
+    ASSERT_EQ(result.log.lines.size(), 2u);
+    EXPECT_NE(result.log.lines[0].find("Screen Space - Camera"), std::string::npos) << result.log.lines[0];
+    EXPECT_NE(result.log.lines[1].find("2 Animators and Animation Players keep"), std::string::npos) << result.log.lines[1];
 
     const YAML::Node hero = root["entities"][0]["components"]["animator"];
     ASSERT_TRUE(hero["legacyRootDrift"]);
@@ -462,6 +466,8 @@ TEST(StreamMigrations, ProjectV1KeepsPerspectiveSort){
     decodeModelProjectSettings(current["mesh"], meshSettings);
     EXPECT_EQ(meshSettings.fbxSubmeshOrder, FbxSubmeshOrder::MaterialSlots);
     EXPECT_FALSE(encodeModelProjectSettings(meshSettings)["fbxSubmeshOrder"]) << "the default is not written";
+}
+
 TEST(StreamMigrations, SceneV9ToV10KeepsTheCameraRenderMode){
     // S92: an absent htmlUiRenderMode is Screen Space - Overlay now; a scene saved before it drew
     // its screen documents in the camera pass, so it keeps Screen Space - Camera

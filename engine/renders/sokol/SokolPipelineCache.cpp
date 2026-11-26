@@ -249,6 +249,7 @@ namespace {
             blend.dst_factor_rgb = SG_BLENDFACTOR_SRC_COLOR;
             blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
             blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+            break;
         // a material's own factors live in RenderState::customBlend, which the fixed pipeline
         // types take; a dynamic PipelineState has no field for them: straight alpha
         case BlendMode::CUSTOM:

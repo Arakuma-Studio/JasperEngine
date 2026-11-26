@@ -44,8 +44,9 @@ async def test_migrate_save_reload(ed: Editor):
     ed.check_eq((ed.project / SCENE).read_bytes(), original, "loading never writes the file")
 
     report = await ed.call("get_particle_migration_report")
-    ed.check_eq(report["count"], 2, f"two systems converted: {report}")
-    lines = [line for doc in report["documents"] for line in doc["conversions"]]
+    # (the project's other scene, Legacy K, may have been read too: its own conversions are not this scene's)
+    lines = [line for doc in report["documents"] if doc["document"].endswith(SCENE) for line in doc["conversions"]]
+    ed.check_eq(len(lines), 2, f"two systems converted: {report}")
     ed.check(any("Fire Particles" in line and "Fire" in line for line in lines), f"the fire's line: {lines}")
 
     fire = await components(ed, sid, "Fire")
@@ -76,7 +77,8 @@ async def test_migrate_save_reload(ed: Editor):
     after = await effects(ed, rid)
     ed.check_eq(after, before, "the saved effects read back the same")
     again = await ed.call("get_particle_migration_report")
-    ed.check_eq(again["count"], 2, "a saved scene converts nothing more")
+    again_lines = [line for doc in again["documents"] if doc["document"].endswith(SCENE) for line in doc["conversions"]]
+    ed.check_eq(len(again_lines), 2, "a saved scene converts nothing more")
 
 
 async def test_old_action_script(ed: Editor):
