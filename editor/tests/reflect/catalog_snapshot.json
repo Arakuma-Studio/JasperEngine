@@ -1033,6 +1033,36 @@
      16,
      true
     ],
+    "submeshes[].material.pbr.vertexColor.a": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.alphaOpacity": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.b": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.g": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.r": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.use": [
+     13,
+     16,
+     true
+    ],
     "submeshes[].material.pbr.volume.attenuationColor": [
      5,
      0,
@@ -26111,6 +26141,135 @@
    "type": 109,
    "type_of_key": 109,
    "type_of_name": 109
+  },
+  {
+   "display_name": "Vertex Colors",
+   "enum_options": {
+    "format": [
+     [
+      0,
+      "rgba8",
+      "RGBA8"
+     ],
+     [
+      1,
+      "rgba16f",
+      "High Precision (RGBA16F)"
+     ]
+    ],
+    "initialValue": [
+     [
+      0,
+      "asset",
+      "Asset Colors"
+     ],
+     [
+      1,
+      "white",
+      "White"
+     ],
+     [
+      2,
+      "black",
+      "Black"
+     ],
+     [
+      3,
+      "custom",
+      "Custom"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef94bf",
+   "key": "vertexcolors",
+   "known_keys": [
+    "channelNames",
+    "customInitial",
+    "data",
+    "enabled",
+    "format",
+    "initialValue"
+   ],
+   "name": "VertexColorsComponent",
+   "properties_of_default": {
+    "channelNames[0]": [
+     1,
+     0,
+     true
+    ],
+    "channelNames[1]": [
+     1,
+     0,
+     true
+    ],
+    "channelNames[2]": [
+     1,
+     0,
+     true
+    ],
+    "channelNames[3]": [
+     1,
+     0,
+     true
+    ],
+    "customInitial": [
+     6,
+     288230376151711744,
+     true
+    ],
+    "data": [
+     18,
+     288230376151711744,
+     true
+    ],
+    "enabled": [
+     0,
+     288230376151711744,
+     true
+    ],
+    "format": [
+     13,
+     288230376151711744,
+     true
+    ],
+    "initialValue": [
+     13,
+     288230376151711744,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "customInitial": [
+     6,
+     288230376151711744,
+     true
+    ],
+    "data": [
+     18,
+     288230376151711744,
+     true
+    ],
+    "enabled": [
+     0,
+     288230376151711744,
+     true
+    ],
+    "format": [
+     13,
+     288230376151711744,
+     true
+    ],
+    "initialValue": [
+     13,
+     288230376151711744,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 110,
+   "type_of_key": 110,
+   "type_of_name": 110
   }
  ],
  "ease_options": [
@@ -30152,6 +30311,36 @@
    ],
    "submeshes[N].material.pbr.transmission.mapTexCoord": [
     8,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.a": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.alphaOpacity": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.b": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.g": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.r": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.use": [
+    13,
     16,
     true
    ],
@@ -35094,6 +35283,38 @@
    "speed": [
     2,
     0,
+    true
+   ]
+  },
+  "VertexColorsComponent": {
+   "channelNames[N]": [
+    1,
+    0,
+    true
+   ],
+   "customInitial": [
+    6,
+    288230376151711744,
+    true
+   ],
+   "data": [
+    18,
+    288230376151711744,
+    true
+   ],
+   "enabled": [
+    0,
+    288230376151711744,
+    true
+   ],
+   "format": [
+    13,
+    288230376151711744,
+    true
+   ],
+   "initialValue": [
+    13,
+    288230376151711744,
     true
    ]
   },
