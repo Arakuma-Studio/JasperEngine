@@ -231,7 +231,9 @@ TEST_F(PerfSamplerTest, WallClockRolloverKeepsTheClosedSecondsCpu){
         sample.frameMs = 100.0f;
         sample.cpuMs = 2.0f;
         PerfSampler::onFrame(sample, start + std::chrono::milliseconds(100 * i));
-        if (i < 10) EXPECT_LT(PerfSampler::mainThreadCpuMsLastSecond(), 0.0) << "no second has closed yet (frame " << i << ")";
+        if (i < 10) {
+            EXPECT_LT(PerfSampler::mainThreadCpuMsLastSecond(), 0.0) << "no second has closed yet (frame " << i << ")";
+        }
     }
     EXPECT_GE(PerfSampler::mainThreadCpuMsLastSecond(), 0.0) << "the frame at 1 s closed the second it is counted in";
 }
