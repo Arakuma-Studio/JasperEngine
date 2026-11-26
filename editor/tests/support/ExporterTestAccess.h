@@ -24,6 +24,8 @@ namespace jasperengine::editor {
         // platform/ copied there first); the export's error on failure
         static bool writeAndroidProjectSettings(Exporter& exporter, Project* project, const std::filesystem::path& targetDir, std::string& error) {
             exporter.project = project;
+            // the settings an export reads (startExport sets them: the project, or a Build Profile's snapshot)
+            exporter.settings = project;
             exporter.config.mode = ExportMode::SourceCode;
             exporter.config.targetDir = targetDir;
             const bool ok = exporter.writeAndroidProjectSettings();
