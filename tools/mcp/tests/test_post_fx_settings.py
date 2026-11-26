@@ -1,4 +1,4 @@
-"""S13 post FX through MCP (docs/specs/S13-post-fx.md AC16): every new post_processing field
+"""S13 post FX through MCP (docs/specs/S13-post-fx.md AC16; S100 Cavity AC9): every new post_processing field
 round-trips through set_scene_settings / get_scene_settings and the scene file (enums by their
 lower-case names), the film / vhs / mobile_adaptive presets apply as one named undo step,
 inspect_color_lut reports the OpenEngine .cube fixtures and their errors, and a .cube is a colour LUT
@@ -31,12 +31,17 @@ S13_VALUES = {
     "film_gate_mask_feather": 10.0,
     "halation_enabled": True, "halation_intensity": 1.25, "halation_threshold": 0.5, "halation_radius": 0.75,
     "halation_tint": [1.0, 0.5, 0.25],
+    # S100 Cavity (AC9)
+    "cavity_enabled": True, "cavity_type": "screen", "cavity_screen_ridge": 1.5, "cavity_screen_valley": 0.5,
+    "cavity_screen_width": 2.0, "cavity_world_radius": 0.5, "cavity_world_ridge": 2.0, "cavity_world_valley": 0.25,
+    "cavity_world_samples": 16, "cavity_max_pixel_radius": 32.0, "cavity_debug": True,
     "lut_input_encoding": "acescct",
     "dynamic_resolution_enabled": True, "dynamic_resolution_min_scale": 0.75, "dynamic_resolution_target_fps": 30,
 }
 # the YAML keys the scene file gets for some of them
 SAVED_KEYS = ("vhsEnabled: true", "filmGrainType: lens", "filmGateMask: anamorphic_239", "lutInputEncoding: acescct",
-              "halationTint: [1, 0.5, 0.25]", "dynamicResolutionTargetFps: 30")
+              "halationTint: [1, 0.5, 0.25]", "dynamicResolutionTargetFps: 30", "cavityType: screen",
+              "cavityWorldSamples: 16")
 
 
 def cube(title: str, size: int, look=lambda r, g, b: (r, g, b)) -> str:
@@ -57,12 +62,14 @@ async def test_fields_round_trip(ed: Editor):
     sid = (await ed.call("create_scene", name="PostFx", type="3d"))["scene"]["id"]
     detail = await ed.call("get_scene_settings", scene=sid, names=["post_processing.film_grain_type",
                                                                     "post_processing.film_gate_mask",
-                                                                    "post_processing.lut_input_encoding"], detail=True)
+                                                                    "post_processing.lut_input_encoding",
+                                                                    "post_processing.cavity_type"], detail=True)
     ed.check_eq(detail["schema"]["post_processing.film_grain_type"]["options"], ["classic", "lens", "filmic"])
     ed.check_eq(detail["schema"]["post_processing.film_gate_mask"]["options"],
                 ["none", "rounded", "academy_137", "widescreen_185", "anamorphic_239"])
     ed.check_eq(detail["schema"]["post_processing.lut_input_encoding"]["options"],
                 ["auto", "srgb", "linear", "logc3", "acescct", "cineon", "davinci_intermediate"])
+    ed.check_eq(detail["schema"]["post_processing.cavity_type"]["options"], ["screen", "world", "both"])
 
     # one field at a time (each its own undo step), read back exactly
     for name, value in S13_VALUES.items():
@@ -84,11 +91,30 @@ async def test_fields_round_trip(ed: Editor):
     await ed.check_error("set_scene_settings", scene=sid, settings={"post_processing.film_grain_type": "fidelity"}, contains="filmic")
     await ed.check_error("set_scene_settings", scene=sid, settings={"post_processing.dynamic_resolution_min_scale": 0.25},
                          contains="0.5")
+    await ed.check_error("set_scene_settings", scene=sid, settings={"post_processing.cavity_world_radius": 6.0}, contains="5")
 
     # reset: no S13 key in the file
     await ed.call("set_scene_settings", scene=sid, settings={"post_processing": None})
     await ed.call("save_scene", scene=sid)
     ed.check("postProcessing" not in (ed.project / SCENE).read_text(), "defaults: nothing saved")
+
+
+async def test_cavity_lua(ed: Editor):
+    """S100 AC9, AC10: the Cavity fields are PostProcessingSettings properties in Lua (CavityType by name),
+    what a script assigns reads back through MCP, and get_post_processing_status reports it."""
+    ed.require_tools("create_scene", "eval_lua", "get_scene_settings", "get_post_processing_status")
+    sid = (await ed.call("create_scene", name="CavityLua", type="3d"))["scene"]["id"]
+    out = await ed.call("eval_lua", scene=sid, allow_edit_mode=True, code=(
+        "local p = scene.postProcessing p.cavityEnabled = true p.cavityType = CavityType.WORLD "
+        "p.cavityWorldRadius = 0.5 p.cavityWorldSamples = 16 p.cavityDebug = true scene.postProcessing = p "
+        "local q = scene.postProcessing "
+        "return q.cavityEnabled, q.cavityType, q.cavityWorldRadius, q.cavityWorldSamples, q.cavityScreenWidth, CavityType.SCREEN"))
+    ed.check_eq(out["values"], [True, 1, 0.5, 16, 1.0, 0], "read back in Lua")
+    ed.check_eq(await post(ed, sid), {"cavity_enabled": True, "cavity_type": "world", "cavity_world_radius": 0.5,
+                                      "cavity_world_samples": 16, "cavity_debug": True}, "what Lua set, through MCP")
+    # the status: what the settings resolve to (no device tier applies in edit mode)
+    cavity = (await ed.call("get_post_processing_status", scene=sid))["cavity"]
+    ed.check_eq((cavity["enabled"], cavity["type"], cavity["world_samples"]), (True, "world", 16), f"status: {cavity}")
 
 
 async def test_presets_one_named_undo_step(ed: Editor):

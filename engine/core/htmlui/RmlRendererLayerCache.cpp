@@ -449,6 +449,10 @@ void RmlRenderer::planLayerCache(){
         if (candidate.push < hitEnd)
             continue;
         const Command& composite = commands[candidate.composite];
+        // S93 R30: a CSS blend mode blends with the destination's pixels at the composite, which a
+        // cached result drawn as source-over would not
+        if ((int)composite.flag >= (int)Rml::BlendMode::Multiply)
+            continue;
 
         LayerCacheScope scope;
         scope.window = candidate.window;

@@ -496,12 +496,14 @@ async def test_vector_text_unchanged(ed: Editor):
         "outline": {"width": 2, "color": [1, 0, 0, 1]}, "shadow": {"offset": [2, 2], "color": [0, 0, 1, 1], "softness": 2},
         "layout": {"anchor": "top_left", "position": [10, 60]}})
     # AllComponents' Text (tools/fixtures/reflection-parity, the only fixture Text with a TTF; its
-    # fonts/Parity.ttf is not in the fixture, so it draws in the default font, as here)
+    # fonts/Parity.ttf is not in the fixture, so it draws in the default font, as here). Its line is
+    # wider than its fixed box: since S94 F24 Center centres the line in the box (TextMesh Pro's), so
+    # the reference was captured again for that Text (the other two are as before S51)
     await ed.call("create_ui", scene=scene, root={
         "type": "text", "name": "Parity", "text": "text: [1, 2]", "font_size": 20, "text_color": [1, 1, 1, 1],
         "layout": {"anchor": "top_left", "position": [10, 110]}})
     await ed.call("set_properties", scene=scene, entity="Parity", values={"text": {
-        "maxTextSize": 100, "fixedWidth": True, "fixedHeight": True, "pivotBaseline": True, "pivotCentered": True}})
+        "maxTextSize": 100, "fixedWidth": True, "fixedHeight": True, "anchorVertical": "baseline", "anchorHorizontal": "center"}})
     await ed.call("configure_game_view", resolution="320x180")
     image = await ed.screenshot(view="game", max_width=0)
     reference = GOLDEN / "vector_text.png"

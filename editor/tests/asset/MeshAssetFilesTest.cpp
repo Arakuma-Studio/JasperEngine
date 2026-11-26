@@ -120,9 +120,10 @@ TEST(MeshAssetMigration, AFormat8SceneKeepsItsInlineBuffers) {
 
     YAML::Node migrated = YAML::Clone(original);
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, migrated);
-    ASSERT_EQ(result.applied.size(), 2u) << "S98's mesh assets 8 -> 9, then S92's HTML UI render mode 9 -> 10";
+    // then the later scene migrations (S92's 9 -> 10, S94's 10 -> 11), none of them about meshes
+    ASSERT_GE(result.applied.size(), 1u);
     EXPECT_NE(result.applied[0].find("mesh assets"), std::string::npos) << result.applied[0];
-    EXPECT_EQ(migrated["formatVersion"].as<int>(), 10);
+    EXPECT_EQ(migrated["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     std::string why;
     EXPECT_TRUE(editor::test::structurallyEqual(meshOf(migrated, "Sphere"), meshOf(original, "Sphere"), &why)) << "identity: " << why;
 
@@ -163,7 +164,7 @@ TEST_F(MeshAssetSaveTest, SceneSaveMovesLargeGeometryIntoMeshAssets) {
     const fs::path sceneFile = project->getProjectPath() / "Main Scene.scene";
     const std::string text = fileText(sceneFile);
     const YAML::Node root = YAML::Load(text);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 10);
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     const YAML::Node saved = mesh_asset_files_test::meshOf(root, "Ball");
     ASSERT_TRUE(saved);
     EXPECT_EQ(saved["meshAsset"].as<std::string>(), "Meshes/Main Scene/Ball.mesh");

@@ -59,6 +59,8 @@ namespace jasperengine::editor{
         ViewDrawMode drawMode = ViewDrawMode::SHADED;
         ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB;
         bool showStats = false;
+        // Frame Checks (S99 R9): the view's findings listed at its corner, refreshed twice a second
+        bool frameChecks = false;
     };
 
 }

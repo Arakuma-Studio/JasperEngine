@@ -184,8 +184,36 @@ struct Vertex {
     float uv0[2];
     float uv1[2];
     float color[4];
+    float smoothing; // the corner's smoothing group, 0 without Options::smoothingGroups
     uint32_t vertex;
 };
+
+// A DOM array's numbers as integers, whichever width the file stored them in
+std::vector<int64_t> domIntegers(const ufbx_dom_node* node) {
+    std::vector<int64_t> out;
+    if (!node || node->values.count != 1) {
+        return out;
+    }
+    const ufbx_dom_value& value = node->values.data[0];
+    const size_t bytes = value.value_blob.size;
+    const void* data = value.value_blob.data;
+    auto copy = [&](auto sample) {
+        using T = decltype(sample);
+        const T* items = static_cast<const T*>(data);
+        for (size_t i = 0; i < bytes / sizeof(T); i++) {
+            out.push_back(static_cast<int64_t>(items[i]));
+        }
+    };
+    switch (value.type) {
+        case UFBX_DOM_VALUE_BLOB: copy(uint8_t()); break;   // an array ufbx reads as flags
+        case UFBX_DOM_VALUE_ARRAY_I32: copy(int32_t()); break;
+        case UFBX_DOM_VALUE_ARRAY_I64: copy(int64_t()); break;
+        case UFBX_DOM_VALUE_ARRAY_F32: copy(float()); break;
+        case UFBX_DOM_VALUE_ARRAY_F64: copy(double()); break;
+        default: break;
+    }
+    return out;
+}
 
 } // namespace
 
@@ -195,8 +223,8 @@ struct GlbBuilder::Pixels {
     std::vector<unsigned char> rgba;
 };
 
-GlbBuilder::GlbBuilder(const ufbx_scene* scene, const fs::path& fbxPath, const fs::path& assetsRoot, bool createMaterials)
-    : scene(scene), fbxPath(fbxPath), assetsRoot(assetsRoot), createMaterials(createMaterials) {
+GlbBuilder::GlbBuilder(const ufbx_scene* scene, const fs::path& fbxPath, const fs::path& assetsRoot, const Options& options)
+    : scene(scene), options(options), fbxPath(fbxPath), assetsRoot(assetsRoot), createMaterials(options.createMaterials) {
     model.buffers.resize(1);
 }
 
@@ -204,13 +232,18 @@ bool GlbBuilder::build(std::string& error) {
     for (const ufbx_mesh* mesh : scene->meshes) {
         buildGeometry(mesh);
     }
-    if (geometries.empty()) {
-        error = "the file has no triangle meshes";
+    // A file of nodes and takes alone (Unity's Model@Clip.fbx) is a clip source (spec S94 F39)
+    if (geometries.empty() && scene->anim_stacks.count == 0) {
+        error = "the file has no triangle meshes and no animation";
         return false;
     }
 
     buildNodes();
     buildAnimations();
+    if (geometries.empty() && model.animations.empty()) {
+        error = "the file has no triangle meshes, and its animation takes animate nothing";
+        return false;
+    }
 
     tinygltf::Scene root;
     root.nodes.push_back(static_cast<int>(scene->root_node->typed_id));
@@ -865,14 +898,76 @@ void GlbBuilder::buildGeometry(const ufbx_mesh* mesh) {
 
     MeshGeometry geometry;
     geometry.name = meshName;
+    const std::vector<uint32_t> smoothing = options.smoothingGroups ? smoothingGroupsOf(mesh) : std::vector<uint32_t>();
+    // Primitive i is material slot i (Unity's submesh order): an empty slot before the last one
+    // that draws keeps its index with a placeholder, so later submeshes do not shift (spec S94 F42).
+    // Used Materials skips every empty slot, as the importer did before.
+    uint32_t lastDrawnSlot = 0;
+    uint32_t firstCorner = UINT32_MAX;
+    for (const ufbx_mesh_part& part : mesh->material_parts) {
+        if (part.num_triangles > 0) {
+            lastDrawnSlot = std::max(lastDrawnSlot, part.index);
+        }
+    }
+    for (const ufbx_face& face : mesh->faces) {
+        if (face.num_indices >= 3) {
+            firstCorner = face.index_begin;
+            break;
+        }
+    }
     std::vector<uint32_t> triangle(mesh->max_face_triangles * 3);
     for (const ufbx_mesh_part& part : mesh->material_parts) {
-        if (part.num_triangles == 0) {
+        if (part.index > lastDrawnSlot) {
             continue;
         }
 
         std::vector<Vertex> vertices;
         vertices.reserve(part.num_triangles * 3);
+        auto addCorner = [&](uint32_t index) {
+            Vertex vertex;
+            std::memset(&vertex, 0, sizeof(vertex));
+
+            const ufbx_vec3 position = ufbx_get_vertex_vec3(&mesh->vertex_position, index);
+            vertex.position[0] = static_cast<float>(position.x);
+            vertex.position[1] = static_cast<float>(position.y);
+            vertex.position[2] = static_cast<float>(position.z);
+
+            vertex.normal[1] = 1.0f;
+            if (mesh->vertex_normal.exists) {
+                const ufbx_vec3 normal = ufbx_get_vertex_vec3(&mesh->vertex_normal, index);
+                const double length = std::sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+                if (length > 1e-12) {
+                    vertex.normal[0] = static_cast<float>(normal.x / length);
+                    vertex.normal[1] = static_cast<float>(normal.y / length);
+                    vertex.normal[2] = static_cast<float>(normal.z / length);
+                }
+            }
+
+            // FBX puts the UV origin at the bottom, glTF at the top
+            if (uv0) {
+                const ufbx_vec2 uv = ufbx_get_vertex_vec2(uv0, index);
+                vertex.uv0[0] = static_cast<float>(uv.x);
+                vertex.uv0[1] = static_cast<float>(1.0 - uv.y);
+            }
+            if (uv1) {
+                const ufbx_vec2 uv = ufbx_get_vertex_vec2(uv1, index);
+                vertex.uv1[0] = static_cast<float>(uv.x);
+                vertex.uv1[1] = static_cast<float>(1.0 - uv.y);
+            }
+            if (hasColor) {
+                const ufbx_vec4 color = ufbx_get_vertex_vec4(&mesh->vertex_color, index);
+                vertex.color[0] = static_cast<float>(color.x);
+                vertex.color[1] = static_cast<float>(color.y);
+                vertex.color[2] = static_cast<float>(color.z);
+                vertex.color[3] = static_cast<float>(color.w);
+            }
+            if (!smoothing.empty()) {
+                vertex.smoothing = static_cast<float>(smoothing[index]);
+            }
+            // Keeps corners of different FBX vertices apart for skinning and morphs
+            vertex.vertex = mesh->vertex_indices.data[index];
+            vertices.push_back(vertex);
+        };
         for (uint32_t faceIndex : part.face_indices) {
             const ufbx_face face = mesh->faces.data[faceIndex];
             if (face.num_indices < 3) {
@@ -880,47 +975,14 @@ void GlbBuilder::buildGeometry(const ufbx_mesh* mesh) {
             }
             const uint32_t count = ufbx_triangulate_face(triangle.data(), triangle.size(), mesh, face);
             for (uint32_t i = 0; i < count * 3; i++) {
-                const uint32_t index = triangle[i];
-                Vertex vertex;
-                std::memset(&vertex, 0, sizeof(vertex));
-
-                const ufbx_vec3 position = ufbx_get_vertex_vec3(&mesh->vertex_position, index);
-                vertex.position[0] = static_cast<float>(position.x);
-                vertex.position[1] = static_cast<float>(position.y);
-                vertex.position[2] = static_cast<float>(position.z);
-
-                vertex.normal[1] = 1.0f;
-                if (mesh->vertex_normal.exists) {
-                    const ufbx_vec3 normal = ufbx_get_vertex_vec3(&mesh->vertex_normal, index);
-                    const double length = std::sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
-                    if (length > 1e-12) {
-                        vertex.normal[0] = static_cast<float>(normal.x / length);
-                        vertex.normal[1] = static_cast<float>(normal.y / length);
-                        vertex.normal[2] = static_cast<float>(normal.z / length);
-                    }
-                }
-
-                // FBX puts the UV origin at the bottom, glTF at the top
-                if (uv0) {
-                    const ufbx_vec2 uv = ufbx_get_vertex_vec2(uv0, index);
-                    vertex.uv0[0] = static_cast<float>(uv.x);
-                    vertex.uv0[1] = static_cast<float>(1.0 - uv.y);
-                }
-                if (uv1) {
-                    const ufbx_vec2 uv = ufbx_get_vertex_vec2(uv1, index);
-                    vertex.uv1[0] = static_cast<float>(uv.x);
-                    vertex.uv1[1] = static_cast<float>(1.0 - uv.y);
-                }
-                if (hasColor) {
-                    const ufbx_vec4 color = ufbx_get_vertex_vec4(&mesh->vertex_color, index);
-                    vertex.color[0] = static_cast<float>(color.x);
-                    vertex.color[1] = static_cast<float>(color.y);
-                    vertex.color[2] = static_cast<float>(color.z);
-                    vertex.color[3] = static_cast<float>(color.w);
-                }
-                // Keeps corners of different FBX vertices apart for skinning and morphs
-                vertex.vertex = mesh->vertex_indices.data[index];
-                vertices.push_back(vertex);
+                addCorner(triangle[i]);
+            }
+        }
+        // the placeholder: one degenerate triangle on a corner of the mesh, with every attribute
+        const bool reserved = !options.usedMaterialsOrder && vertices.empty() && part.index < lastDrawnSlot && firstCorner != UINT32_MAX;
+        if (reserved) {
+            for (int i = 0; i < 3; i++) {
+                addCorner(firstCorner);
             }
         }
         if (vertices.empty()) {
@@ -964,6 +1026,11 @@ void GlbBuilder::buildGeometry(const ufbx_mesh* mesh) {
             for (const Vertex& vertex : vertices) data.insert(data.end(), vertex.color, vertex.color + 4);
             primitive.attributes["COLOR_0"] = addFloatAccessor(data, TINYGLTF_TYPE_VEC4, TINYGLTF_TARGET_ARRAY_BUFFER, false);
         }
+        if (!smoothing.empty()) {
+            data.clear();
+            for (const Vertex& vertex : vertices) data.push_back(vertex.smoothing);
+            primitive.attributes[SMOOTHING_GROUP_ATTRIBUTE] = addFloatAccessor(data, TINYGLTF_TYPE_SCALAR, TINYGLTF_TARGET_ARRAY_BUFFER, false);
+        }
 
         if (skin && !jointNodes.empty()) {
             std::vector<uint16_t> joints(vertexCount * 4, 0);
@@ -998,6 +1065,7 @@ void GlbBuilder::buildGeometry(const ufbx_mesh* mesh) {
 
         geometry.primitives.push_back(primitive);
         geometry.slots.push_back(part.index);
+        geometry.reserved.push_back(reserved);
     }
 
     if (geometry.primitives.empty()) {
@@ -1038,9 +1106,16 @@ int GlbBuilder::meshFor(const ufbx_node* node) {
     out.primitives = data.primitives;
     for (size_t i = 0; i < out.primitives.size(); i++) {
         const uint32_t slot = data.slots[i];
+        // the FBX slot and material each submesh came from, for tools that map them (spec S94 F42)
+        tinygltf::Value::Object extras{{"fbxMaterialSlot", tinygltf::Value(static_cast<int>(slot))}};
         if (createMaterials && slot < slots.size() && slots[slot]) {
             out.primitives[i].material = materialFor(slots[slot], node->mesh);
+            extras["fbxMaterial"] = tinygltf::Value(toString(slots[slot]->name));
         }
+        if (data.reserved[i]) {
+            extras["fbxEmptySlot"] = tinygltf::Value(true);
+        }
+        out.primitives[i].extras = tinygltf::Value(extras);
     }
     if (!data.channels.empty()) {
         tinygltf::Value::Array names;
@@ -1101,9 +1176,96 @@ void GlbBuilder::buildNodes() {
     }
 }
 
+std::vector<uint32_t> GlbBuilder::smoothingGroupsOf(const ufbx_mesh* mesh) const {
+    // ByEdge smoothing is ufbx's edge_smoothing. ByPolygon is a value per face (3ds Max's group bit
+    // masks, Blender's 0 or 1), which ufbx reads as a flag, its DOM too: two faces share their edge's
+    // normals when both are smooth (Max's faces of two different groups side by side smooth together)
+    std::vector<int64_t> masks;
+    if (const ufbx_dom_node* geometry = mesh->element.dom_node) {
+        const ufbx_dom_node* layer = ufbx_dom_find(geometry, "LayerElementSmoothing");
+        const ufbx_dom_node* mapping = layer ? ufbx_dom_find(layer, "MappingInformationType") : nullptr;
+        if (mapping && mapping->values.count > 0 && toString(mapping->values.data[0].value_str) == "ByPolygon") {
+            masks = domIntegers(ufbx_dom_find(layer, "Smoothing"));
+        }
+    }
+    const bool byEdge = mesh->edge_smoothing.count > 0;
+    if (!byEdge && masks.size() < mesh->num_faces) {
+        return {};
+    }
+
+    std::vector<ufbx_topo_edge> topo(mesh->num_indices);
+    ufbx_compute_topology(mesh, topo.data(), topo.size());
+    std::vector<uint32_t> parent(mesh->num_indices);
+    for (uint32_t i = 0; i < parent.size(); i++) {
+        parent[i] = i;
+    }
+    auto find = [&](uint32_t i) {
+        while (parent[i] != i) {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        return i;
+    };
+    auto unite = [&](uint32_t a, uint32_t b) {
+        a = find(a);
+        b = find(b);
+        if (a != b) {
+            parent[std::max(a, b)] = std::min(a, b);
+        }
+    };
+    for (uint32_t i = 0; i < topo.size(); i++) {
+        const ufbx_topo_edge& edge = topo[i];
+        if (edge.twin == UFBX_NO_INDEX || edge.twin < i) {
+            continue;
+        }
+        const bool smooth = byEdge
+            ? edge.edge != UFBX_NO_INDEX && edge.edge < mesh->edge_smoothing.count && mesh->edge_smoothing.data[edge.edge]
+            : (masks[edge.face] & masks[topo[edge.twin].face]) != 0;
+        if (!smooth) {
+            continue;
+        }
+        // the half-edge runs from corner i to its next; the twin from the twin to the twin's next
+        unite(i, topo[edge.twin].next);
+        unite(edge.next, edge.twin);
+    }
+    std::vector<uint32_t> groups(topo.size());
+    std::map<uint32_t, uint32_t> numbers;
+    for (uint32_t i = 0; i < topo.size(); i++) {
+        groups[i] = numbers.emplace(find(i), static_cast<uint32_t>(numbers.size())).first->second;
+    }
+    return groups;
+}
+
+void GlbBuilder::applyRestPose(const ufbx_baked_anim* baked) {
+    // the first key is the take's start (the bake trims it to 0); untouched nodes keep their values
+    for (const ufbx_baked_node& track : baked->nodes) {
+        if (track.typed_id >= model.nodes.size()) {
+            continue;
+        }
+        tinygltf::Node& node = model.nodes[track.typed_id];
+        if (track.translation_keys.count > 0) {
+            const ufbx_vec3& t = track.translation_keys.data[0].value;
+            node.translation = (t.x != 0.0 || t.y != 0.0 || t.z != 0.0) ? std::vector<double>{t.x, t.y, t.z} : std::vector<double>();
+        }
+        if (track.rotation_keys.count > 0) {
+            const ufbx_quat& r = track.rotation_keys.data[0].value;
+            node.rotation = (r.x != 0.0 || r.y != 0.0 || r.z != 0.0 || r.w != 1.0) ? std::vector<double>{r.x, r.y, r.z, r.w} : std::vector<double>();
+        }
+        if (track.scale_keys.count > 0) {
+            const ufbx_vec3& s = track.scale_keys.data[0].value;
+            node.scale = (s.x != 1.0 || s.y != 1.0 || s.z != 1.0) ? std::vector<double>{s.x, s.y, s.z} : std::vector<double>();
+        }
+    }
+}
+
 void GlbBuilder::buildAnimations() {
     std::set<std::string> usedNames;
-    for (const ufbx_anim_stack* stack : scene->anim_stacks) {
+    // Rest Pose First Frame (spec S94 F40): the named clip, else the first; the first is kept until
+    // the named one is known to be missing
+    std::unique_ptr<ufbx_baked_anim, decltype(&ufbx_free_baked_anim)> firstClip(nullptr, &ufbx_free_baked_anim);
+    bool reposed = !this->options.firstFrameRestPose;
+    for (size_t stackIndex = 0; stackIndex < scene->anim_stacks.count; stackIndex++) {
+        const ufbx_anim_stack* stack = scene->anim_stacks.data[stackIndex];
         ufbx_bake_opts options = {};
         options.trim_start_time = true;
         options.resample_rate = 30.0;
@@ -1235,7 +1397,27 @@ void GlbBuilder::buildAnimations() {
         usedNames.insert(unique);
         animation.name = unique;
         model.animations.push_back(animation);
+        if (!reposed && (this->options.restPoseTake.empty() || unique == this->options.restPoseTake)) {
+            applyRestPose(baked);
+            reposed = true;
+        } else if (!reposed && !firstClip) {
+            firstClip = std::move(bakedGuard);
+        }
     }
+    if (reposed) {
+        return;
+    }
+    if (!firstClip) {
+        warn("Rest Pose is First Frame, but no take of the file animates its nodes: the nodes keep their values");
+        return;
+    }
+    std::string clips;
+    for (const tinygltf::Animation& animation : model.animations) {
+        clips += (clips.empty() ? "" : ", ") + animation.name;
+    }
+    warn("Rest Pose Take '" + this->options.restPoseTake + "' is not a clip of the file (its clips: " + clips +
+         "): the first clip's first frame is used");
+    applyRestPose(firstClip.get());
 }
 
 std::shared_ptr<GlbBuilder::Pixels> GlbBuilder::resized(const std::shared_ptr<Pixels>& pixels, int width, int height) {

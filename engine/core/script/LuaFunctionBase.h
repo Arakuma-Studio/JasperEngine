@@ -35,6 +35,8 @@ namespace jasperengine{
     class AABB;
     class GameObject;
     class VideoPlayer;
+    class DialogueRunner;
+    namespace dialogue { struct Line; struct Value; }
     namespace nav { enum class PathFailure : uint8_t; }
 
     namespace lua_reload { struct CallbackRecord; }
@@ -108,6 +110,11 @@ namespace jasperengine{
         void push_value(lua_State *vm, const GameObject& o);
         // the Video Player of an event (onPrepareCompleted, ...)
         void push_value(lua_State *vm, const VideoPlayer &o);
+        // a Dialogue Runner's events (DialogueClassesLua.cpp, with the dialogue module): the runner,
+        // a line as a plain table, a variable's value
+        void push_value(lua_State *vm, const DialogueRunner &o);
+        void push_value(lua_State *vm, const dialogue::Line &o);
+        void push_value(lua_State *vm, const dialogue::Value &o);
 
         template <typename T>
         static T get_value(lua_State *vm);

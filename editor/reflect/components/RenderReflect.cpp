@@ -176,12 +176,28 @@ namespace {
 
     constexpr uint64_t kSubmeshAll = UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms;
 
+    // Property Overrides (S94 F7): values rewrite the uniform blocks, a texture is bound at load
+    constexpr FieldDesc kPropertyOverridesFields[] = {
+        JE_FIELD(ShaderPropertyOverrides, values, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
+        JE_FIELD(ShaderPropertyOverrides, textures, .ops = &ops::ShaderTextures, .updateFlags = UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture),
+    };
+    const StructDesc kPropertyOverridesStruct = JE_STRUCT_DESC(ShaderPropertyOverrides, "ShaderPropertyOverrides", kPropertyOverridesFields);
+
+    // out of line (OutOfLineValue): made on an edit, read as the empty defaults while unset
+    void* submeshOverridesRef(void* submesh) { return &static_cast<Submesh*>(submesh)->propertyOverrides.edit(); }
+    const void* submeshOverridesPeek(const void* submesh) { return &static_cast<const Submesh*>(submesh)->propertyOverrides.get(); }
+    void* meshOverridesRef(void* mesh) { return &static_cast<MeshComponent*>(mesh)->propertyOverrides.edit(); }
+    const void* meshOverridesPeek(const void* mesh) { return &static_cast<const MeshComponent*>(mesh)->propertyOverrides.get(); }
+
     constexpr FieldDesc kSubmeshFields[] = {
         JE_FIELD(Submesh, material, .ops = &ops::MaterialStruct<Material>, .flags = ListWhole, .updateFlags = kSubmeshAll),
         JE_FIELD(Submesh, primitiveType, .enumDesc = &enums::kPrimitiveType, .updateFlags = UpdateFlags_Mesh_Reload),
         JE_FIELD(Submesh, faceCulling, .updateFlags = UpdateFlags_Mesh_Reload),
         JE_FIELD(Submesh, textureShadow, .updateFlags = UpdateFlags_Mesh_Reload),
         JE_FIELD(Submesh, textureRect),
+        detail::makeField<ShaderPropertyOverrides>("propertyOverrides", &submeshOverridesRef,
+            FieldMeta{.ops = &ops::Value<ShaderPropertyOverrides>, .structDesc = &kPropertyOverridesStruct, .updateFlags = kSubmeshAll,
+                      .label = "Property Overrides", .peek = &submeshOverridesPeek}),
     };
 
 }
@@ -244,6 +260,10 @@ namespace {
         JE_FIELD(MeshComponent, customShader, .updateFlags = UpdateFlags_Shader_Reload),
         JE_FIELD(MeshComponent, customDepthShader, .updateFlags = UpdateFlags_Shader_Reload),
         JE_FIELD(MeshComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
+        // Unity's MaterialPropertyBlock, saved (S94 F7): over every submesh's material
+        detail::makeField<ShaderPropertyOverrides>("propertyOverrides", &meshOverridesRef,
+            FieldMeta{.ops = &ops::Value<ShaderPropertyOverrides>, .structDesc = &kPropertyOverridesStruct, .updateFlags = kSubmeshAll,
+                      .label = "Property Overrides", .peek = &meshOverridesPeek}),
         JE_FIELD(MeshComponent, numSubmeshes),
         JE_FIELD(MeshComponent, submeshes, .flags = ListTemplate, .updateFlags = kSubmeshAll, .assetCount = JE_COUNT(MeshComponent, numSubmeshes)),
         // one blend shape weight each ("morphWeights[2]"), so a prefab instance overrides weights
@@ -314,6 +334,8 @@ namespace {
         // read by the loader on the next load or reload; the scene step that turns it off ("Use
         // Animation Player", 9.R15) removes the animation entities itself
         JE_FIELD(ModelComponent, animationEntities),
+        // read by the next load or reload, like animationEntities (an edit reloads in the same step)
+        JE_FIELD(ModelComponent, preserveHierarchy, .label = "Preserve Hierarchy"),
         JE_FIELD(ModelComponent, skeleton, .ops = &ops::Entity, .updateFlags = kMeshReload),
         JE_FIELD(ModelComponent, animations, .flags = ListWhole | ListElements, .elementOps = &ops::Entity),
     };
@@ -358,7 +380,7 @@ namespace {
         JE_FIELD(PointsComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
-        JE_FIELD(PointsComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
+        JE_FIELD(PointsComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload, .enumMask = enums::kComponentBlendModes),
         JE_FIELD(PointsComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
@@ -378,7 +400,7 @@ namespace {
         JE_FIELD(LineRendererComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
-        JE_FIELD(LineRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
+        JE_FIELD(LineRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload, .enumMask = enums::kComponentBlendModes),
         JE_FIELD(LineRendererComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
@@ -489,6 +511,10 @@ namespace {
         JE_FIELD(SpriteComponent, height, .flags = NoDefault, .updateFlags = kSprite, .unit = Unit::Pixels),
         JE_FIELD(SpriteComponent, automaticFlipY, .updateFlags = kSprite),
         JE_FIELD(SpriteComponent, flipY, .updateFlags = kSprite),
+        // S94 F29, F30: Unity's Flip X and Size (world units, an axis at 0 from width/height), written only when set
+        JE_FIELD(SpriteComponent, flipX, .flags = OmitIfDefault, .updateFlags = kSprite, .label = "Flip X"),
+        JE_FIELD(SpriteComponent, size, .flags = OmitIfDefault, .updateFlags = kSprite, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "The quad's size in world units (Sliced corners keep theirs). 0 on an axis: Width / Height over Pixels Per Unit."),
         JE_FIELD(SpriteComponent, textureScaleFactor, .updateFlags = kSprite, .min = 0.0f),
         JE_FIELD(SpriteComponent, pivotPreset, .enumDesc = &enums::kPivotPreset, .updateFlags = kSprite, .label = "Pivot"),
         // a sheet sprite's frames come from its sheet (S44): an .aseprite file or a texture
@@ -574,6 +600,10 @@ namespace {
                 break;
             case ScriptPropertyType::Prefab: data.ref = &prop.valueRef<PrefabAsset>(); data.def = &prop.defaultValueRef<PrefabAsset>(); break;
             case ScriptPropertyType::Asset: data.ref = &prop.valueRef<AssetRef>(); data.def = &prop.defaultValueRef<AssetRef>(); break;
+            case ScriptPropertyType::List:
+                data.ref = &prop.valueRef<ScriptPropertyList>();
+                data.def = &prop.defaultValueRef<ScriptPropertyList>();
+                break;
             default: break;
         }
         return data;
@@ -645,7 +675,7 @@ namespace {
                                               "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices",
                                               "lodAnimateCrossFading", "lodBias", "lodCullBelow", "lodEnabled", "lodFadeMode",
                                               "lodFadeTransitionWidth", "meshAsset", "meshAssetGuid", "mirroredWinding", "morphTargetCount", "morphWeights", "normAdjustJoint",
-                                              "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes",
+                                              "normAdjustWeight", "propertyOverrides", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes",
                                               "shaderUniforms", "shadowsBillboard", "sortingLayer", "sortingOrder", "staticShadowCaster",
                                               "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
 
@@ -662,7 +692,7 @@ const ComponentDesc kMeshDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kModelKnownKeys[] = {"animationEntities", "animations", "bonesIdMapping", "bonesNameMapping", "enabled", "filename", "mergeStaticMeshes", "meshNodesMapping", "nodesIdMapping", "skeleton"};
+    constexpr const char* kModelKnownKeys[] = {"animationEntities", "animations", "bonesIdMapping", "bonesNameMapping", "enabled", "filename", "mergeStaticMeshes", "meshNodesMapping", "nodesIdMapping", "preserveHierarchy", "skeleton"};
 
 }
 
@@ -768,8 +798,8 @@ const ComponentDesc kTerrainDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "drawMode", "enabled", "flipY", "frame", "frameName", "framesRect", "height",
-                                                "pivotPreset", "pixelRotation", "pixelsPerUnit", "sheet", "sheetGuid", "spriteSortPoint",
+    constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "drawMode", "enabled", "flipX", "flipY", "frame", "frameName", "framesRect", "height",
+                                                "pivotPreset", "pixelRotation", "pixelsPerUnit", "sheet", "sheetGuid", "size", "spriteSortPoint",
                                                 "textureScaleFactor", "width"};
 
 }

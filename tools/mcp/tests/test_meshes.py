@@ -682,7 +682,7 @@ async def test_scene_save_moves_large_meshes_into_mesh_assets(ed: Editor):
     ed.check("meshAsset:" in mesh_of(text, "Twin"), "its twin names the same file")
     crate = mesh_of(text, "Crate")
     ed.check("buffer:" in crate and "meshAsset:" not in crate, "a box (under 4 KB) stays in the scene")
-    ed.check(text.startswith("formatVersion: 10\n"), f"scene format 10: {text[:40]}")
+    ed.check(text.startswith("formatVersion: 11\n"), f"scene format 11: {text[:40]}")
 
     info = await ed.call("get_asset_info", path=asset)
     ed.check_eq(info["type"], "mesh", f"{info}")

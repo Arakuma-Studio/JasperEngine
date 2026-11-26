@@ -1421,7 +1421,7 @@ Top, horizon and bottom colours blended by the view direction's height, each sid
 <a id="librarypanoramic_sky"></a>
 ### Panoramic Sky (`library:panoramic_sky`)
 
-An equirectangular (latitude-longitude) 2D image as the sky, with rotation, exposure and tint.
+An equirectangular (latitude-longitude) 2D image as the sky, with rotation, exposure and tint. Unity's Skybox/Panoramic _Rotation r is rotation (r + 270) mod 360.
 
 - **Type**: sky (the Sky component's custom shader); category Sky.
 - **Default state**: the engine's.
@@ -1435,6 +1435,10 @@ An equirectangular (latitude-longitude) 2D image as the sky, with rotation, expo
 | Texture | Default | Description |
 |---|---|---|
 | `u_panoramaTexture` | gray | Panorama (equirectangular, 2:1) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `VERTEX_MAPPING` | off | Per-Vertex Mapping |
 
 <a id="libraryprocedural_sky"></a>
 ### Procedural Sky (`library:procedural_sky`)

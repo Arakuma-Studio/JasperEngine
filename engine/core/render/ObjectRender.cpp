@@ -106,7 +106,7 @@ void ObjectRender::setBlendState(const BlendState& state){
     backend.setBlendState(state);
 }
 
-bool ObjectRender::endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples){
+bool ObjectRender::endLoad(uint32_t pipelines, const RenderState& state, int msaaSamples){
     return backend.endLoad(pipelines, state, msaaSamples);
 }
 

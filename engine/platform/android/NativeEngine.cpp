@@ -31,9 +31,12 @@
 #include "Engine.h"
 #include "System.h"
 #include "Input.h"
+#include "input/InputScheme.h"
+#include "input/TextEntry.h"
 #include "Screen.h"
 #include "Log.h"
 #include "render/GpuWorkerContext.h"
+#include "render/SystemRender.h"
 #include "util/StringUtils.h"
 #include "../common/PlatformDefaults.h"
 #include "player/PlayerLaunch.h"
@@ -202,6 +205,14 @@ float stylusPressureOf(const GameActivityPointerAxes& pointer) {
     return std::clamp(GameActivityPointerAxes_getPressure(&pointer), 0.0f, 1.0f);
 }
 
+// what the input scheme knows of a pointer on the touch path: a mouse with a button held stays a
+// finger there (unchanged behaviour) but is mouse use, and the device id (an emulator's PC mouse
+// arrives as fingers of the device that sends keys)
+void setPointerSource(const GameActivityMotionEvent* event, const GameActivityPointerAxes& pointer) {
+    const bool mouse = GameActivityPointerAxes_getToolType(&pointer) == AMOTION_EVENT_TOOL_TYPE_MOUSE;
+    jasperengine::Engine::setInputSource(mouse ? jasperengine::InputSourceTag::Mouse : jasperengine::InputSourceTag::None, event->deviceId);
+}
+
 constexpr int getJasperEngineGamepadButton(int32_t key) {
     if (key == AKEYCODE_BUTTON_A)
         return D_GAMEPAD_BUTTON_A;
@@ -331,175 +342,43 @@ static jasperengine::android::ComponentTextInput componentTextInput;
 
 // Set on the UI thread by MainActivity's back callback; Android 16 no longer sends Back as a key
 static std::atomic<bool> backPressed(false);
-// the Escape press a Back made, released on the next frame
-static bool backEscapeDown = false;
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_jaspergameengine_jasperengine_MainActivity_onBackPressedNative(JNIEnv* env, jobject obj) {
     backPressed = true;
 }
 
-// HTML UI document text fields (Engine::wantsTextComposition), in code points: imeText is the
-// field's text as the engine has it, composition included; imeCaret is where the engine's
-// caret is taken to be when nothing is composed; [imeCompStart, imeCompEnd) is the engine's
-// composition (empty when none) and imeCompCursor its cursor.
-static std::u32string imeText;
-static size_t imeCaret = 0;
-static size_t imeCompStart = 0;
-static size_t imeCompEnd = 0;
-static int imeCompCursor = -1;
-
-// The document diff starts over from this text, with the caret at caret and nothing composed
-static void resetDocumentTextInput(const std::u32string& text, size_t caret) {
-    imeText = text;
-    imeCaret = std::min(caret, text.size());
-    imeCompStart = imeCompEnd = 0;
-    imeCompCursor = -1;
+// The field's EditorInfo to the IME when it differs from what this activity's IME has (the
+// cache), so moving between fields of one kind keeps the keyboard as it is
+static bool applyImeEditorInfo(GameActivity* activity, jasperengine::android::ImeEditorInfoCache& cache,
+                               const jasperengine::android::EditorInfo& info) {
+    if (!cache.changes(info))
+        return false;
+    GameActivity_setImeEditorInfo(activity, (GameTextInputType)info.inputType,
+                                  (GameTextInputActionType)(info.imeOptions & jasperengine::android::IME_MASK_ACTION),
+                                  (GameTextInputImeOptions)info.imeOptions);
+    return true;
 }
 
-static void sendTextInputKey(int key) {
-    jasperengine::Engine::systemKeyDown(key, false, 0);
-    jasperengine::Engine::systemKeyUp(key, false, 0);
-}
-
-// Edits the IME makes away from the caret (a suggestion replacing a word) first move the
-// engine's caret there, one code point per arrow key
-static void moveTextInputCaret(size_t target) {
-    while (imeCaret < target) {
-        sendTextInputKey(D_KEY_RIGHT);
-        imeCaret++;
-    }
-    while (imeCaret > target) {
-        sendTextInputKey(D_KEY_LEFT);
-        imeCaret--;
-    }
-}
-
-// The GameTextInput state, for a focused HTML UI document text field. Text outside the
-// composing region is diffed against what the engine has: removals become backspaces,
-// additions systemTextInput. The composing region is the engine's IME composition; when it
-// ends, the text that replaced it is committed (a text input while composing confirms the
-// composition), or the composition is cancelled when nothing replaced it. A region the IME
-// puts over text the engine already has (Gboard re-selecting a word) is not a composition
-// for the engine: later edits in it are plain text edits.
-static void updateDocumentTextInput(const std::u16string& units, const GameTextInputState* state) {
-    std::u32string text;
-    std::vector<size_t> unitToCodepoint;
-    utf16ToCodepoints(units, text, unitToCodepoint);
-
-    const int32_t unitCount = (int32_t)units.size();
-    auto codepointAt = [&](int32_t unit) {
-        return unitToCodepoint[std::max(0, std::min(unit, unitCount))];
+// GameTextInput takes Java modified UTF-8 and counts the selection in UTF-16 units
+static void setImeText(GameActivity* activity, const std::u32string& codepoints, size_t selectionStart, size_t selectionEnd) {
+    int32_t utf16Length = 0;
+    std::string buffer = codepointsToModifiedUtf8(codepoints, utf16Length);
+    auto unitsBefore = [&codepoints](size_t end) {
+        int32_t units = 0;
+        for (size_t i = 0; i < end && i < codepoints.size(); i++)
+            units += codepoints[i] >= 0x10000 ? 2 : 1;
+        return units;
     };
 
-    // the composing region in code points, none when undefined (-1) or empty
-    size_t compStart = 0;
-    size_t compEnd = 0;
-    int32_t regionStart = state->composingRegion.start;
-    int32_t regionEnd = state->composingRegion.end;
-    if (regionStart >= 0 && regionEnd >= 0 && regionStart != regionEnd) {
-        compStart = codepointAt(std::min(regionStart, regionEnd));
-        compEnd = codepointAt(std::max(regionStart, regionEnd));
-    }
-    const bool hasComp = compEnd > compStart;
-
-    // the IME's caret: the end of its selection
-    const int32_t selectionStart = state->selection.start;
-    const int32_t selectionEnd = state->selection.end;
-    const size_t caret = (selectionEnd >= 0) ? codepointAt(selectionEnd) : text.size();
-    const bool caretCollapsed = selectionEnd >= 0 && selectionStart == selectionEnd;
-    const int compCursor = hasComp ? (int)(std::max(compStart, std::min(caret, compEnd)) - compStart) : -1;
-
-    if (imeCompEnd > imeCompStart) {
-        // the engine is composing: is the text around its composition unchanged?
-        const size_t tail = imeText.size() - imeCompEnd;
-        const bool anchored = text.size() >= imeCompStart + tail &&
-                              text.compare(0, imeCompStart, imeText, 0, imeCompStart) == 0 &&
-                              text.compare(text.size() - tail, tail, imeText, imeCompEnd, tail) == 0;
-        const size_t replacedEnd = text.size() - tail;
-
-        if (anchored && hasComp && compStart == imeCompStart && compEnd == replacedEnd) {
-            // the same composition, updated
-            if (text.compare(compStart, compEnd - compStart, imeText, imeCompStart, imeCompEnd - imeCompStart) != 0 ||
-                    compCursor != imeCompCursor) {
-                jasperengine::Engine::systemImeComposition(codepointsToUtf8(text, compStart, compEnd), compCursor);
-            }
-            imeText = text;
-            imeCompEnd = compEnd;
-            imeCompCursor = compCursor;
-            return;
-        }
-
-        if (anchored) {
-            // the composition ended: what replaced it is committed, except a new composition
-            // at its end, which follows the commit
-            const bool nextComp = hasComp && compStart >= imeCompStart && compEnd == replacedEnd;
-            const size_t commitEnd = nextComp ? compStart : replacedEnd;
-
-            if (commitEnd > imeCompStart) {
-                jasperengine::Engine::systemTextInput(codepointsToUtf8(text, imeCompStart, commitEnd));
-            } else {
-                jasperengine::Engine::systemImeCancel();
-            }
-            imeText = text;
-            imeCaret = commitEnd;
-            imeCompStart = imeCompEnd = 0;
-            imeCompCursor = -1;
-
-            if (nextComp) {
-                jasperengine::Engine::systemImeComposition(codepointsToUtf8(text, compStart, compEnd), compCursor);
-                imeCompStart = compStart;
-                imeCompEnd = compEnd;
-                imeCompCursor = compCursor;
-                return;
-            }
-        } else {
-            // text outside the composition changed too: drop the composition, then diff the rest
-            jasperengine::Engine::systemImeCancel();
-            imeText.erase(imeCompStart, imeCompEnd - imeCompStart);
-            imeCaret = imeCompStart;
-            imeCompStart = imeCompEnd = 0;
-            imeCompCursor = -1;
-        }
-    }
-
-    // one edit, taken as close to the caret as the text allows: the common prefix stops at
-    // the caret, backspaces remove before it
-    const size_t common = std::min(imeText.size(), text.size());
-    size_t prefix = 0;
-    while (prefix < std::min(common, imeCaret) && imeText[prefix] == text[prefix])
-        prefix++;
-    size_t suffix = 0;
-    while (suffix < common - prefix && imeText[imeText.size() - 1 - suffix] == text[text.size() - 1 - suffix])
-        suffix++;
-    const size_t removedEnd = imeText.size() - suffix;
-    const size_t insertedEnd = text.size() - suffix;
-
-    if (removedEnd > prefix || insertedEnd > prefix) {
-        moveTextInputCaret(removedEnd);
-        for (size_t i = prefix; i < removedEnd; i++)
-            sendTextInputKey(D_KEY_BACKSPACE);
-        imeCaret = prefix;
-
-        // a composing region at the end of the new text is composed, the rest committed
-        const bool newComp = hasComp && compStart >= prefix && compEnd == insertedEnd;
-        const size_t commitEnd = newComp ? compStart : insertedEnd;
-        if (commitEnd > prefix)
-            jasperengine::Engine::systemTextInput(codepointsToUtf8(text, prefix, commitEnd));
-        imeCaret = commitEnd;
-
-        if (newComp) {
-            jasperengine::Engine::systemImeComposition(codepointsToUtf8(text, compStart, compEnd), compCursor);
-            imeCompStart = compStart;
-            imeCompEnd = compEnd;
-            imeCompCursor = compCursor;
-        }
-    }
-    imeText = text;
-
-    // the IME moved its caret (cursor keys on the keyboard, a swipe on the space bar)
-    if (imeCompEnd == imeCompStart && caretCollapsed)
-        moveTextInputCaret(caret);
+    GameTextInputState inputState{};
+    inputState.text_UTF8 = buffer.data();
+    inputState.text_length = buffer.length();
+    inputState.selection.start = unitsBefore(selectionStart);
+    inputState.selection.end = unitsBefore(selectionEnd);
+    inputState.composingRegion.start = -1;
+    inputState.composingRegion.end = -1;
+    GameActivity_setTextInputState(activity, &inputState);
 }
 
 
@@ -539,14 +418,8 @@ NativeEngine::NativeEngine(struct android_app *app) {
     // a stylus's pressure (Input::getPenPressure)
     GameActivityPointerAxes_enableAxis(AMOTION_EVENT_AXIS_PRESSURE);
 
-    // Flags to control how the IME behaves.
-    // https://developer.android.com/reference/android/text/InputType
-    constexpr int InputType_dot_TYPE_CLASS_TEXT = 1;
-    // https://developer.android.com/reference/android/view/inputmethod/EditorInfo
-    constexpr int IME_ACTION_NONE = 1;
-    constexpr int IME_FLAG_NO_FULLSCREEN = 33554432;
-    
-    GameActivity_setImeEditorInfo(app->activity, InputType_dot_TYPE_CLASS_TEXT, IME_ACTION_NONE, IME_FLAG_NO_FULLSCREEN);
+    // the IME's settings until a field asks for its own (showSoftInput)
+    applyImeEditorInfo(app->activity, mImeEditorInfo, jasperengine::android::editorInfoOf(jasperengine::TextEntryTraits()));
 
     if (app->savedState != NULL) {
         // we are starting with previously saved state -- restore it
@@ -763,26 +636,24 @@ void NativeEngine::updateSafeArea(){
     jasperengine::Screen::setPlatformSafeArea(insets, cutouts);
 }
 
-void NativeEngine::showSoftInput(std::wstring text){
-    // GameTextInput takes Java modified UTF-8 and counts the selection in UTF-16 units
+void NativeEngine::showSoftInput(const std::wstring& text, const jasperengine::TextEntryTraits& traits){
     std::u32string codepoints = wideToCodepoints(text);
     componentTextInput.reset(codepoints);
-    int32_t utf16Length = 0;
-    std::string strInputBuffer = codepointsToModifiedUtf8(codepoints, utf16Length);
+    // a field of another kind: the IME restarts with its EditorInfo, without closing (R5)
+    const bool restart = applyImeEditorInfo(mApp->activity, mImeEditorInfo, jasperengine::android::editorInfoOf(traits));
 
-    // a document text field starts from its value, caret at the end
-    resetDocumentTextInput(codepoints, codepoints.size());
-
-    GameTextInputState inputState{};
-    inputState.text_UTF8 = strInputBuffer.data();
-    inputState.text_length = strInputBuffer.length();
-    inputState.selection.start = utf16Length;
-    inputState.selection.end = utf16Length;
-    inputState.composingRegion.start = -1;
-    inputState.composingRegion.end = -1;
-
-    GameActivity_setTextInputState(mApp->activity, &inputState);
+    // the field's text, caret at the end; the document diff starts from it too
+    setImeText(mApp->activity, codepoints, codepoints.size(), codepoints.size());
+    jasperengine::Engine::resetTextInputState(codepointsToUtf8(codepoints, 0, codepoints.size()), codepoints.size());
+    if (restart)
+        GameActivity_restartInput(mApp->activity);
     GameActivity_showSoftInput(mApp->activity, 0);
+}
+
+void NativeEngine::setSoftInputText(const std::wstring& text, int selectionStart, int selectionEnd){
+    std::u32string codepoints = wideToCodepoints(text);
+    componentTextInput.reset(codepoints);
+    setImeText(mApp->activity, codepoints, (size_t)std::max(0, selectionStart), (size_t)std::max(0, selectionEnd));
 }
 
 void NativeEngine::hideSoftInput(){
@@ -836,42 +707,48 @@ void NativeEngine::gameLoop() {
         handleGameActivityInput();
 
         if (mApp->textInputState) {
-            GameActivity_getTextInputState(mApp->activity, [](void *context, const GameTextInputState *state) {
-                if (!context || !state) return;
-
-                std::u16string units = decodeModifiedUtf8(state->text_UTF8, state->text_length);
-                std::u32string text;
-                std::vector<size_t> unitToCodepoint;
-                utf16ToCodepoints(units, text, unitToCodepoint);
-
-                if (jasperengine::Engine::wantsTextComposition()) {
-                    updateDocumentTextInput(units, state);
-                    // the component InputField diff stays in step
-                    componentTextInput.reset(text);
-                    return;
-                }
-
-                // component InputField: '\b' per removed character, then each typed one
-                const jasperengine::android::TextEdit edit = componentTextInput.update(units);
-                for (size_t i = 0; i < edit.backspaces; i++){
-                    jasperengine::Engine::systemCharInput('\b');
-                }
-                for (char32_t typed : edit.typed){
-                    jasperengine::Engine::systemCharInput(typed);
-                }
-
-                // the document diff stays in step, for a document field focused later
-                int32_t selectionEnd = std::min(state->selection.end, (int32_t)units.size());
-                resetDocumentTextInput(text, (selectionEnd >= 0) ? unitToCodepoint[selectionEnd] : text.size());
-
-            }, this);
             mApp->textInputState = 0;
+            applyTextInputState();
         }
 
         if (isAnimating()) {
             doFrame();
         }
     }
+}
+
+void NativeEngine::applyTextInputState(){
+    GameActivity_getTextInputState(mApp->activity, [](void *context, const GameTextInputState *state) {
+        if (!context || !state) return;
+
+        std::u16string units = decodeModifiedUtf8(state->text_UTF8, state->text_length);
+        std::u32string text;
+        std::vector<size_t> unitToCodepoint;
+        utf16ToCodepoints(units, text, unitToCodepoint);
+
+        if (jasperengine::Engine::wantsTextComposition()) {
+            jasperengine::Engine::systemTextInputState(units, state->selection.start, state->selection.end,
+                                                       state->composingRegion.start, state->composingRegion.end);
+            // the component InputField diff stays in step
+            componentTextInput.reset(text);
+            return;
+        }
+
+        // component InputField: '\b' per removed character, then each typed one
+        const jasperengine::android::TextEdit edit = componentTextInput.update(units);
+        for (size_t i = 0; i < edit.backspaces; i++){
+            jasperengine::Engine::systemCharInput('\b');
+        }
+        for (char32_t typed : edit.typed){
+            jasperengine::Engine::systemCharInput(typed);
+        }
+
+        // the document diff stays in step, for a document field focused later
+        int32_t selectionEnd = std::min(state->selection.end, (int32_t)units.size());
+        jasperengine::Engine::resetTextInputState(codepointsToUtf8(text, 0, text.size()),
+                                                  (selectionEnd >= 0) ? unitToCodepoint[selectionEnd] : text.size());
+
+    }, this);
 }
 
 void NativeEngine::setupJNI(){
@@ -1113,6 +990,10 @@ bool NativeEngine::initSurface() {
         jasperengine::Log::error("Unable to retrieve EGL config");
         return false;
     }
+    // a config without stencil: what needs it (the Outline) draws offscreen instead
+    EGLint stencilSize = 0;
+    eglGetConfigAttrib(mEglDisplay, mEglConfig, EGL_STENCIL_SIZE, &stencilSize);
+    jasperengine::SystemRender::setSwapchainStencil(stencilSize > 0);
 
     // create EGL surface
     mEglSurface = eglCreateWindowSurface(mEglDisplay, mEglConfig, mApp->window, NULL);
@@ -1508,16 +1389,10 @@ void NativeEngine::handleGamepadMotion(GameActivityMotionEvent* motionEvent){
 }
 
 void NativeEngine::handleGameActivityInput(){
-    // Back plays as an Escape press, released on the next frame
-    if (backEscapeDown) {
-        jasperengine::Engine::systemKeyUp(D_KEY_ESCAPE, false, jasperengine::Input::getModifiers());
-        backEscapeDown = false;
-    }
-    if (backPressed.exchange(false)) {
-        jasperengine::Engine::systemCharInput('\x1b');
-        jasperengine::Engine::systemKeyDown(D_KEY_ESCAPE, false, jasperengine::Input::getModifiers());
-        backEscapeDown = true;
-    }
+    // Back: the top menu document's `back`, then Engine.onBack; not consumed, the engine presses
+    // Escape (released on the next frame), as Back always played
+    if (backPressed.exchange(false))
+        jasperengine::Engine::systemBack(jasperengine::BackSource::BackButton);
 
     android_input_buffer* inputBuffer = android_app_swap_input_buffers(mApp);
 
@@ -1564,8 +1439,11 @@ void NativeEngine::handleGameActivityInput(){
 
                 // the soft-keyboard Back above has no engine key; don't spam
                 // listeners with D_KEY_UNKNOWN
-                if (keyCode != D_KEY_UNKNOWN)
+                // the device id: an emulator's PC mouse arrives as fingers of the device that sends keys
+                if (keyCode != D_KEY_UNKNOWN) {
+                    jasperengine::Engine::setInputSource(jasperengine::InputSourceTag::None, keyEvent->deviceId);
                     jasperengine::Engine::systemKeyDown(keyCode, repeat, modifiers);
+                }
             } else if (keyEvent->action == AKEY_EVENT_ACTION_UP) {
                 if (keyCode != D_KEY_UNKNOWN)
                     jasperengine::Engine::systemKeyUp(keyCode, repeat, modifiers);
@@ -1636,6 +1514,7 @@ void NativeEngine::handleGameActivityInput(){
                         int motionPointerId = motionEvent->pointers[p].id;
                         float motionX = GameActivityPointerAxes_getX(&motionEvent->pointers[p]);
                         float motionY = GameActivityPointerAxes_getY(&motionEvent->pointers[p]);
+                        setPointerSource(motionEvent, motionEvent->pointers[p]);
                         jasperengine::Engine::systemTouchMove(motionPointerId, motionX, motionY);
                     }
                 } else if (actionMasked == AMOTION_EVENT_ACTION_CANCEL) {
@@ -1647,6 +1526,7 @@ void NativeEngine::handleGameActivityInput(){
                         float motionX = GameActivityPointerAxes_getX(&motionEvent->pointers[ptrIndex]);
                         float motionY = GameActivityPointerAxes_getY(&motionEvent->pointers[ptrIndex]);
 
+                        setPointerSource(motionEvent, motionEvent->pointers[ptrIndex]);
                         if (actionMasked == AMOTION_EVENT_ACTION_DOWN || actionMasked == AMOTION_EVENT_ACTION_POINTER_DOWN) {
                             jasperengine::Engine::systemTouchStart(motionPointerId, motionX, motionY);
                         } else if (actionMasked == AMOTION_EVENT_ACTION_UP || actionMasked == AMOTION_EVENT_ACTION_POINTER_UP) {
@@ -1721,14 +1601,29 @@ void NativeEngine::handleCommand(int32_t cmd) {
             break;
         case APP_CMD_CONFIG_CHANGED:
             // a rotation or a locale change (configChanges keeps the activity): the surface size
-            // follows in a later frame, which reports the rotation after onCanvasChanged
+            // follows in a later frame, which reports the rotation after onCanvasChanged; a new
+            // language list re-resolves the game language (game-ui-localization.md R10)
+            jasperengine::System::instance().notifyLocalesMayHaveChanged();
             break;
+        case APP_CMD_EDITOR_ACTION: {
+            // the soft keyboard's action key (Send, Next, Done ...): Enter on the field with its hint,
+            // after the text the IME sent before it (flagged in this pass, read after the commands)
+            bool textPending = mApp->textInputState != 0;
+            if (textPending)
+                mApp->textInputState = 0;
+            jasperengine::android::editorActionWithPendingText(textPending, [this] { applyTextInputState(); }, [this] {
+                jasperengine::Engine::systemEditorAction(jasperengine::android::enterKeyOfImeAction(mApp->editorAction));
+            });
+            break;
+        }
         case APP_CMD_LOW_MEMORY:
             jasperengine::Engine::systemLowMemory();
             // system told us we have low memory. So if we are not visible, let's
             // cooperate by deallocating all of our graphic resources.
             // killContext makes the context current without a surface to delete the GL objects
             // (EGL_KHR_surfaceless_context); destroying the context frees the GPU memory anyway.
+            // Only the GPU objects go (Engine::systemViewDestroyed): the scenes, their scripts and
+            // their HTML UI documents stay as they are until prepareToRender loads the view again.
             if (!mHasWindow) {
                 killContext();
             }

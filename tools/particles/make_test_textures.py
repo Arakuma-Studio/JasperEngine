@@ -6,14 +6,17 @@
 # into engine/tests/core/fixtures/particles/textures: a soft spark, a 4 x 4 sprite sheet of numbered
 # colours (frame blending), and the two six-way smoke maps of a lit puff (RGBA layout:
 # A = right, top, back, opacity; B = left, bottom, front, emission), and a lens distortion map
-# (library:particles DISTORTION: red and green 0.5 shift nothing). Deterministic: run it again
-# and the files are the same.
+# (library:particles DISTORTION: red and green 0.5 shift nothing), and one white glow three ways (RGBA
+# with its disc in alpha; RGB and greyscale without alpha, the disc in the colour: additive particles
+# draw those, S94 AC3). Deterministic: run it again and the files are the same.
 #
 #   python3 tools/particles/make_test_textures.py
 
 import math
 import os
+import struct
 import sys
+import zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "tools", "mcp"))
@@ -98,13 +101,46 @@ def distortion(size=64):
     return size, size, rgba
 
 
+def glow(size=64):
+    # a white disc fading to its rim: in alpha (RGBA), in the colour on black (RGB, grey)
+    levels = []
+    for y in range(size):
+        for x in range(size):
+            dx = (x + 0.5) / size * 2 - 1
+            dy = (y + 0.5) / size * 2 - 1
+            v = max(0.0, 1.0 - math.sqrt(dx * dx + dy * dy))
+            levels.append(clamp(255 * min(1.0, v * 1.6)))
+    rgba = bytearray()
+    rgb = bytearray()
+    for v in levels:
+        rgba += bytes((255, 255, 255, v))
+        rgb += bytes((v, v, v))
+    return (size, size, rgba), (size, size, rgb), (size, size, bytes(levels))
+
+
+def encode_plain(width, height, channels, pixels):
+    # an 8-bit PNG without alpha (pngdiff writes RGBA only): colour type 2 (RGB) or 0 (grey)
+    stride = width * channels
+    raw = b"".join(b"\x00" + bytes(pixels[y * stride:(y + 1) * stride]) for y in range(height))
+    def chunk(kind, payload):
+        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF)
+    colour_type = 2 if channels == 3 else 0
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, colour_type, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     images = {"spark.png": spark(), "sheet.png": sheet(), "distortion.png": distortion()}
     images["sixway_a.png"], images["sixway_b.png"] = sixway()
-    for name, (w, h, rgba) in images.items():
+    plain = {}
+    images["glow_rgba.png"], plain["glow_rgb.png"], plain["glow_grey.png"] = glow()
+    files = {name: pngdiff.encode(w, h, bytes(rgba)) for name, (w, h, rgba) in images.items()}
+    for name, (w, h, pixels) in plain.items():
+        files[name] = encode_plain(w, h, len(pixels) // (w * h), pixels)
+    for name, data in files.items():
         with open(os.path.join(OUT, name), "wb") as f:
-            f.write(pngdiff.encode(w, h, bytes(rgba)))
+            f.write(data)
         print("wrote", os.path.relpath(os.path.join(OUT, name), ROOT))
     return 0
 

@@ -16,6 +16,7 @@
 #include "Log.h"
 
 
+#include <atomic>
 #include <mutex>
 #include <string>
 
@@ -261,6 +262,18 @@ const RenderFeatures& SystemRender::getFeatures(){
 }
 
 namespace {
+    std::atomic<bool> swapchainStencil{true};
+}
+
+void SystemRender::setSwapchainStencil(bool stencil){
+    swapchainStencil.store(stencil);
+}
+
+bool SystemRender::hasSwapchainStencil(){
+    return swapchainStencil.load();
+}
+
+namespace {
     std::mutex& textureSupportMutex(){
         static std::mutex* mutex = new std::mutex();
         return *mutex;
@@ -496,6 +509,10 @@ BackendFrameCounters SystemRender::getBackendFrameCounters(){
 
 std::string SystemRender::getApiVersion(){
     return SokolSystem::getApiVersion();
+}
+
+std::string SystemRender::getDriverVersion(){
+    return SokolSystem::getDriverVersion();
 }
 
 const char* SystemRender::getBackendName(){

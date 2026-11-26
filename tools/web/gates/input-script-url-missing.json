@@ -1,0 +1,13 @@
+{
+  "description": "tools/test-projects/input (WEB_PROJECT=input tools/build.sh web): ?input-script=/scripts/missing.input.json names a URL the page cannot fetch (404): the run fails before the engine starts, naming the URL, and exits 10 (input-recorder-and-input-scripts R30).",
+  "project": "input",
+  "query": ["input-script=%2Fscripts%2Fmissing.input.json", "quit-after-input"],
+  "seconds": 10,
+  "no_ready": true,
+  "allow": ["404", "missing.input.json"],
+  "console": [
+    {"text": "[input] failed {\"event\": -1, \"error\": \"cannot fetch /scripts/missing.input.json: HTTP 404\"}", "level": "log"},
+    {"text": "JasperEngine exit code 10", "level": "log"}
+  ],
+  "ordered": true
+}

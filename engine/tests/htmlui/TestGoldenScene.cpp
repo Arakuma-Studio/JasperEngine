@@ -20,6 +20,9 @@
 #include "object/ui/Text.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/GamepadCursor.h"
+#include "input/InputScheme.h"
+#include "object/ui/UIDocument.h"
 #include "component/UIDocumentComponent.h"
 #include "render/FramebufferRender.h"
 #include "component/PixelPerfectCameraComponent.h"
@@ -246,6 +249,50 @@ TEST_F(FullPathGoldenTest, Debugger){
     Screen hidden;
     ASSERT_TRUE(capture(hidden, 2));
     EXPECT_TRUE(hidden.inkOnBackground({0, 0, 640, 40}).empty());
+}
+
+// text-entry-gamepad-cursor-back-button AC15: the gamepad cursor drawn over a document and a
+// component Image: the built-in arrow (hot spot at its tip), then a project texture at 48 px with
+// its hot spot at (24, 24)
+TEST_F(FullPathGoldenTest, GamepadCursorDrawnOnTop){
+    SceneFixture fixture;
+    Image& image = fixture.add<Image>();
+    image.setPosition(50, 50);
+    image.setSize(300, 200);
+    image.setColor(1.0f, 0.0f, 0.0f, 1.0f);
+    UIDocument document = fixture.addDocument("golden/component_ui_under.rml");
+    document.setGamepadCursor(true);
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    InputSchemeTracker::setOverride(InputScheme::Gamepad);
+    GpuEnvironment::drawFrames(2);
+    ASSERT_TRUE(GamepadCursor::isActive());
+
+    // the arrow's tip on the red image, its body across the green panel's left edge (x 200)
+    GamepadCursor::setPosition(Vector2(190.0f, 140.0f));
+    Screen screen;
+    ASSERT_TRUE(capture(screen, 3));
+    EXPECT_TRUE(screen.is(195, 152, 255, 255, 255, 24)) << "the arrow's white fill";
+    EXPECT_TRUE(screen.is(225, 150, 0x20, 0xa0, 0x40)) << "the panel beside it";
+    EXPECT_TRUE(screen.is(120, 200, 255, 0, 0)) << "the component image away from it";
+    EXPECT_SCREEN_GOLDEN(screen, "gamepad_cursor");
+
+    // a project texture, 48 px, hot spot (24, 24): centred on the point
+    GamepadCursorSettings settings;
+    settings.graphic = "common/checker.png";
+    settings.size = 48.0f;
+    settings.hotSpot = Vector2(24.0f, 24.0f);
+    GamepadCursor::setDefaults(settings);
+    GamepadCursor::setPosition(Vector2(420.0f, 200.0f));
+    ASSERT_TRUE(capture(screen, 3));
+    EXPECT_GT(screen.inkOnBackground({0, 0, 640, 360}).count, 0u);
+    EXPECT_FALSE(screen.is(420, 200, 0x20, 0xa0, 0x40, 4)) << "the texture covers the panel at the point";
+    EXPECT_TRUE(screen.is(390, 200, 0x20, 0xa0, 0x40)) << "and not 30 px left of it";
+    EXPECT_SCREEN_GOLDEN(screen, "gamepad_cursor_texture");
+
+    GamepadCursor::setDefaults(GamepadCursorSettings());
+    InputSchemeTracker::setOverride(std::nullopt);
+    GamepadCursor::resetSession();
+    GpuEnvironment::drawFrames(1);
 }
 
 // ---------------------------------------------------------------------------------------

@@ -198,6 +198,7 @@
     "morphWeights",
     "normAdjustJoint",
     "normAdjustWeight",
+    "propertyOverrides",
     "receiveIBL",
     "receiveLights",
     "receiveShadows",
@@ -330,6 +331,16 @@
      0,
      true
     ],
+    "propertyOverrides.textures": [
+     15,
+     24,
+     true
+    ],
+    "propertyOverrides.values": [
+     15,
+     68719476736,
+     true
+    ],
     "receiveIBL": [
      0,
      8,
@@ -457,6 +468,16 @@
      0,
      true
     ],
+    "propertyOverrides.textures": [
+     15,
+     24,
+     true
+    ],
+    "propertyOverrides.values": [
+     15,
+     68719476736,
+     true
+    ],
     "receiveIBL": [
      0,
      8,
@@ -527,7 +548,37 @@
      16,
      true
     ],
+    "submeshes[].material.blendDst": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendDstAlpha": [
+     13,
+     8,
+     true
+    ],
     "submeshes[].material.blendMode": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendOp": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendOpAlpha": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendSrc": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendSrcAlpha": [
      13,
      8,
      true
@@ -582,7 +633,37 @@
      68719476760,
      true
     ],
+    "submeshes[].material.extraPass.blendDst": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendDstAlpha": [
+     13,
+     8,
+     true
+    ],
     "submeshes[].material.extraPass.blendMode": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendOp": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendOpAlpha": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendSrc": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendSrcAlpha": [
      13,
      8,
      true
@@ -952,36 +1033,6 @@
      16,
      true
     ],
-    "submeshes[].material.pbr.vertexColor.a": [
-     13,
-     16,
-     true
-    ],
-    "submeshes[].material.pbr.vertexColor.alphaOpacity": [
-     0,
-     16,
-     true
-    ],
-    "submeshes[].material.pbr.vertexColor.b": [
-     13,
-     16,
-     true
-    ],
-    "submeshes[].material.pbr.vertexColor.g": [
-     13,
-     16,
-     true
-    ],
-    "submeshes[].material.pbr.vertexColor.r": [
-     13,
-     16,
-     true
-    ],
-    "submeshes[].material.pbr.vertexColor.use": [
-     13,
-     16,
-     true
-    ],
     "submeshes[].material.pbr.volume.attenuationColor": [
      5,
      0,
@@ -1110,6 +1161,16 @@
     "submeshes[].primitiveType": [
      13,
      8,
+     true
+    ],
+    "submeshes[].propertyOverrides.textures": [
+     15,
+     24,
+     true
+    ],
+    "submeshes[].propertyOverrides.values": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[].textureRect": [
@@ -1818,6 +1879,18 @@
   {
    "display_name": "Light",
    "enum_options": {
+    "areaShape": [
+     [
+      0,
+      "rectangle",
+      "Rectangle"
+     ],
+     [
+      1,
+      "disc",
+      "Disc"
+     ]
+    ],
     "cascadeSplitMode": [
      [
       0,
@@ -1850,6 +1923,11 @@
       3,
       "lumen",
       "Lumen"
+     ],
+     [
+      4,
+      "nits",
+      "Nits"
      ]
     ],
     "shading": [
@@ -1901,6 +1979,11 @@
       2,
       "spot",
       "Spot"
+     ],
+     [
+      3,
+      "area",
+      "Area"
      ]
     ]
    },
@@ -1908,6 +1991,10 @@
    "icon": "ef83ab",
    "key": "light",
    "known_keys": [
+    "areaHeight",
+    "areaRadius",
+    "areaShape",
+    "areaWidth",
     "automaticShadowCamera",
     "cascadeSplitMode",
     "cascadeSplits",
@@ -1920,6 +2007,7 @@
     "cullingMask",
     "direction",
     "enabled",
+    "iesProfile",
     "innerConeCos",
     "intensity",
     "intensityUnit",
@@ -1946,6 +2034,26 @@
    ],
    "name": "LightComponent",
    "properties_of_default": {
+    "areaHeight": [
+     2,
+     4096,
+     true
+    ],
+    "areaRadius": [
+     2,
+     4096,
+     true
+    ],
+    "areaShape": [
+     13,
+     4096,
+     true
+    ],
+    "areaWidth": [
+     2,
+     4096,
+     true
+    ],
     "automaticShadowCamera": [
      0,
      4096,
@@ -2003,6 +2111,11 @@
     ],
     "enabled": [
      0,
+     0,
+     true
+    ],
+    "iesProfile": [
+     18,
      0,
      true
     ],
@@ -2123,6 +2236,26 @@
     ]
    },
    "properties_without_component": {
+    "areaHeight": [
+     2,
+     4096,
+     true
+    ],
+    "areaRadius": [
+     2,
+     4096,
+     true
+    ],
+    "areaShape": [
+     13,
+     4096,
+     true
+    ],
+    "areaWidth": [
+     2,
+     4096,
+     true
+    ],
     "automaticShadowCamera": [
      0,
      4096,
@@ -2180,6 +2313,11 @@
     ],
     "enabled": [
      0,
+     0,
+     true
+    ],
+    "iesProfile": [
+     18,
      0,
      true
     ],
@@ -3850,6 +3988,7 @@
     "mergeStaticMeshes",
     "meshNodesMapping",
     "nodesIdMapping",
+    "preserveHierarchy",
     "skeleton"
    ],
    "name": "ModelComponent",
@@ -3877,6 +4016,11 @@
     "mergeStaticMeshes": [
      0,
      2097152,
+     true
+    ],
+    "preserveHierarchy": [
+     0,
+     0,
      true
     ],
     "skeleton": [
@@ -3909,6 +4053,11 @@
     "mergeStaticMeshes": [
      0,
      2097152,
+     true
+    ],
+    "preserveHierarchy": [
+     0,
+     0,
      true
     ],
     "skeleton": [
@@ -6812,6 +6961,7 @@
     "leftClip",
     "nearClip",
     "oitWeightScale",
+    "orthographicSize",
     "renderToTexture",
     "rightClip",
     "target",
@@ -6888,6 +7038,11 @@
     "oitWeightScale": [
      2,
      0,
+     true
+    ],
+    "orthographicSize": [
+     2,
+     2,
      true
     ],
     "renderToTexture": [
@@ -7005,6 +7160,11 @@
     "oitWeightScale": [
      2,
      0,
+     true
+    ],
+    "orthographicSize": [
+     2,
+     2,
      true
     ],
     "renderToTexture": [
@@ -9780,6 +9940,7 @@
     "enabled",
     "exposedValues",
     "inlineEffect",
+    "legacyFrom",
     "playOnAwake",
     "playbackSpeed",
     "seed",
@@ -9813,6 +9974,11 @@
      15,
      2199023255552,
      false
+    ],
+    "legacyFrom": [
+     16,
+     0,
+     true
     ],
     "playOnAwake": [
      0,
@@ -9870,6 +10036,11 @@
      15,
      2199023255552,
      false
+    ],
+    "legacyFrom": [
+     16,
+     0,
+     true
     ],
     "playOnAwake": [
      0,
@@ -10624,6 +10795,7 @@
     "automaticFlipY",
     "drawMode",
     "enabled",
+    "flipX",
     "flipY",
     "frame",
     "frameName",
@@ -10634,6 +10806,7 @@
     "pixelsPerUnit",
     "sheet",
     "sheetGuid",
+    "size",
     "spriteSortPoint",
     "textureScaleFactor",
     "width"
@@ -10653,6 +10826,11 @@
     "enabled": [
      0,
      0,
+     true
+    ],
+    "flipX": [
+     0,
+     1024,
      true
     ],
     "flipY": [
@@ -10697,6 +10875,11 @@
     ],
     "sheet": [
      18,
+     1024,
+     true
+    ],
+    "size": [
+     4,
      1024,
      true
     ],
@@ -10732,6 +10915,11 @@
      0,
      true
     ],
+    "flipX": [
+     0,
+     1024,
+     true
+    ],
     "flipY": [
      0,
      1024,
@@ -10774,6 +10962,11 @@
     ],
     "sheet": [
      18,
+     1024,
+     true
+    ],
+    "size": [
+     4,
      1024,
      true
     ],
@@ -10800,33 +10993,161 @@
   },
   {
    "display_name": "Text",
-   "enum_options": {},
+   "enum_options": {
+    "anchorHorizontal": [
+     [
+      0,
+      "left",
+      "Left"
+     ],
+     [
+      1,
+      "center",
+      "Center"
+     ],
+     [
+      2,
+      "right",
+      "Right"
+     ]
+    ],
+    "anchorVertical": [
+     [
+      3,
+      "top",
+      "Top"
+     ],
+     [
+      4,
+      "middle",
+      "Middle"
+     ],
+     [
+      5,
+      "bottom",
+      "Bottom"
+     ],
+     [
+      6,
+      "baseline",
+      "Baseline"
+     ],
+     [
+      7,
+      "capline",
+      "Capline"
+     ],
+     [
+      8,
+      "midline",
+      "Midline"
+     ]
+    ],
+    "fontSizeUnit": [
+     [
+      0,
+      "pixel_height",
+      "Pixel Height"
+     ],
+     [
+      1,
+      "em",
+      "Em"
+     ]
+    ],
+    "horizontalAlignment": [
+     [
+      0,
+      "left",
+      "Left"
+     ],
+     [
+      1,
+      "center",
+      "Center"
+     ],
+     [
+      2,
+      "right",
+      "Right"
+     ],
+     [
+      3,
+      "justified",
+      "Justified"
+     ]
+    ],
+    "verticalAlignment": [
+     [
+      0,
+      "top",
+      "Top"
+     ],
+     [
+      1,
+      "middle",
+      "Middle"
+     ],
+     [
+      2,
+      "bottom",
+      "Bottom"
+     ],
+     [
+      3,
+      "baseline",
+      "Baseline"
+     ]
+    ]
+   },
    "has_enabled": false,
    "icon": "ef80b1",
    "key": "text",
    "known_keys": [
+    "anchorHorizontal",
+    "anchorVertical",
+    "autoSize",
     "fixedHeight",
     "fixedWidth",
     "font",
     "fontGuid",
     "fontSize",
+    "fontSizeMax",
+    "fontSizeMin",
+    "fontSizeUnit",
+    "horizontalAlignment",
+    "localizationKey",
     "maxTextSize",
     "multiline",
     "outlineColor",
     "outlineNeighbors",
     "outlineWidth",
-    "pivotBaseline",
-    "pivotCentered",
     "shadowColor",
     "shadowDilate",
     "shadowEnabled",
     "shadowOffset",
     "shadowSoftness",
     "text",
+    "verticalAlignment",
     "visibleCharacters"
    ],
    "name": "TextComponent",
    "properties_of_default": {
+    "anchorHorizontal": [
+     13,
+     32768,
+     true
+    ],
+    "anchorVertical": [
+     13,
+     32768,
+     true
+    ],
+    "autoSize": [
+     0,
+     65536,
+     true
+    ],
     "fixedHeight": [
      0,
      32768,
@@ -10845,6 +11166,31 @@
     "fontSize": [
      9,
      65536,
+     true
+    ],
+    "fontSizeMax": [
+     9,
+     65536,
+     true
+    ],
+    "fontSizeMin": [
+     9,
+     65536,
+     true
+    ],
+    "fontSizeUnit": [
+     13,
+     65536,
+     true
+    ],
+    "horizontalAlignment": [
+     13,
+     32768,
+     true
+    ],
+    "localizationKey": [
+     1,
+     32768,
      true
     ],
     "maxTextSize": [
@@ -10869,16 +11215,6 @@
     ],
     "outlineWidth": [
      2,
-     32768,
-     true
-    ],
-    "pivotBaseline": [
-     0,
-     32768,
-     true
-    ],
-    "pivotCentered": [
-     0,
      32768,
      true
     ],
@@ -10909,6 +11245,11 @@
     ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "verticalAlignment": [
+     13,
      32768,
      true
     ],
@@ -10919,6 +11260,21 @@
     ]
    },
    "properties_without_component": {
+    "anchorHorizontal": [
+     13,
+     32768,
+     true
+    ],
+    "anchorVertical": [
+     13,
+     32768,
+     true
+    ],
+    "autoSize": [
+     0,
+     65536,
+     true
+    ],
     "fixedHeight": [
      0,
      32768,
@@ -10937,6 +11293,31 @@
     "fontSize": [
      9,
      65536,
+     true
+    ],
+    "fontSizeMax": [
+     9,
+     65536,
+     true
+    ],
+    "fontSizeMin": [
+     9,
+     65536,
+     true
+    ],
+    "fontSizeUnit": [
+     13,
+     65536,
+     true
+    ],
+    "horizontalAlignment": [
+     13,
+     32768,
+     true
+    ],
+    "localizationKey": [
+     1,
+     32768,
      true
     ],
     "maxTextSize": [
@@ -10961,16 +11342,6 @@
     ],
     "outlineWidth": [
      2,
-     32768,
-     true
-    ],
-    "pivotBaseline": [
-     0,
-     32768,
-     true
-    ],
-    "pivotCentered": [
-     0,
      32768,
      true
     ],
@@ -11001,6 +11372,11 @@
     ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "verticalAlignment": [
+     13,
      32768,
      true
     ],
@@ -11017,17 +11393,57 @@
   },
   {
    "display_name": "Input Field",
-   "enum_options": {},
+   "enum_options": {
+    "keyboardType": [
+     [
+      0,
+      "default",
+      "Default"
+     ],
+     [
+      1,
+      "number_pad",
+      "Number Pad"
+     ],
+     [
+      2,
+      "decimal_pad",
+      "Decimal Pad"
+     ],
+     [
+      3,
+      "phone_pad",
+      "Phone Pad"
+     ],
+     [
+      4,
+      "email_address",
+      "Email Address"
+     ],
+     [
+      5,
+      "url",
+      "URL"
+     ],
+     [
+      6,
+      "search",
+      "Search"
+     ]
+    ]
+   },
    "has_enabled": false,
    "icon": "ef849c",
    "key": "inputfield",
    "known_keys": [
+    "characterLimit",
     "cursor",
     "cursorBlink",
     "cursorColor",
     "cursorIndex",
     "cursorWidth",
     "disabled",
+    "keyboardType",
     "password",
     "passwordChar",
     "placeholder",
@@ -11039,6 +11455,11 @@
    ],
    "name": "InputFieldComponent",
    "properties_of_default": {
+    "characterLimit": [
+     8,
+     0,
+     true
+    ],
     "cursor": [
      16,
      0,
@@ -11066,6 +11487,11 @@
     ],
     "disabled": [
      0,
+     0,
+     true
+    ],
+    "keyboardType": [
+     13,
      0,
      true
     ],
@@ -11106,6 +11532,11 @@
     ]
    },
    "properties_without_component": {
+    "characterLimit": [
+     8,
+     0,
+     true
+    ],
     "cursor": [
      16,
      0,
@@ -11133,6 +11564,11 @@
     ],
     "disabled": [
      0,
+     0,
+     true
+    ],
+    "keyboardType": [
+     13,
      0,
      true
     ],
@@ -12839,6 +13275,23 @@
       1,
       "texture",
       "Texture"
+     ],
+     [
+      2,
+      "world",
+      "World Space"
+     ]
+    ],
+    "updateMode": [
+     [
+      0,
+      "unscaled",
+      "Unscaled Time"
+     ],
+     [
+      1,
+      "game",
+      "Game Time"
      ]
     ]
    },
@@ -12846,19 +13299,29 @@
    "icon": "ef8789",
    "key": "uidocument",
    "known_keys": [
+    "billboard",
     "enabled",
     "filename",
+    "gamepadCursor",
     "inputSurface",
     "interactive",
+    "isMenu",
     "msaaSamples",
     "pixelRatio",
+    "pixelsPerUnit",
     "renderMode",
     "sortOrder",
     "textureHeight",
-    "textureWidth"
+    "textureWidth",
+    "updateMode"
    ],
    "name": "UIDocumentComponent",
    "properties_of_default": {
+    "billboard": [
+     0,
+     0,
+     true
+    ],
     "enabled": [
      0,
      0,
@@ -12867,6 +13330,11 @@
     "filename": [
      18,
      274877906944,
+     true
+    ],
+    "gamepadCursor": [
+     0,
+     0,
      true
     ],
     "inputSurface": [
@@ -12879,6 +13347,11 @@
      0,
      true
     ],
+    "isMenu": [
+     0,
+     0,
+     true
+    ],
     "msaaSamples": [
      8,
      0,
@@ -12887,6 +13360,11 @@
     "pixelRatio": [
      2,
      274877906944,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
+     0,
      true
     ],
     "renderMode": [
@@ -12907,10 +13385,20 @@
     "textureWidth": [
      8,
      274877906944,
+     true
+    ],
+    "updateMode": [
+     13,
+     0,
      true
     ]
    },
    "properties_without_component": {
+    "billboard": [
+     0,
+     0,
+     true
+    ],
     "enabled": [
      0,
      0,
@@ -12919,6 +13407,11 @@
     "filename": [
      18,
      274877906944,
+     true
+    ],
+    "gamepadCursor": [
+     0,
+     0,
      true
     ],
     "inputSurface": [
@@ -12931,6 +13424,11 @@
      0,
      true
     ],
+    "isMenu": [
+     0,
+     0,
+     true
+    ],
     "msaaSamples": [
      8,
      0,
@@ -12939,6 +13437,11 @@
     "pixelRatio": [
      2,
      274877906944,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
+     0,
      true
     ],
     "renderMode": [
@@ -12959,6 +13462,11 @@
     "textureWidth": [
      8,
      274877906944,
+     true
+    ],
+    "updateMode": [
+     13,
+     0,
      true
     ]
    },
@@ -15290,18 +15798,25 @@
    "icon": "ef8088",
    "key": "animationplayer",
    "known_keys": [
+    "applyRootMotion",
     "clips",
     "controller",
     "defaultClip",
     "defaultFadeTime",
     "enabled",
     "layers",
+    "legacyRootDrift",
     "playAutomatically",
     "poseFrameRate",
     "speed"
    ],
    "name": "AnimationPlayerComponent",
    "properties_of_default": {
+    "applyRootMotion": [
+     0,
+     0,
+     true
+    ],
     "clips": [
      15,
      8796093022208,
@@ -15327,6 +15842,11 @@
      8796093022208,
      true
     ],
+    "legacyRootDrift": [
+     0,
+     0,
+     true
+    ],
     "playAutomatically": [
      0,
      0,
@@ -15344,6 +15864,11 @@
     ]
    },
    "properties_without_component": {
+    "applyRootMotion": [
+     0,
+     0,
+     true
+    ],
     "clips": [
      15,
      8796093022208,
@@ -15437,6 +15962,11 @@
     "layers[].weight": [
      2,
      8796093022208,
+     true
+    ],
+    "legacyRootDrift": [
+     0,
+     0,
      true
     ],
     "playAutomatically": [
@@ -18411,6 +18941,7 @@
     "eventMode",
     "exposedBones",
     "ik",
+    "legacyRootDrift",
     "poseFrameRate",
     "retarget",
     "rootMotionBone",
@@ -18459,6 +18990,11 @@
     "ik": [
      15,
      35184372088832,
+     true
+    ],
+    "legacyRootDrift": [
+     0,
+     0,
      true
     ],
     "poseFrameRate": [
@@ -18700,6 +19236,11 @@
     ],
     "ik[].weightParameter": [
      1,
+     0,
+     true
+    ],
+    "legacyRootDrift": [
+     0,
      0,
      true
     ],
@@ -19697,6 +20238,11 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
+     ],
+     [
+      2,
+      "touch_scheme",
+      "Touch Scheme"
      ]
     ]
    },
@@ -19893,6 +20439,11 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
+     ],
+     [
+      2,
+      "touch_scheme",
+      "Touch Scheme"
      ]
     ]
    },
@@ -19990,6 +20541,11 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
+     ],
+     [
+      2,
+      "touch_scheme",
+      "Touch Scheme"
      ]
     ]
    },
@@ -25075,126 +25631,201 @@
    "type_of_name": 105
   },
   {
-   "display_name": "Vertex Colors",
+   "display_name": "Simulation Culling",
    "enum_options": {
-    "format": [
+    "reason": [
      [
       0,
-      "rgba8",
-      "RGBA8"
+      "none",
+      "None"
      ],
      [
       1,
-      "rgba16f",
-      "High Precision (RGBA16F)"
-     ]
-    ],
-    "initialValue": [
-     [
-      0,
-      "asset",
-      "Asset Colors"
-     ],
-     [
-      1,
-      "white",
-      "White"
+      "distance",
+      "Distance"
      ],
      [
       2,
-      "black",
-      "Black"
+      "ground_not_loaded",
+      "Ground Not Loaded"
+     ]
+    ],
+    "state": [
+     [
+      0,
+      "full",
+      "Full"
      ],
      [
-      3,
-      "custom",
-      "Custom"
+      1,
+      "reduced",
+      "Reduced"
+     ],
+     [
+      2,
+      "culled",
+      "Culled"
      ]
     ]
    },
    "has_enabled": true,
-   "icon": "ef94bf",
-   "key": "vertexcolors",
+   "icon": "ef81b0",
+   "key": "simulationculling",
    "known_keys": [
-    "channelNames",
-    "customInitial",
-    "data",
+    "boundsRadius",
+    "cullAnimator",
+    "cullPhysics",
+    "cullScripts",
     "enabled",
-    "format",
-    "initialValue"
+    "freezeWhenGroundNotLoaded",
+    "hysteresis",
+    "reducedRateDistance",
+    "reducedUpdateInterval",
+    "simulateWhenVisible",
+    "simulationDistance"
    ],
-   "name": "VertexColorsComponent",
+   "name": "SimulationCullingComponent",
    "properties_of_default": {
-    "channelNames[0]": [
-     1,
+    "boundsRadius": [
+     2,
      0,
      true
     ],
-    "channelNames[1]": [
-     1,
+    "cullAnimator": [
+     0,
      0,
      true
     ],
-    "channelNames[2]": [
-     1,
+    "cullPhysics": [
+     0,
      0,
      true
     ],
-    "channelNames[3]": [
-     1,
+    "cullScripts": [
      0,
-     true
-    ],
-    "customInitial": [
-     6,
-     288230376151711744,
-     true
-    ],
-    "data": [
-     18,
-     288230376151711744,
+     0,
      true
     ],
     "enabled": [
      0,
-     288230376151711744,
+     0,
      true
     ],
-    "format": [
-     13,
-     288230376151711744,
+    "focusDistance": [
+     2,
+     0,
      true
     ],
-    "initialValue": [
+    "freezeWhenGroundNotLoaded": [
+     0,
+     0,
+     true
+    ],
+    "hysteresis": [
+     2,
+     0,
+     true
+    ],
+    "reason": [
      13,
-     288230376151711744,
+     0,
+     true
+    ],
+    "reducedRateDistance": [
+     2,
+     0,
+     true
+    ],
+    "reducedUpdateInterval": [
+     8,
+     0,
+     true
+    ],
+    "simulateWhenVisible": [
+     0,
+     0,
+     true
+    ],
+    "simulationDistance": [
+     2,
+     0,
+     true
+    ],
+    "state": [
+     13,
+     0,
      true
     ]
    },
    "properties_without_component": {
-    "customInitial": [
-     6,
-     288230376151711744,
+    "boundsRadius": [
+     2,
+     0,
      true
     ],
-    "data": [
-     18,
-     288230376151711744,
+    "cullAnimator": [
+     0,
+     0,
+     true
+    ],
+    "cullPhysics": [
+     0,
+     0,
+     true
+    ],
+    "cullScripts": [
+     0,
+     0,
      true
     ],
     "enabled": [
      0,
-     288230376151711744,
+     0,
      true
     ],
-    "format": [
-     13,
-     288230376151711744,
+    "focusDistance": [
+     2,
+     0,
      true
     ],
-    "initialValue": [
+    "freezeWhenGroundNotLoaded": [
+     0,
+     0,
+     true
+    ],
+    "hysteresis": [
+     2,
+     0,
+     true
+    ],
+    "reason": [
      13,
-     288230376151711744,
+     0,
+     true
+    ],
+    "reducedRateDistance": [
+     2,
+     0,
+     true
+    ],
+    "reducedUpdateInterval": [
+     8,
+     0,
+     true
+    ],
+    "simulateWhenVisible": [
+     0,
+     0,
+     true
+    ],
+    "simulationDistance": [
+     2,
+     0,
+     true
+    ],
+    "state": [
+     13,
+     0,
      true
     ]
    },
@@ -25202,6 +25833,284 @@
    "type": 106,
    "type_of_key": 106,
    "type_of_name": 106
+  },
+  {
+   "display_name": "Dialogue Runner",
+   "enum_options": {},
+   "has_enabled": false,
+   "icon": "ef8286",
+   "key": "dialoguerunner",
+   "known_keys": [
+    "autoStart",
+    "dialogue",
+    "seed",
+    "startEntry",
+    "view"
+   ],
+   "name": "DialogueRunnerComponent",
+   "properties_of_default": {
+    "autoStart": [
+     0,
+     0,
+     true
+    ],
+    "currentNode": [
+     1,
+     0,
+     true
+    ],
+    "dialogue": [
+     18,
+     0,
+     true
+    ],
+    "isRunning": [
+     0,
+     0,
+     true
+    ],
+    "seed": [
+     8,
+     0,
+     true
+    ],
+    "startEntry": [
+     1,
+     0,
+     true
+    ],
+    "state": [
+     1,
+     0,
+     true
+    ],
+    "view": [
+     16,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "autoStart": [
+     0,
+     0,
+     true
+    ],
+    "currentNode": [
+     1,
+     0,
+     true
+    ],
+    "dialogue": [
+     18,
+     0,
+     true
+    ],
+    "isRunning": [
+     0,
+     0,
+     true
+    ],
+    "seed": [
+     8,
+     0,
+     true
+    ],
+    "startEntry": [
+     1,
+     0,
+     true
+    ],
+    "state": [
+     1,
+     0,
+     true
+    ],
+    "view": [
+     16,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 107,
+   "type_of_key": 107,
+   "type_of_name": 107
+  },
+  {
+   "display_name": "Outline",
+   "enum_options": {
+    "mode": [
+     [
+      0,
+      "outline_all",
+      "Outline All"
+     ],
+     [
+      1,
+      "outline_visible",
+      "Outline Visible"
+     ],
+     [
+      2,
+      "outline_hidden",
+      "Outline Hidden"
+     ],
+     [
+      3,
+      "outline_and_silhouette",
+      "Outline And Silhouette"
+     ],
+     [
+      4,
+      "silhouette_only",
+      "Silhouette Only"
+     ]
+    ],
+    "widthUnits": [
+     [
+      0,
+      "pixels",
+      "Pixels"
+     ],
+     [
+      1,
+      "world",
+      "World"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef978b",
+   "key": "outline",
+   "known_keys": [
+    "color",
+    "enabled",
+    "includeChildren",
+    "mode",
+    "width",
+    "widthUnits"
+   ],
+   "name": "OutlineComponent",
+   "properties_of_default": {
+    "color": [
+     6,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeChildren": [
+     0,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ],
+    "widthUnits": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "color": [
+     6,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeChildren": [
+     0,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ],
+    "widthUnits": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 108,
+   "type_of_key": 108,
+   "type_of_name": 108
+  },
+  {
+   "display_name": "Sprite Skin",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef9797",
+   "key": "spriteskin",
+   "known_keys": [
+    "bones",
+    "enabled",
+    "rootBone"
+   ],
+   "name": "SpriteSkinComponent",
+   "properties_of_default": {
+    "bones": [
+     15,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "rootBone": [
+     16,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "bones": [
+     15,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "rootBone": [
+     16,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 109,
+   "type_of_key": 109,
+   "type_of_name": 109
   }
  ],
  "ease_options": [
@@ -25449,6 +26358,11 @@
    ]
   },
   "AnimationPlayerComponent": {
+   "applyRootMotion": [
+    0,
+    0,
+    true
+   ],
    "clips": [
     15,
     8796093022208,
@@ -25512,6 +26426,11 @@
    "layers": [
     15,
     8796093022208,
+    true
+   ],
+   "legacyRootDrift": [
+    0,
+    0,
     true
    ],
    "playAutomatically": [
@@ -25733,6 +26652,11 @@
    ],
    "ik[N].weightParameter": [
     1,
+    0,
+    true
+   ],
+   "legacyRootDrift": [
+    0,
     0,
     true
    ],
@@ -26208,6 +27132,11 @@
     0,
     true
    ],
+   "orthographicSize": [
+    2,
+    2,
+    true
+   ],
    "renderToTexture": [
     0,
     2,
@@ -26629,6 +27558,48 @@
    ],
    "useSRGB": [
     0,
+    0,
+    true
+   ]
+  },
+  "DialogueRunnerComponent": {
+   "autoStart": [
+    0,
+    0,
+    true
+   ],
+   "currentNode": [
+    1,
+    0,
+    true
+   ],
+   "dialogue": [
+    18,
+    0,
+    true
+   ],
+   "isRunning": [
+    0,
+    0,
+    true
+   ],
+   "seed": [
+    8,
+    0,
+    true
+   ],
+   "startEntry": [
+    1,
+    0,
+    true
+   ],
+   "state": [
+    1,
+    0,
+    true
+   ],
+   "view": [
+    16,
     0,
     true
    ]
@@ -27071,6 +28042,11 @@
    ]
   },
   "InputFieldComponent": {
+   "characterLimit": [
+    8,
+    0,
+    true
+   ],
    "cursor": [
     16,
     0,
@@ -27098,6 +28074,11 @@
    ],
    "disabled": [
     0,
+    0,
+    true
+   ],
+   "keyboardType": [
+    13,
     0,
     true
    ],
@@ -28103,6 +29084,26 @@
    ]
   },
   "LightComponent": {
+   "areaHeight": [
+    2,
+    4096,
+    true
+   ],
+   "areaRadius": [
+    2,
+    4096,
+    true
+   ],
+   "areaShape": [
+    13,
+    4096,
+    true
+   ],
+   "areaWidth": [
+    2,
+    4096,
+    true
+   ],
    "automaticShadowCamera": [
     0,
     4096,
@@ -28160,6 +29161,11 @@
    ],
    "enabled": [
     0,
+    0,
+    true
+   ],
+   "iesProfile": [
+    18,
     0,
     true
    ],
@@ -28584,6 +29590,16 @@
     0,
     true
    ],
+   "propertyOverrides.textures": [
+    15,
+    24,
+    true
+   ],
+   "propertyOverrides.values": [
+    15,
+    68719476736,
+    true
+   ],
    "receiveIBL": [
     0,
     8,
@@ -28654,7 +29670,37 @@
     16,
     true
    ],
+   "submeshes[N].material.blendDst": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendDstAlpha": [
+    13,
+    8,
+    true
+   ],
    "submeshes[N].material.blendMode": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendOp": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendOpAlpha": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendSrc": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendSrcAlpha": [
     13,
     8,
     true
@@ -28709,7 +29755,37 @@
     68719476760,
     true
    ],
+   "submeshes[N].material.extraPass.blendDst": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendDstAlpha": [
+    13,
+    8,
+    true
+   ],
    "submeshes[N].material.extraPass.blendMode": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendOp": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendOpAlpha": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendSrc": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendSrcAlpha": [
     13,
     8,
     true
@@ -29079,36 +30155,6 @@
     16,
     true
    ],
-   "submeshes[N].material.pbr.vertexColor.a": [
-    13,
-    16,
-    true
-   ],
-   "submeshes[N].material.pbr.vertexColor.alphaOpacity": [
-    0,
-    16,
-    true
-   ],
-   "submeshes[N].material.pbr.vertexColor.b": [
-    13,
-    16,
-    true
-   ],
-   "submeshes[N].material.pbr.vertexColor.g": [
-    13,
-    16,
-    true
-   ],
-   "submeshes[N].material.pbr.vertexColor.r": [
-    13,
-    16,
-    true
-   ],
-   "submeshes[N].material.pbr.vertexColor.use": [
-    13,
-    16,
-    true
-   ],
    "submeshes[N].material.pbr.volume.attenuationColor": [
     5,
     0,
@@ -29237,6 +30283,16 @@
    "submeshes[N].primitiveType": [
     13,
     8,
+    true
+   ],
+   "submeshes[N].propertyOverrides.textures": [
+    15,
+    24,
+    true
+   ],
+   "submeshes[N].propertyOverrides.values": [
+    15,
+    68719476736,
     true
    ],
    "submeshes[N].textureRect": [
@@ -29642,6 +30698,11 @@
    ],
    "meshNodesMapping[N]": [
     16,
+    0,
+    true
+   ],
+   "preserveHierarchy": [
+    0,
     0,
     true
    ],
@@ -30239,6 +31300,38 @@
     true
    ]
   },
+  "OutlineComponent": {
+   "color": [
+    6,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "includeChildren": [
+    0,
+    0,
+    true
+   ],
+   "mode": [
+    13,
+    0,
+    true
+   ],
+   "width": [
+    2,
+    0,
+    true
+   ],
+   "widthUnits": [
+    13,
+    0,
+    true
+   ]
+  },
   "PanelComponent": {
    "canBringToFront": [
     0,
@@ -30341,6 +31434,11 @@
     15,
     2199023255552,
     false
+   ],
+   "legacyFrom": [
+    16,
+    0,
+    true
    ],
    "playOnAwake": [
     0,
@@ -31388,6 +32486,78 @@
     true
    ]
   },
+  "SimulationCullingComponent": {
+   "boundsRadius": [
+    2,
+    0,
+    true
+   ],
+   "cullAnimator": [
+    0,
+    0,
+    true
+   ],
+   "cullPhysics": [
+    0,
+    0,
+    true
+   ],
+   "cullScripts": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "focusDistance": [
+    2,
+    0,
+    true
+   ],
+   "freezeWhenGroundNotLoaded": [
+    0,
+    0,
+    true
+   ],
+   "hysteresis": [
+    2,
+    0,
+    true
+   ],
+   "reason": [
+    13,
+    0,
+    true
+   ],
+   "reducedRateDistance": [
+    2,
+    0,
+    true
+   ],
+   "reducedUpdateInterval": [
+    8,
+    0,
+    true
+   ],
+   "simulateWhenVisible": [
+    0,
+    0,
+    true
+   ],
+   "simulationDistance": [
+    2,
+    0,
+    true
+   ],
+   "state": [
+    13,
+    0,
+    true
+   ]
+  },
   "SkyboxComponent": {
    "color": [
     6,
@@ -32095,6 +33265,11 @@
     0,
     true
    ],
+   "flipX": [
+    0,
+    1024,
+    true
+   ],
    "flipY": [
     0,
     1024,
@@ -32140,6 +33315,11 @@
     1024,
     true
    ],
+   "size": [
+    4,
+    1024,
+    true
+   ],
    "spriteSortPoint": [
     13,
     0,
@@ -32154,6 +33334,28 @@
     9,
     1024,
     false
+   ]
+  },
+  "SpriteSkinComponent": {
+   "bones": [
+    15,
+    0,
+    true
+   ],
+   "bones[N]": [
+    16,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "rootBone": [
+    16,
+    0,
+    true
    ]
   },
   "TerrainComponent": {
@@ -32556,6 +33758,21 @@
    ]
   },
   "TextComponent": {
+   "anchorHorizontal": [
+    13,
+    32768,
+    true
+   ],
+   "anchorVertical": [
+    13,
+    32768,
+    true
+   ],
+   "autoSize": [
+    0,
+    65536,
+    true
+   ],
    "fixedHeight": [
     0,
     32768,
@@ -32574,6 +33791,31 @@
    "fontSize": [
     9,
     65536,
+    true
+   ],
+   "fontSizeMax": [
+    9,
+    65536,
+    true
+   ],
+   "fontSizeMin": [
+    9,
+    65536,
+    true
+   ],
+   "fontSizeUnit": [
+    13,
+    65536,
+    true
+   ],
+   "horizontalAlignment": [
+    13,
+    32768,
+    true
+   ],
+   "localizationKey": [
+    1,
+    32768,
     true
    ],
    "maxTextSize": [
@@ -32598,16 +33840,6 @@
    ],
    "outlineWidth": [
     2,
-    32768,
-    true
-   ],
-   "pivotBaseline": [
-    0,
-    32768,
-    true
-   ],
-   "pivotCentered": [
-    0,
     32768,
     true
    ],
@@ -32638,6 +33870,11 @@
    ],
    "text": [
     1,
+    32768,
+    true
+   ],
+   "verticalAlignment": [
+    13,
     32768,
     true
    ],
@@ -33585,6 +34822,11 @@
    ]
   },
   "UIDocumentComponent": {
+   "billboard": [
+    0,
+    0,
+    true
+   ],
    "enabled": [
     0,
     0,
@@ -33593,6 +34835,11 @@
    "filename": [
     18,
     274877906944,
+    true
+   ],
+   "gamepadCursor": [
+    0,
+    0,
     true
    ],
    "inputSurface": [
@@ -33605,6 +34852,11 @@
     0,
     true
    ],
+   "isMenu": [
+    0,
+    0,
+    true
+   ],
    "msaaSamples": [
     8,
     0,
@@ -33613,6 +34865,11 @@
    "pixelRatio": [
     2,
     274877906944,
+    true
+   ],
+   "pixelsPerUnit": [
+    2,
+    0,
     true
    ],
    "renderMode": [
@@ -33633,6 +34890,11 @@
    "textureWidth": [
     8,
     274877906944,
+    true
+   ],
+   "updateMode": [
+    13,
+    0,
     true
    ]
   },
@@ -33832,38 +35094,6 @@
    "speed": [
     2,
     0,
-    true
-   ]
-  },
-  "VertexColorsComponent": {
-   "channelNames[N]": [
-    1,
-    0,
-    true
-   ],
-   "customInitial": [
-    6,
-    288230376151711744,
-    true
-   ],
-   "data": [
-    18,
-    288230376151711744,
-    true
-   ],
-   "enabled": [
-    0,
-    288230376151711744,
-    true
-   ],
-   "format": [
-    13,
-    288230376151711744,
-    true
-   ],
-   "initialValue": [
-    13,
-    288230376151711744,
     true
    ]
   },
@@ -34679,7 +35909,8 @@
    "names": [
     "directional",
     "point",
-    "spot"
+    "spot",
+    "area"
    ]
   },
   "MaterialAlphaMode": {
@@ -34699,7 +35930,8 @@
     "ALPHA",
     "PREMULTIPLIED",
     "ADDITIVE",
-    "MULTIPLY"
+    "MULTIPLY",
+    "CUSTOM"
    ]
   },
   "MaterialCullMode": {
@@ -34886,7 +36118,8 @@
    "fallback": "screen",
    "names": [
     "texture",
-    "screen"
+    "screen",
+    "world"
    ]
   },
   "UIEventState": {

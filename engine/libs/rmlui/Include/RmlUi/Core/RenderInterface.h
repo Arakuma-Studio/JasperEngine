@@ -16,6 +16,23 @@ enum class BlendMode {
 	Blend,   // Normal alpha blending.
 	Replace, // Replace the destination colors from the source.
 	Plus,    // Add the source to the destination (premultiplied, CSS 'plus-lighter'): cross-fade().
+	// Fork (S93 R30): the blend modes of CSS 'mix-blend-mode' (Compositing and Blending 1), in its keyword order, composited
+	// source-over: the render interface blends the source with a copy of the destination it reads.
+	Multiply,
+	Screen,
+	Overlay,
+	Darken,
+	Lighten,
+	ColorDodge,
+	ColorBurn,
+	HardLight,
+	SoftLight,
+	Difference,
+	Exclusion,
+	Hue,
+	Saturation,
+	Color,
+	Luminosity,
 };
 
 /// Fork (S16-F2): the shape a clip mask's geometry covers, a rectangle with elliptical corners, so that a render interface

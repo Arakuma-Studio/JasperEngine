@@ -124,6 +124,10 @@ namespace {
         &kTitleArtRendererDesc,
         &kWheelColliderDesc,
         &kVehicleDrivetrainDesc,
+        &kSimulationCullingDesc,
+        &kDialogueRunnerDesc,
+        &kOutlineDesc,
+        &kSpriteSkinDesc,
         &kVertexColorsDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -237,6 +241,10 @@ namespace {
         &kTitleArtRendererDesc,
         &kWheelColliderDesc,
         &kVehicleDrivetrainDesc,
+        &kSimulationCullingDesc,
+        &kDialogueRunnerDesc,
+        &kOutlineDesc,
+        &kSpriteSkinDesc,
         &kVertexColorsDesc,
     };
 
@@ -348,6 +356,10 @@ namespace {
         &kTitleArtRendererDesc,
         &kWheelColliderDesc,
         &kVehicleDrivetrainDesc,
+        &kSimulationCullingDesc,
+        &kDialogueRunnerDesc,
+        &kOutlineDesc,
+        &kSpriteSkinDesc,
         &kVertexColorsDesc,
     };
 
@@ -357,10 +369,10 @@ namespace {
         &enums::kAnimatorEventMode, &enums::kAnimatorRetarget, &enums::kAnimatorIKType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
         &enums::kCloudsRendering, &enums::kCollider2DType, &enums::kCollider3DSource, &enums::kCollider3DType, &enums::kCullingMode,
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,
-        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kWaterExcluderShape, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
+        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kWaterExcluderShape, &enums::kSimulationState, &enums::kSimulationCullReason, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
         &enums::kLatticeMaskChannel, &enums::kLatticeOutside, &enums::kLatticeStage, &enums::kLayoutGroupType, &enums::kLightShading,
         &enums::kLightType, &enums::kLightUnit, &enums::kLodFadeMode,
-        &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,
+        &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialBlendFactor, &enums::kMaterialBlendOp, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,
         &enums::kMaterialDepthWrite, &enums::kMaterialLighting, &enums::kVertexColorUse, &enums::kVertexColorTarget,
         &enums::kTerrainQualitySetting, &enums::kTerrainOffscreenShadows,
         &enums::kTerrainMacroMode, &enums::kTerrainCliffProjection, &enums::kMaterialPassOrder, &enums::kMaterialStencilCompare,
@@ -368,6 +380,7 @@ namespace {
         &enums::kProgressbarType, &enums::kReflectionProbeMode, &enums::kReflectionProbeUpdateMode, &enums::kRigidbodyMotionQuality,
         &enums::kButtonTransition, &enums::kNavigationMode, &enums::kScriptType, &enums::kScrollbarType, &enums::kShadowCaster2DShape, &enums::kShadowUpdateMode,
         &enums::kTextureAlphaBorder, &enums::kTextureFilter, &enums::kTextureWrap, &enums::kUIDocumentRenderMode,
+        &enums::kUIDocumentUpdateMode, &enums::kTextHorizontalAlignment, &enums::kTextVerticalAlignment,
         &enums::kUIEventState, &enums::kWindingOrder,
         &enums::kNavCollectObjects, &enums::kNavUseGeometry, &enums::kNavPlane, &enums::kNavAvoidanceQuality, &enums::kNavAgentDriver,
         &enums::kNavObstacleShape, &enums::kNavModifierInclusion, &enums::kNavGridLayout, &enums::kNavGridMovement, &enums::kNavGridSource,
@@ -386,6 +399,10 @@ namespace {
         &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
         // S96 vehicles
         &enums::kVehicleTransmissionMode,
+        // Text alignment (S94)
+        &enums::kTextAnchorHorizontal, &enums::kTextAnchorVertical, &enums::kTextFontSizeUnit,
+        // the Outline (S94)
+        &enums::kOutlineMode, &enums::kOutlineWidthUnits,
         // Vertex Colors (V1)
         &enums::kVertexColorFormat, &enums::kVertexColorInitialValue,
     };

@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>scheme-hover</title>
+<style>
+    html, body { margin: 0; width: 640px; height: 360px; }
+    /* the variants' sheets declare --kept alike and --tint apart: a swap keeps one and changes the other */
+    html { --kept: 4px; --tint: #ff0000; }
+    .tip { display: none; padding-left: var(--kept); color: var(--tint); }
+    @media (hover: hover) { html { --tint: #0000ff; } .tip { display: block; } }
+</style>
+</head>
+<body>
+    <div class="tip" id="tip">Hover a slot to see what it holds</div>
+</body>
+</html>

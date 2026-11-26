@@ -83,6 +83,10 @@ namespace jasperengine{
         // GameObjects whose transforms are more collision planes (their up axis is the
         // normal), with the Collision module's Planes type
         std::vector<Entity> collisionPlanes;
+        // the old system's GameObject this one was migrated from (docs/specs/S94-rendering-anim-gaps.md
+        // F2): an old script's ParticleSystem(scene, thatEntity) resolves to this system even
+        // when that GameObject no longer has the action that named it
+        Entity legacyFrom = NULL_ENTITY;
 
         // runtime (ParticleSubsystem's): the simulation, the effect it runs, the render data
         std::shared_ptr<particles::ParticleSystemState> state;
@@ -92,6 +96,10 @@ namespace jasperengine{
         // a script set an exposed value (setFloat): written into the running effect next update,
         // without compiling it when the value allows (docs/specs/S91-effect-authoring.md R10)
         bool exposedChanged = false;
+        // the one deprecation note of an old script's wrapper on this system was logged:
+        // ParticleSystem(scene, legacyFrom) and the frame and blend calls of Points(scene, entity)
+        bool legacyWrapperNoted = false;
+        bool legacyPointsNoted = false;
 
         FunctionSubscribe<void(const std::vector<ParticleCollisionInfo>&)> onCollision;
         FunctionSubscribe<void(const std::vector<ParticleDeathInfo>&)> onParticleDeath;

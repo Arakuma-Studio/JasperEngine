@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RmlFontEngine.h"
+#include "localization/Localization.h"
 #include "pixelart/BitmapFont.h"
 #include "htmlui/HtmlTextEffects.h"
 
@@ -99,6 +100,16 @@ namespace {
 
 }
 
+// R15: the glyphs one prewarm call asked for, made on the background lane and placed by updatePrewarm
+struct RmlFontEngine::PrewarmBatch {
+    std::shared_ptr<GlyphPrewarm> progress;
+    std::vector<PrewarmItem> items;
+    jobs::Task<std::vector<PrewarmBitmap>> task;
+    size_t placed = 0;                  // items done, in order
+    std::vector<DistanceKey> distance;  // distance glyphs it waits for
+    size_t distanceReady = 0;
+};
+
 // A distance glyph made on the background lane: the face is kept alive by the job
 struct RmlFontEngine::DistanceJob {
     DistanceKey key;
@@ -143,9 +154,15 @@ RmlFontEngine::RmlFontEngine(){
 }
 
 RmlFontEngine::~RmlFontEngine(){
-    // Only reached at process exit. Rml::Shutdown already released everything; if it did
-    // not run, the render managers the texture sources point to may be gone: leak them
-    // instead of releasing through freed objects
+    // Only reached at process exit. Rml::Shutdown released every render manager's textures of
+    // the pages (R13), which are freed with the engine; if it did not run, the render managers
+    // the texture sources point to may be gone: leak them instead of releasing through freed objects
+    for (std::unique_ptr<DistanceJob>& job : distanceJobs)
+        job->task.wait();
+    for (std::unique_ptr<PrewarmBatch>& batch : prewarmBatches)
+        batch->task.wait();
+    if (!rmlInitialised)
+        return;
     for (PageList* list : {&pages, &effectPages, &distancePages, &pixelPages, &pixelEffectPages}){
         for (std::unique_ptr<Page>& page : *list){
             (void)page->source.release();
@@ -153,18 +170,59 @@ RmlFontEngine::~RmlFontEngine(){
                 (void)variant.second.release();
         }
     }
-    // the jobs in flight finish (they hold their faces), their results are dropped
-    for (std::unique_ptr<DistanceJob>& job : distanceJobs)
-        job->task.wait();
 }
 
 void RmlFontEngine::Initialize(){
+    rmlInitialised = true;
     FontRegistry::getBuiltInLatin();
 }
 
 void RmlFontEngine::Shutdown(){
-    ReleaseFontResources();
-    effectSets.clear();
+    // R13: the glyph cache outlives RmlUi too (HtmlUI shuts it down with the last context, a scene
+    // change between two scenes' documents): glyphs, page texels, handles and effect sets stay, the
+    // render managers already let go of the pages (ReleaseRenderManager). Handles retired while
+    // documents held them can go now: nothing in RmlUi holds a handle any more
+    rmlInitialised = false;
+    for (std::unique_ptr<FaceHandle>& retired : retiredHandles)
+        forgetHandle(retired.get());
+    retiredHandles.clear();
+    managerScales.clear();
+    managerCounters.clear();
+    warnedBudget.clear();
+    currentManager = nullptr;
+}
+
+void RmlFontEngine::ReleaseRenderManager(Rml::RenderManager& render_manager){
+    // its textures of the pages went with the texture sources (CallbackTextureSource::ReleaseRenderManager): the pages and
+    // their glyphs stay for the next context (R13); a later render manager may take this address
+    for (PageList* list : {&pages, &effectPages, &distancePages, &pixelPages, &pixelEffectPages}){
+        for (std::unique_ptr<Page>& page : *list){
+            page->textures.erase(&render_manager);
+            if (page->foreignManagers.erase(&render_manager))
+                page->foreign = !page->foreignManagers.empty();
+        }
+    }
+    managerScales.erase(&render_manager);
+    managerCounters.erase(&render_manager);
+    warnedBudget.erase(&render_manager);
+    fallbackEvents.erase(&render_manager);
+    fallbackSeen.erase(&render_manager);
+    if (currentManager == &render_manager)
+        currentManager = nullptr;
+}
+
+void RmlFontEngine::forgetHandle(FaceHandle* handle){
+    for (PageList* list : {&pages, &effectPages, &distancePages, &pixelPages, &pixelEffectPages}){
+        for (std::unique_ptr<Page>& page : *list)
+            page->users.erase(handle);
+    }
+    for (std::unique_ptr<DistanceJob>& job : distanceJobs)
+        job->waiting.erase(handle);
+    deferredHandles.erase(handle);
+    for (auto& events : fallbackEvents)
+        events.second.erase(handle);
+    for (auto& seen : fallbackSeen)
+        seen.second.erase(handle);
 }
 
 bool RmlFontEngine::registerLoaded(const std::shared_ptr<FontFace>& face, const std::string& error, const std::string& family,
@@ -175,6 +233,9 @@ bool RmlFontEngine::registerLoaded(const std::shared_ptr<FontFace>& face, const 
     }
 
     FontRegistry::registerFace(face, family, weight, italic, fallback);
+    // the family's newest face wins, as a bitmap face registered after a vector one does: a bitmap
+    // registration of the name (an earlier document's) would otherwise lead the family's text
+    dropBitmapFamily(family.empty() ? face->getFamilyName() : family);
     retireHandles();
     return true;
 }
@@ -264,6 +325,10 @@ Rml::FontFaceHandle RmlFontEngine::GetFontFaceHandle(const Rml::String& family, 
         key += name + ",";
     }
     key += "|" + std::to_string(italic ? 1 : 0) + "|" + std::to_string(cssWeight) + "|" + std::to_string(size);
+    // game-ui-localization.md R14: the game language's fonts lead the fallbacks (its own Han glyphs)
+    const std::string language = FontRegistry::matchLanguage(Localization::getLanguage());
+    if (!language.empty())
+        key += "|" + language;
 
     auto it = handles.find(key);
     if (it != handles.end())
@@ -296,13 +361,20 @@ Rml::FontFaceHandle RmlFontEngine::GetFontFaceHandle(const Rml::String& family, 
         }
         append(face);
     }
+    // (R17: a code point it lacks is drawn by a fallback face of the list's text; the built-in fonts, a generic family's,
+    // are the engine's own, not a choice of the document)
+    handle->primaryListed = !handle->chain.empty() && handle->chain[0] != FontRegistry::getBuiltInLatin() &&
+                            handle->chain[0] != FontRegistry::getBuiltInArabic();
     // no family resolved: the default font leads (metrics, .notdef), fallbacks follow
     if (handle->chain.empty()){
         append(FontRegistry::getBuiltInLatin());
     }
-    for (const std::shared_ptr<FontFace>& face : FontRegistry::getFallbackFaces()){
+    // the language's faces, the fallback faces of the text's weight and style (R16), then the built-in Roboto's family the same way (a project's
+    // Roboto Bold serves bold text) and the built-in faces
+    for (const std::shared_ptr<FontFace>& face : FontRegistry::getFallbackFaces(language, cssWeight, italic)){
         append(face);
     }
+    append(FontRegistry::find("sans-serif", cssWeight, italic));
     append(FontRegistry::getBuiltInLatin());
     append(FontRegistry::getBuiltInArabic());
 
@@ -310,6 +382,7 @@ Rml::FontFaceHandle RmlFontEngine::GetFontFaceHandle(const Rml::String& family, 
         return 0;
 
     handle->size = size;
+    handle->family = family;
     for (const std::shared_ptr<FontFace>& face : handle->chain){
         handle->faces.push_back(face.get());
         handle->emScales.push_back(face->scaleForEmSize((float)size));
@@ -370,6 +443,11 @@ Rml::FontEffectsHandle RmlFontEngine::PrepareFontEffects(Rml::FontFaceHandle han
                 set->effects.push_back(effect);
         }
         set->ids = ids;
+        for (const Rml::SharedPtr<const Rml::FontEffect>& effect : set->effects){
+            Rml::Vector2i offset;
+            set->bitmapIds.push_back(RmlFontEffects::bitmapId(*effect, offset));
+            set->offsets.push_back(offset);
+        }
     }
 
     return reinterpret_cast<Rml::FontEffectsHandle>(set.get());
@@ -703,6 +781,7 @@ void RmlFontEngine::makeSource(Page& page){
         // premultiplied white (a, a, a, a), which the vertex colour tints. Its texture does not
         // follow the page: new glyphs make a new source
         source->foreign = true;
+        source->foreignManagers.insert(&manager);
         if (source->atlas->getBytesPerPixel() == 4)
             return textureInterface.GenerateTexture(pixels, Rml::Vector2i(pageSize, pageSize));
         std::vector<Rml::byte> rgba(pixels.size() * 4);
@@ -815,6 +894,7 @@ void RmlFontEngine::clearPage(Page& page, bool bump){
     page.atlas->reset(0, 0);
     (*page.generation)++;
     page.foreign = false;
+    page.foreignManagers.clear();
     page.whiteX = page.whiteY = -1;
     page.dirty = false;
 }
@@ -1033,14 +1113,14 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::getGlyph(const FaceHandle& handl
 }
 
 const RmlFontEngine::GlyphEntry& RmlFontEngine::getEffectGlyph(const FaceHandle& handle, unsigned int face, uint32_t glyphIndex,
-                                                               const Rml::FontEffect& effect, size_t effectId){
+                                                               const Rml::FontEffect& effect, size_t bitmapId, Rml::Vector2i offset){
     // Effect glyphs are made at document resolution whatever the context's raster scale: the
     // effects' lengths (outline width, blur radius) are pixels of the bitmap they are given,
     // and CSS lengths are document pixels. The base glyphs stay at the raster scale.
     const FontFace* fontFace = handle.faces[face];
     const float strength = handle.boldStrength[face];
     const int bold = (strength > 0.0f) ? std::max(1, (int)std::lround(strength)) : 0;
-    GlyphKey key{fontFace, glyphIndex, handle.size * 64, bold, effectId};
+    GlyphKey key{fontFace, glyphIndex, handle.size * 64, bold, bitmapId};
 
     auto it = glyphs.find(key);
     if (it != glyphs.end())
@@ -1049,10 +1129,20 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::getEffectGlyph(const FaceHandle&
     GlyphEntry& entry = glyphs[key];
     entry.kind = PageKind::EFFECT;
 
-    std::vector<unsigned char> coverage;
-    int width = 0, height = 0, xoff = 0, yoff = 0;
-    if (fontFace->rasterizeGlyph(glyphIndex, handle.emScales[face], coverage, width, height, xoff, yoff) && bold > 0)
-        RmlFontEffects::embolden(coverage, width, height, yoff, bold);
+    // the glyph's coverage at document resolution, once for the effects of a text that ask for it in turn (an outline and
+    // a glow of a big title: rasterizing it is a good part of their cost)
+    EffectCoverage& last = effectCoverage;
+    if (last.face != fontFace || last.glyphIndex != glyphIndex || last.size != handle.size || last.bold != bold){
+        last.face = fontFace;
+        last.glyphIndex = glyphIndex;
+        last.size = handle.size;
+        last.bold = bold;
+        last.width = last.height = last.xoff = last.yoff = 0;
+        if (fontFace->rasterizeGlyph(glyphIndex, handle.emScales[face], last.pixels, last.width, last.height, last.xoff, last.yoff) && bold > 0)
+            RmlFontEffects::embolden(last.pixels, last.width, last.height, last.yoff, bold);
+    }
+    const std::vector<unsigned char>& coverage = last.pixels;
+    const int width = last.width, height = last.height, xoff = last.xoff, yoff = last.yoff;
 
     const int advance = (int)std::lround(fontFace->getGlyphAdvance(glyphIndex, handle.emScales[face]));
     const Rml::FontGlyph glyph = RmlFontEffects::wrapCoverage(coverage.data(), width, height, xoff, yoff, advance);
@@ -1061,10 +1151,11 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::getEffectGlyph(const FaceHandle&
     if (!RmlFontEffects::generate(effect, glyph, bitmap))
         return entry;   // nothing for this glyph (no ink)
 
+    // (shared by effects of other offsets: the quad moves, R12)
     entry.width = bitmap.width;
     entry.height = bitmap.height;
-    entry.xoff = bitmap.xoff;
-    entry.yoff = bitmap.yoff;
+    entry.xoff = bitmap.xoff - offset.x;
+    entry.yoff = bitmap.yoff - offset.y;
 
     int page = -1, x = 0, y = 0;
     if (place(PageKind::EFFECT, bitmap.rgba.data(), bitmap.width, bitmap.height, page, x, y, fontFace->getLabel(), handle.size)){
@@ -1095,6 +1186,7 @@ void RmlFontEngine::refreshDirtyPages(){
             // handles that drew from the page get a new version
             makeSource(*page);
             page->foreign = false;
+            page->foreignManagers.clear();
             for (FaceHandle* user : page->users)
                 bump(user);
         }
@@ -1253,6 +1345,12 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
     FaceHandle* handle = toHandle(face_handle);
     if (!handle || string.size() == 0)
         return 0;
+    // (the main thread's text generation time: R39, R41)
+    struct GenerateTime {
+        double& total;
+        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+        ~GenerateTime(){ total += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count(); }
+    } generateTime{generateStringMs};
     currentManager = &render_manager;
     const RmlFontEffects::Set* effects = reinterpret_cast<const RmlFontEffects::Set*>(font_effects_handle);
     if (handle->bitmap)
@@ -1273,6 +1371,17 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
 
     std::vector<ShapedGlyph> shaped;
     shape(*handle, codepoints, options, shaped);
+
+    // R17: glyphs a fallback face draws for a face of the font-family list, each once per context
+    if (handle->primaryListed){
+        for (const ShapedGlyph& glyph : shaped){
+            if (glyph.face == 0 || glyph.glyphIndex == 0 || glyph.cluster >= codepoints.size())
+                continue;
+            const uint32_t codepoint = codepoints[glyph.cluster];
+            if (fallbackSeen[&render_manager][handle].insert(codepoint).second)
+                fallbackEvents[&render_manager][handle].insert(codepoint);
+        }
+    }
 
     if (!renderText){
         // the no-text test variant: the same advance, no quads
@@ -1309,6 +1418,10 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
         }
     }
 
+    // a big text's missing bitmaps side by side on the workers (R39)
+    if (!distanceText || effects)
+        makeGlyphsTogether(*handle, shaped, scale, rasterKey, distanceText, effects, effectOnGpu);
+
     // every glyph in a page first, so the textures fetched below already hold them; the pages
     // they are on are in use from now (a later glyph may not clear them)
     const uint64_t frame = SystemRender::getFrameCount();
@@ -1323,7 +1436,7 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
         if (effects){
             for (size_t i = 0; i < effects->effects.size(); i++){
                 if (effects->effects[i]->HasUniqueTexture() && !effectOnGpu[i])
-                    keep(getEffectGlyph(*handle, glyph.face, glyph.glyphIndex, *effects->effects[i], effects->ids[i]));
+                    keep(getEffectGlyph(*handle, glyph.face, glyph.glyphIndex, *effects->effects[i], effects->bitmapIds[i], effects->offsets[i]));
             }
         }
     }
@@ -1485,13 +1598,15 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
                     origin += Rml::Vector2f(offset);
                 }
             }else{
-                const GlyphEntry& entry = unique ? getEffectGlyph(*handle, glyph.face, glyph.glyphIndex, *effect, effects->ids[effectIndex])
+                const GlyphEntry& entry = unique ? getEffectGlyph(*handle, glyph.face, glyph.glyphIndex, *effect, effects->bitmapIds[effectIndex],
+                                                                  effects->offsets[effectIndex])
                                                  : getGlyph(*handle, glyph.face, glyph.glyphIndex, scale, rasterKey);
                 if (entry.page < 0)
                     continue;
                 if (unique){
-                    // document pixels, snapped as RmlUi's FontFaceLayer does
-                    origin = Rml::Vector2f(std::round(penX) + entry.xoff, std::round(baseline) + entry.yoff);
+                    // document pixels, snapped as RmlUi's FontFaceLayer does; the effect's offset moves the shared bitmap
+                    const Rml::Vector2i offset = effects->offsets[effectIndex];
+                    origin = Rml::Vector2f(std::round(penX) + entry.xoff + offset.x, std::round(baseline) + entry.yoff + offset.y);
                     dimensions = Rml::Vector2f((float)entry.width, (float)entry.height);
                 }else{
                     // snapped to physical pixels, the bitmap is drawn 1:1 on the target
@@ -1758,6 +1873,13 @@ int RmlFontEngine::GetVersion(Rml::FontFaceHandle face_handle){
 }
 
 void RmlFontEngine::clearGlyphs(){
+    effectCoverage.face = nullptr;
+    // prewarms in flight end: what they made is not placed, their handles are done
+    for (std::unique_ptr<PrewarmBatch>& batch : prewarmBatches){
+        batch->task.wait();
+        batch->progress->ready = batch->progress->total;
+    }
+    prewarmBatches.clear();
     glyphs.clear();
     distanceGlyphs.clear();
     // the jobs in flight finish, their glyphs are not placed
@@ -1780,10 +1902,12 @@ void RmlFontEngine::ReleaseFontResources(){
     deferredHandles.clear();
     retiredHandles.clear();
     widths.clear();
-    // RmlUi::ReleaseRenderManagers comes through here: a later manager may reuse an address
+    // (the per-context state too: a later render manager may reuse an address)
     managerScales.clear();
     managerCounters.clear();
     warnedBudget.clear();
+    fallbackEvents.clear();
+    fallbackSeen.clear();
     currentManager = nullptr;
     bumpEpoch();
 }
@@ -1811,6 +1935,7 @@ bool RmlFontEngine::reloadFontFile(const std::string& path){
 
     // R18: the old faces' glyphs go (their pages keep the space until they are cleared), and the
     // handles whose chain holds one are retired (a new lookup finds the new face) and bumped
+    effectCoverage.face = nullptr;
     auto old = [&](const FontFace* face){
         return std::any_of(replaced.begin(), replaced.end(), [face](const std::shared_ptr<FontFace>& f){ return f.get() == face; });
     };
@@ -1909,7 +2034,381 @@ size_t RmlFontEngine::getEffectSetCount() const{
     return effectSets.size();
 }
 
+std::vector<RmlFontEngine::FallbackGlyphs> RmlFontEngine::takeFallbackGlyphs(const Rml::RenderManager& renderManager){
+    std::vector<FallbackGlyphs> taken;
+    auto it = fallbackEvents.find(&renderManager);
+    if (it == fallbackEvents.end())
+        return taken;
+    for (const auto& entry : it->second){
+        FallbackGlyphs glyphs;
+        glyphs.handle = reinterpret_cast<Rml::FontFaceHandle>(entry.first);
+        glyphs.family = entry.first->family;
+        glyphs.primary = entry.first->faces.empty() ? std::string() : entry.first->faces[0]->getLabel();
+        glyphs.codepoints.assign(entry.second.begin(), entry.second.end());
+        taken.push_back(std::move(glyphs));
+    }
+    fallbackEvents.erase(it);
+    return taken;
+}
+
+RmlFontEngine::FallbackGlyphs RmlFontEngine::fallbackGlyphsOf(Rml::FontFaceHandle face_handle, Rml::StringView text) const{
+    FallbackGlyphs glyphs;
+    const FaceHandle* handle = toHandle(face_handle);
+    if (!handle || handle->bitmap || !handle->primaryListed || handle->faces.size() < 2)
+        return glyphs;
+    glyphs.handle = face_handle;
+    glyphs.family = handle->family;
+    glyphs.primary = handle->faces[0]->getLabel();
+    std::vector<uint32_t> codepoints;
+    decodeText(text, codepoints);
+    std::set<uint32_t> found;
+    for (uint32_t codepoint : codepoints){
+        // (format characters and selectors take no glyph of their own)
+        const bool ignorable = (codepoint >= 0x200B && codepoint <= 0x200F) || (codepoint >= 0x2060 && codepoint <= 0x206F) ||
+                               (codepoint >= 0xFE00 && codepoint <= 0xFE0F) || codepoint == 0xFEFF || codepoint >= 0xE0000;
+        if (ignorable || handle->faces[0]->hasCodepoint(codepoint))
+            continue;
+        for (size_t f = 1; f < handle->faces.size(); f++){
+            if (handle->faces[f]->hasCodepoint(codepoint)){
+                found.insert(codepoint);
+                break;
+            }
+        }
+    }
+    glyphs.codepoints.assign(found.begin(), found.end());
+    return glyphs;
+}
+
+size_t RmlFontEngine::getEffectGlyphCount() const{
+    size_t count = 0;
+    for (const auto& entry : glyphs)
+        count += (entry.second.kind == PageKind::EFFECT && entry.second.page >= 0) ? 1u : 0u;
+    return count;
+}
+
 std::vector<const FontFace*> RmlFontEngine::getChain(Rml::FontFaceHandle handle) const{
     FaceHandle* face = toHandle(handle);
     return face ? face->faces : std::vector<const FontFace*>();
+}
+
+//-------------------------------------------------------------------------------------------
+// prewarm (S93 R15)
+//-------------------------------------------------------------------------------------------
+
+void RmlFontEngine::makeGlyphsTogether(const FaceHandle& handle, const std::vector<ShapedGlyph>& shaped, float scale, int rasterKey,
+                                       bool distanceText, const RmlFontEffects::Set* effects, const std::vector<bool>& effectOnGpu){
+    // Small text makes its few small bitmaps faster than the workers start; a title's outline and glow
+    // glyphs take a millisecond or more each, which the frame waits for one after the other otherwise
+    if (handle.size < bigTextPixels)
+        return;
+    std::vector<PrewarmItem> items;
+    std::unordered_set<GlyphKey, GlyphKeyHash> asked;
+    for (const ShapedGlyph& glyph : shaped){
+        if (!distanceText){
+            PrewarmItem item;
+            const float strength = handle.boldStrength[glyph.face];
+            item.bold = (strength > 0.0f) ? std::max(1, (int)std::lround(strength * scale)) : 0;
+            item.key = GlyphKey{handle.faces[glyph.face], glyph.glyphIndex, rasterKey, item.bold, 0};
+            if (!glyphs.count(item.key) && asked.insert(item.key).second){
+                item.kind = PageKind::BASE;
+                item.face = handle.chain[glyph.face];
+                item.scale = handle.emScales[glyph.face] * scale;
+                item.size = handle.size;
+                items.push_back(std::move(item));
+            }
+        }
+        if (!effects)
+            continue;
+        for (size_t i = 0; i < effects->effects.size(); i++){
+            Rml::FontEffect::BitmapKey bitmapKey;
+            if (!effects->effects[i]->HasUniqueTexture() || effectOnGpu[i] || !effects->effects[i]->GetBitmapKey(bitmapKey))
+                continue;
+            PrewarmItem item;
+            const float strength = handle.boldStrength[glyph.face];
+            item.bold = (strength > 0.0f) ? std::max(1, (int)std::lround(strength)) : 0;
+            item.key = GlyphKey{handle.faces[glyph.face], glyph.glyphIndex, handle.size * 64, item.bold, effects->bitmapIds[i]};
+            if (glyphs.count(item.key) || !asked.insert(item.key).second)
+                continue;
+            item.kind = PageKind::EFFECT;
+            item.face = handle.chain[glyph.face];
+            item.scale = handle.emScales[glyph.face];
+            item.size = handle.size;
+            item.advance = (int)std::lround(item.face->getGlyphAdvance(glyph.glyphIndex, item.scale));
+            item.effect = effects->effects[i];
+            item.offset = effects->offsets[i];
+            items.push_back(std::move(item));
+        }
+    }
+    if (items.size() < 2)
+        return;
+
+    const auto start = std::chrono::steady_clock::now();
+    // a job per glyph: its coverage rasterized once for every bitmap of the same scale and bold (the base glyph and the
+    // effects' at the document's own scale), then each effect
+    std::vector<std::vector<size_t>> groups;
+    for (size_t i = 0; i < items.size(); i++){
+        bool joined = false;
+        for (std::vector<size_t>& group : groups){
+            const PrewarmItem& first = items[group[0]];
+            if (first.face == items[i].face && first.key.glyphIndex == items[i].key.glyphIndex && first.scale == items[i].scale &&
+                first.bold == items[i].bold){
+                group.push_back(i);
+                joined = true;
+                break;
+            }
+        }
+        if (!joined)
+            groups.push_back(std::vector<size_t>(1, i));
+    }
+    std::vector<PrewarmBitmap> made(items.size());
+    jobs::ParallelForOptions options;
+    options.lane = jobs::Lane::High;
+    jobs::parallelFor(groups.size(), [&items, &made, &groups](size_t g){
+        const PrewarmItem& first = items[groups[g][0]];
+        std::vector<unsigned char> coverage;
+        int width = 0, height = 0, xoff = 0, yoff = 0;
+        const bool ink = first.face->rasterizeGlyph(first.key.glyphIndex, first.scale, coverage, width, height, xoff, yoff);
+        if (ink && first.bold > 0)
+            RmlFontEffects::embolden(coverage, width, height, yoff, first.bold);
+        for (size_t i : groups[g])
+            made[i] = makePrewarmBitmap(items[i], coverage, width, height, xoff, yoff, ink);
+    }, options);
+    FrameCounters* counters = countersOf(currentManager);
+    for (size_t i = 0; i < items.size(); i++){
+        // (a glyph that must wait for room is made again, the usual way, when the text asks for it)
+        if (!placePrewarm(items[i], made[i]))
+            continue;
+        if (counters && items[i].kind == PageKind::BASE)
+            counters->glyphsRasterized++;
+    }
+    if (counters)
+        counters->glyphRasterMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+}
+
+RmlFontEngine::PrewarmBitmap RmlFontEngine::makePrewarmBitmap(const PrewarmItem& item){
+    std::vector<unsigned char> coverage;
+    int width = 0, height = 0, xoff = 0, yoff = 0;
+    bool ink = item.face->rasterizeGlyph(item.key.glyphIndex, item.scale, coverage, width, height, xoff, yoff);
+    if (ink && item.bold > 0)
+        RmlFontEffects::embolden(coverage, width, height, yoff, item.bold);
+    return makePrewarmBitmap(item, coverage, width, height, xoff, yoff, ink);
+}
+
+RmlFontEngine::PrewarmBitmap RmlFontEngine::makePrewarmBitmap(const PrewarmItem& item, const std::vector<unsigned char>& coverage, int width,
+                                                              int height, int xoff, int yoff, bool ink){
+    // what getGlyph and getEffectGlyph make, off the main thread: stb_truetype on the immutable face, and the built-in
+    // effects' filters, which keep no state (FontEffect::GetBitmapKey)
+    PrewarmBitmap made;
+    if (item.kind != PageKind::EFFECT){
+        if (!ink)
+            return made;
+        made.made = true;
+        made.pixels = coverage;
+        made.width = width;
+        made.height = height;
+        made.xoff = xoff;
+        made.yoff = yoff;
+        return made;
+    }
+    const Rml::FontGlyph glyph = RmlFontEffects::wrapCoverage(coverage.data(), width, height, xoff, yoff, item.advance);
+    RmlFontEffects::Bitmap bitmap;
+    if (!RmlFontEffects::generate(*item.effect, glyph, bitmap))
+        return made;
+    made.made = true;
+    made.pixels.swap(bitmap.rgba);
+    made.width = bitmap.width;
+    made.height = bitmap.height;
+    made.xoff = bitmap.xoff - item.offset.x;
+    made.yoff = bitmap.yoff - item.offset.y;
+    return made;
+}
+
+bool RmlFontEngine::placePrewarm(const PrewarmItem& item, const PrewarmBitmap& bitmap){
+    if (glyphs.find(item.key) != glyphs.end())
+        return true;   // drawn (and made) since it was asked for
+    GlyphEntry entry;
+    entry.kind = item.kind;
+    if (bitmap.made){
+        int page = -1, x = 0, y = 0;
+        if (!place(item.kind, bitmap.pixels.data(), bitmap.width, bitmap.height, page, x, y, item.face->getLabel(), item.size)){
+            if (placeDeferred)
+                return false;
+        }else{
+            entry.page = page;
+            entry.x = x;
+            entry.y = y;
+        }
+        entry.width = bitmap.width;
+        entry.height = bitmap.height;
+        entry.xoff = bitmap.xoff;
+        entry.yoff = bitmap.yoff;
+    }
+    glyphs[item.key] = entry;
+    return true;
+}
+
+std::shared_ptr<const RmlFontEngine::GlyphPrewarm> RmlFontEngine::prewarm(const std::vector<PrewarmText>& texts,
+                                                                          const std::vector<const Rml::RenderManager*>& renderManagers){
+    std::shared_ptr<GlyphPrewarm> progress = std::make_shared<GlyphPrewarm>();
+    std::unique_ptr<PrewarmBatch> batch(new PrewarmBatch());
+    batch->progress = progress;
+    collectDistanceGlyphs(false);
+
+    // the scales the contexts draw at (their own, transform-aware or not), or the default one
+    std::vector<const Rml::RenderManager*> managers = renderManagers;
+    if (managers.empty())
+        managers.push_back(nullptr);
+    bool gpu = false;
+    for (const Rml::RenderManager* manager : managers)
+        gpu = gpu || !manager || RmlRenderer::forRenderManager(manager) != nullptr;
+
+    std::unordered_set<GlyphKey, GlyphKeyHash> asked;
+    std::unordered_set<DistanceKey, DistanceKeyHash> askedDistance;
+    for (const PrewarmText& text : texts){
+        FaceHandle* handle = toHandle(text.handle);
+        if (!handle || handle->bitmap || text.text.empty())
+            continue;
+        const RmlFontEffects::Set* effects = reinterpret_cast<const RmlFontEffects::Set*>(text.effects);
+        Rml::TextShapingContext context{text.language};
+        context.text_direction = text.direction;
+        std::vector<uint32_t> codepoints;
+        ShapeOptions options = toShapeOptions(context);
+        decodeText(text.text, codepoints);
+        std::vector<ShapedGlyph> shaped;
+        shape(*handle, codepoints, options, shaped);
+
+        // effects drawn from distance glyphs, and those that need CPU bitmaps
+        bool distance = false;
+        std::vector<size_t> cpuEffects;
+        if (effects){
+            for (size_t i = 0; i < effects->effects.size(); i++){
+                if (!effects->effects[i]->HasUniqueTexture())
+                    continue;
+                std::array<float, 3> parameters = {};
+                if (gpu && distanceEffectOf(*handle, *effects->effects[i], parameters))
+                    distance = true;
+                else
+                    cpuEffects.push_back(i);
+            }
+        }
+        for (const Rml::RenderManager* manager : managers){
+            Rml::TextShapingContext scaled = context;
+            if (manager && transformAwareText && RmlRenderer::forRenderManager(manager))
+                scaled.raster_scale = scaleFor(*manager);
+            int rasterKey = 0;
+            const float scale = rasterScaleOf(manager, *handle, scaled, rasterKey);
+            // text over 128 device px draws from distance glyphs at rest (ElementText)
+            const bool large = gpu && transformAwareText && (float)handle->size * scale > distanceFieldMinPixels;
+            distance = distance || large;
+            if (large)
+                continue;
+            for (const ShapedGlyph& glyph : shaped){
+                PrewarmItem item;
+                const float strength = handle->boldStrength[glyph.face];
+                item.bold = (strength > 0.0f) ? std::max(1, (int)std::lround(strength * scale)) : 0;
+                item.key = GlyphKey{handle->faces[glyph.face], glyph.glyphIndex, rasterKey, item.bold, 0};
+                if (glyphs.count(item.key) || !asked.insert(item.key).second)
+                    continue;
+                item.kind = PageKind::BASE;
+                item.face = handle->chain[glyph.face];
+                item.scale = handle->emScales[glyph.face] * scale;
+                item.size = handle->size;
+                batch->items.push_back(std::move(item));
+            }
+        }
+        for (const ShapedGlyph& glyph : shaped){
+            for (size_t i : cpuEffects){
+                // at document resolution, as getEffectGlyph makes them
+                PrewarmItem item;
+                const float strength = handle->boldStrength[glyph.face];
+                item.bold = (strength > 0.0f) ? std::max(1, (int)std::lround(strength)) : 0;
+                item.key = GlyphKey{handle->faces[glyph.face], glyph.glyphIndex, handle->size * 64, item.bold, effects->bitmapIds[i]};
+                if (glyphs.count(item.key) || !asked.insert(item.key).second)
+                    continue;
+                item.kind = PageKind::EFFECT;
+                item.face = handle->chain[glyph.face];
+                item.scale = handle->emScales[glyph.face];
+                item.size = handle->size;
+                item.advance = (int)std::lround(item.face->getGlyphAdvance(glyph.glyphIndex, item.scale));
+                item.effect = effects->effects[i];
+                item.offset = effects->offsets[i];
+                Rml::FontEffect::BitmapKey key;
+                item.mainThread = !item.effect->GetBitmapKey(key);
+                batch->items.push_back(std::move(item));
+            }
+            if (distance && gpu && gpuEffects()){
+                const DistanceKey key = distanceKey(*handle, glyph.face, glyph.glyphIndex);
+                if (askedDistance.insert(key).second){
+                    requestDistanceGlyph(*handle, glyph.face, glyph.glyphIndex);
+                    batch->distance.push_back(key);
+                }
+            }
+        }
+    }
+
+    progress->total = batch->items.size() + batch->distance.size();
+    if (progress->total == 0)
+        return progress;
+    std::vector<PrewarmItem> background;
+    for (const PrewarmItem& item : batch->items){
+        if (!item.mainThread)
+            background.push_back(item);
+    }
+    batch->task = jobs::submit([background](){
+        std::vector<PrewarmBitmap> made;
+        made.reserve(background.size());
+        for (const PrewarmItem& item : background)
+            made.push_back(makePrewarmBitmap(item));
+        return made;
+    }, jobs::SubmitOptions{jobs::Lane::Background, jobs::GateClass::Default, "htmlui-glyph-prewarm"});
+    prewarmBatches.push_back(std::move(batch));
+    return progress;
+}
+
+bool RmlFontEngine::updatePrewarm(double budgetMs){
+    if (prewarmBatches.empty())
+        return false;
+    collectDistanceGlyphs(false);
+    const bool deterministic = deterministicText();
+    const auto start = std::chrono::steady_clock::now();
+    auto overBudget = [&](){
+        return !deterministic && std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() >= budgetMs;
+    };
+    for (size_t b = 0; b < prewarmBatches.size();){
+        PrewarmBatch& batch = *prewarmBatches[b];
+        if (deterministic){
+            batch.task.wait();
+            collectDistanceGlyphs(true);
+        }
+        if (batch.task.isReady()){
+            const std::vector<PrewarmBitmap>& made = batch.task.get();
+            // the background bitmaps in the order of the items that are not made here
+            size_t background = 0;
+            for (size_t i = 0; i < batch.placed; i++)
+                background += batch.items[i].mainThread ? 0u : 1u;
+            while (batch.placed < batch.items.size() && !overBudget()){
+                const PrewarmItem& item = batch.items[batch.placed];
+                const PrewarmBitmap bitmap = item.mainThread ? makePrewarmBitmap(item) : made[background];
+                if (!placePrewarm(item, bitmap))
+                    break;   // no room until a page is free: the next frame
+                if (!item.mainThread)
+                    background++;
+                batch.placed++;
+            }
+            refreshDirtyPages();
+        }
+        batch.distanceReady = 0;
+        for (const DistanceKey& key : batch.distance){
+            auto it = distanceGlyphs.find(key);
+            // (a cleared distance page dropped it: asked for again when text draws it)
+            if (it == distanceGlyphs.end() || it->second.ready)
+                batch.distanceReady++;
+        }
+        batch.progress->ready = batch.placed + batch.distanceReady;
+        if (batch.progress->done())
+            prewarmBatches.erase(prewarmBatches.begin() + (long)b);
+        else
+            b++;
+    }
+    return !prewarmBatches.empty();
 }

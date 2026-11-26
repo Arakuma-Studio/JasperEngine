@@ -54,3 +54,36 @@ function UIDataModel:get(path) end
 ---@param path string
 ---@param value any
 function UIDataModel:set(path, value) end
+
+---What HtmlUI.prewarmText makes ready: the font as CSS names it, and its font-effect.
+---@class UIPrewarmTextOptions
+---@field family string|nil a font-family list (default "sans-serif")
+---@field size number|nil px (default 16)
+---@field weight number|"normal"|"bold"|nil (default 400)
+---@field style "normal"|"italic"|nil
+---@field effect string|nil a font-effect value: "outline(15px #000)", "glow(4px 12px 0px 8px #000)"
+---@field text string the characters to make ready
+
+---The input scheme on every document's `<html>` (`data-input-scheme`), set the frame the player
+---switches device (InputActions.currentScheme): `html[data-input-scheme="touch"] .hint` in CSS,
+---`element:getAttribute("data-input-scheme")` in a script. A script's own value is overwritten at
+---the next change.
+---@alias HtmlInputScheme "keyboard-mouse"|"gamepad"|"touch"
+
+---The pad's family on every document's `<html>` (`data-gamepad-family`, InputActions.gamepadFamily).
+---@alias HtmlGamepadFamily "xbox"|"playstation"|"nintendo"|"generic"
+
+---The attributes of `<input-prompt>`: the action's binding for the input scheme as its text
+---(InputActions.getActionDisplayName), unless the author gave it children.
+---@class HtmlInputPromptAttributes
+---@field action string the action, "Map/Action" or an Input Manager name
+---@field scheme "current"|"touch"|"gamepad"|"keyboard-mouse"|nil the scheme shown (default current)
+---@field ["data-glyph"] string set by the engine: the glyph key ("gamepad/playstation/cross", "" without a binding)
+---@field ["data-scheme"] HtmlInputScheme set by the engine: the scheme shown
+---@field ["data-empty"] "true"|"false" set by the engine: "true" when the action has no binding for that scheme
+
+---The `back` event (`doc:addEventListener("back", fn)`): Back (Android's Back button, Escape,
+---gamepad B) reached the top Is Menu document (UIDocument.isMenu), at its focused element, else its
+---root; it bubbles. `event:preventDefault()` takes it; otherwise an open select, else the topmost
+---modal dialog closes, then Engine.onBack(source) gets it.
+---@alias UIBackEventType "back"

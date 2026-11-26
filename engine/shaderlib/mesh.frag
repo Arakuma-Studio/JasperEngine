@@ -263,6 +263,10 @@ const float M_PI = 3.141592653589793;
         vec3 litEnergyCompensation;
     #endif
     #include "includes/pbr_ext.glsl"
+    // a scene's Area Lights (S99, builtin:lit#USE_AREA_LIGHTS)
+    #if defined(USE_PUNCTUAL) && defined(USE_AREA_LIGHTS)
+        #include "includes/area_lights.glsl"
+    #endif
 #endif
 #ifdef USE_LIGHT2D
     // the lit path shades 2D lights with its real normals (N.L at the light's height); the
@@ -582,6 +586,18 @@ void main() {
                 Light light = getLightData(i);
 
                 if (light.intensity > 0.0){
+                    #ifdef USE_AREA_LIGHTS
+                        // an Area Light shades by its shape (includes/area_lights.glsl)
+                        AreaLight area;
+                        if (getAreaLight(i, light, v_position, area)){
+                            float areaShadow = 1.0;
+                            #ifdef USE_SHADOWS
+                                areaShadow = lightShadowD(i, v_position, n, shadowDpdx, shadowDpdy);
+                            #endif
+                            areaLightShade(area, materialInfo, v_position, n, v, areaShadow, f_diffuse, f_specular);
+                            continue;
+                        }
+                    #endif
 
                     vec3 pointToLight = getLightVector(light, v_position);
 

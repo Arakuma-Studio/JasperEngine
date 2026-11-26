@@ -44,6 +44,7 @@
 #include "render/SystemRender.h"
 #include "render/RenderStats.h"
 #include "render/SceneDrawModes.h"
+#include "util/GraphicUtils.h"
 #include "render/RenderUtil.h"
 #include "util/Util.h"
 #include "asset/MeshAssetFiles.h"
@@ -1724,6 +1725,27 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
             }
 
+            // Area Light size handles of a selected Area Light (S99 R38): Width, Height or Radius
+            if (gizmoSelected == GizmoSelected::TRANSLATE && !sceneProject->sceneRender->hasEditLayer()) {
+                std::vector<Entity> selEntities = project->getSelectedEntities(sceneId);
+                if (selEntities.size() == 1 && !io.KeyShift && sceneProject->sceneRender->areaHandleCount(selEntities[0]) > 0) {
+                    Entity selEntity = selEntities[0];
+                    if (!sceneProject->sceneRender->isAnyGizmoSideSelected()) {
+                        int handleHit = sceneProject->sceneRender->hitTestAreaHandle(selEntity, x, y);
+                        if (handleHit >= 0) {
+                            sceneProject->sceneRender->selectAreaHandle(selEntity, handleHit);
+                            subSelectionClickConsumesRelease[sceneId] = true;
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        } else if (sceneProject->sceneRender->getSelectedAreaHandleIndex() >= 0) {
+                            sceneProject->sceneRender->clearAreaHandleSelection();
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        }
+                    }
+                }
+            }
+
             // Capsule Shadow Caster handles of a selected caster: the capsules' ends and radius
             // (3D translate; the same side guard as the blocks above)
             if (gizmoSelected == GizmoSelected::TRANSLATE && !sceneProject->sceneRender->hasEditLayer()) {
@@ -2865,6 +2887,10 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
 
         drawSettingRow(ICON_FA_OBJECT_GROUP " Hide selection outline", sceneProject.displaySettings.hideSelectionOutline);
 
+        drawSettingRow(ICON_FA_TRIANGLE_EXCLAMATION " Frame Checks", sceneProject.displaySettings.frameChecks);
+        ImGui::SetItemTooltip("Lists what looks wrong in this view at its corner: exposure, nothing in view, the selection "
+                              "out of frame or too small, missing textures, z-fighting");
+
         ImGui::EndTable();
     }
 
@@ -3642,6 +3668,7 @@ void editor::SceneWindow::show() {
                     const ImVec2 viewMin = ImGui::GetWindowPos();
                     const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
                     viewController->drawOverlays(sceneProject, viewMin, ImGui::GetWindowSize(), engineScale.x, engineScale.y);
+                    drawFrameChecks(sceneProject, viewMin, ImGui::GetWindowSize());
                     if (viewController->hasPendingClick(sceneProject.id) && ImGui::IsWindowHovered()) {
                         ImGui::SetMouseCursor(ImGuiMouseCursor_Progress);
                     }
@@ -3731,6 +3758,71 @@ void editor::SceneWindow::drawDrawModeOverlays(SceneProject& sceneProject, ImVec
     if (drawModeHasWires(sceneProject.displaySettings.drawMode) && sceneProject.sceneRender && sceneProject.sceneRender->isWireframeTruncated())
         lines.push_back("Wires: the nearest meshes only");
     drawStatsBox(drawList, imageMin, imageMax, lines);
+}
+
+void editor::SceneWindow::drawFrameChecks(SceneProject& sceneProject, ImVec2 viewMin, ImVec2 viewSize){
+    if (!sceneProject.displaySettings.frameChecks || !sceneProject.scene || !sceneProject.sceneRender || viewSize.x <= 0.0f || viewSize.y <= 0.0f){
+        frameChecksOverlay.erase(sceneProject.id);
+        return;
+    }
+    FrameChecksOverlay& overlay = frameChecksOverlay[sceneProject.id];
+    const double now = ImGui::GetTime();
+    if (overlay.refreshedAt < 0.0 || now - overlay.refreshedAt >= framechecks::OVERLAY_REFRESH_SECONDS){
+        overlay.refreshedAt = now;
+        overlay.findings.clear();
+        if (Camera* camera = sceneProject.sceneRender->getCamera()){
+            framechecks::Request request;
+            request.project = project;
+            request.sceneProject = &sceneProject;
+            request.cameraScene = camera->getScene();
+            request.camera = camera->getEntity();
+            request.sceneView = true;
+            request.layerMask = sceneProject.viewState.layerFilter.visible;
+            // the frame the view showed last (a synchronous readback, only while the overlay is on)
+            Framebuffer* framebuffer = sceneProject.sceneRender->getFramebuffer();
+            std::vector<uint8_t> rgba;
+            if (framebuffer && GraphicUtils::readFramebufferRGBA(framebuffer, rgba)){
+                request.luminance = framechecks::measureLuminance(rgba.data(), (int)framebuffer->getWidth(), (int)framebuffer->getHeight(), 4);
+            }
+            overlay.findings = framechecks::run(request).findings;
+        }
+    }
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const float margin = Theme::dpi(8.0f);
+    const ImVec2 pad = Theme::dpi(ImVec2(8.0f, 6.0f));
+    const float wrap = std::max(Theme::dpi(120.0f), std::min(viewSize.x * 0.45f, Theme::dpi(420.0f)));
+    const float spacing = Theme::dpi(4.0f);
+    struct Line { std::string text; ImU32 color; ImVec2 size; const framechecks::Finding* finding; };
+    std::vector<Line> lines;
+    const std::string title = overlay.findings.empty() ? ICON_FA_CIRCLE_CHECK "  Frame Checks: nothing found"
+                                                       : ICON_FA_TRIANGLE_EXCLAMATION "  Frame Checks";
+    lines.push_back({title, overlay.findings.empty() ? IM_COL32(150, 220, 150, 255) : IM_COL32(255, 255, 255, 255),
+                     ImGui::CalcTextSize(title.c_str()), nullptr});
+    for (const framechecks::Finding& finding : overlay.findings){
+        const std::string text = finding.kind + ": " + finding.message;
+        const ImU32 color = finding.severity == framechecks::Severity::WARNING ? IM_COL32(255, 200, 90, 255) : IM_COL32(190, 190, 190, 255);
+        lines.push_back({text, color, ImGui::CalcTextSize(text.c_str(), nullptr, false, wrap), &finding});
+    }
+    float width = 0.0f, height = 0.0f;
+    for (const Line& line : lines){
+        width = std::max(width, line.size.x);
+        height += line.size.y + spacing;
+    }
+    height -= spacing;
+    const ImVec2 boxMax(viewMin.x + viewSize.x - margin, viewMin.y + viewSize.y - margin);
+    const ImVec2 boxMin(std::max(viewMin.x + margin, boxMax.x - width - pad.x * 2.0f), boxMax.y - height - pad.y * 2.0f);
+    drawList->AddRectFilled(boxMin, boxMax, IM_COL32(20, 20, 20, 215), Theme::dpi(3.0f));
+    float y = boxMin.y + pad.y;
+    for (const Line& line : lines){
+        const ImVec2 at(boxMin.x + pad.x, y);
+        drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), at, line.color, line.text.c_str(), nullptr, line.finding ? wrap : 0.0f);
+        // the call that fixes it, on hover
+        if (line.finding && ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(at, ImVec2(at.x + wrap, at.y + line.size.y))){
+            ImGui::SetTooltip("Fix: %s", line.finding->fix.c_str());
+        }
+        y += line.size.y + spacing;
+    }
 }
 
 void editor::SceneWindow::drawFluidBrushCursor(SceneProject* sceneProject){

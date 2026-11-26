@@ -65,7 +65,7 @@ namespace jasperengine {
         void setImmediatePipelines(bool immediate);
         // builds every pipeline type in pipelines with the render state; the PIP_MSAA* types
         // take msaaSamples (the post-processed camera's multisampled target, 2 or 4)
-        bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
+        bool endLoad(uint32_t pipelines, const RenderState& state, int msaaSamples = 1);
         bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
         // The dynamic path: records the shader, vertex layout and index type and creates no
         // pipeline; every draw then picks its state with beginDraw(const PipelineState&).

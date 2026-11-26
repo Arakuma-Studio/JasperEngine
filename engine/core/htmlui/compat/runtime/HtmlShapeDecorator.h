@@ -9,6 +9,8 @@
 
 #include <RmlUi/Core/Decorator.h>
 
+#include <RmlUi/Core/Types.h>
+
 #include <string>
 #include <vector>
 
@@ -36,6 +38,9 @@ namespace jasperengine::htmlui::compat {
         // white, black elsewhere transparent; `resolveLength` resolves lengths other than px and
         // percentages (em, rem, vw ...) for the element. "" when the shape is invalid.
         std::string toSvg(float width, float height, Rml::Element* element = nullptr, std::string* error = nullptr) const;
+        // whether a point (px, relative to the reference box's top left) is inside the shape, from
+        // the same geometry as toSvg (exact, curves of path() flattened); false when invalid
+        bool contains(float width, float height, Rml::Element* element, Rml::Vector2f point) const;
 
         // The shape as a rectangle with elliptical corners in the reference box (inset(), xywh(), rect(), circle(),
         // ellipse(): an analytic clip, S92 R8); false for polygon() and path(), and when invalid.
@@ -46,10 +51,15 @@ namespace jasperengine::htmlui::compat {
         bool toConvexPolygon(float width, float height, Rml::Element* element, std::vector<Rml::Vector2f>& points) const;
     };
 
+    // Rml::Context::SetHitTestShape's hook (S93 R7: clip-path clips hit testing): false when the
+    // point, in the element's local space, is outside a shape its mask-image's html-shape() draws.
+    // DocumentLoader installs it on the contexts it loads documents into.
+    JASPERENGINE_INTERNAL bool clipPathHitTest(Rml::Element* element, Rml::Vector2f point);
+
     // html-shape("<basic-shape>"): the shape rasterized (LunaSVG) at the reference box's size x
     // the context's pixel ratio into a callback texture drawn over that box. p2-css appends it to
-    // mask-image for clip-path, so the element is masked to the exact geometry (hit testing is
-    // not clipped).
+    // mask-image for clip-path, so the element is masked to the exact geometry (and hit testing
+    // clipped to it: clipPathHitTest).
     class JASPERENGINE_INTERNAL HtmlShapeDecorator : public Rml::Decorator {
     public:
         explicit HtmlShapeDecorator(BasicShape shape);

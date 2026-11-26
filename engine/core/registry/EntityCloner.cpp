@@ -3,6 +3,7 @@
 
 #include "EntityCloner.h"
 #include "model/ModelCpuData.h"
+#include "component/MeshComponent.h"
 #include "component/ActionComponent.h"
 #include "component/TerrainWorldComponent.h"
 #include "component/VoxelVolumeComponent.h"
@@ -55,12 +56,15 @@
 #include "component/AudioSnapshotComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
 #include "component/TitleArtRendererComponent.h"
+#include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -95,6 +99,7 @@
 #include "component/MeshPolygonComponent.h"
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "component/TerrainComponent.h"
@@ -795,6 +800,7 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
         for (Entity& plane : particles.collisionPlanes) {
             plane = ctx.remap(plane);
         }
+        particles.legacyFrom = ctx.remap(particles.legacyFrom);
         return;
     }
     // the copy simulates on its own (its runtime is made at its first update)
@@ -803,6 +809,7 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
     for (Entity& plane : particles.collisionPlanes) {
         plane = ctx.remap(plane);
     }
+    particles.legacyFrom = ctx.remap(particles.legacyFrom);
     particles.onCollision.clear();
     particles.onParticleDeath.clear();
     particles.onSubEmit.clear();
@@ -943,6 +950,30 @@ void prepare<TitleArtRendererComponent>(TitleArtRendererComponent& title, Entity
 }
 
 template<>
+void prepare<DialogueRunnerComponent>(DialogueRunnerComponent& runner, Entity, CloneContext& ctx) {
+    runner.view = ctx.remap(runner.view);
+    // a copy has not started: its own runner is made on its first use; the events are the original's
+    runner.runner.reset();
+    runner.isRunning = false;
+    runner.state = "idle";
+    runner.currentNode.clear();
+    runner.forEachEvent([](auto& event) { event.clear(); });
+}
+
+template<>
+void prepare<SimulationCullingComponent>(SimulationCullingComponent& culling, Entity, CloneContext&) {
+    // the copy is evaluated on its own (CullingSystem): it froze nothing yet
+    const SimulationCullingComponent defaults;
+    culling.state = defaults.state;
+    culling.reason = defaults.reason;
+    culling.focusDistance = defaults.focusDistance;
+    culling.resolvedRadius = defaults.resolvedRadius;
+    culling.groundChecked = false;
+    culling.groundLoaded = true;
+    culling.evaluated = false;
+}
+
+template<>
 void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, CloneContext&) {
     // a copy has not started: it has nothing to revert
     snapshot.previousSnapshot.clear();
@@ -1049,11 +1080,25 @@ void prepare<CameraFollowComponent>(CameraFollowComponent& follow, Entity, Clone
     follow.foreignWriteDetected = false;
     follow.warnedForeignWrite = false;
     follow.warnedMissingTarget = false;
+    follow.frameStep = CameraFollowStep();
 }
 
 template<>
 void prepare<SpriteComponent>(SpriteComponent& sprite, Entity, CloneContext&) {
     sprite.needUpdateSprite = true;
+}
+
+template<>
+void prepare<SpriteSkinComponent>(SpriteSkinComponent& skin, Entity, CloneContext& ctx) {
+    // a copied skeleton drives the copy; the copy's mesh is built on its own
+    skin.rootBone = ctx.remap(skin.rootBone);
+    for (Entity& bone : skin.bones) bone = ctx.remap(bone);
+    skin.builtSkin.reset();
+    skin.inverseBindMatrices.clear();
+    skin.builtSkinned = false;
+    skin.builtFlipX = false;
+    skin.paletteDirty = false;
+    skin.paletteBones.clear();
 }
 
 template<>
@@ -1437,12 +1482,16 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<AudioSnapshotComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TitleArtRendererComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SpriteSkinComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<OutlineComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<HitStopExemptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SimulationCullingComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<DialogueRunnerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<GridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapLayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapCollider2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

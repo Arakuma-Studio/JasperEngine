@@ -67,6 +67,10 @@ double RmlSystem::GetElapsedTime(){
     return HtmlUIClock::now();
 }
 
+double RmlSystem::GetAnimationClockTime(int clock){
+    return HtmlUIClock::now(HtmlUIClock::modeOfAnimationClock(clock));
+}
+
 bool RmlSystem::LogMessage(Rml::Log::Type type, const Rml::String& message){
     // compat first (phase-2 hook H3): the `unset` sentinel is dropped, messages about compat
     // output are logged at the user's file and line, checks and probes capture theirs

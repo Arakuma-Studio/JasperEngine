@@ -8,7 +8,8 @@
 // running top-level timer, animation and timeline. UIDocumentSystem::update calls
 // tick(HtmlUIClock::now()) every frame before the RmlUi context update, so anime runs on the
 // UI clock like CSS animations (Engine::timeScale does not slow it); timers created with
-// clock = "game" run on the scaled game time instead (Engine::getGameTime deltas).
+// clock = "game" (or, without a clock, targets in a Game Time UI Document) run on the scaled
+// game time instead (HtmlUIClock::now(GAME_TIME) deltas: stopped outside Play and in its Pause).
 // reset() drops everything (Engine::systemShutdown, the editor's play stop).
 
 #include "Export.h"
@@ -37,7 +38,7 @@ namespace jasperengine {
         ~AnimEngine();
 
         // once per frame (idempotent while the times do not change): the UI clock time in
-        // seconds; the game clock follows Engine::getGameTime()
+        // seconds; the game clock follows HtmlUIClock::now(GAME_TIME)
         void tick(double uiTimeSeconds);
         // both clocks explicitly, in seconds of game time accumulated (not deltas); tests
         void tick(double uiTimeSeconds, double gameTimeSeconds);

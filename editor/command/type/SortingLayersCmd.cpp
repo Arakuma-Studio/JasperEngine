@@ -15,8 +15,16 @@ editor::SortingSettings editor::SortingSettings::current(){
     return settings;
 }
 
+editor::SortingSettings editor::SortingSettings::of(const Project& project){
+    SortingSettings settings;
+    settings.layers = project.getSortingLayers();
+    settings.mode = project.getTransparencySortMode();
+    settings.axis = project.getTransparencySortAxis();
+    return settings;
+}
+
 editor::SortingLayersCmd::SortingLayersCmd(Project* project, const SortingSettings& newSettings, std::string description):
-    project(project), oldSettings(SortingSettings::current()), newSettings(newSettings), description(std::move(description)){
+    project(project), oldSettings(SortingSettings::of(*project)), newSettings(newSettings), description(std::move(description)){
 }
 
 void editor::SortingLayersCmd::apply(const SortingSettings& settings){

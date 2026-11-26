@@ -115,6 +115,8 @@ SITES = {
     ("window/TerrainFoliagePanel.cpp", "Remove Tree Prototype"): "not driven: from a tree prototype's remove button in the Terrain window's Paint Trees tool, when trees use it; set_properties treePrototypes and edit_terrain clear_foliage do the same for agents",
     ("window/TerrainFoliagePanel.cpp", "Mass Place Trees"): "not driven: from the Paint Trees tool, which needs tree prototypes; edit_terrain scatter_by_rules does the same for agents (test_foliage)",
     ("window/VoxelCreateDialog.cpp", "Create Voxel Volume"): "not driven: from the Hierarchy's create menu; edit_voxels create does the same for agents",
+    ("window/GameWindow.cpp", "Save Snapshot##GamePlayDataSnapshot"): "not driven: the Game view's Play Data menu in Play opens it; a snapshot is a folder of files under Tests/Data/ an agent writes as files",
+    ("window/TestRunnerWindow.cpp", "Create Test Script##TestRunner"): "not driven: the Test Runner window's Create menu opens it; an agent writes Tests/<name>.test.lua as a file",
 }
 # InspectorWindow's error boxes share one shape: they open when a file picker's answer is refused
 INSPECTOR_BOXES = 11
@@ -205,8 +207,8 @@ async def test_sites_table_is_complete(ed: Editor):
     # Create Voxel Volume: 88; S82's Expose as Parameter and Replace the whole title: 90; S50's Apply
     # Terrain Template and the Hierarchy's map import preview: 92; S87's Edit Languages, Remove
     # Language and Import Title Art (ImGui modals before, which the lint refused): 95; V1's Export as
-    # Model and Bake to Texture: 97
-    ed.check_eq(sum(found.values()), 97, "the 97 sites")
+    # Model and Bake to Texture, and the project test runner's Save Snapshot and Create Test Script: 99
+    ed.check_eq(sum(found.values()), 99, "the 99 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

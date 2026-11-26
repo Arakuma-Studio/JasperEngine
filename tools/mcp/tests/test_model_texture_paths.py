@@ -45,8 +45,16 @@ async def shot(ed: Editor, scene, label: str) -> tuple:
     return pngdiff.decode(r.images[0][0]), size
 
 
-async def normal_texture(ed: Editor, scene, entity) -> dict:
-    got = await ed.call("get_entity", scene=scene, entity=entity, components=["mesh"], properties=[NORMAL], detail="values")
+async def drawn_by(ed: Editor, scene, model) -> int:
+    """The GameObject that draws the model's mesh: a new project's models keep their node hierarchy
+    (Preserve Hierarchy, S94 F44), so the box's node draws it, not the Model's own GameObject"""
+    info = await ed.call("get_model_info", scene=scene, entity=model)
+    return info["mesh_nodes"][0]["drawn_by"]["id"]
+
+
+async def normal_texture(ed: Editor, scene, model) -> dict:
+    got = await ed.call("get_entity", scene=scene, entity=await drawn_by(ed, scene, model), components=["mesh"], properties=[NORMAL],
+                        detail="values")
     return next(iter(got["components"].values()))[NORMAL]
 
 
@@ -76,7 +84,7 @@ async def test_scene_stores_no_absolute_path(ed: Editor):
     ed.check(S["id"] in text and root not in text and str(ed.scratch.root) not in text, f"the scene names no absolute path:\n{text}")
     original, _ = await shot(ed, scene, "original")
     # the comparison below sees a model drawn without its normal map
-    await ed.call("set_properties", scene=scene, entity="Box", values={"mesh": {NORMAL: None}})
+    await ed.call("set_properties", scene=scene, entity=await drawn_by(ed, scene, "Box"), values={"mesh": {NORMAL: None}})
     flat, _ = await shot(ed, scene, "without-normal-map")
     same, fraction, _ = pngdiff.compare(original, flat, 8, 0.002)
     S["without"] = fraction

@@ -10,6 +10,7 @@
 #include "component/RigidbodyComponent.h"
 #include "physics/AttachedColliders.h"
 #include "physics/ContactTracker.h"
+#include "physics/PhysicsQueryDebug.h"
 #include "registry/PhysicsLayers.h"
 #include "subsystem/PhysicsSystem.h"
 #include "util/JoltPhysicsAux.h"
@@ -433,7 +434,9 @@ RayReturn PhysicsQueries3D::sphereCast(Scene* scene, Vector3 origin, float radiu
     }
     JPH::SphereShape sphere(radius);
     sphere.SetEmbedded();
-    return cast(scene, "Physics.sphereCast", sphere, poseAt(origin, Quaternion::IDENTITY), direction, maxDistance, options, NULL_ENTITY, nullptr);
+    const RayReturn hit = cast(scene, "Physics.sphereCast", sphere, poseAt(origin, Quaternion::IDENTITY), direction, maxDistance, options, NULL_ENTITY, nullptr);
+    physics::noteCast(scene, physics::QueryShape::sphere(origin, radius), direction, maxDistance, &hit, hit.hit ? 1 : 0);
+    return hit;
 }
 
 RayReturn PhysicsQueries3D::boxCast(Scene* scene, Vector3 center, Vector3 halfExtents, Vector3 direction, Quaternion orientation, float maxDistance, const QueryOptions& options){
@@ -443,7 +446,9 @@ RayReturn PhysicsQueries3D::boxCast(Scene* scene, Vector3 center, Vector3 halfEx
     // no convex radius: the cast box has sharp corners, as Unity's
     JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
-    return cast(scene, "Physics.boxCast", box, poseAt(center, orientation), direction, maxDistance, options, NULL_ENTITY, nullptr);
+    const RayReturn hit = cast(scene, "Physics.boxCast", box, poseAt(center, orientation), direction, maxDistance, options, NULL_ENTITY, nullptr);
+    physics::noteCast(scene, physics::QueryShape::box(center, halfExtents, orientation), direction, maxDistance, &hit, hit.hit ? 1 : 0);
+    return hit;
 }
 
 RayReturn PhysicsQueries3D::capsuleCast(Scene* scene, Vector3 point1, Vector3 point2, float radius, Vector3 direction, float maxDistance, const QueryOptions& options){
@@ -451,7 +456,9 @@ RayReturn PhysicsQueries3D::capsuleCast(Scene* scene, Vector3 point1, Vector3 po
         return Ray::NO_HIT;
     }
     CapsuleQuery capsule(point1, point2, radius);
-    return cast(scene, "Physics.capsuleCast", *capsule.shape, capsule.pose, direction, maxDistance, options, NULL_ENTITY, nullptr);
+    const RayReturn hit = cast(scene, "Physics.capsuleCast", *capsule.shape, capsule.pose, direction, maxDistance, options, NULL_ENTITY, nullptr);
+    physics::noteCast(scene, physics::QueryShape::capsule(point1, point2, radius), direction, maxDistance, &hit, hit.hit ? 1 : 0);
+    return hit;
 }
 
 size_t PhysicsQueries3D::sphereCastAll(Scene* scene, Vector3 origin, float radius, Vector3 direction, float maxDistance, std::vector<RayReturn>& hits, const QueryOptions& options){
@@ -462,6 +469,7 @@ size_t PhysicsQueries3D::sphereCastAll(Scene* scene, Vector3 origin, float radiu
     JPH::SphereShape sphere(radius);
     sphere.SetEmbedded();
     cast(scene, "Physics.sphereCastAll", sphere, poseAt(origin, Quaternion::IDENTITY), direction, maxDistance, options, NULL_ENTITY, &hits);
+    physics::noteCast(scene, physics::QueryShape::sphere(origin, radius), direction, maxDistance, hits.data(), hits.size());
     return hits.size();
 }
 
@@ -473,6 +481,7 @@ size_t PhysicsQueries3D::boxCastAll(Scene* scene, Vector3 center, Vector3 halfEx
     JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
     cast(scene, "Physics.boxCastAll", box, poseAt(center, orientation), direction, maxDistance, options, NULL_ENTITY, &hits);
+    physics::noteCast(scene, physics::QueryShape::box(center, halfExtents, orientation), direction, maxDistance, hits.data(), hits.size());
     return hits.size();
 }
 
@@ -483,6 +492,7 @@ size_t PhysicsQueries3D::capsuleCastAll(Scene* scene, Vector3 point1, Vector3 po
     }
     CapsuleQuery capsule(point1, point2, radius);
     cast(scene, "Physics.capsuleCastAll", *capsule.shape, capsule.pose, direction, maxDistance, options, NULL_ENTITY, &hits);
+    physics::noteCast(scene, physics::QueryShape::capsule(point1, point2, radius), direction, maxDistance, hits.data(), hits.size());
     return hits.size();
 }
 
@@ -493,7 +503,9 @@ size_t PhysicsQueries3D::overlapSphere(Scene* scene, Vector3 center, float radiu
     }
     JPH::SphereShape sphere(radius);
     sphere.SetEmbedded();
-    return overlap(scene, sphere, poseAt(center, Quaternion::IDENTITY), options, &colliders);
+    const size_t count = overlap(scene, sphere, poseAt(center, Quaternion::IDENTITY), options, &colliders);
+    physics::noteOverlap(scene, physics::QueryShape::sphere(center, radius), count, colliders.data(), colliders.size());
+    return count;
 }
 
 size_t PhysicsQueries3D::overlapBox(Scene* scene, Vector3 center, Vector3 halfExtents, Quaternion orientation, std::vector<ColliderRef>& colliders, const QueryOptions& options){
@@ -503,7 +515,9 @@ size_t PhysicsQueries3D::overlapBox(Scene* scene, Vector3 center, Vector3 halfEx
     }
     JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
-    return overlap(scene, box, poseAt(center, orientation), options, &colliders);
+    const size_t count = overlap(scene, box, poseAt(center, orientation), options, &colliders);
+    physics::noteOverlap(scene, physics::QueryShape::box(center, halfExtents, orientation), count, colliders.data(), colliders.size());
+    return count;
 }
 
 size_t PhysicsQueries3D::overlapCapsule(Scene* scene, Vector3 point1, Vector3 point2, float radius, std::vector<ColliderRef>& colliders, const QueryOptions& options){
@@ -512,7 +526,9 @@ size_t PhysicsQueries3D::overlapCapsule(Scene* scene, Vector3 point1, Vector3 po
         return 0;
     }
     CapsuleQuery capsule(point1, point2, radius);
-    return overlap(scene, *capsule.shape, capsule.pose, options, &colliders);
+    const size_t count = overlap(scene, *capsule.shape, capsule.pose, options, &colliders);
+    physics::noteOverlap(scene, physics::QueryShape::capsule(point1, point2, radius), count, colliders.data(), colliders.size());
+    return count;
 }
 
 size_t PhysicsQueries3D::overlapPoint(Scene* scene, Vector3 point, std::vector<ColliderRef>& colliders, const QueryOptions& options){
@@ -521,7 +537,9 @@ size_t PhysicsQueries3D::overlapPoint(Scene* scene, Vector3 point, std::vector<C
         Log::error("Physics.overlapPoint: %s", why);
         return 0;
     }
-    return overlapAtPoint(scene, point, options, &colliders);
+    const size_t count = overlapAtPoint(scene, point, options, &colliders);
+    physics::noteOverlap(scene, physics::QueryShape::point(point), count, colliders.data(), colliders.size());
+    return count;
 }
 
 bool PhysicsQueries3D::checkSphere(Scene* scene, Vector3 center, float radius, const QueryOptions& options){
@@ -530,7 +548,9 @@ bool PhysicsQueries3D::checkSphere(Scene* scene, Vector3 center, float radius, c
     }
     JPH::SphereShape sphere(radius);
     sphere.SetEmbedded();
-    return overlap(scene, sphere, poseAt(center, Quaternion::IDENTITY), options, nullptr) > 0;
+    const size_t found = overlap(scene, sphere, poseAt(center, Quaternion::IDENTITY), options, nullptr);
+    physics::noteOverlap<ColliderRef>(scene, physics::QueryShape::sphere(center, radius), found, nullptr, 0);
+    return found > 0;
 }
 
 bool PhysicsQueries3D::checkBox(Scene* scene, Vector3 center, Vector3 halfExtents, Quaternion orientation, const QueryOptions& options){
@@ -539,7 +559,9 @@ bool PhysicsQueries3D::checkBox(Scene* scene, Vector3 center, Vector3 halfExtent
     }
     JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
-    return overlap(scene, box, poseAt(center, orientation), options, nullptr) > 0;
+    const size_t found = overlap(scene, box, poseAt(center, orientation), options, nullptr);
+    physics::noteOverlap<ColliderRef>(scene, physics::QueryShape::box(center, halfExtents, orientation), found, nullptr, 0);
+    return found > 0;
 }
 
 bool PhysicsQueries3D::checkCapsule(Scene* scene, Vector3 point1, Vector3 point2, float radius, const QueryOptions& options){
@@ -547,7 +569,9 @@ bool PhysicsQueries3D::checkCapsule(Scene* scene, Vector3 point1, Vector3 point2
         return false;
     }
     CapsuleQuery capsule(point1, point2, radius);
-    return overlap(scene, *capsule.shape, capsule.pose, options, nullptr) > 0;
+    const size_t found = overlap(scene, *capsule.shape, capsule.pose, options, nullptr);
+    physics::noteOverlap<ColliderRef>(scene, physics::QueryShape::capsule(point1, point2, radius), found, nullptr, 0);
+    return found > 0;
 }
 
 bool PhysicsQueries3D::checkPoint(Scene* scene, Vector3 point, const QueryOptions& options){
@@ -555,7 +579,9 @@ bool PhysicsQueries3D::checkPoint(Scene* scene, Vector3 point, const QueryOption
         Log::error("Physics.checkPoint: %s", why);
         return false;
     }
-    return overlapAtPoint(scene, point, options, nullptr) > 0;
+    const size_t found = overlapAtPoint(scene, point, options, nullptr);
+    physics::noteOverlap<ColliderRef>(scene, physics::QueryShape::point(point), found, nullptr, 0);
+    return found > 0;
 }
 
 bool PhysicsQueries3D::closestPoint(Scene* scene, Vector3 point, const ColliderRef& collider, Vector3& closest){

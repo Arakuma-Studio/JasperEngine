@@ -48,6 +48,8 @@ namespace jasperengine::editor::platform {
         static std::filesystem::path bundletoolJar(const std::function<bool()>& cancelled, std::string& error);
         // `apksigner verify --verbose`: true when it accepts; its output in `output`
         static bool verifyApk(const std::filesystem::path& apk, std::string& output, std::string& error);
+        // `aapt2 dump badging`: true with its output; false with error when aapt2 is missing or fails
+        static bool dumpBadging(const std::filesystem::path& apk, std::string& output, std::string& error);
     };
 
 }

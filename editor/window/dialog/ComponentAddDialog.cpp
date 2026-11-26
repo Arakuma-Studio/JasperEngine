@@ -76,11 +76,13 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::CapsuleShadowCasterComponent, "Soft capsule shadows of a character from its bones"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
+            {ComponentType::SpriteSkinComponent, "Bends this GameObject's Sprite with bone GameObjects (2D skeletal animation)"},
             {ComponentType::SpriteBatchComponent, "Draws many instances of this GameObject's Sprite in one call per texture page (filled by scripts)"},
             {ComponentType::GridComponent, "Cell layout of the Tilemap Layers on this GameObject and below it"},
             {ComponentType::TilemapLayerComponent, "A layer of tiles from a Tileset on a Grid"},
             {ComponentType::TilemapCollider2DComponent, "Colliders generated from this GameObject's Tilemap Layer"},
             {ComponentType::SortingGroupComponent, "Sorts this GameObject and its children as one item by Sorting Layer and Order in Layer"},
+            {ComponentType::OutlineComponent, "Outlines this GameObject's mesh and the meshes below it (skinned models too), through walls or not"},
             {ComponentType::TitleArtRendererComponent, "Shows a Title Art through this Image or Sprite: Baked, Realtime or Glyph Atlas, with live effects"},
             {ComponentType::LineRendererComponent, "Draws lines: a polyline with width, colour gradient, joints and caps, or debug segments"},
             {ComponentType::PointsComponent, "Draws a point cloud"},
@@ -185,8 +187,13 @@ ComponentAddDialog::ComponentAddDialog() {
         {"Scripts", ICON_FA_CODE, {
             {ComponentType::ScriptComponent, "Runs C++ or Lua scripts"},
         }},
+        // dialogue-graphs.md R13
+        {"Gameplay", ICON_FA_COMMENTS, {
+            {ComponentType::DialogueRunnerComponent, "Plays a .dialogue: its lines and choices to a view, its actions and conditions to the game's handlers"},
+        }},
         {"Miscellaneous", ICON_FA_PUZZLE_PIECE, {
             {ComponentType::Transform, "Position, rotation, scale and parent"},
+            {ComponentType::SimulationCullingComponent, "Freezes its scripts' updates, Animator and bodies while far from the player or over unloaded ground"},
         }},
     };
 }

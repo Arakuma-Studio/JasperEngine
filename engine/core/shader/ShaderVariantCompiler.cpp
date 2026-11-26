@@ -23,6 +23,7 @@
 #include <string_view>
 #include <set>
 #include <mutex>
+#include <regex>
 #include <unordered_set>
 
 #ifdef JASPERENGINE_RUNTIME_SHADERS
@@ -477,6 +478,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::DEPTH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv' (S52)
+    if (prop & ShaderPool::getDepthNormalsProperty()) defs.push_back({"DEPTH_NORMALS", "1"});      // 'Cvn' (S100; its main is wrapped, prepareVariantArgs)
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -536,6 +538,7 @@ void addHtmlUIPostPropertyDefinitions(std::vector<shadercompiler::define_t>& def
     if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_BLUR", "1"});                 // 'Blr'
     if (prop & shaderPropertyBit(5))  defs.push_back({"HAS_UNPREMULTIPLY", "1"});        // 'Unp'
     if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_YUV", "1"});                  // 'Yuv'
+    if (prop & shaderPropertyBit(7))  defs.push_back({"HAS_BLEND_MODE", "1"});           // 'Bmd'
 }
 
 void addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -801,6 +804,11 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }else if (shaderType == ShaderType::TRANSITION){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "transition.frag";
+    }else if (shaderType == ShaderType::CAVITY){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "cavity.frag";
+        if (properties & shaderPropertyBit(0)) args.defines.push_back({"CAVITY_SCREEN", "1"});   // 'Scr'
+        if (properties & shaderPropertyBit(1)) args.defines.push_back({"CAVITY_WORLD", "1"});    // 'Wld'
     }else if (shaderType == ShaderType::PASS_PREVIEW){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "pass_preview.frag";
@@ -1149,12 +1157,54 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
 
     getCustomShaderPaths(base, result.vertFile, result.fragFile);
     const std::string includeRoot = getCustomShaderIncludeRoot(base);
+    const auto& library = getLibrarySources();
+
+    // A project shader whose manifest has @depth draws its depth passes with its own depth
+    // program, as a library shader does: <name>_depth.vert / _depth.frag beside its sources,
+    // each else the library's generic one (library/surface_depth.*). Its manifest (the
+    // @require varyings) is the colour program's. A depth fork (Mesh customDepthShader) has no
+    // manifest of its own: its files are the depth program.
+    std::string colorVertSource;
+    std::string colorFragSource;
+    bool ownDepthProgram = false;
+    if (shaderType == ShaderType::DEPTH && !result.vertFile.empty() && isSafeRelativePath(result.fragFile) &&
+            readProjectFile(result.fragFile, colorFragSource)){
+        if (isSafeRelativePath(result.vertFile))
+            readProjectFile(result.vertFile, colorVertSource);
+        ShaderManifest colorManifest;
+        colorManifest.parse(colorFragSource, result.fragFile);
+        colorManifest.parse(colorVertSource, result.vertFile);
+        ownDepthProgram = colorManifest.present && colorManifest.depth;
+        if (ownDepthProgram){
+            appendSignaturePart(signatureInput, "manifest:" + result.fragFile, colorFragSource);
+            appendSignaturePart(signatureInput, "manifest:" + result.vertFile, colorVertSource);
+            auto depthFile = [&](const std::string& colorFile, const char* extension, const char* fallback){
+                const std::string stem = colorFile.substr(0, colorFile.size() - std::string(extension).size());
+                const std::string own = stem + "_depth" + extension;
+                std::string probe;
+                return (isSafeRelativePath(own) && readProjectFile(own, probe)) ? own : std::string(fallback);
+            };
+            result.vertFile = depthFile(result.vertFile, ".vert", "library/surface_depth.vert");
+            result.fragFile = depthFile(result.fragFile, ".frag", "library/surface_depth.frag");
+        }
+    }
 
     auto loadEntryPoint = [&](const std::string& rel, const char* stage) -> bool {
         std::string content;
         if (!isSafeRelativePath(rel)) {
             result.error = std::string("Unsafe custom ") + stage + " shader path: " + rel;
             return false;
+        }
+        // (a project depth program's library fallback, library/surface_depth.*)
+        if (ownDepthProgram && rel.rfind("library/", 0) == 0) {
+            auto it = library.find(rel);
+            if (it == library.end()) {
+                result.error = "This build has no engine shader library to compile " + base + " from";
+                return false;
+            }
+            appendSignaturePart(signatureInput, std::string("entry:") + rel, it->second);
+            appendSignaturePart(signatureInput, "library-hash", std::to_string(getLibraryHash()));
+            return true;
         }
         if (!readProjectFile(rel, content)) {
             result.error = std::string("Could not open custom ") + stage + " shader: " + rel;
@@ -1173,7 +1223,6 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     // An empty include root means the entry point sits at the project root, where the
     // first two candidates would be the same file.
     const bool hasLocalRoot = !includeRoot.empty() && includeRoot != ".";
-    const auto& library = getLibrarySources();
 
     std::unordered_set<std::string> visited;
     std::function<void(const std::string&)> visitSource = [&](const std::string& source) {
@@ -1208,16 +1257,26 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     };
 
     // copies: visiting can insert into result.files
-    const std::string vertSource = result.vertFile.empty() ? std::string() : result.files[result.vertFile];
-    const std::string fragSource = result.files[result.fragFile];
+    auto entrySource = [&](const std::string& rel){
+        if (rel.empty())
+            return std::string();
+        auto own = result.files.find(rel);
+        if (own != result.files.end())
+            return own->second;
+        auto engine = library.find(rel);
+        return engine != library.end() ? engine->second : std::string();
+    };
+    const std::string vertSource = entrySource(result.vertFile);
+    const std::string fragSource = entrySource(result.fragFile);
     visitSource(vertSource);
     visitSource(fragSource);
 
     // a fork with a manifest compiles with the varyings its @require asks for, as a library
-    // shader does (the entry sources are already in the signature)
+    // shader does (the entry sources are already in the signature); its depth program with the
+    // colour program's
     ShaderManifest manifest;
-    manifest.parse(fragSource, result.fragFile);
-    manifest.parse(vertSource, result.vertFile);
+    manifest.parse(ownDepthProgram ? colorFragSource : fragSource, result.fragFile);
+    manifest.parse(ownDepthProgram ? colorVertSource : vertSource, result.vertFile);
     const std::vector<std::string> enabled = result.defines;
     for (const std::string& define : manifest.getRequireDefines(enabled))
         result.defines.push_back(define);
@@ -1264,6 +1323,91 @@ bool isOverBindLimits(const ShaderData& data){
             return true;
     }
     return samplers > 16;
+}
+
+// Whether a vertex stage (its file and the includes it reaches among the sources) writes S100's
+// v_depthNormal (includes/depth_normals.glsl): the engine's and the library's depth programs, a
+// fork made from them; not a fork made before them
+bool vertexWritesDepthNormal(const std::unordered_map<std::string, std::string>& files, const std::string& vertFile){
+    std::vector<std::string> pending = {vertFile};
+    std::set<std::string> seen;
+    while (!pending.empty()){
+        const std::string file = pending.back();
+        pending.pop_back();
+        if (!seen.insert(file).second)
+            continue;
+        auto source = files.find(file);
+        if (source == files.end())
+            continue;
+        if (source->second.find("v_depthNormal") != std::string::npos)
+            return true;
+        for (const std::string& include : ShaderVariantCompiler::getIncludeKeys(source->second))
+            pending.push_back(include);
+    }
+    return false;
+}
+
+// Where a GLSL source's #version line ends (past its newline; npos: none before the code), with its
+// line number (1-based): comments and blank lines may precede it
+size_t depthNormalsVersionEnd(const std::string& source, int& line){
+    size_t i = 0;
+    line = 1;
+    while (i < source.size()){
+        const char c = source[i];
+        if (c == '\n'){
+            line++;
+            i++;
+        }else if (c == ' ' || c == '\t' || c == '\r'){
+            i++;
+        }else if (source.compare(i, 2, "//") == 0){
+            const size_t end = source.find('\n', i);
+            i = end == std::string::npos ? source.size() : end;
+        }else if (source.compare(i, 2, "/*") == 0){
+            const size_t end = source.find("*/", i + 2);
+            if (end == std::string::npos)
+                return std::string::npos;
+            line += (int)std::count(source.begin() + (long)i, source.begin() + (long)end, '\n');
+            i = end + 2;
+        }else if (source.compare(i, 8, "#version") == 0){
+            const size_t end = source.find('\n', i);
+            return end == std::string::npos ? std::string::npos : end + 1;
+        }else{
+            return std::string::npos;
+        }
+    }
+    return std::string::npos;
+}
+
+// Moves a fragment source's own output at location 1 to the first free one of 2 and 3 (false,
+// with an error, when neither is), so the 'Cvn' wrapper's normals output can take location 1
+bool depthNormalsFreeLocation1(std::string& source, std::string& error){
+    static const std::regex output(R"(layout\s*\(([^)]*)\)\s*out\b)");
+    static const std::regex location(R"(\blocation\s*=\s*(\d+))");
+    std::set<int> taken;
+    size_t at = std::string::npos;
+    std::string inner;
+    for (std::sregex_iterator it(source.begin(), source.end(), output), end; it != end; ++it){
+        const std::string declared = (*it)[1].str();
+        std::smatch number;
+        if (!std::regex_search(declared, number, location))
+            continue;
+        const int value = std::stoi(number[1].str());
+        taken.insert(value);
+        if (value == 1){
+            at = (size_t)it->position(1);
+            inner = declared;
+        }
+    }
+    if (at == std::string::npos)
+        return true;
+    for (int free : {2, 3}){
+        if (taken.count(free))
+            continue;
+        source.replace(at, inner.size(), std::regex_replace(inner, location, "location = " + std::to_string(free)));
+        return true;
+    }
+    error = "Cavity's depth normals take output location 1, and this fragment shader uses 1, 2 and 3";
+    return false;
 }
 
 // The compiler arguments of one variant for a backend: entry points, sources and #defines
@@ -1391,6 +1535,52 @@ bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShader
                                 "    g_finalColor = vertexColorViewColor();\n}\n";
             args.fileBuffers[file] = wrapped;
         }
+    }
+
+    // S100's normals of the depth pre-pass ('Cvn'): the program's own main runs, then
+    // includes/depth_normals.glsl writes the second attachment, so a fork of depth.frag of any
+    // age writes it too. From the vertex stage's v_depthNormal when that stage writes one (the
+    // engine's and the library's, a fork made from them), else "none" (Cavity rebuilds it)
+    if (shaderType == ShaderType::DEPTH && (properties & ShaderPool::getDepthNormalsProperty())){
+        auto source = args.fileBuffers.find(args.frag_file);
+        if (source == args.fileBuffers.end()){
+            error = "Cavity's depth normals need the depth program's fragment shader (" + args.frag_file + ")";
+            return false;
+        }
+        std::string wrapped = source->second;
+        // (comments and blank lines may come before #version). Without one the wrapper goes
+        // first: the fork then builds, or fails with the compiler's own error, as with Cavity off
+        int versionLine = 0;
+        size_t versionEnd = depthNormalsVersionEnd(wrapped, versionLine);
+        if (versionEnd == std::string::npos){
+            versionEnd = 0;
+            versionLine = 0;
+        }
+        // the wrapper's output takes location 1: a fork's own output there moves to a free one
+        // (a depth target has one attachment, so it was never drawn anywhere)
+        if (!depthNormalsFreeLocation1(wrapped, error)){
+            error += " (" + args.frag_file + ")";
+            return false;
+        }
+        if (vertexWritesDepthNormal(args.fileBuffers, args.vert_file))
+            args.defines.push_back({"DEPTH_NORMALS_VARYING", "1"});
+        // the line numbers of errors stay the file's
+        wrapped.insert(versionEnd, "#define main depthNormalsShadeMain\n#line " + std::to_string(versionLine + 1) + "\n");
+        wrapped += "\n#undef main\n#include \"includes/depth_normals.glsl\"\n"
+                   "layout(location = 1) out vec4 frag_depthNormal;\n"
+                   "#ifdef DEPTH_NORMALS_VARYING\n"
+                   "in vec4 v_depthNormal;\n"
+                   "#endif\n"
+                   "void main(){\n"
+                   "    depthNormalsShadeMain();\n"
+                   "#ifdef DEPTH_NORMALS_VARYING\n"
+                   "    // a double-sided material's back faces, as the G-buffer turns them\n"
+                   "    frag_depthNormal = v_depthNormal.w > 0.5 ? depthNormalsEncode(gl_FrontFacing ? v_depthNormal.xyz : -v_depthNormal.xyz) : vec4(0.0);\n"
+                   "#else\n"
+                   "    frag_depthNormal = vec4(0.0);\n"
+                   "#endif\n"
+                   "}\n";
+        source->second = wrapped;
     }
 
     // phase 6: a stateful effect's passes and states, from its manifest (any form: the draw reads
@@ -1589,11 +1779,13 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         bool rawViewOff = false;
         bool spotMasksOff = false;
         bool shadows2DOff = false;
+        bool lightProfilesOff = false;
     };
     Fallbacks taken;
     auto build = [&](const Fallbacks& fallbacks) -> std::string {
         // (a retry reports no progress: the first pass did)
-        const bool retry = fallbacks.lightRecords || fallbacks.rawViewOff || fallbacks.spotMasksOff || fallbacks.shadows2DOff;
+        const bool retry = fallbacks.lightRecords || fallbacks.rawViewOff || fallbacks.spotMasksOff || fallbacks.shadows2DOff ||
+                           fallbacks.lightProfilesOff;
         shadercompiler::args_t args;
         std::string setupError;
         if (!prepareVariantArgs(key, backend, customSources, args, setupError))
@@ -1606,6 +1798,8 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
             args.defines.push_back({"SPOT_MASKS_OFF", "1"});
         if (fallbacks.shadows2DOff)
             args.defines.push_back({"SHADOWS_2D_OFF", "1"});
+        if (fallbacks.lightProfilesOff)
+            args.defines.push_back({"LIGHT_PROFILES_OFF", "1"});
         args.error_output = &compileLog;
 
         if (stopped())
@@ -1719,6 +1913,15 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         compileLog += std::string(SHADOWS_2D_LEFT_OUT) + ": the lights' records would take the variant past 16 samplers or "
                       "16 fragment textures; its 2D lights light it unshadowed\n";
         taken.shadows2DOff = true;
+        failure = build(taken);
+    }
+    // last, without the light profiles (S99, LIGHT_PROFILES_OFF: the IES Profiles and the Area
+    // Lights' LTC tables): its IES lights light it with their cones, its Area Lights with the
+    // representative point
+    if (failure.empty() && isOverBindLimits(out) && out.getTextureIndexByName("u_lightProfiles").first >= 0) {
+        compileLog += std::string(LIGHT_PROFILES_LEFT_OUT) + ": the light profiles would take the variant past 16 samplers or "
+                      "16 fragment textures; IES Profiles are left out and Area Lights shade with the representative point\n";
+        taken.lightProfilesOff = true;
         failure = build(taken);
     }
     if (!failure.empty()) {

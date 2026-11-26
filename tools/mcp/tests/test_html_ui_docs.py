@@ -477,7 +477,7 @@ async def test_search_engine_api_ui(ed: Editor):
         r = await ed.call("search_engine_api", query=query)
         ed.check(any(hit["detail"].startswith(signature) for hit in r["results"]),
                  f"search finds {signature}: {r['results']}")
-    r = await ed.call("search_engine_api", query="mix-blend-mode")
+    r = await ed.call("search_engine_api", query="background-blend-mode")
     ed.check(any(h["doc"].startswith("jasper://docs/html-ui-support") for h in r["docs"]),
              f"search finds the published support matrix: {r['docs']}")
 

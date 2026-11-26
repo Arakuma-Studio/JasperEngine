@@ -98,7 +98,7 @@ bool UISystem::loadBitmapFont(TextComponent& text, UIComponent& ui){
 
 void UISystem::createBitmapText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
     const pixelart::BitmapFont& font = *text.bitmapText->getFont();
-    const int k = pixelart::pixelScaleFor(text.fontSize, font.getNativeSize());
+    const int k = pixelart::pixelScaleFor(effectiveFontSize(text), font.getNativeSize());
     const float unit = getBitmapTextUnit(k);
     text.pixelScale = k;
     text.pixelUnit = unit;
@@ -180,13 +180,15 @@ void UISystem::createBitmapText(TextComponent& text, UIComponent& ui, RectTransf
     text.bitmapFaceColor = options.faceColor;
 
     // R7: Lua and MCP may set any size; development builds say once what it draws at
-    if (!text.bitmapSizeNoted && Engine::isDevelopmentBuild() && (int)text.fontSize != k * font.getNativeSize()){
+    if (!text.bitmapSizeNoted && Engine::isDevelopmentBuild() && (int)effectiveFontSize(text) != k * font.getNativeSize()){
         text.bitmapSizeNoted = true;
         Log::print("Text font size %u is not a multiple of its bitmap font's %d px: drawn at %d (x%d)", text.fontSize, font.getNativeSize(),
                   k * font.getNativeSize(), k);
     }
 
-    finishTextGeometry(text, ui, layout, text.bitmapText->getAscent(unit), unit, false, indices);
+    // a bitmap font has no OS/2 table: its capitals 0.7 and its lowercase 0.5 of its native size
+    const float em = (float)font.getNativeSize() * unit;
+    finishTextGeometry(text, ui, layout, text.bitmapText->getAscent(unit), 0.7f * em, 0.5f * em, unit, false, indices);
 }
 
 void UISystem::updateBitmapText(TextComponent& text, UIComponent& ui){
@@ -204,8 +206,9 @@ void UISystem::updateBitmapText(TextComponent& text, UIComponent& ui){
         }
     }
 
-    // a new canvas scale, font size or style builds the quads again (the atlas stays)
-    const int k = pixelart::pixelScaleFor(text.fontSize, bitmap.getFont()->getNativeSize());
+    // a new canvas scale, font size or style builds the quads again (the atlas stays; Auto Size
+    // fits again then)
+    const int k = pixelart::pixelScaleFor(effectiveFontSize(text), bitmap.getFont()->getNativeSize());
     if (k != text.pixelScale || getBitmapTextUnit(k) != text.pixelUnit || bitmapStyleOf(text) != bitmap.getLastStyle())
         text.needUpdateText = true;
 

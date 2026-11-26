@@ -101,7 +101,8 @@ unchanged.
 ## Photometric lights and colour temperature
 
 A Light's `intensityUnit` is `engine` (the engine's own number, drawn as it is: every light of
-before), `lux` (directional), `candela` or `lumen` (point, spot). Physical units are drawn
+before), `lux` (directional), `candela` or `lumen` (point, spot), `nits` (area: its face's
+luminance). Physical units are drawn
 through the scene's `physical_light_ev100` (Physical Light Exposure: Sunny 15, Overcast 12,
 Interior 7, Night 2): at EV100 15 a 100000 lx sun is about 2.5 engine units. A spot's lumens
 spread over the whole sphere, so its cone does not change its brightness.
@@ -153,6 +154,44 @@ model's submesh survives a reload of the model.
 Paint (clear coat), Velvet (sheen), Brushed Metal (anisotropy), Soap Bubble (iridescence), Clear
 Glass (transmission and volume), Tiled Floor (hex tiling). They set the built-in Lit on a
 material that had a library shader.
+
+## Outline
+
+To outline an object (hover, selection, team colour, an enemy through walls), add the **Outline**
+component (Add Component > Rendering > Outline; `add_component component="outline"`), not a
+material preset: it outlines the GameObject's Mesh and, with `includeChildren` (default on),
+every Mesh below it, so one Outline on a model root covers its skinned and nested meshes. Fields
+(`set_properties outline.*`, all undoable): `mode` `outline_all` (default, through walls),
+`outline_visible`, `outline_hidden`, `outline_and_silhouette` (covered parts filled),
+`silhouette_only`; `color` (linear, alpha blends); `width` in `widthUnits` `pixels` (default, the
+same on screen at any distance) or `world`; `includeChildren`; `enabled`. The nearest enabled
+Outline at or above a Mesh decides its look. It draws after the opaque queue (a 2D camera: after
+its sprites), two draws per outlined submesh, uses stencil bit 1 (the `outline_stencil` preset's:
+outlined objects never outline over each other) and costs nothing while disabled. Not outlined:
+Terrains, Tilemaps, Sprite Batch instances, lines and points. A flat quad facing the camera has no
+band in Pixels (its normal points at the camera): give it depth. Lua: `Outline(scene, entity)`
+(`jasper://docs/lua-api`). `apply_material_preset` on a GameObject without a Mesh applies to the
+meshes below it.
+
+## Property Overrides
+
+Per-object colours or textures over one shared material (Unity's MaterialPropertyBlock, saved
+with the mesh): `set_shader_uniform {entity, name: "baseColorFactor", value, override: true}`
+(with `submesh`: that submesh's, which wins). The built-in Lit takes `baseColorFactor`,
+`emissiveFactor` (linear) and, through `set_properties` `{"mesh": {"propertyOverrides.textures":
+{"baseColorTexture": path}}}`, its base map; a library or custom shader any parameter and
+`@texture`. `get_entity` lists `propertyOverrides` on the mesh and its submeshes. Do not put the
+value in the material (every user of the material changes) or in the Mesh's `shaderUniforms` (the
+material's parameter of the same name wins over it).
+
+## Blend Mode Custom
+
+`blendMode: custom` with `blendSrc`, `blendDst`, `blendSrcAlpha`, `blendDstAlpha` (`one`, `zero`,
+`src_color`, `src_alpha`, `dst_color`, `dst_alpha`, `one_minus_...`) and `blendOp` (`add`,
+`subtract`, `reverse_subtract`, `min`, `max`; `blendOpAlpha` the alpha channel's): Unity's ShaderLab
+`Blend` and `BlendOp`. Unity's
+2x multiply (`Blend DstColor SrcColor`) is `blendSrc: dst_color, blendDst: src_color`. It draws in
+the transparent queue like any other blend.
 
 ## Lua
 

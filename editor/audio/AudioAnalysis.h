@@ -26,7 +26,10 @@ namespace jasperengine::editor {
         using Json = nlohmann::json;
 
         // Bump whenever any value changes for the same input: the cache file names carry it.
-        static constexpr int VERSION = 1;
+        static constexpr int VERSION = 2;
+        // stereo.side_mid_db's range
+        static constexpr double SIDE_MID_MIN_DB = -90.0;
+        static constexpr double SIDE_MID_MAX_DB = 60.0;
         // Files larger than this are refused (an hour of 48 kHz stereo float WAV is about 1.4 GB)
         static constexpr uint64_t MAX_FILE_BYTES = 512ull * 1024 * 1024;
         // Files that decode to more samples (all channels) than this are refused before they are
@@ -69,13 +72,15 @@ namespace jasperengine::editor {
             uint32_t fadeInFrames = 0;
             uint32_t fadeOutFrames = 0;
             float gainDb = 0.0f;
+            // Force To Mono: a file of several channels plays as their mean
+            bool mono = false;
 
             // The region a clip with these import settings plays from a file of fileFrames: the
             // trims (endFrame stays FILE_END without a tail trim; trims that leave nothing leave an
             // empty region at the trimmed start, as AudioClipSource's), the gain, and the fades clamped
             // to the region's length as AudioClipSource clamps them
             static Region of(const ClipImportSettings& settings, uint32_t fileFrames);
-            // The file as it is: no trims, no gain, no fades (its defects are the cached ones)
+            // The file as it is: no trims, no gain, no fades, its channels (its defects are the cached ones)
             bool isWholeFile() const;
             // the end frame in a file of fileFrames, and the fades as they apply there
             uint32_t end(size_t fileFrames) const;
@@ -89,7 +94,7 @@ namespace jasperengine::editor {
         };
 
         // The signal a region of a decoded file plays (sample by sample as AudioClipSource makes it:
-        // the trims, the gain and the fades), for measurements of what a voice played
+        // the trims, the gain, the fades and Force To Mono's mean), for measurements of what a voice played
         static Signal played(const Signal& file, const Region& region);
         // a real signal's band [low, high) Hz, in place: `buffer` holds `size` (a power of two) complex
         // values interleaved (re, im; the signal in re, zero-padded), every FFT bin outside the band (and its
@@ -197,6 +202,9 @@ namespace jasperengine::editor {
 
         // The head and tail silence of a signal in ms, measure()'s "silence": {head_ms, tail_ms}
         static Json silence(const Signal& signal);
+        // measure()'s "stereo" of channels 0 and 1: {correlation, side_mid_db}, each null for a mono
+        // or silent signal
+        static Json stereo(const Signal& signal);
 
         // A file's silence through the cache in cacheDirectory: the cached analysis's when the
         // cache has the file, else measured from its bytes (read by the caller) with a decode and
@@ -204,6 +212,15 @@ namespace jasperengine::editor {
         // and a Play or an export resolves every `auto` trim (AudioImportSettings::resolve)
         static bool silenceOfFile(const std::filesystem::path& file, const std::string& bytes,
                                   const std::filesystem::path& cacheDirectory, Json& silence, std::string& error);
+
+        // A file's stereo() the same way: the cached analysis's, else measured from a decode alone
+        // (Force To Mono's Auto at Play and export, AudioImportRegistry::resolve)
+        static bool stereoOfFile(const std::filesystem::path& file, const std::string& bytes,
+                                 const std::filesystem::path& cacheDirectory, Json& stereo, std::string& error);
+        // The cached analysis of a file when the cache has it, without decoding: the bytes are read
+        // and hashed unless the file's hash is remembered (path, size, modification time). False
+        // when it is not analysed yet.
+        static bool cachedFile(const std::filesystem::path& file, const std::filesystem::path& cacheDirectory, Json& cached);
 
         // A file through the cache in cacheDirectory: the SHA-1 of the bytes (remembered by path,
         // size and modification time), then the cache file or a new analysis written to it.

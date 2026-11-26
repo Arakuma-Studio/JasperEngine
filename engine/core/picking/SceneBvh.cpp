@@ -6,6 +6,7 @@
 // 2026 Gamecrafters Guild Limited and contributors, MIT License (NOTICE.md).
 
 #include "SceneBvh.h"
+#include "Engine.h"
 #include "MeshRaycast.h"
 #include "subsystem/FoliageSystem.h"
 #include "BinnedSah.h"
@@ -31,9 +32,6 @@
 #include "jobs/JobSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "profiler/Profile.h"
-#include "util/STBText.h"
-#include "pixelart/BitmapFont.h"
-#include "pixelart/BitmapText.h"
 
 #include <cstring>
 #include <algorithm>
@@ -73,21 +71,11 @@ namespace {
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     }
 
-    // what GraphicUtils::getRectTransformCenter gives the editor: a text's baseline and
-    // centring move its rect
-    Vector2 rectCenter(Scene* scene, Entity entity, const RectTransformComponent& layout){
-        Vector2 center(0, 0);
-        if (const TextComponent* text = scene->findComponent<TextComponent>(entity)){
-            if (text->pivotBaseline && text->stbtext){
-                center.y = (float)text->stbtext->getAscent();
-            }else if (text->pivotBaseline && text->bitmapText){
-                center.y = text->bitmapText->getAscent(text->pixelUnit);
-            }
-            if (text->pivotCentered){
-                center.x = layout.width / 2.0f;
-            }
-        }
-        return center;
+    // what GraphicUtils::getRectTransformCenter gives the editor: a text's alignment moves its rect
+    Vector2 rectCenter(Scene* scene, Entity entity, const RectTransformComponent&){
+        if (const TextComponent* text = scene->findComponent<TextComponent>(entity))
+            return Vector2(-text->boxMin.x, -text->boxMin.y);
+        return Vector2(0, 0);
     }
 
     Matrix4 instanceMatrix(const InstancedMeshComponent& instmesh, const InstanceData& instance){
@@ -498,8 +486,34 @@ void SceneBvh::releaseBindings(){
     posedMeshes.clear();
 }
 
+bool SceneBvh::noteDirty(Entity entity){
+    auto it = entityLeaves.find(entity);
+    if (it == entityLeaves.end()){
+        // pickable now and not when built (an instanced mesh given its first instances)
+        const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+        if (instmesh && !instmesh->instances.empty() && scene->findComponent<Transform>(entity)){
+            structureChanged = true;
+        }
+        return false;
+    }
+    const uint32_t first = it->second.first;
+    if (first < leafDirtyStamp.size() && leafDirtyStamp[first] != dirtyGeneration){
+        leafDirtyStamp[first] = dirtyGeneration;
+        dirtyEntities.push_back(entity);
+    }
+    return true;
+}
+
+void SceneBvh::clearDirty(){
+    dirtyEntities.clear();
+    if (++dirtyGeneration == 0){
+        std::fill(leafDirtyStamp.begin(), leafDirtyStamp.end(), 0u);
+        dirtyGeneration = 1;
+    }
+}
+
 void SceneBvh::markDirty(Entity entity){
-    dirtyEntities.insert(entity);
+    noteDirty(entity);
     if (prepareOnLoad){
         prepareQueue.push_back(entity);
     }
@@ -860,7 +874,8 @@ void SceneBvh::rebuild(){
         }
     }
 
-    dirtyEntities.clear();
+    leafDirtyStamp.assign(leaves.size(), 0u);
+    clearDirty();
     built = true;
     structureChanged = false;
     refitsSinceBuild = 0;
@@ -884,20 +899,24 @@ void SceneBvh::update(){
         if (transforms->getLastChangedTick() > transformGate.last){
             for (size_t i = 0; i < transforms->size(); i++){
                 if (transforms->getChangedTick(i) > transformGate.last){
-                    dirtyEntities.insert(transforms->getEntity(i));
+                    noteDirty(transforms->getEntity(i));
                 }
             }
         }
         transformGate.last = now;
     }
 
+    if (structureChanged){
+        rebuild();
+        return;
+    }
     if (dirtyEntities.empty() && volatileLeaves.empty()){
         return;
     }
 
     const auto start = std::chrono::steady_clock::now();
-    std::vector<uint32_t> changed;
-    changed.reserve(dirtyEntities.size() + volatileLeaves.size());
+    std::vector<uint32_t>& changed = changedLeaves;
+    changed.clear();
     auto refresh = [&](uint32_t index){
         Leaf& leaf = leaves[index];
         AABB bounds;
@@ -911,12 +930,6 @@ void SceneBvh::update(){
     for (Entity entity : dirtyEntities){
         auto it = entityLeaves.find(entity);
         if (it == entityLeaves.end()){
-            // pickable now and not when built (an instanced mesh given its first instances)
-            const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-            if (instmesh && !instmesh->instances.empty() && scene->findComponent<Transform>(entity)){
-                rebuild();
-                return;
-            }
             continue;
         }
         // an instanced mesh whose instance count changed is a new structure
@@ -931,7 +944,7 @@ void SceneBvh::update(){
             refresh(it->second.first + i);
         }
     }
-    dirtyEntities.clear();
+    clearDirty();
     for (uint32_t index : volatileLeaves){
         refresh(index);
     }
@@ -1136,4 +1149,132 @@ AABB SceneBvh::getBounds(const PickFilter& filter){
         }
     }
     return bounds;
+}
+
+namespace {
+
+    bool bvhSphereTouchesBox(const Vector3& center, float radius, const AABB& box){
+        const Vector3& mn = box.getMinimum();
+        const Vector3& mx = box.getMaximum();
+        const float dx = std::max({mn.x - center.x, 0.0f, center.x - mx.x});
+        const float dy = std::max({mn.y - center.y, 0.0f, center.y - mx.y});
+        const float dz = std::max({mn.z - center.z, 0.0f, center.z - mx.z});
+        return dx * dx + dy * dy + dz * dz <= radius * radius;
+    }
+
+    // the separating axis test of an oriented box against an axis-aligned one: the 3 + 3 face
+    // axes and their 9 cross products; touching boxes overlap
+    bool bvhObbTouchesBox(const Vector3& center, const Vector3 axes[3], const Vector3& half, const AABB& box){
+        const Vector3 boxCenter = box.getCenter();
+        const Vector3 boxHalf = box.getHalfSize();
+        const Vector3 t = boxCenter - center;
+        const Vector3 world[3] = {Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1)};
+        const float h[3] = {half.x, half.y, half.z};
+        auto separated = [&](const Vector3& axis){
+            const float lengthSq = axis.squaredLength();
+            if (lengthSq < 1e-12f){
+                return false;
+            }
+            const float ra = h[0] * std::fabs(axes[0].dotProduct(axis)) + h[1] * std::fabs(axes[1].dotProduct(axis)) + h[2] * std::fabs(axes[2].dotProduct(axis));
+            const float rb = boxHalf.x * std::fabs(axis.x) + boxHalf.y * std::fabs(axis.y) + boxHalf.z * std::fabs(axis.z);
+            return std::fabs(t.dotProduct(axis)) > ra + rb;
+        };
+        for (int i = 0; i < 3; i++){
+            if (separated(axes[i]) || separated(world[i])){
+                return false;
+            }
+        }
+        for (int i = 0; i < 3; i++){
+            for (int j = 0; j < 3; j++){
+                if (separated(axes[i].crossProduct(world[j]))){
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+}
+
+void SceneBvh::overlap(const OverlapShape& shape, const PickFilter& filter, std::vector<MeshOverlapHit>& out, bool snapshot){
+    JE_PROFILE_SCOPE("SceneBvh overlap");
+    // R13: one refit per engine frame for snapshot overlaps; a due rebuild always runs
+    if (!snapshot || !built || structureChanged || snapshotFrame != Engine::getFrameIndex()){
+        update();
+        if (snapshot){
+            snapshotFrame = Engine::getFrameIndex();
+        }
+    }
+    Vector3 axes[3];
+    Vector3 mn, mx;
+    if (shape.box){
+        axes[0] = shape.rotation * Vector3(1, 0, 0);
+        axes[1] = shape.rotation * Vector3(0, 1, 0);
+        axes[2] = shape.rotation * Vector3(0, 0, 1);
+        const Vector3 reach(
+            std::fabs(axes[0].x) * shape.halfExtents.x + std::fabs(axes[1].x) * shape.halfExtents.y + std::fabs(axes[2].x) * shape.halfExtents.z,
+            std::fabs(axes[0].y) * shape.halfExtents.x + std::fabs(axes[1].y) * shape.halfExtents.y + std::fabs(axes[2].y) * shape.halfExtents.z,
+            std::fabs(axes[0].z) * shape.halfExtents.x + std::fabs(axes[1].z) * shape.halfExtents.y + std::fabs(axes[2].z) * shape.halfExtents.z);
+        mn = shape.center - reach;
+        mx = shape.center + reach;
+    }else{
+        const Vector3 reach(shape.radius, shape.radius, shape.radius);
+        mn = shape.center - reach;
+        mx = shape.center + reach;
+    }
+    const auto touches = [&](const AABB& bounds){
+        return bounds.isInfinite() ? true : shape.box ? bvhObbTouchesBox(shape.center, axes, shape.halfExtents, bounds)
+                                                      : bvhSphereTouchesBox(shape.center, shape.radius, bounds);
+    };
+    const size_t first = out.size();
+    if (!tree.empty()){
+        tree.overlap(mn, mx, [&](uint32_t index){
+            const Leaf& leaf = leaves[index];
+            if (leaf.bounds.isNull() || !passes(leaf, filter) || !touches(leaf.bounds)){
+                return;
+            }
+            MeshOverlapHit hit;
+            hit.entity = leaf.entity;
+            hit.kind = leaf.kind;
+            hit.instance = leaf.kind == PickKind::INSTANCE ? (int32_t)leaf.subIndex : -1;
+            out.push_back(hit);
+        });
+    }
+
+    // T5 R35: foliage has no leaves: a walk of its cells, each instance by its world bounds
+    if (filter.kinds & (PICK_TREE | PICK_DETAIL)){
+        std::shared_ptr<FoliageSystem> foliage = scene->getSystem<FoliageSystem>();
+        if (foliage && foliage->hasDrawables()){
+            // the filter asks about the Terrain: once per Terrain, not per tree
+            Entity checked = NULL_ENTITY;
+            bool terrainPasses = false;
+            auto visit = [&](const FoliageSystem::FoliageInBox& found){
+                if (found.terrain != checked){
+                    Leaf terrainLeaf;
+                    terrainLeaf.entity = found.terrain;
+                    terrainLeaf.kind = found.tree ? PickKind::TREE : PickKind::DETAIL;
+                    checked = found.terrain;
+                    terrainPasses = passes(terrainLeaf, filter);
+                }
+                if (!terrainPasses || found.bounds.isNull() || !touches(found.bounds)){
+                    return;
+                }
+                MeshOverlapHit hit;
+                hit.entity = found.terrain;
+                hit.kind = found.tree ? PickKind::TREE : PickKind::DETAIL;
+                hit.foliageId = found.id;
+                hit.prototype = found.prototype;
+                out.push_back(hit);
+            };
+            foliage->forEachFoliageInBox(AABB(mn, mx), (filter.kinds & PICK_TREE) != 0, (filter.kinds & PICK_DETAIL) != 0, visit);
+        }
+    }
+
+    std::sort(out.begin() + (std::ptrdiff_t)first, out.end(), [](const MeshOverlapHit& a, const MeshOverlapHit& b){
+        if (a.entity != b.entity) return a.entity < b.entity;
+        if (a.instance != b.instance) return a.instance < b.instance;
+        if (a.kind != b.kind) return a.kind < b.kind;
+        if (a.foliageId != b.foliageId) return a.foliageId < b.foliageId;
+        return a.prototype < b.prototype;
+    });
 }

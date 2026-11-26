@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>text autosize</title>
+<style>
+  body { margin: 0; color: #ffffff; font-family: sans-serif; }
+  .box { position: absolute; width: 200px; height: 60px; background: #303030; font-size: 30px; line-height: 1.2; }
+  .fit { text-autosize: 18px 80px; }
+  #short { left: 10px; top: 10px; }
+  #long { left: 220px; top: 10px; }
+  #multi { left: 430px; top: 10px; height: 120px; }
+  #grow { left: 10px; top: 140px; width: 300px; height: auto; text-autosize: 10px 200px; }
+  .g span { font-size: 0.5em; color: #ffcc00; }
+  .ref { top: 250px; visibility: hidden; }
+  #short-ref { left: 10px; }
+  #long-ref { left: 220px; }
+  #multi-ref { left: 430px; height: 120px; top: 230px; }
+  #grow-ref { left: 10px; top: 300px; width: 300px; height: auto; }
+</style>
+</head>
+<body>
+<div class="box fit" id="short">GO!</div>
+<div class="box fit" id="long">Supercalifragilistic</div>
+<div class="box fit" id="multi">The quick brown fox jumps over the lazy dog</div>
+<div class="box g" id="grow">Wide heading <span>small</span></div>
+<div class="box ref" id="short-ref">GO!</div>
+<div class="box ref" id="long-ref">Supercalifragilistic</div>
+<div class="box ref" id="multi-ref">The quick brown fox jumps over the lazy dog</div>
+<div class="box ref g" id="grow-ref">Wide heading <span>small</span></div>
+</body>
+</html>

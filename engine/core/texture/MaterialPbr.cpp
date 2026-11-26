@@ -115,6 +115,8 @@ namespace {
         {"TERRAIN_RESAMPLE", "Rs"}, {"TERRAIN_CLIFF", "Cl"}, {"TERRAIN_HEIGHT_BLEND", "Hb"},
         {"TERRAIN_DEBUG_VIEW", "Dv"},
         {"HAS_VOXEL", "Vx"}, {"VOXEL_TIER_HIGH", "Vh"}, {"VOXEL_TIER_MEDIUM", "Vm"}, {"VOXEL_TIER_LOW", "Vl"},
+        // S99: a scene's Area Lights and IES Profiles
+        {"USE_AREA_LIGHTS", "Ar"}, {"USE_IES", "Ie"},
         // V1 R70: the Vertex Color section (getVertexColorDefines)
         {"LIT_VC_OFF", "Wf"}, {"LIT_VC_ALPHA_IGNORED", "Wn"}, {"LIT_VC_RGB_TINT", "Wc"},
         {"LIT_VC_OCCLUSION", "Wo"}, {"LIT_VC_ROUGHNESS", "Wr"}, {"LIT_VC_ROUGHNESS_SET", "Wq"}, {"LIT_VC_METALLIC", "Wm"},
@@ -126,6 +128,8 @@ namespace {
 }
 
 const char* const MaterialPbr::LIT_QUALITY_DEFINE = "USE_LIT_QUALITY";
+const char* const MaterialPbr::AREA_LIGHTS_DEFINE = "USE_AREA_LIGHTS";
+const char* const MaterialPbr::IES_DEFINE = "USE_IES";
 const char* const MaterialPbr::VOXEL_DEFINE = "HAS_VOXEL";
 const char* const MaterialPbr::VOXEL_TIER_HIGH_DEFINE = "VOXEL_TIER_HIGH";
 const char* const MaterialPbr::VOXEL_TIER_MEDIUM_DEFINE = "VOXEL_TIER_MEDIUM";

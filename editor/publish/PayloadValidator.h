@@ -32,6 +32,12 @@ namespace jasperengine::editor::publish {
         // runs `apksigner verify --verbose <apk>`: true when it accepts (tests inject one);
         // null: the SDK's apksigner (a missing one is a finding)
         std::function<bool(const std::filesystem::path& apk, std::string& output)> verifyApk;
+        // "release" or "development" ("" unknown): a release Android APK must not be debuggable
+        // (docs/specs/build-and-run-on-device.md R9)
+        std::string flavour;
+        // runs `aapt2 dump badging <apk>`: true with its output (tests inject one); null: the SDK's
+        // aapt2 (a missing one is a finding)
+        std::function<bool(const std::filesystem::path& apk, std::string& output)> dumpBadging;
     };
 
     TargetOs targetOs(BuildPlatform platform);

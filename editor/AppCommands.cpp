@@ -15,6 +15,7 @@
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
+#include "recorder/RecordInput.h"
 #include "window/ProjectWindow.h"
 #include "render/SceneRender.h"
 #include "window/AnimationWindow.h"
@@ -38,6 +39,7 @@
 #include "Engine.h"
 #include "pixelart/PixelPerfectEditor.h"
 #include "util/Util.h"
+#include "util/FileDialogs.h"
 #include "window/PlayInput.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "lattice/LatticeSceneTools.h"
@@ -227,6 +229,10 @@ void editor::App::registerCommands(){
          [this]() { return mainToolbar->canPause() && !mainToolbar->isPaused(); });
     bind("playmode.stop", [this](const CommandArgs&) { mainToolbar->stopSession(); },
          [this]() { return mainToolbar->canStopSession(); });
+    bind("playmode.recordInput", [](const CommandArgs&) { recordinput::RecordInput::get().toggle(); },
+         []() { return recordinput::RecordInput::get().canToggle(); });
+    bind("playmode.replayInput", [this](const CommandArgs&) { mainToolbar->replayInput(); },
+         [this]() { return !mainToolbar->isInPlayMode() && mainToolbar->canTogglePlay(); });
     bind("playmode.releaseCursor", [this](const CommandArgs&) { playInput->releaseCursor(); },
          [this]() {
              const MouseMode mode = Engine::getMouseMode();
@@ -539,6 +545,12 @@ void editor::App::registerCommands(){
         bind(id, [command](const CommandArgs&) { titledesigner::runTitleAnimationCommand(command); },
              []() { return titledesigner::titleAnimationPanelFocused(); }, [this]() { return !titleDesignerWindow->typing(); });
     }
+
+    // S94 F35, F36: Assets > Import Unity Animation...
+    bind("assets.importUnityAnimation", [this](const CommandArgs&) {
+        const std::string file = FileDialogs::openFileDialog("", FILE_DIALOG_UNITY_ANIMATION);
+        if (!file.empty()) projectWindow->importUnityAnimations({std::filesystem::u8path(file)}, projectWindow->createTargetDirectory());
+    }, [this]() { return !project.getProjectPath().empty(); });
 
     // S87 R57: Assets > Import Title Art...
     bind("assets.importTitleArt", [](const CommandArgs&) { openTitleArtImportDialog(); }, [this]() { return !project.getProjectPath().empty(); });

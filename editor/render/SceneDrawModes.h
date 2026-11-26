@@ -85,7 +85,8 @@ namespace jasperengine::editor{
     void drawTerrainOverlayLegend(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax, const std::string& title,
                                   const std::vector<TerrainOverlayLegendStop>& stops, bool aboveLodLegend);
     // a Stats box in the top right corner of an image
-    void drawStatsBox(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax, const std::vector<std::string>& lines);
+    // returns where the first line's text starts (the rows follow at GetTextLineHeightWithSpacing)
+    ImVec2 drawStatsBox(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax, const std::vector<std::string>& lines);
     // "Verts: ...", "LOD 0: 120, 1: 40, 2: 8, 3: 2", "Fading: 3  Culled by size: 2", "Mesh memory: 86.0 MB"
     // (the LOD lines only while the scene's Mesh LOD is on)
     void appendMeshStatsLines(std::vector<std::string>& lines, uint64_t vertices, const LodFrameStats& lod, bool lodEnabled);

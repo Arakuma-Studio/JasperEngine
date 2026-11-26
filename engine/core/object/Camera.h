@@ -43,6 +43,11 @@ namespace jasperengine{
         void setAutoResize(bool autoResize);
         bool isAutoResize() const;
 
+        // Unity's orthographic Size (S94 F28): half the view's height in world units, the width
+        // following the aspect; 0 turns it off (the clips stay as set)
+        void setOrthographicSize(float size);
+        float getOrthographicSize() const;
+
         void setNearClip(float nearValue);
         float getNearClip() const;
 
@@ -81,6 +86,7 @@ namespace jasperengine{
         // Orient the camera from its Transform rotation instead of a target point:
         // forward becomes rotation * Vector3(0, 0, -1).
         void disableTarget();
+        void setUseTarget(bool useTarget);
         bool isUsingTarget() const;
 
         void setUp(Vector3 up);

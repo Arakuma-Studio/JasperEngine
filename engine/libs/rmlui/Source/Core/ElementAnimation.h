@@ -99,6 +99,9 @@ public:
 	/// value (before its start).
 	Property UpdateAndGetProperty(double world_time, Element& element);
 
+	/// Fork (S93-F1): the start moves by 'delta' seconds of world time (another clock with the same progress).
+	void ShiftStartTime(double delta) { start_time += delta; }
+
 	/// Pauses or resumes at the given time (animation-play-state): the local time is held while paused.
 	void SetPaused(bool paused, double world_time);
 	/// Updates the timing of a running CSS animation from its (changed) entry, keeping its start time and play state.

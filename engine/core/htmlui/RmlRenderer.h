@@ -192,8 +192,20 @@ namespace jasperengine {
         void RenderGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture) override;
         void ReleaseGeometry(Rml::CompiledGeometryHandle geometry) override;
         // phase-2 hook H7: "@htmlui/..." sources are compat's virtual files; the query parameter
-        // htmlui-filter=nearest gives the texture nearest sampling (image-rendering: pixelated)
+        // htmlui-filter=nearest gives the texture nearest sampling (image-rendering: pixelated).
+        // S93: a handle onto HtmlUIImageCache's shared image (read the header now, decoded on the
+        // Background lane, drawn once uploaded; htmlui-decoding=sync decodes at once); a fragment
+        // #xywh=... or #sprite=... is a region of the file (HtmlUIImageRegion)
         Rml::TextureHandle LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) override;
+        // a texture source split into the file and what the engine reads from its query and fragment
+        struct TextureSource {
+            std::string path;           // without htmlui-filter, rmlui-wrap, htmlui-decoding and the fragment
+            bool nearest = false;
+            bool repeatX = false, repeatY = false;
+            bool syncDecode = false;    // htmlui-decoding=sync (<img decoding="sync">)
+            std::string fragment;       // "#..." as written, "" for none
+        };
+        static TextureSource parseTextureSource(const std::string& source);
         // the source without its htmlui-filter=nearest query parameter (other parameters stay)
         static std::string stripTextureFilter(const std::string& source, bool& nearest);
         // also without the fork's rmlui-wrap=repeat|repeat-x|repeat-y (phase 3, p3-paint: a background or mask image
@@ -272,6 +284,10 @@ namespace jasperengine {
         bool drawComposite(TextureRender& source, PipelineType compositePipeline, bool flipY);
         bool drawComposite(TextureRender& source, PipelineType compositePipeline, const Rml::Matrix4f& clipFromQuad,
                            int msaaSamples = 1);
+        // S93 R36 (RmlRendererWorld.cpp): source (a context's composited layer) as a World Space
+        // quad inside the current camera pass of format target: clipFromQuad maps the corners
+        // (-1,1) top-left .. (1,-1) bottom-right, depth tested (LESS_EQUAL), not written
+        bool drawWorldQuad(TextureRender& source, const RenderTargetFormat& target, const Rml::Matrix4f& clipFromQuad);
         // A straight-alpha copy of layer 0 (HTMLUI_POST Unp) into dst, a 1-sample RGBA8 colour
         // framebuffer of any size (render-to-texture documents). Outside a frame
         bool drawUnpremultiplied(RmlRenderTarget& target, FramebufferRender& dst, int width, int height);
@@ -433,6 +449,9 @@ namespace jasperengine {
         static void unbindContext(const Rml::Context* context);
         // the renderer of a bound context's render manager (the font engine's atlas textures)
         static RmlRenderer* forRenderManager(const Rml::RenderManager* renderManager);
+        // the render manager this renderer is bound to (nullptr when none): an image still decoding
+        // asks it for another frame
+        Rml::RenderManager* getRenderManager() const;
 
         // <video> (phase 6): a frame's Y, U and V planes (target->planes, uploaded) are converted
         // into target, a 1-sample RGBA8 RENDER_TARGET texture, by one HTMLUI_POST Yuv pass;
@@ -1028,6 +1047,12 @@ namespace jasperengine {
         size_t lastFrameDrawCount = 0;
         uint64_t gpuCreateCount = 0;
         bool texturesWithoutView = false;
+        // S93: shared images whose decode is not uploaded yet (stats.imagesPending), and image
+        // decodes and cache hits of LoadTexture calls outside a frame (added to the next one)
+        std::unordered_set<HtmlUITexture*> pendingImages;
+        uint32_t decodingImageCount() const;
+        uint32_t imagesDecodedBetweenFrames = 0;
+        uint32_t imageCacheHitsBetweenFrames = 0;
 
         // GPU objects
         std::shared_ptr<ShaderRender> geometryShader;     // HTMLUI Tex (untextured draws bind white)
@@ -1050,7 +1075,7 @@ namespace jasperengine {
         std::pair<int, int> geometryTextureSlot{-1, -1};
         int gradientParamsSlot = -1;
         int gradientFsSlot = -1;
-        static constexpr int POST_PROGRAM_COUNT = 7;   // ShaderPool's HTMLUI_POST_VARIANT_COUNT
+        static constexpr int POST_PROGRAM_COUNT = 8;   // ShaderPool's HTMLUI_POST_VARIANT_COUNT
         PostProgram postPrograms[POST_PROGRAM_COUNT];
         // the composite quad, also the layout template of the dynamic geometry objects
         BufferRender compositeVertexBuffer;

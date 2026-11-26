@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "object/SimulationCulling.h"
 #include "AnimatorSystem.h"
 #include "audio/AudioMarkers.h"
 #include "audio/TimelineAudio.h"
@@ -115,10 +116,18 @@ void AnimatorSystem::setParallel(bool value){
 void AnimatorSystem::release(Entity entity, anim::AnimatorInstance& instance){
     propertyRowsChanged = true;
     setSkinsDriven(instance, false);
+    instance.skinsParked = false;
     for (auto it = owners.begin(); it != owners.end();){
         if (it->second == entity) it = owners.erase(it);
         else ++it;
     }
+}
+
+void AnimatorSystem::parkSkins(Entity entity){
+    AnimatorComponent* component = scene->findComponent<AnimatorComponent>(entity);
+    if (!component || !component->runtime || !component->runtime->bound) return;
+    setSkinsDriven(*component->runtime, false);
+    component->runtime->skinsParked = true;
 }
 
 void AnimatorSystem::setSkinsDriven(anim::AnimatorInstance& instance, bool driven){
@@ -420,11 +429,22 @@ bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float 
         instance.clock += std::fabs(dt);
         return false;
     }
+    // updating again after a ragdoll had the skins (parkSkins): they are this Animator's again
+    if (instance.skinsParked){
+        setSkinsDriven(instance, true);
+        instance.skinsParked = false;
+    }
     job.entity = entity;
     job.component = &component;
     job.instance = &instance;
     job.context.dt = dt;
     job.context.sample = true;
+    // Simulation Culling (culling-group-and-simulation-distance D8): Cull Completely while culled
+    if (SimulationCulling::anyActive() && SimulationCulling::isAnimatorCulled(scene, entity)){
+        instance.clearIKResults();
+        stats.culled++;
+        return false;
+    }
     if (component.cullingMode != AnimatorCullingMode::AlwaysAnimate && !visible(instance)){
         instance.clearIKResults();
         if (component.cullingMode == AnimatorCullingMode::CullCompletely){

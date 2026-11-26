@@ -3,6 +3,7 @@
 
 #include "pixelart/BitmapFont.h"
 #include "CreateEntityCmd.h"
+#include "component/MeshComponent.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/SpriteBatchComponent.h"
@@ -130,7 +131,8 @@ bool editor::CreateEntityCmd::execute(){
         }
     }
 
-    entityName = ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, entityName);
+    // numbered only when a sibling has the name (Unity's), as it lands below `parent`
+    entityName = ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, parent, entityName);
 
     if (type == EntityCreationType::GAMEOBJECT){
 
@@ -600,6 +602,18 @@ bool editor::CreateEntityCmd::execute(){
         light.range = 10.0f;
         light.intensity = 30.0f;
 
+    }else if (type == EntityCreationType::AREA_LIGHT){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<LightComponent>(entity, {});
+        updateFlags |= Catalog::getComponentStructuralUpdateFlags(ComponentType::LightComponent);
+
+        LightComponent& light = scene->getComponent<LightComponent>(entity);
+        light.type = LightType::AREA;
+        light.direction = Vector3(0.0f, -1.0f, 0.0f);
+        light.range = 10.0f;
+        light.intensity = 30.0f;
+
     }else if (type == EntityCreationType::POINT_LIGHT_2D){
 
         scene->addComponent<Transform>(entity, {});
@@ -932,7 +946,10 @@ bool editor::CreateEntityCmd::execute(){
 
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
-        scene->addComponent<ModelComponent>(entity, {});
+        // Project Settings > Mesh > Preserve Hierarchy for New Models (S94 F44)
+        ModelComponent model;
+        model.preserveHierarchy = project->getModelSettings().preserveHierarchyForNewModels;
+        scene->addComponent<ModelComponent>(entity, model);
 
     }else if (type == EntityCreationType::PARTICLE_SYSTEM){
 

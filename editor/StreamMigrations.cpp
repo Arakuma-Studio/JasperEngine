@@ -30,6 +30,28 @@ namespace {
     void materialV0ToV1(YAML::Node&, MigrationLog&){
     }
 
+    // Project 1 -> 2 (S94 F5, F42): Transparency Sort Mode Default now sorts an orthographic
+    // camera's transparent draws by depth along its view axis (Unity's rule). A project written
+    // before sorted every camera by the distance, which is Perspective now: it keeps that look.
+    // An FBX's submesh i is its material slot i now; such a project's scenes and prefabs hold
+    // per-submesh values (materials, Property Overrides) by the old order, the used slots in order:
+    // it keeps FBX Submesh Order Used Materials.
+    void projectV1ToV2(YAML::Node& root, MigrationLog& log){
+        if (!root["transparencySortMode"]){
+            root["transparencySortMode"] = "perspective";
+            log.info("Transparency Sort Mode: Perspective, the distance sort this project drew with (Default now sorts an "
+                     "orthographic camera along its view axis; set it in Project Settings > Graphics)");
+        }
+        if (!root["mesh"])
+            root["mesh"] = YAML::Node(YAML::NodeType::Map);
+        YAML::Node mesh = root["mesh"];
+        if (mesh.IsMap() && !mesh["fbxSubmeshOrder"]){
+            mesh["fbxSubmeshOrder"] = "used_materials";
+            log.info("FBX Submesh Order: Used Materials, the submesh order this project's models imported with (new "
+                     "projects follow the FBX material slots, as Unity does; set it in Project Settings > Mesh)");
+        }
+    }
+
     // Every light component below node (scenes nest entities in children; prefabs list their
     // members): a shadowBias saved in NDC depth units (default 0.002) means a bias of
     // shadowBias shadow texels now, so it is reset to the new default of 1.0. The old units
@@ -213,7 +235,8 @@ namespace {
     // version 2 systems through stream/UpstreamParticles (S20, Upstream absorption), their
     // target's quad material moving into the Renderer module. A target Points or
     // InstancedMesh with nothing of its own is removed; a MeshComponent the particles draw as
-    // their mesh stays, disabled so it does not draw itself.
+    // their mesh stays, disabled so it does not draw itself. A system moved to its target names
+    // the GameObject it came from (legacyFrom).
     void migrateParticleSystems(YAML::Node entities, MigrationLog& log){
         std::vector<YAML::Node> all;
         std::function<void(YAML::Node)> collect = [&](YAML::Node list){
@@ -278,6 +301,11 @@ namespace {
                 // the GameObject's own, as it was the component's
                 converted.useUnscaledTime = old["useUnscaledTime"] && editor::YamlNumbers::as<bool>(old["useUnscaledTime"]);
             }
+
+            // an old script wraps the old system's GameObject: it resolves to the moved system
+            // through this even if that GameObject later loses its action (S94 F2)
+            if (!host.is(entity) && entity["entity"])
+                converted.legacyFrom = editor::YamlNumbers::as<Entity>(entity["entity"]);
 
             components.remove("particlesystem");
             hostComponents["particlesystem"] = editor::Stream::encodeParticleSystemComponent(converted);
@@ -754,6 +782,113 @@ namespace {
         log.info("HTML UI Render Mode: Screen Space - Camera, as the scene drew its UI before; Screen Space - Overlay is the new scenes' default");
     }
 
+    // ---------------------------------------------------------------- Text alignment (S94 F24)
+
+    bool yamlTrue(const YAML::Node& value){
+        try {
+            return value.IsScalar() && value.as<bool>();
+        } catch (const YAML::Exception&) {
+            return false;
+        }
+    }
+
+    // Every Text map below node (GameObjects, children, prefab members, prefab instance overrides
+    // and added GameObjects alike): pivotBaseline is anchorVertical Baseline, pivotCentered
+    // anchorHorizontal Center, and false the old default of each (Bottom, Left: an override
+    // keeps its value); an instance's overridden property names follow
+    int migrateTextPivots(YAML::Node node){
+        int migrated = 0;
+        if (node.IsMap()){
+            for (auto it = node.begin(); it != node.end(); ++it){
+                YAML::Node value = it->second;
+                const bool textKey = it->first.IsScalar() && it->first.Scalar() == "text";
+                if (textKey && value.IsMap() && (value["pivotBaseline"] || value["pivotCentered"])){
+                    if (value["pivotBaseline"]){
+                        if (!value["anchorVertical"])
+                            value["anchorVertical"] = yamlTrue(value["pivotBaseline"]) ? "baseline" : "bottom";
+                        value.remove("pivotBaseline");
+                    }
+                    if (value["pivotCentered"]){
+                        if (!value["anchorHorizontal"])
+                            value["anchorHorizontal"] = yamlTrue(value["pivotCentered"]) ? "center" : "left";
+                        value.remove("pivotCentered");
+                    }
+                    migrated++;
+                }else if (textKey && value.IsSequence()){
+                    // an override's property names (properties: {text: [...]})
+                    for (YAML::Node name : value){
+                        if (name.IsScalar() && name.Scalar() == "pivotBaseline") name = "anchorVertical";
+                        else if (name.IsScalar() && name.Scalar() == "pivotCentered") name = "anchorHorizontal";
+                    }
+                }else{
+                    migrated += migrateTextPivots(value);
+                }
+            }
+        }else if (node.IsSequence()){
+            for (YAML::Node child : node)
+                migrated += migrateTextPivots(child);
+        }
+        return migrated;
+    }
+
+    void logTextPivots(int migrated, MigrationLog& log){
+        if (migrated > 0){
+            log.info(std::to_string(migrated) + (migrated == 1 ? " Text's" : " Texts'") +
+                     " pivotBaseline / pivotCentered are its Anchor now");
+        }
+    }
+
+    // ---------------------------------------------------------------- Root motion off (S94 F33, F34)
+
+    // Every Animator and Animation Player below node (a GameObject's components map, in entities,
+    // children and prefab members; not an instance's overrides): with Apply Root Motion off, a
+    // clip with a root_motion block now plays in place, where it kept its root's drift before (an
+    // Animation Player had no root motion at all). legacyRootDrift keeps the old play.
+    int keepRootDrift(YAML::Node node){
+        int kept = 0;
+        if (node.IsMap()){
+            for (auto it = node.begin(); it != node.end(); ++it){
+                YAML::Node value = it->second;
+                if (it->first.IsScalar() && it->first.Scalar() == "components" && value.IsMap()){
+                    for (const char* key : {"animator", "animationplayer"}){
+                        YAML::Node component = value[key];
+                        if (component && component.IsMap() && !yamlTrue(component["applyRootMotion"]) && !component["legacyRootDrift"]){
+                            component["legacyRootDrift"] = true;
+                            kept++;
+                        }
+                    }
+                }
+                // an instance's overrides follow its prefab (migrated with it)
+                if (!(it->first.IsScalar() && it->first.Scalar() == "prefabInstance"))
+                    kept += keepRootDrift(value);
+            }
+        }else if (node.IsSequence()){
+            for (YAML::Node child : node)
+                kept += keepRootDrift(child);
+        }
+        return kept;
+    }
+
+    void logRootDrift(int kept, MigrationLog& log){
+        if (kept > 0){
+            log.info(std::to_string(kept) + (kept == 1 ? " Animator or Animation Player keeps" : " Animators and Animation Players keep") +
+                     " its clips' root drift with Apply Root Motion off (Legacy Root Drift; untick it to play them in place)");
+        }
+    }
+
+    // Scene 10 -> 11 (S94 F24, F33): Text alignment replaces the two pivot booleans; Animators and
+    // Animation Players keep their clips' root drift
+    void sceneTextAnchorAndRootDrift(YAML::Node& root, MigrationLog& log){
+        logTextPivots(migrateTextPivots(root["entities"]), log);
+        logRootDrift(keepRootDrift(root["entities"]), log);
+    }
+
+    // Prefab 10 -> 11: the same for its members
+    void prefabTextAnchorAndRootDrift(YAML::Node& root, MigrationLog& log){
+        logTextPivots(migrateTextPivots(root["members"]), log);
+        logRootDrift(keepRootDrift(root["members"]), log);
+    }
+
 }
 
 const char* StreamMigrations::versionKey(DocumentKind kind){
@@ -762,11 +897,11 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 10;
-        case DocumentKind::Project: return 1;
+        case DocumentKind::Scene: return 11;
+        case DocumentKind::Project: return 2;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
-        case DocumentKind::Prefab: return 10;
+        case DocumentKind::Prefab: return 11;
     }
     return 0;
 }
@@ -809,9 +944,11 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {7, 8, "sprite sheets (identity: an older scene has none)", sheetSpritesIdentity},
         {8, 9, "mesh assets (identity: an older scene holds its meshes' buffers)", meshAssetsIdentity},
         {9, 10, "HTML UI render mode: older scenes keep Screen Space - Camera", sceneV9ToV10},
+        {10, 11, "Text pivots to Text Anchor; Animators keep their root drift", sceneTextAnchorAndRootDrift},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
+        {1, 2, "Transparency Sort Mode Perspective and FBX Submesh Order Used Materials for a project without them", projectV1ToV2},
     };
     static const std::vector<Migration> material = {
         {0, 1, "stamp the material format version", materialV0ToV1},
@@ -825,6 +962,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {7, 8, "Line and Trail Renderer curves and gradients in the editor's curve form", prefabV7ToV8},
         {8, 9, "sprite sheets (identity: an older prefab has none)", sheetSpritesIdentity},
         {9, 10, "mesh assets; linked materials keep the embedded copies", prefabV9ToV10},
+        {10, 11, "Text pivots to Text Anchor; Animators keep their root drift", prefabTextAnchorAndRootDrift},
     };
 
     switch (kind){

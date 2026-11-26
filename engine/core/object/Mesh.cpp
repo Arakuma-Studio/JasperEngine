@@ -12,6 +12,7 @@
 #include "component/ReflectionProbeComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "shader/ShaderManifest.h"
 #include "component/VertexAnimatorComponent.h"
 #include "animation/VertexAnimatorRuntime.h"
 
@@ -158,13 +159,130 @@ bool Mesh::load(){
     return renderSystem->loadMesh(entity, mesh, renderSystem->getScenePipelines(), instmesh, terrain);
 }
 
+namespace {
+
+    // the shader a submesh draws with (RenderSystem::getSubmeshShader) and its manifest's main
+    // @texture: "" for none (the built-in Lit, a fork without a manifest or without @texture)
+    std::string mainTextureOf(Scene* scene, const MeshComponent& mesh, const Submesh& submesh){
+        const std::string& shader = RenderSystem::getSubmeshShader(mesh, submesh, scene->getDefaultCustomShader(ShaderType::MESH));
+        if (shader.empty())
+            return std::string();
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+        const ShaderManifestTexture* main = (manifest && manifest->present) ? manifest->getMainTexture() : nullptr;
+        return main ? main->uniform : std::string();
+    }
+
+    // a shader texture written on a loaded submesh: a new entry (or a removed one) changes which
+    // textures the shader binds, which its load resolves; another file only rebinds
+    void writeShaderTexture(MeshComponent& mesh, Submesh& submesh, const std::string& name, const std::string& path){
+        const size_t before = submesh.material.shaderTextures.size();
+        if (!ShaderLibraryValues::setTexture(submesh.material.shaderTextures, name, path))
+            return;
+        if (submesh.material.shaderTextures.size() != before)
+            mesh.needReload = true;
+        submesh.needUpdateTexture = true;
+    }
+
+}
+
 void Mesh::setTexture(const std::string& path){
     for (const MeshTarget& target : getTargetMeshes()){
         Submesh& submesh = submeshAt(*target.mesh, 0);
-        submesh.material.baseColorTexture.setPath(path);
-        submesh.needUpdateTexture = true;
+        // a custom or library shader reads its own main texture, not the Lit's base colour (R53)
+        const std::string main = mainTextureOf(scene, *target.mesh, submesh);
+        if (!main.empty()){
+            writeShaderTexture(*target.mesh, submesh, main, path);
+        }else{
+            submesh.material.baseColorTexture.setPath(path);
+            submesh.needUpdateTexture = true;
+        }
         scene->markChanged<MeshComponent>(target.entity);
     }
+}
+
+std::string Mesh::getMainTextureName(unsigned int submesh) const{
+    const MeshTarget target = findSubmesh(submesh, "getMainTextureName");
+    if (!target.mesh)
+        return std::string();
+    return mainTextureOf(scene, *target.mesh, submeshAt(*target.mesh, submesh));
+}
+
+void Mesh::setShaderTexture(const std::string& name, const std::string& path){
+    // submesh 0 of each part, as setTexture
+    for (const MeshTarget& target : getTargetMeshes()){
+        writeShaderTexture(*target.mesh, submeshAt(*target.mesh, 0), name, path);
+        scene->markChanged<MeshComponent>(target.entity);
+    }
+}
+
+void Mesh::setShaderTexture(const std::string& name, const std::string& path, unsigned int submesh){
+    const MeshTarget target = findSubmesh(submesh, "setShaderTexture");
+    if (!target.mesh)
+        return;
+    writeShaderTexture(*target.mesh, submeshAt(*target.mesh, submesh), name, path);
+    scene->markChanged<MeshComponent>(target.entity);
+}
+
+std::string Mesh::getShaderTexture(const std::string& name) const{
+    return getShaderTexture(name, 0);
+}
+
+std::string Mesh::getShaderTexture(const std::string& name, unsigned int submesh) const{
+    const MeshTarget target = findSubmesh(submesh, "getShaderTexture");
+    if (!target.mesh)
+        return std::string();
+    return ShaderLibraryValues::getTexture(submeshAt(*target.mesh, submesh).material.shaderTextures, name);
+}
+
+namespace {
+
+    // which override textures a block names decides what the shader binds (resolved at load);
+    // values only rewrite the uniform blocks
+    void applyPropertyBlock(MeshComponent& mesh, OutOfLineValue<ShaderPropertyOverrides>& current, const ShaderPropertyOverrides& block){
+        if (current == block)
+            return;
+        if (current->textures != block.textures)
+            mesh.needReload = true;
+        // an empty block takes nothing out of line
+        if (block.empty())
+            current.reset();
+        else
+            current = block;
+        mesh.needUpdateShaderUniforms = true;
+    }
+
+}
+
+void Mesh::setPropertyBlock(const ShaderPropertyOverrides& block){
+    for (const MeshTarget& target : getTargetMeshes()){
+        applyPropertyBlock(*target.mesh, target.mesh->propertyOverrides, block);
+        scene->markChanged<MeshComponent>(target.entity);
+    }
+}
+
+void Mesh::setPropertyBlock(const ShaderPropertyOverrides& block, unsigned int submesh){
+    const MeshTarget target = findSubmesh(submesh, "setPropertyBlock");
+    if (!target.mesh)
+        return;
+    Submesh& sub = submeshAt(*target.mesh, submesh);
+    applyPropertyBlock(*target.mesh, sub.propertyOverrides, block);
+    // a model's load keeps them (as an edited material field)
+    if (block.empty())
+        sub.overrideFields &= ~(uint64_t)SubmeshOverride_PropertyOverrides;
+    else
+        sub.overrideFields |= SubmeshOverride_PropertyOverrides;
+    scene->markChanged<MeshComponent>(target.entity);
+}
+
+ShaderPropertyOverrides Mesh::getPropertyBlock() const{
+    return getFirstMesh().mesh->propertyOverrides.get();
+}
+
+ShaderPropertyOverrides Mesh::getPropertyBlock(unsigned int submesh) const{
+    const MeshTarget target = findSubmesh(submesh, "getPropertyBlock");
+    if (!target.mesh)
+        return ShaderPropertyOverrides();
+    return submeshAt(*target.mesh, submesh).propertyOverrides.get();
 }
 
 void Mesh::setTexture(const std::string& id, TextureData data){
@@ -216,7 +334,7 @@ namespace {
             return;
         const Material& current = submeshAt(mesh, submesh).material;
         bool reload = current.shader != material.shader || current.shaderFeatures != material.shaderFeatures ||
-            current.blendMode != material.blendMode || current.cullMode != material.cullMode ||
+            current.blendMode != material.blendMode || current.getBlendFactors() != material.getBlendFactors() || current.cullMode != material.cullMode ||
             current.depthWrite != material.depthWrite || current.depthTest != material.depthTest ||
             current.depthOffsetFactor != material.depthOffsetFactor || current.depthOffsetUnits != material.depthOffsetUnits ||
             current.sortPriority != material.sortPriority || current.lighting != material.lighting ||
@@ -230,7 +348,7 @@ namespace {
         const MaterialPass& currentPass = *current.extraPass;
         const MaterialPass& pass = *material.extraPass;
         reload = reload || currentPass.shader != pass.shader || currentPass.shaderFeatures != pass.shaderFeatures ||
-            currentPass.blendMode != pass.blendMode || currentPass.cullMode != pass.cullMode ||
+            currentPass.blendMode != pass.blendMode || currentPass.getBlendFactors() != pass.getBlendFactors() || currentPass.cullMode != pass.cullMode ||
             currentPass.depthWrite != pass.depthWrite || currentPass.depthTest != pass.depthTest ||
             currentPass.depthOffsetFactor != pass.depthOffsetFactor || currentPass.depthOffsetUnits != pass.depthOffsetUnits ||
             currentPass.stencil != pass.stencil || currentPass.colorWrite != pass.colorWrite || currentPass.order != pass.order ||
@@ -718,6 +836,12 @@ void Mesh::setShaderUniform(const std::string& name, const Vector4& value){
         if (ShaderUniforms::set(target.mesh->shaderUniforms, name, value)){
             target.mesh->needUpdateShaderUniforms = true;
             scene->markChanged<MeshComponent>(target.entity);
+        }
+        // a material parameter of the same name wins over it: said once (S94 F8)
+        for (unsigned int s = 0; s < target.mesh->numSubmeshes; s++){
+            if (ShaderUniforms::warnShadowedByMaterial(scene, target.entity, scene->getEntityName(target.entity), name,
+                                                       target.mesh->submeshes[s].material.shaderParams))
+                break;
         }
     }
 }

@@ -51,6 +51,10 @@ namespace {
             OverrideKind::Cap, true, 1.0f, 1000.0f, false, nullptr, 0},
         {"max_pixel_lights", "Max Pixel Lights", "Lights per object at most.", OverrideKind::Cap, true, 1.0f, 64.0f, false, nullptr, 0},
         {"particle_budget", "Particle Budget", "Live particles of a scene at most.", OverrideKind::Cap, true, 1.0f, 4194304.0f, false, nullptr, 0},
+        {"cavity_samples", "Cavity Samples", "Cavity's World samples at most (4, 8, 16): a smoother or cheaper bevel of the same width. "
+            "Screen lines are unchanged; a tier never turns Cavity off.", OverrideKind::Cap, true, 4.0f, 16.0f, true, nullptr, 0},
+        {"simulation_distance", "Simulation Distance", "Multiplies every Simulation Culling distance: below 1 simulates a smaller radius.",
+            OverrideKind::Multiplier, false, 0.25f, 1.0f, false, nullptr, 0},
     };
 
     template<size_t N>
@@ -181,6 +185,10 @@ bool DeviceOverrides::validate(DeviceOverride field, float value, std::string& e
         error = "msaa_samples must be 1, 2 or 4";
         return false;
     }
+    if (field == DeviceOverride::Cavity && value != 4.0f && value != 8.0f && value != 16.0f){
+        error = "cavity_samples must be 4, 8 or 16";
+        return false;
+    }
     return true;
 }
 
@@ -228,7 +236,12 @@ DeviceSettings::DeviceSettings(){
         low.set(DeviceOverride::LodBias, 0.5f);
         low.set(DeviceOverride::Volumetrics, 0.0f);
         low.set(DeviceOverride::SSAO, 0.0f);
-        tiers[group][(size_t)DeviceTier::Medium].set(DeviceOverride::RenderScale, 0.85f);
+        low.set(DeviceOverride::Cavity, 4.0f);
+        low.set(DeviceOverride::SimulationDistance, 0.6f);
+        DeviceTierOverrides& medium = tiers[group][(size_t)DeviceTier::Medium];
+        medium.set(DeviceOverride::RenderScale, 0.85f);
+        medium.set(DeviceOverride::Cavity, 8.0f);
+        medium.set(DeviceOverride::SimulationDistance, 0.8f);
     }
 }
 

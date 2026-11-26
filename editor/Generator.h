@@ -150,10 +150,11 @@ namespace jasperengine::editor {
         int glyphAtlasMiB = 0;           // 0, or 4-256
         bool sdfPrimitives = true;
         bool transformAwareText = true;
+        int imageCacheMiB = -1;          // S93: -1 (the platform's default), or 0-1024 (0 keeps no released image)
 
         bool operator==(const HtmlUiRenderSettings& other) const{
             return glyphAtlasMiB == other.glyphAtlasMiB && sdfPrimitives == other.sdfPrimitives &&
-                   transformAwareText == other.transformAwareText;
+                   transformAwareText == other.transformAwareText && imageCacheMiB == other.imageCacheMiB;
         }
         bool operator!=(const HtmlUiRenderSettings& other) const{ return !(*this == other); }
     };
@@ -237,10 +238,14 @@ namespace jasperengine::editor {
         uint8_t allowedOrientations = (1u << 1) | (1u << 3) | (1u << 4);
         bool keepScreenOn = true;
         int targetFrameRate = -1;
+        // Player > Pause On Focus Loss
+        bool pauseOnFocusLoss = false;
         // Project Settings > Graphics > Dynamic Batching
         bool dynamicBatching = true;
         // Project Settings > Localization > Default Language, its fallbacks applied (S87 R64)
         std::string defaultLanguage = "en";
+        // the project has String Tables: the game loads l10n/manifest.json (game-ui-localization.md D5)
+        bool localization = false;
         // what System.getAppName/Identifier/Version/Build return on each desktop and the web
         // (with their platform overrides); Android and iOS read their package and bundle
         ApplicationInfo linuxApp, windowsApp, macosApp, webApp;

@@ -87,6 +87,7 @@ recording, nothing when unset (`tools/mcp/tests/test_recorder_integrity.py`).
 `JASPER_MESH_LOAD_HOLD_FILE=<path>` holds the first load (the binding) of the meshes of a scene that
 loaded a model in the background while that file exists, so what else loads the same model meanwhile
 (a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
+`JASPER_TEST_MCP_LOG_MAX_BYTES=<bytes>` lowers the MCP call log's 16 MB rotation size (`test_call_log` in `tools/mcp/tests/test_protocol.py`).
 `JASPER_TEST_MATERIAL_THUMBNAIL_STUCK=<project-relative file>` keeps a material thumbnail loading while that file exists (`test_material_thumbnail.py`).
 `JASPER_TEST_TRANSITION_TWIN_SKEW=<coverage>` shifts the CPU evaluation a transition capture's `transition_edges` compares the frames with, for the lint's red path (`tools/mcp/tests/test_contact_sheet.py`).
 `JASPER_TEST_STAGING_HOLD=<path>` holds a Project Hub import or template copy with part of its files in
@@ -154,10 +155,12 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   look in a desktop browser.
 - A gate baseline can also list `console` lines (`{"text", "level"}`, `"ordered": true`): each must
   appear at that console level (log, info, warning, error), in order; an error listed there is
-  expected and fails nothing. `GATE=core-utilities` (after `WEB_PROJECT=core-utilities tools/build.sh
-  web`) checks the logger's browser console sink and a Lua `Timer` that way.
-- `GATE=mesh-raycast` (after `WEB_PROJECT=mesh-raycast tools/build.sh web`) times 10,000
-  MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
+  expected and fails nothing. `GATE=core-utilities` (after `BUILD_TYPE=Release WEB_PROJECT=core-utilities
+  tools/build.sh web`) checks the logger's browser console sink and a Lua `Timer` that way, and the
+  Culling Group and Simulation Culling evaluation p99 against their release web budgets.
+- `GATE=mesh-raycast` (after `BUILD_TYPE=Release WEB_PROJECT=mesh-raycast tools/build.sh web`: its budgets are release figures) times 10,000
+  MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17), then
+  10,000 overlap queries of each kind against 0.04 ms (spatial-queries AC15).
 - The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13), `pcss` (PCSS's two views
   of the shadow atlas in one WebGL2 draw, the Ultra tier's contact hardening) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
@@ -169,6 +172,9 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   desktop autoplay policy (`chrome_flags` in the baseline): the page's audio is suspended until the
   first key press (`keys`: trusted CDP key events, `eval_before_input` before them, `eval` after),
   and Meta, ContextMenu and events without a code reach the game as their engine keys.
+- `GATE=web-pointer` (after `WEB_PROJECT=web-pointer tools/build.sh web`) drags mouse presses off a
+  canvas smaller than the window (`drags`: trusted CDP mouse events): each release reaches the game
+  once, clamped to the canvas (S93 R2).
 - `GATE=pixel-perfect` (after
   `WEB_PROJECT=pixel-perfect tools/build.sh web`) runs at a device scale factor of 2 and checks that
   a Pixel Perfect Camera sizes the canvas backing store at its CSS size times `devicePixelRatio` and
@@ -189,6 +195,7 @@ takes about a second. So an MCP test compiles only when the compile path is what
   | `test_build.py::test_desktop_build_and_run` | the compile path end to end (CMake, the engine, the link, a player that runs), and a broken C++ source's errors parsed as `file:line` (only a compiler produces them) |
   | `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` | `graphics.runtime_shaders: false`: a compiled game ships without the runtime shader compiler whatever its scripts do (a prebuilt variant leaves it out only when no script can need it, S34), so it shows the exported UI effect variants are all the game needs |
   | `test_build.py::test_cancel_desktop_build`, `test_busy.py::test_export_job_refusals` | a compile runs long enough to cancel, and to refuse other tools while it runs (a prebuilt build ends first); both are cancelled within seconds |
+  | `test_localization_export.py::test_compiled_game_loads_the_manifest` | the generated main of a compiled game loads `l10n/manifest.json` (a prebuilt player reads it from `game.json`): the String Tables reach a compiled game |
   | `test_lifecycle_export.py::test_play_and_export_log_the_same_lifecycle` | a C++ script's lifecycle in an exported player: C++ scripts ship only in a compiled game |
 
 - **(b) Prebuilt** (`method="prebuilt"`, and it checks `method_used` and the `player_id` it
@@ -315,6 +322,12 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   $EMULATOR_GPU`: see "The emulator's GPU" below),
   installs the APK with every permission granted, clears logcat, launches the app and polls
   logcat until every `--expect` line is there, the app crashes, or `--timeout` (120 s) passes.
+- `--view-loss` sends the app to the background once it is ready (Home), calls `am send-trim-memory
+  <package> COMPLETE` (APP_CMD_LOW_MEMORY without a window drops the EGL context) and launches it
+  again; the run needs a new view and its expectations from both sides of the return. `--once TEXT`
+  fails on a second line containing TEXT. `tools/test-projects/app-lifecycle` uses both (S95 AC-17:
+  an HTML UI document keeps its DOM through the loss); its `main.cpp` says how to lose and restore
+  the WebGL context of its web build by hand.
 - `--expect` matches a `logcat -v tag` line: `W/JasperEngine: [render] text` checks the priority,
   the tag and the text. `--ordered` requires the order given, `--forbid` fails on a line,
   `--expect-file` reads expectations one per line. A `FATAL EXCEPTION`, a native crash of the
@@ -328,12 +341,47 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   about 40 s; a whole run about 70 s.
 - `EMULATOR_BOOT_TIMEOUT`, `EMULATOR_MEMORY`, `EMULATOR_CORES` and `JASPER_DOCKER_IMAGE` (a
   prebuilt emulator image) tune it. `EMULATOR_GPU` is passed to `-gpu` (below).
+- `--setprop NAME=VALUE` sets a system property before each launch. VALUE may hold spaces and
+  `: , =` (it reaches the device's shell double-quoted; quotes, `$`, backquotes, backslashes and
+  `; | & < > ( )` are refused): the player arguments of a Development build go in
+  `debug.jasperengine.args`. `tools/android-emulator-test.sh --self-test` checks that rule. The
+  project test runner's check (docs/game-tests.md, AC13):
+
+  ```sh
+  ANDROID_PROJECT=game-tests tools/build.sh android
+  tools/android-emulator-test.sh build/android-game-tests/app-debug.apk \
+      --setprop "debug.jasperengine.args=--run-tests --test-filter tag:smoke" \
+      --expect-file tools/test-projects/game-tests/android-expect.txt
+  ```
+- `--ime TEXT` waits for a logcat line containing TEXT (the game focused a text field), saves
+  `dumpsys input_method` as `ime.txt`, types `abcdefgh` and presses Enter; `--ime-editor-info` names
+  what `ime.txt` must show. The soft keyboard check of text-entry-gamepad-cursor-back-button AC7:
+
+  ```sh
+  ANDROID_PROJECT=input ANDROID_ABIS=x86_64 tools/build.sh android
+  tools/android-emulator-test.sh build/android-input/app-debug.apk --two-finger-tap \
+      --expect-file tools/test-projects/input/android-expect.txt \
+      --ime '[gate] form focused' --ime-editor-info 'inputType=0x21 imeOptions=0x12000004' \
+      --expect-file tools/test-projects/input/android-ime-expect.txt
+  ```
 - Every run also fails on what the GLES path logs when it goes wrong, expected or not: an
   `OpenGL error` (NativeEngine reads `glGetError` after every frame; a debug build's sokol also
   asserts on one after each GL call, which the crash check catches), a shader that did not compile
   or link (sokol's GL backend, the runtime shader compiler), an incomplete framebuffer, an EGL
   error or a failed swap, a sokol panic, and libEGL's "call to OpenGL ES API with no current
   context".
+
+#### Patch And Run: `tools/ci/android_patch_run.sh`
+
+Build And Run and Patch And Run on the same headless emulator (docs/specs/build-and-run-on-device.md
+AC10): a Development Build of a copy of `tools/fixtures/tween-curve` through
+`jasperengine-editor build --run-device emulator-5554`, a Lua string edit, the same command again.
+It checks the second run patched (`installed: patched`), logcat has the new string, the installed
+APK's SHA-256 did not change, and prints the patch's time against its 15 s budget as a `[bench]`
+line (`JASPER_MCP_PERF_SLACK` enforces it). It builds the `android-universal-gles3-development`
+runtime (x86_64) when `build/players` lacks it, and runs the editor of `tools/build.sh linux` inside
+the emulator image (its SDK and JDK make the APK). `test_device_run.py` covers the same flow with a
+stand-in adb on every MCP run.
 
 #### Rendering gate: `--scene` and `--golden`
 
@@ -396,7 +444,7 @@ frame timing (SwiftShader draws a frame in tens to hundreds of milliseconds).
 
 `jasperengine-crash-test` is built with core tests. `ctest --test-dir build/linux/core-tests
 -R 'native-crash|posix-crash' --output-on-failure` runs each deliberate fatal mode in a child,
-checks registers, frames, log tail, signal chaining and overflow reporting, and checks the POSIX
+checks registers, frames, log tail, the Gameplay Journal's `journal.txt`, signal chaining and overflow reporting, and checks the POSIX
 object for allocation/stdio/mutex imports. It also verifies a main-thread hang frame. These
 checks work in the ASan/UBSan tree too (`core-tests-address-undefined`). Windows/macOS desktop
 CTest builds register the same child-process checks; Windows additionally requires a minidump.
@@ -407,6 +455,9 @@ then `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.a
 The opt-in flag requires the engine report **and** a matching debuggerd tombstone, saves both
 under the emulator result directory, and accepts that deliberate crash. Ordinary emulator tests
 continue to fail on any native crash.
+The fixture's Lua logs the Gameplay Journal entry `gate.ready` first, so the pulled report folder
+also holds `journal.txt` with it (`native-crash-journal` checks the same on the desktop:
+`jasperengine-crash-test --mode segv --journal`).
 
 ## Gates: per commit, then CI
 
@@ -426,10 +477,11 @@ continue to fail on any native crash.
   `gh workflow run ci.yml --ref <branch> -f full=true` runs everything on a branch. check-changed is
   a selection and says so in every summary. The MCP files outside the CI suite (`MCP_SUITE=all`)
   run only where someone runs them.
-- **Lints check-changed does not run**, by area (`AGENTS.md`, Test): `tools/check_raw_writes.py` and
-  `tools/check_stream_keys.py` (file writes, decoders), `tools/check_text_encoding.py` (code-page
-  conversions, Win32 `-A` calls, Apple string encodings, vswhere; `--self-test` is its red control),
-  `tools/ci/check-hardcoded-shortcuts.py`, `tools/ci/check-notices.py`.
+- **check-changed runs the area lints** by the paths they read (`AREA_LINTS`): `tools/check_raw_writes.py` and
+  `tools/check_stream_keys.py` (file writes, decoders), `tools/check_event_clears.py` (engine events),
+  `tools/check_text_encoding.py` (code-page conversions, Win32 `-A` calls, Apple string encodings, vswhere)
+  and `tools/ci/check-hardcoded-shortcuts.py` (editor keys). `tools/ci/check-notices.py` (vendored
+  libraries and `NOTICE.md`) runs in the lint lane.
 
 ### `tools/check-changed`
 
@@ -438,18 +490,24 @@ tools/check-changed                           # build and test what the change t
 tools/check-changed --dry-run                 # the plan only
 tools/check-changed --base main               # another base (default: the merge base with oe-port, else main, origin/main)
 tools/check-changed --no-mcp                  # builds and unit tests only, said so in the summary and not cached
+tools/check-changed --json                    # the plan, step results, logs and fix commands as one JSON document
+tools/check-changed --red-control             # then the selected tests without the change: some must fail
+tools/check-changed --red-control --restore   # the tree an interrupted red control left reverted
 tools/build.sh exec linux tools/check-changed # inside the Linux image (no web or Android build there)
 ```
 
+- The area lints run first, each when a path it reads changes: what it scans (editor and engine
+  C++ outside tests and vendored libraries, the decoders and reflection tables for
+  `check_stream_keys.py`) or its allow-list. A change of the lint, or of its self-test's fixtures,
+  also runs its `--self-test`. `tools/check_event_clears.py` runs for any engine source outside
+  `engine/libs`, `engine/tests` and `engine/workspaces`: every `FunctionSubscribe` member is in its
+  holder's `forEachEvent`, every component holder in `ComponentEvents.h`, every other holder in the
+  lint's `WALKS` or `TRANSIENT`, and every static event in Engine's clears, so the clears at Stop
+  reach it; `Ease` members count; `tools/build.sh linux` runs it too.
 - Tool tests: a changed `tools/<dir>/<x>.py` runs `tools/<dir>/test_<x>.py` beside it (and a changed
   test itself), unless it takes arguments only its lane has (`SELF_TESTS_ELSEWHERE`); `SELF_TESTS`
   names the rest. CI's lint lane runs every tool test that needs no build (`tools/ci/lint.sh`).
-- Lints with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`; a changed
-  engine source (not `engine/libs`, `engine/tests`) runs `tools/check_event_clears.py` (every
-  `FunctionSubscribe` member is in its holder's `forEachEvent`, every component holder in
-  `ComponentEvents.h`, every other holder in the lint's `WALKS` or `TRANSIENT`, and every static
-  event in Engine's clears, so the clears at Stop reach it; `Ease` members count; `tools/build.sh
-  linux` runs it too).
+- Other checks with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`.
 - The change: committed since the base, staged, unstaged and untracked files. A checkout without
   the stream's history reads its diff from `build/.rb-changes.json` (with every file's sha256: a
   diff that does not match the files is refused).
@@ -484,8 +542,29 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
   changed and untracked file, the images' Dockerfiles, the coverage map's version and the script
   itself: the same inputs reprint the last summary (`--no-cache` runs again); a run during which
   the files changed caches nothing. Exit 1 when a step fails or a selected test cannot run.
-- Output: the plan, then each step's result; a failed step's output (`CHECK_CHANGED_VERBOSE=1`:
-  everything).
+- Output: the plan, then each step as it ends. Each step's whole output goes to
+  `build/check-changed/<step>.log` (`CHECK_CHANGED_VERBOSE=1`: to the terminal too). A failed step
+  prints its parsed failures, at most 40 lines (googletest, unittest and pytest failures, the MCP
+  results, and build diagnostics, crashes and gate verdicts through `tools/ci/report.py`'s
+  parsers; else a lint's `file:line` findings), then its log. The run ends with one line per step,
+  `ok|FAIL|skip|cached  <step>  <seconds>`; a FAIL carries `fix:`, the command that reruns it,
+  narrowed to the failed googletest tests or MCP files.
+- Independent steps go on after a failure. A step whose build failed is `skip` with the reason
+  (the unit tests after their build, the header gates and MCP tests after the editor's). `--json`
+  prints one document on stdout (the plan, the steps with their status, log, fix, failures and
+  failed tests, and the red control's verdicts); the progress goes to stderr.
+- `--red-control` proves the selected tests pin the change. It refuses a dirty tree, and any run
+  refuses while an interrupted one's marker (`build/red-control/in-progress.json`) is there,
+  printing `tools/check-changed --red-control --restore`. After the normal run passes (or its
+  cached pass), it saves the branch's diff from the base over the paths outside the tests
+  (everything but `engine/tests`, `editor/tests`, `tools/mcp/tests`, `tools/fixtures`, `golden`
+  folders, `docs/`, and the tools' own tests and fixtures) to `build/red-control/patch.diff` and
+  reverse-applies it in place. It then rebuilds and reruns the same selected tests (logs in
+  `build/red-control/logs/`) and restores the tree in a `finally`, SIGTERM and Ctrl-C included.
+  It then checks that the tree is byte-identical to before (status, diff, untracked files). Each
+  test step is `red` (with the tests that failed), `red (build)` (its build failed), `green` (it
+  does not pin the change) or `not run`. It exits 1 when none went red. The red run is never
+  cached, and it reverts the shared worktree it runs in: do not edit it meanwhile.
 - Inside the Linux image `tools/build.sh` has no Docker to call and runs the image's own targets
   directly, with the same environment; a target of another image (web, Android) exits 3; check-changed there leaves those
   builds out, says so in its summary and caches no pass.
@@ -496,7 +575,8 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
   OFF").
 - Its tests: `python3 -I tools/test_check_changed.py` (the diff and its fallbacks, the build plan,
   the suites from a synthetic `ninja -t deps`, the MCP selection from a synthetic map, the gcda
-  reader, the cache and its invalidation, the exit codes).
+  reader, the cache and its invalidation, the area lints by path, the exit codes, keep-going, the
+  logs, summary and fix lines, `--json`, and the red control on scratch repositories).
 
 **The coverage map** (`tools/mcp/coverage_map.py`): for each MCP test file, the engine and editor
 sources its editors executed. A full run of a coverage-instrumented editor records it, off the
@@ -861,6 +941,19 @@ no-silent-green gate, and fails unless at least two `NavStubTest` tests passed (
 compiles navigation in runs none). The first run builds the whole engine (the switch is a public
 define); later runs are incremental. `tools/check-changed` plans it for a navigation or engine CMake
 change; nothing else runs it, CI included.
+
+### Dialogue OFF: `tools/check-physics-off.sh dialogue-off`
+
+A project with no `.dialogue`, Dialogue Runner or script naming `Dialogue` exports with
+`JASPERENGINE_DIALOGUE=OFF` (dialogue-graphs.md R15): `engine/core/dialogue` is not compiled and the
+Lua names `Dialogue` and `DialogueRunner` are stubs that log once. The module-off variant of
+`tools/check-physics-off.sh` builds that engine (`build/physics-off-dialogue-off`); the stubs'
+test, `DialogueStubTest.LogsOnceWhenNotCompiled`, binds them on a Lua state of its own, so it runs in
+every core build:
+
+```sh
+tools/build.sh exec linux tools/check-physics-off.sh dialogue-off
+```
 
 ### Sanitizers
 

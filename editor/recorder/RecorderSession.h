@@ -84,6 +84,16 @@ namespace jasperengine::editor::recorder {
         std::vector<std::filesystem::path> files;
         std::filesystem::path sidecar;
         double overriddenFixedFps = 0.0;  // MCP play's fixed_fps the recording replaced (0: none)
+        // S99 R14: what this recording took below what was asked: another H.264 encoder than
+        // libx264, a size clamped (the GPU's limit, even sizes for 4:2:0), audio dropped, frames
+        // recorded without waiting for what does not settle
+        struct Downgrade {
+            std::string step;
+            std::string from;
+            std::string to;
+            std::string reason;
+        };
+        std::vector<Downgrade> downgrades;
 
         mcp::Json sidecarJson() const;
     };
@@ -107,6 +117,9 @@ namespace jasperengine::editor::recorder {
         // starts with its first frame). False with `error` when it cannot (busy, no FFmpeg for a
         // movie, sizes...). `warnings` gets what was changed (audio off mid-play...)
         bool start(const Settings& settings, std::string& error);
+        // Starts with the Play session that is starting now (a replay's, input-recorder-and-input-scripts
+        // R23): frame 0 is its first game frame, as with Record on Play
+        bool startWithPlay(const Settings& settings, std::string& error);
         // stops and finalises (Stop Recording, F10, MCP cancel_job)
         void stop();
         // the editor about to start Play: Record on Play arms here (and the audio capture)
@@ -124,6 +137,9 @@ namespace jasperengine::editor::recorder {
         int64_t framesRecorded() const { return recorded; }
         int64_t gameFrame() const { return frameIndex; }
         const Settings& settings() const { return current; }
+        // the output size of the recording started (outputSize: clamped, even for a movie)
+        int outputWidth() const { return width; }
+        int outputHeight() const { return height; }
         // "REC 00:12 · frame 734" (empty when not recording): the Game view's overlay
         std::string overlayText() const;
         bool audioMuted() const;
@@ -193,6 +209,8 @@ namespace jasperengine::editor::recorder {
         std::chrono::steady_clock::time_point settleStart;
 
         bool arm(const Settings& settings, bool fromPlayStart, std::string& error);
+        // the size asked for against the output's: a downgrade when the limits changed it
+        void noteSizeDowngrade(int gameWidth, int gameHeight, int maxTextureSize);
         void warnAboutFreeSpace();
         bool assetsLoading() const;
         bool contentSettled() const;

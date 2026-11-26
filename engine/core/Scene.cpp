@@ -35,6 +35,7 @@
 #include "subsystem/AnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/NavigationSystem.h"
 #if JASPERENGINE_TERRAIN_WORLD
 #include "subsystem/TerrainWorldSystem.h"
@@ -110,6 +111,9 @@ void Scene::init(){
     // after Render's transforms, before physics: a Tilemap Collider 2D's chunks rebuild before the step
     registerSystem<TilemapSystem>();
     registerSystem<PhysicsSystem>();
+    // after Render's world transforms and camera planes; after physics, whose load makes the
+    // bodies it freezes (the next fixed steps read them frozen)
+    registerSystem<CullingSystem>();
     // after physics (world collisions query it, never while it steps) and the transforms
     registerSystem<ParticleSubsystem>();
     registerSystem<AudioSystem>();
@@ -155,6 +159,7 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     forEachComponentEvent(*this, [&substring](auto& event) { event.removeByTagSubstring(substring); });
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
     getSystem<TitleArtSystem>()->removeSubscriptionsByTag(substring);
+    getSystem<CullingSystem>()->removeSubscriptionsByTag(substring);
 }
 
 void Scene::setCamera(Camera* camera){
@@ -621,6 +626,50 @@ Vector3 Scene::getGlobalIlluminationColorLinear() const{
     return settings.globalIllumColor;
 }
 
+void Scene::setAmbientMode(AmbientMode source){
+    settings.ambientMode = source;
+}
+
+AmbientMode Scene::getAmbientMode() const{
+    return settings.ambientMode;
+}
+
+void Scene::setAmbientSkyColor(Vector3 color){
+    settings.ambientSkyColor = Color::sRGBToLinear(color);
+}
+
+Vector3 Scene::getAmbientSkyColor() const{
+    return Color::linearTosRGB(settings.ambientSkyColor);
+}
+
+Vector3 Scene::getAmbientSkyColorLinear() const{
+    return settings.ambientSkyColor;
+}
+
+void Scene::setAmbientEquatorColor(Vector3 color){
+    settings.ambientEquatorColor = Color::sRGBToLinear(color);
+}
+
+Vector3 Scene::getAmbientEquatorColor() const{
+    return Color::linearTosRGB(settings.ambientEquatorColor);
+}
+
+Vector3 Scene::getAmbientEquatorColorLinear() const{
+    return settings.ambientEquatorColor;
+}
+
+void Scene::setAmbientGroundColor(Vector3 color){
+    settings.ambientGroundColor = Color::sRGBToLinear(color);
+}
+
+Vector3 Scene::getAmbientGroundColor() const{
+    return Color::linearTosRGB(settings.ambientGroundColor);
+}
+
+Vector3 Scene::getAmbientGroundColorLinear() const{
+    return settings.ambientGroundColor;
+}
+
 void Scene::setMaxLightsPerObject(int maxLightsPerObject){
     // a new capacity tier reloads the meshes (RenderSystem::update)
     settings.maxLightsPerObject = std::clamp(maxLightsPerObject, 1, MAX_LIGHTS_PER_OBJECT);
@@ -773,6 +822,14 @@ int Scene::getPhysics2DSubSteps() const{
 #else
     return SceneSettings().physics2DSubSteps;
 #endif
+}
+
+void Scene::setFixedTimestep(float seconds){
+    settings.fixedTimestep = (std::isfinite(seconds) && seconds > 0.0f) ? seconds : 0.0f;
+}
+
+float Scene::getFixedTimestep() const{
+    return settings.fixedTimestep;
 }
 
 const ScenePhysics2DSettings& Scene::getPhysics2DWorldSettings() const{
@@ -1340,6 +1397,24 @@ void Scene::notifyPickDirty(Entity entity){
 void Scene::destroy(){
     for (auto const& pair : systems){
         pair.second->destroy();
+    }
+}
+
+void Scene::releaseGpu(){
+    for (auto const& pair : systems){
+        pair.second->releaseGpu();
+    }
+}
+
+void Scene::restoreGpu(){
+    if (camera == NULL_ENTITY){
+        camera = createDefaultCamera();
+    }
+
+    for (auto const& pair : systems){
+        if (Engine::isViewLoaded()){
+            pair.second->restoreGpu();
+        }
     }
 }
 

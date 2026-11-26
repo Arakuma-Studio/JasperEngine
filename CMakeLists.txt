@@ -635,6 +635,14 @@ if(DEFINED JASPERENGINE_NOISE AND NOT JASPERENGINE_NOISE)
     message(FATAL_ERROR "The editor needs JASPERENGINE_NOISE: only players can leave it out")
 endif()
 set(JASPERENGINE_NOISE_ALL_BACKENDS ON CACHE BOOL "" FORCE)
+# The editor's Dialogue window, preview and run_dialogue run the dialogue runtime (dialogue-graphs.md D6)
+if(DEFINED JASPERENGINE_DIALOGUE AND NOT JASPERENGINE_DIALOGUE)
+    message(FATAL_ERROR "The editor needs JASPERENGINE_DIALOGUE: only players can leave it out")
+endif()
+# The editor's Record Input, play {input}, send_input {file} and record_game run input scripts
+if(DEFINED JASPERENGINE_INPUT_SCRIPTS AND NOT JASPERENGINE_INPUT_SCRIPTS)
+    message(FATAL_ERROR "The editor needs JASPERENGINE_INPUT_SCRIPTS: only players can leave it out")
+endif()
 # The editor's terrain tools run the operation engine (T1)
 if(DEFINED JASPERENGINE_TERRAIN_EDIT AND NOT JASPERENGINE_TERRAIN_EDIT)
     message(FATAL_ERROR "The editor needs JASPERENGINE_TERRAIN_EDIT: only players can leave it out")
@@ -667,6 +675,15 @@ set(CMAKE_OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>)
+endif()
+# Lua is compiled as C and raises (lua_error, luaL_error, luaL_check*) with longjmp, which on MSVC
+# unwinds the C++ frames it crosses as an exception does. /EHsc lets the compiler assume an extern
+# "C" function never throws, so a binding that had made a C++ object kept no unwind state for its
+# call to a raising Lua function, and the longjmp ended the process or faulted (the Windows core
+# tests in ConsoleCommandsLua and DialogueLua, CI runs 45006454127 and 45028312069). /EHs without
+# c treats every extern "C" call as one that may throw.
+if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    string(REPLACE "/EHsc" "/EHs" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 endif()
 
 add_subdirectory(libs/nfd)
@@ -814,6 +831,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/McpClient.cpp
     ${EDITOR_DIR}/cli/CallCommand.cpp
     ${EDITOR_DIR}/cli/ProceduralMaterialCommand.cpp
+    ${EDITOR_DIR}/cli/TestCommand.cpp
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cli/TitleArtCli.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
@@ -826,6 +844,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/voxel/VoxelProjectSettings.cpp
     ${EDITOR_DIR}/cook/JPakWriter.cpp
     ${EDITOR_DIR}/cook/BuildReport.cpp
+    ${EDITOR_DIR}/cook/BuildReportHistory.cpp
+    ${EDITOR_DIR}/cook/Reachability.cpp
     ${EDITOR_DIR}/util/ZipArchive.cpp
     ${EDITOR_DIR}/players/ModuleUsage.cpp
     ${EDITOR_DIR}/players/PlayerRuntimes.cpp
@@ -835,6 +855,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/publish/TreeManifest.cpp
     ${EDITOR_DIR}/publish/PayloadValidator.cpp
     ${EDITOR_DIR}/publish/Publishing.cpp
+    ${EDITOR_DIR}/publish/StoreLimits.cpp
+    ${EDITOR_DIR}/buildprofile/BuildProfile.cpp
     ${EDITOR_DIR}/platform/ExternalTools.cpp
     ${EDITOR_DIR}/platform/AndroidTools.cpp
     ${EDITOR_DIR}/platform/PinnedDownload.cpp
@@ -843,6 +865,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/platform/WindowsResources.cpp
     ${EDITOR_DIR}/platform/MacBundle.cpp
     ${EDITOR_DIR}/platform/IosProject.cpp
+    ${EDITOR_DIR}/platform/DeviceList.cpp
+    ${EDITOR_DIR}/platform/DeviceCommands.cpp
+    ${EDITOR_DIR}/platform/DeviceRecords.cpp
+    ${EDITOR_DIR}/platform/DeviceLogPump.cpp
+    ${EDITOR_DIR}/platform/DeviceRunner.cpp
+    ${EDITOR_DIR}/platform/WebServe.cpp
     ${EDITOR_DIR}/App.cpp
     ${EDITOR_DIR}/AppCommands.cpp
     ${EDITOR_DIR}/AppSettings.cpp
@@ -877,6 +905,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/Properties.cpp
     ${EDITOR_DIR}/reflect/PostProcessingReflect.cpp
     ${EDITOR_DIR}/reflect/ShaderCreationReflect.cpp
+    ${EDITOR_DIR}/reflect/SaveGameReflect.cpp
     ${EDITOR_DIR}/reflect/DebugReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimationReflect.cpp
     ${EDITOR_DIR}/reflect/components/CameraAudioReflect.cpp
@@ -896,6 +925,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
     ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
     ${EDITOR_DIR}/reflect/components/SortingReflect.cpp
+    ${EDITOR_DIR}/reflect/components/OutlineReflect.cpp
+    ${EDITOR_DIR}/reflect/components/SpriteSkinReflect.cpp
     ${EDITOR_DIR}/reflect/components/TilemapReflect.cpp
     # pixel art (S41: the editor's side of the Pixel Perfect Camera)
     ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
@@ -922,6 +953,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/picking/BvhDiskCache.cpp
     ${EDITOR_DIR}/picking/IconPicker.cpp
     ${EDITOR_DIR}/picking/ScenePicker.cpp
+    ${EDITOR_DIR}/sceneview/FrameChecks.cpp
     ${EDITOR_DIR}/sceneview/SceneViewController.cpp
     ${EDITOR_DIR}/sceneview/SceneViewMath.cpp
     ${EDITOR_DIR}/sceneview/SceneViewState.cpp
@@ -934,6 +966,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/ShippingTypes.cpp
     ${EDITOR_DIR}/export/AssetStripping.cpp
     ${EDITOR_DIR}/export/ExportFiles.cpp
+    ${EDITOR_DIR}/export/SizeBudget.cpp
     ${EDITOR_DIR}/util/BuildDiagnostics.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
@@ -944,6 +977,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/profiler/ProfilerWindow.cpp
     ${EDITOR_DIR}/mcp/McpAutoSync.cpp
     ${EDITOR_DIR}/mcp/McpCall.cpp
+    ${EDITOR_DIR}/mcp/McpCallLog.cpp
     ${EDITOR_DIR}/mcp/McpDialogs.cpp
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp
@@ -970,6 +1004,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
     ${EDITOR_DIR}/mcp/tools/ShadowTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProfilerTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ProfilingHints.cpp
     ${EDITOR_DIR}/mcp/tools/MeshLodTools.cpp
     ${EDITOR_DIR}/mcp/tools/DeviceTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneTools.cpp
@@ -1000,8 +1035,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/AssetIdentityTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
+    ${EDITOR_DIR}/mcp/tools/BuildDevices.cpp
     ${EDITOR_DIR}/mcp/tools/PublishTools.cpp
+    ${EDITOR_DIR}/mcp/tools/BuildProfileTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PhysicsQueryTools.cpp
     ${EDITOR_DIR}/mcp/TerrainMaterialInfo.cpp
     ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
     ${EDITOR_DIR}/mcp/tools/AnimatorTools.cpp
@@ -1033,6 +1071,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
     ${EDITOR_DIR}/util/CrashHandler.cpp
+    ${EDITOR_DIR}/util/CrashGroups.cpp
     ${EDITOR_DIR}/util/EditorDiagnostics.cpp
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
@@ -1257,16 +1296,21 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/texture/TextureCli.cpp
     ${EDITOR_DIR}/texture/TextureCookReport.cpp
     ${EDITOR_DIR}/texture/TextureCooker.cpp
+    # S99 W7: the sun of an HDR sky (Remove Sun Disc in the cook, Extract Sun)
+    ${EDITOR_DIR}/lighting/HdriSun.cpp
+    ${EDITOR_DIR}/lighting/ExtractSun.cpp
     ${EDITOR_DIR}/texture/TextureEncoders.cpp
     ${EDITOR_DIR}/texture/TextureExport.cpp
     ${EDITOR_DIR}/texture/TextureFormatSelector.cpp
     ${EDITOR_DIR}/texture/TextureImportSettings.cpp
     ${EDITOR_DIR}/texture/TextureTypeInference.cpp
+    ${EDITOR_DIR}/texture/TiffReader.cpp
     ${EDITOR_DIR}/window/TextureImporterView.cpp
     ${EDITOR_DIR}/window/ImporterFields.cpp
     ${EDITOR_DIR}/window/ModelImporterView.cpp
     ${EDITOR_DIR}/window/MeshAuditWindow.cpp
     ${EDITOR_DIR}/window/BuildReportWindow.cpp
+    ${EDITOR_DIR}/window/CrashReportsWindow.cpp
     ${EDITOR_DIR}/model/GltfDocument.cpp
     ${EDITOR_DIR}/model/ModelAudit.cpp
     ${EDITOR_DIR}/model/ModelCookCache.cpp
@@ -1327,6 +1371,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/PlayModeChangesWindow.cpp
     ${EDITOR_DIR}/window/UndoHistoryWindow.cpp
     ${EDITOR_DIR}/window/BookmarksWindow.cpp
+    ${EDITOR_DIR}/window/SavedDataWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/ParticleEffectOverlay.cpp
     ${EDITOR_DIR}/window/ParticleEffectWindow.cpp
@@ -1415,6 +1460,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/unity/UnityYaml.cpp
     ${EDITOR_DIR}/unity/UnityProject.cpp
     ${EDITOR_DIR}/unity/UnityParticleImport.cpp
+    # the Unity .anim / .controller / .mask importer (S94 F35, F36)
+    ${EDITOR_DIR}/unity/UnityAnimImport.cpp
+    ${EDITOR_DIR}/unity/UnityControllerImport.cpp
     ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp
@@ -1431,6 +1479,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/TextureSlicerToolDialog.cpp
     ${EDITOR_DIR}/window/dialog/ExportWindow.cpp
     ${EDITOR_DIR}/window/dialog/ExportWindowShipping.cpp
+    ${EDITOR_DIR}/window/dialog/ExportWindowDevices.cpp
+    ${EDITOR_DIR}/window/dialog/BuildProfilesPane.cpp
     ${EDITOR_DIR}/window/dialog/EditorSettingsWindow.cpp
     ${EDITOR_DIR}/window/dialog/ProjectSettingsWindow.cpp
     ${EDITOR_DIR}/window/AudioMixerWindow.cpp
@@ -1520,6 +1570,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/dataasset/DataAssets.cpp
+    ${EDITOR_DIR}/window/InspectorDataAsset.cpp
+    ${EDITOR_DIR}/window/ScriptValueEditor.cpp
+    ${EDITOR_DIR}/mcp/tools/DataAssetTools.cpp
+    ${EDITOR_DIR}/window/InspectorIesProfile.cpp
     ${EDITOR_DIR}/window/InspectorAudioEffects.cpp
     ${EDITOR_DIR}/audio/SourceEffectEdit.cpp
     ${EDITOR_DIR}/window/AudioCapturesWindow.cpp
@@ -1559,11 +1614,14 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/AudioImportSettings.cpp
     ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
     ${EDITOR_DIR}/audio/AudioProvenance.cpp
+    ${EDITOR_DIR}/audio/MonoWavCook.cpp
     ${EDITOR_DIR}/audio/LoudnessMonitor.cpp
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
     ${EDITOR_DIR}/command/type/DebugSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/PhysicsQuerySettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderOverridesCmd.cpp
+    ${EDITOR_DIR}/command/type/EditBuildProfileCmd.cpp
     ${EDITOR_DIR}/command/type/ApplePrivacySettingsCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
@@ -1572,6 +1630,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/AndroidSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/SaveGameSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/SaveSlotCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/SortingLayersCmd.cpp
@@ -1638,8 +1698,13 @@ include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
 include(${EDITOR_DIR}/vertexcolor/VertexColorEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
+include(${EDITOR_DIR}/test/GameTestsSources.cmake)
 # Title Art (S80-S87): its own globbed lists, so the title specs add editor files without meeting here
 include(${EDITOR_DIR}/titleart/TitleArtEditorSources.cmake)
+# game UI localization: String Tables, their window and tools
+include(${EDITOR_DIR}/localization/LocalizationEditorSources.cmake)
+# dialogue graphs: the edit hooks, the walker, the Dialogue window
+include(${EDITOR_DIR}/dialogue/DialogueEditorSources.cmake)
 include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)
 # the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
@@ -1676,6 +1741,10 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "its own static copy of ImGui's stb_truetype, which another unit's stb_truetype.h would clash with"
     SOURCES ${EDITOR_DIR}/util/SystemFonts.cpp)
+jasperengine_skip_unity_build(
+    REASON "Record Input (input-recorder-and-input-scripts.md): its sources use the namespace recordinput, whose Settings and Json the Recorder's sources (namespace recorder) also declare"
+    SOURCES ${EDITOR_DIR}/recorder/RecordInput.cpp ${EDITOR_DIR}/recorder/InputCapture.cpp
+            ${EDITOR_DIR}/recorder/CaptureScreenshotsDialog.cpp ${EDITOR_DIR}/recorder/InputRecordingInspector.cpp)
 
 # Unity build: these sources keep file-local helpers or types (Registry, fail, lower, TempDir, ...)
 # whose names another editor or editor test source defines too (docs/specs/S33-build-speed.md M8)

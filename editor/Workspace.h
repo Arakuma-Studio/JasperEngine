@@ -67,6 +67,8 @@ public:
     const SpriteNormalsWindowSettings& getSpriteNormalsSettings() const { return spriteNormalsSettings; }
 
     bool isSimulateTouch() const { return simulateTouch; }
+    // the Game view's Input Scheme ("auto", "keyboard_mouse", "gamepad", "touch")
+    const std::string& getInputScheme() const { return inputScheme; }
     // the Game view's "Add custom..." resolutions
     const std::vector<GameResolution>& getCustomResolutions() const { return customResolutions; }
 
@@ -96,6 +98,7 @@ private:
     SpriteNormalsWindowSettings spriteNormalsSettings;
 
     bool simulateTouch = false;
+    std::string inputScheme = "auto";
     std::vector<GameResolution> customResolutions;
 
     std::map<std::string, SceneState> sceneStates;

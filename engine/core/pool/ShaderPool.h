@@ -24,8 +24,8 @@ namespace jasperengine{
 
     // the exclusive variants of ShaderType::HTMLUI_POST, in property-bit order
     // YUV: <video> frames (phase 6), appended
-    enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY, YUV };
-    static const int HTMLUI_POST_VARIANT_COUNT = 7;
+    enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY, YUV, BLEND_MODE };
+    static const int HTMLUI_POST_VARIANT_COUNT = 8;
 
     // what a particle system draw needs of its variant (ShaderType::PARTICLES)
     struct ParticlesShaderFlags {
@@ -213,6 +213,12 @@ namespace jasperengine{
         // the variant bit of a Terrain World (T4 R58: HAS_TERRAIN_WORLD, 'Twd') of MESH, DEPTH and GBUFFER,
         // 0 for another type. It widens u_vs_terrainParams, so no fallback drops it.
         static uint64_t getTerrainWorldProperty(ShaderType shaderType);
+        // DEPTH's 'Cvn' (S100 R2, DEPTH_NORMALS): the program also writes the view-space normal into
+        // a second attachment (includes/depth_normals.glsl). Never in getFallbackProperties: the
+        // pipelines of a depth pre-pass with normals take two attachments
+        static uint64_t getDepthNormalsProperty();
+        // CAVITY's terms (S100): 'Scr' Screen, 'Wld' World, both for Both
+        static uint64_t getCavityProperties(bool screen, bool world);
         // the GBUFFER bits of a terrain's tier and of its twelve layers (T3 D2: Lit defines do not reach
         // a G-buffer); High has no bit, so its keys stay
         static uint64_t getTerrainTierProperty(terraincore::TerrainQuality quality);

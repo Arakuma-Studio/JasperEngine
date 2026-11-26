@@ -10,7 +10,11 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpToolGroups.h"
 
+#include <functional>
+#include <new>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace jasperengine::editor::mcp {
 
@@ -71,6 +75,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerMeshColorTools, "Meshes: vertex colors", "meshes"},   // V1
     {registerDeviceTools, "Device tiers: GPU, thermal and memory state, simulation", "device"},   // S56
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
+    {registerDataAssetTools, "Data Assets", "scripting"},   // S95
     {registerGraphTools, "Graphs", "graphs"},   // S23; S90 R32 moved them out of scripting
     {registerProceduralMaterialTools, "Procedural Materials: preview, checks and bake", "materials"},   // S90
     {registerTerrainGenerationTools, "Terrain generation: Noise Graphs", "terrain"},   // T2
@@ -80,6 +85,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerTerrainTools, "Terrain: declarative edits and heightmap files", "terrain"},   // T1
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerImageDiffTools, "Image comparison", "editor_tools"},   // S80
+    {registerTestTools, "Project tests", "testing"},   // project-test-runner
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
     {registerTilesetTools, "Tilemaps: tilesets and map import", "tilemaps"},   // S50
     {registerPaletteTools, "Pixel art: palettes", "pixel_art"},   // S43
@@ -92,10 +98,12 @@ const ToolModule TOOL_MODULES[] = {
     {registerTitleArtTools, "Title Art", "title_art"},   // S80
     {registerSpriteTools, "Sprites: Aseprite import, atlases, drawing", "sprites"},   // S44 (S45, S47)
     {registerPixelFontTools, "Pixel art: font previews", "pixel_art"},   // S51
+    {registerLocalizationTools, "Localization: String Tables", "localization"},   // game-ui-localization.md
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of
-// tool groups and of the budget gate (a value n > 1 pads its description to n characters)
+// tool groups, of the budget gate (a value n > 1 pads its description to n characters) and of
+// the server's fault advice (`throw` raises that exception from the handler)
 void registerSelftestTools(McpRegistry& registry) {
     using namespace schema;
     const int mode = selftestGroupMode();
@@ -109,11 +117,21 @@ void registerSelftestTools(McpRegistry& registry) {
     if (mode > 1 && static_cast<int>(tool.description.size()) < mode) {
         tool.description += std::string(static_cast<size_t>(mode) - tool.description.size(), '.');
     }
-    tool.inputSchema = object({{"text", withDefault(string(""), "")}});
+    tool.inputSchema = object({{"text", withDefault(string(""), "")},
+                               {"throw", stringEnum("", {"out_of_range", "invalid_argument", "bad_alloc", "bad_function_call",
+                                                         "json_out_of_range", "unknown", "runtime_error"})}});
     tool.annotations.readOnly = true;
     tool.annotations.idempotent = true;
     tool.handler = [](CallPtr call) {
         const std::string text = call->args().value("text", std::string());
+        const std::string raise = call->args().value("throw", std::string());
+        if (raise == "out_of_range") (void)std::vector<int>().at(static_cast<size_t>(text.size()));
+        if (raise == "invalid_argument") throw std::invalid_argument("selftest " + text);
+        if (raise == "bad_alloc") throw std::bad_alloc();
+        if (raise == "bad_function_call") std::function<void()>()();
+        if (raise == "json_out_of_range") (void)Json::object().at("selftest");
+        if (raise == "unknown") throw 42;
+        if (raise == "runtime_error") throw std::runtime_error("selftest " + text);
         call->ok(text, Json{{"text", text}});
     };
     registry.addTool(std::move(tool));

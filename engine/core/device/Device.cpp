@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "System.h"
 #include "device/QualityResolver.h"
+#include "diag/Journal.h"
 #include "render/SystemRender.h"
 
 #include <atomic>
@@ -210,11 +211,18 @@ void Device::setTier(DeviceTier tier){
     deviceRunState().setTier = tier;
     Log::print("Device tier: %s (Device.setTier or --device-tier)", DeviceNames::tierLabel(tier));
     applyTier();
+    const diag::journal::Field fields[] = {{"source", std::string_view("set")}, {"tier", std::string_view(DeviceNames::tier(tier))}};
+    diag::journal::logEngine("engine.tier", fields);
 }
 
 void Device::resetTier(){
+    const bool wasSet = deviceRunState().setTier.has_value();
     deviceRunState().setTier.reset();
     applyTier();
+    if (wasSet){
+        const diag::journal::Field fields[] = {{"source", std::string_view("reset")}, {"tier", std::string_view(DeviceNames::tier(getTier()))}};
+        diag::journal::logEngine("engine.tier", fields);
+    }
 }
 
 bool Device::isTierSet(){
@@ -253,6 +261,8 @@ void Device::update(double seconds){
                    s.simulation.thermal ? ", simulated" : "");
         s.thermal = thermal;
         QualityResolver::setThermalState(thermal);
+        const diag::journal::Field fields[] = {{"state", std::string_view(DeviceNames::thermal(thermal))}};
+        diag::journal::logEngine("engine.thermal", fields);
         onThermalStateChanged.call((int)thermal);
     }
 
@@ -263,6 +273,7 @@ void Device::update(double seconds){
         Engine::clearUnusedPools();
         Log::warn("Low memory (warning %d): cleared the unused pool entries; streamed textures keep %d more mip(s) off",
                   s.lowMemoryCount, QualityResolver::getMemoryDrop());
+        diag::journal::logEngine("engine.low_memory");
         onLowMemory.call();
     }
 

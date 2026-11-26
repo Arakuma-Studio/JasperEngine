@@ -79,6 +79,9 @@ using namespace jasperengine::test::effects;
 using namespace jasperengine::htmlui;
 namespace hc = jasperengine::htmlui::compat;
 
+// Release builds only: a Debug build (every sanitizer build) has no test here to use the helpers
+#ifdef NDEBUG
+
 namespace {
 
     // the calling thread's CPU time in ms (the process's where the platform has no thread clock)
@@ -491,8 +494,6 @@ namespace {
     }
 
 }
-
-#ifdef NDEBUG
 
 TEST(EffectPerfTest, GridSteadyStateAndBudgets){
     printLoadAverage("GridSteadyStateAndBudgets");

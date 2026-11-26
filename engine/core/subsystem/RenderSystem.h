@@ -6,6 +6,7 @@
 
 #include "SubSystem.h"
 #include <functional>
+#include <optional>
 #include "render/ViewDrawMode.h"
 #include <string>
 #include <vector>
@@ -37,6 +38,7 @@
 #include "component/SpriteComponent.h"
 #include "ecs/ComponentFwd.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/OutlineComponent.h"
 #include "pixelart/PixelSnap.h"
 #include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
@@ -333,6 +335,20 @@ namespace jasperengine{
 		Vector4 noiseScale; // screenSize/noiseSize in .xy
 	} fs_ssao_t;
 
+	// u_fs_cavity of cavity.frag (S100 Cavity)
+	typedef struct fs_cavity_t {
+		Matrix4 projection;
+		Matrix4 invProjection;
+		Matrix4 view;         // the pre-pass's normals are world-space
+		Vector4 screen;       // x Ridge, y Valley, z tap distance (pixels), w depth step margin
+		Vector4 world;        // x Radius, y Ridge, z Valley, w samples
+		Vector4 worldLimits;  // x most on-screen radius (pixels, 0: none), y attenuation, z gain
+		Vector4 texel;        // the colour pass's size, 1 / size
+		Vector4 depthTexel;   // the depth target's size, 1 / size
+		Vector4 flags;        // x flip Y, y G-buffer normals, z debug view
+		Vector4 fog;          // x type (< 0: none), y density, z start, w end
+	} fs_cavity_t;
+
 	typedef struct fs_ssao_blur_t {
 		Vector4 texelSize; // 1.0/textureSize in .xy
 	} fs_ssao_blur_t;
@@ -523,6 +539,11 @@ namespace jasperengine{
 		// every Light component of the scene is Directional (enabled or not, so a flashlight
 		// switched on keeps the variant): the built-in Lit's 'Dlo' variant
 		bool directionalLightsOnly = false;
+		// S99: the scene has an Area Light / a light with an IES Profile (enabled or not): the
+		// built-in Lit's pixel-lit variants take USE_AREA_LIGHTS / USE_IES (in their builtin:lit
+		// reference); without them every variant stays the one it was
+		bool areaLights = false;
+		bool iesProfiles = false;
 		// the scene has a Water Excluder / a Water Wake (enabled or not): a shader requiring
 		// waterexclusion / waterwake takes 'Wex' / 'Wwk' (includes/water_interaction.glsl)
 		bool waterExclusion = false;
@@ -530,6 +551,10 @@ namespace jasperengine{
 		// a camera of the scene draws through a Pixel Perfect Camera that snaps (S41): sprites,
 		// tilemaps (and their depth programs) take the 'Pxs' variants
 		bool pixelSnap = false;
+		// the scene has Cavity on (S100 R2): every opaque mesh has a depth program, and it writes the
+		// view-space normal too (DEPTH 'Cvn'), so the depth pre-pass gives Cavity normals that match
+		// its depth
+		bool cavityNormals = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -603,6 +628,17 @@ namespace jasperengine{
 		bool ineffective = false;      // the scale buys too little for the content (GPU law)
 		uint32_t acceptedChanges = 0;
 		float probeSeconds = 0.0f;     // frame law: seconds until it probes one rung up (0: none)
+	};
+
+	// Cavity (S100) as the main camera drew it last frame (RenderSystem::getCavityStatus, MCP
+	// get_post_processing_status): what the device tier resolved and where the normals came from
+	struct CavityStatus {
+		bool active = false;               // drawn last frame (enabled, a 3D main camera with depth)
+		CavityType type = CavityType::BOTH;    // as drawn
+		int worldSamples = 0;              // after the device tier's cap (0 when World is not drawn)
+		const char* normals = "none";      // "gbuffer" (SSR's), "prepass" or "none"
+		bool addedPrepass = false;         // Cavity alone asked for the sampled depth pre-pass
+		uint32_t draws = 0;                // its full-screen draws last frame (0 or 1)
 	};
 
 	// What the shader variant of a submesh depends on in its mesh and GameObject
@@ -748,7 +784,14 @@ namespace jasperengine{
 
 	class FluidSystem;
 	class TitleArtSystem;
+	struct IesProfile;
 
+
+	// What a scene's late transform pass did (Engine::runFrame hands it to the audio)
+	struct LateTransformResult{
+		bool moved = false;      // Transforms or cameras moved after the update
+		bool viewMoved = false;  // the main camera's view among them
+	};
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
 		// the scene's fluids, whose MATERIAL outputs the draws show (set by drawFramePasses;
@@ -772,7 +815,9 @@ namespace jasperengine{
 			PARTICLES,
 			// a thick Line Renderer, a Trail Renderer (blended ribbons)
 			LINES,
-			TRAIL
+			TRAIL,
+			// a World Space UI Document's quad (S93 R36, UIDocumentSystem::drawWorldDocument)
+			UI_DOCUMENT
 		};
 
 		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
@@ -824,6 +869,9 @@ namespace jasperengine{
 			int unitPriority = 0;
 			float unitDistance = 0.0f;
 			uint64_t unitSeq = 0;
+			// a mesh split by sort priority (MeshComponent::splitPriorities): the submeshes of
+			// this entry's priority; all otherwise
+			uint32_t submeshMask = 0xFFFFFFFFu;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -1073,6 +1121,15 @@ namespace jasperengine{
 		bool hasMultipleCameras = false;
 		// extra cameras the last frame drew, to catch the switch back to main only
 		bool lastMultiCameraDraw = false;
+		// the late transform pass (updateLateTransforms): the change tick the update ended at,
+		// whether this frame's update reached it, its light count, and a main camera moved after
+		// it whose MVPs the draw makes (else the next update)
+		Tick lateTransformGate = 0;
+		bool lateTransformReady = false;
+		int frameNumLights = 0;
+		bool mainViewMVPStale = false;
+		// the Transform slots the late pass moved or saw stamped, ascending (capacity kept)
+		std::vector<uint32_t> lateChangedSlots;
 		bool capturingReflectionProbe = false;
 		// batch order currently baked into the shared points/instance arrays
 		bool lastBatchSort = true;
@@ -1090,6 +1147,19 @@ namespace jasperengine{
 		std::array<SpotMaskAtlasEntry, SPOT_MASK_ATLAS_TILES> spotMaskAtlasEntries;
 		std::vector<unsigned char> spotMaskAtlasPixels;
 		bool spotMaskAtlasCreated;
+
+		// S99: the Area Lights' LTC tables and the IES Profiles, one RGBA16F texture of
+		// LIGHT_PROFILE_WIDTH texels: rows 0-63 the two 64x64 LTC tables side by side, then a band
+		// of IesProfile::GRID_ROWS rows per profile (LightComponent::iesProfileBand), in the order
+		// the scene's lights first name them. Made only while the scene has an Area Light or a
+		// profile, again when the profiles change.
+		static constexpr int LIGHT_PROFILE_WIDTH = 128;
+		static constexpr int LIGHT_PROFILE_LUT_ROWS = 64;
+		static constexpr int MAX_IES_PROFILES = 64;
+		TextureRender lightProfiles;
+		bool lightProfilesCreated = false;
+		std::vector<std::string> lightProfileBands;
+		std::unordered_map<std::string, std::shared_ptr<IesProfile>> iesProfileCache;
 
 		struct ReflectionProbeRuntime{
 			FramebufferRender captureFramebuffer;
@@ -1314,6 +1384,7 @@ namespace jasperengine{
 		struct SceneInputTarget{
 			Framebuffer framebuffer;
 			bool color = false;
+			bool normals = false;  // a depth target with Cavity's normals attachment (S100)
 			unsigned int width = 0;
 			unsigned int height = 0;
 			uint64_t lastUsed = 0; // drawCount
@@ -1961,6 +2032,8 @@ namespace jasperengine{
 			Vector4 packed[4];
 			uint32_t cullingMask = LAYER_MASK_EVERYTHING;
 			int spotMaskTile = -1;
+			// spot_shadow.w's S99 bits: 14 an Area Light's Disc, 15-21 its IES Profile's band + 1
+			int profileBits = 0;
 			LightShading shading = LightShading::BOTH;
 			bool active = false;      // enabled, on an active entity, giving light
 
@@ -1973,7 +2046,11 @@ namespace jasperengine{
 		// bumped when every mesh has to pick its lights again: lights added, removed or
 		// reordered, the scene ambient or the cap changed
 		uint64_t lightListEpoch;
-		Vector3 lightListAmbient;
+		// the SH every object's ambient starts from (sceneAmbient), before its folded lights
+		Vector4 lightListAmbientSH[3];
+		// Environment Lighting Source Gradient as the meshes loaded: the sky's irradiance map is
+		// not bound then (the gradient is the diffuse ambient)
+		bool loadedAmbientGradient = false;
 		int lightListCap;
 		// capacity tier the meshes loaded their variants with
 		int lightCapacityTier;
@@ -1984,6 +2061,12 @@ namespace jasperengine{
 		// a point or spot Light was in the scene since load(): the general Lit stays until the
 		// next load, so lights that come and go never reload every mesh again
 		bool nonDirectionalLightSeen = false;
+		// S99: an Area Light / a light with an IES Profile was in the scene since load() (the
+		// variants with them stay until the next load), and as the meshes loaded
+		bool areaLightSeen = false;
+		bool iesProfileSeen = false;
+		bool loadedAreaLights = false;
+		bool loadedIesProfiles = false;
 		// the Lit Quality and the lobe tier the meshes loaded their variants with
 		LitQuality loadedLitQuality;
 		PbrTier loadedPbrTier;
@@ -2050,6 +2133,27 @@ namespace jasperengine{
 		fs_ssao_blur_t fs_ssao_blur;
 		int ssaoSlotParams;
 		int ssaoBlurSlotParams;
+
+		// Cavity (S100; RenderSystem.cpp, "Cavity"): one fullscreen multiply in the main camera's
+		// colour pass, reading the depth and normals of one pass (SSR's G-buffer, or the depth
+		// pre-pass with the 'Cvn' programs' normals attachment)
+		bool cavityNormalPrograms = false;   // the meshes load 'Cvn' depth programs (MeshShaderEnvironment::cavityNormals)
+		bool cavityNormalsPending = false;   // since that switched on, until every loaded mesh has them
+		std::shared_ptr<ShaderRender> cavityShader;
+		uint64_t cavityProperties = 0;       // of cavityShader ('Scr', 'Wld')
+		ObjectRender cavityRender;
+		bool cavityLoaded = false;           // cavityRender holds cavityShader's draw
+		bool cavityHeld = false;             // since Cavity last ran: its program, draw, targets or status may exist
+		int cavitySlotParams = -1;
+		std::pair<int, int> cavityDepthSlot = {-1, -1};
+		std::pair<int, int> cavityNormalSlot = {-1, -1};
+		std::pair<int, int> cavityNormalFineSlot = {-1, -1};
+		fs_cavity_t fs_cavity;
+		// the camera pass's depth pre-passes write Cavity's normals (their targets have the second
+		// attachment), and the depth and normals the last of them drew (null: none this pass)
+		bool passPrepassNormals = false;
+		TextureRender* passNormalsDepth = nullptr;
+		TextureRender* passNormalsTexture = nullptr;
 
 		// engine-written custom uniforms: seconds since startup and the scene clock
 		// (Scene::getSceneTime), sampled once per draw(), and the size of the target being
@@ -2282,6 +2386,8 @@ namespace jasperengine{
 		// the game's events were paused at the last tick: the editor's edit mode (and Pause), where
 		// the controller does not run and a pinned scale does not apply
 		bool dynamicResolutionEditPaused = false;
+		// Cavity as the main camera drew it last frame (getCavityStatus)
+		CavityStatus cavityStatus;
 		// why the controller did not run this frame ("" when it did), DynamicResolutionStatus::idle
 		const char* dynamicResolutionIdle = "off";
 		float dynamicResolutionScale = 1.0f;
@@ -2307,6 +2413,7 @@ namespace jasperengine{
 		// the user's LUT (PostProcessingSettings::lutTexture: a .cube, its cooked .jlut or a PNG
 		// strip), shared through the CubeLut cache by path; null when none or it failed to load
 		std::string postLutPath;
+		bool postLutFlipGreen = false;
 		std::shared_ptr<const CubeLut> postLut;
 		// the bake buffer, kept between bakes
 		std::vector<uint8_t> postLutPixels;
@@ -2482,6 +2589,18 @@ namespace jasperengine{
 		void updateSwapchainRedirect();
 		void updateSceneColorRedirect(CameraComponent& mainCamera);
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
+		// the transform stage (S95 REQ-5): what update() builds from the propagated world matrices,
+		// run again by updateLateTransforms for what moved after it. Each reads the needUpdate
+		// flags of the propagation; the bool ones say whether a mesh's bounds need making
+		bool updateSkinBindingBones();
+		void updateCameraView(CameraComponent& camera, Transform& cameraTransform, Entity cameraEntity);
+		void updateInstancedMeshView(Entity entity, MeshComponent& mesh, InstancedMeshComponent& instmesh, Transform& transform,
+		                             CameraComponent& mainCamera, Transform& mainCameraTransform, bool batchSort, bool batchSortChanged);
+		void updateMeshWorldBounds(Entity entity, Signature signature, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh);
+		void updateViewDependents(size_t index, Entity entity, Signature signature, Transform& transform,
+		                          CameraComponent& mainCamera, Transform& mainCameraTransform);
+		bool updateModelAndBones(Entity entity, Signature signature, Transform& transform);
+		void updateFrameLights(CameraComponent& mainCamera, Transform& mainCameraTransform, int numLights);
 
 		void createEmptyTextures();
 		static void destroyEmptyTextures();
@@ -2490,6 +2609,13 @@ namespace jasperengine{
 		// the camera part of the lighting (frame block, legacy block) and the shadow uniforms of target for camera
 		void processLights(CameraShadows& target, int numLights, const CameraComponent& camera, const Transform& cameraTransform);
 		void updateSpotMaskAtlas(int numLights);
+		// S99: the profiles' bands of the lights (iesProfileBand) and the texture holding them
+		void updateLightProfiles();
+	public:
+		// the light profiles' texture (tests): whether it is made, its bands after the LTC tables
+		bool hasLightProfiles() const { return lightProfilesCreated; }
+		int getLightProfileBands() const { return (int)lightProfileBands.size(); }
+	private:
 		// unified lighting: the scene's lights, then the lights each mesh is lit by
 		void updateSceneLights();
 		void updateObjectLights();
@@ -2499,6 +2625,10 @@ namespace jasperengine{
 		void orderObjectLights(const MeshComponent& mesh, uint64_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
 		// the per-object lights block of a submesh variant for the camera pass being drawn
 		void buildObjectLights(const MeshComponent& mesh, uint64_t properties, object_lights_t& block) const;
+		// the scene's ambient as the lit shaders take it (SceneSettings::AmbientMode): the SH every
+		// object starts from, its average over every facing (flat consumers: particles, clouds), and
+		// the part Lit treats as uniform (litFrame ambient; the rest of the SH it adds as overflow)
+		void sceneAmbient(Vector4 sh[3], Vector3& flat, Vector3& litFlat) const;
 		int passLightCascades(const SceneLight& light) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
 		void buildLegacyLighting(const MeshComponent& mesh, uint64_t properties, fs_lighting_t& block) const;
@@ -2742,7 +2872,8 @@ namespace jasperengine{
 
 		bool checkPBRFrabebufferUpdate(Material& material);
 		bool checkPBRTextures(Material& material, bool receiveLights, bool receiveIBL);
-		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
+		// baseColor: a Property Override's base colour texture in place of the material's (drawnBaseColor)
+		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights, Texture* baseColor = nullptr);
 		// A material's binding takes a stand-in for an image it names that has no GPU texture yet
 		// (Texture::getStandInCount): taken around the binding, noted on the submesh, which binds
 		// again once an image could be made since (TexturePool::getReadyEpoch)
@@ -2768,8 +2899,8 @@ namespace jasperengine{
 		static void applyLitMaterialBlock(ObjectRender& render, int slot, const Material& material, unsigned int size);
 		void loadShadowTextures(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool receiveShadow);
 		void updateShadowBindings();
-		bool loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render);
-		bool loadGBufferTextures(Material& material, ShaderData& shaderData, ObjectRender& render);
+		bool loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render, Texture* baseColor = nullptr);
+		bool loadGBufferTextures(Material& material, ShaderData& shaderData, ObjectRender& render, Texture* baseColor = nullptr);
 		// Every map of every layer is a slice of one array texture, so the whole terrain
 		// costs a single bind slot. Kept here, not on the component, which stays copiable.
 		struct TerrainDetailArray{
@@ -2927,6 +3058,53 @@ namespace jasperengine{
 		void drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, Transform& transform, PipelineType pipType,
 		                          InstancedMeshComponent* instmesh, int instanceView, const MeshDraw& draw, unsigned int instanceCount,
 		                          const Matrix4* objectBlock, TilemapComponent* tilemap, uint32_t& builtLightBits);
+
+		// ---- the Outline component (S94 F22, F23; RenderSystemOutline.cpp)
+		// An outlined submesh's render: library:outline_stencil loaded as the submesh's extra pass
+		// would be (getOutlinePass), on the dynamic pipeline path, so its mask and fill draws and
+		// every mode share it. Made on its first draw, kept while an Outline covers the submesh
+		// and its mesh stays loaded (destroyMesh lets it go)
+		struct OutlineRender{
+			SubmeshExtraPass pass;      // shader, render and block slots
+			OutlineWidthUnits units = OutlineWidthUnits::PIXELS;
+			int widthMember = -1;       // screenWidth / worldWidth of u_vs_customParams
+			int colorMember = -1;       // outlineColor of u_fs_customParams
+			// the submesh render's buffers it was bound like (a buffer retargeted: made again)
+			uint32_t vertexBufferId = 0;
+			uint32_t indexBufferId = 0;
+			// the last frame an enabled Outline covered its mesh (unused a while: let go)
+			uint64_t coveredFrame = 0;
+		};
+		// a Mesh an enabled Outline covers in the pass being drawn
+		struct OutlineDraw{
+			Entity entity = NULL_ENTITY;
+			MeshComponent* mesh = nullptr;
+			Transform* transform = nullptr;
+			InstancedMeshComponent* instmesh = nullptr;
+			const OutlineComponent* outline = nullptr;
+			MeshDraw draw;
+		};
+		// key: entity << 32 | submesh
+		std::unordered_map<uint64_t, std::unique_ptr<OutlineRender>> outlineRenders;
+		std::vector<OutlineDraw> outlineDraws;
+		std::vector<std::pair<std::string, Texture>> outlineNoTextures;
+		uint64_t outlineSweepFrame = 0;
+		// the masks, then the fills, of every outlined Mesh the camera pass shows: after its
+		// opaque queue (3D), or after its hierarchy draws (2D)
+		void drawOutlines(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPip, int passMsaa,
+		                  uint32_t cullingMask, int instanceView, const LodView* lodView);
+		// false while its shader builds or a binding is not ready (tried again next draw)
+		bool loadOutlineRender(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh,
+		                       OutlineRender& outline);
+		void drawOutlineRender(OutlineRender& outline, const OutlineDraw& target, unsigned int submeshIndex, int instanceView,
+		                       const Matrix4* objectBlock, const PipelineState& state, float width, const Vector4& color);
+		void releaseOutlineRender(OutlineRender& outline);
+		// the renders of a mesh's submeshes (its mesh destroyed or reloaded)
+		void releaseOutlineRenders(Entity entity);
+		void releaseAllOutlineRenders();
+		// the swapchain has no stencil (a WebGL canvas or an EGL config without one) and an
+		// Outline is drawn: the main camera draws offscreen (updateSwapchainRedirect, F-PB2)
+		bool outlinesNeedStencilTarget() const;
 		// the vertex attributes of the submesh (its buffers, its own attributes, the instance
 		// buffer) bound to a render; the index count when indexed, else the mesh's vertex count
 		// The batch variants (spec S55 R1): their shaders asked for with the submesh's others
@@ -2937,7 +3115,7 @@ namespace jasperengine{
 		                                const SubmeshShaderVariant& variant, const std::string& meshShaderSrc,
 		                                const std::string& depthShaderSrc);
 		void loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submesh, uint16_t pipelines, const RenderState& colorState,
-		                              uint16_t depthPipelines, const RenderState& depthState, bool allDepthAttributes, int msaaSamples,
+		                              uint32_t depthPipelines, const RenderState& depthState, bool allDepthAttributes, int msaaSamples,
 		                              BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride, bool& pending);
 		void releaseSubmeshBatchVariants(Submesh& submesh, bool keepShaders);
 		// the bounds of the vertices a submesh draws (Submesh::localBounds), from its float
@@ -3428,6 +3606,7 @@ namespace jasperengine{
 		void loadSSAO();
 		void destroySSAO();
 		bool ensureSSAOFramebuffers(unsigned int width, unsigned int height);
+		void createSSAODepthFramebuffer(unsigned int width, unsigned int height);
 		// sharedDepth != null reuses an existing packed-depth texture (the SSR G-buffer),
 		// skipping the SSAO depth pre-pass; null runs the pre-pass
 		// fixedResolution: the color pass it feeds renders at the scene's fixed size
@@ -3444,8 +3623,25 @@ namespace jasperengine{
 		// the opaque meshes' packed depth (PIP_DEPTH) of a camera into target: the SSAO,
 		// post-process and scene depth pre-passes. perCameraTransform: the camera's, when the
 		// pass makes its own per-object matrices (renderCameraPass's perCameraMVP), else null
+		// A target with a second colour attachment (passPrepassNormals) also takes the 'Cvn'
+		// programs' normals (PIP_DEPTH_NORMALS) and becomes passNormalsDepth / passNormalsTexture
 		void renderOpaqueDepth(CameraComponent& camera, Framebuffer& target, unsigned int width, unsigned int height,
 		                       int instanceView, const LodView* lodView, Transform* perCameraTransform);
+
+		// Cavity (S100)
+		// per update: the 'Cvn' programs follow the scene's setting, the draw's variant its type
+		void updateCavity();
+		bool loadCavity();
+		void destroyCavity();
+		// every loaded mesh draws with the depth programs cavityNormalPrograms asks for
+		bool cavityNormalProgramsReady();
+		// the multiply over the opaque scene, inside the colour pass (depth: the packed depth
+		// normals came with; normalsFine: the G-buffer's second half, else unused); false when
+		// it drew nothing (its variant still waits)
+		bool drawCavity(const CameraComponent& camera, PipelineType colorPip, int passMsaa, TextureRender* depth, TextureRender* normals,
+		                TextureRender* normalsFine, bool gbufferNormals, unsigned int width, unsigned int height, bool flipped);
+		// the normals pre-pass targets of a view go (Cavity off for it)
+		void releaseCavityTargets(RenderView& view);
 
 		// scene inputs (phase 3)
 		// records what a loaded mesh or points component reads of the scene (0: nothing)
@@ -3522,7 +3718,8 @@ namespace jasperengine{
 		// the scene inputs the visible draws of a camera pass require
 		uint32_t findPassSceneInputs(CameraComponent& camera, int instanceView);
 		// a depth or colour target of the view being drawn, made or reused
-		SceneInputTarget* ensureSceneInputTarget(bool color, unsigned int width, unsigned int height);
+		// (normals: a depth target with Cavity's normals attachment, passPrepassNormals)
+		SceneInputTarget* ensureSceneInputTarget(bool color, unsigned int width, unsigned int height, bool normals = false);
 		// frees the targets of a view unused for a while (all: every one)
 		void releaseSceneInputTargets(RenderView& view, bool all);
 		bool ensureSceneColorRedirect(unsigned int width, unsigned int height);
@@ -3664,7 +3861,7 @@ namespace jasperengine{
 		                   const particles::EmitterRuntime* only = nullptr, particles::ParticleRenderData* onlyRender = nullptr);
 		// an emitter and its children as items of the transparent queue
 		void queueParticleTree(Entity entity, ParticleSystemComponent& particles, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd,
-		                       Transform& transform, const Transform& cameraTransform, bool root, uint32_t& order);
+		                       Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, bool root, uint32_t& order);
 		// an emitter, then its children in the effect's order
 		void drawParticleTree(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
 		                      CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, uint32_t& drawn, bool& sorted);
@@ -3770,6 +3967,9 @@ namespace jasperengine{
 		// Transparency Sort Axis distance as an order-preserving float, larger first (32; 0 in
 		// mode Default)
 		static uint64_t makeSortKey(uint16_t layerValue, int32_t order, bool axis, float distance);
+		// the distance a transparent draw at `point` sorts by from this camera (Transparency Sort
+		// Mode: the view-axis depth or the distance; larger first)
+		static float transparentSortDistance(const CameraComponent& camera, const Transform& cameraTransform, const Vector3& point);
 		// whether this frame's renderers leave the defaults (R9: else today's loop runs)
 		bool isSortingActive() const { return sortingActive; }
 		// the flag of this frame and a new frame for the order (update() calls it)
@@ -3837,7 +4037,7 @@ namespace jasperengine{
 		uint64_t entitySortKey(Entity entity, Signature signature, bool axis);
 		void gatherSortRange(size_t first, size_t end, size_t depth, uint32_t outerSequence, uint64_t outerKey, int32_t skipGroup);
 		// true when an enabled Sorting Group is in the queue (sort with TransparentGroupComparison)
-		bool applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const Vector3& cameraPosition);
+		bool applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const CameraComponent& camera, const Transform& cameraTransform);
 
 		// Sprite Batch (RenderSystemSpriteBatch.cpp)
 		SpriteBatchStats spriteBatchStats;
@@ -3923,6 +4123,7 @@ namespace jasperengine{
 		// one, else the settings'), whether the controller runs, and its state
 		float getAppliedRenderScale() const;
 		DynamicResolutionStatus getDynamicResolutionStatus() const;
+		CavityStatus getCavityStatus() const { return cavityStatus; }
 		bool isDynamicResolutionRunning() const { return dynamicResolutionRunning; }
 		const DynamicResolutionController& getDynamicResolution() const { return dynamicResolution; }
 		// pins the applied scale (0.5..1) while the uber pass runs; 0 or below releases it
@@ -4013,6 +4214,20 @@ namespace jasperengine{
 		// The shader a submesh draws with: its material's, else the mesh's fork, else the
 		// scene's default mesh shader; "" is the built-in Lit shader
 		static const std::string& getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// Property Overrides (S94 F7). The textures a submesh draws with, made at load: its
+		// material's shader textures with the overrides' over them (the Mesh's, then the
+		// submesh's), and the built-in Lit's overridden base colour texture
+		static void resolveOverrideTextures(const MeshComponent& mesh, Submesh& submesh);
+		static std::vector<std::pair<std::string, Texture>>& drawnShaderTextures(Submesh& submesh);
+		static Texture* drawnBaseColor(Submesh& submesh);
+		// the material the built-in Lit's block is written from: the submesh's, or (an override
+		// naming baseColorFactor or emissiveFactor) a copy in scratch with the overrides in it
+		static const Material& drawnLitMaterial(const MeshComponent& mesh, const Submesh& submesh, std::optional<Material>& scratch);
+		// a submesh's override of `name`: its own, else the Mesh's; false without one
+		static bool findOverrideValue(const MeshComponent& mesh, const Submesh& submesh, const std::string& name, Vector4& value);
+		// the built-in Lit's colour factors as drawn (an override's, else the material's)
+		static Vector4 drawnBaseColorFactor(const MeshComponent& mesh, const Submesh& submesh);
+		static Vector3 drawnEmissiveFactor(const MeshComponent& mesh, const Submesh& submesh);
 		// R37: whether this shader's vertex program reads the compact instance; F6: whether its
 		// fragment program knows the fade
 		static bool shaderSupportsCompactInstances(const std::string& shader);
@@ -4041,6 +4256,15 @@ namespace jasperengine{
 		// getSubmeshShaderInputs) with its own shader's manifest and features, its default
 		// lighting mode, and no received shadows, IBL or mirror
 		static SubmeshShaderInputs getExtraPassShaderInputs(const SubmeshShaderInputs& submeshInputs, const MaterialPass& pass);
+		// ---- the Outline component (S94 F22, F23; RenderSystemOutline.cpp)
+		// The Outline drawing a Mesh GameObject: the nearest enabled one on it or, with Include
+		// Children, on an ancestor (a disabled one is skipped; null: none)
+		static const OutlineComponent* findOutline(EntityRegistry* registry, Entity entity);
+		// The pass an Outline draws a submesh with, as an extra pass: library:outline_stencil with
+		// its width units' feature and alpha blend (its variant: getExtraPassShaderInputs), and
+		// the custom shader string that variant is keyed by
+		static MaterialPass getOutlinePass(OutlineWidthUnits units);
+		static std::string getOutlineReference(OutlineWidthUnits units);
 		// Its colour pipeline state, resolved as the submesh's (resolveSubmeshRenderState):
 		// the pass's values, else its shader's @state with the rules of its features
 		// (manifestState, null: none), else the submesh's legacy behaviour
@@ -4118,6 +4342,10 @@ namespace jasperengine{
 
 		void updateFramebuffer(CameraComponent& camera);
 		void updateTransform(Transform& transform, Entity entity);
+		// S95 REQ-5: after onPostUpdate, the timers and the coroutines, before the draw
+		// (Engine::runFrame): steps the Camera Follows whose target moved since this scene's update,
+		// propagates what moved and runs the transform stage for it. Nothing moved: one compare.
+		LateTransformResult updateLateTransforms();
 		void updateCamera(CameraComponent& camera, Transform& transform);
 		void updateMirrors(Entity mainCameraEntity);
 		Entity createMirrorCamera(Entity mirrorEntity);
@@ -4129,6 +4357,10 @@ namespace jasperengine{
 		// sizes an auto-resize camera for a canvas of canvasWidth x canvasHeight, the
 		// Engine canvas in updateCameraSize(entity); a render-to-texture camera keeps its framebuffer's
 		void updateCameraSizeForCanvas(Entity entity, float canvasWidth, float canvasHeight);
+		// an orthographic camera with an Orthographic Size (S94 F28), and its clips from that size
+		// and its aspect (true when they changed)
+		static bool usesOrthographicSize(const CameraComponent& camera);
+		static bool applyOrthographicSize(CameraComponent& camera);
 		bool isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const Vector3& point);

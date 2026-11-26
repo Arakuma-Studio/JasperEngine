@@ -191,7 +191,7 @@ namespace jasperengine{
         size_t loadIndexOffset;
 
         // the pipeline types (PipelineType), by bit index
-        static constexpr int PIPELINE_TYPES = 16;
+        static constexpr int PIPELINE_TYPES = 17;
         sg_pipeline pipelines[PIPELINE_TYPES];
 
         // what setShader, setIndex and addAttribute write, from beginLoad to endLoad or
@@ -297,7 +297,7 @@ namespace jasperengine{
         Selection selectPipeline(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader, ShaderRender* viewShader,
                                  sg_pipeline& selected);
         // types whose pipeline already culls nothing (its no-cull variant is itself), by bit index
-        uint16_t noCullSame;
+        uint32_t noCullSame;
 
         size_t bindSlotIndex;
         // the vertex inputs (locations) the shader declares, set by setShader
@@ -402,7 +402,7 @@ namespace jasperengine{
         bool prewarmWith(ShaderRender* shader);
         bool isDrawWaiting() const;
         static uint32_t getWaitingDrawCount();
-        bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
+        bool endLoad(uint32_t pipelines, const RenderState& state, int msaaSamples = 1);
         // records shader, vertex layout and index type for beginDraw(PipelineState); creates no pipeline
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
         // another variant of source's shader (the same vertex inputs and bindings) on source's

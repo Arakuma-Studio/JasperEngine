@@ -6,8 +6,11 @@ On scratch git repositories and synthetic inputs: the diff (committed, staged, u
 deleted; the base and its fallbacks; rb.sh's diff and a stale one), the build plan, the unit test
 selection from a synthetic `ninja -t deps` output (a changed .cpp through its header, a changed test
 file, parameterised suites), the MCP selection from a synthetic coverage map (and every fallback),
-the gcda reader, the pass cache and its invalidation, and the exit codes of whole runs against a
-fake tools/build.sh.
+the gcda reader, the pass cache and its invalidation, the area lints by path, and whole runs
+against a fake tools/build.sh: exit codes, keep-going and the skip of a step whose build failed,
+each step's log, the parsed failures and the summary's fix lines, --json, and the red control
+(red when the change is reverted, exit 1 when no test pins it, red (build), a dirty tree or a
+leftover refused, the restore after a kill, a byte-identical tree).
 """
 
 from __future__ import annotations
@@ -143,26 +146,54 @@ class Builds(unittest.TestCase):
         for f in ("engine/core/Foo.cpp", "editor/navigation/NavigationEditor.cpp", "engine/core/component/Transform.h",
                   "docs/navigation.md"):
             self.assertNotIn("navigation-off", self.plan(f).builds, f)
-        # an engine shader: the shader lint and its tests
-        self.assertEqual(self.plan("engine/shaderlib/includes/lights.glsl").self_tests, ["tools/ci/test_check_shader_lod.py"])
+        # an engine shader: the shader lint and its tests, and the GPU vendor lint (render code names no vendor)
+        self.assertEqual(self.plan("engine/shaderlib/includes/lights.glsl").self_tests,
+                         ["tools/check_gpu_vendor_branches.py", "tools/ci/test_check_shader_lod.py"])
+        self.assertIn("tools/check_gpu_vendor_branches.py", self.plan("engine/renders/sokol/SokolSystem.cpp").self_tests)
+        self.assertNotIn("tools/check_gpu_vendor_branches.py", self.plan("engine/platform/linux/Foo.cpp").self_tests)
         self.assertEqual(self.plan("tools/check_shader_lod.py").self_tests, ["tools/ci/test_check_shader_lod.py"])
         # an MCP test file (a new one too): classified for the CI suite, before anything is built
         self.assertEqual(self.plan("tools/mcp/tests/test_new.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
         self.assertEqual(self.plan("tools/mcp/run_tests.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
         self.assertEqual(self.plan("tools/mcp/tests/helper.py").self_tests, [])
-        # an engine source (any can hold an event or walk one): the event clears lint
+        # an engine source (any can hold an event or walk one): the event clears lint; engine code, the
+        # Apple privacy manifest's check
         for f in ("engine/core/component/ButtonComponent.h", "engine/core/Engine.cpp", "engine/core/input/InputActions.cpp",
                   "engine/core/object/sound/Audio.h", "engine/platform/mac/WindowMac.mm"):
-            self.assertEqual(self.plan(f).self_tests, ["tools/check_event_clears.py", "tools/check_apple_privacy.py"], f)
-        self.assertEqual(self.plan("tools/check_event_clears.py").self_tests, ["tools/check_event_clears.py"])
+            self.assertIn("tools/check_event_clears.py", self.plan(f).lints, f)
+            self.assertEqual(self.plan(f).self_tests, ["tools/check_apple_privacy.py"], f)
         for f in ("engine/libs/jolt/Jolt/Core/Core.h", "engine/tests/core/registry/ComponentEventsTest.cpp",
                   "engine/shaderlib/includes/lights.glsl", "editor/App.cpp"):
-            self.assertNotIn("tools/check_event_clears.py", self.plan(f).self_tests, f)
+            self.assertNotIn("tools/check_event_clears.py", self.plan(f).lints, f)
         for trigger in ("CMakeLists.txt", "docker/linux.Dockerfile", "tools/build.sh", "engine/cmake/JasperPch.cmake",
                         "tools/mcp/requirements.txt"):
             p = self.plan(trigger)
             self.assertEqual(p.builds, ["linux", "unit-tests", "web", "android"], trigger)
             self.assertTrue(p.unit_all and p.mcp_all, trigger)
+
+    def test_area_lints_by_path(self):
+        raw, keys, events, text, keys_lint = ("tools/check_raw_writes.py", "tools/check_stream_keys.py", "tools/check_event_clears.py",
+                                              "tools/check_text_encoding.py", "tools/ci/check-hardcoded-shortcuts.py")
+        cases = {
+            "editor/window/Foo.cpp": [raw, text, keys_lint],
+            "editor/StreamComponents.cpp": [raw, keys, text, keys_lint],
+            "editor/reflect/components/Light.yaml": [keys],
+            "engine/core/io/File.cpp": [raw, events, text],
+            "engine/renders/Render.cpp": [events, text],
+            "engine/platform/mac/Window.mm": [events, text],
+            "tools/raw_writes_allowlist.txt": [raw],
+            "tools/check_raw_writes.py": [raw, f"{raw} --self-test"],
+            "tools/check_stream_keys.py": [keys],                       # (no --self-test)
+            "tools/check_event_clears.py": [events, f"{events} --self-test"],
+            "tools/ci/check-hardcoded-shortcuts.py": [keys_lint, f"{keys_lint} --self-test"],
+            "tools/ci/fixtures/hardcoded-shortcuts/bad.cpp": [f"{keys_lint} --self-test"],
+            # what no lint reads: the tests, the vendored libraries, docs, Python
+            "editor/tests/FooTest.cpp": [], "engine/libs/imgui/imgui.cpp": [],
+            "engine/core/tests/X.cpp": [events],                         # (the event lint skips engine/tests/ only)
+            "docs/testing.md": [], "tools/mcp/harness.py": [],
+        }
+        for f, lints in cases.items():
+            self.assertEqual(self.plan(f).lints, lints, f)
 
     def test_a_tool_runs_the_test_beside_it(self):
         # tools/<dir>/x.py with tools/<dir>/test_x.py beside it: its owner test (before: none, unless listed)
@@ -665,7 +696,7 @@ class Runs(unittest.TestCase):
             cc.in_image = real
         self.assertEqual(code, 1, out)
         self.assertIn("headers compile alone (1 edited)", out)
-        self.assertIn("FAIL (exit 1) header fan-out limits", out)
+        self.assertRegex(out, r"\nFAIL +header fan-out limits +\d+s +\(exit 1\)\n +fix: python3 -I tools/check_fanout.py\n")
         self.assertTrue((self.root / "headers.txt").is_file(), out)
         self.assertEqual((self.root / "headers.txt").read_text(), "editor/App.h")
 
@@ -679,14 +710,14 @@ class Runs(unittest.TestCase):
         real = cc.in_image
         cc.in_image = lambda: True
         try:
-            code, out = self.run_main("--no-cache", "--no-mcp", "--keep-going")
+            code, out = self.run_main("--no-cache", "--no-mcp")
             self.assertIn("the engine with every module off (engine/core/Module.h changed)", out)
             self.assertEqual(code, 0, out)
             self.assertRegex((self.root / "args.txt").read_text(), r"^-j \d+ all-off WERROR=1$")
             os.environ["MODULES_OFF_RC"] = "1"
-            code, out = self.run_main("--no-cache", "--no-mcp", "--keep-going")
+            code, out = self.run_main("--no-cache", "--no-mcp")
             self.assertEqual(code, 1, out)
-            self.assertIn("FAIL (exit 1) the engine with every module off", out)
+            self.assertRegex(out, r"\nFAIL +the engine with every module off +\d+s +\(exit 1\)")
         finally:
             cc.in_image = real
             os.environ.pop("MODULES_OFF_RC", None)
@@ -694,7 +725,7 @@ class Runs(unittest.TestCase):
         (self.root / "args.txt").unlink()
         (self.root / "engine/core/Module.h").unlink()
         (self.root / "engine/core/Module.cpp").write_text("int module = 2;\n")
-        code, out = self.run_main("--no-cache", "--no-mcp", "--keep-going")
+        code, out = self.run_main("--no-cache", "--no-mcp")
         self.assertEqual(code, 0, out)
         self.assertNotIn("every module off", out)
         self.assertFalse((self.root / "args.txt").exists())
@@ -704,7 +735,7 @@ class Runs(unittest.TestCase):
         code, out = self.run_main("--no-mcp")
         self.assertEqual(code, 0, out)
         self.assertFalse([c for c in self.calls() if c.startswith("mcp-tests")])
-        self.assertIn("SKIP (--no-mcp)", out)
+        self.assertRegex(out, r"\nskip +MCP tests +0s +\(--no-mcp\)\n")
         self.assertIn("the pass is not cached", out)
         self.assertFalse((self.root / "build/.cache/check-changed.json").exists())
         previous = len(self.calls())
@@ -721,7 +752,7 @@ class Runs(unittest.TestCase):
         finally:
             cc.in_image = real
         self.assertEqual(code, 0, out)
-        self.assertIn("SKIP (not in the Linux image", out)
+        self.assertRegex(out, r"\nskip +build web +0s +\(not in the Linux image")
         self.assertIn("the pass is not cached", out)
         self.assertFalse((self.root / "build/.cache/check-changed.json").exists())
         self.assertFalse([c for c in self.calls() if c.startswith("web")])
@@ -738,7 +769,7 @@ class Runs(unittest.TestCase):
         os.environ["FAIL_TARGET"] = "exec"
         code, out = self.run_main("--no-cache")
         self.assertEqual(code, 1, out)
-        self.assertIn("FAIL (exit 1) navigation OFF", out)
+        self.assertRegex(out, r"\nFAIL +navigation OFF \(NavStubTest, NavGridTest\) +\d+s +\(exit 1\)")
 
     def test_failure_exits_1_and_is_not_cached(self):
         (self.root / "editor/App.cpp").write_text("int app = 3;\n")
@@ -748,15 +779,27 @@ class Runs(unittest.TestCase):
         self.assertIn("FAILED", out)
         self.assertFalse((self.root / "build/.cache/check-changed.json").exists())
 
-    def test_keep_going_runs_the_tests_after_a_failure(self):
+    def test_keep_going_and_skip_on_a_failed_build(self):
+        # the editor's build fails: the unit tests (their own build) still run, the MCP tests (its editor) skip
         (self.root / "editor/App.cpp").write_text("int app = 7;\n")
         os.environ["FAIL_TARGET"] = "linux"
         code, out = self.run_main()
         self.assertEqual(code, 1, out)
         self.assertFalse([c for c in self.calls() if c.startswith("mcp-tests")])
-        code, out = self.run_main("--keep-going", "--no-cache")
+        self.assertTrue([c for c in self.calls() if c.startswith("unit-tests RUN= ")], self.calls())
+        self.assertRegex(out, r"\nFAIL +build linux +\d+s +\(exit 1\)\n +fix: WERROR=1 SKIP_ENGINE=1 tools/build.sh linux\n"
+                              r" +log: build/check-changed/build-linux.log\n")
+        self.assertRegex(out, r"\nok +unit tests \(all\) +\d+s\n")
+        self.assertRegex(out, r"\nskip +MCP tests \(the CI suite\) +0s +\(build linux: failed\)\n")
+        self.assertTrue(out.rstrip().endswith("FAILED in 0s") or "\nFAILED in" in out, out)
+        # the unit tests' build fails: their run skips, the MCP tests run
+        os.environ["FAIL_TARGET"] = "unit-tests"
+        n = len(self.calls())
+        code, out = self.run_main("--no-cache")
         self.assertEqual(code, 1, out)
-        self.assertTrue([c for c in self.calls() if c.startswith("mcp-tests")])
+        self.assertRegex(out, r"\nFAIL +build the unit tests +\d+s +\(exit 1\)\n +fix: WERROR=1 RUN=0 tools/build.sh unit-tests\n")
+        self.assertRegex(out, r"\nskip +unit tests \(all\) +0s +\(build the unit tests: failed\)\n")
+        self.assertTrue([c for c in self.calls()[n:] if c.startswith("mcp-tests")])
 
     def test_pass_is_cached_and_invalidated(self):
         (self.root / "editor/App.cpp").write_text("int app = 4;\n")
@@ -768,6 +811,8 @@ class Runs(unittest.TestCase):
         code, out = self.run_main()                     # the same inputs: the summary again, no build
         self.assertEqual((code, len(self.calls())), (0, first), out)
         self.assertIn("passed before", out)
+        self.assertRegex(out, r"\ncached +build linux +\d+s\n")
+        self.assertRegex(out, r"\ncached +unit tests \(all\) +\d+s\n")
         code, out = self.run_main("--no-cache")         # --no-cache: a real run
         self.assertEqual(code, 0, out)
         self.assertGreater(len(self.calls()), first)
@@ -867,6 +912,153 @@ class Runs(unittest.TestCase):
         self.assertEqual(self.calls(), [])
         self.assertIn("editor-tests.deps", out)
 
+    def run_split(self, *argv) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cc.main(list(argv), root=self.root)
+        return code, out.getvalue(), err.getvalue()
+
+    def with_a_failing_test(self, failing: int = 1) -> Path:
+        """A committed core test that sees engine/core/Foo.h, its tree's dependency dump (the suites Foo
+        and FooFixture), and a build.sh whose unit test run fails `failing` tests after 60 lines of noise."""
+        test = self.root / "engine/tests/core/FooTest.cpp"
+        test.parent.mkdir(parents=True)
+        test.write_text("TEST(Foo, Adds) {}\nTEST_F(FooFixture, Works) {}\n")
+        (self.root / "tools/build.sh").write_text(FAKE_BUILD.replace("exit 0\n", f"""\
+if [[ "$1" == unit-tests && "${{RUN:-1}}" != 0 ]]; then
+    for i in $(seq 1 60); do echo "noise line $i"; done
+    for i in $(seq 1 {failing}); do
+        n=$([[ $i == 1 ]] && echo "" || echo $i)
+        echo "[ RUN      ] Foo.Adds$n"
+        echo "/src/engine/tests/core/FooTest.cpp:$i: Failure"
+        echo "Expected equality of these values:"
+        echo "  foo()"
+        echo "    Which is: 1"
+        echo "  2"
+        echo "[  FAILED  ] Foo.Adds$n (0 ms)"
+    done
+    echo "[ RUN      ] FooFixture.Works"
+    echo "[       OK ] FooFixture.Works (0 ms)"
+    exit 1
+fi
+exit 0
+"""))
+        sh(self.root, "git", "add", "-A")
+        sh(self.root, "git", "commit", "-qm", "a test")
+        sh(self.root, "git", "branch", "-qf", "oe-port", "HEAD")
+        dumps = self.tmp / "deps"
+        dumps.mkdir()
+        (dumps / "core-tests.deps").write_text(DEPS)
+        (dumps / "editor-tests.deps").write_text("x.o: #deps 1, deps mtime 1 (VALID)\n    /src/editor/tests/OtherTest.cpp\n")
+        (self.root / "engine/core/Foo.h").write_text("int foo(); // changed\n")
+        return dumps
+
+    def test_a_failed_step_shows_its_parsed_failures_log_and_narrowed_fix(self):
+        dumps = self.with_a_failing_test()
+        code, out = self.run_main("--deps-from", str(dumps), "--no-mcp")
+        self.assertEqual(code, 1, out)
+        label = "unit tests (core: 2 suite(s))"
+        # the terminal: the failure parsed (paths repository-relative), not the noise, then the log
+        block = out[out.index(f"[check-changed] {label} FAILED (exit 1"):]
+        block = block[:block.index("\n  log: ")]
+        self.assertIn("\n  FAILED Foo.Adds\n      engine/tests/core/FooTest.cpp:1: Failure\n      Expected equality of these values:\n"
+                      "      foo()\n      Which is: 1\n      2", block)
+        self.assertNotIn("noise line", out)
+        self.assertNotIn("FooFixture.Works", block)
+        # the summary: one line per step, the FAIL with its rerun command narrowed to the failed test, and its log
+        log = "build/check-changed/unit-tests-core-2-suite-s.log"
+        self.assertRegex(out, r"\nok +build the unit tests +\d+s\n")
+        self.assertIn(f"\nFAIL    {label}  0s  (exit 1)\n        fix: WERROR=1 UNIT_SUITE=core UNIT_TEST_ARGS=--gtest_filter=Foo.Adds "
+                      f"tools/build.sh unit-tests\n        log: {log}\n", out)
+        self.assertRegex(out, r"\nskip +MCP tests +0s +\(--no-mcp\)\n")
+        # the log: the whole output, after the command as it ran
+        text = (self.root / log).read_text()
+        self.assertTrue(text.startswith("$ WERROR=1 UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=Foo.*:*/Foo.*:Foo/*.*:"
+                                        "FooFixture.*:*/FooFixture.*:FooFixture/*.*' tools/build.sh unit-tests\n"), text[:300])
+        self.assertIn("noise line 60\n", text)
+        self.assertIn("[       OK ] FooFixture.Works", text)
+        # every step has its log
+        self.assertTrue((self.root / "build/check-changed/build-the-unit-tests.log").is_file())
+
+    def test_a_failed_step_shows_at_most_40_lines(self):
+        dumps = self.with_a_failing_test(failing=30)
+        code, out = self.run_main("--deps-from", str(dumps), "--no-mcp")
+        self.assertEqual(code, 1, out)
+        lines = out.splitlines()
+        start = next(i for i, l in enumerate(lines) if "unit tests (core: 2 suite(s)) FAILED" in l)
+        end = next(i for i in range(start, len(lines)) if lines[i].startswith("  log: "))
+        self.assertEqual(end - start - 1, cc.FAILURE_LINES, "\n".join(lines[start:end + 1]))
+        self.assertIn("more line(s): see the log", lines[end - 1])
+        # the fix names every failed test
+        self.assertIn("UNIT_TEST_ARGS=--gtest_filter=Foo.Adds:Foo.Adds2:", out)
+        self.assertIn(":Foo.Adds30 tools/build.sh unit-tests", out)
+
+    def test_json_prints_the_plan_steps_logs_and_fixes(self):
+        dumps = self.with_a_failing_test()
+        code, out, err = self.run_split("--deps-from", str(dumps), "--no-mcp", "--json")
+        self.assertEqual(code, 1, err)
+        doc = json.loads(out)                                 # stdout: the one document; the progress is on stderr
+        self.assertIn("unit tests (core: 2 suite(s))", err)
+        self.assertEqual(set(doc), {"plan", "steps", "could_not_run", "partial", "cached", "passed", "exit", "seconds",
+                                    "red_control"})
+        self.assertEqual((doc["exit"], doc["passed"], doc["cached"], doc["partial"], doc["red_control"]), (1, False, False, True, None))
+        self.assertEqual(doc["plan"]["files"], ["engine/core/Foo.h"])
+        self.assertEqual(doc["plan"]["unit"]["core"], ["Foo", "FooFixture"])
+        self.assertIn("lints", doc["plan"])
+        for step in doc["steps"]:
+            self.assertEqual(set(step), {"name", "status", "kind", "seconds", "log", "fix", "reason", "failures", "tests"})
+            self.assertIn(step["status"], ("ok", "FAIL", "skip"))
+            if step["status"] != "skip":
+                self.assertTrue((self.root / step["log"]).is_file(), step)
+        failed = next(s for s in doc["steps"] if s["status"] == "FAIL")
+        self.assertEqual((failed["name"], failed["kind"], failed["tests"], failed["reason"]),
+                         ("unit tests (core: 2 suite(s))", "unit", ["Foo.Adds"], "exit 1"))
+        self.assertEqual(failed["fix"], "WERROR=1 UNIT_SUITE=core UNIT_TEST_ARGS=--gtest_filter=Foo.Adds tools/build.sh unit-tests")
+        self.assertIn("FAILED Foo.Adds", failed["failures"])
+        self.assertEqual([s["status"] for s in doc["steps"] if s["name"] == "MCP tests"], ["skip"])
+        # a dry run: the plan, no steps; a cached pass: its steps, as cached
+        code, out, err = self.run_split("--deps-from", str(dumps), "--dry-run", "--json")
+        doc = json.loads(out)
+        self.assertEqual((code, doc["steps"], doc["plan"]["files"]), (0, [], ["engine/core/Foo.h"]))
+        (self.root / "tools/build.sh").write_text(FAKE_BUILD)
+        sh(self.root, "git", "commit", "-qm", "a passing build", "tools/build.sh")
+        sh(self.root, "git", "branch", "-qf", "oe-port", "HEAD")
+        self.assertEqual(self.run_split("--deps-from", str(dumps), "--json")[0], 0)
+        code, out, err = self.run_split("--deps-from", str(dumps), "--json")
+        doc = json.loads(out)
+        self.assertEqual((code, doc["cached"], doc["passed"]), (0, True, True), err)
+        self.assertTrue(doc["steps"] and all(s["status"] == "cached" for s in doc["steps"]), doc["steps"])
+        self.assertEqual(doc["plan"]["files"], ["engine/core/Foo.h"])
+
+    def test_the_area_lints_run_before_the_builds(self):
+        lint = 'import os, sys\nopen(os.environ["CALLS"], "a").write("lint " + " ".join(sys.argv[1:]) + "\\n")\n'
+        (self.root / "tools/check_raw_writes.py").write_text(
+            lint + 'print("editor/App.cpp:1: std::ofstream: write through AtomicFile"); sys.exit(1)\n')
+        (self.root / "tools/check_text_encoding.py").write_text(lint)
+        sh(self.root, "git", "add", "-A")
+        sh(self.root, "git", "commit", "-qm", "the lints")
+        sh(self.root, "git", "branch", "-qf", "oe-port", "HEAD")
+        (self.root / "editor/App.cpp").write_text("int app = 9;\n")
+        code, out = self.run_main("--no-mcp")
+        self.assertEqual(code, 1, out)
+        self.assertIn("lints: tools/check_raw_writes.py, tools/check_text_encoding.py, tools/ci/check-hardcoded-shortcuts.py", out)
+        calls = self.calls()
+        self.assertEqual(calls[:2], ["lint ", "lint "], calls)            # first, and only those the checkout has
+        self.assertTrue(calls[2].startswith("unit-tests RUN=0"), calls)
+        self.assertIn("[check-changed] lint tools/check_raw_writes.py FAILED (exit 1, 0s):\n"
+                      "  editor/App.cpp:1: std::ofstream: write through AtomicFile\n"
+                      "  log: build/check-changed/lint-tools-check-raw-writes-py.log\n", out)
+        self.assertIn("\nFAIL    lint tools/check_raw_writes.py  0s  (exit 1)\n        fix: python3 -I tools/check_raw_writes.py\n", out)
+        self.assertRegex(out, r"\nok +lint tools/check_text_encoding.py +\d+s\n")
+        self.assertRegex(out, r"\nok +build linux +\d+s\n")                      # (the rest goes on)
+        self.assertRegex(out, r"\nok +unit tests \(all\) +\d+s\n")
+        # a change of the lint: its --self-test as well
+        (self.root / "tools/check_text_encoding.py").write_text(lint + "# changed\n")
+        (self.root / "editor/App.cpp").write_text("int app;\n")
+        n = len(self.calls())
+        code, out = self.run_main("--no-mcp")
+        self.assertEqual(self.calls()[n:], ["lint ", "lint --self-test"], out)
+
     def test_inputs_hash_follows_content_base_untracked_and_map(self):
         cc.use_root(self.root)
         (self.root / "editor/App.cpp").write_text("one\n")
@@ -880,6 +1072,181 @@ class Runs(unittest.TestCase):
         cc.store("k", "summary", cache)
         self.assertEqual(cc.cached("k", cache)["summary"], "summary")
         self.assertIsNone(cc.cached("other", cache))
+
+
+RED_BUILD = """#!/usr/bin/env bash
+seen() { [[ -f "$1" ]] && echo yes || echo no; }
+echo "$* RUN=${RUN:-} New=$(seen engine/core/New.cpp) Gone=$(seen engine/core/Gone.cpp) Test=$(seen engine/tests/core/FooTest.cpp)" >> "$CALLS"
+fixed() { grep -q "return 2" engine/core/Foo.cpp; }
+if [[ "$1" == unit-tests ]]; then
+    if [[ "${RUN:-1}" == 0 ]]; then
+        if [[ -n "${BUILD_NEEDS_FIX:-}" ]] && ! fixed; then echo "/src/engine/core/Foo.cpp:1:5: error: 'two' was not declared"; exit 1; fi
+        exit 0
+    fi
+    if [[ -n "${RED_SIGNAL:-}" ]] && ! fixed; then kill -"$RED_SIGNAL" "$PPID"; exit 1; fi
+    echo "[ RUN      ] Foo.ReturnsTwo"
+    if [[ -z "${NOT_PINNED:-}" ]] && ! fixed; then
+        echo "/src/engine/tests/core/FooTest.cpp:3: Failure"
+        echo "[  FAILED  ] Foo.ReturnsTwo (0 ms)"
+        exit 1
+    fi
+    echo "[       OK ] Foo.ReturnsTwo (0 ms)"
+fi
+if [[ "$1" == mcp-tests ]]; then
+    mkdir -p build/test-results
+    echo '{"results": [{"name": "test_a.py::test_x", "status": "pass"}]}' > build/test-results/mcp.json
+fi
+exit 0
+"""
+
+
+class RedControl(unittest.TestCase):
+    """--red-control on a scratch repository: a branch that fixes Foo (return 2), adds New.cpp, deletes
+    Gone.cpp and adds the test that pins the fix, against a build.sh whose unit test run checks Foo."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cc-red-"))
+        self.root = make_repo(self.tmp / "repo")
+        (self.root / "tools").mkdir(exist_ok=True)
+        (self.root / "tools/build.sh").write_text(RED_BUILD)
+        (self.root / "tools/build.sh").chmod(0o755)
+        (self.root / "tools/mcp/tests").mkdir(parents=True)
+        sh(self.root, "git", "add", "-A")
+        sh(self.root, "git", "commit", "-qm", "tools")
+        sh(self.root, "git", "branch", "-qf", "oe-port", "HEAD")
+        (self.root / "engine/core/Foo.cpp").write_text("int foo() { return 2; }\n")
+        (self.root / "engine/core/New.cpp").write_text("int fresh;\n")
+        (self.root / "engine/core/Gone.cpp").unlink()
+        (self.root / "engine/tests/core").mkdir(parents=True)
+        (self.root / "engine/tests/core/FooTest.cpp").write_text("TEST(Foo, ReturnsTwo) { EXPECT_EQ(foo(), 2); }\n")
+        (self.root / "docs/a.md").write_text("the fix\n")
+        sh(self.root, "git", "add", "-A")
+        sh(self.root, "git", "commit", "-qm", "the fix and its test")
+        self.state = cc.tree_state(self.root)
+        os.environ["JASPER_MCP_COVERAGE_MAP"] = str(self.tmp / "no-map.json")
+        os.environ["CALLS"] = str(self.tmp / "calls.txt")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        cc.use_root(REAL_ROOT)
+        for k in ("JASPER_MCP_COVERAGE_MAP", "CALLS", "NOT_PINNED", "BUILD_NEEDS_FIX"):
+            os.environ.pop(k, None)
+
+    def run_main(self, *argv) -> tuple[int, str]:
+        out = io.StringIO()
+        with redirect_stdout(out), redirect_stderr(out):
+            code = cc.main(list(argv), root=self.root)
+        return code, out.getvalue()
+
+    def calls(self) -> list[str]:
+        p = self.tmp / "calls.txt"
+        return p.read_text().splitlines() if p.exists() else []
+
+    def assert_restored(self):
+        self.assertEqual(sh(self.root, "git", "status", "--porcelain", "--untracked-files=all"), "")
+        self.assertEqual(cc.tree_state(self.root), self.state)
+        self.assertEqual((self.root / "engine/core/Foo.cpp").read_text(), "int foo() { return 2; }\n")
+        self.assertTrue((self.root / "engine/core/New.cpp").is_file())
+        self.assertFalse((self.root / "engine/core/Gone.cpp").exists())
+        self.assertFalse((self.root / "build/red-control/in-progress.json").exists())
+
+    def test_red_when_the_fix_is_reverted_and_never_cached(self):
+        code, out = self.run_main("--red-control")
+        self.assertEqual(code, 0, out)
+        # the pass first (with the change), then the same tests without it: the change reverted, the test kept
+        self.assertIn("unit-tests RUN= New=yes Gone=no Test=yes", self.calls())
+        self.assertIn("unit-tests RUN= New=no Gone=yes Test=yes", self.calls())
+        self.assertIn("\nred          unit tests (all): Foo.ReturnsTwo\n", out)
+        self.assertIn("\ngreen        MCP tests (the CI suite): passes without the change, so it does not pin it\n", out)
+        self.assertIn("red control: 1 of 2 selected test step(s) went red without the change", out)
+        self.assertIn("byte-identical to before", out)
+        self.assert_restored()
+        patch = (self.root / "build/red-control/patch.diff").read_text()
+        for reverted in ("engine/core/Foo.cpp", "engine/core/New.cpp", "engine/core/Gone.cpp"):
+            self.assertIn(f"a/{reverted}", patch)
+        for kept in ("FooTest.cpp", "docs/a.md", "tools/build.sh"):
+            self.assertNotIn(kept, patch)
+        # the red run's logs are its own; the pass's are untouched
+        self.assertIn("Foo.ReturnsTwo", (self.root / "build/red-control/logs/unit-tests-all.log").read_text())
+        self.assertNotIn("FAILED", (self.root / "build/check-changed/unit-tests-all.log").read_text())
+        # again: the pass is cached, the red control is not
+        n = len(self.calls())
+        code, out = self.run_main("--red-control")
+        self.assertEqual(code, 0, out)
+        self.assertIn("passed before", out)
+        self.assertEqual([c for c in self.calls()[n:] if c.startswith("unit-tests RUN= ")], ["unit-tests RUN= New=no Gone=yes Test=yes"])
+        self.assertNotIn("red", json.loads((self.root / "build/.cache/check-changed.json").read_text())["summary"].split("== check-changed summary")[0])
+        self.assert_restored()
+
+    def test_exit_1_when_the_test_does_not_pin_the_fix(self):
+        os.environ["NOT_PINNED"] = "1"
+        code, out = self.run_main("--red-control", "--no-mcp")
+        self.assertEqual(code, 1, out)
+        self.assertIn("\ngreen        unit tests (all): passes without the change, so it does not pin it\n", out)
+        self.assertIn("red control FAILED: no selected test failed without the change", out)
+        self.assert_restored()
+
+    def test_a_test_that_fails_to_build_without_the_change_is_red_build(self):
+        os.environ["BUILD_NEEDS_FIX"] = "1"
+        code, out = self.run_main("--red-control", "--no-mcp")
+        self.assertEqual(code, 0, out)
+        self.assertIn("\nred (build)  unit tests (all)\n", out)
+        self.assertIn("engine/core/Foo.cpp:1:5", out)             # (the red build's parsed error)
+        self.assert_restored()
+
+    def test_json_carries_the_verdicts(self):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cc.main(["--red-control", "--no-mcp", "--json"], root=self.root)
+        self.assertEqual(code, 0, err.getvalue())
+        red = json.loads(out.getvalue())["red_control"]
+        self.assertEqual((red["red"], red["restored"], red["patch"]), (1, True, "build/red-control/patch.diff"))
+        self.assertEqual(sorted(red["reverted"]), ["engine/core/Foo.cpp", "engine/core/Gone.cpp", "engine/core/New.cpp"])
+        self.assertEqual([(r["step"], r["verdict"], r["tests"], r["reason"]) for r in red["steps"]],
+                         [("unit tests (all)", "red", ["Foo.ReturnsTwo"], "exit 1"), ("MCP tests", "not run", [], "--no-mcp")])
+
+    def test_refuses_a_dirty_tree_and_a_leftover(self):
+        (self.root / "editor/Wip.cpp").write_text("int wip;\n")
+        code, out = self.run_main("--red-control")
+        self.assertEqual(code, 1, out)
+        self.assertIn("needs it clean: 1 uncommitted path(s) (e.g. editor/Wip.cpp): commit them first", out)
+        self.assertEqual(self.calls(), [])
+        (self.root / "editor/Wip.cpp").unlink()
+        (self.root / "build/red-control").mkdir(parents=True)
+        (self.root / "build/red-control/in-progress.json").write_text("{}")
+        for argv in (["--red-control"], [], ["--dry-run"]):
+            code, out = self.run_main(*argv)
+            self.assertEqual(code, 1, out)
+            self.assertIn("restore the tree first: tools/check-changed --red-control --restore", out)
+        self.assertEqual(self.calls(), [])
+
+    def red_process(self, signal_name: str) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, "-I", str(HERE / "check_changed.py"), "--root", str(self.root), "--red-control",
+                               "--no-mcp"], env=dict(os.environ, RED_SIGNAL=signal_name), capture_output=True, text=True,
+                              timeout=300)
+
+    def test_restore_after_a_kill(self):
+        r = self.red_process("KILL")                          # killed mid-revert: no finally
+        self.assertEqual(r.returncode, -9, r.stdout + r.stderr)
+        self.assertTrue((self.root / "build/red-control/in-progress.json").is_file())
+        self.assertEqual((self.root / "engine/core/Foo.cpp").read_text(), "int foo() { return 1; }\n")
+        self.assertNotEqual(cc.tree_state(self.root), self.state)
+        code, out = self.run_main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("tools/check-changed --red-control --restore", out)
+        code, out = self.run_main("--red-control", "--restore")
+        self.assertEqual(code, 0, out)
+        self.assertIn("byte-identical to before the red control (3 path(s))", out)
+        self.assert_restored()
+        code, out = self.run_main("--red-control", "--restore")
+        self.assertEqual(code, 0, out)
+        self.assertIn("nothing to restore", out)
+
+    def test_a_terminated_run_restores_the_tree(self):
+        r = self.red_process("TERM")
+        self.assertEqual(r.returncode, 130, r.stdout + r.stderr)
+        self.assertIn("red control: interrupted; the tree is restored", r.stdout)
+        self.assert_restored()
 
 
 if __name__ == "__main__":

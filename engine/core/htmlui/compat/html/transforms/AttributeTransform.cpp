@@ -268,8 +268,8 @@ namespace {
         const UrlKind kind = UrlResolver::classify(value);
         if (kind == UrlKind::Remote || kind == UrlKind::OtherScheme){
             context.sink.report(codes::LinkNotNavigable, where,
-                                "link '" + value + "' only dispatches the htmlnavigate event (there is no browser to open it)",
-                                "handle htmlnavigate in Lua (System:openURL is not available)", "", value);
+                                "link '" + value + "' opens outside the game (System.openURL) after the htmlnavigate event",
+                                "to keep it in the game, call event:preventDefault() in an htmlnavigate listener", "", value);
         }else if (kind == UrlKind::Relative || kind == UrlKind::RootRelative){
             std::string path = value;
             const size_t cut = path.find_first_of("?#");
@@ -311,6 +311,18 @@ namespace {
                     context.sink.report(codes::BindingAttributeOutsideModel, where,
                                         "'" + name + "' is read by the engine as a data binding, but no data-model encloses it",
                                         "put it inside an element with data-model=\"name\", or rename the attribute", "", name);
+                }
+                continue;
+            }
+            // game-ui-localization.md R11: the message replaces the element's text, so it holds only text
+            if (name == "data-l10n-id"){
+                for (const auto& child : element.children){
+                    if (child->kind != HtmlNode::Kind::Element)
+                        continue;
+                    context.sink.report(codes::L10nChildElements, where,
+                                        "'" + attribute->value + "' would replace the child <" + child->tag + "> of <" + element.tag + ">: the element is left as written",
+                                        "put data-l10n-id on the element that holds only the text", "", attribute->value);
+                    break;
                 }
                 continue;
             }

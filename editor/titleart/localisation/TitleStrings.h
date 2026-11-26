@@ -17,11 +17,13 @@
 //   a row whose source text differs from the document's imports as needs_review (source_changed);
 //   else `translated` (or the op's status) with source_hash stamped. An XLIFF target with inline
 //   markup is refused per unit (inline_markup).
-// - Parsers bound every read by the input (untrusted files, R47).
+// - Parsers bound every read by the input (untrusted files, R47); the CSV and XLIFF code is
+//   editor/localization/StringFiles, shared with the String Tables.
 // - Thread-safety: pure functions; the op registers on the main thread.
 
 #pragma once
 
+#include "localization/StringFiles.h"
 #include "titleart/TitleArtDoc.h"
 
 #include <map>
@@ -36,32 +38,10 @@ namespace jasperengine::editor {
         const titleart::TitleArtDoc* doc = nullptr;
     };
 
-    // one row of a strings file
-    struct TitleStringRow {
-        std::string file;                   // "" when the file has no file column
-        std::string key;
-        std::string context;
-        int maxChars = 0;
-        std::string sourceLanguage;
-        std::string source;
-        std::map<std::string, std::string> targets;     // code -> text ("" cells kept out)
-        std::map<std::string, std::string> states;      // XLIFF: code -> translated | needs_review
-        int line = 0;                       // where it starts (1-based)
-    };
-
-    struct TitleStringsNote {
-        std::string code;                   // unknown_key, unknown_language, source_changed, inline_markup, bad_row
-        std::string key;
-        std::string language;
-        std::string message;
-        int line = 0;
-    };
-
-    struct TitleStringsFile {
-        std::vector<std::string> languages;     // the target language columns (CSV) or files (XLIFF), canonical
-        std::vector<TitleStringRow> rows;
-        std::vector<TitleStringsNote> notes;    // what the parse refused (inline markup, malformed rows)
-    };
+    // the rows, notes and files of editor/localization/StringFiles (game-ui-localization.md D6)
+    using TitleStringRow = StringRow;
+    using TitleStringsNote = StringsNote;
+    using TitleStringsFile = StringsFile;
 
     // ---- export ----
 
