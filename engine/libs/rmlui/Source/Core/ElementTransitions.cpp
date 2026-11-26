@@ -86,7 +86,36 @@ const Property* ElementStyle::GetDeclaredValue(PropertyId id, Property& storage)
 
 	for (const ElementStyle* style = this; style;)
 	{
-		if (const Property* property = GetLocalProperty(id, style->inline_properties, style->definition.get()))
+		const Property* property = GetLocalProperty(id, style->inline_properties, style->definition.get());
+		if (property && property->unit == Unit::CSS_WIDE_KEYWORD)
+		{
+			// The declaration a CSS-wide keyword stands for ('font: inherit' gives each font longhand 'inherit'), as
+			// ResolveSpecifiedKeyword finds it, without the animation layers: ComputedForm takes resolved values.
+			CssWideKeyword keyword = CssWideKeyword(property->Get<int>());
+			if (keyword == CssWideKeyword::Revert)
+			{
+				const Property* user_agent_property = (style->definition ? style->definition->GetUserAgentProperty(id) : nullptr);
+				if (user_agent_property && user_agent_property->unit != Unit::CSS_WIDE_KEYWORD)
+					property = user_agent_property;
+				else
+				{
+					keyword = (user_agent_property ? CssWideKeyword(user_agent_property->Get<int>()) : CssWideKeyword::Unset);
+					if (keyword == CssWideKeyword::Revert)
+						keyword = CssWideKeyword::Unset;
+				}
+			}
+			if (property->unit == Unit::CSS_WIDE_KEYWORD)
+			{
+				if (keyword == CssWideKeyword::Unset)
+					keyword = (property_definition->IsInherited() ? CssWideKeyword::Inherit : CssWideKeyword::Initial);
+				if (keyword != CssWideKeyword::Inherit)
+					break;
+				Element* parent = style->element->GetParentNode();
+				style = (parent ? parent->GetStyle() : nullptr);
+				continue;
+			}
+		}
+		if (property)
 		{
 			SmallUnorderedSet<String> variable_dependencies;
 			Property resolved_storage;

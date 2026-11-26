@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Contract (docs/specs/S82-title-designer.md R59)
-// - Purpose: web fonts to the sfnt files Title Art loads. `.woff` (zlib tables through miniz) and
+// - Purpose: web fonts to the sfnt files Title Art and the HTML UI load (the export ships the HTML
+//   UI's web fonts decoded, so games never decode). `.woff` (zlib tables through miniz) and
 //   `.woff2` (Brotli, then the glyf/loca and hmtx transforms reversed, through the vendored
 //   google/woff2 decoder) become TrueType (`.ttf`), CFF OpenType (`.otf`) or, for a WOFF2
 //   collection, `.ttc` bytes. Also the faces of a `.ttc` (each face's family and style from its
@@ -45,6 +46,10 @@ namespace jasperengine::editor::titlefonts {
     DecodedFont decodeWebFont(const uint8_t* data, size_t size, size_t maxDecoded = MAX_DECODED_FONT_BYTES);
     DecodedFont decodeWoff(const uint8_t* data, size_t size, size_t maxDecoded = MAX_DECODED_FONT_BYTES);
     DecodedFont decodeWoff2(const uint8_t* data, size_t size, size_t maxDecoded = MAX_DECODED_FONT_BYTES);
+
+    // Makes FontFace (the HTML UI's @font-face, Play, hot reload) open .woff / .woff2 through
+    // decodeWebFont; main() calls it before any font loads
+    void installWebFontDecoder();
 
     // ".otf" for CFF / CFF2 outlines, ".ttc" for a collection, else ".ttf"
     std::string sfntExtension(const uint8_t* data, size_t size);

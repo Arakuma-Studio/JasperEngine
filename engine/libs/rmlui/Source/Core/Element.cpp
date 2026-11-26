@@ -281,7 +281,7 @@ void Element::Render()
 	// whose paint bounds lie wholly outside the scissor its clipping region sets (kept by SetClippingRegion for the other
 	// elements of its key) is passed over before any state is set: a long scrolled list's hidden rows cost a few tests
 	if (!transform_state && !dirty_transform && !dirty_perspective && stacking_context.empty() && !local_stacking_context &&
-		!draws_line_clamp_ellipsis && computed.clip() == Style::Clip::Type::Auto && !effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+		!draws_line_clamp_ellipsis && computed.clip() == Style::Clip::Type::Auto && !effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image(), computed.mix_blend_mode()))
 	{
 		RenderManager* render_manager = GetRenderManager();
 		if (render_manager && render_manager->PaintShortcuts())
@@ -302,7 +302,7 @@ void Element::Render()
 	ElementUtilities::ApplyTransform(*this);
 
 	// The effects are asked at each stage (rendering may change them), and skipped when they have nothing to do.
-	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image(), computed.mix_blend_mode()))
 		effects.RenderEffects(RenderStage::Enter);
 
 	// A hidden element (CSS visibility) paints nothing of its own; its visible descendants paint (phase 3, p3-paint).
@@ -324,7 +324,7 @@ void Element::Render()
 		if (!outside)
 		{
 			meta->background_border.Render(this);
-			if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+			if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image(), computed.mix_blend_mode()))
 				effects.RenderEffects(RenderStage::Decoration);
 			meta->background_border.RenderBorder(this);
 		}
@@ -338,7 +338,7 @@ void Element::Render()
 	RenderStackingContextChildren();
 
 	ElementUtilities::ApplyTransform(*this);
-	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image(), computed.mix_blend_mode()))
 		effects.RenderEffects(RenderStage::Exit);
 }
 
@@ -693,7 +693,7 @@ void Element::UpdateDirtyAbsoluteOffsetAndRenderBoxData()
 	{
 		// Add any parent scrolling onto our position as well.
 		if (offset_parent)
-			offset_from_ancestors -= offset_parent->scroll_offset;
+			offset_from_ancestors -= offset_parent->scroll_offset + offset_parent->scroll_overscroll;
 
 		// Finally, there may be relatively positioned elements between ourself and our containing block, add their relative offsets as well.
 		for (Element* ancestor = parent; ancestor && ancestor != offset_parent; ancestor = ancestor->parent)
@@ -981,7 +981,7 @@ void Element::UpdateLocalStackingContext()
 	const bool enable_local_stacking_context = (z_index_applies || local_stacking_context_forced || computed.has_filter() ||
 		computed.has_backdrop_filter() || computed.has_mask_image() || computed.has_local_transform() || computed.has_local_perspective() ||
 		computed.opacity() < 1.f || position == Position::Fixed || position == Position::Sticky || computed.isolation() == Isolation::Isolate ||
-		will_change);
+		computed.mix_blend_mode() != MixBlendMode::Normal || will_change);
 
 	if (z_index != new_z_index || local_stacking_context != enable_local_stacking_context)
 	{
@@ -1018,13 +1018,15 @@ void Element::UpdateOpacityLeaf()
 	if (opacity < 1.f && opacity > 0.f && !computed.has_filter() && !computed.has_backdrop_filter() && !computed.has_mask_image())
 	{
 		bool has_text = false, has_element_child = false;
-		for (const ElementPtr& child : children)
-		{
-			if (child->GetTagName() == "#text")
-				has_text = true;
-			else
-				has_element_child = true;
-		}
+		// Editable SVG descendants are rasterized into the one replaced image, not painted as HTML children.
+		if (tag != "svg")
+			for (const ElementPtr& child : children)
+			{
+				if (child->GetTagName() == "#text")
+					has_text = true;
+				else
+					has_element_child = true;
+			}
 		if (!has_element_child)
 		{
 			const auto visible_border = [&computed](float width, Colourb color) { return width > 0.f && color.alpha > 0; };
@@ -1538,6 +1540,15 @@ void Element::SetScrollTop(float scroll_top)
 		DirtyAbsoluteOffset();
 
 		DispatchEvent(EventId::Scroll, Dictionary());
+	}
+}
+
+void Element::SetScrollOverscroll(Vector2f overscroll)
+{
+	if (overscroll != scroll_overscroll)
+	{
+		scroll_overscroll = overscroll;
+		DirtyAbsoluteOffset();
 	}
 }
 
@@ -2399,6 +2410,12 @@ void Element::OnAttributeChange(const ElementAttributes& changed_attributes)
 void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 {
 	RMLUI_ZoneScoped;
+	// Fork (S93 R31): the document fits the font size of its 'text-autosize' elements after each layout
+	if (changed_properties.Contains(PropertyId::TextAutosize) && owner_document)
+	{
+		const Property* autosize = GetProperty(PropertyId::TextAutosize);
+		owner_document->SetTextAutosize(this, autosize && autosize->unit != Unit::KEYWORD);
+	}
 	const bool top_right_bottom_left_changed = (           //
 		changed_properties.Contains(PropertyId::Top) ||    //
 		changed_properties.Contains(PropertyId::Right) ||  //
@@ -2494,7 +2511,8 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	// Update the z-index and stacking context.
 	if (changed_properties.Contains(PropertyId::ZIndex) || filter_or_mask_changed || perspective_changed || transform_changed ||
 		changed_properties.Contains(PropertyId::Opacity) || changed_properties.Contains(PropertyId::Position) ||
-		changed_properties.Contains(PropertyId::Isolation) || changed_properties.Contains(PropertyId::WillChange))
+		changed_properties.Contains(PropertyId::Isolation) || changed_properties.Contains(PropertyId::WillChange) ||
+		changed_properties.Contains(PropertyId::MixBlendMode))
 	{
 		UpdateLocalStackingContext();
 	}
@@ -2698,6 +2716,11 @@ void Element::SetLayoutBoundary(bool boundary)
 bool Element::IsLayoutBoundary() const
 {
 	return layout_boundary;
+}
+
+float Element::GetTextAutosizeFontSize() const
+{
+	return meta->style.GetFontSizeOverride();
 }
 
 bool Element::IsLayoutDirty()
@@ -3217,6 +3240,9 @@ void Element::BuildLocalStackingContext()
 
 void Element::AddChildrenToStackingContext(Vector<StackingContextChild>& stacking_children)
 {
+	// Inline SVG descendants are editable DOM nodes, painted together by the SVG rasterizer.
+	if (tag == "svg")
+		return;
 	// Grid items paint like flex items (p3-grid): atomically, in 'order' order.
 	const Style::Display display = GetDisplay();
 	bool is_flex_container = (display == Style::Display::Flex || display == Style::Display::Grid || display == Style::Display::InlineGrid);
@@ -3480,7 +3506,7 @@ ElementAnimationList::iterator Element::StartAnimation(PropertyId property_id, c
 	if (!value.definition)
 		return animations.end();
 
-	const double start_time = Clock::GetElapsedTime() + (double)delay;
+	const double start_time = GetAnimationClockTime() + (double)delay;
 	animations.push_back(
 		ElementAnimation{property_id, ElementAnimationOrigin::User, value, *this, start_time, 0.0f, num_iterations, alternate_direction});
 	auto it = animations.end() - 1;
@@ -3595,7 +3621,7 @@ bool Element::StartTransition(const Transition& transition, const Property& star
 
 	CancelTransition(transition.id);
 
-	ElementAnimation animation{transition.id, ElementAnimationOrigin::Transition, start_value, *this, Clock::GetElapsedTime(), 0.0f, 1, false};
+	ElementAnimation animation{transition.id, ElementAnimationOrigin::Transition, start_value, *this, GetAnimationClockTime(), 0.0f, 1, false};
 	if (!animation.IsInitalized() || !animation.AddKey(transition.duration, target_value, *this, transition.tween, true))
 		return false;
 	animation.SetTransitionData(transition, reversing_adjusted_start, reversing_shortening_factor);
@@ -3648,7 +3674,7 @@ void Element::HandleAnimationProperty()
 		return;
 	dirty_animation = false;
 
-	const double now = Clock::GetElapsedTime();
+	const double now = GetAnimationClockTime();
 	const AnimationList* animation_list = (animation_displayed ? meta->computed_values.animation() : nullptr);
 	const StyleSheet* stylesheet = (animation_list ? GetStyleSheet() : nullptr);
 
@@ -3752,6 +3778,18 @@ void Element::HandleAnimationProperty()
 		DispatchEvent(event.id, event.parameters);
 }
 
+double Element::GetAnimationClockTime()
+{
+	ElementDocument* document = GetOwnerDocument();
+	return document ? document->GetAnimationTime() : Clock::GetElapsedTime();
+}
+
+void Element::ShiftAnimationStartTimes(double delta)
+{
+	for (ElementAnimation& animation : animations)
+		animation.ShiftStartTime(delta);
+}
+
 void Element::AdvanceAnimations()
 {
 	if (animations.empty())
@@ -3760,7 +3798,7 @@ void Element::AdvanceAnimations()
 		return;
 	}
 
-	const double time = Clock::GetElapsedTime();
+	const double time = GetAnimationClockTime();
 	Vector<PendingAnimationEvent> events;
 	bool running = false;
 

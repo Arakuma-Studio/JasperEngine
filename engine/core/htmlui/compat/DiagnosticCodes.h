@@ -16,8 +16,10 @@ namespace jasperengine::htmlui::compat {
     enum class Severity : uint8_t { Error, Warning, Info };
 
     // Areas of the stable diagnostic codes HTMLUI-<AREA>-NNNN (phase-2 §3.4, Appendix F).
-    // Append only: phase 5 added FX after SVG (the UI effects).
-    enum class DiagArea : uint8_t { GEN, HTML, CSS, SEL, AT, IMP, SVG, FX };
+    // Append only: phase 5 added FX after SVG (the UI effects); game-ui-localization.md LOC after it; S93 FONT (glyphs
+    // and faces) and INPUT (pointer routing) after LOC.
+    // An area is capital letters only: the checks and tools read a code as HTMLUI-[A-Z]+-NNNN.
+    enum class DiagArea : uint8_t { GEN, HTML, CSS, SEL, AT, IMP, SVG, FX, LOC, FONT, INPUT };
 
     struct DiagCode {
         DiagArea area = DiagArea::GEN;
@@ -63,6 +65,7 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode NonUtf8Charset{DiagArea::GEN, 5};
         inline constexpr DiagCode RmluiMessage{DiagArea::GEN, 6};
         inline constexpr DiagCode GlyphAtlasBudget{DiagArea::GEN, 7};
+        inline constexpr DiagCode ImageRegion{DiagArea::GEN, 8};
         // HTML
         inline constexpr DiagCode HtmlParseError{DiagArea::HTML, 1};
         inline constexpr DiagCode UnsupportedElement{DiagArea::HTML, 2};
@@ -164,6 +167,8 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode SvgInternalCss{DiagArea::SVG, 3};
         // FX (phase 5, the UI effects: phase-5-effects.md 3.13)
         inline constexpr DiagCode EffectUnknown{DiagArea::FX, 1};
+        // LOC (game-ui-localization.md R11)
+        inline constexpr DiagCode L10nChildElements{DiagArea::LOC, 1};
         inline constexpr DiagCode EffectWrongContext{DiagArea::FX, 2};
         inline constexpr DiagCode EffectPositionalArg{DiagArea::FX, 3};
         inline constexpr DiagCode EffectUnknownParam{DiagArea::FX, 4};
@@ -182,6 +187,10 @@ namespace jasperengine::htmlui::compat {
         // phase 6 (stateful effects)
         inline constexpr DiagCode EffectStateUnsupported{DiagArea::FX, 17};
         inline constexpr DiagCode EffectStatefulBudget{DiagArea::FX, 18};
+        // FONT (S93)
+        inline constexpr DiagCode FallbackGlyph{DiagArea::FONT, 1};
+        // INPUT (S93: pointer routing, runtime)
+        inline constexpr DiagCode PagePressListener{DiagArea::INPUT, 1};
     }
 
     // Hints shared by several reporters (phase-3 spec 2.2's replacement hints).

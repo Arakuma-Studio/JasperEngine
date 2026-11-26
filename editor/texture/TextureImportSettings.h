@@ -38,6 +38,9 @@ namespace jasperengine::editor {
     enum class TextureEffort : uint8_t { Fast, Normal, Best };
     // Unity's Texture Shape: a single file holds a 2D texture or a cubemap (a 4:3 / 3:4 cross)
     enum class TextureShape : uint8_t { Tex2D, Cube };
+    // Unity's PSD Importer (S94 F48): a PSD/PSB is one flattened image, or its layers become sprites
+    // of a packed sheet with a prefab
+    enum class TextureImportMode : uint8_t { Flattened, Layers };
 
     // a number as the cache keys print it: fixed, six decimals at most, locale-free ("0.5", "-1")
     std::string textureCanonicalNumber(float value);
@@ -50,6 +53,7 @@ namespace jasperengine::editor {
     const char* alphaSourceName(TextureAlphaSource source);
     const char* textureChannelName(TextureChannel channel);
     const char* textureShapeName(TextureShape shape);
+    const char* textureImportModeName(TextureImportMode mode);   // "flattened", "layers"
 
     // The allowed values of each enum field, for errors that list them (MCP, CLI)
     const std::vector<std::string>& textureEnumValues(const std::string& field);
@@ -113,6 +117,8 @@ namespace jasperengine::editor {
         // why it is CPU-readable ("TerrainComponent.heightMap of scenes/main.scene")
         std::string cpuReason;
         TextureSizeStrategy strategy = TextureSizeStrategy::None;
+        // S99 R29: the sun's disc of an HDR sky clamped to the ring around it (lighting/HdriSun.h)
+        bool removeSunDisc = false;
 
         // the processing of the levels (the raw path takes the same)
         TextureProcessing processing() const;
@@ -152,6 +158,12 @@ namespace jasperengine::editor {
         std::optional<bool> alphaClip;
         std::optional<TextureFilterMode> filterMode;
         std::optional<int> pixelsPerUnit;
+        // S94 F48: a PSD/PSB's Import Mode, and Character Rig (Layers: the prefab gets the sprites'
+        // bones as GameObjects, each layer's Sprite Skin bound to them)
+        std::optional<TextureImportMode> importMode;
+        std::optional<bool> characterRig;
+        // S99 R29: Remove Sun Disc (an HDR sky whose sun a Directional Light gives: Extract Sun)
+        std::optional<bool> removeSunDisc;
         std::array<TexturePlatformSettings, kTextureFamilyCount> platforms;
         // keys this version does not know, kept as they were
         YAML::Node unknown;
@@ -168,6 +180,7 @@ namespace jasperengine::editor {
         TextureImportType resolvedType() const;
         ResolvedTextureSettings resolve(TextureFamily family, const TextureProjectSettings& project) const;
         bool resolvedPixelArt() const { return pixelArt.value_or(false); }
+        TextureImportMode resolvedImportMode() const { return importMode.value_or(TextureImportMode::Flattened); }
         // absent: Point under Pixel Art, else the project's Default Filter Mode
         TextureFilterMode resolvedFilterMode(TextureFilterMode projectDefault) const;
         // absent: the project's Pixels Per Unit

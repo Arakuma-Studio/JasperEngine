@@ -13,10 +13,13 @@
 
 #include "Log.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
+#include "subsystem/GamepadCursor.h"
 #if JASPERENGINE_HTMLUI
 #include "input/InputVirtualControls.h"
 #endif
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -148,6 +151,22 @@ void LuaBinding::registerGameplayClasses(lua_State *L){
         .addVariable("VECTOR2", InputActionType::VECTOR2)
         .endNamespace();
 
+    // the input scheme's names (InputActions.currentScheme == InputScheme.Touch)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("InputScheme")
+        .addVariable("KeyboardMouse", std::string("Keyboard&Mouse"))
+        .addVariable("Gamepad", std::string("Gamepad"))
+        .addVariable("Touch", std::string("Touch"))
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("GamepadFamily")
+        .addVariable("Generic", std::string("Generic"))
+        .addVariable("Xbox", std::string("Xbox"))
+        .addVariable("PlayStation", std::string("PlayStation"))
+        .addVariable("Nintendo", std::string("Nintendo"))
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginClass<InputActionEvent>("InputActionEvent")
         .addProperty("action", &InputActionEvent::getAction)
@@ -250,11 +269,56 @@ void LuaBinding::registerGameplayClasses(lua_State *L){
         .addStaticFunction("getBindingDisplayName", &InputActions::getBindingDisplayName)
         .addStaticFunction("getControlDisplayName", [] (const std::string& path) { return InputActions::getControlDisplayName(path, 0); })
         .addStaticFunction("isControlBound", &InputActions::isControlBound)
+        // the input scheme (docs/mcp/guide/input.md "Input scheme")
+        .addStaticProperty("currentScheme", &InputActions::getCurrentScheme)
+        .addStaticProperty("currentPointer", &InputActions::getCurrentPointer)
+        .addStaticProperty("gamepadFamily", &InputActions::getGamepadFamily)
+        .addStaticProperty("lastGamepad", &InputActions::getLastGamepad)
+        // function(scheme, previous): once per frame that switched the scheme (group names)
+        .addStaticProperty("onSchemeChanged", [] () { return &InputSchemeTracker::onSchemeChanged; },
+                           [] (lua_State* L) { InputSchemeTracker::onSchemeChanged = L; })
+        // forces the scheme from the next frame (InputScheme.Gamepad...); nil: back to the device last used
+        .addStaticFunction("setSchemeOverride", [] (std::optional<std::string> scheme, lua_State* L) {
+            if (!InputActions::setSchemeOverride(scheme.value_or("")))
+                luaL_error(L, "InputActions.setSchemeOverride: '%s' is not a scheme (InputScheme.KeyboardMouse, Gamepad, Touch or nil)",
+                           scheme.value_or("").c_str());
+        })
+        // the forced scheme, nil when not forced
+        .addStaticFunction("getSchemeOverride", [] () -> std::optional<std::string> {
+            const std::string scheme = InputActions::getSchemeOverride();
+            if (scheme.empty())
+                return std::nullopt;
+            return scheme;
+        })
+        // the display name of the action's first binding for the scheme (default: the current one): "Space",
+        // "Cross", "Touch"; "" when it has none
+        .addStaticFunction("getActionDisplayName", [] (const std::string& action, std::optional<std::string> scheme) {
+            return InputActions::getActionDisplayName(action, scheme.value_or(""));
+        })
+        // the glyph key of that binding ("keyboard/space", "gamepad/playstation/cross"; docs/mcp/guide/input.md)
+        .addStaticFunction("getActionGlyph", [] (const std::string& action, std::optional<std::string> scheme) {
+            return InputActions::getActionGlyph(action, scheme.value_or(""));
+        })
+        .addStaticFunction("getBindingGlyph", &InputActions::getBindingGlyph)
 #if JASPERENGINE_HTMLUI
         // on-screen controls: HTML UI elements as virtual/<name> sticks and buttons
         .addStaticFunction("bindVirtualStick", &InputVirtualControls::bindStick)
         .addStaticFunction("bindVirtualButton", &InputVirtualControls::bindButton)
         .addStaticFunction("unbindVirtualControl", &InputVirtualControls::unbind)
 #endif
+        .endClass();
+
+    // the gamepad cursor (UIDocument.gamepadCursor; Project Settings > Input > Gamepad Cursor)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<GamepadCursor>("GamepadCursor")
+        // it shows: the scheme is Gamepad and a shown Gamepad Cursor document exists
+        .addStaticFunction("isActive", &GamepadCursor::isActive)
+        // canvas px; setting it warps the cursor (also while inactive: the next activation starts there)
+        .addStaticProperty("position", &GamepadCursor::getPosition, &GamepadCursor::setPosition)
+        // false hides it and leaves the sticks, A, B and the d-pad to the game and the focus
+        .addStaticProperty("enabled", &GamepadCursor::isEnabled, &GamepadCursor::setEnabled)
+        // canvas px/s at a 1080 px tall canvas, and wheel lines/s: this Play's values (the project's at start)
+        .addStaticProperty("speed", &GamepadCursor::getSpeed, &GamepadCursor::setSpeed)
+        .addStaticProperty("scrollSpeed", &GamepadCursor::getScrollSpeed, &GamepadCursor::setScrollSpeed)
         .endClass();
 }

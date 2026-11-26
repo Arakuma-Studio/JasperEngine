@@ -61,6 +61,7 @@
 #include "component/ImageComponent.h"
 #include "component/Light2DComponent.h"
 #include "component/LightComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/ProgressbarComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/ScriptComponent.h"
@@ -2041,6 +2042,8 @@ TEST(PropertyRegistryCatalog, EveryRowIsACatalogPropertyOfACompatibleType){
     scene.addComponent<SkyboxComponent>(e, {});
     // S81 R40's rows: the Title Art Renderer's live values
     scene.addComponent<TitleArtRendererComponent>(e, {});
+    // S94 F22's rows: the Outline's colour and width
+    scene.addComponent<OutlineComponent>(e, {});
     size_t checked = 0;
     for (const anim::AnimatableProperty& row : anim::animatableProperties()){
         const std::string component = row.component;

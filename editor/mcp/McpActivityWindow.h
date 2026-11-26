@@ -8,7 +8,8 @@ namespace jasperengine::editor::mcp {
     // Window > MCP > MCP Server: the embedded MCP server's status (stdio / HTTP, connected
     // clients), the HTTP switch and port, the HTTP bearer token (copy, connect command, new
     // token) and the "Allow changes" switch for HTTP clients (all persisted in settings.yaml),
-    // and the recent tool calls with their result and duration.
+    // the recent tool calls with their result and duration, the calls and error rate per tool, and
+    // Log Calls To File (the call log, McpCallLog.h).
     class McpActivityWindow {
     public:
         static constexpr const char* WINDOW_NAME = "MCP Server";
@@ -28,6 +29,9 @@ namespace jasperengine::editor::mcp {
 
         void drawStatus();
         void drawActivity();
+        void drawCallLog();
+        void drawToolCounts();
+        void drawCalls();
     };
 
 }

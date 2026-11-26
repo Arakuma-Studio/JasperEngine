@@ -243,7 +243,10 @@ Json ModelAudit::recordJson(const ModelCookRecord& r){
 Json ModelAudit::resolvedJson(const ResolvedModelSettings& r){
     return {{"optimize_mesh", optimizeMeshName(r.optimizeMesh)}, {"mesh_compression", meshCompressionName(r.meshCompression)},
             {"weld_vertices", r.weldVertices}, {"index_format", indexFormatName(r.indexFormat)}, {"read_write", modelReadWriteName(r.readWrite)},
-            {"normals", modelNormalsName(r.normals)}, {"smoothing_angle", r.smoothingAngle}, {"generate_lods", generateLodsName(r.generateLods)},
+            {"normals", modelNormalsName(r.normals)}, {"smoothing_angle", r.smoothingAngle},
+            {"normals_weighting", normalsWeightingName(r.normalsWeighting.value_or(NormalsWeighting::AreaAndAngle))},
+            {"smoothness_source", smoothnessSourceName(r.smoothnessSource)}, {"tangents", modelTangentsName(r.tangents)},
+            {"generate_lods", generateLodsName(r.generateLods)},
             {"lod_count", r.lodCount}, {"lod_reduction", lodReductionName(r.lodReduction)}, {"ship_source", r.shipSource}};
 }
 

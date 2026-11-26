@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "PlayerModules.h"
+#include "dialogue/DialogueSwitch.h"
+#include "input/InputScriptSwitch.h"
 #include "terrain/TerrainEditModule.h"
 
 #include "component/AudioSourceComponent.h"
@@ -13,7 +15,7 @@
 using namespace jasperengine;
 
 const std::vector<std::string>& player::allModules() {
-    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart"};
+    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue", "inputscripts"};
     return modules;
 }
 
@@ -53,6 +55,12 @@ std::vector<std::string> player::builtModules() {
 #if JASPERENGINE_TERRAIN_EDIT
     modules.push_back("terrainedit");
 #endif
+#if JASPERENGINE_DIALOGUE_ENABLED
+    modules.push_back("dialogue");
+#endif
+#if JASPERENGINE_INPUT_SCRIPTS_ENABLED
+    modules.push_back("inputscripts");
+#endif
     return modules;
 }
 
@@ -74,5 +82,7 @@ std::string player::moduleDisplayName(const std::string& module) {
     if (module == "voxel") return "Voxel Volumes";
     if (module == "terrainworld") return "Terrain World";
     if (module == "terrainedit") return "runtime terrain edits";
+    if (module == "dialogue") return "dialogue graphs and the Dialogue Runner";
+    if (module == "inputscripts") return "input scripts and the input recorder (--input-script, InputRecording, InputReplay)";
     return module;
 }

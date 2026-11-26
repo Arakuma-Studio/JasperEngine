@@ -9,6 +9,7 @@
 #include "AnimProperty.h"
 
 #include "AnimCommon.h"
+#include "AnimSvg.h"
 #include "object/ui/UIElementInternal.h"
 
 #include <RmlUi/Core/Element.h>
@@ -178,6 +179,14 @@ namespace {
         Rml::Element* get() const{ return element.get(); }
 
         AnimTweenType getTweenType(const std::string& property) const override{
+            Rml::Element* current = element.get();
+            const bool cssReserved = property == "opacity" || property == "rotate" || property == "overflow" || property == "color";
+            if (current && !cssReserved && current->HasAttribute(property)){
+                for (Rml::Element* ancestor = current; ancestor; ancestor = ancestor->GetParentNode()){
+                    if (ancestor->GetTagName() == "svg")
+                        return AnimTweenType::ATTRIBUTE;
+                }
+            }
             if (isTransformName(property))
                 return AnimTweenType::TRANSFORM;
             if (startsWith(property, "--"))
@@ -243,6 +252,10 @@ namespace {
                     setObjectProperty(e, property, value);
                     break;
                 case AnimTweenType::ATTRIBUTE:
+                    if (property == "draw" && e->HasAttribute("data-anime-drawable")){
+                        AnimSvg::setDraw(UIElementAccess::wrap(e), writeText(value));
+                        break;
+                    }
                     e->SetAttribute(property, writeText(value));
                     break;
                 case AnimTweenType::TRANSFORM:
@@ -276,6 +289,8 @@ namespace {
                 case AnimTweenType::ATTRIBUTE:
                     if (hadNoInlineValue){
                         e->RemoveAttribute(property);
+                    } else if (property == "draw" && e->HasAttribute("data-anime-drawable")){
+                        AnimSvg::setDraw(UIElementAccess::wrap(e), original.toString());
                     } else {
                         e->SetAttribute(property, original.toString());
                     }

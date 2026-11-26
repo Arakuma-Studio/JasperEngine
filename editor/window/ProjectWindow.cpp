@@ -3,6 +3,12 @@
 
 #include "util/CppIdentifier.h"
 #include "pixelart/BitmapFontCreate.h"
+#include "localization/StringTableDocument.h"
+#include "dialogue/DialogueEditor.h"
+#include "dialogue/DialogueKind.h"
+#include "dialogue/DialogueProgram.h"
+#include "localization/StringTableEditCmd.h"
+#include "window/LocalizationTablesWindow.h"
 #include "animation/AnimatorAssetDocument.h"
 #include "window/NoiseGraphWindow.h"
 #include "window/PoseAnimationWindow.h"
@@ -32,6 +38,7 @@
 #include "DocumentFile.h"
 #include "audio/AudioMixerDocument.h"
 #include "audio/SoundEventDocument.h"
+#include "dataasset/DataAssets.h"
 #include "window/HumanoidConvertDialog.h"
 #include "util/BidiText.h"
 
@@ -130,6 +137,7 @@
 #include "util/ProjectUtils.h"
 #include "htmlui/VideoImporter.h"
 #include "EditorHost.h"
+#include "unity/UnityControllerImport.h"
 
 #include "imgui_internal.h"
 
@@ -1318,6 +1326,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.40f, 0.20f, 0.60f, 1.0f));
         case FileType::COLOR_LUT:
             return ImGui::GetColorU32(ImVec4(0.06f, 0.46f, 0.43f, 1.0f));
+        case FileType::IES_PROFILE:
+            return ImGui::GetColorU32(ImVec4(0.95f, 0.78f, 0.25f, 1.0f));
         case FileType::POSE_ANIMATION:
             return ImGui::GetColorU32(ImVec4(0.23f, 0.43f, 0.65f, 1.0f));
         case FileType::HUMANOID:
@@ -1405,6 +1415,10 @@ void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
             renderNoiseGraphCreateMenu(label, directory);
             continue;
         }
+        if (item.kind == AssetCreateKind::DataAsset) {
+            renderDataAssetCreateMenu(label, directory);
+            continue;
+        }
         const bool chosen = ImGui::MenuItem(label.c_str(), nullptr, false, refused.empty());
         uiBuilding.contextMenu.push_back({item.label, lastItemRect()});
         if (!refused.empty()) {
@@ -1426,6 +1440,33 @@ void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
                 }
             }
             ImGui::EndMenu();
+        }
+        ImGui::EndMenu();
+    }
+    // Dialogue (dialogue-graphs.md R22): an entry `start` wired to an empty line, namespace from the name
+    if (ImGui::MenuItem(ICON_FA_COMMENTS " Dialogue")) {
+        assetsCreateDialogue(directory);
+        ImGui::CloseCurrentPopup();
+    }
+    // Localization > String Table (game-ui-localization.md R29): namespace from the name, source
+    // language from the project default; one undo step
+    if (ImGui::BeginMenu(ICON_FA_LANGUAGE " Localization")) {
+        if (ImGui::MenuItem("String Table")) {
+            fs::path owner = directory / "New String Table.stringtable";
+            for (int n = 1; fs::exists(owner); n++) owner = directory / ("New String Table " + std::to_string(n) + ".stringtable");
+            l10n::StringTableSet set;
+            std::string error;
+            std::string ns = l10n::namespaceFromStem(owner.stem().string());
+            for (int n = 2; !l10n::namespaceOwner(project->getProjectPath(), ns).empty(); n++) {
+                ns = l10n::namespaceFromStem(owner.stem().string()) + "_" + std::to_string(n);
+            }
+            if (!l10n::createTable(project->getProjectPath(), owner, ns, project->getLocalizationSettings().effectiveDefault(), set, error) ||
+                    !l10n::commitSet(project, nullptr, set, "Create String Table " + set.table.ns, &error)) {
+                Backend::getApp().registerAlert("Create String Table", error);
+            } else {
+                Backend::getApp().getLocalizationTablesWindow()->open(owner);
+            }
+            ImGui::CloseCurrentPopup();
         }
         ImGui::EndMenu();
     }
@@ -3287,6 +3328,8 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }else if (Util::isColorLutFile(fileEntry.extension)){
             fileEntry.type = FileType::COLOR_LUT;
             fileEntry.icon = lutIcon.getRender();
+        }else if (Util::isIesFile(fileEntry.extension)){
+            fileEntry.type = FileType::IES_PROFILE;
         }else if (Util::isPoseAnimationFile(fileEntry.extension)){
             fileEntry.type = FileType::POSE_ANIMATION;
             fileEntry.icon = poseAnimationIcon.getRender();
@@ -3741,14 +3784,45 @@ void editor::ProjectWindow::duplicateSelection() {
     }
 }
 
+void editor::ProjectWindow::importUnityAnimations(const std::vector<fs::path>& files, const fs::path& directory) {
+    for (const fs::path& file : files) {
+        unity::AssetImportOptions options;
+        options.file = file;
+        options.dest = unity::freeImportPath(directory, file);
+        const unity::AssetImportResult result = unity::importUnityAnimationIntoProject(project, options);
+        const std::string name = editor::FileUtils::pathToUtf8(file.filename());
+        if (!result.ok) {
+            Out::error("Import Unity Animation: %s: %s", name.c_str(), result.error.c_str());
+            continue;
+        }
+        Out::info("Imported Unity %s %s as %s (%d file(s))", result.report.value("kind", std::string()).c_str(), name.c_str(),
+                  result.report.value("path", std::string()).c_str(), (int)result.files.size());
+        for (const char* list : {"unmapped", "notes"}) {
+            if (!result.report.contains(list)) continue;
+            for (const nlohmann::json& item : result.report[list]) {
+                const std::string what = item.value("what", item.value("binding", item.value("code", std::string())));
+                const std::string why = item.value("reason", item.value("message", std::string()));
+                Out::warning("%s: %s: %s", name.c_str(), what.c_str(), why.c_str());
+            }
+        }
+    }
+    scanDirectory(currentPath);
+}
+
 void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& sourcePaths, const fs::path& targetDirectory) {
     std::vector<std::string> validPaths;
     std::vector<fs::path> videos;
+    std::vector<fs::path> unityAssets;
 
     for (const auto& sourcePath : sourcePaths) {
         fs::path source = fs::path(sourcePath).lexically_normal();
 
         std::error_code ec;
+        // a Unity .anim / .controller / .mask: the engine reads JSON, so the import is offered
+        if (fs::is_regular_file(source, ec) && unity::isUnityAnimationAsset(source)) {
+            unityAssets.push_back(source);
+            continue;
+        }
         // a video the engine does not play is converted (FFmpeg), not copied (phase 6)
         if (fs::is_regular_file(source, ec) && htmlui::VideoImporter::isVideoFile(source) && !htmlui::VideoImporter::isPlayable(source)) {
             videos.push_back(source);
@@ -3768,6 +3842,23 @@ void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& 
 
     if (!videos.empty()) {
         importVideos(videos, targetDirectory);
+    }
+
+    if (!unityAssets.empty()) {
+        std::string names;
+        for (const fs::path& file : unityAssets) names += (names.empty() ? "" : ", ") + editor::FileUtils::pathToUtf8(file.filename());
+        editor::getEditorHost().registerConfirmAlert(
+            "Import Unity Animation",
+            names + (unityAssets.size() == 1 ? " is a Unity asset" : " are Unity assets") +
+                " (YAML), which JasperEngine does not read. Import as JasperEngine assets (the clips and masks a controller uses come along)? "
+                "No copies the files as they are.",
+            [this, unityAssets, targetDirectory]() { importUnityAnimations(unityAssets, targetDirectory); },
+            [this, unityAssets, targetDirectory]() {
+                std::vector<std::string> raw;
+                for (const fs::path& file : unityAssets) raw.push_back(file.string());
+                project->getProjectCommandHistory()->addCommand(new CopyFileCmd(project, raw, targetDirectory.string(), true));
+                scanDirectory(currentPath);
+            });
     }
 
     if (validPaths.empty()) {
@@ -5234,6 +5325,27 @@ void editor::ProjectWindow::assetsCreateProceduralMaterial(const fs::path& direc
     selectCreated(directory, relative.filename().string(), true);
 }
 
+void editor::ProjectWindow::assetsCreateDialogue(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(directory, "New Dialogue", ".dialogue");
+    const fs::path file = project->getProjectPath() / relative;
+    dialogue::registerDialogueKind();
+    graph::Graph created;
+    created.kind = dialogue::KIND_ID;
+    created.kindVersion = 1;
+    dialogues::prepareNew(project, file, created, true);
+    std::string error;
+    if (!ProjectFileWrites::writeUndoable(project, {{file, graph::save(created)}}, error)) {
+        Backend::getApp().registerAlert("Create Dialogue", error);
+        return;
+    }
+    selectCreated(directory, relative.filename().string(), true);
+}
+
 void editor::ProjectWindow::assetsCreateAnimationClip(const fs::path& directory) {
     if (!fs::is_directory(directory)) {
         Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
@@ -5412,6 +5524,60 @@ void editor::ProjectWindow::renderNoiseGraphCreateMenu(const std::string& label,
         }
     }
     ImGui::EndMenu();
+}
+
+void editor::ProjectWindow::renderDataAssetCreateMenu(const std::string& label, const fs::path& directory) {
+    const bool open = ImGui::BeginMenu(label.c_str());
+    UIProbe::item("project.create.dataasset");
+    if (!open) return;
+    const std::vector<DataAssets::Class> classes = DataAssets::listClasses(project->getLuaPath());
+    if (classes.empty()) {
+        ImGui::MenuItem("No data class", nullptr, false, false);
+        ImGui::SetItemTooltip("A data class is a Lua module whose first lines hold ---@dataasset; its properties are the fields of its assets");
+    }
+    for (const DataAssets::Class& dataClass : classes) {
+        if (ImGui::MenuItem(dataClass.name.c_str())) {
+            assetsCreateDataAsset(dataClass.name, directory);
+            ImGui::CloseCurrentPopup();
+        }
+        UIProbe::item("project.create.dataasset." + dataClass.name);
+        ImGui::SetItemTooltip("%s", dataClass.luaPath.c_str());
+    }
+    ImGui::EndMenu();
+}
+
+void editor::ProjectWindow::assetsCreateDataAsset(const std::string& className, const fs::path& directory) {
+    std::error_code ec;
+    if (!fs::is_directory(directory, ec)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    // a game loads assets from its assets folder only
+    if (!project->isInsideAssetsPath(directory / "x")) {
+        Backend::getApp().registerAlert("Create Data Asset", "A Data Asset goes in the assets folder (" +
+                                        FileUtils::pathToUtf8(project->getAssetsPath()) + "): games load nothing else.");
+        return;
+    }
+    DataAssets::Class dataClass;
+    std::vector<ScriptProperty> schema;
+    std::string error;
+    if (!DataAssets::findClass(project->getLuaPath(), className, dataClass)) {
+        error = "No data class '" + className + "': a Lua module whose first lines hold ---@dataasset.";
+    } else if (!DataAssets::readSchema(dataClass, schema, error)) {
+        error = dataClass.luaPath + ": " + error;
+    }
+    if (!error.empty()) {
+        Backend::getApp().registerAlert("Create Data Asset", error);
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(directory, "New " + className, DataAsset::EXTENSION);
+    if (!DataAssets::commit(project, project->getProjectPath() / relative, DataAssets::create(project, className, schema),
+                            "Create " + className, "", &error)) {
+        Backend::getApp().registerAlert("Create Data Asset", error);
+        return;
+    }
+    selectCreated(directory, relative.filename().string(), true);
 }
 
 void editor::ProjectWindow::assetsCreateNoiseGraph(const std::string& presetId, const fs::path& directory) {
@@ -5714,6 +5880,11 @@ void editor::ProjectWindow::assetsOpenSelected() {
 }
 
 void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& filePath) {
+    // a String Table opens the Localization Tables window on it (game-ui-localization.md R29)
+    if (filePath.extension() == l10n::STRINGTABLE_EXTENSION) {
+        Backend::getApp().getLocalizationTablesWindow()->open(filePath);
+        return;
+    }
     if (file.type == FileType::IMAGE) {
         imageViewerWindow->openFile(filePath);
     } else if (file.type == FileType::SCENE) {

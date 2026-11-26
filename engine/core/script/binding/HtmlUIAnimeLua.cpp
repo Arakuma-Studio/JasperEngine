@@ -22,6 +22,7 @@
 
 #include "Log.h"
 #include "htmlui/anim/AnimLua.h"
+#include "htmlui/anim/AnimText.h"
 #include "htmlui/anim/Anime.h"
 #include "htmlui/anim/AnimCommon.h"
 #include "object/ui/UIDocument.h"
@@ -56,7 +57,8 @@ namespace {
     // which ends long before an animation callback runs: LuaBinding::mainThread)
     class LuaRefHolder {
     public:
-        LuaRefHolder(lua_State* from, int index): L(LuaBinding::mainThread(from)){
+        LuaRefHolder(lua_State* from, int index): L(LuaBinding::mainThread(from)),
+            previewContextKey(LuaBinding::getPreviewContextKey()){
             lua_pushvalue(from, index);
             ref = luaL_ref(from, LUA_REGISTRYINDEX);
             animeLiveRefs().insert(this);
@@ -88,9 +90,11 @@ namespace {
             return true;
         }
         lua_State* state() const{ return L; }
+        bool belongsToPreview(int key) const{ return previewContextKey == key; }
 
     private:
         lua_State* L;
+        int previewContextKey;
         int ref = LUA_NOREF;
     };
 
@@ -132,6 +136,7 @@ namespace {
 
         const void* getIdentity() const override{ return identity; }
         bool isAlive() const{ return table->isAlive(); }
+        bool isValid() const override{ return isAlive(); }
         bool push(lua_State* onto) const{ return table->push(onto); }
 
         AnimRawValue getValue(const std::string& property, AnimTweenType type, AnimRawValue* inlineValue) override{
@@ -499,6 +504,18 @@ namespace {
         return 1;
     }
 
+    void splitTextImpl(lua_State* L){
+        AnimTargetList targets;
+        toTargets(L, 1, UIElement(), targets);
+        const AnimParam params = lua_type(L, 2) == LUA_TTABLE ? toParam(L, 2, "") : AnimParam::object();
+        if (!luabridge::push(L, Anime::splitText(targets, params))) lua_pushnil(L);
+    }
+
+    int luaSplitText(lua_State* L){
+        splitTextImpl(L);
+        return 1;
+    }
+
     bool createTimelineImpl(lua_State* L){
         AnimParam params = lua_type(L, 1) == LUA_TTABLE ? toParam(L, 1, "") : AnimParam::object();
         if (!checkClock(L, params))
@@ -572,6 +589,47 @@ namespace {
 
     int luaStagger(lua_State* L){
         staggerImpl(L);
+        return 1;
+    }
+
+    int luaCreateDrawable(lua_State* L){
+        AnimTargetList targets;
+        toTargets(L, 1, UIElement(), targets);
+        const double start = lua_isnumber(L, 2) ? (double)lua_tonumber(L, 2) : 0;
+        const double end = lua_isnumber(L, 3) ? (double)lua_tonumber(L, 3) : 0;
+        const AnimTargetList drawable = Anime::createDrawable(targets, start, end);
+        lua_createtable(L, (int)drawable.size(), 0);
+        for (size_t i = 0; i < drawable.size(); ++i){
+            pushTarget(L, drawable[i]);
+            lua_rawseti(L, -2, (lua_Integer)i + 1);
+        }
+        return 1;
+    }
+
+    int luaMorphTo(lua_State* L){
+        AnimTargetList targets;
+        toTargets(L, 1, UIElement(), targets);
+        const double precision = lua_isnumber(L, 2) ? (double)lua_tonumber(L, 2) : 0.33;
+        const AnimParam value = Anime::morphTo(targets, precision);
+        if (!value.isFunction() || !luabridge::push(L, AnimStaggerFunction(value.asFunction())))
+            lua_pushnil(L);
+        return 1;
+    }
+
+    int luaCreateMotionPath(lua_State* L){
+        AnimTargetList targets;
+        toTargets(L, 1, UIElement(), targets);
+        const double offset = lua_isnumber(L, 2) ? (double)lua_tonumber(L, 2) : 0;
+        const AnimParam path = Anime::createMotionPath(targets, offset);
+        if (!path.isObject()){
+            lua_pushnil(L);
+            return 1;
+        }
+        lua_createtable(L, 0, 3);
+        for (const auto& member : path.getMembers()){
+            if (luabridge::push(L, AnimStaggerFunction(member.second.asFunction())))
+                lua_setfield(L, -2, member.first.c_str());
+        }
         return 1;
     }
 
@@ -650,6 +708,28 @@ namespace {
         return 1;
     }
 
+    void pushFunctionValue(lua_State* L, const AnimParam& value, int depth = 0){
+        if (depth > 16){ lua_pushnil(L); return; }
+        if (value.isNumber()) lua_pushnumber(L, value.asNumber());
+        else if (value.isString()) lua_pushlstring(L, value.asString().data(), value.asString().size());
+        else if (value.isBool()) lua_pushboolean(L, value.asBool());
+        else if (value.isArray()){
+            lua_createtable(L, (int)value.size(), 0);
+            for (size_t i = 0; i < value.size(); ++i){
+                pushFunctionValue(L, value.at(i), depth + 1);
+                lua_rawseti(L, -2, (lua_Integer)i + 1);
+            }
+        } else if (value.isObject()){
+            lua_createtable(L, 0, (int)value.size());
+            for (const auto& member : value.getMembers()){
+                pushFunctionValue(L, member.second, depth + 1);
+                lua_setfield(L, -2, member.first.c_str());
+            }
+        } else if (value.isEase()){
+            pushEase(L, AnimEaseFunction(value.asEase()));
+        } else lua_pushnil(L);
+    }
+
     // stagger(target, index, total): the value for a target (index 0-based, as Anime)
     void staggerCallImpl(lua_State* L){
         AnimStaggerFunction* stagger = userdataOf<AnimStaggerFunction>(L, 1);
@@ -669,14 +749,8 @@ namespace {
         args.index = (int)numberArg(L, 3, 0);
         args.total = total;
         args.targets = &all;
-        AnimParam result = stagger->getFunction()(args);
-        if (result.isNumber()){
-            lua_pushnumber(L, result.asNumber());
-        } else if (result.isString()){
-            lua_pushstring(L, result.asString().c_str());
-        } else {
-            lua_pushnil(L);
-        }
+        const AnimParam result = stagger->getFunction()(args);
+        pushFunctionValue(L, result);
     }
 
     int luaStaggerCall(lua_State* L){
@@ -1202,6 +1276,21 @@ size_t AnimLua::getLiveLuaRefs(){
     return count;
 }
 
+void AnimLua::releasePreviewRefs(int contextKey){
+    if (contextKey < 0) return;
+    // A table can hold its animation userdata while the animation's target and callbacks
+    // hold registry references to that table. Detaching the timer alone cannot break it.
+    for (LuaRefHolder* ref : animeLiveRefs()){
+        if (ref->belongsToPreview(contextKey)) ref->release();
+    }
+    auto& targets = tableTargets();
+    for (auto it = targets.begin(); it != targets.end();){
+        const auto target = it->second.lock();
+        if (!target || !target->isAlive()) it = targets.erase(it);
+        else ++it;
+    }
+}
+
 void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
@@ -1212,6 +1301,18 @@ void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
             tableTargets().clear();
         });
     }
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimText>("AnimeTextSplitter")
+        .addProperty("chars", &AnimText::getChars)
+        .addProperty("words", &AnimText::getWords)
+        .addProperty("lines", &AnimText::getLines)
+        .addProperty("target", &AnimText::getTarget)
+        .addProperty("ready", &AnimText::isReady)
+        .addFunction("split", &AnimText::split)
+        .addFunction("refresh", &AnimText::refresh)
+        .addFunction("revert", &AnimText::revert)
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<AnimEaseFunction>("AnimeEase")
@@ -1325,10 +1426,14 @@ void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<Anime>("anime")
         .addStaticFunction("animate", &luaAnimate)
+        .addStaticFunction("splitText", &luaSplitText)
         .addStaticFunction("createTimeline", &luaCreateTimeline)
         .addStaticFunction("createTimer", &luaCreateTimer)
         .addStaticFunction("createSpring", &luaCreateSpring)
         .addStaticFunction("spring", &luaCreateSpring)
+        .addStaticFunction("createDrawable", &luaCreateDrawable)
+        .addStaticFunction("morphTo", &luaMorphTo)
+        .addStaticFunction("createMotionPath", &luaCreateMotionPath)
         .addStaticFunction("stagger", &luaStagger)
         .addStaticFunction("cubicBezier", &luaCubicBezier)
         .addStaticFunction("steps", &luaSteps)
@@ -1339,6 +1444,15 @@ void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
     // anime.eases and anime.utils: plain tables on the class table
     lua_getglobal(L, "anime");
     if (lua_istable(L, -1)){
+        lua_pushstring(L, "svg");
+        lua_createtable(L, 0, 3);
+        lua_pushcfunction(L, luaCreateDrawable);
+        lua_setfield(L, -2, "createDrawable");
+        lua_pushcfunction(L, luaMorphTo);
+        lua_setfield(L, -2, "morphTo");
+        lua_pushcfunction(L, luaCreateMotionPath);
+        lua_setfield(L, -2, "createMotionPath");
+        lua_rawset(L, -3);
         lua_pushstring(L, "eases");
         pushEasesTable(L);
         lua_rawset(L, -3);

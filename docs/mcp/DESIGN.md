@@ -104,7 +104,8 @@ editor/mcp/
   McpSchema.{h,cpp}       JSON Schema builders (object, vec3, entityRef...)
   McpToolGroups.{h,cpp}   the tool groups tools/list hides until a session enables them
   McpInstructions.cpp     const char* mcpServerInstructions(): the agent guide text
-  McpActivityWindow.{h,cpp}  editor panel: server status, connected clients, call log
+  McpActivityWindow.{h,cpp}  editor panel: server status, connected clients, recent calls, per-tool counts
+  McpCallLog.{h,cpp}      the opt-in argument-free JSONL call log (JASPER_MCP_LOG, Log Calls To File)
   McpJobs.{h,cpp}         long operations (export, build, compile, play startup) as jobs
   McpLaunch.{h,cpp}       `jasperengine-editor mcp` command line, stdio fd setup, --headless Xvfb
   McpAutoSync.{h,cpp}     picks up files the agent edited on disk before every tools/call (the watcher's journal)
@@ -204,10 +205,18 @@ class McpCall {
 };
 ```
 
-A call completes exactly once. Exceptions thrown by a handler become `fail()`.
+A call completes exactly once. Exceptions thrown by a handler become `fail()`: a
+`runtime_error`'s message reaches the agent, while the `logic_error` family, `bad_alloc`,
+`bad_function_call`, unchecked JSON lookups and non-`std::exception` throws are the editor's
+faults, answered with fixed advice and a fault id that `editor.log` holds with the detail
+(`McpServer::failFromException`). A handler reports an argument problem with `fail()` or a
+`runtime_error`, never a `logic_error`.
 Errors that are the agent's fault (bad args, unknown entity) are tool results with
 `isError: true` and a message that says how to fix it (list the valid choices), never
-JSON-RPC errors. JSON-RPC errors are only for protocol problems (unknown tool, bad params
+JSON-RPC errors. A misspelled tool, argument, document or resource names the nearest valid name
+("did you mean 'x'?", `NearestIdentifier` in `engine/core/util/NearestName.h`, which also matches
+camelCase for snake_case); a handler's error about a key of a closed object or an enum value gets
+the nearest declared one after its mention of it (`McpRegistry::suggestNearestNames`). JSON-RPC errors are only for protocol problems (unknown tool, bad params
 shape).
 
 Long operations (export/build players, C++ script compile, play startup with a C++ build,

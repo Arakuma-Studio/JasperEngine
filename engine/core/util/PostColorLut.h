@@ -89,7 +89,8 @@ namespace jasperengine{
         static bool loadStrip(const std::string& path, Strip& strip, std::string* error = nullptr);
         // a strip as the 3D CubeLut of side N it holds (fromStrip, sRGB display colour); an
         // empty LUT for an empty or malformed strip
-        static void stripToCubeLut(const Strip& strip, CubeLut& lut);
+        // (flipGreen: green 0 is the top row, the strip's rows read upside down; S94 F20)
+        static void stripToCubeLut(const Strip& strip, CubeLut& lut, bool flipGreen = false);
     };
 
 }

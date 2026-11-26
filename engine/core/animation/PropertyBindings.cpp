@@ -20,8 +20,11 @@
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/HitStopExemptComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
 #include "component/SplineAnimateComponent.h"
@@ -61,6 +64,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/SimulationCullingComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
@@ -740,6 +744,7 @@ namespace {
         rows.push_back(enabledRow<LatticeModifierComponent>("latticemodifier"));
         rows.push_back(enabledRow<LatticeFollowerComponent>("latticefollower"));
         rows.push_back(enabledRow<VertexAnimatorComponent>("vertexanimator"));
+        rows.push_back(enabledRow<VertexColorsComponent>("vertexcolors"));
         rows.push_back(enabledRow<ShadowCaster2DComponent>("shadowcaster2d"));
         rows.push_back(enabledRow<OnScreenStickComponent>("onscreenstick"));
         rows.push_back(enabledRow<OnScreenButtonComponent>("onscreenbutton"));
@@ -752,6 +757,12 @@ namespace {
         rows.push_back(enabledRow<CapsuleShadowCasterComponent>("capsuleshadowcaster"));
         rows.push_back(enabledRow<PixelPerfectCameraComponent>("pixelperfectcamera"));
         rows.push_back(enabledRow<SortingGroupComponent>("sortinggroup"));
+        // the Outline (S94 F22): QuickOutline's OutlineColor and OutlineWidth
+        rows.push_back(enabledRow<OutlineComponent>("outline"));
+        rows.push_back(fieldRow<OutlineComponent, Vector4, &OutlineComponent::color>("outline", "color", "Outline Color", "OutlineColor", C4, SRGB));
+        rows.push_back(fieldRow<OutlineComponent, float, &OutlineComponent::width>("outline", "width", "Outline Width", "OutlineWidth", F));
+        // the Sprite Skin (S94 F49): its Inspector checkbox, as every component's with one
+        rows.push_back(enabledRow<SpriteSkinComponent>("spriteskin"));
         rows.push_back(enabledRow<SpriteBatchComponent>("spritebatch"));
         rows.push_back(enabledRow<HitStopExemptComponent>("hitstopexempt"));
         rows.push_back(enabledRow<TilemapLayerComponent>("tilemaplayer"));
@@ -776,6 +787,7 @@ namespace {
         rows.push_back(enabledRow<SplineInstantiateComponent>("splineinstantiate"));
         rows.push_back(enabledRow<SplineAnimateComponent>("splineanimate"));
         rows.push_back(enabledRow<AnimatorComponent>("animator"));
+        rows.push_back(enabledRow<SimulationCullingComponent>("simulationculling"));
 
         // the Title Art Renderer (S81 R40): its live layers' values and its numeric Exposed
         // parameters; S85's titleart.animationTime and animationSpeed

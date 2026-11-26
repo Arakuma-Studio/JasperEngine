@@ -1,6 +1,7 @@
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/Core.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
+#include "../../Include/RmlUi/Core/Math.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/RenderInterface.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
@@ -54,6 +55,7 @@ void RenderManager::PrepareRender(Vector2i dimensions)
 	RMLUI_ASSERT(state.transform == default_state.transform);
 	RMLUI_ASSERTMSG(render_stack.empty(), "Unbalanced render stack detected, ensure every PushLayer call has a corresponding call to PopLayer.");
 	RMLUI_ASSERTMSG(clip_roots.empty(), "Unbalanced clip roots detected, ensure every PushClipRoot call has a corresponding call to PopClipRoot.");
+	RMLUI_ASSERTMSG(shape_clips.empty(), "Unbalanced shape clips detected, ensure every PushShapeClip call has a corresponding call to PopShapeClip.");
 	RMLUI_ASSERTMSG(layer_regions.empty(), "Unbalanced layer regions detected, ensure every PushLayer call has a corresponding call to PopLayer.");
 #endif
 
@@ -251,13 +253,45 @@ bool RenderManager::SupportsGradientPrimitive(const CompiledShader& shader, Comp
 	return true;
 }
 
+Rectanglef RenderManager::AxisAlignedTransform::Map(Rectanglef rectangle) const
+{
+	const Vector2f a = rectangle.TopLeft() * scale + offset;
+	const Vector2f b = rectangle.BottomRight() * scale + offset;
+	return Rectanglef::FromCorners(Math::Min(a, b), Math::Max(a, b));
+}
+
+bool RenderManager::GetAxisAlignedTransform(const Matrix4f* transform, AxisAlignedTransform& out)
+{
+	out = AxisAlignedTransform();
+	if (!transform)
+		return true;
+	// (as the renderer's batching tells a scissor-safe transform: the images of the origin and the unit axes)
+	const Vector4f p0 = (*transform) * Vector4f(0.f, 0.f, 0.f, 1.f);
+	const Vector4f px = (*transform) * Vector4f(1.f, 0.f, 0.f, 1.f);
+	const Vector4f py = (*transform) * Vector4f(0.f, 1.f, 0.f, 1.f);
+	if (Math::Absolute(p0.w) < 1e-6f || Math::Absolute(px.w - p0.w) > 1e-6f || Math::Absolute(py.w - p0.w) > 1e-6f)
+		return false;
+	const float w = 1.f / p0.w;
+	if (Math::Absolute(px.y - p0.y) * Math::Absolute(w) > 1e-6f || Math::Absolute(py.x - p0.x) * Math::Absolute(w) > 1e-6f)
+		return false;
+	out.scale = Vector2f((px.x - p0.x) * w, (py.y - p0.y) * w);
+	out.offset = Vector2f(p0.x * w, p0.y * w);
+	return true;
+}
+
 bool RenderManager::IsOutsideScissor(Rectanglef rectangle)
 {
 	if (!state.scissor_region.Valid() || !render_interface->CullsOffscreenPaint())
 		return false;
 	static const Matrix4f identity = Matrix4f::Identity();
 	if (state.transform != identity)
-		return false;
+	{
+		// Fork (S92-F3): under a scale and translation, the rectangle where it is drawn
+		AxisAlignedTransform axis_aligned;
+		if (!GetAxisAlignedTransform(&state.transform, axis_aligned))
+			return false;
+		rectangle = axis_aligned.Map(rectangle);
+	}
 	const Rectanglei& scissor = state.scissor_region;
 	return rectangle.Right() <= (float)scissor.Left() || rectangle.Left() >= (float)scissor.Right() || rectangle.Bottom() <= (float)scissor.Top() ||
 		rectangle.Top() >= (float)scissor.Bottom();
@@ -391,8 +425,9 @@ LayerHandle RenderManager::PushLayer()
 
 LayerHandle RenderManager::PushLayer(Rectanglei region)
 {
-	const Rectanglei viewport = Rectanglei::FromSize(viewport_dimensions);
-	if (!region.Valid() || region.Width() <= 0 || region.Height() <= 0 || region.Intersect(viewport) == region)
+	// Fork (S92-F4): a region within the viewport goes to the render interface too, which may size the layer to it
+	// (a layer per element: its passes load and store its own pixels, not the viewport's).
+	if (!region.Valid() || region.Width() <= 0 || region.Height() <= 0)
 		region = Rectanglei::MakeInvalid();
 	return PushLayerInRegion(region);
 }
@@ -457,6 +492,21 @@ void RenderManager::PopClipRoot()
 	RMLUI_ASSERT(!clip_roots.empty());
 	if (!clip_roots.empty())
 		clip_roots.pop_back();
+	ResetClipMemo();
+}
+
+void RenderManager::PushShapeClip(ClipMaskGeometryList masks, Rectanglei bounds)
+{
+	shape_clips.push_back(ShapeClip{std::move(masks), bounds, clip_roots.size()});
+	// (the regions remembered were found without it)
+	ResetClipMemo();
+}
+
+void RenderManager::PopShapeClip()
+{
+	RMLUI_ASSERT(!shape_clips.empty());
+	if (!shape_clips.empty())
+		shape_clips.pop_back();
 	ResetClipMemo();
 }
 

@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: 9f2fe4d9b42d1eaec91693585834766b
 id: 3270106840
 name: Lobes
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

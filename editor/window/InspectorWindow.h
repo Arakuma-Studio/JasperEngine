@@ -80,6 +80,7 @@ namespace jasperengine::editor{
     class AnimationClipDocument;
     class AnimatorAssetDocument;
     class SpriteAtlasInspector;
+    namespace recordinput { class InputRecordingInspector; }
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -233,6 +234,8 @@ namespace jasperengine::editor{
         // (shared: the type stays out of this header, which App.h includes; its sprite:: names would
         // make `sprite` a namespace in every source that includes App.h)
         std::shared_ptr<SpriteAtlasInspector> spriteAtlasInspector;
+        // a .input.json (input-recorder-and-input-scripts R39)
+        std::shared_ptr<recordinput::InputRecordingInspector> inputRecordingInspector;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
@@ -251,6 +254,10 @@ namespace jasperengine::editor{
         bool windowOpen;
         bool focusRequested;
         int nameFocusFrames = 0;   // visible frames left for focusNameInput() to take
+        // the Skybox's Extract Sun (S99 R28): its Remove Sun Disc option and what the last run said
+        bool extractSunRemoveDisc = true;
+        std::string extractSunMessage;
+        bool extractSunFailed = false;
         bool finishProperty;
 
         std::set<std::string> usedPreviewIds;
@@ -347,7 +354,8 @@ namespace jasperengine::editor{
             ColorRGB,
             ColorRGBA,
             Combo,
-            LayerMask   // a uint32_t layer mask: Unity's mask field
+            LayerMask,   // a uint32_t layer mask: Unity's mask field
+            SampleCount  // an int MSAA sample count: 0 (Project Default), 1 (Disabled), 2, 4, 8
         };
 
         struct DirtyMaterialEntry {
@@ -496,8 +504,12 @@ namespace jasperengine::editor{
         void forgetSpriteFxScene(uint32_t sceneId);
         // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
         void drawAudioMixerAsset(const std::filesystem::path& asset);
+        // a selected .ies: its polar plot and metadata (InspectorIesProfile.cpp, S99 R37)
+        void drawIesProfileAsset(const std::filesystem::path& asset);
         // a selected .soundevent: its editor, problems, Match Levels and Audition (InspectorSoundEvent.cpp)
         void drawSoundEventAsset(const std::filesystem::path& asset);
+        // a selected .dataasset: its class's fields, undoable, and its problems (InspectorDataAsset.cpp)
+        void drawDataAssetAsset(const std::filesystem::path& asset);
         // AudioSource: the Event, Play On, impact and Variation rows and their warnings
         void drawAudioEventRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
         // AudioSource: its own effects, Add Effect, reorder and remove (S97 REQ-38; InspectorAudioEffects.cpp)
@@ -536,6 +548,8 @@ namespace jasperengine::editor{
         void drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
         // the scene's Water Wakes map: resolution, area, fade
         void drawSceneWaterWakes(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
+        // S92: Render Mode and Anti-aliasing (MSAA) of the scene's screen HTML UI documents
+        void drawSceneHtmlUi(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
     public:
         // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
         static std::string sceneLayerMaskLabel(uint32_t mask);
@@ -830,6 +844,10 @@ namespace jasperengine::editor{
         // the value and map rows of one extended lobe under prefix ("submeshes[N].material.pbr."), into the current table
         void drawMaterialPbrLobeRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
                                      const std::string& prefix, PbrLobe lobe, const RowSettings& settingsMaterial);
+        // A built-in Lit material's Vertex Color section (V1 R70): Use (Tint, Masks, Off), Tint's Alpha
+        // Multiplies Opacity, the input each channel masks in Masks
+        void drawMaterialVertexColorRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                         unsigned int submesh, const RowSettings& settingsMaterial);
         // the built-in Lit's Shading Model row (Standard / Hair: the hair lobe's enabled flag, one
         // undo step) and the hair rows while it is Hair, into the current table
         void drawMaterialShadingModelRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -847,6 +865,15 @@ namespace jasperengine::editor{
         // material (prefix "submeshes[N].material."), its extra pass ("...extraPass.") or a
         // component (""), into the current table. resolveAuto: an entity's state with both on
         // Auto. An edit changes only what it names on each selected GameObject.
+        // A Mesh's Property Overrides foldout (S94 F7, Unity's MaterialPropertyBlock): the
+        // properties and textures of the shader its submesh draws with (the built-in Lit's Base
+        // Color, Emission and Base Map), each with an Override toggle; the Mesh's (submesh -1,
+        // read against submesh 0's shader) or one submesh's. Edits the first GameObject.
+        void drawPropertyOverridesRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities, int submesh);
+        // Blend Mode Custom's Src/Dst factor and Blend Op rows of a material or its extra pass
+        // (prefix ends in '.'), shown while the first entity's blend mode is Custom
+        void drawBlendFactorRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                 const std::string& prefix, bool custom, const RowSettings& settings);
         void drawStencilColorWriteRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
                                        const std::string& prefix, const std::function<RenderState(Entity)>& resolveAuto,
                                        const RowSettings& settings);
@@ -977,6 +1004,8 @@ namespace jasperengine::editor{
         void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Title Art Renderer (InspectorTitleArtRenderer.cpp, S81 R60-R62, §6.4)
         void drawTitleArtRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // S94 F49: InspectorSpriteSkin.cpp
+        void drawSpriteSkinComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Pixel Perfect Camera (InspectorPixelArt.cpp, S41)
@@ -1020,6 +1049,10 @@ namespace jasperengine::editor{
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // T6 R65 (InspectorVoxels.cpp)
         void drawVoxelVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // V1 R100 (vertexcolor/VertexColorInspector.cpp): the component, and the Paint Vertex Colors
+        // entry of the Model and Mesh Inspectors
+        void drawVertexColorsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawPaintVertexColorsButton(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the light's Shadows section (InspectorShadows.cpp), and its pieces
         void drawLightShadows(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -1088,6 +1121,13 @@ namespace jasperengine::editor{
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // its table's rows, then a bitmap font's Pixel Font rows (S51 R22, InspectorPixelFont.cpp)
         void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTextAnchor(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // game-ui-localization.md R32 (InspectorLocalization.cpp): Text's Localization Key with its
+        // picker and missing badge; a UI Document's read-only Localization foldout in Play
+        void drawTextLocalizationRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawUIDocumentLocalization(SceneProject* sceneProject, Entity entity);
+        std::vector<std::pair<std::string, std::string>> localizationKeys;     // the picker's keys and source texts
+        char localizationKeySearch[64] = {0};
         void drawPoseAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -1131,6 +1171,11 @@ namespace jasperengine::editor{
         void drawWaterVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawWaterExcluderComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawWaterWakeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the table's rows, then in Play its read-only State, Reason and Focus Distance
+        void drawSimulationCullingComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // editor/dialogue/DialogueRunnerInspector.cpp (dialogue-graphs.md R24): the rows, Open and the
+        // Start Entry list; in Play the state, the current node and Advance / option buttons
+        void drawDialogueRunnerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawBuoyancyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // InspectorVehicle.cpp (S96)
         void drawWheelColliderComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

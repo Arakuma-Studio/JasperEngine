@@ -29,7 +29,8 @@ namespace jasperengine::htmlui::compat {
     // database (nearest sampling for image-rendering: pixelated / crisp-edges) or SVG rasterized
     // at the drawn size; the intrinsic size from the image, scaled by the width/height
     // attributes (one keeps the ratio), as RmlUi's img does; drawn with object-fit and
-    // object-position, tinted by image-color x opacity. RmlUi's `sprite` and `rect` attributes
+    // object-position, tinted by image-color x opacity; decoding="sync" decodes the image before
+    // the first frame that shows it (else on a background thread, S93 R18). RmlUi's `sprite` and `rect` attributes
     // keep working for RML documents. (With the phase-3 ObjectFit feature the fork's
     // ComputeObjectFitRect replaces computeObjectFit.)
     class JASPERENGINE_INTERNAL HtmlImageElement : public Rml::Element {

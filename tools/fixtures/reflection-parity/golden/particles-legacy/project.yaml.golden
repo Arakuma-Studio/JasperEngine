@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: ParticlesLegacy
 canvasWidth: 1280
 canvasHeight: 720
@@ -15,7 +15,12 @@ windowHeight: 720
 windowResizable: true
 assetsDir: assets
 luaDir: scripts
+transparencySortMode: perspective
 startSceneId: 1
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: Legacy Particles.scene
     filepathGuid: 0f153ca2a957eb5d8f91ac03716acf99
+  - filepath: Legacy K.scene
+    filepathGuid: 3e7f8a0fb56dbbee95ba91a5ead8bbe8

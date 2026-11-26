@@ -135,7 +135,7 @@ Tween Tween::LinearFunction(Vector<LinearStop> stops)
 	result.kind = Kind::LinearStops;
 	result.type_in = None;
 	result.type_out = None;
-	if (stops.size() >= 2)
+	if (!stops.empty())
 		result.stops = MakeShared<const Vector<LinearStop>>(std::move(stops));
 	return result;
 }
@@ -151,7 +151,7 @@ float Tween::Evaluate(float t, bool before_flag) const
 	{
 	case Kind::CubicBezier: return Easing::EvaluateCubicBezier(bezier[0], bezier[1], bezier[2], bezier[3], t);
 	case Kind::Steps: return Easing::EvaluateSteps(step_count, step_position, t, before_flag);
-	case Kind::LinearStops: return stops ? Easing::EvaluateLinear(*stops, t) : t;
+	case Kind::LinearStops: return stops ? Easing::EvaluateLinear(*stops, t, before_flag) : t;
 	case Kind::Legacy: break;
 	}
 

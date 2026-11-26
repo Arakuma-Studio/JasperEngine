@@ -24,6 +24,10 @@ saturated objects, the HUD layer), played at a fixed 60 fps with the uber pass's
   test_pass_counts      halation with bloom adds no pass to bloom's, halation alone adds 2 (its
                         prefilter and one level down), VHS, film damage and the grain types add none
                         to the uber pass alone (JASPERENGINE_FRAME_STATS=all)
+  test_cavity           S100's Cavity (AC9) at its defaults (Both) with 16 World samples on the fixture's
+                        boxes, spheres, wall and poles: golden/post_fx/cavity.png, an image unlike the
+                        effect off; the status reports it drawn in one draw, with pre-pass normals that
+                        it added (SSR and SSAO are off), and a simulated Low tier caps its samples at 4
   test_glitch           S48's Glitch (AC15): continuous bursts (rate 0) at three pinned times, each
                         compared with golden/post_fx/glitch_<t>.png; a pinned time gives one image (the
                         same time twice: identical), other times differ; it adds no pass to the uber
@@ -158,7 +162,8 @@ async def show(ed: Editor, sid: int, settings: dict | None = None, preset: str |
         if not (settings or preset) or not ed.has_tool("get_post_processing_status"):
             break
         status = await ed.call("get_post_processing_status", scene=sid)
-        if status["uber"] or status["tail_color"] or time.time() > deadline:
+        # (Cavity draws in the colour pass, not in the uber pass)
+        if status["uber"] or status["tail_color"] or status.get("cavity", {}).get("drawn") or time.time() > deadline:
             break
 
 
@@ -266,4 +271,39 @@ async def test_glitch(ed: Editor):
               f"Glitch adds no pass: {lists[-1] if lists else None} (uber alone: {uber_only[-1] if uber_only else None})")
     finally:
         await ed.call("set_post_processing_debug", scene=sid, time_seconds=TIME)
+        await ed.call("play", action="stop", keep_changes="none")
+
+
+async def test_cavity(ed: Editor):
+    ed.require_tools("get_post_processing_status", "set_device_simulation")
+    sid = await start(ed)
+    try:
+        await show(ed, sid)
+        off = await capture(ed, "cavity_off")
+        cavity = (await ed.call("get_post_processing_status", scene=sid))["cavity"]
+        check(ed, not cavity["enabled"] and not cavity["drawn"] and cavity["draws"] == 0, f"off: nothing drawn: {cavity}")
+
+        await show(ed, sid, {"cavity_enabled": True, "cavity_world_samples": 16})
+        status = await ed.call("get_post_processing_status", scene=sid)
+        ed.check_eq({k: status["cavity"][k] for k in ("enabled", "drawn", "type", "world_samples", "normals", "added_prepass", "draws")},
+                    {"enabled": True, "drawn": True, "type": "both", "world_samples": 16, "normals": "prepass",
+                     "added_prepass": True, "draws": 1}, "drawn as authored")
+        image = await capture(ed, "cavity")
+        # a visible change, not the golden's tolerance: Cavity touches edges only (about 1% of this
+        # frame moves by more than 24 once object outlines get no line, 2.8% by more than 8)
+        changed = pngdiff.compare(image, off, 8, 0.0)[1]
+        check(ed, changed > 0.01, f"Cavity changes the image: {changed:.4f} of the pixels by more than 8")
+        compare_golden(ed, "cavity", image)
+
+        # the device tier caps the World samples (Low: 4), never turns Cavity off
+        await ed.call("set_device_simulation", tier="low")
+        deadline = time.time() + 30
+        while True:
+            await ed.call("wait", frames=5)
+            cavity = (await ed.call("get_post_processing_status", scene=sid))["cavity"]
+            if cavity["world_samples"] == 4 or time.time() > deadline:
+                break
+        check(ed, cavity["drawn"] and cavity["world_samples"] == 4, f"Low: 4 samples, still drawn: {cavity}")
+    finally:
+        await ed.call("set_device_simulation", tier="auto", platform="auto")
         await ed.call("play", action="stop", keep_changes="none")

@@ -10,6 +10,7 @@
 #include "Log.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/compat/LuaHooks.h"
+#include "htmlui/HtmlUIPrewarm.h"
 
 #include <RmlUi/Core/ElementDocument.h>
 
@@ -120,6 +121,37 @@ void UIDocument::setSortOrder(int sortOrder){
 
 int UIDocument::getSortOrder() const{
     return getComponent<UIDocumentComponent>().sortOrder;
+}
+
+void UIDocument::setUpdateMode(UIDocumentUpdateMode mode){
+    UIDocumentComponent& component = getComponent<UIDocumentComponent>();
+    component.updateMode = mode;
+    // a loaded document takes it now (the system's next update would too): an animation a
+    // script starts next runs on it
+    if (Rml::ElementDocument* document = scene->getSystem<UIDocumentSystem>()->getDocument(entity)){
+        document->SetAnimationClock(HtmlUIClock::animationClockOf(mode));
+        component.appliedUpdateMode = mode;
+    }
+}
+
+UIDocumentUpdateMode UIDocument::getUpdateMode() const{
+    return getComponent<UIDocumentComponent>().updateMode;
+}
+
+void UIDocument::setMenu(bool menu){
+    getComponent<UIDocumentComponent>().isMenu = menu;
+}
+
+bool UIDocument::isMenu() const{
+    return getComponent<UIDocumentComponent>().isMenu;
+}
+
+void UIDocument::setGamepadCursor(bool enabled){
+    getComponent<UIDocumentComponent>().gamepadCursor = enabled;
+}
+
+bool UIDocument::isGamepadCursor() const{
+    return getComponent<UIDocumentComponent>().gamepadCursor;
 }
 
 UIElement UIDocument::getElementById(const std::string& id) const{
@@ -287,6 +319,10 @@ std::vector<htmlui::compat::Diagnostic> UIDocument::getDiagnostics() const{
     return scene->getSystem<UIDocumentSystem>()->getDiagnostics(entity);
 }
 
+UIPrewarm UIDocument::prewarm(bool images) const{
+    return UIPrewarm(HtmlUIPrewarm::prewarmDocument(loadedDocument(scene, entity), images));
+}
+
 HtmlUIRenderStats UIDocument::getRenderStats() const{
     return scene->getSystem<UIDocumentSystem>()->getRenderStats(entity);
 }
@@ -297,4 +333,55 @@ void UIDocument::setColorScheme(const std::string& scheme){
 
 void UIDocument::setReducedMotion(bool reduced){
     scene->getSystem<UIDocumentSystem>()->setReducedMotion(entity, reduced);
+}
+
+// ---- S93 R29 ----
+
+UIStyleSheet UIDocument::addStyleSheet(const std::string& css, const std::string& name){
+    UIStyleSheet sheet;
+    std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
+    sheet.system = system;
+    sheet.entity = entity;
+    sheet.id = system->addStyleSheet(entity, css, name, std::string());
+    return sheet;
+}
+
+UIStyleSheet UIDocument::addStyleSheetFile(const std::string& path){
+    UIStyleSheet sheet;
+    std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
+    sheet.system = system;
+    sheet.entity = entity;
+    sheet.id = path.empty() ? 0 : system->addStyleSheet(entity, std::string(), std::string(), path);
+    if (!sheet.id)
+        Log::error("[HTML UI] addStyleSheetFile: no path");
+    return sheet;
+}
+
+bool UIStyleSheet::isValid() const{
+    std::shared_ptr<UIDocumentSystem> owner = system.lock();
+    return owner && owner->getStyleSheet(entity, id, nullptr, nullptr);
+}
+
+std::string UIStyleSheet::getName() const{
+    std::string name;
+    if (std::shared_ptr<UIDocumentSystem> owner = system.lock())
+        owner->getStyleSheet(entity, id, nullptr, &name);
+    return name;
+}
+
+bool UIStyleSheet::isEnabled() const{
+    bool enabled = false;
+    if (std::shared_ptr<UIDocumentSystem> owner = system.lock())
+        owner->getStyleSheet(entity, id, &enabled, nullptr);
+    return enabled;
+}
+
+void UIStyleSheet::setEnabled(bool enabled){
+    if (std::shared_ptr<UIDocumentSystem> owner = system.lock())
+        owner->setStyleSheetEnabled(entity, id, enabled);
+}
+
+void UIStyleSheet::remove(){
+    if (std::shared_ptr<UIDocumentSystem> owner = system.lock())
+        owner->removeStyleSheet(entity, id);
 }

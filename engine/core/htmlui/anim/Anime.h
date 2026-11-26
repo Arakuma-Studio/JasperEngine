@@ -31,13 +31,19 @@
 
 namespace jasperengine {
 
+    class AnimText;
+
     class JASPERENGINE_API Anime {
     public:
         static std::shared_ptr<AnimAnimation> animate(const AnimTargetList& targets, const AnimParam& params);
         static std::shared_ptr<AnimTimeline> createTimeline(const AnimParam& params = AnimParam::object());
         static std::shared_ptr<AnimTimer> createTimer(const AnimParam& params = AnimParam::object());
         static std::shared_ptr<AnimSpring> createSpring(const AnimSpringParams& params = AnimSpringParams());
+        static AnimTargetList createDrawable(const AnimTargetList& targets, double start = 0, double end = 0);
+        static AnimParam morphTo(const AnimTargetList& targets, double precision = 0.33);
+        static AnimParam createMotionPath(const AnimTargetList& targets, double offset = 0);
         static AnimParam stagger(const AnimParam& value, const AnimParam& params = AnimParam::object());
+        static std::shared_ptr<AnimText> splitText(const AnimTargetList& targets, const AnimParam& params = AnimParam::object());
     };
 
 }

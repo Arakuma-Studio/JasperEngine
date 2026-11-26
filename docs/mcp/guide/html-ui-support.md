@@ -89,11 +89,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `iframe` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | load the page as its own UIDocument |
 | `img` | emulated | HtmlImageElement; .svg sources (and data:image/svg+xml) -> <svg src> |  |
 | `input` | emulated | HtmlInputElement (input type table) |  |
+| `input-prompt` | emulated | the engine's input prompt: the action's binding for the input scheme in use, live (Input actions) |  |
 | `ins` | native | UA inline styles |  |
 | `kbd` | native | UA inline styles |  |
 | `label` | native | with HtmlLabelBehavior |  |
 | `legend` | approximated | on its fieldset's top border; as wide as the fieldset (the gap in the border is as wide as its content) (HTMLUI-HTML-0003) | give the legend a width when its own background or border must end with the text |
-| `li` | native | list marker emulation (display: block + marker element) until the fork has ListMarkers |  |
+| `li` | native | list markers drawn by the fork, as in CSS (ListMarkers) |  |
 | `link` | rewritten | stylesheets collected; other rel values dropped |  |
 | `list-view` | emulated | ItemsViewElement (S17): a virtualized list (pooled rows, uniform or measured heights) from its <template>; data-model items or a Lua provider |  |
 | `listing` | native | UA display and spacing |  |
@@ -151,7 +152,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `strong` | native | UA inline styles |  |
 | `style` | rewritten | collected and rewritten |  |
 | `sub` | native | UA inline styles |  |
-| `summary` | emulated | HtmlSummaryElement (toggle; the marker until the fork has ListMarkers) |  |
+| `summary` | emulated | HtmlSummaryElement (toggle; the marker is the fork's ::marker, ListMarkers) |  |
 | `sup` | native | UA inline styles |  |
 | `svg` | native | phase-1 svg element; currentColor preprocessing |  |
 | `table` | native | UA table display |  |
@@ -187,33 +188,34 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `color` | approximated | text showing the value; no swatch or picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 | `date` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 | `datetime-local` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
-| `email` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `email` | approximated | text input with the e-mail keyboard; no validation (HTMLUI-HTML-0008) |  |
 | `file` | unsupported | disabled "Choose File" button, no ::before/::after (HTMLUI-HTML-0008) | pick files through the game, e.g. a Lua file dialog |
 | `hidden` | native | text input hidden by the UA sheet |  |
 | `image` | emulated | submit button drawing src |  |
 | `month` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
-| `number` | emulated | text with numeric filtering, step keys and clamping; no spinner (HTMLUI-HTML-0008) |  |
+| `number` | emulated | text with numeric filtering, step keys, clamping and a number keypad; no spinner (HTMLUI-HTML-0008) |  |
 | `password` | native |  |  |
 | `radio` | native |  |  |
 | `range` | native |  |  |
 | `reset` | emulated | button that resets the form |  |
-| `search` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `search` | approximated | text input with the search keyboard and key; no validation (HTMLUI-HTML-0008) |  |
 | `submit` | native |  |  |
-| `tel` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `tel` | approximated | text input with the phone keypad; no validation (HTMLUI-HTML-0008) |  |
 | `text` | native |  |  |
 | `time` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
-| `url` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `url` | approximated | text input with the URL keyboard; no validation (HTMLUI-HTML-0008) |  |
 | `week` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 
 ## Attributes
 
 `*` = every element; `data-*`, `aria-*` and `on*` are patterns.
 
-### Attributes: a-e
+### Attributes: a-d
 
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
 | `action` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
+| `action` | `input-prompt` | emulated | read by the engine's input prompt (jasper://docs/html-ui) |  |
 | `action` | `onscreen-button` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `align` | `*` | rewritten | legacy presentational attribute |  |
 | `alt` | `*` | native | kept |  |
@@ -226,8 +228,9 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `as` | `list-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
 | `as` | `table-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
 | `as` | `tree-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
-| `autocapitalize` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `autocapitalize` | `*` | native | the soft keyboard's capitalisation on Android, iOS and the web (off, none, on, sentences, words, characters; default off) |  |
 | `autocomplete` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `autocorrect` | `*` | native | the soft keyboard's suggestions on Android (on, off; default off); off on iOS and the web, whose keyboards keep no text |  |
 | `autofocus` | `*` | emulated | focused after load |  |
 | `autoplay` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `autoplay` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
@@ -264,6 +267,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `data-lucide` | `*` | rewritten | Lucide icon expansion |  |
 | `dead-zone` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `decoding` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `decoding` | `img` | native | async (default): decoded on a background thread, drawn once decoded; sync: decoded before the first frame that shows it |  |
 | `dir` | `*` | rewritten | presentational hint |  |
 | `direction` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `direction` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
@@ -274,17 +278,17 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `disableremoteplayback` | `video` | ignored | no remote playback; dropped with an info (HTMLUI-HTML-0028) |  |
 | `draggable` | `*` | rewritten | mapped: HTML5 drag events with event.dataTransfer, ghost, drop feedback (S17) |  |
 | `dropzone` | `*` | emulated | the element accepts drops of the listed dataTransfer types (copy\|move\|link) (S17) |  |
+
+### Attributes: e-k
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `enctype` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
-| `enterkeyhint` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `enterkeyhint` | `*` | native | the soft keyboard's action key (enter, done, go, next, previous, search, send): an Enter keydown with event.enterKeyHint; next / previous focus the adjacent text field, done blurs, the others submit (a hardware Enter does the same) |  |
 | `estimated-height` | `grid-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `list-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `table-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `tree-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
-
-### Attributes: f-l
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `face` | `font` | rewritten | legacy presentational attribute |  |
 | `fetchpriority` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `for` | `*` | native | kept |  |
@@ -310,7 +314,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `id` | `*` | native | kept; id="htmlui-root" is reserved and renamed (Warning) |  |
 | `id` | `html` | rewritten | the root id is reserved; selectors on the author id are rewritten |  |
 | `indent` | `tree-view` | emulated | the indentation per depth in px (default 16) (S17) |  |
-| `inputmode` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `inputmode` | `*` | native | the soft keyboard on Android, iOS and the web (none, text, decimal, numeric, tel, search, email, url); none shows no keyboard |  |
 | `integrity` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -335,6 +339,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `key` | `table-column` | emulated | the item field the cells show ({{item.<key>}}) (S17) |  |
 | `key` | `table-view` | emulated | the item field that identifies an item (selection, row identity) (S17) |  |
 | `key` | `tree-view` | emulated | the node field that identifies a node (default: its index path) (S17) |  |
+
+### Attributes: l-r
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `lang` | `*` | rewritten | kept, plus a presentational hint |  |
 | `loading` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `loop` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -343,16 +352,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `loop` | `particle-system` | emulated | loop="false" plays once; absent: the prefab's own |  |
 | `loop` | `video` | native | seamless (seeking, seeked at the wrap) |  |
 | `low` | `meter` | unsupported | dropped (Info) (HTMLUI-HTML-0004) | color the progress fill with a class |
-
-### Attributes: m-r
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `marker` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `marker` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `marker` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `max` | `*` | native | kept |  |
-| `maxlength` | `*` | native | kept |  |
+| `maxlength` | `*` | native | kept: typing and the soft keyboard stop there |  |
 | `media` | `source` | rewritten | resolved at load to choose the img source |  |
 | `method` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `min` | `*` | native | kept |  |
@@ -404,6 +408,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
 | `scale` | `particle-system` | emulated | CSS px per prefab unit (default 1) |  |
+| `scheme` | `input-prompt` | emulated | read by the engine's input prompt (jasper://docs/html-ui) |  |
 | `segment` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -450,7 +455,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `title` | `*` | emulated | emulated: a tooltip after the hover or focus delay (S17) |  |
 | `tooltip` | `*` | emulated | rich tooltip: #id of an element or <template> of the document, cloned on show (S17) |  |
 | `tooltip-delay` | `*` | emulated | the element's tooltip delay in ms (S17) |  |
-| `translate` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `translate` | `*` | native | kept: translate="no" keeps a subtree out of the localisation scan |  |
 | `type` | `*` | native | kept |  |
 | `type` | `source` | native | video: skipped when canPlayType gives "" (video/webm with AV1, Opus plays) |  |
 | `valign` | `*` | rewritten | legacy presentational attribute |  |
@@ -549,8 +554,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `all` | native | the fork resets every property (not direction or custom properties; CssWideKeywords, phase 3); without it written per property, inherit approximated (inherited properties only); common in button resets |  |
 | `anchor-name` | unsupported | anchor positioning is not supported (HTMLUI-CSS-0002) | position the element with absolute offsets (computed from Lua if they depend on another element) |
 | `anchor-scope` | unsupported | anchor positioning is not supported (HTMLUI-CSS-0002) | position the element with absolute offsets (computed from Lua if they depend on another element) |
-| `animation` | native | until the fork has AnimationLonghands: reverse via mirrored keyframes, fill modes through AnimationFill, fractional counts rounded; easing -> nearest tween until the fork has TimingFunctions |  |
-| `animation-composition` | native | not supported until the fork has AnimationLonghands (Warning); then add and accumulate composite as replace (note) | combine the effects in one set of keyframes |
+| `animation` | native | CSS animation shorthand; exact easing, times normalized to seconds. |  |
+| `animation-composition` | native | add and accumulate composite as replace (note) | combine the effects in one set of keyframes |
 | `animation-delay` | native | merged into the shorthand; base rule when alone |  |
 | `animation-delay-end` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | use animation-delay |
 | `animation-delay-start` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | use animation-delay |
@@ -564,9 +569,9 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `animation-range-end` | unsupported | scroll-driven animations are not supported (Warning) (HTMLUI-CSS-0002) | drive the animation from Lua (anime API) |
 | `animation-range-start` | unsupported | scroll-driven animations are not supported (Warning) (HTMLUI-CSS-0002) | drive the animation from Lua (anime API) |
 | `animation-timeline` | unsupported | scroll-driven animations are not supported (Warning) (HTMLUI-CSS-0002) | drive the animation from Lua (anime API) |
-| `animation-timing-function` | native | merged into the shorthand; base rule when alone |  |
+| `animation-timing-function` | native | CSS easing list evaluated exactly; kept as a longhand. |  |
 | `appearance` | rewritten | none / auto write the control companions; exact for the UA-styled controls |  |
-| `aspect-ratio` | native | no aspect-ratio layout until the fork has BoxParity; on img/svg the intrinsic ratio applies | set an explicit height, or height: 0; padding-bottom: <ratio %> |
+| `aspect-ratio` | native | as in CSS (BoxParity); on img/svg without it the intrinsic ratio applies | set an explicit height, or height: 0; padding-bottom: <ratio %> |
 | `azimuth` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 
 ### Properties: backdrop-filter to border-block-start-color
@@ -606,7 +611,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `bookmark-label` | ignored | PDF bookmarks; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `bookmark-level` | ignored | PDF bookmarks; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `bookmark-state` | ignored | PDF bookmarks; no effect in a game UI (HTMLUI-CSS-0003) |  |
-| `border` | native | width and color longhands per side; style none/hidden -> width 0, other styles solid until the fork has BorderStyle; missing color -> current color companion |  |
+| `border` | native | width, style and color longhands per side, styles drawn as in CSS (BorderStyle); missing color -> current color companion |  |
 | `border-block` | rewritten | physical top/bottom; styles as for border |  |
 | `border-block-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 | `border-block-color` | rewritten | physical top/bottom |  |
@@ -620,7 +625,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `border-block-start-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 | `border-block-start-color` | rewritten | physical top/bottom |  |
 
-### Properties: border-block-start-radius to border-inline-width
+### Properties: border-block-start-radius to border-left-clip
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
@@ -629,13 +634,13 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `border-block-start-width` | rewritten | physical top/bottom |  |
 | `border-block-style` | rewritten | physical top/bottom; styles as for border-style (the fork's with BorderStyle; without it none/hidden -> width 0, other styles solid) |  |
 | `border-block-width` | rewritten | physical top/bottom |  |
-| `border-bottom` | native | width and color longhands per side; style none/hidden -> width 0, other styles solid until the fork has BorderStyle; missing color -> current color companion |  |
+| `border-bottom` | native | width, style and color longhands per side, styles drawn as in CSS (BorderStyle); missing color -> current color companion |  |
 | `border-bottom-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 | `border-bottom-color` | native | colors normalized; currentcolor through the --html-current-color companion |  |
-| `border-bottom-left-radius` | native | percentages >= 50% -> 9999px, other percentages dropped until the fork has PercentRadius; elliptical a / b -> first radius |  |
+| `border-bottom-left-radius` | native | percentages and elliptical a / b radii as in CSS (PercentRadius) |  |
 | `border-bottom-radius` | unsupported | side radius shorthand (CSS Borders 4 draft) is not supported (HTMLUI-CSS-0002) | set the two corner radii, e.g. border-top-left-radius and border-top-right-radius |
-| `border-bottom-right-radius` | native | percentages >= 50% -> 9999px, other percentages dropped until the fork has PercentRadius; elliptical a / b -> first radius |  |
-| `border-bottom-style` | native | none/hidden -> width 0; other styles drawn solid until the fork has BorderStyle |  |
+| `border-bottom-right-radius` | native | percentages and elliptical a / b radii as in CSS (PercentRadius) |  |
+| `border-bottom-style` | native | every style drawn as in CSS (BorderStyle) |  |
 | `border-bottom-width` | native | keywords thin 1px, medium 3px, thick 5px (rewritten) |  |
 | `border-boundary` | ignored | only affects round displays (HTMLUI-CSS-0003) |  |
 | `border-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
@@ -666,37 +671,37 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `border-inline-start-width` | rewritten | physical left/right (LTR; an RTL root swaps them) |  |
 | `border-inline-style` | rewritten | physical left/right (LTR; an RTL root swaps them); styles as for border-style (the fork's with BorderStyle; without it none/hidden -> width 0, other styles solid) |  |
 | `border-inline-width` | rewritten | physical left/right (LTR; an RTL root swaps them) |  |
+| `border-left` | native | width, style and color longhands per side, styles drawn as in CSS (BorderStyle); missing color -> current color companion |  |
+| `border-left-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 
-### Properties: border-left to break-inside
+### Properties: border-left-color to break-inside
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
-| `border-left` | native | width and color longhands per side; style none/hidden -> width 0, other styles solid until the fork has BorderStyle; missing color -> current color companion |  |
-| `border-left-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 | `border-left-color` | native | colors normalized; currentcolor through the --html-current-color companion |  |
 | `border-left-radius` | unsupported | side radius shorthand (CSS Borders 4 draft) is not supported (HTMLUI-CSS-0002) | set the two corner radii, e.g. border-top-left-radius and border-top-right-radius |
-| `border-left-style` | native | none/hidden -> width 0; other styles drawn solid until the fork has BorderStyle |  |
+| `border-left-style` | native | every style drawn as in CSS (BorderStyle) |  |
 | `border-left-width` | native | keywords thin 1px, medium 3px, thick 5px (rewritten) |  |
 | `border-limit` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
-| `border-radius` | native | percentages >= 50% -> 9999px, other percentages dropped until the fork has PercentRadius; elliptical a / b -> first radius |  |
-| `border-right` | native | width and color longhands per side; style none/hidden -> width 0, other styles solid until the fork has BorderStyle; missing color -> current color companion |  |
+| `border-radius` | native | percentages and elliptical a / b radii as in CSS (PercentRadius) |  |
+| `border-right` | native | width, style and color longhands per side, styles drawn as in CSS (BorderStyle); missing color -> current color companion |  |
 | `border-right-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 | `border-right-color` | native | colors normalized; currentcolor through the --html-current-color companion |  |
 | `border-right-radius` | unsupported | side radius shorthand (CSS Borders 4 draft) is not supported (HTMLUI-CSS-0002) | set the two corner radii, e.g. border-top-left-radius and border-top-right-radius |
-| `border-right-style` | native | none/hidden -> width 0; other styles drawn solid until the fork has BorderStyle |  |
+| `border-right-style` | native | every style drawn as in CSS (BorderStyle) |  |
 | `border-right-width` | native | keywords thin 1px, medium 3px, thick 5px (rewritten) |  |
 | `border-shape` | unsupported | border shapes (draft) are not supported (HTMLUI-CSS-0002) | use clip-path with a basic shape |
 | `border-spacing` | rewritten | on tables: border-spacing: x y -> gap: y x |  |
 | `border-start-end-radius` | rewritten | physical corner (LTR; an RTL root swaps the inline sides) |  |
 | `border-start-start-radius` | rewritten | physical corner (LTR; an RTL root swaps the inline sides) |  |
-| `border-style` | native | none/hidden -> width 0; other styles drawn solid until the fork has BorderStyle |  |
-| `border-top` | native | width and color longhands per side; style none/hidden -> width 0, other styles solid until the fork has BorderStyle; missing color -> current color companion |  |
+| `border-style` | native | every style drawn as in CSS (BorderStyle) |  |
+| `border-top` | native | width, style and color longhands per side, styles drawn as in CSS (BorderStyle); missing color -> current color companion |  |
 | `border-top-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 | `border-top-color` | native | colors normalized; currentcolor through the --html-current-color companion |  |
-| `border-top-left-radius` | native | percentages >= 50% -> 9999px, other percentages dropped until the fork has PercentRadius; elliptical a / b -> first radius |  |
+| `border-top-left-radius` | native | percentages and elliptical a / b radii as in CSS (PercentRadius) |  |
 | `border-top-radius` | unsupported | side radius shorthand (CSS Borders 4 draft) is not supported (HTMLUI-CSS-0002) | set the two corner radii, e.g. border-top-left-radius and border-top-right-radius |
-| `border-top-right-radius` | native | percentages >= 50% -> 9999px, other percentages dropped until the fork has PercentRadius; elliptical a / b -> first radius |  |
-| `border-top-style` | native | none/hidden -> width 0; other styles drawn solid until the fork has BorderStyle |  |
+| `border-top-right-radius` | native | percentages and elliptical a / b radii as in CSS (PercentRadius) |  |
+| `border-top-style` | native | every style drawn as in CSS (BorderStyle) |  |
 | `border-top-width` | native | keywords thin 1px, medium 3px, thick 5px (rewritten) |  |
 | `border-width` | native | keywords thin 1px, medium 3px, thick 5px (rewritten) |  |
 | `bottom` | native |  |  |
@@ -713,7 +718,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `break-before` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 | `break-inside` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 
-### Properties: caption-side to container
+### Properties: caption-side to contain-intrinsic-width
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
@@ -725,7 +730,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `chains` | unsupported | template layout (draft) is not supported (HTMLUI-CSS-0002) | lay out the content with flex or block elements |
 | `clear` | native | inline-start/inline-end -> left/right |  |
 | `clip` | unsupported | CSS 2.1 rect() clipping is never passed through: RmlUi's clip property means something else; clip: auto dropped silently (HTMLUI-CSS-0002) | use clip-path: inset(...), or overflow: hidden on a wrapper |
-| `clip-path` | emulated | basic shapes exact through the html-shape decorator; url() unsupported; no hit-test clipping |  |
+| `clip-path` | emulated | basic shapes exact through the html-shape decorator, which also clips hit testing (calc() lengths included); inset, circle, ellipse and polygons with the same vertex count interpolate in animations and transitions (linear calc() unit by unit); url() unsupported |  |
 | `clip-rule` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
 | `color` | native | every CSS Color 4 syntax normalized to hex; the current color companion follows it |  |
 | `color-adjust` | ignored | legacy alias of print-color-adjust; printing only (HTMLUI-CSS-0003) |  |
@@ -761,12 +766,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `contain-intrinsic-inline-size` | ignored | rendering optimization hint; no visible effect in a game UI (HTMLUI-CSS-0003) |  |
 | `contain-intrinsic-size` | ignored | rendering optimization hint; no visible effect in a game UI (HTMLUI-CSS-0003) |  |
 | `contain-intrinsic-width` | ignored | rendering optimization hint; no visible effect in a game UI (HTMLUI-CSS-0003) |  |
-| `container` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 
-### Properties: container-name to corner-top-shape
+### Properties: container to corner-top-right-shape
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `container` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 | `container-name` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 | `container-type` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 | `content` | native | only meaningful on ::before/::after (and ::marker with ListMarkers), which need the fork; ignored elsewhere |  |
@@ -805,12 +810,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `corner-top-left-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
 | `corner-top-right` | unsupported | corner shorthand (draft) is not supported (HTMLUI-CSS-0002) | use border-radius |
 | `corner-top-right-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
-| `corner-top-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
 
-### Properties: counter-increment to cursor
+### Properties: corner-top-shape to cursor
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `corner-top-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
 | `counter-increment` | native | without the fork's PseudoElements only the implicit list-item counter is emulated (ol start, li value, reversed) | number the items with ol / li, or write the numbers in the markup |
 | `counter-reset` | native | without the fork's PseudoElements only the implicit list-item counter is emulated (ol start, li value, reversed) | number the items with ol / li, or write the numbers in the markup |
 | `counter-set` | native | without the fork's PseudoElements only the implicit list-item counter is emulated (ol start, li value, reversed) | number the items with ol / li, or write the numbers in the markup |
@@ -825,7 +830,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 |---|---|---|---|
 | `decorator` | native | RmlUi engine extension |  |
 | `direction` | rewritten | written as -rmlui-direction |  |
-| `display` | native | per-value support in the value table; grid falls back to flex + wrap until the fork has Grid |  |
+| `display` | native | per-value support in the value table; grid laid out by the fork (Grid) |  |
 | `dominant-baseline` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
 | `drag` | native | RmlUi engine extension |  |
 | `dynamic-range-limit` | ignored | HDR hint; the UI renders in standard dynamic range (HTMLUI-CSS-0003) |  |
@@ -853,7 +858,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `flex-direction` | native |  |  |
 | `flex-flow` | native |  |  |
 | `flex-grow` | native |  |  |
-| `flex-line-count` | native | the minimum line count of a balanced container; not supported until the fork has BoxParity | drop it |
+| `flex-line-count` | native | the minimum line count of a balanced container (BoxParity) | drop it |
 | `flex-shrink` | native |  |  |
 | `flex-wrap` | native |  |  |
 | `float` | native | inline-start/inline-end -> left/right |  |
@@ -906,43 +911,38 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `forced-color-adjust` | ignored | no forced-colors mode in a game UI (HTMLUI-CSS-0003) |  |
 | `frame-sizing` | unsupported | iframes are not supported (HTMLUI-CSS-0002) | load the content as its own UIDocument and size it explicitly |
 
-### Properties: g-h
+### Properties: g-i
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
 | `gap` | native | normal -> 0 (rewritten) |  |
 | `glyph-orientation-vertical` | unsupported | vertical text is not supported (Warning) (HTMLUI-CSS-0002) | rotate the element with transform: rotate(90deg), or stack the characters in a column |
-| `grid` | native | read by the display: grid flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-area` | native | item placement is ignored by the flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-auto-columns` | native | read by the display: grid flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-auto-flow` | native | read by the display: grid flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-auto-rows` | native | read by the display: grid flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-column` | native | item placement is ignored by the flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-column-end` | native | item placement is ignored by the flex-wrap fallback until the fork has Grid (Info) |  |
+| `grid` | native | as in CSS (Grid) |  |
+| `grid-area` | native | item placement as in CSS (Grid) |  |
+| `grid-auto-columns` | native | as in CSS (Grid) |  |
+| `grid-auto-flow` | native | as in CSS (Grid) |  |
+| `grid-auto-rows` | native | as in CSS (Grid) |  |
+| `grid-column` | native | item placement as in CSS (Grid) |  |
+| `grid-column-end` | native | item placement as in CSS (Grid) |  |
 | `grid-column-gap` | rewritten | legacy alias of column-gap |  |
-| `grid-column-start` | native | item placement is ignored by the flex-wrap fallback until the fork has Grid (Info) |  |
+| `grid-column-start` | native | item placement as in CSS (Grid) |  |
 | `grid-gap` | rewritten | legacy alias of gap |  |
-| `grid-row` | native | item placement is ignored by the flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-row-end` | native | item placement is ignored by the flex-wrap fallback until the fork has Grid (Info) |  |
+| `grid-row` | native | item placement as in CSS (Grid) |  |
+| `grid-row-end` | native | item placement as in CSS (Grid) |  |
 | `grid-row-gap` | rewritten | legacy alias of row-gap |  |
-| `grid-row-start` | native | item placement is ignored by the flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-template` | native | read by the display: grid flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-template-areas` | native | read by the display: grid flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-template-columns` | native | read by the display: grid flex-wrap fallback until the fork has Grid (Info) |  |
-| `grid-template-rows` | native | read by the display: grid flex-wrap fallback until the fork has Grid (Info) |  |
+| `grid-row-start` | native | item placement as in CSS (Grid) |  |
+| `grid-template` | native | as in CSS (Grid) |  |
+| `grid-template-areas` | native | as in CSS (Grid) |  |
+| `grid-template-columns` | native | as in CSS (Grid) |  |
+| `grid-template-rows` | native | as in CSS (Grid) |  |
 | `hanging-punctuation` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
-| `height` | native | min-content, max-content, fit-content, stretch, -webkit-fill-available approximated as auto until the fork has BoxParity |  |
+| `height` | native | min-content, max-content, fit-content, stretch and -webkit-fill-available as in CSS (BoxParity) |  |
 | `hyphenate-character` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `hyphenate-limit-chars` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `hyphenate-limit-last` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `hyphenate-limit-lines` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `hyphenate-limit-zone` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `hyphens` | ignored | soft hyphens (&shy;) break lines with the fork ('manual'); automatic hyphenation is not supported (Info) (HTMLUI-CSS-0003) | insert soft hyphens (&shy;) where words may break |
-
-### Properties: i-l
-
-| Property | Support | Notes | Instead |
-|---|---|---|---|
 | `image-animation` | unsupported | control of animated images is not supported (HTMLUI-CSS-0002) | use a static image, a sprite animation or a Lottie animation |
 | `image-color` | native | RmlUi engine extension |  |
 | `image-orientation` | ignored | image orientation hint; ignored (HTMLUI-CSS-0003) |  |
@@ -973,9 +973,14 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `item-pack` | unsupported | item flow (draft) is not supported (HTMLUI-CSS-0002) | use flex-direction and flex-wrap |
 | `item-track` | unsupported | item flow (draft) is not supported (HTMLUI-CSS-0002) | use flex-direction and flex-wrap |
 | `item-wrap` | unsupported | item flow (draft) is not supported (HTMLUI-CSS-0002) | use flex-direction and flex-wrap |
+
+### Properties: j-l
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `justify-content` | native | start/left/normal/stretch -> flex-start, end/right -> flex-end (rewritten); safe/unsafe dropped |  |
-| `justify-items` | native | no effect in flex layouts (ignored) until the fork has Grid; with it they align grid items, and block-level boxes in block layout (BoxParity) |  |
-| `justify-self` | native | no effect in flex layouts (ignored) until the fork has Grid; with it they align grid items, and block-level boxes in block layout (BoxParity) |  |
+| `justify-items` | native | align grid items, and block-level boxes in block layout (Grid, BoxParity); no effect in flex layouts, as in CSS |  |
+| `justify-self` | native | align grid items, and block-level boxes in block layout (Grid, BoxParity); no effect in flex layouts, as in CSS |  |
 | `left` | native |  |  |
 | `letter-spacing` | native | lengths; percentages of the font size with the fork (TextProperties) |  |
 | `lighting-color` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
@@ -988,10 +993,10 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `line-padding` | unsupported | not supported (HTMLUI-CSS-0002) | add horizontal padding to the inline element |
 | `line-snap` | unsupported | line grids are not supported (HTMLUI-CSS-0002) | use a line-height that matches the grid |
 | `link-parameters` | ignored | parameters of linked SVG resources; ignored (HTMLUI-CSS-0003) |  |
-| `list-style` | native | markers drawn by li and summary until the fork has ListMarkers |  |
-| `list-style-image` | native | marker image drawn by li until the fork has ListMarkers |  |
+| `list-style` | native | markers drawn by the fork for every list item, as in CSS (ListMarkers) |  |
+| `list-style-image` | native | marker image drawn by the fork, as in CSS (ListMarkers) |  |
 | `list-style-position` | native | without ListMarkers inside is approximated (drawn outside, content shifted) |  |
-| `list-style-type` | native | markers drawn by li and summary until the fork has ListMarkers; other counter styles -> decimal (with the fork as in CSS) or disc |  |
+| `list-style-type` | native | markers drawn by the fork for every list item, counter styles as in CSS (ListMarkers) |  |
 
 ### Properties: margin to min-width
 
@@ -1045,17 +1050,17 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `max-size` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | use max-width and max-height |
 | `max-width` | native | sizing keywords approximated as none |  |
 | `min-block-size` | rewritten | mapped to min-height (horizontal writing mode) |  |
-| `min-height` | native | auto -> 0px (rewritten) and sizing keywords approximated until the fork has BoxParity |  |
+| `min-height` | native | auto (the automatic minimum size) and sizing keywords as in CSS (BoxParity) |  |
 | `min-inline-size` | rewritten | mapped to min-width (horizontal writing mode) |  |
 | `min-intrinsic-sizing` | unsupported | not supported (HTMLUI-CSS-0002) | set min-width / min-height explicitly |
 | `min-size` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | use min-width and min-height |
-| `min-width` | native | auto -> 0px (rewritten) and sizing keywords approximated until the fork has BoxParity |  |
+| `min-width` | native | auto (the automatic minimum size) and sizing keywords as in CSS (BoxParity) |  |
 
 ### Properties: mix-blend-mode
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
-| `mix-blend-mode` | unsupported | blend modes are not supported (HTMLUI-CSS-0002) | use opacity, or pre-blended images |
+| `mix-blend-mode` | native | the 16 blend modes and plus-lighter, with what the document drew below the element (the document is isolated from the 3D scene) |  |
 
 ### Properties: n-o
 
@@ -1077,7 +1082,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `offset-position` | unsupported | motion paths are not supported (Warning) (HTMLUI-CSS-0002) | animate translate / transform with @keyframes |
 | `offset-rotate` | unsupported | motion paths are not supported (Warning) (HTMLUI-CSS-0002) | animate translate / transform with @keyframes |
 | `opacity` | native | drawn as a group (one layer composited with the opacity) by the fork (GroupOpacity); without it children blend separately |  |
-| `order` | native | visual reordering is not supported until the fork has BoxParity (Warning) | reorder the elements in the markup |
+| `order` | native | visual reordering as in CSS (BoxParity) | reorder the elements in the markup |
 | `orphans` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 | `outline` | native | drawn by the fork with every style and the focus ring (Outline); without it a box-shadow ring through companions, styles other than solid/auto drawn solid (Info) |  |
 | `outline-color` | native | drawn by the fork with every style and the focus ring (Outline); without it a box-shadow ring through companions, styles other than solid/auto drawn solid (Info) |  |
@@ -1087,7 +1092,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `overflow` | native | clip -> hidden, overlay -> auto (rewritten) |  |
 | `overflow-anchor` | ignored | scroll anchoring; ignored (HTMLUI-CSS-0003) |  |
 | `overflow-block` | unsupported | logical overflow properties are not supported (HTMLUI-CSS-0002) | use overflow-x / overflow-y |
-| `overflow-clip-margin` | native | only affects overflow: clip, which is drawn as hidden until the fork has Sticky |  |
+| `overflow-clip-margin` | native | the clip edge of overflow: clip, as in CSS (Sticky) |  |
 | `overflow-clip-margin-block` | ignored | only affects overflow: clip, which is drawn as hidden (HTMLUI-CSS-0003) |  |
 | `overflow-clip-margin-block-end` | ignored | only affects overflow: clip, which is drawn as hidden (HTMLUI-CSS-0003) |  |
 | `overflow-clip-margin-block-start` | ignored | only affects overflow: clip, which is drawn as hidden (HTMLUI-CSS-0003) |  |
@@ -1143,7 +1148,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `place-self` | rewritten | the align part, plus the justify part where it applies |  |
 | `play-during` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `pointer-events` | native | SVG values -> auto (rewritten) |  |
-| `position` | native | fixed acts as absolute until the fork has Fixed; sticky -> relative (approximated) until the fork has Sticky |  |
+| `position` | native | fixed against the viewport (Fixed) and sticky (Sticky) as in CSS |  |
 | `position-anchor` | unsupported | anchor positioning is not supported (HTMLUI-CSS-0002) | position the element with absolute offsets (computed from Lua if they depend on another element) |
 | `position-area` | unsupported | anchor positioning is not supported (HTMLUI-CSS-0002) | position the element with absolute offsets (computed from Lua if they depend on another element) |
 | `position-try` | unsupported | anchor positioning is not supported (HTMLUI-CSS-0002) | position the element with absolute offsets (computed from Lua if they depend on another element) |
@@ -1167,7 +1172,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `rest-before` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `richness` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `right` | native |  |  |
-| `rotate` | native | until the fork has IndividualTransforms: combined into transform (translate rotate scale <transform>), base rule merge (Info) |  |
+| `rotate` | native | applied by the fork before transform, as in CSS (IndividualTransforms) |  |
 | `row-gap` | native | normal -> 0 (rewritten) |  |
 | `row-rule` | unsupported | gap decorations are not supported (HTMLUI-CSS-0002) | draw separators with borders on the items |
 | `row-rule-break` | unsupported | gap decorations are not supported (HTMLUI-CSS-0002) | draw separators with borders on the items |
@@ -1202,13 +1207,17 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `rule-width` | unsupported | gap decorations are not supported (HTMLUI-CSS-0002) | draw separators with borders on the items |
 | `running` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 
-### Properties: scale to speak-as
+### Properties: scale to size
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
-| `scale` | native | until the fork has IndividualTransforms: combined into transform (translate rotate scale <transform>), base rule merge (Info) |  |
+| `scale` | native | applied by the fork before transform, as in CSS (IndividualTransforms) |  |
 | `scroll-axis-lock` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | restrict scrolling with overflow-x / overflow-y |
 | `scroll-behavior` | ignored | smooth scrolling hint; ignored (HTMLUI-CSS-0003) | Use focus navigation or Lua scrolling (element:scrollIntoView{behavior = "smooth"}). |
+| `scroll-deceleration-rate` | native | engine extension (uGUI ScrollRect Deceleration Rate): auto (the default curve) or the share of a drag scroll's velocity kept per second, 0 to 1 (v *= rate^dt, stopping below 1 px/s) |  |
+| `scroll-drag` | native | engine extension: what drags a scroll container's content: touch (fingers) or pointer (the mouse and pen too); a drag past the slop cancels the press (no click) |  |
+| `scroll-elasticity` | native | engine extension (uGUI ScrollRect Elasticity): the time an elastic overscroll springs back in (a SmoothDamp) |  |
+| `scroll-inertia` | native | engine extension (uGUI ScrollRect Inertia): auto keeps a drag scroll's velocity after the release, none stops it |  |
 | `scroll-initial-target` | unsupported | not supported (HTMLUI-CSS-0002) | set the scroll position from Lua after load |
 | `scroll-margin` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
 | `scroll-margin-block` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
@@ -1222,6 +1231,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `scroll-margin-right` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
 | `scroll-margin-top` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
 | `scroll-marker-group` | unsupported | scroll markers are not supported (HTMLUI-CSS-0002) | build the markers as buttons that scroll from Lua |
+| `scroll-movement` | native | engine extension (uGUI ScrollRect Movement Type): clamped, elastic (a drag past an edge is rubber-banded, the content springs back) or unrestricted (the content goes anywhere) |  |
 | `scroll-padding` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
 | `scroll-padding-block` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
 | `scroll-padding-block-end` | ignored | scroll snapping offset; ignored (HTMLUI-CSS-0003) |  |
@@ -1251,17 +1261,17 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `shape-outside` | unsupported | text wrapping around shapes is not supported (Info) (HTMLUI-CSS-0002) | use rectangular floats, or absolute positioning |
 | `shape-rendering` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
 | `size` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
+
+### Properties: slider-orientation to stroke-width
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `slider-orientation` | unsupported | not supported (HTMLUI-CSS-0002) | rotate the range input with transform: rotate(-90deg) |
 | `spatial-navigation-action` | unsupported | CSS spatial navigation is not supported (HTMLUI-CSS-0002) | use the RmlUi nav, nav-up, nav-right, nav-down, nav-left properties |
 | `spatial-navigation-contain` | unsupported | CSS spatial navigation is not supported (HTMLUI-CSS-0002) | use the RmlUi nav, nav-up, nav-right, nav-down, nav-left properties |
 | `spatial-navigation-function` | unsupported | CSS spatial navigation is not supported (HTMLUI-CSS-0002) | use the RmlUi nav, nav-up, nav-right, nav-down, nav-left properties |
 | `speak` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `speak-as` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
-
-### Properties: speak-header to stroke-width
-
-| Property | Support | Notes | Instead |
-|---|---|---|---|
 | `speak-header` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `speak-numeral` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `speak-punctuation` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
@@ -1292,7 +1302,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `stroke-size` | unsupported | CSS Fill and Stroke 3 (draft) is not supported (Info) (HTMLUI-CSS-0002) | use fill and stroke on the svg root, or attributes inside the SVG file |
 | `stroke-width` | emulated | applied on the svg root |  |
 
-### Properties: tab-index to text-overflow
+### Properties: tab-index to text-indent
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
@@ -1303,6 +1313,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-align-all` | unsupported | draft longhand of text-align; not supported (HTMLUI-CSS-0002) | use text-align |
 | `text-align-last` | native | the alignment of the last line and of lines before a forced break; native with the fork (Justify): auto, start, end, left, right, center, justify (match-parent is not parsed, as in Chromium); ignored without it |  |
 | `text-anchor` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
+| `text-autosize` | native | engine extension: none, or the two lengths (min max) the font size is fitted between: the largest whole px at which the text fits the box (Chromium ignores it: the authored font-size is the preview) |  |
 | `text-autospace` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `text-box` | unsupported | leading trimming is not supported (HTMLUI-CSS-0002) | adjust line-height or padding |
 | `text-box-edge` | unsupported | leading trimming is not supported (HTMLUI-CSS-0002) | adjust line-height or padding |
@@ -1322,7 +1333,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-decoration-thickness` | native | decoration details are not supported (Info); native with the fork | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
 | `text-effect` | emulated | engine extension: per-character animation of the text (wave, bounce, shake, pulse, typewriter, fade-in, grow, unfold, rainbow, gradient), the native Text Effect's formulas |  |
 | `text-effect-iteration` | emulated | engine extension: how many times the one-shot text effects run (infinite or an integer); texteffectend after the last |  |
-| `text-effect-time` | emulated | engine extension: the clock of the text effects: ui (unscaled, runs at Engine.timeScale 0) or game (scaled game time) |  |
+| `text-effect-time` | emulated | engine extension: the clock of the text effects: auto (the UI Document's Update Mode), ui (unscaled, runs at Engine.timeScale 0) or game (scaled game time) |  |
 | `text-emphasis` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
 | `text-emphasis-color` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
 | `text-emphasis-position` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
@@ -1330,14 +1341,14 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-emphasis-style` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
 | `text-group-align` | unsupported | not supported (HTMLUI-CSS-0002) | use text-align |
 | `text-indent` | native | native with the fork (TextIndent): a length or percentage (of the block's width), negative too, with hanging and each-line, as Chromium; not supported without it (Warning) | add padding-left to the first line content, e.g. on the first child |
-| `text-justify` | native | where justified lines take their space; native with the fork (Justify): auto (spaces, and around CJK characters), none, inter-word, inter-character, distribute (computes to inter-character); ignored without it |  |
-| `text-orientation` | unsupported | vertical text is not supported (Warning) (HTMLUI-CSS-0002) | rotate the element with transform: rotate(90deg), or stack the characters in a column |
-| `text-overflow` | native | ellipsis, clip and strings native |  |
 
-### Properties: text-rendering to translate
+### Properties: text-justify to translate
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `text-justify` | native | where justified lines take their space; native with the fork (Justify): auto (spaces, and around CJK characters), none, inter-word, inter-character, distribute (computes to inter-character); ignored without it |  |
+| `text-orientation` | unsupported | vertical text is not supported (Warning) (HTMLUI-CSS-0002) | rotate the element with transform: rotate(90deg), or stack the characters in a column |
+| `text-overflow` | native | ellipsis, clip and strings native |  |
 | `text-rendering` | native | native (fork S16-F3): optimizeSpeed keeps text a bitmap at the document's scale (stretched under a transform); auto and optimizeLegibility rasterize it at its on-screen scale, from distance fields while that scale animates; geometricPrecision always draws it from distance fields |  |
 | `text-shadow` | native | blur -> glow; a missing color -> the rule color or white (approximated); native with the fork (TextShadow) |  |
 | `text-size-adjust` | ignored | mobile text inflation control; no effect in a game UI (HTMLUI-CSS-0003) |  |
@@ -1359,13 +1370,13 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `transform-origin-y` | native | RmlUi engine extension (longhand) |  |
 | `transform-origin-z` | native | RmlUi engine extension (longhand) |  |
 | `transform-style` | unsupported | 3D rendering contexts are not supported (Info) (HTMLUI-CSS-0002) | flatten the scene: put the perspective on each transformed element |
-| `transition` | native | ms -> s, property names mapped to what compat writes; until the fork has AnimationLonghands: all with other entries -> all, 0s entries dropped; easing -> nearest tween until the fork has TimingFunctions |  |
-| `transition-behavior` | native | until the fork has AnimationLonghands allow-discrete has no effect: discrete properties are not transitioned |  |
+| `transition` | native | CSS transition shorthand; exact easing, times normalized to seconds and property names mapped. |  |
+| `transition-behavior` | native | allow-discrete transitions discrete properties, as in CSS (AnimationLonghands) |  |
 | `transition-delay` | native | merged into the shorthand; base rule when alone |  |
 | `transition-duration` | native | merged into the shorthand; base rule when alone |  |
 | `transition-property` | native | merged into the shorthand; base rule when alone |  |
-| `transition-timing-function` | native | merged into the shorthand; base rule when alone |  |
-| `translate` | native | until the fork has IndividualTransforms: combined into transform (translate rotate scale <transform>), base rule merge (Info) |  |
+| `transition-timing-function` | native | CSS easing list evaluated exactly; kept as a longhand. |  |
+| `translate` | native | applied by the fork before transform, as in CSS (IndividualTransforms) |  |
 
 ### Properties: u-z
 
@@ -1397,7 +1408,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `white-space-collapse` | native | combined with text-wrap-mode into the equivalent white-space (native with the fork) |  |
 | `white-space-trim` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | remove the whitespace in the markup |
 | `widows` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
-| `width` | native | min-content, max-content, fit-content, stretch, -webkit-fill-available approximated as auto until the fork has BoxParity |  |
+| `width` | native | min-content, max-content, fit-content, stretch and -webkit-fill-available as in CSS (BoxParity) |  |
 | `will-change` | native | an optimization hint without an effect of its own; with the fork, naming a property that creates a stacking context (opacity, transform, filter, mask, isolation, ...) or a containing block for positioned boxes (transform, filter, perspective, contain, ...) creates it, as in CSS (GroupOpacity, phase 3); without it ignored |  |
 | `window-drag` | ignored | window dragging belongs to the application window; ignored (HTMLUI-CSS-0003) |  |
 | `word-break` | native | keep-all -> normal (approximated; native with the fork); break-word native |  |
@@ -1446,31 +1457,31 @@ Values of a property that are not handled like the property's other values; `<..
 | Property | Value | Support | Notes | Instead |
 |---|---|---|---|---|
 | `align-content` | `baseline` | rewritten | baseline content alignment falls back to start |  |
-| `align-content` | `end` | native | end is flex-end until the fork has BoxParity |  |
+| `align-content` | `end` | native | as in CSS (BoxParity) |  |
 | `align-content` | `first baseline` | rewritten | baseline content alignment falls back to start |  |
 | `align-content` | `last baseline` | rewritten | last baseline content alignment falls back to end |  |
-| `align-content` | `normal` | native | normal behaves as stretch in flex layout until the fork has BoxParity |  |
-| `align-content` | `safe` | native | overflow alignment keyword dropped (Info) until the fork has BoxParity |  |
-| `align-content` | `start` | native | start is flex-start until the fork has BoxParity |  |
-| `align-content` | `unsafe` | native | overflow alignment keyword dropped (Info) until the fork has BoxParity |  |
-| `align-items` | `end` | native | end is flex-end until the fork has BoxParity |  |
-| `align-items` | `first baseline` | native | first baseline is baseline until the fork has BoxParity |  |
-| `align-items` | `last baseline` | native | aligned on the first baseline instead (Info) until the fork has BoxParity |  |
-| `align-items` | `normal` | native | normal behaves as stretch in flex layout until the fork has BoxParity |  |
-| `align-items` | `safe` | native | overflow alignment keyword dropped (Info) until the fork has BoxParity |  |
-| `align-items` | `self-end` | native | self-end is flex-end (LTR) until the fork has BoxParity |  |
-| `align-items` | `self-start` | native | self-start is flex-start (LTR) until the fork has BoxParity |  |
-| `align-items` | `start` | native | start is flex-start until the fork has BoxParity |  |
-| `align-items` | `unsafe` | native | overflow alignment keyword dropped (Info) until the fork has BoxParity |  |
-| `align-self` | `end` | native | end is flex-end until the fork has BoxParity |  |
-| `align-self` | `first baseline` | native | first baseline is baseline until the fork has BoxParity |  |
-| `align-self` | `last baseline` | native | aligned on the first baseline instead (Info) until the fork has BoxParity |  |
-| `align-self` | `normal` | native | normal behaves as stretch in flex layout until the fork has BoxParity |  |
-| `align-self` | `safe` | native | overflow alignment keyword dropped (Info) until the fork has BoxParity |  |
-| `align-self` | `self-end` | native | self-end is flex-end (LTR) until the fork has BoxParity |  |
-| `align-self` | `self-start` | native | self-start is flex-start (LTR) until the fork has BoxParity |  |
-| `align-self` | `start` | native | start is flex-start until the fork has BoxParity |  |
-| `align-self` | `unsafe` | native | overflow alignment keyword dropped (Info) until the fork has BoxParity |  |
+| `align-content` | `normal` | native | as in CSS (BoxParity) |  |
+| `align-content` | `safe` | native | overflow alignment as in CSS (BoxParity) |  |
+| `align-content` | `start` | native | as in CSS (BoxParity) |  |
+| `align-content` | `unsafe` | native | overflow alignment as in CSS (BoxParity) |  |
+| `align-items` | `end` | native | as in CSS (BoxParity) |  |
+| `align-items` | `first baseline` | native | as in CSS (BoxParity) |  |
+| `align-items` | `last baseline` | native | aligned on the last baseline, as in CSS (BoxParity) |  |
+| `align-items` | `normal` | native | as in CSS (BoxParity) |  |
+| `align-items` | `safe` | native | overflow alignment as in CSS (BoxParity) |  |
+| `align-items` | `self-end` | native | as in CSS (BoxParity) |  |
+| `align-items` | `self-start` | native | as in CSS (BoxParity) |  |
+| `align-items` | `start` | native | as in CSS (BoxParity) |  |
+| `align-items` | `unsafe` | native | overflow alignment as in CSS (BoxParity) |  |
+| `align-self` | `end` | native | as in CSS (BoxParity) |  |
+| `align-self` | `first baseline` | native | as in CSS (BoxParity) |  |
+| `align-self` | `last baseline` | native | aligned on the last baseline, as in CSS (BoxParity) |  |
+| `align-self` | `normal` | native | as in CSS (BoxParity) |  |
+| `align-self` | `safe` | native | overflow alignment as in CSS (BoxParity) |  |
+| `align-self` | `self-end` | native | as in CSS (BoxParity) |  |
+| `align-self` | `self-start` | native | as in CSS (BoxParity) |  |
+| `align-self` | `start` | native | as in CSS (BoxParity) |  |
+| `align-self` | `unsafe` | native | overflow alignment as in CSS (BoxParity) |  |
 | `all` | `inherit` | approximated | only inherited properties are reset to the parent value (HTMLUI-CSS-0006) |  |
 | `all` | `initial` | rewritten | every property set to its CSS initial value |  |
 | `all` | `revert` | rewritten | treated as unset (Info) |  |
@@ -1485,16 +1496,16 @@ Values of a property that are not handled like the property's other values; `<..
 | `animation-fill-mode` | `forwards` | native | final keyframe applied by the AnimationFill runtime |  |
 | `animation-iteration-count` | `0` | native | no iterations: the animation is dropped |  |
 | `animation-iteration-count` | `<number>` | native | fractional counts are rounded (Info); integers native |  |
-| `animation-timing-function` | `cubic-bezier()` | native | nearest of the RmlUi tweens until the fork has TimingFunctions (Info) |  |
-| `animation-timing-function` | `ease` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
-| `animation-timing-function` | `ease-in` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
-| `animation-timing-function` | `ease-in-out` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
-| `animation-timing-function` | `ease-out` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
-| `animation-timing-function` | `linear` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
-| `animation-timing-function` | `linear()` | native | nearest of the RmlUi tweens until the fork has TimingFunctions (Info) |  |
-| `animation-timing-function` | `step-end` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
-| `animation-timing-function` | `step-start` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
-| `animation-timing-function` | `steps()` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
+| `animation-timing-function` | `cubic-bezier()` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `ease` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `ease-in` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `ease-in-out` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `ease-out` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `linear` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `linear()` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `step-end` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `step-start` | native | CSS easing evaluated exactly. |  |
+| `animation-timing-function` | `steps()` | native | CSS easing evaluated exactly. |  |
 | `appearance` | `auto` | rewritten | the UA control look written into the companions |  |
 | `appearance` | `none` | rewritten | each control as Chromium's html.css styles it without its theme (exact): checkboxes and radios bare and sized by their content, selects keep their 1px border on ButtonFace without arrow or inner padding, buttons a 2px outset border, progress bars a gray bar with a green value |  |
 
@@ -1525,16 +1536,16 @@ Values of a property that are not handled like the property's other values; `<..
 | `background-image` | `paint()` | unsupported | image function not supported; layer dropped (Warning) (HTMLUI-CSS-0004) | use url() or a gradient |
 | `background-image` | `url()` | rewritten | compat html-layer decorator |  |
 | `border-radius` | `<h> / <v>` | approximated | elliptical radii use the horizontal radius (Warning) (HTMLUI-CSS-0006) |  |
-| `border-radius` | `<percentage>` | native | >= 50% -> 9999px (stadium on non-square boxes, Info); smaller percentages dropped (Warning) until the fork has PercentRadius |  |
-| `border-style` | `dashed` | native | drawn solid until the fork has BorderStyle (Warning) |  |
-| `border-style` | `dotted` | native | drawn solid until the fork has BorderStyle (Warning) |  |
-| `border-style` | `double` | native | drawn solid until the fork has BorderStyle (Warning) |  |
-| `border-style` | `groove` | native | drawn solid with Chromium's shade colors per side until the fork has BorderStyle (Info) |  |
+| `border-radius` | `<percentage>` | native | percentages of the box's width and height, as in CSS (PercentRadius) |  |
+| `border-style` | `dashed` | native | as in CSS (BorderStyle) |  |
+| `border-style` | `dotted` | native | as in CSS (BorderStyle) |  |
+| `border-style` | `double` | native | as in CSS (BorderStyle) |  |
+| `border-style` | `groove` | native | drawn with Chromium's shade colors, as in CSS (BorderStyle) |  |
 | `border-style` | `hidden` | native | exact; passed through once the fork has BorderStyle |  |
-| `border-style` | `inset` | native | drawn solid with Chromium's shade colors per side until the fork has BorderStyle (Info) |  |
+| `border-style` | `inset` | native | drawn with Chromium's shade colors, as in CSS (BorderStyle) |  |
 | `border-style` | `none` | native | exact; passed through once the fork has BorderStyle |  |
-| `border-style` | `outset` | native | drawn solid with Chromium's shade colors per side until the fork has BorderStyle (Info) |  |
-| `border-style` | `ridge` | native | drawn solid with Chromium's shade colors per side until the fork has BorderStyle (Info) |  |
+| `border-style` | `outset` | native | drawn with Chromium's shade colors, as in CSS (BorderStyle) |  |
+| `border-style` | `ridge` | native | drawn with Chromium's shade colors, as in CSS (BorderStyle) |  |
 | `border-style` | `solid` | native | exact; passed through once the fork has BorderStyle |  |
 | `border-width` | `medium` | rewritten | keyword width (exact) |  |
 | `border-width` | `thick` | rewritten | keyword width (exact) |  |
@@ -1546,14 +1557,14 @@ Values of a property that are not handled like the property's other values; `<..
 |---|---|---|---|---|
 | `clear` | `inline-end` | rewritten | LTR; an RTL root swaps it |  |
 | `clear` | `inline-start` | rewritten | LTR; an RTL root swaps it |  |
-| `clip-path` | `circle()` | emulated | exact geometry; no hit-test clipping (Info) |  |
-| `clip-path` | `ellipse()` | emulated | exact geometry; no hit-test clipping (Info) |  |
-| `clip-path` | `inset()` | emulated | exact geometry; no hit-test clipping (Info) |  |
-| `clip-path` | `path()` | emulated | exact geometry; no hit-test clipping (Info) |  |
-| `clip-path` | `polygon()` | emulated | exact geometry; no hit-test clipping (Info) |  |
-| `clip-path` | `rect()` | emulated | exact geometry; no hit-test clipping (Info) |  |
+| `clip-path` | `circle()` | emulated | exact geometry; clips hit testing too |  |
+| `clip-path` | `ellipse()` | emulated | exact geometry; clips hit testing too |  |
+| `clip-path` | `inset()` | emulated | exact geometry; clips hit testing too |  |
+| `clip-path` | `path()` | emulated | exact geometry; clips hit testing too |  |
+| `clip-path` | `polygon()` | emulated | exact geometry; clips hit testing too |  |
+| `clip-path` | `rect()` | emulated | exact geometry; clips hit testing too |  |
 | `clip-path` | `url()` | unsupported | SVG clip paths are not supported (Warning) (HTMLUI-CSS-0004) | use a basic shape: inset(), circle(), ellipse(), polygon() or path() |
-| `clip-path` | `xywh()` | emulated | exact geometry; no hit-test clipping (Info) |  |
+| `clip-path` | `xywh()` | emulated | exact geometry; clips hit testing too |  |
 | `color` | `currentcolor` | native | the parent current color (same as inherit); the fork resolves currentcolor itself (CurrentColor) in color, background, border and caret colors, the companion stays in shadows, outlines, gradients, filters and text effects |  |
 | `column-gap` | `normal` | rewritten | normal gap is 0 in flex layout |  |
 | `cursor` | `alias` | native |  |  |
@@ -1608,23 +1619,23 @@ Values of a property that are not handled like the property's other values; `<..
 | `display` | `block flex` | rewritten | two-value syntax -> the single keyword |  |
 | `display` | `block flow` | rewritten | two-value syntax -> the single keyword |  |
 | `display` | `block flow-root` | rewritten | two-value syntax -> the single keyword |  |
-| `display` | `block grid` | native | flex-wrap fallback until the fork has Grid (Warning) |  |
+| `display` | `block grid` | native | CSS Grid layout (Grid) |  |
 | `display` | `block table` | rewritten | two-value syntax -> the single keyword |  |
-| `display` | `contents` | native | the box is kept (Warning) until the fork has BoxParity |  |
+| `display` | `contents` | native | the box is removed and its children laid out in its place, as in CSS (BoxParity) |  |
 | `display` | `flex` | native |  |  |
 | `display` | `flow-root` | native |  |  |
-| `display` | `grid` | native | flex-wrap fallback until the fork has Grid (Warning) |  |
+| `display` | `grid` | native | CSS Grid layout (Grid) |  |
 | `display` | `inline` | native |  |  |
 | `display` | `inline flex` | rewritten | two-value syntax -> the single keyword |  |
 | `display` | `inline flow` | rewritten | two-value syntax -> the single keyword |  |
 | `display` | `inline flow-root` | rewritten | two-value syntax -> the single keyword |  |
-| `display` | `inline grid` | native | flex-wrap fallback until the fork has Grid (Warning) |  |
+| `display` | `inline grid` | native | CSS Grid layout (Grid) |  |
 | `display` | `inline table` | rewritten | two-value syntax -> the single keyword |  |
 | `display` | `inline-block` | native |  |  |
 | `display` | `inline-flex` | native |  |  |
-| `display` | `inline-grid` | native | flex-wrap fallback until the fork has Grid (Warning) |  |
+| `display` | `inline-grid` | native | CSS Grid layout (Grid) |  |
 | `display` | `inline-table` | native |  |  |
-| `display` | `list-item` | native | markers come from the li emulation until the fork has ListMarkers |  |
+| `display` | `list-item` | native | markers drawn by the fork, as in CSS (ListMarkers) |  |
 | `display` | `none` | native |  |  |
 | `display` | `ruby` | approximated | laid out inline (Info) (HTMLUI-CSS-0005) |  |
 | `display` | `ruby-base` | approximated | laid out inline (Info) (HTMLUI-CSS-0005) |  |
@@ -1650,10 +1661,10 @@ Values of a property that are not handled like the property's other values; `<..
 | `flex` | `<number>` | rewritten | a single number expanded |  |
 | `flex` | `auto` | rewritten | expanded |  |
 | `flex` | `none` | rewritten | expanded |  |
-| `flex-basis` | `content` | native | content-based flex basis (dropped) until the fork has BoxParity | use flex-basis: auto |
-| `flex-wrap` | `balance` | native | balanced lines (dropped) until the fork has BoxParity | use flex-wrap: wrap |
-| `flex-wrap` | `wrap balance` | native | balanced lines (dropped) until the fork has BoxParity | use flex-wrap: wrap |
-| `flex-wrap` | `wrap-reverse balance` | native | balanced lines (dropped) until the fork has BoxParity | use flex-wrap: wrap-reverse |
+| `flex-basis` | `content` | native | content-based flex basis, as in CSS (BoxParity) | use flex-basis: auto |
+| `flex-wrap` | `balance` | native | balanced lines, as in CSS (BoxParity) | use flex-wrap: wrap |
+| `flex-wrap` | `wrap balance` | native | balanced lines, as in CSS (BoxParity) | use flex-wrap: wrap |
+| `flex-wrap` | `wrap-reverse balance` | native | balanced lines, as in CSS (BoxParity) | use flex-wrap: wrap-reverse |
 | `float` | `inline-end` | rewritten | LTR; an RTL root swaps it |  |
 | `float` | `inline-start` | rewritten | LTR; an RTL root swaps it |  |
 | `font` | `caption` | approximated | system font approximated (Info) (HTMLUI-CSS-0005) |  |
@@ -1682,25 +1693,25 @@ Values of a property that are not handled like the property's other values; `<..
 | `grid-template-columns` | `subgrid` | unsupported | subgrids are not supported (Warning) (HTMLUI-CSS-0004) | Use nested grids with explicit track sizes. |
 | `grid-template-rows` | `masonry` | unsupported | masonry layout is not supported (Warning; no stable cross-browser semantics) (HTMLUI-CSS-0004) | Use nested grids with explicit track sizes. |
 | `grid-template-rows` | `subgrid` | unsupported | subgrids are not supported (Warning) (HTMLUI-CSS-0004) | Use nested grids with explicit track sizes. |
-| `height` | `-webkit-fill-available` | native | fill-available approximated (Info) until the fork has BoxParity |  |
-| `height` | `fit-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `height` | `fit-content()` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `height` | `max-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `height` | `min-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `height` | `stretch` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
+| `height` | `-webkit-fill-available` | native | fills the containing block, as in Chromium (BoxParity) |  |
+| `height` | `fit-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `height` | `fit-content()` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `height` | `max-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `height` | `min-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `height` | `stretch` | native | intrinsic sizing as in CSS (BoxParity) |  |
 | `image-rendering` | `auto` | emulated | linear sampling (the default) |  |
 | `image-rendering` | `crisp-edges` | emulated | img, html-layer and svg sample with the nearest filter |  |
 | `image-rendering` | `high-quality` | emulated | linear sampling (the default) |  |
 | `image-rendering` | `pixelated` | emulated | img, html-layer and svg sample with the nearest filter |  |
 | `image-rendering` | `smooth` | emulated | linear sampling (the default) |  |
-| `justify-content` | `end` | native | flex layout: end is flex-end until the fork has BoxParity |  |
-| `justify-content` | `left` | native | flex layout (LTR): left is flex-start until the fork has BoxParity |  |
-| `justify-content` | `normal` | native | normal behaves as flex-start in flex layout until the fork has BoxParity |  |
-| `justify-content` | `right` | native | flex layout (LTR): right is flex-end until the fork has BoxParity |  |
-| `justify-content` | `safe` | native | overflow alignment keyword dropped (Info) until the fork has BoxParity |  |
-| `justify-content` | `start` | native | flex layout: start is flex-start until the fork has BoxParity |  |
-| `justify-content` | `stretch` | native | stretch behaves as flex-start in flex layout until the fork has BoxParity |  |
-| `justify-content` | `unsafe` | native | overflow alignment keyword dropped (Info) until the fork has BoxParity |  |
+| `justify-content` | `end` | native | as in CSS (BoxParity) |  |
+| `justify-content` | `left` | native | as in CSS (BoxParity) |  |
+| `justify-content` | `normal` | native | as in CSS (BoxParity) |  |
+| `justify-content` | `right` | native | as in CSS (BoxParity) |  |
+| `justify-content` | `safe` | native | overflow alignment as in CSS (BoxParity) |  |
+| `justify-content` | `start` | native | as in CSS (BoxParity) |  |
+| `justify-content` | `stretch` | native | as in CSS (BoxParity) |  |
+| `justify-content` | `unsafe` | native | overflow alignment as in CSS (BoxParity) |  |
 
 ### Values: l-m
 
@@ -1727,34 +1738,34 @@ Values of a property that are not handled like the property's other values; `<..
 | `list-style-type` | `upper-latin` | emulated | marker drawn by the list marker emulation |  |
 | `list-style-type` | `upper-roman` | emulated | marker drawn by the list marker emulation |  |
 | `mask-image` | `effect()` | rewritten | a phase-5 UI effect (jasper://docs/html-ui-effects): a paint effect; its alpha masks the element; unknown names, parameters and values are reported (HTMLUI-FX-*) |  |
-| `max-height` | `-webkit-fill-available` | native | fill-available approximated (Info) until the fork has BoxParity |  |
-| `max-height` | `fit-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `max-height` | `fit-content()` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `max-height` | `max-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `max-height` | `min-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `max-height` | `stretch` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `max-width` | `-webkit-fill-available` | native | fill-available approximated (Warning) until the fork has BoxParity |  |
-| `max-width` | `fit-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `max-width` | `fit-content()` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `max-width` | `max-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `max-width` | `min-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `max-width` | `stretch` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `min-height` | `-webkit-fill-available` | native | fill-available approximated (Info) until the fork has BoxParity |  |
-| `min-height` | `auto` | native | auto minimum size -> 0px until the fork has BoxParity |  |
-| `min-height` | `fit-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `min-height` | `fit-content()` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `min-height` | `max-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `min-height` | `min-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `min-height` | `stretch` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `min-width` | `-webkit-fill-available` | native | fill-available approximated (Warning) until the fork has BoxParity |  |
-| `min-width` | `auto` | native | auto minimum size -> 0px until the fork has BoxParity |  |
-| `min-width` | `fit-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `min-width` | `fit-content()` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `min-width` | `max-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `min-width` | `min-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `min-width` | `stretch` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
+| `max-height` | `-webkit-fill-available` | native | fills the containing block, as in Chromium (BoxParity) |  |
+| `max-height` | `fit-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `max-height` | `fit-content()` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `max-height` | `max-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `max-height` | `min-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `max-height` | `stretch` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `max-width` | `-webkit-fill-available` | native | fills the containing block, as in Chromium (BoxParity) |  |
+| `max-width` | `fit-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `max-width` | `fit-content()` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `max-width` | `max-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `max-width` | `min-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `max-width` | `stretch` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `min-height` | `-webkit-fill-available` | native | fills the containing block, as in Chromium (BoxParity) |  |
+| `min-height` | `auto` | native | the automatic minimum size, as in CSS (BoxParity) |  |
+| `min-height` | `fit-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `min-height` | `fit-content()` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `min-height` | `max-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `min-height` | `min-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `min-height` | `stretch` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `min-width` | `-webkit-fill-available` | native | fills the containing block, as in Chromium (BoxParity) |  |
+| `min-width` | `auto` | native | the automatic minimum size, as in CSS (BoxParity) |  |
+| `min-width` | `fit-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `min-width` | `fit-content()` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `min-width` | `max-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `min-width` | `min-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `min-width` | `stretch` | native | intrinsic sizing as in CSS (BoxParity) |  |
 
-### Values: o-s
+### Values: o-v
 
 | Property | Value | Support | Notes | Instead |
 |---|---|---|---|---|
@@ -1768,14 +1779,14 @@ Values of a property that are not handled like the property's other values; `<..
 | `outline-style` | `none` | rewritten | no ring |  |
 | `outline-style` | `outset` | native | outline drawn solid (Info) |  |
 | `outline-style` | `ridge` | native | outline drawn solid (Info) |  |
-| `overflow` | `clip` | native | clip drawn as hidden until the fork has Sticky |  |
+| `overflow` | `clip` | native | clips without a scroll container, as in CSS (Sticky) |  |
 | `overflow` | `overlay` | rewritten | overlay drawn as auto |  |
 | `overflow-wrap` | `anywhere` | rewritten | mapped to word-break |  |
 | `overflow-wrap` | `break-word` | rewritten | mapped to word-break |  |
 | `overflow-wrap` | `normal` | rewritten | nothing written |  |
-| `overflow-x` | `clip` | native | clip drawn as hidden until the fork has Sticky |  |
+| `overflow-x` | `clip` | native | clips without a scroll container, as in CSS (Sticky) |  |
 | `overflow-x` | `overlay` | rewritten | overlay drawn as auto |  |
-| `overflow-y` | `clip` | native | clip drawn as hidden until the fork has Sticky |  |
+| `overflow-y` | `clip` | native | clips without a scroll container, as in CSS (Sticky) |  |
 | `overflow-y` | `overlay` | rewritten | overlay drawn as auto |  |
 | `overscroll-behavior` | `none` | rewritten | scroll chaining stopped (no overscroll effects exist) |  |
 | `pointer-events` | `all` | rewritten | SVG value -> auto |  |
@@ -1787,17 +1798,12 @@ Values of a property that are not handled like the property's other values; `<..
 | `pointer-events` | `visibleFill` | rewritten | SVG value -> auto |  |
 | `pointer-events` | `visiblePainted` | rewritten | SVG value -> auto |  |
 | `pointer-events` | `visibleStroke` | rewritten | SVG value -> auto |  |
-| `position` | `-webkit-sticky` | native | sticky positioning drawn as relative (Warning) until the fork has Sticky |  |
-| `position` | `fixed` | native | acts as absolute until the fork has Fixed (Info) |  |
-| `position` | `sticky` | native | sticky positioning drawn as relative (Warning) until the fork has Sticky |  |
+| `position` | `-webkit-sticky` | native | sticky positioning as in CSS (Sticky) |  |
+| `position` | `fixed` | native | fixed against the viewport, as in CSS (Fixed) |  |
+| `position` | `sticky` | native | sticky positioning as in CSS (Sticky) |  |
 | `row-gap` | `normal` | rewritten | normal gap is 0 in flex layout |  |
 | `scrollbar-width` | `none` | rewritten | generated rules hide the scrollbars |  |
 | `scrollbar-width` | `thin` | rewritten | generated rules make the scrollbars 8px |  |
-
-### Values: t-w
-
-| Property | Value | Support | Notes | Instead |
-|---|---|---|---|---|
 | `text-align` | `-moz-center` | rewritten | legacy prefixed value |  |
 | `text-align` | `-webkit-center` | rewritten | legacy prefixed value |  |
 | `text-align` | `-webkit-left` | rewritten | legacy prefixed value (with the fork it also aligns block children) |  |
@@ -1821,28 +1827,33 @@ Values of a property that are not handled like the property's other values; `<..
 | `text-wrap-style` | `balance` | ignored | line balancing refinement; ignored (Info) (HTMLUI-CSS-0005) |  |
 | `text-wrap-style` | `pretty` | ignored | line balancing refinement; ignored (Info) (HTMLUI-CSS-0005) |  |
 | `text-wrap-style` | `stable` | ignored | line balancing refinement; ignored (Info) (HTMLUI-CSS-0005) |  |
-| `transition-timing-function` | `cubic-bezier()` | native | nearest of the RmlUi tweens until the fork has TimingFunctions (Info) |  |
-| `transition-timing-function` | `ease` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
-| `transition-timing-function` | `ease-in` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
-| `transition-timing-function` | `ease-in-out` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
-| `transition-timing-function` | `ease-out` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
-| `transition-timing-function` | `linear` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
-| `transition-timing-function` | `linear()` | native | nearest of the RmlUi tweens until the fork has TimingFunctions (Info) |  |
-| `transition-timing-function` | `step-end` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
-| `transition-timing-function` | `step-start` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
-| `transition-timing-function` | `steps()` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
+| `transition-timing-function` | `cubic-bezier()` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `ease` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `ease-in` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `ease-in-out` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `ease-out` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `linear` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `linear()` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `step-end` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `step-start` | native | CSS easing evaluated exactly. |  |
+| `transition-timing-function` | `steps()` | native | CSS easing evaluated exactly. |  |
 | `visibility` | `collapse` | rewritten | collapse drawn as hidden |  |
+
+### Values: w
+
+| Property | Value | Support | Notes | Instead |
+|---|---|---|---|---|
 | `white-space` | `break-spaces` | rewritten | trailing spaces do not wrap |  |
 | `white-space-collapse` | `break-spaces` | rewritten | mapped to the equivalent white-space (with text-wrap-mode) |  |
 | `white-space-collapse` | `collapse` | rewritten | mapped to the equivalent white-space (with text-wrap-mode) |  |
 | `white-space-collapse` | `preserve` | rewritten | mapped to the equivalent white-space (with text-wrap-mode) |  |
 | `white-space-collapse` | `preserve-breaks` | rewritten | mapped to the equivalent white-space (with text-wrap-mode) |  |
-| `width` | `-webkit-fill-available` | native | fill-available approximated (Warning) until the fork has BoxParity |  |
-| `width` | `fit-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `width` | `fit-content()` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `width` | `max-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `width` | `min-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
-| `width` | `stretch` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
+| `width` | `-webkit-fill-available` | native | fills the containing block, as in Chromium (BoxParity) |  |
+| `width` | `fit-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `width` | `fit-content()` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `width` | `max-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `width` | `min-content` | native | intrinsic sizing as in CSS (BoxParity) |  |
+| `width` | `stretch` | native | intrinsic sizing as in CSS (BoxParity) |  |
 | `word-break` | `break-word` | native | native |  |
 | `word-break` | `keep-all` | approximated | CJK text breaks between characters (Info) (HTMLUI-CSS-0005) |  |
 | `word-wrap` | `anywhere` | rewritten | mapped to word-break |  |
@@ -1875,9 +1886,9 @@ Values of a property that are not handled like the property's other values; `<..
 | `attr()` | native | in content: the originating element's attribute (the fork's generated content, PseudoElements); in other properties dropped (Warning) | write the value in the CSS, or set it from Lua |
 | `blur()` | native |  |  |
 | `brightness()` | native |  |  |
-| `calc()` | native | static folding until the fork has Calc |  |
+| `calc()` | native | evaluated at layout, as in CSS (Calc) |  |
 | `circle()` | emulated | clip-path shape drawn by the html-shape decorator |  |
-| `clamp()` | native | static folding until the fork has Calc |  |
+| `clamp()` | native | evaluated at layout, as in CSS (Calc) |  |
 | `color()` | native | normalized to #rrggbbaa (gamut-clipped to sRGB), relative colors with a static origin; with a var() the fork substitutes at runtime it is written for the fork (ColorFunctions, in the colour, border, outline, background, text-shadow and text-decoration properties) |  |
 | `color-mix()` | native | static operands normalized; with a var() or currentcolor operand written for the fork (ColorFunctions, CurrentColor; without them a var() operand drops the declaration, Warning) |  |
 | `conic-gradient()` | rewritten | native decorator with normalized arguments |  |
@@ -1886,14 +1897,14 @@ Values of a property that are not handled like the property's other values; `<..
 | `counter()` | native | with content only, which needs the fork |  |
 | `counters()` | native | with content only, which needs the fork |  |
 | `cross-fade()` | unsupported | image function not supported; layer dropped (HTMLUI-CSS-0015) | use url() or a gradient |
-| `cubic-bezier()` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
+| `cubic-bezier()` | native | CSS easing evaluated exactly. |  |
 | `drop-shadow()` | rewritten | arguments reordered for RmlUi |  |
 | `effect()` | rewritten | phase-5 UI effects in background-image, background, mask-image, filter and backdrop-filter (jasper://docs/html-ui-effects); elsewhere dropped (HTMLUI-FX-0002) |  |
 | `element()` | unsupported | image function not supported; layer dropped (HTMLUI-CSS-0015) | use url() or a gradient |
 | `ellipse()` | emulated | clip-path shape drawn by the html-shape decorator |  |
 | `env()` | rewritten | safe-area-inset-* (and safe-area-max-inset-*) -> the live safe area (Screen.safeAreaInsets, updated without a reload; 0 where a value is folded statically); other variables -> the fallback or dropped (Info) |  |
 | `exp()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
-| `fit-content()` | native | read by the grid fallback until the fork has Grid |  |
+| `fit-content()` | native | as in CSS (Grid) |  |
 | `format()` | rewritten | @font-face source selection |  |
 | `grayscale()` | native |  |  |
 | `hsl()` | native | normalized to #rrggbbaa (gamut-clipped to sRGB), relative colors with a static origin; with a var() the fork substitutes at runtime it is written for the fork (ColorFunctions, in the colour, border, outline, background, text-shadow and text-decoration properties) |  |
@@ -1908,15 +1919,15 @@ Values of a property that are not handled like the property's other values; `<..
 | `lab()` | native | normalized to #rrggbbaa (gamut-clipped to sRGB), relative colors with a static origin; with a var() the fork substitutes at runtime it is written for the fork (ColorFunctions, in the colour, border, outline, background, text-shadow and text-decoration properties) |  |
 | `lch()` | native | normalized to #rrggbbaa (gamut-clipped to sRGB), relative colors with a static origin; with a var() the fork substitutes at runtime it is written for the fork (ColorFunctions, in the colour, border, outline, background, text-shadow and text-decoration properties) |  |
 | `light-dark()` | approximated | the light scheme value is used (Info) (HTMLUI-CSS-0005) |  |
-| `linear()` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
+| `linear()` | native | CSS easing evaluated exactly. |  |
 | `linear-gradient()` | rewritten | native decorator with normalized arguments |  |
 | `local()` | rewritten | @font-face source selection |  |
 | `log()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
 | `matrix()` | native |  |  |
 | `matrix3d()` | native |  |  |
-| `max()` | native | static folding until the fork has Calc |  |
-| `min()` | native | static folding until the fork has Calc |  |
-| `minmax()` | native | read by the grid fallback until the fork has Grid |  |
+| `max()` | native | evaluated at layout, as in CSS (Calc) |  |
+| `min()` | native | evaluated at layout, as in CSS (Calc) |  |
+| `minmax()` | native | as in CSS (Grid) |  |
 | `mod()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
 
 ### Functions: o-x
@@ -1934,7 +1945,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `radial-gradient()` | rewritten | native decorator with normalized arguments |  |
 | `rect()` | emulated | clip-path shape drawn by the html-shape decorator |  |
 | `rem()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
-| `repeat()` | native | read by the grid fallback until the fork has Grid |  |
+| `repeat()` | native | as in CSS (Grid) |  |
 | `repeating-conic-gradient()` | rewritten | native decorator with normalized arguments |  |
 | `repeating-linear-gradient()` | rewritten | native decorator with normalized arguments |  |
 | `repeating-radial-gradient()` | rewritten | native decorator with normalized arguments |  |
@@ -1959,7 +1970,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `skewX()` | native |  |  |
 | `skewY()` | native |  |  |
 | `sqrt()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
-| `steps()` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
+| `steps()` | native | CSS easing evaluated exactly. |  |
 | `tan()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
 | `tech()` | rewritten | @font-face source selection |  |
 | `translate()` | native |  |  |
@@ -1994,7 +2005,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `dvw` | native | the viewport has one size; the fork computes it (ExtraUnits) where the value reaches RmlUi as written, else converted |  |
 | `em` | native |  |  |
 | `ex` | native | font-relative unit approximated as 0.5em (Info); the fork computes it (ExtraUnits) where the value reaches RmlUi as written, else approximated |  |
-| `fr` | native | read by the grid fallback until the fork has Grid |  |
+| `fr` | native | as in CSS (Grid) |  |
 | `grad` | native | x 0.9; the fork computes it (ExtraUnits) where the value reaches RmlUi as written, else converted |  |
 | `Hz` | ignored | aural unit; no effect (HTMLUI-CSS-0005) |  |
 | `ic` | approximated | font-relative unit approximated as 1em (Info) (HTMLUI-CSS-0005) |  |
@@ -2036,8 +2047,8 @@ Values of a property that are not handled like the property's other values; `<..
 | `+` | native |  |  |
 | `.class` | native | root band added |  |
 | `>` | native |  |  |
-| `[attr i]` | native | case-insensitive matching lost (Info) until the fork has SelectorsLevel4 |  |
-| `[attr s]` | native | flag removed (Info) until the fork has SelectorsLevel4 |  |
+| `[attr i]` | native | case-insensitive matching as in CSS (SelectorsLevel4) |  |
+| `[attr s]` | native | case-sensitive matching as in CSS (SelectorsLevel4) |  |
 | `[attr$=value]` | native |  |  |
 | `[attr*=value]` | native |  |  |
 | `[attr=value]` | native |  |  |
@@ -2056,12 +2067,12 @@ Values of a property that are not handled like the property's other values; `<..
 
 | Pseudo-class | Support | Notes | Instead |
 |---|---|---|---|
-| `:-webkit-any()` | native | expanded into the cross product until the fork has RootIsWhere |  |
+| `:-webkit-any()` | native | matched by the fork, as in CSS (RootIsWhere) |  |
 | `:active` | native |  |  |
 | `:any-link` | native | exact (no visited state) |  |
 | `:blank` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
 | `:checked` | native | also on option |  |
-| `:default` | native | rule dropped (Warning) until the fork has SelectorsLevel4 | set a class on the default control |
+| `:default` | native | matched by the fork, as in CSS (SelectorsLevel4) | set a class on the default control |
 | `:defined` | rewritten | removed from its compound (always true; Info) |  |
 | `:dir()` | unsupported | rule dropped (Info) (HTMLUI-SEL-0001) | select on the dir attribute: [dir=rtl] |
 | `:disabled` | native |  |  |
@@ -2073,48 +2084,48 @@ Values of a property that are not handled like the property's other values; `<..
 | `:focus-visible` | native | without FocusPseudoClasses: set by FocusTracker for keyboard and navigation focus |  |
 | `:focus-within` | native | without FocusPseudoClasses: RmlUi's :focus chain is exactly :focus-within |  |
 | `:fullscreen` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
-| `:has()` | native | rule dropped (Warning) until the fork has Has | set a class from Lua |
+| `:has()` | native | matched by the fork, as in CSS (Has) | set a class from Lua |
 | `:host` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly |
 | `:host()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly |
 | `:host-context()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | use a descendant selector |
 | `:hover` | native |  |  |
 | `:in-range` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
-| `:indeterminate` | native | rule dropped (Warning) until the fork has SelectorsLevel4; with it: an indeterminate attribute on a checkbox, a radio group with none checked, a progress without value | set a class from Lua |
+| `:indeterminate` | native | an indeterminate attribute on a checkbox, a radio group with none checked, a progress without value (SelectorsLevel4) | set a class from Lua |
 | `:invalid` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
-| `:is()` | native | expanded into the cross product until the fork has RootIsWhere |  |
+| `:is()` | native | matched by the fork, as in CSS (RootIsWhere) |  |
 | `:lang()` | approximated | matches the lang attribute without inheritance (Info) (HTMLUI-SEL-0002) |  |
 | `:last-child` | native |  |  |
 | `:last-of-type` | native |  |  |
 | `:link` | native | exact (no visited state) |  |
-| `:matches()` | native | expanded into the cross product until the fork has RootIsWhere |  |
+| `:matches()` | native | matched by the fork, as in CSS (RootIsWhere) |  |
 | `:modal` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | select dialog[open] |
 | `:not()` | native | a complex argument is expanded where RmlUi needs it |  |
 | `:nth-child()` | native |  |  |
-| `:nth-child(of S)` | native | the An+B of S form: rule dropped (Warning) until the fork has SelectorsLevel4 | add a class to the elements to count |
+| `:nth-child(of S)` | native | the An+B of S form, as in CSS (SelectorsLevel4) | add a class to the elements to count |
 | `:nth-last-child()` | native |  |  |
 | `:nth-last-of-type()` | native |  |  |
 | `:nth-of-type()` | native |  |  |
 | `:only-child` | native |  |  |
 | `:only-of-type` | native |  |  |
-| `:optional` | native | attribute equivalent until the fork has SelectorsLevel4 |  |
+| `:optional` | native | matched by the fork, as in CSS (SelectorsLevel4) |  |
 | `:out-of-range` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
 | `:paused` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
 | `:placeholder-shown` | native |  |  |
 | `:playing` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
 | `:popover-open` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
-| `:read-only` | native | attribute equivalent until the fork has SelectorsLevel4 |  |
-| `:read-write` | native | attribute equivalent until the fork has SelectorsLevel4 |  |
-| `:required` | native | attribute equivalent until the fork has SelectorsLevel4 |  |
+| `:read-only` | native | matched by the fork, as in CSS (SelectorsLevel4) |  |
+| `:read-write` | native | matched by the fork, as in CSS (SelectorsLevel4) |  |
+| `:required` | native | matched by the fork, as in CSS (SelectorsLevel4) |  |
 | `:root` | rewritten | the HTML root is the RML document element (exact) |  |
 | `:scope` | native | the document root |  |
 | `:state()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
-| `:target` | native | rule dropped (Warning) until the fork has SelectorsLevel4; with it: the element whose id is the document URL's fragment | set a class from Lua |
+| `:target` | native | the element whose id is the document URL's fragment (SelectorsLevel4) | set a class from Lua |
 | `:target-within` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
 | `:user-invalid` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
 | `:user-valid` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
 | `:valid` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
 | `:visited` | unsupported | never matches; rule dropped (Info) (HTMLUI-SEL-0001) | style links with :link or [href] |
-| `:where()` | native | expanded until the fork has RootIsWhere; specificity not zero (Info) |  |
+| `:where()` | native | matched by the fork with zero specificity, as in CSS (RootIsWhere) |  |
 
 ### Pseudo-elements
 
@@ -2137,18 +2148,18 @@ Values of a property that are not handled like the property's other values; `<..
 | `::-webkit-scrollbar-track-piece` | rewritten | same for scrollbarhorizontal |  |
 | `::-webkit-slider-runnable-track` | rewritten | descendant slidertrack |  |
 | `::-webkit-slider-thumb` | rewritten | descendant sliderbar |  |
-| `::after` | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
-| `:after` | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
+| `::after` | native | generated content as in CSS (PseudoElements) |  |
+| `:after` | native | generated content as in CSS (PseudoElements) |  |
 | `::backdrop` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | add a full-screen element behind the dialog |
-| `::before` | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
-| `:before` | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
+| `::before` | native | generated content as in CSS (PseudoElements) |  |
+| `:before` | native | generated content as in CSS (PseudoElements) |  |
 | `::cue` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | show captions as text elements |
 | `::details-content` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the content elements of details directly |
 | `::file-selector-button` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | use a button element |
 | `::first-letter` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | wrap the first letter in a span |
 | `::first-line` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | wrap the first line in a span |
 | `::highlight()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | wrap the range in a span |
-| `::marker` | native | child marker element of the list marker emulation until the fork has ListMarkers |  |
+| `::marker` | native | the list item's marker, as in CSS (ListMarkers) |  |
 | `::part()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly (no shadow DOM) |
 | `::picker()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the select element |
 | `::placeholder` | rewritten | only color, opacity and font-* declarations kept (others dropped, Info) |  |
@@ -2165,19 +2176,19 @@ Values of a property that are not handled like the property's other values; `<..
 | At-rule | Support | Notes | Instead |
 |---|---|---|---|
 | `@-moz-document` | unsupported | contents dropped (Warning) (HTMLUI-AT-0001) | put the rules in the stylesheet of the document they target |
-| `@-moz-keyframes` | rewritten | prefix removed; names sanitized; per-keyframe easing dropped until the fork has AnimationLonghands |  |
-| `@-webkit-keyframes` | rewritten | prefix removed; names sanitized; per-keyframe easing dropped until the fork has AnimationLonghands |  |
+| `@-moz-keyframes` | rewritten | prefix removed; names sanitized; per-keyframe easing kept (AnimationLonghands) |  |
+| `@-webkit-keyframes` | rewritten | prefix removed; names sanitized; per-keyframe easing kept (AnimationLonghands) |  |
 | `@charset` | ignored | sources are decoded as UTF-8; dropped (Info) (HTMLUI-AT-0001) |  |
 | `@container` | unsupported | contents dropped (Warning) (HTMLUI-AT-0001) | use @media on the viewport size, or toggle classes from Lua |
 | `@counter-style` | ignored | custom counter styles are not supported; dropped (Info) (HTMLUI-AT-0001) | use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none |
 | `@decorator` | native | RmlUi extension |  |
 | `@document` | unsupported | contents dropped (Warning) (HTMLUI-AT-0001) | put the rules in the stylesheet of the document they target |
 | `@effect` | rewritten | declares a project UI effect (phase 5): { src: url(<file>.frag) }, hoisted; problems are HTMLUI-FX-0012 to 0014 |  |
-| `@font-face` | rewritten | TTF/OTF source selection and descriptors |  |
+| `@font-face` | rewritten | TTF/OTF/WOFF/WOFF2 source selection and descriptors |  |
 | `@font-feature-values` | ignored | font features are not supported; dropped (Info) (HTMLUI-AT-0001) |  |
 | `@font-palette-values` | ignored | font palettes are not supported; dropped (Info) (HTMLUI-AT-0001) |  |
 | `@import` | rewritten | inlined with its media, layer and supports conditions |  |
-| `@keyframes` | native | names sanitized; per-keyframe easing dropped until the fork has AnimationLonghands |  |
+| `@keyframes` | native | names sanitized; per-keyframe easing kept (AnimationLonghands) |  |
 | `@layer` | rewritten | flattened by layer order (Info on specificity conflicts) |  |
 | `@media` | rewritten | normalized (3.9.4); nested blocks combined |  |
 | `@namespace` | ignored | namespaces are not used; dropped (Info) (HTMLUI-AT-0001) |  |
@@ -2185,7 +2196,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `@property` | native | registered custom properties (phase 5): the syntaxes length, number, integer, percentage, length-percentage, color, angle, time and * are typed, inherits: false is honoured, transitions and @keyframes interpolate them and var() follows; a document's registrations are its own (a hot reload applies an edited definition, an unload releases them; two live documents defining a name differently: the first one's applies, HTMLUI-AT-0013). Other syntaxes, and without the fork: the initial value written on the root, inherits: false lost (Info) |  |
 | `@scope` | unsupported | contents dropped (Warning) (HTMLUI-AT-0001) | use descendant selectors under a class |
 | `@spritesheet` | native | RmlUi extension |  |
-| `@starting-style` | native | contents dropped until the fork has AnimationLonghands (Warning) | set the start values with a class and remove it from Lua after load, or use @keyframes |
+| `@starting-style` | native | its rules give the starting values of transitions, as in CSS (AnimationLonghands) | set the start values with a class and remove it from Lua after load, or use @keyframes |
 | `@supports` | rewritten | evaluated statically against the support tables |  |
 | `@view-transition` | ignored | view transitions are not supported; dropped (Info) (HTMLUI-AT-0001) |  |
 
@@ -2212,7 +2223,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `grid` | unsupported | not evaluated: the query never matches (Warning) (HTMLUI-AT-0004) | remove the query |
 | `handheld` | rewritten | media type that never matches; the block is dropped |  |
 | `height` | native | range syntax -> min-/max- forms; em/rem -> px x 16 |  |
-| `hover` | rewritten | evaluated at load: hover unless System::isTouchDevice() (Info) |  |
+| `hover` | rewritten | follows the last pointer used (live): none after a finger, hover after the mouse; the document is restyled with the other compile when it changes |  |
 | `inverted-colors` | rewritten | evaluated at load with the value none (Info) |  |
 | `max-aspect-ratio` | native | range syntax -> min-/max- forms |  |
 | `max-color` | rewritten | evaluated at load with the value 8 (Info) |  |
@@ -2236,7 +2247,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `orientation` | native |  |  |
 | `overflow-block` | rewritten | evaluated at load with the value scroll (Info) |  |
 | `overflow-inline` | rewritten | evaluated at load with the value scroll (Info) |  |
-| `pointer` | rewritten | evaluated at load: fine, or coarse on touch devices (Info) |  |
+| `pointer` | rewritten | follows the last pointer used (live): coarse after a finger, fine after the mouse; the document is restyled with the other compile when it changes |  |
 | `prefers-color-scheme` | rewritten | UIDocument::setColorScheme switches the theme (light by default) |  |
 | `prefers-contrast` | rewritten | evaluated at load with the value no-preference (Info) |  |
 | `prefers-reduced-data` | unsupported | not evaluated: the query never matches (Warning) (HTMLUI-AT-0004) | remove the query |
@@ -2268,7 +2279,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-AT-0003` | info | **@supports evaluated** (`supports-evaluated`): The @supports condition was evaluated against the engine's support tables; the message gives the result. |
 | `HTMLUI-AT-0004` | warning | **Media feature unsupported** (`media-feature-unsupported`): The media condition uses a feature or a negation the engine cannot express; the block never matches. |
 | `HTMLUI-AT-0005` | info | **Media query normalized** (`media-normalized`): The media query was rewritten to the engine's syntax (range syntax to min-/max-, comma lists to separate blocks, prefers-color-scheme to themes, ...). |
-| `HTMLUI-AT-0006` | info | **Media feature evaluated statically** (`media-static`): The media feature has one fixed value in the engine (hover, pointer, color, ...); the message gives the value used. |
+| `HTMLUI-AT-0006` | info | **Media feature evaluated statically** (`media-static`): The media feature has one fixed value in the engine (any-hover, any-pointer, color, ...); the message gives the value used. |
 | `HTMLUI-AT-0007` | by case (warning) | **@import problem** (`import-problem`): An @import cycle (Error: the repeated import is dropped), a missing imported file, or an @import nested too deeply (Warning). |
 | `HTMLUI-AT-0008` | info | **Nesting flattened** (`nesting-flattened`): Nested rules were flattened into top-level rules. |
 | `HTMLUI-AT-0009` | warning | **Invalid keyframes** (`keyframes-invalid`): A keyframe selector or the content of a keyframe block is invalid; it was dropped. |
@@ -2303,9 +2314,15 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-CSS-0019` | info | **Easing approximated** (`easing-approximated`): The easing function was replaced by the nearest built-in tween; the message names it and the largest error. |
 | `HTMLUI-CSS-0020` | warning | **steps() approximated** (`steps-approximated`): steps(), step-start and step-end are replaced by a linear easing until the layout library supports them. |
 | `HTMLUI-CSS-0021` | by case (warning) | **Animation approximated** (`animation-approximated`): Part of an animation is approximated: per-keyframe easing dropped, a fractional iteration count rounded, the backwards fill mode not applied during the delay, ... |
-| `HTMLUI-CSS-0022` | by case (warning) | **Font source** (`font-source`): An @font-face source was skipped (WOFF/WOFF2/SVG/EOT, local(): Info), or the rule has no TrueType/OpenType or bitmap font (.bitmapfont, .fnt) source and was dropped (Warning). Convert the font to TTF or OTF; remote fonts are imported as TTF by the editor. |
+| `HTMLUI-CSS-0022` | by case (warning) | **Font source** (`font-source`): An @font-face source was skipped (SVG/EOT, local(): Info), or the rule has no supported vector or bitmap font (.bitmapfont, .fnt) source and was dropped (Warning). Provide TTF, OTF, WOFF, WOFF2 or a bitmap font; remote fonts are imported by the editor. |
 | `HTMLUI-CSS-0023` | info | **Unknown font family** (`unknown-font-family`): No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the engine's fallback font. |
 | `HTMLUI-CSS-0024` | warning | **Blurred effect on a bitmap font** (`bitmap-font-effect`): A rule with a bitmap font family (.bitmapfont or .fnt @font-face) has a glow, a blur or a blurred text-shadow: a pixel font draws only pixel outlines and sharp shadows, so the effect is dropped. Use font-effect: outline(1px <colour>) or a text-shadow without blur. |
+
+### FONT
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `HTMLUI-FONT-0001` | by case (info) | **Characters drawn by a fallback font** (`fallback-glyph`): Characters of the text are not in the first available face of its font-family list; a fallback face (a later family of the list, a registered fallback font or the built-in Roboto and Noto Sans Arabic) draws them, in the text's weight and style, with its font-effect and text-effect. They can look different from the rest of the text. Use a font that has the characters, or name one that has them after it in font-family. An info once the text is drawn; a warning from check --ui and inspect_ui of a file, for the static text of the document's own fonts. |
 
 ### FX
 
@@ -2341,6 +2358,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-GEN-0005` | warning | **Charset other than UTF-8** (`non-utf8-charset`): The document or stylesheet declares a character encoding other than UTF-8 (<meta charset>, @charset). The engine always decodes UTF-8: save the file as UTF-8 and declare utf-8. |
 | `HTMLUI-GEN-0006` | warning | **RmlUi message** (`rmlui-message`): RmlUi, the engine's layout library, rejected or warned about the converted document or stylesheet. The location is mapped back to your file. Simplify the construct or report the case: converted output should always be accepted. |
 | `HTMLUI-GEN-0007` | warning | **Glyph atlas budget too small** (`glyph-atlas-budget`): The text drawn needs more glyphs than the glyph atlas holds: its least recently used pages keep being cleared and their glyphs made again (more than 4 times in 120 frames). Raise Project Settings > Graphics > HTML UI > Glyph Atlas Budget (graphics.html_ui_glyph_atlas_mib), or use fewer font sizes and fonts at once. |
+| `HTMLUI-GEN-0008` | warning | **Image region not found** (`image-region`): An image URL's fragment names a region the image does not have: #xywh=x,y,w,h (image pixels) or #xywh=percent:x,y,w,h outside the image, a malformed xywh, or #sprite=<name> naming no frame of the texture's Sprite Mode sheet. Nothing is drawn for it. Fix the numbers, or the sprite name (the texture's Import Settings list its frames). |
 
 ### HTML
 
@@ -2368,7 +2386,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-HTML-0020` | info | **Fieldset disabled** (`fieldset-disabled`): disabled on a <fieldset> was propagated to every control inside it, as browsers do. |
 | `HTMLUI-HTML-0021` | warning | **Unknown Lucide icon** (`unknown-lucide-icon`): The data-lucide name is not in the built-in Lucide icon pack; the element stays empty. The suggestion lists the closest names. |
 | `HTMLUI-HTML-0022` | error | **Lua script error** (`lua-script-error`): A <script type="text/lua"> failed to compile or raised an error; the location is the line in the HTML file. |
-| `HTMLUI-HTML-0023` | info | **Link not navigable** (`link-not-navigable`): The link points outside the project's documents (http(s), mailto:, javascript:, ...): clicking it only dispatches the htmlnavigate event. |
+| `HTMLUI-HTML-0023` | info | **Link not navigable** (`link-not-navigable`): The link points outside the project's documents (http(s), mailto:, ...): clicking it dispatches the htmlnavigate event, then opens the URL with System.openURL unless a listener called preventDefault(); a relative link to a file that is not a document only dispatches the event. |
 | `HTMLUI-HTML-0024` | warning | **Unsupported image format** (`unsupported-image-format`): The engine cannot decode this image format (WebP, AVIF, ...). Convert the image to PNG or JPEG (or SVG). |
 | `HTMLUI-HTML-0025` | info | **Dialog not modal** (`dialog-not-modal`): Dialogs open and close, but showModal() has no backdrop and does not trap the focus. Add a backdrop element styled in CSS if needed. |
 | `HTMLUI-HTML-0026` | warning | **Self-closing tag** (`self-closing-tag`): In HTML, <div/> (any element that is not void, such as img, br or input) does not close the element: everything after it goes inside it until its parent ends, which changes the layout. Browsers do the same. Write <div></div>. |
@@ -2390,11 +2408,23 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-IMP-0004` | info | **Imported** (`imported`): A remote resource was downloaded into assets/htmlui-imports/ and recorded in the manifest. |
 | `HTMLUI-IMP-0005` | error | **curl missing** (`curl-missing`): The editor downloads through the curl executable, which was not found. Install curl and make sure it is on the PATH. |
 | `HTMLUI-IMP-0006` | warning | **Font variant unavailable** (`font-variant-unavailable`): The font provider does not offer a requested weight or style; the text falls back to the nearest available one. |
-| `HTMLUI-IMP-0007` | warning | **WOFF only** (`woff-only`): The remote font is only available as WOFF/WOFF2, which the engine cannot read. Provide a TTF or OTF version. |
+| `HTMLUI-IMP-0007` | warning | **WOFF only** (`woff-only`): Legacy diagnostic, no longer emitted: WOFF and WOFF2 fonts are imported as they are. |
 | `HTMLUI-IMP-0008` | info | **License note** (`license-note`): The license of an imported resource was recorded, or it is unknown and must be verified before shipping. |
 | `HTMLUI-IMP-0009` | warning | **Manifest file missing** (`manifest-file-missing`): An import manifest entry points to a file that does not exist; re-import the resource (load the document in the editor, jasperengine-editor import-ui, or MCP import_files from_document). |
 | `HTMLUI-IMP-0010` | warning | **Video not converted** (`video-not-converted`): The importer kept a video the engine cannot play because no FFmpeg with an AV1 encoder was found (JASPER_FFMPEG, the editor setting, then PATH). Install FFmpeg with SVT-AV1 (or libaom-av1, rav1e) and libopus and import it again, or run the command in the message. FFmpeg is the user's own tool, run as a separate program; the engine never links or ships it. |
 | `HTMLUI-IMP-0011` | error | **Video conversion failed** (`video-conversion-failed`): FFmpeg could not convert the video to AV1 + Opus WebM (an unreadable or damaged input, or an encoder error); the message has FFmpeg's last lines. The original is not imported. |
+
+### INPUT
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `HTMLUI-INPUT-0001` | info | **Page takes presses** (`page-press-listener`): A transparent page (the document or its <body>) lets presses through its empty parts to the documents below and the game, until it listens for a press: a click, dblclick, contextmenu, mousedown, pointerdown or touchstart listener on the document or <body> (addEventListener or data-event-*) makes the document take every press there, as a modal or a "click outside" handler wants. Listen on the elements that take the press otherwise; move, up, over and out listeners on the page take nothing, and a wheel listener takes only the wheel. |
+
+### LOC
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `HTMLUI-LOC-0001` | warning | **Localised element with child elements** (`l10n-child-elements`): An element with data-l10n-id gets the message as its text, so it must hold only text: its child elements would be replaced. The element is left as written. Put the key on the innermost element that holds the text, or split the sentence into keys (data-l10n-args passes values). |
 
 ### SEL
 

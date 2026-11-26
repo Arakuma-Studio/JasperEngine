@@ -87,6 +87,17 @@ in Unity. Losing the window focus (or an app pause)
 releases every held key, button and gamepad button (their `getKeyUp` fires), cancels the fingers
 and makes a lock `POINTER_PENDING`.
 
+## Back, menus and the gamepad cursor
+
+Escape, gamepad B and Android's Back button are **Back** first: the top Is Menu UI Document gets
+a cancelable `back` event, then `Engine.onBack(source)`; a taken press reaches neither the
+documents' `keydown` nor the game, its release neither. Untaken, they go on as keys (Android's
+Back presses Escape). An Is Menu document appearing releases the game's held keys, buttons and
+fingers in the next frame (`getKeyUp`), as a focus loss does. A UI Document with Gamepad Cursor
+gives pad players a pointer while the scheme is Gamepad; its sticks, A, B and d-pad never reach
+the game or input actions that ignore UI input then. Both: jasper://docs/html-ui "Gamepad
+cursor", "Back and menus".
+
 ## Keys on the web
 
 Browsers report every key the desktop players do: the Command and Windows keys are
@@ -169,6 +180,62 @@ InputActions.getMap("Menu"):enable()                               -- an exclusi
   `getConflicts`, `saveOverrides` (UserSettings, per asset), `resetOverrides`.
   `binding:getDisplayName()` gives "Space", "Ctrl+S", "Left Stick", "Cross" on a PlayStation pad.
 
+## Input scheme
+
+The engine keeps one **current input scheme**: `"Keyboard&Mouse"`, `"Gamepad"` or `"Touch"` (the
+binding group names), switched by what the player last really used. It is information, never a
+filter: every binding of every enabled map stays live whatever the scheme.
+
+```lua
+if InputActions.currentScheme == InputScheme.Touch then showTouchHints() end
+InputActions.onSchemeChanged = function(scheme, previous) refreshHud(scheme) end
+local label = InputActions.getActionDisplayName("Gameplay/Jump")        -- "Space", "Cross", "Touch"
+local glyph = InputActions.getActionGlyph("Gameplay/Jump", "Gamepad")   -- "gamepad/playstation/cross"
+```
+
+- **Start.** Touch on a touch device (the Game view's Simulate Touch included), else
+  Keyboard&Mouse; again at Play start. A pad connected at start does not switch until used.
+- **What switches it.** Keyboard&Mouse: a key down (not a repeat, not a modifier alone, not typed
+  in a focused text field, not the engine's own Android Back Escape or soft-keyboard edits), a
+  mouse button, the wheel, mouse motion of 12 canvas px within 0.25 s. Gamepad: a button, a stick
+  past 0.5, a trigger past half way. Touch: a finger down, except while a non-modifier key is held
+  in Keyboard&Mouse (looking with a finger while walking with W), a mouse the platform delivers
+  as a finger (Android's mouse tool type, iOS trackpads; an Android emulator's PC mouse), and a
+  mouse event within 300 ms and 24 px of a touch end. An event a document consumed still counts.
+- **Once a frame.** The frame's latch applies the window's last scheme before the actions are
+  evaluated and fires `onSchemeChanged(scheme, previous)` once (A, B, A in one frame: nothing).
+- **Also read.** `currentPointer` (`"Keyboard&Mouse"` or `"Touch"`: the last pointer used, a pad
+  never changes it), `lastGamepad` (the pad that last moved, -1 before any), `gamepadFamily`
+  (`"Xbox"`, `"PlayStation"`, `"Nintendo"`, `"Generic"`: of that pad, else the first connected;
+  from its name, a browser's `Vendor:` id first).
+- **Forcing.** `InputActions.setSchemeOverride(InputScheme.Gamepad)` from the next frame,
+  `setSchemeOverride(nil)` back to the tracked one; `getSchemeOverride()`. The Game view's Input
+  Scheme menu forces it in the editor (at Play start, at once during Play; never in builds).
+- **Prompts.** `getActionDisplayName(action, scheme?)` / `getActionGlyph(action, scheme?)`: the
+  action's first binding in that scheme (default the current one), `""` when it has none. A
+  binding belongs to the schemes its `groups` name; with no groups to its control's device (a
+  composite's first part's); `virtual/...` to every scheme. Pad names follow the family: Nintendo
+  by position (south "B", east "A", "ZR", "+"), Xbox ("LB", "RT", "View", "Menu").
+- **Glyph keys** (`getActionGlyph`, `getBindingGlyph(id)`, the HTML UI's `<input-prompt
+  data-glyph>`): lowercase, stable; map them to your own art. `keyboard/<key>` (the control path's
+  name: `keyboard/space`, `keyboard/w`, `keyboard/left_shift`; a required modifier first:
+  `keyboard/ctrl+keyboard/s`), `mouse/left|right|middle|button4..8|scroll|delta`,
+  `gamepad/<family>/<control>` with the family `xbox`, `playstation`, `nintendo`, `generic` and the
+  control by family: xbox `a b x y lb rb lt rt view menu xbox`, playstation `cross circle square
+  triangle l1 r1 l2 r2 share options ps l3 r3`, nintendo `b a y x l r zl zr minus plus home`,
+  generic `south east west north left_bumper right_bumper left_trigger right_trigger back start
+  guide`; on every family `left_stick_press right_stick_press` (playstation: `l3 r3`), `dpad_up
+  dpad_right dpad_down dpad_left`, `left_stick right_stick` (also for a stick's x or y axis);
+  `touch/tap|position|delta|count`, `virtual/<name>`. A composite joins its parts with `+`
+  (`keyboard/w+keyboard/a+keyboard/s+keyboard/d`).
+- **UI.** HTML documents carry `data-input-scheme` (`keyboard-mouse`, `gamepad`, `touch`) and
+  `data-gamepad-family` on `<html>`, `<input-prompt>` shows an action's binding, on-screen controls
+  take `visibility="touch-scheme"` (component UI: Visibility Touch Scheme), and `hover`/`pointer`
+  media queries follow the last pointer (jasper://docs/html-ui).
+- **Testing with MCP.** `send_input` gamepad, key, mouse and touch events switch it as a player's
+  would; `get_input_state` reports `scheme {current, pointer, gamepad, gamepad_family, override}`
+  and `changes`; `configure_game_view {input_scheme: "gamepad"}` forces it (`auto` clears it).
+
 ## Unity's Input Manager (`Input.getAxis`, `getButton`)
 
 The actions of a map named **Input Manager** are Unity's virtual axes and buttons. A game or Play
@@ -226,8 +293,10 @@ by their component or element: a stick writes `horizontalAction` / `verticalActi
 it, a touch area `Mouse X` / `Mouse Y` deltas × `sensitivity` (0.1). An action field takes a flat
 name or `Map/Action`. Each takes the first pointer that presses it (a stick, a look area and a
 button at once); releasing, disabling, destroying, unloading, a cancel, pause or focus loss let go.
-A touch area dragged with the mouse adds nothing to an action bound to mouse movement. The Game
-view's Simulate Touch makes the mouse finger 0 (Alt on release keeps it down; the next drag is
+A touch area dragged with the mouse adds nothing to an action bound to mouse movement. Visibility
+(`visibility` on the elements): Always, Touch Devices Only (`touch-devices-only`: where the device
+has a touch screen) or Touch Scheme (`touch-scheme`: while the player uses touch; hidden, it lets
+go). The Game view's Simulate Touch makes the mouse finger 0 (Alt on release keeps it down; the next drag is
 finger 1).
 
 ```lua
@@ -291,3 +360,44 @@ text, for `UserSettings`), `Input.importBindings(json)`. Runtime state: Play sto
 - On-screen controls with several fingers: `touch` events with different `pointer` ids spread
   over frames (`gap_frames`, `wait` events), then `eval_lua "return Input.getAxis('Horizontal')"`;
   `Input.isPointerOverUI(id)` tells whether a finger is on UI.
+
+## Recordings and input scripts
+
+- An input file (`.input.json`, `format: "jasperengine-input"`, `version: 1`) holds `events`: the
+  `send_input` event objects. `kind: "script"` events follow each other like a call's (their own
+  frames, then `gap_frames`); `kind: "recording"` events carry `frame`, the update frame they
+  arrived on, and replay in that frame's input window.
+- In a file `ms` and `hold_ms` are frames at its `fixed_fps` (default 60), rounded up: 100 ms is 6
+  frames. Write waits in frames, or wait for state: `{type: "wait", until: "Menu.ready", frames:
+  600}` checks the Lua condition once per frame and fails naming it after `frames` (600 by default).
+- Steps only files and `send_input` know: `{type: "shot", name: "01_menu"}` (a PNG of the game
+  frame), `{type: "gamepad", action: "connect", gamepad: 0, name: "Pad"}` and `disconnect`.
+  `space: "safe_area"` puts x, y in 0..1 of `Screen.safeArea`; `view` cannot be stored.
+- Repeat a flow: write a script and run it with `send_input {file: "Tests/Input/menu.input.json"}`
+  (its shots come back in `shots`). A recording replays from Play's start, not through send_input:
+  `play {action: "start", input: "<file>"}` (the recording's scene unless `scene` is given; its shot
+  steps go to `Recordings/Input/<file stem>/`, listed in `get_play_state` `input.shots`).
+- Record a session: `run_command {id: "playmode.recordInput"}` before `play` arms the toolbar's
+  Record Input; the session records from Play's start (a new seed, the Record Input frame rate,
+  checkpoints) until the same command during Play (Stop Recording) or Play's stop, into
+  `Tests/Input/` (a project with a test root) or `Recordings/Input/`, one undo step.
+  `get_play_state` shows `input.recording.file` while it records and `record_input.last_file` after.
+- Store screenshots: `record_game {input, format: "shots", resolutions: ["1290x2796", "2048x2732"]}`
+  replays the file once per size, each from Play's start, writing its shot steps into
+  `<output>/<WxH>/` (default `Recordings/Screenshots/<file stem>/`); `format: "png"` records its
+  frames instead. `fps` is the file's `fixed_fps`.
+- Built players: `run_build {input_script: "<file>", resolutions, headless: true}` runs the file in
+  the player on any desktop (no X server) and returns its shots, `[input]` lines and exit code;
+  `input` stays the X11 route.
+- A recording made from Play's start has a `seed` (Lua's `math.randomseed` before any `init`), a
+  fixed frame rate and checkpoints (a state hash, probe positions, `InputRecording.checkpoint`
+  values) every 60 frames. A replay compares them and reports the first `diverged_at_frame` with
+  the probes and values that differ; it does not promise the same run. Sources of divergence: wall
+  clock reads (`Time.realtimeSinceStartup`, `os.time`, `os.clock`), loads and worker results that
+  finish on other frames, HTTP, logic on audio position, physics across platforms or compilers.
+  Checkpoints compare only on the platform that recorded them (`comparable: false` otherwise).
+- Players run a file with `--input-script tests/Input/menu.input.json --quit-after-input` (implies
+  `--after-ready` and the file's `fixed_fps`); `--input-shots DIR` (default `data://input-shots/`),
+  `--input-strict` (a divergence fails), `--input-allow-real`. They log `[input] begin`, `[input]
+  shot`, `[input] diverged`, `[input] done`, `[input] failed` lines and exit 0, 10 (failed) or 11
+  (diverged with `--input-strict`).

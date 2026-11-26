@@ -200,6 +200,47 @@ namespace jasperengine::cook {
         }
     };
 
+    // a list element: the variant's index, then its value (the same indices as ScriptPropertyValue)
+    template<>
+    struct Codec<ScriptPropertyElement> {
+        static void write(Writer& w, const ScriptPropertyElement& v) {
+            w.u8(static_cast<uint8_t>(v.index()));
+            std::visit([&w](const auto& value) {
+                using V = std::decay_t<decltype(value)>;
+                if constexpr (!std::is_same_v<V, std::monostate>) Codec<V>::write(w, value);
+            }, v);
+        }
+        static void read(Reader& r, ScriptPropertyElement& v) {
+            const uint8_t index = r.u8();
+            switch (index) {
+                case 0: v = std::monostate{}; break;
+                case 1: { bool x = false; Codec<bool>::read(r, x); v = x; break; }
+                case 2: { int x = 0; Codec<int>::read(r, x); v = x; break; }
+                case 3: { float x = 0; Codec<float>::read(r, x); v = x; break; }
+                case 4: { std::string x; Codec<std::string>::read(r, x); v = x; break; }
+                case 5: { Vector2 x; Codec<Vector2>::read(r, x); v = x; break; }
+                case 6: { Vector3 x; Codec<Vector3>::read(r, x); v = x; break; }
+                case 7: { Vector4 x; Codec<Vector4>::read(r, x); v = x; break; }
+                case 8: { EntityReference x; Codec<EntityReference>::read(r, x); v = x; break; }
+                case 9: { PrefabAsset x; Codec<PrefabAsset>::read(r, x); v = x; break; }
+                case 10: { AssetRef x; Codec<AssetRef>::read(r, x); v = x; break; }
+                default: r.fail("a script list element of kind " + std::to_string(index)); break;
+            }
+        }
+    };
+    static_assert(std::variant_size_v<ScriptPropertyElement> == 11, "a new ScriptPropertyElement kind needs its cooked encoding");
+
+    // a list property's value (S95): its elements
+    template<>
+    struct Codec<ScriptPropertyList> {
+        static void write(Writer& w, const ScriptPropertyList& list) {
+            Codec<std::vector<ScriptPropertyElement>>::write(w, list.items);
+        }
+        static void read(Reader& r, ScriptPropertyList& list) {
+            Codec<std::vector<ScriptPropertyElement>>::read(r, list.items);
+        }
+    };
+
     // the variant's index, then its value
     template<>
     struct Codec<ScriptPropertyValue> {
@@ -224,11 +265,12 @@ namespace jasperengine::cook {
                 case 8: { EntityReference x; Codec<EntityReference>::read(r, x); v = x; break; }
                 case 9: { PrefabAsset x; Codec<PrefabAsset>::read(r, x); v = x; break; }
                 case 10: { AssetRef x; Codec<AssetRef>::read(r, x); v = x; break; }
+                case 11: { ScriptPropertyList x; Codec<ScriptPropertyList>::read(r, x); v = std::move(x); break; }
                 default: r.fail("a script property value of kind " + std::to_string(index)); break;
             }
         }
     };
-    static_assert(std::variant_size_v<ScriptPropertyValue> == 11, "a new ScriptPropertyValue kind needs its cooked encoding");
+    static_assert(std::variant_size_v<ScriptPropertyValue> == 12, "a new ScriptPropertyValue kind needs its cooked encoding");
 
     template<>
     struct Codec<ScriptProperty> {
@@ -269,6 +311,34 @@ namespace jasperengine::cook {
             s.className = r.string();
             s.enabled = r.u8() != 0;
             Codec<std::vector<ScriptProperty>>::read(r, s.properties);
+        }
+    };
+
+    // a Script component's scripts, then (content 1.12, S95) the element type of each property in
+    // order: content cooked before ends after the scripts, and its properties read as Float lists
+    // never come (1.5 had no lists)
+    template<>
+    struct Codec<std::vector<ScriptEntry>> {
+        static void write(Writer& w, const std::vector<ScriptEntry>& v) {
+            w.varint(v.size());
+            for (const ScriptEntry& entry : v) Codec<ScriptEntry>::write(w, entry);
+            for (const ScriptEntry& entry : v) {
+                for (const ScriptProperty& property : entry.properties) Codec<ScriptPropertyType>::write(w, property.elementType);
+            }
+        }
+        static void read(Reader& r, std::vector<ScriptEntry>& v) {
+            const uint64_t count = r.varint();
+            if (count > r.remaining()) {
+                r.fail("an array of " + std::to_string(count) + " scripts in " + std::to_string(r.remaining()) + " bytes");
+                return;
+            }
+            v.clear();
+            v.resize(static_cast<size_t>(count));
+            for (ScriptEntry& entry : v) Codec<ScriptEntry>::read(r, entry);
+            if (r.atEnd()) return;
+            for (ScriptEntry& entry : v) {
+                for (ScriptProperty& property : entry.properties) Codec<ScriptPropertyType>::read(r, property.elementType);
+            }
         }
     };
 

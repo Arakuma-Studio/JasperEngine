@@ -56,6 +56,9 @@ namespace jasperengine::editor::reflect {
         Tileset,        // a .tileset (S50)
         TitleArt,       // a .titleart (S81's Title Art Renderer)
         Mesh,           // a .mesh (S98 F1: a Mesh Renderer's geometry)
+        IesProfile,     // an .ies light profile (S99)
+        Dialogue,       // a .dialogue (dialogue-graphs.md R13)
+        VertexColors,   // a .vcolors (V1's Vertex Colors)
         FogProfile      // a .fogprofile (docs/specs/S101-vapor.md R1)
     };
 
@@ -485,6 +488,8 @@ namespace jasperengine::editor::reflect {
     std::vector<const EnumDesc*> postProcessingEnums();
     // Project Settings > Graphics > Shader Creation (ShaderCreationProjectSettings, spec S32)
     const StructDesc& shaderCreationStruct();
+    // Project Settings > Player > Saved Data (SaveGameSettings, docs/specs/savegame.md R34)
+    const StructDesc& saveGameSettingsStruct();
     // Project Settings > Debug (DebugSettings, feature debug-overlay): the project file's debug
     // block, the names of its values and its settings rows (editor/reflect/DebugReflect.cpp)
     const StructDesc& debugSettingsStruct();

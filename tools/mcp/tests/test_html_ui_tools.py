@@ -1216,17 +1216,18 @@ async def test_examples_resources(ed: Editor):
     index = got.contents[0].text
     ed.check("jasper://examples/html-ui/" in index, "the example index links its files")
     mimes = {".html": "text/html", ".css": "text/css", ".lua": "text/x-lua", ".svg": "image/svg+xml", ".json": "application/json",
-             ".webm": "video/webm"}
+             ".webm": "video/webm", ".woff2": "font/woff2"}
     files = [LIBRARY / rel for rel in (
         "main_menu/main_menu.html", "main_menu/main_menu.css", "main_menu/MainMenuUI.lua",
-        "main_menu/assets/logo.svg", "examples.json", "video_menu/assets/menu-loop.webm", "LICENSE-lucide.txt")]
+        "main_menu/assets/logo.svg", "examples.json", "video_menu/assets/menu-loop.webm", "LICENSE-lucide.txt",
+        "motion_graphics/assets/motion-roboto.woff2", "motion_graphics/assets/LICENSE-Roboto.txt")]
     for path in files:
         rel = path.relative_to(LIBRARY).as_posix()
         got = await ed.session.read_resource(f"jasper://examples/html-ui/{rel}")
         content = got.contents[0]
         ed.check_eq(content.mime_type, mimes.get(path.suffix, "text/plain"), f"{rel} mime")
-        if path.suffix == ".webm":
-            # binary (video_menu's background, phase 6): a base64 blob
+        if content.mime_type.startswith(("video/", "font/")):
+            # Binary examples are transported as blobs, including embedded NUL bytes.
             ed.check(base64.b64decode(content.blob) == path.read_bytes(), f"{rel} content (blob)")
         else:
             ed.check(content.text == path.read_text(encoding="utf-8"), f"{rel} content")

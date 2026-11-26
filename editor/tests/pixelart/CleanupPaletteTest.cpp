@@ -26,6 +26,8 @@
 
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// its own name: another RgbaImage is in sight in some unity units
+using CleanupPaletteImage = jasperengine::editor::pixelart::cleanup::RgbaImage;
 using jasperengine::pixelart::ColorMetric;
 using jasperengine::pixelart::ciede2000;
 using jasperengine::pixelart::packRgb;
@@ -263,7 +265,7 @@ TEST(CleanupBackground, RemovesAFakeCheckerboardFromABlurryUpscaledPicture) {
     options.blur = 1;
     options.noise = 3;
     options.seed = 2;
-    const RgbaImage image = upscale(scene, options);
+    const CleanupPaletteImage image = upscale(scene, options);
     const std::optional<Detection> detection = detectGrid(image);
     ASSERT_TRUE(detection);
     QuantizeOptions plain;
@@ -333,7 +335,7 @@ TEST(CleanupExport, ScalesPixelsByWholeFactors) {
     art.height = 2;
     art.palette = {Rgba8{255, 0, 0, 255}, Rgba8{0, 0, 255, 255}};
     art.indices = {0, 0, 1, 0, 0, TRANSPARENT};
-    const RgbaImage image = toRgba(art, 2);
+    const CleanupPaletteImage image = toRgba(art, 2);
     EXPECT_EQ(image.width(), 6);
     EXPECT_EQ(image.height(), 4);
     EXPECT_EQ(image.at(0, 0), (PixelRgba{255, 0, 0, 255}));
@@ -349,7 +351,7 @@ TEST(CleanupPalette, ExtractsTheColoursAPictureIsMadeOfKeepingLockedOnes) {
     Upscale options;
     options.scale = 4;
     options.noise = 3;
-    const RgbaImage image = upscale(sprite, options);
+    const CleanupPaletteImage image = upscale(sprite, options);
     const Grid grid = uniformGrid(image.width(), image.height(), GridSpec{4, 4, 0, 0});
     const std::vector<Rgba8> colors = cellColors(sampleCells(image, grid, {0.25, 128}));
     const std::vector<Rgba8> locked{Rgba8{255, 0, 255, 255}};
@@ -433,7 +435,7 @@ TEST(CleanupLost, LeavesOutSkippedCellsAndColoursLostInTooFewCells) {
 // ---- the pipeline's S46 steps (R9, R14, R16, R18, R4 moved lines)
 
 TEST(CleanupPipeline, CutsPartialAlphaToOpaqueOrTransparentAndCountsIt) {
-    RgbaImage image(4, 1);
+    CleanupPaletteImage image(4, 1);
     image.set(0, 0, {200, 10, 10, 255});
     image.set(1, 0, {200, 10, 10, 200});
     image.set(2, 0, {200, 10, 10, 100});
@@ -442,14 +444,14 @@ TEST(CleanupPipeline, CutsPartialAlphaToOpaqueOrTransparentAndCountsIt) {
     recipe.sample.inset = 0;
     const Outcome fixed = runWithSpec(image, recipe, recipe.grid.spec, std::nullopt);
     EXPECT_EQ(fixed.partialAlpha, 2);
-    const RgbaImage output = toRgba(fixed.exported);
+    const CleanupPaletteImage output = toRgba(fixed.exported);
     EXPECT_EQ(output.at(0, 0)[3], 255);
     EXPECT_EQ(output.at(1, 0)[3], 255);
     EXPECT_EQ(output.at(2, 0)[3], 0);
     EXPECT_EQ(output.at(3, 0)[3], 0);
     // The cutoff decides: 200 is below a cutoff of 220
     recipe.alphaCutoff = 220;
-    const RgbaImage strict = toRgba(runWithSpec(image, recipe, recipe.grid.spec, std::nullopt).exported);
+    const CleanupPaletteImage strict = toRgba(runWithSpec(image, recipe, recipe.grid.spec, std::nullopt).exported);
     EXPECT_EQ(strict.at(1, 0)[3], 0);
     EXPECT_EQ(strict.at(0, 0)[3], 255);
 }
@@ -458,7 +460,7 @@ TEST(CleanupPipeline, ProposesAnAutoPaletteFromTheCellsAndSnapsToIt) {
     const PixelArt sprite = makeSprite(16, 16, sweetie16(), 3);
     Upscale options;
     options.scale = 6;
-    const RgbaImage image = upscale(sprite, options);
+    const CleanupPaletteImage image = upscale(sprite, options);
     Recipe recipe = pipelineRecipe(6);
     AutoPalette automatic;
     automatic.count = 4;
@@ -474,7 +476,7 @@ TEST(CleanupPipeline, AppliesLinesDraggedByHandLastAndABentLineMovesAsAWhole) {
     const PixelArt sprite = makeSprite(8, 8, sweetie16(), 2);
     Upscale options;
     options.scale = 10;
-    const RgbaImage image = upscale(sprite, options);
+    const CleanupPaletteImage image = upscale(sprite, options);
     Recipe recipe = pipelineRecipe(10);
     PipelineCache cache;
     recipe.moved = {{"x:3", 32.5}, {"y:2", 19.0}, {"x:99", 1.0}};
@@ -495,7 +497,7 @@ TEST(CleanupPipeline, DropsHandEditsAndKeptSpecksRecordedAtAnotherSize) {
     const PixelArt sprite = makeSprite(8, 8, sweetie16(), 2);
     Upscale options;
     options.scale = 4;
-    const RgbaImage image = upscale(sprite, options);
+    const CleanupPaletteImage image = upscale(sprite, options);
     Recipe recipe = pipelineRecipe(4);
     recipe.edits.size = "9x9";
     recipe.edits.strokes = {{editAt(0, 0, EditTool::Erase, false)}};
@@ -516,8 +518,8 @@ TEST(CleanupPipeline, ACachedRunEqualsAColdRunAndFollowsTheNewPicture) {
     options.scale = 6;
     options.blur = 1;
     options.noise = 4;
-    const RgbaImage first = upscale(makeSprite(16, 16, sweetie16(), 3), options);
-    const RgbaImage second = upscale(makeSprite(16, 16, sweetie16(), 4), options);
+    const CleanupPaletteImage first = upscale(makeSprite(16, 16, sweetie16(), 3), options);
+    const CleanupPaletteImage second = upscale(makeSprite(16, 16, sweetie16(), 4), options);
     Recipe recipe = pipelineRecipe(6);
     PipelineCache cache;
     (void)runRecipe(first, recipe, &cache);

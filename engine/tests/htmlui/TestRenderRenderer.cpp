@@ -3,9 +3,18 @@
 
 // RmlRenderer: scissor conversion, geometry and texture lifetimes, deferred releases, pooled
 // geometry buffers, waiting for shaders, GPU objects after a context is destroyed and after
-// view loss.
+// view loss; S93's images: texture sources and regions, the asynchronous decode and the process
+// image cache (R18-R20).
 
+#include "TestGoldenCommon.h"
 #include "TestRenderCommon.h"
+#include "TempDir.h"
+#include "compat/PerfFixtures.h"
+
+#include "HtmlUIClock.h"
+#include "HtmlUIImageCache.h"
+#include "component/UIDocumentComponent.h"
+#include "subsystem/UIDocumentSystem.h"
 
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -14,8 +23,13 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdlib>
+#include <functional>
+#include <thread>
 #include <vector>
+
+#include "stb_image_write.h"
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -124,9 +138,12 @@ TEST(RmlRendererTest, GeometryLifetime){
 }
 
 TEST(RmlRendererTest, GeometryLifetimeThroughContext){
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     JASPER_REQUIRE_GPU();
     // (the boxes as meshes: SDF primitives make no geometry)
     ClassicReplay classic;
+    HtmlUIImageCache::get().clear();
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
@@ -348,6 +365,8 @@ TEST(RmlRendererTest, WaitsForShaders){
 }
 
 TEST(RmlRendererTest, GeometryStorage){
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    FrameReuseMode replayed(false);
     JASPER_REQUIRE_GPU();
     S16On s16;
     RenderTestContext test;
@@ -453,9 +472,15 @@ TEST(RmlRendererTest, NoLeaksAfterContextDestroy){
     test.renderer.getGpuHandles(buffers, images);
     // the composite quad's two, geometry pages and the transient buffers of the first frame
     EXPECT_GE(buffers.size(), 6u);
-    EXPECT_GE(images.size(), 4u);   // placeholder, checker, alpha50, icon
+    EXPECT_GE(images.size(), 1u);   // placeholder
+    // S93 R19: the file images (checker, alpha50; compat rasterizes the SVG itself) are the process image
+    // cache's, not the renderer's
+    std::vector<uint32_t> cached;
+    HtmlUIImageCache::get().getGpuHandles(cached);
+    EXPECT_GE(cached.size(), 2u);
     for (uint32_t id : buffers) EXPECT_TRUE(isBufferValid(id));
     for (uint32_t id : images) EXPECT_TRUE(isImageValid(id));
+    for (uint32_t id : cached) EXPECT_TRUE(isImageValid(id));
 
     test.destroy();
 
@@ -464,6 +489,10 @@ TEST(RmlRendererTest, NoLeaksAfterContextDestroy){
     EXPECT_FALSE(test.renderer.isReady());
     for (uint32_t id : buffers) EXPECT_FALSE(isBufferValid(id));
     for (uint32_t id : images) EXPECT_FALSE(isImageValid(id));
+    // released into the cache's LRU (the next context showing them uploads nothing), gone when it is cleared
+    for (uint32_t id : cached) EXPECT_TRUE(isImageValid(id));
+    HtmlUIImageCache::get().clear();
+    for (uint32_t id : cached) EXPECT_FALSE(isImageValid(id));
 
     std::vector<uint32_t> after, afterImages;
     test.renderer.getGpuHandles(after, afterImages);
@@ -522,4 +551,308 @@ TEST(RmlRendererTest, DeadTextureHandlesAreFreed){
     test.renderer.ReleaseTexture(texture);
     EXPECT_EQ(test.renderer.getLiveTextureCount(), 0u);
     test.renderer.ReleaseGeometry(quad.handle);
+}
+
+// ---------------------------------------------------------------- S93: images (R18-R20)
+
+namespace {
+
+    // the cache decodes on the Background lane for a scope (the suite decodes at once, S16Switch)
+    struct AsyncImageDecodes {
+        AsyncImageDecodes(){ HtmlUIImageCache::setSynchronousForTesting(false); }
+        ~AsyncImageDecodes(){ HtmlUIImageCache::setSynchronousForTesting(true); }
+        AsyncImageDecodes(const AsyncImageDecodes&) = delete;
+        AsyncImageDecodes& operator=(const AsyncImageDecodes&) = delete;
+    };
+
+    struct ImageCacheBudget {
+        explicit ImageCacheBudget(int mib){ HtmlUIImageCache::setBudgetMiB(mib); }
+        ~ImageCacheBudget(){ HtmlUIImageCache::setBudgetMiB(-1); }
+        ImageCacheBudget(const ImageCacheBudget&) = delete;
+        ImageCacheBudget& operator=(const ImageCacheBudget&) = delete;
+    };
+
+    // a 2048 x 2048 opaque PNG whose every pixel has red 200 (green and blue vary, so it does not
+    // compress to nothing and its decode costs what a real one does)
+    std::string writeLargePng(const test::TempDir& dir, const std::string& name){
+        const int size = 2048;
+        std::vector<uint8_t> rgba((size_t)size * size * 4);
+        uint32_t seed = 12345u;
+        for (size_t i = 0; i < (size_t)size * size; i++){
+            seed = seed * 1664525u + 1013904223u;
+            rgba[i * 4 + 0] = 200;
+            rgba[i * 4 + 1] = (uint8_t)((seed >> 24) & 0x3F);
+            rgba[i * 4 + 2] = (uint8_t)((i / 4096) & 0xFF);
+            rgba[i * 4 + 3] = 255;
+        }
+        const std::string path = dir.file(name).generic_string();
+        stbi_write_png(path.c_str(), size, size, 4, rgba.data(), size * 4);
+        return path;
+    }
+
+    std::string imageDocument(const std::string& path, const std::string& attributes = ""){
+        return "<rml><head><style>body { margin: 0; } img { width: 128px; height: 128px; }</style></head>"
+               "<body><img src=\"" + path + "\" " + attributes + "/></body></rml>";
+    }
+
+    // the layer's centre texel shows the image (red 200, opaque)
+    bool showsImage(RenderTestContext& test){
+        std::vector<uint8_t> layer;
+        if (!test.readLayer(layer))
+            return false;
+        const uint8_t* p = &layer[((size_t)64 * test.targetSize.x + 64) * 4];
+        return std::abs(p[0] - 200) <= 2 && p[3] == 255;
+    }
+
+}
+
+TEST(ImageRegion, ParsesMediaFragmentsAndSprites){
+    HtmlUIImageRegion region;
+    std::string error;
+    EXPECT_TRUE(HtmlUIImageRegion::parse("", region, &error));
+    EXPECT_TRUE(region.empty());
+    ASSERT_TRUE(HtmlUIImageRegion::parse("#xywh=16,0,8,4", region, &error)) << error;
+    EXPECT_EQ(region.kind, HtmlUIImageRegion::Kind::PIXELS);
+    EXPECT_EQ(region.x, 16.0f);
+    EXPECT_EQ(region.width, 8.0f);
+    EXPECT_EQ(region.height, 4.0f);
+    ASSERT_TRUE(HtmlUIImageRegion::parse("xywh=pixel:1,2,3,4", region, &error)) << error;
+    EXPECT_EQ(region.kind, HtmlUIImageRegion::Kind::PIXELS);
+    ASSERT_TRUE(HtmlUIImageRegion::parse("#xywh=percent:0,50,50,50", region, &error)) << error;
+    EXPECT_EQ(region.kind, HtmlUIImageRegion::Kind::PERCENT);
+    EXPECT_EQ(region.keyText(), "xywh=percent:0,50,50,50");
+    ASSERT_TRUE(HtmlUIImageRegion::parse("#sprite=hero%203", region, &error)) << error;
+    EXPECT_EQ(region.kind, HtmlUIImageRegion::Kind::SPRITE);
+    EXPECT_EQ(region.sprite, "hero 3");
+    // another fragment (an SVG's #id) names no region: the whole image, as Media Fragments say
+    ASSERT_TRUE(HtmlUIImageRegion::parse("#icon-home", region, &error));
+    EXPECT_TRUE(region.empty());
+    // malformed ones are errors
+    EXPECT_FALSE(HtmlUIImageRegion::parse("#xywh=1,2,3", region, &error));
+    EXPECT_FALSE(HtmlUIImageRegion::parse("#xywh=1,2,0,4", region, &error));
+    EXPECT_FALSE(HtmlUIImageRegion::parse("#xywh=-1,2,3,4", region, &error));
+    EXPECT_FALSE(HtmlUIImageRegion::parse("#xywh=a,2,3,4", region, &error));
+    EXPECT_FALSE(HtmlUIImageRegion::parse("#sprite=", region, &error));
+    EXPECT_FALSE(error.empty());
+}
+
+TEST(ImageRegion, TextureSourceSplitsFragmentAndQuery){
+    // compat appends its query after a url that kept its fragment
+    RmlRenderer::TextureSource source = RmlRenderer::parseTextureSource("asset://ui/atlas.png#xywh=0,0,8,8?htmlui-filter=nearest&rmlui-wrap=repeat-x");
+    EXPECT_EQ(source.path, "asset://ui/atlas.png");
+    EXPECT_EQ(source.fragment, "#xywh=0,0,8,8");
+    EXPECT_TRUE(source.nearest);
+    EXPECT_TRUE(source.repeatX);
+    EXPECT_FALSE(source.repeatY);
+    EXPECT_FALSE(source.syncDecode);
+    source = RmlRenderer::parseTextureSource("ui/a.png?htmlui-decoding=sync#sprite=coin");
+    EXPECT_EQ(source.path, "ui/a.png");
+    EXPECT_EQ(source.fragment, "#sprite=coin");
+    EXPECT_TRUE(source.syncDecode);
+    // other parameters stay, and the old entry points keep the fragment in the path
+    source = RmlRenderer::parseTextureSource("ui/a.svg?svgScale=2&htmlui-decoding=async");
+    EXPECT_EQ(source.path, "ui/a.svg?svgScale=2");
+    EXPECT_FALSE(source.syncDecode);
+    bool nearest = false;
+    EXPECT_EQ(RmlRenderer::stripTextureFilter("ui/a.png#sprite=coin?htmlui-filter=nearest", nearest), "ui/a.png#sprite=coin");
+    EXPECT_TRUE(nearest);
+}
+
+namespace {
+
+    class RenderRendererGpu : public FullPathGoldenTest {
+    protected:
+        // a TEXTURE-mode document of a file
+        static UIDocument textureDocument(SceneFixture& fixture, const std::string& file){
+            UIDocument document = fixture.addDocument(file);
+            UIDocumentComponent& component = document.getComponent<UIDocumentComponent>();
+            component.renderMode = UIDocumentRenderMode::TEXTURE;
+            component.textureWidth = 128;
+            component.textureHeight = 128;
+            return document;
+        }
+
+        // frames until the scene's documents are loaded; the image cache hits their contexts counted meanwhile
+        static bool drawUntilLoaded(SceneFixture& fixture, Entity entity, uint32_t& hits){
+            UIDocumentSystem& system = *fixture.getScene().getSystem<UIDocumentSystem>();
+            for (int i = 0; i < 300; i++){
+                GpuEnvironment::drawFrames(1);
+                hits += system.getRenderStats(entity).imageCacheHits;
+                if (system.isAllLoaded()){
+                    GpuEnvironment::drawFrames(1);
+                    hits += system.getRenderStats(entity).imageCacheHits;
+                    return true;
+                }
+            }
+            return false;
+        }
+    };
+
+}
+
+TEST_F(RenderRendererGpu, ImageDecodeIsAsync){
+    JASPER_REQUIRE_GPU();
+    test::TempDir dir;
+    AsyncImageDecodes async;
+    HtmlUIImageCache::get().clear();
+
+    RenderTestContext test(128, 128);
+    ASSERT_TRUE(test.isValid());
+    // the UI programs first: the frames below measure the image only
+    ASSERT_NE(test.loadFromMemory("<rml><body/></rml>", "warm.rml"), nullptr);
+    ASSERT_TRUE(test.renderUntilDrawn());
+    const double idleStart = compat::threadCpuMs();
+    ASSERT_TRUE(test.renderFrame());
+    const double idleMs = compat::threadCpuMs() - idleStart;
+
+    // R18: the first frame reads the header (layout gets the size), draws nothing for the image
+    // and costs the main thread no decode
+    const std::string large = writeLargePng(dir, "large.png");
+    Rml::ElementDocument* document = test.loadFromMemory(imageDocument(large), "async.rml");
+    ASSERT_NE(document, nullptr);
+    const double firstStart = compat::threadCpuMs();
+    ASSERT_TRUE(test.renderFrame());
+    const double firstMs = compat::threadCpuMs() - firstStart;
+    EXPECT_FALSE(showsImage(test)) << "the 2048 x 2048 image was decoded in the frame that first laid it out";
+    EXPECT_EQ(test.renderer.getStats().imagesDecoded, 1u);
+    EXPECT_EQ(test.renderer.getStats().imagesPending, 1u);
+    // the image keeps its laid-out size while it decodes: no relayout when it appears
+    std::vector<Rml::Element*> images;
+    document->GetElementsByTagName(images, "img");
+    ASSERT_EQ(images.size(), 1u);
+    EXPECT_EQ(images[0]->GetBox().GetSize().x, 128.0f);
+
+    // drawn once decoded (the frames wait for the state, not for time; R42's 30 frames at 60 fps
+    // are a budget for an idle machine, printed below)
+    const auto decodeStart = std::chrono::steady_clock::now();
+    int frames = 1;
+    double uploadMs = 0.0;
+    for (; frames < 2000 && !showsImage(test); frames++){
+        const double frameStart = compat::threadCpuMs();
+        ASSERT_TRUE(test.renderFrame());
+        uploadMs = std::max(uploadMs, compat::threadCpuMs() - frameStart);
+        if (!showsImage(test))
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    const double visibleMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - decodeStart).count();
+    ASSERT_TRUE(showsImage(test)) << "the image never appeared";
+    EXPECT_EQ(test.renderer.getStats().imagesPending, 0u);
+    std::printf("[bench] ImageDecodeIsAsync: idle frame %.2f ms, first frame %.2f ms (+%.2f), upload frame %.2f ms, visible after %d frames, %.1f ms\n",
+                idleMs, firstMs, firstMs - idleMs, uploadMs, frames, visibleMs);
+    // R42 on a quiet machine (JASPER_HTMLUI_PERF_SLACK set): <= 3 ms added, the upload frame <= 4 ms, visible within 0.5 s.
+    // The upload frame's bound holds on a hardware device only: on the reference renderer (llvmpipe)
+    // drawing is the main thread's own CPU work, and the frame that first draws the texture took
+    // 80-300 ms in a fresh process (5 ms on a repeat) while the image cache's upload took 5 ms of it
+    if (const double slack = compat::benchmarkPerfSlack(); slack > 0.0){
+        EXPECT_LE(firstMs - idleMs, 3.0 * slack);
+        if (!GpuEnvironment::isReferenceRenderer()){
+            EXPECT_LE(uploadMs, 4.0 * slack);
+        }
+        EXPECT_LE(visibleMs, 500.0 * slack);
+    }
+    test.context->UnloadDocument(document);
+
+    // decoding="sync": complete in the first frame (another file: nothing cached)
+    const std::string syncFile = writeLargePng(dir, "sync.png");
+    document = test.loadFromMemory(imageDocument(syncFile, "decoding=\"sync\""), "sync.rml");
+    ASSERT_NE(document, nullptr);
+    ASSERT_TRUE(test.renderFrame());
+    EXPECT_TRUE(showsImage(test)) << "decoding=\"sync\" did not draw the image in its first frame";
+    test.context->UnloadDocument(document);
+
+    // a deterministic clock (a fixed UI time) waits for the decode in the same frame
+    const std::string fixedFile = writeLargePng(dir, "fixed.png");
+    HtmlUIClock::setFixedTime(1.0);
+    document = test.loadFromMemory(imageDocument(fixedFile), "fixed.rml");
+    ASSERT_NE(document, nullptr);
+    const bool drawn = test.renderFrame();
+    const bool shown = showsImage(test);
+    HtmlUIClock::setFixedTime(std::nullopt);
+    ASSERT_TRUE(drawn);
+    EXPECT_TRUE(shown) << "a fixed UI time did not wait for the decode";
+}
+
+// R19, AC23: one decode for every context that shows a file; released images stay in the LRU
+TEST_F(RenderRendererGpu, ImageCacheSharedAcrossContexts){
+    JASPER_REQUIRE_GPU();
+    HtmlUIImageCache& cache = HtmlUIImageCache::get();
+    cache.clear();
+    const HtmlUIImageCache::Counters before = cache.getCounters();
+    {
+        // a screen document and a texture-mode document (two contexts, two renderers)
+        SceneFixture fixture;
+        fixture.addDocument("s93/shared-image.html");
+        textureDocument(fixture, "s93/shared-image.html");
+        ASSERT_TRUE(fixture.waitUntilLoaded());
+        GpuEnvironment::drawFrames(2);
+        EXPECT_EQ(cache.getCounters().decodes - before.decodes, 1u);
+        EXPECT_EQ(cache.getCounters().uploads - before.uploads, 1u);
+        EXPECT_EQ(cache.getCounters().hits - before.hits, 1u);
+    }
+    // both contexts went: the image is released, not destroyed
+    EXPECT_EQ(cache.getEntryCount(), 1u);
+    EXPECT_GT(cache.getReleasedBytes(), 0u);
+    {
+        // R42: a second scene that shows it decodes and uploads nothing
+        SceneFixture fixture;
+        UIDocument document = fixture.addDocument("s93/shared-image.html");
+        uint32_t hits = 0;
+        ASSERT_TRUE(drawUntilLoaded(fixture, document.getEntity(), hits));
+        EXPECT_EQ(hits, 1u) << "inspect_ui's imageCacheHits of the new context";
+        EXPECT_EQ(cache.getCounters().decodes - before.decodes, 1u);
+        EXPECT_EQ(cache.getCounters().uploads - before.uploads, 1u);
+    }
+
+    // graphics.html_ui_image_cache_mib = 0 keeps no released image: a new context decodes again
+    ImageCacheBudget none(0);
+    EXPECT_EQ(cache.getEntryCount(), 0u);
+    {
+        SceneFixture fixture;
+        UIDocument document = fixture.addDocument("s93/shared-image.html");
+        uint32_t hits = 0;
+        ASSERT_TRUE(drawUntilLoaded(fixture, document.getEntity(), hits));
+        EXPECT_EQ(hits, 0u);
+        EXPECT_EQ(cache.getCounters().decodes - before.decodes, 2u);
+    }
+    EXPECT_EQ(cache.getEntryCount(), 0u);
+}
+
+// R15 (images): a prewarmed image is decoded and uploaded before a document shows it: its first
+// frame draws it, from the cache, with no decode
+TEST_F(RenderRendererGpu, PrewarmImageIsReadyForTheFirstFrame){
+    JASPER_REQUIRE_GPU();
+    test::TempDir dir;
+    AsyncImageDecodes async;
+    HtmlUIImageCache& cache = HtmlUIImageCache::get();
+    cache.clear();
+    const std::string file = writeLargePng(dir, "prewarm.png");
+
+    std::shared_ptr<HtmlUIImageCache::PrewarmJob> job = cache.prewarm({file, dir.file("missing.png").generic_string()});
+    ASSERT_NE(job, nullptr);
+    EXPECT_EQ(job->total, 1u);   // the missing file is a warning, not part of the job
+    bool called = false;
+    job->onDone = [&called](){ called = true; };
+    EXPECT_FALSE(job->done);
+    for (int i = 0; i < 2000 && !job->done; i++){
+        cache.update();
+        if (!job->done)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    ASSERT_TRUE(job->done);
+    EXPECT_TRUE(called);
+    EXPECT_EQ(job->progress(), 1.0f);
+    expectedWarnings = 1;
+
+    const HtmlUIImageCache::Counters before = cache.getCounters();
+    RenderTestContext test(128, 128);
+    ASSERT_TRUE(test.isValid());
+    ASSERT_NE(test.loadFromMemory("<rml><body/></rml>", "warm.rml"), nullptr);
+    ASSERT_TRUE(test.renderUntilDrawn());
+    ASSERT_NE(test.loadFromMemory(imageDocument(file), "prewarmed.rml"), nullptr);
+    ASSERT_TRUE(test.renderFrame());
+    EXPECT_TRUE(showsImage(test)) << "the prewarmed image was not drawn in its first frame";
+    EXPECT_EQ(test.renderer.getStats().imageCacheHits, 1u);
+    EXPECT_EQ(test.renderer.getStats().imagesDecoded, 0u);
+    EXPECT_EQ(cache.getCounters().decodes, before.decodes);
+    EXPECT_EQ(cache.getCounters().uploads, before.uploads);
 }

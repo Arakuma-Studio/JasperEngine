@@ -1,0 +1,10 @@
+{
+ "comment": "S92 R8: clip-path inset() with rounded corners, circle() and ellipse() clip their element and its content in the shaders (no mask layer): with a child crossing the shape, elliptical radii, a gradient background, a scaled element; polygon() keeps the mask layer. Tolerance: the curves' edge pixels, which the engine covers analytically from the rounded rectangle's distance over a one-pixel ramp and Skia by the covered area: scattered single pixels and short runs differ by up to about 40 levels (no shape difference; the gradients' colours match). Measured 0.299 % on glcore and Vulkan (the mask layers of the mesh path before S92: 0.396 %); the limit is that plus about 10 %, the cluster limit stays at the default (16 px).",
+ "viewport": [
+  340,
+  170
+ ],
+ "tolerance": {
+  "badPercent": 0.33
+ }
+}

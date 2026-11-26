@@ -645,6 +645,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Light", "Directional Light", ICON_FA_SUN, T::DIRECTIONAL_LIGHT, "Directional Light", CREATE_IN_3D},
         {"Light", "Point Light", ICON_FA_LIGHTBULB, T::POINT_LIGHT, "Point Light", CREATE_IN_3D},
         {"Light", "Spot Light", ICON_FA_LIGHTBULB, T::SPOT_LIGHT, "Spot Light", CREATE_IN_3D},
+        {"Light", "Area Light", ICON_FA_LIGHTBULB, T::AREA_LIGHT, "Area Light", CREATE_IN_3D},
         {"Light", "Light 2D", ICON_FA_LIGHTBULB, T::POINT_LIGHT_2D, "Light 2D", CREATE_IN_2D},
         {"Light", "Reflection Probe", ICON_FA_BULLSEYE, T::REFLECTION_PROBE, "Reflection Probe", CREATE_IN_3D, true},
 

@@ -36,12 +36,27 @@ const StructDesc kMaterialStencilStruct = JE_STRUCT_DESC(MaterialStencil, "Mater
 
 namespace {
 
+    // the factor rows show under Blend Mode Custom only
+    bool passCustomBlend(const void* pass) {
+        return static_cast<const MaterialPass*>(pass)->blendMode == MaterialBlendMode::CUSTOM;
+    }
+
+    bool materialCustomBlend(const void* material) {
+        return static_cast<const Material*>(material)->blendMode == MaterialBlendMode::CUSTOM;
+    }
+
     constexpr FieldDesc kMaterialPassFields[] = {
         JE_FIELD(MaterialPass, shader, .updateFlags = kMeshReload | UpdateFlags_Shader_Uniforms),
         JE_FIELD(MaterialPass, shaderParams, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(MaterialPass, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kMeshReload | UpdateFlags_Mesh_Texture),
         JE_FIELD(MaterialPass, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kMeshReload),
         JE_FIELD(MaterialPass, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kMeshReload),
+        JE_FIELD(MaterialPass, blendSrc, .enumDesc = &enums::kMaterialBlendFactor, .updateFlags = kMeshReload, .label = "Src Factor", .visibleIf = &passCustomBlend),
+        JE_FIELD(MaterialPass, blendDst, .enumDesc = &enums::kMaterialBlendFactor, .updateFlags = kMeshReload, .label = "Dst Factor", .visibleIf = &passCustomBlend),
+        JE_FIELD(MaterialPass, blendSrcAlpha, .enumDesc = &enums::kMaterialBlendFactor, .updateFlags = kMeshReload, .label = "Src Alpha Factor", .visibleIf = &passCustomBlend),
+        JE_FIELD(MaterialPass, blendDstAlpha, .enumDesc = &enums::kMaterialBlendFactor, .updateFlags = kMeshReload, .label = "Dst Alpha Factor", .visibleIf = &passCustomBlend),
+        JE_FIELD(MaterialPass, blendOp, .enumDesc = &enums::kMaterialBlendOp, .updateFlags = kMeshReload, .label = "Blend Op", .visibleIf = &passCustomBlend),
+        JE_FIELD(MaterialPass, blendOpAlpha, .enumDesc = &enums::kMaterialBlendOp, .updateFlags = kMeshReload, .label = "Alpha Blend Op", .visibleIf = &passCustomBlend),
         JE_FIELD(MaterialPass, cullMode, .enumDesc = &enums::kMaterialCullMode, .updateFlags = kMeshReload),
         JE_FIELD(MaterialPass, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kMeshReload),
         JE_FIELD(MaterialPass, depthTest, .enumDesc = &enums::kMaterialDepthTest, .updateFlags = kMeshReload),
@@ -141,6 +156,16 @@ namespace {
         JE_FIELD(PBR::Hair, flowMapTexCoord, .updateFlags = kTexture, .min = 0.0f, .max = 1.0f, .label = "Flow Map UV Set"),
     };
 
+    // the Vertex Color section (V1 R70): every value picks the variant (its defines)
+    constexpr FieldDesc kVertexColorFields[] = {
+        JE_FIELD(PBR::VertexColor, use, .enumDesc = &enums::kVertexColorUse, .updateFlags = kTexture),
+        JE_FIELD(PBR::VertexColor, alphaOpacity, .updateFlags = kTexture, .label = "Alpha Multiplies Opacity"),
+        JE_FIELD(PBR::VertexColor, r, .enumDesc = &enums::kVertexColorTarget, .updateFlags = kTexture, .label = "R Channel"),
+        JE_FIELD(PBR::VertexColor, g, .enumDesc = &enums::kVertexColorTarget, .updateFlags = kTexture, .label = "G Channel"),
+        JE_FIELD(PBR::VertexColor, b, .enumDesc = &enums::kVertexColorTarget, .updateFlags = kTexture, .label = "B Channel"),
+        JE_FIELD(PBR::VertexColor, a, .enumDesc = &enums::kVertexColorTarget, .updateFlags = kTexture, .label = "A Channel"),
+    };
+
     const StructDesc kClearcoatStruct = JE_STRUCT_DESC(PBR::Clearcoat, "Clearcoat", kClearcoatFields);
     const StructDesc kSheenStruct = JE_STRUCT_DESC(PBR::Sheen, "Sheen", kSheenFields);
     const StructDesc kAnisotropyStruct = JE_STRUCT_DESC(PBR::Anisotropy, "Anisotropy", kAnisotropyFields);
@@ -150,6 +175,7 @@ namespace {
     const StructDesc kSpecularStruct = JE_STRUCT_DESC(PBR::Specular, "Specular", kSpecularFields);
     const StructDesc kHexStruct = JE_STRUCT_DESC(PBR::Hex, "Hex", kHexFields);
     const StructDesc kHairStruct = JE_STRUCT_DESC(PBR::Hair, "Hair", kHairFields);
+    const StructDesc kVertexColorStruct = JE_STRUCT_DESC(PBR::VertexColor, "VertexColor", kVertexColorFields);
 
     constexpr FieldDesc kPbrFields[] = {
         JE_FIELD(PBR, clearcoat, .ops = &ops::Value<PBR::Clearcoat>, .structDesc = &kClearcoatStruct, .label = "Clear Coat"),
@@ -161,6 +187,7 @@ namespace {
         JE_FIELD(PBR, specular, .ops = &ops::Value<PBR::Specular>, .structDesc = &kSpecularStruct, .label = "Specular & IOR"),
         JE_FIELD(PBR, hex, .ops = &ops::Value<PBR::Hex>, .structDesc = &kHexStruct, .label = "Hex Tiling"),
         JE_FIELD(PBR, hair, .ops = &ops::Value<PBR::Hair>, .structDesc = &kHairStruct),
+        JE_FIELD(PBR, vertexColor, .ops = &ops::Value<PBR::VertexColor>, .structDesc = &kVertexColorStruct, .label = "Vertex Color"),
     };
 
 }
@@ -233,6 +260,13 @@ namespace {
         detail::makeField<jasperengine::pixelart::ShaderPalettes>("shaderPalettes", &shaderPalettesRef,
                                                                    FieldMeta{.ops = &ops::ShaderPalettes, .flags = Hidden, .peek = &shaderPalettesPeek}),
         JE_FIELD(Material, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kMeshReload),
+        // Blend Mode Custom (Unity's ShaderLab Blend and BlendOp)
+        JE_FIELD(Material, blendSrc, .enumDesc = &enums::kMaterialBlendFactor, .updateFlags = kMeshReload, .label = "Src Factor", .visibleIf = &materialCustomBlend),
+        JE_FIELD(Material, blendDst, .enumDesc = &enums::kMaterialBlendFactor, .updateFlags = kMeshReload, .label = "Dst Factor", .visibleIf = &materialCustomBlend),
+        JE_FIELD(Material, blendSrcAlpha, .enumDesc = &enums::kMaterialBlendFactor, .updateFlags = kMeshReload, .label = "Src Alpha Factor", .visibleIf = &materialCustomBlend),
+        JE_FIELD(Material, blendDstAlpha, .enumDesc = &enums::kMaterialBlendFactor, .updateFlags = kMeshReload, .label = "Dst Alpha Factor", .visibleIf = &materialCustomBlend),
+        JE_FIELD(Material, blendOp, .enumDesc = &enums::kMaterialBlendOp, .updateFlags = kMeshReload, .label = "Blend Op", .visibleIf = &materialCustomBlend),
+        JE_FIELD(Material, blendOpAlpha, .enumDesc = &enums::kMaterialBlendOp, .updateFlags = kMeshReload, .label = "Alpha Blend Op", .visibleIf = &materialCustomBlend),
         JE_FIELD(Material, cullMode, .enumDesc = &enums::kMaterialCullMode, .updateFlags = kMeshReload),
         JE_FIELD(Material, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kMeshReload),
         JE_FIELD(Material, depthTest, .enumDesc = &enums::kMaterialDepthTest, .updateFlags = kMeshReload),

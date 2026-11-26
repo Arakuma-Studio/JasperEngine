@@ -34,6 +34,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,7 @@ namespace jasperengine::editor::recorder {
         std::function<bool()> isPlayStarting;             // a play session is loading
         std::function<bool(std::string&)> startPlay;
         std::function<void()> stopPlay;
+        std::function<void()> resetUiDocuments;         // fresh Play: CSS starts at the recording's clock origin
         std::function<Framebuffer*()> gameFramebuffer;
         std::function<Scene*()> gameScene;                // the running game's (null when none)
         std::function<void(int, int)> setGameRenderSize;  // 0, 0: the view's own
@@ -84,6 +86,16 @@ namespace jasperengine::editor::recorder {
         std::vector<std::filesystem::path> files;
         std::filesystem::path sidecar;
         double overriddenFixedFps = 0.0;  // MCP play's fixed_fps the recording replaced (0: none)
+        // S99 R14: what this recording took below what was asked: another H.264 encoder than
+        // libx264, a size clamped (the GPU's limit, even sizes for 4:2:0), audio dropped, frames
+        // recorded without waiting for what does not settle
+        struct Downgrade {
+            std::string step;
+            std::string from;
+            std::string to;
+            std::string reason;
+        };
+        std::vector<Downgrade> downgrades;
 
         mcp::Json sidecarJson() const;
     };
@@ -107,6 +119,9 @@ namespace jasperengine::editor::recorder {
         // starts with its first frame). False with `error` when it cannot (busy, no FFmpeg for a
         // movie, sizes...). `warnings` gets what was changed (audio off mid-play...)
         bool start(const Settings& settings, std::string& error);
+        // Starts with the Play session that is starting now (a replay's, input-recorder-and-input-scripts
+        // R23): frame 0 is its first game frame, as with Record on Play
+        bool startWithPlay(const Settings& settings, std::string& error);
         // stops and finalises (Stop Recording, F10, MCP cancel_job)
         void stop();
         // the editor about to start Play: Record on Play arms here (and the audio capture)
@@ -115,15 +130,21 @@ namespace jasperengine::editor::recorder {
         // App, at the start of an editor frame (engineRender, before the game updates): the frame
         // the game drew is read back and queued
         void captureFrame();
+        // App, immediately before the running game's engine frame, including paused Play.
+        void prepareFrame();
         // App, every frame: the state, the end of the frames asked for, Play stopped, finalising
         void update();
 
         State state() const { return currentState; }
         bool active() const { return currentState != State::Idle; }
         bool recording() const { return currentState == State::Arming || currentState == State::Recording; }
+        bool isHoldingFrame() const { return holdingFrame; }
         int64_t framesRecorded() const { return recorded; }
         int64_t gameFrame() const { return frameIndex; }
         const Settings& settings() const { return current; }
+        // the output size of the recording started (outputSize: clamped, even for a movie)
+        int outputWidth() const { return width; }
+        int outputHeight() const { return height; }
         // "REC 00:12 · frame 734" (empty when not recording): the Game view's overlay
         std::string overlayText() const;
         bool audioMuted() const;
@@ -165,6 +186,13 @@ namespace jasperengine::editor::recorder {
         // the audio tap's subscription while it runs
         int audioTap = 0;
         double previousFixedDelta = 0.0;
+        std::optional<double> previousFixedUiTime;
+        double recordingUiStart = 0.0;
+        // Game Time documents and clock = "game" anime: pinned too, advanced by the scaled step
+        std::optional<double> previousFixedGameTime;
+        double recordingGameTime = 0.0;
+        uint64_t recordingGameFrame = 0;
+        bool animationClocksAligned = false;
         std::chrono::steady_clock::time_point startTime;
         FfmpegInfo ffmpegInfo;
         std::future<FfmpegInfo> ffmpegProbe;
@@ -193,6 +221,8 @@ namespace jasperengine::editor::recorder {
         std::chrono::steady_clock::time_point settleStart;
 
         bool arm(const Settings& settings, bool fromPlayStart, std::string& error);
+        // the size asked for against the output's: a downgrade when the limits changed it
+        void noteSizeDowngrade(int gameWidth, int gameHeight, int maxTextureSize);
         void warnAboutFreeSpace();
         bool assetsLoading() const;
         bool contentSettled() const;

@@ -3,6 +3,7 @@
 
 #include "JasperEngineWeb.h"
 #include "WebKeyMap.h"
+#include "WebTextEntry.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,12 +20,15 @@
 #include "Screen.h"
 #include "System.h"
 #include "Log.h"
+#include "render/SystemRender.h"
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
+#include "save/SaveGameStore.h"
 #include "util/FrameLimiter.h"
 #include "util/PlatformRules.h"
 
 #include <algorithm>
+#include <sstream>
 
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -45,6 +49,7 @@ int JasperEngineWeb::screenHeight;
 
 double JasperEngineWeb::mousePosX;
 double JasperEngineWeb::mousePosY;
+unsigned int JasperEngineWeb::canvasButtonsDown = 0;
 
 int JasperEngineWeb::sampleCount = 0;
 
@@ -53,6 +58,7 @@ bool JasperEngineWeb::quitRequested = false;
 bool JasperEngineWeb::pageHidden = false;
 bool JasperEngineWeb::adPlaying = false;
 bool JasperEngineWeb::contextLost = false;
+EMSCRIPTEN_WEBGL_CONTEXT_HANDLE JasperEngineWeb::glContext = 0;
 bool JasperEngineWeb::windowFocused = true;
 double JasperEngineWeb::lastFrameTime = 0.0;
 std::vector<double> JasperEngineWeb::frameIntervals;
@@ -90,6 +96,9 @@ namespace {
 
 JasperEngineWeb::GamepadState JasperEngineWeb::gamepads[JASPERENGINE_WEB_MAX_GAMEPADS];
 
+// the traits of the field the IME textarea serves
+static jasperengine::TextEntryTraits webKeyboardTraits;
+
 extern "C" {
     EMSCRIPTEN_KEEPALIVE 
     int getScreenWidth() {
@@ -120,11 +129,54 @@ extern "C" {
         }
     }
 
-    EMSCRIPTEN_KEEPALIVE 
-    void syncfs_callback(const char* err) {
-	    if (!err || err[0]) {
+    // sync: the number syncFileSystemNow gave the sync; errName / err: the DOMException's name
+    // ("QuotaExceededError") and message, "" on success. SaveGame completes the writes this sync
+    // covered with its result (quota reaches the game)
+    EMSCRIPTEN_KEEPALIVE
+    void syncfs_callback(int sync, const char* errName, const char* err) {
+        const bool failed = err && err[0];
+	    if (failed) {
 		    jasperengine::Log::error("Failed to save in iDB file system: %s", err);
 	    }
+        if (jasperengine::savegame::SaveGameStore* saves = jasperengine::savegame::SaveGameStore::existing())
+            saves->fileSystemSynced(static_cast<uint64_t>(static_cast<uint32_t>(sync)), !failed, errName ? errName : "", err ? err : "");
+    }
+
+    // ---- SaveGame (engine/core/save/SaveGameStore.cpp)
+
+    EMSCRIPTEN_KEEPALIVE
+    int jasper_web_idb_enabled() {
+        return JasperEngineWeb::isEnabledIDB() ? 1 : 0;
+    }
+
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_storage_estimated(double used, double quota) {
+        if (jasperengine::savegame::SaveGameStore* saves = jasperengine::savegame::SaveGameStore::existing())
+            saves->setStorageEstimate(static_cast<int64_t>(used), static_cast<int64_t>(quota));
+    }
+
+    // navigator.storage.persist(), once, best effort: the browser may still evict the site
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_storage_persist() {
+        EM_ASM({
+            if (navigator.storage && navigator.storage.persist) {
+                navigator.storage.persist().then(function(granted) {
+                    console.debug("SaveGame: persistent storage " + (granted ? "granted" : "not granted"));
+                }).catch(function() {});
+            }
+        });
+    }
+
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_storage_estimate() {
+        EM_ASM({
+            if (navigator.storage && navigator.storage.estimate) {
+                navigator.storage.estimate().then(function(e) {
+                    ccall('jasper_web_storage_estimated', null, ['number', 'number'],
+                          [e.usage === undefined ? -1 : e.usage, e.quota === undefined ? -1 : e.quota]);
+                }).catch(function() {});
+            }
+        });
     }
 
     // ---- the hidden IME textarea (jasper_ime_create) and the clipboard
@@ -151,6 +203,15 @@ extern "C" {
         JasperEngineWeb::rememberClipboardText(text ? text : "");
         if (text && text[0])
             jasperengine::Engine::systemTextInput(text);
+    }
+
+    // a soft keyboard's line break: the field's action key, unless it is Enter itself (R24)
+    EMSCRIPTEN_KEEPALIVE
+    int jasper_web_action_key() {
+        if (!jasperengine::web::lineBreakIsActionKey(webKeyboardTraits))
+            return 0;
+        jasperengine::Engine::systemEditorAction(webKeyboardTraits.enterKey);
+        return 1;
     }
 
     // a soft keyboard key that came only as an input event (Android Chrome sends keyCode 229)
@@ -204,6 +265,18 @@ extern "C" {
 // env(safe-area-inset-*) (non-zero with viewport-fit=cover on phones with a notch) gives the
 // viewport's safe rectangle; intersected with the canvas, it becomes canvas-local insets.
 // Read again on resize, orientationchange and visualViewport resize, and with each canvas size.
+// window's languagechange: navigator.languages changed, the game language resolves again
+// (game-ui-localization.md R10)
+extern "C" EMSCRIPTEN_KEEPALIVE void jasper_web_languages_changed() {
+    jasperengine::System::instance().notifyLocalesMayHaveChanged();
+}
+
+EM_JS(void, jasper_languages_install, (), {
+    if (Module.jasperLanguagesInstalled) return;
+    Module.jasperLanguagesInstalled = true;
+    window.addEventListener('languagechange', function() { ccall('jasper_web_languages_changed', null, [], []); });
+});
+
 EM_JS(void, jasper_safe_area_create, (), {
     if (document.getElementById('jasper-safe-area')) return;
     var probe = document.createElement('div');
@@ -306,7 +379,9 @@ EM_JS(void, jasper_ime_create, (), {
         if (state.composing || e.isComposing || !state.softKey || away()) return;
         // keys a soft keyboard sends without a key code of their own
         if (e.inputType === "deleteContentBackward") ccall("jasper_web_soft_key", null, ["number"], [259]);
-        else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") ccall("jasper_web_soft_key", null, ["number"], [257]);
+        else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
+            if (!ccall("jasper_web_action_key", "number", [], [])) ccall("jasper_web_soft_key", null, ["number"], [257]);
+        }
     });
     ta.addEventListener("input", function(e) {
         if (away()) { ta.value = ""; return; }
@@ -323,6 +398,16 @@ EM_JS(void, jasper_ime_create, (), {
             ccall("jasper_web_paste", null, ["string"], [clip(text)]);
         }
     }, true);
+});
+
+// the field's keyboard: inputmode, enterkeyhint (removed when empty), autocapitalize
+EM_JS(void, jasper_ime_traits, (const char* inputmode, const char* enterkeyhint, const char* autocapitalize), {
+    var ta = document.getElementById("jasper-ime");
+    if (!ta) return;
+    ta.setAttribute("inputmode", UTF8ToString(inputmode));
+    var hint = UTF8ToString(enterkeyhint);
+    if (hint) ta.setAttribute("enterkeyhint", hint); else ta.removeAttribute("enterkeyhint");
+    ta.setAttribute("autocapitalize", UTF8ToString(autocapitalize));
 });
 
 EM_JS(void, jasper_ime_focus, (int focus), {
@@ -406,6 +491,15 @@ void JasperEngineWeb::setTextInputArea(float x, float y, float width, float heig
 }
 
 void JasperEngineWeb::showVirtualKeyboard(std::wstring text){
+    showVirtualKeyboard(text, jasperengine::TextEntryTraits());
+}
+
+void JasperEngineWeb::showVirtualKeyboard(const std::wstring& text, const jasperengine::TextEntryTraits& traits){
+    // the textarea keeps no text between commits: only the traits (a focused textarea takes new
+    // attributes without closing the keyboard)
+    webKeyboardTraits = traits;
+    const jasperengine::web::TextAreaAttributes attributes = jasperengine::web::textAreaAttributesOf(traits);
+    jasper_ime_traits(attributes.inputmode, attributes.enterkeyhint, attributes.autocapitalize);
     jasper_ime_focus(1);
 }
 
@@ -490,6 +584,9 @@ int JasperEngineWeb::init(int argc, char **argv){
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
     emscripten_set_mousedown_callback(canvas.c_str(), 0, true, mouse_callback);
     emscripten_set_mouseup_callback(canvas.c_str(), 0, true, mouse_callback);
+    // the release of a press on the canvas outside it (S93 R2): bubbling, so the canvas's own
+    // listener has had a release on the canvas first
+    emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, window_mouseup_callback);
     emscripten_set_mousemove_callback(canvas.c_str(), 0, true, mouse_callback);
     emscripten_set_mouseenter_callback(canvas.c_str(), 0, true, mouse_callback);
     emscripten_set_mouseleave_callback(canvas.c_str(), 0, true, mouse_callback);
@@ -539,6 +636,7 @@ int JasperEngineWeb::init(int argc, char **argv){
 
     jasper_ime_create();
     jasper_safe_area_create();
+    jasper_languages_install();
     jasper_pen_install();
 
     sampleCount = 4;
@@ -555,9 +653,13 @@ int JasperEngineWeb::init(int argc, char **argv){
     attr.premultipliedAlpha = true;
     attr.majorVersion = 2;
     attr.minorVersion = 0;
-    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context(canvas.c_str(), &attr);
-    
-    emscripten_webgl_make_context_current(ctx);
+    glContext = emscripten_webgl_create_context(canvas.c_str(), &attr);
+
+    emscripten_webgl_make_context_current(glContext);
+    // stencil is a request: a canvas without it draws what needs it (the Outline) offscreen
+    EmscriptenWebGLContextAttributes granted;
+    if (emscripten_webgl_get_context_attributes(glContext, &granted) == EMSCRIPTEN_RESULT_SUCCESS)
+        jasperengine::SystemRender::setSwapchainStencil(granted.stencil);
 
     // the view is loaded once the project has started (renderLoop): the order of the other
     // platforms, init -> view loaded -> view changed, so Engine.onViewLoaded reaches the game
@@ -575,6 +677,7 @@ void JasperEngineWeb::unregisterCallbacks(){
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, NULL);
     emscripten_set_mousedown_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_mouseup_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, NULL);
     emscripten_set_mousemove_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_mouseenter_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_mouseleave_callback(canvas.c_str(), 0, true, NULL);
@@ -609,8 +712,33 @@ void JasperEngineWeb::setAdPlaying(bool playing){
 }
 
 void JasperEngineWeb::setContextLost(bool lost){
+    if (lost == contextLost) return;
     contextLost = lost;
-    updatePause();
+    // the paused game first (onApplicationPause(true)), as a phone that loses its view
+    if (lost) updatePause();
+    // Every GPU object went with the context (the calls on a lost one do nothing): released now and
+    // made again in the restored one; the scenes keep their CPU state, the HTML UI its documents
+    // (Scene::releaseGpu). Before the start the first view is loaded in the restored context
+    if (projectStarted){
+        if (lost){
+            jasperengine::Engine::systemViewDestroyed();
+        }else{
+            // a restored context has no extensions enabled (enableExtensionsByDefault did it once)
+            emscripten_webgl_make_context_current(glContext);
+            if (char* extensions = emscripten_webgl_get_supported_extensions()){
+                std::istringstream names(extensions);
+                std::string name;
+                while (names >> name){
+                    if (name.find("lose_context") == std::string::npos && name.find("debug") == std::string::npos)
+                        emscripten_webgl_enable_extension(glContext, name.c_str());
+                }
+                free(extensions);
+            }
+            jasperengine::Engine::systemViewLoaded();
+            jasperengine::Engine::systemViewChanged();
+        }
+    }
+    if (!lost) updatePause();
 }
 
 EM_BOOL JasperEngineWeb::visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent* e, void* userData){
@@ -767,11 +895,19 @@ bool JasperEngineWeb::flushFileSystem(){
 void JasperEngineWeb::syncFileSystemNow(){
     syncWaitTime = 0;
 
-    EM_ASM(
+    // each sync numbered: SaveGame confirms a write only by a sync that started after it landed
+    static uint32_t syncCount = 0;
+    const uint32_t sync = ++syncCount;
+    if (jasperengine::savegame::SaveGameStore* saves = jasperengine::savegame::SaveGameStore::existing())
+        saves->fileSystemSyncStarted(sync);
+
+    EM_ASM({
+        var sync = $0;
         FS.syncfs(function(err) {
-            ccall('syncfs_callback', null, ['string'], [err ? err.message : ""]);
+            ccall('syncfs_callback', null, ['number', 'string', 'string'],
+                  [sync, err ? (err.name || "Error") : "", err ? (err.message || err.name || String(err)) : ""]);
         });
-    );
+    }, static_cast<int>(sync));
 }
 
 EM_JS_DEPS(jasper_device, "$stringToNewUTF8,$GL");
@@ -919,6 +1055,11 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         return EM_FALSE;
     }
 
+    // no context to draw in: nothing runs (on a phone nothing runs without a window either). The
+    // browser reports the loss with an event some frames after the context went: asked directly
+    if (contextLost || emscripten_is_webgl_context_lost(glContext))
+        return EM_TRUE;
+
     if (!projectStarted){
         // IndexedDB answers in a few milliseconds; a browser that never does (storage
         // blocked) must not keep the game from starting
@@ -928,6 +1069,8 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         if (!loadedIDB)
             jasperengine::Log::warn("user data not restored after 3 s; saves may be missing");
         projectStarted = true;
+        // the canvas's size: the scripts' init sees the first frame's layout
+        jasperengine::Engine::setStartScreenSize(screenWidth, screenHeight);
         jasperengine::Engine::systemStartProject();
         jasperengine::Engine::systemViewLoaded();
         changeCanvasSize(screenWidth, screenHeight);
@@ -1152,6 +1295,19 @@ EM_BOOL JasperEngineWeb::key_callback(int eventType, const EmscriptenKeyboardEve
     return 0;
 }
 
+static int webMouseModifiers(const EmscriptenMouseEvent* e){
+    int modifiers = 0;
+    if (e->ctrlKey) modifiers |= D_MODIFIER_CONTROL;
+    if (e->shiftKey) modifiers |= D_MODIFIER_SHIFT;
+    if (e->altKey) modifiers |= D_MODIFIER_ALT;
+    if (e->metaKey) modifiers |= D_MODIFIER_SUPER;
+    return modifiers;
+}
+
+// the canvas's top-left corner in the page's client coordinates (CSS pixels)
+EM_JS(double, jasper_canvas_client_left, (), { return Module.canvas ? Module.canvas.getBoundingClientRect().left : 0; });
+EM_JS(double, jasper_canvas_client_top, (), { return Module.canvas ? Module.canvas.getBoundingClientRect().top : 0; });
+
 EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEvent *e, void *userData) {
 
     int width = JasperEngineWeb::screenWidth;
@@ -1177,11 +1333,7 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
         mousePosY += e->movementY * webCanvasPixelRatio;
     }
 
-    int modifiers = 0;
-    if (e->ctrlKey) modifiers |= D_MODIFIER_CONTROL;
-    if (e->shiftKey) modifiers |= D_MODIFIER_SHIFT;
-    if (e->altKey) modifiers |= D_MODIFIER_ALT;
-    if (e->metaKey) modifiers |= D_MODIFIER_SUPER;
+    const int modifiers = webMouseModifiers(e);
 
     jasperengine::Engine::systemMouseMove((float)mousePosX, (float)mousePosY, modifiers);
     // a capture the browser ended (Esc, the tab hidden) locks again at the next click
@@ -1190,7 +1342,10 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
         emscripten_request_pointerlock(canvas.c_str(), 0);
     }
     if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN && e->buttons != 0){
-        jasperengine::Engine::systemMouseDown(jasperengine_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
+        const int button = jasperengine_mouse_button(e->button);
+        if (button >= 0 && button < 32)
+            canvasButtonsDown |= 1u << button;
+        jasperengine::Engine::systemMouseDown(button, (float)mousePosX, (float)mousePosY, modifiers);
         // a press on a document text field: the textarea keeps the focus the press would move
         if (jasperengine::Engine::wantsTextComposition()){
             jasper_ime_focus(1);
@@ -1198,7 +1353,10 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
         }
     }
     if (eventType == EMSCRIPTEN_EVENT_MOUSEUP){
-        jasperengine::Engine::systemMouseUp(jasperengine_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
+        const int button = jasperengine_mouse_button(e->button);
+        if (button >= 0 && button < 32)
+            canvasButtonsDown &= ~(1u << button);
+        jasperengine::Engine::systemMouseUp(button, (float)mousePosX, (float)mousePosY, modifiers);
     }
     if (eventType == EMSCRIPTEN_EVENT_MOUSEENTER){
         jasperengine::Engine::systemMouseEnter();
@@ -1207,6 +1365,21 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
         jasperengine::Engine::systemMouseLeave();
     }
 
+    return 0;
+}
+
+// A press on the canvas released anywhere else in the page (or outside the window, where the
+// browser still sends the release to the page): the engine gets it at its canvas position, which
+// is off the canvas, and gives a press the game got its release clamped to the canvas (S93 R2).
+// A release the canvas had (its listener runs first) cleared the button's bit: no second one
+EM_BOOL JasperEngineWeb::window_mouseup_callback(int eventType, const EmscriptenMouseEvent *e, void *userData) {
+    const int button = jasperengine_mouse_button(e->button);
+    if (button < 0 || button >= 32 || !(canvasButtonsDown & (1u << button)))
+        return 0;
+    canvasButtonsDown &= ~(1u << button);
+    const double x = (e->clientX - jasper_canvas_client_left()) * webCanvasPixelRatio;
+    const double y = (e->clientY - jasper_canvas_client_top()) * webCanvasPixelRatio;
+    jasperengine::Engine::systemMouseUp(button, (float)x, (float)y, webMouseModifiers(e));
     return 0;
 }
 
@@ -1298,7 +1471,8 @@ EM_BOOL JasperEngineWeb::touch_callback(int emsc_type, const EmscriptenTouchEven
 
 EM_BOOL JasperEngineWeb::webgl_context_callback(int emsc_type, const void* reserved, void* user_data) {
     switch (emsc_type) {
-        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:     setContextLost(true); break;
+        // the default action of webglcontextlost is to never restore the context: prevented
+        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:     setContextLost(true); return EM_TRUE;
         case EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED: setContextLost(false); break;
         default:                                    break;
     }

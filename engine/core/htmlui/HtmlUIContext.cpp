@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/HtmlTextEffects.h"
+#include "htmlui/HtmlL10n.h"
 #include "HtmlUIContext.h"
 #include "audio/AudioMarkers.h"
+#include "anim/AnimText.h"
 
 #include "HtmlUI.h"
 #include "RmlRenderer.h"
@@ -12,6 +14,9 @@
 #include "widgets/WidgetsRuntime.h"
 #include "effects/EffectRuntime.h"
 #include "compat/CompatOptions.h"
+#include "compat/CompatApi.h"
+#include "compat/DiagnosticCodes.h"
+#include "compat/Diagnostics.h"
 #include "compat/DocumentLoader.h"
 #include "object/ui/HtmlUIEventListener.h"
 
@@ -19,6 +24,8 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "Log.h"
 #include "System.h"
+#include "input/InputScheme.h"
+#include "jobs/JobSystem.h"
 
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
@@ -30,6 +37,10 @@
 
 #include <atomic>
 #include <cmath>
+#include <iterator>
+#include <optional>
+#include <set>
+#include <unordered_map>
 
 using namespace jasperengine;
 
@@ -52,31 +63,101 @@ namespace {
         return isAttached(element);
     }
 
-    // a DOM pointer event type: what makes a listening page take the pointer
-    bool isPointerEvent(const std::string& type){
-        static const char* const types[] = {"click", "dblclick", "mousedown", "mouseup", "mousemove", "mouseover", "mouseout",
-                                            "wheel", "mousescroll", "contextmenu"};
+    // S93 R4: the DOM events whose listener on a page makes it take presses on its empty parts
+    bool isPressEvent(const std::string& type){
+        static const char* const types[] = {"click", "dblclick", "contextmenu", "mousedown", "pointerdown", "touchstart"};
         for (const char* name : types){
             if (type == name)
                 return true;
         }
-        return type.compare(0, 7, "pointer") == 0 || type.compare(0, 5, "touch") == 0;
+        return false;
     }
 
-    // a pointer listener on the element: addEventListener (Lua or C++) or a data-event-* binding
-    // (the engine's inline handlers: on* attributes are JavaScript, dropped by the compat layer)
-    bool listensForPointer(Rml::Element* element){
+    bool isClickListener(const HtmlUIEventListener& listener){
+        const std::string& type = listener.getDomType();
+        return type == "click" || type == "pointerdown" || type == "mousedown";
+    }
+
+    // ... and the wheel only (the RmlUi name of the DOM wheel event is mousescroll)
+    bool isWheelEvent(const std::string& type){
+        return type == "wheel" || type == "mousescroll";
+    }
+
+    // the type of the element's first listener of a kind: addEventListener (Lua or C++) or a
+    // data-event-* binding (the engine's inline handlers: on* attributes are JavaScript, dropped
+    // by the compat layer); "" for none
+    std::string pageListener(Rml::Element* element, bool (*kind)(const std::string&)){
         if (!element)
-            return false;
+            return std::string();
         for (HtmlUIEventListener* listener : HtmlUIEventListener::listenersOf(element)){
-            if (isPointerEvent(listener->getDomType()) || isPointerEvent(listener->getRmlType()))
-                return true;
+            if (kind(listener->getDomType()))
+                return listener->getDomType();
+            if (kind(listener->getRmlType()))
+                return listener->getRmlType();
         }
         for (const auto& attribute : element->GetAttributes()){
-            if (attribute.first.compare(0, 11, "data-event-") == 0 && isPointerEvent(attribute.first.substr(11)))
-                return true;
+            if (attribute.first.compare(0, 11, "data-event-") == 0 && kind(attribute.first.substr(11)))
+                return attribute.first.substr(11);
         }
-        return false;
+        return std::string();
+    }
+
+    // HTMLUI-INPUT-0001 (S93 R5), once per document and event type: a press listener makes the
+    // page take every press on its empty parts. Called from the hit tests, so it also covers
+    // data-event-* bindings, reloads and listeners that scripts add at any time
+    void reportPressListener(Rml::ElementDocument* document, Rml::Element* page, const std::string& type){
+        struct Reported {
+            Rml::ObserverPtr<Rml::Element> document;   // a new document at a freed address starts over
+            std::set<std::string> types;
+        };
+        static std::unordered_map<const Rml::Element*, Reported> reported;
+        auto found = reported.find(document);
+        if (found == reported.end()){
+            // the documents that went are forgotten
+            if (reported.size() >= 64){
+                for (auto it = reported.begin(); it != reported.end();)
+                    it = it->second.document ? std::next(it) : reported.erase(it);
+            }
+            found = reported.emplace(document, Reported()).first;
+        }
+        Reported& entry = found->second;
+        if (entry.document.get() != document){
+            entry.document = document->GetObserverPtr();
+            entry.types.clear();
+        }
+        if (!entry.types.insert(type).second)
+            return;
+
+        std::shared_ptr<const htmlui::compat::CompatDocument> compiled = htmlui::compat::DocumentLoader::compiledOf(document);
+        htmlui::compat::Diagnostic diagnostic;
+        if (compiled){
+            if (std::optional<htmlui::compat::Diagnostic> located = htmlui::compat::locateElement(*compiled, page))
+                diagnostic = *located;
+        }else{
+            diagnostic.file = document->GetSourceURL();
+        }
+        std::string name = page->GetTagName();
+        if (compiled)
+            name = (page == document) ? "html" : (name == "htmlbody" ? "body" : name);
+        diagnostic.code = htmlui::compat::codes::PagePressListener;
+        diagnostic.severity = htmlui::compat::Severity::Info;
+        diagnostic.message = "a '" + type + "' listener on <" + name + "> makes the page take presses: the document now takes every "
+                             "press on its empty parts, which no longer reach the documents below or the game";
+        diagnostic.suggestion = "listen on the elements that take the press; move, up, over and out listeners on the page take "
+                                "nothing, a wheel listener only the wheel";
+        diagnostic.subject = type;
+        htmlui::compat::DocumentLoader::addRuntimeDiagnostic(document, diagnostic);
+        Log::print("[HTML UI] %s", htmlui::compat::toText(diagnostic).c_str());
+    }
+
+    bool listensForClick(Rml::Element* element){
+        if (HtmlUIEventListener::anyListenerOf(element, &isClickListener))
+            return true;
+        // the names past the small-string buffer, built once
+        static const Rml::String clickAttribute = "data-event-click";
+        static const Rml::String pointerdownAttribute = "data-event-pointerdown";
+        static const Rml::String mousedownAttribute = "data-event-mousedown";
+        return element->HasAttribute(clickAttribute) || element->HasAttribute(pointerdownAttribute) || element->HasAttribute(mousedownAttribute);
     }
 
     // a background colour with alpha, a decorator or a background image layer
@@ -159,7 +240,9 @@ bool HtmlUIContext::create(Rml::Vector2i dimensions){
     }
     textInputHandler->setContext(context);
     // a transparent page passes the pointer on to the documents below it, then to the game
-    context->SetPointerPassThrough([](Rml::Element* element){ return passesPointerThrough(element); });
+    context->SetPointerPassThrough([this](Rml::Element* element){
+        return passesPointerThrough(element, wheelHitTest ? PointerHit::Wheel : PointerHit::Press);
+    });
     // the caret area: context pixels to canvas pixels (texture contexts set their own mapper)
     textInputHandler->setCanvasMapper([this](const Rect& area){
         const Rml::Vector2i size = this->dimensions;
@@ -188,7 +271,19 @@ void HtmlUIContext::releaseFocus(){
         document->Focus();
 }
 
-bool HtmlUIContext::passesPointerThrough(Rml::Element* element){
+bool HtmlUIContext::takesPointerInput(Rml::Element* element){
+    for (Rml::Element* node = element; node; node = node->GetParentNode()){
+        if (rmlui_dynamic_cast<Rml::ElementDocument*>(node))
+            return false;
+        const Rml::String& tag = node->GetTagName();
+        if (tag == "button" || tag == "input" || tag == "select" || tag == "textarea" || (tag == "a" && node->HasAttribute("href")) ||
+            node->HasAttribute("onclick") || listensForClick(node))
+            return true;
+    }
+    return false;
+}
+
+bool HtmlUIContext::passesPointerThrough(Rml::Element* element, PointerHit hit){
     if (!element)
         return false;
     Rml::ElementDocument* document = rmlui_dynamic_cast<Rml::ElementDocument*>(element);
@@ -210,10 +305,25 @@ bool HtmlUIContext::passesPointerThrough(Rml::Element* element){
     // the body's background painted over the whole canvas (the fork's canvas background, phase 3)
     if (element == document && body && document->HasCanvasBackground() && paintsBackground(body))
         return false;
-    // a page that listens for the pointer takes it on its empty parts, as a browser page does
-    // ("click outside closes the menu"); per document: the context has one hover chain, which
-    // every pointer event (moves, presses, clicks, wheel) follows
-    return !(listensForPointer(document) || listensForPointer(body));
+    // A page that listens for presses takes the pointer on its empty parts, as a browser page
+    // does ("click outside closes the menu"); per document: the context has one hover chain,
+    // which moves, presses, clicks and drags follow. Move, up, over and out listeners take
+    // nothing, so a drag tracker on <body> does not block the game (S93 R4)
+    Rml::Element* const pages[] = {document, body};
+    for (Rml::Element* listening : pages){
+        const std::string press = pageListener(listening, isPressEvent);
+        if (!press.empty()){
+            reportPressListener(document, listening, press);
+            return false;
+        }
+    }
+    if (hit == PointerHit::Wheel){
+        for (Rml::Element* listening : pages){
+            if (!pageListener(listening, isWheelEvent).empty())
+                return false;
+        }
+    }
+    return true;
 }
 
 void HtmlUIContext::destroy(){
@@ -236,8 +346,8 @@ void HtmlUIContext::destroy(){
     context = nullptr;
     navigateListener.reset();   // detached with the root element
 
-    // file textures, then font textures and this renderer's render manager; in this order,
-    // or a callback texture of a destroyed render manager would release through it
+    // file textures, then this renderer's render manager, which releases its textures of the
+    // glyph pages first; the glyphs and pages stay for the next context (S93 R13)
     Rml::ReleaseTextures(renderer.get());
     Rml::ReleaseRenderManagers();
 
@@ -298,10 +408,22 @@ Rml::ElementDocument* HtmlUIContext::loadDocument(const std::string& path){
         options.viewport = htmlui::compat::CompatSize{dimensions.x, dimensions.y};
         options.dpRatio = densityRatio;
         options.touchDevice = System::instance().isTouchDevice();
+        options.coarsePointer = InputSchemeTracker::getPointer() == InputScheme::Touch;
         options.colorScheme = colorScheme;
         options.reducedMotion = reducedMotion;
         options.verboseDiagnostics = UIDocumentSystem::getVerboseDiagnostics();   // AppSettings::htmlUiVerboseDiagnostics
-        document = htmlui::compat::DocumentLoader::load(context, path, options);
+        std::shared_ptr<const htmlui::compat::CompatDocument> compiled;
+        document = htmlui::compat::DocumentLoader::load(context, path, options, &compiled);
+        // a touch device's first switch to the mouse (or back) is a cache hit: the other pointer's
+        // variant of a document that reads hover or pointer is compiled in the background
+        if (document && compiled && compiled->dependsOnPointer && options.touchDevice){
+            htmlui::compat::CompatOptions other = options;
+            other.coarsePointer = !options.coarsePointer;
+            jobs::enqueueDetached([path, other](){ htmlui::compat::DocumentLoader::compile(path, other); }, jobs::Lane::Background,
+                                  "htmlui-pointer-variant");
+            // and both variants' sheets parsed for the document once that compile is in (update)
+            pointerPrewarms.push_back(PointerPrewarm{document->GetObserverPtr(), path, other});
+        }
         if (document && !navigateListener){
             navigateListener.reset(new NavigateListener(&navigateHandler));
             context->GetRootElement()->AddEventListener("htmlnavigate", navigateListener.get(), false);
@@ -312,6 +434,7 @@ Rml::ElementDocument* HtmlUIContext::loadDocument(const std::string& path){
         }
     }else{
         document = context->LoadDocument(path);
+        htmlui::compat::DocumentLoader::applyInputScheme(document);
     }
     if (!document){
         Log::error("[HTML UI] could not load document '%s'", path.c_str());
@@ -336,17 +459,76 @@ void HtmlUIContext::unloadDocument(Rml::ElementDocument* document){
     context->UnloadDocument(document);
 }
 
+void HtmlUIContext::applyInputScheme(){
+    const uint32_t revision = InputSchemeTracker::getRevision();
+    if (!context || revision == inputSchemeRevision)
+        return;
+    inputSchemeRevision = revision;
+    const bool coarse = InputSchemeTracker::getPointer() == InputScheme::Touch;
+    for (int i = 0; i < context->GetNumDocuments(); i++){
+        Rml::ElementDocument* document = context->GetDocument(i);
+        // RmlUi restyles what the attribute selectors match
+        htmlui::compat::DocumentLoader::applyInputScheme(document);
+        // hover and pointer: the other variant (prewarmed on a touch device); documents that never
+        // read them keep their compile
+        std::shared_ptr<const htmlui::compat::CompatDocument> compiled = htmlui::compat::DocumentLoader::compiledOf(document);
+        if (compiled && compiled->dependsOnPointer && compiled->options.coarsePointer != coarse){
+            htmlui::compat::CompatOptions options = compiled->options;
+            options.coarsePointer = coarse;
+            htmlui::compat::DocumentLoader::restyleWith(document, compiled, options);
+        }
+    }
+}
+
+void HtmlUIContext::prewarmPointerVariants(){
+    for (auto it = pointerPrewarms.begin(); it != pointerPrewarms.end();){
+        Rml::ElementDocument* document = it->document ? it->document->GetOwnerDocument() : nullptr;
+        if (!document){
+            it = pointerPrewarms.erase(it);
+            continue;
+        }
+        std::shared_ptr<const htmlui::compat::CompatDocument> other = htmlui::compat::DocumentLoader::findCompiled(it->path, it->options);
+        if (!other){
+            // the background compile is not in yet; one that never comes (the file went) is let go:
+            // the switch then compiles, as on a desktop
+            if (++it->frames > kPointerPrewarmFrames)
+                it = pointerPrewarms.erase(it);
+            else
+                ++it;
+            continue;
+        }
+        // the document moves to its own kept sheets now: the ones RmlUi parsed at the load go with
+        // this frame, not with the switch's (freeing them is most of what a first swap cost)
+        std::shared_ptr<const htmlui::compat::CompatDocument> current = htmlui::compat::DocumentLoader::compiledOf(document);
+        htmlui::compat::DocumentLoader::prewarmSheets(document, current);
+        if (current)
+            htmlui::compat::DocumentLoader::restyleSheets(document, *current);
+        // the other variant under the scheme that comes with its pointer (a mouse: Keyboard&Mouse)
+        htmlui::compat::DocumentLoader::prewarmSheets(document, other,
+            InputSchemeTracker::htmlName(it->options.coarsePointer ? InputScheme::Touch : InputScheme::KeyboardMouse));
+        it = pointerPrewarms.erase(it);
+    }
+}
+
 void HtmlUIContext::update(){
     if (context){
+        // a touch device's documents that read hover or pointer: both variants parsed ahead (R23)
+        if (!pointerPrewarms.empty())
+            prewarmPointerVariants();
+        // the input scheme of the frame (InputSchemeTracker::latch): root attributes, hover and pointer
+        applyInputScheme();
         // text-effect: the texts that animate draw again (geometry only)
         htmlui::HtmlTextEffects::get().update(context);
         // focus tracking, animation fill modes (phase-2 hook H1)
         htmlui::compat::updateRuntime(context);
         // S17: tooltips, drags, runtime diagnostics
         htmlui::WidgetsRuntime::update(context);
+        // the keyed elements made since (inserted fragments) and by the update (virtual rows)
+        htmlui::HtmlL10n::update();
         context->Update();
+        htmlui::HtmlL10n::update();
+        if (AnimText::updateLayouts(context)) context->Update();
     }
-    markUpdated();
 }
 
 bool HtmlUIContext::processMouseMove(Rml::Vector2f position, int modifiers){
@@ -354,7 +536,9 @@ bool HtmlUIContext::processMouseMove(Rml::Vector2f position, int modifiers){
         return false;
 
     // the pixel the point is in
-    context->ProcessMouseMove((int)std::floor(position.x), (int)std::floor(position.y), modifiers);
+    mousePosition = Rml::Vector2i((int)std::floor(position.x), (int)std::floor(position.y));
+    mouseInside = true;
+    context->ProcessMouseMove(mousePosition.x, mousePosition.y, modifiers);
     // the effects' pointer (phase 5): the exact position
     htmlui::EffectRuntime::get().onPointerMove(context, position);
 
@@ -408,6 +592,7 @@ bool HtmlUIContext::processMouseLeave(){
         return false;
 
     context->ProcessMouseLeave();
+    mouseInside = false;
     htmlui::EffectRuntime::get().onPointerLeave(context);
 
     return isPointerOverContent();

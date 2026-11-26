@@ -1,0 +1,12 @@
+formatVersion: 1
+name: SortV1
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+sortingLayers:
+  - id: 0
+    name: Default
+  - id: 1
+    name: Foreground
+mesh:
+  cacheSizeMB: 4096

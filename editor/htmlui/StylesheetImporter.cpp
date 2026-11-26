@@ -191,9 +191,9 @@ bool CssFontSource::usable() const{
         return false;
     if (!format.empty())
         return format == "truetype" || format == "opentype" || format == "truetype-variations" || format == "opentype-variations" ||
-               format == "collection";
+               format == "collection" || woff();
     const std::string extension = urlExtension(url);
-    return extension == "ttf" || extension == "otf" || extension == "ttc";
+    return extension == "ttf" || extension == "otf" || extension == "ttc" || woff();
 }
 
 bool CssFontSource::woff() const{
@@ -298,7 +298,7 @@ ImportedResource StylesheetImporter::run(const std::string& url, const std::stri
 
     const std::string local = localPath(importer, url, "css");
     done[ImportManifest::normalizeUrl(url)] = local;
-    rewriteSheet(url, finalUrl, body, local, 0, at);
+    rewriteSheet(finalUrl, body, local, 0, at);
 
     std::string host, path, query;
     splitUrl(url, host, path, query);
@@ -323,11 +323,11 @@ ImportedResource StylesheetImporter::run(const std::string& url, const std::stri
     return result;
 }
 
-void StylesheetImporter::rewriteSheet(const std::string& url, const std::string& baseUrl, const std::string& body,
+void StylesheetImporter::rewriteSheet(const std::string& baseUrl, const std::string& body,
                                       const std::string& localFile, int depth, const ImportLocation& at){
     std::vector<CssEdit> edits;
 
-    // @font-face: TrueType/OpenType sources, imported; WOFF/WOFF2 ones dropped when one exists
+    // Prefer uncompressed fonts when supplied; otherwise retain the web-font sources.
     const std::vector<CssFontFace> faces = findFontFaces(body);
     std::vector<bool> faceHandled(faces.size(), false);
     for (size_t i = 0; i < faces.size(); i++){
@@ -336,10 +336,12 @@ void StylesheetImporter::rewriteSheet(const std::string& url, const std::string&
             continue;
         faceHandled[i] = true;
         bool anyUsable = false;
-        bool anyWoff = false;
+        const bool hasSfnt = std::any_of(face.sources.begin(), face.sources.end(), [](const CssFontSource& source){
+            return source.usable() && !source.woff();
+        });
         std::string rewritten;
         for (const CssFontSource& source : face.sources){
-            if (source.usable()){
+            if (source.usable() && (!hasSfnt || !source.woff())){
                 anyUsable = true;
                 const std::string resolved = resolveUrl(baseUrl, source.url);
                 std::string local = source.url;
@@ -351,9 +353,8 @@ void StylesheetImporter::rewriteSheet(const std::string& url, const std::string&
                 }
                 if (!rewritten.empty())
                     rewritten += ", ";
-                rewritten += cssUrl(local) + " format(\"" + (source.format.empty() ? std::string("truetype") : source.format) + "\")";
-            }else if (source.woff()){
-                anyWoff = true;
+                const std::string format = source.format.empty() ? (source.woff() ? urlExtension(source.url) : "truetype") : source.format;
+                rewritten += cssUrl(local) + " format(\"" + format + "\")";
             }else if (source.url.empty()){
                 // local(): the engine has no system fonts, but keeping it is harmless
                 if (!rewritten.empty())
@@ -365,11 +366,6 @@ void StylesheetImporter::rewriteSheet(const std::string& url, const std::string&
             edits.push_back(CssEdit{face.srcOffset, face.srcLength, rewritten});
         }else if (!anyUsable){
             faceHandled[i] = false;
-            if (anyWoff){
-                importer.report(codes::WoffOnly, at, url,
-                                "@font-face '" + face.family + "' in '" + url + "' has only WOFF/WOFF2 sources, which the engine cannot read",
-                                "use a stylesheet or font release with .ttf/.otf files (convert the font to TTF)");
-            }
         }
     }
 
@@ -433,16 +429,10 @@ std::string StylesheetImporter::importResource(const std::string& url, CssUrl::C
         }
         const std::string local = localPath(importer, url, "css");
         done[key] = local;   // a cycle finds the file it is writing
-        rewriteSheet(url, finalUrl, body, local, depth + 1, at);
+        rewriteSheet(finalUrl, body, local, depth + 1, at);
         return local;
     }
 
-    if (sniffed.type == SniffedContent::Type::Woff || sniffed.type == SniffedContent::Type::Woff2){
-        importer.report(codes::WoffOnly, at, url, "'" + url + "' (referenced by " + fromFile + ") is a " + sniffed.name() +
-                        ", which the engine cannot read", "use a .ttf/.otf version of the font");
-        done[key] = "";
-        return "";
-    }
     if (!sniffed.isFont() && !sniffed.isImage()){
         importer.report(codes::UnsupportedContent, at, url, "'" + url + "' (referenced by " + fromFile + ") is " +
                         (response.contentType.empty() ? std::string(sniffed.name()) : response.contentType) +

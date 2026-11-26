@@ -128,7 +128,7 @@ body { margin: 0; font-family: 'Karla', sans-serif; }
 .card { border-radius: 50%; }
 .card { aspect-ratio: 1; }
 .card { transition: all .2s ease-in-out; }
-.card { mix-blend-mode: screen; }
+.card { background-blend-mode: screen; }
 .card:has(.sale) { outline: 2px solid gold; }
 .card::before { content: "*"; }
 .name { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
@@ -294,7 +294,13 @@ async def test_cli_default_includes_ui():
 
         r = run_check(project)
         check_eq(r.returncode, 0, r.stderr)
-        check(re.search(r"\(lua \d+ files?, (navigation \d+ surfaces?, )?shaders \d+ forks?, (texture_imports \d+ textures?, )?ui 2 files(, textures \d+ recipes?)?(, anims \d+ clips?)?(, vat \d+ files?)?(, normals \d+ maps?)?(, titles \d+ titles?)?(, videos \d+ Video Players?)?\)", r.stderr), f"summary names ui files: {r.stderr}")
+        # the summary lists every category the default ran ("(lua 0 files, ..., ui 2 files, titles 0 titles, ...)");
+        # other checks add categories, so it is read as a list rather than matched whole
+        summary = re.search(r"^check: .*\((.*)\) in [\d.]+s$", r.stderr, re.M)
+        check(summary, f"a summary line: {r.stderr}")
+        entries = summary.group(1).split(", ")
+        check("ui 2 files" in entries, f"summary names ui files: {entries}")
+        check(any(e.startswith("lua ") for e in entries) and any(e.startswith("shaders ") for e in entries), f"summary keeps lua and shaders: {entries}")
 
 
 # ---------------------------------------------------------------------------- 3. findings
@@ -317,7 +323,7 @@ async def test_cli_ui_findings_text_and_json():
             check(re.fullmatch(r"HTMLUI-[A-Z]+-\d{4}", f["code"]), f"code: {f}")
             check(f["severity"] in ("error", "warning"), f"no info at check level: {f}")
         css = [f for f in findings if f["path"] == "assets/ui/shop_llm.css"]
-        check(any(f["code"] == "HTMLUI-CSS-0002" and f["line"] == line_of(LLM_CSS, "mix-blend-mode") for f in css),
+        check(any(f["code"] == "HTMLUI-CSS-0002" and f["line"] == line_of(LLM_CSS, "background-blend-mode") for f in css),
               f"css diagnostics are reported at the css path and line: {css}")
         script = [f for f in findings if f["code"] == "HTMLUI-HTML-0006"]
         check_eq([(f["path"], f["line"], f["col"], f["severity"]) for f in script],
@@ -392,9 +398,79 @@ async def test_cli_ui_widget_codes():
     check_eq(code, 1, "an error exits 1")
 
 
+async def test_check_ui_reports_fallback_glyphs():
+    """S93 R17 (AC21): check --ui (no RmlUi, no engine) resolves each text's font-family through the
+    document's CSS and reads its @font-face files: text whose own face lacks characters a fallback face
+    draws gives HTMLUI-FONT-0001, a warning at the element's line naming the characters, the face and the
+    family; text in a face that has them all, or in a generic family, reports nothing."""
+    html = ("<!DOCTYPE html>\n<html>\n<head><title>t</title><style>\n"
+            "@font-face { font-family: 'AhemNoO'; src: url('ahem-no-oacute.ttf'); }\n"
+            ".title { font-family: 'AhemNoO', sans-serif; font-weight: 700; }\n"
+            "#plain { font-family: sans-serif; }\n"
+            "</style></head>\n<body>\n"
+            "<div class=\"title\"><span>CA\u00d1\u00d3N</span></div>\n"
+            "<div id=\"plain\">CA\u00d1\u00d3N</div>\n"
+            "<div class=\"title\">CAN</div>\n"
+            "</body>\n</html>\n")
+    with scratch_project() as project:
+        (project / "assets" / "ui").mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO / "engine" / "tests" / "htmlui" / "fixtures" / "fonts" / "Ahem-no-Oacute.ttf",
+                    project / "assets" / "ui" / "ahem-no-oacute.ttf")
+        write(project, "assets/ui/title.html", html)
+        code, data = run_json(project, "--ui", "--files", "assets/ui/title.html")
+    found = [f for f in data["findings"] if f["code"] == "HTMLUI-FONT-0001"]
+    check_eq([(f["path"], f["line"], f["severity"]) for f in found],
+             [("assets/ui/title.html", line_of(html, "<span>"), "warning")],
+             f"one finding, at the inherited text's element; none for sans-serif or for letters the face has: {data['findings']}")
+    check("U+00D3" in found[0]["message"] and "ahem-no-oacute.ttf" in found[0]["message"]
+          and "ahemnoo, sans-serif" in found[0]["message"].lower(), f"it names the character, the face and the family: {found}")
+    check_eq(code, 0, "a warning does not fail the check")
+
+
+async def test_live_document_reports_fallback_glyphs(ed: Editor):
+    """S93 R17 (AC21, deviation: check --ui compiles without RmlUi or fonts, so the report comes from a
+    document that draws): text whose first available face lacks characters a fallback face draws gives
+    HTMLUI-FONT-0001 (info) at the element's line, naming the characters and the family; a face that has
+    them all reports nothing."""
+    ed.require_tools("create_scene", "create_entity", "set_properties", "eval_lua", "editor_status")
+    html = ("<!DOCTYPE html>\n<html>\n<head><title>t</title><style>\n"
+            "@font-face { font-family: 'AhemNoO'; src: url('ahem-no-oacute.ttf'); }\n"
+            "#title { font-family: 'AhemNoO', sans-serif; font-weight: 700; }\n"
+            "#plain { font-family: sans-serif; }\n"
+            "</style></head>\n<body>\n"
+            "<div id=\"title\">CA\u00d1\u00d3N</div>\n"
+            "<div id=\"plain\">CA\u00d1\u00d3N</div>\n"
+            "</body>\n</html>\n")
+    (ed.project / "assets" / "ui").mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO / "engine" / "tests" / "htmlui" / "fixtures" / "fonts" / "Ahem-no-Oacute.ttf",
+                ed.project / "assets" / "ui" / "ahem-no-oacute.ttf")
+    write(ed.project, "assets/ui/fallback_title.html", html)
+    await ed.call("editor_status")
+    made = await ed.call("create_scene", name="UiFallbackGlyphs", type="UI")
+    scene = made["scene"]["id"]
+    ent = await ed.call("create_entity", scene=scene, type="ui_document", name="Title")
+    await ed.call("set_properties", scene=scene, entity=ent["entity_id"],
+                  values={"uidocument": {"filename": "assets/ui/fallback_title.html"}})
+    code = ("local d = UIDocument(scene, entity('Title')); local out = {} "
+            "for _, x in ipairs(d:getDiagnostics()) do if x.code == 'HTMLUI-FONT-0001' then "
+            "out[#out + 1] = {x.file, x.line, x.severity, x.message} end end return out")
+    found = []
+    # the report follows the frame that draws the text: ask until it is there (a hang guard, not a duration)
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        values = (await ed.call("eval_lua", allow_edit_mode=True, scene=scene, code=code))["values"]
+        found = values[0] or []
+        if found:
+            break
+        await ed.call("editor_status")
+    ed.check_eq([(f[0], f[1], f[2]) for f in found], [("ui/fallback_title.html", line_of(html, 'id="title"'), "info")],
+                f"one report at the title, none for the face that has every letter: {found}")
+    ed.check("U+00D3" in found[0][3] and "ahemnoo, sans-serif" in found[0][3].lower(), f"it names the character and the family: {found}")
+
+
 async def test_cli_ui_files_and_exclusions():
     with scratch_project() as project:
-        write(project, "assets/ui/x.css", ".x { mix-blend-mode: multiply; }\n")
+        write(project, "assets/ui/x.css", ".x { background-blend-mode: multiply; }\n")
         write(project, "assets/ui/panel.html", GOOD_HTML)
         write(project, "assets/ui/panel.css", GOOD_CSS)
         code, data = run_json(project, "--files", "assets/ui/x.css")
@@ -477,7 +553,7 @@ async def test_cli_ui_files_and_exclusions():
 
 async def test_cli_ui_dedupe():
     with scratch_project() as project:
-        write(project, "assets/ui/shared.css", ".a { mix-blend-mode: screen; }\n.b { zoom: 2; }\n")
+        write(project, "assets/ui/shared.css", ".a { background-blend-mode: screen; }\n.b { zoom: 2; }\n")
         doc = '<html><head><link rel="stylesheet" href="shared.css"></head><body><div class="a b">{}</div></body></html>\n'
         write(project, "assets/ui/one.html", doc.format("one"))
         write(project, "assets/ui/two.html", doc.format("two"))
@@ -709,7 +785,8 @@ async def test_ui_support_schema_and_diagnostic_codes():
             check(f.get("severity") in ("error", "warning", "info"), f"the severity it is reported with: {f}")
     check_eq(seen_kinds, kinds, "every table is there")
     # the rows the matrix promises
-    check_eq(support_row(data, "property", "mix-blend-mode")["support"], "unsupported", "mix-blend-mode")
+    check_eq(support_row(data, "property", "background-blend-mode")["support"], "unsupported", "background-blend-mode")
+    check_eq(support_row(data, "property", "mix-blend-mode")["support"], "native", "mix-blend-mode (S93 R30)")
     check_eq(support_row(data, "at_rule", "@container")["support"], "unsupported", "@container")
     check_eq(support_row(data, "element", "canvas")["code"], "HTMLUI-HTML-0002", "canvas")
     check_eq(support_row(data, "attribute", "on*")["code"], "HTMLUI-HTML-0005", "on*")
@@ -722,6 +799,17 @@ async def test_ui_support_schema_and_diagnostic_codes():
     check(draggable["support"] == "rewritten" and draggable["note"].startswith("mapped"), f"draggable: {draggable}")
     for tag in ("list-view", "grid-view", "tree-view", "table-view", "markdown"):
         check_eq(support_row(data, "element", tag)["support"], "emulated", tag)
+    easing_rows = [support_row(data, "property", name) for name in (
+        "animation", "transition", "animation-timing-function", "transition-timing-function")]
+    easing_rows += [support_row(data, "function", name) for name in ("cubic-bezier", "steps", "linear")]
+    for prop in ("animation-timing-function", "transition-timing-function"):
+        easing_rows += [support_row(data, "value", name, prop) for name in (
+            "linear", "ease", "ease-in", "ease-out", "ease-in-out", "step-start", "step-end", "cubic-bezier()", "steps()", "linear()")]
+    for row in easing_rows:
+        check(row is not None, "the native CSS easing row exists")
+        check_eq(row["support"], "native", f"CSS easing: {row}")
+        check("exact" in row["note"] and "nearest" not in row["note"], f"native easing describes its exact evaluation: {row}")
+        check(not row.get("code"), f"native easing has no approximation diagnostic: {row}")
 
 
 

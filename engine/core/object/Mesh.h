@@ -166,6 +166,24 @@ namespace jasperengine{
         Vector4 getShaderUniform(const std::string& name) const;
         bool removeShaderUniform(const std::string& name);
 
+        // a @texture of the shader the submesh draws with, in its material (shaderTextures; "" the
+        // shader's default again); submesh 0 when not given, as setTexture
+        void setShaderTexture(const std::string& name, const std::string& path);
+        void setShaderTexture(const std::string& name, const std::string& path, unsigned int submesh);
+        std::string getShaderTexture(const std::string& name) const;
+        std::string getShaderTexture(const std::string& name, unsigned int submesh) const;
+        // the texture setTexture writes on a submesh: its shader's main @texture (marked main,
+        // else its first), "" for the built-in Lit's base colour (a shader without @texture)
+        std::string getMainTextureName(unsigned int submesh = 0) const;
+
+        // Property Overrides (Unity's MaterialPropertyBlock, saved with the mesh, S94 F7): values
+        // and textures over its materials', for every submesh or one (which wins). An empty block
+        // removes them.
+        void setPropertyBlock(const ShaderPropertyOverrides& block);
+        void setPropertyBlock(const ShaderPropertyOverrides& block, unsigned int submesh);
+        ShaderPropertyOverrides getPropertyBlock() const;
+        ShaderPropertyOverrides getPropertyBlock(unsigned int submesh) const;
+
         void setAsMirror();
         void setAsMirror(Vector3 normal);
         void removeMirror();

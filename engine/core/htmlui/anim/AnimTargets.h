@@ -23,6 +23,7 @@
 namespace jasperengine {
 
     class UIElement;
+    class Scene;
     struct AnimTween;
 
     // Anime's tweenTypes
@@ -103,6 +104,17 @@ namespace jasperengine {
 
     class JASPERENGINE_API AnimTargets {
     public:
+        // Private previews resolve unrooted selectors only in their own scene.
+        class JASPERENGINE_API ScopedSceneTargets {
+        public:
+            explicit ScopedSceneTargets(Scene* scene);
+            ~ScopedSceneTargets();
+            ScopedSceneTargets(const ScopedSceneTargets&) = delete;
+            ScopedSceneTargets& operator=(const ScopedSceneTargets&) = delete;
+        private:
+            Scene* previous;
+        };
+
         // the shared target of an element (invalid element: nullptr)
         static AnimTargetPtr fromElement(const UIElement& element);
         static AnimTargetList fromElements(const std::vector<UIElement>& elements);

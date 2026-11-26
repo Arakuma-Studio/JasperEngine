@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: fa957052190b74172aca2dc49fa7bbdc
 id: 2971396629
 name: Stencil
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

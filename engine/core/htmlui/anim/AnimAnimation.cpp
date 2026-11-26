@@ -109,7 +109,7 @@ namespace {
 
     // getFunctionValue; store (when given) receives a re-evaluation for refresh()
     AnimParam functionValue(const AnimParam& value, const AnimTargetPtr& target, int index, const AnimTargetList& targets,
-                            std::function<AnimRawValue()>* store, AnimTimeline* timeline = nullptr){
+                            std::function<AnimRawValue()>* store, AnimTimeline* timeline = nullptr, const AnimRawValue& previous = AnimRawValue()){
         if (value.isFunction()){
             AnimFunctionArgs args;
             args.target = target;
@@ -117,6 +117,7 @@ namespace {
             args.total = (int)targets.size();
             args.targets = &targets;
             args.timeline = timeline;
+            args.previousValue = previous;
             AnimParam::Function fn = value.asFunction();
             if (store){
                 AnimTargetList targetsCopy = targets;
@@ -294,7 +295,7 @@ std::shared_ptr<AnimAnimation> AnimAnimation::set(const AnimTargetList& targets,
 
 AnimAnimation::AnimAnimation(const AnimTargetList& parsedTargets, const AnimParam& parameters, AnimTimeline* parent,
                              double parentPosition, bool fastSet, int index, const AnimTargetList* allTargets):
-        AnimTimer(Kind::ANIMATION, parameters, parent, parentPosition){
+        AnimTimer(Kind::ANIMATION, parameters, parent, parentPosition, clockOfTargets(parsedTargets)){
     ++animationId;
     AnimEngine::registerAnimation(this, true);
 
@@ -397,7 +398,7 @@ AnimAnimation::AnimAnimation(const AnimTargetList& parsedTargets, const AnimPara
                 const AnimComposition tweenComposition = compositionOf(computedComposition);
                 if (!siblings && tweenComposition != AnimComposition::NONE)
                     siblings = &AnimComposer::getSiblings(*target, propName, false);
-                const AnimParam computedToValue = functionValue(key.get("to"), target, ti, tl, &toFunc);
+                const AnimParam computedToValue = functionValue(key.get("to"), target, ti, tl, &toFunc, nullptr, prevTween ? prevTween->value : AnimRawValue());
 
                 AnimParam tweenToValue;
                 // function values may return the object syntax ({to: v})

@@ -244,6 +244,20 @@ namespace {
             blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
             blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
             break;
+        case BlendMode::MULTIPLY_2X:
+            blend.src_factor_rgb = SG_BLENDFACTOR_DST_COLOR;
+            blend.dst_factor_rgb = SG_BLENDFACTOR_SRC_COLOR;
+            blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+            blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+            break;
+        // a material's own factors live in RenderState::customBlend, which the fixed pipeline
+        // types take; a dynamic PipelineState has no field for them: straight alpha
+        case BlendMode::CUSTOM:
+            blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+            blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+            blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
         }
         blend.enabled = true;
     }

@@ -61,6 +61,8 @@ namespace jasperengine::htmlui::compat {
         bool stepBy(int steps);
         // number inputs: the value clamped to min/max (false when nothing changed)
         bool clampToRange();
+        // HTML implicit submission (Enter in a text field); false when nothing was submitted
+        bool implicitSubmit();
 
         // a themed checkbox or radio: Chromium's theme as an SVG drawing of `size` (its box), in
         // the colours of the user-agent sheet's --html-theme-fill, -stroke and -mark
@@ -94,7 +96,6 @@ namespace jasperengine::htmlui::compat {
         // of the user-agent sheet's --html-theme-fill, -stroke and -mark (themeSvg)
         void renderTheme();
         void sanitizeNumber();
-        bool implicitSubmit();
 
         std::unique_ptr<Behavior> behavior;
         std::string htmlType = "text";

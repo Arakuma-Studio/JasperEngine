@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: Empty
 canvasWidth: 1280
 canvasHeight: 720
@@ -9,7 +9,7 @@ foliageQuality:
   desktop: high
   mobile: low
   web: low
-htmlUiMsaaSamples: 4
+htmlUiMsaaSamples: 0
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
 htmlUiTransformAwareText: true
@@ -32,13 +32,14 @@ versionControl:
   lfs: true
 export:
   assetStripping: referencedOnly
-startSceneId: 1346478977
+startSceneId: 3035739784
 mesh:
   animationEntities: auto
+  preserveHierarchyForNewModels: true
 audio:
   mixer: audio/Main.mixer
   outputStage: linear
   iosSessionCategory: ambient
 scenes:
   - filepath: assets/scenes/Main.scene
-    filepathGuid: 43846410bed55ba2b92a34b501ee1064
+    filepathGuid: 846896d51fd1955a201c2b62e21e87d9

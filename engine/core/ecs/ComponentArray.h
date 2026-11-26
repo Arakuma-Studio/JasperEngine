@@ -980,6 +980,8 @@ namespace jasperengine {
         T& componentAtSettled(size_t index) const { return *slotPtr(index); }
         Entity entityAtSettled(size_t index) const { return slotEntities[index]; }
         Tick changedTickAtSettled(size_t index) const { return changedTicks.get(index); }
+        // the first index at or after `from` changed after `tick`, else size()
+        size_t findChangedAfterSettled(size_t from, Tick tick) const { return changedTicks.findAfter(from, slotCount, tick); }
         Tick addedTickAtSettled(size_t index) const { return addedTicks.get(index); }
         void markChangedAtSettled(size_t index, Tick tick){
             changedTicks.set(index, tick, slotCount);

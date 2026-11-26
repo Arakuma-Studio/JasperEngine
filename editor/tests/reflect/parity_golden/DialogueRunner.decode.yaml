@@ -1,0 +1,47 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 41e5671af29a516e
+--- 0
+dialogue: ui/menu.html
+startEntry: true
+autoStart: false
+seed: 0
+view: 300
+--- 1
+dialogue: a b/c.png
+startEntry: "Hello, YAML: [1, 2]"
+autoStart: false
+seed: 15
+view: 234
+--- 2
+dialogue: ui/menu.html
+startEntry: "  padded  "
+autoStart: false
+seed: -9
+view: 223
+--- 3
+dialogue: ui/menu.html
+startEntry: ümlaut
+autoStart: false
+seed: -3
+--- 4
+dialogue: textures/a.png
+startEntry: "Hello, YAML: [1, 2]"
+autoStart: true
+seed: 13011
+--- 5
+dialogue: fonts/Main.ttf
+startEntry: "~"
+autoStart: true
+seed: -16
+view: 190
+--- 6
+dialogue: a b/c.png
+startEntry: with "quotes"
+autoStart: false
+seed: -8
+view: 327
+--- 7
+dialogue: sounds/hit.wav
+startEntry: 123
+autoStart: false
+seed: -15

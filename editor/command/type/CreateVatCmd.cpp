@@ -177,6 +177,8 @@ bool CreateVatCmd::buildAndRun(){
                        ? new CreateEntityCmd(project, sceneId, placement.name, EntityCreationType::MODEL)
                        : new CreateEntityCmd(project, sceneId, placement.name, EntityCreationType::MODEL, placement.parent);
     create->setQuiet(true);
+    // the Vertex Animator draws the Model's own Mesh: never Preserve Hierarchy (S94 F44)
+    create->addProperty<bool>(ComponentType::ModelComponent, "preserveHierarchy", false);
     create->addProperty<Vector3>(ComponentType::Transform, "position", placement.position);
     create->addProperty<Quaternion>(ComponentType::Transform, "rotation", placement.rotation);
     create->addProperty<Vector3>(ComponentType::Transform, "scale", placement.scale);

@@ -1,0 +1,17 @@
+<html>
+<head>
+    <title>shared shadow</title>
+    <link type="text/css" href="../common/base.css"/>
+    <style>
+        /* S93 R27 (AC31): the same sheet in a screen and a texture-mode document: a box shadow drawn from a texture
+           (the dashed border keeps it off the primitive path) and a gradient decorator */
+        body { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; padding: 0; }
+        #box { position: absolute; left: 40px; top: 40px; width: 120px; height: 80px; background-color: #2060c0;
+               border: 4px dashed #ffffff; box-shadow: 0 0 0 12px #ff0000;
+               decorator: linear-gradient(#ffff00, #00ff00); }
+    </style>
+</head>
+<body>
+    <div id="box"></div>
+</body>
+</html>

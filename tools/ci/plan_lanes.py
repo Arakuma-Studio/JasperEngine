@@ -335,11 +335,12 @@ def decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_o
                      full_selection, asan_definition, macos_inputs)
     result["advisory_off"] = []
     result["build_only"] = []
+    result["unbuilt"] = []
     result["dispatch_advisory"] = False
     if event == "advisory":
         keep_advisory_only(result, set(advisory))
     elif event == "merge_group":
-        leave_advisory_out(result, set(advisory))
+        leave_advisory_out(result, set(advisory), unbuilt=True)
     elif event == "pull_request" and not pr_advisory:
         leave_advisory_out(result, set(advisory), f"a pull request while {PR_ADVISORY_VARIABLE} is off")
     elif event == "push" and superseded_by:
@@ -358,7 +359,7 @@ def decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_o
     return result
 
 
-def leave_advisory_out(result: dict, advisory: set[str], who: str = "the merge queue") -> None:
+def leave_advisory_out(result: dict, advisory: set[str], who: str = "the merge queue", unbuilt: bool = False) -> None:
     """The merge queue (or a pull request while PR_ADVISORY_VARIABLE is off): the advisory test lanes and
     test runs planned off, so its Check waits only for what can block the merge (they run in the
     advisory run a push to main dispatches). A plan that runs nothing keeps nothing."""
@@ -376,6 +377,10 @@ def leave_advisory_out(result: dict, advisory: set[str], who: str = "the merge q
         if test_run in advisory and lanes[job]["run"]:
             result["advisory_off"].append(test_run)
             result["build_only"].append(test_run)
+            # unbuilt: its binary is not even built (the merge queue: an MSVC-only compile error in a test
+            # shows on main after the merge, in the advisory run, which builds and runs it)
+            if unbuilt:
+                result["unbuilt"].append(test_run)
 
 
 def keep_advisory_only(result: dict, advisory: set[str]) -> None:
@@ -1209,6 +1214,8 @@ def github_output(doc: dict, unit_run: dict) -> str:
               f"windows_parts={json.dumps(doc.get('windows_parts', []), separators=(',', ':'))}",
               # the jobs that run but skip a test run of theirs (lanes or report.TEST_REPORTS)
               f"build_only={json.dumps(doc.get('build_only', []), separators=(',', ':'))}",
+              # the test runs whose binary is not built either (the merge queue's windows-editor-tests)
+              f"unbuilt={json.dumps(doc.get('unbuilt', []), separators=(',', ':'))}",
               # push: the queue left macos out, so this run runs its tests too
               f"macos_full={'true' if doc.get('macos_full') else 'false'}",
               # push: ci.yml dispatches the advisory run
@@ -1345,7 +1352,7 @@ def main(argv: list[str]) -> int:
                    args.full_selection, force if args.trigger == "workflow_dispatch" else ()),
                "mcp": dict(result["mcp"], shards=shards), "fallbacks": result["fallbacks"], "notes": notes,
                "macos_full": result.get("macos_full", False),
-               "advisory_off": result["advisory_off"], "build_only": result["build_only"], "queue_off": result["queue_off"],
+               "advisory_off": result["advisory_off"], "build_only": result["build_only"], "unbuilt": result["unbuilt"], "queue_off": result["queue_off"],
                "superseded_by": superseded[0] if superseded else None,
                "dispatch_advisory": result["dispatch_advisory"],
                "files": plan["files"] if plan else None,

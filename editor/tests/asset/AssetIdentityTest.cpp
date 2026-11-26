@@ -298,6 +298,16 @@ TEST(AssetTypes, ExrIsATexture) {
     EXPECT_NE(AssetTypes::find("assets/env.EXR", "assets"), nullptr);
 }
 
+// S94 F50: TIFF and PSB are texture sources (the cook decodes them in the editor)
+TEST(AssetTypes, TiffAndPsbAreTextures) {
+    for (const char* path : {"assets/photo.tif", "assets/photo.TIFF", "assets/art.psb"}) {
+        const AssetTypeInfo* info = AssetTypes::find(path, "assets");
+        ASSERT_NE(info, nullptr) << path;
+        EXPECT_EQ(info->type, AssetType::Texture) << path;
+        EXPECT_EQ(info->identity, AssetIdentity::Sidecar) << path;
+    }
+}
+
 // ==================================================================== AssetDatabase
 
 // BF23 F24: an .exr of an existing project, one its database did not track, gains its sidecar on

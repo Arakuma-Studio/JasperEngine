@@ -70,7 +70,8 @@ void RenderSystem::updateLightingFeatures(){
         }else{
             localLights = true;
         }
-        if (light.shadows && light.contactShadows && light.type != LightType::POINT)
+        // (contact shadows march towards a sun or a spot: never an Area Light's)
+        if (light.shadows && light.contactShadows && light.type != LightType::POINT && light.type != LightType::AREA)
             contactLight = true;
     }
 
@@ -490,7 +491,7 @@ void RenderSystem::applyObjectLights(ObjectRender& render, int slotVS, unsigned 
             tiledObjectLightsBlock.counts.w = (tiles && tiles->masks) ? 1.0f : 0.0f;
             // the lights over the cap are the tiles' now: the scene ambient alone
             for (int c = 0; c < 3; c++)
-                tiledObjectLightsBlock.sh[c] = Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+                tiledObjectLightsBlock.sh[c] = lightListAmbientSH[c];
             if (tiles && tiles->uploaded){
                 tiledObjectLightsBlock.tileGrid = tiles->tileGrid;
                 tiledObjectLightsBlock.tileCount = tiles->tileCount;
@@ -625,7 +626,8 @@ void RenderSystem::beginTiledLights(CameraShadows& target, const CameraComponent
         const int tile = (light.spotMaskTile >= 0) ? light.spotMaskTile : 7;
         const int shadowSlot = (int)light.cone_shadow.z;
         const int cascades = passLightCascades(light);
-        entry.record[3].w = (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9) | (lightOcclusionBits(i) << 12));
+        entry.record[3].w = (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9) | (lightOcclusionBits(i) << 12) |
+                                    light.profileBits);
         const bool vertexShaded = light.shading == LightShading::VERTEX;
         entry.record[4] = Vector4((float)(light.cullingMask & 0xFFFFu), (float)(light.cullingMask >> 16), vertexShaded ? 1.0f : 0.0f, 0.0f);
         tiles.masks = tiles.masks || light.cullingMask != LAYER_MASK_EVERYTHING || vertexShaded;

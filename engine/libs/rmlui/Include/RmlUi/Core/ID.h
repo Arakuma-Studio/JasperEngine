@@ -381,6 +381,16 @@ enum class PropertyId : uint16_t {
 	TextRendering,
 	// Pointer Events (fork, engine-gaps G5-4): what a touch on the element may pan (read when a touch starts).
 	TouchAction,
+	// Fork (S93 R31): 'text-autosize' (engine extension): 'none' or the two lengths the element's font size is fitted between.
+	TextAutosize,
+	// Fork (S93 R30): 'mix-blend-mode' (Compositing and Blending 1): the element drawn as a layer, blended with its backdrop.
+	MixBlendMode,
+	// Fork (S93 R8): drag scrolling physics of a scroll container (read when a press starts a pan; ScrollPhysics).
+	ScrollDrag,
+	ScrollMovement,
+	ScrollElasticity,
+	ScrollInertia,
+	ScrollDecelerationRate,
 
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,

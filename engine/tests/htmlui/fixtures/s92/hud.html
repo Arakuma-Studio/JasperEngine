@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>S92: hud</title>
+<!-- S92 R29 (docs/specs/S92-htmlui-render-cost.md): a HUD with its content on about 10 % of the view (score, coins, a pause button): the composite covers only the tiles with content.
+     Drawn at 1280x720, pixel ratio 1; #tick is the element another frame changes (the warm column). -->
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; font-family: sans-serif; color: #ffffff; }
+  #tick { position: absolute; left: 1180px; top: 680px; font-size: 16px; }
+  .panel { position: absolute; background-color: rgba(0, 0, 0, 0.6); border-radius: 12px; }
+  .value { position: absolute; font-size: 28px; }
+</style>
+</head>
+<body>
+  <div class="panel" style="left: 24px; top: 24px; width: 240px; height: 64px"></div>
+  <div class="value" style="left: 40px; top: 38px">SCORE 1280</div>
+  <div class="panel" style="left: 1016px; top: 24px; width: 180px; height: 64px"></div>
+  <div class="value" style="left: 1032px; top: 38px">x 42</div>
+  <div class="panel" style="left: 1208px; top: 24px; width: 48px; height: 64px; background-color: #e04a7a"></div>
+  <span id="tick" style="left: 40px; top: 100px">0</span>
+</body>
+</html>

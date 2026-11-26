@@ -967,7 +967,17 @@ Units ImageLayerList::GetUnitDependencies() const
 	{
 		for (const DecoratorDeclaration& declaration : decorators->list)
 			for (const auto& id_property : declaration.properties.GetProperties())
-				units = units | (id_property.second.unit & (Unit::EM | Unit::REM | Unit::VW | Unit::VH | Unit::VMIN | Unit::VMAX));
+			{
+				const Property& property = id_property.second;
+				if (property.unit == Unit::STYLE_VALUE)
+				{
+					const StyleValuePtr value = property.Get<StyleValuePtr>();
+					if (value)
+						units = units | value->GetUnitDependencies();
+				}
+				else
+					units = units | (property.unit & (Unit::EM | Unit::REM | Unit::VW | Unit::VH | Unit::VMIN | Unit::VMAX));
+			}
 	}
 	return units;
 }

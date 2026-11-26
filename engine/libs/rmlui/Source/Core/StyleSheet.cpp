@@ -3,6 +3,7 @@
 #include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
+#include "../../Include/RmlUi/Core/StringUtilities.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "ElementDefinition.h"
 #include "ElementStyle.h"
@@ -105,8 +106,11 @@ const DecoratorPtrList& StyleSheet::InstanceDecorators(RenderManager& render_man
 
 	if (enable_cache)
 	{
-		key.reserve(declaration_list.value.size() + 1 + (source ? source->path.size() : 0));
-		key = declaration_list.value;
+		// Fork (S93 R27): and the render manager the decorators' textures belong to (a sheet shared by a screen document
+		// and a texture-mode one must not hand one render manager's textures to the other)
+		key.reserve(declaration_list.value.size() + 1 + (source ? source->path.size() : 0) + 20);
+		key = CreateString("%p;", (const void*)&render_manager);
+		key += declaration_list.value;
 		key += ';';
 		if (source)
 			key += source->path;

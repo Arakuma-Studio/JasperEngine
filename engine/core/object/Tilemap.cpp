@@ -3,6 +3,7 @@
 
 #include "Tilemap.h"
 #include <algorithm>
+#include "component/MeshComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "component/TilemapComponent.h"
 

@@ -6,6 +6,24 @@
 ---table (its number and colour fields), an anime object, or a list of them
 ---@alias AnimeTargets string|UIElement|table|AnimeTimer|(string|UIElement|table)[]
 
+---@class AnimeSplitParams
+---@field wrap? boolean|"clip"|"hidden"|"visible" # adds an outer overflow wrapper; animate the returned inner element
+---@field class? string
+
+---@class AnimeSplitTextParams
+---@field chars? boolean|AnimeSplitParams # extended Unicode grapheme clusters, default false
+---@field words? boolean|AnimeSplitParams # default true
+---@field lines? boolean|AnimeSplitParams # default false; refreshes synchronously on layout changes
+---@field includeSpaces? boolean # append a NBSP to each word's last character, default false
+---@field accessible? boolean # keep a visually hidden unsplit copy, default true
+
+---@class AnimeTextSplitter
+---@field chars UIElement[]
+---@field words UIElement[]
+---@field lines UIElement[]
+---@field target UIElement
+---@field ready boolean
+
 ---A time (ms), "+=100" / "-=100" / "*=2" (relative to the end), "<" (end of the previous
 ---child), "<<" (its start), "<+=50", a label, "label+=50", or a stagger
 ---@alias AnimeTimelinePosition number|string|AnimeStagger
@@ -152,3 +170,16 @@
 ---@class anime
 ---@field eases AnimeEases
 ---@field utils AnimeUtils
+---@field svg AnimeSvg
+
+---Properties returned by anime.createMotionPath, usable directly in anime.animate.
+---@class AnimeMotionPath
+---@field translateX AnimeStagger
+---@field translateY AnimeStagger
+---@field rotate AnimeStagger
+
+---Anime.js SVG module; the same functions are also available directly on anime.
+---@class AnimeSvg
+---@field createDrawable fun(targets: AnimeTargets, start?: number, finish?: number): UIElement[]
+---@field morphTo fun(target: AnimeTargets, precision?: number): AnimeStagger
+---@field createMotionPath fun(path: AnimeTargets, offset?: number): AnimeMotionPath|nil

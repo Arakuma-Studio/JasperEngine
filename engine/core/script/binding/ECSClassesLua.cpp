@@ -48,6 +48,7 @@
 #include "component/AnimatorComponent.h"
 #include "animation/AnimationEvent.h"
 #include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
 #include "component/FogComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
@@ -277,6 +278,17 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("InputFieldKeyboardType")
+        .addVariable("DEFAULT", InputFieldKeyboardType::DEFAULT)
+        .addVariable("NUMBER_PAD", InputFieldKeyboardType::NUMBER_PAD)
+        .addVariable("DECIMAL_PAD", InputFieldKeyboardType::DECIMAL_PAD)
+        .addVariable("PHONE_PAD", InputFieldKeyboardType::PHONE_PAD)
+        .addVariable("EMAIL_ADDRESS", InputFieldKeyboardType::EMAIL_ADDRESS)
+        .addVariable("URL", InputFieldKeyboardType::URL)
+        .addVariable("SEARCH", InputFieldKeyboardType::SEARCH)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("AnchorPreset")
         .addVariable("NONE", AnchorPreset::NONE)
         .addVariable("TOP_LEFT", AnchorPreset::TOP_LEFT)
@@ -309,6 +321,27 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("TOP_RIGHT", PivotPreset::TOP_RIGHT)
         .addVariable("BOTTOM_RIGHT", PivotPreset::BOTTOM_RIGHT)
         .addVariable("FRAME", PivotPreset::FRAME)
+        .endNamespace();
+
+    // Text.anchorHorizontal and Text.anchorVertical (Unity TextMesh's Anchor): one table, values the
+    // other property refuses
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextAnchor")
+        .addVariable("Left", TextAnchorHorizontal::LEFT)
+        .addVariable("Center", TextAnchorHorizontal::CENTER)
+        .addVariable("Right", TextAnchorHorizontal::RIGHT)
+        .addVariable("Top", TextAnchorVertical::TOP)
+        .addVariable("Middle", TextAnchorVertical::MIDDLE)
+        .addVariable("Bottom", TextAnchorVertical::BOTTOM)
+        .addVariable("Baseline", TextAnchorVertical::BASELINE)
+        .addVariable("Capline", TextAnchorVertical::CAPLINE)
+        .addVariable("Midline", TextAnchorVertical::MIDLINE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextFontSizeUnit")
+        .addVariable("PixelHeight", TextFontSizeUnit::PIXEL_HEIGHT)
+        .addVariable("Em", TextFontSizeUnit::EM)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -391,6 +424,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("OnScreenVisibility")
         .addVariable("ALWAYS", OnScreenVisibility::ALWAYS)
         .addVariable("TOUCH_DEVICES_ONLY", OnScreenVisibility::TOUCH_DEVICES_ONLY)
+        .addVariable("TOUCH_SCHEME", OnScreenVisibility::TOUCH_SCHEME)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -1106,6 +1140,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("scrollOffset", &InputFieldComponent::scrollOffset, &setTrackedMember<&InputFieldComponent::scrollOffset>)
         .addProperty("disabled", &InputFieldComponent::disabled, &setTrackedMember<&InputFieldComponent::disabled>)
         .addProperty("password", &InputFieldComponent::password, &setTrackedMember<&InputFieldComponent::password>)
+        .addProperty("keyboardType", &InputFieldComponent::keyboardType, &setTrackedMember<&InputFieldComponent::keyboardType>)
+        .addProperty("characterLimit", &InputFieldComponent::characterLimit, &setTrackedMember<&InputFieldComponent::characterLimit>)
         .addProperty("onChange", [] (InputFieldComponent* self, lua_State* L) { return &self->onChange; }, [] (InputFieldComponent* self, lua_State* L) { self->onChange = L; })
         .addProperty("onSubmit", [] (InputFieldComponent* self, lua_State* L) { return &self->onSubmit; }, [] (InputFieldComponent* self, lua_State* L) { self->onSubmit = L; })
         .addProperty("needUpdateInputField", &InputFieldComponent::needUpdateInputField, &setTrackedMember<&InputFieldComponent::needUpdateInputField>)
@@ -1159,6 +1195,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("speed", &AnimationPlayerComponent::speed, &setTrackedMember<&AnimationPlayerComponent::speed>)
         .addProperty("defaultFadeTime", &AnimationPlayerComponent::defaultFadeTime, &setTrackedMember<&AnimationPlayerComponent::defaultFadeTime>)
         .addProperty("poseFrameRate", &AnimationPlayerComponent::poseFrameRate, &setTrackedMember<&AnimationPlayerComponent::poseFrameRate>)
+        .addProperty("applyRootMotion", &AnimationPlayerComponent::applyRootMotion, &setTrackedMember<&AnimationPlayerComponent::applyRootMotion>)
+        .addProperty("legacyRootDrift", &AnimationPlayerComponent::legacyRootDrift, &setTrackedMember<&AnimationPlayerComponent::legacyRootDrift>)
         .addProperty("needsLoad", &AnimationPlayerComponent::needsLoad, &AnimationPlayerComponent::needsLoad)
         .addProperty("onEvent", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onEvent = L; })
         .addProperty("onFinish", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onFinish; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onFinish = L; })
@@ -1202,6 +1240,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("speed", &AnimatorComponent::speed, &setTrackedMember<&AnimatorComponent::speed>)
         .addProperty("poseFrameRate", &AnimatorComponent::poseFrameRate, &setTrackedMember<&AnimatorComponent::poseFrameRate>)
         .addProperty("applyRootMotion", &AnimatorComponent::applyRootMotion, &setTrackedMember<&AnimatorComponent::applyRootMotion>)
+        .addProperty("legacyRootDrift", &AnimatorComponent::legacyRootDrift, &setTrackedMember<&AnimatorComponent::legacyRootDrift>)
         .addProperty("rootMotionBone", &AnimatorComponent::rootMotionBone, &setTrackedMember<&AnimatorComponent::rootMotionBone>)
         .addProperty("updateMode", &AnimatorComponent::updateMode, &setTrackedMember<&AnimatorComponent::updateMode>)
         .addProperty("cullingMode", &AnimatorComponent::cullingMode, &setTrackedMember<&AnimatorComponent::cullingMode>)

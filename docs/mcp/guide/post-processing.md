@@ -56,6 +56,15 @@ scene_shading, notes}`; while playing also `applied` (what the renderer runs: `i
 time (`tail_color`, `uber`, `uber_features`, `render_scale_applied`, the estimated `passes` and
 `dynamic_resolution`). Presets apply as one named undo step ("Apply Film Preset").
 
+## Porting a Unity look
+
+- Vignette: `vignette_falloff` radii darkens from `vignette_start` to `vignette_end` (a smoothstep
+  over the radius; 1 is the middle of the screen's edge, of its top edge with `vignette_roundness`
+  1), as a shader's own `smoothstep(start, end, length(p))` does; smoothness keeps
+  `vignette_smoothness`.
+- A LUT strip whose green 0 is its top row (not Unity's layout, whose green 0 is the bottom row)
+  takes `lut_flip_green: true`; a `.cube` has its own order.
+
 ## Mobile advice
 
 - Prefer T0: tone mapping, grading, monochrome, vignette and dither cost no pass at all.
@@ -166,6 +175,13 @@ Unity's layout, or a `.cube`: see Colour LUTs below).
   rounded, academy_137, widescreen_185, anamorphic_239), `film_gate_mask_feather` (px),
   `glitch_enabled` and the `glitch_*` fields (bursts of torn rows, RGB split and interlace in
   source texels: `jasper://docs/pixel-fx`).
+- Cavity, for a Blender-style cavity, edge highlight or bevel look on 3D meshes (not Edge Detect,
+  which outlines the image's luma, and not a custom post shader): `cavity_enabled`, `cavity_type`
+  (screen: thin edge lines, world: a soft bevel, both), `cavity_screen_ridge`,
+  `cavity_screen_valley`, `cavity_screen_width`, `cavity_world_radius`, `cavity_world_ridge`,
+  `cavity_world_valley`, `cavity_world_samples` (4, 8, 16), `cavity_max_pixel_radius`,
+  `cavity_debug`. One draw in the scene pass, and a depth pre-pass when nothing else draws one
+  (none extra with SSAO or SSR); `get_post_processing_status` `cavity` says what drew.
 - Bloom and blur: `bloom_enabled`, `bloom_threshold`, `bloom_knee`, `bloom_intensity`,
   `bloom_tint`, `bloom_scatter`, `blur_enabled`, `blur_radius`, `blur_intensity`.
 - Resolution: `render_scale` (0.5-1), `dynamic_resolution_enabled`,
@@ -286,6 +302,8 @@ p.filmGateMask = FilmGateMask.ACADEMY_137   -- NONE, ROUNDED, ACADEMY_137, WIDES
 p.lutTexture = "luts/look.cube"
 p.lutInputEncoding = LutInputEncoding.AUTO  -- SRGB, LINEAR, LOGC3, ACESCCT, CINEON, DAVINCI_INTERMEDIATE
 p.dynamicResolutionEnabled = true
+p.cavityEnabled = true
+p.cavityType = CavityType.WORLD             -- SCREEN, WORLD, BOTH
 scene.postProcessing = p
 local d = scene:getDynamicResolution()      -- {scale, source, smoothedMs, targetMs, running, ...}
 scene:setDynamicResolutionOverride(0.75)    -- pin the scale; nil releases it

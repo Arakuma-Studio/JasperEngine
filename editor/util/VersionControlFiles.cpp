@@ -62,7 +62,9 @@ namespace jasperengine::editor::vcsfiles {
             "*.png", "*.jpg", "*.jpeg", "*.tga", "*.ktx", "*.dds", "*.glb", "*.gltf", "*.fbx", "*.obj", "*.jetrees", "*.jtile",
             "*.ogg", "*.wav", "*.mp3", "*.ttf", "*.otf",
             // T6 R77: a volume is a binary, and big
-            "*.voxelvolume"
+            "*.voxelvolume",
+            // V1 R131: an object's vertex colors, a binary
+            "*.vcolors"
         };
         // binaries LFS adds (art sources, HDR images, cooked textures, video)
         const char* const lfsOnlyPatterns[] = {

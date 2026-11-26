@@ -123,9 +123,8 @@ Window > Analysis > Mesh Optimization Audit lists every model (Path, Triangles, 
 filter and a scope (all, problems, the open scene's). Each issue offers a numbered fix (Generate
 LODs, Mesh Compression Medium, Reimport, Turn on LODs in this scene, the importer), one undo step.
 
-Every export writes `build-report.json` next to what it builds: totals by category (models,
-textures, audio, scripts, scenes, engine, other) and the 25 largest files with their source and its
-size. The export's completion page shows it, and Window > Analysis > Build Report opens it.
+Every export writes `build-report.json` next to what it builds; [shipping.md](shipping.md#the-build-report)
+says what it holds and how to compare two builds.
 
 ## Mesh assets (.mesh)
 

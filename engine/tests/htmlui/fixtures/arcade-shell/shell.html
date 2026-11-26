@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<!-- S93 (AC17, AC18, AC19, R41): a JasperArcade-like shell. Outlined and glowing bold text as the port draws it (its
+     LINESeedSans stands in as Roboto Bold), a 2048x2048 sprite atlas, a score, buttons and a pause panel (with an
+     image of its own) that is display: none until a script shows it. -->
+<html><head><style>
+  @font-face { font-family: "ShellSans"; src: url("../fonts/Roboto-Bold.ttf") format("truetype"); font-weight: 700; }
+  html, body { margin: 0; width: 640px; height: 360px; overflow: hidden; background: #14161c; font-family: "ShellSans", sans-serif;
+               font-weight: 700; color: #ffffff; }
+  #atlas { position: absolute; left: 0; top: 0; width: 128px; height: 128px; }
+  #score { position: absolute; left: 140px; top: 8px; font-size: 40px; font-effect: outline(4px #000000); }
+  #go { position: absolute; left: 60px; top: 10px; font-size: 324px; line-height: 340px;
+        font-effect: outline(15px #000000), glow(4px 12px 0px 8px #000000); }
+  .button { position: absolute; top: 300px; font-size: 32px; font-effect: outline(3px #1b2838); }
+  #play { left: 140px; }
+  #options { left: 360px; }
+  #pause { display: none; position: absolute; left: 120px; top: 60px; width: 400px; height: 220px; background: #000000c0; }
+  #pause h1 { margin: 20px; font-size: 72px; font-effect: outline(6px #000000), glow(2px 6px 0px 4px #3a0ca3); }
+  #pause p { margin: 20px; font-size: 28px; font-effect: outline(2px #000000); }
+</style></head><body>
+<img id="atlas" src="atlas.png">
+<div id="score">SCORE 0123456789</div>
+<div id="go">GO!</div>
+<div class="button" id="play">PLAY</div>
+<div class="button" id="options">SETTINGS</div>
+<div id="pause"><img id="pause-icon" src="pause-icon.png" width="64" height="64"><h1>PAUSED</h1><p data-warm="0123456789:">Resume or quit?</p></div>
+</body></html>

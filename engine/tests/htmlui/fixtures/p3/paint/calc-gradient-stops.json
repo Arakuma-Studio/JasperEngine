@@ -1,0 +1,7 @@
+{
+ "comment": "S93 R25 (U23): calc(), min() and max() mixing percentages and lengths (or angles) in the colour stops of linear, radial and conic gradients, repeating ones included",
+ "viewport": [
+  420,
+  270
+ ]
+}

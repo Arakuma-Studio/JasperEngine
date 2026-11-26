@@ -20,6 +20,7 @@ namespace jasperengine {
         uint32_t layersPushed = 0;
         uint32_t filtersApplied = 0;
         uint32_t compositesFused = 0;       // backdrop composites drawn without their temporary layer (p5-tooling)
+        uint32_t blendBackdropCopies = 0;   // mix-blend-mode composites: the backdrop copied to blend with (S93 R30)
         uint32_t regionLayers = 0;          // layers pushed covering more than the viewport (a filter's input beyond it, P7-F2)
         uint32_t regionTargetsCreated = 0;  // their images made (none while the pooled ones fit)
         uint32_t clipMasksRedrawn = 0;      // clip masks drawn again into another layer's depth-stencil (P7-F2)
@@ -41,6 +42,23 @@ namespace jasperengine {
         uint32_t textEffectFallbacks = 0;   // text effects drawn on the CPU or layer path
         uint32_t atlasBytes = 0;            // glyph atlas pages (base and MSDF), one copy each
         uint32_t atlasEvictions = 0;        // atlas pages cleared to make room, this frame
+        // S93: images (HtmlUIImageCache)
+        uint32_t imagesDecoded = 0;         // image files whose decode LoadTexture started (or ran) this frame
+        uint32_t imageCacheHits = 0;        // LoadTexture calls that reused a cached image this frame
+        uint32_t imagesPending = 0;         // images the context loaded whose decode is still running
+        // S92: frame reuse, layer cost and memory
+        uint32_t framesKept = 0;            // 1: the frame matched the last drawn one and was not replayed (R1)
+        uint32_t liveSources = 0;           // why the frame was drawn whatever it recorded (RmlRenderer::LiveSource bits)
+        uint32_t keptMismatches = 0;        // kept frames that differed from a fresh replay (JASPER_HTMLUI_VERIFY_KEPT), so far
+        uint32_t compositeTiles = 0;        // 64x64 tiles of the document target the composite draws
+        uint32_t compositePixels = 0;       // target pixels the composite draws
+        uint32_t layerPixels = 0;           // render area of the layer and post-process passes, target px
+        uint32_t layerCacheHits = 0;        // layer scopes drawn from the result cache
+        uint32_t layerCacheMisses = 0;      // layer scopes drawn and kept in it
+        uint32_t layerCacheBytes = 0;       // the result cache's textures
+        uint32_t samples = 0;               // MSAA samples of the document target
+        uint32_t targetBytes = 0;           // the document target's images (layers, post-process and region targets)
+        uint32_t depthStencilStores = 0;    // passes that stored a depth-stencil attachment
 
         // every field by its name (the MCP render_stats, Lua's UIDocument:getRenderStats, the
         // benchmark's --ui-stats): fn(const char* name, uint32_t value)
@@ -54,6 +72,7 @@ namespace jasperengine {
             fn("layersPushed", layersPushed);
             fn("filtersApplied", filtersApplied);
             fn("compositesFused", compositesFused);
+            fn("blendBackdropCopies", blendBackdropCopies);
             fn("regionLayers", regionLayers);
             fn("regionTargetsCreated", regionTargetsCreated);
             fn("clipMasksRedrawn", clipMasksRedrawn);
@@ -74,11 +93,27 @@ namespace jasperengine {
             fn("textEffectFallbacks", textEffectFallbacks);
             fn("atlasBytes", atlasBytes);
             fn("atlasEvictions", atlasEvictions);
+            fn("imagesDecoded", imagesDecoded);
+            fn("imageCacheHits", imageCacheHits);
+            fn("imagesPending", imagesPending);
+            fn("framesKept", framesKept);
+            fn("liveSources", liveSources);
+            fn("keptMismatches", keptMismatches);
+            fn("compositeTiles", compositeTiles);
+            fn("compositePixels", compositePixels);
+            fn("layerPixels", layerPixels);
+            fn("layerCacheHits", layerCacheHits);
+            fn("layerCacheMisses", layerCacheMisses);
+            fn("layerCacheBytes", layerCacheBytes);
+            fn("samples", samples);
+            fn("targetBytes", targetBytes);
+            fn("depthStencilStores", depthStencilStores);
         }
 
         // another context's stats added: its frame counters when it rendered in this frame, the
-        // current values (geometry, saved-layer textures) always; the atlas is shared, its size is
-        // the larger one
+        // current values (geometry, saved-layer textures, caches, targets, mismatches so far)
+        // always; the atlas is shared, its size is the larger one; the live-source reasons are
+        // joined, the sample count is the largest
         void add(const HtmlUIRenderStats& other, bool rendered){
             if (rendered){
                 passes += other.passes;
@@ -89,6 +124,7 @@ namespace jasperengine {
                 layersPushed += other.layersPushed;
                 filtersApplied += other.filtersApplied;
                 compositesFused += other.compositesFused;
+                blendBackdropCopies += other.blendBackdropCopies;
                 regionLayers += other.regionLayers;
                 regionTargetsCreated += other.regionTargetsCreated;
                 clipMasksRedrawn += other.clipMasksRedrawn;
@@ -105,10 +141,25 @@ namespace jasperengine {
                 textRegenerations += other.textRegenerations;
                 textEffectFallbacks += other.textEffectFallbacks;
                 atlasEvictions += other.atlasEvictions;
+                imagesDecoded += other.imagesDecoded;
+                imageCacheHits += other.imageCacheHits;
+                framesKept += other.framesKept;
+                liveSources |= other.liveSources;
+                compositeTiles += other.compositeTiles;
+                compositePixels += other.compositePixels;
+                layerPixels += other.layerPixels;
+                layerCacheHits += other.layerCacheHits;
+                layerCacheMisses += other.layerCacheMisses;
+                depthStencilStores += other.depthStencilStores;
             }
+            imagesPending += other.imagesPending;
             geometryLive += other.geometryLive;
             geometryBytes += other.geometryBytes;
             boxShadowTextures += other.boxShadowTextures;
+            keptMismatches += other.keptMismatches;
+            layerCacheBytes += other.layerCacheBytes;
+            targetBytes += other.targetBytes;
+            samples = (other.samples > samples) ? other.samples : samples;
             atlasBytes = (other.atlasBytes > atlasBytes) ? other.atlasBytes : atlasBytes;
         }
     };

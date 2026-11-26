@@ -1,0 +1,106 @@
+{
+  "version": "animejs 4.5.0",
+  "dom": "jsdom 26.1.0",
+  "samples": [
+    {
+      "html": "Hola <em>niño</em> &amp; adiós",
+      "params": {
+        "chars": true,
+        "accessible": false
+      },
+      "words": [
+        "Hola",
+        "niño",
+        "&",
+        "adiós"
+      ],
+      "chars": [
+        "H",
+        "o",
+        "l",
+        "a",
+        "n",
+        "i",
+        "ñ",
+        "o",
+        "&",
+        "a",
+        "d",
+        "i",
+        "ó",
+        "s"
+      ]
+    },
+    {
+      "html": "á ñ é 👩‍👩‍👧‍👦 🇪🇸",
+      "params": {
+        "chars": true,
+        "accessible": false
+      },
+      "words": [
+        "á",
+        "ñ",
+        "é",
+        "👩‍👩‍👧‍👦",
+        "🇪🇸"
+      ],
+      "chars": [
+        "á",
+        "ñ",
+        "é",
+        "👩‍👩‍👧‍👦",
+        "🇪🇸"
+      ]
+    },
+    {
+      "html": "A B",
+      "params": {
+        "chars": true,
+        "includeSpaces": true,
+        "accessible": false
+      },
+      "words": [
+        "A ",
+        "B"
+      ],
+      "chars": [
+        "A ",
+        "B"
+      ]
+    }
+  ],
+  "seek": [
+    {
+      "time": 0,
+      "translateY": [
+        100,
+        100,
+        100
+      ]
+    },
+    {
+      "time": 250,
+      "translateY": [
+        50,
+        70,
+        90
+      ]
+    },
+    {
+      "time": 500,
+      "translateY": [
+        0,
+        20,
+        40
+      ]
+    },
+    {
+      "time": 750,
+      "translateY": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

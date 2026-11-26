@@ -5,6 +5,8 @@ set_project_settings, saved, reloaded and read in Lua, one undo step each; and g
 
 from __future__ import annotations
 
+import math
+
 import harness
 from harness import Editor
 
@@ -175,3 +177,138 @@ async def test_lighting_render_stats(ed: Editor):
     ed.check(lighting["contact_shadows"]["width"] > 0, f"the contact mask {lighting}")
     ed.check("passes" in lighting, "the lighting passes' times")
     await ed.call("set_project_settings", values={"graphics.light_mode": "automatic"})
+
+
+# ---- S99 W7: Extract Sun and the Gradient ambient (AC7)
+
+def _face_direction(face: int, u: float, v: float) -> tuple[float, float, float]:
+    """the engine's cube face convention (IBLEnvironment): 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z"""
+    x, y, z = [(1.0, -v, -u), (-1.0, -v, u), (u, 1.0, v), (u, -1.0, -v), (u, -v, 1.0), (-u, -v, -1.0)][face]
+    length = math.sqrt(x * x + y * y + z * z)
+    return x / length, y / length, z / length
+
+
+def _write_sun_cross(path, sun: tuple[float, float, float], tile: int = 64, radius_degrees: float = 2.0,
+                     radiance: float = 3000.0) -> None:
+    """a 4:3 cube cross .hdr (flat RGBE scanlines): a blue sky over a dark ground and a sun disc"""
+    cos_radius = math.cos(math.radians(radius_degrees))
+    width, height = tile * 4, tile * 3
+    pixels = [[(0.0, 0.0, 0.0)] * width for _ in range(height)]
+    tiles = [(2, 1), (0, 1), (1, 0), (1, 2), (1, 1), (3, 1)]
+    for face, (tx, ty) in enumerate(tiles):
+        for y in range(tile):
+            for x in range(tile):
+                total = [0.0, 0.0, 0.0]
+                for s in range(9):
+                    u = 2.0 * (x + (s % 3 + 0.5) / 3.0) / tile - 1.0
+                    v = 2.0 * (y + (s // 3 + 0.5) / 3.0) / tile - 1.0
+                    d = _face_direction(face, u, v)
+                    if d[0] * sun[0] + d[1] * sun[1] + d[2] * sun[2] >= cos_radius:
+                        c = (radiance, radiance * 0.97, radiance * 0.9)
+                    elif d[1] >= 0.0:
+                        c = (0.3 * (0.6 + 0.4 * d[1]), 0.5 * (0.6 + 0.4 * d[1]), 0.9 * (0.6 + 0.4 * d[1]))
+                    else:
+                        c = (0.12, 0.1, 0.08)
+                    for k in range(3):
+                        total[k] += c[k] / 9.0
+                pixels[ty * tile + y][tx * tile + x] = tuple(total)
+    out = bytearray(f"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y {height} +X {width}\n".encode("ascii"))
+    for row in pixels:
+        for r, g, b in row:
+            v = max(r, g, b)
+            if v < 1e-32:
+                out += bytes(4)
+                continue
+            mantissa, exponent = math.frexp(v)
+            scale = mantissa * 256.0 / v
+            out += bytes([int(r * scale), int(g * scale), int(b * scale), exponent + 128])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(bytes(out))
+
+
+def _angle_degrees(a, b) -> float:
+    dot = sum(x * y for x, y in zip(a, b)) / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
+    return math.degrees(math.acos(max(-1.0, min(1.0, dot))))
+
+
+async def test_extract_sun_creates_and_aligns_the_main_light(ed: Editor):
+    """set_scene_settings extract_sun: the sun of the Skybox's HDR cross creates the main Directional
+    Light (none in the scene) pointing from it, one undo step; then aligns an existing light in lux,
+    with Remove Sun Disc on the sky's import settings in the same undo step. A sky without a file
+    (the default sky) is refused naming the fix."""
+    elevation, azimuth = math.radians(40.0), math.radians(30.0)
+    sun = (math.cos(elevation) * math.sin(azimuth), math.sin(elevation), math.cos(elevation) * math.cos(azimuth))
+    _write_sun_cross(ed.project / "assets/sky/sun_cross.hdr", sun)
+    await ed.call("sync_files", paths=["assets/sky/sun_cross.hdr"])
+    scene = await make_scene(ed, "ExtractSun")
+    sky = await named(ed, scene, "Skybox")
+    await ed.check_error("set_scene_settings", scene=scene, extract_sun={}, contains="HDR")
+    await ed.check_error("set_scene_settings", scene=scene, extract_sun={"remove_disc": True}, contains="remove_sun_disc")
+
+    await ed.call("delete_entities", scene=scene, entity=await sun_of(ed, scene))
+    await ed.call("set_properties", scene=scene, entity=sky, values={"skybox": {"texture": {"cube": "assets/sky/sun_cross.hdr"}}})
+    made = await ed.call("set_scene_settings", scene=scene, extract_sun={})
+    result = made["sun"]
+    ed.check(result["created"], f"a light was created: {result}")
+    ed.check(result["peak_ratio"] >= 20.0, f"a distinct sun: {result}")
+    ed.check(_angle_degrees(result["direction"], [-c for c in sun]) < 1.5, f"the light points from the sun: {result}")
+    ed.check(result["intensity"] > 0.0 and result["unit"] == "engine", f"an intensity: {result}")
+    ed.check("remove_sun_disc" in made.get("next", ""), f"the next step names Remove Sun Disc: {made}")
+    light = harness.entity_id_of(result["light"]) if isinstance(result["light"], dict) else result["light"]
+    got = await ed.call("get_entity", scene=scene, entity=light, components=["light"])
+    ed.check(_angle_degrees(harness.find_key(got, "direction"), [-c for c in sun]) < 1.5, f"the light's direction: {got}")
+    ed.check(harness.find_key(got, "shadows") is True, f"the sun casts shadows: {got}")
+
+    await ed.call("undo", scene=scene, scope="timeline")
+    ed.check_eq(harness.find_entities(await ed.call("find_entities", scene=scene, component="light")), [], "undo removes the created light")
+
+    # an existing light in lux, aligned (not a second one), the sky's disc removal in the same step
+    lamp = await entity(ed, scene, "directional_light", "Key Light", [0, 5, 0])
+    await ed.call("set_light_unit", scene=scene, entity=lamp, unit="lux")
+    before = harness.find_key(await ed.call("get_entity", scene=scene, entity=lamp, components=["light"]), "direction")
+    aligned = (await ed.call("set_scene_settings", scene=scene, extract_sun={"remove_sun_disc": True}))["sun"]
+    ed.check(not aligned["created"], f"the existing light is aligned: {aligned}")
+    ed.check_eq(aligned["unit"], "lux", "a light in lux keeps lux")
+    ed.check(_angle_degrees(aligned["direction"], [-c for c in sun]) < 1.5, f"aligned to the sun: {aligned}")
+    ed.check(aligned["remove_sun_disc"] and aligned["remove_sun_disc"][0].endswith("sun_cross.hdr"), f"Remove Sun Disc set: {aligned}")
+    meta = ed.project / "assets/sky/sun_cross.hdr.meta"
+    ed.check("removeSunDisc: true" in meta.read_text(), "the import setting is written")
+    lights = harness.find_entities(await ed.call("find_entities", scene=scene, component="light"))
+    ed.check_eq(len(lights), 1, "no second light")
+
+    await ed.call("undo", scene=scene, scope="timeline")
+    restored = harness.find_key(await ed.call("get_entity", scene=scene, entity=lamp, components=["light"]), "direction")
+    ed.check(_angle_degrees(restored, before) < 0.01, f"undo restores the light's direction: {restored} {before}")
+    ed.check("removeSunDisc" not in (meta.read_text() if meta.exists() else ""), "one undo step removes the import setting too")
+
+
+async def test_gradient_ambient_fields_and_lua(ed: Editor):
+    """Environment Lighting Source Gradient through set_scene_settings: saved only away from the
+    defaults, read back, readable and settable from Lua, one undo step."""
+    scene = await make_scene(ed, "GradientAmbient")
+    initial = await ed.call("get_scene_settings", scene=scene, names=["ambient_mode"])
+    ed.check_eq(harness.find_key(initial, "ambient_mode"), "color", "the default source is Color")
+    await ed.call("set_scene_settings", scene=scene, settings={
+        "ambient_mode": "gradient", "ambient_sky_color": [0.2, 0.4, 0.9], "ambient_ground_color": "#804020"})
+    got = await ed.call("get_scene_settings", scene=scene, names=["ambient_mode", "ambient_sky_color", "ambient_ground_color"])
+    ed.check_eq(harness.find_key(got, "ambient_mode"), "gradient")
+    sky = harness.find_key(got, "ambient_sky_color")
+    ed.check(abs(sky[2] - 0.9) < 1e-3, f"sky color read back: {sky}")
+    await ed.call("save_scene", scene=scene, path="scenes/GradientAmbient.scene")
+    text = (ed.project / "scenes/GradientAmbient.scene").read_text()
+    ed.check("ambientMode: gradient" in text and "ambientSkyColor" in text, "the scene file has the gradient")
+    ed.check("ambientEquatorColor" not in text, "a default colour is not written")
+    await ed.check_error("set_scene_settings", scene=scene, settings={"ambient_mode": "colour"}, contains="gradient")
+
+    # Lua reads and writes them (scene.ambientMode, scene.ambient*Color, sRGB)
+    code = ("local out = {source = scene.ambientMode == AmbientMode.GRADIENT, sky = scene.ambientSkyColor.z} "
+            "scene.ambientEquatorColor = Vector3(0.5, 0.25, 0.125) scene.ambientMode = AmbientMode.COLOR "
+            "out.equator = scene.ambientEquatorColor.y out.after = scene.ambientMode == AmbientMode.COLOR return out")
+    v = (await ed.call("eval_lua", scene=scene, allow_edit_mode=True, code=code))["values"][0]
+    ed.check(v["source"] is True and abs(v["sky"] - 0.9) < 1e-3, f"Lua reads the gradient: {v}")
+    ed.check(abs(v["equator"] - 0.25) < 1e-3 and v["after"] is True, f"Lua sets the gradient: {v}")
+    await ed.call("set_scene_settings", scene=scene, settings={"ambient_mode": "gradient"})
+
+    await ed.call("undo", scene=scene)
+    ed.check_eq(harness.find_key(await ed.call("get_scene_settings", scene=scene, names=["ambient_mode"]), "ambient_mode"),
+                "color", "one undo step reverts the source")

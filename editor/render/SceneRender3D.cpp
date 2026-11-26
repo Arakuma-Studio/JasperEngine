@@ -1235,6 +1235,66 @@ void editor::SceneRender3D::createSpotLightCones(const Transform& transform, con
     lightLines.addLines(local, lightGizmoMatrix(transform));
 }
 
+void editor::SceneRender3D::createAreaLightShape(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected) {
+    if (light.direction == Vector3::ZERO){
+        return;
+    }
+    GizmoLineList local;
+    const float halfWidth = light.getAreaHalfWidth();
+    const float halfHeight = light.getAreaHalfHeight();
+
+    // the light's local frame, as the renderer's (RenderSystem: right = forward x up)
+    const Vector3 forward = light.direction.normalized();
+    const Vector3 up = light.getLocalSpotProjectionUp();
+    const Vector3 right = forward.crossProduct(up).normalized();
+    const Vector4 color = isSelected ? Vector4(1.0f, 0.85f, 0.2f, 1.0f) : Vector4(1.0f, 0.85f, 0.2f, 0.55f);
+
+    if (light.areaShape == AreaLightShape::DISC){
+        const int segments = 32;
+        Vector3 previous = right * halfWidth;
+        for (int i = 1; i <= segments; i++){
+            const float angle = 2.0f * (float)M_PI * (float)i / (float)segments;
+            const Vector3 point = right * (std::cos(angle) * halfWidth) + up * (std::sin(angle) * halfHeight);
+            local.addLine(previous, point, color);
+            previous = point;
+        }
+    }else{
+        const Vector3 corners[4] = {
+            right * -halfWidth + up * -halfHeight, right * halfWidth + up * -halfHeight,
+            right * halfWidth + up * halfHeight, right * -halfWidth + up * halfHeight};
+        for (int i = 0; i < 4; i++){
+            local.addLine(corners[i], corners[(i + 1) % 4], color);
+        }
+        local.addLine(corners[0], corners[2], color * 0.6f);
+        local.addLine(corners[1], corners[3], color * 0.6f);
+    }
+    // the normal: the side it lights
+    const float normalLength = std::max(0.25f, std::min(halfWidth, halfHeight));
+    local.addLine(Vector3(0.0f, 0.0f, 0.0f), forward * normalLength, Vector4(0.9f, 0.9f, 0.9f, color.w));
+    local.addLine(forward * normalLength, forward * (normalLength * 0.8f) + right * (normalLength * 0.1f), Vector4(0.9f, 0.9f, 0.9f, color.w));
+    local.addLine(forward * normalLength, forward * (normalLength * 0.8f) - right * (normalLength * 0.1f), Vector4(0.9f, 0.9f, 0.9f, color.w));
+
+    if (isSelected){
+        // the size handles (SceneRender::getAreaHandleWorld): crosses in the light's plane
+        const Vector4 handleColor(1.0f, 1.0f, 1.0f, 1.0f);
+        const Vector4 selectedHandleColor(1.0f, 0.6f, 0.0f, 1.0f);
+        const int handles = light.areaShape == AreaLightShape::DISC ? 1 : 2;
+        for (int h = 0; h < handles; h++){
+            const Vector3 at = (h == 0) ? right * halfWidth : up * halfHeight;
+            Vector3 worldPoint;
+            if (!getAreaHandleWorld(entity, h, worldPoint)) continue;
+            const bool handleSelected = getSelectedAreaHandleEntity() == entity && getSelectedAreaHandleIndex() == h;
+            const float halfSize = getPointHandleHalfSize(worldPoint) * (handleSelected ? 0.75f : 0.5f);
+            const Vector4& crossColor = handleSelected ? selectedHandleColor : handleColor;
+            local.addLine(at - right * halfSize, at + right * halfSize, crossColor);
+            local.addLine(at - up * halfSize, at + up * halfSize, crossColor);
+            local.addLine(at - forward * halfSize, at + forward * halfSize, crossColor);
+        }
+    }
+    lightLines.addLines(local, lightGizmoMatrix(transform));
+}
+
+
 void editor::SceneRender3D::dropGoneGizmos(){
     SceneRender::dropGoneGizmos();
 
@@ -1404,10 +1464,15 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             Transform& transform = scene->getComponent<Transform>(entity);
 
             const bool isSelected = selectedEntities.find(entity) != selectedEntities.end();
-            const bool knownType = light.type == LightType::DIRECTIONAL || light.type == LightType::POINT || light.type == LightType::SPOT;
+            const bool knownType = light.type == LightType::DIRECTIONAL || light.type == LightType::POINT || light.type == LightType::SPOT ||
+                                   light.type == LightType::AREA;
             if (knownType && transform.visible && !displaySettings.hideLightIcons) {
                 const GizmoIcon icon = light.type == LightType::DIRECTIONAL ? GizmoIcon::Sun : (light.type == LightType::POINT ? GizmoIcon::Bulb : GizmoIcon::Spot);
                 icons.add(icon, transform.worldPosition, billboardScreenScale(transform.worldPosition, iconScale));
+            }
+            // an Area Light's shape is the light: drawn selected or not, brighter when selected
+            if (light.type == LightType::AREA && transform.visible){
+                createAreaLightShape(entity, transform, light, isSelected);
             }
             // a selected light shows its shape
             if (isSelected){

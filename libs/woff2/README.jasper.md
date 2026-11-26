@@ -9,7 +9,9 @@ bundled Brotli submodule are not vendored (the decoder links `libs/brotli/`).
 
 The editor uses it to import `.woff2` web fonts as TrueType or OpenType files: Brotli, then the
 glyf/loca and hmtx transforms reversed (`editor/titleart/fonts/WebFontDecode`,
-docs/specs/S82-title-designer.md R59). Shipped games never link it.
+docs/specs/S82-title-designer.md R59). The same decoder opens the HTML UI's `.woff2` fonts in the
+editor (`FontFace::setWebFontDecoder`), and the export ships them decoded. Shipped games never
+link it.
 
 ## Patches
 

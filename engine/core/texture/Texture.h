@@ -126,6 +126,10 @@ namespace jasperengine{
             // (setDestroyedFramebufferFallback: RenderSystem's transparent black), else
             // fallBackTexture; with no fallBackTexture, its texture as it is
             TextureRender* getRender(TextureRender* fallBackTexture = NULL);
+            // What getRender gave last (a framebuffer's texture), without asking again: nothing
+            // loads, no framebuffer version is taken (a draw sort key reads it: the draw that binds
+            // must still see a framebuffer that changed)
+            const TextureRender* peekRender() const;
             // How many times getRender gave its fallback for a Texture that names an image (a
             // stand-in: no pixels to make its GPU texture of yet, nothing loading them) on the
             // calling thread. A renderer reads it around a material's binding: one that took a
@@ -181,6 +185,10 @@ namespace jasperengine{
             Framebuffer* getFramebuffer() const;
             bool isFramebuffer() const;
             bool isFramebufferOutdated() const;
+            // Its GPU texture exists (Lua Texture.ready): a draw binding it shows its pixels, not
+            // a stand-in. Asks without loading: load() decodes the image, the first draw (or
+            // getRender) makes the GPU texture
+            bool isReady() const;
 
             void setMinFilter(TextureFilter filter);
             TextureFilter getMinFilter() const;

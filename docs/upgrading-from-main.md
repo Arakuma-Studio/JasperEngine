@@ -78,6 +78,29 @@ or more no longer drops steps in a long frame. A frame whose scaled time passes 
 and counted in `Time.droppedFixedSteps`: raise `Time.maximumDeltaTime` to run them.
 `Time.maximumFixedStepsPerFrame` only lowers the cap.
 
+### HTML UI pointer input (S93)
+
+Three pointer rules of the HTML UI apply to existing documents with no opt-in. No stored field
+changes meaning and nothing is migrated.
+
+- **Only press listeners make a transparent page take presses.** A page (`html` / `body`) that
+  paints no background used to take every press on its empty parts as soon as it had any pointer
+  listener, a `mousemove` or `pointerover` one too. Now only `click`, `dblclick`, `contextmenu`,
+  `mousedown`, `pointerdown` and `touchstart` listeners do; a `wheel` listener takes only the
+  wheel, and move, up, over, out, enter and leave listeners take nothing. A document that blocked
+  the game only through such a listener now lets presses through to the documents below and the
+  game. To keep blocking, give the page a background (`rgba(0, 0, 0, 0.01)` is enough) or a press
+  listener; the Console and `doc:getDiagnostics()` note `HTMLUI-INPUT-0001` when one turns a page
+  opaque.
+- **The press decides who owns a pointer.** A finger or mouse button pressed on the game keeps
+  reaching the game's `onTouchMove` / `onMouseMove` and its release, also over a document.
+- **A release off the canvas reaches the game** (`onTouchEnd`, `onMouseUp`), clamped to the
+  canvas, without `Engine.allowEventsOutCanvas`. The simulated touch 0 of
+  `callTouchInMouseEvent` is always removed on the release.
+
+`text-effect-time` now defaults to `auto`, which follows the document's Update Mode. An existing
+document's Update Mode is Unscaled Time, the old clock of text effects, so they run as before.
+
 ### IK solvers (S77)
 
 Three Animator IK fixes apply to existing scenes with no opt-in: poses change where the old ones

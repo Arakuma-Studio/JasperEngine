@@ -126,7 +126,30 @@ bool HtmlUIContext::processMouseWheel(Rml::Vector2f offset, int modifiers){
     if (!context)
         return true;
 
-    return context->ProcessMouseWheel(Rml::Vector2f(-offset.x, -offset.y) * wheelScale, modifiers);
+    const Rml::Vector2f delta = Rml::Vector2f(-offset.x, -offset.y) * wheelScale;
+
+    // S93 R4: where the mouse is over no content, the page that takes only the wheel (a wheel
+    // listener on a transparent page) gets it, with what Context::ProcessMouseWheel sends
+    if (mouseInside && !isTouchContent(context, context->GetHoverElement())){
+        wheelHitTest = true;
+        Rml::Element* page = context->GetElementAtPoint(Rml::Vector2f((float)mousePosition.x, (float)mousePosition.y));
+        wheelHitTest = false;
+        if (page && page != context->GetRootElement() && passesPointerThrough(page)){
+            static const char* const modifierNames[] = {"ctrl_key", "shift_key", "alt_key", "meta_key", "caps_lock_key", "num_lock_key",
+                                                        "scroll_lock_key"};
+            Rml::Dictionary parameters;
+            parameters["mouse_x"] = mousePosition.x;
+            parameters["mouse_y"] = mousePosition.y;
+            for (int i = 0; i < 7; i++)
+                parameters[modifierNames[i]] = (int)((modifiers & (1 << i)) != 0);
+            parameters["wheel_delta_x"] = delta.x;
+            parameters["wheel_delta_y"] = delta.y;
+            page->DispatchEvent(Rml::EventId::Mousescroll, parameters);
+            return false;
+        }
+    }
+
+    return context->ProcessMouseWheel(delta, modifiers);
 }
 
 void HtmlUIContext::setWheelScale(float scale){

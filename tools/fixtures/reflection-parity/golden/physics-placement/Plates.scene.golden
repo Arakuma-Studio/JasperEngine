@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: 3fd27cb3fc9895425b8e5635b2d2d3d9
 id: 449654186
 name: Plates
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: on
   globalIlluminationIntensity: 0.2
   globalIlluminationColor: [1, 1, 1]

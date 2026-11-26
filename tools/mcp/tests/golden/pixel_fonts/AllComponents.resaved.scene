@@ -1,4 +1,4 @@
-formatVersion: 9
+formatVersion: 11
 guid: 6ae1376c14107d910f5730d8479f6f78
 id: 2026080800
 name: AllComponents
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: auto
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]
@@ -94,6 +95,8 @@ shaderKeys:
     properties: 32
   - type: htmluipost
     properties: 64
+  - type: htmluipost
+    properties: 128
   - type: probefilter
   - type: fluid
   - type: fluid
@@ -1384,8 +1387,8 @@ entities:
         maxTextSize: 100
         fixedWidth: true
         fixedHeight: true
-        pivotBaseline: true
-        pivotCentered: true
+        anchorHorizontal: center
+        anchorVertical: baseline
   - type: Entity
     entity: 1045
     name: InputFieldComponent
@@ -1973,6 +1976,7 @@ entities:
         playAutomatically: false
         speed: 2.5
         defaultFadeTime: 0.5
+        legacyRootDrift: true
   - type: Entity
     entity: 1068
     name: NavMeshSurfaceComponent
@@ -3034,10 +3038,116 @@ entities:
         maxPitchRollAngle: 60
   - type: Entity
     entity: 1107
-    name: FogZoneComponent
+    name: SimulationCullingComponent
     components:
       transform:
         position: [106, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      simulationculling:
+        enabled: false
+        simulationDistance: 8.5
+        reducedRateDistance: 6.4
+        reducedUpdateInterval: 3
+        hysteresis: 4.3
+        boundsRadius: 3.8
+        simulateWhenVisible: false
+        freezeWhenGroundNotLoaded: false
+        cullScripts: false
+        cullAnimator: false
+        cullPhysics: false
+  - type: Entity
+    entity: 1108
+    name: DialogueRunnerComponent
+    components:
+      transform:
+        position: [107, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      dialoguerunner:
+        dialogue: ""
+        startEntry: Reflection parity
+        autoStart: true
+        seed: 0
+  - type: Entity
+    entity: 1109
+    name: OutlineComponent
+    components:
+      transform:
+        position: [108, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      outline:
+        enabled: false
+        mode: outline_hidden
+        color: [0.25, 0.5, 0.75, 0.5]
+        width: 3.5
+        widthUnits: world
+        includeChildren: false
+  - type: Entity
+    entity: 1110
+    name: SpriteSkinComponent
+    components:
+      transform:
+        position: [109, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      spriteskin:
+        enabled: false
+        rootBone: 1104
+        bones:
+          - 1104
+          - 1103
+  - type: Entity
+    entity: 1111
+    name: VertexColorsComponent
+    components:
+      transform:
+        position: [110, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      vertexcolors:
+        enabled: false
+        data: paint/Parity.vcolors
+        format: rgba16f
+        initialValue: custom
+        customInitial: [0.35555556, 0.7111111, 0.4777778, 1]
+        channelNames:
+          - Moss
+          - ""
+          - "text: [1, 2]"
+          - Snow
+  - type: Entity
+    entity: 1112
+    name: FogZoneComponent
+    components:
+      transform:
+        position: [111, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
         visible: true

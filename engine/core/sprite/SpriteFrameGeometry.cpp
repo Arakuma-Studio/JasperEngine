@@ -55,6 +55,7 @@ namespace jasperengine{
         input.pixelRatio = sheet.pixelRatio;
         input.flipY = sprite.flipY;
         input.uiCamera = uiCamera;
+        input.size = sprite.size;
         bounds = spriteFrameLocalRect(frame, input, key->bounds);
         if (center){
             *center = key->hasCenter ? spriteFrameLocalRect(frame, input, Rect(key->bounds.getX() + key->center.getX(), key->bounds.getY() + key->center.getY(),
@@ -77,8 +78,10 @@ namespace jasperengine{
         if (w <= 0.0f || h <= 0.0f) return quad;
         const float ppu = input.pixelsPerUnit > 0.0f ? input.pixelsPerUnit : 1.0f;
         const float ratio = input.pixelRatio.y > 0.0f ? input.pixelRatio.x / input.pixelRatio.y : 1.0f;
-        const float sx = input.width > 0 ? static_cast<float>(input.width) / w : ratio / ppu;
-        const float sy = input.height > 0 ? static_cast<float>(input.height) / h : 1.0f / ppu;
+        float sx = input.width > 0 ? static_cast<float>(input.width) / w : ratio / ppu;
+        float sy = input.height > 0 ? static_cast<float>(input.height) / h : 1.0f / ppu;
+        if (input.size.x > 0.0f) sx = input.size.x / w;
+        if (input.size.y > 0.0f) sy = input.size.y / h;
         quad.width = w * sx;
         quad.height = h * sy;
 
@@ -160,8 +163,8 @@ namespace jasperengine{
         const float ratio = input.pixelRatio.y > 0.0f ? input.pixelRatio.x / input.pixelRatio.y : 1.0f;
         const float ux = ratio / ppu;
         const float uy = 1.0f / ppu;
-        mesh.width = input.width > 0 ? static_cast<float>(input.width) : w * ux;
-        mesh.height = input.height > 0 ? static_cast<float>(input.height) : h * uy;
+        mesh.width = input.size.x > 0.0f ? input.size.x : (input.width > 0 ? static_cast<float>(input.width) : w * ux);
+        mesh.height = input.size.y > 0.0f ? input.size.y : (input.height > 0 ? static_cast<float>(input.height) : h * uy);
         const SliceAxis ax = sliceAxis(w, frame.border.x, frame.border.z, mesh.width, ux);
         const SliceAxis ay = sliceAxis(h, frame.border.y, frame.border.w, mesh.height, uy);
 

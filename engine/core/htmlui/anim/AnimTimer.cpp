@@ -12,6 +12,7 @@
 #include "AnimEngine.h"
 #include "AnimProperty.h"
 #include "AnimTimeline.h"
+#include "HtmlUIClock.h"
 #include "Log.h"
 
 #include <cmath>
@@ -119,7 +120,7 @@ bool jasperengine::parseAnimClock(const AnimParam& value, AnimClock& clock, std:
         return true;
     }
     if (error){
-        *error = "anime: clock must be \"ui\" (the UI clock, default) or \"game\" (scaled game time), got " +
+        *error = "anime: clock must be \"ui\" (the unscaled UI clock) or \"game\" (scaled game time; without a clock: the targets' UI Document's Update Mode), got " +
                  (value.isString() ? "\"" + value.asString() + "\"" : std::string("a non-string value"));
     }
     return false;
@@ -134,7 +135,7 @@ std::shared_ptr<AnimTimer> AnimTimer::create(const AnimParam& params){
     return timer;
 }
 
-AnimTimer::AnimTimer(Kind kind, const AnimParam& params, AnimTimeline* parent, double parentPosition):
+AnimTimer::AnimTimer(Kind kind, const AnimParam& params, AnimTimeline* parent, double parentPosition, AnimClock implicitClock):
         kind(kind), parent(parent){
     AnimEngine::countTimer(1);
     ++timerId;
@@ -144,9 +145,14 @@ AnimTimer::AnimTimer(Kind kind, const AnimParam& params, AnimTimeline* parent, d
 
     if (parent){
         clock = parent->clock;
+        clockGiven = parent->clockGiven;
     } else {
+        const AnimParam& clockParam = param(params, "clock");
+        clockGiven = !clockParam.isNil();
         std::string error;
-        if (!parseAnimClock(param(params, "clock"), clock, &error))
+        if (!clockGiven)
+            clock = implicitClock;
+        else if (!parseAnimClock(clockParam, clock, &error))
             Log::error("[HTML UI] %s", error.c_str());
     }
 
@@ -200,6 +206,27 @@ AnimTimer::AnimTimer(Kind kind, const AnimParam& params, AnimTimeline* parent, d
 
 AnimTimer::~AnimTimer(){
     AnimEngine::countTimer(-1);
+}
+
+AnimClock AnimTimer::clockOfTargets(const AnimTargetList& targets){
+    for (const AnimTargetPtr& target : targets){
+        Rml::Element* element = target ? AnimProperty::getElement(*target) : nullptr;
+        if (element && HtmlUIClock::modeOf(element) == UIDocumentUpdateMode::GAME_TIME)
+            return AnimClock::GAME;
+    }
+    return AnimClock::UI;
+}
+
+void AnimTimer::adoptClock(AnimClock next){
+    if (next == clock || parent)
+        return;
+    AnimEngine& engine = AnimEngine::instance();
+    const double delta = engine.now(next) - engine.now(clock);
+    clock = next;
+    startTime += delta;
+    lastTickTime += delta;
+    lastTime += delta;
+    offset += delta;
 }
 
 AnimTickMode AnimTimer::requestTick(double time){
@@ -311,6 +338,7 @@ AnimTimer& AnimTimer::reset(bool softReset){
 }
 
 AnimTimer& AnimTimer::init(bool internalRender){
+    AnimEngine::instance().captureTimer(*this);
     setFps(fps);
     // speed setter (resetTime included)
     const double pbr = speed;

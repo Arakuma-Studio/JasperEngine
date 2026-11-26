@@ -112,6 +112,14 @@ public:
 	bool HasCanvasBackground() const { return canvas_background; }
 	const String& GetCanvasBodyTag() const { return canvas_body_tag; }
 
+	/// Fork (S93-F1): the clock the CSS animations and transitions of the document run on. 0 (the default) is
+	/// SystemInterface::GetElapsedTime, any other value SystemInterface::GetAnimationClockTime(clock). The running animations
+	/// and transitions keep their progress over a change: their start times move by the difference of the two clocks.
+	void SetAnimationClock(int clock);
+	int GetAnimationClock() const { return animation_clock; }
+	/// Fork (S93-F1): the time of the document's animation clock, in seconds.
+	double GetAnimationTime() const;
+
 	/// Finds the next tabbable element in the document tree, starting at the given element, possibly wrapping around the document.
 	/// @param[in] current_element The element to start from.
 	/// @param[in] forward True to search forward, false to search backward.
@@ -148,6 +156,8 @@ public:
 	/// Fork (P7-L): how many document layouts so far formatted only layout boundaries (Element::SetLayoutBoundary),
 	/// over every document (tests and benchmarks).
 	static int GetBoundaryLayoutCount();
+	/// Fork (S93 R31): how many trial layouts of 'text-autosize' elements were made so far, over every document (tests).
+	static int GetTextAutosizeTrialCount();
 
 protected:
 	/// Repositions the document if necessary.
@@ -166,6 +176,7 @@ protected:
 
 private:
 	bool canvas_background = false;
+	int animation_clock = 0;
 	String canvas_body_tag;
 
 	/// Searches forwards or backwards for a focusable element in the given subtree.
@@ -219,6 +230,19 @@ private:
 
 	// Fork (P7-L): the layout boundaries to format alone at the next UpdateLayout.
 	Vector<ObserverPtr<Element>> dirty_layout_boundaries;
+
+	// Fork (S93 R31): the elements with 'text-autosize', and a hash of what their fit read (sizes, font, text).
+	struct TextAutosizeEntry {
+		ObserverPtr<Element> element;
+		uint64_t signature = 0;
+	};
+	Vector<TextAutosizeEntry> text_autosize;
+	bool text_autosize_pending = false;
+	/// An element's 'text-autosize' became set (or 'none'): fitted after the next layout (or its font size given back).
+	void SetTextAutosize(Element* element, bool active);
+	/// After a layout: the font size of every changed 'text-autosize' element fitted (FitTextAutosize in ElementDocument.cpp).
+	void FitTextAutosize();
+	static void UpdatePropertiesRecursive(Element* element, float dp_ratio, Vector2f vp_dimensions);
 
 	friend class Rml::Context;
 	friend class Rml::Element;

@@ -295,6 +295,7 @@ TEST_F(CompatSvgElementTest, MonochromeInlineSvgIsTintedByColor){
     // drawn into a layer composited with the opacity: phase 3, p3-paint)
     byId("box")->GetFirstChild()->SetProperty("opacity", "0.5");
     frame();
+    EXPECT_FLOAT_EQ(byId("box")->GetFirstChild()->GetDrawOpacity(), 0.5f);
     draws = drawsOf(Rml::Vector2i(24, 24));
     ASSERT_EQ(draws.size(), 1u);
     EXPECT_NEAR(vertexColour(draws[0]).blue, 128, 1);

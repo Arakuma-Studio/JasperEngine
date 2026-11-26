@@ -29,6 +29,8 @@ namespace jasperengine {
     struct JASPERENGINE_API STBTextOptions {
         float rasterScale = 1.0f;
         int sdfPadding = 0;
+        // the font size is the em square (CSS, TextMesh Pro), not ascender to descender (S94 F26)
+        bool emSize = false;
     };
 
 
@@ -84,6 +86,8 @@ namespace jasperengine {
         float descent;
         float lineGap;
         int lineHeight;
+        float capHeight;
+        float xHeight;
 
         TextureData* textureData;
 
@@ -123,6 +127,9 @@ namespace jasperengine {
         float getDescent();
         float getLineGap();
         int getLineHeight();
+        // the primary font's capital and lowercase heights above the baseline (OS/2, else measured)
+        float getCapHeight();
+        float getXHeight();
         float getCharWidth(uint32_t codepoint);
 
         unsigned long getAtlasVersion() const;
@@ -141,6 +148,12 @@ namespace jasperengine {
                         std::vector<CharExtent>& charExtents,
                         unsigned int& width, unsigned int& height, bool fixedWidth, bool fixedHeight, bool multiline, bool invert,
                         std::vector<TextGlyphInfo>* glyphInfo = nullptr);
+
+        // S93 Auto Size: the size of the text laid out at another font size, without a glyph
+        // raster or an atlas: its widest line's advances and its lines' height (text pixels);
+        // width wraps it as createText does
+        void measure(const std::string& text, unsigned int fontSize, unsigned int width, bool fixedWidth, bool multiline,
+                     float& outWidth, float& outHeight);
 
         TextureData* getTextureData();
         

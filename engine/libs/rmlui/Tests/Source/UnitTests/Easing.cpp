@@ -31,6 +31,7 @@ TEST_CASE("Easing.cubic_bezier")
 		{"ease-out", {0.160572f, 0.378138f, 0.684643f, 0.906535f, 0.982973f}},
 		{"ease-in-out", {0.019722f, 0.129162f, 0.5f, 0.870838f, 0.980278f}},
 		{"cubic-bezier(0.68, -0.55, 0.265, 1.55)", {-0.066291f, -0.082807f, 0.60668f, 1.089166f, 1.062373f}},
+		{"cubic-bezier(.16, 1, .3, 1)", {0.494390617f, 0.825622301f, 0.971779105f, 0.997677067f, 0.999878348f}},
 		{"cubic-bezier(0.1, 0.7, 1.0, 0.1)", {0.244779f, 0.350421f, 0.417277f, 0.489876f, 0.609904f}},
 	};
 	const float inputs[5] = {0.1f, 0.25f, 0.5f, 0.75f, 0.9f};
@@ -55,6 +56,18 @@ TEST_CASE("Easing.cubic_bezier")
 	const Tween overshoot = Parsed("cubic-bezier(0.5, -1, 0.5, 2)");
 	CHECK(overshoot(-0.5f) == doctest::Approx(1.f));
 	CHECK(overshoot(1.5f) == doctest::Approx(0.f));
+}
+
+TEST_CASE("Easing.cubic_bezier_degenerate_tangents")
+{
+	CHECK(Parsed("cubic-bezier(0, 1, 0.5, 0.5)")(-0.5f) == doctest::Approx(-0.5f));
+	CHECK(Parsed("cubic-bezier(0.5, 0.5, 1, 0)")(1.5f) == doctest::Approx(1.5f));
+	CHECK(Parsed("cubic-bezier(0, 0, 0, 0)")(-0.5f) == doctest::Approx(0.f));
+	CHECK(Parsed("cubic-bezier(1, 1, 1, 1)")(1.5f) == doctest::Approx(1.f));
+	// This curve has x = t^3 and y = 1 - (1 - t)^3: a small error in x is amplified near zero.
+	const Tween steep = Parsed("cubic-bezier(0, 1, 0, 1)");
+	CHECK(steep(1e-9f) == doctest::Approx(0.002997001f).epsilon(1e-5));
+	CHECK(steep(1e-6f) == doctest::Approx(0.029701f).epsilon(1e-5));
 }
 
 TEST_CASE("Easing.steps")
@@ -126,8 +139,42 @@ TEST_CASE("Easing.linear")
 	CHECK(flat(0.5f) == doctest::Approx(0.5f));
 	CHECK(flat(0.125f) == doctest::Approx(0.25f));
 	const Tween clamped = Parsed("linear(0 20%, 0.5 10%, 1)");
-	CHECK(clamped(0.1f) == doctest::Approx(0.5f)); // before the first input, two points at 20%: the second's output
+	CHECK(clamped(0.1f) == doctest::Approx(0.f)); // before coincident first inputs, keep the first output
 	CHECK(clamped(0.6f) == doctest::Approx(0.75f));
+}
+
+TEST_CASE("Easing.linear_discontinuities")
+{
+	const Tween start_jump = Parsed("linear(0 0%, 0.5 0%, 1)");
+	CHECK(start_jump(-0.5f) == doctest::Approx(0.f));
+	CHECK(start_jump.Evaluate(0.f, true) == doctest::Approx(0.f));
+	CHECK(start_jump.Evaluate(0.f, false) == doctest::Approx(0.5f));
+	CHECK(start_jump(0.5f) == doctest::Approx(0.75f));
+
+	const Tween end_jump = Parsed("linear(0, 0.5 100%, 1 100%)");
+	CHECK(end_jump(0.5f) == doctest::Approx(0.25f));
+	CHECK(end_jump(1.f) == doctest::Approx(1.f));
+	CHECK(end_jump(1.5f) == doctest::Approx(1.f));
+
+	const Tween middle_jump = Parsed("linear(0, 0.2 50%, 0.8 50%, 1)");
+	CHECK(middle_jump(0.25f) == doctest::Approx(0.1f));
+	CHECK(middle_jump.Evaluate(0.5f, true) == doctest::Approx(0.8f));
+	CHECK(middle_jump(0.5f) == doctest::Approx(0.8f));
+	CHECK(middle_jump(0.75f) == doctest::Approx(0.9f));
+}
+
+TEST_CASE("Easing.linear_constant")
+{
+	for (const char* value : {"linear(0.4)", "linear(0.4 25%)", "linear(0.4 25% 75%)"})
+	{
+		const Tween constant = Parsed(value);
+		for (float t : {-1.f, 0.f, 0.25f, 0.5f, 1.f, 2.f})
+			CHECK(constant(t) == doctest::Approx(0.4f));
+		CHECK(Parsed(constant.to_string()) == constant);
+		Tween reversed = constant;
+		reversed.reverse();
+		CHECK(reversed(0.5f) == doctest::Approx(0.6f));
+	}
 }
 
 TEST_CASE("Easing.parse")
@@ -156,7 +203,6 @@ TEST_CASE("Easing.parse")
 		"steps(1, jump-none)",
 		"steps(2, sideways)",
 		"steps(2, end, end)",
-		"linear(0)",
 		"linear()",
 		"linear(0, 1 2 3)",
 		"linear(0, 50% 60% 70%, 1)",

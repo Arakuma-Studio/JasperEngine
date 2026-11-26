@@ -522,6 +522,14 @@ std::string Model::getFilename() const{
     return getComponent<ModelComponent>().filename.str();
 }
 
+void Model::setPreserveHierarchy(bool preserve){
+    getComponent<ModelComponent>().preserveHierarchy = preserve;
+}
+
+bool Model::isPreserveHierarchy() const{
+    return getComponent<ModelComponent>().preserveHierarchy;
+}
+
 int Model::getAnimationCount() const{
     return static_cast<int>(getComponent<ModelComponent>().animations.size());
 }

@@ -248,6 +248,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
             case MaterialBlendMode::PREMULTIPLIED: parts.push_back("blend premultiplied"); break;
             case MaterialBlendMode::ADDITIVE: parts.push_back("blend additive"); break;
             case MaterialBlendMode::MULTIPLY: parts.push_back("blend multiply"); break;
+            case MaterialBlendMode::CUSTOM: parts.push_back("blend custom factors"); break;
             default: break;
         }
         switch (state.cull){
@@ -459,6 +460,7 @@ std::string editor::ShaderLibraryDoc::generate(const std::vector<std::string>& n
             case MaterialBlendMode::PREMULTIPLIED: blend = "premultiplied"; break;
             case MaterialBlendMode::ADDITIVE: blend = "additive"; break;
             case MaterialBlendMode::MULTIPLY: blend = "multiply"; break;
+            case MaterialBlendMode::CUSTOM: blend = "custom"; break;
             default: break;
         }
         out << "| [" << m.name << "](#" << anchorOf(entry.name) << ") `library:" << entry.name << "` | "

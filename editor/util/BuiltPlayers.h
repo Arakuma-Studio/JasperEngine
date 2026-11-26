@@ -22,6 +22,8 @@ namespace jasperengine::editor::builtplayers {
     };
 
     // The fingerprint of `exe` as it is now (its links resolved); valid=false when it can't be read.
+    // A folder (an iOS Simulator .app) is fingerprinted as a tree: its size is the files' total,
+    // its mtime the newest file's, its SHA-256 that of every relative path and file hash in order.
     Fingerprint fingerprintOf(const std::filesystem::path& exe);
 
     // <internal folder>/user/runbuild.yaml: one entry per mode ("desktop" ...), keys resolved, dev,
@@ -31,6 +33,9 @@ namespace jasperengine::editor::builtplayers {
     // Records `exe` (as it is now) as the player built for `mode`. False when it can't be read or
     // the record can't be written.
     bool record(const std::filesystem::path& internalDir, const std::filesystem::path& exe, const std::string& mode);
+
+    // The path recorded for `mode` ("" none): Build And Run's package of a platform ("player-android")
+    std::filesystem::path recordedPath(const std::filesystem::path& internalDir, const std::string& mode);
 
     // The recorded fingerprint whose resolved path is `resolvedExe` (any mode); valid=false none.
     Fingerprint recorded(const std::filesystem::path& internalDir, const std::filesystem::path& resolvedExe);

@@ -20,7 +20,7 @@ namespace Easing {
 
 	/// The output of linear() with the given control points (inputs ascending) at input progress t; outside the first
 	/// and last inputs the first or last segment is extended.
-	float EvaluateLinear(const Vector<Tween::LinearStop>& stops, float t);
+	float EvaluateLinear(const Vector<Tween::LinearStop>& stops, float t, bool before_flag = false);
 
 	/// Parses one easing function: a CSS keyword (linear, ease, ease-in, ease-out, ease-in-out, step-start, step-end), a
 	/// CSS function (cubic-bezier(), steps(), linear()) or an RmlUi tween name ('cubic-in-out'). Keywords and function
