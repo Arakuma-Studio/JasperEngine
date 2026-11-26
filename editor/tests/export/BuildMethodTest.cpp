@@ -386,6 +386,45 @@ TEST(AndroidPackage, CarriesNativeManifestSettings) {
     EXPECT_NE(error.find("android.manifest_xml"), std::string::npos) << error;
 }
 
+// Patch And Run reaches a Development Build's files through run-as, which needs android:debuggable;
+// a release package never says it, and a runtime whose template predates the marker builds as before
+// (docs/specs/build-and-run-on-device.md R9, AC7)
+TEST(AndroidPackage, DebuggableOnlyInDevelopmentBuilds) {
+    std::ifstream in(fs::path(JASPER_TEST_REPO_DIR) / "engine/platform/android/player/AndroidManifest.template.xml");
+    ASSERT_TRUE(in);
+    const std::string templateText((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    platform::AndroidPackage package;
+    package.label = "Game";
+    package.applicationId = "com.example.game";
+    std::string manifest, error;
+    package.debug = true;
+    ASSERT_TRUE(platform::writeAndroidManifest(package, templateText, manifest, error)) << error;
+    const size_t application = manifest.find("<application");
+    const size_t debuggable = manifest.find("android:debuggable=\"true\"");
+    ASSERT_NE(debuggable, std::string::npos) << manifest;
+    EXPECT_GT(debuggable, application);
+    EXPECT_LT(debuggable, manifest.find('>', application)) << "an attribute of <application>: " << manifest;
+    EXPECT_EQ(manifest.find("{{DEBUGGABLE}}"), std::string::npos);
+
+    package.debug = false;
+    ASSERT_TRUE(platform::writeAndroidManifest(package, templateText, manifest, error)) << error;
+    EXPECT_EQ(manifest.find("debuggable"), std::string::npos) << manifest;
+    EXPECT_EQ(manifest.find("{{DEBUGGABLE}}"), std::string::npos);
+
+    // a runtime of an older editor: no marker, the package as before
+    std::string older = templateText;
+    older.erase(older.find("{{DEBUGGABLE}}"), std::string("{{DEBUGGABLE}}").size());
+    package.debug = true;
+    ASSERT_TRUE(platform::writeAndroidManifest(package, older, manifest, error)) << error;
+    EXPECT_EQ(manifest.find("debuggable"), std::string::npos) << manifest;
+
+    TestTempDir dir("android-debuggable-marker");
+    TestTempDir::write(dir / "AndroidManifest.template.xml", templateText);
+    EXPECT_TRUE(platform::androidRuntimeHasDebuggableMarker(dir.path()));
+    TestTempDir::write(dir / "AndroidManifest.template.xml", older);
+    EXPECT_FALSE(platform::androidRuntimeHasDebuggableMarker(dir.path()));
+}
+
 // native libraries as the Android Gradle plugin packages them: compressed in an APK for devices
 // before Android 6 (extracted at install), stored from minSdk 23 and in a bundle
 TEST(AndroidPackage, NativeLibrariesCompressedBelowApi23) {

@@ -45,6 +45,10 @@ that every changed golden has its row. More than 60 updates need a separate revi
 
 | Golden | Test | What it shows |
 |---|---|---|
+| `l10n/pseudo_en_xa` | `GoldenText.PseudoLocaleEnXa` | game-ui-localization.md AC9: a keyed settings panel in the en-XA pseudo-locale (accented, 40 % longer, bracketed), Roboto Bold |
+| `l10n/pseudo_ar_xb` | `GoldenText.PseudoLocaleArXb` | the same panel in ar-XB: the text right to left and the root's direction rtl |
+| `gamepad_cursor` | `FullPathGoldenTest.GamepadCursorDrawnOnTop` | text-entry-gamepad-cursor-back-button AC15: the built-in gamepad cursor arrow, its tip at (190, 140), drawn over a component Image and an HTML UI document's panel |
+| `gamepad_cursor_texture` | `FullPathGoldenTest.GamepadCursorDrawnOnTop` | the same with a project texture (`common/checker.png`) at 48 px, its hot spot (24, 24) centred on (420, 200) |
 | `s51/bitmap_fonts` | `TestBitmapFonts.ScalesAndEffects` | S51 bitmap faces (a `.bitmapfont` and a `.fnt`) at 1x, 2x, 3x their native size, a pixel outline, a sharp shadow, a glow dropped |
 | `s51/bitmap_fonts_1_5x` | `TestBitmapFonts.PixelRatioOneAndAHalf` | the same document at pixel ratio 1.5: every font pixel round(k x 1.5) device pixels |
 | `p1/rounded_clip_1x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | a rounded `overflow: hidden` clip done in the shaders at one sample: its curve antialiased |

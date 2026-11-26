@@ -14,6 +14,7 @@
 #include "Stream.h"
 #include "Workspace.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "player/PlayerConfig.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -36,6 +37,7 @@ namespace {
         debug.stats = DebugOverlaySettings::Stats::Full;
         debug.statsCorner = DebugOverlaySettings::Corner::BottomRight;
         debug.allowLua = DebugSettings::AllowLua::Never;
+        debug.consoleCommands = DebugSettings::AllowLua::AllBuilds;
         debug.logBufferSize = 2000;
         debug.logStackTraces = LogStackTraces::All;
         return debug;
@@ -113,6 +115,22 @@ TEST(DebugSettingsTest, Names) {
     EXPECT_FALSE(DebugSettingsNames::isKeyName("notakey"));
 }
 
+// Console Commands (dev-console-for-agents R32): game.json carries the gate (every build reads it,
+// player::applySettings), "development" omitted, and an older game.json reads as development
+TEST(DebugSettingsTest, GameJsonCarriesConsoleCommands) {
+    player::PlayerConfig game;
+    EXPECT_FALSE(game.toJson().contains("consoleCommands")) << "omitted at development";
+    game.consoleCommands = "never";
+    player::PlayerConfig read;
+    std::string error;
+    nlohmann::json json = game.toJson();
+    ASSERT_TRUE(player::PlayerConfig::fromJson(json, read, error)) << error;
+    EXPECT_EQ(read.consoleCommands, "never");
+    json.erase("consoleCommands");
+    ASSERT_TRUE(player::PlayerConfig::fromJson(json, read, error)) << error;
+    EXPECT_EQ(read.consoleCommands, "development") << "an older game.json";
+}
+
 // the dialog's OK and MCP: one undoable step
 TEST(DebugSettingsTest, CommandUndoes) {
     Project project;
@@ -133,6 +151,7 @@ TEST(DebugSettingsTest, PlayApplies) {
     EXPECT_TRUE(Engine::isDevelopmentBuild());
     EXPECT_TRUE(DebugOverlay::isEnabled());
     EXPECT_TRUE(DebugOverlay::getSettings().allowLua);
+    EXPECT_TRUE(console::commandsEnabled()) << "Console Commands: development builds, and Play is one";
     EXPECT_EQ(Log::getBufferSize(), 123u);
     DebugOverlay::shutdown();
     Log::setBufferSize(500);

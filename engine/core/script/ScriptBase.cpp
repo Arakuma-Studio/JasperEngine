@@ -257,3 +257,5 @@ void ScriptBase::onDeselect(BaseEventData&) { inherited(*this, ScriptMessage::De
 void ScriptBase::onMove(AxisEventData&) { inherited(*this, ScriptMessage::Move); }
 void ScriptBase::onSubmit(BaseEventData&) { inherited(*this, ScriptMessage::Submit); }
 void ScriptBase::onCancel(BaseEventData&) { inherited(*this, ScriptMessage::Cancel); }
+void ScriptBase::onSimulationCulled(const std::string&) { inherited(*this, ScriptMessage::SimulationCulled); }
+void ScriptBase::onSimulationResumed() { inherited(*this, ScriptMessage::SimulationResumed); }

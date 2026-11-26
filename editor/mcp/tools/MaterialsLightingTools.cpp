@@ -171,7 +171,8 @@ void setLightUnitTool(const CallPtr& call){
         return;
     }
     call->ok("Set the unit of " + std::to_string(entities.size()) + " light(s)" + (preserve ? ", as bright as before" : "") +
-             " (EV100 " + Json(McpValues::number(ev100)).dump() + "; a unit a type cannot take becomes its neighbour: lux and candela).",
+             " (EV100 " + Json(McpValues::number(ev100)).dump() + "; a unit a type cannot take becomes its neighbour: lux and candela, "
+             "nits for an area light).",
              Json{{"lights", changed}, {"ev100", McpValues::number(ev100)}});
 }
 
@@ -203,14 +204,14 @@ void registerMaterialsLightingTools(McpRegistry& registry){
         tool.name = "set_light_unit";
         tool.title = "Set Light Unit";
         tool.description =
-            "Set the intensity unit of lights: engine, lux (directional), candela or lumen (point, spot). With "
+            "Set the intensity unit of lights: engine, lux (directional), candela or lumen (point, spot), nits (area). With "
             "preserve_brightness (default) the intensity is converted so the light stays as bright, through the scene's "
             "physical_light_ev100 (one undo step).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", array(entityRef(), "")},
-            {"unit", stringEnum("", {"engine", "lux", "candela", "lumen"})},
+            {"unit", stringEnum("", {"engine", "lux", "candela", "lumen", "nits"})},
             {"preserve_brightness", withDefault(boolean(""), true)}
         }, {"unit"});
         tool.handler = setLightUnitTool;

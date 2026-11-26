@@ -43,6 +43,16 @@ namespace {
     constexpr std::chrono::milliseconds kReadSleepMs{10};
     constexpr std::chrono::milliseconds kKillGracePeriod{100};
 
+#ifndef _WIN32
+    // the child has exited: it waits to be reaped (not reaped here: WNOWAIT), or the run loop on
+    // its own thread has reaped it since the signal failed (ECHILD)
+    bool commandChildExited(pid_t pid) {
+        siginfo_t info{};
+        if (::waitid(P_PID, static_cast<id_t>(pid), &info, WEXITED | WNOHANG | WNOWAIT) == 0) return info.si_pid == pid;
+        return errno == ECHILD;
+    }
+#endif
+
     char asciiLower(char c) {
         return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
     }
@@ -515,6 +525,16 @@ void editor::CommandRunner::cancel() {
     terminateCurrentProcess();
 }
 
+long editor::CommandRunner::processId() {
+#ifdef _WIN32
+    std::lock_guard<std::mutex> lock(processHandleMutex);
+    return currentProcessHandle ? static_cast<long>(GetProcessId(static_cast<HANDLE>(currentProcessHandle))) : 0;
+#else
+    std::lock_guard<std::mutex> lock(processPidMutex);
+    return static_cast<long>(currentProcessPid);
+#endif
+}
+
 bool editor::CommandRunner::isCancelRequested() const {
     return cancelRequested.load(std::memory_order_relaxed);
 }
@@ -549,7 +569,20 @@ void editor::CommandRunner::terminateCurrentProcess() {
             // The child was spawned into its own process group (pgid == pid),
             // so signal the group to tear down the shell AND its descendants
             // (cmake, ninja/make, compilers).
-            if (kill(-pidSnapshot, SIGTERM) != 0 && errno != ESRCH) {
+            if (kill(-pidSnapshot, SIGTERM) != 0) {
+                // cancel() and the run loop both stop the child: the second call can find it
+                // exiting or exited and not reaped yet, a group macOS refuses to signal (EPERM,
+                // where Linux signals the zombie). Nothing is left to stop then; a child still in
+                // its exit becomes waitable within the grace period (a loaded runner, CI)
+                if (errno == ESRCH) return;
+                if (errno == EPERM) {
+                    const auto until = std::chrono::steady_clock::now() + kKillGracePeriod;
+                    do {
+                        if (commandChildExited(pidSnapshot)) return;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                    } while (std::chrono::steady_clock::now() < until);
+                    errno = EPERM;
+                }
                 Out::warning("Failed to send SIGTERM to process group %d: %s", pidSnapshot, strerror(errno));
             }
 
@@ -700,9 +733,17 @@ bool editor::CommandRunner::runArgs(const std::vector<std::string>& args, const 
 }
 
 std::string editor::CommandRunner::capture(const std::vector<std::string>& argv, int timeoutMs) {
+    std::string output;
+    if (captureResult(argv, output, timeoutMs) != 0) return "";
+    while (!output.empty() && (output.back() == '\n' || output.back() == '\r' || output.back() == ' '))
+        output.pop_back();
+    return output;
+}
+
+int editor::CommandRunner::captureResult(const std::vector<std::string>& argv, std::string& output, int timeoutMs, const Environment* environment) {
     CommandRunner runner;
     runner.quiet = true;
-    std::string output;
+    output.clear();
 
     // timeoutMs > 0: a watchdog cancels the run (terminating the process) when it is still going
     std::mutex doneMutex;
@@ -718,10 +759,10 @@ std::string editor::CommandRunner::capture(const std::vector<std::string>& argv,
             }
         });
     }
-    const bool ok = runner.run(argv, fs::path(), [&output](const std::string& line) {
+    runner.run(argv, fs::path(), [&output](const std::string& line) {
         output += line;
         output.push_back('\n');
-    });
+    }, environment);
     if (watchdog.joinable()) {
         {
             std::lock_guard<std::mutex> lock(doneMutex);
@@ -730,10 +771,8 @@ std::string editor::CommandRunner::capture(const std::vector<std::string>& argv,
         doneSignal.notify_all();
         watchdog.join();
     }
-    if (!ok || runner.isCancelRequested()) return "";
-    while (!output.empty() && (output.back() == '\n' || output.back() == '\r' || output.back() == ' '))
-        output.pop_back();
-    return output;
+    if (runner.isCancelRequested()) return -1;
+    return runner.lastExitCode;
 }
 
 bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine,

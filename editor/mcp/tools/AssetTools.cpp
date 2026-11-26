@@ -350,7 +350,8 @@ bool color01(const Json& value, std::array<float, 4>& out, std::string& error) {
     if (value.is_string()) {
         std::string hex = value.get<std::string>();
         if (!hex.empty() && hex[0] == '#') hex.erase(0, 1);
-        if (hex.size() != 6 && hex.size() != 8) {
+        if ((hex.size() != 6 && hex.size() != 8) ||
+            !std::all_of(hex.begin(), hex.end(), [](unsigned char c) { return std::isxdigit(c) != 0; })) {
             error = "colors are [r,g,b(,a)] in 0..1 or \"#RRGGBB(AA)\".";
             return false;
         }
@@ -4887,7 +4888,9 @@ const std::vector<std::pair<std::string, std::string>>& textureSettingFields() {
         {"channel", "channel"}, {"quality", "quality"}, {"effort", "effort"}, {"streamable", "streamable"},
         {"ship_source", "shipSource"},
         // S42 R4, R6, R7
-        {"pixel_art", "pixelArt"}, {"alpha_clip", "alphaClip"}, {"filter_mode", "filterMode"}, {"pixels_per_unit", "pixelsPerUnit"}};
+        {"pixel_art", "pixelArt"}, {"alpha_clip", "alphaClip"}, {"filter_mode", "filterMode"}, {"pixels_per_unit", "pixelsPerUnit"},
+        // S99 R29
+        {"remove_sun_disc", "removeSunDisc"}};
     return fields;
 }
 

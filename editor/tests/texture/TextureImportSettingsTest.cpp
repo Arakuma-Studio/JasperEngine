@@ -88,6 +88,7 @@ TEST(TextureImportSettings, RoundTripsAndKeepsUnknownKeys){
         "flipGreen: true\n"
         "maxSize: 1024\n"
         "mipFilter: catmull_rom\n"
+        "removeSunDisc: true\n"
         "futureField: {a: 1}\n"
         "platforms:\n"
         "  web: {override: true, quality: high, rdo: 0.5}\n");
@@ -98,6 +99,8 @@ TEST(TextureImportSettings, RoundTripsAndKeepsUnknownKeys){
     EXPECT_EQ(settings.flipGreen, true);
     EXPECT_EQ(settings.maxSize, 1024);
     EXPECT_EQ(settings.mipFilter, MipFilter::CatmullRom);
+    EXPECT_EQ(settings.removeSunDisc, true);
+    EXPECT_TRUE(settings.resolve(TextureFamily::Desktop, TextureProjectSettings()).removeSunDisc);
     EXPECT_TRUE(settings.platforms[(size_t)TextureFamily::Web].override);
     EXPECT_FLOAT_EQ(*settings.platforms[(size_t)TextureFamily::Web].rdo, 0.5f);
     const YAML::Node written = settings.serialize();
@@ -153,6 +156,10 @@ TEST(TextureImportSettings, CanonicalFormChangesWithEveryField){
     edits[13].quality = TextureCookQuality::High;
     edits[14].effort = TextureEffort::Best;
     edits[15].streamable = false;
+    // S99 R29: Remove Sun Disc changes the key when on; off, the keys of every older texture stay
+    edits.push_back(base);
+    edits.back().removeSunDisc = true;
+    EXPECT_EQ(reference.find("removeSunDisc"), std::string::npos);
     for (size_t i = 0; i < edits.size(); i++)
         EXPECT_NE(edits[i].resolve(TextureFamily::Desktop, project).canonical(), reference) << "edit " << i;
     // and the same settings give the same text

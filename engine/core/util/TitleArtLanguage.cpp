@@ -21,6 +21,7 @@ namespace {
         uint64_t generation = 0;
         int nextListener = 1;
         std::map<int, TitleArtLanguage::Listener> listeners;
+        std::map<int, std::function<void()>> localesListeners;
     };
 
     GlobalState& state(){
@@ -211,6 +212,19 @@ uint64_t TitleArtLanguage::generation(){
 
 void TitleArtLanguage::localesChanged(){
     state().generation++;
+    const std::map<int, std::function<void()>> listeners = state().localesListeners;
+    for (const auto& entry : listeners) entry.second();
+}
+
+int TitleArtLanguage::addLocalesListener(std::function<void()> listener){
+    GlobalState& s = state();
+    const int id = s.nextListener++;
+    s.localesListeners[id] = std::move(listener);
+    return id;
+}
+
+void TitleArtLanguage::removeLocalesListener(int id){
+    state().localesListeners.erase(id);
 }
 
 int TitleArtLanguage::addListener(Listener listener){

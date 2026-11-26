@@ -8,8 +8,9 @@
 // input first, consuming only taps on its own panels (also above a loading scene); the Canvas
 // Scaler and the DPI scale; the row window and its throttle; the popup, the four-finger tap,
 // Open On Error; the keys while the game types; gestures reset on focus loss, pause and
-// cancel; the safe area. The log and commands are tested by
-// editor/tests/LogListenerTest.cpp.
+// cancel; the safe area; the command field's completion, history and touch chips
+// (dev-console-for-agents R14), hidden while Console Commands are off. The log and the commands
+// themselves are tested by editor/tests/LogListenerTest.cpp and engine/tests/core/debug.
 
 #include "InspectorTestCommon.h"
 
@@ -30,6 +31,7 @@
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Elements/ElementFormControl.h>
+#include <RmlUi/Core/Elements/ElementFormControlInput.h>
 
 #include <array>
 #include <cstdio>
@@ -195,6 +197,44 @@ namespace {
         std::string text(const char* id){
             Rml::Element* element = byId(id);
             return element ? element->GetInnerRML() : std::string();
+        }
+
+        // the command field: its line and cursor (at the end), as typed
+        Rml::ElementFormControlInput* commandField(){
+            return rmlui_dynamic_cast<Rml::ElementFormControlInput*>(byId("command"));
+        }
+        void typeCommand(const std::string& line){
+            Rml::ElementFormControlInput* field = commandField();
+            ASSERT_NE(field, nullptr);
+            field->SetValue(line);
+            field->SetSelectionRange((int)line.size(), (int)line.size());
+            field->DispatchEvent(Rml::EventId::Change, Rml::Dictionary());
+        }
+        std::string commandLine(){
+            Rml::ElementFormControlInput* field = commandField();
+            return field ? field->GetValue() : std::string("(no field)");
+        }
+        void submitCommand(const std::string& line){
+            typeCommand(line);
+            Rml::Dictionary parameters;
+            parameters["linebreak"] = true;
+            commandField()->DispatchEvent(Rml::EventId::Change, parameters);
+        }
+        bool logged(const std::string& message){
+            for (const LogEntry& entry : Log::getEntries())
+                if (entry.message == message) return true;
+            return false;
+        }
+        // the console open with Console Commands on, the field focused
+        void openWithCommands(){
+            DebugOverlaySettings settings;
+            settings.commands = true;
+            enable(settings);
+            key(D_KEY_GRAVE_ACCENT);
+            GpuEnvironment::drawFrames(2);
+            ASSERT_NE(commandField(), nullptr);
+            commandField()->Focus();
+            ASSERT_TRUE(DebugOverlay::hasTextFocus());
         }
 
         // the centre of an element, in view px (the canvas is the view here)
@@ -1179,4 +1219,138 @@ TEST_F(DebugOverlayTest, SafeAreaWithTheGameScaled){
     const std::array<float, 4> stats = rect("stats");
     EXPECT_GE(stats[0], insets.left);
     EXPECT_GE(stats[1], console[3]);
+}
+
+// R14: Tab applies the completion; a Tab that changes nothing, or a second one within a second,
+// lists the candidates as one line; Up/Down walk the last 32 lines run
+TEST_F(DebugOverlayTest, TabCompletesAndHistoryRecalls){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    console::CommandSpec pick;
+    pick.name = "pick";
+    console::ArgSpec choice;
+    choice.name = "choice";
+    choice.type = console::ArgType::Enum;
+    choice.choices = {"alpha1", "alpha2"};
+    pick.args = {choice};
+    pick.run = [](console::Call&){};
+    ASSERT_TRUE(console::add(pick));
+    console::CommandSpec noop;
+    noop.name = "noop";
+    noop.run = [](console::Call&){};
+    ASSERT_TRUE(console::add(noop));
+    openWithCommands();
+
+    typeCommand("tim");
+    key(D_KEY_TAB);
+    EXPECT_EQ(commandLine(), "timescale ");
+    EXPECT_TRUE(DebugOverlay::hasTextFocus()) << "Tab does not move the focus";
+    Log::clearEntries();
+    typeCommand("s");
+    key(D_KEY_TAB);
+    EXPECT_EQ(commandLine(), "s") << "scene and stats share no more";
+    EXPECT_TRUE(logged("scene  stats")) << "a Tab that changes nothing lists them";
+
+    // a second Tab within 1 s lists the candidates even when it changed the line
+    typeCommand("pick a");
+    key(D_KEY_TAB);
+    EXPECT_EQ(commandLine(), "pick alpha");
+    EXPECT_TRUE(logged("alpha1  alpha2"));
+    Log::clearEntries();
+    const double fixed = Engine::getFixedDeltatime();
+    Engine::setFixedDeltatime(0.5);
+    GpuEnvironment::drawFrames(3);
+    Engine::setFixedDeltatime(fixed);
+    typeCommand("pick a");
+    key(D_KEY_TAB);
+    EXPECT_EQ(commandLine(), "pick alpha");
+    EXPECT_FALSE(logged("alpha1  alpha2")) << "a first Tab that changes the line lists nothing";
+
+    // history: 34 lines run, the previous line not stored twice, the newest 32 kept
+    for (int i = 0; i < 34; i++)
+        submitCommand("noop " + std::to_string(i));
+    submitCommand("noop 33");
+    EXPECT_EQ(commandLine(), "");
+    typeCommand("draft");
+    key(D_KEY_UP);
+    EXPECT_EQ(commandLine(), "noop 33");
+    key(D_KEY_UP);
+    EXPECT_EQ(commandLine(), "noop 32") << "the repeated line was stored once";
+    for (int i = 0; i < 40; i++)
+        key(D_KEY_UP);
+    EXPECT_EQ(commandLine(), "noop 2") << "the oldest of the last 32";
+    key(D_KEY_DOWN);
+    EXPECT_EQ(commandLine(), "noop 3");
+    for (int i = 0; i < 40; i++)
+        key(D_KEY_DOWN);
+    EXPECT_EQ(commandLine(), "draft") << "past the newest: the line being typed";
+    console::remove("pick");
+    console::remove("noop");
+}
+
+// R14: on touch devices up to 8 chips under the field follow the typing; a tap applies one
+TEST_F(DebugOverlayTest, TouchSuggestionChips){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    console::CommandSpec give;
+    give.name = "give";
+    console::ArgSpec item;
+    item.name = "item";
+    item.type = console::ArgType::Enum;
+    item.choices = {"gold", "gem", "key"};
+    give.args = {item};
+    give.run = [](console::Call&){};
+    ASSERT_TRUE(console::add(give));
+    openWithCommands();
+    // no touch screen: Tab completes, no chips
+    typeCommand("give g");
+    GpuEnvironment::drawFrames(1);
+    EXPECT_FALSE(shown("chips"));
+    TestSystem::get().touchDevice = true;
+    typeCommand("");
+    GpuEnvironment::drawFrames(1);
+    EXPECT_FALSE(shown("chips")) << "nothing typed";
+
+    typeCommand("give g");
+    GpuEnvironment::drawFrames(1);
+    ASSERT_TRUE(shown("chips"));
+    EXPECT_EQ(text("chip-0"), "gem");
+    EXPECT_EQ(text("chip-1"), "gold");
+    EXPECT_EQ(byId("chip-2"), nullptr);
+    click("chip-1");
+    EXPECT_EQ(commandLine(), "give gold ");
+
+    typeCommand("");
+    GpuEnvironment::drawFrames(1);
+    EXPECT_FALSE(shown("chips"));
+    for (int i = 0; i < 12; i++){
+        console::CommandSpec many;
+        many.name = "zz" + std::to_string(10 + i);
+        many.run = [](console::Call&){};
+        ASSERT_TRUE(console::add(many));
+    }
+    typeCommand("zz");
+    GpuEnvironment::drawFrames(1);
+    EXPECT_NE(byId("chip-7"), nullptr);
+    EXPECT_EQ(byId("chip-8"), nullptr) << "at most 8";
+    console::remove("give");
+    for (int i = 0; i < 12; i++)
+        console::remove("zz" + std::to_string(10 + i));
+}
+
+// R12: Console Commands off hides the command field; a game turning them on shows it
+TEST_F(DebugOverlayTest, CommandFieldHiddenWhenCommandsOff){
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    DebugOverlaySettings settings;
+    settings.commands = false;
+    enable(settings);
+    key(D_KEY_GRAVE_ACCENT);
+    GpuEnvironment::drawFrames(2);
+    EXPECT_TRUE(shown("console"));
+    EXPECT_FALSE(shown("commandbar"));
+    console::setCommandsEnabled(true);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_TRUE(shown("commandbar"));
+    settings.commands = false;
+    DebugOverlay::updateSettings(settings);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_FALSE(shown("commandbar"));
 }

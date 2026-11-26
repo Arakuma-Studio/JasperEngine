@@ -139,6 +139,10 @@ static CGSize _screenSize;
     jasperengine::Device::reportThermalState((jasperengine::ThermalState)std::clamp((int)state, 0, jasperengine::THERMAL_STATE_COUNT - 1));
 }
 
++ (void)localesChanged {
+    jasperengine::System::instance().notifyLocalesMayHaveChanged();
+}
+
 + (void)orientationChanged {
     jasperengine::Engine::systemOrientationChanged();
 }

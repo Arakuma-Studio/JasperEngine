@@ -37,3 +37,72 @@
 ---@field coroutines integer # engine coroutines running
 ---@field timers integer # engine timers pending
 ---@field htmlUiDrawCalls integer # HTML UI draw calls of the last frame
+---@field cullingGroups integer # Culling Groups of the running scenes
+---@field cullingSpheres integer # their bounding spheres
+---@field cullingVisible integer # of those, visible in a camera
+---@field simulationFull integer # Simulation Culling components simulating fully
+---@field simulationReduced integer # in the reduced band
+---@field simulationCulled integer # culled (by distance or unloaded ground)
+---@field scriptUpdatesSkipped integer # update callbacks Simulation Culling skipped in the last frame
+
+---A typed argument of a console command (DebugOverlay.addCommand{...})
+---@class ConsoleArgSpec
+---@field name string
+---@field type? "string"|"int"|"float"|"bool"|"enum"|"vector3"|"gameobject"|"rest" # default "string"; rest: the rest of the line, last only
+---@field optional? boolean
+---@field default? string|number|boolean # parsed like typed text; makes the argument optional
+---@field min? number # int, float
+---@field max? number
+---@field choices? string[] # enum (case-insensitive, a unique prefix is accepted)
+
+---A console command (DebugOverlay.addCommand{...}); name and aliases are [a-z0-9_.-], 1-48 characters
+---@class ConsoleCommandSpec
+---@field name string
+---@field description? string # one line
+---@field usage? string # default: made from args ("give <item> [count=1]")
+---@field aliases? string[] # at most 8; one another command holds refuses the whole command
+---@field args? ConsoleArgSpec[] # none: run gets the words as strings
+---@field minArgs? integer # untyped commands
+---@field maxArgs? integer
+---@field cheat? boolean # an ok run sets DebugOverlay.cheatsUsed
+---@field run fun(args: table, call: ConsoleCall): any # args by name and by position; the return is the result's value
+---@field complete? fun(argIndex: integer, prefix: string, words: string[]): string[] # argIndex from 1
+---@field owner? table # default: the self of the calling script method
+
+---The call a command's run gets (only while it runs)
+---@class ConsoleCall
+---@field print fun(self: ConsoleCall, ...: any) # a line of the result, logged as "[name] line"
+---@field fail fun(self: ConsoleCall, ...: any) # ends with status "failed"
+
+---A warning or error logged while a command ran
+---@class ConsoleLogLine
+---@field level integer # a LogLevel value
+---@field message string
+
+---What DebugOverlay.executeCommand returns
+---@class ConsoleResult
+---@field ok boolean
+---@field status "ok"|"unknown"|"usage"|"failed"|"error"|"disabled"
+---@field command string # the resolved name, after aliases
+---@field lines string[] # call:print lines first, then the Info lines logged during the call
+---@field log ConsoleLogLine[]
+---@field value any # what run returned
+---@field error? string # one line
+---@field usage? string # on "usage"
+---@field cheat boolean
+
+---What DebugOverlay.completeCommand returns
+---@class ConsoleCompletion
+---@field replacement string # replaces line:sub(start + 1, cursor)
+---@field candidates string[] # sorted, at most 50
+---@field start integer # the bytes before the word being completed
+
+---A command as DebugOverlay.getCommands and `help` describe it
+---@class ConsoleCommandInfo
+---@field name string
+---@field description string
+---@field usage string
+---@field aliases string[]
+---@field cheat boolean
+---@field builtIn boolean
+---@field args {name: string, type: string, optional: boolean, default?: string, min?: number, max?: number, choices?: string[]}[]

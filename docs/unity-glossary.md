@@ -36,6 +36,7 @@ Projects made before the rename are migrated once with
 | A Prefab field in the Inspector (a script property of type Prefab: drag a `.prefab` from the Project window onto it) | none (new) |
 | Assets > Scenes in Build... | Project > Manage Scenes... |
 | File > Build Settings... | File > Export Project... |
+| Build Report (the Build Report Inspector package), comparing two builds' reports | Window > Analysis > Build Report: Compare With..., Changes, Referenced By, Unreferenced, Left Out; Size Budgets in Project Settings > Player (none before) |
 | Edit > Preferences... | Edit > Editor Settings... |
 | Edit > Project Settings... | Project > Project Settings... |
 | Project Settings > Physics / Physics 2D > Layer Collision Matrix | none (new) |
@@ -77,6 +78,8 @@ Projects made before the rename are migrated once with
 | Unity term | Old JasperEngine name |
 |---|---|
 | `GameObject` | `Object` |
+| `CullingGroup` (`SetBoundingSpheres`, `SetBoundingDistances`, `onStateChanged`, `QueryIndices`, `EraseSwapBack`), `BoundingSphere`, `CullingGroupEvent` | `CullingGroup`, `BoundingSphere`, `CullingGroupEvent` (none before); frustum only, no occlusion; Lua indices 1-based ([docs/scripting/culling-groups.md](scripting/culling-groups.md)) |
+| A per-object simulation distance (Unreal's tick significance, an entity ticking range) | the **Simulation Culling** component, `SimulationCulling` in Lua, messages `onSimulationCulled` / `onSimulationResumed` (none before) |
 | `Primitive` (box, sphere, plane... meshes) | `Shape` |
 | `Rigidbody2D` / `Rigidbody2DComponent` | `Body2D` / `Body2DComponent` |
 | `Rigidbody` / `RigidbodyComponent` | `Body3D` / `Body3DComponent` |
@@ -120,6 +123,7 @@ Projects made before the rename are migrated once with
 | `SceneManager.MoveGameObjectToScene(go, scene)` -> `SceneManager.moveGameObjectToScene(obj, scene)` (C++ `SceneManager::moveGameObjectToScene`) | none (new) |
 | Singleton pattern `if (instance == null) { instance = this; DontDestroyOnLoad(gameObject); } else if (instance != this) Destroy(gameObject);` -> `if GameObject.persistSingleton(self) ~= self then return end` in `init` (C++ `persistSingleton<T>()`); module tables are per instance, so no `static Instance` | none (new) |
 | `UnityEvent` / C# `event` (`AddListener` / `+=`, `RemoveListener` / `-=`, `Invoke`) -> `Event()` (`addListener`, `removeListener`, `invoke`); `-=` of an engine or component event -> `UnregisterEngineEvent` / `UnregisterEvent` | none (new): no unregister from Lua |
+| none: `UnityEvent` has no veto or listener order; C# `System.ComponentModel.CancelEventArgs` (`Cancel`) | none (new): `CancellableEvent()`, whose listeners get a `CancelEventArgs` first (`e:cancel()`, `e.cancelled`) and whose `invoke` returns whether one cancelled; every `Event` listener takes a `priority` (`Event.MONITOR` runs after the decision) |
 | `PrefabAsset` (what a Prefab script property holds; `PrefabAsset.load("path")`) | none (new) |
 | `PrefabManager` (the build's prefab registry: `findPrefab`, `getPrefabNames`, `prefabCount`) | `BundleManager` |
 | `PrefabComponent` | `BundleComponent` |
@@ -156,6 +160,9 @@ Projects made before the rename are migrated once with
 | `Physics.IgnoreCollision(a, b, ignore)` / `Physics2D.IgnoreCollision` (colliders) -> `Physics.ignoreCollision(a, b [, ignore])` / `Physics2D.ignoreCollision` on bodies (GameObjects or Rigidbodies): every collider of the pair | none (new) |
 | `Physics.SphereCast`, `BoxCast`, `CapsuleCast` (and `...All`), `OverlapSphere`, `OverlapBox`, `OverlapCapsule`, `CheckSphere`, `CheckBox`, `CheckCapsule`, `ClosestPoint`, `Rigidbody.SweepTest` / `SweepTestAll`, `QueryTriggerInteraction`, `Physics.queriesHitTriggers`, `queriesHitBackfaces` -> the same names lowerCamelCase; casts return the hit or nil (no `out` argument), every query takes an options table last (`ignore`, `triggers`, `hitFromInside`, `hitBackfaces`) | none (new) |
 | `Physics2D.CircleCast`, `BoxCast`, `CapsuleCast` (and `...All`), `OverlapCircle`, `OverlapBox`, `OverlapCapsule`, `OverlapPoint`, `OverlapArea` (and `...All`), `Rigidbody2D.Cast`, `CapsuleDirection2D`, `Physics2D.queriesHitTriggers`, `queriesStartInColliders` -> the same names lowerCamelCase (`rigidbody2d:cast` / `castAll` return hits); `queriesStartInColliders` defaults to **false** (Unity: true), so a ray or cast from inside a collider (a player's ground check) does not hit it | none (new) |
+| `Physics.OverlapSphereNonAlloc` / `OverlapBoxNonAlloc` / `OverlapCapsuleNonAlloc`, `Physics2D.OverlapPointNonAlloc` / `OverlapCircleNonAlloc` / `OverlapBoxNonAlloc` / `OverlapCapsuleNonAlloc` / `OverlapAreaNonAlloc` -> the same names lowerCamelCase, Unity's argument order after the scene; `results` gets GameObject ids (no garbage, `#results` is the count), an optional `colliders` table their collider indices ([docs/scripting/spatial-queries.md](scripting/spatial-queries.md)) | none (new) |
+| `Physics.queriesHitTriggers`, `Physics2D.queriesHitTriggers` in Project Settings (Physics > Queries Hit Triggers, Physics 2D > Queries Hit Triggers) | the same rows; project.yaml `physicsQueries`, applied at Play start and in players |
+| What is drawn near a point, without colliders (a loop over Renderers' `bounds`) | none (new): `MeshRaycast.overlapSphere` / `overlapBox` (+ `NonAlloc`): drawn bounds, a Terrain's trees too (`MeshOverlapHit`, `MeshRaycast.TREE` / `DETAIL`) |
 | `RaycastHit` / `RaycastHit2D` (`point`, `normal`, `distance`, `collider`, `rigidbody`, `transform`) | `RayReturn` (alias `RaycastHit`): the same fields plus `gameObject`, `body` (entity), `colliderIndex`, `hit`; `transform` is the GameObject |
 | `Shader.SetGlobalFloat`, `SetGlobalInt`, `SetGlobalVector`, `SetGlobalColor`, `SetGlobalMatrix`, `SetGlobalFloatArray`, `SetGlobalVectorArray`, `SetGlobalTexture`, `GetGlobal*`, `Shader.PropertyToID` | none (new): `Shader.setGlobalFloat`, `setGlobalInt`, ..., `getGlobal*`, `Shader.propertyToID`, plus `hasGlobal`, `getGlobalNames`, `resetGlobals`; shaders read them as members of a `u_vs_globals` / `u_fs_globals` block (or a texture uniform of the name); C++ `ShaderGlobals` ([shaders guide, Global values](mcp/guide/shaders.md#global-values)) |
 | A material property a global feeds (Unity: the global applies when the material does not define the property) | none (new): an explicit binding, the Inspector's link button on a shader parameter row (`shaderGlobalBindings`, Lua `material:setShaderGlobalBinding(member, global)`) |
@@ -294,6 +301,7 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 |---|---|
 | `PlayerPrefs.GetInt/SetInt/GetFloat/SetFloat/GetString/SetString/HasKey/DeleteKey/DeleteAll/Save` | `PlayerPrefs.getInt/setInt/getFloat/setFloat/getString/setString/hasKey/deleteKey/deleteAll/save` (Lua), over the same store as `UserSettings` (`getIntegerForKey`, `setStringForKey`, ... and `hasKey`, `deleteKey`, `deleteAll`, `save`; C++ `jasperengine::UserSettings`) |
 | Edit > Clear All PlayerPrefs | Edit > Clear User Settings (PlayerPrefs)...; MCP `user_settings` (list, get, set, delete, clear) |
+| Save slots (a game's own; Unity has none built in; Unreal `USaveGame`, `SaveGameToSlot` / `LoadGameFromSlot` / `DoesSaveGameExist` / `DeleteGameInSlot` / `AsyncSaveGameToSlot`) | `SaveGame.write(slot, table)` / `SaveGame.read(slot)` / `exists` / `delete` (Lua; versions, migrations, backups: docs/saved-data.md); Window > General > Saved Data; MCP `user_settings` `store: "saves"` |
 | `JsonUtility.ToJson` / `FromJson`, Newtonsoft `JsonConvert.SerializeObject` / `DeserializeObject`, `JObject` | `Json.encode(value [, opts])` / `Json.decode(text [, opts])` (tables, not typed classes; `Json.null`, `Json.array`, `Json.object`); C++ `nlohmann::json`, `jasperengine::LuaJson` |
 | `Application.persistentDataPath` | `data://` (`System.getUserDataPath()`) |
 | `File.ReadAllText` / `WriteAllText` / `AppendAllText` / `Exists` / `Delete`, `Directory.CreateDirectory` / `GetFileSystemEntries` | `File.readText` / `writeText` (atomic) / `appendText` / `exists` / `remove`, `File.makeDirs` / `File.list` (return `nil, message` on failure) |
@@ -428,7 +436,8 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioSource.PlayClipAtPoint(clip, position, volume)` | `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` |
 | AudioClip Load Type Decompress On Load / Compressed In Memory / Streaming | `AudioSource.loadType` (`AudioLoadType.DecompressOnLoad` / `CompressedInMemory` / `Streaming`, default `Auto`: streams files of 1 MiB and more): per source, not a clip import setting |
 | `AudioImporter` | `.meta` section `import.audioImporter` (Inspector's Import Settings, MCP `set_audio_import_settings`) |
-| AudioClip import settings | `type`, `gain_db`, `trim_head_ms`, `trim_tail_ms`, `fade_in_ms`, `fade_out_ms`, `loop_start_ms`, `loop_end_ms`, `music` (tempo); the engine plays them in Play and in exports (see [mcp/guide/sound.md](mcp/guide/sound.md)) |
+| AudioClip import settings | `type`, `gain_db`, `trim_head_ms`, `trim_tail_ms`, `fade_in_ms`, `fade_out_ms`, `loop_start_ms`, `loop_end_ms`, `force_to_mono`, `music` (tempo); the engine plays them in Play and in exports (see [mcp/guide/sound.md](mcp/guide/sound.md)) |
+| `AudioImporter.forceToMono` (Force To Mono) | Import Settings' Force To Mono, key `force_to_mono`: `off`, `on`, `auto` (mono when the file's measured stereo width `side_mid_db` is at most -18 dB); `AudioSource.channels` reads 1 |
 | `AudioSource.pitch` | `pitch` (= `speed`) |
 | `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
@@ -516,7 +525,7 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `enableCollision`, `breakForce`, `breakTorque`, `OnJointBreak(float)` | the same, `breakAction`, `onJointBreak(self, force, joint)` (C++ `onJointBreak(float, Joint3D&)`) |
 | Ragdoll Wizard (GameObject > 3D Object > Ragdoll...) | the same menu, `create_ragdoll` (MCP), the `Ragdoll` component (`simulated`); at run time (no Unity API) `Ragdoll.create(root [, options])` |
 | `gameObject.AddComponent<HingeJoint>()`, `GetComponents<Joint>()` | `go:addJoint3D(Joint3DType.HINGE)` (a child joint GameObject with bodyA = `go`), `go:getJoints3D()` (the joints whose bodyA is `go`) |
-| Physics Debugger, `Physics.autoSyncTransforms` | the Game view's Physics toggle, `Physics.debugDraw`; transforms always sync |
+| Physics Debugger (its Queries view), `Physics.autoSyncTransforms` | the Game view's Physics toggle, `Physics.debugDraw`; Physics > Queries, `Physics.debugDrawQueries`; transforms always sync |
 | Physics settings: Default Solver Iterations / Velocity Iterations, Bounce Threshold, Sleep Threshold, Default Contact Offset | the scene's `physics3DPositionIterations` / `physics3DVelocityIterations`, `physics3DBounceThreshold`, `physics3DSleepThreshold`, `physics3DSpeculativeDistance` (Inspector > Scene > Physics > World); `physics3DCollisionSteps` has no Unity name |
 
 In scene and prefab files the component keys follow the class names, e.g.

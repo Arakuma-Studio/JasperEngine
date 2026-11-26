@@ -79,6 +79,7 @@ namespace jasperengine::editor{
     class AnimationClipDocument;
     class AnimatorAssetDocument;
     class SpriteAtlasInspector;
+    namespace recordinput { class InputRecordingInspector; }
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -229,6 +230,8 @@ namespace jasperengine::editor{
         // (shared: the type stays out of this header, which App.h includes; its sprite:: names would
         // make `sprite` a namespace in every source that includes App.h)
         std::shared_ptr<SpriteAtlasInspector> spriteAtlasInspector;
+        // a .input.json (input-recorder-and-input-scripts R39)
+        std::shared_ptr<recordinput::InputRecordingInspector> inputRecordingInspector;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
@@ -247,6 +250,10 @@ namespace jasperengine::editor{
         bool windowOpen;
         bool focusRequested;
         int nameFocusFrames = 0;   // visible frames left for focusNameInput() to take
+        // the Skybox's Extract Sun (S99 R28): its Remove Sun Disc option and what the last run said
+        bool extractSunRemoveDisc = true;
+        std::string extractSunMessage;
+        bool extractSunFailed = false;
         bool finishProperty;
 
         std::set<std::string> usedPreviewIds;
@@ -493,6 +500,8 @@ namespace jasperengine::editor{
         void forgetSpriteFxScene(uint32_t sceneId);
         // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
         void drawAudioMixerAsset(const std::filesystem::path& asset);
+        // a selected .ies: its polar plot and metadata (InspectorIesProfile.cpp, S99 R37)
+        void drawIesProfileAsset(const std::filesystem::path& asset);
         // a selected .soundevent: its editor, problems, Match Levels and Audition (InspectorSoundEvent.cpp)
         void drawSoundEventAsset(const std::filesystem::path& asset);
         // AudioSource: the Event, Play On, impact and Variation rows and their warnings
@@ -1056,6 +1065,12 @@ namespace jasperengine::editor{
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // its table's rows, then a bitmap font's Pixel Font rows (S51 R22, InspectorPixelFont.cpp)
         void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // game-ui-localization.md R32 (InspectorLocalization.cpp): Text's Localization Key with its
+        // picker and missing badge; a UI Document's read-only Localization foldout in Play
+        void drawTextLocalizationRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawUIDocumentLocalization(SceneProject* sceneProject, Entity entity);
+        std::vector<std::pair<std::string, std::string>> localizationKeys;     // the picker's keys and source texts
+        char localizationKeySearch[64] = {0};
         void drawPoseAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -1099,6 +1114,11 @@ namespace jasperengine::editor{
         void drawWaterVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawWaterExcluderComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawWaterWakeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the table's rows, then in Play its read-only State, Reason and Focus Distance
+        void drawSimulationCullingComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // editor/dialogue/DialogueRunnerInspector.cpp (dialogue-graphs.md R24): the rows, Open and the
+        // Start Entry list; in Play the state, the current node and Advance / option buttons
+        void drawDialogueRunnerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawBuoyancyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // InspectorVehicle.cpp (S96)
         void drawWheelColliderComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

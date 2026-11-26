@@ -5,6 +5,7 @@
 // graph file's contents and issues, and edits as ops, each batch one undo step.
 
 #include "McpTools.h"
+#include "PlayViewCommon.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -15,8 +16,14 @@
 #include "Project.h"
 #include "command/CommandHistory.h"
 #include "command/type/GraphEditCmd.h"
+#include "dialogue/DialogueKind.h"
+#include "dialogue/DialogueProgram.h"
+#include "dialogue/DialogueVariables.h"
+#include "dialogue/DialogueWalker.h"
+#include "object/DialogueRunner.h"
 #include "graph/Graph.h"
 #include "graph/GraphRegistry.h"
+#include "graph/GraphEditorHooks.h"
 #include "noise/TerrainPresets.h"
 #include "procmat/ProceduralMaterialKind.h"
 #include "util/ProjectChecks.h"
@@ -318,6 +325,9 @@ bool startCreatedGraph(const CallPtr& call, fs::path& file, Graph& out) {
         out.kind = kindId;
         out.kindVersion = kind->kindVersion;
     }
+    // what a new file of the kind starts with (a dialogue's namespace, source language and GUID)
+    auto edits = graphEditorHooks().kindEdits.find(kindId);
+    if (edits != graphEditorHooks().kindEdits.end() && edits->second.created) edits->second.created(call->ctx().project(), file, out);
     return true;
 }
 
@@ -397,7 +407,7 @@ void editGraphTool(const CallPtr& call) {
     const std::string after = graph::save(g);
     // one step of the project history (file edits are project-wide)
     CommandHistory* history = call->ctx().project()->getProjectCommandHistory();
-    if (after != before && !history->addCommandNoMerge(new GraphEditCmd(file, before, after, undoName, creating))) {
+    if (after != before && !history->addCommandNoMerge(GraphEditCmd::makeStep(call->ctx().project(), file, g.kind, before, after, undoName, creating))) {
         const std::string busy = history->lastBusyRefusal();
         data["applied"] = 0;
         data.erase("added");
@@ -405,6 +415,222 @@ void editGraphTool(const CallPtr& call) {
         return;
     }
     call->ok(undoName + ": " + std::to_string(names.size()) + " op(s), " + std::to_string(issues.size()) + " issue(s).", data);
+}
+
+// ---- run_dialogue (dialogue-graphs.md R25)
+
+bool dialogueValue(const Json& json, jasperengine::dialogue::Value& out) {
+    if (json.is_boolean()) out = jasperengine::dialogue::Value(json.get<bool>());
+    else if (json.is_number()) out = jasperengine::dialogue::Value(json.get<double>());
+    else if (json.is_string()) out = jasperengine::dialogue::Value(json.get<std::string>());
+    else return false;
+    return true;
+}
+
+bool dialogueValues(const CallPtr& call, const char* key, std::vector<std::pair<std::string, jasperengine::dialogue::Value>>& out) {
+    const Json& args = call->args();
+    if (!args.contains(key)) return true;
+    if (!args[key].is_object()) {
+        call->fail(std::string(key) + " is an object of name -> bool, number or string.");
+        return false;
+    }
+    for (auto it = args[key].begin(); it != args[key].end(); ++it) {
+        jasperengine::dialogue::Value value;
+        if (!dialogueValue(it.value(), value)) {
+            call->fail(std::string(key) + "." + it.key() + " must be a bool, number or string.");
+            return false;
+        }
+        std::string name = it.key();
+        if (!name.empty() && name[0] == '$') name.erase(0, 1);
+        out.emplace_back(name, value);
+    }
+    return true;
+}
+
+std::string choicesText(const std::vector<int>& choices) {
+    std::string out;
+    for (int choice : choices) out += (out.empty() ? "" : ", ") + std::to_string(choice);
+    return "[" + out + "]";
+}
+
+std::string transcriptText(const dialogues::WalkResult& result) {
+    std::string text;
+    for (const dialogues::WalkStep& step : result.transcript) {
+        text += "\n" + step.node + " " + (step.speaker.empty() ? std::string() : step.speaker + ": ") + step.text;
+        for (const jasperengine::dialogue::Option& option : step.options) {
+            text += "\n  " + std::to_string(option.index) + ". " + option.text + (option.enabled ? "" : " (disabled)") +
+                    (step.chosen == option.index ? "  <- chosen" : "");
+        }
+    }
+    return text;
+}
+
+// The live runner of a GameObject in Play: start, choices and advance with the real handlers
+void runLiveDialogue(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    std::string error;
+    SceneProject* sp = w3::resolveRuntimeScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+    if (!sp) {
+        call->fail(error + " (entity drives a Dialogue Runner in Play: play first, or pass path to walk the file without Play).");
+        return;
+    }
+    const Entity entity = w3::resolveLiveEntity(project, sp, args["entity"], error);
+    if (entity == NULL_ENTITY) {
+        call->fail(error);
+        return;
+    }
+    if (!sp->scene->findComponent<DialogueRunnerComponent>(entity)) {
+        call->fail("That GameObject has no Dialogue Runner: add one (add_component dialoguerunner) or pass path.");
+        return;
+    }
+    DialogueRunner object(sp->scene, entity);
+    jasperengine::dialogue::Runner* runner = object.getRunner();
+    if (!runner || !runner->getDialogue()) {
+        call->fail("Its Dialogue Runner has no dialogue that loads (set its dialogue property).");
+        return;
+    }
+    dialogues::WalkResult result;
+    // what the runner shows during this call, on top of its own events
+    auto previous = runner->onLine;
+    runner->onLine = [&result, previous](jasperengine::dialogue::Runner& self, const jasperengine::dialogue::Line& line) {
+        dialogues::WalkStep step;
+        step.node = line.node;
+        step.speaker = line.speakerName;
+        step.text = line.text;
+        step.key = line.key;
+        step.options = line.options;
+        step.actions = self.lastStep().actions;
+        result.transcript.push_back(std::move(step));
+        if (previous) previous(self, line);
+    };
+    runner->setRecording(true);
+    if (args.contains("entry") || !runner->isRunning()) {
+        if (!object.start(args.value("entry", std::string()))) error = runner->getError();
+    }
+    if (error.empty() && args.contains("choices") && args["choices"].is_array()) {
+        for (const Json& choice : args["choices"]) {
+            const int index = choice.is_number_integer() ? choice.get<int>() : 0;
+            if (!result.transcript.empty()) result.transcript.back().chosen = index;
+            if (!object.choose(index)) {
+                error = "choice " + std::to_string(index) + " is not an enabled option of the current line (" + object.getCurrentNode() + ")";
+                break;
+            }
+        }
+    }
+    for (int i = 0; error.empty() && i < args.value("advance", 0); i++) {
+        if (!object.advance()) break;
+    }
+    runner->onLine = previous;
+    runner->setRecording(false);
+    result.state = jasperengine::dialogue::stateName(runner->getState());
+    result.node = runner->getCurrentNode();
+    result.result = runner->getResult();
+    result.unknownCalls = runner->unknownCalls();
+    result.variables = jasperengine::dialogue::Variables::all();
+    result.error = error;
+    Json data = dialogues::toJson(result);
+    if (result.state == "line" && runner->getCurrentLine()) {
+        Json options = Json::array();
+        for (const jasperengine::dialogue::Option& option : runner->getCurrentLine()->options) options.push_back({{"index", option.index}, {"text", option.text}, {"enabled", option.enabled}});
+        data["state"]["options"] = options;
+        data["state"]["text"] = runner->getCurrentLine()->text;
+    }
+    if (!error.empty()) {
+        call->fail(error + ".", data);
+        return;
+    }
+    call->ok("Dialogue Runner: " + result.state + (result.node.empty() ? "" : " at " + result.node) + transcriptText(result), data);
+}
+
+void runDialogueTool(const CallPtr& call) {
+    const Json& args = call->args();
+    const bool hasPath = args.contains("path"), hasEntity = args.contains("entity");
+    if (hasPath == hasEntity) {
+        call->fail("Pass exactly one of path (walk a .dialogue headless, no Play needed) and entity (drive a Dialogue Runner in Play).");
+        return;
+    }
+    if (hasEntity) {
+        runLiveDialogue(call);
+        return;
+    }
+    jasperengine::dialogue::registerDialogueKind();
+    fs::path file;
+    std::string text;
+    Graph g;
+    graph::LoadReport report;
+    if (!readGraph(call, file, text, g, report)) return;
+    if (g.kind != jasperengine::dialogue::KIND_ID) {
+        call->fail(args.value("path", std::string()) + " is a '" + g.kind + "' graph: run_dialogue plays .dialogue files.");
+        return;
+    }
+    // asset-relative, as a Dialogue Runner names it: the jumps it makes load the same way
+    const std::string relative = call->ctx().project()->normalizeToAssetsRelative(file).generic_string();
+    const std::shared_ptr<const jasperengine::dialogue::Program> program = jasperengine::dialogue::Program::compile(g, relative);
+    dialogues::WalkOptions options;
+    options.entry = args.value("entry", std::string());
+    if (args.contains("choices") && args["choices"].is_array()) {
+        for (const Json& choice : args["choices"]) {
+            if (!choice.is_number_integer()) {
+                call->fail("choices is a list of 1-based option numbers.");
+                return;
+            }
+            options.choices.push_back(choice.get<int>());
+        }
+    }
+    if (!dialogueValues(call, "variables", options.variables)) return;
+    std::vector<std::pair<std::string, jasperengine::dialogue::Value>> conditions;
+    if (!dialogueValues(call, "conditions", conditions)) return;
+    for (const auto& [name, value] : conditions) options.conditions[name] = value;
+    options.language = args.value("language", std::string());
+    options.seed = args.value("seed", static_cast<uint64_t>(0));
+    options.maxSteps = std::clamp(args.value("max_steps", 200), 1, 2000);
+    if (!options.entry.empty() && program->findEntry(options.entry) < 0) {
+        std::string entries;
+        for (const auto& [name, index] : program->entries) entries += (entries.empty() ? "" : ", ") + std::string(program->str(name));
+        call->fail("No entry '" + options.entry + "' in " + relative + " (entries: " + (entries.empty() ? "none" : entries) + ").");
+        return;
+    }
+    if (args.value("explore", false)) {
+        const dialogues::ExploreResult explored = dialogues::explore(program, options, std::clamp(args.value("max_paths", 64), 1, 512));
+        Json data = dialogues::toJson(explored);
+        std::string summary = "Explored " + std::to_string(explored.paths) + " path(s): " + std::to_string(explored.covered) + "/" + std::to_string(explored.nodes) +
+                              " nodes covered, " + std::to_string(explored.endings.size()) + " ending(s), " + std::to_string(explored.loops.size()) + " no-exit loop(s).";
+        for (const auto& ending : explored.endings) summary += "\nend \"" + ending.result + "\" at " + ending.node + " by choices " + choicesText(ending.choices);
+        for (const auto& loop : explored.loops) {
+            std::string nodes;
+            for (const std::string& node : loop.nodes) nodes += (nodes.empty() ? "" : ", ") + node;
+            summary += "\nno exit: " + nodes + " (reached by choices " + choicesText(loop.choices) + ")";
+        }
+        for (const std::string& line : explored.linesNeverShown) summary += "\nnever shown: " + line;
+        if (explored.truncated) data["next"] = "max_paths was reached before every path was walked: raise max_paths (up to 512) for a full answer.";
+        call->ok(summary, data);
+        return;
+    }
+    const dialogues::WalkResult result = dialogues::walk(program, options);
+    Json data = dialogues::toJson(result);
+    std::vector<std::string> next;
+    if (!result.unknownCalls.empty()) {
+        std::string calls;
+        for (const std::string& unknown : result.unknownCalls) calls += (calls.empty() ? "" : ", ") + unknown;
+        next.push_back("conditions " + calls + " were assumed false; pass conditions (e.g. {\"" +
+                       result.unknownCalls.front().substr(0, result.unknownCalls.front().find('(')) + "\": true}) to take the other branch");
+    }
+    if (result.state == "line" && !result.transcript.empty() && !result.transcript.back().options.empty()) {
+        next.push_back("stopped at a menu: add a 1-based pick to choices; explore: true walks every path");
+    }
+    if (result.truncated) next.push_back("max_steps lines were shown: the walk may loop (explore: true reports no-exit loops)");
+    if (!next.empty()) {
+        std::string joined;
+        for (const std::string& hint : next) joined += (joined.empty() ? "" : "; ") + hint;
+        data["next"] = joined;
+    }
+    if (!result.error.empty()) {
+        call->fail(result.error + ".", data);
+        return;
+    }
+    call->ok(relative + ": " + result.state + (result.state == "ended" ? " (" + (result.result.empty() ? std::string("no result") : result.result) + ")" : "") +
+             transcriptText(result), data);
 }
 
 }
@@ -476,6 +702,32 @@ void registerGraphTools(McpRegistry& registry) {
             {"create", anyObject("{kind, from_preset?}: make the missing file")}
         }, {"path", "ops"});
         tool.handler = editGraphTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "run_dialogue";
+        tool.title = "Run Dialogue";
+        tool.group = "graphs";
+        tool.description =
+            "Play a .dialogue: path walks it headless (no Play; handler calls never run, unlisted conditions are false and reported), "
+            "picking choices in order at each menu. entity drives a Dialogue Runner in Play with the real handlers.";
+        tool.inputSchema = object({
+            {"path", assetPath("A .dialogue.")},
+            {"entity", entityRef()},
+            {"entry", string("")},
+            {"choices", array(integer("1-based option number.", 1, 64), "")},
+            {"advance", integer("entity: advance() calls after the choices.", 0, 100)},
+            {"variables", anyObject("Start values: {gold: 10}.")},
+            {"conditions", anyObject("Handler condition values: {\"quest.done\": true} or {\"quest.*\": false}.")},
+            {"language", string("")},
+            {"seed", integer("", 0, 4294967295LL)},
+            {"explore", withDefault(boolean(""), false)},
+            {"max_steps", withDefault(integer("", 1, 2000), 200)},
+            {"max_paths", withDefault(integer("", 1, 512), 64)},
+        });
+        tool.allowedWhilePlaying = true;
+        tool.handler = runDialogueTool;
         registry.addTool(std::move(tool));
     }
 }

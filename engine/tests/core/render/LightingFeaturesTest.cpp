@@ -3,8 +3,9 @@
 
 // S57's small pure parts (docs/specs/S57-forge-lighting.md): the tier defaults of Light Mode, the
 // tile grid, Bend's contact-shadow light coordinate and sample groups, and the Hair shading
-// model's block and variant.
+// model's block and variant; S99's Gradient ambient as SH (render/AmbientGradient.h).
 
+#include "render/AmbientGradient.h"
 #include "render/ContactShadows.h"
 #include "device/Device.h"
 #include "render/LightingTiers.h"
@@ -121,4 +122,54 @@ TEST(HairShadingModel, ItsBlockAndVariant){
     // the field table names its values (serialization, MCP, Lua)
     EXPECT_NE(MaterialPbr::findField("hair.primaryWidth"), nullptr);
     EXPECT_NE(MaterialPbr::findLuaField("hairSecondaryShift"), nullptr);
+}
+
+// S99 AC7: the Gradient ambient's SH is the gradient environment projected to bands 0 and 1 and
+// convolved with the clamped cosine, divided by pi: checked against a numeric projection
+TEST(AmbientGradient, ProjectionMatchesANumericIntegral){
+    const Vector3 sky(0.9f, 0.6f, 0.3f);
+    const Vector3 equator(0.2f, 0.4f, 0.5f);
+    const Vector3 ground(0.05f, 0.1f, 0.7f);
+    Vector4 sh[3];
+    AmbientGradient::project(sky, equator, ground, sh);
+
+    // L00 and L1 (y) of each channel, midpoint rule in (cos theta, phi): uniform in solid angle
+    const float y00 = 0.282095f;
+    const float y1 = 0.488603f;
+    const int steps = 2000;
+    double l00[3] = {0.0, 0.0, 0.0};
+    double l1y[3] = {0.0, 0.0, 0.0};
+    const double dOmega = 4.0 * 3.14159265358979 / steps;
+    for (int i = 0; i < steps; i++){
+        const float y = -1.0f + (2.0f * (float)i + 1.0f) / (float)steps;
+        // the gradient is symmetric about the up axis: phi integrates to 2 pi (and the x, z bands to 0)
+        const Vector3 radiance = y >= 0.0f ? equator + (sky - equator) * y : equator + (ground - equator) * (-y);
+        for (int c = 0; c < 3; c++){
+            l00[c] += radiance[c] * y00 * dOmega;
+            l1y[c] += radiance[c] * y1 * y * dOmega;
+        }
+    }
+    const Vector3 normals[] = {Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, -1.0f, 0.0f), Vector3(1.0f, 0.0f, 0.0f),
+                               Vector3(0.6f, 0.8f, 0.0f), Vector3(0.0f, -0.6f, 0.8f)};
+    for (const Vector3& n : normals){
+        for (int c = 0; c < 3; c++){
+            // E(n) / pi = L00 Y00 + (2 / 3) L1 Y1(n)
+            const double expected = l00[c] * y00 + (2.0 / 3.0) * l1y[c] * y1 * n.y;
+            const float shaded = sh[c].x * n.x + sh[c].y * n.y + sh[c].z * n.z + sh[c].w;
+            EXPECT_NEAR(shaded, expected, 1e-3) << "channel " << c << " normal " << n.x << "," << n.y << "," << n.z;
+        }
+    }
+    // the flat consumers' average is the constant term
+    const Vector3 average = AmbientGradient::average(sky, equator, ground);
+    for (int c = 0; c < 3; c++)
+        EXPECT_FLOAT_EQ(average[c], sh[c].w);
+
+    // one colour everywhere is the flat ambient: the same light at every facing
+    AmbientGradient::project(Vector3(0.3f, 0.3f, 0.3f), Vector3(0.3f, 0.3f, 0.3f), Vector3(0.3f, 0.3f, 0.3f), sh);
+    for (int c = 0; c < 3; c++){
+        EXPECT_FLOAT_EQ(sh[c].w, 0.3f);
+        EXPECT_FLOAT_EQ(sh[c].x, 0.0f);
+        EXPECT_NEAR(sh[c].y, 0.0f, 1e-7f);
+        EXPECT_FLOAT_EQ(sh[c].z, 0.0f);
+    }
 }

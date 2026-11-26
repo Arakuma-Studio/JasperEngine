@@ -1111,6 +1111,64 @@ const char* sgj_api_version(void) {
     return version;
 }
 
+// the driver's version (sokol_gpu_timer.h); "" before the device exists
+const char* sgj_driver_version(void) {
+    static char version[512];
+    version[0] = '\0';
+    if (!_sg.valid)
+        return version;
+    #if defined(__EMSCRIPTEN__)
+        // WebGL hides the driver
+    #elif defined(_SOKOL_ANY_GL)
+        const char* text = (const char*)glGetString(GL_VERSION);
+        std::snprintf(version, sizeof(version), "%s", text ? text : "");
+    #elif defined(SOKOL_VULKAN)
+        const VkPhysicalDeviceProperties& props = _sg.vk.dev_props.properties;
+        bool named = false;
+        if (props.apiVersion >= VK_API_VERSION_1_2) {
+            VkPhysicalDeviceDriverProperties driver = {};
+            driver.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+            VkPhysicalDeviceProperties2 props2 = {};
+            props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            props2.pNext = &driver;
+            vkGetPhysicalDeviceProperties2(_sg.vk.phys_dev, &props2);
+            if (driver.driverName[0]) {
+                std::snprintf(version, sizeof(version), "%s %s", driver.driverName, driver.driverInfo);
+                named = true;
+            }
+        }
+        if (!named) {
+            const uint32_t v = props.driverVersion;
+            if (props.vendorID == 0x10de) {
+                // NVIDIA: 10.8.8.6 bits
+                std::snprintf(version, sizeof(version), "%u.%u.%u.%u", (v >> 22) & 0x3ff, (v >> 14) & 0xff, (v >> 6) & 0xff, v & 0x3f);
+            } else {
+                std::snprintf(version, sizeof(version), "%u.%u.%u", VK_VERSION_MAJOR(v), VK_VERSION_MINOR(v), VK_VERSION_PATCH(v));
+            }
+        }
+    #elif defined(SOKOL_D3D11)
+        IDXGIDevice* dxgi_device = nullptr;
+        if (SUCCEEDED(_sg.d3d11.dev->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgi_device)) && dxgi_device) {
+            IDXGIAdapter* adapter = nullptr;
+            if (SUCCEEDED(dxgi_device->GetAdapter(&adapter)) && adapter) {
+                LARGE_INTEGER umd = {};
+                if (SUCCEEDED(adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &umd))) {
+                    const uint64_t q = (uint64_t)umd.QuadPart;
+                    std::snprintf(version, sizeof(version), "%u.%u.%u.%u", (unsigned)((q >> 48) & 0xffff), (unsigned)((q >> 32) & 0xffff),
+                                  (unsigned)((q >> 16) & 0xffff), (unsigned)(q & 0xffff));
+                }
+                adapter->Release();
+            }
+            dxgi_device->Release();
+        }
+    #elif defined(SOKOL_METAL)
+        // Metal's driver ships with the OS
+        const NSOperatingSystemVersion os = [[NSProcessInfo processInfo] operatingSystemVersion];
+        std::snprintf(version, sizeof(version), "%ld.%ld.%ld", (long)os.majorVersion, (long)os.minorVersion, (long)os.patchVersion);
+    #endif
+    return version;
+}
+
 const char* sgj_pixel_format_name(int format) {
     switch ((sg_pixel_format)format) {
         case SG_PIXELFORMAT_NONE: return "NONE";

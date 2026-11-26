@@ -91,6 +91,9 @@ add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_help
 jasperengine_skip_unity_build(
     REASON "replaces the global operator new and delete: in a batch GCC inlines them into their callers and reports a mismatched new and free"
     SOURCES ${CMAKE_CURRENT_LIST_DIR}/support/AllocationProbe.cpp)
+jasperengine_skip_unity_build(
+    REASON "uses the namespace recordinput, whose Settings the Recorder's tests' namespace recorder also declares"
+    SOURCES ${CMAKE_CURRENT_LIST_DIR}/recorder/RecordInputTest.cpp)
 # Every later batch of 16 moves by one source per test file added before it, and several editor
 # tests (pixelart, titleart, reflect) keep file-scope using-directives whose Json, Kind, RgbaImage
 # or detail meet another test's in a moved batch: S97's tests stay out of the batches

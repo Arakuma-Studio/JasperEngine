@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "input/InputRecorder.h"
 #include <cmath>
 #include "object/spline/Spline.h"
 #include "object/spline/SplineAnimate.h"
@@ -543,7 +544,8 @@ static void noteUIPointerSubscription(lua_State* L, int eventIndex, int selfInde
 }
 
 // Common implementation for event registration
-int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive) {
+int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive,
+                                     int32_t priority) {
     // Look up self[methodName] using __index
     lua_pushvalue(L, selfIndex);
     lua_pushstring(L, methodName);
@@ -567,6 +569,8 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     lua_pushvalue(L, methodFuncIndex); // method
     lua_pushvalue(L, selfIndex);       // self
     lua_pushboolean(L, guardActive ? 1 : 0);
+    // Simulation Culling's family of the engine event (D7), learnt once here from its name
+    lua_pushinteger(L, guardActive ? detail::engineEventFamily(methodName) : 0);
     lua_pushcclosure(L,
         [](lua_State* Linner) -> int {
             int nargs = lua_gettop(Linner);
@@ -574,6 +578,9 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             // exemption (S48)
             Scene* ownerScene = nullptr;
             Entity ownerEntity = NULL_ENTITY;
+            // a Simulation Culling reduced call (its delta) and whether it is one
+            double reducedDelta = 0.0;
+            bool reduced = false;
 
             if (lua_toboolean(Linner, lua_upvalueindex(3))) {
                 const int self = lua_upvalueindex(2);
@@ -606,6 +613,14 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                 if (scene && entity > 0 && !isScriptActive(scene, static_cast<Entity>(entity), instance)) {
                     return 0;
                 }
+                const int family = static_cast<int>(lua_tointeger(Linner, lua_upvalueindex(4)));
+                if (family != 0 && scene && entity > 0 && detail::simulationCullingActive.load(std::memory_order_relaxed)) {
+                    const SimulationGate gate = simulationCullingGate(scene, static_cast<unsigned int>(entity), family, reducedDelta);
+                    if (gate == SimulationGate::Skip) {
+                        return 0;
+                    }
+                    reduced = gate == SimulationGate::Reduced;
+                }
                 if (scene && entity > 0) {
                     ownerScene = scene;
                     ownerEntity = static_cast<Entity>(entity);
@@ -624,7 +639,16 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             int status;
             {
                 pixelart::HitStop::ScriptScope owner(ownerScene, ownerEntity);
-                status = pcallWithTraceback(Linner, 1 + nargs, LUA_MULTRET);
+                // what the script makes that it owns (a CullingGroup) is released with it
+                const uint64_t previousScript = SubscriptionOwnerIndex::setScriptOwner(
+                    lua_toboolean(Linner, lua_upvalueindex(3)) ? ownerKeyOf(lua_topointer(Linner, lua_upvalueindex(2))) : 0);
+                if (reduced) {
+                    SimulationReducedScope reducedScope(ownerScene, ownerEntity, reducedDelta);
+                    status = pcallWithTraceback(Linner, 1 + nargs, LUA_MULTRET);
+                } else {
+                    status = pcallWithTraceback(Linner, 1 + nargs, LUA_MULTRET);
+                }
+                SubscriptionOwnerIndex::setScriptOwner(previousScript);
             }
             if (status != LUA_OK) {
                 return lua_error(Linner);
@@ -632,14 +656,14 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             // Filters like preSolve2D read what the method returns
             return lua_gettop(Linner) - nargs;
         },
-        3);
+        4);
     int closureIndex = lua_gettop(L);
 
     // a Lua Event: the listener is the script's own, dropped once it is released
     if (luabridge::isInstance<ScriptEvent>(L, eventIndex)) {
         auto event = luabridge::get<ScriptEvent*>(L, eventIndex);
         if (event && event.value()) {
-            event.value()->addTagged(L, eventIndex, lua_tostring(L, tagIndex), closureIndex, guardActive ? 0 : selfIndex);
+            event.value()->addTagged(L, eventIndex, lua_tostring(L, tagIndex), closureIndex, guardActive ? 0 : selfIndex, priority);
             return 0;
         }
     }
@@ -781,11 +805,11 @@ int LuaBinding::luaUnregisterEngineEvent(lua_State* L) {
     return removeSubscription(L, eventIndex, -1, "UnregisterEngineEvent");
 }
 
-// Generic: RegisterEvent(self, event, methodName [, tag])
+// Generic: RegisterEvent(self, event, methodName [, tag] [, priority])
 int LuaBinding::luaRegisterEvent(lua_State* L) {
     int top = lua_gettop(L);
     if (top < 3)
-        return luaL_error(L, "RegisterEvent(self, event, methodName [, tag]) requires at least 3 arguments");
+        return luaL_error(L, "RegisterEvent(self, event, methodName [, tag] [, priority]) requires at least 3 arguments");
 
     if (!lua_istable(L, 1))
         return luaL_error(L, "RegisterEvent: 'self' must be a table");
@@ -796,7 +820,15 @@ int LuaBinding::luaRegisterEvent(lua_State* L) {
     const char* methodName = lua_tostring(L, 3);
     const char* tag = (top >= 4 && !lua_isnil(L, 4)) ? lua_tostring(L, 4) : nullptr;
 
-    return luaRegisterEventImpl(L, 2, 1, methodName, tag, false);
+    // the fifth argument (a number fourth is still a tag): Lua Events only
+    int32_t priority = 0;
+    if (top >= 5 && !lua_isnil(L, 5)) {
+        if (!luabridge::isInstance<ScriptEvent>(L, 2))
+            return luaL_error(L, "RegisterEvent: priority is for Event and CancellableEvent; engine events run in subscription order");
+        priority = ScriptEvent::checkPriority(L, 5, "RegisterEvent");
+    }
+
+    return luaRegisterEventImpl(L, 2, 1, methodName, tag, false, priority);
 }
 
 // Engine-specific: RegisterEngineEvent(self, methodName [, tag])
@@ -927,16 +959,17 @@ void LuaBinding::init(){
         chunk = lua_reload::chunkName("lua/main.lua");
     }
 
+    // A main.lua that fails is logged and the game runs on with what it defined before the error.
+    // The state stays open: closing it here left luastate pointing at a freed state, which every
+    // later script, binding and frame then used (a crash on desktop, a hung web page).
     if (luaL_loadbuffer(L,(const char*)filedata.getMemPtr(),filedata.length(), chunk.c_str()) == 0){
         if(pcallWithTraceback(L, 0, LUA_MULTRET) != 0){
             logLuaError("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());
             lua_pop(L, 1);
-            lua_close(L);
         }
     }else{
         logLuaError("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());
         lua_pop(L, 1);
-        lua_close(L);
     }
 
 }
@@ -945,6 +978,15 @@ void LuaBinding::registerClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
     // luaL_openlibs() open all libraries: base, string, io, os, package, table, debug
     luaL_openlibs(L);
+    // an input recording's replay starts from its seed (input/InputRecorder.h)
+    uint32_t inputSeed = 0;
+    if (input::takePendingLuaSeed(inputSeed)) {
+        lua_getglobal(L, "math");
+        lua_getfield(L, -1, "randomseed");
+        lua_pushinteger(L, (lua_Integer)inputSeed);
+        if (lua_pcall(L, 1, 0, 0) != LUA_OK) lua_pop(L, 1);
+        lua_pop(L, 1);
+    }
 
     registerCoreClasses(L);
     registerGameObjectClasses(L);
@@ -955,6 +997,8 @@ void LuaBinding::registerClasses(lua_State *L){
     registerIOClasses(L);
     registerMathClasses(L);
     registerPhysicsQueryClasses(L);
+    // after the core classes and S96's queries: reopens Physics, Physics2D and MeshRaycast
+    registerSpatialQueryClasses(L);
     // after the GameObject and math classes: the module proxies on ParticleSystem (MinMaxCurve values)
     registerParticleClasses(L);
     registerNetClasses(L);
@@ -984,11 +1028,16 @@ void LuaBinding::registerClasses(lua_State *L){
     registerPixelArtClasses(L);
     registerSortingClasses(L);
     registerHitStopClasses(L);
+    registerCullingClasses(L);
     registerTransitionClasses(L);
     // after the Transition classes: PixelFX (with glitch) reopened for play and set
     registerPixelFxClasses(L);
     registerTilemapClasses(L);
     registerCrashClasses(L);
+    registerInputRecordingClasses(L);
+    registerLocalizationClasses(L);
+    registerSaveGameClasses(L);
+    registerDialogueClasses(L);
 #ifdef JASPERENGINE_PHYSICS_3D
     // after the GameObject classes, which it reopens for getWheelCollider
     registerVehicleClasses(L);

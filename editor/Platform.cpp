@@ -304,8 +304,13 @@ std::string editor::Platform::getRegionOverride(){
     return HostServices::regionOverride();
 }
 
+// Play with an active Build Profile takes its identity (build-profiles R9), which Play's start set
+bool editor::Platform::playsBuildProfile() const{
+    return !System::getBuildProfile().empty() && project->isAnyScenePlaying();
+}
+
 std::string editor::Platform::getAppVersion(){
-    return project->getApplicationVersion();
+    return playsBuildProfile() ? System::getApplicationInfo().version : project->getApplicationVersion();
 }
 
 int64_t editor::Platform::getAppBuild(){
@@ -313,11 +318,11 @@ int64_t editor::Platform::getAppBuild(){
 }
 
 std::string editor::Platform::getAppIdentifier(){
-    return project->getApplicationIdentifier();
+    return playsBuildProfile() ? System::getApplicationInfo().identifier : project->getApplicationIdentifier();
 }
 
 std::string editor::Platform::getAppName(){
-    return project->getApplicationName();
+    return playsBuildProfile() ? System::getApplicationInfo().name : project->getApplicationName();
 }
 
 std::string editor::Platform::getOperatingSystem(){

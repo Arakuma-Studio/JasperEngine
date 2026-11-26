@@ -73,6 +73,12 @@ namespace {
             {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
             // .mesh assets (S98 F1): binary, so their GUID is in a .meta
             {{AssetType::Mesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".mesh"}},
+            // String Tables and their translations (game-ui-localization.md R41): JSON with a top-level "guid"
+            {{AssetType::StringTable, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".stringtable", ".translation"}},
+            // dialogue graphs (dialogue-graphs.md R30): a graph file with a top-level "guid", as .procmat
+            {{AssetType::Dialogue, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".dialogue"}},
+            // a light's IES Profile (S99): the file holds no GUID, its .meta does
+            {{AssetType::IesProfile, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ies"}},
         };
         return table;
     }

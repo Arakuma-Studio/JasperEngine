@@ -5,6 +5,7 @@
 #define JasperEngineApple_h
 
 #include "System.h"
+#include "input/TextEntry.h"
 
 class JasperEngineApple: public jasperengine::System{
 
@@ -28,6 +29,8 @@ public:
     virtual bool isTouchDevice() override;
 
     virtual void showVirtualKeyboard(std::wstring text) override;
+    // iOS: the field's traits on the hidden text field (ios/TextTraitsMap.h)
+    virtual void showVirtualKeyboard(const std::wstring& text, const jasperengine::TextEntryTraits& traits) override;
     virtual void hideVirtualKeyboard() override;
 
     virtual void setClipboardText(const std::string& utf8) override;

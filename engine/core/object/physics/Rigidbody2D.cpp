@@ -959,6 +959,12 @@ void Rigidbody2D::setLinearVelocity(Vector2 linearVelocity){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     float pointsToMeterScale = getPointsToMeterScale();
 
+    // frozen by Simulation Culling: given to the body when it thaws
+    if (body.simulationFrozen){
+        body.frozenLinearVelocity = Vector2(linearVelocity.x / pointsToMeterScale, linearVelocity.y / pointsToMeterScale);
+        return;
+    }
+
     checkBody(body);
     scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, true, false);
     // points per second, like positions
@@ -967,6 +973,11 @@ void Rigidbody2D::setLinearVelocity(Vector2 linearVelocity){
 
 void Rigidbody2D::setAngularVelocity(float angularVelocity){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+
+    if (body.simulationFrozen){
+        body.frozenAngularVelocity = angularVelocity;
+        return;
+    }
 
     checkBody(body);
     scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, false, true);
@@ -1037,6 +1048,10 @@ void Rigidbody2D::setType(BodyType type){
     scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, true, true);
 
     body.type = type;
+    // frozen by Simulation Culling: the body takes the type when it thaws
+    if (body.simulationFrozen){
+        return;
+    }
     if (b2Body_IsValid(body.body) && b2Body_GetType(body.body) != getBodyTypeToB2(type)){
         // Box2D computes the mass again
         b2Body_SetType(body.body, getBodyTypeToB2(type));
@@ -1071,8 +1086,12 @@ void Rigidbody2D::setGravityScale(float gravityScale){
 Vector2 Rigidbody2D::getLinearVelocity() const{
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    checkBody(body);
     float pointsToMeterScale = getPointsToMeterScale();
+    // frozen by Simulation Culling: the velocity it had, which it gets back when it thaws
+    if (body.simulationFrozen){
+        return Vector2(body.frozenLinearVelocity.x * pointsToMeterScale, body.frozenLinearVelocity.y * pointsToMeterScale);
+    }
+    checkBody(body);
     b2Vec2 vec = b2Body_GetLinearVelocity(body.body);
 
     return Vector2(vec.x * pointsToMeterScale, vec.y * pointsToMeterScale);
@@ -1080,6 +1099,10 @@ Vector2 Rigidbody2D::getLinearVelocity() const{
 
 float Rigidbody2D::getAngularVelocity() const{
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+
+    if (body.simulationFrozen){
+        return body.frozenAngularVelocity;
+    }
 
     checkBody(body);
     return b2Body_GetAngularVelocity(body.body);
@@ -1129,6 +1152,11 @@ bool Rigidbody2D::isBullet() const{
 
 BodyType Rigidbody2D::getType() const{
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+
+    // frozen by Simulation Culling: kinematic in Box2D, the authored type to scripts
+    if (body.simulationFrozen){
+        return body.type;
+    }
 
     if (b2Body_IsValid(body.body)){
         return getB2ToBodyType(b2Body_GetType(body.body));

@@ -106,3 +106,24 @@ TEST(Photometry, UnitChangePreservesBrightness){
     EXPECT_EQ(LightPhotometry::validUnit(LightUnit::LUMEN, LightType::DIRECTIONAL), LightUnit::LUX);
     EXPECT_EQ(LightPhotometry::validUnit(LightUnit::LUX, LightType::SPOT), LightUnit::CANDELA);
 }
+
+// an Area Light's physical unit is the nit, its face's luminance (spec S99 R34): the same number
+// as a candela, per square metre of the face; the other lights never take it
+TEST(Photometry, AreaLightTakesNits){
+    EXPECT_TRUE(LightPhotometry::isUnitValid(LightUnit::NITS, LightType::AREA));
+    EXPECT_TRUE(LightPhotometry::isUnitValid(LightUnit::ENGINE, LightType::AREA));
+    EXPECT_FALSE(LightPhotometry::isUnitValid(LightUnit::CANDELA, LightType::AREA));
+    EXPECT_FALSE(LightPhotometry::isUnitValid(LightUnit::NITS, LightType::SPOT));
+    EXPECT_EQ(LightPhotometry::validUnit(LightUnit::LUX, LightType::AREA), LightUnit::NITS);
+    EXPECT_EQ(LightPhotometry::validUnit(LightUnit::NITS, LightType::POINT), LightUnit::CANDELA);
+    EXPECT_EQ(LightPhotometry::validUnit(LightUnit::NITS, LightType::DIRECTIONAL), LightUnit::LUX);
+    EXPECT_STREQ(LightPhotometry::getUnitName(LightUnit::NITS), "Nits");
+
+    LightComponent light;
+    light.type = LightType::AREA;
+    light.intensity = 500.0f;
+    light.intensityUnit = LightUnit::NITS;
+    LightPhotometry::resolveLight(light, 9.0f);
+    EXPECT_NEAR(light.resolvedIntensity, LightPhotometry::toEngineIntensity(500.0f, LightUnit::CANDELA, 9.0f), 1e-6f);
+    EXPECT_NEAR(LightPhotometry::fromEngineIntensity(light.resolvedIntensity, LightUnit::NITS, 9.0f), 500.0f, 1e-2f);
+}

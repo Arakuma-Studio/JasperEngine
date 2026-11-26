@@ -8,6 +8,7 @@
 // the windows draw that MCP does not set (their get reads the value).
 
 #include "SettingsRegistry.h"
+#include "recorder/RecordInput.h"
 
 #include "App.h"
 #include "AppSettings.h"
@@ -15,13 +16,17 @@
 #include "SceneBackup.h"
 #include "diag/CrashHandler.h"
 #include "Project.h"
+#include "export/SizeBudget.h"
 #include "util/TitleArtLanguage.h"
+#include "localization/StringTableDocument.h"
 #include "util/PlatformRules.h"
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
+#include "command/type/SaveGameSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/PhysicsQuerySettingsCmd.h"
 #include "titleart/TitleArtSettingsCmd.h"
 #include "command/type/DrawSubmissionSettingsCmd.h"
 #include "command/type/SortingLayersCmd.h"
@@ -789,6 +794,36 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
     return s;
 }
 
+// Project Settings > Physics / Physics 2D > Queries Hit Triggers: one undoable step per change
+Setting queriesHitTriggersSetting(const std::string& key, bool is2D) {
+    Setting s;
+    s.key = key;
+    s.type = "bool";
+    s.description = std::string("Whether ") + (is2D ? "2D" : "3D") + " queries (raycasts, overlaps, casts) report trigger colliders when their "
+                    "QueryTriggerInteraction is USE_GLOBAL (default true). Undoable (undo scope project).";
+    s.get = [is2D](SettingsContext& ctx) {
+        const PhysicsQuerySettings& queries = ctx.project()->getPhysicsQuerySettings();
+        return Json(is2D ? queries.hitTriggers2D : queries.hitTriggers3D);
+    };
+    s.set = [is2D](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        bool b;
+        if (!readBool(value, b, error)) return false;
+        Project* p = ctx.project();
+        PhysicsQuerySettings changed = p->getPhysicsQuerySettings();
+        (is2D ? changed.hitTriggers2D : changed.hitTriggers3D) = b;
+        if (apply && changed != p->getPhysicsQuerySettings()) {
+            auto* command = new PhysicsQuerySettingsCmd(p, p->getPhysicsQuerySettings(), changed);
+            command->setNoMerge();
+            if (!p->getProjectCommandHistory()->addCommand(command)) {
+                error = "the queries hit triggers setting could not be applied";
+                return false;
+            }
+        }
+        return true;
+    };
+    return s;
+}
+
 // Project Settings > Title Art: one key of TitleArtProjectSettings, applied as one undoable step
 Setting titleArtSetting(const std::string& key, const std::string& type, const std::string& description, std::vector<std::string> values,
                         std::function<Json(const TitleArtProjectSettings&)> get,
@@ -837,7 +872,7 @@ bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmis
 // step (undo scope project)
 bool setSorting(SettingsContext& ctx, const SortingSettings& changed, bool apply, std::string& error) {
     Project* p = ctx.project();
-    if (apply && changed != SortingSettings::current()) {
+    if (apply && changed != SortingSettings::of(*p)) {
         auto* command = new SortingLayersCmd(p, changed);
         command->setNoMerge();
         if (!p->getProjectCommandHistory()->addCommand(command)) {
@@ -959,7 +994,7 @@ void addDeviceSettings(const std::function<void(Setting)>& add) {
                 std::string("The ") + DeviceNames::tierLabel(tier) + " tier's overrides on " + DeviceNames::groupLabel(group) +
                 " (docs/device-tiers.md): an object of cells merged in, null inherits the project's value; caps lower, never raise "
                 "(render_scale, msaa_samples, shadow_quality, shadow_distance, lit_quality, target_frame_rate, max_pixel_lights, "
-                "particle_budget), texture_quality drops at least, bloom/ssao/volumetrics false turns them off, lod_bias and "
+                "particle_budget, cavity_samples 4/8/16), texture_quality drops at least, bloom/ssao/volumetrics false turns them off, lod_bias and "
                 "shadow_lod_bias multiply.",
                 [group, tier](const DeviceSettings& d) { return deviceTierJson(d.tier(group, tier)); },
                 [group, tier](DeviceSettings& d, const Json& v, std::string& e) { return mergeDeviceTier(d.tier(group, tier), v, e); }));
@@ -1048,6 +1083,32 @@ void addShaderCreationSettings(const std::function<void(Setting)>& add) {
             }
             if (apply && settings != ctx.project()->getShaderCreationSettings())
                 ctx.project()->getProjectCommandHistory()->addCommand(new ShaderCreationSettingsCmd(ctx.project(), settings));
+            return true;
+        };
+        add(s);
+    }
+}
+
+// Project Settings > Player > Saved Data: one MCP row per field of the reflection table
+// (editor/reflect/SaveGameReflect.cpp); a change is an undoable command
+void addSaveGameSettings(const std::function<void(Setting)>& add) {
+    for (const reflect::FieldDesc& field : reflect::saveGameSettingsStruct().fields) {
+        Setting s;
+        s.key = std::string("player.saved_data.") + (std::string(field.name) == "backups" ? "backups_kept" : "max_slot_size_mib");
+        s.type = "int";
+        s.description = std::string(field.tooltip ? field.tooltip : "") + " Undoable (undo scope project).";
+        const reflect::FieldDesc* desc = &field;
+        s.get = [desc](SettingsContext& ctx) {
+            SaveGameSettings settings = ctx.project()->getSaveGameSettings();
+            return Json(*static_cast<int*>(desc->ref(&settings)));
+        };
+        s.set = [desc](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+            SaveGameSettings settings = ctx.project()->getSaveGameSettings();
+            long long v;
+            if (!readInt(value, static_cast<long long>(desc->min), static_cast<long long>(desc->max), v, error)) return false;
+            *static_cast<int*>(desc->ref(&settings)) = static_cast<int>(v);
+            if (apply && settings != ctx.project()->getSaveGameSettings())
+                ctx.project()->getProjectCommandHistory()->addCommand(new SaveGameSettingsCmd(ctx.project(), settings));
             return true;
         };
         add(s);
@@ -1224,6 +1285,8 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolField("player.keep_screen_on", "Initial Screen.sleepTimeout on Android/iOS: true = NeverSleep, false = the device setting.",
                       [](Project& p) -> bool& { return p.getPresentationSettings().keepScreenOn; }));
+        add(boolField("player.pause_on_focus_loss", "Engine.onPauseRequested(reason) fires on a focus loss, an app pause and the gamepad's disconnect while no Is Menu document shows.",
+                      [](Project& p) -> bool& { return p.getPresentationSettings().pauseOnFocusLoss; }));
         {
             Setting s;
             s.key = "player.target_frame_rate";
@@ -1426,6 +1489,8 @@ std::vector<Setting> mcpSettingsTable() {
                         [](Project& p, bool v) { ThreadingProjectSettings settings = p.getThreadingSettings(); settings.webMultithreaded = v; p.setThreadingSettings(settings); }));
         add(boolSetting("player.development_build", "Development Build: Release builds keep the profiler and --profile/--profile-capture (S15).",
                         [](Project& p) { return p.isDevelopmentBuild(); }, [](Project& p, bool v) { p.setDevelopmentBuild(v); }));
+        add(boolSetting("player.include_tests", "Include Tests: a Development build carries Tests/ (no goldens) for --run-tests.",
+                        [](Project& p) { return p.isIncludeTests(); }, [](Project& p, bool v) { p.setIncludeTests(v); }));
         add(boolSetting("player.pack_native_resources", "Experimental: pack assets and Lua into resources.pak in native builds instead of copying folders.",
                         [](Project& p) { return p.shouldPackNativeResources(); }, [](Project& p, bool v) { p.setPackNativeResources(v); }));
         // S30: how Build makes the game, and the prebuilt player's content pack
@@ -1493,6 +1558,24 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolSetting("player.strip_engine_code", "Builds leave out the engine modules nothing in the project reaches (HTML UI, video, the runtime "
                         "shader compiler, 3D or 2D physics): a smaller player that behaves the same. Off: every module the settings allow.",
                         [](Project& p) { return p.isStripEngineCode(); }, [](Project& p, bool v) { p.setStripEngineCode(v); }));
+        {
+            Setting s;
+            s.key = "player.size_budgets";
+            s.type = "list";
+            s.description = "Size Budgets: [{platform, category, limit_mb}] checked at export against the Build Report (platform all, "
+                            "desktop or one; category total or one; 1 MB = 1,048,576 bytes); a platform's row replaces the all row.";
+            s.get = [](SettingsContext& ctx) { return sizebudget::toJson(ctx.project()->getSizeBudgets()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::vector<SizeBudgetRow> rows;
+                if (!sizebudget::fromJson(value, rows, error)) return false;
+                if (apply) ctx.project()->setSizeBudgets(rows);
+                return true;
+            };
+            add(s);
+        }
+        nameChoice("player.size_budget_action", "When Over Budget: warn (W-SIZE-BUDGET) or fail the build.", {"warn", "fail"},
+                   [](Project& p) { return std::string(p.isSizeBudgetFail() ? "fail" : "warn"); },
+                   [](Project& p, const std::string& v) { p.setSizeBudgetFail(v == "fail"); });
         // S98 REQ-8: Asset Stripping and its two lists (project-relative globs)
         nameChoice("player.asset_stripping", "What builds ship: ship_all (every asset), or referenced_only (what the build's scenes, project "
                    "settings and Lua/C++ string literals reach, plus player.always_include).", {"ship_all", "referenced_only"},
@@ -1538,6 +1621,23 @@ std::vector<Setting> mcpSettingsTable() {
         globList("player.always_include", "Project-relative globs (* ? **) that ship under referenced_only: files a script loads by a path "
                  "it builds at runtime.", false);
         globList("player.exclude_from_build", "Project-relative globs (* ? **) no build ships, under either mode; wins over always_include.", true);
+        // S99 R11: what a build of each family may weigh
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            const ModelFamily family = (ModelFamily)f;
+            Setting s;
+            s.key = std::string("player.download_budget_mb.") + modelFamilyName(family);
+            s.type = "number";
+            s.description = std::string("MB a ") + modelFamilyName(family) + (family == ModelFamily::Web ? " build downloads (gzip estimate)" : " build weighs") +
+                            "; over it build_project warns W-BUILD-OVER-BUDGET. 0 = off.";
+            s.get = [family](SettingsContext& ctx) { return Json(ctx.project()->getDownloadBudgetMB(family)); };
+            s.set = [family](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.0, 1e6, v, error)) return false;
+                if (apply) ctx.project()->setDownloadBudgetMB(family, v);
+                return true;
+            };
+            add(s);
+        }
         nameChoice("android.package_format", "Android builds make an App Bundle (aab, for Google Play: one ABI per device), one APK per ABI "
                    "(apk-per-abi), or one universal APK of every selected ABI (apk).", {"aab", "apk-per-abi", "apk"},
                    [](Project& p) { return p.getAndroidProjectSettings().packageFormat; },
@@ -2459,7 +2559,7 @@ std::vector<Setting> mcpSettingsTable() {
                     error = "must be \"default\" or \"custom_axis\"";
                     return false;
                 }
-                SortingSettings changed = SortingSettings::current();
+                SortingSettings changed = SortingSettings::of(*ctx.project());
                 changed.mode = value.get<std::string>() == "custom_axis" ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
                 return setSorting(ctx, changed, apply, error);
             };
@@ -2479,7 +2579,7 @@ std::vector<Setting> mcpSettingsTable() {
                     error = "must be [x, y, z]";
                     return false;
                 }
-                SortingSettings changed = SortingSettings::current();
+                SortingSettings changed = SortingSettings::of(*ctx.project());
                 changed.axis = Vector3(value[0].get<float>(), value[1].get<float>(), value[2].get<float>());
                 return setSorting(ctx, changed, apply, error);
             };
@@ -2581,8 +2681,9 @@ std::vector<Setting> mcpSettingsTable() {
             Setting s;
             s.key = "localization.languages";
             s.type = "list";
-            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). Title Art bakes, fonts and translations "
-                            "of other languages are left out of builds (W-TITLE-LANGUAGE-DROPPED); [] ships every language.";
+            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). String Table translations, bakes, fonts "
+                            "and translations of other languages are left out of builds (W-L10N-LANGUAGE-DROPPED, W-TITLE-LANGUAGE-DROPPED); "
+                            "[] ships every language.";
             s.get = [](SettingsContext& ctx) {
                 Json list = Json::array();
                 for (const std::string& code : ctx.project()->getLocalizationSettings().languages) list.push_back(code);
@@ -2625,6 +2726,197 @@ std::vector<Setting> mcpSettingsTable() {
                 return true;
             };
             add(s);
+        }
+        // game-ui-localization.md R30: Remember Language Choice and Language Fonts
+        add(boolSetting("localization.remember_language",
+                        "Localization.setLanguage's choice is remembered (UserSettings jasper.language) and comes before the device's languages at the next start.",
+                        [](Project& p) { return p.getLocalizationSettings().rememberLanguage; },
+                        [](Project& p, bool v) { p.getLocalizationSettings().rememberLanguage = v; }));
+        {
+            // D-15: the String Table a key without a namespace reads
+            Setting s;
+            s.key = "localization.default_table";
+            s.type = "string";
+            s.description = "The String Table (its namespace) a key without one reads, so Localization.get(\"play\") works; \"\": the "
+                            "project's only String Table, if it has one.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getLocalizationSettings().defaultTable); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string()) {
+                    error = "must be a String Table's namespace or \"\"";
+                    return false;
+                }
+                const std::string ns = value.get<std::string>();
+                if (!ns.empty()) {
+                    bool found = false;
+                    for (const fs::path& owner : l10n::findTables(ctx.project()->getProjectPath())) {
+                        l10n::StringTableSet set;
+                        std::string ignored;
+                        if (l10n::loadSet(ctx.project()->getProjectPath(), owner, set, ignored) && set.table.ns == ns) found = true;
+                    }
+                    if (!found) {
+                        error = "no String Table has the namespace \"" + ns + "\" (edit_string_table lists them)";
+                        return false;
+                    }
+                }
+                if (apply) ctx.project()->getLocalizationSettings().defaultTable = ns;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "localization.fonts";
+            s.type = "object";
+            s.description = "Fonts per language, {\"ja\": [\"fonts/NotoSansJP.ttf\"]}: an HTML text run in that language gets them before the other "
+                            "fallback faces, and a Text whose font is empty uses the first.";
+            s.get = [](SettingsContext& ctx) {
+                Json fonts = Json::object();
+                for (const auto& [code, list] : ctx.project()->getLocalizationSettings().fonts) fonts[code] = list;
+                return fonts;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_object()) {
+                    error = "must be an object {language: [font paths]}";
+                    return false;
+                }
+                std::map<std::string, std::vector<std::string>> fonts;
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    if (!TitleArtLanguage::isValid(it.key(), &error)) return false;
+                    if (!it->is_array()) {
+                        error = "the fonts of " + it.key() + " must be a list of font paths";
+                        return false;
+                    }
+                    std::vector<std::string>& list = fonts[TitleArtLanguage::canonicalize(it.key())];
+                    for (const Json& path : *it) {
+                        if (!path.is_string() || path.get<std::string>().empty()) {
+                            error = "the fonts of " + it.key() + " must be a list of font paths";
+                            return false;
+                        }
+                        list.push_back(path.get<std::string>());
+                    }
+                }
+                if (apply) ctx.project()->getLocalizationSettings().fonts = std::move(fonts);
+                return true;
+            };
+            add(s);
+        }
+        // Project Settings > Dialogue (dialogue-graphs.md R23, R31): lists of objects, one undoable step each
+        {
+            auto prefixSetting = [](const char* key, const char* description, bool action) {
+                Setting s;
+                s.key = key;
+                s.type = "list";
+                s.description = description;
+                s.get = [action](SettingsContext& ctx) {
+                    const DialogueSettings& d = ctx.project()->getDialogueSettings();
+                    Json list = Json::array();
+                    for (const DialogueSettings::Prefix& prefix : action ? d.actionPrefixes : d.conditionPrefixes) {
+                        list.push_back({{"name", prefix.name}, {"description", prefix.description}, {"hint", prefix.hint}});
+                    }
+                    return list;
+                };
+                s.set = [action](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    if (!value.is_array()) {
+                        error = "must be a list of {name, description?, hint?} (or of names)";
+                        return false;
+                    }
+                    std::vector<DialogueSettings::Prefix> list;
+                    for (const Json& item : value) {
+                        DialogueSettings::Prefix prefix;
+                        if (item.is_string()) prefix.name = item.get<std::string>();
+                        else if (item.is_object()) {
+                            prefix.name = item.value("name", std::string());
+                            prefix.description = item.value("description", std::string());
+                            prefix.hint = item.value("hint", std::string());
+                        }
+                        while (!prefix.name.empty() && prefix.name.back() == '.') prefix.name.pop_back();
+                        if (prefix.name.empty() || prefix.name.find_first_of(". ") != std::string::npos) {
+                            error = "each prefix needs a name without dots or spaces (\"quest\")";
+                            return false;
+                        }
+                        list.push_back(prefix);
+                    }
+                    if (apply) (action ? ctx.project()->getDialogueSettings().actionPrefixes : ctx.project()->getDialogueSettings().conditionPrefixes) = std::move(list);
+                    return true;
+                };
+                return s;
+            };
+            add(prefixSetting("dialogue.action_prefixes", "The prefixes of dialogue actions game code registers (Dialogue.onAction): editor completion, and the "
+                              "lint warns on a prefix not listed. [] checks nothing.", true));
+            add(prefixSetting("dialogue.condition_prefixes", "The prefixes of dialogue conditions game code answers (Dialogue.onCondition), as action_prefixes.", false));
+            Setting variables;
+            variables.key = "dialogue.variables";
+            variables.type = "list";
+            variables.description = "Game-wide dialogue variables [{name, type: number|bool|string, default, description?}]: their default is what $name "
+                                    "reads first in Play and games; the lint warns on an undeclared one.";
+            variables.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const DialogueSettings::Variable& v : ctx.project()->getDialogueSettings().variables) {
+                    list.push_back({{"name", v.name}, {"type", v.type}, {"default", v.defaultValue}, {"description", v.description}});
+                }
+                return list;
+            };
+            variables.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of {name, type, default, description?}";
+                    return false;
+                }
+                std::vector<DialogueSettings::Variable> list;
+                for (const Json& item : value) {
+                    if (!item.is_object() || item.value("name", std::string()).empty()) {
+                        error = "each variable needs a name";
+                        return false;
+                    }
+                    DialogueSettings::Variable v;
+                    v.name = item.value("name", std::string());
+                    if (!v.name.empty() && v.name[0] == '$') v.name.erase(0, 1);
+                    v.type = item.value("type", std::string("number"));
+                    if (v.type != "number" && v.type != "bool" && v.type != "string") {
+                        error = "type of " + v.name + " is number, bool or string";
+                        return false;
+                    }
+                    const auto def = item.find("default");
+                    if (def != item.end()) v.defaultValue = def->is_string() ? def->get<std::string>() : def->dump();
+                    v.description = item.value("description", std::string());
+                    list.push_back(v);
+                }
+                if (apply) ctx.project()->getDialogueSettings().variables = std::move(list);
+                return true;
+            };
+            add(variables);
+            Setting speakers;
+            speakers.key = "dialogue.speakers";
+            speakers.type = "list";
+            speakers.description = "The speakers lines name [{id, display_key?}]: completion in the Dialogue window; a speaker shows the text of "
+                                   "speakers.<id> when a table has it.";
+            speakers.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const DialogueSettings::Speaker& sp : ctx.project()->getDialogueSettings().speakers) list.push_back({{"id", sp.id}, {"display_key", sp.displayKey}});
+                return list;
+            };
+            speakers.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of {id, display_key?}";
+                    return false;
+                }
+                std::vector<DialogueSettings::Speaker> list;
+                for (const Json& item : value) {
+                    DialogueSettings::Speaker sp;
+                    if (item.is_string()) sp.id = item.get<std::string>();
+                    else if (item.is_object()) {
+                        sp.id = item.value("id", std::string());
+                        sp.displayKey = item.value("display_key", std::string());
+                    }
+                    if (sp.id.empty()) {
+                        error = "each speaker needs an id";
+                        return false;
+                    }
+                    list.push_back(sp);
+                }
+                if (apply) ctx.project()->getDialogueSettings().speakers = std::move(list);
+                return true;
+            };
+            add(speakers);
         }
         // Project Settings > Title Art (S80 R52): one undoable step each
         add(titleArtSetting("title_art.auto_bake", "bool", "Rebake a Title Art document's existing outputs 500 ms after its last edit.", {},
@@ -2880,6 +3172,26 @@ std::vector<Setting> mcpSettingsTable() {
                   &PlayerCrashSettings::hangWatchdog);
         crashBool("player.crash.web_overlay", "Web: show \"The game stopped working. [Reload]\" after a crash.",
                   &PlayerCrashSettings::webCrashOverlay);
+        crashBool("player.crash.journal_engine_events", "The Gameplay Journal also records the engine's own events (scene loads, pause, focus...).",
+                  &PlayerCrashSettings::journalEngineEvents);
+        {
+            Setting s;
+            s.key = "player.crash.journal_kib";
+            s.type = "int";
+            s.description = "Gameplay Journal (Journal.log) memory in KiB, saved with crash, hang and user reports; 0 turns it off.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getPlayerCrash().journalKiB); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, PlayerCrashSettings::maxJournalKiB, v, error)) return false;
+                if (apply) {
+                    PlayerCrashSettings crash = ctx.project()->getPlayerCrash();
+                    crash.journalKiB = static_cast<int>(v);
+                    ctx.project()->setPlayerCrash(crash);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
         {
             Setting s;
             s.key = "player.crash.hang_seconds";
@@ -2996,9 +3308,11 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        add(queriesHitTriggersSetting("physics.queries_hit_triggers", false));
         add(boolSetting("physics2d.enabled", "2D physics (Box2D). Off leaves Rigidbody2Ds and joints out of builds.",
                         [](Project& p) { return p.isPhysics2DEnabled(); }, [](Project& p, bool v) { p.setPhysics2DEnabled(v); }));
         add(layerCollisionSetting("physics2d.layer_collision_matrix", false));
+        add(queriesHitTriggersSetting("physics2d.queries_hit_triggers", true));
         // ---- navigation (S19; agent types and areas: Window > AI > Navigation, set_navigation_settings)
         add(boolSetting("navigation.include_in_builds", "Recast/Detour in exported builds. Off: navmesh bakes, queries and agents fail; grids still work.",
                         [](Project& p) { return p.getNavigationSettings().includeInBuilds; },
@@ -3251,6 +3565,79 @@ std::vector<Setting> mcpSettingsTable() {
                 return true;
             };
             add(std::move(s));
+        }
+        // Input > Gamepad Cursor (GamepadCursor's project values)
+        {
+            auto cursorNumber = [&](const char* key, const char* description, double minimum, double maximum,
+                                    float GamepadCursorSettings::*field) {
+                Setting s;
+                s.key = std::string("input.gamepad_cursor.") + key;
+                s.type = "number";
+                s.description = description;
+                s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getGamepadCursorSettings().*field); };
+                s.set = [field, minimum, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    double v;
+                    if (!readNumber(value, minimum, maximum, v, error)) return false;
+                    if (apply) {
+                        GamepadCursorSettings settings = ctx.project()->getGamepadCursorSettings();
+                        settings.*field = static_cast<float>(v);
+                        ctx.project()->setGamepadCursorSettings(settings);
+                    }
+                    return true;
+                };
+                add(std::move(s));
+            };
+            cursorNumber("speed", "Gamepad cursor speed, canvas px/s at a 1080 px tall canvas.", 0.0, 100000.0, &GamepadCursorSettings::speed);
+            cursorNumber("acceleration_time", "Seconds from rest to full speed.", 0.0, 10.0, &GamepadCursorSettings::accelerationTime);
+            cursorNumber("slow_over_controls", "Speed factor over buttons, links and form controls (0..1).", 0.0, 1.0, &GamepadCursorSettings::slowOverControls);
+            cursorNumber("scroll_speed", "Right stick scroll, wheel lines/s.", 0.0, 1000.0, &GamepadCursorSettings::scrollSpeed);
+            cursorNumber("deadzone", "Radial stick deadzone (0..0.95).", 0.0, 0.95, &GamepadCursorSettings::deadzone);
+            cursorNumber("size", "Cursor size, CSS px.", 1.0, 512.0, &GamepadCursorSettings::size);
+            {
+                Setting s;
+                s.key = "input.gamepad_cursor.graphic";
+                s.type = "string";
+                s.description = "Cursor texture, assets-relative; \"\" = the built-in arrow.";
+                s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getGamepadCursorSettings().graphic); };
+                s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    std::string text;
+                    if (!readString(value, text, error)) return false;
+                    if (!text.empty() && !fs::exists(ctx.project()->getAssetsPath() / fs::path(text))) {
+                        error = "\"" + text + "\" is not a file in the assets folder";
+                        return false;
+                    }
+                    if (apply) {
+                        GamepadCursorSettings settings = ctx.project()->getGamepadCursorSettings();
+                        settings.graphic = text;
+                        ctx.project()->setGamepadCursorSettings(settings);
+                    }
+                    return true;
+                };
+                add(std::move(s));
+            }
+            {
+                Setting s;
+                s.key = "input.gamepad_cursor.hot_spot";
+                s.type = "list";
+                s.description = "[x, y] CSS px of the graphic on the cursor's point.";
+                s.get = [](SettingsContext& ctx) {
+                    const Vector2 hot = ctx.project()->getGamepadCursorSettings().hotSpot;
+                    return Json::array({hot.x, hot.y});
+                };
+                s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    if (!value.is_array() || value.size() != 2 || !value[0].is_number() || !value[1].is_number()) {
+                        error = "must be [x, y]";
+                        return false;
+                    }
+                    if (apply) {
+                        GamepadCursorSettings settings = ctx.project()->getGamepadCursorSettings();
+                        settings.hotSpot = Vector2(value[0].get<float>(), value[1].get<float>());
+                        ctx.project()->setGamepadCursorSettings(settings);
+                    }
+                    return true;
+                };
+                add(std::move(s));
+            }
         }
 
         // ---- audio (Project Settings > Audio)
@@ -3971,7 +4358,7 @@ std::vector<Setting> mcpSettingsTable() {
                     error = "the list must include \"Default\" (it cannot be removed; place it where it draws)";
                     return false;
                 }
-                SortingSettings changed = SortingSettings::current();
+                SortingSettings changed = SortingSettings::of(*ctx.project());
                 if (!SortingLayers::resolve(entries, changed.layers, error)) return false;
                 for (size_t a = 0; a < changed.layers.size(); a++) {
                     for (size_t b = a + 1; b < changed.layers.size(); b++) {
@@ -4246,6 +4633,7 @@ std::vector<Setting> mcpSettingsTable() {
         };
         toolPreference("preferences.android_sdk_path", "androidSdk", "External Tools: the Android SDK of prebuilt Android builds (\"\" = ANDROID_HOME / ANDROID_SDK_ROOT).");
         toolPreference("preferences.jdk_path", "jdk", "External Tools: the JDK (keytool, jarsigner, java) of Android builds (\"\" = JAVA_HOME / PATH).");
+        toolPreference("preferences.adb_path", "adb", "External Tools: adb of Build And Run on Android devices (\"\" = the Android SDK's platform-tools, then PATH).");
         toolPreference("preferences.steamcmd_path", "steamcmd", "External Tools: SteamCMD for Steam uploads (\"\" = STEAMCMD_HOME / PATH).");
         toolPreference("preferences.rcodesign_path", "rcodesign", "External Tools: rcodesign, which signs macOS builds on any computer (\"\" = PATH).");
         // S44 §6.8: settings.yaml externalTools.aseprite.path
@@ -4327,6 +4715,7 @@ std::vector<Setting> mcpSettingsTable() {
         }
         // ---- graphics: shader creation (spec S32), from its reflection table
         addShaderCreationSettings(add);
+        addSaveGameSettings(add);
         // ---- quality: device tiers, LOD biases, thermal response; graphics: upload budget (S56)
         addDeviceSettings(add);
         return t;
@@ -4351,8 +4740,11 @@ const Placement placements[] = {
     {"player.default_orientation", "Player", "Resolution and Presentation", "Default Orientation", "orientation portrait landscape auto rotation android ios"},
     {"player.allowed_orientations", "Player", "Resolution and Presentation", "Allowed Orientations for Auto Rotation", "orientation rotation android ios"},
     {"player.keep_screen_on", "Player", "Resolution and Presentation", "Keep Screen On", "sleep timeout screen on"},
+    {"player.pause_on_focus_loss", "Player", "Resolution and Presentation", "Pause On Focus Loss", "pause menu focus lost background onPauseRequested"},
     {"player.target_frame_rate", "Player", "Resolution and Presentation", "Target Frame Rate", "fps frame rate"},
     {"player.allow_insecure_http", "Player", "Other Settings", "Allow Insecure HTTP", "http cleartext network"},
+    {"player.saved_data.backups_kept", "Player", "Saved Data", "Backups Kept", "save game slots backups generations recovery"},
+    {"player.saved_data.max_slot_size_mib", "Player", "Saved Data", "Max Slot Size (MiB)", "save game slots size cap too large"},
     {"player.window_icon", "Player", "Icon", "Default Icon", "icon window taskbar"},
     {"player.window_mode", "Player", "Resolution and Presentation", "Fullscreen Mode", "window mode windowed maximized"},
     {"player.window_width", "Player", "Resolution and Presentation", "Default Screen Width", "window resolution"},
@@ -4380,13 +4772,19 @@ const Placement placements[] = {
     {"player.target_platforms", "Player", "Publishing Settings", "Target Platforms",
      "platforms targets ship export mobile desktop android ios web windows linux macos"},
     {"player.development_build", "Player", "Publishing Settings", "Development Build", "profiler"},
+    {"player.include_tests", "Player", "Publishing Settings", "Include Tests", "tests run_tests run-tests development"},
     {"player.pack_native_resources", "Player", "Publishing Settings", "Native Resource Pack", "resources pak"},
     {"player.build_method", "Player", "Publishing Settings", "Build Method", "prebuilt compile player"},
     {"player.pack_content", "Player", "Publishing Settings", "Content Pack", "jpak pack"},
     {"player.strip_engine_code", "Player", "Publishing Settings", "Strip Engine Code", "size modules variant smaller"},
+    {"player.size_budgets", "Player", "Publishing Settings", "Size Budgets", "size budget download limit megabytes build report"},
+    {"player.size_budget_action", "Player", "Publishing Settings", "When Over Budget", "size budget download warn fail build"},
     {"player.asset_stripping", "Player", "Build", "Asset Stripping", "strip unused unreferenced assets size referenced only ship all"},
     {"player.always_include", "Player", "Build", "Always Include", "strip resources streaming assets include build glob"},
     {"player.exclude_from_build", "Player", "Build", "Exclude From Build", "strip exclude ignore build glob"},
+    {"player.download_budget_mb.desktop", "Player", "Publishing Settings", "Download Budget MB (Desktop)", "build size budget W-BUILD-OVER-BUDGET"},
+    {"player.download_budget_mb.mobile", "Player", "Publishing Settings", "Download Budget MB (Mobile)", "build size budget android ios W-BUILD-OVER-BUDGET"},
+    {"player.download_budget_mb.web", "Player", "Publishing Settings", "Download Budget MB (Web)", "build size budget gzip W-BUILD-OVER-BUDGET"},
     {"android.package_format", "Player", "Android", "Package Format", "android apk aab bundle abi universal split"},
     {"android.keystore_path", "Player", "Android", "Keystore", "android signing key"},
     {"android.keystore_alias", "Player", "Android", "Key Alias", "android signing key"},
@@ -4489,6 +4887,10 @@ const Placement placements[] = {
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"localization.languages", "Localization", "", "Languages", "language locale translation"},
     {"localization.default_language", "Localization", "", "Default Language", "language locale translation"},
+    {"dialogue.action_prefixes", "Dialogue", "", "Action Prefixes", "dialogue conversation handler action prefix quest shop"},
+    {"dialogue.condition_prefixes", "Dialogue", "", "Condition Prefixes", "dialogue conversation handler condition prefix"},
+    {"dialogue.variables", "Dialogue", "", "Variables", "dialogue conversation variables state default"},
+    {"dialogue.speakers", "Dialogue", "", "Speakers", "dialogue conversation speakers characters names npc"},
     {"title_art.auto_bake", "Title Art", "", "Auto Bake", "titleart bake automatic outputs png"},
     {"title_art.stale_bakes_on_export", "Title Art", "", "Stale Bakes On Export", "titleart export rebake warn fail outputs"},
     {"title_art.frame_budget_ms", "Title Art", "Runtime", "Frame Budget", "titleart realtime glyph atlas render time slice ms"},
@@ -4515,7 +4917,9 @@ const Placement placements[] = {
     {"physics.max_bodies", "Physics", "3D World Capacity", "Max Bodies", "jolt capacity limit rigidbodies"},
     {"physics.max_body_pairs", "Physics", "3D World Capacity", "Max Body Pairs", "jolt capacity limit contacts"},
     {"physics.max_contact_constraints", "Physics", "3D World Capacity", "Max Contact Constraints", "jolt capacity limit contacts"},
+    {"physics.queries_hit_triggers", "Physics", "", "Queries Hit Triggers", "raycast overlap cast trigger sensor querytriggerinteraction"},
     {"physics2d.enabled", "Physics 2D", "", "2D Physics", "box2d rigidbody 2d"},
+    {"physics2d.queries_hit_triggers", "Physics 2D", "", "Queries Hit Triggers", "raycast overlap cast trigger sensor querytriggerinteraction 2d"},
     {"physics2d.layer_collision_matrix", "Physics 2D", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"animation.animation_entities", "Animation", "", "Animation Entities", "model clips animation player animator entities auto"},
     {"navigation.include_in_builds", "Navigation", "", "Include in Builds", "navmesh recast detour strip export"},
@@ -4529,6 +4933,14 @@ const Placement placements[] = {
     {"voxel.ignore_dimension_limits", "Voxels", "", "Ignore Dimension Limits", "voxel volume export oversize"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
+    {"input.gamepad_cursor.speed", "Input", "Gamepad Cursor", "Cursor Speed", "gamepad cursor pointer virtual mouse stick speed"},
+    {"input.gamepad_cursor.acceleration_time", "Input", "Gamepad Cursor", "Acceleration Time", "gamepad cursor pointer acceleration ramp"},
+    {"input.gamepad_cursor.slow_over_controls", "Input", "Gamepad Cursor", "Slow Over Controls", "gamepad cursor pointer slow buttons aim"},
+    {"input.gamepad_cursor.scroll_speed", "Input", "Gamepad Cursor", "Scroll Speed", "gamepad cursor right stick scroll wheel"},
+    {"input.gamepad_cursor.deadzone", "Input", "Gamepad Cursor", "Deadzone", "gamepad cursor stick dead zone"},
+    {"input.gamepad_cursor.graphic", "Input", "Gamepad Cursor", "Cursor Graphic", "gamepad cursor texture image arrow"},
+    {"input.gamepad_cursor.size", "Input", "Gamepad Cursor", "Cursor Size", "gamepad cursor size pixels"},
+    {"input.gamepad_cursor.hot_spot", "Input", "Gamepad Cursor", "Cursor Hot Spot", "gamepad cursor hotspot point offset"},
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
     // Project Settings > Pixel Art (S43 R4b; S42's Pixel Art page joins it)
     {"palettes.default", "Pixel Art", "", "Default Palette", "palette colours colors swatches snap lospec apply palette sweetie pico"},
@@ -4631,6 +5043,7 @@ const Placement placements[] = {
     {"preferences.ffmpeg_path", "External Tools", "Video Import", "FFmpeg", "video av1"},
     {"preferences.android_sdk_path", "External Tools", "Shipping", "Android SDK", "android sdk aapt2 apksigner build-tools"},
     {"preferences.jdk_path", "External Tools", "Shipping", "JDK", "java keytool jarsigner"},
+    {"preferences.adb_path", "External Tools", "Shipping", "adb", "android device emulator run device platform-tools"},
     {"preferences.steamcmd_path", "External Tools", "Shipping", "SteamCMD", "steam upload steampipe"},
     {"preferences.rcodesign_path", "External Tools", "Shipping", "rcodesign", "macos signing codesign"},
     {"preferences.aseprite_path", "External Tools", "Aseprite", "Aseprite", "aseprite pixel art sprite editor executable"},
@@ -4833,6 +5246,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Voxels", SettingsScope::Project, 18, "voxel volumes caves destruction dimension limits memory budget"},
         {"Title Art", SettingsScope::Project, 19, "title art titleart logo bake baked outputs png export stale"},
         {"Localization", SettingsScope::Project, 20, "localization localisation language languages locale translation"},
+        {"Dialogue", SettingsScope::Project, 21, "dialogue conversation npc dialog lines choices handlers prefixes variables speakers"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
@@ -4846,6 +5260,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Diagnostics", SettingsScope::Preference, 10, "crash hang watchdog freeze not responding reports"},
         {"Shader Cache", SettingsScope::Preference, 11, "shaders cache clear"},
         {"Version Control", SettingsScope::Preference, 12, "git svn subversion lfs lock commit merge"},
+        {"Play Mode", SettingsScope::Preference, 13, "record input replay recordings checkpoints probes frame rate"},
     };
     for (const SettingsPage& page : pages) {
         // two scopes may share a title (Scripting): names stay unique
@@ -5080,6 +5495,17 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             const vcs::SnapshotPtr& snapshot = ctx.project()->getVcs().snapshot();
             return Json(snapshot && snapshot->mergeDriverMissing ? "not set up" : "");
         }, "Set Up Smart Merge: git merges scenes and prefabs with the editor's scene merge (merge-scene) instead of its text merge"));
+    // Record Input's (input-recorder-and-input-scripts R37), per project
+    const char* playMode = "Play Mode";
+    addOrAbort(registry, uiRow("preferences.record_input.frame_rate", playMode, "Record Input", "Frame Rate", "record input fixed fps replay",
+        [](SettingsContext&) { return Json(recordinput::RecordInput::get().settings().frameRate); },
+        "The fixed frame rate a recorded Play runs at (its replays run at it too)"));
+    addOrAbort(registry, uiRow("preferences.record_input.checkpoint_frames", playMode, "Record Input", "Checkpoint Every", "record input checkpoint divergence hash",
+        [](SettingsContext&) { return Json(recordinput::RecordInput::get().settings().checkpointFrames); },
+        "Frames between the state checkpoints a replay compares (0: none)"));
+    addOrAbort(registry, uiRow("preferences.record_input.probes", playMode, "Record Input", "Probes", "record input probe positions divergence gameobjects",
+        [](SettingsContext&) { return Json(recordinput::RecordInput::get().settings().probes); },
+        "Up to 16 GameObject paths whose positions checkpoints store; empty: chosen when recording starts"));
 }
 
 } // namespace jasperengine::editor

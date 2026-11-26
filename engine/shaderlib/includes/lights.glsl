@@ -205,6 +205,52 @@ uniform u_fs_objectLights {
     uniform texture2D u_lightRecords;
 #endif
 
+// S99: Area Lights (USE_AREA_LIGHTS, includes/area_lights.glsl) and IES Profiles (USE_IES), the
+// built-in Lit's pixel lights only. Their records keep the layout above: an Area Light's
+// direction_inner.w is 2 + its half width (over 1.5), spot_shadow.z minus its half height and
+// color_outer its colour * intensity * area with w 0, so a variant without USE_AREA_LIGHTS draws
+// it as a spot of its front hemisphere; spot_shadow.w bit 14 is a Disc, bits 15-21 the light's
+// IES Profile band + 1. The LTC tables (High Lit Quality) and the profiles' bands share
+// u_lightProfiles (RenderSystem::updateLightProfiles), declared only by the variants reading it.
+#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && (defined(USE_AREA_LIGHTS) || defined(USE_IES))
+// a pixel light's spot_shadow.w as an int
+int lightPackedBits(int index){
+    #if defined(LIGHTS_TILED)
+        return int(tiledLightsTexel(tiledLightRecord(index) + 3).w);
+    #elif defined(LIGHTS_RECORDS)
+        return int(lightRecordEntry(index).y);
+    #else
+        return int(objectLights.spot_shadow[index].w);
+    #endif
+}
+#endif
+// (LIGHT_PROFILES_OFF: a variant they would take past the bind limits, ShaderVariantCompiler::compile,
+// leaves both out: its IES lights draw with their cones, its Area Lights with the representative point)
+#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && defined(USE_AREA_LIGHTS) && defined(USE_LIT_QUALITY) && !defined(LIGHT_PROFILES_OFF) && \
+    !(defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || defined(PBR_IRIDESCENCE) || \
+      defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HAIR))
+    #define AREA_LIGHTS_LTC
+#endif
+#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && defined(USE_IES) && !defined(DIRECTIONAL_LIGHTS_ONLY) && !defined(LIGHT_PROFILES_OFF)
+    #define LIGHTS_IES
+#endif
+#if defined(AREA_LIGHTS_LTC) || defined(LIGHTS_IES)
+    #define LIGHT_PROFILES
+    // RenderSystem::LIGHT_PROFILE_LUT_ROWS, IesProfile::GRID_COLUMNS, GRID_ROWS
+    #define LIGHT_PROFILE_LUT_ROWS 64.0
+    #define IES_GRID_COLUMNS 128.0
+    #define IES_GRID_ROWS 33.0
+    uniform texture2D u_lightProfiles;
+    // the spot masks' sampler where the variant has one (both linear and clamped to the edge), so
+    // the profiles take no sampler slot of their own there
+    #ifdef LIGHTS_SPOT_MASKS
+        #define LIGHT_PROFILES_SAMPLER u_spotMaskAtlas_smp
+    #else
+        uniform sampler u_lightProfiles_smp;
+        #define LIGHT_PROFILES_SAMPLER u_lightProfiles_smp
+    #endif
+#endif
+
 #include "includes/punctual.glsl"
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
     #include "includes/shadow_sampling.glsl"

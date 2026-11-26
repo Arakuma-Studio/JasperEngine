@@ -234,6 +234,21 @@ namespace {
                 if (!why.empty()) output = why;
             }
             if (!verified) findings.push_back(relative + ": apksigner verify failed: " + output);
+            // a Development Build's package lets run-as into its files: never in a release
+            if (target.flavour == "release") {
+                std::string badging;
+                bool dumped = false;
+                if (target.dumpBadging) {
+                    dumped = target.dumpBadging(apk, badging);
+                } else {
+                    std::string why;
+                    dumped = platform::AndroidTools::dumpBadging(apk, badging, why);
+                    if (!why.empty()) badging = why;
+                }
+                if (!dumped) findings.push_back(relative + ": cannot tell whether it is debuggable (aapt2 dump badging: " + badging + ")");
+                else if (badging.find("application-debuggable") != std::string::npos)
+                    findings.push_back(relative + ": a release package is debuggable (android:debuggable): build it without Development Build");
+            }
         }
     }
 

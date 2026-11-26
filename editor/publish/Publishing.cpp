@@ -9,6 +9,8 @@
 #include "Publishing.h"
 
 #include "ShippingTypes.h"
+#include "buildprofile/BuildProfile.h"
+#include "publish/StoreLimits.h"
 #include "io/AtomicFile.h"
 #include "platform/ExternalTools.h"
 #include "player/ContentManifest.h"
@@ -119,12 +121,13 @@ namespace {
     }
 
     ValidationTarget validationTarget(const std::string& platform, const std::string& arch, const std::string& backend,
-                                      const std::string& executable) {
+                                      const std::string& executable, const std::string& flavour) {
         ValidationTarget target;
         parseBuildPlatform(platform, target.platform);
         target.arch = arch;
         target.backend = backend;
         target.executable = executable;
+        target.flavour = flavour;
         return target;
     }
 
@@ -247,6 +250,7 @@ bool PublishingConfig::parse(const std::string& text, PublishingConfig& out, std
             target.depotId = t.contains("depotId") ? (t["depotId"].is_string() ? t["depotId"].get<std::string>() : t["depotId"].dump()) : "";
             target.deviceProfile = t.value("deviceProfile", "");
             target.requiredFiles = t.value("requiredFiles", std::vector<std::string>{});
+            target.profile = t.value("profile", "");
             out.targets[name] = target;
         }
         const ordered_json steam = in.value("steam", ordered_json::object());
@@ -285,6 +289,7 @@ std::string PublishingConfig::toJson() const {
         if (!t.depotId.empty()) target["depotId"] = t.depotId;
         if (!t.deviceProfile.empty()) target["deviceProfile"] = t.deviceProfile;
         target["requiredFiles"] = t.requiredFiles;
+        if (!t.profile.empty()) target["profile"] = t.profile;
         list[name] = target;
     }
     out["targets"] = list;
@@ -545,6 +550,71 @@ namespace {
 
 }
 
+namespace {
+
+    // the Build Profile a build was made with: content-manifest.json's, else build-report.json's
+    // (a mobile build packs its manifest); empty when neither names one
+    std::string builtProfileOf(const fs::path& build) {
+        for (const char* file : {"content-manifest.json", "build-report.json"}) {
+            std::string text;
+            if (!readText(build / file, text)) continue;
+            const nlohmann::json json = nlohmann::json::parse(text, nullptr, false);
+            if (json.is_object()) return json.value("buildProfile", std::string());
+        }
+        return std::string();
+    }
+
+    // R24: a target naming a profile is refused when its build, platform, backend or flavour is
+    // another's, or when the profile's store limits fail (errors here; warnings at build)
+    void checkTargetProfile(const fs::path& projectDir, const std::string& name, const publish::PublishTarget& target, const fs::path& build,
+                            std::vector<std::string>& problems, std::vector<std::string>& warnings) {
+        BuildProfile profile;
+        std::string error;
+        if (!buildprofiles::load(projectDir, target.profile, profile, error)) {
+            problems.push_back(name + ": " + error);
+            return;
+        }
+        const std::string platform = buildPlatformName(profile.platform);
+        if (target.platform != platform)
+            problems.push_back(name + ": platform " + target.platform + " differs from Build Profile '" + profile.name + "' (" + platform + ")");
+        if (!profile.backend.empty() && normalizeBackend(target.backend) != normalizeBackend(profile.backend))
+            problems.push_back(name + ": backend " + target.backend + " differs from Build Profile '" + profile.name + "' (" +
+                               normalizeBackend(profile.backend) + ")");
+        if (profile.development && target.flavour != (*profile.development ? "development" : "release"))
+            problems.push_back(name + ": flavour " + target.flavour + " differs from Build Profile '" + profile.name + "' (" +
+                               (*profile.development ? "development" : "release") + ")");
+        const std::string built = builtProfileOf(build);
+        if (built != profile.name)
+            problems.push_back(name + ": the build in " + build.generic_string() + " is " +
+                               (built.empty() ? std::string("of no Build Profile") : "of Build Profile '" + built + "'") + ", the target names '" +
+                               profile.name + "': build it with build_project profile \"" + profile.name + "\" (or build --profile)");
+        if (profile.store.empty() || profile.store == "none") return;
+        // what the build wrote, where it is loose (game.json), else the profile's own values
+        publish::StoreLimitInput input;
+        input.store = profile.store;
+        input.storeTitle = profile.storeTitle;
+        input.label = profile.productName;
+        input.identifier = profile.identifier;
+        std::string gameText;
+        if (readText(build / "game.json", gameText)) {
+            const nlohmann::json game = nlohmann::json::parse(gameText, nullptr, false);
+            if (game.is_object()) {
+                if (input.label.empty()) input.label = game.value("name", std::string());
+                if (input.identifier.empty()) input.identifier = game.value("appId", std::string());
+                input.version = game.value("version", std::string());
+            }
+        }
+        for (const publish::StoreFinding& finding : publish::checkStoreLimits(input)) {
+            // an identifier or version this build does not show (a packed mobile build) is not checked here
+            if ((finding.code == "E-STORE-IDENTIFIER" && input.identifier.empty()) || (finding.code == "E-STORE-VERSION" && input.version.empty()))
+                continue;
+            if (finding.error) problems.push_back(name + ": Build Profile '" + profile.name + "': " + finding.message + " (" + finding.code + ")");
+            else warnings.push_back(finding.code + ": " + name + ": " + finding.message);
+        }
+    }
+
+}
+
 bool publish::prepareRelease(const PrepareRequest& request, const PublishTools& tools, PrepareResult& result, std::vector<std::string>& problems) {
     if (!isIdentifier(request.release)) {
         problems.push_back("release name '" + request.release + "' must be letters, digits, '.', '_' or '-' (e.g. 1.0.0)");
@@ -584,10 +654,11 @@ bool publish::prepareRelease(const PrepareRequest& request, const PublishTools& 
             continue;
         }
         std::vector<std::string> findings;
-        validatePayload(source, validationTarget(target.platform, target.arch, target.backend, target.executable), findings);
+        validatePayload(source, validationTarget(target.platform, target.arch, target.backend, target.executable, target.flavour), findings);
         for (const std::string& file : target.requiredFiles)
             if (!fs::exists(source / editor::FileUtils::pathFromUtf8(file), ec)) findings.push_back("missing required file " + file);
         for (const std::string& finding : findings) problems.push_back(name + ": " + finding);
+        if (!target.profile.empty()) checkTargetProfile(request.projectDir, name, target, source, problems, result.warnings);
     }
     if (!problems.empty()) return false;
 
@@ -631,9 +702,9 @@ bool publish::prepareRelease(const PrepareRequest& request, const PublishTools& 
 
         // the payload after the split is the one that ships
         std::vector<std::string> findings;
-        validatePayload(content, validationTarget(target.platform, target.arch, target.backend, target.executable), findings);
+        validatePayload(content, validationTarget(target.platform, target.arch, target.backend, target.executable, target.flavour), findings);
         for (const std::string& finding : findings) problems.push_back(name + ": " + finding);
-        TreeManifestResult tree = treeManifest(content, targetOs(validationTarget(target.platform, target.arch, target.backend, "").platform));
+        TreeManifestResult tree = treeManifest(content, targetOs(validationTarget(target.platform, target.arch, target.backend, "", target.flavour).platform));
         for (const std::string& problem : tree.problems) problems.push_back(name + ": " + problem);
         if (!problems.empty()) return false;
 
@@ -679,7 +750,7 @@ bool publish::verifyRelease(const fs::path& releaseDir, std::vector<std::string>
         }
         const fs::path content = releaseDir / "content" / name;
         std::vector<std::string> findings;
-        const ValidationTarget validation = validationTarget(target.platform, target.arch, target.backend, target.executable);
+        const ValidationTarget validation = validationTarget(target.platform, target.arch, target.backend, target.executable, target.flavour);
         validatePayload(content, validation, findings);
         for (const std::string& finding : findings) problems.push_back(name + ": " + finding);
         const TreeManifestResult tree = treeManifest(content, targetOs(validation.platform));

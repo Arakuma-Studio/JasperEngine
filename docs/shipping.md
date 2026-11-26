@@ -149,7 +149,9 @@ it was built with, and reads the cooked content format of that version (`content
 major.minor). A newer minor only adds what an older player skips: the editor does not use a
 runtime of an older minor than it cooks ("reads content format ..., older than the ... this
 editor writes: update the player runtime") unless the player-mismatch option asks for it (warning
-W-PLAYER-MISMATCH, and publish verify refuses the build). A player runs content of a newer minor
+W-PLAYER-MISMATCH, and publish verify refuses the build). A build's minor is what its content uses:
+a build without a Build Profile is 1.5, which every 1.5 runtime serves; a profile's build is 1.6,
+and an older runtime is refused for it even with the player-mismatch option. A player runs content of a newer minor
 without what is newer, with one warning ("content ... was made by a newer editor; features newer
 than ... are skipped"), and refuses another major at start (exit 5).
 
@@ -189,6 +191,64 @@ The Console, the CLI (`modules:`, `left_out:`, `module:` lines) and `build_proje
 runtime from pieces (`obj["get" .. "Rigidbody"]`) is the one use the build cannot see: turn
 **Project Settings > Player > Strip Engine Code** off for such a project (every module its
 settings allow ships).
+
+## The Build Report
+
+Every export writes `build-report.json` next to what it builds and keeps a copy in the project's
+history, `.jasperengine/build-reports/<platform>/<id>.json` (the newest 10 per platform; the id is
+the UTC time and the method, `20261119-142233-prebuilt`). Its sizes are the files on disk before
+packing (not the APK's or a web server's compression). It holds:
+
+- totals by category (models, textures, audio, scripts, scenes, engine, other) and every file with
+  its category, size and, for a cooked or replaced file, its source asset and that asset's size;
+- **Left Out**: each source the build did not ship as itself, with its size and why (the texture or
+  model cook replaced it, only sprites read it and it ships in an atlas's pages, a bitmap font's
+  `.jfont` holds it, an `.aseprite` ships as its import, a Title Art document no title reads, a
+  language the build leaves out, a Procedural Material that ships as what it baked, a Build
+  Profile's exclusion);
+- **Referenced By**: for each asset the first reference that reached it from project.yaml (the
+  scene list, standalone prefabs) or from a shipped script, walked through the dependency index
+  at export time, so an old report still explains its own build. **Unreferenced** files are those
+  no scene, prefab, material, project setting or script reaches. That is a lead, not a verdict: a
+  script that loads a file by a path it builds at run time (`loadSound("sfx/" .. name)`) is
+  invisible to the index (it sees `require` only), so nothing is left out automatically; a Build
+  Profile's Exclude Paths is the place to drop what you are sure no script loads. When the index
+  is still building, the report has no Referenced By data (`W-BUILD-REPORT-INDEX`): export again.
+- **Budgets**: each size budget the build met.
+
+**Window > Analysis > Build Report** opens the last export's report (after a restart, the newest of
+the history). **Report** picks another from the history (same platform first); **Compare With...**
+picks the report to compare with (another platform is allowed: texture families differ by design),
+or **Browse...** for any `build-report.json`; **Clear Comparison** ends it. Comparing adds Before,
+After and Delta to the categories (green smaller, orange larger). The tabs are **Files** (search,
+category filter, sortable columns, Delta when comparing), **Changes** (Added, Removed, Grown,
+Shrunk; a cooked file is matched by its source asset, so a model whose cooked name changed is one
+Grown row), **Unreferenced**, **Left Out** and **Budgets**. Selecting a file shows its **Referenced
+By** chain; click a step to select that asset. A report from an older editor lists its 25 largest
+files only: its comparison is partial, and its Referenced By answers from the project as it is now.
+
+The export's completion page shows the total and the change since the platform's previous report
+("Build Report: 142.0 MB (+3.2 MB since 2026-11-18 10:15)") and each budget over its limit.
+
+A report of 20,000 files is about 4 MB and sits beside the output: delete `build-report.json`
+before uploading a web folder, or export to a folder you upload from.
+
+### Size budgets
+
+**Project Settings > Player > Publishing Settings > Size Budgets** holds rows of Platform (All,
+Desktop, or one), Category (Total or one) and Limit (MB, 1,048,576 bytes as the report shows it);
+**When Over Budget** is Warn (the default) or Fail Build. A row for the build's platform replaces a
+Desktop row, which replaces an All row, of the same category. Content categories are checked right
+after the content is measured, before any compile or packing; Engine and Total once the engine is
+measured. Over a limit the build warns `W-SIZE-BUDGET` naming the category's three largest files;
+with Fail Build it writes the report and its history entry, then fails (the output folder is kept).
+A content failure stops before the engine is measured, which the message says. Source exports are
+never checked. A Build Profile may override the rows (`player.size_budgets`) for its builds.
+
+```
+jasperengine-editor call get_build_report --compare-to previous
+jasperengine-editor build --project MyGame --platform web --json   # build_report_id, size_budgets
+```
 
 ## What ships: Asset Stripping
 
@@ -312,7 +372,7 @@ Project Settings > Player > Target Platforms records where the game ships; Build
   without Xcode, the build is the Xcode project ("Open on a Mac with Xcode"). Project Settings >
   iOS holds the team id and the export method (development, ad-hoc, app-store).
   - `--ios-simulator` (`ios_simulator` in `build_project`): an unsigned `.app` for the simulator,
-    no account needed. `xcrun simctl install` and `launch` run it.
+    no account needed. Build And Run on a simulator installs and launches it (Running on a device).
   - For a device, no Team ID: the project is compiled and linked for a device and stops before
     signing, with the warning `W-IOS-NO-TEAM`; the `.app` installs on nothing, and the Xcode
     project is there to open.
@@ -413,6 +473,7 @@ Every player takes the same options (the web from its URL query, `?quit-after=30
 | `--fixed-fps F` | a fixed time step of 1/F seconds |
 | `--screenshot file.png` / `--screenshot-frame N` | write that frame (the last one by default); a frame drawn with shaders still being made or textures still loading waits for them (the game held), up to 120 s, then exits 4 naming them |
 | `--fail-on-error` | exit 3 when an error is logged |
+| `--command "<line>"` | run a console command after "Engine ready:" (repeatable, one a frame; `?command=...` on the web); each result is logged (`[command] give gold 10: ok`) and one that is not ok logs an error; development players, or Project Settings > Debug > Console Commands: Always, else exit 2; `--quit-after` counts from the last command |
 | `--ready-timeout S` | exit 6 when not ready after S seconds |
 | `--resolution WxH`, `--scene <name\|id>`, `--content <dir>`, `--verify-content`, `--silent-audio`, `--log-level` | |
 | `--audio-capture <dir>` | A desktop development player writes one audio capture session into `<dir>/<id>/`, on the deterministic driver; any other player exits 2. |
@@ -424,6 +485,116 @@ is not for this player, 6 not ready in time, 7 no display.
 ```
 xvfb-run ./MyGame --headless --after-ready --quit-after 30 --fixed-fps 60 --screenshot game.png --fail-on-error
 ```
+
+## Running on a device
+
+Build Settings' **Run Device** row (Android, iOS, Web) picks where **Build And Run** runs the game;
+for this computer's platform it says "This computer". The list is found off the editor's thread
+when Android or iOS shows, on **Refresh**, and every 3 seconds while it stays shown: nothing is
+probed while Build Settings is closed. An entry that cannot run (an unauthorized or offline
+device, an Android older than Minimum API Level) is greyed with what to do as its tooltip. The
+choice is yours, not the project's: it is kept in `.jasperengine/user/devices.yaml`, with no undo,
+as the selected platform is.
+
+- **Android** devices and running emulators come from `adb devices -l`. adb is Preferences >
+  External Tools > adb, else `<Android SDK>/platform-tools/adb`, else PATH (the SDK Manager package
+  `platform-tools`). Build And Run makes one APK of the device's first ABI the project builds,
+  whatever Package Format says, installs it with `adb install -r -t` (permissions are asked as on a
+  player's phone) and starts it. An APK signed with another key is not uninstalled for you (it
+  would delete the player's saves): uninstall it (`adb uninstall <package>`) or sign with the same
+  keystore. Starting an emulator and `adb pair` are yours to do.
+- **iOS Simulator** (a Mac with Xcode): a shut-down simulator is booted and shown, the simulator
+  `.app` is built, installed and launched with the game's options as its arguments. Physical
+  iPhones: build the `.ipa` and install it with Xcode.
+- **Web**: the editor serves the build's folder on `127.0.0.1` (the first free port from 8600 to
+  8699, never to other machines), with the cross-origin-isolation headers, and opens the default
+  browser on `index.html?editor-port=<port>`. A headless editor opens nothing and gives the URL.
+- **This computer**: the player starts with its output through a pipe into the Console.
+
+While a game runs, its log streams into the Console in the category `device`, each line after the
+device's name (`[Pixel 7] ...`): logcat of its process on Android, `log stream` and the app's
+output on the Simulator, the page's console on the web (a development page posts it back; a
+release page has no such code). The Console's strip shows each run's state (Installing, Pushing 3
+files (2.1 MB), Running, Exited, Crashed), **Stop** and **Screenshot** (saved in
+`Recordings/Device/`, which is not an asset folder). A run is Crashed when Android logs `FATAL
+EXCEPTION` or `Fatal signal`, the web page reports the crash overlay's report, or this computer's
+player ends by a signal; clicking its "crashed" line selects the first fatal line.
+
+**Patch And Run** (a Development Build, Android or the iOS Simulator) skips packaging: it cooks the
+content into the build cache, pushes only the files that changed since what the device runs
+(`.jasperengine/user/devices.yaml` keeps what each device runs) into the app's **development
+content folder** (`files/je-dev-content` on Android, written through `adb shell run-as`;
+`Library/je-dev-content` of the Simulator app's data container), writes `content-manifest.json`
+last and restarts the app. The installed package and its signature are untouched, so no keystore
+password is asked. A development player starts from that folder when its manifest names this very
+player (runtime id and binary), otherwise it warns once and runs its packaged content; `--content`
+wins over it, and a release player never looks. The first patch after an install pushes the whole
+content (the folder starts empty); a full install empties it again. A Development Build's APK is
+debuggable (`android:debuggable`) for `run-as`; a release target that is debuggable fails the
+payload check and `publish prepare`. Patch And Run is not offered, and Build And Run installs in
+full, when the player binary changed, no install of this project is recorded on the device, or
+the Android runtime predates Patch And Run. A game's debug overlay can show the patch:
+`System.getBuildInfo().contentPatch` (0 for packaged content) and `contentPatched`.
+
+From the command line, `jasperengine-editor build ... --run-device <id|auto|web>` builds and runs
+(Patch And Run for a Development Build when it can; `--no-patch` installs in full) and prints
+`device:`, `installed:` and `url:`; `--run-seconds S` follows the log for S seconds (a web build is
+served until interrupted). Agents use `get_build_info devices:true`, `build_project run_device`
+and `run_build device` (`docs/mcp/guide/shipping.md`).
+
+## Build Profiles
+
+A Build Profile is a named variant of the game for one platform (docs/specs/build-profiles.md),
+after Unity 6's: a demo, a store edition, a branded copy, a test build with cheats. Each is a file
+in `EditorSettings/BuildProfiles/<Name>.buildprofile` (committed, never shipped, YAML with
+`formatVersion: 1`). It stores only what the variant changes:
+
+- Identity: Product Name, Identifier, Version Suffix and Icon, written to the keys each
+  platform's build reads (Android `android.application_name`, `android.package_name`,
+  `android.launcher_icon`; iOS and macOS their `application_name`, `bundle_identifier`, `icon`;
+  Windows `windows.product_name`; Linux `linux.application_name`; Web `web.application_name` and
+  `web.favicon`; the others `player.identifier` and `player.window_icon`). Product Name also titles
+  the window when the project has no Window Title. Version Suffix goes on the text version
+  (`android.version_name`, game.json's `version`), never on Apple or Windows numeric versions
+  (`W-PROFILE-SUFFIX-NUMERIC`).
+- Store and Store Title, checked against the stores' limits (Google Play and App Store titles 30
+  characters, labels warn above 12; `editor/publish/StoreLimits.cpp` holds the table): warnings at
+  build, errors at publish prepare.
+- Graphics API, Development Build and Output Folder, which replace Build Settings' for its builds.
+- A Scene List (absent: the project's Scenes In Build) and its start scene. The scenes they
+  involve ship too; a load of a scene the build left out logs "Scene 'Bonus' is not in this build
+  (Build Profile 'Demo')", and in Play with the profile active it loads with a warning.
+- Scripting Define Symbols, which the game reads with `System.isDefined("DEMO")`,
+  `System.getDefines()` and `System.getBuildInfo()`. They are values, not a preprocessor: code
+  behind them still ships. Code that must not ship goes under an Exclude Path.
+- Exclude Labels (asset labels) and Exclude Paths (project-relative folders ending in `/`, or
+  files): what they name is not copied, cooked or packed, Lua included. A shipped scene, prefab,
+  material, UI Document or Sound Event that uses an excluded asset fails the build naming both; a
+  literal `require` of an excluded module warns `W-PROFILE-LUA-REQUIRE`.
+- Player Settings overrides: any Project Settings key of the Player, Graphics and Quality pages
+  and of the profile's platform, each checked by the setting's own validator.
+
+A build resolves the profile once into a copy of the project's settings; the project and
+`project.yaml` never change. A build without a profile writes what it wrote before. `game.json`
+gains `buildProfile` and `defines`, `content-manifest.json` and `build-report.json` gain
+`buildProfile` (content format 1.6, for a profile's build only: an older runtime would ignore the
+defines, so the editor does not use one).
+
+Build Settings lists the profiles under the platforms: Add Build Profile, and on a row Duplicate,
+Rename, Delete and Switch Profile. Every edit is one undo step. The active profile (per user, in
+`.jasperengine/user/build.yaml`) is what Build Settings opens on and what Play uses: its Product
+Name, Identifier, Version Suffix, defines and Scene List (the Game view shows "Profile: Demo";
+Project Settings marks the rows it overrides in builds). Build and Build And Run build the selected
+profile; selecting a platform builds without one.
+
+```
+jasperengine-editor build --project MyGame --profile Demo [--out D]
+jasperengine-editor call edit_build_profile --action list
+```
+
+A publishing.json target may name `"profile": "Demo"`: publish prepare refuses a build of another
+profile, another platform, backend or flavour, or a store limit the profile breaks. A Build
+Profile is not S56's Device Profile (`deviceProfile`).
 
 ## Releases
 

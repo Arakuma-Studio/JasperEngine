@@ -184,8 +184,13 @@ ComponentAddDialog::ComponentAddDialog() {
         {"Scripts", ICON_FA_CODE, {
             {ComponentType::ScriptComponent, "Runs C++ or Lua scripts"},
         }},
+        // dialogue-graphs.md R13
+        {"Gameplay", ICON_FA_COMMENTS, {
+            {ComponentType::DialogueRunnerComponent, "Plays a .dialogue: its lines and choices to a view, its actions and conditions to the game's handlers"},
+        }},
         {"Miscellaneous", ICON_FA_PUZZLE_PIECE, {
             {ComponentType::Transform, "Position, rotation, scale and parent"},
+            {ComponentType::SimulationCullingComponent, "Freezes its scripts' updates, Animator and bodies while far from the player or over unloaded ground"},
         }},
     };
 }

@@ -1,4 +1,4 @@
-# Lighting after The Forge: tiles, capsules, contact shadows, OIT and hair
+# Lighting after The Forge: tiles, capsules, contact shadows, OIT and hair; area lights and IES profiles
 
 Five lighting features of the forward renderer (spec `docs/specs/S57-forge-lighting.md`). Each is
 opt-in or follows the device tier, and costs nothing while it is off: no pass, no texture, no
@@ -113,6 +113,61 @@ albedo). The strands run along the mesh's tangent turned by **Strand Rotation**,
 Map**'s direction (RG in tangent space). Use it with alpha clip, or alpha blending and an Order
 Independent camera, for hair cards.
 
+## Area Lights and IES Profiles (S99)
+
+**Type: Area** (GameObject > Light > Area Light) is a **Rectangle** (Width x Height) or a **Disc**
+(Radius) in metres, emitting from its front along the light's Direction; the transform's scale does
+not size it. Its Intensity is the face's luminance (**Nits** in physical units), so its far-field
+brightness is Intensity x area, as a point light's. The Scene view draws the shape and its normal;
+with the Move tool, the white crosses on its edges resize it (one undo step a drag).
+
+- The built-in Lit shades it per pixel, per object and from screen tiles, in its `USE_AREA_LIGHTS`
+  variants (a scene without an Area Light compiles none). The diffuse is the shape's vector form
+  factor clipped by the horizon (a Disc is an octagon of its area, sixteen sides for High's specular). The specular is the most
+  representative point with Karis's energy normalisation on Standard and lower, and the GGX LTC
+  (Heitz et al. 2016, the tables of `engine/core/render/LtcLut.h`) on High.
+- **Shadows** on: one perspective map of 120 degrees along its axis in the shadow atlas, PCSS sized
+  by its half extent where the tier has PCSS; a receiver outside the map is lit unshadowed.
+- Library shaders, vertex lights and an older fork draw it as a spot of its front hemisphere.
+
+An **IES Profile** (`.ies`, IESNA LM-63-1995 or -2002, `TILT=NONE`, Type C) on a Spot or Point Light
+shapes it, turned with the light: vertical angle 0 along its Direction, horizontal angle 0 along its
+right. The profile is resampled to 128 x 33 by its symmetry, normalised to a peak of 1 (Intensity
+stays the peak), and the scene's profiles share one texture with the LTC tables (`USE_IES`
+variants). Selecting the file shows its polar plot, peak candela and lumens. A tilted profile is
+refused where it is set.
+
+## Environment Lighting and the HDRI sun (S99)
+
+**Environment Lighting > Source** (the scene's Inspector) is where lit surfaces take their ambient
+light from:
+
+- **Color** (the default; scenes saved before it load with it): the **Ambient Color** times
+  **Intensity**, which the built-in Lit swaps for the sky's image (image-based lighting) where the
+  scene has a sky with an image. Shaders without image-based lighting and particles always take the
+  colour.
+- **Gradient**: **Sky Color**, **Equator Color** and **Ground Color** (used as they are, as in Unity,
+  whose Intensity Multiplier is the Skybox source's; Unity's defaults) by the way a
+  surface faces. The gradient is an environment brightening linearly from the horizon to the sky
+  above and to the ground below, projected to the L1 spherical harmonics every object already carries
+  (`render/AmbientGradient.h`): `E(n) / pi = equator / 2 + (sky + ground) / 4 + n.y (sky - ground) / 3`.
+  It adds no shader, variant, texture or uniform. Lit's environment light is then the object's SH whole
+  (the frame's flat ambient is 0); the sky's image still gives Lit its reflections but no longer its
+  diffuse ambient (its irradiance map is not bound while the scene has lights). Particles and the
+  clouds take the gradient's average.
+
+**Extract Sun** (Skybox > Sun, `set_scene_settings` `extract_sun`, `jasperengine-editor call`) reads the
+sky's HDR image on the CPU (`editor/lighting/HdriSun.h`): the brightest 3x3 block of a 256 x 128
+equirect it is binned into, refused under 20 times the sky's mean luminance ("no distinct sun"),
+then the luminance-weighted centroid within 10 degrees of it, and the disc (up to 5 degrees) above the
+ring around it, whose radiance times solid angle is the irradiance the sun gives: the engine intensity
+of a directional light. Turned and tinted as the sky draws, it creates the scene's main Directional
+Light (with shadows) or aligns the brightest one (its direction, colour and intensity, in lux when the
+light is). **Remove Sun Disc**, an HDR texture import setting Extract Sun can set in the same undo
+step, makes the cook clamp the disc's texels to the ring's colour, so image-based lighting does not
+count the sun twice; a sky image without a distinct sun cooks as it is, with a note in its cook record.
+A disc across two face files of a six-file sky is removed where each face finds it.
+
 ## Lua and MCP
 
 | Inspector | Lua | MCP (`set_properties`, `set_scene_settings`, `set_project_settings`) |
@@ -122,7 +177,11 @@ Independent camera, for hair cards.
 | Material > Shading Model and the hair values | `material.shadingModel` (`ShadingModel.STANDARD`, `HAIR`), `hairPrimaryColor` ... `hairRotation`, `hairFlowTexture` | the material's `pbr.hair` |
 | Capsule Shadow Caster | `CapsuleShadowCaster`: `castShadows`, `addCapsule`, `fitToSkeleton`, ... | `capsuleshadowcaster`: `castShadows`, `capsules` |
 | Scene > Capsule Shadows | `scene.capsuleShadowsEnabled`, `capsuleShadowIntensity`, `capsuleShadowSoftness` | `capsule_shadows_enabled`, `capsule_shadow_intensity`, `capsule_shadow_softness` |
+| Scene > Environment Lighting > Source, Sky/Equator/Ground Color | `scene.ambientMode` (`AmbientMode.COLOR`, `GRADIENT`), `ambientSkyColor`, `ambientEquatorColor`, `ambientGroundColor` | `ambient_mode`, `ambient_sky_color`, `ambient_equator_color`, `ambient_ground_color` |
+| Skybox > Extract Sun; texture importer Remove Sun Disc | (editor only) | `set_scene_settings` `extract_sun: {remove_sun_disc}`; `set_texture_import_settings` `remove_sun_disc` |
 | Project Settings > Graphics > Light Mode | (project setting) | `graphics.light_mode`: automatic, per_object, tiled |
+| Light > Type Area, Shape, Width, Height, Radius | `light.type` (`LightType.AREA`), `areaShape` (`AreaLightShape.RECTANGLE`, `DISC`), `areaWidth`, `areaHeight`, `areaRadius` | `light`: `type: "area"`, `areaShape`, `areaWidth`, `areaHeight`, `areaRadius` |
+| Light > IES Profile | `light.iesProfile` | `light`: `iesProfile` (an `.ies` path) |
 
 `get_render_stats` reports `lighting`: the Light Mode and tier, the tiles' figures (lights in the
 view, the most and the average a tile, the lights dropped), the capsules, the contact shadows'

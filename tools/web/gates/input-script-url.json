@@ -1,0 +1,14 @@
+{
+  "description": "tools/test-projects/input (WEB_PROJECT=input tools/build.sh web): ?input-script=/scripts/menu.input.json is a URL, which the page fetches from its own origin before the engine starts (input-recorder-and-input-scripts R30); the gate serves the menu script there (\"serve\"), so the run replays it as the content path does: the click, the done line and exit code 0, in order.",
+  "project": "input",
+  "serve": {"/scripts/menu.input.json": "tools/test-projects/input/assets/tests/Input/menu.input.json"},
+  "query": ["input-script=%2Fscripts%2Fmenu.input.json", "quit-after-input"],
+  "seconds": 30,
+  "console": [
+    {"text": "[input] begin {\"events\":5,\"file\":\"/jasperengine-input-script.input.json\"", "level": "log"},
+    {"text": "[gate] clicked", "level": "log"},
+    {"text": "[input] done", "level": "log"},
+    {"text": "JasperEngine exit code 0", "level": "log"}
+  ],
+  "ordered": true
+}

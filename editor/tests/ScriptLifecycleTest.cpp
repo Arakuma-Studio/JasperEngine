@@ -838,6 +838,34 @@ TEST_F(ScriptLifecycleTest, EventListenersDoNotKeepReleasedScriptsAlive) {
     lua("shared = nil; weakRefs = nil");
 }
 
+// a CancellableEvent whose deciding listener's script is destroyed by an earlier listener of the
+// same invoke: that listener does not run and the invoke's result is the remaining listeners'
+// (cancellable-prioritised-events AC9, R14)
+TEST_F(ScriptLifecycleTest, CancellableEventOwnerReleased) {
+    writeScript("Shield1",
+        "local M = {}\n"
+        "function M:init() gate:addListener(self, 'absorb', 5); RegisterEvent(self, gate, 'report', nil, Event.MONITOR) end\n"
+        "function M:absorb(e) log[#log + 1] = 'absorb'; e:cancel() end\n"
+        "function M:report(e) log[#log + 1] = 'report' end\n"
+        "return M\n");
+    lua("gate = CancellableEvent()");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    addScript(scene, x, "Shield1");
+    setScene("testScene", scene);
+    LuaBinding::initializeLuaScripts(scene);
+    EXPECT_EQ(lua("return gate:invoke()"), "true");
+    EXPECT_EQ(takeLog(), "absorb report");
+    EXPECT_EQ(lua("return gate.cancelledBy"), "Shield1:absorb");
+    lua("gate:addListener(function(e) log[#log + 1] = 'destroyer'; "
+        "GameObject.destroyImmediate(GameObject(testScene, " + std::to_string(x) + ")) end, 10)");
+    EXPECT_EQ(lua("return gate:invoke()"), "false") << "the destroyed script's listener did not veto";
+    EXPECT_EQ(takeLog(), "destroyer");
+    EXPECT_EQ(lua("return gate.listenerCount"), "1");
+    EXPECT_EQ(lua("return tostring(gate.cancelledBy)"), "nil");
+    lua("gate = nil");
+}
+
 // writing the enabled flag as the Inspector's command does (then refreshEntity): callbacks that
 // instantiate many GameObjects (the component arrays move) or destroy one at once are safe
 TEST_F(ScriptLifecycleTest, EnabledWriteRunsCallbacksThatMoveComponents) {
