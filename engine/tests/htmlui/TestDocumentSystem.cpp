@@ -726,9 +726,10 @@ TEST_F(UIDocumentSystemTest, GlyphCacheSurvivesViewLoss){
     EXPECT_GT(drawShell(fixture, document).glyphsRasterized, 0u);
     fonts.finishDistanceGlyphsForTesting();
 
-    // the platform drops the view (Android background, a lost GL context): every context and RmlUi go
+    // the platform drops the view (Android background, a lost GL context): since S95 WP-4 the documents keep their
+    // DOM and RmlUi stays, only GPU objects go (the atlas pages' textures among them)
     Engine::systemViewDestroyed();
-    EXPECT_FALSE(HtmlUI::isInitialized());
+    EXPECT_TRUE(HtmlUI::isInitialized());
     EXPECT_GT(fonts.getPageCount(), 0u);
     Engine::systemViewLoaded();
     Engine::systemViewChanged();
