@@ -66,7 +66,7 @@ step_editor() {
 }
 
 step_engine() {
-    local backend="$1" debug=()
+    local backend="$1" debug=() cflags="${CFLAGS:-}" cxxflags="${CXXFLAGS:-}"
     ci_msvc
     # Release, not the preset's RelWithDebInfo, whose /Zi shared PDB ccache cannot cache.
     # ENGINE_DEBUG_INFO=1 (the tree whose core tests run): the debug information in the objects
@@ -75,11 +75,29 @@ step_engine() {
     if [[ "${ENGINE_DEBUG_INFO:-0}" == 1 ]]; then
         debug=(-DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
             "-DCMAKE_EXE_LINKER_FLAGS=/machine:x64 /DEBUG" "-DCMAKE_SHARED_LINKER_FLAGS=/machine:x64 /DEBUG")
+        # and no code or debug information for the inline functions an object does not call
+        # (-Zc:inline): each object otherwise carried every one its headers define, and
+        # jasperengine.lib grew past lib.exe's 4 GiB (LNK1248, PR 9's tree: 4.30 GB, 2.76 GB with it).
+        # The build's flags take these at a tree's first configure
+        cflags="${cflags:+$cflags }-Zc:inline" cxxflags="${cxxflags:+$cxxflags }-Zc:inline"
     fi
-    cmake --preset engine-windows-msvc-tests -S engine -B "build/windows/engine-$backend" -DCMAKE_BUILD_TYPE=Release \
+    CFLAGS="$cflags" CXXFLAGS="$cxxflags" cmake --preset engine-windows-msvc-tests -S engine -B "build/windows/engine-$backend" -DCMAKE_BUILD_TYPE=Release \
         ${debug[@]+"${debug[@]}"} \
         -DGRAPHIC_BACKEND="$backend" -DJASPERENGINE_WERROR="$WERROR_VALUE" "${MSVC_LINKER_ARGS[@]}" ${LAUNCHERS[@]+"${LAUNCHERS[@]}"}
-    cmake --build "build/windows/engine-$backend" --target jasperengine-project jasperengine-core-tests ${JOBS_ARGS[@]+"${JOBS_ARGS[@]}"}
+    local status=0
+    cmake --build "build/windows/engine-$backend" --target jasperengine-project jasperengine-core-tests ${JOBS_ARGS[@]+"${JOBS_ARGS[@]}"} || status=$?
+    engine_lib_size "build/windows/engine-$backend"
+    return "$status"
+}
+
+# jasperengine.lib against lib.exe's 4 GiB (LNK1248, "image size exceeds maximum allowable size"), and
+# what its objects weigh per directory: the margin, also when the archive failed
+engine_lib_size() {
+    local lib="$1/jasperengine.lib" objects="$1/CMakeFiles/jasperengine.dir"
+    [[ -f "$lib" ]] && echo "jasperengine.lib: $(stat -c %s "$lib") bytes, lib.exe's limit 4294967295"
+    [[ -d "$objects" ]] || return 0
+    echo "jasperengine.lib's objects (bytes):"
+    du -b --max-depth=2 "$objects" | sort -rn | sed -n 1,8p
 }
 
 min_tests() { sed -n "s/^$1=//p" tools/build.sh; }
