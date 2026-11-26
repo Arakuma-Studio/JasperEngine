@@ -8749,6 +8749,14 @@
   {
    "component": "uidocument",
    "group": "",
+   "kind": "Enum",
+   "label": "Update Mode",
+   "path": "updateMode",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
    "kind": "Bool",
    "label": "Is Menu",
    "path": "isMenu",
@@ -8760,14 +8768,6 @@
    "kind": "Bool",
    "label": "Gamepad Cursor",
    "path": "gamepadCursor",
-   "read_only": false
-  },
-  {
-   "component": "uidocument",
-   "group": "",
-   "kind": "Enum",
-   "label": "Update Mode",
-   "path": "updateMode",
    "read_only": false
   },
   {
@@ -8847,6 +8847,14 @@
   {
    "component": "uidocument",
    "group": "",
+   "kind": "Enum",
+   "label": "Update Mode",
+   "path": "updateMode",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
    "kind": "Bool",
    "label": "Is Menu",
    "path": "isMenu",
@@ -8858,14 +8866,6 @@
    "kind": "Bool",
    "label": "Gamepad Cursor",
    "path": "gamepadCursor",
-   "read_only": false
-  },
-  {
-   "component": "uidocument",
-   "group": "",
-   "kind": "Enum",
-   "label": "Update Mode",
-   "path": "updateMode",
    "read_only": false
   },
   {
