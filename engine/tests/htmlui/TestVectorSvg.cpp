@@ -177,6 +177,7 @@ TEST(TextureDataSvgTest, SameSizesAndColoursAsNanosvg){
 
     for (const Reference& reference : references){
         TextureData texture;
+        texture.setDataOwned(true);
         const std::string path = TextureData::buildSvgScalePath(reference.file, reference.scale);
         ASSERT_TRUE(texture.loadTextureFromFile(path.c_str())) << path;
         EXPECT_EQ(texture.getWidth(), reference.width) << path;
@@ -195,6 +196,7 @@ TEST(TextureDataSvgTest, SameSizesAndColoursAsNanosvg){
 
 TEST(TextureDataSvgTest, StraightAlphaAndTransparency){
     TextureData texture;
+    texture.setDataOwned(true);
     ASSERT_TRUE(texture.loadTextureFromFile("p1/texturedata/opacity.svg"));
     EXPECT_TRUE(texture.hasAlpha());
     const uint8_t* rgba = static_cast<const uint8_t*>(texture.getData());
@@ -204,6 +206,7 @@ TEST(TextureDataSvgTest, StraightAlphaAndTransparency){
     EXPECT_NEAR(green[3], 128, 1);
 
     TextureData opaque;
+    opaque.setDataOwned(true);
     ASSERT_TRUE(opaque.loadTextureFromFile("p1/texturedata/units.svg"));
     EXPECT_FALSE(opaque.hasAlpha());
 }

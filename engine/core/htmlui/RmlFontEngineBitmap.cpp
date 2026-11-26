@@ -130,6 +130,16 @@ void RmlFontEngine::purgeBitmapGlyphs(uint64_t serial){
         it = (it->first.bitmap == serial) ? glyphs.erase(it) : std::next(it);
 }
 
+void RmlFontEngine::dropBitmapFamily(const std::string& family){
+    auto it = rmlBitmapFamilies().find(FontRegistry::normalizeFamily(family));
+    if (it == rmlBitmapFamilies().end())
+        return;
+    purgeBitmapGlyphs(it->second.font->getSerial());
+    rmlBitmapFamilies().erase(it);
+    widths.clear();
+    widthsEpoch = -1;
+}
+
 std::unique_ptr<RmlFontEngine::FaceHandle> RmlFontEngine::makeBitmapHandle(const std::shared_ptr<pixelart::BitmapFont>& font, int size){
     std::unique_ptr<FaceHandle> handle(new FaceHandle());
     const pixelart::BitmapFont& f = *font;

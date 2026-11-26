@@ -503,6 +503,8 @@ namespace jasperengine {
         bool reloadBitmapFontFile(const std::string& path);
         // drops the glyphs of a bitmap font that is no longer drawn (a re-registered family, a reload)
         void purgeBitmapGlyphs(uint64_t serial);
+        // a family registered again with a vector face is no longer a bitmap family
+        void dropBitmapFamily(const std::string& family);
     public:
         // a family @font-face registered with a .bitmapfont or .fnt source, and its font
         static bool isBitmapFamily(const std::string& family);

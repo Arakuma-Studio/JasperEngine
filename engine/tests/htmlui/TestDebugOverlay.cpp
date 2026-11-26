@@ -714,10 +714,14 @@ TEST_F(DebugOverlayTest, RowWindowThrottleAndTheBuffer){
     DebugOverlay::update(0.0);
     const double addMs = compat::threadCpuMs() - start;
     printf("[debug overlay] rebuild of 500 rows with its layout: %.2f ms CPU, a line added: %.2f ms CPU\n", rebuildMs, addMs);
+    // (a sanitizer's build is a Debug build under its instrumentation: the budget says nothing
+    // there, docs/testing.md, whatever the slack)
+#if !defined(JASPERENGINE_SANITIZE_ADDRESS) && !defined(JASPERENGINE_SANITIZE_THREAD) && !defined(JASPERENGINE_SANITIZE_UNDEFINED)
     if (const double slack = compat::benchmarkPerfSlack(); slack > 0.0){
         EXPECT_LT(rebuildMs, 5.0 * slack);
         EXPECT_LT(addMs, 5.0 * slack);
     }
+#endif
     click("filter-warn");
     click("collapse");
 
@@ -1178,9 +1182,12 @@ TEST_F(DebugOverlayTest, CollapsedFullBufferLineCost){
     const double slack = compat::benchmarkPerfSlack();
     printf("[debug overlay] collapsed, 100,000 rows: a line %.3f ms CPU (worst %.3f ms) with its layout (budget 0.5 ms%s)\n", total / lines, worst,
            slack > 0.0 ? "" : ", not enforced: JASPER_HTMLUI_PERF_SLACK unset");
+    // (under a sanitizer the budget says nothing, as above)
+#if !defined(JASPERENGINE_SANITIZE_ADDRESS) && !defined(JASPERENGINE_SANITIZE_THREAD) && !defined(JASPERENGINE_SANITIZE_UNDEFINED)
     if (slack > 0.0){
         EXPECT_LT(total / lines, 0.5 * slack);
     }
+#endif
     EXPECT_EQ(rows(), 100000);
     EXPECT_NE(shownRowText(-1).find("more 49"), std::string::npos) << shownRowText(-1);
 }
