@@ -2,6 +2,10 @@
 
 **A lightweight native C++ engine for 2D and 3D games, with a visual editor and Lua scripting.**
 
+[![CI powered by Namespace](https://namespace.so/oss/badge.svg)](https://namespace.so/github-actions/?utm_source=oss&utm_campaign=jasperengine)
+
+**CI sponsor:** CI runs on [Namespace](https://namespace.so).
+
 JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Eduardo Doria and contributors. See [NOTICE.md](NOTICE.md).
 
 ## Features
