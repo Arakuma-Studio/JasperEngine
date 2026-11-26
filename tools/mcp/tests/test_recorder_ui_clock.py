@@ -22,6 +22,15 @@ body { position: absolute; inset: 0; margin: 0; background: #000; }
 <div id="steps" class="marker"></div></body></html>
 """
 
+# a Game Time document (S93 Update Mode): its CSS runs on the game clock, which a recording advances too
+GAME_HTML = """<html><head><style>
+body { position: absolute; inset: 0; margin: 0; }
+#gamecss { position: absolute; left: 4px; top: 120px; width: 8px; height: 8px; background: #f0f;
+           animation: slide 3s linear both; }
+@keyframes slide { from { left: 4px; } to { left: 94px; } }
+</style></head><body><div id="gamecss"></div></body></html>
+"""
+
 SCRIPT = """---@class RecordedUiClock : ScriptInstance
 local RecordedUiClock = { properties = {} }
 function RecordedUiClock:init()
@@ -48,7 +57,8 @@ def centre(png: bytes, channel: int, first_row: int) -> float:
     for y in range(first_row, min(height, first_row + 8)):
         for x in range(width):
             p = (y * width + x) * 4
-            matches = (rgba[p] > 200 and rgba[p + 1] > 200 and rgba[p + 2] < 50) if channel == 3 else (
+            matches = (rgba[p] > 200 and rgba[p + 1] < 50 and rgba[p + 2] > 200) if channel == 4 else (
+                rgba[p] > 200 and rgba[p + 1] > 200 and rgba[p + 2] < 50) if channel == 3 else (
                 rgba[p + channel] > 200 and all(rgba[p + c] < 50 for c in range(3) if c != channel))
             if matches:
                 xs.append(x)
@@ -62,6 +72,9 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
     entity = (await ed.call("create_entity", scene=scene, type="ui_document", name="Animated"))["entity_id"]
     await ed.call("set_properties", scene=scene, entity=entity, values={"uidocument": {"filename": "assets/ui/recorded.html"}})
     await ed.call("create_script", kind="lua", name="RecordedUiClock", content=SCRIPT, scene=scene, entity=entity)
+    await ed.call("write_file", path="assets/ui/recorded_game.html", content=GAME_HTML)
+    await ed.call("create_ui_document", scene=scene, html="assets/ui/recorded_game.html", name="GameTime", sort_order=10,
+                  properties={"update_mode": "game"})
     await ed.call("save_scene", scene=scene)
     recordings = []
     for take in range(2):
@@ -75,7 +88,7 @@ async def test_recorded_css_and_anime_clocks_repeat_at_exact_steps(ed: Editor):
         ed.check_eq(len(files), 16)
         frames = [path.read_bytes() for path in files]
         recordings.append(frames)
-        for channel, top in ((0, 8), (1, 40), (2, 72), (3, 104)):
+        for channel, top in ((0, 8), (1, 40), (2, 72), (3, 104), (4, 120)):
             first = centre(frames[0], channel, top)
             ed.check(first >= 0, f"clock {channel} marker exists")
             ed.check(abs(first - 7.5) <= 0.6, f"clock {channel} starts at its initial value in frame zero: {first}")

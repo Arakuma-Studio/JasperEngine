@@ -52,6 +52,11 @@ namespace jasperengine {
         // Negative or non-finite: warning, ignored
         static void setFixedTime(std::optional<double> seconds);
         static std::optional<double> getFixedTime();
+        // The Game Time clock pinned too (the recorder's frames, render_ui_frames' samples):
+        // now(GAME_TIME) reads it while set, whatever setFixedTime holds. Clearing it resumes the
+        // game-time accumulator from the pinned value. Negative or non-finite: warning, ignored
+        static void setFixedGameTime(std::optional<double> seconds);
+        static std::optional<double> getFixedGameTime();
         static void reset();                                     // tests: time 0, no fixed time
     };
 

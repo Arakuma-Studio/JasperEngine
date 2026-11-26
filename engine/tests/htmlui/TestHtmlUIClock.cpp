@@ -112,6 +112,35 @@ TEST_F(HtmlUIClockTest, FixedTimePinsAndReleasesWithoutJump){
     EXPECT_EQ(HtmlUIClock::now(), 0.0);
 }
 
+// The recorder and render_ui_frames pin the Game Time clock beside the UI clock: a fixed UI time
+// alone holds it (S93), so a recorded Game Time document would not move.
+TEST_F(HtmlUIClockTest, FixedGameTimePinsTheGameClockAndReleasesWithoutJump){
+    HtmlUIClock::advanceGame(1.0);
+    HtmlUIClock::setFixedTime(5.0);
+    HtmlUIClock::setFixedGameTime(2.0);
+    EXPECT_DOUBLE_EQ(HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME), 2.0);
+    EXPECT_DOUBLE_EQ(HtmlUIClock::now(UIDocumentUpdateMode::UNSCALED_TIME), 5.0);
+    HtmlUIClock::setFixedGameTime(2.5);
+    HtmlUIClock::advanceGame(1.0);
+    EXPECT_DOUBLE_EQ(HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME), 2.5) << "frames do not move a pinned clock";
+
+    // released: the game clock runs on from the pinned value
+    HtmlUIClock::setFixedGameTime(std::nullopt);
+    HtmlUIClock::setFixedTime(std::nullopt);
+    EXPECT_FALSE(HtmlUIClock::getFixedGameTime().has_value());
+    EXPECT_DOUBLE_EQ(HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME), 2.5);
+    HtmlUIClock::advanceGame(0.25);
+    EXPECT_DOUBLE_EQ(HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME), 2.75);
+
+    HtmlUIClock::setFixedGameTime(-1.0);
+    EXPECT_FALSE(HtmlUIClock::getFixedGameTime().has_value());
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI] HtmlUIClock::setFixedGameTime"), 1u);
+    HtmlUIClock::setFixedGameTime(3.0);
+    HtmlUIClock::reset();
+    EXPECT_FALSE(HtmlUIClock::getFixedGameTime().has_value());
+    EXPECT_EQ(HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME), 0.0);
+}
+
 TEST_F(HtmlUIClockTest, InvalidFixedTimeIsIgnoredWithWarning){
     HtmlUIClock::advance(1.0);
     HtmlUIClock::setFixedTime(-1.0);

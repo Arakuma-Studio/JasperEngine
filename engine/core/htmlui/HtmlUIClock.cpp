@@ -14,6 +14,7 @@ namespace {
     double accumulatedTime = 0.0;
     double gameTime = 0.0;
     std::optional<double> fixedTime;
+    std::optional<double> fixedGameTime;
 
 }
 
@@ -22,7 +23,9 @@ double HtmlUIClock::now(){
 }
 
 double HtmlUIClock::now(UIDocumentUpdateMode mode){
-    return mode == UIDocumentUpdateMode::GAME_TIME ? gameTime : now();
+    if (mode != UIDocumentUpdateMode::GAME_TIME)
+        return now();
+    return fixedGameTime ? *fixedGameTime : gameTime;
 }
 
 int HtmlUIClock::animationClockOf(UIDocumentUpdateMode mode){
@@ -34,7 +37,7 @@ UIDocumentUpdateMode HtmlUIClock::modeOfAnimationClock(int clock){
 }
 
 void HtmlUIClock::advanceGame(double scaledSeconds){
-    if (fixedTime || !std::isfinite(scaledSeconds) || scaledSeconds <= 0.0)
+    if (fixedTime || fixedGameTime || !std::isfinite(scaledSeconds) || scaledSeconds <= 0.0)
         return;
 
     gameTime += scaledSeconds;
@@ -64,8 +67,25 @@ std::optional<double> HtmlUIClock::getFixedTime(){
     return fixedTime;
 }
 
+void HtmlUIClock::setFixedGameTime(std::optional<double> seconds){
+    if (seconds && (!std::isfinite(*seconds) || *seconds < 0.0)){
+        Log::warn("[HTML UI] HtmlUIClock::setFixedGameTime(%f) ignored: the time must be finite and not negative", *seconds);
+        return;
+    }
+
+    if (fixedGameTime && !seconds){
+        gameTime = *fixedGameTime;
+    }
+    fixedGameTime = seconds;
+}
+
+std::optional<double> HtmlUIClock::getFixedGameTime(){
+    return fixedGameTime;
+}
+
 void HtmlUIClock::reset(){
     accumulatedTime = 0.0;
     gameTime = 0.0;
     fixedTime.reset();
+    fixedGameTime.reset();
 }

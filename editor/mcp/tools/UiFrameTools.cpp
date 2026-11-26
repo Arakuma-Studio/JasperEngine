@@ -100,12 +100,20 @@ struct PreviewLuaBudget {
 struct PreviewTime {
     std::optional<double> fixed = HtmlUIClock::getFixedTime();
     double running = HtmlUIClock::now();
+    // a Game Time document samples the same seconds
+    std::optional<double> fixedGame = HtmlUIClock::getFixedGameTime();
+    double runningGame = HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME);
     AnimEngine::ScopedTickPause animePause;
 
-    explicit PreviewTime(double seconds, std::vector<std::shared_ptr<AnimTimer>>* created = nullptr) : animePause(created) { HtmlUIClock::setFixedTime(seconds); }
+    explicit PreviewTime(double seconds, std::vector<std::shared_ptr<AnimTimer>>* created = nullptr) : animePause(created) {
+        HtmlUIClock::setFixedTime(seconds);
+        HtmlUIClock::setFixedGameTime(seconds);
+    }
     ~PreviewTime() {
         HtmlUIClock::setFixedTime(fixed ? fixed : std::optional<double>(running));
         if (!fixed) HtmlUIClock::setFixedTime(std::nullopt);
+        HtmlUIClock::setFixedGameTime(fixedGame ? fixedGame : std::optional<double>(runningGame));
+        if (!fixedGame) HtmlUIClock::setFixedGameTime(std::nullopt);
     }
 };
 
@@ -510,6 +518,7 @@ private:
             const auto sliceStart = Clock::now();
             auto advanceAnimations = [&](double seconds) {
                 HtmlUIClock::setFixedTime(seconds);
+                HtmlUIClock::setFixedGameTime(seconds);
                 collectRoots(sampledTime);
                 for (size_t i = 0; i < roots.size(); i++) {
                     const PreviewRoot root = roots[i];

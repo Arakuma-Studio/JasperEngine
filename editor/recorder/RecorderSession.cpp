@@ -822,6 +822,11 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
     // keeps CSS and anime independent of how long that load took, while the shared UI
     // epoch stays continuous for documents outside the recorded scene stack.
     HtmlUIClock::setFixedTime(recordingUiStart);
+    // the Game Time clock holds while a fixed time is set: the recording advances it itself
+    previousFixedGameTime = HtmlUIClock::getFixedGameTime();
+    recordingGameTime = HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME);
+    recordingGameFrame = 0;
+    HtmlUIClock::setFixedGameTime(recordingGameTime);
     animationClocksAligned = false;
     startTime = Clock::now();
     startedPlay = false;
@@ -889,11 +894,15 @@ void RecorderSession::prepareFrame() {
     const uint64_t frames = Engine::getGameFrames();
     const uint64_t index = frames >= gameFramesAtStart ? frames - gameFramesAtStart : 0;
     HtmlUIClock::setFixedTime(recordingUiStart + (double)index / current.frameRate);
+    // game time moves by the scaled step of each recorded frame (Engine.timeScale read per frame)
+    if (index > recordingGameFrame) {
+        recordingGameTime += (double)(index - recordingGameFrame) * Engine::getTimeScale() / current.frameRate;
+        recordingGameFrame = index;
+    }
+    HtmlUIClock::setFixedGameTime(recordingGameTime);
     if (!animationClocksAligned) {
-        // Engine advances game time before the document update. Discard that first delta
-        // too, so CSS and both anime clocks render their initial values in frame zero.
-        const double firstGameTime = Engine::getGameTime() + Engine::getFixedDeltatime() * Engine::getTimeScale();
-        AnimEngine::instance().alignClockSources(HtmlUIClock::now(), firstGameTime);
+        // frame zero: CSS and both anime clocks at their initial values
+        AnimEngine::instance().alignClockSources(HtmlUIClock::now(), HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME));
         animationClocksAligned = true;
     }
 }
@@ -1109,7 +1118,8 @@ void RecorderSession::stop() {
 void RecorderSession::restoreEngine() {
     releaseHold();
     HtmlUIClock::setFixedTime(previousFixedUiTime);
-    AnimEngine::instance().alignClockSources(HtmlUIClock::now(), Engine::getGameTime());
+    HtmlUIClock::setFixedGameTime(previousFixedGameTime);
+    AnimEngine::instance().alignClockSources(HtmlUIClock::now(), HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME));
     Engine::setFixedDeltatime(previousFixedDelta);
     if (host.setGameRenderSize) host.setGameRenderSize(0, 0);
     if (audio) {

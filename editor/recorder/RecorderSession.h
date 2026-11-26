@@ -188,6 +188,10 @@ namespace jasperengine::editor::recorder {
         double previousFixedDelta = 0.0;
         std::optional<double> previousFixedUiTime;
         double recordingUiStart = 0.0;
+        // Game Time documents and clock = "game" anime: pinned too, advanced by the scaled step
+        std::optional<double> previousFixedGameTime;
+        double recordingGameTime = 0.0;
+        uint64_t recordingGameFrame = 0;
         bool animationClocksAligned = false;
         std::chrono::steady_clock::time_point startTime;
         FfmpegInfo ffmpegInfo;

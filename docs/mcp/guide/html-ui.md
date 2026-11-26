@@ -1367,8 +1367,8 @@ root:pause()
 root:seek(2500)                              -- milliseconds, callbacks update geometry too
 ```
 
-`record_game` advances both the default UI clock and `clock = "game"` by the fixed recording
-step; game-clock animations still obey `Engine.timeScale`. At 30 fps, frame `k` samples time
+`record_game` advances both the default UI clock and the game clock (`clock = "game"`, Game
+Time documents) by the fixed recording step; game-clock animations still obey `Engine.timeScale`. At 30 fps, frame `k` samples time
 `k / 30` seconds. An animation or root timeline already has `seek(ms)` for exact sampling.
 The `motion_graphics` example contains thirty seeded stars updated in one SVG path, a masked
 letter stagger, a drawn-and-filled logo, a morph and a motion-path follower. Its
