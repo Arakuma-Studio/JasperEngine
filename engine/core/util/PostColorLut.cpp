@@ -342,6 +342,8 @@ bool PostColorLut::loadStrip(const std::string& path, Strip& strip, std::string*
         return false;
     }
     TextureData data;
+    // a TextureData does not own what it decodes: owned here so every return frees the pixels
+    data.setDataOwned(true);
     if (!data.loadTextureFromFile(path.c_str())){
         if (error)
             *error = "The image could not be loaded.";
