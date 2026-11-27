@@ -47,6 +47,9 @@
     <td width="50%"><img src="docs/images/readme/html-ui.webp" alt="A game's main menu written in HTML and CSS"><br><sub><b>Game UI in HTML and CSS</b>, wired in Lua, drawn by the engine itself</sub></td>
     <td width="50%"><img src="docs/images/readme/code-editor.webp" alt="The built-in code editor with the Lua script behind that menu"><br><sub><b>Lua and C++</b> in the built-in code editor: here, the script behind that menu</sub></td>
   </tr>
+  <tr>
+    <td colspan="2"><img src="docs/images/readme/lights-2d.webp" alt="Three coloured 2D lights on a normal-mapped brick wall"><br><sub><b>2D lights and normal maps</b>: each brick catches the light from its side</sub></td>
+  </tr>
 </table>
 
 | Area | Highlights |
