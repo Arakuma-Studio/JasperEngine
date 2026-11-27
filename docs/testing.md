@@ -1591,6 +1591,7 @@ one repository runner (one job at a time), labelled `self-hosted`, its OS and ar
 label, running as the machine's normal user under its runner folder (`~/je-runner`, `C:\je-runner`) as
 a service that starts with the machine (macOS: with the user's login) and reconnects after sleep.
 `tools/ci/self-hosted/` installs it (`install-runner.sh`, `install-runner.ps1`, `windows-tools.ps1`).
+With Namespace on for an OS (below), its jobs are Namespace's and no overflow runner takes them.
 
 **Hosted first.** `changes` routes a job (`tools/ci/plan_lanes.py` `route`; `ci.yml` reads
 `runs_on.<job>`, the hosted label when it is missing) to an overflow runner only when all of these hold:
@@ -1694,6 +1695,58 @@ runs only those jobs' lanes, those jobs on those runners whatever the state says
   reroutes.
 - Jobs build with `JOBS` (and on Linux `CPUS`) from the runner's `.env`, under the machine's cores, so
   the user's own work stays usable.
+
+### Namespace runners
+
+[Namespace](https://namespace.so) gives the project Linux, Windows and macOS runners. They are off
+unless the repository variable `NAMESPACE_RUNNERS` says otherwise:
+
+- **On**: `gh variable set NAMESPACE_RUNNERS --body on` (every OS), or the OSes it takes
+  (`--body 'linux macos'`). **Off**: `gh variable set NAMESPACE_RUNNERS --body off`, or delete it. A run
+  reads it as it is created; a run already planned keeps its runners. Unset or `off`, every job's
+  `runs-on` is the GitHub-hosted label it always was (`tools/ci/test_plan_lanes.py` `Namespace`).
+- **Where jobs run**: on a first attempt (and any rerun the watchdog did not make), `changes` gives each
+  job of those OSes a Namespace machine, labelled in the workflow, so no dashboard profile is needed:
+  `nscloud-ubuntu-24.04-amd64-<vCPU>x<GB>`, `nscloud-windows-2022-amd64-...`, `nscloud-macos-tahoe-arm64-...`.
+  The shapes are in `tools/ci/plan_lanes.py` `NAMESPACE_SHAPES`: 16x32 for `linux`, `unit` and
+  `asan-core`, 16x64 for `asan-editor`, 8x16 for `htmlui` and `web`, 8x32 for `smoke` and `android`, 4x16
+  for each MCP shard, 4x8 for `lint` and `changes`; 16x32 for the Windows editor and OpenGL legs, 8x16 for
+  the other legs; 12x28 for `macos` and 6x14 for `ios`. The disk comes with the shape (32 GB plus 8 GB per
+  vCPU or per 2 GB of memory, whichever is more), and `free-disk` does nothing there, so each Linux shape
+  holds its job's measured use (Job setup). Namespace queues a job past the plan's concurrency limit
+  (Business: Linux 160 vCPU, Windows 80, macOS 48), so a larger shape costs parallelism, not failures. A
+  fork's pull request stays on GitHub's runners. `Check`, `report` and the housekeeping jobs always do,
+  so a Namespace outage cannot hold the required status. An overflow runner takes no job that is on
+  Namespace, and the dispatcher counts none of them as GitHub's.
+- **Caches**: each Linux lane and `macos` has its own cache volume (tag `jasperengine-<lane>`, 20 GB).
+  Namespace forks it for each job and commits it only from `main`'s jobs
+  (`nscloud-cache-allow-commit-from-main`): the push to `main` and the advisory run write it, pull
+  requests and the queue read it, as with the Actions cache. ccache lives there (`ccache-restore`: Linux
+  binds `build/.cache/ccache` onto it with `namespacelabs/nscloud-cache-action`, macOS points `CCACHE_DIR`
+  into it), and `ccache-save` trims it and cuts it to the lane's cap as before, uploading nothing. The
+  Linux volumes also hold the Docker images (`nscloud-container-image-cache`), and `android`'s holds the
+  Gradle caches. The second editor unit part commits nothing: the first one trims both parts' objects.
+  Windows (Namespace's docs name no cache volume there), `ios` (the nightly's Xcode cache entry) and
+  `lint` keep the Actions cache.
+- **When Namespace is down**: `tools/ci/runner_dispatch.py` calls an OS down when one of its Namespace
+  jobs has waited 10 min (`NAMESPACE_DOWN_WAIT`) while none of that OS runs there: an outage, the app
+  uninstalled, or a plan not enabled. A full concurrency limit is not down, since jobs are running. The
+  verdict lasts until a job runs there, or 30 min (`NAMESPACE_HOLD`) after it was last seen, after which
+  plans try Namespace again. While it lasts:
+  - plans put that OS's jobs on GitHub's runners (`lanes.json` `routing`: `namespace <os>: GitHub's
+    runners`);
+  - `SELF_HOSTED_PLANNER` is `ubuntu-latest`, so new runs plan there;
+  - the watchdog cancels a run waiting on Namespace and reruns it on GitHub's runners (the state's
+    `hosted_only`). A merge-queue run is cancelled only after 30 min (`QUEUE_OFFLINE_LIMIT`), and its pull
+    request goes back to the front of the queue.
+
+  Without the dispatcher (its host down), nothing falls back by itself. Switch the variable off, then
+  cancel the waiting runs and start new ones (a push, a dispatch, a re-enqueue), which plan on GitHub's
+  runners.
+- **Testing it**: `gh workflow run ci.yml --ref <branch> -f self_hosted='linux=namespace windows-engine-d3d11=namespace macos=namespace'`
+  runs only those jobs' lanes, with those jobs on Namespace whatever the variable says (with it on, the
+  planner and the lanes' other jobs too). Each job's "Set up job" step names its runner, and
+  `ccache-restore` logs `the Namespace cache volume at <path>`.
 
 ### Measured lane times
 

@@ -21,7 +21,9 @@ runs:
         # (the key names the Xcode: an update invalidates the cache)
         prefix="xcode-cas-$(xcodebuild -version | sed -n 1p | tr -cd 'A-Za-z0-9.')-"
         dir="$PWD/build/.cache/xcode-cas"
-        if [[ "$RUNNER_ENVIRONMENT" == self-hosted ]]; then
+        # (an overflow Mac of the user's, je-*: a Namespace Mac, self-hosted too, keeps nothing between jobs
+        # in its tool cache and restores the nightly's entry as GitHub's do)
+        if [[ "$RUNNER_ENVIRONMENT" == self-hosted && "$RUNNER_NAME" == je-* ]]; then
             dir="$RUNNER_TOOL_CACHE/xcode-cas"
             echo "JASPER_XCODE_CAS_LOCAL=1" >> "$GITHUB_ENV"
         fi

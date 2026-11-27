@@ -5,7 +5,8 @@ description: >
   only when the run added objects. Prints the run's statistics and working set on every event. ci.yml's
   caches job then deletes the lane's older entries, so each lane keeps one live copy
   (docs/superpowers/specs/2026-11-12-ci-design.md §10.2); prune: true does that here instead, for a job that
-  has actions: write.
+  has actions: write. A Namespace cache volume (ccache-restore) is trimmed the same way and not uploaded:
+  Namespace commits it as the job ends, from main's jobs only.
 inputs:
   lane:
     description: The lane ccache-restore was given
