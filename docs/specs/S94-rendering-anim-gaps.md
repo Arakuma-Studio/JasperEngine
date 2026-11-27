@@ -991,7 +991,8 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
 - **P7, F44 behaviour changes.** The GameObjects the editor makes to draw the Model's own Mesh
   (Vertex Animator placements, the terrain's Instanced Mesh hosts) keep Preserve Hierarchy off.
   `edit_lattice` treats an empty Mesh (a Model drawn by its parts) as no mesh of its own and binds
-  the children. MCP tests that inspect the Model GameObject's own Mesh (`test_render_stats`,
+  the children. A Lattice Modifier on such a Model reaches its nodes' meshes, as Include
+  Children does, in the draw and the bake (`LatticeRender::reachesChildren`). MCP tests that inspect the Model GameObject's own Mesh (`test_render_stats`,
   `test_render_correctness`) place their models with `preserveHierarchy` false.
 - **P7, F45.** The error names the root for `set_properties` Mesh values and for `link_material`
   (the two routes that set a mesh's material or mesh values on a GameObject).

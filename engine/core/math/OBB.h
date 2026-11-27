@@ -17,13 +17,13 @@ namespace jasperengine {
 
     class JASPERENGINE_API OBB {
     public:
-        enum BoxType {
+        enum BoxType : int {
             BOXTYPE_NULL,
             BOXTYPE_FINITE,
             BOXTYPE_INFINITE
         };
 
-        enum CornerEnum {
+        enum CornerEnum : int {
             FAR_LEFT_BOTTOM = 0,
             FAR_LEFT_TOP = 1,
             FAR_RIGHT_TOP = 2,

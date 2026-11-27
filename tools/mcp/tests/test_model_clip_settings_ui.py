@@ -70,7 +70,14 @@ def entry(state: dict, name: str) -> list | None:
 
 async def item(ed: Editor, label: str) -> dict:
     window(ed)
-    return await ui_input.for_editor(ed).reveal(label, "Inspector", frames=480)
+    ui = ui_input.for_editor(ed)
+    # a row scrolled above the Inspector's top draws no cell, so it never reports: with the settings
+    # below the table (S94's Root Transform rows) a click there can scroll it out; back to the top first
+    if await ui.find(label, "Inspector", frames=4) is None:
+        anchor = await ui.find("Apply##model_clip_settings", "Inspector", frames=4)
+        if anchor is not None:
+            await ui.wheel(ui.centre(anchor["window_rect"]), -40)
+    return await ui.reveal(label, "Inspector", frames=480)
 
 
 async def text_of(ed: Editor, label: str) -> str:
