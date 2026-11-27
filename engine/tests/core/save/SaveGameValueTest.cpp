@@ -106,7 +106,9 @@ TEST(SaveGameValue, RoundTripsEveryType){
 }
 
 TEST(SaveGameValue, ErrorsNameThePath){
-    EXPECT_EQ(runSaveValueLua(R"(
+    // a named local, not the macro's argument: MSVC 14.44's preprocessor (Visual Studio 2022 17.14) mangles a raw
+    // string holding \" in a macro's arguments (C2017, C3688)
+    const char* lua = R"(
         local function check(value, expected)
             local payload, code, message = __saveEncode(value)
             assert(payload == nil, "should fail: " .. expected)
@@ -131,7 +133,8 @@ TEST(SaveGameValue, ErrorsNameThePath){
         check({["a b"] = {f = print}}, "cannot save a function at $[\"a b\"].f")
         local shared = {1}
         assert(__saveEncode({shared, shared}) ~= nil, "a table reached twice is no cycle")
-    )"), "");
+    )";
+    EXPECT_EQ(runSaveValueLua(lua), "");
 }
 
 TEST(SaveGameValue, EqualTablesGiveEqualBytes){

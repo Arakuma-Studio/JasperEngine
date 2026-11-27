@@ -215,7 +215,9 @@ TEST_F(SaveGameLua, CallbackRunsOnTheMainThread){
 }
 
 TEST_F(SaveGameLua, SlotNameErrorSuggests){
-    ASSERT_EQ(runSaveLua(R"(
+    // a named local, not the macro's argument: MSVC 14.44's preprocessor (Visual Studio 2022 17.14) mangles a raw
+    // string holding \" in a macro's arguments (C2017, C3688)
+    const char* lua = R"(
         local ok, err = SaveGame.write("Slot 1", {})
         assert(ok == false and err.code == "name")
         assert(err.message == "Slot names use a-z, 0-9, '_' and '-' (got \"Slot 1\"); try \"slot-1\".", err.message)
@@ -229,5 +231,6 @@ TEST_F(SaveGameLua, SlotNameErrorSuggests){
         assert(SaveGame.exists("slot1") == false)
         local missing, merr = SaveGame.read("nothing")
         assert(missing == nil and merr.code == "not_found", merr.code)
-    )"), "");
+    )";
+    ASSERT_EQ(runSaveLua(lua), "");
 }
