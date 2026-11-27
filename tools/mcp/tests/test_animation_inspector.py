@@ -95,14 +95,19 @@ class Ui:
                     limit: float = 30.0) -> tuple[dict, list[float]]:
         """Wheel notches, then the state once the Inspector's scroll has moved (or until(scroll) holds).
         xdotool's notches reach the editor some frames later (more under load): waited for, never
-        assumed applied after a number of frames."""
+        assumed applied after a number of frames. Under load a notch can also be lost: the scroll
+        not moving for a while sends the notches again."""
         await self.wheel(at, down, notches)
         deadline = time.monotonic() + limit
+        resend = time.monotonic() + 5.0
         while time.monotonic() < deadline:
             await self.frames(2)
             now = self.state()[1]
             if until(now) if until else now[0] != scroll[0]:
                 return await self.settled(name)
+            if time.monotonic() > resend:
+                await self.wheel(at, down, notches)
+                resend = time.monotonic() + 5.0
         self.ed.fail(f"{notches} wheel notch(es) {'down' if down else 'up'} never scrolled the Inspector from {scroll}")
 
     async def reveal(self, name: str, top: bool = True) -> list[float]:
