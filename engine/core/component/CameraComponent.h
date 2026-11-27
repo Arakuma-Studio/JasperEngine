@@ -23,7 +23,7 @@
 
 namespace jasperengine{
 
-    enum FrustumPlane{
+    enum FrustumPlane : int {
         FRUSTUM_PLANE_NEAR   = 0,
         FRUSTUM_PLANE_FAR    = 1,
         FRUSTUM_PLANE_LEFT   = 2,

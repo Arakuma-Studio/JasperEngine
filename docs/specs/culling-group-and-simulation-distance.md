@@ -622,6 +622,14 @@ Unit tests in `engine/tests/core/subsystem/CullingSystemTest.cpp` (suites `Culli
   build measured 2.19 ms and 0.505 ms. Release runs on build box B, shared with other jobs: the group
   p99 0.515, 0.355 and 0.385 ms (p50 0.19-0.23), the simulation p99 0.095, 0.085 and 0.090 ms, the
   events as expected each time; the first run's group p99 was over its 0.5 ms budget, the next two under.
+- **AC17 (budgets reported, not asserted).** The gate prints both p99s with R22's web budgets every run,
+  and a p99 over its budget is a warning line, not a failure; the gate's required lines are the
+  measurement lines and the events after the camera move. R22's figures are device budgets, and the
+  merge queue's hosted runner renders in software (SwiftShader): there the group's p50 alone was 0.63 ms
+  and its p99 1.005 ms, the simulation's p99 0.34 ms (run 45811956539), so a hard check measured the
+  runner, not the engine. The gate had never run in CI before (a PR run does not select it). Wall-clock
+  budgets are reported, never asserted (AGENTS.md); the desktop benches (AC16) still enforce theirs
+  with `perfSlack()`.
 - **R22 on box A.** `je-bench-culling` measured `group_10k_follow_eval_ms` 0.25-0.29 ms (budget 0.22),
   `group_10k_eval_ms` 0.126-0.133 ms (0.132) and `ground_1k_ms` 0.017-0.024 ms (0.022) on box A (a
   2.4 GHz Haswell), run after run between steady runs of a main-thread-only loop: costs at the edge,

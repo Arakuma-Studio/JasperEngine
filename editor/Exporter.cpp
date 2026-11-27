@@ -3171,6 +3171,8 @@ bool editor::Exporter::writeDataAssetIndex() {
                          info.path.c_str(), className.c_str());
         }
     });
+    // a project without data classes ships nothing (the game reads no index as none known)
+    if (index.classes.empty()) return true;
     const std::string text = DataAsset::encodeIndex(index);
     const fs::path target = getExportProjectRoot() / "assets" / DataAsset::INDEX_FILE;
     std::string error;

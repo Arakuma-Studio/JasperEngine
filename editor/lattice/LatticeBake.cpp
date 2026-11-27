@@ -31,6 +31,7 @@
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "io/FileData.h"
+#include "lattice/LatticeRender.h"
 #include "lattice/LatticeSolver.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseEditSession.h"
@@ -136,7 +137,7 @@ namespace{
             Entity ancestor = transform.parent;
             for (int depth = 0; ancestor != NULL_ENTITY && depth < MAX_HIERARCHY_DEPTH; depth++){
                 if (const LatticeModifierComponent* inherited = scene->findComponent<LatticeModifierComponent>(ancestor)){
-                    if (inherited->enabled && inherited->includeChildren) consider(*inherited, ancestor, transform, stack);
+                    if (inherited->enabled && LatticeRender::reachesChildren(scene, ancestor, *inherited)) consider(*inherited, ancestor, transform, stack);
                 }
                 const Transform* ancestorTransform = scene->findComponent<Transform>(ancestor);
                 ancestor = ancestorTransform ? ancestorTransform->parent : NULL_ENTITY;
@@ -481,7 +482,7 @@ namespace{
         }else if (isMeshTarget(scene, target)){
             candidates.push_back(target);
         }
-        if (targetModifier && targetModifier->includeChildren){
+        if (targetModifier && LatticeRender::reachesChildren(scene, target, *targetModifier)){
             auto meshArray = scene->getComponentArray<MeshComponent>();
             for (size_t m = 0; m < meshArray->size(); m++){
                 const Entity mesh = meshArray->getEntity(m);
@@ -569,7 +570,7 @@ namespace{
                 std::vector<Entity> list;
                 if (hasGeometry(scene, modifierEntity)) list.push_back(modifierEntity);
                 const LatticeModifierComponent* modifier = scene->findComponent<LatticeModifierComponent>(modifierEntity);
-                if (modifier && modifier->includeChildren){
+                if (modifier && LatticeRender::reachesChildren(scene, modifierEntity, *modifier)){
                     auto meshArray = scene->getComponentArray<MeshComponent>();
                     for (size_t m = 0; m < meshArray->size(); m++){
                         const Entity mesh = meshArray->getEntity(m);

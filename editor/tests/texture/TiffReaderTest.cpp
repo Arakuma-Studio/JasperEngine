@@ -57,7 +57,7 @@ namespace {
     uint32_t sampleAt(const TiffSpec& s, int x, int y, int c) {
         uint32_t v;
         if (s.noise) {
-            uint32_t h = (uint32_t)(x * 73856093) ^ (uint32_t)(y * 19349663) ^ (uint32_t)(c * 83492791);
+            uint32_t h = ((uint32_t)x * 73856093u) ^ ((uint32_t)y * 19349663u) ^ ((uint32_t)c * 83492791u);
             h ^= h >> 13;
             h *= 0x5bd1e995u;
             v = h ^ (h >> 15);

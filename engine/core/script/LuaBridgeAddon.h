@@ -85,9 +85,20 @@ namespace luabridge
             return {};
         }
 
+        // A number outside the enum's underlying type raises (a Lua -1 for an unsigned enum was
+        // cast into the enum: undefined behaviour, UBSan's "not a valid value for type"); every
+        // value of the underlying type is one, as each bound enum has a fixed one. A value that is
+        // not a number reads 0, as before
         static auto get(lua_State* L, int index) -> std::enable_if_t<std::is_enum_v<T>, luabridge::TypeResult<T>>
         {
-            return static_cast<T>(lua_tointeger(L, index));
+            using U = std::underlying_type_t<T>;
+            static_assert(requires { T{U{}}; }, "a Lua-bound enum needs a fixed underlying type (enum Name : int): "
+                                                "without one a value outside its enumerators' bits is undefined");
+            if (lua_type(L, index) != LUA_TNUMBER)
+                return static_cast<T>(U{});
+            if (! luabridge::is_integral_representable_by<U>(L, index))
+                return luabridge::makeErrorCode(luabridge::ErrorCode::IntegerDoesntFitIntoLuaInteger);
+            return static_cast<T>(static_cast<U>(lua_tointeger(L, index)));
         }
 
         static auto isInstance(lua_State* L, int index) -> std::enable_if_t<std::is_enum_v<T>, bool>

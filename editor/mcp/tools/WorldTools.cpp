@@ -6263,7 +6263,8 @@ bool firstVec3(const tinygltf::Model& gltf, int accessorIndex, double out[3]) {
 void addModelFileInfo(const Target& target, Entity entity, Json& info) {
     Scene* scene = target.engineScene();
     const ModelComponent& model = scene->getComponent<ModelComponent>(entity);
-    if (model.filename.empty()) return;
+    // an FBX whose import is still running has no file to read yet: no failure, nothing to add
+    if (model.filename.empty() || MeshSystem::isModelImportPending(model.filename.str())) return;
     tinygltf::Model gltf;
     std::string parseError;
     if (!MeshSystem::parseGLTFFile(model.filename.str(), gltf, &parseError)) return;

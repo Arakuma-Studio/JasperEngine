@@ -259,6 +259,8 @@ ENTITY_DROP_TARGETS = {
     "editor/window/InspectorWindow.cpp": 3,
     "editor/window/PoseAnimationWindow.cpp": 1,
     "editor/window/ProjectWindow.cpp": 1,
+    # S95 REQ-20: a GameObject element of a script list or a Data Asset field (referenceDropProblem)
+    "editor/window/ScriptValueEditor.cpp": 1,
     "editor/window/SpriteNormalsWindow.cpp": 1,
     "editor/window/VertexAnimationBakerWindow.cpp": 1,
 }

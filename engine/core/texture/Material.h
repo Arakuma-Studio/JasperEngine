@@ -171,7 +171,7 @@ namespace jasperengine{
 
     // colour channels a draw writes: -1 = AUTO (manifest @state colorwrite, else all),
     // otherwise a mask of these bits (0 = depth/stencil only)
-    enum MaterialColorWriteBits {
+    enum MaterialColorWriteBits : int {
         MATERIAL_COLOR_WRITE_R = 1,
         MATERIAL_COLOR_WRITE_G = 2,
         MATERIAL_COLOR_WRITE_B = 4,

@@ -255,6 +255,10 @@ Mesh* NavigationOverlay::newMesh() {
     ScopedDefaultEntityPool sys(*scene, EntityPool::System);
     Mesh* mesh = new Mesh(scene);
     scene->getSystem<RenderSystem>()->setEditorOverlay(mesh->getEntity(), true);
+    // its tint is the vertex colours' alpha, which Auto Transparency does not see: without this the
+    // fill drew in the opaque queue, over whatever was drawn before it (the sky, the clear colour)
+    // and hid the ground under its depth
+    mesh->setAutoTransparency(false);
     mesh->setTransparent(true);
     mesh->setReceiveLights(false);
     mesh->setCastShadows(false);

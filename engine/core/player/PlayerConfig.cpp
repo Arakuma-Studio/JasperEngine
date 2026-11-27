@@ -164,7 +164,10 @@ json PlayerConfig::toJson() const {
         textures.push_back({{"quality", group.quality}, {"memoryBudgetMB", group.memoryBudgetMB}, {"lowMemoryFallback", group.lowMemoryFallback}});
     out["textureDefaults"] = textures;
     out["htmlUi"] = {{"msaa", htmlUiMsaa}, {"glyphAtlasMiB", glyphAtlasMiB}, {"sdfPrimitives", sdfPrimitives},
-                     {"transformAwareText", transformAwareText}, {"imageCacheMiB", imageCacheMiB}};
+                     {"transformAwareText", transformAwareText}};
+    // S93's image cache budget, only away from the platform's default (-1): a game without it keeps its file
+    if (imageCacheMiB >= 0)
+        out["htmlUi"]["imageCacheMiB"] = imageCacheMiB;
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
     out["dynamicBatching"] = dynamicBatching;
     out["pauseOnFocusLoss"] = pauseOnFocusLoss;

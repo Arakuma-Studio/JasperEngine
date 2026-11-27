@@ -225,6 +225,12 @@ TEST(GameConfig, AnOlderGameJsonKeepsTheEngineDefaults) {
     for (const char* key : {"player", "debug", "physics3D", "gpuInstancing", "shaderCreation", "shaderGlobals", "nativePlatformOnlyByTarget"})
         EXPECT_FALSE(plain.contains(key)) << key;
     EXPECT_FALSE(plain["canvas"].contains("scaler"));
+    // S93's image cache budget: written only away from the platform's default (-1), and read back as it
+    EXPECT_FALSE(plain["htmlUi"].contains("imageCacheMiB"));
+    EXPECT_EQ(read.imageCacheMiB, -1);
+    player::PlayerConfig budget;
+    budget.imageCacheMiB = 0;
+    EXPECT_EQ(budget.toJson()["htmlUi"]["imageCacheMiB"], 0);
 }
 
 TEST(GameConfig, ASourceExportNamesNativePluginsPerTarget) {
