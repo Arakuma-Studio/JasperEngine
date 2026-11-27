@@ -390,6 +390,12 @@ bool resolveSoundRef(Project* project, const Json& value, const std::string& whe
     }
     out.path = assetForm(project, relative);
     out.guid = project->getAssetDatabase().getAssetGuid(FileUtils::pathFromUtf8(relative));
+    if (out.guid.isNull()) {
+        // a sound written since the database last looked (its walk is a Background job) has no
+        // entry yet, and a cue without the GUID does not follow a move (S40 R3)
+        project->refreshAssetDatabase(true);
+        out.guid = project->getAssetDatabase().getAssetGuid(FileUtils::pathFromUtf8(relative));
+    }
     return true;
 }
 
