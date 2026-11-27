@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -272,6 +273,10 @@ TEST(FbxImport, ReimportsWhenTheFbxOrATextureChanges) {
 
     // An FBX edit changes its source id, so scenes saved with the old parts are told apart
     writeText(project.fbx, replaced(readText(project.fbx), "0.8,0.2,0.2", "0.2,0.8,0.2"));
+    // dated as a person's later edit is: the same size, and this test runs in a few milliseconds, inside
+    // one tick of the clock that stamps a write (15.6 ms on Windows), so the edit could keep the first
+    // write's time, and the hash cached by size and time would stand (Namespace's Windows runners)
+    fs::last_write_time(project.fbx, fs::last_write_time(project.fbx) + std::chrono::seconds(2));
     EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::Stale);
     EXPECT_NE(FbxImporter::getSourceId(project.fbx), firstSource);
     tinygltf::Model old;
