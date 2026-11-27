@@ -8,6 +8,7 @@
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/MeshComponent.h"
+#include "component/ModelComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "lattice/LatticeSolver.h"
@@ -19,6 +20,15 @@
 using namespace jasperengine;
 
 namespace {
+
+    // a Model drawn by its parts (Preserve Hierarchy, spec S94 F44) has no mesh of its own: its
+    // modifier reaches its nodes' meshes, as it deforms the Model's mesh when the Model draws it
+    bool latticeModelDrawnByParts(EntityRegistry* registry, Entity entity){
+        if (!registry->findComponent<ModelComponent>(entity))
+            return false;
+        const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity);
+        return !mesh || mesh->numSubmeshes == 0;
+    }
 
     static_assert(sizeof(Vector4) == sizeof(float) * 4, "lattice texels are uploaded as RGBA32F");
 
@@ -321,7 +331,7 @@ void LatticeRender::prepare(Scene* scene, LatticeRenderState& state){
 
         LatticeRenderState::PathEntry entry;
         entry.entity = entity;
-        entry.inherited = (own && own->enabled && own->includeChildren) ? own : nullptr;
+        entry.inherited = (own && own->enabled && (own->includeChildren || latticeModelDrawnByParts(scene, entity))) ? own : nullptr;
         entry.modifierIndex = ownIndex;
         state.path.push_back(entry);
         if (entry.inherited)
@@ -395,7 +405,7 @@ bool LatticeRender::isLatticeTarget(EntityRegistry* registry, Entity entity){
     for (int depth = 0; transform && transform->parent != NULL_ENTITY && depth < 1024; depth++){
         const Entity parent = transform->parent;
         if (const LatticeModifierComponent* inherited = registry->findComponent<LatticeModifierComponent>(parent)){
-            if (inherited->includeChildren && bindsLattice(*inherited))
+            if ((inherited->includeChildren || latticeModelDrawnByParts(registry, parent)) && bindsLattice(*inherited))
                 return true;
         }
         transform = registry->findComponent<Transform>(parent);
