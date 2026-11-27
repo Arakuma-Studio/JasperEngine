@@ -11,6 +11,7 @@
 #include "util/EntityPayload.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
+#include "widget/ColorField.h"
 
 #include "imgui.h"
 
@@ -147,7 +148,7 @@ namespace {
     }
 
     // a GameObject reference: its name, a drop target from the Hierarchy, None
-    bool editEntity(SceneProject* scene, ScriptPropertyValue& value) {
+    bool editEntity(Project* project, SceneProject* scene, ScriptPropertyValue& value) {
         EntityReference ref = std::get_if<EntityReference>(&value) ? std::get<EntityReference>(value) : EntityReference{};
         std::string name = "None (GameObject)";
         if (ref.entity != NULL_ENTITY && scene && scene->scene && ref.sceneId == 0) {
@@ -159,12 +160,20 @@ namespace {
         const float buttonWidth = ImGui::GetFrameHeight();
         ImGui::Button((ICON_FA_CUBES " " + name + "##entity").c_str(), ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x - buttonWidth - ImGui::GetStyle().ItemSpacing.x), 0));
         ImGui::SetItemTooltip("Drag a GameObject here from the Hierarchy");
-        if (scene && ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
+        if (project && scene && ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
                 const EntityPayload* entity = reinterpret_cast<const EntityPayload*>(payload->Data);
-                const uint32_t sceneId = entity->entitySceneId == 0 || entity->entitySceneId == scene->id ? 0 : entity->entitySceneId;
-                value = EntityReference{entity->entity, sceneId};
-                changed = true;
+                // the Inspector's reference rule: this scene or one loaded with it (its parents,
+                // children and siblings), else the reference finds nothing when the game runs;
+                // another scene's GameObject keeps its scene id
+                const std::string problem = referenceDropProblem(*project, *entity, scene->id);
+                if (!problem.empty()) {
+                    ImGui::SetTooltip("%s", problem.c_str());
+                } else if (payload->IsDelivery()) {
+                    const uint32_t droppedSceneId = payloadSceneId(*entity, project->getSelectedSceneId());
+                    value = EntityReference{entity->entity, droppedSceneId != scene->id ? droppedSceneId : 0u};
+                    changed = true;
+                }
             }
             ImGui::EndDragDropTarget();
         }
@@ -176,6 +185,24 @@ namespace {
         }
         ImGui::EndDisabled();
         return changed;
+    }
+
+    // the colour field whose Color window session is open (its edits merge into one undo step)
+    ImGuiID scriptValueColorSession = 0;
+
+    // a Color3 / Color4 value through the shared colour field (its window, eyedropper and
+    // linear storage, as the Inspector's script colours): changed on each live change and on Esc
+    // (the original back), editing while its window's session is open
+    template <class V>
+    bool editScriptColor(V& v, bool alpha, bool& editing) {
+        ui::ColorFieldOptions options;
+        options.alpha = alpha;
+        const ImGuiID id = ImGui::GetID("##v");
+        const ui::EditPhase phase = ui::colorField("##v", v, options);
+        if (phase == ui::EditPhase::Begin) scriptValueColorSession = id;
+        if (phase == ui::EditPhase::Committed || phase == ui::EditPhase::Cancelled) scriptValueColorSession = 0;
+        editing |= scriptValueColorSession == id;
+        return phase == ui::EditPhase::Changing || phase == ui::EditPhase::Applied || phase == ui::EditPhase::Cancelled;
     }
 
     // one value (not a list)
@@ -215,7 +242,7 @@ namespace {
             }
             case ScriptPropertyType::Color3: {
                 Vector3 v = std::get_if<Vector3>(&value) ? std::get<Vector3>(value) : Vector3(0, 0, 0);
-                if ((changed = ImGui::ColorEdit3("##v", &v.x))) value = v;
+                if ((changed = editScriptColor(v, false, editing))) value = v;
                 break;
             }
             case ScriptPropertyType::Vector4: {
@@ -225,14 +252,14 @@ namespace {
             }
             case ScriptPropertyType::Color4: {
                 Vector4 v = std::get_if<Vector4>(&value) ? std::get<Vector4>(value) : Vector4(0, 0, 0, 1);
-                if ((changed = ImGui::ColorEdit4("##v", &v.x))) value = v;
+                if ((changed = editScriptColor(v, true, editing))) value = v;
                 break;
             }
             case ScriptPropertyType::Prefab:
             case ScriptPropertyType::Asset:
                 return editReference(project, field, value);
             case ScriptPropertyType::EntityReference:
-                return editEntity(scene, value);
+                return editEntity(project, scene, value);
             case ScriptPropertyType::List:
                 break;
         }
