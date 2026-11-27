@@ -25,7 +25,10 @@ namespace {
     // order the transparent queue draws them in ("AB": A first)
     std::string drawOrder(TransparencySortMode mode, CameraType type, float cameraX){
         SortingLayers::setTransparencySortMode(mode);
+        // outside a registry nothing deletes the framebuffer the camera's initialiser allocates
         CameraComponent camera;
+        delete camera.framebuffer;
+        camera.framebuffer = nullptr;
         camera.type = type;
         camera.worldDirection = Vector3(0.0f, 0.0f, 1.0f); // the view's backward axis
         Transform cameraTransform;
