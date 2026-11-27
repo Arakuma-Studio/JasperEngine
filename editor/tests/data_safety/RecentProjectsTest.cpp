@@ -9,22 +9,19 @@
 #include "EditorHost.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
-#include "support/TestTempDir.h"
+#include "TempDir.h"
 
 #include <gtest/gtest.h>
 
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
-#include <cstdlib>
-#include <optional>
 #include <string>
 #include <vector>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using jasperengine::test::TestTempDir;
 
 namespace {
 
@@ -61,41 +58,24 @@ namespace {
         return std::any_of(paths.begin(), paths.end(), [&](const std::string& p) { return sameRecentPath(p, project); });
     }
 
-    // The system temporary folder moved into the test's folder: a project in the temporary folder is
-    // the editor's temporary project, which is never recorded (Project::isTempProject)
-    class RecentProjectsTempFolder {
-    public:
-        explicit RecentProjectsTempFolder(const fs::path& folder) {
-            fs::create_directories(folder);
-            if (const char* old = std::getenv(name)) previous = old;
-            set(folder.string().c_str());
-        }
-        ~RecentProjectsTempFolder() { set(previous ? previous->c_str() : nullptr); }
-    private:
-#if defined(_WIN32)
-        static constexpr const char* name = "TMP";
-        static void set(const char* value) { _putenv_s(name, value ? value : ""); }
-#else
-        static constexpr const char* name = "TMPDIR";
-        static void set(const char* value) { value ? ::setenv(name, value, 1) : ::unsetenv(name); }
-#endif
-        std::optional<std::string> previous;
-    };
-
     // a copy of a fixture project and the user's settings naming another project as the last one
+    // in the test binary's folder, not the system temporary folder: a project there is the editor's
+    // temporary project, which is never recorded (Project::isTempProject). Moving TMP does not move it
+    // for a process running as SYSTEM, as a Namespace Windows runner's jobs do: GetTempPath2 gives
+    // C:\Windows\SystemTemp then
     struct RecentProjectsSetup {
-        TestTempDir dir{"recent-projects"};
-        RecentProjectsTempFolder temp{dir / "tmp"};
-        fs::path settings = dir / "settings.yaml";
-        fs::path other = dir / "Other";
-        fs::path project = dir / "Game";
+        jasperengine::test::TempDir dir;
+        fs::path settings = dir.path() / "settings.yaml";
+        fs::path other = dir.path() / "Other";
+        fs::path project = dir.path() / "Game";
         RecentProjectsSetup() {
             std::error_code ec;
-            EXPECT_TRUE(fs::equivalent(fs::temp_directory_path(), dir / "tmp", ec));
+            const fs::path inTemp = fs::relative(project, fs::temp_directory_path(), ec);
+            EXPECT_TRUE(ec || inTemp.empty() || *inTemp.begin() == "..") << project << " is in the temporary folder";
             fs::create_directories(other);
             fs::copy(fs::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/prefab-runtime", project, fs::copy_options::recursive);
-            TestTempDir::write(settings, "last_project_path: " + other.generic_string() + "\nrecent_projects:\n  - " +
-                                         other.generic_string() + "\n");
+            dir.write("settings.yaml", "last_project_path: " + other.generic_string() + "\nrecent_projects:\n  - " +
+                                       other.generic_string() + "\n");
             EXPECT_TRUE(AppSettings::initializeWithFile(settings));
         }
     };
