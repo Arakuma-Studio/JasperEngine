@@ -47,12 +47,12 @@ class CcacheTrim(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def trim(self, kib: int, cap: str = "0.95G", event: str = "push") -> list[str]:
+    def trim(self, kib: int, cap: str = "0.95G", event: str = "push", **extra: str) -> list[str]:
         env = {k: v for k, v in os.environ.items() if not k.startswith(("CCACHE_", "GITHUB_", "JASPER_"))}
         env.update(PATH=f"{self.root / 'bin'}{os.pathsep}{os.environ['PATH']}", RUNNER_OS="macOS", LANE="linux",
                    EVENT=event, REF="refs/heads/main", JASPER_CCACHE_LANE="linux", JASPER_CCACHE_CAP=cap,
                    JASPER_CCACHE_MARKER=str(self.marker), JASPER_CCACHE_START="1", JASPER_CCACHE_RESTORED_SIZE="1M",
-                   GITHUB_OUTPUT=str(self.output), FAKE_CCACHE_LOG=str(self.log), FAKE_CCACHE_KIB=str(kib))
+                   GITHUB_OUTPUT=str(self.output), FAKE_CCACHE_LOG=str(self.log), FAKE_CCACHE_KIB=str(kib), **extra)
         done = subprocess.run(["bash", str(SCRIPT)], cwd=self.root, env=env, capture_output=True, text=True)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.stdout = done.stdout
@@ -90,6 +90,24 @@ class CcacheTrim(unittest.TestCase):
         calls = self.trim(5 * 1024 * 1024, event="pull_request")
         self.assertFalse([c for c in calls if c.startswith(("--cleanup", "--recompress", "--zero-stats"))], calls)
         self.assertEqual(self.output.read_text(), "save=false\n")
+
+    def test_a_namespace_volume_is_cut_in_place_and_never_uploaded(self):
+        # (macOS: the volume's own directory, not build/.cache/ccache; Namespace commits it, main's only)
+        volume = self.root / "cache" / "ccache" / "macos"
+        (volume / "0").mkdir(parents=True)
+        (volume / "0" / "abcR").write_text("an object written by this run")
+        self.cache.joinpath("0", "abcR").unlink()
+        calls = self.trim(1000 * 1024, JASPER_CCACHE_VOLUME="1", CCACHE_DIR=str(volume))
+        self.assertIn("--cleanup maxsize=0.95G", calls)
+        self.assertIn("--zero-stats maxsize=0.95G", calls)
+        self.assertIn("kept on the Namespace cache volume", self.stdout)
+        self.assertEqual(self.output.read_text(), "save=false\n")
+        # without the volume's directory it finds nothing new there: nothing cut
+        self.log.unlink()
+        self.output.unlink()
+        calls = self.trim(1000 * 1024, JASPER_CCACHE_VOLUME="1", CCACHE_DIR=str(self.cache))
+        self.assertIn("nothing new since the restore", self.stdout)
+        self.assertFalse([c for c in calls if c.startswith("--cleanup")], calls)
 
 
 if __name__ == "__main__":

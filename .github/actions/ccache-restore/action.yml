@@ -5,8 +5,11 @@ description: >
   on the runner (Windows: choco, macOS: brew), and sets CCACHE_DIR, and CCACHE_MAXSIZE to 0 (tools/build.sh
   forwards it into the image): the build runs without a cap, which ccache-save applies to what it saves.
   An overflow runner on macOS or Windows uses its own capped cache in its tool cache instead of the entry.
-  ccache-save writes the entry back on push to main only (docs/superpowers/specs/2026-11-12-ci-design.md
-  §10.2).
+  A Namespace runner with a cache volume (NSC_CACHE_PATH, the lane's: tools/ci/plan_lanes.py
+  NAMESPACE_CACHE) keeps the cache there instead: Linux binds build/.cache/ccache onto it
+  (nscloud-cache-action), macOS points CCACHE_DIR into it. ccache-save writes the entry back, or trims
+  the volume's, on push to main only (docs/superpowers/specs/2026-11-12-ci-design.md §10.2): Namespace
+  commits a volume from main's jobs only.
 inputs:
   lane:
     description: The cache's lane (linux, unit-core, unit-editor, asan-core, asan-editor, htmlui, smoke, web, android, windows-editor, windows-engine-glcore, windows-engine-d3d11, windows-engine-vulkan, windows-compile, macos)
@@ -64,6 +67,13 @@ runs:
             mkdir -p "$dir"
             maxsize=3G
             echo "JASPER_CCACHE_LOCAL=1" >> "$GITHUB_ENV"
+        elif [[ -n "${NSC_CACHE_PATH:-}" && "$RUNNER_OS" != Windows ]]; then
+            # a Namespace runner's cache volume, a fork of what main's jobs last committed: no download;
+            # the cap and the trim stay ccache-save's (docs/testing.md "Namespace runners")
+            [[ "$RUNNER_OS" == Linux ]] || dir="$NSC_CACHE_PATH/ccache/$LANE"
+            mkdir -p "$dir"
+            echo "JASPER_CCACHE_VOLUME=1" >> "$GITHUB_ENV"
+            echo "ccache-restore: the Namespace cache volume at $NSC_CACHE_PATH (runner $RUNNER_NAME)"
         fi
         {
             echo "CCACHE_DIR=$dir"
@@ -78,8 +88,15 @@ runs:
         echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
         echo "key=$prefix$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
 
+    # (after the checkout, which would empty the bound directory)
+    - name: Bind the cache volume
+      if: env.JASPER_CCACHE_VOLUME == '1' && runner.os == 'Linux'
+      uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+      with:
+        path: build/.cache/ccache
+
     - name: Restore
-      if: env.JASPER_CCACHE_LOCAL != '1'
+      if: env.JASPER_CCACHE_LOCAL != '1' && env.JASPER_CCACHE_VOLUME != '1'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: build/.cache/ccache
