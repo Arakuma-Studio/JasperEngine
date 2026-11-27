@@ -23,10 +23,11 @@
 #include "render/FogProfile.h"
 #include "util/AssetDatabase.h"
 
+#include "support/PosixCompat.h"
+
 #include <filesystem>
 #include <fstream>
 #include <memory>
-#include <unistd.h>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
