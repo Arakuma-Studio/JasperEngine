@@ -8,10 +8,16 @@
 #
 #   LANE=<lane> EVENT=<event> REF=<ref> .github/actions/ccache-save/trim.sh
 #
+# A Namespace cache volume (ccache-restore's JASPER_CCACHE_VOLUME) is trimmed and cut the same way, in
+# place, and never uploaded (save=false): Namespace commits the volume as the job ends, from main's jobs
+# only (tools/ci/plan_lanes.py namespace_labels).
+#
 # Run from the repository root after ccache-restore. Writes save=true|false to $GITHUB_OUTPUT.
 set -euo pipefail
 
 DIR=build/.cache/ccache
+# (macOS: the volume's own directory; Linux binds it at DIR, which its image mounts)
+[[ "${JASPER_CCACHE_VOLUME:-}" == 1 && "$RUNNER_OS" != Linux ]] && DIR="$CCACHE_DIR"
 # the level a saved entry is recompressed to (below)
 RECOMPRESS_LEVEL=9
 out() { echo "save=$1" >> "${GITHUB_OUTPUT:-/dev/stdout}"; }
@@ -47,7 +53,7 @@ save=false
 if [[ "$EVENT" == schedule || ( "$EVENT" == push && "$REF" == refs/heads/main ) ]]; then
     # an object or manifest written since the restore (ccache rewrites its stats files on every hit)
     new="$(find "$DIR" -type f -newer "$JASPER_CCACHE_MARKER" ! -name stats ! -name '*.lock' \
-        ! -name ccache.conf ! -path '*/tmp/*' -print -quit 2> /dev/null || true)"
+        ! -name ccache.conf ! -path "$DIR/tmp/*" -print -quit 2> /dev/null || true)"
     if [[ -n "$new" ]]; then save=true; else echo "ccache-save: nothing new since the restore"; fi
 else
     echo "ccache-save: $EVENT runs restore only"
@@ -91,7 +97,12 @@ if [[ "$save" == true ]]; then
         || { echo "ccache-save: recompressing failed; nothing saved"; out false; exit 0; }
     run_ccache --zero-stats > /dev/null \
         || { echo "ccache-save: zeroing the statistics failed; nothing saved"; out false; exit 0; }
-    echo "ccache-save: saving"
     du -sh "$DIR"
+    if [[ "${JASPER_CCACHE_VOLUME:-}" == 1 ]]; then
+        echo "ccache-save: kept on the Namespace cache volume, which Namespace commits as the job ends"
+        save=false
+    else
+        echo "ccache-save: saving"
+    fi
 fi
 out "$save"

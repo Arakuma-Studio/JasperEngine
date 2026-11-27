@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import plan_lanes as pl  # noqa: E402
 import runner_dispatch as rd  # noqa: E402
 
 NOW = 1_800_000_000.0
@@ -207,6 +208,97 @@ class Idle(unittest.TestCase):
         self.assertIn("offline for", rd.stuck({"event": "push"}, running, offline, {"je-mac": NOW - rd.OFFLINE_LIMIT}, NOW))
         notes = {7: ["The self-hosted runner: je-mac lost communication with the server."]}
         self.assertIn("lost communication", rd.lost([job("je-mac", "completed", conclusion="failure", id_=7)], notes.get))
+
+
+def nsjob(job_name, os_, status="queued", ago=0, id_=1):
+    """A job with the labels plan_lanes gives it on Namespace."""
+    labels = pl.namespace_labels(job_name, os_)
+    return dict(job("x", status, ago, name=job_name, id_=id_), labels=labels if isinstance(labels, list) else [labels])
+
+
+def counts(running=0, queued=0, waited=0):
+    return {"running": running, "queued": queued, "waited": waited}
+
+
+class Namespace(unittest.TestCase):
+    """Namespace's jobs: no hosted runner's and no overflow runner's, never rerouted to one; Namespace down
+    per OS only when a job waits with none of the OS running; while down, the planner and the plans go to
+    GitHub's runners and a run waiting on it is rerouted."""
+
+    def test_its_jobs_count_for_no_hosted_or_overflow_runner(self):
+        jobs = [nsjob("linux", "linux", "in_progress", id_=i) for i in range(70)] + \
+               [nsjob("macos", "macos", ago=3600), nsjob("windows-editor", "windows", ago=3600), nsjob("lint", "linux", ago=99)]
+        s = rd.compute_state(RUNNERS, jobs, {}, NOW)
+        for os_ in ("linux", "windows", "macos"):
+            self.assertEqual({k: s["os"][os_][k] for k in ("running", "queued", "saturated")},
+                             {"running": 0, "queued": 0, "saturated": False}, os_)
+        self.assertEqual(s["namespace"], {"linux": counts(70, 1, 99), "windows": counts(0, 1, 3600), "macos": counts(0, 1, 3600)})
+        self.assertFalse(any(r["busy"] for r in s["runners"].values()))
+        for j in jobs:
+            self.assertEqual(rd.os_of(j["labels"]), ("", ""))
+        # never rerouted onto an idle overflow runner, never stuck while Namespace is up
+        idle = {label: {"online": True, "busy": False, "fit": True} for label in pl.OVERFLOW}
+        run = {"id": 5, "event": "push"}
+        self.assertEqual(rd.waiting_for_idle(run, jobs, idle, "", NOW, set()), ("", ""))
+        up = {os_: {"down": False} for os_ in pl.NAMESPACE_OSES}
+        self.assertEqual(rd.stuck(run, jobs, idle, {}, NOW, up), "")
+        # with hosted jobs beside them, those count as before
+        s = rd.compute_state(RUNNERS, jobs + [job("ubuntu-latest", ago=rd.SATURATED_WAIT)], {}, NOW)
+        self.assertTrue(s["os"]["linux"]["saturated"])
+
+    def test_down_when_a_job_waits_with_none_running_until_the_hold(self):
+        memory = {}
+        health = lambda c, t=NOW: rd.namespace_health({"linux": c}, memory, t)["linux"]  # noqa: E731
+        self.assertFalse(health(counts(0, 1, rd.NAMESPACE_DOWN_WAIT - 1))["down"])
+        # busy, not down: a full concurrency limit has jobs running
+        self.assertFalse(health(counts(5, 9, 3600))["down"])
+        h = health(counts(0, 2, rd.NAMESPACE_DOWN_WAIT))
+        self.assertEqual((h["down"], h["since"]), (True, int(NOW)))
+        self.assertIn("waited 10 min with no linux job running on Namespace", h["why"])
+        # held while nothing shows it up (the plans send nothing there meanwhile), then tried again
+        self.assertTrue(health(counts(), NOW + rd.NAMESPACE_HOLD - 1)["down"])
+        self.assertFalse(health(counts(), NOW + rd.NAMESPACE_HOLD)["down"])
+        self.assertEqual(memory["namespace_down"], {})
+        # up as soon as a job runs there
+        health(counts(0, 1, 3600))
+        self.assertFalse(health(counts(1, 0, 0), NOW + 60)["down"])
+
+    def test_while_down_the_planner_goes_to_github(self):
+        s = rd.compute_state(RUNNERS, [], {}, NOW)
+        s["namespace"] = {"linux": {"down": True}, "windows": {"down": False}}
+        self.assertEqual(rd.planner(s, ""), "ubuntu-latest")
+        rd.reserve(s, "ubuntu-latest")   # (no runner of ours: nothing reserved)
+        self.assertTrue(all(r["fit"] for r in s["runners"].values()))
+        s["namespace"] = {"linux": {"down": False}, "windows": {"down": True}}
+        self.assertEqual(rd.planner(s, ""), "")
+        # an idle je-linux while hosted Linux is saturated still comes first
+        busy = [job("ubuntu-latest", "in_progress", id_=i) for i in range(60)] + [job("ubuntu-latest", ago=30)]
+        s = rd.compute_state(RUNNERS, busy, {}, NOW)
+        s["namespace"] = {"linux": {"down": True}}
+        self.assertEqual(rd.planner(s, ""), "je-linux")
+
+    def test_a_run_waiting_on_namespace_while_it_is_down_is_rerouted(self):
+        down = {"linux": {"down": True, "why": "a job waited 10 min"}, "macos": {"down": False}}
+        lane = nsjob("linux", "linux", ago=rd.NAMESPACE_DOWN_WAIT)
+        why = rd.stuck({"event": "pull_request"}, [lane], {}, {}, NOW, down)
+        self.assertIn("linux queued 10 min for Namespace, down for linux", why)
+        self.assertIn("changes", rd.stuck({"event": "push"}, [dict(lane, name="changes")], {}, {}, NOW, down))
+        for run, jobs, health in (({"event": "pull_request"}, [nsjob("linux", "linux", ago=rd.NAMESPACE_DOWN_WAIT - 1)], down),
+                                  ({"event": "pull_request"}, [nsjob("macos", "macos", ago=3600)], down),     # up there
+                                  ({"event": "pull_request"}, [lane], {}),                                    # no verdict
+                                  ({"event": "pull_request"}, [nsjob("linux", "linux", "in_progress", ago=3600)], down),
+                                  ({"event": "merge_group"}, [lane], down)):                                 # not yet
+            self.assertEqual(rd.stuck(run, jobs, {}, {}, NOW, health), "", (run, jobs[0]["name"], health))
+        # a merge-queue run (a cancel fails its group) once it has waited QUEUE_OFFLINE_LIMIT
+        queue = nsjob("linux", "linux", ago=rd.QUEUE_OFFLINE_LIMIT)
+        self.assertIn("queued 30 min for Namespace", rd.stuck({"event": "merge_group"}, [queue], {}, {}, NOW, down))
+        # the watchdog reroutes it as for a lost runner: the rerun is held on GitHub's runners
+        gh = FakeGh()
+        dog = rd.Watchdog(gh, {}, NOW, lambda line: None)
+        self.assertTrue(dog.handle(run_(), why, finished=False))
+        dog.finish(run_(), why)
+        self.assertEqual(gh.calls, [("cancel", 11), ("rerun", 11)])
+        self.assertEqual(dog.held(), ["11"])
 
 
 class FakeGh:

@@ -715,8 +715,8 @@ JOBS = {"lint": "linux", "linux": "linux", "unit-core": "linux", "unit-editor-1"
         "windows-engine-vulkan": "windows", "windows-compile": "windows", "macos": "macos", "ios": "macos"}
 
 
-def route(st, trigger="pull_request", head=REPO, attempt=1, disabled="", force=None, jobs=JOBS, run_id="42"):
-    return pl.route(jobs, st, NOW, trigger, head, REPO, attempt, disabled, force, run_id=run_id)
+def route(st, trigger="pull_request", head=REPO, attempt=1, disabled="", force=None, jobs=JOBS, run_id="42", namespace=""):
+    return pl.route(jobs, st, NOW, trigger, head, REPO, attempt, disabled, force, run_id=run_id, namespace=namespace)
 
 
 def overflowed(runs_on):
@@ -874,6 +874,144 @@ class Routing(unittest.TestCase):
         self.assertIn('run: tools/ci/windows.sh engine "$BACKEND"', job)
         self.assertNotIn("\n    if:", job)
         self.assertIn("windows-engine,", nightly[nightly.index("\n  report:"):])
+
+
+EVERY_JOB = {**JOBS, "unit-editor-2": "linux", "asan-core": "linux", "htmlui": "linux", "smoke": "linux", "web": "linux",
+             "android": "linux", "mcp-2": "linux"}
+
+
+def on_namespace(runs_on):
+    return {job: pl.namespace_os(labels) for job, labels in runs_on.items() if pl.namespace_os(labels)}
+
+
+class Namespace(unittest.TestCase):
+    """NAMESPACE_RUNNERS: off changes nothing; on (or the OSes it names) puts the jobs of those OSes on
+    Namespace's machines, which no overflow runner then takes, unless the run is a fork's, a rerun the
+    watchdog moved off, or the state says Namespace is down for the OS."""
+
+    def test_off_changes_nothing(self):
+        for value in ("", "off", "OFF", "false", "no", "ubuntu-latest"):
+            for st in (None, state(), state(saturated=()), dict(state(), namespace={"linux": {"down": True}})):
+                for trigger in ("pull_request", "merge_group", "push", "workflow_dispatch"):
+                    for attempt in (1, 2):
+                        self.assertEqual(route(st, trigger=trigger, attempt=attempt, namespace=value, jobs=EVERY_JOB),
+                                         route(st, trigger=trigger, attempt=attempt, jobs=EVERY_JOB), (value, trigger, attempt))
+            force = {"macos": "je-mac", "lint": "je-linux"}
+            self.assertEqual(route(None, trigger="workflow_dispatch", force=force, namespace=value),
+                             route(None, trigger="workflow_dispatch", force=force))
+        # and every label stays GitHub's or an overflow runner's (ci.yml: a string)
+        for label in route(state(), jobs=EVERY_JOB)[0].values():
+            self.assertIn(label, (*pl.HOSTED.values(), *pl.OVERFLOW))
+
+    def test_on_puts_every_job_of_its_oses_there(self):
+        # (hosted saturated, every overflow runner idle: Namespace takes the jobs, no overflow runner)
+        for st in (state(), state(saturated=()), None):
+            runs_on, notes = route(st, namespace="on", jobs=EVERY_JOB)
+            self.assertEqual(on_namespace(runs_on), EVERY_JOB)
+            self.assertTrue(any("NAMESPACE_RUNNERS" in n for n in notes), notes)
+        runs_on = route(state(), namespace="on", jobs=EVERY_JOB)[0]
+        # each job's shape, and its lane's cache volume that only main's jobs commit
+        volume = ["nscloud-cache-size-20gb", "nscloud-cache-allow-commit-from-main"]
+        self.assertEqual(runs_on["linux"], ["nscloud-ubuntu-24.04-amd64-16x32-with-cache", "nscloud-cache-tag-jasperengine-linux",
+                                            *volume, "nscloud-container-image-cache"])
+        self.assertEqual(runs_on["asan-editor"][:2], ["nscloud-ubuntu-24.04-amd64-16x64-with-cache",
+                                                      "nscloud-cache-tag-jasperengine-asan-editor"])
+        self.assertEqual(runs_on["mcp-2"][:2], ["nscloud-ubuntu-24.04-amd64-4x16-with-cache", "nscloud-cache-tag-jasperengine-mcp"])
+        self.assertEqual(runs_on["macos"], ["nscloud-macos-tahoe-arm64-12x28-with-cache", "nscloud-cache-tag-jasperengine-macos", *volume])
+        self.assertEqual(runs_on["lint"], "nscloud-ubuntu-24.04-amd64-4x8")
+        self.assertEqual(runs_on["ios"], "nscloud-macos-tahoe-arm64-6x14")
+        self.assertEqual(runs_on["windows-editor"], "nscloud-windows-2022-amd64-16x32")
+        self.assertEqual(runs_on["windows-engine-glcore"], "nscloud-windows-2022-amd64-16x32")
+        self.assertEqual(runs_on["windows-engine-d3d11"], "nscloud-windows-2022-amd64-8x16")
+        # both editor parts share the editor's volume; only the first (it trims and holds both parts) commits
+        self.assertEqual(runs_on["unit-editor-1"][1], "nscloud-cache-tag-jasperengine-unit-editor")
+        self.assertNotIn("nscloud-cache-exp-do-not-commit", runs_on["unit-editor-1"])
+        self.assertEqual(runs_on["unit-editor-2"][1:], [*runs_on["unit-editor-1"][1:], "nscloud-cache-exp-do-not-commit"])
+        # only the OSes it names; the others route as before (je-win takes its leg of a saturated Windows)
+        runs_on, notes = route(state(), namespace="linux, macos", jobs=EVERY_JOB)
+        self.assertEqual(set(on_namespace(runs_on).values()), {"linux", "macos"})
+        self.assertEqual(overflowed({j: l for j, l in runs_on.items() if not pl.namespace_os(l)}), {"windows-engine-d3d11": "je-win"})
+        self.assertEqual(set(on_namespace(route(state(), namespace="Windows", jobs=EVERY_JOB)[0]).values()), {"windows"})
+
+    def test_never_a_forks_pull_request_nor_a_rerun_the_watchdog_moved_off(self):
+        for trigger, head in (("pull_request", "someone/JasperEngine"), ("pull_request", ""), ("schedule", REPO)):
+            self.assertEqual(on_namespace(route(state(), trigger=trigger, head=head, namespace="on")[0]), {}, (trigger, head))
+        held = dict(state(), hosted_only=["42"])
+        runs_on, notes = route(held, attempt=2, namespace="on")
+        self.assertEqual(on_namespace(runs_on), {})
+        self.assertIn("attempt 2", notes[0])
+        # anyone else's rerun stays where the variable puts it
+        self.assertEqual(on_namespace(route(held, attempt=2, run_id="43", namespace="on")[0]), JOBS)
+        for trigger in ("pull_request", "push", "merge_group", "workflow_dispatch"):
+            self.assertEqual(on_namespace(route(state(), trigger=trigger, namespace="on")[0]), JOBS, trigger)
+
+    def test_down_for_an_os_keeps_its_jobs_on_github(self):
+        st = dict(state(saturated=("windows",)), namespace={"windows": {"down": True, "why": "a job waited 10 min"},
+                                                            "linux": {"down": False}})
+        runs_on, notes = route(st, namespace="on", jobs=EVERY_JOB)
+        self.assertEqual(set(on_namespace(runs_on).values()), {"linux", "macos"})
+        self.assertEqual(runs_on["windows-editor"], "windows-latest")
+        # GitHub's, or an overflow runner while those are saturated
+        self.assertEqual(runs_on["windows-engine-d3d11"], "je-win")
+        self.assertTrue(any("namespace windows: GitHub's runners (a job waited 10 min" in n for n in notes), notes)
+        # the verdict of a stale state counts for nothing: the variable decides
+        stale = dict(st, t=NOW - pl.STATE_MAX_AGE - 1)
+        self.assertEqual(on_namespace(route(stale, namespace="on", jobs=EVERY_JOB)[0]), EVERY_JOB)
+
+    def test_a_dispatch_forces_namespace(self):
+        force, bad = pl.parse_force("linux=namespace windows-engine-d3d11=namespace macos=namespace ios=nowhere")
+        self.assertEqual((force, len(bad)), ({"linux": "namespace", "windows-engine-d3d11": "namespace", "macos": "namespace"}, 1))
+        for st in (None, state()):
+            runs_on, notes = route(st, trigger="workflow_dispatch", force=force)
+            self.assertEqual(on_namespace(runs_on), {"linux": "linux", "windows-engine-d3d11": "windows", "macos": "macos"})
+            self.assertEqual(overflowed({j: l for j, l in runs_on.items() if not pl.namespace_os(l)}), {})
+        # with the variable on, the other jobs too; never on a push, never a job the plan lacks
+        self.assertEqual(on_namespace(route(None, trigger="workflow_dispatch", force=force, namespace="on")[0]), JOBS)
+        self.assertEqual(on_namespace(route(None, trigger="push", force=force)[0]), {})
+        runs_on, notes = route(None, trigger="workflow_dispatch", force={"web": "namespace"})
+        self.assertEqual((on_namespace(runs_on), notes), ({}, ["web=namespace ignored: no job web in this plan"]))
+
+    def test_every_label_is_one_namespace_schedules(self):
+        # one machine label (Namespace schedules no job with two), of a shape its docs list, and tags of
+        # [a-z0-9.-]; each lane's volume its own tag (a shared one would mix the lanes' ccache)
+        machine = re.compile(r"nscloud-(ubuntu-24\.04-amd64|windows-2022-amd64|macos-tahoe-arm64)-(\d+)x(\d+)(-with-cache)?")
+        mac_shapes = {"6x14", "12x28", "12x56"}
+        tags = {}
+        for job, os_ in EVERY_JOB.items():
+            labels = pl.namespace_labels(job, os_)
+            labels = labels if isinstance(labels, list) else [labels]
+            machines = [l for l in labels if machine.fullmatch(l)]
+            self.assertEqual(len(machines), 1, (job, labels))
+            m = machine.fullmatch(machines[0])
+            if os_ == "macos":
+                self.assertIn(f"{m.group(2)}x{m.group(3)}", mac_shapes, job)
+            self.assertEqual(bool(m.group(4)), any(l.startswith("nscloud-cache-tag-") for l in labels), job)
+            for label in labels:
+                self.assertRegex(label, r"^(nscloud|namespace)-[a-z0-9.-]+$")
+                if label.startswith("nscloud-cache-tag-"):
+                    tags.setdefault(label, set()).add(pl.by_job(pl.NAMESPACE_CACHE, job))
+            self.assertEqual(pl.namespace_os(labels), os_)
+        self.assertTrue(all(len(lanes) == 1 for lanes in tags.values()), tags)
+        # a hosted or overflow label is no Namespace one
+        for label in (*pl.HOSTED.values(), *pl.OVERFLOW, "ubuntu-slim", "self-hosted"):
+            self.assertEqual(pl.namespace_os(label), "")
+
+    def test_ci_yml_reads_the_variable(self):
+        text = (HERE.parent.parent / pl.WORKFLOW).read_text()
+        self.assertIn("NAMESPACE: ${{ vars.NAMESPACE_RUNNERS }}", text)
+        self.assertIn('--namespace "$NAMESPACE"', text)
+        # the planner: the same OS rule, never a fork's pull request or a rerun, GitHub's as the fallback
+        changes = text[text.index("\n  changes:"):text.index("\n    timeout-minutes", text.index("\n  changes:"))]
+        self.assertIn("vars.NAMESPACE_RUNNERS == 'on' || contains(vars.NAMESPACE_RUNNERS, 'linux')", changes)
+        planner = re.search(r"&& '(nscloud-[^']+)' \|\| 'ubuntu-latest' }}", changes)
+        self.assertTrue(planner, changes)
+        self.assertEqual(pl.namespace_os(planner.group(1)), "linux")
+        self.assertEqual(changes.count("github.run_attempt == 1"), 2)
+        self.assertEqual(changes.count("github.event.pull_request.head.repo.full_name == github.repository"), 2)
+        # Check and the report stay on GitHub's runners: a Namespace outage must not hold the required status
+        for job in ("check", "report"):
+            block = text[text.index(f"\n  {job}:"):]
+            self.assertIn("runs-on: ubuntu-slim", block[:block.index("steps:")], job)
 
 
 class Selection(unittest.TestCase):
@@ -1072,6 +1210,26 @@ class Runs(unittest.TestCase):
         code, doc, out = self.run_main("--event", "workflow_dispatch", "--trigger", "workflow_dispatch",
                                        "--self-hosted", "lint=je-linux", "--run-attempt", "2", *common)
         self.assertEqual(doc["runs_on"], {"lint": "ubuntu-latest"})
+
+    def test_namespace_routes_the_jobs_through_the_output(self):
+        head = self.commit("tools/mcp/tests/test_a.py", TEST_FILE.format(extra="# changed"))
+        gh = self.tmp / "gh.txt"
+        common = ("--event", "pull_request", "--trigger", "pull_request", "--base", self.base, "--head", head,
+                  "--out-dir", str(self.tmp / "out"), "--github-output", str(gh), "--repo", REPO, "--head-repo", REPO)
+        code, hosted, out = self.run_main(*common)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(hosted["runs_on"], hosted["lanes"])
+        # off: the same runs-on, word for word
+        code, doc, out = self.run_main(*common, "--namespace", "off")
+        self.assertEqual(doc["runs_on"], hosted["runs_on"])
+        # on: each job's Namespace labels, as ci.yml's runs-on reads them (a list, or one string)
+        code, doc, out = self.run_main(*common, "--namespace", "on")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(set(doc["runs_on"]), set(hosted["runs_on"]))
+        self.assertTrue(all(pl.namespace_os(v) for v in doc["runs_on"].values()), doc["runs_on"])
+        line = [l for l in gh.read_text().splitlines() if l.startswith("runs_on=")][-1]
+        self.assertEqual(json.loads(line[len("runs_on="):]), doc["runs_on"])
+        self.assertIn("runner: namespace: the linux", out)
 
     def test_a_test_change_plans_its_shard_from_the_listed_tests(self):
         head = self.commit("tools/mcp/tests/test_a.py", TEST_FILE.format(extra="# changed"))
