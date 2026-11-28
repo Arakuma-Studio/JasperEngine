@@ -1042,26 +1042,26 @@ NAMESPACE_PREFIXES = ("nscloud-", "namespace-profile-")
 NAMESPACE_OS_OF = {"nscloud-ubuntu-": "linux", "nscloud-windows-": "windows", "nscloud-macos-": "macos"}
 # the forced dispatch's label (parse_force) for a job's Namespace machine
 NAMESPACE_FORCE = "namespace"
-# vCPU x GB by job (a matrix job by its lane's prefix), else its OS's default: the long builds the most
-# cores (linux, unit and asan compile 2,700-3,900 units; the Windows editor and OpenGL legs are the lane's
-# longest), the MCP shards the 16 GB of a hosted runner they run -j 2 on. The disk comes with the shape
-# (32 GB and 8 per max(vCPU, GB / 2)) and free-disk does nothing there: smoke and android (33 and 44 GB
-# used, docs/testing.md "Job setup") take 8x32's 160. Namespace queues a job past the plan's concurrency
-# (Linux 160 vCPU on Business), so a larger shape only costs a run its parallelism
-NAMESPACE_SHAPES = {"lint": "4x8", "linux": "16x32", "unit-": "16x32", "asan-core": "16x32", "asan-editor": "16x64",
-                    "htmlui": "8x16", "smoke": "8x32", "web": "8x16", "android": "8x32", "mcp-": "4x16",
-                    "windows-editor": "16x32", "windows-engine-glcore": "16x32", "macos": "12x28", "ios": "6x14",
-                    # the nightly's and the release build's (WORKFLOW_JOBS): the builds as ci.yml's of the same
-                    # kind (the slow suites 4 GB a core as on a hosted runner: the unity builds' units), the
-                    # release's the most cores (it is what users wait for), its end-to-end checks smoke's disk
-                    "nightly-slow": "8x32", "nightly-web-threads": "8x16", "nightly-parity": "8x32",
-                    "nightly-windows-engine": "8x16", "nightly-mcp-editor": "16x32", "nightly-ios": "6x14",
-                    "nightly-export-checks": "8x32", "nightly-coverage-editor": "16x32",
-                    "release-players-linux": "16x32", "release-players-web": "16x32", "release-players-android": "16x32",
-                    "release-players-windows": "16x32", "release-players-apple": "12x28", "release-editor-linux": "16x32",
-                    "release-editor-windows": "16x32", "release-editor-macos": "12x28", "release-prebuilt": "8x32",
-                    "release-prebuilt-android": "8x32"}
-NAMESPACE_DEFAULT_SHAPE = {"linux": "4x16", "windows": "8x16", "macos": "6x14"}
+# vCPU x GB by job (a matrix job by its lane's prefix), else its OS's default. Memory is what the plan's
+# concurrency runs out of (Linux 320 GB, Windows 160, macOS 112; one advisory run asked 408 GB on Linux), so
+# no Linux or Windows job gets more than the 16 GB of GitHub's hosted runner, where every lane passed, nor a
+# macOS one more than 14: each gets the most cores a listed shape has at that (8x16, 8x14), the MCP shards
+# and the light lanes 4x8 (two editors -j 2, as on 16 GB before). The disk comes with the shape (32 GB and 8
+# per max(vCPU, GB / 2), so 96 at 8x16) and free-disk does nothing there; the largest measured use, asan's
+# 55 and android's 44 (docs/testing.md "Job setup"), fits it; the nightly's parity (87) is the one near it.
+# Namespace queues a job past the concurrency limit, so a smaller shape only costs a job its speed
+NAMESPACE_SHAPES = {"lint": "4x8", "linux": "8x16", "unit-": "8x16", "asan-core": "8x16", "asan-editor": "8x16",
+                    "htmlui": "8x16", "smoke": "8x16", "web": "8x16", "android": "8x16", "mcp-": "4x8",
+                    "windows-editor": "8x16", "windows-engine-glcore": "8x16", "macos": "8x14", "ios": "8x14",
+                    # the nightly's and the release build's (WORKFLOW_JOBS): the same caps
+                    "nightly-slow": "8x16", "nightly-web-threads": "8x16", "nightly-parity": "8x16",
+                    "nightly-windows-engine": "8x16", "nightly-mcp-editor": "8x16", "nightly-ios": "8x14",
+                    "nightly-export-checks": "8x16", "nightly-coverage-editor": "8x16",
+                    "release-players-linux": "8x16", "release-players-web": "8x16", "release-players-android": "8x16",
+                    "release-players-windows": "8x16", "release-players-apple": "8x14", "release-editor-linux": "8x16",
+                    "release-editor-windows": "8x16", "release-editor-macos": "8x14", "release-prebuilt": "8x16",
+                    "release-prebuilt-android": "8x16"}
+NAMESPACE_DEFAULT_SHAPE = {"linux": "4x8", "windows": "8x16", "macos": "8x14"}
 # the jobs with a cache volume, by tag (its ccache lane; mcp's holds the images only). Not Windows: the
 # docs name no cache volume there (its lanes keep the Actions cache), nor ios (its Xcode cache is the
 # nightly's Actions cache entry), nor lint
