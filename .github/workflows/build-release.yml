@@ -32,6 +32,21 @@ on:
         description: stop at a complete draft
         type: boolean
         default: false
+    # the macOS editor's Developer ID signing and notarization (tools/ci/macos.sh package); without
+    # them (a fork) it is signed ad-hoc
+    secrets:
+      MACOS_SIGN_P12_BASE64:
+        required: false
+      MACOS_SIGN_P12_PASSWORD:
+        required: false
+      MACOS_SIGN_TEAM_ID:
+        required: false
+      APPLE_API_KEY_P8_BASE64:
+        required: false
+      APPLE_API_KEY_ID:
+        required: false
+      APPLE_API_ISSUER_ID:
+        required: false
 
 permissions:
   contents: read
@@ -507,8 +522,20 @@ jobs:
           path: editor/players
       - name: Build the editor (arm64 and x86_64)
         run: tools/ci/macos.sh editor
-      - name: Package the zip and the dmg (ad-hoc signed)
+      # Developer ID signed and notarized when the secrets are set, else ad-hoc; only this step sees them
+      - name: Package the zip and the dmg (signed)
+        id: package
+        env:
+          MACOS_SIGN_P12_BASE64: ${{ secrets.MACOS_SIGN_P12_BASE64 }}
+          MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
+          MACOS_SIGN_TEAM_ID: ${{ secrets.MACOS_SIGN_TEAM_ID }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: tools/ci/macos.sh package "$JASPERENGINE_VERSION"
+      - name: Delete the signing keychain
+        if: always() && steps.package.outcome != 'skipped'
+        run: tools/ci/macos.sh signing-cleanup
       - name: Launch check (the zip's signed app)
         run: tools/ci/macos.sh check-cli "dist/JasperEngine-$JASPERENGINE_VERSION-macos-universal.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

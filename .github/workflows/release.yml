@@ -92,3 +92,10 @@ jobs:
       version: ${{ inputs.version }}
       commit: ${{ needs.tag.outputs.commit }}
       dry_run: ${{ inputs.dry_run }}
+    secrets:
+      MACOS_SIGN_P12_BASE64: ${{ secrets.MACOS_SIGN_P12_BASE64 }}
+      MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
+      MACOS_SIGN_TEAM_ID: ${{ secrets.MACOS_SIGN_TEAM_ID }}
+      APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
