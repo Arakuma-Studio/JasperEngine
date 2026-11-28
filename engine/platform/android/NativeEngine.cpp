@@ -797,7 +797,10 @@ void NativeEngine::setupJNI(){
 
     // the HTTP client's Java side (JasperHttp) and its native callbacks
     jasperengine::httpAndroidSetup(env, mJniData.gameActivityObjRef);
+    // (MediaCodecBackend.cpp is compiled with the video module only: the -ui, -core and lite players have none)
+#if JASPERENGINE_VIDEO
     jasperengine::mediaCodecSetAssetManager(getAssetManager());
+#endif
     // the native bridge's Java side (JasperNative) and its natives
     jasperengine::nativeBridgeAndroidSetup(env, mJniData.gameActivityObjRef);
     setupPlatformJNI(env);

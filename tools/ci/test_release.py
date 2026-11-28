@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tests of tools/ci/release.sh (python3 -I tools/ci/test_release.py), against a stand-in gh on PATH
 that keeps its releases in a scratch directory: a release is a draft until every asset is on it at
-its size, a dry run stays a draft, a re-run takes the draft or re-uploads to a release of the same
-commit and refuses one of another, nightlies past the newest 14 go with their tags, and the
+its size, a dry run stays a draft of its own tag, a re-run takes a failed run's draft at its own commit or
+re-uploads to a release of the same commit and refuses one of another, nightlies past the newest 14 go with their tags, and the
 version, channel and commit checks.
 """
 
@@ -34,6 +34,7 @@ case "$1 $2" in
     commit=""; args=("$@"); for i in "${!args[@]}"; do [[ "${args[$i]}" == --target ]] && commit="${args[$((i+1))]}"; done
     echo "$3 true $commit" >> "$S/releases.txt" ;;
 "release edit")
+    args=("$@"); for i in "${!args[@]}"; do [[ "${args[$i]}" == --target ]] && sed -i "s/^\($3 [a-z]*\) .*/\1 ${args[$((i+1))]}/" "$S/releases.txt"; done
     if [[ "$*" == *--draft=false* ]]; then sed -i "s/^$3 true /$3 false /" "$S/releases.txt"; fi ;;
 "release upload")
     seen=0
@@ -115,14 +116,29 @@ class ReleaseTest(unittest.TestCase):
         self.assertIn("macos-universal.dmg", p.stderr)
         self.assertNotIn(VERSION, self.releases())
 
-    def test_dry_run_stays_a_draft_and_a_rerun_takes_it(self):
-        p = self.run_script("publish", "nightly", VERSION, COMMIT, str(self.assets), "--dry-run")
+    def test_a_dry_run_leaves_a_draft_of_its_own(self):
+        # (its own tag: dry runs of two branches, and that night's nightly, shared nightly-<today>, and the
+        # newest pending of them cancelled the others, dry run 46138345724)
+        p = self.run_script("publish", "nightly", VERSION, "b" * 40, str(self.assets), "--dry-run", GITHUB_RUN_ID="77")
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-        self.assertEqual(self.releases()[VERSION], ("true", COMMIT))
+        self.assertEqual(self.releases(), {f"{VERSION}-dry-run-77": ("true", "b" * 40)})
         self.assertNotIn("--draft=false", self.calls())
+        self.assertIn(f"gh release delete {VERSION}-dry-run-77", p.stdout)
+        # the assets keep the version's names
+        self.assertIn(f"JasperEngine-{VERSION}-linux-x86_64.AppImage", (self.state / "assets.txt").read_text())
+        # and the real run of the version makes its own, at its own commit
         p = self.run_script("publish", "nightly", VERSION, COMMIT, str(self.assets))
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-        self.assertEqual(self.calls().count("release create"), 1)
+        self.assertEqual(self.releases()[VERSION], ("false", COMMIT))
+        self.assertEqual(self.releases()[f"{VERSION}-dry-run-77"], ("true", "b" * 40))
+
+    def test_a_failed_runs_draft_is_taken_at_this_commit(self):
+        # (an earlier run of the day, of another commit of main, stopped after its draft: this one takes it
+        # and tags its own commit)
+        (self.state / "releases.txt").write_text(f"{VERSION} true {'b' * 40}\n")
+        p = self.run_script("publish", "nightly", VERSION, COMMIT, str(self.assets))
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual(self.calls().count("release create"), 0)
         self.assertEqual(self.releases()[VERSION], ("false", COMMIT))
 
     def test_a_published_release_of_another_commit_is_refused(self):

@@ -66,7 +66,7 @@ step_editor() {
 }
 
 step_engine() {
-    local backend="$1" debug=() cflags="${CFLAGS:-}" cxxflags="${CXXFLAGS:-}"
+    local backend="$1" debug=()
     ci_msvc
     # Release, not the preset's RelWithDebInfo, whose /Zi shared PDB ccache cannot cache.
     # ENGINE_DEBUG_INFO=1 (the tree whose core tests run): the debug information in the objects
@@ -75,13 +75,9 @@ step_engine() {
     if [[ "${ENGINE_DEBUG_INFO:-0}" == 1 ]]; then
         debug=(-DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
             "-DCMAKE_EXE_LINKER_FLAGS=/machine:x64 /DEBUG" "-DCMAKE_SHARED_LINKER_FLAGS=/machine:x64 /DEBUG")
-        # and no code or debug information for the inline functions an object does not call
-        # (-Zc:inline): each object otherwise carried every one its headers define, and
-        # jasperengine.lib grew past lib.exe's 4 GiB (LNK1248, PR 9's tree: 4.30 GB, 2.76 GB with it).
-        # The build's flags take these at a tree's first configure
-        cflags="${cflags:+$cflags }-Zc:inline" cxxflags="${cxxflags:+$cxxflags }-Zc:inline"
+        # (jasperengine.lib stays under lib.exe's 4 GiB with these objects by engine/CMakeLists.txt's /Zc:inline)
     fi
-    CFLAGS="$cflags" CXXFLAGS="$cxxflags" cmake --preset engine-windows-msvc-tests -S engine -B "build/windows/engine-$backend" -DCMAKE_BUILD_TYPE=Release \
+    cmake --preset engine-windows-msvc-tests -S engine -B "build/windows/engine-$backend" -DCMAKE_BUILD_TYPE=Release \
         ${debug[@]+"${debug[@]}"} \
         -DGRAPHIC_BACKEND="$backend" -DJASPERENGINE_WERROR="$WERROR_VALUE" "${MSVC_LINKER_ARGS[@]}" ${LAUNCHERS[@]+"${LAUNCHERS[@]}"}
     local status=0

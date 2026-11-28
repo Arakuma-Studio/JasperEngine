@@ -9,7 +9,8 @@
 #       the draft a failed run left), uploads every file with --clobber, checks the draft holds each
 #       one at its size, then publishes it (a nightly as a prerelease, never "latest"; a stable as
 #       "latest"). Refused when an editor package of §12.3 or every player archive is missing.
-#       --dry-run stops at the complete draft. The body: GitHub's generated notes and
+#       --dry-run stops at the complete draft, tagged <version>-dry-run-<GITHUB_RUN_ID> (the assets keep
+#       the version's names). The body: GitHub's generated notes and
 #       "Opening unsigned builds". A release already published for another commit is refused.
 #   tools/ci/release.sh check <nightly|stable> <version> <commit>
 #       exits 2 unless the version suits the channel (nightly-YYYYMMDD, vX.Y.Z) and the commit is a full SHA
@@ -84,6 +85,10 @@ publish() {
     done
     compgen -G "$dir/jasperengine-player-*-$version.zip" > /dev/null || { echo "release: no player archive of $version" >&2; missing=1; }
     [[ $missing -eq 0 ]] || exit 1
+    # a dry run's draft is its own (<version>-dry-run-<run id>): never one a real run of the version
+    # would take and publish, nor one another dry run of it uploads into
+    local tag="$version"
+    [[ $dry_run -eq 1 ]] && tag="$version-dry-run-${GITHUB_RUN_ID:-local}"
 
     rm -f "$dir/SHA256SUMS"
     local files=()
@@ -94,12 +99,12 @@ publish() {
     echo "release: ${#files[@]} assets for $version ($commit)"
 
     local state=""
-    state="$(gh release view "$version" --repo "$REPO" --json isDraft --jq .isDraft 2>/dev/null || true)"
+    state="$(gh release view "$tag" --repo "$REPO" --json isDraft --jq .isDraft 2>/dev/null || true)"
     if [[ "$state" == false ]]; then
         local at
-        at="$(gh api "repos/$REPO/commits/$version" --jq .sha)"
-        [[ "$at" == "$commit" ]] || { echo "release: $version is already published, at $at, not $commit" >&2; exit 1; }
-        echo "release: $version is published at $commit already: its assets are uploaded again"
+        at="$(gh api "repos/$REPO/commits/$tag" --jq .sha)"
+        [[ "$at" == "$commit" ]] || { echo "release: $tag is already published, at $at, not $commit" >&2; exit 1; }
+        echo "release: $tag is published at $commit already: its assets are uploaded again"
     fi
 
     local previous=""
@@ -113,16 +118,17 @@ publish() {
     local kind=()
     [[ "$channel" == nightly ]] && kind=(--prerelease)
     if [[ -z "$state" ]]; then
-        gh release create "$version" --repo "$REPO" --draft --target "$commit" --title "$version" \
+        gh release create "$tag" --repo "$REPO" --draft --target "$commit" --title "$tag" \
             --notes-file "$notes" ${kind[@]+"${kind[@]}"}
     else
-        gh release edit "$version" --repo "$REPO" --notes-file "$notes"
+        # (a draft left by another run, a dry run's of a branch too, is taken at this run's commit)
+        gh release edit "$tag" --repo "$REPO" --target "$commit" --notes-file "$notes"
     fi
-    (cd "$dir" && gh release upload "$version" --repo "$REPO" --clobber -- "${files[@]}")
+    (cd "$dir" && gh release upload "$tag" --repo "$REPO" --clobber -- "${files[@]}")
 
     # every file at its size: a release is a draft until all of it is there
     local listed f size
-    listed="$(gh release view "$version" --repo "$REPO" --json assets --jq '.assets[] | "\(.name) \(.size)"')"
+    listed="$(gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[] | "\(.name) \(.size)"')"
     for f in "${files[@]}"; do
         size="$(stat -c %s "$dir/$f")"
         grep -qxF "$f $size" <<< "$listed" || { echo "release: $f ($size bytes) is not on the release" >&2; missing=1; }
@@ -130,15 +136,15 @@ publish() {
     [[ $missing -eq 0 ]] || exit 1
 
     if [[ $dry_run -eq 1 ]]; then
-        echo "release: dry run: $version stays a draft with every asset (delete it: gh release delete $version --repo $REPO --yes)"
+        echo "release: dry run: $tag stays a draft with every asset (delete it: gh release delete $tag --repo $REPO --yes)"
         return 0
     fi
     if [[ "$channel" == nightly ]]; then
-        gh release edit "$version" --repo "$REPO" --draft=false --prerelease --latest=false
+        gh release edit "$tag" --repo "$REPO" --draft=false --prerelease --latest=false
     else
-        gh release edit "$version" --repo "$REPO" --draft=false --latest
+        gh release edit "$tag" --repo "$REPO" --draft=false --latest
     fi
-    echo "release: published $version"
+    echo "release: published $tag"
 }
 
 prune() {

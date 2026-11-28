@@ -12,6 +12,10 @@ name: Nightly
 #   published on the ci-plan-inputs data branch, where CI's changes job fetches it to select MCP tests;
 # - a nightly release (build-release.yml) when main moved since the newest nightly-*; 14 are kept.
 # Every other cache is only restored. A failure opens (or comments on) the issue labelled "nightly".
+# Where each job runs: `runners` routes the long ones as ci.yml's (NAMESPACE_RUNNERS: Namespace's machines,
+# else GitHub's; .github/actions/runners, tools/ci/plan_lanes.py WORKFLOW_JOBS); the rest stay on GitHub's.
+# dry_run (a dispatch, any branch): only the release of the branch's head, left a complete draft of its
+# own, <version>-dry-run-<run id> (delete it: gh release delete <that tag> --yes); no suite, no pruning, no issue.
 on:
   schedule:
     - cron: '17 3 * * *'
@@ -21,6 +25,10 @@ on:
         description: Publish a nightly release when main moved (main only)
         type: boolean
         default: true
+      dry_run:
+        description: Only build this branch's release and leave it a draft (no suites)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,10 +38,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  runners:
+    name: Route the jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      runs_on: ${{ steps.runners.outputs.runs_on }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/runners
+        id: runners
+        with:
+          workflow: nightly
+          namespace: ${{ vars.NAMESPACE_RUNNERS }}
+
   # ------------------------------------------------------------- slow suites ---
   slow:
     name: ${{ matrix.suite.name }}
-    runs-on: ubuntu-latest
+    needs: runners
+    if: ${{ !inputs.dry_run }}
+    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on)['nightly-slow'] || 'ubuntu-latest' }}
     timeout-minutes: 300
     strategy:
       fail-fast: false
@@ -150,7 +174,9 @@ jobs:
 
   web-threads:
     name: Web with pthreads, browser gate
-    runs-on: ubuntu-latest
+    needs: runners
+    if: ${{ !inputs.dry_run }}
+    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on)['nightly-web-threads'] || 'ubuntu-latest' }}
     timeout-minutes: 90
     env:
       JASPER_CI_REPRO: WEB_THREADS=1 tools/build.sh web && GATE=sample-project-threads tools/build.sh web-gate
@@ -190,7 +216,9 @@ jobs:
   # S30 AC5: every Lua-only fixture looks the same built from source and with the prebuilt player
   parity:
     name: Prebuilt player parity
-    runs-on: ubuntu-latest
+    needs: runners
+    if: ${{ !inputs.dry_run }}
+    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on)['nightly-parity'] || 'ubuntu-latest' }}
     timeout-minutes: 300
     env:
       JASPER_CI_REPRO: SKIP_ENGINE=1 tools/build.sh linux && PLAYER_FLAVOURS=release PLAYER_BACKENDS="glcore vulkan" tools/build.sh players && tools/ci/parity.sh
@@ -245,7 +273,9 @@ jobs:
   # inputs did not show shows here within a day. As ci.yml's windows job's engine legs
   windows-engine:
     name: windows (engine-${{ matrix.backend }})
-    runs-on: windows-latest
+    needs: runners
+    if: ${{ !inputs.dry_run }}
+    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on)['nightly-windows-engine'] || 'windows-latest' }}
     timeout-minutes: 150
     strategy:
       fail-fast: false
@@ -295,6 +325,7 @@ jobs:
   # --------------------------------------------------------- the MCP suite ---
   plan:
     name: MCP shards (the whole suite CI can run)
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -338,7 +369,9 @@ jobs:
   # one editor for every shard
   mcp-editor:
     name: Editor for the MCP shards
-    runs-on: ubuntu-latest
+    needs: runners
+    if: ${{ !inputs.dry_run }}
+    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on)['nightly-mcp-editor'] || 'ubuntu-latest' }}
     timeout-minutes: 120
     env:
       JASPER_CI_REPRO: SKIP_ENGINE=1 tools/build.sh linux
@@ -439,7 +472,9 @@ jobs:
   # (one a day: a push would take a macOS runner for a lane the queue mostly leaves out)
   ios:
     name: ios
-    runs-on: macos-latest
+    needs: runners
+    if: ${{ !inputs.dry_run }}
+    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on)['nightly-ios'] || 'macos-latest' }}
     timeout-minutes: 120
     permissions:
       contents: read
@@ -474,8 +509,8 @@ jobs:
 
   export-checks:
     name: Exported pixel fonts and Pixel FX against the Game view
-    needs: mcp-editor
-    runs-on: ubuntu-latest
+    needs: [runners, mcp-editor]
+    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on)['nightly-export-checks'] || 'ubuntu-latest' }}
     timeout-minutes: 120
     env:
       JASPER_CI_REPRO: tools/ci/nightly-export-checks.sh
@@ -657,7 +692,9 @@ jobs:
   # own map; coverage-map merges them (tools/mcp/coverage_map.py merge).
   coverage-editor:
     name: Coverage-instrumented editor
-    runs-on: ubuntu-latest
+    needs: runners
+    if: ${{ !inputs.dry_run }}
+    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on)['nightly-coverage-editor'] || 'ubuntu-latest' }}
     timeout-minutes: 150
     env:
       JASPER_CI_REPRO: COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux
@@ -791,7 +828,7 @@ jobs:
   # main passed the merge queue, and the slow lanes' failures go to the issue
   decide:
     name: Nightly release needed?
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) || inputs.dry_run
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -803,8 +840,14 @@ jobs:
         id: decide
         env:
           GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           version="nightly-$(date -u +%Y%m%d)"
+          if [[ "$DRY_RUN" == true ]]; then
+            echo "dry run: $version of $GITHUB_REF_NAME's $GITHUB_SHA, left a draft" | tee -a "$GITHUB_STEP_SUMMARY"
+            { echo "version=$version"; echo "publish=true"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           newest="" commit=""
           found="$(tools/ci/release.sh newest-nightly)"
           [[ -z "$found" ]] || read -r newest commit <<< "$found"
@@ -831,10 +874,12 @@ jobs:
       channel: nightly
       version: ${{ needs.decide.outputs.version }}
       commit: ${{ github.sha }}
+      dry_run: ${{ inputs.dry_run == true }}
 
   prune:
     name: Keep the newest 14 nightlies
     needs: [decide, release]
+    if: ${{ success() && !inputs.dry_run }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -850,8 +895,8 @@ jobs:
   # ----------------------------------------------------------------- report ---
   report:
     name: Report failures
-    needs: [slow, web-threads, parity, windows-engine, plan, mcp-editor, mcp, export-checks, ios, mcp-timings, coverage-editor, coverage, coverage-map, decide, release, prune]
-    if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    needs: [runners, slow, web-threads, parity, windows-engine, plan, mcp-editor, mcp, export-checks, ios, mcp-timings, coverage-editor, coverage, coverage-map, decide, release, prune]
+    if: ${{ always() && !inputs.dry_run && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

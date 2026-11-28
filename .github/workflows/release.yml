@@ -4,7 +4,7 @@ name: Release
 # main, by default the newest nightly's, so stable ships what nightly users already ran. The tag is
 # created and checked (tools/ci/check-release-tag.sh), then build-release.yml builds, checks and
 # publishes everything from that commit. A dry run tags only inside the job, never pushes the tag,
-# and stops at a complete draft (delete it afterwards: gh release delete <version> --yes).
+# and stops at a complete draft, <version>-dry-run-<run id> (delete it afterwards: gh release delete <that tag> --yes).
 on:
   workflow_dispatch:
     inputs:

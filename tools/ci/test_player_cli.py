@@ -629,6 +629,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=REPO / "build/player-cli")
     parser.add_argument("--backends", default="glcore,gles3,vulkan")
     parser.add_argument("--only", default="linux,audio,components,variants,web,model-capacity,fallback")
+    parser.add_argument("--skip", default="", help="checks of --only left out (audio without a development player)")
     parser.add_argument("--write-goldens", action="store_true")
     parser.add_argument("--titleart-off-build", type=Path, default=REPO / "build/linux/engine-titleart-off",
                         help="the engine configured with JASPERENGINE_TITLE_ART=OFF (titleart-off; built when absent)")
@@ -640,10 +641,13 @@ def main() -> int:
     checks = {"linux": check_linux, "audio": check_audio, "components": check_components, "variants": check_variants, "web": check_web,
               "model-capacity": check_model_capacity, "fallback": check_fallback, "titleart-off": check_titleart_off}
     try:
-        for name in args.only.split(","):
+        skipped = [name for name in args.skip.split(",") if name]
+        for name in (*args.only.split(","), *skipped):
             if name not in checks:
-                raise Failure(f"--only: unknown check {name}")
-            checks[name](args, args.players.resolve(), args.out.resolve())
+                raise Failure(f"--only, --skip: unknown check {name}")
+        for name in args.only.split(","):
+            if name not in skipped:
+                checks[name](args, args.players.resolve(), args.out.resolve())
     except (Failure, subprocess.TimeoutExpired) as error:
         print(f"FAIL: {error}", file=sys.stderr)
         return 1
