@@ -228,7 +228,12 @@ The first open applies rendering migrations that change how a scene looks, on pu
   in depth units and cannot be converted) and the scene's Shadow Quality Low becomes Auto (the
   platform's tier). Shadows are sharper and placed differently.
 - **Particles** (S20): the effects are simulated and drawn by the new particle system: the same
-  emission settings, different particles.
+  emission settings, different particles. A converted system keeps the old Points' Depth Write, as
+  origin/main drew it, so a soft texture still shows hard-edged squares where particles overlap.
+  The same holds for a system made by `create_particles` or `create_particle_effect` before its
+  presets stopped writing depth. To get soft particles, untick the system's Renderer > Depth Write
+  in the Inspector, or call `edit_particle_effect` with
+  `{"modules": {"renderer": {"depthWrite": false}}}`.
 - **Sub-emitters** (BF23): a sub-emitter's particles were simulated but never drawn. Effects with
   sub-emitters now show them, each with its child effect's Renderer, so they may look different and
   cost what they always should have; they count against the world particle budget.

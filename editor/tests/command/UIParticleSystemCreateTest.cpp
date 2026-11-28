@@ -108,6 +108,8 @@ TEST_F(UIParticleSystemCreateTest, OneUnscaledLocalSystemWithTheSoftImage){
     EXPECT_NE(effect.renderer.texture.find("particle_soft.png"), std::string::npos) << effect.renderer.texture;
     EXPECT_TRUE(fs::exists(project->getAssetsPath() / "ui" / "particle_soft.png"));
     EXPECT_EQ(effect.renderer.untexturedShape, particles::UntexturedShape::Disc);
+    // blended: no depth, or a near particle's corners hide the ones behind it
+    EXPECT_FALSE(effect.renderer.depthWrite);
 
     ASSERT_TRUE(history()->undo());
     EXPECT_FALSE(s->isEntityCreated(entity) && s->findComponent<ParticleSystemComponent>(entity));

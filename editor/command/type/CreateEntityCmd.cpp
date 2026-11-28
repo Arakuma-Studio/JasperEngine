@@ -995,6 +995,8 @@ bool editor::CreateEntityCmd::execute(){
         legacy.alphaModifier.fromAlpha = 1.0f;
         legacy.alphaModifier.toAlpha = 0.0f;
         particles::LegacyTarget softTarget;
+        // blended, so no depth (the old points wrote it): a near particle's corners hid the ones behind
+        softTarget.depthWrite = 0;
         // the soft round image (ui/particle_soft.png, made once per project)
         const std::string softTexture = ProjectUtils::ensureSoftParticleTexture(project);
         if (!softTexture.empty()) {

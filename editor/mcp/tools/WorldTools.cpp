@@ -5811,6 +5811,15 @@ bool particlePreset(const std::string& name, ParticleSettings& s) {
     return true;
 }
 
+// What a preset is converted for: the converter's defaults are the old Points', which wrote depth.
+// A preset's billboards blend and do not (as Unity's particles), else the transparent corners of a
+// particle drawn first hid the particles behind them, a square cut out of the effect
+particles::LegacyTarget particlePresetTarget() {
+    particles::LegacyTarget target;
+    target.depthWrite = 0;
+    return target;
+}
+
 // Presets are in 3D world units; 2D scenes measure in pixels, so they scale up and lie flat
 void scaleParticleSettings(ParticleSettings& s, float k, bool flat) {
     auto v = [&](Vector3& value) {
@@ -6097,7 +6106,7 @@ void createParticlesTool(const CallPtr& call) {
         if (!presetSettings(args, preset, is2D, settings, error)) { failWith(error); return; }
         LegacyParticleSystem legacy;
         toLegacy(settings, legacy);
-        particles::LegacyTarget legacyTarget;
+        particles::LegacyTarget legacyTarget = particlePresetTarget();
         legacyTarget.texture = texture;
         legacyTarget.textureGuid = texture.empty() ? std::string() : target.project->makeAssetRef(texture, AssetPathBase::Assets).guid.str();
 
@@ -6633,7 +6642,7 @@ bool particlePresetEffect(const Json& args, const std::string& preset, bool is2D
     if (!presetSettings(args, preset, is2D, settings, error)) return false;
     LegacyParticleSystem legacy;
     toLegacy(settings, legacy);
-    out = particles::LegacyParticleConverter::convert(legacy, particles::LegacyTarget());
+    out = particles::LegacyParticleConverter::convert(legacy, particlePresetTarget());
     out.renderer.untexturedShape = particles::UntexturedShape::Disc;
     return true;
 }
