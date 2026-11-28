@@ -494,6 +494,22 @@ TEST_F(AssetDatabaseTest, AMetaDeletedAloneIsWrittenAgainOnceItsFolderIsQuiet){
     EXPECT_TRUE(database.refresh().empty());
 }
 
+// A file written again without its meta (a tool replacing the file and its meta) gets the meta
+// back from the refresh that sees it, its GUID kept: only an unchanged file waits for a delete
+TEST_F(AssetDatabaseTest, AFileWrittenAgainWithoutItsMetaGetsItAtOnce){
+    project.write("sfx/tone.wav", "riff");
+    open();
+    const std::string tone = database.getGuid("sfx/tone.wav");
+    std::filesystem::remove(project.file("sfx/tone.wav.meta"));
+    project.write("sfx/tone.wav", "riff, written again");
+    const std::vector<AssetDatabaseChange> changes = database.refresh();
+    ASSERT_EQ(changes.size(), 1u);
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Modified);
+    ASSERT_TRUE(project.exists("sfx/tone.wav.meta"));
+    EXPECT_EQ(AssetDatabase::readGuid(project.file("sfx/tone.wav.meta")), tone);
+    EXPECT_FALSE(database.isMetaRestoreDue());
+}
+
 // Closed before it was due: written then, or the next open would give the file a new GUID
 TEST_F(AssetDatabaseTest, CloseWritesADeletedMetaStillWaiting){
     project.write("icon.png", "png");

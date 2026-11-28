@@ -328,8 +328,8 @@ namespace jasperengine::editor {
         std::unordered_map<std::string, std::string> hardLinks;   // key(a hard link's path) -> key of the tracked path of that file
         std::set<std::string> readOnlyLinked;                // key -> assets getReadOnlyLinkedAssets lists
         std::set<std::string> warnedReadOnly;                // the linked folders reported in the log
-        // key -> when refresh may write again the meta of a tracked file found without it. Not at
-        // once: a folder deleted file by file (a file manager, rm -rf) may take the meta before the
+        // key -> when refresh may write again the meta of a tracked file found without it, the
+        // file itself unchanged. Not at once: a folder deleted file by file (a file manager, rm -rf) may take the meta before the
         // file, and a meta written back in between is left behind in a folder that cannot go. Only
         // by a refresh that found nothing else changed in the file's folder, so a delete still
         // going on there waits; close() writes what is still due.

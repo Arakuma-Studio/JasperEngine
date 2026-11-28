@@ -330,7 +330,11 @@ async def test_a_folder_deleted_file_by_file_leaves_no_meta(ed: Editor):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes((ed.project / "assets/textures/mask.png").read_bytes())
     await ed.call("sync_files")
+    # (the walk that writes their metas can end after the call)
     metas = [Path(str(p) + ".meta") for p in (folder / "icon.png", folder / "other.png", kept)]
+    deadline = time.monotonic() + 20
+    while not all(m.exists() for m in metas) and time.monotonic() < deadline:
+        await asyncio.sleep(0.1)
     ed.check(all(m.exists() for m in metas), f"the new files got their metas: {[m.name for m in metas if not m.exists()]}")
 
     # the deleter's pause between two of its files, long past the editor's walk of the first delete

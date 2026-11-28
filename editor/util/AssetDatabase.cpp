@@ -2384,8 +2384,9 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
         if (fileSame && metaSame) {
             continue;
         }
-        if (sidecar && known.hasMeta && !metaPresent) {
-            // its meta deleted, the file still there: written again later (metaRestores)
+        if (sidecar && known.hasMeta && !metaPresent && fileSame) {
+            // its meta deleted, the file still there as it was: written again later (metaRestores).
+            // A file written again without it (a tool replacing the file) gets it at once below
             metaRestoresWaiting.insert(k);
             auto pending = metaRestores.try_emplace(k, now + metaRestoreDelay);
             if (!pending.second && pending.first->second <= now) {
