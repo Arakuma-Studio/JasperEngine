@@ -977,6 +977,12 @@ jasperengine_msvc_parallel_compile()
 if(WIN32)
     if(MSVC)
         add_compile_options(/bigobj)
+        # no code or debug information for the inline functions an object does not use: each object
+        # otherwise carries every one its headers define, and with /Z7 (a shipped game, below) the
+        # full player's static jasperengine.lib passed lib.exe's 4 GiB on MSVC 14.44 (LNK1248: 4.03 GB,
+        # nightly dry run 46102446148; CI's engine tree 4.30 GB, 2.76 GB with it, PR 196). Nothing
+        # changes at run time: only unreferenced COMDATs go
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zc:inline>)
         # (MSVC's AddressSanitizer needs the DLL runtime too, JasperSanitizers.cmake)
         if(JASPERENGINE_SHARED OR JASPERENGINE_SANITIZE_ADDRESS)
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")

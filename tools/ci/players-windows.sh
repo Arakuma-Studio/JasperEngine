@@ -39,6 +39,8 @@ build_players() {
                 -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND="$BACKEND" -DJASPERENGINE_DEVELOPMENT_BUILD="$dev" \
                 -DJASPERENGINE_PLAYER_VARIANT="$variant" ${LAUNCHERS[@]+"${LAUNCHERS[@]}"}
             cmake --build "$tree" --target jasperengine-player ${JOBS_ARGS[@]+"${JOBS_ARGS[@]}"}
+            # (the static engine library has to stay under lib.exe's limit: engine/CMakeLists.txt /Zc:inline)
+            echo "jasperengine.lib: $(stat -c %s "$tree/jasperengine.lib") bytes, lib.exe's limit 4294967295"
             "$PY" tools/players/package_player.py --platform windows --arch x64 --backend "$BACKEND" --flavour "$flavour" \
                 --variant "$variant" --build "$tree" --symbols "$tree/symbols" --out build/players --zip build/players/archives \
                 ${PLAYER_VERSION_ARGS[@]+"${PLAYER_VERSION_ARGS[@]}"}
