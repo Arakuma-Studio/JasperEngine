@@ -1058,7 +1058,7 @@ NAMESPACE_SHAPES = {"lint": "4x8", "linux": "16x32", "unit-": "16x32", "asan-cor
                     "nightly-windows-engine": "8x16", "nightly-mcp-editor": "16x32", "nightly-ios": "6x14",
                     "nightly-export-checks": "8x32", "nightly-coverage-editor": "16x32",
                     "release-players-linux": "16x32", "release-players-web": "16x32", "release-players-android": "8x32",
-                    "release-players-windows": "16x32", "release-players-apple": "12x28", "release-editor-linux": "16x32",
+                    "release-players-apple": "12x28", "release-editor-linux": "16x32",
                     "release-editor-windows": "16x32", "release-editor-macos": "12x28", "release-prebuilt": "8x32",
                     "release-prebuilt-android": "8x32"}
 NAMESPACE_DEFAULT_SHAPE = {"linux": "4x16", "windows": "8x16", "macos": "6x14"}
@@ -1075,15 +1075,17 @@ NAMESPACE_CACHE_GB = 20
 # and its OS. Keys of their own: no overflow runner takes one (OVERFLOW names ci.yml's jobs: a release is
 # built on clean machines), and none has a cache volume (NAMESPACE_CACHE): they restore the Actions cache
 # as on GitHub's runners and commit nothing, so a nightly on main never writes into a CI lane's volume.
-# Not routed: their housekeeping jobs (as Check and report), and the nightly's MCP and coverage shards,
+# Not routed: their housekeeping jobs (as Check and report); the nightly's MCP and coverage shards,
 # about 40 jobs of a hosted runner's size, which would take Namespace's vCPU from the merge queue while
-# GitHub's runners, which CI no longer fills, are free
+# GitHub's runners, which CI no longer fills, are free; and the Windows players: the MSVC of Namespace's
+# windows-2022 image (14.44) makes the full player's static engine library 4.03 GB, past lib.exe's 4 GB
+# (LNK1248, dry run 46102446148), where windows-latest's (14.52) stays under it
 WORKFLOW_JOBS = {
     "nightly": {"nightly-slow": "linux", "nightly-web-threads": "linux", "nightly-parity": "linux",
                 "nightly-windows-engine": "windows", "nightly-mcp-editor": "linux", "nightly-ios": "macos",
                 "nightly-export-checks": "linux", "nightly-coverage-editor": "linux"},
     "build-release": {"release-players-linux": "linux", "release-players-web": "linux", "release-players-android": "linux",
-                      "release-players-windows": "windows", "release-players-apple": "macos",
+                      "release-players-apple": "macos",
                       "release-editor-linux": "linux", "release-editor-windows": "windows", "release-editor-macos": "macos",
                       "release-prebuilt": "linux", "release-prebuilt-android": "linux"},
 }

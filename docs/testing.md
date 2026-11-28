@@ -1726,11 +1726,12 @@ unless the repository variable `NAMESPACE_RUNNERS` says otherwise:
   `tools/ci/plan_lanes.py runners` (`WORKFLOW_JOBS`, through `.github/actions/runners` in `nightly.yml`'s
   `runners` job and `build-release.yml`'s `check-inputs`), on a schedule too. Their keys are their own, so
   no overflow runner takes one, and they have no cache volume: they restore the Actions cache and commit
-  nothing. The release gets 16x32 for its Linux and Windows builds (8x32 for the Android players and the
+  nothing. The release gets 16x32 for its Linux builds and the Windows editor (8x32 for the Android players and the
   end-to-end checks, for the disk) and 12x28 for the Apple ones, which then build 3 at a time; the
   nightly's suites get the shape of the ci.yml lane of their kind (8x32 for the slow suites, as 4 GB a
-  core as GitHub's). The nightly's MCP and coverage shards (about 40 jobs) and the housekeeping jobs
-  stay on GitHub's runners.
+  core as GitHub's). The nightly's MCP and coverage shards (about 40 jobs), the Windows players (on
+  Namespace's MSVC 14.44 the full player's static engine library passes `lib.exe`'s 4 GB, LNK1248) and the
+  housekeeping jobs stay on GitHub's runners.
 - **Caches**: each Linux lane and `macos` has its own cache volume (tag `jasperengine-<lane>`, 20 GB).
   Namespace forks it for each job and commits it only from `main`'s jobs
   (`nscloud-cache-allow-commit-from-main`): the push to `main` and the advisory run write it, pull

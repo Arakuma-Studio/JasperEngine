@@ -212,7 +212,8 @@ jobs:
   players-windows:
     name: Players (Windows ${{ matrix.backend }})
     needs: check-inputs
-    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-players-windows'] || 'windows-latest' }}
+    # (GitHub's: Namespace's MSVC makes the static engine library pass lib.exe's 4 GB, plan_lanes.py WORKFLOW_JOBS)
+    runs-on: windows-latest
     timeout-minutes: 330
     strategy:
       fail-fast: false
