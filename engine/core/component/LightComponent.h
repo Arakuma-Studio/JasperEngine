@@ -14,6 +14,7 @@
 #include <cmath>
 #include "math/Plane.h"
 #include "render/CameraRender.h"
+#include "asset/AssetRef.h"
 
 namespace jasperengine{
 
@@ -25,21 +26,32 @@ namespace jasperengine{
         VERTEX
     };
 
+    // stored by name in scenes and by number in cooked ones: append only
     enum class LightType{
         DIRECTIONAL,
         POINT,
-        SPOT
+        SPOT,
+        // a Rectangle or Disc emitting from its front along the forward axis (spec S99 R32)
+        AREA
+    };
+
+    // the emitting shape of an Area Light
+    enum class AreaLightShape{
+        RECTANGLE,
+        DISC
     };
 
     // What LightComponent::intensity is in (util/LightPhotometry.h). ENGINE is the engine's own
     // unitless intensity, drawn as it is. The physical units are converted on the CPU through the
     // scene's Physical Light Exposure (SceneSettings::physicalLightEV100): LUX for a directional
-    // light, CANDELA and LUMEN for a point or spot light.
+    // light, CANDELA and LUMEN for a point or spot light, NITS (the luminance of its face) for an
+    // area light.
     enum class LightUnit{
         ENGINE,
         LUX,
         CANDELA,
-        LUMEN
+        LUMEN,
+        NITS
     };
 
     struct LightCamera{
@@ -115,6 +127,34 @@ namespace jasperengine{
             Vector3 localRight = localDirection.crossProduct(referenceUp).normalized();
             return localRight.crossProduct(localDirection).normalized();
         }
+
+        // Area Light (type AREA): its shape, sized by these (metres) and not by the transform's
+        // scale. Its intensity is the luminance of its face, so a 1 m x 1 m light of intensity 1
+        // gives what a point light of intensity 1 gives straight in front of it, far away.
+        AreaLightShape areaShape = AreaLightShape::RECTANGLE;
+        float areaWidth = 1.0f;
+        float areaHeight = 1.0f;
+        float areaRadius = 0.5f;
+
+        // the half extents the renderer draws (a disc's are its radius), at least 1 cm
+        float getAreaHalfWidth() const {
+            return 0.5f * std::max(areaShape == AreaLightShape::DISC ? 2.0f * areaRadius : areaWidth, 0.02f);
+        }
+        float getAreaHalfHeight() const {
+            return 0.5f * std::max(areaShape == AreaLightShape::DISC ? 2.0f * areaRadius : areaHeight, 0.02f);
+        }
+        float getAreaSize() const {
+            const float hw = getAreaHalfWidth();
+            const float hh = getAreaHalfHeight();
+            return areaShape == AreaLightShape::DISC ? 3.14159265f * hw * hh : 4.0f * hw * hh;
+        }
+
+        // IES Profile (spot and point lights, spec S99 R37): an .ies file's photometric shape,
+        // oriented by the light's rotation (vertical angle 0 along its forward axis). The
+        // intensity stays the profile's peak.
+        AssetRef iesProfile;
+        // Runtime: the profile's band in the renderer's profile texture (-1: none ready)
+        int iesProfileBand = -1;
 
         // Unity Light.cullingMask: GameObjects on a layer whose bit is clear are neither
         // lit by this light nor cast its shadow

@@ -79,6 +79,8 @@ namespace jasperengine {
         static GpuCreationMode getMode();
         // a software GL (llvmpipe, softpipe, SwiftShader): warm draws never run on it
         static bool isSoftwareGl();
+        // parallel mode turned the driver's compile threads on at the last setup (gl_no_compile_threads)
+        static bool compileThreadsEnabled();
         static GpuCreationStats getStats();
         static void resetMaxMainMs();
 

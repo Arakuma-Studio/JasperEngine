@@ -11,7 +11,9 @@
 #include "component/CameraComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/PrefabComponent.h"
+#include "component/Transform.h"
 #include "fluid/FluidSimulator.h"
+#include "object/sound/AudioSourceSlots.h"
 
 #include <algorithm>
 #include <cstring>
@@ -138,7 +140,11 @@ namespace {
 }
 
 std::string cook::contentFormatVersion() {
-    return std::to_string(FORMAT_MAJOR) + "." + std::to_string(FORMAT_MINOR);
+    return std::to_string(FORMAT_MAJOR) + "." + std::to_string(CONTENT_MINOR);
+}
+
+std::string cook::buildContentFormatVersion(bool buildProfile) {
+    return std::to_string(FORMAT_MAJOR) + "." + std::to_string(buildProfile ? std::max(FORMAT_MINOR, BUILD_PROFILE_MINOR) : FORMAT_MINOR);
 }
 
 namespace {
@@ -169,7 +175,7 @@ bool cook::readsContentFormat(std::string_view reader, std::string_view content)
 bool cook::playerReadsContentFormat(std::string_view content) {
     unsigned long major = 0, minor = 0;
     if (!parseFormatVersion(content, major, minor) || major != FORMAT_MAJOR) return false;
-    if (minor > FORMAT_MINOR) {
+    if (minor > CONTENT_MINOR) {
         static std::mutex mutex;
         static std::set<std::string> warned;
         std::lock_guard<std::mutex> lock(mutex);
@@ -320,6 +326,37 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
         if (!readComponents(record.body, scene, entity, false, error)) return false;
     }
 
+    // format 1.6: the hierarchy, each child after its parent (a 1.5 scene ends with its resources;
+    // a later minor's records follow this one)
+    if (file.header.minor >= 6) {
+        r.record();   // the resources
+        cook::Reader hierarchy = r.record();
+        const uint64_t links = hierarchy.varint();
+        for (uint64_t i = 0; i < links && !hierarchy.failed(); i++) {
+            const Entity child = hierarchy.entity();
+            const Entity parent = hierarchy.entity();
+            if (hierarchy.failed()) break;
+            // only GameObjects this file made, and no link that closes a loop (the registry
+            // checks neither)
+            bool valid = child != parent && scene->isEntityCreated(child) && scene->isEntityCreated(parent);
+            for (Entity above = parent; valid && above != NULL_ENTITY;) {
+                const Transform* transform = scene->findComponent<Transform>(above);
+                above = transform ? transform->parent : NULL_ENTITY;
+                valid = above != child;
+            }
+            if (!valid) {
+                setError(error, "corrupt scene hierarchy: link " + std::to_string(i) + " (GameObject " + std::to_string(child) +
+                                    " under " + std::to_string(parent) + ") names a GameObject the scene does not have or makes a loop");
+                return false;
+            }
+            scene->addEntityChild(parent, child, false);
+        }
+        if (hierarchy.failed() || r.failed()) {
+            setError(error, "corrupt scene hierarchy: " + (hierarchy.failed() ? hierarchy.error() : r.error()));
+            return false;
+        }
+    }
+
     bindTextureLinks(scene, made, nullptr);
 
     const Entity cameraEntity = camera.entity();
@@ -330,6 +367,9 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
         setError(error, "corrupt scene settings: " + settings.error());
         return false;
     }
+    // the cook writes the editor's scene as it is, edits since its load included: broken Audio
+    // Source slots load as the editor's decode leaves them (S97 REQ-29)
+    AudioSourceSlots::repair(scene);
     return true;
 }
 
@@ -360,6 +400,12 @@ SceneResources CookedSceneLoader::sceneResources(std::span<const uint8_t> bytes)
     read(list, resources.sounds);
     read(list, resources.models);
     read(list, resources.clips);
+    if (file.header.minor >= 7) {
+        read(list, resources.vats);
+        read(list, resources.masks);
+        read(list, resources.controllers);
+        read(list, resources.bitmapFonts);
+    }
     if (list.failed()) Log::error("Scene resources: %s", list.error().c_str());
     return resources;
 }

@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 11
 guid: a582e7540dde078b3c101ebbaee92d23
 id: 1868004712
 name: PixelFonts
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: true
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: off
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]
@@ -105,8 +106,8 @@ entities:
         maxTextSize: 100
         fixedWidth: false
         fixedHeight: false
-        pivotBaseline: false
-        pivotCentered: false
+        anchorHorizontal: left
+        anchorVertical: bottom
       script:
         scripts:
           - type: lua
@@ -171,8 +172,8 @@ entities:
         maxTextSize: 100
         fixedWidth: false
         fixedHeight: false
-        pivotBaseline: false
-        pivotCentered: false
+        anchorHorizontal: left
+        anchorVertical: bottom
         outlineWidth: 1
         outlineNeighbors: 4
   - type: Entity
@@ -233,5 +234,5 @@ entities:
         maxTextSize: 100
         fixedWidth: false
         fixedHeight: false
-        pivotBaseline: false
-        pivotCentered: false
+        anchorHorizontal: left
+        anchorVertical: bottom

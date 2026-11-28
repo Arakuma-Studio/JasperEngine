@@ -301,7 +301,7 @@ async def test_mcp_degraded_save(ed: Editor):
     saved = await ed.call("save_scene", scene="dropped.scene", allow_data_loss=True)
     check(saved["degraded"]["dropped"] == 0, f"after Save Anyway: {saved['degraded']}")
     text = (ed.project / "dropped.scene").read_text()
-    check("Hologram" not in text and "glint" not in text and text.startswith("formatVersion: 8"), "written without them")
+    check("Hologram" not in text and "glint" not in text and text.startswith("formatVersion: 11"), "written without them")
 
     # Save All: the clean scenes are written (unknown data kept), the degraded one refused
     await ed.call("open_scene", scene="future.scene")
@@ -315,7 +315,7 @@ async def test_mcp_degraded_save(ed: Editor):
     check([r["document"] for r in result["refused"]] == ["dropped2.scene"], f"refused: {result['refused']}")
     check(any(s["name"] == "Future" for s in result["saved"]), f"saved: {result['saved']}")
     future = (ed.project / "future.scene").read_text()
-    for kept in ("jumpable:", "areaSize:", "type: area", "position: [a, b]", "stance: crouched", "lighting2:", "Added"):
+    for kept in ("jumpable:", "areaSize:", "type: spots", "position: [a, b]", "stance: crouched", "lighting2:", "Added"):
         check(kept in future, f"future.scene keeps {kept!r}:\n{future[:3000]}")
 
     # no modal is waiting: the editor answers at once

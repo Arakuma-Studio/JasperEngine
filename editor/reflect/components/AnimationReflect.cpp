@@ -6,7 +6,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
@@ -30,29 +29,13 @@ namespace {
 
     // ---------------------------------------------------------------- Action
 
-    // an exported action starts as it was saved: running or paused ones through their triggers
-    void actionStateStatements(const FieldDesc&, const void* value, const std::string&, const CodegenContext& ctx, std::string& out) {
-        const ActionState state = *static_cast<const ActionState*>(value);
-        const std::string ind = Factory::indentation(ctx.indentSpaces);
-        if (state == ActionState::Running) {
-            out += ind + ctx.variable + ".startTrigger = true;\n";
-        } else if (state == ActionState::Paused) {
-            out += ind + ctx.variable + ".startTrigger = true;\n";
-            out += ind + ctx.variable + ".pauseTrigger = true;\n";
-        } else {
-            out += ind + ctx.variable + ".state = " + Factory::formatActionState(state) + ";\n";
-        }
-    }
-
-    constexpr TypeOps kActionStateOps = detail::withStatements(ops::Enum<ActionState>, &actionStateStatements);
-
     constexpr FieldDesc kActionFields[] = {
-        JE_FIELD(ActionComponent, state, .ops = &kActionStateOps, .enumDesc = &enums::kActionState, .flags = NoDefault),
+        JE_FIELD(ActionComponent, state, .ops = &ops::Enum<ActionState>, .enumDesc = &enums::kActionState, .flags = NoDefault),
         JE_FIELD(ActionComponent, speed),
         // runtime-core spec 6.7: where each new run starts, in Play mode and builds
-        JE_FIELD(ActionComponent, startOffset, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Seconds, .min = 0.0f,
+        JE_FIELD(ActionComponent, startOffset, .flags = OmitIfDefault, .unit = Unit::Seconds, .min = 0.0f,
                  .tooltip = "Seconds into the action each new run starts at, in Play mode and builds (previews start at 0)"),
-        JE_FIELD(ActionComponent, randomStart, .flags = OmitIfDefault | CodegenIfChanged,
+        JE_FIELD(ActionComponent, randomStart, .flags = OmitIfDefault,
                  .tooltip = "Each new run starts at a random point of one cycle (different per GameObject, the same every "
                             "playthrough); overrides Start Offset"),
         JE_FIELD(ActionComponent, target, .ops = &ops::Entity),
@@ -82,10 +65,10 @@ namespace {
         JE_FIELD(TweenComponent, pingPong, .label = "Ping-pong", .tooltip = "Plays forward and then back, in twice the duration"),
         JE_FIELD(TweenComponent, function, .label = "Ease"),
         // upstream (coroutines / Time API): advances at time scale 0
-        JE_FIELD(TweenComponent, useUnscaledTime, .flags = OmitIfDefault | CodegenIfChanged),
+        JE_FIELD(TweenComponent, useUnscaledTime, .flags = OmitIfDefault),
         // the ease "Curve" (docs/specs/S27-editor-tools.md R13): value = curve(time), time 0 to 1;
         // the field's view spans values -1 to 2 (overshoot)
-        JE_FIELD(TweenComponent, curve, .flags = OmitIfDefault | CodegenIfChanged, .uiMin = -1.0f, .uiMax = 2.0f,
+        JE_FIELD(TweenComponent, curve, .flags = OmitIfDefault, .uiMin = -1.0f, .uiMax = 2.0f,
                  .tooltip = "The ease when Ease is Curve: the tween's value over its normalized time (0 to 1)",
                  .drawer = "curve", .visibleIf = &tweenEasesAlongCurve),
     };
@@ -126,7 +109,7 @@ namespace {
         JE_FIELD(AlphaTweenComponent, endAlpha, .flags = NoDefault),
         JE_FIELD(AlphaTweenComponent, startAlpha, .flags = NoDefault),
         // upstream (ui canvas group): what the alpha drives
-        JE_FIELD(AlphaTweenComponent, alphaTarget, .enumDesc = &enums::kAlphaTweenTarget, .flags = OmitIfDefault | CodegenIfChanged),
+        JE_FIELD(AlphaTweenComponent, alphaTarget, .enumDesc = &enums::kAlphaTweenTarget, .flags = OmitIfDefault),
     };
 
     // ---------------------------------------------------------------- Animation
@@ -145,44 +128,15 @@ const StructDesc kActionFrameStruct = JE_STRUCT_DESC(ActionFrame, "ActionFrame",
 
 namespace {
 
-    void actionFramesStatements(const FieldDesc&, const void* value, const std::string& target, const CodegenContext& ctx, std::string& out) {
-        const std::vector<ActionFrame>& frames = *static_cast<const std::vector<ActionFrame>*>(value);
-        const std::string ind = Factory::indentation(ctx.indentSpaces);
-        out += ind + target + ".clear();\n";
-        for (const ActionFrame& frame : frames) {
-            out += ind + target + ".push_back({" + Factory::formatFloat(frame.startTime) + ", " + Factory::formatFloat(frame.duration) + ", " +
-                   Factory::formatEntity(frame.action, ctx.entityVarNames) + ", " + Factory::formatUInt(frame.track) + "});\n";
-        }
-    }
-
-    constexpr TypeOps kActionFramesOps = detail::withStatements(ops::Array<ActionFrame>, &actionFramesStatements);
-
     constexpr FieldDesc kAnimationFields[] = {
         JE_FIELD(AnimationComponent, loop),
         JE_FIELD(AnimationComponent, duration, .unit = Unit::Seconds),
         JE_FIELD(AnimationComponent, ownedActions),
         JE_FIELD(AnimationComponent, defaultFadeTime, .unit = Unit::Seconds, .min = 0.0f),
-        JE_FIELD(AnimationComponent, actions, .ops = &kActionFramesOps, .flags = NullIfEmpty),
+        JE_FIELD(AnimationComponent, actions, .ops = &ops::Array<ActionFrame>, .flags = NullIfEmpty),
     };
 
     // ---------------------------------------------------------------- Bone
-
-    void matrixStatements(const FieldDesc&, const void* value, const std::string& target, const CodegenContext& ctx, std::string& out) {
-        const Matrix4& matrix = *static_cast<const Matrix4*>(value);
-        const std::string ind = Factory::indentation(ctx.indentSpaces);
-        out += ind + target + " = Matrix4(\n";
-        for (int row = 0; row < 4; row++) {
-            out += ind + "    ";
-            for (int col = 0; col < 4; col++) {
-                out += Factory::formatFloat(matrix[col][row]);
-                if (row < 3 || col < 3) out += ", ";
-            }
-            out += "\n";
-        }
-        out += ind + ");\n";
-    }
-
-    constexpr TypeOps kOffsetMatrixOps = detail::withStatements(ops::Matrix4, &matrixStatements);
 
     constexpr FieldDesc kBoneFields[] = {
         JE_FIELD(BoneComponent, model, .ops = &ops::Entity, .flags = NoDefault, .drawer = "modelEntity"),
@@ -191,7 +145,7 @@ namespace {
         JE_FIELD(BoneComponent, bindRotation),
         JE_FIELD(BoneComponent, bindScale),
         // the inverse bind matrix: saved, not edited
-        JE_FIELD(BoneComponent, offsetMatrix, .ops = &kOffsetMatrixOps, .flags = Derived | Hidden),
+        JE_FIELD(BoneComponent, offsetMatrix, .ops = &ops::Matrix4, .flags = Derived | Hidden),
     };
 
     // ---------------------------------------------------------------- tracks and sprite animation (the sprite animation
@@ -244,7 +198,6 @@ namespace {
     const ComponentCodec kSpriteAnimationCodec = JE_STREAM_CODEC(SpriteAnimationComponent, encodeSpriteAnimationComponent, decodeSpriteAnimationComponent);
     const ComponentCodec kMorphTracksCodec = JE_STREAM_CODEC(MorphTracksComponent, encodeMorphTracksComponent, decodeMorphTracksComponent);
 
-
 }
 
 const ComponentDesc kActionDesc{
@@ -252,7 +205,6 @@ const ComponentDesc kActionDesc{
     .body = JE_STRUCT_DESC(ActionComponent, "ActionComponent", kActionFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ActionComponent),
     .postDecode = &actionPostDecode,
-    .codegenVar = "actioncomp",
 };
 
 const ComponentDesc kTweenDesc{
@@ -260,7 +212,6 @@ const ComponentDesc kTweenDesc{
     .body = JE_STRUCT_DESC(TweenComponent, "TweenComponent", kTweenFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(TweenComponent),
     .postDecode = &tweenPostDecode,
-    .codegenVar = "timedcomp",
 };
 
 const ComponentDesc kPositionTweenDesc{
@@ -268,7 +219,6 @@ const ComponentDesc kPositionTweenDesc{
     .icon = ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT,
     .body = JE_STRUCT_DESC(PositionTweenComponent, "PositionTweenComponent", kPositionTweenFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(PositionTweenComponent),
-    .codegenVar = "poscomp",
 };
 
 const ComponentDesc kRotationTweenDesc{
@@ -276,7 +226,6 @@ const ComponentDesc kRotationTweenDesc{
     .icon = ICON_FA_ROTATE,
     .body = JE_STRUCT_DESC(RotationTweenComponent, "RotationTweenComponent", kRotationTweenFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(RotationTweenComponent),
-    .codegenVar = "rotcomp",
 };
 
 const ComponentDesc kScaleTweenDesc{
@@ -284,7 +233,6 @@ const ComponentDesc kScaleTweenDesc{
     .icon = ICON_FA_EXPAND,
     .body = JE_STRUCT_DESC(ScaleTweenComponent, "ScaleTweenComponent", kScaleTweenFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ScaleTweenComponent),
-    .codegenVar = "scalecomp",
 };
 
 const ComponentDesc kColorTweenDesc{
@@ -292,7 +240,6 @@ const ComponentDesc kColorTweenDesc{
     .icon = ICON_FA_PALETTE,
     .body = JE_STRUCT_DESC(ColorTweenComponent, "ColorTweenComponent", kColorTweenFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ColorTweenComponent),
-    .codegenVar = "colorcomp",
 };
 
 const ComponentDesc kAlphaTweenDesc{
@@ -300,14 +247,12 @@ const ComponentDesc kAlphaTweenDesc{
     .icon = ICON_FA_EYE,
     .body = JE_STRUCT_DESC(AlphaTweenComponent, "AlphaTweenComponent", kAlphaTweenFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(AlphaTweenComponent),
-    .codegenVar = "alphacomp",
 };
 
 const ComponentDesc kAnimationDesc{
     .type = ComponentType::AnimationComponent, .cppName = "AnimationComponent", .key = "animation", .displayName = "Animation", .icon = ICON_FA_FILM,
     .body = JE_STRUCT_DESC(AnimationComponent, "AnimationComponent", kAnimationFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(AnimationComponent),
-    .codegenVar = "animcomp",
 };
 
 const ComponentDesc kBoneDesc{
@@ -315,7 +260,6 @@ const ComponentDesc kBoneDesc{
     .body = JE_STRUCT_DESC(BoneComponent, "BoneComponent", kBoneFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(BoneComponent),
     .decodeApply = DecodeApply::MarkOnly,
-    .codegenVar = "bonecomp",
 };
 
 namespace {
@@ -331,7 +275,6 @@ const ComponentDesc kSpriteAnimationDesc{
     .body = JE_STRUCT_DESC(SpriteAnimationComponent, "SpriteAnimationComponent", kSpriteAnimationFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(SpriteAnimationComponent),
     .codec = &kSpriteAnimationCodec,
-    .codegen = JE_FACTORY_CODEGEN(createSpriteAnimationComponent),
     .extraKeys = kSpriteAnimationKnownKeys,
 };
 
@@ -342,7 +285,6 @@ const ComponentDesc kKeyframeTracksDesc{
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(KeyframeTracksComponent),
     .postDecode = &keyframeTracksPostDecode,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createKeyframeTracksComponent),
 };
 
 const ComponentDesc kTranslateTracksDesc{
@@ -351,7 +293,6 @@ const ComponentDesc kTranslateTracksDesc{
     .body = JE_STRUCT_DESC(TranslateTracksComponent, "TranslateTracksComponent", kTranslateTracksFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(TranslateTracksComponent),
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createTranslateTracksComponent),
 };
 
 const ComponentDesc kRotateTracksDesc{
@@ -360,7 +301,6 @@ const ComponentDesc kRotateTracksDesc{
     .body = JE_STRUCT_DESC(RotateTracksComponent, "RotateTracksComponent", kRotateTracksFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(RotateTracksComponent),
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createRotateTracksComponent),
 };
 
 const ComponentDesc kScaleTracksDesc{
@@ -369,7 +309,6 @@ const ComponentDesc kScaleTracksDesc{
     .body = JE_STRUCT_DESC(ScaleTracksComponent, "ScaleTracksComponent", kScaleTracksFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(ScaleTracksComponent),
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createScaleTracksComponent),
 };
 
 namespace {
@@ -386,7 +325,6 @@ const ComponentDesc kMorphTracksDesc{
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(MorphTracksComponent),
     .codec = &kMorphTracksCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createMorphTracksComponent),
     .extraKeys = kMorphTracksKnownKeys,
 };
 

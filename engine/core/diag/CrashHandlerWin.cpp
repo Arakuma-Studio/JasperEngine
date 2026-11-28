@@ -79,6 +79,29 @@ void ring(HANDLE file) {
     const size_t n = count < s.ringCapacity - first ? count : s.ringCapacity - first;
     raw(file, s.ring + first, n); raw(file, s.ring, count - n);
 }
+// journal.txt (diag/Journal.h): the header prepared at install, "dropped: N", "---", then the
+// ring's whole entries. Nothing when the journal holds no entry.
+void journal() {
+    const auto& s = state();
+    if (!s.journal || !s.journalCapacity || !s.journalCursor || !s.journalFile[0]) return;
+    const JournalSpan span = journalSpan(s.journal, s.journalCapacity, s.journalCursor->load(std::memory_order_acquire));
+    if (span.entries == 0) return;
+    HANDLE file = openFile(s.journalFile);
+    if (file == INVALID_HANDLE_VALUE) return;
+    char head[sizeof(s.journalHeader) + 64];
+    size_t n = appendText(head, sizeof(head), 0, s.journalHeader, s.journalHeaderLength);
+    const uint64_t written = s.journalWritten ? s.journalWritten->load(std::memory_order_acquire) : span.entries;
+    n = appendText(head, sizeof(head), n, "dropped: ");
+    n = appendDecimal(head, sizeof(head), n, written > span.entries ? written - span.entries : 0);
+    n = appendText(head, sizeof(head), n, "\n---\n");
+    raw(file, head, n);
+    const size_t first = static_cast<size_t>(span.begin % s.journalCapacity);
+    const size_t count = static_cast<size_t>(span.end - span.begin);
+    const size_t part = count < s.journalCapacity - first ? count : s.journalCapacity - first;
+    raw(file, s.journal + first, part);
+    raw(file, s.journal, count - part);
+    CloseHandle(file);
+}
 DWORD frameContext(CONTEXT& context, STACKFRAME64& frame) {
     frame.AddrPC.Mode = frame.AddrStack.Mode = frame.AddrFrame.Mode = AddrModeFlat;
 #if defined(_M_X64) || defined(__x86_64__)
@@ -245,6 +268,7 @@ DWORD WINAPI writer(void*) {
     }
     if (report != INVALID_HANDLE_VALUE) CloseHandle(report);
     HANDLE tail = openFile(s.tailFile); ring(tail); if (tail != INVALID_HANDLE_VALUE) CloseHandle(tail);
+    journal();
     uint64_t unwritten = 0;
     const bool flushed = Logger::flushForCrash(std::chrono::milliseconds(300), &unwritten);
     HANDLE log = openFile(s.logFile, true);

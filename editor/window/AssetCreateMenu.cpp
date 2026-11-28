@@ -11,7 +11,7 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    constexpr std::array<AssetCreateItem, 23> ITEMS = {{
+    constexpr std::array<AssetCreateItem, 25> ITEMS = {{
         {AssetCreateKind::Folder, "Folder", ICON_FA_FOLDER_PLUS, "assets.createFolder", false, true},
         {AssetCreateKind::LuaScript, "Lua Script", ICON_FA_FILE_CODE, "assets.createLuaScript", true, true},
         {AssetCreateKind::CppScript, "C++ Script", ICON_FA_FILE_CODE, "assets.createCppScript", false, true},
@@ -29,6 +29,7 @@ namespace {
         {AssetCreateKind::PhysicsMaterial, "Physics Material", ICON_FA_CIRCLE_HALF_STROKE, "assets.createPhysicsMaterial", true, false},
         {AssetCreateKind::PhysicsMaterial2D, "Physics Material 2D", ICON_FA_CIRCLE_HALF_STROKE, "assets.createPhysicsMaterial2D", false, false},
         {AssetCreateKind::ShakePreset, "Shake Preset", ICON_FA_BURST, "assets.createShakePreset", true, false},
+        {AssetCreateKind::FogProfile, "Fog Profile", ICON_FA_SMOG, "assets.createFogProfile", false, false},
         {AssetCreateKind::TitleArt, "Title Art", ICON_FA_FONT, "assets.createTitleArt", false, false},
         {AssetCreateKind::ProceduralMaterial, "Procedural Material", ICON_FA_DIAGRAM_PROJECT, "assets.createProceduralMaterial", true, false},
         {AssetCreateKind::SpriteAtlas, "Sprite Atlas", ICON_FA_TABLE_CELLS, "assets.createSpriteAtlas", true, false},
@@ -36,6 +37,8 @@ namespace {
         // the Project window shows it as a submenu: Blank, then the presets (T2 R62)
         {AssetCreateKind::NoiseGraph, "Noise Graph", ICON_FA_MOUNTAIN_SUN, "assets.createNoiseGraph", true, false},
         {AssetCreateKind::Tileset, "Tileset", ICON_FA_TABLE_CELLS_LARGE, "assets.createTileset", false, false},
+        // Unity's CreateAssetMenu: Data Asset > <each data class> (S95 REQ-21)
+        {AssetCreateKind::DataAsset, "Data Asset", ICON_FA_DATABASE, "", true, false},
     }};
 
 }

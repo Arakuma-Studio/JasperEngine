@@ -8,7 +8,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/BuoyancyComponent.h"
 #include "component/CharacterController2DComponent.h"
@@ -16,6 +15,8 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
 
 namespace jasperengine::editor::reflect {
 
@@ -102,7 +103,7 @@ namespace {
         JE_FIELD(BuoyancyComponent, enabled),
         JE_FIELD(BuoyancyComponent, columns, .enumDesc = &enums::kBuoyancyColumns),
         // the columns' bottoms in local space, with the CUSTOM columns
-        JE_FIELD(BuoyancyComponent, customPoints, .ops = &ops::PushBackList<Vector3>, .flags = NoDefault | ListWhole),
+        JE_FIELD(BuoyancyComponent, customPoints, .ops = &ops::Array<Vector3>, .flags = NoDefault | ListWhole),
         JE_FIELD(BuoyancyComponent, volumeScale),
         JE_FIELD(BuoyancyComponent, dragScale),
     };
@@ -139,6 +140,55 @@ namespace {
                  .tooltip = "Waterline length along local Z; 0: from the Water Excluder or the mesh (or as Width)."),
     };
 
+    // ---------------------------------------------------------------- Simulation Culling
+
+    bool simulationCullingHasReducedBand(const void* owner){
+        return static_cast<const SimulationCullingComponent*>(owner)->reducedRateDistance > 0.0f;
+    }
+
+    // the runtime state (state, reason, focusDistance) is never saved; the Inspector shows it in Play
+    constexpr FieldDesc kSimulationCullingFields[] = {
+        JE_FIELD(SimulationCullingComponent, enabled),
+        JE_FIELD(SimulationCullingComponent, simulationDistance, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "Beyond this distance from every simulation focus (the main camera by default) the GameObject is culled."),
+        JE_FIELD(SimulationCullingComponent, reducedRateDistance, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "Between this and Simulation Distance its scripts update every Reduced Update Interval frames; 0: no reduced band."),
+        JE_FIELD(SimulationCullingComponent, reducedUpdateInterval, .flags = Clamped, .min = 2.0f, .max = 60.0f, .uiMin = 2.0f, .uiMax = 60.0f,
+                 .tooltip = "Frames between two onUpdate calls in the reduced band (Engine.deltatime covers them all).",
+                 .visibleIf = &simulationCullingHasReducedBand),
+        JE_FIELD(SimulationCullingComponent, hysteresis, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "Metres past an edge before it moves to a farther state."),
+        JE_FIELD(SimulationCullingComponent, boundsRadius, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "0 = automatic: the rendered or collider bounds when it starts, else 0.5 m."),
+        JE_FIELD(SimulationCullingComponent, simulateWhenVisible, .tooltip = "Beyond the distance but on screen: keeps updating (at the reduced rate)."),
+        JE_FIELD(SimulationCullingComponent, freezeWhenGroundNotLoaded,
+                 .tooltip = "Frozen over Terrain World tiles that are not loaded, or where SimulationCulling.setGroundCheck says so."),
+        JE_FIELD(SimulationCullingComponent, cullScripts, .label = "Scripts",
+                 .tooltip = "Skips onUpdate, onPostUpdate and onFixedUpdate (other events, coroutines and timers run).", .group = "Cull"),
+        JE_FIELD(SimulationCullingComponent, cullAnimator, .label = "Animator", .tooltip = "Stops the Animator (as Cull Completely).", .group = "Cull"),
+        JE_FIELD(SimulationCullingComponent, cullPhysics, .label = "Physics",
+                 .tooltip = "Freezes dynamic Rigidbodies in place (kinematic, still collided with); they resume with their velocity.", .group = "Cull"),
+        JE_FIELD(SimulationCullingComponent, state, .enumDesc = &enums::kSimulationState, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite),
+        JE_FIELD(SimulationCullingComponent, reason, .enumDesc = &enums::kSimulationCullReason, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite),
+        JE_FIELD(SimulationCullingComponent, focusDistance, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite, .unit = Unit::Meters),
+    };
+
+    // ---------------------------------------------------------------- Dialogue Runner
+
+    // the runtime state (isRunning, state, currentNode) is never saved; the Inspector shows it in Play
+    constexpr FieldDesc kDialogueRunnerFields[] = {
+        JE_FIELD(DialogueRunnerComponent, dialogue, .asset = AssetKind::Dialogue, .tooltip = "The .dialogue this runner plays."),
+        JE_FIELD(DialogueRunnerComponent, startEntry, .label = "Start Entry",
+                 .tooltip = "The entry start() begins at when none is given; empty: the entry named start, else the first."),
+        JE_FIELD(DialogueRunnerComponent, autoStart, .tooltip = "Starts on Play or when instantiated, after every script's init of that frame."),
+        JE_FIELD(DialogueRunnerComponent, seed, .tooltip = "Seeds the random variants, random() and chance(); 0: from the GameObject's id."),
+        JE_FIELD(DialogueRunnerComponent, view, .ops = &ops::Entity, .flags = OmitIfDefault | EmptyIsDefault,
+                 .tooltip = "The GameObject whose UI Document shows the lines (the dialogue template's view); None: the game's own."),
+        JE_FIELD(DialogueRunnerComponent, isRunning, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite),
+        JE_FIELD(DialogueRunnerComponent, state, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite),
+        JE_FIELD(DialogueRunnerComponent, currentNode, .flags = NoSave | ReadOnly | Hidden | NoMcpWrite),
+    };
+
 }
 
 const ComponentDesc kCharacterController2DDesc{
@@ -148,9 +198,6 @@ const ComponentDesc kCharacterController2DDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(CharacterController2DComponent),
     .codec = &kCharacterController2DCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createCharacterController2DComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .codegenGuard = "JASPERENGINE_PHYSICS_2D",
     .extraKeys = kCharacterController2DKnownKeys,
 };
@@ -162,9 +209,6 @@ const ComponentDesc kCharacterControllerDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(CharacterControllerComponent),
     .codec = &kCharacterControllerCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createCharacterControllerComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .codegenGuard = "JASPERENGINE_PHYSICS_3D",
     .extraKeys = kCharacterControllerKnownKeys,
 };
@@ -176,9 +220,6 @@ const ComponentDesc kWaterVolumeDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterVolumeComponent),
     .codec = &kWaterVolumeCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createWaterVolumeComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .extraKeys = kWaterVolumeKnownKeys,
 };
 
@@ -187,7 +228,6 @@ const ComponentDesc kWaterExcluderDesc{
     .displayName = "Water Excluder", .icon = ICON_FA_SHIP,
     .body = JE_STRUCT_DESC(WaterExcluderComponent, "WaterExcluderComponent", kWaterExcluderFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterExcluderComponent),
-    .codegenVar = "waterExcluder",
 };
 
 const ComponentDesc kWaterWakeDesc{
@@ -195,7 +235,6 @@ const ComponentDesc kWaterWakeDesc{
     .displayName = "Water Wake", .icon = ICON_FA_WATER,
     .body = JE_STRUCT_DESC(WaterWakeComponent, "WaterWakeComponent", kWaterWakeFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterWakeComponent),
-    .codegenVar = "waterWake",
 };
 
 const ComponentDesc kBuoyancyDesc{
@@ -205,10 +244,21 @@ const ComponentDesc kBuoyancyDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(BuoyancyComponent),
     .codec = &kBuoyancyCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createBuoyancyComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .extraKeys = kBuoyancyKnownKeys,
+};
+
+const ComponentDesc kSimulationCullingDesc{
+    .type = ComponentType::SimulationCullingComponent, .cppName = "SimulationCullingComponent", .key = "simulationculling",
+    .displayName = "Simulation Culling", .icon = ICON_FA_EYE_SLASH,
+    .body = JE_STRUCT_DESC(SimulationCullingComponent, "SimulationCullingComponent", kSimulationCullingFields),
+    .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SimulationCullingComponent),
+};
+
+const ComponentDesc kDialogueRunnerDesc{
+    .type = ComponentType::DialogueRunnerComponent, .cppName = "DialogueRunnerComponent", .key = "dialoguerunner",
+    .displayName = "Dialogue Runner", .icon = ICON_FA_COMMENTS,
+    .body = JE_STRUCT_DESC(DialogueRunnerComponent, "DialogueRunnerComponent", kDialogueRunnerFields),
+    .structural = false, JE_COMPONENT_ACCESS(DialogueRunnerComponent),
 };
 
 }

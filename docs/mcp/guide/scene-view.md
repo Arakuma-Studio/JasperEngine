@@ -42,6 +42,30 @@ animates the user's moves):
 - `camera_settings {fov, near, far, speed, acceleration, easing, dynamic_clipping}`, the Scene
   Camera popup's settings (any of them; the reply lists them all).
 
+## Frame checks (screenshot findings)
+
+Every `screenshot` of the Scene or Game view returns `findings` (at most 5, the most severe first,
+each `{kind, severity, message, fix, entities?}`) and, when there is one, `next` with the first
+fix. A finding is a warning, never an error: the image is still returned. When `next` is present,
+make its fix (or tell the user why not) before judging the image. The kinds:
+
+- `exposure_clipped`: 20 % or more of the image at luminance 0.98 or above; names the brightest
+  light on what is in view and halves it.
+- `exposure_dark`: mean luminance under 0.04 with 80 % of the pixels under 0.02 (not when nothing
+  is drawn on a dark clear colour).
+- `empty_frame`: no renderer's bounds meet the camera's frustum.
+- `subject_out_of_frame`: the selection (with none, the visible objects that could fit the
+  frame) more than half outside it; `subject_too_small`: the selection under 1 % of the image.
+  The Scene view's fix is `frame_entity` (`set_scene_camera` for a subject too small for it); the
+  Game view's moves and aims its main camera.
+- `texture_missing`: a visible renderer's material references a missing asset
+  (`list_missing_assets`, `retarget_asset_references`).
+- `z_fighting`: two renderers with coplanar, same-facing faces overlapping within 1 mm.
+- `checks_skipped` (info): the checks passed their 30 ms budget; the rest were not run.
+
+`findings_ms` is their cost. The Scene view's Gizmos menu has **Frame Checks** (the display flag
+`frame_checks` of `set_scene_camera`): the same findings listed at the view's corner for the user.
+
 ## While the game plays
 
 After a game load replaced the played scene, the played scene's Scene view draws (and picks) the
@@ -87,3 +111,6 @@ end
 `Physics.raycast` hits colliders and needs bodies; `MeshRaycast` hits what is drawn (triangles of
 meshes, instances, skinned and morphed meshes as posed, terrains, UI rects; points, lines and
 particles by their bounds). The default layer mask is every layer but Ignore Raycast.
+`MeshRaycast.overlapSphere(scene, center, radius [, mask [, options]])` / `overlapBox(scene, center,
+halfExtents [, rotation, ...])` (+ `NonAlloc`) list what is drawn by its bounds, no colliders
+needed (frame snapshot unless `options.current`); `query_physics {dimension: "drawn"}` from MCP.

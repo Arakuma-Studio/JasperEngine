@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "kind": "dialogue",
+  "kindVersion": 1,
+  "nextId": 5,
+  "nodes": [
+    {"id": "n1", "type": "entry", "position": [0.0, 0.0], "params": {"name": "start"}},
+    {"id": "n2", "type": "jump", "position": [200.0, 0.0], "params": {"dialogue": {"guid": "", "path": "dialogue/walk.dialogue"}, "entry": "inside"}}
+  ],
+  "edges": [
+    {"id": "e3", "from": {"node": "n1", "port": "next"}, "to": {"node": "n2", "port": "in"}}
+  ],
+  "metadata": {"namespace": "other"}
+}

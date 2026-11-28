@@ -20,10 +20,24 @@ using namespace jasperengine;
 
 namespace {
 
-    // an old script's ParticleSystem(scene, actionEntity): the system its action controls
+    // an old script's ParticleSystem(scene, oldSystemEntity): the system migrated from it
+    // (legacyFrom, S94 F2), else the system its action controls
     Entity resolveSystemEntity(Scene* scene, Entity entity){
         if (entity == NULL_ENTITY || scene->findComponent<ParticleSystemComponent>(entity))
             return entity;
+        auto systems = scene->getComponentArray<ParticleSystemComponent>();
+        for (size_t i = 0; i < systems->size(); i++){
+            ParticleSystemComponent& migrated = systems->getComponentFromIndex(i);
+            if (migrated.legacyFrom != entity)
+                continue;
+            const Entity host = systems->getEntity(i);
+            if (!migrated.legacyWrapperNoted){
+                migrated.legacyWrapperNoted = true;
+                Log::warn("[Particles] ParticleSystem(scene, entity) of the old system's GameObject '%s': its system is on '%s' now (docs/specs/S20-particles.md D1); deprecated, wrap that GameObject",
+                          scene->getEntityName(entity).c_str(), scene->getEntityName(host).c_str());
+            }
+            return host;
+        }
         if (const ActionComponent* action = scene->findComponent<ActionComponent>(entity)){
             if (action->target != NULL_ENTITY && scene->findComponent<ParticleSystemComponent>(action->target)){
                 static bool noted = false;

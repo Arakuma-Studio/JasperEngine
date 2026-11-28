@@ -6,6 +6,9 @@
 // (engine/tests/crash/CrashTestMain.cpp), started per test.
 
 #include "diag/CrashHandler.h"
+#include "diag/UserReport.h"
+#include "jobs/JobSystem.h"
+#include "AllocationCounter.h"
 #include "TempDir.h"
 
 #include <gtest/gtest.h>
@@ -268,5 +271,202 @@ TEST(CrashGuard, RecoveredCrashOnlyAddsBreadcrumb) {
     EXPECT_TRUE(fs::is_empty(dir.path() / "reports"));
 }
 #endif
+
+// ---- the Gameplay Journal beside a hang report, user reports (docs/specs/shipped-game-diagnostics.md)
+
+namespace {
+
+    // the file named `name` in the one report folder under the root that has it ("" when none)
+    std::string findReportFile(const TempDir& dir, const std::string& name, fs::path* folder = nullptr) {
+        std::error_code ec;
+        for (const auto& entry : fs::recursive_directory_iterator(dir.path() / "reports", ec)) {
+            if (entry.path().filename() == name) {
+                if (folder) *folder = entry.path().parent_path();
+                return dir.read(fs::relative(entry.path(), dir.path()).string());
+            }
+        }
+        return {};
+    }
+
+    // a 1920x1080 frame of noise (the worst case for JPEG)
+    std::vector<uint8_t> noiseFrame(int width, int height) {
+        std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4);
+        uint32_t state = 12345u;
+        for (size_t i = 0; i < rgba.size(); i++) {
+            state = state * 1664525u + 1013904223u;
+            rgba[i] = static_cast<uint8_t>(state >> 24);
+        }
+        return rgba;
+    }
+
+    std::vector<uint8_t> captured;
+    int capturedWidth = 0, capturedHeight = 0;
+    // the stand-in readback's own time: R31 budgets the capture beyond it
+    double readbackMs = 0.0;
+
+    bool readCaptured(std::vector<uint8_t>& rgba, int& width, int& height, std::string&) {
+        const auto start = std::chrono::steady_clock::now();
+        rgba = captured;
+        width = capturedWidth;
+        height = capturedHeight;
+        readbackMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        return true;
+    }
+
+    // frames of the engine as far as a user report's capture goes: the main queue, then update
+    bool pumpUntil(const bool& done) {
+        for (int i = 0; i < 2000 && !done; i++) {
+            jobs::drainMainQueue();
+            diag::userreport::update();
+            if (!done) std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        return done;
+    }
+
+}
+
+TEST(CrashHang, WatchdogWritesTheJournalBesideTheHangReport) {
+    TempDir dir;
+    ASSERT_EQ(runCrashTest({"--mode", "hang", "--journal", "--out", dir.str()}), 0);
+    fs::path hangFolder, journalFolder;
+    ASSERT_FALSE(findReportFile(dir, "hang-001.txt", &hangFolder).empty()) << "no hang-001.txt";
+    const std::string journal = findReportFile(dir, "journal.txt", &journalFolder);
+    ASSERT_FALSE(journal.empty()) << "no journal.txt";
+    EXPECT_EQ(hangFolder, journalFolder) << "beside the hang report";
+    EXPECT_EQ(journal.rfind("JasperEngine journal v1\n", 0), 0u) << journal;
+    EXPECT_NE(journal.find(" test.two name=forest-2 seed=42\n"), std::string::npos) << journal;
+}
+
+TEST(CrashUser, EncodeLadderFitsTheCap) {
+    const std::vector<uint8_t> noise = noiseFrame(1920, 1080);
+    const diag::userreport::Encoded fitted = diag::userreport::encode(noise, 1920, 1080, 1280, 100u << 10);
+    ASSERT_FALSE(fitted.jpeg.empty()) << fitted.error;
+    EXPECT_LE(fitted.jpeg.size(), 100u << 10);
+    EXPECT_EQ(static_cast<uint8_t>(fitted.jpeg[0]), 0xFF);
+    EXPECT_EQ(static_cast<uint8_t>(fitted.jpeg[1]), 0xD8);
+    const bool ladder = fitted.width == 1280 && fitted.height == 720 &&
+        (fitted.quality == 80 || fitted.quality == 70 || fitted.quality == 60 || fitted.quality == 50 || fitted.quality == 40);
+    const bool half = fitted.width == 640 && fitted.height == 360 && fitted.quality == 40;
+    EXPECT_TRUE(ladder || half) << fitted.width << "x" << fitted.height << " q" << fitted.quality;
+
+    // through the draft: nothing fits 1 KiB, so no screenshot and the reason
+    captured = noise;
+    capturedWidth = 1920;
+    capturedHeight = 1080;
+    bool called = false, ok = true;
+    std::string error;
+    diag::userreport::begin([&](bool shot, const std::string& why) {
+        called = true;
+        ok = shot;
+        error = why;
+    }, 1280, 1024);
+    ASSERT_TRUE(diag::userreport::wantsCapture());
+    diag::userreport::beforeCaptureFrame();
+    diag::userreport::frameDrawn(&readCaptured);
+    ASSERT_TRUE(pumpUntil(called)) << "the callback never ran";
+    EXPECT_FALSE(ok);
+    EXPECT_EQ(error, "screenshot_too_large");
+    EXPECT_TRUE(diag::userreport::hasDraft());
+    EXPECT_FALSE(diag::userreport::draftHasScreenshot());
+    diag::userreport::reset();
+}
+
+TEST(CrashUser, CreateWritesAUserFolder) {
+    TempDir dir;
+    ASSERT_EQ(runCrashTest({"--mode", "user", "--journal", "--out", dir.str()}), 0);
+    const std::vector<std::string> results = lines(dir.read("user-results.txt"));
+    ASSERT_EQ(results.size(), 3u) << dir.read("user-results.txt");
+    ASSERT_EQ(results[0].rfind("ok ", 0), 0u) << results[0];
+    const std::string id = results[0].substr(3, results[0].find(' ', 3) - 3);
+    EXPECT_EQ(id.substr(id.size() - 6), "-user1");
+    EXPECT_EQ(results[0].substr(results[0].size() - 5), " user");
+    EXPECT_EQ(results[1], "reason user report (gameplay): the door does not open");
+
+    const fs::path folder = dir.path() / "reports" / id;
+    const std::string user = dir.read("reports/" + id + "/user.txt");
+    EXPECT_EQ(user.rfind("JasperEngine user report v1\n", 0), 0u) << user;
+    for (const char* key : {"product: jasperengine-crash-test\n", "version: test\n", "build_id: ", "platform: ", "backend: none\n",
+                            "session: ", "time: ", "category: gameplay\n", "build: nightly\n", "field.level: forest-2\n",
+                            "field.try: 1\n", "note:\nthe door does not open\nsecond line\n"}) {
+        EXPECT_NE(user.find(key), std::string::npos) << key << " in\n" << user;
+    }
+    const std::string device = dir.read("reports/" + id + "/device.json");
+    for (const char* key : {"product", "version", "build_id", "platform", "backend", "os_version", "gpu", "gpu_driver", "device_tier",
+                            "tier_reason", "gpu_quirks", "memory_mb", "cores", "screen", "width", "height", "dpi_scale",
+                            "thermal_state", "low_memory_warnings", "uptime_s", "session"}) {
+        EXPECT_NE(device.find("\"" + std::string(key) + "\""), std::string::npos) << key << " in\n" << device;
+    }
+    const std::string journal = dir.read("reports/" + id + "/journal.txt");
+    EXPECT_NE(journal.find(" test.three hard=true\n"), std::string::npos) << journal;
+    EXPECT_NE(dir.read("reports/" + id + "/log-tail.txt").find("crash test mode user"), std::string::npos);
+
+    const auto report = crash::readReport(folder);
+    ASSERT_TRUE(report);
+    EXPECT_EQ(report->kind, "user");
+    EXPECT_EQ(report->reason, "user report (gameplay): the door does not open");
+    EXPECT_EQ(report->category, "gameplay");
+    EXPECT_EQ(report->product, "jasperengine-crash-test");
+}
+
+TEST(CrashUser, FourthPendingReportIsRefused) {
+    TempDir dir;
+    ASSERT_EQ(runCrashTest({"--mode", "user", "--count", "4", "--out", dir.str()}), 0);
+    const std::vector<std::string> results = lines(dir.read("user-results.txt"));
+    ASSERT_EQ(results.size(), 6u) << dir.read("user-results.txt");
+    for (int i = 0; i < 3; i++) { EXPECT_EQ(results[i].rfind("ok ", 0), 0u) << results[i]; }
+    EXPECT_EQ(results[3], "error too_many_pending: upload a report or Crash.markHandled(id) first");
+    size_t folders = 0;
+    for (const auto& entry : fs::directory_iterator(dir.path() / "reports")) folders += entry.is_directory() ? 1 : 0;
+    EXPECT_EQ(folders, 3u) << "the refused one writes nothing";
+}
+
+TEST(CrashUser, UnsentReportIsOfferedNextStart) {
+    TempDir dir;
+    ASSERT_EQ(runCrashTest({"--mode", "user", "--out", dir.str()}), 0);
+    const std::vector<std::string> results = lines(dir.read("user-results.txt"));
+    ASSERT_EQ(results.size(), 3u);
+    const std::string id = results[0].substr(3, results[0].find(' ', 3) - 3);
+    EXPECT_EQ(results[2], "pending") << "this session's own user report waits for the next start";
+
+    ASSERT_EQ(runCrashTest({"--mode", "hook", "--decline", "--out", dir.str()}), 0);
+    const std::vector<std::string> calls = lines(dir.read("hook-calls.txt"));
+    ASSERT_EQ(calls.size(), 1u) << dir.read("hook-calls.txt");
+    EXPECT_EQ(calls[0], id + " user");
+}
+
+TEST(CrashUserBench, CreateReportWrites) {
+    TempDir dir;
+    ASSERT_EQ(runCrashTest({"--mode", "user_bench", "--journal", "--out", dir.str()}), 0);
+    const double createMs = std::stod(dir.read("user-bench.txt"));
+
+    // the capture's main-thread share beyond the readback, and the encode, at 1920x1080
+    captured = noiseFrame(1920, 1080);
+    for (size_t i = 0; i < captured.size(); i++) captured[i] = static_cast<uint8_t>((i / 4 % 1920) * 255 / 1919);
+    capturedWidth = 1920;
+    capturedHeight = 1080;
+    bool called = false;
+    diag::userreport::begin([&](bool, const std::string&) { called = true; });
+    diag::userreport::beforeCaptureFrame();
+    const auto captureStart = std::chrono::steady_clock::now();
+    diag::userreport::frameDrawn(&readCaptured);
+    // R31: the main thread's share beyond the readback's wait (here a copy of the frame), which
+    // the capture's log line reports on its own
+    const double captureMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - captureStart).count() - readbackMs;
+    ASSERT_TRUE(pumpUntil(called));
+    diag::userreport::reset();
+    const auto encodeStart = std::chrono::steady_clock::now();
+    const diag::userreport::Encoded encoded = diag::userreport::encode(captured, 1920, 1080, 1280, 600u << 10);
+    const double encodeMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - encodeStart).count();
+    EXPECT_EQ(encoded.width, 1280);
+
+    std::printf("[bench] User report: createReport %.2f ms, capture main thread %.2f ms (+ the readback, %.2f ms), encode 1920x1080 -> 1280x720 %.1f ms\n",
+                createMs, captureMs, readbackMs, encodeMs);
+    const double slack = testsupport::perfSlack();
+    if (slack > 0.0) {
+        EXPECT_LE(createMs, 10.0 * slack) << "R14";
+        EXPECT_LE(captureMs, 2.0 * slack) << "R31";
+        EXPECT_LE(encodeMs, 60.0 * slack) << "R31";
+    }
+}
 
 }  // namespace CrashReportsTest_cpp

@@ -12,8 +12,11 @@ AtmosphereTier AtmosphereTiers::get(AtmosphereQuality quality){
         case AtmosphereQuality::LOW:
             tier.fogDivisor = 4;
             tier.fogSteps = 16;
-            tier.fogLocalLights = 0;
+            tier.fogLocalLights = 1;
             tier.fogVolumes = 2;
+            // one sun tap: the wider denoise softens the shafts instead
+            tier.fogSunShadowTaps = 1;
+            tier.fogDenoiseRadius = 2;
             tier.cloudsAuto = CloudsRendering::SKY_MAP;
             tier.skyMapSize = 256;
             tier.skyMapSliceFrames = 8;
@@ -24,8 +27,10 @@ AtmosphereTier AtmosphereTiers::get(AtmosphereQuality quality){
         case AtmosphereQuality::MEDIUM:
             tier.fogDivisor = 2;
             tier.fogSteps = 32;
-            tier.fogLocalLights = 0;
+            tier.fogLocalLights = 2;
             tier.fogVolumes = 4;
+            tier.fogSunShadowTaps = 2;
+            tier.fogDenoiseRadius = 1;
             tier.cloudsAuto = CloudsRendering::SKY_MAP;
             tier.skyMapSize = 512;
             tier.skyMapSliceFrames = 4;
@@ -38,6 +43,8 @@ AtmosphereTier AtmosphereTiers::get(AtmosphereQuality quality){
             tier.fogSteps = 64;
             tier.fogLocalLights = 4;
             tier.fogVolumes = 8;
+            tier.fogSunShadowTaps = 2;
+            tier.fogDenoiseRadius = 1;
             tier.cloudsAuto = CloudsRendering::SCREEN;
             // a Sky Map forced on High (rendering SKY_MAP) refreshes as Medium's, marched as High's
             tier.skyMapSize = 512;

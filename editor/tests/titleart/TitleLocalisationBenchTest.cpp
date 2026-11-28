@@ -28,7 +28,7 @@ namespace TitleLocalisationBenchTest_cpp {
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleLocalisationBenchJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
@@ -40,15 +40,16 @@ namespace {
 
     // a title with `rows` text layers translated into de and ja (1,000 strings rows, R49)
     titleart::TitleArtDoc manyTexts(size_t rows) {
-        Json root = Json{{"format", titleart::TITLE_ART_FORMAT}, {"version", 1}, {"source_language", "en"}, {"string_namespace", "bench"},
-                         {"languages", Json::array({Json{{"code", "de"}}, Json{{"code", "ja"}}})}};
-        Json layers = Json::array();
+        TitleLocalisationBenchJson root = TitleLocalisationBenchJson{{"format", titleart::TITLE_ART_FORMAT}, {"version", 1}, {"source_language", "en"}, {"string_namespace", "bench"},
+                         {"languages", TitleLocalisationBenchJson::array({TitleLocalisationBenchJson{{"code", "de"}}, TitleLocalisationBenchJson{{"code", "ja"}}})}};
+        TitleLocalisationBenchJson layers = TitleLocalisationBenchJson::array();
         for (size_t i = 0; i < rows; i++) {
             char id[9];
-            std::snprintf(id, sizeof(id), "%08zx", i + 1);
-            layers.push_back(Json{{"id", id}, {"type", "text"}, {"name", "Line " + std::to_string(i)}, {"text", "Line number " + std::to_string(i)},
+            // 32 bits: at most 8 hex digits, which -Wformat-truncation can see fit
+            std::snprintf(id, sizeof(id), "%08x", static_cast<unsigned>(i + 1));
+            layers.push_back(TitleLocalisationBenchJson{{"id", id}, {"type", "text"}, {"name", "Line " + std::to_string(i)}, {"text", "Line number " + std::to_string(i)},
                                   {"text_key", "line_" + std::to_string(i)},
-                                  {"translations", Json{{"de", Json{{"text", "Zeile " + std::to_string(i)}}}, {"ja", Json{{"text", "\xe8\xa1\x8c " + std::to_string(i)}}}}}});
+                                  {"translations", TitleLocalisationBenchJson{{"de", TitleLocalisationBenchJson{{"text", "Zeile " + std::to_string(i)}}}, {"ja", TitleLocalisationBenchJson{{"text", "\xe8\xa1\x8c " + std::to_string(i)}}}}}});
         }
         root["layers"] = layers;
         // the 256-layer document limit is the schema's: build the tree without normalize's cap

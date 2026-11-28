@@ -19,7 +19,6 @@
 #include "Out.h"
 #include "Stream.h"
 #include "reflect/Reflect.h"
-#include "Factory.h"
 #include "command/CommandHandle.h"
 #include "render/SceneRender.h"
 #include "util/ProjectUtils.h"
@@ -696,6 +695,10 @@ YAML::Node editor::Project::encodePrefabStage(PrefabStage& stage) {
     node["guid"] = guid;
     node["nextEntity"] = nextEntity;
     node["root"] = stage.root;
+    // an older file keeps its embedded material copies across saves (S98 REQ-29, prefab 9 -> 10)
+    if (prefab && !prefab->followMaterialFiles) {
+        node["followMaterialFiles"] = false;
+    }
     node["members"] = membersNode;
     // the asset's header keys this editor does not know go with it (docs/data-safety.md)
     if (prefab && prefab->registry) {
@@ -834,7 +837,7 @@ bool editor::Project::savePrefabStage(uint32_t sceneId, DegradedSavePolicy polic
     }
     stage->lastSyncCheck = Clock::now();
 
-    // Generated sources: the scenes using it (and the prefab sources) are written again
+    // The cooked cache: the scenes using it (and the prefabs) are cooked again
     const std::string guid = getPrefabGuid(path);
     bool invalidated = false;
     for (const SceneProject& other : scenes) {
@@ -842,14 +845,13 @@ bool editor::Project::savePrefabStage(uint32_t sceneId, DegradedSavePolicy polic
             return (!guid.empty() && info.guid == guid) || info.prefabPath.lexically_normal() == path.lexically_normal();
         });
         if (uses) {
-            generator.clearSceneSource(other.id, other.name, getProjectInternalPath());
+            clearCookedScene(other.id);
             invalidated = true;
         }
     }
     std::error_code ec;
     if (std::filesystem::exists(getProjectPath() / "CMakeLists.txt", ec)) {
-        generator.writePrefabSources(prefabAssets, NULL_PROJECT_SCENE, getProjectPath(), getProjectInternalPath(),
-            [this](const std::filesystem::path& prefabPath) { return getPrefabGuid(prefabPath); }, bakePrefabsForExport());
+        writeCookedPrefabs();
     }
     if (invalidated || isStandalonePrefab(path)) {
         generatedSourcesDirty.store(true);
@@ -857,6 +859,64 @@ bool editor::Project::savePrefabStage(uint32_t sceneId, DegradedSavePolicy polic
 
     Out::info("Prefab saved: \"%s\"", path.generic_string().c_str());
     return true;
+}
+
+// The build cooks what Prefab Mode shows (S98 REQ-4, D2): each stage with unsaved changes as its
+// asset's GameObjects, as a save would load them, without writing the .prefab; every asset is put
+// back once `body` has run
+std::vector<std::filesystem::path> editor::Project::withUnsavedPrefabStages(const std::function<void()>& body) {
+    struct Held {
+        Prefab* prefab = nullptr;
+        std::unique_ptr<EntityRegistry> registry;
+        std::vector<Entity> registryEntities;
+        Entity root = NULL_ENTITY;
+        std::map<Entity, PrefabInstanceData> nestedInstances;
+        std::map<Entity, std::vector<Entity>> stripped;
+        std::map<Entity, Prefab::AddedObject> addedObjects;
+        bool needsUpgrade = false;
+    };
+    std::vector<Held> held;
+    std::vector<std::filesystem::path> paths;
+    for (size_t i = 0; i < getPrefabStageCount(); i++) {
+        PrefabStage* stage = getPrefabStageAt(i);
+        if (!stage || !hasUnsavedPrefabStage(stage->sceneProject.id)) continue;
+        Prefab* prefab = loadPrefabAsset(stage->assetPath);
+        if (!prefab) continue;
+        const bool changePending = stage->changePending;
+        YAML::Node node;
+        try {
+            node = encodePrefabStage(*stage);
+        } catch (const std::exception& e) {
+            Out::error("Prefab %s: its Prefab Mode changes are not in this build: %s", stage->assetPath.generic_string().c_str(), e.what());
+        }
+        stage->changePending = changePending;
+        if (!node || !node.IsMap()) continue;
+        Held item;
+        item.prefab = prefab;
+        item.registry = std::move(prefab->registry);
+        item.registryEntities = std::move(prefab->registryEntities);
+        item.root = prefab->root;
+        item.nestedInstances = std::move(prefab->nestedInstances);
+        item.stripped = std::move(prefab->stripped);
+        item.addedObjects = std::move(prefab->addedObjects);
+        item.needsUpgrade = prefab->needsUpgrade;
+        prefab->registry.reset();
+        prefab->loadRegistry(node, stage->assetPath.stem().string());
+        resolveRegistryPrefabRefs(prefab->registry.get());
+        held.push_back(std::move(item));
+        paths.push_back(stage->assetPath);
+    }
+    body();
+    for (Held& item : held) {
+        item.prefab->registry = std::move(item.registry);
+        item.prefab->registryEntities = std::move(item.registryEntities);
+        item.prefab->root = item.root;
+        item.prefab->nestedInstances = std::move(item.nestedInstances);
+        item.prefab->stripped = std::move(item.stripped);
+        item.prefab->addedObjects = std::move(item.addedObjects);
+        item.prefab->needsUpgrade = item.needsUpgrade;
+    }
+    return paths;
 }
 
 // ---- Close ----

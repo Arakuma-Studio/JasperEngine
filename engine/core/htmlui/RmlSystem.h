@@ -20,6 +20,9 @@ namespace jasperengine {
     class JASPERENGINE_INTERNAL RmlSystem : public Rml::SystemInterface {
     public:
         double GetElapsedTime() override;                 // HtmlUIClock::now() (seconds of UI time)
+        // a Game Time document's CSS animations and transitions (ElementDocument::SetAnimationClock,
+        // HtmlUIClock::animationClockOf): HtmlUIClock::now(GAME_TIME)
+        double GetAnimationClockTime(int clock) override;
         bool LogMessage(Rml::Log::Type type, const Rml::String& message) override;
         void JoinPath(Rml::String& translated_path, const Rml::String& document_path, const Rml::String& path) override;
         void SetMouseCursor(const Rml::String& cursor_name) override;      // Engine::setMouseCursor(cursorFromCss(name))

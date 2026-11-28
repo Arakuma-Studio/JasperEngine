@@ -44,8 +44,10 @@
 #include "render/SystemRender.h"
 #include "render/RenderStats.h"
 #include "render/SceneDrawModes.h"
+#include "util/GraphicUtils.h"
 #include "render/RenderUtil.h"
 #include "util/Util.h"
+#include "asset/MeshAssetFiles.h"
 #include "util/EntityPayload.h"
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
@@ -94,6 +96,16 @@ using namespace jasperengine;
 static editor::VoxelAltGesture& terrainAltGesture(){
     static editor::VoxelAltGesture gesture;
     return gesture;
+}
+
+// the active Scene-view tool's Alt+click (T1 DC12, V1 R104), and the Ctrl/Shift+right drag it took
+static editor::VoxelAltGesture& sceneToolAltGesture(){
+    static editor::VoxelAltGesture gesture;
+    return gesture;
+}
+static bool& sceneToolRightDrag(){
+    static bool dragging = false;
+    return dragging;
 }
 
 namespace {
@@ -664,6 +676,21 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 }
                                 focusSceneWindow(*sceneProject);
                             }
+                        }
+                    }
+                } else if (Util::isMeshAssetFile(droppedRelativePath) && sceneProject->sceneType == SceneType::SCENE_3D) {
+                    // a .mesh (S98 F1): a GameObject showing it on the surface under the pointer, one step
+                    if (sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                            if (payload->IsDelivery() && !insideAssets) {
+                                Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                            } else if (payload->IsDelivery()) {
+                                const SceneSurfaceHit surface = getDropSurface(sceneProject, x, y, {});
+                                std::string error;
+                                if (MeshAssetFiles::createObject(*project, sceneProject->id, receivedStrings[0], surface.point, NULL_ENTITY, &error) == NULL_ENTITY)
+                                    Out::error("%s", error.c_str());
+                            }
+                            if (payload->IsDelivery()) focusSceneWindow(*sceneProject);
                         }
                     }
                 } else if (Util::isTitleArtFile(droppedRelativePath)) {
@@ -1388,6 +1415,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         event.ctrl = io.KeyCtrl || io.KeySuper;
         event.alt = altHeld;
         event.button = button;
+        event.pressure = Backend::penPressure();
+        event.wheel = io.MouseWheel;
         return event;
     };
     // a captured stroke follows the pointer past the view's edges; its release comes below
@@ -1689,6 +1718,27 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                             sceneProject->sceneRender->mouseHoverEvent(x, y);
                         } else if (sceneProject->sceneRender->getSelectedJointAnchorIndex() >= 0 && !sceneProject->sceneRender->isAnyGizmoSideSelected()) {
                             sceneProject->sceneRender->clearJointAnchorSelection();
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        }
+                    }
+                }
+            }
+
+            // Area Light size handles of a selected Area Light (S99 R38): Width, Height or Radius
+            if (gizmoSelected == GizmoSelected::TRANSLATE && !sceneProject->sceneRender->hasEditLayer()) {
+                std::vector<Entity> selEntities = project->getSelectedEntities(sceneId);
+                if (selEntities.size() == 1 && !io.KeyShift && sceneProject->sceneRender->areaHandleCount(selEntities[0]) > 0) {
+                    Entity selEntity = selEntities[0];
+                    if (!sceneProject->sceneRender->isAnyGizmoSideSelected()) {
+                        int handleHit = sceneProject->sceneRender->hitTestAreaHandle(selEntity, x, y);
+                        if (handleHit >= 0) {
+                            sceneProject->sceneRender->selectAreaHandle(selEntity, handleHit);
+                            subSelectionClickConsumesRelease[sceneId] = true;
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        } else if (sceneProject->sceneRender->getSelectedAreaHandleIndex() >= 0) {
+                            sceneProject->sceneRender->clearAreaHandleSelection();
                             project->updateSceneRender(sceneId);
                             sceneProject->sceneRender->mouseHoverEvent(x, y);
                         }
@@ -2114,7 +2164,44 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         terrainAlt.cancel();
     }
 
-    if (isMouseInWindow && (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
+    // the active tool's Alt+click: a release before the drag threshold is the tool's (a pick), past it
+    // the orbit below. Its Ctrl/Shift+right drag (brush size, strength, hardness) is not a look.
+    VoxelAltGesture& toolAlt = sceneToolAltGesture();
+    if (sceneTool) {
+        if (isMouseInWindow && altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse) {
+            toolAlt.press(mousePos.x, mousePos.y);
+        }
+        toolAlt.move(mousePos.x, mousePos.y, io.MouseDragThreshold);
+        if (toolAlt.isActive() && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && toolAlt.release()) {
+            float pickX = mousePos.x - windowPos.x;
+            float pickY = mousePos.y - windowPos.y;
+            toEngineCanvas(sceneId, pickX, pickY);
+            sceneTool->altClick(sceneToolEvent(pickX, pickY, 0));
+        }
+        bool& toolRight = sceneToolRightDrag();
+        if (isMouseInWindow && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && (io.KeyCtrl || io.KeySuper || io.KeyShift)) {
+            float rx = mousePos.x - windowPos.x;
+            float ry = mousePos.y - windowPos.y;
+            toEngineCanvas(sceneId, rx, ry);
+            toolRight = sceneTool->rightDrag(sceneToolEvent(rx, ry, 1), 0.0f, 0.0f);
+        }
+        if (toolRight) {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+                float rx = mousePos.x - windowPos.x;
+                float ry = mousePos.y - windowPos.y;
+                toEngineCanvas(sceneId, rx, ry);
+                if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f) sceneTool->rightDrag(sceneToolEvent(rx, ry, 1), mouseDelta.x, mouseDelta.y);
+            } else {
+                toolRight = false;
+            }
+        }
+    } else {
+        if (toolAlt.isActive()) toolAlt.cancel();
+        sceneToolRightDrag() = false;
+    }
+    const bool toolRightDrag = sceneTool && sceneToolRightDrag();
+
+    if (isMouseInWindow && ((ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !toolRightDrag)) ||
             (altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse && !terrainAltPaints))) {
         draggingMouse[sceneId] = true;
 
@@ -2284,7 +2371,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
         // Alt+LMB orbit
         if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !axisLocked && !voxelBrush.altHolding() &&
-                !(terrainAlt.isActive() && !terrainAlt.isOrbit())) {
+                !(terrainAlt.isActive() && !terrainAlt.isOrbit()) && !(toolAlt.isActive() && !toolAlt.isOrbit())) {
             camera->rotatePosition(-0.1 * mouseDelta.x);
             camera->elevatePosition(0.1 * mouseDelta.y);
 
@@ -2800,10 +2887,15 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
 
         drawSettingRow(ICON_FA_OBJECT_GROUP " Hide selection outline", sceneProject.displaySettings.hideSelectionOutline);
 
+        drawSettingRow(ICON_FA_TRIANGLE_EXCLAMATION " Frame Checks", sceneProject.displaySettings.frameChecks);
+        ImGui::SetItemTooltip("Lists what looks wrong in this view at its corner: exposure, nothing in view, the selection "
+                              "out of frame or too small, missing textures, z-fighting");
+
         ImGui::EndTable();
     }
 
-    // every Animator's live IK, root motion and feet (S77 R49): view state, saved with the workspace
+    // every Animator's live IK, root motion and feet (S77 R49), the selected one's torso direction
+    // (mesh-space-rotation R30): view state, saved with the workspace
     if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Animation")) {
         drawSettingRow(ICON_FA_ROUTE " Root Motion", sceneProject.displaySettings.showRootMotion);
         ImGui::SetItemTooltip("Each Animator's root: its last %.0f s in red, where its speed and turn lead in green", anim::kAnimatorTrailSeconds);
@@ -2811,6 +2903,8 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::SetItemTooltip("Targets (green reached, red not), chains, poles, Foot IK rays and hits, locked feet");
         drawSettingRow(ICON_FA_SHOE_PRINTS " Foot Trails", sceneProject.displaySettings.showFootTrails);
         ImGui::SetItemTooltip("Foot IK and Foot Lock feet, %.0f s: green planted, yellow to red sliding", anim::kAnimatorTrailSeconds);
+        drawSettingRow(ICON_FA_COMPASS " Torso Direction", sceneProject.displaySettings.showTorsoDirection);
+        ImGui::SetItemTooltip("The selected Animator's Mesh Space Rotation bones: where they face in green, where they would face without it in red");
         ImGui::EndTable();
     }
 
@@ -3197,6 +3291,7 @@ void editor::SceneWindow::show() {
                         "The shaded scene with the meshes' edges over it",
                         "Each mesh tinted by the detail level it draws: LOD 0 green, 1 blue, 2 amber, 3 red; a cross-fade dithers two",
                         "Every layer of the meshes adds heat, nothing hides another: bright areas draw their pixels many times",
+                        "Each mesh unlit in its vertex colours (white without any), or one channel as grey",
                     };
                     for (int mode = 0; mode < SCENE_DRAW_MODE_COUNT; mode++) {
                         if (mode == (int)ViewDrawMode::LOD_LEVEL)
@@ -3212,6 +3307,32 @@ void editor::SceneWindow::show() {
                     ImGui::EndCombo();
                 }
                 ImGui::SetItemTooltip("Draw Mode of this Scene view (editor only)");
+                // the channel the Vertex Color mode shows (V1 R102)
+                if (drawMode == ViewDrawMode::VERTEX_COLOR) {
+                    ImGui::SameLine();
+                    ViewVertexColorChannel& channel = sceneProject.displaySettings.vertexColorChannel;
+                    ImGui::SetNextItemWidth(Theme::dpi(56.0f));
+                    if (ImGui::BeginCombo(("##VertexColorChannel" + std::to_string(sceneProject.id)).c_str(), vertexColorChannelLabel(channel))) {
+                        static const char* const channelHelp[VERTEX_COLOR_CHANNEL_COUNT] = {
+                            "The vertex colours",
+                            "The red channel as grey",
+                            "The green channel as grey",
+                            "The blue channel as grey",
+                            "The alpha channel as grey, over a checker where it is low",
+                        };
+                        for (int c = 0; c < VERTEX_COLOR_CHANNEL_COUNT; c++) {
+                            const ViewVertexColorChannel item = (ViewVertexColorChannel)c;
+                            if (ImGui::Selectable(vertexColorChannelLabel(item), item == channel)) {
+                                channel = item;
+                                sceneProject.needUpdateRender = true;
+                                project->saveWorkspaceFile();
+                            }
+                            ImGui::SetItemTooltip("%s", channelHelp[c]);
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::SetItemTooltip("The channel the Vertex Color Draw Mode shows");
+                }
                 ImGui::SameLine();
                 bool& showStats = sceneProject.displaySettings.showStats;
                 ImGui::PushStyleColor(ImGuiCol_Button, showStats ? Theme::Colors::ButtonActivated : ImGui::GetStyle().Colors[ImGuiCol_Button]);
@@ -3547,6 +3668,7 @@ void editor::SceneWindow::show() {
                     const ImVec2 viewMin = ImGui::GetWindowPos();
                     const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
                     viewController->drawOverlays(sceneProject, viewMin, ImGui::GetWindowSize(), engineScale.x, engineScale.y);
+                    drawFrameChecks(sceneProject, viewMin, ImGui::GetWindowSize());
                     if (viewController->hasPendingClick(sceneProject.id) && ImGui::IsWindowHovered()) {
                         ImGui::SetMouseCursor(ImGuiMouseCursor_Progress);
                     }
@@ -3636,6 +3758,71 @@ void editor::SceneWindow::drawDrawModeOverlays(SceneProject& sceneProject, ImVec
     if (drawModeHasWires(sceneProject.displaySettings.drawMode) && sceneProject.sceneRender && sceneProject.sceneRender->isWireframeTruncated())
         lines.push_back("Wires: the nearest meshes only");
     drawStatsBox(drawList, imageMin, imageMax, lines);
+}
+
+void editor::SceneWindow::drawFrameChecks(SceneProject& sceneProject, ImVec2 viewMin, ImVec2 viewSize){
+    if (!sceneProject.displaySettings.frameChecks || !sceneProject.scene || !sceneProject.sceneRender || viewSize.x <= 0.0f || viewSize.y <= 0.0f){
+        frameChecksOverlay.erase(sceneProject.id);
+        return;
+    }
+    FrameChecksOverlay& overlay = frameChecksOverlay[sceneProject.id];
+    const double now = ImGui::GetTime();
+    if (overlay.refreshedAt < 0.0 || now - overlay.refreshedAt >= framechecks::OVERLAY_REFRESH_SECONDS){
+        overlay.refreshedAt = now;
+        overlay.findings.clear();
+        if (Camera* camera = sceneProject.sceneRender->getCamera()){
+            framechecks::Request request;
+            request.project = project;
+            request.sceneProject = &sceneProject;
+            request.cameraScene = camera->getScene();
+            request.camera = camera->getEntity();
+            request.sceneView = true;
+            request.layerMask = sceneProject.viewState.layerFilter.visible;
+            // the frame the view showed last (a synchronous readback, only while the overlay is on)
+            Framebuffer* framebuffer = sceneProject.sceneRender->getFramebuffer();
+            std::vector<uint8_t> rgba;
+            if (framebuffer && GraphicUtils::readFramebufferRGBA(framebuffer, rgba)){
+                request.luminance = framechecks::measureLuminance(rgba.data(), (int)framebuffer->getWidth(), (int)framebuffer->getHeight(), 4);
+            }
+            overlay.findings = framechecks::run(request).findings;
+        }
+    }
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const float margin = Theme::dpi(8.0f);
+    const ImVec2 pad = Theme::dpi(ImVec2(8.0f, 6.0f));
+    const float wrap = std::max(Theme::dpi(120.0f), std::min(viewSize.x * 0.45f, Theme::dpi(420.0f)));
+    const float spacing = Theme::dpi(4.0f);
+    struct Line { std::string text; ImU32 color; ImVec2 size; const framechecks::Finding* finding; };
+    std::vector<Line> lines;
+    const std::string title = overlay.findings.empty() ? ICON_FA_CIRCLE_CHECK "  Frame Checks: nothing found"
+                                                       : ICON_FA_TRIANGLE_EXCLAMATION "  Frame Checks";
+    lines.push_back({title, overlay.findings.empty() ? IM_COL32(150, 220, 150, 255) : IM_COL32(255, 255, 255, 255),
+                     ImGui::CalcTextSize(title.c_str()), nullptr});
+    for (const framechecks::Finding& finding : overlay.findings){
+        const std::string text = finding.kind + ": " + finding.message;
+        const ImU32 color = finding.severity == framechecks::Severity::WARNING ? IM_COL32(255, 200, 90, 255) : IM_COL32(190, 190, 190, 255);
+        lines.push_back({text, color, ImGui::CalcTextSize(text.c_str(), nullptr, false, wrap), &finding});
+    }
+    float width = 0.0f, height = 0.0f;
+    for (const Line& line : lines){
+        width = std::max(width, line.size.x);
+        height += line.size.y + spacing;
+    }
+    height -= spacing;
+    const ImVec2 boxMax(viewMin.x + viewSize.x - margin, viewMin.y + viewSize.y - margin);
+    const ImVec2 boxMin(std::max(viewMin.x + margin, boxMax.x - width - pad.x * 2.0f), boxMax.y - height - pad.y * 2.0f);
+    drawList->AddRectFilled(boxMin, boxMax, IM_COL32(20, 20, 20, 215), Theme::dpi(3.0f));
+    float y = boxMin.y + pad.y;
+    for (const Line& line : lines){
+        const ImVec2 at(boxMin.x + pad.x, y);
+        drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), at, line.color, line.text.c_str(), nullptr, line.finding ? wrap : 0.0f);
+        // the call that fixes it, on hover
+        if (line.finding && ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(at, ImVec2(at.x + wrap, at.y + line.size.y))){
+            ImGui::SetTooltip("Fix: %s", line.finding->fix.c_str());
+        }
+        y += line.size.y + spacing;
+    }
 }
 
 void editor::SceneWindow::drawFluidBrushCursor(SceneProject* sceneProject){
@@ -3765,7 +3952,7 @@ void editor::SceneWindow::drawSceneToolBadge(SceneProject& sceneProject) {
         SceneTools::deactivate(sceneProject.id);
         sceneProject.needUpdateRender = true;
     }
-    ImGui::SetItemTooltip("Exit tile painting");
+    ImGui::SetItemTooltip("%s", tool->exitTooltip());
 }
 
 void editor::SceneWindow::drawPixelZoomToolbar(SceneProject& sceneProject){

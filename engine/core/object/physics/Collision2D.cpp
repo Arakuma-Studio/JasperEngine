@@ -10,6 +10,7 @@
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "component/Rigidbody2DComponent.h"
+#include "physics/AttachedColliders.h"
 #endif
 
 using namespace jasperengine;
@@ -34,6 +35,12 @@ namespace {
 
 ColliderRef2D::ColliderRef2D(Scene* scene, Entity entity, int index)
     : scene(scene), entity(entity), index(index) {
+#ifdef JASPERENGINE_PHYSICS_2D
+    // a body's attached key names an attached child's collider (S96 REQ-18)
+    if (scene && isAttachedCollider2DKey(index) && entity != NULL_ENTITY && scene->isEntityCreated(entity)) {
+        AttachedColliders::resolve2D(scene, entity, index, this->entity, this->index);
+    }
+#endif
 }
 
 bool ColliderRef2D::isValid() const {
@@ -58,7 +65,13 @@ bool ColliderRef2D::hasRigidbody() const {
 }
 
 Rigidbody2D ColliderRef2D::getRigidbody() const {
-    return Rigidbody2D(scene, hasRigidbody() ? entity : NULL_ENTITY);
+    // an attached child's collider belongs to the body it joined (Unity attachedRigidbody)
+    const Rigidbody2DComponent* body = bodyOf(*this);
+    if (body && body->attachToParentBody && body->attachedTo != NULL_ENTITY && scene->isEntityCreated(body->attachedTo) &&
+            scene->findComponent<Rigidbody2DComponent>(body->attachedTo)) {
+        return Rigidbody2D(scene, body->attachedTo);
+    }
+    return Rigidbody2D(scene, body ? entity : NULL_ENTITY);
 }
 #endif
 

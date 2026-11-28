@@ -102,6 +102,8 @@ namespace jasperengine {
         static bool loadingSceneShown;
         static bool loadingSceneReady;
         static double loadingStateTime;
+        // when the current load began (the journal's engine.scene_loaded ms)
+        static double journalLoadStart;
         static size_t loadingCount;
         static double loadingProgressTime;
         static float loadingProgress;
@@ -128,6 +130,11 @@ namespace jasperengine {
 
         static std::vector<uint32_t> buildSceneStackIds(uint32_t id, const std::vector<uint32_t>& sceneIds);
         static SceneEntry* findEntry(uint32_t id);
+        // the editor's Play with an active Build Profile: its scenes (setBuildProfileScenes)
+        static std::string buildProfileName;
+        static std::vector<uint32_t> buildProfileScenes;
+        static bool buildProfileScenesSet;
+        static void warnOutsideBuildProfile(uint32_t id);
         static void runFactory(uint32_t id);
 
         static std::vector<Scene*> getRunningScenes(uint32_t id);
@@ -171,6 +178,11 @@ namespace jasperengine {
         // Load a scene stack by id.
         // Returns false if the id is not found.
         static bool loadScene(uint32_t id);
+
+        // The editor's Play with an active Build Profile listing its own scenes: a load of another
+        // scene still runs and warns that a build of the profile leaves it out (build-profiles R5).
+        // An empty profile name clears it.
+        static void setBuildProfileScenes(const std::string& profile, const std::vector<uint32_t>& sceneIds);
 
         // True between a deferred loadScene() and the frame that applies it.
         static bool isLoadPending();
@@ -342,6 +354,11 @@ namespace jasperengine {
         static void endStartingScenes();
         // A load factory runs, or the scenes of a Play start
         static bool isStartingScenes();
+        // A scene's scripts are about to start (ScriptRuntime::awakeScene): when it is the current
+        // entry's own scene (the main scene of a load, the start scene, Play's), its Fixed
+        // Timestep applies before their init (Engine::applySceneUpdateTime); layers and child
+        // scenes never change the step
+        static void mainSceneStarting(Scene* scene);
     };
 
 } // namespace jasperengine

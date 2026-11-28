@@ -27,7 +27,11 @@
 #include "Log.h"
 #include "particles/ParticleValues.h"
 
+#include <algorithm>
+#include <cmath>
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 using namespace jasperengine;
@@ -119,6 +123,21 @@ static void addNumberFirst(lua_State* L, const char* metamethod){
         lua_setfield(L, -2, metamethod);
         lua_pop(L, 1);
     }
+}
+
+// ---- matrices and rotations from Lua (S95 REQ-2): a wrong call raises an error, never reads or
+// writes outside the value. The C++ accessors take any index; Lua's are checked.
+
+static int matrixIndex(int index, int size, const char* what){
+    if (index < 0 || index >= size)
+        throw std::runtime_error(std::string(what) + ": index " + std::to_string(index) + " is out of range 0.." + std::to_string(size - 1));
+    return index;
+}
+
+static const RotationOrder& rotationOrder(const RotationOrder& order, const char* what){
+    if ((int)order < (int)RotationOrder::XYZ || (int)order > (int)RotationOrder::ZYX)
+        throw std::runtime_error(std::string(what) + ": the order is a RotationOrder (XYZ, XZY, YXZ, YZX, ZXY or ZYX)");
+    return order;
 }
 
 // ---- curves and gradients (docs/specs/S27-editor-tools.md R43): Unity's names, 1-based key
@@ -698,12 +717,17 @@ void LuaBinding::registerMathClasses(lua_State *L){
             luabridge::overload<float>(&Matrix3::operator*),
             luabridge::overload<const Vector3&>(&Matrix3::operator*),
             luabridge::overload<const Matrix3&>(&Matrix3::operator*))
-        .addFunction("row", &Matrix3::row)
-        .addFunction("column", &Matrix3::column)
-        .addFunction("set", &Matrix3::set)
-        .addFunction("get", &Matrix3::get)
-        .addFunction("setRow", &Matrix3::setRow)
-        .addFunction("setColumn", &Matrix3::setColumn)
+        // 0-based [col][row] indices, an error outside 0..2
+        .addFunction("row", [](const Matrix3& m, int row) -> Vector3 { return m.row((unsigned)matrixIndex(row, 3, "Matrix3:row")); })
+        .addFunction("column", [](const Matrix3& m, int column) -> Vector3 { return m.column((unsigned)matrixIndex(column, 3, "Matrix3:column")); })
+        .addFunction("set", [](Matrix3& m, int col, int row, float val) {
+            m.set(matrixIndex(col, 3, "Matrix3:set"), matrixIndex(row, 3, "Matrix3:set"), val); })
+        .addFunction("get", [](const Matrix3& m, int col, int row) -> float {
+            return m.get(matrixIndex(col, 3, "Matrix3:get"), matrixIndex(row, 3, "Matrix3:get")); })
+        .addFunction("setRow", [](Matrix3& m, int row, const Vector3& vec) {
+            m.setRow((unsigned)matrixIndex(row, 3, "Matrix3:setRow"), vec); })
+        .addFunction("setColumn", [](Matrix3& m, int column, const Vector3& vec) {
+            m.setColumn((unsigned)matrixIndex(column, 3, "Matrix3:setColumn"), vec); })
         .addFunction("isValid", &Matrix3::isValid)
         .addFunction("identity", &Matrix3::identity)
         .addFunction("calcInverse", &Matrix3::calcInverse)
@@ -739,12 +763,17 @@ void LuaBinding::registerMathClasses(lua_State *L){
             luabridge::overload<const Vector3&>(&Matrix4::operator*),
             luabridge::overload<const Vector4&>(&Matrix4::operator*),
             luabridge::overload<const Matrix4&>(&Matrix4::operator*))
-        .addFunction("row", &Matrix4::row)
-        .addFunction("column", &Matrix4::column)
-        .addFunction("set", &Matrix4::set)
-        .addFunction("get", &Matrix4::get)
-        .addFunction("setRow", &Matrix4::setRow)
-        .addFunction("setColumn", &Matrix4::setColumn)
+        // 0-based [col][row] indices, an error outside 0..3
+        .addFunction("row", [](const Matrix4& m, int row) -> Vector4 { return m.row((unsigned)matrixIndex(row, 4, "Matrix4:row")); })
+        .addFunction("column", [](const Matrix4& m, int column) -> Vector4 { return m.column((unsigned)matrixIndex(column, 4, "Matrix4:column")); })
+        .addFunction("set", [](Matrix4& m, int col, int row, float val) {
+            m.set(matrixIndex(col, 4, "Matrix4:set"), matrixIndex(row, 4, "Matrix4:set"), val); })
+        .addFunction("get", [](const Matrix4& m, int col, int row) -> float {
+            return m.get(matrixIndex(col, 4, "Matrix4:get"), matrixIndex(row, 4, "Matrix4:get")); })
+        .addFunction("setRow", [](Matrix4& m, int row, const Vector4& vec) {
+            m.setRow((unsigned)matrixIndex(row, 4, "Matrix4:setRow"), vec); })
+        .addFunction("setColumn", [](Matrix4& m, int column, const Vector4& vec) {
+            m.setColumn((unsigned)matrixIndex(column, 4, "Matrix4:setColumn"), vec); })
         .addFunction("isValid", &Matrix4::isValid)
         .addFunction("identity", &Matrix4::identity)
         .addFunction("translateInPlace", &Matrix4::translateInPlace)
@@ -775,16 +804,34 @@ void LuaBinding::registerMathClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<Quaternion>("Quaternion")
+        // four numbers are always (w, x, y, z): a RotationOrder is a number in Lua, so the
+        // (x, y, z, order) form after it is kept for old scripts but never chosen (Quaternion.euler
+        // takes the order); no form reads Vector3s from a pointer (S95 REQ-1, REQ-2)
         .addConstructor<
             void(), 
             void(const float, const float, const float, const float), 
             void(const float, const float, const float),
             void(const float, const float, const float, const RotationOrder&),
-            void(const Vector3*),
             void(const Vector3&, const Vector3&, const Vector3&),
             void(const float, const Vector3&),
             void(const Matrix3&),
             void(const Matrix4&)>()
+        // Unity's Quaternion.Euler (degrees in default units): the order of Quaternion(x, y, z)
+        // unless given; RotationOrder.YXZ composes as Unity's (z, then x, then y)
+        .addStaticFunction("euler", [](float x, float y, float z, const luabridge::LuaRef& order) -> Quaternion {
+            if (order.isNil()) return Quaternion(x, y, z);
+            // read by hand: an enum argument takes any value as 0 (XYZ)
+            const double value = order.isNumber() ? order.unsafe_cast<double>() : -1.0;
+            if (value != std::floor(value))
+                throw std::runtime_error("Quaternion.euler: the order is a RotationOrder (XYZ, XZY, YXZ, YZX, ZXY or ZYX)");
+            return Quaternion(x, y, z, rotationOrder((RotationOrder)(int)std::clamp(value, -1.0, 6.0), "Quaternion.euler"));
+        })
+        // Unity's Quaternion.AngleAxis: the axis is normalized (a zero axis gives the identity)
+        .addStaticFunction("angleAxis", [](float angle, const Vector3& axis) -> Quaternion {
+            const Vector3 unit = axis.normalized();
+            if (unit == Vector3::ZERO) return Quaternion::IDENTITY;
+            return Quaternion(angle, unit);
+        })
         .addStaticProperty("IDENTITY", &constantCopy<Quaternion, Quaternion::IDENTITY>)
         .addProperty("w", &Quaternion::w, &Quaternion::w)
         .addProperty("x", &Quaternion::x, &Quaternion::x)
@@ -799,17 +846,17 @@ void LuaBinding::registerMathClasses(lua_State *L){
             luabridge::overload<const Quaternion&>(&Quaternion::operator*),
             luabridge::overload<const Vector3&>(&Quaternion::operator*))
         .addFunction("__unm", (Quaternion (Quaternion::*)() const)&Quaternion::operator-)
-        .addFunction("fromEulerAngles", &Quaternion::fromEulerAngles)
-        .addFunction("fromAxes", 
-            luabridge::overload<const Vector3*>(&Quaternion::fromAxes),
-            luabridge::overload<const Vector3&, const Vector3&, const Vector3&>(&Quaternion::fromAxes))
+        .addFunction("fromEulerAngles", [](Quaternion& q, float xAngle, float yAngle, float zAngle, const RotationOrder& order) {
+            q.fromEulerAngles(xAngle, yAngle, zAngle, rotationOrder(order, "Quaternion:fromEulerAngles")); })
+        .addFunction("fromAxes", luabridge::overload<const Vector3&, const Vector3&, const Vector3&>(&Quaternion::fromAxes))
         .addFunction("fromRotationMatrix", 
             luabridge::overload<const Matrix3&>(&Quaternion::fromRotationMatrix),
             luabridge::overload<const Matrix4&>(&Quaternion::fromRotationMatrix))
         .addFunction("getRotationMatrix", &Quaternion::getRotationMatrix)
         .addFunction("fromAngle", &Quaternion::fromAngle)
         .addFunction("fromAngleAxis", &Quaternion::fromAngleAxis)
-        .addFunction("getEulerAngles", &Quaternion::getEulerAngles)
+        .addFunction("getEulerAngles", [](const Quaternion& q, const RotationOrder& order) -> Vector3 {
+            return q.getEulerAngles(rotationOrder(order, "Quaternion:getEulerAngles")); })
         .addFunction("xAxis", &Quaternion::xAxis)
         .addFunction("yAxis", &Quaternion::yAxis)
         .addFunction("zAxis", &Quaternion::zAxis)

@@ -10,6 +10,8 @@
 #include "htmlui/compat/runtime/SvgElementHook.h"
 
 #include "HtmlUI.h"
+#include "HtmlUIImageCache.h"
+#include "htmlui/compat/DocumentLoader.h"
 #include "Log.h"
 #include "RmlFontEngine.h"
 
@@ -304,10 +306,11 @@ std::string decorators::filePart(std::string_view path){
 
 // ---------------------------------------------------------------- Image
 
-bool Image::load(Rml::Element* element, const std::string& path){
+bool Image::load(Rml::Element* element, const std::string& path, bool syncDecode){
     Rml::RenderManager* renderManager = element ? element->GetRenderManager() : nullptr;
     source = path;
     intrinsic = Rml::Vector2f(0, 0);
+    pixelRatio = 1.0f;
     svg.reset();
     raster = Rml::Texture();
     if (!renderManager || path.empty())
@@ -341,13 +344,28 @@ bool Image::load(Rml::Element* element, const std::string& path){
     const std::string rendering = CompatProperties::text(*element, CompatProperty::ImageRendering);
     if (rendering == "pixelated" || rendering == "crisp-edges")
         request += (request.find('?') == std::string::npos ? "?" : "&") + std::string("htmlui-filter=nearest");
+    if (syncDecode)
+        request += (request.find('?') == std::string::npos ? "?" : "&") + std::string("htmlui-decoding=sync");
     raster = renderManager->LoadTexture(request, document);
     const Rml::Vector2i dimensions = raster.GetDimensions();
     if (dimensions.x <= 0 || dimensions.y <= 0){
         raster = Rml::Texture();
+        // a #xywh= or #sprite= region the image does not have (S93 R20): RmlRenderer::LoadTexture
+        // logged it; it goes into the document's diagnostics too
+        const std::string reason = path.find('#') != std::string::npos ? HtmlUIImageCache::get().takeLastFailure() : std::string();
+        if (!reason.empty()){
+            Diagnostic diagnostic;
+            diagnostic.code = codes::ImageRegion;
+            diagnostic.severity = Severity::Warning;
+            diagnostic.message = reason;
+            diagnostic.suggestion = "use #xywh=x,y,w,h inside the image, or a frame name of its Sprite Mode sheet";
+            diagnostic.file = document;
+            DocumentLoader::addRuntimeDiagnostic(element->GetOwnerDocument(), diagnostic);
+        }
         return false;
     }
-    intrinsic = Rml::Vector2f(dimensions) * Rml::ElementUtilities::GetDensityIndependentPixelRatio(element);
+    pixelRatio = Rml::ElementUtilities::GetDensityIndependentPixelRatio(element);
+    intrinsic = Rml::Vector2f(dimensions) * pixelRatio;
     return true;
 }
 
@@ -388,11 +406,16 @@ Rml::Texture Image::texture(Rml::Element* element, Rml::Vector2f size, bool repe
     return svgTexture;
 }
 
-Rml::ColourbPremultiplied Image::colour(Rml::Element* element) const{
+Rml::ColourbPremultiplied Image::colour(Rml::Element* element, bool imageColor) const{
     const Rml::ComputedValues& computed = element->GetComputedValues();
-    if (svg && svg->tint == SvgTint::Color)
-        return computed.color().ToPremultiplied(element->GetDrawOpacity());
-    return Rml::Colourb(255, 255, 255, 255).ToPremultiplied(element->GetDrawOpacity());
+    // image-color multiplies every image the element paints, as RmlUi's img (S93 R22)
+    Rml::Colourb base = imageColor ? computed.image_color() : Rml::Colourb(255, 255, 255, 255);
+    if (svg && svg->tint == SvgTint::Color){
+        const Rml::Colourb color = computed.color();
+        base = Rml::Colourb((Rml::byte)((base.red * color.red + 127) / 255), (Rml::byte)((base.green * color.green + 127) / 255),
+                            (Rml::byte)((base.blue * color.blue + 127) / 255), (Rml::byte)((base.alpha * color.alpha + 127) / 255));
+    }
+    return base.ToPremultiplied(element->GetDrawOpacity());
 }
 
 // ---------------------------------------------------------------- clip

@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 11
 guid: 4246c0e0ea95b1d90e0bfaa86da216b4
 id: 382528969
 name: Main
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: true
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: off
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]
@@ -888,8 +889,8 @@ entities:
         maxTextSize: 100
         fixedWidth: false
         fixedHeight: false
-        pivotBaseline: false
-        pivotCentered: false
+        anchorHorizontal: left
+        anchorVertical: bottom
   - type: Entity
     entity: 1012
     name: Sparks

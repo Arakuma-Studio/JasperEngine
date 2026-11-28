@@ -5,10 +5,14 @@
 // set_properties (every property type), set_transform, list_component_types
 #include "pixelart/PixelPerfectEditor.h"
 #include "McpTools.h"
+#include "MeshColorTools.h"
 #include "component/TrailRendererComponent.h"
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
+#include "component/AudioSourceComponent.h"
+#include "object/sound/AudioSourceSlots.h"
+#include "component/UIDocumentComponent.h"
 #include "component/ParticleSystemComponent.h"
 
 #include "mcp/McpCall.h"
@@ -19,6 +23,7 @@
 #include "mcp/McpValues.h"
 #include "reflect/Reflect.h"
 
+#include "FogProfileAssets.h"
 #include "Out.h"
 #include "Project.h"
 #include "Stream.h"
@@ -26,13 +31,18 @@
 #include "command/type/ClipSceneActions.h"
 #include "animation/AnimationClipIO.h"
 #include "command/type/AddComponentCmd.h"
+#include "command/type/AudioSourceSlotCmd.h"
+#include "audio/SourceEffectEdit.h"
 #include "command/type/ComponentValuesCmd.h"
 #include "command/type/CreateClipCmd.h"
 #include "command/type/MeshChangeCmd.h"
+#include "asset/MeshAssetFiles.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/RemoveComponentCmd.h"
+#include "component/FogComponent.h"
 #include "component/MeshComponent.h"
+#include "render/FogResolve.h"
 #include "pixelart/PaletteMaterial.h"
 #include "pixelart/PaletteSwapChecks.h"
 #include "registry/TagManager.h"
@@ -355,6 +365,25 @@ void getEntityTool(const CallPtr& call) {
         components[name] = props;
     }
     data["components"] = components;
+    // V1 R124: per submesh, what has vertex colors and what is painted (edit mode only: the facade reads the edited scene)
+    auto wanted = [&filter](ComponentType type) { return filter.empty() || std::find(filter.begin(), filter.end(), type) != filter.end(); };
+    if (detail != "summary" && scene->playState == ScenePlayState::STOPPED &&
+        (wanted(ComponentType::MeshComponent) || wanted(ComponentType::ModelComponent) || wanted(ComponentType::VertexColorsComponent))) {
+        if (Json colors = vertexColorTargetsJson(project, scene->id, entity); !colors.is_null()) data["vertex_colors"] = colors;
+    }
+    // several Audio Sources (S97 REQ-28): its own, then its slots, each addressed by its entity
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::AudioSourceComponent) != filter.end()) {
+        const std::vector<Entity> slots = AudioSourceSlots::getSlots(registry, entity);
+        if (!slots.empty()) {
+            Json sources = Json::array();
+            if (registry->findComponent<AudioSourceComponent>(entity)) sources.push_back(Json{{"entity", entity}, {"slot", 0}});
+            for (Entity slot : slots) {
+                sources.push_back(Json{{"entity", slot}, {"slot", registry->getComponent<AudioSourceComponent>(slot).slot}});
+            }
+            data["audio_sources"] = sources;
+            text += ". audio_sources: " + sources.dump();
+        }
+    }
     // a fluid's runtime state (read only; FluidStats, the matching preset)
     if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::FluidSimulationComponent) != filter.end()) {
         const Json fluid = McpValues::fluidStatsToJson(registry, entity);
@@ -489,6 +518,41 @@ Json readBack(Project* project, SceneProject* scene, Entity entity, const std::v
     return out;
 }
 
+// A Fog look field its profile sets: a write would not show beneath the profile, so it is refused
+// with both ways to change it (docs/specs/S101-vapor.md R43); "" when every change writes normally.
+// A call that links or unlinks the profile itself writes against what it links.
+std::string profileSetFogFieldError(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
+                                    const std::vector<McpValues::Change>& changes) {
+    const auto rootName = [](const std::string& property) { return property.substr(0, property.find_first_of(".[")); };
+    for (const McpValues::Change& change : changes) {
+        if (change.component == ComponentType::FogComponent && rootName(change.property) == "profile") return {};
+    }
+    for (Entity entity : entities) {
+        const FogComponent* fog = scene->scene->findComponent<FogComponent>(entity);
+        if (!fog) continue;
+        std::string fields;
+        Json example = Json::object();
+        for (const McpValues::Change& change : changes) {
+            FogField field;
+            if (change.component != ComponentType::FogComponent || !FogFields::find(rootName(change.property), field) ||
+                !FogScene::isFieldSetByProfile(*fog, field))
+                continue;
+            fields += (fields.empty() ? "" : ", ") + rootName(change.property);
+            example[rootName(change.property)] = change.op == "set" ? change.value : Json(nullptr);
+        }
+        if (fields.empty()) continue;
+        const std::string key = FogScene::profileKey(*fog);
+        const std::string path = fogprofiles::projectPathOfKey(*project, key);
+        const size_t users = fogprofiles::profileUsers(*project, key).count();
+        return "The Fog of \"" + McpRefs::entityPath(scene, entity) + "\" takes " + fields + " from its profile " + path + " (used by " +
+               std::to_string(users) + " Fog(s) or Fog Zone(s)), so set_properties would not show. For every user: edit_fog_profile "
+               "{path: \"" + path + "\", set: " + example.dump() + "}. For this scene only: edit_fog_profile {path: <a new .fogprofile>, "
+               "from: {profile: \"" + path + "\"}, set: " + example.dump() + "}, then apply_atmosphere_preset {entity: " +
+               std::to_string(entity) + ", preset: <that path>}. Nothing changed.";
+    }
+    return {};
+}
+
 void setPropertiesTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -525,6 +589,11 @@ void setPropertiesTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    error = profileSetFogFieldError(project, scene, entities, changes);
+    if (!error.empty()) {
+        call->fail(error);
+        return;
+    }
     auto* multi = new MultiPropertyCmd();
     if (!McpValues::appendChangeCommands(project, scene, entities, changes, *multi, error)) {
         delete multi;
@@ -552,6 +621,17 @@ void setPropertiesTool(const CallPtr& call) {
                                " part(s) (" + refs + "): set the mesh on them, or use the Model API in Lua");
         }
     }
+    // S92 R18: a screen document draws in the scene's shared target, so its own count does nothing
+    const bool screenMsaa = std::any_of(changes.begin(), changes.end(), [&](const McpValues::Change& c) {
+        if (c.component != ComponentType::UIDocumentComponent || c.property != "msaaSamples") return false;
+        return std::any_of(entities.begin(), entities.end(), [&](Entity entity) {
+            const UIDocumentComponent* document = current->scene->findComponent<UIDocumentComponent>(entity);
+            return document && document->renderMode == UIDocumentRenderMode::SCREEN;
+        });
+    });
+    if (screenMsaa)
+        data["next"] = "msaaSamples applies to Texture-mode documents only; a screen document's MSAA is the scene's: "
+                       "set_scene_settings {html_ui_msaa_samples}.";
     std::string warningText;
     if (!warnings.empty()) {
         data["warnings"] = warnings;
@@ -742,8 +822,22 @@ void addComponentTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    // S97 WP-B: Unity's audio filters ("Audio Low Pass Filter") add their effect to the GameObject's
+    // Audio Source (REQ-5)
+    Json componentArg = args.contains("component") ? args["component"] : Json();
+    std::vector<std::string> filterEffects;
+    if (componentArg.is_string() || componentArg.is_array()) {
+        Json rest = Json::array();
+        for (const Json& item : componentArg.is_array() ? componentArg : Json::array({componentArg})) {
+            const SourceEffectEdit::FilterAlias* alias = item.is_string() ? SourceEffectEdit::findFilterAlias(item.get<std::string>()) : nullptr;
+            if (alias) filterEffects.push_back(alias->effect);
+            else rest.push_back(item);
+        }
+        if (!filterEffects.empty()) componentArg = rest;
+    }
     std::vector<ComponentType> types;
-    if (!args.contains("component") || !componentListArg(args["component"], types, error)) {
+    const bool onlyFilters = !filterEffects.empty() && componentArg.empty();
+    if (componentArg.is_null() || (!onlyFilters && !componentListArg(componentArg, types, error))) {
         call->fail(args.contains("component") ? error : "Pass component (a name or an array of names).");
         return;
     }
@@ -783,8 +877,30 @@ void addComponentTool(const CallPtr& call) {
     // an Animation Player already there whose models are in the legacy layout (no node
     // hierarchy, so its clips can't bind them): adding it again reloads them (9.R3)
     std::vector<Entity> reloadPlayers;
+    // a further Audio Source of a GameObject that has one: a slot (S97 REQ-28), its entity read
+    // back after the step ran
+    struct SlotAdd { Entity owner; size_t added; AddAudioSourceSlotCmd* cmd = nullptr; };
+    auto slotAdds = std::make_shared<std::vector<SlotAdd>>();
     for (Entity entity : entities) {
         for (ComponentType type : types) {
+            if (type == ComponentType::AudioSourceComponent && McpRefs::hasComponent(scene, entity, type)) {
+                const std::string refusal = AddAudioSourceSlotCmd::refusal(scene->scene, entity);
+                if (!refusal.empty()) {
+                    delete steps;
+                    call->fail("\"" + scene->scene->getEntityName(entity) + "\": " + refusal, Json{{"entity", entity}});
+                    return;
+                }
+                const size_t index = slotAdds->size();
+                slotAdds->push_back({entity, added.size()});
+                added.push_back(Json{{"entity", entity}, {"component", McpRefs::componentName(type)}});
+                steps->addStep([project, sceneId, entity, slotAdds, index](std::string& why) -> Command* {
+                    why = "Could not add a further Audio Source.";
+                    auto* cmd = new AddAudioSourceSlotCmd(project, sceneId, entity);
+                    (*slotAdds)[index].cmd = cmd;
+                    return cmd;
+                });
+                continue;
+            }
             if (McpRefs::hasComponent(scene, entity, type)) {
                 if (type == ComponentType::AnimationPlayerComponent &&
                     !PlayerModelLayout::modelsNeedingReload(project, scene->id, entity).empty()) {
@@ -831,6 +947,12 @@ void addComponentTool(const CallPtr& call) {
             return reload;
         });
     }
+    for (const std::string& effect : filterEffects) {
+        for (Entity entity : entities) added.push_back(Json{{"entity", entity}, {"component", "audiosource"}, {"effect", effect}});
+        steps->addStep([project, sceneId, entities, effect](std::string& why) -> Command* {
+            return SourceEffectEdit::addEffectCommand(project, sceneId, entities, effect, why);
+        });
+    }
     if (added.empty() && changes.empty()) {
         delete steps;
         call->fail("Every GameObject has that component already (set its values with set_properties).",
@@ -838,9 +960,25 @@ void addComponentTool(const CallPtr& call) {
         return;
     }
     if (!changes.empty()) {
-        steps->addStep([project, sceneId, entities, changes](std::string& why) -> Command* {
+        steps->addStep([project, sceneId, entities, changes, slotAdds](std::string& why) -> Command* {
             auto* multi = new MultiPropertyCmd();
-            if (!McpValues::appendChangeCommands(project, project->getScene(sceneId), entities, changes, *multi, why)) {
+            // a new slot takes the Audio Source values; the GameObject the others
+            std::vector<Entity> audioTargets;
+            std::vector<McpValues::Change> audioChanges;
+            std::vector<McpValues::Change> otherChanges;
+            for (const McpValues::Change& change : changes) {
+                (change.component == ComponentType::AudioSourceComponent ? audioChanges : otherChanges).push_back(change);
+            }
+            for (Entity entity : entities) {
+                auto slot = std::find_if(slotAdds->begin(), slotAdds->end(), [entity](const SlotAdd& add) { return add.owner == entity; });
+                audioTargets.push_back(slot != slotAdds->end() && slot->cmd ? slot->cmd->getSlotEntity() : entity);
+            }
+            SceneProject* current = project->getScene(sceneId);
+            const bool ok = slotAdds->empty()
+                ? McpValues::appendChangeCommands(project, current, entities, changes, *multi, why)
+                : (otherChanges.empty() || McpValues::appendChangeCommands(project, current, entities, otherChanges, *multi, why)) &&
+                  (audioChanges.empty() || McpValues::appendChangeCommands(project, current, audioTargets, audioChanges, *multi, why));
+            if (!ok) {
                 delete multi;
                 return nullptr;
             }
@@ -865,10 +1003,22 @@ void addComponentTool(const CallPtr& call) {
     }
     Json result{{"scene_id", sceneId}, {"added", added}, {"skipped", skipped}};
     if (!legacyModels.empty()) result["reloaded"] = reloaded;
+    if (!slotAdds->empty()) {
+        std::string ids;
+        for (const SlotAdd& add : *slotAdds) {
+            const Entity slotEntity = add.cmd ? add.cmd->getSlotEntity() : NULL_ENTITY;
+            added[add.added]["audio_source"] = slotEntity;
+            added[add.added]["slot"] = add.cmd ? add.cmd->getSlot() : 0;
+            ids += (ids.empty() ? "" : ", ") + std::to_string(slotEntity);
+        }
+        result["added"] = added;
+        result["next"] = "Each further Audio Source is its own entity (" + ids + "), hidden in the scene tree: pass that id as entity "
+                         "to set_properties, get_entity and remove_component.";
+    }
     call->ok("Added " + std::to_string(added.size()) + " component(s)" +
              (skipped.empty() ? "" : ", " + std::to_string(skipped.size()) + " already there") +
              (legacyModels.empty() ? "" : ", reloaded " + std::to_string(reloadedCount) + " model(s) under the Animation Player in the node hierarchy") +
-             " (one undo step).", result);
+             " (one undo step)." + (result.contains("next") ? " " + result["next"].get<std::string>() : std::string()), result);
 }
 
 void removeComponentTool(const CallPtr& call) {
@@ -897,7 +1047,12 @@ void removeComponentTool(const CallPtr& call) {
                 call->fail("\"" + scene->scene->getEntityName(entity) + "\" has no " + McpRefs::componentName(type) + " component.");
                 return;
             }
-            multi->addCommand(std::make_unique<RemoveComponentCmd>(project, sceneId, entity, type));
+            // a slot's Audio Source goes with its entity (S97 REQ-28)
+            if (type == ComponentType::AudioSourceComponent && AudioSourceSlots::isSlot(scene->scene, entity)) {
+                multi->addCommand(std::make_unique<RemoveAudioSourceSlotCmd>(project, sceneId, entity));
+            } else {
+                multi->addCommand(std::make_unique<RemoveComponentCmd>(project, sceneId, entity, type));
+            }
             removed.push_back(Json{{"entity", entity}, {"component", McpRefs::componentName(type)}});
         }
     }
@@ -1024,9 +1179,10 @@ void setMeshGeometryTool(const CallPtr& call) {
         return;
     }
     const std::string shape = args.value("shape", "");
+    const std::string saveAs = args.value("save_as", "");
     static const std::vector<std::string> shapes = {"plane", "box", "sphere", "cylinder", "capsule", "torus", "wall"};
-    if (std::find(shapes.begin(), shapes.end(), shape) == shapes.end()) {
-        call->fail("shape must be one of plane, box, sphere, cylinder, capsule, torus, wall.");
+    if ((!shape.empty() || saveAs.empty()) && std::find(shapes.begin(), shapes.end(), shape) == shapes.end()) {
+        call->fail("shape must be one of plane, box, sphere, cylinder, capsule, torus, wall (or pass only save_as to save the current geometry).");
         return;
     }
     Scene* sc = scene->scene;
@@ -1059,7 +1215,9 @@ void setMeshGeometryTool(const CallPtr& call) {
     };
     MeshComponent mesh = sc->getComponent<MeshComponent>(entity);
     const float radius = size("radius", 1.0f);
-    if (shape == "plane") {
+    if (shape.empty()) {
+        // save_as alone: the geometry as it is
+    } else if (shape == "plane") {
         meshSystem->createPlane(mesh, size("width", 10.0f), size("depth", 10.0f), count("tiles", 1, 1));
     } else if (shape == "wall") {
         meshSystem->createWall(mesh, size("width", 10.0f), size("height", 10.0f), count("tiles", 1, 1));
@@ -1077,17 +1235,38 @@ void setMeshGeometryTool(const CallPtr& call) {
         meshSystem->createTorus(mesh, radius, size("ring_radius", 0.5f), count("sides", 36, 3), count("rings", 16, 3));
     }
     const uint32_t sceneId = scene->id;
-    if (!runSceneCommand(sceneId, new MeshChangeCmd(project, sceneId, entity, mesh), error, "Could not change the mesh.")) {
+    // S98 F1: the geometry to a .mesh the mesh shows from then on, in the same undo step
+    std::string written;
+    Command* command = nullptr;
+    if (!saveAs.empty()) {
+        command = MeshAssetFiles::saveAs(*project, sceneId, entity, mesh, saveAs, written, &error);
+        if (!command) {
+            call->fail(error);
+            return;
+        }
+    } else {
+        command = new MeshChangeCmd(project, sceneId, entity, mesh);
+    }
+    if (!runSceneCommand(sceneId, command, error, "Could not change the mesh.")) {
         call->fail(error);
         return;
     }
     SceneProject* current = project->getScene(sceneId);
-    Json data = {{"entity", McpRefs::entityJson(current, entity)}, {"shape", shape}};
+    Json data = {{"entity", McpRefs::entityJson(current, entity)}};
+    if (!shape.empty()) data["shape"] = shape;
     if (MeshComponent* now = current && current->scene ? current->scene->findComponent<MeshComponent>(entity) : nullptr) {
+        // read now, so the sizes below are the file's
+        if (!written.empty()) current->scene->getSystem<MeshSystem>()->loadMeshAsset(*now);
         data["local_size"] = vec3Json(now->aabb.getSize());
         data["local_center"] = vec3Json(now->aabb.getCenter());
     }
-    call->ok("Set the mesh of " + data["entity"].value("path", std::string()) + " to a " + shape + ".", data);
+    std::string text = "Set the mesh of " + data["entity"].value("path", std::string()) + (shape.empty() ? "" : " to a " + shape);
+    if (!written.empty()) {
+        const std::string asset = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->getAssetsPath() / FileUtils::pathFromUtf8(written)));
+        data["mesh_asset"] = asset;
+        text += (shape.empty() ? " to show " : ", saved as ") + asset;
+    }
+    call->ok(text + ".", data);
 }
 
 
@@ -1230,7 +1409,7 @@ void registerComponentTools(McpRegistry& registry) {
         tool.title = "Add Component";
         tool.description =
             "Add components to GameObjects, optionally with initial values (as set_properties); ones having it are "
-            "skipped. Names: list_component_types. Colliders: edit_colliders.";
+            "skipped, except AudioSource, which adds another. Names: list_component_types. Colliders: edit_colliders.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1336,19 +1515,19 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "set_mesh_geometry";
         tool.title = "Set Mesh Geometry";
         tool.description =
-            "Replace a mesh's geometry with a generated primitive (the Inspector's shape fields). Sizes: plane "
-            "width/depth, wall width/height, box width/height/depth, sphere radius, cylinder/capsule "
-            "radius/top_radius/height, torus radius/ring_radius; segments tiles, slices/stacks, sides/rings. "
-            "Omitted values take defaults, not current ones. Not for models, sprites, tilemaps, polygons, "
-            "terrains.";
+            "Replace a mesh's geometry with a primitive. Sizes: plane width/depth, wall width/height, box "
+            "width/height/depth, sphere radius, cylinder/capsule radius/top_radius/height, torus radius/ring_radius; "
+            "segments tiles, slices/stacks, sides/rings. Omitted: defaults. Not for models or generated "
+            "meshes. save_as: also a .mesh asset it then shows (alone: the current geometry).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"shape", stringEnum("", {"plane", "box", "sphere", "cylinder", "capsule", "torus", "wall"})},
+            {"save_as", assetPath("")},
             {"width", number("")},
             {"height", number("")},
             {"depth", number("")},
-            {"radius", number("Base radius for cylinder/capsule.")},
+            {"radius", number("")},
             {"top_radius", number("Default: radius.")},
             {"ring_radius", number("")},
             {"tiles", integer("")},
@@ -1356,7 +1535,7 @@ void registerComponentTools(McpRegistry& registry) {
             {"stacks", integer("")},
             {"sides", integer("")},
             {"rings", integer("")}
-        }, {"entity", "shape"});
+        }, {"entity"});
         tool.allowedWhilePlaying = false;
         tool.handler = setMeshGeometryTool;
         registry.addTool(std::move(tool));

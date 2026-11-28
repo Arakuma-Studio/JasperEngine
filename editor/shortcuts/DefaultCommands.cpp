@@ -142,6 +142,10 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     // Escape in the Game view does it too (Unity), the key still reaching the game
     b.add("playmode.releaseCursor", "Release Game Cursor", C::Global).description =
         "Give a cursor the running game captured back to the editor; click the Game view to return it";
+    // the toolbar's Record Input and its menu (input-recorder-and-input-scripts R36)
+    b.add("playmode.recordInput", "Record Input", C::Global).description =
+        "Before Play: arm or disarm recording the game's input into a .input.json from Play's start; while recording: Stop Recording";
+    b.add("playmode.replayInput", "Replay Input...", C::Global).description = "Replay a .input.json from Play's start in a new session";
     CommandDef& maximize = b.menu("playmode.maximizeOnPlay", "Maximize On Play", AppMenuCommand::ToggleMaximizeOnPlay, C::Global, "F11");
     maximize.description = "Fill the editor with the Game view while playing (the Game view toolbar's toggle)";
     // macOS takes F11 for Show Desktop: Control+Cmd+F, the Mac's full-screen key, comes first there
@@ -165,11 +169,15 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createPlaceholderSound", "Create Placeholder Sound", AppMenuCommand::AssetsCreatePlaceholderSound);
     b.menu("assets.reanalyzeAudio", "Reanalyze Audio", AppMenuCommand::AssetsReanalyzeAudio).description =
         "Drop the cached measurements of the selected audio files: they are measured again";
+    b.add("assets.importUnityAnimation", "Import Unity Animation...", C::Editor).description =
+        "A Unity .anim, .controller or .mask as a JasperEngine asset in the current folder (one undo step)";
     b.add("assets.importTitleArt", "Import Title Art...", C::Editor).description =
         "Import a Pachislop project, a layered PSD or an SVG as a new Title Art";
     b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
         "Import the 40 built-in CC0 clips into sounds/essentials (one undo step)";
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
+    b.menu("assets.createFogProfile", "Create Fog Profile", AppMenuCommand::AssetsCreateFogProfile).description =
+        "A new .fogprofile that sets no field yet: a fog look shared by the Fogs and Fog Zones that link it";
     b.menu("assets.createPalette", "Create Palette", AppMenuCommand::AssetsCreatePalette).description =
         "A new palette (black and white): edit it in Window > 2D > Palette";
     b.menu("assets.createProceduralMaterial", "Create Procedural Material", AppMenuCommand::AssetsCreateProceduralMaterial).description =
@@ -250,15 +258,24 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.profiler", "Profiler", AppMenuCommand::ToggleProfiler, C::Editor, "Ctrl+7");
     b.menu("window.console", "Console", AppMenuCommand::ToggleConsole, C::Editor, "Ctrl+Shift+C");
     b.menu("window.bookmarks", "Bookmarks", AppMenuCommand::ToggleBookmarks);
+    b.menu("window.localizationTables", "Localization Tables", AppMenuCommand::ToggleLocalizationTables).description =
+        "String Tables: keys, translations, coverage and this Play's misses";
+    b.menu("window.savedData", "Saved Data", AppMenuCommand::ToggleSavedData);
+    b.menu("window.dialogue", "Dialogue", AppMenuCommand::ToggleDialogue).description =
+        "Dialogue graphs: lines, choices, branches, a preview without Play";
     b.menu("window.undoHistory", "Undo History", AppMenuCommand::ToggleUndoHistory);
     b.menu("window.playModeChanges", "Play Mode Changes", AppMenuCommand::TogglePlayModeChanges);
     b.menu("window.colorPicker", "Color Picker", AppMenuCommand::ToggleColorPicker).description =
         "The Color window on its own: eyedropper, swatches, hexadecimal";
     b.menu("window.recorder", "Recorder", AppMenuCommand::ToggleRecorder).description =
         "Record the Game view to a PNG sequence or a movie";
+    b.menu("window.testRunner", "Test Runner", AppMenuCommand::ToggleTestRunner).description =
+        "The project's tests (Tests/*.test.lua): Edit Mode and Play Mode cases, results and goldens";
     b.menu("recorder.toggle", "Start Recording", AppMenuCommand::ToggleRecording, C::Global, "F10").description =
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
+    b.menu("window.vertexPaint", "Vertex Paint", AppMenuCommand::ToggleVertexPaint).description =
+        "Paint, select and generate the vertex colors of Models and Meshes";
     b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
     b.menu("window.graphEditor", "Graph Editor", AppMenuCommand::ToggleGraphEditor);
     b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
@@ -290,6 +307,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
     b.menu("window.spritePreview", "Sprite Preview", AppMenuCommand::ToggleSpritePreview).description =
         "Play an .aseprite file's tags, with onion skin, slices and its import side by side";
+    b.menu("window.skinningEditor", "Skinning Editor", AppMenuCommand::ToggleSkinningEditor).description =
+        "Bones, mesh and weights of a Sprite's skin (2D skeletal animation), with a preview pose";
     b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);
     b.menu("window.assetReferences", "References", AppMenuCommand::ToggleAssetReferences);
     b.menu("window.frameDebugger", "Frame Debugger", AppMenuCommand::ToggleFrameDebugger);
@@ -297,6 +316,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.jobsMemory", "Jobs & Memory", AppMenuCommand::ToggleJobsMemory);
     b.menu("window.meshAudit", "Mesh Optimization Audit", AppMenuCommand::ToggleMeshAudit);
     b.menu("window.buildReport", "Build Report", AppMenuCommand::ToggleBuildReport);
+    b.menu("window.crashReports", "Crash Reports", AppMenuCommand::ToggleCrashReports).description =
+        "Crash, hang and user reports of the editor or a game, grouped by signature";
     b.menu("window.animationStatistics", "Animation Statistics", AppMenuCommand::ToggleAnimationStatistics);
     b.menu("window.mcpActivity", "MCP Server", AppMenuCommand::ToggleMcpActivity);
     b.menu("window.vcs.commit", "Commit", AppMenuCommand::ToggleVcsCommit);
@@ -459,6 +480,39 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("terrain.overlay.layerWeights", "Layer Weights Overlay", C::TerrainBrush, "4");
     b.add("terrain.overlay.off", "Overlay Off", C::TerrainBrush, "0");
     b.add("terrain.disarm", "Put the Brush Down", C::TerrainBrush, "Escape").description = "Esc during a stroke cancels the stroke instead";
+
+    // V1 R105, Table 3: the Vertex Paint tools, while one is armed and the Scene view has the pointer or
+    // the focus (size and strength are the Terrain group's [ and ] above)
+    b.group = "Vertex Paint";
+    b.add("vertexPaint.tool.select", "Select Tool", C::VertexPaint, "Q").description = "Click, box or lasso the vertices, faces or corners to color";
+    b.add("vertexPaint.tool.paint", "Paint Tool", C::VertexPaint, "B").description = "Ctrl erases, Shift paints the secondary color";
+    b.add("vertexPaint.tool.smooth", "Smooth Tool", C::VertexPaint, "S").description = "Ctrl sharpens";
+    b.add("vertexPaint.tool.fill", "Fill Tool", C::VertexPaint, "G").description = "Fills the connected part under the click, or the selection";
+    b.add("vertexPaint.tool.gradient", "Gradient Tool", C::VertexPaint, "D").description = "Drag from the primary to the secondary color";
+    b.add("vertexPaint.tool.pick", "Pick Tool", C::VertexPaint, "I").description = "The next click takes the stored color under the cursor";
+    b.add("vertexPaint.channelR", "Toggle Channel R", C::VertexPaint, "1");
+    b.add("vertexPaint.channelG", "Toggle Channel G", C::VertexPaint, "2");
+    b.add("vertexPaint.channelB", "Toggle Channel B", C::VertexPaint, "3");
+    b.add("vertexPaint.channelA", "Toggle Channel A", C::VertexPaint, "4");
+    b.add("vertexPaint.swapColors", "Swap Primary and Secondary", C::VertexPaint, "X");
+    b.add("vertexPaint.mode.vertex", "Vertex Selection Mode", C::VertexPaint, "F1").description = "Shared values: smooth";
+    b.add("vertexPaint.mode.face", "Face Selection Mode", C::VertexPaint, "F2").description = "Whole faces: hard edges";
+    b.add("vertexPaint.mode.corner", "Corner Selection Mode", C::VertexPaint, "F3").description = "One face's corner of a vertex: hard edges";
+    b.add("vertexPaint.apply", "Apply Color to Selection", C::VertexPaint, "Enter", "NumpadEnter");
+    b.add("vertexPaint.select.all", "Select All Elements", C::VertexPaint, "Ctrl+A");
+    b.add("vertexPaint.select.none", "Select No Elements", C::VertexPaint, "Alt+A");
+    b.add("vertexPaint.select.invert", "Invert Element Selection", C::VertexPaint, "Ctrl+I");
+    b.add("vertexPaint.select.grow", "Grow Element Selection", C::VertexPaint, "Ctrl+=", "Ctrl+NumpadAdd");
+    b.add("vertexPaint.select.shrink", "Shrink Element Selection", C::VertexPaint, "Ctrl+-", "Ctrl+NumpadSubtract");
+    b.add("vertexPaint.select.linked", "Select Linked", C::VertexPaint, "L").description = "Everything connected to the selection, across seams";
+    b.add("vertexPaint.view.rgb", "View RGB", C::VertexPaint, "V").description = "The Scene view shows the vertex colors";
+    b.add("vertexPaint.view.cycle", "Cycle View Channel", C::VertexPaint, "Shift+V").description = "RGB, R, G, B, A";
+    b.add("vertexPaint.xray", "X-Ray", C::VertexPaint, "Alt+Z").description = "Box and lasso select through to hidden elements";
+    b.gesture("vertexPaint.altClick", "Pick Color", C::VertexPaint, "Alt+Left Click", "Takes the stored color under the cursor, in any tool");
+    b.gesture("vertexPaint.sizeStrength", "Brush Size and Strength", C::VertexPaint, "Ctrl+Right Drag", "Up and down: size; left and right: strength");
+    b.gesture("vertexPaint.hardness", "Brush Hardness and Stencil Rotation", C::VertexPaint, "Shift+Right Drag",
+              "Up and down: hardness; left and right: the stencil's rotation");
+    b.gesture("vertexPaint.escape", "Cancel Stroke / Exit", C::VertexPaint, "Escape", "Esc cancels the stroke in progress; a second Esc puts the tool down");
 
     // The Animation window editing a clip (docs/animation-clips.md): while it has focus
     b.group = "Animation";

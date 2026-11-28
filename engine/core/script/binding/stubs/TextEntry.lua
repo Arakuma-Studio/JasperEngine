@@ -1,0 +1,15 @@
+---@meta _
+-- Hand-written: System.showVirtualKeyboard's options are read from a table by a Lua C function
+-- (engine/core/script/binding/CoreClassesLua.cpp), which the generator does not read.
+
+---The soft keyboard System.showVirtualKeyboard asks for, with the values of the HTML attributes
+---(`inputmode`, `enterkeyhint`, `autocapitalize`, `autocorrect`, `maxlength`). Android, iOS and the
+---web apply them; desktop platforms have no soft keyboard.
+---@class VirtualKeyboardOptions
+---@field keyboard? "text"|"numeric"|"decimal"|"tel"|"email"|"url"|"search"|"none" # default "text"
+---@field enterKey? "enter"|"done"|"go"|"next"|"previous"|"search"|"send" # the action key; default: the platform's
+---@field autocapitalize? "off"|"sentences"|"words"|"characters" # default "off"
+---@field autocorrect? boolean # suggestions and corrections (default false; never on the web)
+---@field secure? boolean # a password: no suggestions, hidden where the platform hides it
+---@field multiline? boolean # the Return key breaks lines
+---@field maxLength? integer # code points; -1 (default) none

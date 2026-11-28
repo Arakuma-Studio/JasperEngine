@@ -226,9 +226,70 @@ async def test_tracked_extensions(ed: Editor):
         disk_write(ed, rel, content + (b"\n" if isinstance(content, bytes) else "\n"))
         ext = ext_of(await status(ed))
         ed.check(ext is not None and ext["changed"] == [rel], f"a modified {Path(rel).suffix}: {ext}")
-    shutil.rmtree(ed.project / "assets/ui/pick/extra")
+    # the folder leaves the project in one rename, as a delete to the trash does: deleted file by file, a
+    # pause between the svg's meta and the svg lets the editor write the meta again (its source is still
+    # there, ~40 ms), and rmtree then finds the folder not empty
+    removed = ed.scratch.root / "removed-extra"
+    (ed.project / "assets/ui/pick/extra").rename(removed)
+    shutil.rmtree(removed)
     ext = ext_of(await status(ed))
     ed.check(ext is not None and sorted(ext.get("removed", [])) == sorted(files), f"removed: {ext}")
+
+
+def _webfont_bytes(extension: str) -> bytes:
+    return (REPO / "engine/tests/htmlui/fixtures/fonts/webfonts" / f"webfont.{extension}").read_bytes()
+
+
+def _webfont_version_edit(extension: str, source: bytes) -> bytes:
+    edited = bytearray(source)
+    # Change the container's majorVersion, preserving all tables and checksums.
+    edited[21 if extension == "woff" else 25] ^= 1
+    return bytes(edited)
+
+
+async def test_webfont_edits_are_tracked(ed: Editor):
+    await status(ed)
+    files = {f"assets/ui/webfont-tracking/font.{extension}": _webfont_bytes(extension) for extension in ("woff", "woff2")}
+    for rel, source in files.items():
+        disk_write(ed, rel, source)
+    ext = ext_of(await status(ed))
+    ed.check(ext is not None and all(rel in ext.get("changed", []) for rel in files), f"webfont additions are tracked: {ext}")
+    for extension in ("woff", "woff2"):
+        rel = f"assets/ui/webfont-tracking/font.{extension}"
+        disk_write(ed, rel, _webfont_version_edit(extension, files[rel]))
+        ext = ext_of(await status(ed))
+        ed.check(ext is not None and rel in ext.get("changed", []), f"a {extension} save is tracked: {ext}")
+
+
+async def test_webfont_sync_files_reloads_documents(ed: Editor):
+    for extension in ("woff", "woff2"):
+        font = f"assets/ui/webfont-reload/font.{extension}"
+        html = f"assets/ui/webfont-reload/{extension}.html"
+        source = _webfont_bytes(extension)
+        disk_write(ed, font, source)
+        disk_write(ed, html, "<html><head><style>"
+                   f"@font-face {{font-family: WebReload{extension}; src: url(font.{extension}) format('{extension}');}}"
+                   f"body {{font-family: WebReload{extension};}}"
+                   "</style></head><body><p>Webfont reload</p></body></html>")
+        made = await ed.call("create_ui_document", html=html, name=f"WebReload{extension}")
+        ed.check(not [d for d in made["diagnostics"] if d.get("severity") == "error"], f"valid {extension} fixture loads: {made}")
+        entity = made["entity"]["id"]
+        await status(ed)
+        before = (await ed.call("inspect_ui", entity=entity, depth=0, limit=1))["document"]["load_count"]
+        disk_write(ed, font, _webfont_version_edit(extension, source))
+        picked_up = ext_of(await status(ed))
+        ed.check(reloaded_for_call(picked_up, html), f"the {extension} save reloads before the next call: {picked_up}")
+        after_save = (await ed.call("inspect_ui", entity=entity, depth=0, limit=1))["document"]["load_count"]
+        ed.check_eq(after_save, before + 1, f"the document reloads once after the {extension} save")
+        # Explicit paths force a reload even if the watcher already applied the save.
+        result = await ed.call("sync_files", paths=[font], full=False)
+        ed.check(any(r.get("html") == html for r in result.get("ui_reloaded", [])) or result.get("ui_current", 0) >= 1,
+                 f"sync_files dispatches the changed {extension} dependency to HTML UI: {result}")
+        after = (await ed.call("inspect_ui", entity=entity, depth=0, limit=1))["document"]["load_count"]
+        ed.check_eq(after, after_save + 1, f"explicit sync_files forces one {extension} document reload")
+        # documents of one context share its lazily loaded images (getDocumentFiles): this one
+        # would be restyled by the later tests' image edits in the same scene
+        await ed.call("delete_entities", entities=[entity])
 
 
 async def test_css_edit_reloads_before_call(ed: Editor):
@@ -293,7 +354,7 @@ async def test_html_error_reported(ed: Editor):
 
 async def test_orphan_css_checked(ed: Editor):
     await _setup_panel(ed)
-    disk_write(ed, "assets/ui/pick/orphan.css", ".lonely { color: red; }\n.lonely { mix-blend-mode: multiply; }\n")
+    disk_write(ed, "assets/ui/pick/orphan.css", ".lonely { color: red; }\n.lonely { background-blend-mode: multiply; }\n")
     r = await status(ed)
     ext = ext_of(r)
     ed.check(ext is not None, "reported")
@@ -402,7 +463,7 @@ async def test_image_dependency_reload(ed: Editor):
 
 async def test_sync_files_reports_ui(ed: Editor):
     await _setup_panel(ed)
-    disk_write(ed, PANEL_CSS, PANEL_STYLE + ".panel { mix-blend-mode: screen; }\n")
+    disk_write(ed, PANEL_CSS, PANEL_STYLE + ".panel { background-blend-mode: screen; }\n")
     r = await ed.call("sync_files", paths=[PANEL_CSS])
     ed.check(reloaded_htmls({"ui_reloaded": r.get("ui_reloaded", [])}) == [PANEL] or r.get("ui_current") == 1,
              f"sync_files reloads the document: {r}")
@@ -548,5 +609,31 @@ async def test_delete_document_file_during_play(ed: Editor):
         values = (await ed.call("eval_lua", code=(
             "local d = UIDocument(scene, entity('Gone')); local t = d:querySelector('.title'); return d.loaded, t and t.textContent")))["values"]
         ed.check_eq(values, [True, "back"], "the document loads again")
+    finally:
+        await ed.call("play", action="stop")
+
+
+async def test_css_hot_reload_in_play_keeps_rendering(ed: Editor):
+    """S93 R34 (AC38, U25): ten stylesheet rewrites during play: the game keeps running (its frame count advances
+    after each) and the last screenshot shows the last style."""
+    from htmlui_pixels import count_near
+
+    await _setup_panel(ed)
+    await ed.call("play", action="start", scene=P["scene"])
+    try:
+        last = None
+        for i in range(10):
+            color = "#00ff00" if i == 9 else f"#{20 * i:02x}2430"
+            disk_write(ed, PANEL_CSS, PANEL_STYLE.replace("--panel: #1e2430", f"--panel: {color}"))
+            before = (await ed.call("eval_lua", code="return Engine.frameCount"))["values"][0]
+            await ed.call("wait", frames=2)
+            after = (await ed.call("eval_lua", code="return Engine.frameCount"))["values"][0]
+            ed.check(after > before, f"rewrite {i}: the game advances ({before} -> {after})")
+            last = after
+        shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 1280})
+        ed.check(not shot.is_error and shot.images, f"screenshot: {shot.text[:300]}")
+        (ed.scratch.root / "css-reload-in-play.png").write_bytes(shot.images[0][0])
+        ed.check(count_near(shot.images[0][0], (0, 255, 0), tol=30) > 200, "the last style (a green panel) is drawn")
+        ed.check(last is not None, "frames counted")
     finally:
         await ed.call("play", action="stop")

@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -538,6 +539,43 @@ TEST(MeshBvh, CulledFacesAreSkipped){
     ASSERT_TRUE(raycastTriangles(geometry, ray, hit));
     EXPECT_EQ(hit.submesh, 0u);
     EXPECT_FALSE(hit.frontFacing);
+}
+
+// S99 R7: the faces in a box (the z-fighting check's query) are the brute force's, with and
+// without a tree, and the limit cuts the list and says so
+TEST(MeshBvh, OverlappingMatchesBruteForce){
+    for (uint32_t triangles : {100u, 5000u}){
+        const PickGeometry geometry = randomGeometry(triangles, 7u + triangles);
+        const MeshBvh bvh = MeshBvh::build(geometry);
+        EXPECT_EQ(bvh.hasTree(), triangles >= MeshBvh::BRUTE_FORCE_TRIANGLES);
+        const AABB boxes[] = {AABB(Vector3(-2.0f, -2.0f, -2.0f), Vector3(3.0f, 1.0f, 2.5f)),
+                              AABB(Vector3(4.0f, 4.0f, 4.0f), Vector3(4.5f, 4.5f, 4.5f)),
+                              AABB(Vector3(100.0f, 100.0f, 100.0f), Vector3(101.0f, 101.0f, 101.0f))};
+        for (const AABB& box : boxes){
+            std::vector<uint32_t> expected;
+            for (uint32_t t = 0; t < geometry.getTriangleCount(); t++){
+                AABB corners;
+                for (int c = 0; c < 3; c++) corners.merge(geometry.positions[geometry.indices[t * 3 + c]]);
+                const Vector3& lo = box.getMinimum();
+                const Vector3& hi = box.getMaximum();
+                const Vector3& mn = corners.getMinimum();
+                const Vector3& mx = corners.getMaximum();
+                if (mn.x <= hi.x && mx.x >= lo.x && mn.y <= hi.y && mx.y >= lo.y && mn.z <= hi.z && mx.z >= lo.z){
+                    expected.push_back(t);
+                }
+            }
+            std::vector<MeshBvh::Triangle> found;
+            EXPECT_TRUE(bvh.overlapping(box, found));
+            std::vector<uint32_t> got;
+            for (const MeshBvh::Triangle& t : found) got.push_back(t.index);
+            std::sort(got.begin(), got.end());
+            EXPECT_EQ(got, expected) << triangles << " triangles";
+            if (expected.size() > 2){
+                EXPECT_FALSE(bvh.overlapping(box, found, 2));
+                EXPECT_EQ(found.size(), 2u);
+            }
+        }
+    }
 }
 
 }  // namespace MeshBvhTest_cpp

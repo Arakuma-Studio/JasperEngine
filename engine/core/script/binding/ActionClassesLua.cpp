@@ -7,6 +7,7 @@
 #include "lua.hpp"
 
 #include "LuaBridge.h"
+#include "script/binding/SceneConstructors.h"
 #include "LuaBridgeAddon.h"
 
 #include "action/Action.h"
@@ -108,7 +109,7 @@ void LuaBinding::registerActionClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Tween, Action>("Tween")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Tween>(), sceneconstructors::ofEntity<Tween>())
         .addFunction("setFunctionType", &Tween::setFunctionType)
         .addFunction("getTweenComponent", &Tween::getComponent<TweenComponent>)
         .addFunction("getTime", &Tween::getTime)
@@ -122,14 +123,14 @@ void LuaBinding::registerActionClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<AlphaTween, Tween>("AlphaTween")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<AlphaTween>(), sceneconstructors::ofEntity<AlphaTween>())
         .addFunction("setAction", &AlphaTween::setAction)
         .addProperty("alphaTarget", &AlphaTween::getAlphaTarget, &AlphaTween::setAlphaTarget)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<ColorTween, Tween>("ColorTween")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<ColorTween>(), sceneconstructors::ofEntity<ColorTween>())
         .addFunction("setAction", 
             luabridge::overload<Vector3, Vector3, float, bool>(&ColorTween::setAction),
             luabridge::overload<Vector4, Vector4, float, bool>(&ColorTween::setAction))
@@ -137,26 +138,26 @@ void LuaBinding::registerActionClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<PositionTween, Tween>("PositionTween")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<PositionTween>(), sceneconstructors::ofEntity<PositionTween>())
         .addFunction("setAction", &PositionTween::setAction)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<RotationTween, Tween>("RotationTween")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<RotationTween>(), sceneconstructors::ofEntity<RotationTween>())
         .addFunction("setAction", &RotationTween::setAction)
         .addFunction("setSpinAction", &RotationTween::setSpinAction)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<ScaleTween, Tween>("ScaleTween")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<ScaleTween>(), sceneconstructors::ofEntity<ScaleTween>())
         .addFunction("setAction", &ScaleTween::setAction)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<SpriteAnimation, Action>("SpriteAnimation")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<SpriteAnimation>(), sceneconstructors::ofEntity<SpriteAnimation>())
         .addFunction("setAnimation", 
             luabridge::overload<std::vector<int>, std::vector<int>, bool>(&SpriteAnimation::setAnimation),
             luabridge::overload<int, int, int, bool>(&SpriteAnimation::setAnimation))

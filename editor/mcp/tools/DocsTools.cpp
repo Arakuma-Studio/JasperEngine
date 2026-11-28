@@ -20,6 +20,7 @@
 
 #include "mcp_docs.h"
 #include "util/LuaApiData.h"
+#include "util/NearestName.h"
 
 #include <algorithm>
 #include <cctype>
@@ -611,8 +612,13 @@ void registerDocsTools(McpRegistry& registry) {
                 if (d.name == name || d.name + ".md" == name) return textResource(uri, "text/markdown", d.text);
             }
             std::string known;
-            for (const Doc& d : docs()) known += " " + d.name;
-            return notFound("No document \"" + name + "\". Documents:" + known + ".");
+            std::vector<std::string> names;
+            for (const Doc& d : docs()) {
+                known += " " + d.name;
+                names.push_back(d.name);
+            }
+            return notFound("No document \"" + name + "\"" + NearestIdentifierSuffix(name, names) + ". Documents:" + known +
+                            " (the index: jasper://docs).");
         };
         registry.addResourceTemplate(std::move(tmpl));
     }

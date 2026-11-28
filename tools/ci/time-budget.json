@@ -54,7 +54,7 @@
     "seconds": 122,
     "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
    },
-   "Title3DRendererGpu.CompressedLightAgreesWithFloat": {
+   "Title3DFallbackGpuSlow.CompressedLightAgreesWithFloat": {
     "seconds": 118,
     "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
    },

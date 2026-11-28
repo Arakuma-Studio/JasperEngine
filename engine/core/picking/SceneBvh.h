@@ -15,6 +15,7 @@
 #include "ecs/Signature.h"
 #include "math/AABB.h"
 #include "math/Plane.h"
+#include "math/Quaternion.h"
 #include "math/Ray.h"
 #include "picking/PickCache.h"
 #include "picking/PickTypes.h"
@@ -69,6 +70,9 @@ namespace jasperengine {
         // Leaves whose box is not wholly outside one of the planes (positive side inside)
         template<typename Visit>
         void frustum(const Plane planes[6], Visit&& visit) const;
+        // Leaves whose box touches the box mn..mx (no allocation)
+        template<typename Visit>
+        void overlap(const Vector3& mn, const Vector3& mx, Visit&& visit) const;
 
     private:
         std::vector<Node> nodes;
@@ -130,6 +134,21 @@ namespace jasperengine {
         // The world bounds of the leaves the filter passes (Frame All)
         AABB getBounds(const PickFilter& filter);
 
+        // A bounds overlap's shape: a sphere (center, radius) or, with box, an oriented box
+        // (center, halfExtents, a unit rotation)
+        struct OverlapShape {
+            bool box = false;
+            Vector3 center;
+            float radius = 0.0f;
+            Vector3 halfExtents;
+            Quaternion rotation;
+        };
+        // Leaves whose world bounds touch the shape (sphere vs box exact, oriented box vs box by
+        // the separating axis test), appended to out in (entity, instance) order. With snapshot
+        // the leaves are refitted at most once per engine frame (Engine::getFrameIndex); a
+        // rebuild still happens when the structure changed. Allocates nothing when no rebuild is due.
+        void overlap(const OverlapShape& shape, const PickFilter& filter, std::vector<MeshOverlapHit>& out, bool snapshot);
+
         // Queues background builds for the meshes of these entities (all when empty), so a
         // later query does not wait. A mesh still loading is queued once it has data.
         void prepare(std::span<const Entity> entities = {});
@@ -175,7 +194,14 @@ namespace jasperengine {
         // entity -> its first leaf and how many (instances have one each)
         std::unordered_map<Entity, std::pair<uint32_t, uint32_t>> entityLeaves;
         std::vector<uint32_t> volatileLeaves;
-        std::unordered_set<Entity> dirtyEntities;
+        // entities whose leaves need a refit, each once: deduplicated by a stamp on their first
+        // leaf, so marking and refitting allocate nothing once the vectors have grown
+        std::vector<Entity> dirtyEntities;
+        std::vector<uint32_t> leafDirtyStamp;
+        uint32_t dirtyGeneration = 1;
+        std::vector<uint32_t> changedLeaves;
+        // Engine::getFrameIndex() of the last refit an overlap snapshot made (R13)
+        uint64_t snapshotFrame = UINT64_MAX;
         std::unordered_map<Entity, MeshBinding> meshBindings;
         std::unordered_map<Entity, PosedMesh> posedMeshes;
         std::vector<Entity> prepareQueue;
@@ -188,6 +214,9 @@ namespace jasperengine {
 
         void collectLeaves();
         bool computeLeafBounds(const Leaf& leaf, AABB& bounds) const;
+        // queues the entity's leaves for the next refit (false: it has none)
+        bool noteDirty(Entity entity);
+        void clearDirty();
         void update();
         void rebuild();
         void releaseBindings();
@@ -248,6 +277,31 @@ namespace jasperengine {
             }else if (hitRight){
                 stack[top++] = {node.right, tRight};
             }
+        }
+    }
+
+    template<typename Visit>
+    void SceneBvhTree::overlap(const Vector3& mn, const Vector3& mx, Visit&& visit) const{
+        if (nodes.empty()){
+            return;
+        }
+        uint32_t stack[128];
+        int top = 0;
+        stack[top++] = 0u;
+        while (top > 0){
+            const Node& node = nodes[stack[--top]];
+            if (node.mx[0] < mn.x || node.mn[0] > mx.x || node.mx[1] < mn.y || node.mn[1] > mx.y || node.mx[2] < mn.z || node.mn[2] > mx.z){
+                continue;
+            }
+            if (node.right == UINT32_MAX){
+                visit(node.left);
+                continue;
+            }
+            // a binned build keeps the depth far below the stack's size
+            if (top < 127){
+                stack[top++] = node.right;
+            }
+            stack[top++] = node.left;
         }
     }
 

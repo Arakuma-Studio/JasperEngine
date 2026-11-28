@@ -309,6 +309,17 @@ std::vector<HtmlUIEventListener*> HtmlUIEventListener::listenersOf(Rml::Element*
     return result;
 }
 
+bool HtmlUIEventListener::anyListenerOf(Rml::Element* element, bool (*match)(const HtmlUIEventListener& listener)){
+    auto it = byElement().find(element);
+    if (it == byElement().end())
+        return false;
+    for (const HtmlUIEventListener* listener : it->second){
+        if (!listener->detached && match(*listener))
+            return true;
+    }
+    return false;
+}
+
 std::vector<HtmlUIEventListener*> HtmlUIEventListener::listenersIn(Rml::Element* root){
     std::vector<HtmlUIEventListener*> result;
     if (!root)

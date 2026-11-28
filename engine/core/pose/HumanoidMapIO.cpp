@@ -101,7 +101,8 @@ namespace jasperengine::pose {
 
         for (auto it = root.begin(); it != root.end(); ++it){
             const std::string& key = it.key();
-            if (key != "format" && key != "version" && key != "bones" && key != "animation_type" && key != "extra_bones" && key != "twist"){
+            if (key != "format" && key != "version" && key != "bones" && key != "animation_type" && key != "extra_bones" && key != "twist" &&
+                key != "name_rules"){
                 warnings.push_back("unknown key '" + key + "' ignored");
             }
         }
@@ -113,6 +114,21 @@ namespace jasperengine::pose {
                 warnings.push_back("animation_type: expected \"generic\" or \"humanoid\", ignored");
             }else{
                 out.animationType = value;
+            }
+        }
+
+        auto rules = root.find("name_rules");
+        if (rules != root.end()){
+            const double value = rules->is_number() ? rules->get<double>() : 0.0;
+            if (!rules->is_number() || value != std::floor(value) || value < HUMANOID_NAME_RULES_ORIGINAL){
+                warnings.push_back("name_rules: expected a whole number from 1, ignored");
+            }else if (value > HUMANOID_NAME_RULES){
+                // a newer editor's rules: the newest this engine has
+                warnings.push_back("name_rules: " + std::to_string(static_cast<long long>(value)) + " is newer than this engine's " +
+                                   std::to_string(HUMANOID_NAME_RULES) + ", read as " + std::to_string(HUMANOID_NAME_RULES));
+                out.nameRules = HUMANOID_NAME_RULES;
+            }else{
+                out.nameRules = static_cast<int>(value);
             }
         }
 
@@ -182,6 +198,9 @@ namespace jasperengine::pose {
         text += "  \"version\": " + std::to_string(v1 ? 1 : HUMANOID_VERSION) + ",\n";
         if (overrides.animationType.has_value()){
             text += std::string("  \"animation_type\": ") + quote(animationTypeName(*overrides.animationType)) + ",\n";
+        }
+        if (overrides.nameRules.has_value()){
+            text += "  \"name_rules\": " + std::to_string(*overrides.nameRules) + ",\n";
         }
         // one object member per set entry, in table order ("{}" when none)
         auto object = [&](const char* key, int count, auto name, auto value, bool last){

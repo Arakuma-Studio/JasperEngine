@@ -19,12 +19,12 @@
 #include "jobs/JobSystem.h"
 
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
 #include <unordered_map>
-#include "component/MeshComponent.h"
 #include "io/watch/FileIdentity.h"
 #include "math/Rect.h"
 #include "texture/Material.h"
@@ -44,6 +44,8 @@ namespace jasperengine{
 
     struct InstanceData;
     struct SpriteSlicedMesh;
+    struct SpriteFrame;
+    struct SpriteFrameGeometryInput;
     struct ObjModelData;
     struct Submesh;
     struct TerrainFoliageLayer;
@@ -78,7 +80,11 @@ namespace jasperengine{
                              float x0, float y0, float x1, float y1, int grid, bool keepIndices = false);
         // a sheet sprite (S44 R48-R49): the frame's page, texture rect and trimmed quad, rebuilt
         // only when the frame's geometry differs from the one built
-        bool updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh);
+        bool updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh, SpriteSkinComponent* skin = nullptr);
+        // S94 F49: a frame's skin as a skinned mesh (bone ids and weights per vertex); false when
+        // the frame cannot be drawn so (no page size)
+        void buildSpriteSkinned(SpriteComponent& sprite, MeshComponent& mesh, SpriteSkinComponent& skin, const SpriteFrame& frame,
+                                const SpriteFrameGeometryInput& input);
         // the 9-slice of a bordered sheet frame (S45 R6, the Sliced draw mode)
         void buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh, const SpriteSlicedMesh& sliced);
         // a legacy sprite whose texture an atlas in use packs (S45 R8): its inline rect drawn from
@@ -209,6 +215,8 @@ namespace jasperengine{
         // settings and the vertex attributes. The editor reads the shader variants of a
         // generated mesh off them, without generating it.
         static void prepareSpriteMesh(MeshComponent& mesh);
+        // a Sprite Skin's mesh (S94 F49): the sprite's layout plus bone ids and weights
+        static void prepareSkinnedSpriteMesh(MeshComponent& mesh);
         // a Tilemap Layer's quad (S50): positions (0, 0)..(1, 1), UV (qx, 1 - qy), the instances'
         // matrices place it
         static void prepareTileLayerMesh(MeshComponent& mesh);
@@ -239,6 +247,10 @@ namespace jasperengine{
         // where v shrinks, so normal maps read OpenGL style (green up), as Lit. v shrinks toward
         // +y exactly when flipY is on (world cameras): +1 then, -1 without flipY (UI cameras)
         static float flatTangentHandedness(bool flipY);
+        // Flip X (S94 F29): a sprite quad's x span and u span mirrored about its pivot, and the
+        // tangent of its quads (flipped: along -X, the handedness turned with it)
+        static void flipSpriteX(const SpriteComponent& sprite, float& x0, float& x1, float& u0, float& u1);
+        static Vector4 spriteTangent(const SpriteComponent& sprite);
 
         bool setFoliagePreviewEntity(Entity entity);
         bool hasPendingFoliageUpdates() const;
@@ -254,6 +266,11 @@ namespace jasperengine{
         void reloadFoliageMesh(const std::string& filename);
         // Retries the failed loads of a file that appeared or changed on disk
         void retryFailedModelLoads(const std::string& filename);
+        // Reads the mesh's .mesh asset (MeshComponent::meshAsset) into its geometry now, as update
+        // does when the path changes; false (logged) when the file cannot be read
+        bool loadMeshAsset(MeshComponent& mesh);
+        // The meshes of this scene showing the .mesh at `path` read it again on the next update
+        void invalidateMeshAsset(const std::string& path);
 
         void createPlane(MeshComponent& mesh, float width=1, float depth=1, unsigned int tiles=1);
         // createPlane split into segments x segments quads (1..255), for a surface the vertex
@@ -354,7 +371,8 @@ namespace jasperengine{
         static bool parseGLTFFile(const std::string& filename, tinygltf::Model& model, std::string* err);
 
         // Animation clips spec 9.R3: a model on or under an entity with an Animation Player loads in
-        // the node-hierarchy layout (one entity per glTF node: the paths sub-clips address)
+        // the node-hierarchy layout (one entity per glTF node: the paths sub-clips address), and so
+        // does a model with Preserve Hierarchy (S94 F44)
         bool isNodeHierarchyForced(Entity entity) const;
         // The model is forced into the node-hierarchy layout but loaded in another one: reloading
         // its file (the editor's ModelLoadCmd) rebuilds it
@@ -426,12 +444,17 @@ namespace jasperengine{
         // Test hook: each asynchronous parse of a model file waits this long first, so a load is still
         // running when a test acts (0, the default: none)
         static void setModelLoadDelayForTest(int milliseconds);
+        // The editor's answer for an FBX model about to load: true while its import is queued or
+        // converting, so the load waits (no error) until retryFailedModelLoads runs it. None in a
+        // game, where the check costs nothing.
+        static void setModelImportGate(std::function<bool(const std::string& filename)> gate);
+        static bool isModelImportPending(const std::string& filename);
         void cancelAsyncModelLoads();
         static void cancelAllAsyncModelLoads();
         bool isAsyncModelLoadPending(Entity entity, const std::string& filename) const;
         void cancelAsyncModelLoad(Entity entity, const std::string& filename);
 
-        bool createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh);
+        bool createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh, SpriteSkinComponent* skin = nullptr);
         bool createOrUpdateTerrain(TerrainComponent& terrain, MeshComponent& mesh, Transform& transform);
         bool createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh);
         bool createOrUpdateTilemap(TilemapComponent& tilemap, MeshComponent& mesh);

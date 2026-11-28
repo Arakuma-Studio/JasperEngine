@@ -1,8 +1,8 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 992d8b6637ae75f4
+digest ab3cdd870c3885d0
 --- 0
 enabled: false
-type: spot
+type: point
 direction: [9037.611, 0, 54.142857]
 worldDirection: [1e-45, -44, -39.714287]
 color: [54.42857, 0, -86.42857]
@@ -31,11 +31,15 @@ contactShadowLength: -56.714287
 contactShadowThickness: -0
 contactShadowSampleCount: -7
 volumetricIntensity: 104.85714
-intensityUnit: lux
 colorTemperature: 0.70539445
+areaShape: disc
+areaWidth: -101.57143
+areaHeight: .inf
+areaRadius: -0
+iesProfile: ui/menu.html
 --- 1
 enabled: false
-type: directional
+type: point
 direction: [4235.8433, 0.59657, -131.14285]
 worldDirection: [-0.9394057, -83, -0.54440534]
 color: [7155.5586, 0, -0.42638186]
@@ -75,9 +79,13 @@ contactShadowSampleCount: 20
 volumetricIntensity: 12
 useColorTemperature: true
 colorTemperature: 8664.439
+areaWidth: -.inf
+areaHeight: -16
+areaRadius: -.inf
+iesProfile: textures/a.png
 --- 2
 enabled: true
-type: spot
+type: point
 direction: [0, -83, -120.85714]
 worldDirection: [97, -55.142857, 6911.9976]
 color: [0.9825577, 0, -84.71429]
@@ -113,11 +121,17 @@ contactShadowLength: -0.54718125
 contactShadowThickness: -.inf
 contactShadowSampleCount: 2
 volumetricIntensity: 6874.2964
+intensityUnit: nits
 useColorTemperature: true
 colorTemperature: 92
+areaShape: disc
+areaWidth: -0
+areaHeight: 1e-45
+areaRadius: 8
+iesProfile: textures/a.png
 --- 3
 enabled: false
-type: spot
+type: directional
 direction: [-66, -23, 8843.006]
 worldDirection: [38, 1452.3696, -0.6797947]
 color: [0, 0, -71.42857]
@@ -155,12 +169,17 @@ contactShadowLength: -0
 contactShadowThickness: -0
 contactShadowSampleCount: -11
 volumetricIntensity: 1e-45
-intensityUnit: lux
+intensityUnit: lumen
 useColorTemperature: true
 colorTemperature: 0.6608595
+areaShape: disc
+areaWidth: -0.95698893
+areaHeight: -0.33797762
+areaRadius: 45.285713
+iesProfile: sounds/hit.wav
 --- 4
 enabled: false
-type: spot
+type: directional
 direction: [96, 63.714287, -0]
 worldDirection: [4, 3337.7407, 0.22973876]
 color: [-0.30413058, -0.53135234, 12.142858]
@@ -197,9 +216,12 @@ contactShadowLength: 0.21575533
 contactShadowThickness: -0
 contactShadowSampleCount: 2
 volumetricIntensity: -127.14286
-intensityUnit: lumen
 useColorTemperature: true
 colorTemperature: 6500
+areaWidth: 3e+38
+areaHeight: 68
+areaRadius: -.inf
+iesProfile: sounds/hit.wav
 --- 5
 enabled: false
 type: spot
@@ -232,11 +254,15 @@ contactShadowLength: 0.5921002
 contactShadowThickness: 2533.4172
 contactShadowSampleCount: -3
 volumetricIntensity: 73.14286
-intensityUnit: lux
 colorTemperature: 5341.892
+areaShape: disc
+areaWidth: .nan
+areaHeight: -0.9680902
+areaRadius: 50.285713
+iesProfile: ui/menu.html
 --- 6
 enabled: true
-type: point
+type: spot
 direction: [8364.212, 141.85715, 4417.0015]
 worldDirection: [-63, 3e+38, -0.40837032]
 color: [75.42857, 3e+38, 1e-45]
@@ -267,6 +293,10 @@ volumetricIntensity: 1e-45
 intensityUnit: lux
 useColorTemperature: true
 colorTemperature: 6579.6426
+areaWidth: -87
+areaHeight: 0.27625665
+areaRadius: 7507.659
+iesProfile: ui/menu.html
 --- 7
 enabled: true
 type: point
@@ -298,6 +328,11 @@ contactShadowLength: 905.7194
 contactShadowThickness: 43
 contactShadowSampleCount: 2
 volumetricIntensity: -121.85714
-intensityUnit: candela
+intensityUnit: lux
 useColorTemperature: true
 colorTemperature: -71
+areaShape: disc
+areaWidth: 23
+areaHeight: -0.20294179
+areaRadius: 0.5259858
+iesProfile: fonts/Main.ttf

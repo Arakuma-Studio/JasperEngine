@@ -259,6 +259,7 @@ namespace jasperengine {
         bool keyboard = false;            // a text field has keyboard focus
         bool gamepadNavigation = false;   // a document has gamepad focus or a Button is selected (d-pad, left stick, A)
         bool keyboardNavigation = false;  // a Button is selected (arrows, Tab, Enter, keypad Enter, Space)
+        bool gamepadCursor = false;       // the gamepad cursor shows (both sticks, A, B, the d-pad)
     };
 
     // The edges of one control in one window (Input::getControlEdges)
@@ -356,6 +357,9 @@ namespace jasperengine {
         // (numTouches, getTouches) until the platform's touch cancel or lift removes them, which
         // then adds no second Canceled
         static void releaseAll();
+        // a menu opened (Engine::isMenuShowing turned true): releaseAll for what the game holds only.
+        // A press the UI took stays, and so do the fingers in keptFingers (a menu document's)
+        static void releaseGameHeld(const std::vector<int>& keptFingers);
         // releaseAll and a clean slate (levels, windows, deltas, text, touches, taps, the pen
         // pressure, the input clock): the editor's Play start and stop
         static void reset();

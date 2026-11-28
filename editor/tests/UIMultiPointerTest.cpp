@@ -11,6 +11,7 @@
 
 #include "subsystem/UISystem.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIComponent.h"
 #include "component/ImageComponent.h"
@@ -19,7 +20,6 @@
 #include "object/Camera.h"
 #include "Catalog.h"
 #include "Stream.h"
-#include "Factory.h"
 
 #include <cmath>
 #include <climits>
@@ -115,7 +115,6 @@ namespace {
 
         OnScreenStickComponent& stickOf(Entity e) { return scene->getComponent<OnScreenStickComponent>(e); }
     };
-
 }
 
 // two fingers press two Buttons; lifting one releases only its Button, and the legacy
@@ -627,6 +626,65 @@ TEST_F(UIMultiPointerTest, IsPointerOverUIPerPointer) {
 
 // the components in the editor: names, enabled checkbox, YAML round trip without runtime state,
 // export code (Factory) with every setting
+// input-device-awareness AC11: Visibility Touch Scheme shows the controls while the player uses
+// touch; a switch hides them and releases what they held (pointers and sources)
+TEST_F(UIMultiPointerTest, TouchSchemeVisibility) {
+    InputSchemeTracker::setOverride(std::nullopt);
+    InputSchemeTracker::reset(true);
+    Entity background, handle;
+    const Entity root = stick(OnScreenStickMode::FIXED, background, handle);
+    stickOf(root).visibility = OnScreenVisibility::TOUCH_SCHEME;
+    const Entity fire = element("Fire", 400, 0, 100, 100);
+    scene->addComponent<OnScreenButtonComponent>(fire, {});
+    scene->getComponent<OnScreenButtonComponent>(fire).visibility = OnScreenVisibility::TOUCH_SCHEME;
+    const Entity area = element("Area", 600, 0, 100, 100);
+    scene->addComponent<TouchAreaComponent>(area, {});
+    scene->getComponent<TouchAreaComponent>(area).visibility = OnScreenVisibility::TOUCH_SCHEME;
+    start();
+    EXPECT_TRUE(scene->getComponent<Transform>(root).visible);
+    EXPECT_TRUE(scene->getComponent<Transform>(fire).visible);
+    EXPECT_TRUE(scene->getComponent<Transform>(area).visible);
+
+    down(0, 175, 450);
+    down(1, 450, 50);
+    down(2, 650, 50);
+    frame();
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.5f, 1e-4f);
+    EXPECT_TRUE(InputActions::getButton("Fire1"));
+    EXPECT_TRUE(scene->getComponent<TouchAreaComponent>(area).pointerId != INT_MIN);
+
+    // the wheel: Keyboard&Mouse
+    Engine::systemMouseScroll(0, 1, 0);
+    frame();
+    ASSERT_EQ(InputSchemeTracker::getCurrent(), InputScheme::KeyboardMouse);
+    EXPECT_FALSE(stickOf(root).pressed);
+    EXPECT_FALSE(scene->getComponent<OnScreenButtonComponent>(fire).pressed);
+    EXPECT_EQ(scene->getComponent<TouchAreaComponent>(area).pointerId, INT_MIN);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.0f, 1e-4f);
+    frame();
+    EXPECT_FALSE(InputActions::getButton("Fire1"));
+    EXPECT_FALSE(scene->getComponent<Transform>(root).visible);
+    EXPECT_FALSE(scene->getComponent<Transform>(handle).visible) << "with its children";
+    EXPECT_FALSE(scene->getComponent<Transform>(fire).visible);
+    EXPECT_FALSE(scene->getComponent<Transform>(area).visible);
+    // inert while hidden
+    down(3, 175, 450);
+    EXPECT_FALSE(stickOf(root).pressed);
+    up(3, 175, 450);
+    up(0, 175, 450);
+    up(1, 450, 50);
+    up(2, 650, 50);
+
+    // a finger brings them back (the scheme's evidence, as Engine::systemTouchStart notes it)
+    InputSchemeTracker::noteTouchStart(10, 10, InputSchemeTracker::clock());
+    frame();
+    EXPECT_EQ(InputSchemeTracker::getCurrent(), InputScheme::Touch);
+    EXPECT_TRUE(scene->getComponent<Transform>(root).visible);
+    EXPECT_TRUE(scene->getComponent<Transform>(fire).visible);
+    EXPECT_TRUE(scene->getComponent<Transform>(area).visible);
+    InputSchemeTracker::reset(false);
+}
+
 TEST(OnScreenControlsEditor, CatalogStreamAndExport) {
     using editor::Catalog;
     using editor::ComponentType;
@@ -679,16 +737,50 @@ TEST(OnScreenControlsEditor, CatalogStreamAndExport) {
     EXPECT_FLOAT_EQ(areaBack.sensitivity, 0.5f);
     EXPECT_TRUE(areaBack.invertY);
 
-    // the exported scene's code sets every field
-    Scene scene;
-    const Entity entity = scene.createUserEntity();
-    scene.addComponent<Transform>(entity, {});
-    scene.addComponent<OnScreenStickComponent>(entity, stick);
-    const std::string code = editor::Factory::createComponent(0, &scene, entity, ComponentType::OnScreenStickComponent, std::filesystem::temp_directory_path());
-    EXPECT_NE(code.find("OnScreenStickMode::DYNAMIC"), std::string::npos) << code;
-    EXPECT_NE(code.find("OnScreenStickAxes::HORIZONTAL"), std::string::npos);
-    EXPECT_NE(code.find("\"MoveX\""), std::string::npos);
-    EXPECT_NE(code.find("OnScreenVisibility::TOUCH_DEVICES_ONLY"), std::string::npos);
+    // Touch Scheme (input-device-awareness R16): stored touch_scheme
+    stick.visibility = OnScreenVisibility::TOUCH_SCHEME;
+    const YAML::Node schemeNode = editor::Stream::encodeOnScreenStickComponent(stick);
+    EXPECT_EQ(schemeNode["visibility"].as<std::string>(), "touch_scheme");
+    EXPECT_EQ(editor::Stream::decodeOnScreenStickComponent(schemeNode).visibility, OnScreenVisibility::TOUCH_SCHEME);
+}
+
+// input-device-awareness AC17: Touch Scheme is an added value; what older scenes store reads and
+// writes back unchanged
+TEST(InputSchemeEditorTest, OldScenesUnchanged) {
+    for (const char* stored : {"always", "touch_devices_only"}) {
+        OnScreenStickComponent stick;
+        stick.visibility = OnScreenVisibility::ALWAYS;
+        const YAML::Node written = editor::Stream::encodeOnScreenStickComponent(stick);
+        YAML::Node old = YAML::Clone(written);
+        old["visibility"] = stored;
+        const std::string before = YAML::Dump(old);
+        const OnScreenStickComponent decoded = editor::Stream::decodeOnScreenStickComponent(YAML::Load(before));
+        EXPECT_EQ(YAML::Dump(editor::Stream::encodeOnScreenStickComponent(decoded)), before) << stored;
+
+        OnScreenButtonComponent button;
+        YAML::Node buttonOld = YAML::Clone(editor::Stream::encodeOnScreenButtonComponent(button));
+        buttonOld["visibility"] = stored;
+        const std::string buttonBefore = YAML::Dump(buttonOld);
+        EXPECT_EQ(YAML::Dump(editor::Stream::encodeOnScreenButtonComponent(
+                      editor::Stream::decodeOnScreenButtonComponent(YAML::Load(buttonBefore)))), buttonBefore) << stored;
+
+        TouchAreaComponent area;
+        YAML::Node areaOld = YAML::Clone(editor::Stream::encodeTouchAreaComponent(area));
+        areaOld["visibility"] = stored;
+        const std::string areaBefore = YAML::Dump(areaOld);
+        EXPECT_EQ(YAML::Dump(editor::Stream::encodeTouchAreaComponent(
+                      editor::Stream::decodeTouchAreaComponent(YAML::Load(areaBefore)))), areaBefore) << stored;
+    }
+    // the new value round-trips on all three
+    TouchAreaComponent area;
+    area.visibility = OnScreenVisibility::TOUCH_SCHEME;
+    const YAML::Node node = editor::Stream::encodeTouchAreaComponent(area);
+    EXPECT_EQ(node["visibility"].as<std::string>(), "touch_scheme");
+    EXPECT_EQ(editor::Stream::decodeTouchAreaComponent(node).visibility, OnScreenVisibility::TOUCH_SCHEME);
+    OnScreenButtonComponent button;
+    button.visibility = OnScreenVisibility::TOUCH_SCHEME;
+    EXPECT_EQ(editor::Stream::decodeOnScreenButtonComponent(editor::Stream::encodeOnScreenButtonComponent(button)).visibility,
+              OnScreenVisibility::TOUCH_SCHEME);
 }
 
 }  // namespace UIMultiPointerTest_cpp

@@ -18,12 +18,24 @@ namespace jasperengine::editor{
     class Util{
 
     private:
+        // fs::path::extension's rule on the text itself: a fs::path made of a name that is not
+        // UTF-8 throws on Windows, where the text converts to UTF-16
         static std::string fileExtension(const std::string& path) {
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
+#if defined(_WIN32)
+            const size_t slash = path.find_last_of("/\\");
+#else
+            const size_t slash = path.find_last_of('/');
+#endif
+            const std::string_view name = std::string_view(path).substr(slash == std::string::npos ? 0 : slash + 1);
+            const size_t dot = name.find_last_of('.');
+            std::string ext;
+            if (dot != std::string_view::npos && dot > 0 && name != "..") {
+                ext = std::string(name.substr(dot));
+            } else if (!path.empty() && path[0] == '.') {
                 ext = path;
             }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            // ASCII only: a byte of a UTF-8 sequence stays as it is
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(c < 0x80 ? std::tolower(c) : c); });
             return ext;
         }
 
@@ -31,7 +43,7 @@ namespace jasperengine::editor{
 
         inline static bool isImageFile(const std::string& path) {
             static const std::unordered_set<std::string> imageExtensions = {
-                ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".psd", ".pic", ".pnm", ".svg"
+                ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".exr", ".psd", ".psb", ".tif", ".tiff", ".pic", ".pnm", ".svg"
             };
 
             const std::string ext = fileExtension(path);
@@ -177,6 +189,11 @@ namespace jasperengine::editor{
             return cssExtensions.find(ext) != cssExtensions.end();
         }
 
+        // a light's IES Profile (S99): an IESNA LM-63 photometric file
+        inline static bool isIesFile(const std::string& path) {
+            return fileExtension(path) == ".ies";
+        }
+
         // colour LUTs a scene's post-processing grades with besides image strips (.cube)
         inline static bool isColorLutFile(const std::string& path) {
             return fileExtension(path) == ".cube";
@@ -203,6 +220,16 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".soundevent";
         }
 
+        // Data Assets (S95)
+        inline static bool isDataAssetFile(const std::string& path) {
+            return fileExtension(path) == ".dataasset";
+        }
+
+        // Fog Profiles (docs/specs/S101-vapor.md R1)
+        inline static bool isFogProfileFile(const std::string& path) {
+            return fileExtension(path) == ".fogprofile";
+        }
+
         // The Animator's assets (S21): controllers, avatar masks, montages
         inline static bool isAnimatorControllerFile(const std::string& path) {
             return fileExtension(path) == ".controller";
@@ -227,9 +254,19 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".titleart";
         }
 
+        // a Mesh Renderer's geometry in a file of its own (S98 F1, model/MeshAsset.h)
+        inline static bool isMeshAssetFile(const std::string& path) {
+            return fileExtension(path) == ".mesh";
+        }
+
         // a Procedural Material's node graph (S90): editor-only, its bakes are what ships
         inline static bool isProceduralMaterialFile(const std::string& path) {
             return fileExtension(path) == ".procmat";
+        }
+
+        // a dialogue graph (dialogue-graphs.md R30): a graph file with its GUID in its JSON
+        inline static bool isDialogueFile(const std::string& path) {
+            return fileExtension(path) == ".dialogue";
         }
 
         // the GUID-tracked JSON assets of the animation system: clips, Vertex Animations, Avatar
@@ -264,7 +301,8 @@ namespace jasperengine::editor{
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
                    isAnimationClipFile(path) || isAnimatorAssetFile(path) ||
-                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path);
+                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path) || isMeshAssetFile(path) ||
+                   isIesFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

@@ -18,6 +18,7 @@
 #include "util/FileUtils.h"
 
 #include "support/PosixCompat.h"
+#include "TempDir.h"
 #ifdef __linux__
 #include <csignal>
 #include <sys/resource.h>
@@ -336,6 +337,37 @@ TEST(ChildSceneCycle, UndoOfARemovalThatWouldNowCycleIsRefused) {
     ASSERT_TRUE(historyB.undo());
     EXPECT_TRUE(historyA.undo());
     EXPECT_TRUE(project.hasChildScene(401, 402));
+}
+
+// build-size-tools R40: the size budget keys are optional (none, warn) and round-trip when set
+TEST(ProjectSaveTest, SizeBudgetKeysOptional) {
+    jasperengine::test::TempDir dir;
+    const fs::path root = dir.path();
+    fs::create_directories(root / "assets");
+    std::ofstream(root / "project.yaml") << "name: budgets\nassetsDir: assets\n";
+    {
+        Project project;
+        project.setSkipProjectLock(true);
+        ASSERT_TRUE(project.loadProject(root, false));
+        EXPECT_TRUE(project.getSizeBudgets().empty());
+        EXPECT_FALSE(project.isSizeBudgetFail());
+        ASSERT_TRUE(project.saveProjectFile());
+        {
+            // closed before the next save: Windows cannot replace a file a reader holds open
+            std::ifstream in(root / "project.yaml", std::ios::binary);
+            const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            EXPECT_EQ(text.find("sizeBudget"), std::string::npos) << text;
+        }
+        project.setSizeBudgets({{"web", "textures", 1.5}, {"all", "total", 200.0}});
+        project.setSizeBudgetFail(true);
+        ASSERT_TRUE(project.saveProjectFile());
+    }
+    Project reloaded;
+    reloaded.setSkipProjectLock(true);
+    ASSERT_TRUE(reloaded.loadProject(root, false));
+    const std::vector<SizeBudgetRow> expected = {{"web", "textures", 1.5}, {"all", "total", 200.0}};
+    EXPECT_EQ(reloaded.getSizeBudgets(), expected);
+    EXPECT_TRUE(reloaded.isSizeBudgetFail());
 }
 
 }  // namespace ProjectSaveTest_cpp

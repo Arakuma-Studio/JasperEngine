@@ -50,10 +50,17 @@ namespace jasperengine {
         TerrainWorld = 31,          // a Name.terrainworld folder, its GUID in its manifest.yaml (T4 R48)
         VoxelVolume = 32,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
         NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
-        TitleArt = 34               // a .titleart Title Art document (S80; its GUID in its JSON)
+        TitleArt = 34,              // a .titleart Title Art document (S80; its GUID in its JSON)
+        Mesh = 35,                  // a .mesh mesh asset (S98 F1; its GUID in its .meta)
+        IesProfile = 36,            // an .ies photometric profile of a light (S99 R36; its GUID in its .meta)
+        StringTable = 37,           // a .stringtable String Table and its .translation files (game-ui-localization.md R41; GUID in its JSON)
+        Dialogue = 38,              // a .dialogue dialogue graph (dialogue-graphs.md R30; its GUID in its JSON)
+        DataAsset = 39,             // a .dataasset Data Asset (S95 REQ-21; its GUID in its .meta)
+        VertexColors = 40,          // a .vcolors file of one object's vertex colors (V1 R1; its GUID in its .meta)
+        FogProfile = 41             // a .fogprofile Fog Profile (docs/specs/S101-vapor.md R1; its GUID in its .meta)
     };
     // the highest value present (a sibling's reserved value below it may still be missing)
-    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::TitleArt);
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::FogProfile);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -92,6 +99,13 @@ namespace jasperengine {
             case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::TitleArt: return "title_art";
+            case AssetType::Mesh: return "mesh";
+            case AssetType::IesProfile: return "ies_profile";
+            case AssetType::StringTable: return "stringtable";
+            case AssetType::Dialogue: return "dialogue";
+            case AssetType::DataAsset: return "data_asset";
+            case AssetType::VertexColors: return "vertex_colors";
+            case AssetType::FogProfile: return "fog_profile";
             case AssetType::Unknown: break;
         }
         return "unknown";

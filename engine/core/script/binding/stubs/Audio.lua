@@ -19,6 +19,7 @@
 ---@field group? string # a mixer group name, as AudioSource.outputGroup. Default the event's, else Master
 ---@field delay? number # seconds before it starts (default 0)
 ---@field unscaled? boolean # the delay runs on unscaled time (default false)
+---@field loop? boolean # a clip's voice loops until SoundHandle:stop() or its owner scene stops it (default false); a Sound Event keeps its own loop
 
 ---@class MusicOptions
 ---@field crossfade? number # seconds of an equal-power crossfade from the switch point (default 0: a cut)

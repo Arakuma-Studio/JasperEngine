@@ -13,6 +13,12 @@
 #include "external/IconsFontAwesome6.h"
 #include "util/EditorScripts.h"
 #include "shortcuts/CommandCatalog.h"
+#include "Out.h"
+#include "recorder/CaptureScreenshotsDialog.h"
+#include "recorder/RecordInput.h"
+#include "util/FileDialogs.h"
+#include "util/FileUtils.h"
+#include "window/dialog/EditorSettingsWindow.h"
 
 #include <algorithm>
 
@@ -287,6 +293,67 @@ void editor::MainToolbar::stopSession() {
     if (canStopSession()) project->stop(project->getPlaySessionSceneId());
 }
 
+//=== Record Input (input-recorder-and-input-scripts R36) ===
+
+void editor::MainToolbar::replayInput() {
+    if (isInPlayMode()) return;
+    const std::filesystem::path folder = recordinput::recordingsFolder(project->getProjectPath());
+    std::error_code ec;
+    const std::string start = FileUtils::pathToUtf8(std::filesystem::is_directory(folder, ec) ? folder : project->getProjectPath());
+    const std::string file = FileDialogs::openFileDialogFiltered(start, "Input recordings and scripts", "json");
+    if (file.empty()) return;
+    std::string error;
+    if (!recordinput::RecordInput::get().replayFile(FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(FileUtils::pathFromUtf8(file))), error))
+        Out::error("Replay Input: %s", error.c_str());
+}
+
+void editor::MainToolbar::drawRecordInput(float rowHeight) {
+    recordinput::RecordInput& input = recordinput::RecordInput::get();
+    const recordinput::RecordInput::Button state = input.buttonState();
+    using Button = recordinput::RecordInput::Button;
+    static const ImVec4 RECORD_ACTIVE(0.75f, 0.12f, 0.12f, 1.0f);
+    static const ImVec4 RECORD_ACTIVE_HOVERED(0.85f, 0.2f, 0.2f, 1.0f);
+    const bool lit = state == Button::Armed || state == Button::Recording;
+    // recording, the button says how long and how much: "REC 00:12 · 734 events"
+    const std::string label = state == Button::Recording ? std::string(ICON_FA_CIRCLE_DOT " ") + input.recordingLabel() + "##Record Input"
+                                                         : std::string(ICON_FA_CIRCLE_DOT "##Record Input");
+    const ImVec2 size(state == Button::Recording ? 0.0f : Theme::dpi(34.0f), rowHeight);
+    ImGui::BeginDisabled(state == Button::Disabled);
+    if (toolbarButton(label.c_str(), lit, size, &RECORD_ACTIVE, &RECORD_ACTIVE_HOVERED)) input.toggle();
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) {
+        const CommandCatalog& catalog = CommandCatalog::editor();
+        switch (state) {
+            case Button::Off:
+                ImGui::SetTooltip("%s\nRecords the game's input into a .input.json from the next Play", catalog.tooltip("playmode.recordInput", "Record Input").c_str());
+                break;
+            case Button::Armed: ImGui::SetTooltip("Records from the next Play"); break;
+            case Button::Recording: ImGui::SetTooltip("Stop Recording (Play goes on)"); break;
+            case Button::Disabled: ImGui::SetTooltip("Record Input starts with Play: stop, turn it on, press Play"); break;
+        }
+    }
+    ImGui::SameLine();
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, ImGui::GetStyle().FramePadding.y));
+    if (ImGui::Button(ICON_FA_CARET_DOWN "##Record Input Menu", ImVec2(Theme::dpi(16.0f), rowHeight))) ImGui::OpenPopup("RecordInputMenu");
+    ImGui::PopStyleVar();
+    ImGui::SetItemTooltip("Record Input menu");
+    if (ImGui::BeginPopup("RecordInputMenu")) {
+        const bool playing = isInPlayMode();
+        if (ImGui::MenuItem("Replay Input...", nullptr, false, !playing && canTogglePlay())) replayInput();
+        if (ImGui::MenuItem("Capture Screenshots...", nullptr, false, !playing)) recordinput::CaptureScreenshotsDialog::get().open("");
+        if (ImGui::MenuItem("Open Recordings Folder")) {
+            const std::filesystem::path folder = recordinput::recordingsFolder(project->getProjectPath());
+            std::error_code ec;
+            std::filesystem::create_directories(folder, ec);
+            EditorSettingsWindow::openInFileManager(folder);
+        }
+        if (input.writePendingFailed() && ImGui::MenuItem("Retry Saving Recording")) input.retryWrite();
+        ImGui::Separator();
+        if (ImGui::MenuItem("Record Input Settings...")) Backend::getApp().getEditorSettingsWindow().open(project, "Play Mode");
+        ImGui::EndPopup();
+    }
+}
+
 //=== Drawing ===
 
 void editor::MainToolbar::drawTools(float rowHeight) {
@@ -404,6 +471,10 @@ void editor::MainToolbar::drawPlayControls(float rowHeight) {
         Backend::getApp().toggleRecording();
     }
     ImGui::SetItemTooltip("%s", catalog.tooltip("recorder.toggle", recording ? "Stop Recording" : "Start Recording").c_str());
+
+    // Record Input: the game's input into a .input.json (input-recorder-and-input-scripts R36)
+    ImGui::SameLine(0.0f, Theme::dpi(6.0f));
+    drawRecordInput(rowHeight);
 
     ImGui::PopStyleVar();
 }

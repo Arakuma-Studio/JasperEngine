@@ -18,16 +18,20 @@ On a **software GL** (llvmpipe, softpipe, SwiftShader) there is no worker contex
 `parallel` where `KHR_parallel_shader_compile` exists, else `deferred`. On llvmpipe the render
 thread crashed in the driver drawing programs the worker had drawn, and once hung in a draw after
 the worker had linked them; our side's synchronisation was checked (see the spec, deviation 6).
-`JASPER_GL_SOFTWARE_WORKER=1` allows the worker there for driver investigations. GPU drivers keep
-the worker; they are verified in the GPU campaign.
+These choices are the GPU quirks `gl_no_worker_context` and `gl_no_compile_threads`
+(`docs/device-tiers.md`, "GPU quirks"): `JASPERENGINE_GPU_QUIRKS=gl_no_worker_context:off` (or a
+player's `--gpu-quirk=gl_no_worker_context:off`) allows the worker there for driver investigations.
+GPU drivers keep the worker; they are verified in the GPU campaign.
 
 A *warm draw* draws the program once, with the state and texture formats of the object about to use
 it, into a 1x1 target on the worker. Drivers compile a program for its state at its first draw
 (Mesa's llvmpipe; NVIDIA: about 8 ms per Lit lobe variant on an RTX 3080 Ti); the warm draw makes
 that compile happen on the worker. Warm draws are **on by default on desktop GL** (verified on
 NVIDIA in the GPU campaign, `docs/perf/gpu-campaign.md`), **off on GLES** until an Adreno/Mali run
-verifies them (`JASPER_GL_WARM_DRAWS=1` allows them there), and never on a software GL (no worker
-there). Without them a program's first draw with a new state compiles on the render thread.
+verifies them (the GPU quirk `gl_no_warm_draws`; `JASPERENGINE_GPU_QUIRKS=gl_no_warm_draws:off`
+allows them there), and never on a software GL (no worker there). The S32 variables
+`JASPER_GL_SOFTWARE_WORKER=1` and `JASPER_GL_WARM_DRAWS=1` still work, as deprecated aliases of those
+overrides. Without them a program's first draw with a new state compiles on the render thread.
 
 The render thread finishes what the worker or the driver created within a per-frame budget
 (**Main Thread Budget**, 2 ms by default). At least one creation finishes every frame.
@@ -97,8 +101,13 @@ callers outside a load (the inspector, the MCP tools, `warmUp`).
 
 - **Record During Play**: each Play adds the shader variants and pipelines it used to
   `ShaderWarmup.json`, next to `project.yaml`. Commit it with the project.
-- **Include in Builds** (on): exports build the list's variants as well as the scenes', and ship
-  the list (`shaders/warmup.json`, or inside the shader headers of web and mobile builds).
+- Whatever that setting says, Stop adds the variants Play drew with that the played scenes' own
+  lists lack (a material a script made), without pipelines. Stop writes no scene file.
+- The file is written only when it gains an entry, sorted, so repeated Play sessions leave it as
+  it is.
+- **Include in Builds** (on): exports ship the list (`shaders/warmup.json`, or inside the shader
+  headers of web and mobile builds) and the game replays it at start. Exports build the list's
+  variants as well as the scenes' whether it is on or off.
 - **Hold First Scene** (on): a game replays the list when it starts, and its scenes count as
   loaded only when the list is ready, so the loading screen covers it.
 - **Clear** (and the command *Clear Shader Warm-up List*) empties the list.

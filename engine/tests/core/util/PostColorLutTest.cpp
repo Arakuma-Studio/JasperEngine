@@ -8,6 +8,10 @@
 #include "util/CubeLut.h"
 #include "util/PostColorLut.h"
 
+#include "TempDir.h"
+
+#include "stb_image_write.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -347,6 +351,59 @@ TEST(PostColorLut, InvertGivesTheCodeOfADisplayColour){
     EXPECT_EQ(strip[i], (uint8_t)std::lround(texel.x * 255.0f));
     EXPECT_EQ(strip[i + 1], (uint8_t)std::lround(texel.y * 255.0f));
     EXPECT_EQ(strip[i + 2], (uint8_t)std::lround(texel.z * 255.0f));
+}
+
+// S94 F20: a strip laid out with green 0 at the top row (not Unity's) is the identity once its rows
+// are flipped as the LUT is built; read as Unity's it is not. The cache keeps both readings apart.
+TEST(PostColorLut, FlipGreenReadsTopRowFirst){
+    const int n = 16;
+    PostColorLut::Strip strip;
+    strip.size = n;
+    strip.width = n * n;
+    strip.rgb.resize((size_t)strip.width * n * 3);
+    for (int b = 0; b < n; b++){
+        for (int g = 0; g < n; g++){
+            for (int r = 0; r < n; r++){
+                // green 0 the top row
+                const size_t i = ((size_t)g * strip.width + (size_t)b * n + r) * 3;
+                strip.rgb[i + 0] = (uint8_t)std::lround(r * 255.0 / (n - 1));
+                strip.rgb[i + 1] = (uint8_t)std::lround(g * 255.0 / (n - 1));
+                strip.rgb[i + 2] = (uint8_t)std::lround(b * 255.0 / (n - 1));
+            }
+        }
+    }
+    auto maxIdentityError = [n](const CubeLut& lut){
+        float worst = 0.0f;
+        for (int b = 0; b < n; b++){
+            for (int g = 0; g < n; g++){
+                for (int r = 0; r < n; r++){
+                    const float* c = &lut.lut3D[(((size_t)b * n + g) * n + r) * 3];
+                    worst = std::max(worst, std::fabs(c[0] - (float)r / (n - 1)));
+                    worst = std::max(worst, std::fabs(c[1] - (float)g / (n - 1)));
+                    worst = std::max(worst, std::fabs(c[2] - (float)b / (n - 1)));
+                }
+            }
+        }
+        return worst;
+    };
+    CubeLut flipped;
+    PostColorLut::stripToCubeLut(strip, flipped, true);
+    ASSERT_EQ(flipped.size3D, n);
+    EXPECT_LE(maxIdentityError(flipped), 0.5f / 255.0f) << "flipped, the strip is the identity";
+    CubeLut asUnity;
+    PostColorLut::stripToCubeLut(strip, asUnity);
+    EXPECT_GE(maxIdentityError(asUnity), 0.9f) << "read as Unity's layout, green runs backwards";
+
+    // the same file through the cache: one entry each way
+    jasperengine::test::TempDir dir;
+    const std::string path = (dir.path() / "top_green.png").string();
+    ASSERT_TRUE(stbi_write_png(path.c_str(), strip.width, n, 3, strip.rgb.data(), strip.width * 3)) << path;
+    const std::shared_ptr<const CubeLut> cachedFlipped = getCachedColorLut(path, true);
+    const std::shared_ptr<const CubeLut> cachedUnity = getCachedColorLut(path);
+    ASSERT_TRUE(cachedFlipped && cachedUnity);
+    EXPECT_LE(maxIdentityError(*cachedFlipped), 0.5f / 255.0f);
+    EXPECT_GE(maxIdentityError(*cachedUnity), 0.9f);
+    invalidateColorLutCache(path);
 }
 
 }  // namespace PostColorLutTest_cpp

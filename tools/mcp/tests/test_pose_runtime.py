@@ -459,10 +459,10 @@ async def test_export_preserves_pose_assets(ed: Editor):
     if isinstance(r, dict) and r.get("status") == "running":
         r = await wait_job(ed, r["job_id"], 900)
     ed.check_eq(r["status"], "succeeded", raw.text[:2000])
-    # The exported program must reference the authored asset. This checks a user-facing
-    # path byte and survives renames of generated variables, members and helper functions.
-    ed.check(any(f'"{ANIM_STORED}"' in source.read_text(errors="ignore") for source in out.rglob("*.cpp")),
-             "the exported program references the selected pose animation")
+    # The exported scene must reference the authored asset; the scenes ship cooked, as the
+    # prebuilt player reads them (S98 WP-1)
+    ed.check(any(ANIM_STORED.encode() in p.read_bytes() for p in (out / "project" / "content" / "scenes").glob("*.jscn")),
+             "the exported scene references the selected pose animation")
     assets = out / "project" / "assets"
     for rel in (ANIM_STORED, "models/hero_tpose.gltf.humanoid"):
         ed.check_eq((assets / rel).read_bytes(), (ed.project / "assets" / rel).read_bytes(),

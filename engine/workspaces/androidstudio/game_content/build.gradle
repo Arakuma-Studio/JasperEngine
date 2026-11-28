@@ -1,0 +1,11 @@
+// The install-time asset pack of an App Bundle (Play Asset Delivery, docs/specs/S98-editor-tooling-gaps.md
+// F2): the game's content, which the app's jasperengineSyncAssetPack puts in src/main/assets before
+// the app collects it, when a Gradle run builds bundles and no APK (app/build.gradle), else empties
+apply plugin: 'com.android.asset-pack'
+
+assetPack {
+    packName = "game_content"
+    dynamicDelivery {
+        deliveryType = "install-time"
+    }
+}

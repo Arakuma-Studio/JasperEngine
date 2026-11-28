@@ -65,6 +65,12 @@
                                                object:nil];
     [Renderer thermalStateChanged];
 
+    // the user's languages changed in System Settings (game-ui-localization.md R10)
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(localesChanged)
+                                                 name:NSCurrentLocaleDidChangeNotification
+                                               object:nil];
+
     // Unity's OnApplicationFocus: the game window is the key window
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(windowBecameKey:)
@@ -90,6 +96,11 @@
 - (void)thermalStateChanged
 {
     [Renderer thermalStateChanged];
+}
+
+- (void)localesChanged
+{
+    [Renderer localesChanged];
 }
 
 - (void)windowBecameKey:(NSNotification *)notification

@@ -10,6 +10,10 @@
 #include "TempDir.h"
 
 #include "Project.h"
+#include "dialogue/DialogueKind.h"
+#include "dialogue/DialogueProgram.h"
+#include "dialogue/DialogueRunner.h"
+#include "dialogue/DialogueVariables.h"
 #include "graph/GraphDocument.h"
 #include "graph/GraphRegistry.h"
 #include "io/watch/FileWatchService.h"
@@ -18,6 +22,7 @@
 #include "reload/handlers/ReloadHandlers.h"
 #include "subsystem/MeshSystem.h"
 #include "texture/Texture.h"
+#include "Log.h"
 #include "util/PngWriter.h"
 
 #include <gtest/gtest.h>
@@ -455,6 +460,67 @@ TEST_F(HotReloadServiceTests, NoAssetPollWithoutTheWatcher) {
     EXPECT_EQ(database.getPath(guid).generic_string(), "assets/hr/still.png") << "something polled";
     project.refreshAssetDatabase(true);
     EXPECT_EQ(database.getPath(guid).generic_string(), "assets/hr/still_moved.png");
+}
+
+// dialogue-graphs.md R12, AC9: a dialogue edited while a runner plays it: the presented line's new
+// text reaches onLine again; once its node is deleted the runner stops with a warning naming it
+TEST_F(HotReloadServiceTests, DialogueEditInPlayKeepsTheRunner) {
+    dialogue::registerDialogueKind();
+    dialogue::Programs::clear();
+    dialogue::Variables::reset();
+    const fs::path file = project.getProjectPath() / "assets" / "talk.dialogue";
+    auto dialogueText = [](const std::string& lines) {
+        return R"({"formatVersion": 1, "kind": "dialogue", "kindVersion": 1, "nextId": 9, "nodes": [)"
+               R"({"id": "n1", "type": "entry", "position": [0, 0], "params": {"name": "start"}})" + lines +
+               R"(], "edges": [{"id": "e5", "from": {"node": "n1", "port": "next"}, "to": {"node": "n2", "port": "in"}}],)"
+               R"( "metadata": {"namespace": "talk"}})";
+    };
+    const std::string line = R"(, {"id": "n2", "type": "line", "position": [200, 0], "params": {"speaker": "guard", "text": "%TEXT%"}})";
+    auto withText = [&](const std::string& text) {
+        std::string out = line;
+        out.replace(out.find("%TEXT%"), 6, text);
+        return dialogueText(out);
+    };
+    hotReloadServiceWriteText(file, withText("Halt."));
+    std::string error;
+    std::shared_ptr<const dialogue::Program> program = dialogue::Programs::load(file.string(), &error);
+    ASSERT_TRUE(program) << error;
+    dialogue::Runner runner;
+    std::vector<std::string> lines;
+    runner.onLine = [&](dialogue::Runner&, const dialogue::Line& shown) { lines.push_back(shown.text); };
+    runner.setDialogue(program);
+    ASSERT_TRUE(runner.start());
+    ASSERT_EQ(lines, std::vector<std::string>{"Halt."});
+
+    auto apply = [&]() {
+        FileChange change;
+        change.kind = FileChangeKind::Modified;
+        change.path = file;
+        change.origin = ChangeOrigin::External;
+        ChangeSet set;
+        set.changes.push_back(change);
+        service.apply(set, ApplyOptions());
+    };
+    hotReloadServiceWriteText(file, withText("Halt! Who goes there?"));
+    apply();
+    EXPECT_EQ(lines, (std::vector<std::string>{"Halt.", "Halt! Who goes there?"})) << "the presented line is sent again";
+    EXPECT_EQ(runner.getState(), dialogue::RunnerState::Line);
+    EXPECT_EQ(runner.getCurrentNode(), "n2");
+
+    std::vector<std::string> warnings;
+    const LogListenerId listener = Log::addListener([&](const jasperengine::LogEntry& entry) {
+        if (entry.level == LogLevel::Warn && entry.message.find("n2") != std::string::npos) warnings.push_back(entry.message);
+    });
+    std::string ended = "-";
+    runner.onEnd = [&](dialogue::Runner&, const std::string& result) { ended = result; };
+    hotReloadServiceWriteText(file, dialogueText(""));
+    apply();
+    Log::removeListener(listener);
+    EXPECT_EQ(runner.getState(), dialogue::RunnerState::Ended);
+    EXPECT_EQ(ended, "");
+    ASSERT_EQ(warnings.size(), 1u);
+    EXPECT_NE(warnings[0].find("gone"), std::string::npos) << warnings[0];
+    dialogue::Programs::clear();
 }
 
 }  // namespace HotReloadServiceTest_cpp

@@ -134,8 +134,9 @@ async def test_instanced_blend_shapes_say_why_they_do_not_draw(ed: Editor):
     path.write_text(json.dumps(blend_shape_gltf()))
     await ed.call("sync_files")
     cursor = (await ed.call("read_console", limit=1))["next_cursor"]
+    # the Instanced Mesh goes on the GameObject that draws: the Model's own (no Preserve Hierarchy)
     blade = (await ed.call("create_entity", scene=sid, type="model", name="ShapedBlade",
-                           model="assets/models/blade_shape.gltf"))["entity_id"]
+                           model="assets/models/blade_shape.gltf", values={"model": {"preserveHierarchy": False}}))["entity_id"]
     await ed.call("add_component", scene=sid, entity=blade, component="instancedmesh")
     await ed.call("set_properties", scene=sid, entity=blade,
                   values={"instancedmesh": {"instances": [{"position": [x, 0, 0]} for x in range(3)]}})

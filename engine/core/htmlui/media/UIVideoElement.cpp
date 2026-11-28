@@ -1058,60 +1058,55 @@ bool UIVideoElement::createTexture(const Rml::CallbackTextureInterface& textureI
     const std::string rendering = htmlui::compat::CompatProperties::text(*this, htmlui::compat::CompatProperty::ImageRendering);
     const TextureFilter filter = (rendering == "pixelated" || rendering == "crisp-edges") ? TextureFilter::NEAREST : TextureFilter::LINEAR;
 
-    std::unique_ptr<HtmlUITexture> created;
-    if (gpuConversion){
-        created = std::make_unique<HtmlUITexture>();
-        created->kind = HtmlUITexture::Kind::RENDER_TARGET;
-        created->ownedTarget = std::make_unique<Framebuffer>();
-        FramebufferDesc desc;
-        desc.width = width;
-        desc.height = height;
-        desc.color = ColorFormat::RGBA;
-        desc.depth = DepthStencilFormat::NONE;
-        desc.sampleCount = 1;
-        desc.minFilter = filter;
-        desc.magFilter = filter;
-        desc.label = "htmlui-video";
-        if (!created->ownedTarget->create(desc)){
-            Log::error("[HTML UI] <video>: could not create the %d x %d video texture", width, height);
+    std::unique_ptr<HtmlUITexture> created = std::make_unique<HtmlUITexture>();
+    created->kind = HtmlUITexture::Kind::RENDER_TARGET;
+    created->ownedTarget = std::make_unique<Framebuffer>();
+    FramebufferDesc desc;
+    desc.width = width;
+    desc.height = height;
+    desc.color = ColorFormat::RGBA;
+    desc.depth = DepthStencilFormat::NONE;
+    desc.sampleCount = 1;
+    desc.minFilter = filter;
+    desc.magFilter = filter;
+    desc.label = "htmlui-video";
+    if (!created->ownedTarget->create(desc)){
+        Log::error("[HTML UI] <video>: could not create the %d x %d video texture", width, height);
+        return false;
+    }
+    created->render = &created->ownedTarget->getRender().getColorTexture();
+    created->width = width;
+    created->height = height;
+    // a playing video's frames: a document drawing it is drawn every frame (S92 R2)
+    created->liveContent = true;
+    if (sourceFrame){
+        // the source draws into the target itself: no planes
+        stats.texturesCreated++;
+        HtmlUITexture* raw = created.release();
+        textureInterface.SetTextureHandle(reinterpret_cast<Rml::TextureHandle>(raw), textureSize);
+        liveTexture = raw;
+        hasPicture = false;
+        uploadPending = true;
+        uploadedFrame = UINT64_MAX;
+        return true;
+    }
+    const bool chroma = frame.hasChroma();
+    const int chromaWidth = chroma ? frame.chromaWidth() : 1;
+    const int chromaHeight = chroma ? frame.chromaHeight() : 1;
+    const int sizes[3][2] = {{width, height}, {chromaWidth, chromaHeight}, {chromaWidth, chromaHeight}};
+    const char* labels[3] = {"htmlui-video-y", "htmlui-video-u", "htmlui-video-v"};
+    for (int i = 0; i < 3; i++){
+        created->planes[i] = std::make_unique<TextureRender>();
+        if (!created->planes[i]->createDynamicTexture(labels[i], sizes[i][0], sizes[i][1], ColorFormat::RED, TextureFilter::LINEAR)){
+            Log::error("[HTML UI] <video>: could not create the %d x %d video plane", sizes[i][0], sizes[i][1]);
             return false;
         }
-        created->render = &created->ownedTarget->getRender().getColorTexture();
-        created->width = width;
-        created->height = height;
-        if (sourceFrame){
-            // the source draws into the target itself: no planes
-            stats.texturesCreated++;
-            HtmlUITexture* raw = created.release();
-            textureInterface.SetTextureHandle(reinterpret_cast<Rml::TextureHandle>(raw), textureSize);
-            liveTexture = raw;
-            hasPicture = false;
-            uploadPending = true;
-            uploadedFrame = UINT64_MAX;
-            return true;
-        }
-        const bool chroma = frame.hasChroma();
-        const int chromaWidth = chroma ? frame.chromaWidth() : 1;
-        const int chromaHeight = chroma ? frame.chromaHeight() : 1;
-        const int sizes[3][2] = {{width, height}, {chromaWidth, chromaHeight}, {chromaWidth, chromaHeight}};
-        const char* labels[3] = {"htmlui-video-y", "htmlui-video-u", "htmlui-video-v"};
-        for (int i = 0; i < 3; i++){
-            created->planes[i] = std::make_unique<TextureRender>();
-            if (!created->planes[i]->createDynamicTexture(labels[i], sizes[i][0], sizes[i][1], ColorFormat::RED, TextureFilter::LINEAR)){
-                Log::error("[HTML UI] <video>: could not create the %d x %d video plane", sizes[i][0], sizes[i][1]);
-                return false;
-            }
-        }
-        if (!chroma){
-            // monochrome: neutral chroma
-            const uint8_t neutral = 128;
-            created->planes[1]->updateTexture(&neutral, 1);
-            created->planes[2]->updateTexture(&neutral, 1);
-        }
-    }else{
-        created = HtmlUITexture::createDynamic("htmlui-video", width, height, ColorFormat::RGBA, filter);
-        if (!created)
-            return false;
+    }
+    if (!chroma){
+        // monochrome: neutral chroma
+        const uint8_t neutral = 128;
+        created->planes[1]->updateTexture(&neutral, 1);
+        created->planes[2]->updateTexture(&neutral, 1);
     }
     stats.texturesCreated++;
     HtmlUITexture* raw = created.release();
@@ -1128,13 +1123,14 @@ bool UIVideoElement::ensureTexture(){
     Rml::RenderManager* renderManager = GetRenderManager();
     if (!renderManager || (frame.y.empty() && !sourceFrame))
         return false;
-    // a source's own frames need a render target
-    const bool gpu = RmlRenderer::forContext(GetContext()) != nullptr || sourceFrame;
+    // an HtmlUITexture is the RmlRenderer's: another render interface (the check's, which
+    // draws nothing) would never give it back to be deleted
+    if (!RmlRenderer::forContext(GetContext()))
+        return false;
     const Rml::Vector2i size(frame.width, frame.height);
-    if (texture && (textureSize != size || gpuConversion != gpu))
+    if (texture && textureSize != size)
         releaseTexture();
     if (!texture){
-        gpuConversion = gpu;
         textureSize = size;
         texture = renderManager->MakeCallbackTexture([this](const Rml::CallbackTextureInterface& textureInterface) -> bool {
             return createTexture(textureInterface);
@@ -1161,7 +1157,7 @@ void UIVideoElement::uploadFrame(){
         if (!stream || !liveTexture->ownedTarget || !stream->uploadTo(*liveTexture->ownedTarget))
             return;
         stats.uploads++;
-    }else if (gpuConversion){
+    }else{
         RmlRenderer* renderer = RmlRenderer::forContext(GetContext());
         if (!renderer)
             return;
@@ -1177,13 +1173,6 @@ void UIVideoElement::uploadFrame(){
         renderer->queueVideoConversion(conversion);
         stats.conversionsQueued++;
         stats.uploads += frame.hasChroma() ? 3 : 1;
-    }else{
-        std::vector<uint8_t> rgba;
-        VideoColorConvert::toRgba(frame, rgba);
-        if (!liveTexture->update(rgba.data(), rgba.size()))
-            return;
-        stats.cpuConversions++;
-        stats.uploads++;
     }
     uploadedFrame = engineFrame;
     uploadPending = false;
@@ -1318,9 +1307,7 @@ size_t UIVideoElement::getMemoryBytes() const{
     const VideoStats s = getStreamStats();
     size_t bytes = s.pictureBytes + s.queueBytes + s.cacheBytes + frame.bytes();
     if (liveTexture){
-        bytes += (size_t)textureSize.x * (size_t)textureSize.y * 4;
-        if (gpuConversion)
-            bytes += frame.bytes();
+        bytes += (size_t)textureSize.x * (size_t)textureSize.y * 4 + frame.bytes();
     }
     if (std::shared_ptr<VideoAudioRing> ring = getAudioRing())
         bytes += ring->getCapacity() * (size_t)ring->getChannels() * sizeof(float);

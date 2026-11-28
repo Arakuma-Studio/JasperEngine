@@ -279,7 +279,6 @@ ApplyOutcome applyPngOutput(Project* project, SceneProject* sp, Entity entity, c
     multi->addCommand(std::unique_ptr<Command>(textureCommand));
     const SpriteComponent& sprite = sp->scene->getComponent<SpriteComponent>(entity);
     const ComponentType cp = ComponentType::SpriteComponent;
-    int frames = 0;
     const std::vector<cleanup::AtlasClip> clips = result.animation ? cleanup::atlasClips(*result.animation) : std::vector<cleanup::AtlasClip>();
     cleanup::Atlas atlas;
     int width = 0, height = 0;
@@ -297,7 +296,6 @@ ApplyOutcome applyPngOutput(Project* project, SceneProject* sp, Entity entity, c
             const std::string prefix = "framesRect[" + std::to_string(i) + "]";
             multi->addPropertyCmd<std::string>(project, sceneId, entity, cp, prefix + ".name", clips[r.clip].name + "-" + std::to_string(r.frame));
             multi->addPropertyCmd<Vector4>(project, sceneId, entity, cp, prefix + ".rect", Vector4((float)r.x, (float)r.y, (float)r.w, (float)r.h));
-            frames++;
         }
         multi->addPropertyCmd<unsigned int>(project, sceneId, entity, cp, "numFramesRect", (unsigned int)atlas.rects.size());
     }

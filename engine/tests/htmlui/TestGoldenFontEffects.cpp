@@ -182,3 +182,33 @@ TEST_F(TextFeatureGoldenTest, FontSynthesis){
 
     EXPECT_SCREEN_GOLDEN(screen, "p1/font_synthesis");
 }
+
+TEST_F(TextFeatureGoldenTest, FallbackGlyphGetsEffect){
+    // S93 R16, R17 (AC20): the Ó of "CAÑÓN" is not in the text's face (Ahem less U+00D3): the built-in Roboto draws it,
+    // emboldened for the bold text and outlined like its neighbours; HTMLUI-FONT-0001 names it. The regular "ÓN" below
+    // draws the same Ó without the outline or the bold.
+    SceneFixture fixture;
+    UIDocument document = fixture.addDocument("s93/fallback_glyph.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+
+    Screen screen;
+    ASSERT_TRUE(capture(screen));
+
+    // Ahem's boxes are 1 em (64 px) wide: the Ó is the fourth glyph, x 212-276; its outline is orange, its face white
+    const PixelRect boldO{204, 60, 284, 140};
+    const PixelRect plainO{16, 200, 84, 280};
+    EXPECT_GT(screen.countColor(boldO, 0xff, 0x80, 0x00, 40), 150u);
+    EXPECT_GT(screen.countColor(boldO, 0xff, 0xff, 0xff, 16), 150u);
+    EXPECT_EQ(screen.countColor(plainO, 0xff, 0x80, 0x00, 40), 0u);
+    // synthetic bold: more white ink than the regular Ó at the same size
+    EXPECT_GT(screen.countColor(boldO, 0xff, 0xff, 0xff, 16) * 10, screen.countColor(plainO, 0xff, 0xff, 0xff, 16) * 11);
+
+    bool reported = false;
+    for (const htmlui::compat::Diagnostic& diagnostic : document.getDiagnostics()){
+        if (diagnostic.code.id() == "HTMLUI-FONT-0001" && diagnostic.message.find("U+00D3") != std::string::npos)
+            reported = true;
+    }
+    EXPECT_TRUE(reported);
+
+    EXPECT_SCREEN_GOLDEN(screen, "s93/fallback_glyph");
+}

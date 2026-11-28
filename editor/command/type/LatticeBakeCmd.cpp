@@ -6,6 +6,7 @@
 
 #include "Log.h"
 #include "command/type/ModelLoadCmd.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "util/ProjectUtils.h"

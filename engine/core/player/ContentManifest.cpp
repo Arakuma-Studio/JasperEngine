@@ -36,6 +36,10 @@ json ContentManifest::toJson() const {
     if (hasModules) out["modules"] = modules;
     out["allowPlayerMismatch"] = allowPlayerMismatch;
     if (!symbols.empty()) out["symbols"] = symbols;
+    if (!stripped.empty()) out["stripped"] = stripped;
+    if (!buildProfile.empty()) out["buildProfile"] = buildProfile;
+    if (patch > 0) out["patch"] = patch;
+    if (!patchedAt.empty()) out["patchedAt"] = patchedAt;
     return out;
 }
 
@@ -73,6 +77,10 @@ bool ContentManifest::fromJson(const json& in, ContentManifest& out, std::string
         manifest.modules = in.value("modules", std::vector<std::string>{});
         manifest.allowPlayerMismatch = in.value("allowPlayerMismatch", false);
         manifest.symbols = in.value("symbols", std::string());
+        manifest.stripped = in.value("stripped", std::map<std::string, std::string>{});
+        manifest.buildProfile = in.value("buildProfile", std::string());
+        manifest.patch = in.value("patch", 0);
+        manifest.patchedAt = in.value("patchedAt", std::string());
         out = std::move(manifest);
         return true;
     } catch (const json::exception& e) {

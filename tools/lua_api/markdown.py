@@ -4,6 +4,8 @@
 `doc lua-api-reference` serves it. One section per class (base, constructors, properties,
 methods), then the enums, the globals and the Engine events."""
 
+import json
+
 
 def _sig(name, sep, cls, o):
     params = ', '.join(f'{q["name"]}{"?" if q["optional"] else ""}: {q["type"]}' for q in o['params'])
@@ -88,7 +90,8 @@ def reference(api):
     L.append('## Enums')
     L.append('')
     for en in sorted(api['enums'], key=lambda e: e['name'].lower()):
-        values = ', '.join(f'`{v["name"]}`' + (f' = {v["value"]}' if v['value'] is not None else '') for v in en['values'])
+        values = ', '.join(f'`{v["name"]}`' + (f' = {json.dumps(v["value"]) if isinstance(v["value"], str) else v["value"]}'
+                                                   if v['value'] is not None else '') for v in en['values'])
         doc = _doc(en['doc'])
         L.append(f'- **{en["name"]}**' + (f': {doc}' if doc else '') + f' ({values})')
     L.append('')

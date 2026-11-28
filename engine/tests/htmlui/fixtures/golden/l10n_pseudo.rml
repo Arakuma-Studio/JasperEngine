@@ -1,0 +1,26 @@
+<html>
+<head>
+    <title>l10n pseudo</title>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="golden.css"/>
+    <style>
+        /* game-ui-localization.md AC9: a settings panel whose labels are String Table keys, shown in
+           the pseudo-locales en-XA (accented, 40 % longer, bracketed) and ar-XB (right to left);
+           Roboto Bold is loaded by the test with HtmlUI::loadFontFace */
+        .panel { left: 20px; top: 20px; width: 600px; font-family: Roboto; font-weight: bold; font-size: 22px; }
+        .row { display: block; height: 44px; }
+        .label { display: inline-block; width: 300px; }
+        .value { display: inline-block; width: 280px; color: #ffc040; }
+        h2 { display: block; font-size: 30px; height: 56px; color: #40c0ff; }
+    </style>
+</head>
+<body>
+    <div class="abs panel">
+        <h2 data-l10n-id="ui.settings.title">Settings</h2>
+        <div class="row"><span class="label" data-l10n-id="ui.settings.resolution">Resolution</span><span class="value">1920 x 1080</span></div>
+        <div class="row"><span class="label" data-l10n-id="ui.settings.volume">Music Volume</span><span class="value" data-l10n-id="ui.settings.percent" data-l10n-args='{"n": 0.8}'>80%</span></div>
+        <div class="row"><span class="label" data-l10n-id="ui.settings.subtitles">Subtitles</span><span class="value" data-l10n-id="ui.settings.on">On</span></div>
+        <div class="row"><span class="label" data-l10n-id="ui.settings.apply">Apply Changes</span></div>
+    </div>
+</body>
+</html>

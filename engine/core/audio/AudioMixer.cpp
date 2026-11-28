@@ -12,14 +12,6 @@
 
 #include "soloud.h"
 #include "soloud_bus.h"
-#include "soloud_biquadresonantfilter.h"
-#include "soloud_echofilter.h"
-#include "soloud_freeverbfilter.h"
-#include "soloud_eqfilter.h"
-#include "soloud_waveshaperfilter.h"
-#include "soloud_flangerfilter.h"
-#include "soloud_lofifilter.h"
-#include "soloud_bassboostfilter.h"
 #include "soloud_duckfilter.h"
 
 #include <algorithm>
@@ -109,7 +101,6 @@ namespace {
         // the unscaled time of every frame so far: the clock clocked voices start on
         double clock = 0.0;
         unsigned int voiceLimitChanges = 0;
-        unsigned int filterBuilds = 0;
         float sampleRate = 44100.0f;
         std::set<std::string> warnedNames;
         std::set<std::string> rememberDirty;
@@ -249,58 +240,19 @@ namespace {
 
     // ---- SoLoud filters
 
+    // a parameter's value heard now (a filter made again after a timed change starts where it is)
+    float heardParam(const AudioMixerEffectDef& def, const AudioEffectParamInfo& info) {
+        return paramValue(AudioMixerIO::paramTarget(def.id, info.name), AudioMixerIO::effectParam(def, info));
+    }
+
     std::unique_ptr<SoLoud::Filter> makeFilter(const AudioMixerEffectDef& def, EffectState& effect) {
-        state().filterBuilds++;
-        // the values heard now (a filter made again after a timed change starts where it is)
-        auto param = [&def](const char* name) {
+        EffectFilters::countBuild();
+        auto value = [&def](const AudioEffectParamInfo& info) { return heardParam(def, info); };
+        auto param = [&def, &value](const char* name) {
             const AudioEffectParamInfo* info = AudioEffects::findParam(def.type, name);
-            if (!info) return 0.0f;
-            return paramValue(AudioMixerIO::paramTarget(def.id, info->name), AudioMixerIO::effectParam(def, *info));
+            return info ? value(*info) : 0.0f;
         };
         switch (def.type) {
-            case AudioEffectType::LowPass:
-            case AudioEffectType::HighPass:
-            case AudioEffectType::BandPass: {
-                auto filter = std::make_unique<SoLoud::BiquadResonantFilter>();
-                const int type = def.type == AudioEffectType::LowPass ? SoLoud::BiquadResonantFilter::LOWPASS :
-                                 def.type == AudioEffectType::HighPass ? SoLoud::BiquadResonantFilter::HIGHPASS :
-                                 SoLoud::BiquadResonantFilter::BANDPASS;
-                filter->setParams(type, std::clamp(param("cutoff"), 10.0f, 0.45f * state().sampleRate), std::max(0.1f, param("resonance")));
-                return filter;
-            }
-            case AudioEffectType::Echo: {
-                auto filter = std::make_unique<SoLoud::EchoFilter>();
-                effect.echoDelay = std::max(0.01f, param("delay"));
-                filter->setParams(effect.echoDelay, std::clamp(param("decay"), 0.001f, 1.0f), std::clamp(param("filter"), 0.0f, 0.99f));
-                return filter;
-            }
-            case AudioEffectType::Reverb: {
-                auto filter = std::make_unique<SoLoud::FreeverbFilter>();
-                filter->setParams(param("freeze"), param("roomSize"), param("damp"), param("width"));
-                return filter;
-            }
-            case AudioEffectType::Equalizer:
-                return std::make_unique<SoLoud::EqFilter>();
-            case AudioEffectType::Distortion: {
-                auto filter = std::make_unique<SoLoud::WaveShaperFilter>();
-                filter->setParams(std::clamp(param("amount"), -1.0f, 1.0f));
-                return filter;
-            }
-            case AudioEffectType::Flanger: {
-                auto filter = std::make_unique<SoLoud::FlangerFilter>();
-                filter->setParams(std::max(0.001f, param("delay")), std::max(0.01f, param("frequency")));
-                return filter;
-            }
-            case AudioEffectType::Lofi: {
-                auto filter = std::make_unique<SoLoud::LofiFilter>();
-                filter->setParams(std::max(100.0f, param("sampleRate")), std::max(0.5f, param("bitDepth")));
-                return filter;
-            }
-            case AudioEffectType::BassBoost: {
-                auto filter = std::make_unique<SoLoud::BassboostFilter>();
-                filter->setParams(param("boost"));
-                return filter;
-            }
             case AudioEffectType::Duck: {
                 // listens to the side-chain group's bus: made once that bus plays
                 if (!state().built) return nullptr;
@@ -323,45 +275,21 @@ namespace {
                 filter->bypass = effect.bypass;
                 return filter;
             }
-            case AudioEffectType::Unknown:
+            case AudioEffectType::Echo:
+                // the delay its buffer is made for
+                effect.echoDelay = std::max(0.01f, param("delay"));
+                break;
+            default:
                 break;
         }
-        return nullptr;
+        return EffectFilters::make(def.type, value, state().sampleRate);
     }
 
     // what each SoLoud attribute of an effect gets now: its values with the A5 bypass rule
     std::vector<float> effectAttributes(const AudioMixerEffectDef& def) {
-        const AudioEffectInfo* info = AudioEffects::find(def.type);
-        if (!info) return {};
-        int count = 1;
-        for (const AudioEffectParamInfo& param : info->params) count = std::max(count, param.attribute + 1);
-        std::vector<float> attrs(count, 0.0f);
-        float wet = paramValue(AudioMixerIO::paramTarget(def.id, "wet"), def.wet);
-        for (const AudioEffectParamInfo& param : info->params) {
-            float value = paramValue(AudioMixerIO::paramTarget(def.id, param.name), AudioMixerIO::effectParam(def, param));
-            value = std::clamp(value, param.minValue, param.maxValue);
-            if (std::string(param.name) == "cutoff") {
-                const float bypassAt = AudioEffects::lowPassBypassRatio * state().sampleRate;
-                if (def.type == AudioEffectType::LowPass && value >= bypassAt) {
-                    // Unity's 22000 Hz "off": no biquad near Nyquist; the filter keeps running
-                    // close to it, so going under the threshold does not click
-                    value = bypassAt;
-                    wet = 0.0f;
-                } else if (def.type == AudioEffectType::HighPass && value <= AudioEffects::highPassBypassHz) {
-                    value = AudioEffects::highPassBypassHz;
-                    wet = 0.0f;
-                }
-                value = std::clamp(value, 10.0f, 0.49f * state().sampleRate);
-            }
-            attrs[param.attribute] = value;
-        }
-        attrs[0] = std::clamp(wet, 0.0f, 1.0f);
-        if (def.type == AudioEffectType::Limiter) attrs.resize(LimiterFilter::ATTRIBUTE_COUNT, 0.0f);
-        if (def.type == AudioEffectType::Reverb) {
-            // freeze is a switch
-            attrs[1] = attrs[1] >= 0.5f ? 1.0f : 0.0f;
-        }
-        return attrs;
+        const float wet = paramValue(AudioMixerIO::paramTarget(def.id, "wet"), def.wet);
+        return EffectFilters::attributes(def.type, [&def](const AudioEffectParamInfo& info) { return heardParam(def, info); },
+                                         wet, state().sampleRate);
     }
 
     const AudioMixerEffectDef* effectDef(const std::string& effectId) {
@@ -1427,7 +1355,7 @@ bool AudioMixer::isPlatformPaused(){
 
 void AudioMixer::getDebugCounters(unsigned int& voiceLimitChanges, unsigned int& filterBuilds){
     voiceLimitChanges = state().voiceLimitChanges;
-    filterBuilds = state().filterBuilds;
+    filterBuilds = EffectFilters::builds();
 }
 
 bool AudioMixer::isMasterPaused(){

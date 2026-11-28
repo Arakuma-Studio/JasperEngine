@@ -5,6 +5,7 @@
 
 #include "SubscriptionOwnerIndex.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -78,6 +79,8 @@ namespace jasperengine {
         //   it did not run yet, and the one running stays alive until it returns;
         // - the list is compacted after the outermost invoke; nested invokes are fine;
         // - the owner (Signal) can go away during an invoke: the list lives until it ends.
+        // Order: by priority, highest first, then the order they were added (every priority
+        // 0, the default: add order). CancellableEvent is what uses another priority.
         template<typename Signature>
         class SlotList;
 
@@ -92,7 +95,17 @@ namespace jasperengine {
                 std::string tag;
                 Function function;
                 bool removed;
+                int32_t priority;   // in the padding after `removed`
             };
+
+            struct SlotWithoutPriority {
+                uint64_t id;
+                uint64_t ownerKey;
+                std::string tag;
+                Function function;
+                bool removed;
+            };
+            static_assert(sizeof(Slot) == sizeof(SlotWithoutPriority), "a priority must not grow every subscriber");
 
             ~SlotList() override {
                 for (const Slot& slot : slots) {
@@ -103,14 +116,14 @@ namespace jasperengine {
                 }
             }
 
-            uint64_t add(Function function, uint64_t ownerKey, std::string tag) {
+            uint64_t add(Function function, uint64_t ownerKey, std::string tag, int32_t priority = 0) {
                 const uint64_t id = nextId++;
-                Slot slot{id, ownerKey, std::move(tag), std::move(function), false};
+                Slot slot{id, ownerKey, std::move(tag), std::move(function), false, priority};
                 // a vector that grows would move the callback being invoked: wait outside
                 if (depth > 0) {
                     pending.push_back(std::move(slot));
                 } else {
-                    slots.push_back(std::move(slot));
+                    insert(std::move(slot));
                 }
                 live.fetch_add(1, std::memory_order_relaxed);
                 if (ownerKey) SubscriptionOwnerIndex::add(ownerKey, this->shared_from_this(), id);
@@ -165,10 +178,10 @@ namespace jasperengine {
             std::shared_ptr<SlotList> clone() const {
                 auto copy = std::make_shared<SlotList>();
                 for (const Slot& slot : slots) {
-                    if (!slot.removed) copy->add(slot.function, slot.ownerKey, slot.tag);
+                    if (!slot.removed) copy->add(slot.function, slot.ownerKey, slot.tag, slot.priority);
                 }
                 for (const Slot& slot : pending) {
-                    if (!slot.removed) copy->add(slot.function, slot.ownerKey, slot.tag);
+                    if (!slot.removed) copy->add(slot.function, slot.ownerKey, slot.tag, slot.priority);
                 }
                 return copy;
             }
@@ -228,6 +241,17 @@ namespace jasperengine {
                 return removed;
             }
 
+            // After the last slot of a priority >= its own: an append while every priority is 0
+            void insert(Slot&& slot) {
+                if (slots.empty() || slots.back().priority >= slot.priority) {
+                    slots.push_back(std::move(slot));
+                    return;
+                }
+                auto at = std::upper_bound(slots.begin(), slots.end(), slot.priority,
+                    [](int32_t priority, const Slot& other) { return priority > other.priority; });
+                slots.insert(at, std::move(slot));
+            }
+
             void compact() {
                 size_t write = 0;
                 for (size_t read = 0; read < slots.size(); read++) {
@@ -237,7 +261,7 @@ namespace jasperengine {
                 }
                 slots.resize(write);
                 for (Slot& slot : pending) {
-                    if (!slot.removed) slots.push_back(std::move(slot));
+                    if (!slot.removed) insert(std::move(slot));
                 }
                 pending.clear();
                 dirty = false;

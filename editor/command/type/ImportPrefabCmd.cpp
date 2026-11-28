@@ -3,6 +3,7 @@
 
 #include "ImportPrefabCmd.h"
 #include "component/PrefabComponent.h"
+#include "component/Transform.h"
 #include "sceneview/SurfacePlacement.h"
 
 #include "editor/Out.h"
@@ -84,7 +85,9 @@ bool editor::ImportPrefabCmd::execute(){
     prefabComp.guid = guid;
     scene->addComponent<PrefabComponent>(rootEntity, prefabComp);
 
-    scene->setEntityName(rootEntity, ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, rootName));
+    // numbered only when a sibling where it lands (below the drop target, else at the root) has it
+    const Entity landingParent = parent != NULL_ENTITY && scene->findComponent<Transform>(parent) ? parent : NULL_ENTITY;
+    scene->setEntityName(rootEntity, ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, landingParent, rootName));
     sceneProject->entities.push_back(rootEntity);
 
     // Import prefab contents

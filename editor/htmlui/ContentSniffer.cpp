@@ -108,7 +108,7 @@ bool SniffedContent::isDecodableImage() const{
 }
 
 bool SniffedContent::isFont() const{
-    return type == Type::TrueType || type == Type::OpenType;
+    return type == Type::TrueType || type == Type::OpenType || type == Type::Woff || type == Type::Woff2;
 }
 
 bool SniffedContent::isVideo() const{

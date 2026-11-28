@@ -199,6 +199,29 @@ void ring(int fd) {
     raw(fd, s.ring + first, n);
     raw(fd, s.ring, count - n);
 }
+// journal.txt (diag/Journal.h): the header prepared at install, "dropped: N", "---", then the
+// ring's whole entries as raw bytes. Nothing when the journal holds no entry.
+void journal() {
+    const auto& s = jasperengine::diag::crash::detail::state();
+    if (!s.journal || !s.journalCapacity || !s.journalCursor || !s.journalFile[0]) return;
+    const jasperengine::diag::crash::detail::JournalSpan span = jasperengine::diag::crash::detail::journalSpan(s.journal, s.journalCapacity, s.journalCursor->load(std::memory_order_acquire));
+    if (span.entries == 0) return;
+    const int fd = open(s.journalFile, O_CREAT | O_WRONLY | O_TRUNC, 0600);
+    if (fd < 0) return;
+    char head[sizeof(s.journalHeader) + 64];
+    size_t n = jasperengine::diag::crash::detail::appendText(head, sizeof(head), 0, s.journalHeader, s.journalHeaderLength);
+    const uint64_t written = s.journalWritten ? s.journalWritten->load(std::memory_order_acquire) : span.entries;
+    n = jasperengine::diag::crash::detail::appendText(head, sizeof(head), n, "dropped: ");
+    n = jasperengine::diag::crash::detail::appendDecimal(head, sizeof(head), n, written > span.entries ? written - span.entries : 0);
+    n = jasperengine::diag::crash::detail::appendText(head, sizeof(head), n, "\n---\n");
+    raw(fd, head, n);
+    const size_t first = static_cast<size_t>(span.begin % s.journalCapacity);
+    const size_t count = static_cast<size_t>(span.end - span.begin);
+    const size_t part = count < s.journalCapacity - first ? count : s.journalCapacity - first;
+    raw(fd, s.journal + first, part);
+    raw(fd, s.journal, count - part);
+    close(fd);
+}
 [[noreturn]] void defaultAction(int sig) {
     struct sigaction def{};
     def.sa_handler = SIG_DFL;
@@ -341,6 +364,7 @@ __attribute__((noinline)) void fatal(int sig, siginfo_t* info, void* context) {
     const int tail = s.tailFile[0] ? open(s.tailFile, O_CREAT | O_WRONLY | O_TRUNC, 0600) : -1;
     ring(tail);
     if (tail >= 0) close(tail);
+    journal();
 
     // Preserve the editor.log contract: drain already queued records before its FATAL block.
     // This routine has no locks or allocation and detects the logger's own drain thread.

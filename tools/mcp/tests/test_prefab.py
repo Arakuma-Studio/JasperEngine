@@ -189,3 +189,62 @@ async def test_unpack_and_replace(ed: Editor):
     ed.check_eq((await ed.call("get_entity", scene=sid, entity=child, detail="summary"))["parent"]["id"], root)
     await ed.call("move_entity", scene=sid, entity=root, parent=destination)
     ed.check_eq((await ed.call("get_entity", scene=sid, entity=root, detail="summary"))["parent"]["id"], destination)
+
+
+async def test_create_prefab_overwrite(ed: Editor):
+    """S98 REQ-21 / AC19: create_prefab overwrite replaces a prefab's content with a GameObject's and
+    keeps its GUID; every instance updates with its overrides kept (an instance's GameObjects keep
+    their identity whatever their names), the source is an instance afterwards, and one undo puts
+    the old content back. Without overwrite the refusal names it."""
+    sid, root, child, other, path = await fixture(ed, "Overwrite")
+    guid = (await ed.call("get_prefab_info", prefab=path, usage=False))["guid"]
+    await edit(ed, sid, "Other/Child", "scale", [2, 2, 2])
+    ed.check((await info(ed, sid, other))["overrides"], "Other's Child scale is an override")
+
+    # the new content: Root's instance edited (its Child moved and renamed, a GameObject added)
+    await edit(ed, sid, child, "position", [0, 3, 0])
+    await ed.call("rename_entity", scene=sid, entity=child, name="Pillar")
+    await ed.call("create_entity", scene=sid, type="empty", name="Extra", parent=root, position=[1, 0, 0])
+
+    refused = await ed.call("create_prefab", scene=sid, entity=root, path=path, expect_error=True)
+    ed.check("overwrite" in refused, f"the refusal names overwrite: {refused}")
+
+    made = await ed.call("create_prefab", scene=sid, entity=root, path=path, overwrite=True)
+    ed.check_eq(made["prefabs"][0]["guid"], guid, "the GUID stays")
+    ed.check(made["prefabs"][0].get("overwritten"), f"reported as an overwrite: {made}")
+    ed.check_eq((await ed.call("get_prefab_info", prefab=path, usage=False))["guid"], guid, "the asset's GUID stays")
+    ed.check_eq(await value(ed, sid, "Other/Pillar", "position"), [0, 3, 0], "an instance shows the new content")
+    ed.check_eq(await value(ed, sid, "Other/Pillar", "scale"), [2, 2, 2], "and keeps its override on the renamed GameObject")
+    ed.check_eq(await value(ed, sid, "Other/Extra", "position"), [1, 0, 0], "the new GameObject reaches the instance")
+    ed.check_eq(await value(ed, sid, "Other", "position"), [5, 0, 0], "the instance root keeps its placement")
+    now = await info(ed, sid, root)
+    ed.check(now["is_instance_root"] and now["owner"]["prefab"] == path, f"the source is an instance of the prefab: {now}")
+    ed.check_eq(now["overrides"], [], "its edits are the prefab's now")
+    text = (ed.project / path).read_text()
+    ed.check("Extra" in text and "Pillar" in text and guid in text, "the file holds the new content and the GUID")
+
+    await ed.call("undo", scene=sid)
+    ed.check_eq(await value(ed, sid, "Other/Child", "position"), [0, 1, 0], "undo: the old content")
+    ed.check_eq(await value(ed, sid, "Other/Child", "scale"), [2, 2, 2], "undo: the override stays")
+    gone = await ed.call_raw("get_entity", {"scene": sid, "entity": "Other/Extra"})
+    ed.check(gone.is_error, "undo: the new GameObject left the instance")
+    text = (ed.project / path).read_text()
+    ed.check("Extra" not in text and "Pillar" not in text and guid in text, "undo writes the old content back, same GUID")
+    back = await info(ed, sid, root)
+    ed.check(back["is_instance_root"] and back["overrides"], f"undo: the source is the edited instance again: {back}")
+    ed.check_eq(await value(ed, sid, "Root/Pillar", "position"), [0, 3, 0], "with its edits as overrides")
+
+    await ed.call("redo", scene=sid)
+    ed.check_eq(await value(ed, sid, "Other/Extra", "position"), [1, 0, 0], "redo overwrites again")
+    ed.check_eq((await ed.call("get_prefab_info", prefab=path, usage=False))["guid"], guid, "redo keeps the GUID")
+
+    # a prefab cannot hold an instance of itself
+    holder = (await ed.call("create_entity", scene=sid, type="empty", name="Holder"))["entity_id"]
+    await ed.call("instantiate_prefab", scene=sid, prefab=path, parent=holder, name="Inner")
+    msg = await ed.call("create_prefab", scene=sid, entity=holder, path=path, overwrite=True, expect_error=True)
+    ed.check("contain itself" in msg, f"self-containment refused: {msg}")
+    # a file that is not a prefab is never overwritten
+    await ed.call("write_file", path="data/notes.json", content="{}")
+    msg = await ed.call("create_prefab", scene=sid, entity=holder, path="data/notes.json", overwrite=True, expect_error=True)
+    ed.check("not a prefab" in msg, f"a non-prefab file is refused: {msg}")
+    ed.check_eq((ed.project / "data" / "notes.json").read_text(), "{}", "and stays as it was")

@@ -254,4 +254,70 @@ TEST(SpriteSheetPoolTest, RegisteredSourcesComeFirst){
     SpriteSheetPool::clear();
 }
 
+// S94 F49: a frame's skin round-trips canonically; a sheet without skins writes no `skins` (older
+// texts stay byte for byte); a broken skin is dropped with a warning, the frame kept
+TEST(SpriteSheetIO, SkinsRoundTrip){
+    SpriteSheetData s = sampleSheet(2);
+    auto skin = std::make_shared<SpriteSkinGeometry>();
+    skin->bones.push_back({"hip", -1, Vector2(8, 20), Vector2(8, 10)});
+    skin->bones.push_back({"chest", 0, Vector2(8, 10), Vector2(8, 2)});
+    skin->vertices = {Vector2(0, 0), Vector2(16, 0), Vector2(16, 24), Vector2(0, 24)};
+    skin->indices = {0, 1, 2, 0, 2, 3};
+    for (int v = 0; v < 4; v++){
+        SpriteVertexWeights w;
+        w.bones[0] = 0;
+        w.bones[1] = 1;
+        w.weights[0] = v < 2 ? 0.25f : 1.0f;
+        w.weights[1] = v < 2 ? 0.75f : 0.0f;
+        skin->weights.push_back(w);
+    }
+    s.frames[1].skin = skin;
+    const std::string text = writeSheet(s);
+    EXPECT_NE(text.find("\"skins\": ["), std::string::npos) << text;
+    SpriteSheetParseResult parsed = parseSheet(text);
+    ASSERT_TRUE(parsed.ok()) << parsed.error;
+    EXPECT_TRUE(parsed.warnings.empty());
+    EXPECT_EQ(writeSheet(*parsed.sheet), text);
+    ASSERT_FALSE(parsed.sheet->frames[0].skin);
+    ASSERT_TRUE(parsed.sheet->frames[1].skin);
+    const SpriteSkinGeometry& read = *parsed.sheet->frames[1].skin;
+    ASSERT_EQ(read.bones.size(), 2u);
+    EXPECT_EQ(read.bones[1].name, "chest");
+    EXPECT_EQ(read.bones[1].parent, 0);
+    EXPECT_EQ(read.vertices.size(), 4u);
+    EXPECT_EQ(read.indices.size(), 6u);
+    ASSERT_EQ(read.weights.size(), 4u);
+    EXPECT_FLOAT_EQ(read.weights[0].weights[1], 0.75f);
+    EXPECT_EQ(read.weights[0].bones[1], 1);
+
+    EXPECT_EQ(writeSheet(sampleSheet(2)).find("skins"), std::string::npos);
+}
+
+TEST(SpriteSheetIO, BadSkinIsDroppedWithAWarning){
+    SpriteSheetData s = sampleSheet(1);
+    std::string text = writeSheet(s);
+    const std::string skins = "  \"skins\": [\n    {\"frame\": 0, \"bones\": [{\"name\": \"a\", \"parent\": 3, \"head\": [0, 0], \"tail\": [0, 1]}], "
+                              "\"vertices\": [], \"indices\": [], \"weights\": []}\n  ],\n";
+    text.insert(text.find("  \"user_data\""), skins);
+    SpriteSheetParseResult parsed = parseSheet(text);
+    ASSERT_TRUE(parsed.ok());
+    EXPECT_FALSE(parsed.sheet->frames[0].skin);
+    ASSERT_EQ(parsed.warnings.size(), 1u);
+    EXPECT_NE(parsed.warnings[0].find("parent"), std::string::npos) << parsed.warnings[0];
+}
+
+TEST(SpriteSheetIO, SkinWeightsNormalize){
+    std::string error;
+    auto skin = parseSpriteSkin(nlohmann::json::parse(R"({"bones": [{"name": "a", "head": [0, 0], "tail": [0, 1]},
+        {"name": "b", "parent": 0, "head": [0, 1], "tail": [0, 2]}], "vertices": [[0, 0], [1, 0], [0, 1]], "indices": [0, 1, 2],
+        "weights": [[[0, 2], [1, 2]], [], [[1, 0.5]]]})"), error);
+    ASSERT_TRUE(skin) << error;
+    EXPECT_FLOAT_EQ(skin->weights[0].weights[0], 0.5f);
+    EXPECT_FLOAT_EQ(skin->weights[0].weights[1], 0.5f);
+    EXPECT_FLOAT_EQ(skin->weights[1].weights[0], 1.0f) << "an unweighted vertex follows bone 0";
+    EXPECT_EQ(skin->weights[1].bones[0], 0);
+    EXPECT_FLOAT_EQ(skin->weights[2].weights[0], 1.0f);
+    EXPECT_EQ(skin->weights[2].bones[0], 1);
+}
+
 }  // namespace SpriteSheetIOTest_cpp

@@ -13,6 +13,7 @@
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "util/CanvasScaler.h"
+#include "physics/WorldSettings.h"
 #include <string>
 #include <vector>
 
@@ -22,6 +23,18 @@ namespace jasperengine{
         OFF,
         ON,
         AUTO
+    };
+
+    // Environment Lighting > Source (Unity's names: ambientMode, Color and Gradient): where lit
+    // surfaces take their ambient light from. Stored as ints: append only.
+    enum class AmbientMode {
+        // as scenes always drew: the Ambient Color (globalIllum*), which the built-in Lit swaps for
+        // the sky's image (IBL) where the scene has a sky with an image
+        COLOR,
+        // Unity's trilight: sky, equator and ground colours by the surface's facing, projected to
+        // the per-object spherical harmonics (render/AmbientGradient.h); the sky's image still
+        // gives reflections, no longer the diffuse ambient
+        GRADIENT
     };
 
     // Shadow quality, uniform-driven (no shader rebuild). Stored as ints: append only.
@@ -78,6 +91,15 @@ namespace jasperengine{
         HIGH        // 512
     };
 
+    // Where the scene's screen HTML UI documents composite (Unity's Canvas Render Mode): OVERLAY
+    // after post-processing, at the output resolution (Screen Space - Overlay); CAMERA in the
+    // camera pass, before post, at the render scale (Screen Space - Camera). Stored as ints:
+    // append only.
+    enum class UIRenderMode {
+        OVERLAY,
+        CAMERA
+    };
+
     // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
     enum class SceneColorScale {
         FULL,   // the camera pass's resolution
@@ -107,6 +129,15 @@ namespace jasperengine{
         CLASSIC,    // a new hash per pixel and frame (the original grain)
         LENS,       // FidelityFX Lens-derived simplex cells of filmGrainSize pixels
         FILMIC      // a 5x5 lattice of grain particles (desktop / high-end)
+    };
+
+    // What Cavity computes (PostProcessingSettings::cavityType, S100): Screen is Blender's
+    // "curvature" (thin lines from neighbouring normals), World its "cavity" (a soft bevel from
+    // depth samples within a world radius), Both multiplies the two
+    enum class CavityType : int {
+        SCREEN,
+        WORLD,
+        BOTH
     };
 
     // Palette Quantize (S43 R19, PostProcessingSettings::palette*): the ordered dither of the
@@ -150,6 +181,14 @@ namespace jasperengine{
         DAVINCI_INTERMEDIATE    // scene: DaVinci Intermediate, DaVinci Wide Gamut
     };
 
+    // How the vignette falls off (PostProcessingSettings::vignetteFalloff, S94 F19): SMOOTHNESS
+    // from vignetteSmoothness (the engine's original maths), RADII smoothstep(vignetteStart,
+    // vignetteEnd, r), r the roundness-scaled radius, 1 at the screen edge's midpoint
+    enum class VignetteFalloff : int {
+        SMOOTHNESS,
+        RADII
+    };
+
     // Fast post-processing of the main camera (shader library phase 4). Every effect has an
     // enable flag (or a neutral value: exposure 0, tonemap NONE, render scale 1, MSAA 1) and
     // costs nothing while off; a default-constructed struct draws exactly what the engine drew
@@ -187,6 +226,9 @@ namespace jasperengine{
         // size of the engine's colour LUT (16 or 32 per side): 16 is lighter on low-end GPUs and
         // bands under strong grades
         int lutSize = 32;
+        // an image strip laid out with green 0 at the top row (not Unity's layout): its rows are
+        // flipped as the LUT is built (a .cube is unaffected)
+        bool lutFlipGreen = false;
 
         // grayscale / sepia, mixed in by intensity (a colour transform: baked into the LUT, so a
         // T0 effect although it reads like a filter)
@@ -202,6 +244,11 @@ namespace jasperengine{
         float vignetteSmoothness = 0.5f;
         float vignetteRoundness = 1.0f;
         Vector3 vignetteColor = Vector3(0.0f, 0.0f, 0.0f);
+        // the falloff: from smoothness, or between two radii (VignetteFalloff); start and end
+        // are radii where 1 is the screen edge's midpoint (end above start)
+        VignetteFalloff vignetteFalloff = VignetteFalloff::SMOOTHNESS;
+        float vignetteStart = 0.5f;
+        float vignetteEnd = 1.2f;
 
         // +-0.5/255 noise before the 8-bit write, against banding in gradients
         bool ditherEnabled = false;
@@ -225,6 +272,22 @@ namespace jasperengine{
         float edgeDetectThreshold = 0.1f;           // 0..1 luma gradient where edges start
         float edgeDetectIntensity = 1.0f;           // 0..1 mix of the edge colour
         Vector3 edgeDetectColor = Vector3(0.0f, 0.0f, 0.0f);
+
+        // Cavity (S100): lightens convex edges (ridges) and darkens creases (valleys) of the opaque
+        // 3D scene, like Blender's viewport Cavity; one multiply draw in the colour pass after the
+        // opaque queue, reading the scene depth and view-space normals (not a T0-T2 tier).
+        // Widths in pixels are at a 1080-pixel-high target and scale with the target's height
+        bool cavityEnabled = false;
+        CavityType cavityType = CavityType::BOTH;
+        float cavityScreenRidge = 1.0f;             // 0..2 brightening of convex edges (lines)
+        float cavityScreenValley = 1.0f;            // 0..2 darkening of creases (lines)
+        float cavityScreenWidth = 1.0f;             // 1..4 line width, pixels at 1080p
+        float cavityWorldRadius = 0.25f;            // 0.01..5 world-space width of the soft bevel
+        float cavityWorldRidge = 1.0f;              // 0..2.5 brightening of convex edges (bevel)
+        float cavityWorldValley = 1.0f;             // 0..2.5 darkening of creases (bevel)
+        int cavityWorldSamples = 8;                 // 4, 8 or 16 depth samples per pixel
+        float cavityMaxPixelRadius = 24.0f;         // 0..64 cap of the bevel's on-screen radius, pixels at 1080p (0: none)
+        bool cavityDebug = false;                   // shows the cavity factor alone as grey (0.5 neutral)
 
         bool filmGrainEnabled = false;
         float filmGrainIntensity = 0.2f;            // 0..1
@@ -429,6 +492,11 @@ namespace jasperengine{
         // library phase 3): FULL = the camera pass's resolution, HALF = half of it (default; mobile)
         SceneColorScale sceneColorScale = SceneColorScale::HALF;
 
+        // the screen HTML UI documents (S92): where they composite, and their target's MSAA samples
+        // (0: the project's htmlUiMsaaSamples, else 1, 2, 4 or 8)
+        UIRenderMode htmlUiRenderMode = UIRenderMode::OVERLAY;
+        int htmlUiMsaaSamples = 0;
+
         // Planar reflections (RenderSystem's water reflection passes, one per water height and
         // viewing camera): their resolution, the layers they draw (with the viewer's culling
         // mask), whether they sample the viewer's shadow maps, their far clip (0: the viewer's),
@@ -450,6 +518,13 @@ namespace jasperengine{
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear
         float globalIllumIntensity = 0.1f;
+        // a scene file without the key keeps COLOR (as it was drawn); the gradient's colours are
+        // used as they are, as Unity's (its Intensity Multiplier is the Skybox source's), stored
+        // linear (Color::sRGBToLinear, gamma 2.2, so the Inspector shows Unity's defaults)
+        AmbientMode ambientMode = AmbientMode::COLOR;
+        Vector3 ambientSkyColor = Vector3(0.0328759f, 0.0384727f, 0.0511221f);       // sRGB (54, 58, 66)
+        Vector3 ambientEquatorColor = Vector3(0.0083731f, 0.0103978f, 0.0118813f);   // sRGB (29, 32, 34)
+        Vector3 ambientGroundColor = Vector3(0.0012017f, 0.0009924f, 0.0006382f);    // sRGB (12, 11, 9)
 
         // lights evaluated per object (1..16); the rest of the lights reaching it are folded
         // into its spherical-harmonics ambient
@@ -472,6 +547,13 @@ namespace jasperengine{
         // default 1.0 keeps 2D scenes visually unchanged until the user dims it
         Vector3 ambientLight2DColor = Vector3(1.0, 1.0, 1.0); // stored linear
         float ambientLight2DIntensity = 1.0f;
+        // Light Steps (S78 R1, R2): each Light 2D's light quantized into this many bands, 0..16;
+        // 0 is off (smooth light, the variants of before)
+        int light2DSteps = 0;
+        // a tinting Ambient Light 2D multiplies the unlit 2D-lit materials of a scene without a
+        // Light 2D too (S78 R6); new scenes have it on, a scene file without the key (and a cooked
+        // record before 1.8) is off, as it was drawn before S78
+        bool ambientLight2DWithoutLights = true;
         ShadowQuality shadow2DQuality = ShadowQuality::LOW;
 
         bool ssaoEnabled = false;
@@ -496,6 +578,13 @@ namespace jasperengine{
         bool physicsInterpolation = true;
         // Box2D sub-steps of each fixed step, 1..16 (more: stiffer joint chains and stacks)
         int physics2DSubSteps = 4;
+        // the fixed step (seconds) while this is the main scene; 0 = Project Settings > Time's
+        // (a load applies it: Engine::applySceneUpdateTime)
+        float fixedTimestep = 0.0f;
+        // the 2D world's units, rotation cap and tuning and the 3D solver (owned by PhysicsSystem
+        // as gravity; saved as flat keys, physicsWorldSettingFields)
+        ScenePhysics2DSettings physics2DWorld;
+        ScenePhysics3DSettings physics3DWorld;
 
         // fixed game resolution: when enabled and this scene is the Engine main scene, the main
         // camera renders into an offscreen framebuffer of this size, upscaled to the view rect

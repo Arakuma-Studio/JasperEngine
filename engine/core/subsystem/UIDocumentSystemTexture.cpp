@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // UIDocumentSystem texture-mode documents (phase 1, p1-rtt, spec §3.12): HtmlUITextureState
-// (one context and target per document) and world-space pointer input.
+// (one context and target per document, World Space ones too: UIDocumentSystemWorld.cpp) and
+// world-space pointer input.
 //
 // A TEXTURE-mode document lives in its own HtmlUIContext ("tex:<scene>:<entity>"): its
 // layout size is textureWidth x textureHeight divided by its pixel ratio (CSS px), and it
@@ -107,6 +108,15 @@ namespace {
 
     int captureKey(int pointer, int button, bool touch){
         return touch ? pointer : -1 - button;
+    }
+
+    // a mouse button is down (Input's level); uncaptured, it is the drag of whoever got its press
+    bool textureMouseButtonDown(){
+        for (int button = 0; button <= D_MOUSE_BUTTON_LAST; button++){
+            if (Input::getMouseButton(button))
+                return true;
+        }
+        return false;
     }
 
     // the size a component asks for: texture pixels and the CSS px -> texture px ratio
@@ -240,7 +250,7 @@ bool UIDocumentSystem::textureUnloadDocument(Entity entity){
 
     // back to SCREEN (a reload follows): the texture context goes, the screen one loads it
     const UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entity);
-    if (!component || component->renderMode != UIDocumentRenderMode::TEXTURE)
+    if (!component || !rendersToTexture(component->renderMode))
         textureRemoveEntity(entity);
 
     return true;
@@ -302,6 +312,21 @@ void UIDocumentSystem::textureDestroyAll(){
     }
     textureState->captured.clear();
     textureState->focus = NULL_ENTITY;
+}
+
+void UIDocumentSystem::textureReleaseGpu(){
+    if (!textureState)
+        return;
+
+    for (auto& pair : textureState->entries){
+        HtmlUITextureDocument& entry = pair.second;
+        entry.context->releaseGpuResources();
+        // the Framebuffer object stays for its consumers; the next render makes its texture again
+        if (entry.target)
+            entry.target->destroy();
+        entry.rendered = false;
+        entry.showing = false;
+    }
 }
 
 void UIDocumentSystem::textureUpdate(){
@@ -575,8 +600,7 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
         Vector2 uv = entry.lastUV;
         if (hasCamera){
             const UIDocumentComponent* document = scene->findComponent<UIDocumentComponent>(entity);
-            const Entity surface = (document && document->inputSurface != NULL_ENTITY) ? document->inputSurface : entity;
-            const UIWorldHit hit = raycastMeshUV(scene, surface, ray);
+            const UIWorldHit hit = document ? raycastDocumentSurface(entity, *document, ray) : UIWorldHit();
             if (hit.hit)
                 uv = hit.uv;
         }
@@ -608,8 +632,7 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
             if (!document || !document->interactive || doc == documents.end() || !isShown(doc->second))
                 continue;
 
-            const Entity surface = (document->inputSurface != NULL_ENTITY) ? document->inputSurface : pair.first;
-            const UIWorldHit hit = raycastMeshUV(scene, surface, ray);
+            const UIWorldHit hit = raycastDocumentSurface(pair.first, *document, ray);
             if (hit.hit)
                 candidates.push_back({pair.first, &pair.second, hit});
         }
@@ -653,5 +676,10 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
         }
     }
 
+    // the press decided the owner (S93 R1): a release or a finger's move no document captured
+    // is not consumed, nor a mouse move while a button another owner got is held; they only
+    // hover the document
+    if (phase == PointerPhase::UP || (phase == PointerPhase::MOVE && (touch || textureMouseButtonDown())))
+        return false;
     return receiver != NULL_ENTITY;
 }

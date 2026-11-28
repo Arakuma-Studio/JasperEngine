@@ -35,7 +35,11 @@ namespace jasperengine{
 
     class Rigidbody2D;
     class CharacterController2D;
+    class Joint2D;
+    enum class Joint2DType;
     class Rigidbody;
+    class Joint3D;
+    enum class Joint3DType;
     class CharacterController;
     class Buoyancy;
     class WaterVolume;
@@ -120,6 +124,7 @@ namespace jasperengine{
         Quaternion getWorldRotation() const;
 
         void setScale(const float factor);
+        void setScale(const float x, const float y, const float z);
         void setScale(Vector3 scale);
         Vector3 getScale() const;
         Vector3 getWorldScale() const;
@@ -157,6 +162,12 @@ namespace jasperengine{
         // the GameObject's 2D CharacterController, added with its defaults when it has none
         CharacterController2D getCharacterController2D();
         void removeCharacterController2D();
+        // Unity AddComponent<HingeJoint2D>() and the like: a child GameObject "Joint 2D" with a
+        // joint of the type (Unity's defaults) whose bodyA is this one, made at the next step.
+        // Without a Rigidbody 2D here: logged, and an empty handle (false)
+        Joint2D addJoint2D(Joint2DType type);
+        // every Joint 2D whose bodyA is this GameObject (on it, its children or elsewhere)
+        std::vector<Joint2D> getJoints2D() const;
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         Rigidbody getRigidbody();
@@ -164,6 +175,10 @@ namespace jasperengine{
         // the GameObject's CharacterController, added with its defaults when it has none
         CharacterController getCharacterController();
         void removeCharacterController();
+        // as addJoint2D, with a Rigidbody: a child GameObject "Joint 3D"
+        Joint3D addJoint3D(Joint3DType type);
+        // every Joint 3D whose bodyA is this GameObject
+        std::vector<Joint3D> getJoints3D() const;
         // the GameObject's Buoyancy, added with its defaults when it has none
         Buoyancy getBuoyancy();
 #endif

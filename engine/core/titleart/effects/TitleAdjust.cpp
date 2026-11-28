@@ -127,9 +127,9 @@ bool titleart::titleAdjustmentIsIdentity(const Json& a) {
 
 bool titleart::bakeTitleToneCurve(const Json& a, std::vector<float>& rgb) {
     const std::string type = typeOf(a);
-    const int n = TITLE_LUT_SIZE;
+    constexpr int n = TITLE_LUT_SIZE;
     rgb.assign((size_t)n * 3, 0.0f);
-    auto x = [n](int i) { return (double)i / (n - 1); };
+    auto x = [](int i) { return (double)i / (n - 1); };
     if (type == "brightness_contrast") {
         for (int i = 0; i < n; i++) {
             const float v = (float)brightnessContrast(num(a, "brightness"), num(a, "contrast"), x(i));

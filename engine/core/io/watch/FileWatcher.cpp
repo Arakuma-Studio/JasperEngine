@@ -5,6 +5,7 @@
 
 #include "backends/Backends.h"
 #include "AtomicFile.h"
+#include "ProjectFileIndex.h"
 
 #include <algorithm>
 #include <cctype>
@@ -241,6 +242,16 @@ std::unique_ptr<FileWatcher> FileWatcher::createPolling(std::chrono::millisecond
     return watch::createNullBackend();
 #else
     return watch::createPollingBackend(interval);
+#endif
+}
+
+std::unique_ptr<FileWatcher> FileWatcher::createPolling(std::chrono::milliseconds interval, ProjectFileIndex baseline) {
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && !defined(JASPERENGINE_WATCH_FSEVENTS))
+    (void)interval;
+    (void)baseline;
+    return watch::createNullBackend();
+#else
+    return watch::createPollingBackend(interval, std::move(baseline));
 #endif
 }
 

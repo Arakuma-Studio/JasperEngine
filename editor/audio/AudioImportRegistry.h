@@ -4,6 +4,7 @@
 #pragma once
 
 #include "audio/AudioImport.h"
+#include "audio/AudioImportSettings.h"
 
 #include <filesystem>
 #include <map>
@@ -19,9 +20,14 @@ namespace jasperengine::editor {
     // engine's AudioImportTable; an export writes them as je-audio-imports.json.
     class AudioImportRegistry {
     public:
-        // An asset's settings resolved against its file (headers alone unless a trim is `auto`,
-        // which reads the silence through the analysis cache). True with defaults when it has none.
+        // An asset's settings resolved against its file (headers alone unless a trim or Force To Mono is
+        // `auto`, which read the silence or the stereo width through the analysis cache). True with
+        // defaults when it has none.
         static bool resolve(const Project& project, const std::filesystem::path& asset, ClipImportSettings& out, std::string& error);
+        // A file's channels and stereo width from the analysis cache, for Force To Mono's hints (the
+        // Inspector, the Build Report): never decodes; reads and hashes the file once per change (its
+        // hash is remembered by path, size and time). channels 0 when the file is not analysed yet.
+        static AudioImportSettings::Channels channelsOf(const Project& project, const std::filesystem::path& asset);
         // Every clip with settings, by its asset-relative path, in path order. A section that does
         // not read or does not fit its file is listed in problems ("<path>: <reason>") and left out.
         static std::map<std::string, ClipImportSettings> collect(const Project& project, std::vector<std::string>& problems);

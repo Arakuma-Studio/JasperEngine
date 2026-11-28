@@ -28,38 +28,39 @@ namespace Easing {
 			double SampleY(double t) const { return ((ay * t + by) * t + cy) * t; }
 			double SampleDerivativeX(double t) const { return (3.0 * ax * t + 2.0 * bx) * t + cx; }
 
-			double SolveX(double x, double epsilon) const
+			double SolveX(double x) const
 			{
+				constexpr double epsilon = 1e-12;
 				double t = x;
 				for (int i = 0; i < 8; i++)
 				{
 					const double error = SampleX(t) - x;
-					if (std::fabs(error) < epsilon)
+					if (error == 0.0)
 						return t;
 					const double derivative = SampleDerivativeX(t);
 					if (std::fabs(derivative) < 1e-6)
 						break;
-					t -= error / derivative;
+					const double step = error / derivative;
+					if (std::fabs(step) < epsilon)
+						return t;
+					t -= step;
+					if (t < 0.0 || t > 1.0)
+						break;
 				}
 
 				double lower = 0.0, upper = 1.0;
-				t = x;
-				if (t < lower)
-					return lower;
-				if (t > upper)
-					return upper;
-				while (lower < upper)
+				t = 0.5;
+				// Bound the parameter error: a tiny input error can still give a visibly wrong output near a vertical tangent.
+				while (upper - lower > epsilon)
 				{
 					const double sample = SampleX(t);
-					if (std::fabs(sample - x) < epsilon)
+					if (sample == x)
 						return t;
 					if (x > sample)
 						lower = t;
 					else
 						upper = t;
 					t = (upper - lower) * 0.5 + lower;
-					if (upper - lower < 1e-12)
-						break;
 				}
 				return t;
 			}
@@ -240,9 +241,6 @@ namespace Easing {
 				for (float input : inputs)
 					points.push_back(Point{output, input, true});
 			}
-			if (points.size() < 2)
-				return false;
-
 			// The first and last inputs default to 0% and 100%; an input below an earlier one takes the largest earlier
 			// input; runs of points without input are spread evenly between their neighbours.
 			if (!points.front().has_input)
@@ -330,10 +328,8 @@ namespace Easing {
 			float gradient = 0.f;
 			if (x1 > 0.f)
 				gradient = y1 / x1;
-			else if (y1 == 0.f && x2 > 0.f)
+			else if (x2 > 0.f)
 				gradient = y2 / x2;
-			else if (y1 == 0.f && y2 == 0.f)
-				gradient = 1.f;
 			return gradient * x;
 		}
 		if (x > 1.f)
@@ -341,17 +337,15 @@ namespace Easing {
 			float gradient = 0.f;
 			if (x2 < 1.f)
 				gradient = (y2 - 1.f) / (x2 - 1.f);
-			else if (y2 == 1.f && x1 < 1.f)
+			else if (x1 < 1.f)
 				gradient = (y1 - 1.f) / (x1 - 1.f);
-			else if (y2 == 1.f && y1 == 1.f)
-				gradient = 1.f;
 			return 1.f + gradient * (x - 1.f);
 		}
 		if (x1 == y1 && x2 == y2)
 			return x;
 
 		const UnitBezier bezier(x1, y1, x2, y2);
-		return (float)bezier.SampleY(bezier.SolveX(x, 1e-7));
+		return (float)bezier.SampleY(bezier.SolveX(x));
 	}
 
 	float EvaluateSteps(int count, Tween::StepPosition position, float t, bool before_flag)
@@ -379,10 +373,14 @@ namespace Easing {
 		return float(current_step / double(jumps));
 	}
 
-	float EvaluateLinear(const Vector<Tween::LinearStop>& stops, float t)
+	float EvaluateLinear(const Vector<Tween::LinearStop>& stops, float t, bool before_flag)
 	{
-		if (stops.size() < 2)
+		if (stops.empty())
 			return t;
+		if (stops.size() == 1 || (before_flag && t == stops.front().input))
+			return stops.front().output;
+		if (t < stops.front().input && stops[0].input == stops[1].input)
+			return stops.front().output;
 
 		// The last point whose input is at most t (the first one if there is none), and the point after it; the last
 		// segment is extended past the end.
@@ -392,6 +390,8 @@ namespace Easing {
 			if (stops[i].input <= t)
 				a = i;
 		}
+		if (t == stops[a].input)
+			return stops[a].output;
 		if (a == stops.size() - 1)
 			a--;
 		const Tween::LinearStop& p0 = stops[a];

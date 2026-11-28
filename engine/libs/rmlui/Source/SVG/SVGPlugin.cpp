@@ -11,11 +11,14 @@
 namespace Rml {
 namespace SVG {
 
+	void RegisterContentElements();
+
 	class SVGPlugin : public Plugin {
 	public:
 		void OnInitialise() override
 		{
 			SVGCache::Initialize();
+			RegisterContentElements();
 
 			element_instancer = MakeUnique<ElementInstancerGeneric<ElementSVG>>();
 			Factory::RegisterElementInstancer("svg", element_instancer.get());

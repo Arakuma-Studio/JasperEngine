@@ -30,6 +30,8 @@
 #include "pose/HumanBones.h"
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,6 +91,37 @@ namespace jasperengine::anim{
     JASPERENGINE_API float maskWeightOf(const AvatarMaskDef& mask, EntityRegistry* scene, Entity root, Entity entity, const HumanoidSlots* humanoid);
     // the root part's weight (root motion)
     JASPERENGINE_API float maskRootMotionWeight(const AvatarMaskDef& mask);
+
+    // The boundary bones of a masked layer (docs/specs/mesh-space-rotation.md R5, D2), where Mesh
+    // Space Rotation applies. A bone b with a parent p is one when the mask starts or increases
+    // there (w[b] > w[p]), or when it stops right under where it starts (w[b] < w[p] and the mask
+    // starts at p). Elsewhere a child follows its parent locally (Unity's behaviour: fingers left
+    // out of an arm mask follow the hand). The mask starts at a bone right under the root when
+    // that bone weighs above 0 (rig space weighs nothing), and at `hips` (the humanoid hips' bone
+    // when the mask weighs body parts, else -1) when they weigh above 0: the bones above the hips
+    // are the mask's root part, so a body-part mask on from the root starts the body there.
+    // `weights` and `parents` hold `count` bones, parents first; a parent of -1 is the root, so a
+    // bone right under the root is never one. `out` is cleared, then filled in bone order
+    // (parents first); bones past index 65535 are not listed. Pure, no allocation once `out` has
+    // the capacity: the Animator's bind, the Animation Player and the editor's "Applies at" line
+    // share it.
+    JASPERENGINE_API void maskBoundaryBones(const float* weights, const int* parents, size_t count, int hips, std::vector<uint16_t>& out);
+
+    // The Animation Player's rig for Mesh Space Rotation (docs/specs/mesh-space-rotation.md R16):
+    // the `animated` GameObjects (what its clips' transform tracks and humanoid outputs bind) and
+    // their ancestors below `root`, by depth (parents first), and each one's parent bone (-1:
+    // right under the root). A GameObject not below the root is skipped. The runtime's node
+    // table and the editor's "Applies at" line share it.
+    struct JASPERENGINE_API PlayerRig{
+        std::vector<Entity> bones;
+        std::vector<int> parents;
+    };
+    JASPERENGINE_API PlayerRig playerRig(EntityRegistry* scene, Entity root, const std::vector<Entity>& animated);
+    // `mask`'s boundary bones on that rig (indices into rig.bones): maskBoundaryBones over
+    // maskWeightOf, a body-part mask's body starting at the humanoid's hips; `pathEntities` from
+    // bindMaskPaths(mask, scene, root), `humanoid` null or not valid: no body parts
+    JASPERENGINE_API void playerMaskBoundaryBones(const AvatarMaskDef& mask, EntityRegistry* scene, Entity root, const PlayerRig& rig,
+                                                  const std::vector<Entity>& pathEntities, const HumanoidSlots* humanoid, std::vector<uint16_t>& out);
 
 }
 

@@ -2228,7 +2228,11 @@ std::string ScriptTimer::toString() const{
 
 void ScriptScheduler::setTimerAwaitable(ExternalAwaitable awaitable){ externalTimer = awaitable; }
 
-int ScriptSchedulerLua::start(lua_State* L){ return finish(L, coroutineStartImpl(L)); }
+int ScriptSchedulerLua::start(lua_State* L){
+    if (LuaBinding::isPreviewContext())
+        return luaL_error(L, "Coroutine scheduling is unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
+    return finish(L, coroutineStartImpl(L));
+}
 
 int ScriptSchedulerLua::running(lua_State* L){
     auto it = S().threads.find(L);
@@ -2255,10 +2259,20 @@ int ScriptSchedulerLua::waitUntil(lua_State* L){ return finish(L, waitPredicateI
 int ScriptSchedulerLua::waitWhile(lua_State* L){ return finish(L, waitPredicateImpl(L, false)); }
 int ScriptSchedulerLua::waitFor(lua_State* L){ return finish(L, waitForImpl(L)); }
 
-int ScriptSchedulerLua::timerAfter(lua_State* L){ return finish(L, timerImpl(L, false)); }
-int ScriptSchedulerLua::timerEvery(lua_State* L){ return finish(L, timerImpl(L, true)); }
+int ScriptSchedulerLua::timerAfter(lua_State* L){
+    if (LuaBinding::isPreviewContext())
+        return luaL_error(L, "Timer scheduling is unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
+    return finish(L, timerImpl(L, false));
+}
+int ScriptSchedulerLua::timerEvery(lua_State* L){
+    if (LuaBinding::isPreviewContext())
+        return luaL_error(L, "Timer scheduling is unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
+    return finish(L, timerImpl(L, true));
+}
 
 int ScriptSchedulerLua::startCoroutine(lua_State* L){
+    if (LuaBinding::isPreviewContext())
+        return luaL_error(L, "Coroutine scheduling is unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
     if (!lua_istable(L, 1))
         return luaL_error(L, "startCoroutine: call it with a colon on a script instance: self:startCoroutine(fn, ...)");
     // the method of a name is looked up here, with its metamethods, before any C++ object
@@ -2278,8 +2292,16 @@ int ScriptSchedulerLua::startCoroutine(lua_State* L){
 
 int ScriptSchedulerLua::stopCoroutine(lua_State* L){ return finish(L, stopCoroutineImpl(L)); }
 int ScriptSchedulerLua::stopAllCoroutines(lua_State* L){ return finish(L, stopAllCoroutinesImpl(L)); }
-int ScriptSchedulerLua::invoke(lua_State* L){ return finish(L, invokeImpl(L, false)); }
-int ScriptSchedulerLua::invokeRepeating(lua_State* L){ return finish(L, invokeImpl(L, true)); }
+int ScriptSchedulerLua::invoke(lua_State* L){
+    if (LuaBinding::isPreviewContext())
+        return luaL_error(L, "Invoke scheduling is unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
+    return finish(L, invokeImpl(L, false));
+}
+int ScriptSchedulerLua::invokeRepeating(lua_State* L){
+    if (LuaBinding::isPreviewContext())
+        return luaL_error(L, "Invoke scheduling is unavailable in UI frame previews: use anime.createTimer/anime.createTimeline or record_game");
+    return finish(L, invokeImpl(L, true));
+}
 int ScriptSchedulerLua::cancelInvoke(lua_State* L){ return finish(L, cancelInvokeImpl(L)); }
 int ScriptSchedulerLua::isInvoking(lua_State* L){ return finish(L, isInvokingImpl(L)); }
 

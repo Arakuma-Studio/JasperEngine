@@ -13,7 +13,7 @@ import re
 import tempfile
 import unittest
 
-from lua_api import doctest, extract, stubs, suggestions
+from lua_api import doctest, extract, parser, stubs, suggestions
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 BINDINGS = os.path.join(REPO, 'engine', 'core', 'script', 'binding')
@@ -21,6 +21,7 @@ CORE = os.path.join(REPO, 'engine', 'core')
 FIXTURES = os.path.join(os.path.dirname(__file__), 'fixtures')
 
 _API = None
+_BUILDER = None
 
 
 def api():
@@ -28,6 +29,41 @@ def api():
     if _API is None:
         _API = extract.extract(BINDINGS, CORE, 'test')
     return _API
+
+
+def builder():
+    global _BUILDER
+    if _BUILDER is None:
+        _BUILDER = extract.build(BINDINGS, CORE)
+    return _BUILDER
+
+
+# a pointer to a math value: LuaBridge passes nil as nullptr and one value where the C++ reads
+# several (S95 REQ-2: Quaternion(nil) crashed, Quaternion(Vector3) read past it)
+_RAW_MATH_POINTER = re.compile(r'\b(?:Vector[234]|Matrix[34]|Quaternion)\s*\*')
+
+
+def raw_math_pointer_params(bd):
+    """`file:line Class.member type` for every Lua-callable parameter of a raw math pointer
+    type: constructor signatures and the arguments of functions (a method's self excluded)"""
+    found = []
+
+    def where(call):
+        return f'{os.path.relpath(call.src.path, REPO)}:{call.line}'
+
+    for c in bd.b.classes:
+        for call in c.ctors:
+            targs = list(call.targs) or [t for t in (bd.lambda_ctor_targ(a) for a in call.args) if t is not None]
+            for targ in targs:
+                text = parser.join_tokens(targ)
+                if _RAW_MATH_POINTER.search(text):
+                    found.append(f'{where(call)} {c.name} constructor {text}')
+        for m in c.members:
+            for params, _ret, _defaults in getattr(m, 'cpp_sigs', []):
+                for cpp_type, _name in params:
+                    if _RAW_MATH_POINTER.search(cpp_type):
+                        found.append(f'{where(m.call)} {c.name}.{m.name} {cpp_type}')
+    return found
 
 
 def check_schema(test, data):
@@ -79,6 +115,21 @@ class LuaApiJson(unittest.TestCase):
 
     def test_nothing_unresolved(self):
         self.assertEqual(api()['unresolved'], [])
+
+    def test_anime_split_text_shapes(self):
+        classes = {c['name']: c for c in api()['classes']}
+        anime = classes['anime']
+        split = next((m for m in anime['methods'] if m['name'] == 'splitText'), None)
+        self.assertIsNotNone(split)
+        self.assertEqual(split['overloads'][0]['returns'], ['AnimeTextSplitter'])
+        self.assertEqual(split['overloads'][0]['params'][1]['type'], 'AnimeSplitTextParams')
+        splitter = classes['AnimeTextSplitter']
+        properties = {p['name']: p['type'] for p in splitter['properties']}
+        for name in ('chars', 'words', 'lines'):
+            self.assertEqual(properties[name], 'UIElement[]')
+        for name in ('split', 'refresh', 'revert'):
+            method = next(m for m in splitter['methods'] if m['name'] == name)
+            self.assertEqual(method['overloads'][0]['returns'], ['AnimeTextSplitter'])
 
     def test_round_trip_through_a_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -145,7 +196,24 @@ class LuaApiJson(unittest.TestCase):
             for key in ('modules',):
                 self.assertIsInstance(c[key], list)
                 for m in c['methods'] + c['properties']:
-                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer', 'noise', 'voxel', 'terrainworld', 'terrainedit'}, m['name'])
+                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer', 'noise', 'voxel', 'terrainworld', 'terrainedit', 'dialogue', 'inputscripts'}, m['name'])
+
+
+class BindingLint(unittest.TestCase):
+
+    def test_no_raw_math_pointer_parameters(self):
+        """S95 AC-3: no binding takes a pointer to a Vector, Matrix or Quaternion"""
+        self.assertEqual(raw_math_pointer_params(builder()), [])
+
+    def test_raw_math_pointer_check_sees_bindings(self):
+        """the check reads the C++ parameter types it looks at"""
+        quaternion = next(c for c in builder().b.classes if c.name == 'Quaternion')
+        from_axes = next(m for m in quaternion.members if m.name == 'fromAxes')
+        types = [t for params, _, _ in from_axes.cpp_sigs for t, _ in params]
+        self.assertEqual(types, ['const Vector3&'] * 3)
+        self.assertTrue(_RAW_MATH_POINTER.search('void(const Vector3*)'))
+        self.assertTrue(_RAW_MATH_POINTER.search('const Matrix4 *'))
+        self.assertFalse(_RAW_MATH_POINTER.search('const Vector3&'))
 
 
 class Emitters(unittest.TestCase):
@@ -158,6 +226,10 @@ class Emitters(unittest.TestCase):
             self.assertIn('onReload', files['Script.lua'])
             self.assertIn('ScriptReloadInfo', files['Script.lua'])
             self.assertIn('function Editor.call(tool, args, callback) end', files['EditorScript.lua'])
+            # a layer by index or name (docs/specs/mesh-space-rotation.md AC13)
+            self.assertIn('---@param layer integer|string\n---@param enabled boolean\nfunction Animator:setLayerMeshSpaceRotation(layer, enabled) end',
+                          files['Animator.lua'])
+            self.assertIn('function Animator:getLayerMeshSpaceRotation(layer) end', files['Animator.lua'])
             self.assertIn('HtmlUITypes.lua', files)
             self.assertFalse(any('-- unresolved:' in text for text in files.values()))
             self.assertTrue(os.path.exists(os.path.join(tmp, 'lua', stubs.LUALS_PLUGIN_NAME)))
@@ -258,6 +330,31 @@ class Emitters(unittest.TestCase):
         self.assertIn('frameCount', {p['name'] for p in sheet['properties']})
         self.assertTrue(any(m['name'] == 'load' and m['static'] for m in sheet['methods']), 'SpriteSheet.load is static')
 
+    def test_svg_drawable_stub_uses_valid_parameter_names(self):
+        from lua_api import parser
+        signature = parser.Builder.override_sig(None, parser.OVERRIDES[('anime', 'createDrawable')]['overloads'][0])
+        overload = {'params': [{'name': name, 'type': kind, 'optional': optional}
+                               for name, kind, optional in signature.params], 'returns': [signature.ret]}
+        cls = {'name': 'anime', 'base': None, 'doc': [], 'conditions': [], 'eventObject': False,
+               'constructors': [], 'properties': [], 'callOverloads': [], 'operators': [], 'enumTables': [],
+               'methods': [{'name': 'createDrawable', 'static': True, 'doc': [], 'conditions': [],
+                            'unresolved': [], 'overloads': [overload]}]}
+        emitter = stubs.Emitter({'classes': [cls]})
+        emitter.emit_class(cls)
+        self.assertIn('function anime.createDrawable(targets, start, finish) end', emitter.files['anime.lua'])
+
+    def test_svg_api_signatures(self):
+        classes = {c['name']: c for c in api()['classes']}
+        methods = {m['name']: m for m in classes['anime']['methods']}
+        expected = {'createDrawable': 'UIElement[]', 'morphTo': 'AnimeStagger', 'createMotionPath': 'AnimeMotionPath|nil'}
+        for name, result in expected.items():
+            self.assertIn(name, methods)
+            self.assertTrue(methods[name]['static'])
+            overload = methods[name]['overloads'][0]
+            self.assertEqual(overload['returns'], [result])
+            self.assertEqual(overload['params'][0]['type'], 'AnimeTargets')
+            self.assertTrue(all(parameter['optional'] for parameter in overload['params'][1:]))
+
     def test_pixel_particles(self):
         """S49 R40 (AC12): ps.pixelArt, ps.simulationMode, ps:getAnalyticParticle, and setRamp on a
         module's colour (ParticleSystemGradient, live) and on a MinMaxGradient value"""
@@ -271,6 +368,20 @@ class Emitters(unittest.TestCase):
         gradient = classes['MinMaxGradient']
         self.assertIn('setRamp', {m['name'] for m in gradient['methods']})
         self.assertTrue({'ramp', 'rampSteps', 'rampReverse', 'rampBias'} <= {p['name'] for p in gradient['properties']})
+
+    def test_nodiscard_flag(self):
+        """An OVERRIDES entry with 'nodiscard' reaches the JSON and becomes ---@nodiscard in the stub, so
+        LuaLS reports a dropped CancellableEvent:invoke result (cancellable-prioritised-events R9, R32)"""
+        classes = {c['name']: c for c in api()['classes']}
+
+        def method(cls, name):
+            return next(m for m in classes[cls]['methods'] if m['name'] == name)
+        self.assertTrue(method('CancellableEvent', 'invoke').get('nodiscard'))
+        self.assertNotIn('nodiscard', method('Event', 'invoke'))
+        with tempfile.TemporaryDirectory() as tmp:
+            files, _ = stubs.write_stubs(api(), os.path.join(tmp, 'stubs.h'), os.path.join(tmp, 'lua'))
+        self.assertRegex(files['CancellableEvent.lua'], r'---@nodiscard\n(---@[^\n]*\n)*function CancellableEvent:invoke\(')
+        self.assertNotIn('---@nodiscard', files['Event.lua'])
 
     def test_lua_only_marked(self):
         """C++ completion offers Engine::deltatime only if C++ has it (Doriax 755972f92): a static

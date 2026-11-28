@@ -2,7 +2,9 @@
 shaders.md "Asynchronous creation and the warm-up list"): get_render_stats.shader_creation (AC17),
 the Shader Creation settings rows (AC16), a lobe toggle that never leaves an empty frame and ends
 on the exact variant (AC6), the scene ready state waiting for creations (AC8), recording the
-warm-up list in Play and exporting it (AC9), and the Lua API (AC17)."""
+warm-up list in Play and exporting it (AC9), and the Lua API (AC17). The GPU quirks of those
+decisions forced on draw the same image (docs/specs/release-performance-and-gpu-quirks.md AC21; on the
+NVIDIA lane, where no rule applies them)."""
 
 from __future__ import annotations
 
@@ -10,6 +12,8 @@ import json
 
 import pngdiff
 from harness import Editor
+
+ALL_QUIRKS_ON = "gl_no_worker_context:on,gl_no_compile_threads:on,gl_no_warm_draws:on"
 
 CI = True
 EDITOR = {"create": True, "name": "AsyncShaders"}
@@ -184,3 +188,40 @@ async def test_lua_api(ed: Editor):
         ed.check_eq(values[5], 0, "and no entries")
     finally:
         await ed.call("play", action="stop")
+
+
+async def test_forced_gpu_quirks_draw_the_same_image(ed: Editor):
+    """Two editors on the saved ball scene, the second with every GPU quirk forced on
+    (JASPERENGINE_GPU_QUIRKS): once creation is idle, their Scene views are the same pixels, and the
+    second reports the three quirks as forced on. A quirk changes how a frame is made, never what it shows."""
+    await ball_scene(ed)
+    shots = []
+    rule_quirks: set = set()
+    for label, env in (("quirks-rules", {}), ("quirks-forced", {"JASPERENGINE_GPU_QUIRKS": ALL_QUIRKS_ON})):
+        async with Editor(project=ed.project, label=label, env=env) as other:
+            opened = await other.call("open_scene", scene="async_balls.scene")
+            sid = opened["scene"]["id"]
+            await other.call("select_scene", scene=sid)
+            await other.call("set_scene_camera", scene=sid, position=[0, 0.5, 3.0], target=[0, 0, 0],
+                             display={"show_grid_3d": False, "hide_light_icons": True, "hide_selection_outline": True})
+            await idle(other)
+            await other.call("wait", frames=5)
+            await idle(other)
+            shots.append(await scene_shot(other))
+            info = await other.call("get_device_info")
+            if not env:
+                rule_quirks = {q["name"] for q in info["quirks"]}
+            if env:
+                forced = {q["name"]: q["source"] for q in info["quirks"]}
+                other.check_eq(forced, {"gl_no_worker_context": "forced_on", "gl_no_compile_threads": "forced_on",
+                                        "gl_no_warm_draws": "forced_on"}, f"get_device_info.quirks: {info['quirks']}")
+    (w1, h1, a), (w2, h2, b) = shots
+    ed.check_eq((w1, h1), (w2, h2), "the same view size")
+    largest = max((abs(x - y) for x, y in zip(a, b)), default=255)
+    # On a software GL the rules already apply gl_no_worker_context and gl_no_compile_threads, and
+    # gl_no_warm_draws acts only with a worker context: both editors make their frames the same way,
+    # and two editors' frames there are the same image within test_batching's 1 (two CI runs
+    # differed by 1). Where the quirks change how frames are made (the GPU lane), every channel holds.
+    same_path = {"gl_no_worker_context", "gl_no_compile_threads"} <= rule_quirks
+    ed.check(largest <= (1 if same_path else 0),
+             f"the forced quirks draw the same pixels: max channel difference {largest} (rules applied {sorted(rule_quirks)})")

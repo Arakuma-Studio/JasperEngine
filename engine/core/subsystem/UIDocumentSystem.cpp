@@ -16,8 +16,11 @@
 #include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
 #include "htmlui/HtmlUIClock.h"
+#include "htmlui/HtmlUIImageCache.h"
 #include "htmlui/UIParticleSystemElement.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "htmlui/HtmlUIFontDiagnostics.h"
+#include "htmlui/HtmlUIPrewarm.h"
 
 #include <atomic>
 
@@ -46,6 +49,14 @@ namespace {
     // the scene whose context shows the (global) RmlUi debugger
     UIDocumentSystem* debuggerOwner = nullptr;
 
+    // UIDocumentSystem::getMenuRevision: Engine::isMenuShowing recounts only after a change
+    uint32_t documentMenuRevision = 0;
+    void bumpMenuRevision(){ documentMenuRevision++; }
+
+}
+
+uint32_t UIDocumentSystem::getMenuRevision(){
+    return documentMenuRevision;
 }
 
 UIDocumentSystem::UIDocumentSystem(Scene* scene): SubSystem(scene){
@@ -71,6 +82,16 @@ void UIDocumentSystem::destroyContext(){
     documents.clear();
     safeAreaApplied.clear();
     inputState.reset();
+    // the context's documents go: the cursor overlay with them
+    cursorOverlay = nullptr;
+    cursorOverlayImage = nullptr;
+    cursorOverlayGraphic.clear();
+    cursorOverlayLook[0] = -1.0f;
+    if (!menuEntities.empty() || !cursorEntities.empty()){
+        menuEntities.clear();
+        cursorEntities.clear();
+        bumpMenuRevision();
+    }
     if (context)
         contextScenes().erase(context->getRmlContext());
     delete context;
@@ -91,7 +112,15 @@ void UIDocumentSystem::destroy(){
         document.needReload = true;
         document.loaded = false;
         document.loadFailed = false;
+        document.appliedMenu = false;
+        document.appliedCursor = false;
     }
+}
+
+void UIDocumentSystem::releaseGpu(){
+    if (context)
+        context->releaseGpuResources();
+    textureReleaseGpu();
 }
 
 bool UIDocumentSystem::ensureContext(){
@@ -229,7 +258,7 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         document.loadFailed = false;
 
         if (!document.filename.empty()){
-            if (document.renderMode != UIDocumentRenderMode::TEXTURE) scriptDocumentLoading(document.filename);
+            if (!rendersToTexture(document.renderMode)) scriptDocumentLoading(document.filename);
             // the context logged why
             Rml::ElementDocument* loadedDocument = loadEntityDocument(entity, document.filename);
             if (loadedDocument){
@@ -247,14 +276,22 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
     }
 
     auto it = documents.find(entity);
-    if (it == documents.end())
+    if (it == documents.end()){
+        setInputFlagsApplied(entity, document, false, false);
         return;
+    }
     Rml::ElementDocument* rmlDocument = it->second;
 
     if (forceApply || document.sortOrder != document.appliedSortOrder){
         // a numeric z-index also stops RmlUi pulling a focused document to the front
         rmlDocument->SetProperty(Rml::PropertyId::ZIndex, Rml::Property((float)document.sortOrder, Rml::Unit::NUMBER));
         document.appliedSortOrder = document.sortOrder;
+    }
+
+    // S93 R35: the clock its animations run on (a change keeps their progress)
+    if (forceApply || document.updateMode != document.appliedUpdateMode){
+        rmlDocument->SetAnimationClock(HtmlUIClock::animationClockOf(document.updateMode));
+        document.appliedUpdateMode = document.updateMode;
     }
 
     if (forceApply || visible != document.appliedVisible){
@@ -266,6 +303,31 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         }
         document.appliedVisible = visible;
     }
+    setInputFlagsApplied(entity, document, visible && document.interactive && document.isMenu,
+                         visible && document.interactive && document.gamepadCursor && document.renderMode == UIDocumentRenderMode::SCREEN);
+}
+
+void UIDocumentSystem::setInputFlagsApplied(Entity entity, UIDocumentComponent& document, bool menu, bool cursor){
+    bool changed = false;
+    if (menu != document.appliedMenu || (menuEntities.count(entity) > 0) != menu){
+        document.appliedMenu = menu;
+        static uint64_t menuOrder = 0;
+        if (menu)
+            menuEntities[entity] = ++menuOrder;
+        else
+            menuEntities.erase(entity);
+        changed = true;
+    }
+    if (cursor != document.appliedCursor || (cursorEntities.count(entity) > 0) != cursor){
+        document.appliedCursor = cursor;
+        if (cursor)
+            cursorEntities[entity] = true;
+        else
+            cursorEntities.erase(entity);
+        changed = true;
+    }
+    if (changed)
+        bumpMenuRevision();
 }
 
 void UIDocumentSystem::update(double dt){
@@ -273,6 +335,9 @@ void UIDocumentSystem::update(double dt){
 
     // anime on the UI clock, before RmlUi's update (idempotent per frame: every scene calls it)
     AnimEngine::instance().tick(HtmlUIClock::now());
+    // S93: prewarmed glyphs placed within their budget, fallback glyphs reported (once per frame)
+    HtmlUIPrewarm::update();
+    HtmlUIFontDiagnostics::update();
 
     // runs paused too: the editor shows documents of a stopped scene
     if (!Engine::isViewLoaded())
@@ -373,6 +438,9 @@ void UIDocumentSystem::onComponentRemoved(Entity entity, ComponentId componentId
     unloadEntityDocument(entity);
     textureRemoveEntity(entity);
     scriptComponentRemoved(entity);
+    styleSheetsComponentRemoved(entity);
+    if (menuEntities.erase(entity) + cursorEntities.erase(entity) > 0)
+        bumpMenuRevision();
 }
 
 bool UIDocumentSystem::hasVisibleDocument() const{
@@ -395,6 +463,14 @@ void UIDocumentSystem::toContext(float& x, float& y) const{
         x = x * (float)dimensions.x / (float)canvasWidth;
     if (canvasHeight > 0)
         y = y * (float)dimensions.y / (float)canvasHeight;
+}
+
+void UIDocumentSystem::toCanvas(float& x, float& y) const{
+    const Rml::Vector2i dimensions = context->getDimensions();
+    if (dimensions.x > 0)
+        x = x * (float)Engine::getCanvasWidth() / (float)dimensions.x;
+    if (dimensions.y > 0)
+        y = y * (float)Engine::getCanvasHeight() / (float)dimensions.y;
 }
 
 // phase-0 entry points: the mouse (touch = false), phase-1 methods in UIDocumentSystemInput.cpp
@@ -493,8 +569,10 @@ bool UIDocumentSystem::isAllLoaded() const{
             anyVisible = true;
     }
 
-    // a shown document is loaded once it has been drawn
-    return (!anyVisible || (context && context->hasRenderedFrame())) && textureAllRendered();
+    // a shown document is loaded once it has been drawn, its images decoded (S93 R18: a decoded
+    // image is uploaded by the next frame that draws it)
+    return (!anyVisible || (context && context->hasRenderedFrame())) && textureAllRendered() &&
+           HtmlUIImageCache::get().getDecodingCount() == 0;
 }
 
 bool UIDocumentSystem::setDebuggerVisible(bool visible){
@@ -555,4 +633,8 @@ void UIDocumentSystem::setVerboseDiagnostics(bool verbose){
 
 bool UIDocumentSystem::getVerboseDiagnostics(){
     return htmlUiVerboseDiagnostics;
+}
+
+void UIDocumentSystem::setHtmlUiImageCacheMiB(int mib){
+    HtmlUIImageCache::setBudgetMiB(mib);
 }

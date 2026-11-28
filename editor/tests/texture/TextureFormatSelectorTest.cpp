@@ -239,8 +239,9 @@ TEST(TextureFormatSelector, BlockFormatsNeedMultiplesOfFour){
             EXPECT_FALSE(choice.uncompressed);
             ASSERT_EQ(choice.warnings.size(), 1u);
             EXPECT_NE(choice.warnings[0].find("132x68"), std::string::npos) << choice.warnings[0];
-            // a rescale is no reason for --check to fail
+            // a rescale is no reason for --check to fail, nor a format fallback (S99 R14)
             EXPECT_TRUE(choice.problems.empty());
+            EXPECT_TRUE(choice.fallbackFrom.empty());
         }
     }
     // sprite / ui: uncompressed instead, with the warning
@@ -251,6 +252,8 @@ TEST(TextureFormatSelector, BlockFormatsNeedMultiplesOfFour){
         EXPECT_EQ(choice.format, F::RGBA8);
         EXPECT_EQ(choice.sizeMultiple, 1);
         EXPECT_EQ(choice.problems.size(), 1u);
+        // the block format it replaced, for a build's report of fallbacks (S99 R14)
+        EXPECT_EQ(choice.fallbackFrom.rfind("BC", 0), 0u) << choice.fallbackFrom;
     }
     // ASTC takes any size
     const TextureFormatChoice astc =
@@ -258,6 +261,7 @@ TEST(TextureFormatSelector, BlockFormatsNeedMultiplesOfFour){
     EXPECT_FALSE(astc.uncompressed);
     EXPECT_EQ(astc.format, F::ASTC_6x6);
     EXPECT_TRUE(astc.problems.empty());
+    EXPECT_TRUE(astc.fallbackFrom.empty());
     // and so do the sizes that already are multiples
     EXPECT_TRUE(TextureFormatSelector::select(selectorInputs(TextureFamily::Desktop, TextureImportType::Default, false, false,
                                                              TextureCookQuality::Normal, 128, 64)).problems.empty());

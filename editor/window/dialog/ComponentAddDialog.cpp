@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ComponentAddDialog.h"
+#include "audio/SourceEffectEdit.h"
 #include "component/ScriptComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
@@ -59,6 +60,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::MeshComponent, "Draws a mesh with its materials"},
             {ComponentType::ModelComponent, "Loads a glTF, OBJ or FBX model"},
             {ComponentType::InstancedMeshComponent, "Draws many copies of the mesh in one call"},
+            {ComponentType::VertexColorsComponent, "Colors per vertex of this Model or Mesh, kept beside it: the source is never written"},
             {ComponentType::MeshPolygonComponent, "Builds a flat mesh from polygon points"},
             {ComponentType::TerrainComponent, "Heightmap terrain with texture layers"},
             {ComponentType::VoxelVolumeComponent, "A box of smooth voxel terrain: caves, overhangs and destruction"},
@@ -74,11 +76,13 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::CapsuleShadowCasterComponent, "Soft capsule shadows of a character from its bones"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
+            {ComponentType::SpriteSkinComponent, "Bends this GameObject's Sprite with bone GameObjects (2D skeletal animation)"},
             {ComponentType::SpriteBatchComponent, "Draws many instances of this GameObject's Sprite in one call per texture page (filled by scripts)"},
             {ComponentType::GridComponent, "Cell layout of the Tilemap Layers on this GameObject and below it"},
             {ComponentType::TilemapLayerComponent, "A layer of tiles from a Tileset on a Grid"},
             {ComponentType::TilemapCollider2DComponent, "Colliders generated from this GameObject's Tilemap Layer"},
             {ComponentType::SortingGroupComponent, "Sorts this GameObject and its children as one item by Sorting Layer and Order in Layer"},
+            {ComponentType::OutlineComponent, "Outlines this GameObject's mesh and the meshes below it (skinned models too), through walls or not"},
             {ComponentType::TitleArtRendererComponent, "Shows a Title Art through this Image or Sprite: Baked, Realtime or Glyph Atlas, with live effects"},
             {ComponentType::LineRendererComponent, "Draws lines: a polyline with width, colour gradient, joints and caps, or debug segments"},
             {ComponentType::PointsComponent, "Draws a point cloud"},
@@ -94,6 +98,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::ForceFieldComponent, "Pushes the particles of systems with External Forces"},
             {ComponentType::FluidSimulationComponent, "GPU fluid with dye, bloom and sunrays, drawn on the sprite or mesh"},
             {ComponentType::LocalVolumetricFogComponent, "A box or sphere of extra volumetric fog"},
+            {ComponentType::FogZoneComponent, "A box or sphere with its own fog look, blended by the camera's position"},
             {ComponentType::VolumetricCloudsComponent, "Raymarched clouds lit by the sun and the sky"},
             {ComponentType::TrailRendererComponent, "Draws a fading ribbon behind a moving object"},
         }},
@@ -101,6 +106,8 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
             {ComponentType::CharacterControllerComponent, "A capsule moved by script that climbs steps and slopes"},
+            {ComponentType::WheelColliderComponent, "A car wheel with suspension and tire friction, below a dynamic Rigidbody"},
+            {ComponentType::VehicleDrivetrainComponent, "An engine, gear box and differentials driving the body's Wheel Colliders"},
             {ComponentType::WaterVolumeComponent, "A body of water: what has a Buoyancy floats in it"},
             {ComponentType::WaterExcluderComponent, "Keeps water out of a boat or a dry space: no surface inside, no underwater fade, cargo stays dry"},
             {ComponentType::WaterWakeComponent, "Foam and waves behind it while it moves through water"},
@@ -181,8 +188,13 @@ ComponentAddDialog::ComponentAddDialog() {
         {"Scripts", ICON_FA_CODE, {
             {ComponentType::ScriptComponent, "Runs C++ or Lua scripts"},
         }},
+        // dialogue-graphs.md R13
+        {"Gameplay", ICON_FA_COMMENTS, {
+            {ComponentType::DialogueRunnerComponent, "Plays a .dialogue: its lines and choices to a view, its actions and conditions to the game's handlers"},
+        }},
         {"Miscellaneous", ICON_FA_PUZZLE_PIECE, {
             {ComponentType::Transform, "Position, rotation, scale and parent"},
+            {ComponentType::SimulationCullingComponent, "Freezes its scripts' updates, Animator and bodies while far from the player or over unloaded ground"},
         }},
     };
 }
@@ -244,6 +256,7 @@ void ComponentAddDialog::open(
     m_onNewScript = onNewScript;
     m_scripts.clear();
     m_onScript = nullptr;
+    m_onAudioFilter = nullptr;
     m_anchorMin = anchorMin;
     m_anchorMax = anchorMax;
 }
@@ -251,6 +264,10 @@ void ComponentAddDialog::open(
 void ComponentAddDialog::setScripts(std::vector<ScriptCandidate> scripts, std::function<void(const ScriptCandidate&)> onScript) {
     m_scripts = std::move(scripts);
     m_onScript = std::move(onScript);
+}
+
+void ComponentAddDialog::setAudioFilters(std::function<void(const std::string& effect)> onAudioFilter) {
+    m_onAudioFilter = std::move(onAudioFilter);
 }
 
 void ComponentAddDialog::finish(bool cancelled) {
@@ -314,8 +331,8 @@ void ComponentAddDialog::show() {
 
     // Rows of the current page
     struct Row {
-        enum Kind { Category, Component, Script, NewScript } kind;
-        int index;          // category index (a script row: its index in m_scripts)
+        enum Kind { Category, Component, Script, NewScript, AudioFilter } kind;
+        int index;          // category index (a script row: its index in m_scripts; a filter: in filterAliases)
         ComponentType type; // component rows
         const char* description;
         bool enabled;
@@ -336,6 +353,15 @@ void ComponentAddDialog::show() {
             }
             rows.push_back({Row::Component, match.category, match.type, description, true});
         }
+        if (m_onAudioFilter) {
+            const std::string query = search::normalize(m_searchBuffer);
+            const auto& filters = SourceEffectEdit::filterAliases();
+            for (int i = 0; i < (int)filters.size(); i++) {
+                if (search::fuzzyScore(query, search::normalize(filters[i].name)) >= 0) {
+                    rows.push_back({Row::AudioFilter, i, ComponentType::AudioSourceComponent, filters[i].description, true});
+                }
+            }
+        }
         if (m_onScript) {
             const std::string query = search::normalize(m_searchBuffer);
             for (int i = 0; i < (int)m_scripts.size(); i++) {
@@ -355,6 +381,12 @@ void ComponentAddDialog::show() {
     } else {
         for (const ComponentEntry& entry : m_categories[m_category].entries) {
             rows.push_back({Row::Component, m_category, entry.type, entry.description, canAdd(entry.type)});
+        }
+        if (m_onAudioFilter && std::string(m_categories[m_category].name) == "Audio") {
+            const auto& filters = SourceEffectEdit::filterAliases();
+            for (int i = 0; i < (int)filters.size(); i++) {
+                rows.push_back({Row::AudioFilter, i, ComponentType::AudioSourceComponent, filters[i].description, true});
+            }
         }
         if (m_onScript && std::string(m_categories[m_category].name) == "Scripts") {
             for (int i = 0; i < (int)m_scripts.size(); i++) {
@@ -444,6 +476,9 @@ void ComponentAddDialog::show() {
         } else if (row.kind == Row::Component) {
             icon = Catalog::getComponentIcon(row.type);
             label = Catalog::getComponentDisplayName(row.type);
+        } else if (row.kind == Row::AudioFilter) {
+            icon = Catalog::getComponentIcon(ComponentType::AudioSourceComponent);
+            label = SourceEffectEdit::filterAliases()[row.index].name;
         } else if (row.kind == Row::Script) {
             icon = ICON_FA_FILE_CODE;
             label = m_scripts[row.index].name + (m_scripts[row.index].type == ScriptType::LUA ? " (Lua script)" : " (C++ script)");
@@ -501,6 +536,11 @@ void ComponentAddDialog::show() {
         } else if (row.kind == Row::Component) {
             if (m_onAdd) m_onAdd(row.type);
             finish(false);
+        } else if (row.kind == Row::AudioFilter) {
+            std::function<void(const std::string&)> onAudioFilter = m_onAudioFilter;
+            const std::string effect = SourceEffectEdit::filterAliases()[row.index].effect;
+            finish(false);
+            if (onAudioFilter) onAudioFilter(effect);
         } else if (row.kind == Row::Script) {
             const ScriptCandidate script = m_scripts[row.index];
             std::function<void(const ScriptCandidate&)> onScript = m_onScript;

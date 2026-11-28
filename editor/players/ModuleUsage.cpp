@@ -27,6 +27,8 @@
 #include "component/WaterExcluderComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/Rigidbody2DComponent.h"
@@ -38,6 +40,7 @@
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/VoxelVolumeComponent.h"
+#include "component/DialogueRunnerComponent.h"
 
 #include <algorithm>
 #include <cctype>
@@ -55,7 +58,7 @@ namespace {
 
     // the modules a dynamic access or C++ code can reach: every one the detection decides
     const std::vector<std::string>& detectedModules() {
-        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel", "terrainworld", "terrainedit"};
+        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel", "terrainworld", "terrainedit", "dialogue", "inputscripts"};
         return modules;
     }
 
@@ -287,6 +290,7 @@ namespace {
             if (scan.navigationInBuilds) add("navigation", "Project Settings", "Navigation > Include in Builds");
             if (scan.audioImportTable) add("soundlayer", "Audio clips", "import settings that change what a clip plays");
             for (const std::string& clip : scan.cueClips) add("soundlayer", clip, "animation clip with audio cues");
+            for (const std::string& file : scan.dialogues) add("dialogue", file, "dialogue graph");
             for (const std::string& source : scan.cppScripts)
                 for (const std::string& module : detectedModules()) add(module, source, "C++ script (it can use any engine code)");
             for (const ModuleContent& content : scan.contents) scanContent(content);
@@ -396,6 +400,7 @@ namespace {
                 if (registry->findComponent<AudioSnapshotComponent>(entity) && registry->findComponent<ActionComponent>(entity))
                     add("soundlayer", content.label, "Mixer Snapshot action " + object);
                 if (has(registry->findComponent<UIDocumentComponent>(entity))) add("htmlui", content.label, "UI Document on " + object);
+                if (has(registry->findComponent<DialogueRunnerComponent>(entity))) add("dialogue", content.label, "Dialogue Runner on " + object);
                 // S81 R52: an enabled Realtime or Glyph Atlas title (Lua cannot make one, R67)
                 if (const TitleArtRendererComponent* title = registry->findComponent<TitleArtRendererComponent>(entity)) {
                     if (title->enabled && title->renderMode != TitleArtRenderMode::BAKED) {
@@ -408,6 +413,8 @@ namespace {
                 if (has(registry->findComponent<RigidbodyComponent>(entity))) add("physics3d", content.label, "Rigidbody on " + object);
                 if (has(registry->findComponent<Joint3DComponent>(entity))) add("physics3d", content.label, "Joint 3D on " + object);
                 if (has(registry->findComponent<CharacterControllerComponent>(entity))) add("physics3d", content.label, "Character Controller on " + object);
+                if (has(registry->findComponent<WheelColliderComponent>(entity))) add("physics3d", content.label, "Wheel Collider on " + object);
+                if (has(registry->findComponent<VehicleDrivetrainComponent>(entity))) add("physics3d", content.label, "Vehicle Drivetrain on " + object);
                 if (has(registry->findComponent<BuoyancyComponent>(entity))) add("physics3d", content.label, "Buoyancy on " + object);
                 if (const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity)) {
                     // T1 R54: a terrain a game may edit loads its maps for edits and uploads them
@@ -478,6 +485,10 @@ namespace {
                     if (!member) dynamicAccess(tokens, i, where(token.line));
                     if (lower(token.text).find("videoplayer") != std::string::npos) addVideoPlayer(where(token.line), token.text);
                     if (token.text == "DebugOverlay") add("htmlui", where(token.line), "DebugOverlay (an HTML UI document)");
+                    // the Dialogue table is bound with the C API, which the Lua API description does not list
+                    if (!member && (token.text == "Dialogue" || token.text == "DialogueRunner")) add("dialogue", where(token.line), token.text);
+                    // InputRecording's functions are not in the Lua API description either; a replay comes only from it
+                    if (!member && (token.text == "InputRecording" || token.text == "InputReplay")) add("inputscripts", where(token.line), token.text);
                     if (lower(token.text).find("video") != std::string::npos) addVideo(where(token.line), token.text);
                 } else if (token.kind == LuaToken::String) {
                     for (const std::string& word : wordsOf(token.text)) {
@@ -662,6 +673,7 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
         if (!script.path.empty()) scan.cppScripts.push_back(script.path.generic_string());
     for (SceneProject& scene : project->getScenes()) {
         if (scene.filepath.empty()) continue;   // not a scene of the build (an export saves it first)
+        if (!scene.inBuild) continue;           // opened without being listed (S98 REQ-28)
         scan.contents.push_back({"scene " + scene.name, scene.scene, scene.entities});
     }
     // the prefabs the build registers: a script can spawn any of them (as collectRequiredShaderKeys
@@ -690,6 +702,8 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
         try {
             Prefab loaded;
             loaded.loadRegistry(DocumentFiles::read(project->getProjectPath() / info.prefabPath, DocumentKind::Prefab).root);
+            // its linked .material files as the build reads them (S98 REQ-29)
+            if (loaded.followMaterialFiles) project->applyLinkedMaterialFiles(loaded.registry.get());
             std::shared_ptr<EntityRegistry> registry(std::move(loaded.registry));
             scan.contents.push_back({label, registry.get(), loaded.registryEntities});
             scan.owned.push_back(registry);
@@ -715,5 +729,7 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
         const anim::ClipParseResult parsed = anim::parseClip(text);
         if (parsed.ok() && !parsed.data->audio.empty()) scan.cueClips.push_back(path.generic_string());
     }
+    for (const fs::path& path : project->findProjectFiles([](const std::string& p) { return Util::isDialogueFile(p); }))
+        scan.dialogues.push_back(path.generic_string());
     return scan;
 }

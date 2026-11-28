@@ -190,7 +190,9 @@ async def test_check_fork_manifest(ed: Editor):
         vert = (harness.REPO / "engine" / "shaderlib" / "library" / "surface.vert").read_text()
         await ed.call("write_file", path="shaders/BadManifest.vert", content=vert, timeout=300)
         await ed.call("write_file", path="shaders/BadManifest.frag", content=BAD_MANIFEST_FRAG, timeout=300)
-        r = await ed.call("check_shader", shader="shaders/BadManifest", shader_type="mesh", timeout=300)
+        raw = await ed.call_raw("check_shader", {"shader": "shaders/BadManifest", "shader_type": "mesh"}, timeout=300)
+        ed.check(raw.is_error, f"a failed check is an error: {raw.text[:500]}")
+        r = raw.value
         ed.check_eq(r["failed"], 1, f"manifest errors fail the check: {r!r}")
         findings = {(f["line"], f["severity"]): f["message"] for f in r["findings"]}
         ed.check(

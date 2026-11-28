@@ -6,3 +6,7 @@ I/JasperEngine: [gate] touch 1 began
 I/JasperEngine: [gate] touch 1 down 1
 I/JasperEngine: [gate] touch 0 ended
 I/JasperEngine: [gate] touch 1 ended
+# then a mouse tap (`input mouse tap`: a pointer of the mouse tool type) switches the input scheme to
+# Keyboard&Mouse and a touchscreen tap back to Touch (an emulator starts on Touch)
+I/JasperEngine: [gate] scheme Keyboard&Mouse
+I/JasperEngine: [gate] scheme Touch

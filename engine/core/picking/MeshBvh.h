@@ -148,6 +148,10 @@ namespace jasperengine {
         bool raycast(const MeshBvhRay& ray, MeshBvhHit& hit) const;
         // every hit, nearest first (ties by triangle), at most MAX_ALL_HITS
         void raycastAll(const MeshBvhRay& ray, std::vector<MeshBvhHit>& hits) const;
+        // The triangles whose corners' box touches `box` (the mesh's space), in leaf order, at
+        // most `limit` (0: all): the editor's z-fighting check reads two meshes' faces where
+        // their bounds overlap. Returns false when the limit cut the list.
+        bool overlapping(const AABB& box, std::vector<Triangle>& out, size_t limit = 0) const;
 
         // New corner positions (the geometry's vertex order, e.g. a posed copy): the
         // triangles take them and the boxes are refitted bottom up; the topology is kept.

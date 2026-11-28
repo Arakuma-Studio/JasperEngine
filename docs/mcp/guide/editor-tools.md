@@ -73,8 +73,16 @@ exactly 1/fps per frame (frame k is game time k/fps, the same on every machine) 
 the Recorder window's resolution); `audio: true` mixes the game's sound in (from Play's start
 only). The result is the sidecar (`frames, fps, width, height, encoder, scene, take,
 startFrame, warnings, wallSeconds`) with `files` or `movie`; `<output>.recording.json` holds the
-same. `cancel_job` stops early and still finalises. A `play` `fixed_fps` is replaced while
+same. `report` compares the time taken with the `estimate` the job got at submit and lists its
+`fallbacks` (another encoder than libx264, a clamped size or fps, audio dropped): tell the user. `cancel_job` stops early and still finalises. A `play` `fixed_fps` is replaced while
 recording and restored after (`overrode_fixed_fps`).
+
+Fresh recordings restart the recorded stack's HTML UI documents at the current UI epoch
+before Play initializes scripts. CSS and `anime` begin at their relative time zero, hold
+during loading and advance by exactly 1/fps for each game frame; other documents keep their
+clock origin. `anime`'s `clock = "game"` follows the fixed scaled game delta. Recording
+mid-Play preserves the current UI origin; finishing releases the UI clock at its last
+recorded time so playback continues smoothly, or restores a clock that was already pinned.
 
 From a shell: `jasperengine-editor call --project P --wait-job record_game --frames 90 --format mp4 --output out.mp4`.
 

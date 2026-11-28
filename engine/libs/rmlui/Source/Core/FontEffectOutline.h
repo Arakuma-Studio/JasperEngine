@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../Include/RmlUi/Core/ConvolutionFilter.h"
 #include "../../Include/RmlUi/Core/FontEffect.h"
 #include "../../Include/RmlUi/Core/FontEffectInstancer.h"
 
@@ -21,6 +20,8 @@ public:
 
 	// Fork (S16-F3)
 	bool GetDistanceEffect(DistanceEffect& effect) const override;
+	// Fork (S93 R12)
+	bool GetBitmapKey(BitmapKey& key) const override;
 
 	bool GetGlyphMetrics(Vector2i& origin, Vector2i& dimensions, const FontGlyph& glyph) const override;
 
@@ -28,7 +29,6 @@ public:
 
 private:
 	int width;
-	ConvolutionFilter filter;
 };
 
 /**

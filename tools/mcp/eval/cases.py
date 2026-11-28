@@ -32,6 +32,72 @@ README = "# Space Dodge\n\nA small arcade game made with JasperEngine.\n\nContro
 
 GAME_FILES = {"scripts/player.lua": PLAYER_LUA, "README.md": README}
 
+UI_FRAME_FILES = {
+    "assets/ui/title.html": """<html><head><link type="text/rcss" href="title.rcss" /></head>
+<body><h1>Motion title</h1></body></html>
+""",
+    "assets/ui/title.rcss": """body { width: 1080px; height: 1350px; background-color: #182438; }
+h1 { color: white; animation: reveal 3s linear both; }
+@keyframes reveal { from { opacity: 0; } to { opacity: 1; } }
+""",
+}
+
+HUD_HTML = """<!DOCTYPE html>
+<html>
+<head><link rel="stylesheet" href="hud.css"></head>
+<body><div id="panel"><span id="score">0</span></div></body>
+</html>
+"""
+
+HUD_CSS = """#panel { position: absolute; left: 20px; top: 20px; width: 240px; height: 80px; }
+#score { color: #ffffff; font-size: 32px; }
+"""
+
+# engine/tests/core/fixtures/dialogue/walk.dialogue as a guard's talk, with a line nothing leads to (n12)
+GUARD_DIALOGUE = """{
+  "formatVersion": 1, "kind": "dialogue", "kindVersion": 1, "nextId": 21,
+  "nodes": [
+    {"id": "n1", "type": "entry", "position": [0.0, 0.0], "params": {"name": "start", "arguments": ""}},
+    {"id": "n2", "type": "set", "position": [200.0, 0.0], "params": {"assign": "$gold = 10; $met = false"}},
+    {"id": "n3", "type": "line", "position": [400.0, 0.0], "params": {"speaker": "guard", "text": "Halt! You have {gold} coins.",
+      "options": [{"id": "o1", "text": "Pay five", "condition": "$gold >= 5", "action": "$gold -= 5"}, {"id": "o2", "text": "Leave", "style": "exit"}]}},
+    {"id": "n4", "type": "branch", "position": [600.0, 0.0], "params": {"condition": "$gold > 3 and not $met"}},
+    {"id": "n5", "type": "action", "position": [800.0, 0.0], "params": {"action": "quest.start:intro"}},
+    {"id": "n6", "type": "jump", "position": [1000.0, 0.0], "params": {"entry": "inside"}},
+    {"id": "n7", "type": "entry", "position": [0.0, 200.0], "params": {"name": "inside"}},
+    {"id": "n8", "type": "line", "position": [200.0, 200.0], "params": {"speaker": "guard", "text": "Welcome in. {gold} left."}},
+    {"id": "n9", "type": "end", "position": [600.0, 200.0], "params": {"result": "left"}},
+    {"id": "n10", "type": "end", "position": [400.0, 200.0], "params": {"result": "paid"}},
+    {"id": "n12", "type": "line", "position": [800.0, 200.0], "params": {"speaker": "guard", "text": "Psst. The back door is open."}}
+  ],
+  "edges": [
+    {"id": "e11", "from": {"node": "n1", "port": "next"}, "to": {"node": "n2", "port": "in"}},
+    {"id": "e13", "from": {"node": "n2", "port": "next"}, "to": {"node": "n3", "port": "in"}},
+    {"id": "e14", "from": {"node": "n3", "port": "o1"}, "to": {"node": "n4", "port": "in"}},
+    {"id": "e15", "from": {"node": "n3", "port": "o2"}, "to": {"node": "n9", "port": "in"}},
+    {"id": "e16", "from": {"node": "n4", "port": "true"}, "to": {"node": "n5", "port": "in"}},
+    {"id": "e17", "from": {"node": "n4", "port": "false"}, "to": {"node": "n9", "port": "in"}},
+    {"id": "e18", "from": {"node": "n5", "port": "next"}, "to": {"node": "n6", "port": "in"}},
+    {"id": "e19", "from": {"node": "n7", "port": "next"}, "to": {"node": "n8", "port": "in"}},
+    {"id": "e20", "from": {"node": "n8", "port": "next"}, "to": {"node": "n10", "port": "in"}}
+  ],
+  "variables": [{"name": "gold", "type": "number", "default": 0}, {"name": "met", "type": "bool", "default": false}],
+  "metadata": {"namespace": "guard", "source_language": "en"},
+  "guid": "5a0d9a10-0000-4000-8000-00000000d1a2"
+}
+"""
+
+# a .input.json script (tools/test-projects/input/assets/tests/Input/menu.input.json) with shot steps
+MENU_INPUT = """{"format": "jasperengine-input", "version": 1, "kind": "script", "fixed_fps": 60,
+ "events": [
+   {"type": "wait", "until": "MenuReady", "frames": 600},
+   {"type": "shot", "name": "01_menu"},
+   {"type": "touch", "action": "tap", "target": "#play"},
+   {"type": "wait", "until": "Clicked", "frames": 120},
+   {"type": "shot", "name": "02_game"}
+ ]}
+"""
+
 # a shell command that writes project.yaml (reading it is fine)
 YAML_WRITE = r"(sed\s+-i|perl\s+-i|>>?\s*\S*project\.yaml|tee\s+\S*project\.yaml|open\([^)]*project\.yaml[^)]*['\"]w)"
 
@@ -60,8 +126,57 @@ def ok(text, structured=None):
     return {"text": text, "structured": structured}
 
 
+# a hand-written result in the editor's real shape: sent with its structuredContent, as the editor sends it
+REAL = {"real": True}
+
+
 def err(text):
     return {"text": text, "is_error": True}
+
+
+def real(text, structured):
+    """A result as the editor sends it: a client like Claude Code shows the model only the structuredContent"""
+    return {**ok(text, structured), "real": True}
+
+
+# edit_mesh_colors and sample_mesh_colors, in their real shapes (V1 R120, R121)
+ROCK = {"id": 50, "name": "Rock", "path": "Rock"}
+ROCK_TARGET = {"index": 0, "name": "Rock (node 0, primitive 0)", "node": 0, "primitive": 0}
+ROCK_COLORS = [dict(ROCK_TARGET, mesh=51, mesh_submesh=0, vertex_count=2400, has_vertex_colors=False, painted=False)]
+MESH_COLORS_NEXT = ("Check the values with sample_mesh_colors {entity: 50, query: \"stats\"}, then look with set_scene_camera "
+                    "{display: {draw_mode: \"vertex_color\"}} and screenshot {view: \"scene\"}: a shaded view hides what the material "
+                    "does not use.")
+
+
+def mesh_colors_edit(vertices=640, corners=0, next_text=MESH_COLORS_NEXT, created=False):
+    """edit_mesh_colors' structuredContent for one target (V1 R120)"""
+    stats = {"count": 14400, "min": [0, 0, 0, 1], "mean": [0.42, 0.5, 0.31, 1], "max": [1, 1, 1, 1]}
+    out = {"entity": ROCK, "dry_run": False, "created": {"component": created, "file": created},
+           "targets": [{"target": ROCK_TARGET, "changed": {"vertices": vertices, "corners": corners, "split_added": corners},
+                        "split_vertices": corners, "ops": [{"changed_vertices": vertices, "changed_corners": corners, "split_added": corners,
+                                                            "filtered_out": 0, "in_target": vertices}],
+                        "stats": {"before": stats, "after": stats}}],
+           "changed": {"vertices": vertices, "corners": corners, "split_added": corners},
+           "warnings": [{"code": "created", "message": "Added the Vertex Colors component and its .vcolors file (in the same undo step)."}] if created else [],
+           "undo_name": "Edit Vertex Colors (Rock)"}
+    if next_text:
+        out["next"] = next_text
+    return ok(f"\"Rock\": {vertices} vertices and {corners} corners changed in 1 target(s) (one undo step).", out)
+
+
+ROCK_MOCKS = [
+    {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nRock [50] model transform", {"entities": [{"id": 50, "path": "Rock"}]})},
+    {"tool": "get_entity", "result": ok("Rock [50] components: transform model", dict(ROCK, components={"transform": {}, "model": {}},
+                                                                                     vertex_colors=ROCK_COLORS))},
+    {"tool": "get_model_info", "result": ok("Model \"Rock\": 1 mesh(es), 0 bone(s), 0 animation(s).",
+                                            {"model": ROCK, "file": "models/rock.glb", "meshes": [{"id": 51, "name": "Rock", "node": 0, "submeshes": 1}],
+                                             "vertex_colors": ROCK_COLORS})},
+    {"tool": "sample_mesh_colors", "result": ok("\"Rock\": stats of 1 target(s).", {"entity": ROCK, "query": "stats", "targets": [
+        {"target": ROCK_TARGET, "painted": True, "stats": {"count": 14400, "min": [0, 0, 0, 1], "mean": [0.5, 0.5, 0.5, 1], "max": [1, 1, 1, 1]}}]})},
+    {"tool": "frame_entity", "result": ok("Framed \"Rock\" in the Scene view.", {"entity": ROCK})},
+    {"tool": "set_scene_camera", "result": ok("Scene view camera of \"Main\": {}.", {"display": {"draw_mode": "vertex_color"}})},
+    {"tool": "screenshot", "result": ok("Scene view, 1280x720.", {"view": "scene"})},
+]
 
 
 RENAME_DIALOG = {"kind": "modal", "title": "Rename File", "message": "Rename 'RenameMe.lua' to:", "choices": ["ok", "cancel"],
@@ -118,7 +233,122 @@ TERRAIN_IMPORT_DRY = {
 }
 
 
+def console_result(entries, next_cursor):
+    """read_console in its real shape: the text lists the entries, structuredContent holds them."""
+    errors = sum(1 for e in entries if e["level"] == "error")
+    lines = "".join(f"\n[{e['level']} #{e['id']}] {e['message']}" for e in entries)
+    return real(f"{len(entries)} entries ({errors} error(s), 0 warning(s)):{lines}\nnext_cursor: {next_cursor}",
+                   {"entries": entries, "next_cursor": next_cursor})
+
+
+# journal_before_the_error: the Gameplay Journal's lines, the script error, and a per-frame print that fills the
+# newest 100 entries of the Console between them
+def _log(eid, frame, category, message, level="info"):
+    return {"id": eid, "level": level, "type": "error" if level == "error" else "log", "category": category, "frame": frame,
+            "message": message}
+
+
+JOURNAL_LINES = [_log(7, 310, "journal", "engine.scene_loaded ms=212 name=Forest2"),
+                 _log(120, 1880, "journal", "level.start name=forest-2 seed=42"),
+                 _log(300, 2405, "journal", "player.pickup item=rusty_key")]
+SCRIPT_ERROR = _log(412, 2410, "lua", "Script crash in scene 'Forest2': scripts/door.lua:41: attempt to index a nil value "
+                                      "(field 'lock')", "error")
+PLAY_STOP = _log(413, 2411, "journal", "engine.play state=stop")
+PATH_SPAM = [_log(eid, 2405 + (eid - 301) // 20, "lua", "enemy 3: path recomputed (12 nodes)") for eid in range(301, 412)]
+
+def scene_2d(entities):
+    """S78: the editor's answers about an open 2D scene "Main" holding `entities` [(id, path, components text,
+    components {name: values}, name regex)] (world.py's scene is 3D, without them)"""
+    tree = "\n".join(f"{path} [{eid}] {comps}" for eid, path, comps, _, _ in entities)
+    mocks = [
+        {"tool": "get_scene_tree", "result": ok(
+            f"Scene 1 \"Main\" (2D, {len(entities)} GameObjects). Each line: Name [id] components (flags); children indented.\n" + tree,
+            {"entity_count": len(entities), "scene_id": 1, "scene_name": "Main", "tree": tree, "truncated": False})},
+        {"tool": "find_entities", "result": ok(
+            f"{len(entities)} GameObject(s) match:\n" + tree, {"entities": [{"id": e[0], "path": e[1]} for e in entities]})},
+    ]
+    for eid, path, comps, values, names in entities:
+        # shaped like the real get_entity (world.py's), so it goes out as structuredContent with the values
+        mocks.append({"tool": "get_entity", "args": {"entity": f"re:(?i)^({eid}|{names})$"}, "result": {**ok(
+            f"{path} [{eid}] components: {comps}\n{json.dumps(values)}",
+            {"id": eid, "name": path, "path": path, "active": True, "active_in_hierarchy": True, "layer": 0, "tag": "",
+             "scene_id": 1, "child_count": 0, "components": values}), "real": True}})
+    mocks += [
+        {"tool": "list_scenes", "result": ok("1 scene(s):\n1 \"Main\" 2D scenes/Main.scene open selected start",
+                                             {"scenes": [{"id": 1, "name": "Main", "type": "2D", "opened": True, "selected": True}],
+                                              "selected_scene_id": 1})},
+        {"tool": "editor_status", "result": ok("Project \"Space Dodge\" at the current directory. 1 scene(s), selected: 1 \"Main\" (2D). Edit mode.",
+                                               {"project": {"name": "Space Dodge", "path": "."}, "playing": False,
+                                                "scenes": [{"id": 1, "name": "Main", "type": "2D", "selected": True}]})},
+    ]
+    return mocks
+
+
+SCENE_2D_BASE = [(10, "Main Camera", "camera transform", {"camera": {"type": "orthographic"}}, "main camera"),
+                 (11, "Ground", "sprite transform", {"sprite": {"texture": "assets/sprites/ground.png", "width": 640, "height": 64}}, "ground")]
+LAMP_64 = (30, "Lamp", "light2d transform", {"transform": {"position": [300.0, 0.0, 0.0]},
+                                             "light2d": {"enabled": True, "color": [1.0, 1.0, 1.0], "intensity": 1.0, "range": 900.0,
+                                                         "falloff": 1.0, "height": 64.0, "shadows": False}}, "lamp")
+BOSS_512 = (20, "Boss", "sprite transform", {"sprite": {"texture": "assets/sprites/boss.png", "width": 512, "height": 512}}, "boss")
+
+
+# PostProcessingSettings::getFields' snake names, as set_scene_settings lists them in its unknown-field error
+POST_PROCESSING_FIELDS = (
+    "exposure, tonemap, color_grading_enabled, temperature, tint, contrast, saturation, lift, gamma, "
+    "gain, lut_texture, lut_contribution, lut_input_encoding, lut_size, monochrome_enabled, "
+    "monochrome_mode, monochrome_intensity, vignette_enabled, vignette_intensity, vignette_smoothness, "
+    "vignette_roundness, vignette_color, dither_enabled, fxaa_enabled, chromatic_aberration_enabled, "
+    "chromatic_aberration_intensity, pixelate_enabled, pixelate_size, crt_enabled, crt_scanlines, "
+    "crt_mask, crt_curvature, crt_vignette, edge_detect_enabled, edge_detect_threshold, "
+    "edge_detect_intensity, edge_detect_color, film_grain_enabled, film_grain_intensity, "
+    "film_grain_response, film_grain_type, film_grain_size, film_grain_colored, film_frame_rate, "
+    "vhs_enabled, vhs_intensity, vhs_wobble, vhs_tracking, vhs_color_bleed, vhs_tape_noise, "
+    "vhs_chroma_streaks, vhs_dropouts, vhs_scanlines, vhs_interference, vhs_glitches, vhs_speed, "
+    "film_damage_enabled, film_damage_intensity, film_hair_amount, film_scratch_amount, "
+    "film_dust_amount, film_dust_size, film_gate_weave, film_gate_mask, film_gate_mask_feather, "
+    "sharpen_enabled, sharpen_intensity, bloom_enabled, bloom_threshold, bloom_knee, bloom_intensity, "
+    "bloom_tint, bloom_scatter, blur_enabled, blur_radius, blur_intensity, halation_enabled, "
+    "halation_intensity, halation_threshold, halation_radius, halation_tint, render_scale, msaa_samples, "
+    "dynamic_resolution_enabled, dynamic_resolution_min_scale, dynamic_resolution_target_fps, "
+    "palette_enabled, palette, palette_dither, palette_dither_strength, palette_distance, "
+    "palette_precision, glitch_enabled, glitch_intensity, glitch_rgb_split, glitch_tears, "
+    "glitch_tear_shift, glitch_interlace, glitch_burst_rate, glitch_burst_length, glitch_fps, "
+    "glitch_seed"
+)
+
 CASES = [
+    {
+        "id": "guard_ui_frames_exact_preview",
+        "kind": "guard",
+        "what_happened": "UI motion design needs exact CSS/anime sample times without entering Play or recording intermediate frames.",
+        "text_at_issue": "render_ui_frames: exact seconds without Play; document, times, out and watch",
+        "source": "requested motion-graphics preview",
+        "files": UI_FRAME_FILES,
+        "prompt": "Preview assets/ui/title.html at 0.3, 1 and 2.5 seconds as sheet.png. Keep the editor out of Play.",
+        "mocks": [{"tool": "render_ui_frames", "result": {"text": "Rendered 3 UI frame(s).", "real": True,
+            "structured": {"files": ["sheet.png"], "times": [0.3, 1, 2.5], "width": 1080, "height": 1350, "revision": 1}}}],
+        "checks": {"calls": [{"tool": "render_ui_frames", "args": {
+            "document": "assets/ui/title.html", "times": [0.3, 1, 2.5], "out": "sheet.png"}}],
+            "must_not_call": ["record_game", {"tool": "play", "args": {"action": "start"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_ui_frames_watch",
+        "kind": "guard",
+        "what_happened": "A motion-design preview should regenerate after source saves and keep its watch job alive.",
+        "text_at_issue": "render_ui_frames watch parameter and structured next explaining source-save regeneration and cancel_job",
+        "source": "requested motion-graphics watch preview",
+        "files": UI_FRAME_FILES,
+        "prompt": "Render assets/ui/title.html at 0.3, 1 and 2.5 seconds to sheet.png, stepping animation callbacks at 30 fps. "
+                  "Keep the preview updating whenever I save the HTML or stylesheet.",
+        "mocks": [{"tool": "render_ui_frames", "result": {"text": "Rendered 3 UI frame(s).", "real": True,
+            "structured": {"files": ["sheet.png"], "times": [0.3, 1, 2.5], "job_id": "ui-preview-1", "status": "running", "watching": True,
+            "next": "Saving a document or one of its dependencies regenerates the output; cancel_job stops watching."}}}],
+        "checks": {"calls": [{"tool": "render_ui_frames", "args": {
+            "document": "assets/ui/title.html", "times": [0.3, 1, 2.5], "out": "sheet.png", "fps": 30, "watch": True}}],
+            "must_not_call": ["record_game", "cancel_job", {"tool": "play", "args": {"action": "start"}}]},
+        "max_turns": 10,
+    },
     # -- controls: ordinary work where a trigger word must not pull in the editor tools --------
     {
         "id": "control_readme_typo",
@@ -226,6 +456,89 @@ CASES = [
                    "must_not_call": [{"tool": "open_scene", "args": {"close_previous": True}}],
                    "reply_must": [r"Gun"], "max_calls": {"open_scene": 1}},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_tests_run_tests",
+        "kind": "guard",
+        "what_happened": "An agent fixed a bug, checked it by playing once and moved on; nothing kept the check. The guide's "
+                         "Other areas names run_tests and jasper://docs/testing, and authoring's Check what you built says to "
+                         "keep the check as a case (project-test-runner R46).",
+        "text_at_issue": "McpInstructions Other areas: 'testing (run_tests)'; authoring.md: 'Keep what you checked: a case in "
+                         "Tests/ and run_tests'.",
+        "source": "docs/specs/project-test-runner.md R46, AC20",
+        "prompt": "The player starts with 2 lives instead of 3 (player.lua). Fix it, and make sure the fix sticks.",
+        "files": {"scripts/player.lua": "local Player = {}\nfunction Player:init()\n    GameState = {lives = 2}\nend\nreturn Player\n",
+                  "Tests/tests.yaml": "version: 1\n"},
+        "mocks": [
+            {"tool": "run_tests", "result": ok(
+                "PASS player.test.lua#Player starts with three lives\n1 passed, 0 failed, 0 skipped.",
+                {"run_id": "20261119-101500-3f2a", "counts": {"total": 1, "passed": 1, "failed": 0, "skipped": 0, "error": 0, "hung": 0,
+                                                              "excluded_edit": 0},
+                 "failures": [], "unverified": {}, "results_file": ".jasperengine/test-results/runs/20261119-101500-3f2a.json"})},
+        ],
+        "checks": {"calls": [{"tool": "run_tests"}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_tests_project_data",
+        "kind": "bad",
+        "what_happened": "A case used data = \"project\" to start from the developer's own save; the run refuses it and the error "
+                         "names the fix (a snapshot) (project-test-runner R20).",
+        "text_at_issue": "TestOptions PROJECT_DATA_REFUSED: 'tests never use the project's Play data: save a snapshot (Game view > "
+                         "Play Data > Save Snapshot...) and use data = \"<name>\"'.",
+        "source": "docs/specs/project-test-runner.md R20, AC20",
+        "prompt": "Run the shop test (Tests/shop.test.lua) and make it pass. It needs the save that has 100 coins, which is in "
+                  "Tests/Data/rich/.",
+        "files": {"Tests/tests.yaml": "version: 1\n", "Tests/Data/rich/progress.json": "{\"coins\": 100}",
+                  "Tests/shop.test.lua": "Test.case(\"Buying a hat costs 50\", {data = \"project\"}, function(t)\n"
+                                         "    Test.waitUntil(function() return Shop end)\n    Test.equal(Shop.buy(\"hat\"), true)\nend)\n"},
+        "mocks": [
+            {"tool": "run_tests", "result": ok(
+                "ERROR shop.test.lua#Buying a hat costs 50  shop.test.lua:1: tests never use the project's Play data: save a snapshot "
+                "(Game view > Play Data > Save Snapshot...) and use data = \"<name>\"\n0 passed, 0 failed, 0 skipped, 1 error.",
+                {"counts": {"total": 1, "passed": 0, "failed": 0, "skipped": 0, "error": 1, "hung": 0, "excluded_edit": 0},
+                 "failures": [{"id": "shop.test.lua#Buying a hat costs 50", "status": "error", "kind": "error",
+                               "message": "tests never use the project's Play data: save a snapshot (Game view > Play Data > Save "
+                                          "Snapshot...) and use data = \"<name>\"", "file": "shop.test.lua", "line": 1, "frame": 0}],
+                 "unverified": {}})},
+        ],
+        "checks": {"file_must": {"Tests/shop.test.lua": [r"data\s*=\s*\"rich\""]},
+                   "file_must_not": {"Tests/shop.test.lua": [r"data\s*=\s*\"project\""]}},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_saved_data_corrupt",
+        "kind": "guard",
+        "what_happened": "Asked to check that a game survives a damaged save, an agent would hand-edit the binary .jsave with "
+                         "write_file (or a shell) and break its own test. user_settings store \"saves\" corrupts the newest "
+                         "generation the way a crash would, as an undo step.",
+        "text_at_issue": "user_settings description: 'store \"saves\": SaveGame slots (key = slot): ... corrupt, restore (generation).'; "
+                         "the scripting group's description '... PlayerPrefs and save slots (user_settings)' (without it agents "
+                         "enabled data_safety and searched the files)",
+        "source": "docs/specs/savegame.md R37, R43",
+        "prompt": "My game saves its progress in the save slot slot1. Damage that save the way a crash could, so I can check the "
+                  "game recovers from the backup. Don't play the game; just damage it and tell me which file you damaged.",
+        "mocks": [
+            {"tool": "user_settings", "args": {"store": "saves", "action": "list"}, "result": ok(
+                "1 slot in .jasperengine/user/rundata/saves:\nslot1: version 1, 412 bytes, 3 generation(s), ok",
+                {"slots": [{"slot": "slot1", "version": 1, "saved_at": 1795080000.5, "size": 412, "generation": 12, "generations": 3,
+                            "namespaces": ["main"], "meta": None, "requires": None, "status": "ok"}],
+                 "count": 1, "folder": ".jasperengine/user/rundata/saves"})},
+            {"tool": "user_settings", "args": {"store": "saves", "action": "get"}, "result": ok(
+                "slot1/main (version 1, generation 12) = {\"gold\":120,\"level\":\"forest\"}",
+                {"slot": "slot1", "namespace": "main", "value": {"gold": 120, "level": "forest"}, "version": 1, "generation": 12,
+                 "namespaces": ["main"], "meta": None, "requires": None})},
+            {"tool": "user_settings", "args": {"store": "saves", "action": "corrupt"}, "result": ok(
+                "Corrupted slot1.g12.jsave (flip).",
+                {"slot": "slot1", "generation": 12, "mode": "flip",
+                 "next": "Read it in the game (eval_lua \"return SaveGame.read('slot1')\") to see the recovery, or "
+                         "user_settings {store: \"saves\", action: \"get\", key: \"slot1\"}."})},
+            {"tool": "user_settings", "result": err("Unknown action. Valid: list, get, set, delete, clear.")},
+        ],
+        "checks": {"calls": [{"tool": "user_settings", "args": {"store": "saves", "action": "corrupt"}}],
+                   "must_not_call": ["write_file", "delete_asset"], "shell_must_not": [r"\.jsave"],
+                   "reply_must": [r"g12"]},
+        "max_turns": 12,  # the sandbox refuses the first shell probes; 8 turns ended runs before the reply
     },
     {
         "id": "guard_linked_folder_rules",
@@ -573,6 +886,79 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "control_time_settings",
+        "kind": "control",
+        "what_happened": "A game port set Time.fixedDeltaTime in every scene's init and reset it by hand at Play stop, "
+                         "as there was no project setting (S95 REQ-13 adds Project Settings > Time).",
+        "text_at_issue": "get_project_settings rows time.fixed_timestep and time.maximum_delta_time (their descriptions)",
+        "source": "S95 spec, ledger item S14 (a port's Framework.lua fixed-step reset)",
+        "files": GAME_FILES,
+        "prompt": "Physics should run at 50 Hz in the whole game, in Play and in builds, and a hitch should never give the "
+                  "game a frame longer than 0.1 s.",
+        "mocks": [
+            {"tool": "get_project_settings", "args": {"search": "*"}, "result": ok(
+                "2 setting(s) match. The ones with a value are keys for set_project_settings.",
+                {"matches": [{"key": "time.fixed_timestep", "page": "Time", "label": "Fixed Timestep", "scope": "project",
+                              "value": 1 / 60},
+                             {"key": "time.maximum_delta_time", "page": "Time", "label": "Maximum Allowed Timestep",
+                              "scope": "project", "value": 0.25}]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "time.fixed_timestep = 0.02; time.maximum_delta_time = 0.1",
+                {"settings": {"time.fixed_timestep": 0.02, "time.maximum_delta_time": 0.1}})},
+            {"tool": "get_project_settings", "result": ok(
+                "time.fixed_timestep = 0.0166667 (Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before "
+                "init in builds and at Play start; a scene's fixed_timestep overrides it while that scene is the main scene.); "
+                "time.maximum_delta_time = 0.25 (Longest frame delta in seconds (default 0.25): a longer frame is clamped "
+                "(Time.maximumDeltaTime).)",
+                {"settings": {"time.fixed_timestep": 1 / 60, "time.maximum_delta_time": 0.25},
+                 "schema": {"time.fixed_timestep": {"type": "number", "description":
+                                "Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before init in builds and "
+                                "at Play start; a scene's fixed_timestep overrides it while that scene is the main scene."},
+                            "time.maximum_delta_time": {"type": "number", "description":
+                                "Longest frame delta in seconds (default 0.25): a longer frame is clamped (Time.maximumDeltaTime)."}}})},
+            {"tool": "set_project_settings", "result": ok("Set 2 project settings; saved project.yaml.",
+                                                         {"changed": ["time.fixed_timestep", "time.maximum_delta_time"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"time.fixed_timestep": "re:^0\\.02$"}}},
+                             {"tool": "set_project_settings", "args": {"values": {"time.maximum_delta_time": "re:^0\\.1$"}}}],
+                   "edits_must_not": [r"\.lua$", r"project\.yaml$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "control_simulate_touch_from_mouse",
+        "kind": "control",
+        "what_happened": "A touch-only game port set Engine.callTouchInMouseEvent from a script for desktop testing; the "
+                         "Game view's Simulate Touch is a per-user preference and builds never had it (S95 REQ-12).",
+        "text_at_issue": "get_project_settings row input.simulate_touch_from_mouse (its description); configure_game_view "
+                         "simulate_touch",
+        "source": "S95 spec, ledger item S8 (a port's Framework.lua mouseAsTouch)",
+        "files": GAME_FILES,
+        "prompt": "Our game is touch-only. Make the mouse act as a finger for the whole team: in Play and in the desktop "
+                  "and web builds.",
+        "mocks": [
+            {"tool": "get_project_settings", "args": {"search": "*"}, "result": ok(
+                "2 setting(s) match. The ones with a value are keys for set_project_settings.",
+                {"matches": [{"key": "input.simulate_touch_from_mouse", "page": "Input", "label": "Simulate Touch From Mouse",
+                              "scope": "project", "value": False},
+                             {"key": "preferences.simulate_touch", "page": "General", "section": "Game View",
+                              "label": "Simulate Touch", "scope": "preference", "value": False}]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "input.simulate_touch_from_mouse = true", {"settings": {"input.simulate_touch_from_mouse": True}})},
+            {"tool": "get_project_settings", "result": ok(
+                "input.simulate_touch_from_mouse = false (The mouse also acts as finger 0 (onTouchStart/Move/End with the "
+                "mouse events; Engine.callTouchInMouseEvent) in Play and in desktop and web builds. The Game view's Simulate "
+                "Touch preference is per user.)",
+                {"settings": {"input.simulate_touch_from_mouse": False}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["input.simulate_touch_from_mouse"]})},
+            {"tool": "configure_game_view", "result": ok("Game view: simulate_touch on (this editor only).",
+                                                        {"changed": ["simulate_touch"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"input.simulate_touch_from_mouse": True}}}],
+                   "edits_must_not": [r"\.lua$", r"project\.yaml$"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_duplicate_name",
         "kind": "bad",
         "what_happened": "create_entity renamed the new camera \"Main Camera 2\" because the name was taken; the agent then "
@@ -667,6 +1053,157 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "hide"}]}}],
                    "must_not_call": ["play"], "shell_must_not": [r"xdotool"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_app_view_lost",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "An Android return after the GPU context went rebuilt every HTML UI document from its file; in "
+                         "editor Play agents could only pause and resume or send low_memory, which keep the context, so "
+                         "the reset never showed before a device test.",
+        "text_at_issue": "send_input description: 'app: action ...|low_memory|hide|show|view_lost|view_restored|orientation'",
+        "source": "JasperArcade port ledger S30; docs/specs/S95-lua-runtime-gaps.md REQ-18",
+        "prompt": "The game is playing. On Android, after the app sits in the background, the system sometimes drops the "
+                  "game's OpenGL context and the app makes it again on return. Reproduce that GPU context loss and "
+                  "return here in Play, then check the HUD's state.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_lost"}]}, "result": ok(
+                "Sent 3 events over 5 frames; playing.", {"frames": 5, "state": "playing"})},
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_restored"}]}, "result": ok(
+                "Sent 1 event over 1 frame; playing.", {"frames": 1, "state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 9 s, 0 error(s) logged.",
+                                                     {"state": "playing", "platform": {"paused": False, "lifecycle": {
+                                                         "view_lost": 1, "view_restored": 1, "view": "loaded"}}})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_lost"}]}}],
+                   "shell_must_not": [r"adb|xdotool"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_input_script_file",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "Agents repeating a menu flow re-sent the same send_input events by hand each time; a script "
+                         "file runs the flow with one call and keeps it for the next run.",
+        "text_at_issue": "send_input parameter file: 'Script .input.json.'",
+        "source": "input-recorder-and-input-scripts spec, AC19",
+        "prompt": "The game is playing. Tests/Input/menu.input.json is a script that taps through the main menu. Run it "
+                  "and tell me whether it worked.",
+        "files": {"Tests/Input/menu.input.json": MENU_INPUT},
+        "mocks": [
+            {"tool": "send_input", "args": {"file": "re:menu\\.input\\.json$"}, "result": ok(
+                "Sent 6 input step(s) over 140 frame(s).\nShot \"01_menu\": Recordings/Input/menu/01_menu.png",
+                {"frames": 140, "shots": [{"name": "01_menu", "path": "Recordings/Input/menu/01_menu.png"}]})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"file": "re:menu\\.input\\.json$"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_input_ms_in_file",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "Agents writing input files used wall-clock ms waits; in a file ms are frames at its fixed_fps, "
+                         "and a load that takes longer on a slow machine is waited for with wait until.",
+        "text_at_issue": "send_input description: 'wait: frames, ms, or until (Lua; frames caps)'",
+        "source": "input-recorder-and-input-scripts spec, AC19",
+        "prompt": "The game is playing. Wait until the Lua global MenuReady is true (it takes a few seconds to load), "
+                  "then press space.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "wait", "until": "re:MenuReady"}]}, "result": ok(
+                "Sent 3 input step(s) over 212 frame(s).", {"frames": 212, "state": "playing"})},
+            {"tool": "wait", "args": {"until": "re:MenuReady"}, "result": ok("Condition true after 210 frames.", {"reason": "condition"})},
+            {"tool": "send_input", "result": ok("Sent 2 input step(s) over 3 frame(s).", {"frames": 3})},
+        ],
+        "checks": {"calls": ["send_input"], "max_errors": {"send_input": 0}},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_store_screenshots_from_input",
+        "kind": "guard",
+        "what_happened": "Asked for store screenshots at several sizes, agents looped configure_game_view, play, send_input and "
+                         "screenshot by hand per size: each run started from another state and the shots did not line up. "
+                         "record_game replays the script once per size from Play's start and writes only its shot steps.",
+        "text_at_issue": "record_game: description 'input: replays a .input.json, a new session per run; shots: only its shot "
+                         "steps.', format enum 'shots', resolutions 'A run per WxH.'; the editor_tools group's description "
+                         "'... the Recorder: movies, PNG sequences, screenshots from a .input.json at several sizes' (was 'movie "
+                         "recording': agents enabled testing and device and never found record_game)",
+        "source": "input-recorder-and-input-scripts spec, R23, AC14",
+        "prompt": "Tests/Input/store.input.json walks through the menu and has shot steps. Make the store screenshots at "
+                  "1290x2796 and 2048x2732 from it.",
+        "files": {"Tests/Input/store.input.json": MENU_INPUT},
+        "mocks": [
+            {"tool": "record_game", "args": {"input": "re:store\\.input\\.json$", "format": "shots"}, "result": ok(
+                "Captured 4 file(s) in 2 run(s).",
+                {"runs": [{"resolution": "1290x2796", "files": ["Recordings/Screenshots/store/1290x2796/01_menu.png",
+                                                                "Recordings/Screenshots/store/1290x2796/02_game.png"]},
+                          {"resolution": "2048x2732", "files": ["Recordings/Screenshots/store/2048x2732/01_menu.png",
+                                                                "Recordings/Screenshots/store/2048x2732/02_game.png"]}],
+                 "sidecar": "Recordings/Screenshots/store/input-capture.json"})},
+        ],
+        "checks": {"calls": [{"tool": "record_game", "args": {"input": "re:store\\.input\\.json$", "format": "shots",
+                                                              "resolutions": ["1290x2796", "2048x2732"]}}],
+                   "must_not_call": ["configure_game_view", "screenshot"]},
+        "max_turns": 12,  # the sandbox refuses the first shell probes; 8 turns ended runs before the reply
+    },
+    {
+        "id": "guard_player_input_script_any_desktop",
+        "kind": "guard",
+        "what_happened": "To run a menu script on the built player of a Mac or a CI box without a display, agents passed run_build "
+                         "input (X11 events, Linux with a window only) and the run failed; input_script runs the file through "
+                         "the engine itself, headless, on any desktop, and returns its shots.",
+        "text_at_issue": "run_build description 'input: send_input events (Linux/X11); input_script: a .input.json, any desktop, "
+                         "headless.' and its parameter input_script",
+        "source": "input-recorder-and-input-scripts spec, R24, AC11",
+        # "from the editor": the decision is run_build's input_script over input, not the editor over a shell
+        "prompt": "The desktop build is done. This machine has no display. From the editor, run Tests/Input/menu.input.json on "
+                  "the built player headless and show me its screenshots.",
+        "files": {"Tests/Input/menu.input.json": MENU_INPUT},
+        "mocks": [
+            {"tool": "run_build", "args": {"input_script": "re:menu\\.input\\.json$"}, "result": ok(
+                "Game exited by itself after 4 s with code 0. 120 log line(s). Input script: [input] done {\"frames\": 160, \"shots\": 2}; 2 shot(s).",
+                {"exit_code": 0, "input_script": {"lines": ["[input] begin {}", "[input] done {\"frames\": 160, \"shots\": 2}"],
+                                                  "shots": [{"name": "01_menu", "path": "/p/Recordings/Input/menu/player/01_menu.png"},
+                                                            {"name": "02_game", "path": "/p/Recordings/Input/menu/player/02_game.png"}]}})},
+            {"tool": "run_build", "args": {"input": "re:."}, "result": err(
+                "input is not supported here: no X display. Run without input (log + screenshots only).")},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available; source export: available. 1 scene(s) in the build, 40 "
+                "shader(s). Last build: linux player succeeded in /home/me/builds/space-dodge-linux.",
+                {"last_build": {"mode": "player", "platform": "linux", "status": "succeeded",
+                                "output_dir": "/home/me/builds/space-dodge-linux"}, "scene_count": 1,
+                 "last_executable": "/home/me/builds/space-dodge-linux/space-dodge",
+                 "next": "get_build_report (group shipping): sizes, what grew, why a file ships"})},
+        ],
+        "checks": {"calls": [{"tool": "run_build", "args": {"input_script": "re:menu\\.input\\.json$"}}],
+                   "must_not_call": [{"tool": "run_build", "args": {"input": "re:."}}]},
+        "max_turns": 12,  # the sandbox refuses the first shell probes
+    },
+    {
+        "id": "guard_record_input_command",
+        "kind": "guard",
+        "what_happened": "Asked to record a play session for a later replay, agents wrote Lua InputRecording calls into a game "
+                         "script; the toolbar's Record Input records from Play's start with the seed and checkpoints a replay "
+                         "compares, and run_command reaches it.",
+        "text_at_issue": "the command catalog's playmode.recordInput 'Record Input': 'Before Play: arm or disarm recording the "
+                         "game's input into a .input.json from Play's start; while recording: Stop Recording', and get_play_state "
+                         "record_input {armed, last_file}",
+        "source": "input-recorder-and-input-scripts spec, R13, R41",
+        "prompt": "Record my next play session's input so we can replay it later and check it plays the same. Get it ready; "
+                  "I'll press Play myself.",
+        "mocks": [
+            {"tool": "search_editor", "result": ok("1 result.", {"results": [
+                {"kind": "command", "key": "command:playmode.recordInput", "label": "Record Input", "enabled": True,
+                 "detail": "Before Play: arm or disarm recording the game's input into a .input.json from Play's start; while recording: Stop Recording"}]})},
+            {"tool": "list_shortcuts", "result": ok("1 command.", {"commands": [
+                {"id": "playmode.recordInput", "group": "Play Mode", "name": "Record Input", "chords": []}]})},
+            {"tool": "run_command", "args": {"id": "playmode.recordInput"}, "result": ok("Ran Record Input.", {"ran": "playmode.recordInput"})},
+            {"tool": "run_command", "args": {"key": "command:playmode.recordInput"}, "result": ok("Ran Record Input.", {"ran": "playmode.recordInput"})},
+            {"tool": "get_play_state", "result": ok("Play state: stopped.", {"state": "stopped", "record_input": {"armed": True}})},
+        ],
+        "checks": {"calls": ["run_command"], "must_not_call": ["write_file", "create_script", "edit_script"]},
         "max_turns": 10,
     },
     {
@@ -1093,6 +1630,38 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "guard_console_command_mode",
+        "kind": "guard",
+        "what_happened": "Asked to run a game's console command, agents wrapped DebugOverlay.executeCommand in eval_lua code and "
+                         "read the console for what happened, missing the command's result (its lines and returned value).",
+        "text_at_issue": "eval_lua parameter command: 'A console command instead of code (help lists them).'",
+        "source": "docs/specs/dev-console-for-agents.md R25, R30",
+        "prompt": "The game is playing. Give the player 10 gold with the game's own `give` console command, and tell me the "
+                  "player's new gold total that the command reports.",
+        "playing": True,
+        "mocks": [
+            {"tool": "eval_lua", "args": {"command": "re:^give"}, "result": ok(
+                "10 gold\nvalue: 130",
+                {"mode": "play", "command": {"name": "give", "status": "ok", "ok": True, "lines": ["10 gold"], "log": [],
+                                             "value": 130, "cheat": True},
+                 "console": [{"id": 811, "level": "info", "message": "> give gold 10"},
+                             {"id": 812, "level": "info", "message": "[give] 10 gold"}], "next_cursor": 812})},
+            {"tool": "eval_lua", "args": {"command": "re:^help"}, "result": ok(
+                "give - adds gold or gems [g] (cheat)\nhelp - lists the commands",
+                {"mode": "play", "command": {"name": "help", "status": "ok", "ok": True,
+                                             "lines": ["give - adds gold or gems [g] (cheat)", "help - lists the commands"], "log": [],
+                                             "value": [{"name": "give", "usage": "give <item> [count=1]"}], "cheat": False},
+                 "console": [], "next_cursor": 812})},
+            {"tool": "eval_lua", "args": {"code": "re:executeCommand"}, "result": ok(
+                "OK (no return value).\nconsole:\n[info] > give gold 10\n[info] [give] 10 gold",
+                {"mode": "play", "values": [], "printed": [], "console": [{"id": 811, "level": "info", "message": "> give gold 10"},
+                                                                         {"id": 812, "level": "info", "message": "[give] 10 gold"}],
+                 "next_cursor": 812})},
+        ],
+        "checks": {"calls": [{"tool": "eval_lua", "args": {"command": "re:give\\s+gold\\s+10"}}], "reply_must": [r"130"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_lua_script",
         "kind": "guard",
         "what_happened": "In-editor-era models wrote Lua with self.entity as an object, on_start, getComponent and C++-style "
@@ -1196,6 +1765,97 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_extract_sun",
+        "kind": "guard",
+        "what_happened": "S99 R28 adds extract_sun to set_scene_settings: an HDRI sky lights the scene only through IBL, so "
+                         "its sun casts no shadow. Without the parameter an agent guesses a Directional Light's angle by eye "
+                         "and leaves the sun in the sky's lighting twice.",
+        "text_at_issue": "set_scene_settings description: 'extract_sun: a Directional Light from the skybox HDR's sun'; "
+                         "its next: 'set_scene_settings extract_sun {\"remove_sun_disc\": true} "
+                         "clamps the sky's disc'; jasper://docs/lighting",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R28, R29, R31",
+        "prompt": "Our Skybox uses the HDR image assets/sky/desert.hdr. Make its sun cast shadows: a sun light pointing "
+                  "exactly from the sun in the image, as bright and as coloured, and don't let the sky light the scene "
+                  "with the sun a second time.",
+        "mocks": [
+            {"tool": "set_scene_settings", "args": {"extract_sun": {"remove_sun_disc": True}}, "result": ok(
+                "Aligned the main Directional Light \"Directional Light\" to the sky's sun (812x the sky's mean) (one undo step).",
+                {"scene_id": 1, "settings": {}, "sun": {"light": {"id": 16, "name": "Directional Light"}, "created": False,
+                 "direction": [-0.41, -0.64, -0.65], "color": [1.0, 0.93, 0.82], "intensity": 3.1, "unit": "engine",
+                 "peak_ratio": 812.0, "disc_degrees": 0.9, "remove_sun_disc": ["assets/sky/desert.hdr"]}})},
+            # as the editor answers extract_sun without remove_sun_disc: the disc is left in, and next says so
+            {"tool": "set_scene_settings", "args": {"extract_sun": "*"}, "result": ok(
+                "Aligned the main Directional Light \"Directional Light\" to the sky's sun (812x the sky's mean) (one undo step).",
+                {"scene_id": 1, "settings": {}, "sun": {"light": {"id": 16, "name": "Directional Light"}, "created": False,
+                 "direction": [-0.41, -0.64, -0.65], "color": [1.0, 0.93, 0.82], "intensity": 3.1, "unit": "engine",
+                 "peak_ratio": 812.0, "disc_degrees": 0.9, "remove_sun_disc": []},
+                 "next": "Image-based lighting still has the sun: set_scene_settings extract_sun {\"remove_sun_disc\": true} "
+                         "clamps the sky's disc so it is not counted twice."})},
+            {"tool": "get_entity", "args": {"entity": "re:^(16|Directional Light)$"}, "result": ok(
+                "Directional Light [16] components: light transform",
+                {"id": 16, "name": "Directional Light", "path": "Directional Light", "components": {
+                    "light": {"type": "directional", "intensity": 1.0, "color": [1, 1, 1], "direction": [0, -1, 0],
+                              "shadows": True, "intensityUnit": "engine"}}}) | {"real": True}},
+            {"tool": "get_entity", "args": {"entity": "re:^(17|Skybox)$"}, "result": ok(
+                "Skybox [17] components: skybox",
+                {"id": 17, "name": "Skybox", "path": "Skybox", "components": {
+                    "skybox": {"texture": "assets/sky/desert.hdr"}}}) | {"real": True}},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"extract_sun": {"remove_sun_disc": True}}}],
+                   "must_not_call": [{"tool": "create_entity", "args": {"type": "directional_light"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_gradient_ambient",
+        "kind": "guard",
+        "what_happened": "S99 R30 adds Environment Lighting Source Gradient (ambient_mode and the sky, equator and ground "
+                         "colours). Without it an agent tints the flat global_illumination_color, which lights every facing "
+                         "the same.",
+        "text_at_issue": "get_scene_settings detail (ambient_mode: 'Environment Lighting Source: color ..., gradient "
+                         "(sky/equator/ground colors by facing ...)'); "
+                         "jasper://docs/lighting",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R30, R31",
+        "prompt": "There is no sky image in this scene. Give it Unity-style trilight ambient: light blue from above, a "
+                  "neutral grey at the horizon and a warm brown from the ground.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nambient_mode = gradient",
+                {"scene_id": 1, "settings": {"ambient_mode": "gradient"}})},
+            # detail: the schema rows of Environment Lighting, as SceneTools.cpp writes them
+            {"tool": "get_scene_settings", "args": {"detail": True}, "result": ok(
+                "Scene 1 \"Main\" settings:\nglobal_illumination_color = [1.0,1.0,1.0]\nglobal_illumination_intensity = 0.2\n"
+                "ambient_mode = \"color\"\nambient_sky_color = [0.21176471,0.22745098,0.25882353]\n"
+                "ambient_equator_color = [0.11372549,0.1254902,0.13333334]\nambient_ground_color = [0.04705882,0.04313726,0.03529412]",
+                {"scene_id": 1,
+                 "schema": {
+                     "global_illumination_color": {"default": [1.0, 1.0, 1.0], "help": "ambient light color [r,g,b] (sRGB)", "type": "vector3"},
+                     "global_illumination_intensity": {"default": 0.1, "help": "ambient light intensity", "type": "float"},
+                     "ambient_mode": {"default": "color", "help": "Environment Lighting Source: color (default: the ambient color; Lit under "
+                                      "a sky image takes the image), gradient (sky/equator/ground colors by facing; the sky still reflects)",
+                                      "options": ["color", "gradient"], "type": "enum"},
+                     "ambient_sky_color": {"default": [0.21176471, 0.22745098, 0.25882353],
+                                           "help": "gradient color facing up [r,g,b] (sRGB)", "type": "vector3"},
+                     "ambient_equator_color": {"default": [0.11372549, 0.1254902, 0.13333334],
+                                               "help": "gradient color at the horizon [r,g,b] (sRGB)", "type": "vector3"},
+                     "ambient_ground_color": {"default": [0.04705882, 0.04313726, 0.03529412],
+                                              "help": "gradient color facing down [r,g,b] (sRGB)", "type": "vector3"}},
+                 "settings": {"global_illumination_color": [1.0, 1.0, 1.0], "global_illumination_intensity": 0.2, "ambient_mode": "color",
+                              "ambient_sky_color": [0.21176471, 0.22745098, 0.25882353], "ambient_equator_color": [0.11372549, 0.1254902, 0.13333334],
+                              "ambient_ground_color": [0.04705882, 0.04313726, 0.03529412]}})},
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings"}},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 4 scene setting(s) (one undo step).", {"scene_id": 1, "settings": {"ambient_mode": "gradient"}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        # the source and its colours may go in one call or several
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_mode": "gradient"}}},
+                             {"tool": "set_scene_settings", "args": {"settings": {"ambient_sky_color": "*"}}},
+                             {"tool": "set_scene_settings", "args": {"settings": {"ambient_ground_color": "*"}}}],
+                   "must_not_call": [{"tool": "set_scene_settings", "args": {"settings": {"global_illumination_color": "*"}}}]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_light_mode_setting",
         "kind": "guard",
         "what_happened": "S57 adds the project setting graphics.light_mode (Automatic, Per Object, Tiled). Raising Max "
@@ -1218,6 +1878,53 @@ CASES = [
                    "must_not_call": [{"tool": "set_scene_settings", "args": {"settings": {"max_lights_per_object": "*"}}}],
                    "edits_must_not": [r"project\.yaml$"], "shell_must_not": [YAML_WRITE]},
         "max_turns": 10,
+    },
+    {
+        "id": "guard_area_light",
+        "kind": "guard",
+        "what_happened": "S99 adds Area Lights (Light Type Area: a Rectangle or Disc emitting from its face) and the nits unit. "
+                         "Without them an agent fakes a soft panel with a row of point lights or an emissive quad, and sizes "
+                         "the panel with the transform's scale, which does not size it.",
+        "text_at_issue": "jasper://docs/lighting 'Area Light ... type: \"area\" ... areaWidth, areaHeight ... in metres: the "
+                         "transform's scale does not size it ... intensityUnit: \"nits\" (or set_light_unit nits)'; "
+                         "set_light_unit 'nits (area)'",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R32, R34, R39",
+        "prompt": "Hang a soft 1.2 m by 0.4 m rectangular panel light 2 m above the Desk, facing down, at 500 nits.",
+        "mocks": [
+            # the world has no Desk: id 19 is free in it (15 is the Crate)
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDesk [19] mesh",
+                                                   {"entities": [{"id": 19, "path": "Desk"}]})},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
+                "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
+                "  Shield [18] sprite\nEnemy [14] script sprite\nCrate [15] mesh\nDesk [19] mesh\n"
+                "Directional Light [16] light\nSkybox [17] skybox (no transform)\n",
+                {"entity_count": 9, "scene_id": 1, "scene_name": "Main", "truncated": False})},
+            {"tool": "get_entity", "args": {"entity": "re:^(19|Desk)$"}, "result": ok(
+                "Desk [19] components: mesh transform",
+                {"id": 19, "name": "Desk", "path": "Desk", "components": {
+                    "transform": {"position": [3, 0.75, 1], "rotation": [0, 0, 0, 1], "scale": [1.6, 0.05, 0.8]},
+                    "mesh": {"numSubmeshes": 1, "castShadows": True}}}) | {"real": True}},
+            {"tool": "list_component_types", "args": {"component": "re:(?i)^light$"}, "result": ok(
+                "light (Light), addable. Properties: type enum (directional, point, spot, area) default point; "
+                "direction vector3 default [0,0,-1]; color vector3; intensity float default 1; intensityUnit enum (engine, lux, "
+                "candela, lumen, nits) default engine; range float; shadows bool; areaShape enum (rectangle, disc) default "
+                "rectangle; areaWidth float default 1; areaHeight float default 1; areaRadius float default 0.5; iesProfile asset.")},
+            {"tool": "create_entity", "result": ok("Created GameObject 21 \"Panel Light\" (point_light).",
+                                                   {"entity": {"id": 21, "path": "Panel Light"}, "entity_id": 21})},
+            {"tool": "add_component", "result": ok("Added light to GameObject 21 \"Panel Light\".", {"entity": {"id": 21}})},
+            {"tool": "set_properties", "result": ok("Set the properties of GameObject 21 \"Panel Light\" (one undo step).",
+                                                    {"entity": {"id": 21}})},
+            {"tool": "set_light_unit", "result": ok("Set the unit of 1 light(s), as bright as before (EV100 15).",
+                                                    {"lights": [{"entity": {"id": 21}, "unit": "Nits", "intensity": 500}], "ev100": 15})},
+        ],
+        # the panel's values may go in with the component (add_component, create_entity) or after it (set_properties)
+        "checks": {"any_of": [{"calls": [{"tool": tool, "args": {"values": {"light": {"type": "area", "areaWidth": 1.2,
+                                                                                      "areaHeight": 0.4}}}}]}
+                              for tool in ("set_properties", "add_component", "create_entity")],
+                   "must_not_call": [{"tool": "set_properties", "args": {"values": {"transform": {"scale": "*"}}}},
+                                     {"tool": "create_entity", "args": {"scale": "*"}}]},
+        "max_turns": 12,
     },
     {
         "id": "guard_physics_body",
@@ -1259,6 +1966,91 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_physics_overlap_query",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "S96 REQ-17/REQ-47 added query_physics (physics group): an agent asked what is near a GameObject "
+                         "in the running game overlaps the colliders once instead of casting a fan of rays from eval_lua.",
+        "text_at_issue": "query_physics description ('ray/sphere/box/capsule/point cast, cast_all, overlap or check'); the "
+                         "physics group's line ('physics queries in Play'); docs/mcp/guide/physics.md 'Shape casts and overlaps'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-47 (new tool; the port's scripts cast ray fans for proximity)",
+        "prompt": "The game is playing. Is anything within 2 m of the Player right now? Check the physics colliders and "
+                  "name what you find.",
+        "mocks": [
+            {"tool": "query_physics", "args": {"mode": "overlap", "shape": "sphere"}, "result": ok(
+                "2 collider(s) overlap.",
+                {"dimension": "3d", "shape": "sphere", "mode": "overlap",
+                 "hits": [{"entity": 12, "name": "Player", "collider": 0}, {"entity": 15, "name": "Crate", "collider": 0}]})},
+            {"tool": "query_physics", "result": ok(
+                "1 hit(s), nearest Crate at 1.4.",
+                {"dimension": "3d", "shape": "ray", "mode": "cast", "hits": [{"entity": 15, "name": "Crate", "collider": 0,
+                 "point": [1.4, 0.5, 0], "normal": [-1, 0, 0], "distance": 1.4}]})},
+            {"tool": "get_runtime_entity", "result": ok(
+                "GameObject 12 \"Player\" (playing): transform position [0, 0.5, 0], rigidbody dynamic.",
+                {"id": 12, "components": {"transform": {"position": [0, 0.5, 0]}}})},
+            {"tool": "list_runtime_entities", "result": ok(
+                "5 GameObjects: 10 Camera, 11 Ground, 12 Player, 14 Enemy, 15 Crate.",
+                {"entities": [{"id": 12, "name": "Player", "path": "Player"}, {"id": 15, "name": "Crate", "path": "Crate"}]})},
+        ],
+        "checks": {"any_of": [
+                       {"calls": [{"tool": "query_physics", "args": {"mode": "overlap", "shape": "sphere", "radius": 2}}]},
+                       {"calls": [{"tool": "query_physics", "args": {"mode": "overlap"}}]},
+                       {"calls": [{"tool": "eval_lua", "args": {"code": "re:overlapSphere|checkSphere"}}]}],
+                   "must_not_call": [{"tool": "eval_lua", "args": {"code": "re:raycast"}}],
+                   "reply_must": [r"Crate"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_decompose_mesh_collider",
+        "kind": "guard",
+        "what_happened": "S96 REQ-20/REQ-47: Jolt moves no mesh collider. Told a dynamic body with a Mesh collider will not "
+                         "move, an agent asked to keep its shape decomposes the mesh into convex hulls (edit_colliders "
+                         "decompose) instead of one convex hull or a box that changes the shape.",
+        "text_at_issue": "edit_colliders 'Add/update/remove/decompose' and its `decompose` parameter ('mesh to hulls'); "
+                         "the static-only error naming Decompose Into Convex Hulls; docs/mcp/guide/physics.md '3D bodies'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-20, REQ-47 (the port converted concave meshes to static bodies)",
+        "prompt": "The Rock in scene 1 should fall and tumble, but Play logs: Rigidbody 'Rock' cannot be dynamic: its "
+                  "collider 0 (Mesh) is static-only. Fix its collider so it can be dynamic, keeping its concave shape "
+                  "as close as you can.",
+        "mocks": [
+            {"tool": "edit_colliders", "args": {"decompose": {}}, "result": ok(
+                "Decomposed into 7 convex hull collider(s) (undo: Decompose Collider (Rock)).",
+                {"job_id": "3", "status": "succeeded", "hulls": 7, "undo_name": "Decompose Collider (Rock)",
+                 "colliders": [{"shape": "convex_hull", "center": [0, 0, 0], "rotation": [0, 0, 0, 1], "density": 1000, "vertices": 48}]})},
+            {"tool": "edit_colliders", "result": ok(
+                "\"Rock\" has 1 collider(s).",
+                {"entity": {"id": 9, "name": "Rock", "path": "Rock"}, "dimension": "3d", "body_type": "dynamic",
+                 "colliders": [{"shape": "mesh", "center": [0, 0, 0], "rotation": [0, 0, 0, 1], "density": 1000,
+                                "source": {"id": 9, "name": "Rock", "path": "Rock"}}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_colliders", "args": {"decompose": {"index": 0}}}]}],
+                   "must_not_call": [{"tool": "edit_colliders", "args": {"update": [{"shape": "convex_hull"}]}},
+                                     {"tool": "edit_colliders", "args": {"add": [{"shape": "box"}]}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_query_physics_needs_play",
+        "kind": "guard",
+        "groups_enabled": ["physics"],
+        "what_happened": "S96 REQ-17: query_physics reads the bodies the running game built (none exist at edit time); its "
+                         "error names play, so the agent starts Play and asks again instead of giving up or guessing from "
+                         "the Transforms.",
+        "text_at_issue": "query_physics error: 'query_physics reads the running physics world: start Play first (play).'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-17, AC-16 (new tool; no failure on record)",
+        "prompt": "Using the physics colliders, tell me which GameObject a ray straight down from (0, 10, 0) hits first.",
+        "mocks": [
+            {"tool": "query_physics", "after": "play", "result": ok(
+                "1 hit(s), nearest Ground at 10.",
+                {"dimension": "3d", "shape": "ray", "mode": "cast", "hits": [{"entity": 11, "name": "Ground", "collider": 0,
+                 "point": [0, 0, 0], "normal": [0, 1, 0], "distance": 10.0}]})},
+            {"tool": "query_physics", "result": err("query_physics reads the running physics world: start Play first (play).")},
+            {"tool": "play", "result": ok("Playing scene 1 \"Main\".", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"order": [[{"tool": "play", "args": {"action": "start"}}, {"tool": "query_physics", "args": {"shape": "ray"}}]],
+                   "reply_must": [r"Ground"]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_shader_library_first",
         "kind": "guard",
         "what_happened": "A forked shader was edited without reading it and lost its samplers (git cf12fd6cc); the guide says "
@@ -1287,6 +2079,24 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "bad_ui_atlas_frame_cut_by_hand",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port cut every 9-slice and icon it needed out of its atlases into separate PNGs "
+                         "(ENGINE_LIMITATIONS U16): HTML UI URLs could not address a region. S93 R20 added #xywh= and "
+                         "#sprite= fragments, which the guide's Images table names.",
+        "text_at_issue": "Guide html-ui 'Images and SVG': 'url(\"ui/atlas.png#sprite=coin\")': the frame of the texture's "
+                         "Sprite Mode sheet",
+        "source": "JasperArcade port ENGINE_LIMITATIONS U16; S93 R20",
+        "files": {"assets/ui/atlas.png": "binary placeholder", "assets/ui/hud.html": HUD_HTML, "assets/ui/hud.css": HUD_CSS},
+        "prompt": "The HUD panel's frame should come from the 'panel' frame of assets/ui/atlas.png (it has a Sprite Mode "
+                  "sheet), drawn as a 24 px 9-slice. Set it in assets/ui/hud.css.",
+        "checks": {"file_must": {"assets/ui/hud.css": [r"atlas\.png#sprite=panel"]},
+                   "file_must_not": {"assets/ui/hud.css": [r"panel\.png|frame\.png"]},
+                   "shell_must_not": [r"convert\s|magick|PIL|Image\.open|crop"],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_html_ui_template",
         "kind": "guard",
         "what_happened": "Agents wrote XML/RCSS UI when the guide described it so (git 2d918eddf); the guide's HTML UI digest "
@@ -1311,6 +2121,216 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "guard_html_ui_prewarm",
+        "kind": "guard",
+        "what_happened": "The JasperArcade port wrote its own UIWarm.lua (hidden layers shown off-screen for a frame) to stop "
+                         "the first show of outlined text stalling; S93 R15 added doc:prewarm and the guide's 'Prewarming text'.",
+        "text_at_issue": "Guide 'HTML/CSS UI' > Fonts > 'Prewarming text': doc:prewarm(), HtmlUI.prewarmText, data-warm",
+        "source": "JasperArcade port, docs/port/ENGINE_LIMITATIONS.md U30 (scripts/shared/ui/UIWarm.lua); spec S93 R15",
+        "files": {"README.md": README,
+                  "assets/ui/pause.html": "<!DOCTYPE html>\n<html><head><link rel=\"stylesheet\" href=\"pause.css\"></head>\n<body>\n"
+                                          "<div id=\"pause\"><h1>PAUSED</h1><button id=\"resume\">Resume</button></div>\n"
+                                          "</body></html>\n",
+                  "assets/ui/pause.css": "#pause { display: none; }\n#pause.open { display: block; }\n"
+                                         "h1 { font-size: 160px; font-effect: outline(12px #000), glow(4px 10px 0px 6px #000); }\n",
+                  "assets/ui/pause.lua": "local Pause = { properties = {} }\n\nfunction Pause:init()\n"
+                                         "    self.doc = UIDocument(self.scene, self.entity)\nend\n\n"
+                                         "function Pause:open()\n    self.doc:getElementById(\"pause\").classList:add(\"open\")\nend\n\n"
+                                         "return Pause\n"},
+        "prompt": "The first time the pause menu (assets/ui/pause.html, its script assets/ui/pause.lua) opens, the game hitches "
+                  "for a moment: the big outlined PAUSED title. Later opens are smooth. Fix the first open in the script; don't "
+                  "play the game.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("assets/ui/pause.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"assets/ui/pause.lua": [r"prewarm\s*\("]},
+                   "file_must_not": {"assets/ui/pause.lua": [r"left\s*=\s*[\"']?-\d{3,}"]},
+                   "must_not_call": ["play"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_html_ui_page_press_listener",
+        "kind": "guard",
+        "what_happened": "S93 R4 changed the pass-through rule: only press listeners (click, mousedown, pointerdown, ...) on a "
+                         "transparent page make it take presses; the old guide listed mouseup and mousemove too, which now "
+                         "take nothing, so a 'release outside closes it' handler on mouseup never runs.",
+        "text_at_issue": "Guide 'Pointer input and pass-through': 'add a press listener (click, dblclick, contextmenu, mousedown, "
+                         "pointerdown ...) on the document or doc.body ... Move, up, over, out ... listeners on the page take "
+                         "nothing'",
+        "source": "docs/specs/S93-htmlui-gaps.md R4, D3",
+        "prompt": "The pause overlay assets/ui/pause.html is transparent around its #panel. In assets/ui/pause.lua, hide the "
+                  "overlay when the player clicks or taps anywhere outside the panel.",
+        "files": {
+            "assets/ui/pause.html": "<!DOCTYPE html>\n<html><head><style>html, body { margin: 0; } #panel { margin: 120px auto; "
+                                    "width: 320px; background: #222; color: #fff; padding: 24px; }</style></head>\n"
+                                    "<body><div id=\"panel\"><h1>Paused</h1><button id=\"resume\">Resume</button></div>"
+                                    "</body></html>\n",
+            "assets/ui/pause.lua": "---@class pause : ScriptInstance\nlocal pause = {}\n\nfunction pause:init()\n"
+                                   "    local doc = UIDocument(self.scene, self.entity)\n"
+                                   "    doc:getElementById(\"resume\"):addEventListener(\"click\", function() doc:hide() end)\n"
+                                   "end\n\nreturn pause\n",
+        },
+        "mocks": [
+            {"tool": "inspect_ui", "result": ok("pause: #panel (320x180) with #resume; the page around it is transparent.",
+                                               {"elements": [{"selector": "#panel"}, {"selector": "#resume"}]})},
+            {"tool": "read_console", "result": ok("No new console entries.", {"entries": []})},
+        ],
+        # the page's own listener: on the document or its body (the button's click is there already)
+        "checks": {"file_must": {"assets/ui/pause.lua": [r"(doc|body)\s*:\s*addEventListener\(\s*[\"'](click|mousedown|pointerdown)[\"']"]},
+                   "file_must_not": {"assets/ui/pause.lua": [r"addEventListener\(\s*[\"'](mouseup|pointerup)[\"']"]}},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_ui_tween_for_game_time",
+        "kind": "bad",
+        "what_happened": "A port scripted Lua tweens (Tween.lua, Timer.lua) so its HUD's CSS animations would freeze with the "
+                         "game (S93 U3); a UI Document's Update Mode Game Time does it (S93 R35).",
+        "text_at_issue": "Guide 'HTML/CSS UI' > Animation: 'A document whose HUD should freeze and slow with the game takes "
+                         "Update Mode Game Time (updateMode: game ...)'",
+        "source": "S93 U3",
+        "prompt": "The pulsing coin counter of the HUD (UI Document \"Hud\", assets/ui/hud.html, a CSS @keyframes pulse) "
+                  "keeps pulsing while the game is paused with Engine.timeScale = 0. Make the HUD's animations pause and "
+                  "slow down with the game; the pause menu document must keep animating.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObjects: Hud [12] (UI Document assets/ui/hud.html), PauseMenu [13] "
+                                                   "(UI Document assets/ui/pause.html).",
+                                                   {"entities": [{"id": 12, "path": "Hud"}, {"id": 13, "path": "PauseMenu"}]})},
+            {"tool": "set_properties", "result": ok("Set 1 property on Hud [12].", {"changed": 1})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {key: {"updateMode": "re:(?i)game"}}}}]}
+                              for key in ("UIDocumentComponent", "uidocument", "UIDocument")],
+                   "must_not_call": [{"tool": "set_properties", "args": {"entity": "re:PauseMenu|^13$"}}],
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_l10n_keyed_html",
+        "kind": "guard",
+        "what_happened": "Without String Tables agents localised a menu with a Lua table per language and a langIndex() per screen "
+                         "(the Craftsman anti-pattern, docs/specs/game-ui-localization.md section 4); the guide's Other areas entry and "
+                         "edit_string_table route them to keys and data-l10n-id.",
+        "text_at_issue": "Guide 'Other areas': 'localization' (jasper://docs/localization); the localization group's "
+                         "description; edit_string_table's description",
+        "source": "docs/specs/game-ui-localization.md R38",
+        "prompt": "The main menu (assets/ui/main_menu.html, a Play button) must also be in German: 'Spielen'.",
+        "files": {"assets/ui/main_menu.html": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n"
+                                              "  <title>Main menu</title>\n</head>\n<body>\n  <button id=\"play\">Play</button>\n"
+                                              "</body>\n</html>\n"},
+        "mocks": [
+            {"tool": "read_file", "result": ok("<button id=\"play\">Play</button>", {"content": "<button id=\"play\">Play</button>"})},
+            {"tool": "edit_string_table", "result": ok(
+                "Create String Table ui.", {"path": "assets/l10n/ui.stringtable", "namespace": "ui", "entries": 1,
+                                            "next": "Use the keys: data-l10n-id=\"ui.<key>\" in HTML; check the fit with assert_ui {languages}."})},
+            {"tool": "write_file", "result": ok("Wrote assets/ui/main_menu.html.", {"path": "assets/ui/main_menu.html"})},
+            {"tool": "edit_file", "result": ok("Edited assets/ui/main_menu.html.", {"path": "assets/ui/main_menu.html"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_string_table"}],
+                   "file_must_not": {"assets/ui/main_menu.lua": [r"(?i)spielen"]},
+                   "must_not_call": ["create_script"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_dialogue_graph_not_lua_table",
+        "kind": "guard",
+        "what_happened": "Asked for an NPC conversation, agents hard-coded it as a Lua table of lines and choices in a script (the "
+                         "dialogue template's old CONVERSATION table, the Craftsman .inc anti-pattern of docs/specs/dialogue-graphs.md "
+                         "section 4); a .dialogue graph made with edit_graph is the format, played by a Dialogue Runner.",
+        "text_at_issue": "Guide 'Other areas': 'dialogue' (jasper://docs/dialogue); run_dialogue's description",
+        "source": "docs/specs/dialogue-graphs.md R29",
+        "prompt": "Give the blacksmith NPC a short conversation: he greets the player, then offers 'Buy a sword' or 'Goodbye'.",
+        "mocks": [
+            {"tool": "edit_graph", "result": ok(
+                "Create blacksmith.dialogue: 5 op(s), 0 issue(s).",
+                {"issues": [], "applied": 5, "undo_name": "Create blacksmith.dialogue", "dry_run": False,
+                 "added": [{"op_index": 0, "id": "n1"}, {"op_index": 1, "id": "n2"}]})},
+            {"tool": "run_dialogue", "result": ok(
+                "assets/dialogue/blacksmith.dialogue: line\nn2 blacksmith: Welcome, traveller!\n  1. Buy a sword\n  2. Goodbye",
+                {"transcript": [{"node": "n2", "speaker": "blacksmith", "text": "Welcome, traveller!", "key": "blacksmith.n2"}],
+                 "state": {"state": "line", "node": "n2"}, "variables": {}})},
+            {"tool": "add_component", "result": ok("Added dialoguerunner to Blacksmith.", {"component": "dialoguerunner"})},
+            {"tool": "set_component_property", "result": ok("Set dialoguerunner.dialogue.", {})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"create": "*"}}],
+                   "file_must_not": {"scripts/Blacksmith.lua": [r"(?i)buy a sword"], "scripts/blacksmith.lua": [r"(?i)buy a sword"]},
+                   "must_not_call": ["create_script"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_dialogue_run_explore",
+        "kind": "guard",
+        "groups_enabled": ["graphs"],  # the text at issue is run_dialogue's description, a graphs tool
+        "what_happened": "Asked whether every ending of a conversation can be reached, agents read get_graph and reasoned over the "
+                         "wires (missing conditions and loops); run_dialogue {explore: true} walks every path and reports the endings, "
+                         "no-exit loops and lines never shown. Asked for lines nobody sees, an agent without that sentence reads the graph or "
+                         "runs validate_graph, whose issues are wiring, not reachability.",
+        "text_at_issue": "none: run_dialogue's explore sentence was cut, as agents asked for lines nobody sees passed "
+                         "explore: true without it (4/4, validate_graph and get_graph in reach); the parameter's name decides",
+        "source": "docs/specs/dialogue-graphs.md R29",
+        # "in the editor": with the file on disk an agent otherwise traces its JSON by hand and never sees the tools
+        "prompt": "Does assets/dialogue/guard.dialogue have lines the player can never see? Check it in the editor.",
+        "files": {"assets/dialogue/guard.dialogue": GUARD_DIALOGUE},
+        "mocks": [
+            {"tool": "run_dialogue", "result": ok(
+                "Explored 3 path(s): 10/11 nodes covered, 2 ending(s), 0 no-exit loop(s).\nend \"paid\" at n10 by choices [1]\n"
+                "end \"left\" at n9 by choices [2]\nnever shown: n12",
+                {"coverage": {"nodes": 11, "covered": 10, "uncovered": ["n12"]},
+                 "endings": [{"result": "paid", "node": "n10", "choices": [1]}, {"result": "left", "node": "n9", "choices": [2]}],
+                 "no_exit_loops": [], "lines_never_shown": ["n12"], "paths": 3})},
+            {"tool": "get_graph", "result": ok("dialogue graph: 11 node(s), 9 edge(s).", {"graph": {}, "issue_count": 0})},
+            {"tool": "validate_graph", "result": ok("assets/dialogue/guard.dialogue: 0 issue(s).", {"issues": [], "issue_count": 0})},
+        ],
+        "checks": {"calls": [{"tool": "run_dialogue", "args": {"explore": True}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_l10n_assert_languages",
+        "kind": "guard",
+        "groups_enabled": ["editor_ux"],  # configure_game_view language: the one-language-at-a-time sibling
+        "what_happened": "Agents checked whether translated text fits by switching the Game view language and taking screenshots "
+                         "one by one; assert_ui's languages runs text_fits per language in one call.",
+        "text_at_issue": "assert_ui's `languages` parameter; 'languages' in its description was cut, as agents passed it "
+                         "without it (4/4, configure_game_view language and inspect_ui l10n in reach)",
+        "source": "docs/specs/game-ui-localization.md R38",
+        "prompt": "The German translation just came in. Do the main menu's buttons (UI Document GameObject 30) still fit "
+                  "their text, in English and in German?",
+        "mocks": [
+            {"tool": "assert_ui", "result": ok(
+                "assert_ui: 1/2 passed.\nFAIL text_fits \"button\" @1280x720 de: #play: the text needs 132 px, the box has 80 px",
+                {"passed": False, "failed": 1, "total": 2,
+                 "checks": [{"index": 0, "type": "text_fits", "language": "de", "passed": False}]})},
+        ],
+        "checks": {"calls": [{"tool": "assert_ui", "args": {"languages": "*"}}],
+                   "must_not_call": ["configure_game_view", "screenshot"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_text_entry_focus",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "inspect_ui's focus reports the soft keyboard a focused field asks for (text-entry R30); the agent "
+                         "reads it to see why a phone shows letters, and fixes the field's attributes, not the engine.",
+        "text_at_issue": "inspect_ui result: focus {ref, keyboard, enter_key, autocapitalize, autocorrect, secure, multiline, "
+                         "max_length, keyboard_open}",
+        "source": "docs/specs/text-entry-gamepad-cursor-back-button.md R30; no failure on record",
+        "prompt": "Players on phones say the e-mail field of the sign-up screen (assets/ui/signup.html) shows a plain letters "
+                  "keyboard and no Send key. The game is playing: check what keyboard the field asks for, then fix it.",
+        "files": {"assets/ui/signup.html": "<html><body><form id=\"signup\"><input id=\"mail\" type=\"text\">"
+                                           "<button type=\"submit\">Join</button></form></body></html>\n"},
+        "mocks": [
+            {"tool": "send_input", "result": ok("Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "inspect_ui", "result": ok(
+                "signup (assets/ui/signup.html): 1 element.\n#mail input (40, 260 400x36) :focus",
+                {"elements": [{"ref": "#mail", "tag": "input", "pseudo": ["focus"]}],
+                 "focus": {"ref": "#mail", "keyboard": "text", "enter_key": "default", "autocapitalize": "off", "autocorrect": False,
+                           "secure": False, "multiline": False, "max_length": None, "keyboard_open": True}})},
+        ],
+        "checks": {"calls": ["inspect_ui"],
+                   "file_must": {"assets/ui/signup.html": [r"type=\"email\"|inputmode=\"email\"", r"enterkeyhint=\"send\""]},
+                   "edits_must_not": [r"\.(cpp|h)$"]},
+        "max_turns": 14,
+    },
+    {
         "id": "guard_post_processing_preset",
         "kind": "guard",
         "what_happened": "The guide's Post-processing digest routes a look request to a preset first, then fields; guards the "
@@ -1332,31 +2352,240 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_cavity_edge_highlights",
+        "kind": "bad",
+        "what_happened": "S100 adds Cavity (post_processing.cavity_*): Blender-viewport ridge and valley shading from the "
+                         "scene's depth and normals. Asked for Blender-style edge highlights, an agent without the line reaches "
+                         "for Edge Detect (luma outlines of the 2D image) or forks a post shader.",
+        "text_at_issue": "jasper://docs/shaders, its intro: 'A Blender-style cavity, edge highlight or bevel look on 3D "
+                         "meshes is not a shader: it is the scene's Cavity post effect ...'; jasper://docs/post-processing, Fields: "
+                         "'Cavity, for a Blender-style cavity ... (not Edge Detect ... and not a custom post shader)'",
+        "source": "docs/specs/S100-cavity.md, Agent UX",
+        "prompt": "The Crate stands in for my low-poly rocks. Make my low-poly rocks show Blender-style edge highlights.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\npost_processing = {\"cavity_enabled\":true}",
+                {"scene_id": 1, "settings": {"post_processing": {"cavity_enabled": True}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["post_processing"]})},
+            {"tool": "get_post_processing_status", "result": ok(
+                "\"Main\": no in-shader colour, uber pass off, render scale 1.00 applied; cavity drawn (both, 8 samples, "
+                "normals prepass, added pre-pass).",
+                {"scene_id": 1, "playing": False, "tail_color": False, "uber": False, "uber_features": [],
+                 "cavity": {"enabled": True, "drawn": True, "type": "both", "world_samples": 8, "normals": "prepass",
+                            "added_prepass": True, "draws": 1}})},
+            {"tool": "list_shaders", "result": ok(
+                "Library shaders (mesh): library:lit, library:unlit, library:toon, library:hologram ...; postprocess: "
+                "library:crt, library:pixelate, library:posterize, library:edge_neon, library:gameboy, library:blur",
+                {"shaders": [{"name": "library:edge_neon", "type": "postprocess"}, {"name": "library:toon", "type": "mesh"}]})},
+        ],
+        "checks": {"any_of": [
+                       {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"post_processing": {"cavity_enabled": True}}}}]},
+                       {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"post_processing.cavity_enabled": True}}}]}],
+                   "must_not_call": ["fork_shader",
+                                     {"tool": "set_scene_settings", "args": {"settings": {"post_processing": {"edge_detect_enabled": True}}}},
+                                     {"tool": "set_scene_settings", "args": {"settings": {"post_processing.edge_detect_enabled": True}}}],
+                   "edits_must_not": [r"\.(frag|vert|glsl)$"]},
+        "max_turns": 14,
+    },
+    {
         "id": "guard_atmosphere_preset",
         "kind": "guard",
-        "what_happened": "The guide's Atmosphere digest names height fog and apply_atmosphere_preset (a rendering_fx tool); "
-                         "guards the digest and the group route when the guide is cut.",
-        "text_at_issue": "Guide 'Atmosphere': 'A Fog of type \"height\" ... apply_atmosphere_preset sets a look "
-                         "(list_atmosphere_presets)'",
-        "source": "guide digest (atmosphere); no failure on record",
+        "what_happened": "Asked for haze, agents looked for fog in the scene settings (Unity keeps it in Lighting), found none "
+                         "and tinted the background or the ambient instead (1/4; main's case 2/3 on main's atmosphere text, 1/3 "
+                         "on R37's): fog is a Fog GameObject here, whose look is a profile apply_atmosphere_preset links. "
+                         "4/4 with the next; 0/4 when it names create_entity only.",
+        "text_at_issue": "get_scene_settings' next in a 3D scene without a Fog ('No Fog in this scene: fog, haze or mist is a "
+                         "Fog GameObject, not a scene setting ...'); list_atmosphere_presets' fog result (the built-in ids)",
+        "source": "eval runs of this case on docs/specs/S101-vapor.md R37's surface (every sample opened get_scene_settings first)",
         "prompt": "Add a soft morning haze over the level.",
         "mocks": [
+            {"tool": "get_scene_settings", "after": "create_entity", "result": {"recorded": "get_scene_settings_fog"}},
+            # as the editor answers: post_processing has no fog field, real settings apply
+            {"tool": "set_scene_settings", "args": {"settings": {"post_processing": {"fog": "*"}}}, "result": err(
+                "post_processing: unknown field \"fog\". Fields: " + POST_PROCESSING_FIELDS + ".")},
+            {"tool": "set_scene_settings", "result": ok("Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "settings": {}})},
             {"tool": "create_entity", "args": {"type": "re:(?i)fog"}, "result": ok(
                 "Created Fog \"Fog\" [30] at Fog (one undo step).", {"entity": {"id": 30, "name": "Fog", "path": "Fog"}})},
             {"tool": "add_component", "args": {"component": "re:(?i)fog"}, "result": ok(
                 "Added fog to GameObject 30 \"Fog\".", {"entity": {"id": 30}})},
-            {"tool": "list_atmosphere_presets", "result": ok(
-                "fog presets: morning_haze, valley_mist, dense_fog, desert_heat, night_murk",
-                {"presets": [{"id": "morning_haze"}, {"id": "valley_mist"}]})},
-            {"tool": "apply_atmosphere_preset", "result": ok(
-                "Applied morning_haze to the Fog of GameObject 30 \"Fog\" (type height; one undo step).",
-                {"entity": {"id": 30}, "preset": "morning_haze"})},
-            {"tool": "set_properties", "result": ok("Set 2 properties on GameObject 30 \"Fog\".", {"entity": {"id": 30}})},
+            {"tool": "list_atmosphere_presets", "args": {"kind": "clouds"}, "result": ok(
+                "5 Volumetric Clouds presets: custom sparse cloudy overcast stormy", {"kind": "clouds", "presets": []})},
+            {"tool": "list_atmosphere_presets", "result": {"recorded": "list_atmosphere_presets_fog"}},
+            {"tool": "apply_atmosphere_preset", "args": {"preset": "re:(?i)morning_haze"}, "result": REAL | ok(
+                "Linked the Fog of Fog to FogProfiles/morning_haze.fogprofile (the project's new copy of "
+                "builtin:morning_haze); its Type is now Height (one undo step). Used by 1.",
+                {"changed": True, "entity": 30, "component": "fog", "profile": "FogProfiles/morning_haze.fogprofile",
+                 "created": True, "typeChanged": True, "usedBy": 1})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on 1 GameObject(s) (one undo step).", {"entities": [{"id": 30}]})},
+            {"tool": "get_entity", "args": {"entity": "re:^(30|Fog)$"}, "after": "apply_atmosphere_preset", "result": REAL | ok(
+                "Fog [30] components: transform fog",
+                {"id": 30, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "height", "profile": "FogProfiles/morning_haze.fogprofile"}}})},
+            {"tool": "get_entity", "args": {"entity": "re:^(30|Fog)$"}, "result": REAL | ok(
+                "Fog [30] components: transform fog",
+                {"id": 30, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "linear"}}})},
         ],
         "checks": {"any_of": [{"calls": [{"tool": "create_entity", "args": {"type": "re:(?i)fog"}}]},
                               {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)fog"}}]}],
+                   "calls": [{"tool": "apply_atmosphere_preset", "args": {"preset": "re:(?i)morning_haze"}}],
                    "must_not_call": ["fork_shader", "apply_post_processing_preset"]},
         "max_turns": 16,
+    },
+    {
+        "id": "guard_cave_fog_through_a_zone",
+        "kind": "guard",
+        "what_happened": "An agent asked for fog inside one cave only must not thicken the scene's one Fog (set_properties or a "
+                         "profile on it), which fogs the whole level; it creates a Fog Zone. Recorded red without the "
+                         "apply_atmosphere_preset sentence on Fog Zones: agents found fog_zone through create_entity's types and "
+                         "list_component_types anyway (3/3), so the sentence was cut and this case guards the route.",
+        "text_at_issue": "create_entity's type fog_zone; list_component_types' Fog Zone; docs/mcp/guide/atmosphere.md Fog Zones",
+        "source": "docs/specs/S101-vapor.md R37 (the first new case): a fog for one cave goes through a Fog Zone",
+        "prompt": "Inside the cave (the Cave GameObject, a hollow rock box around x=40) the fog should be thick and dark green "
+                  "whenever the camera is in there. Outside it the level keeps its light haze. Set that up.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings_fog"}},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Main\" (3D, 10 GameObjects). Each line: Name [id] components (flags); children indented.\n"
+                "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
+                "  Shield [18] sprite\nEnemy [14] script sprite\nCrate [15] mesh\nDirectional Light [16] light\n"
+                "Skybox [17] skybox (no transform)\nFog [1005] fog\nCave [1010] mesh\n",
+                {"entity_count": 10, "scene_id": 1, "scene_name": "Main", "truncated": False})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCave [1010] mesh", {"entities": [{"id": 1010, "path": "Cave"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:^(1010|Cave)$"}, "result": REAL | ok(
+                "Cave [1010] components: transform mesh",
+                {"id": 1010, "name": "Cave", "path": "Cave", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [40, 4, 0], "rotation": [0, 0, 0, 1], "scale": [20, 8, 20]},
+                                "mesh": {"submeshes": 1}}})},
+            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": REAL | ok(
+                "Fog [1005] components: transform fog",
+                {"id": 1005, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "height", "color": [0.8, 0.82, 0.85], "colorMode": "color",
+                                        "attenuationDistance": 600.0, "baseHeight": 0.0, "maximumHeight": 80.0,
+                                        "volumetric": False}}})},
+            {"tool": "get_atmosphere_info", "result": {"recorded": "get_atmosphere_info_fog_shown"}},
+            {"tool": "list_atmosphere_presets", "result": {"recorded": "list_atmosphere_presets_fog"}},
+            {"tool": "create_entity", "args": {"type": "fog_zone"}, "result": {"recorded": "create_entity_fog_zone"}},
+            {"tool": "create_entity", "result": ok("Created GameObject [1020] (one undo step).", {"entity": {"id": 1020}})},
+            {"tool": "add_component", "result": ok("Added the component (one undo step).", {"entity": {"id": 1010}})},
+            {"tool": "edit_fog_profile", "result": {"recorded": "edit_fog_profile_cave"}},
+            {"tool": "apply_atmosphere_preset", "args": {"entity": "re:^(1005|Fog)$"}, "result": {"recorded": "apply_fog_profile_night"}},
+            {"tool": "apply_atmosphere_preset", "result": {"recorded": "apply_fog_profile_zone"}},
+            {"tool": "set_properties", "result": ok("Set the properties (one undo step).", {"entities": [{"id": 1020}]})},
+            {"tool": "set_transform", "result": ok("Moved 1 GameObject(s) (one undo step).", {"entities": [{"id": 1020}]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "create_entity", "args": {"type": "fog_zone"}}]},
+                              {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)fog_?zone"}}]}],
+                   "must_not_call": [{"tool": "apply_atmosphere_preset", "args": {"entity": "re:^(1005|Fog)$"}},
+                                     {"tool": "set_properties", "args": {"entity": "re:^(1005|Fog)$"}}]},
+        "max_turns": 24,
+    },
+    {
+        "id": "bad_shared_fog_profile_copied_for_one_scene",
+        "kind": "bad",
+        "what_happened": "A Fog linked to a profile another scene uses: an agent asked to change this scene's fog only either "
+                         "wrote the Fog's own field (hidden beneath the profile) or edited the shared profile, changing the "
+                         "other scene too.",
+        "text_at_issue": "set_properties' refusal of a field the profile sets ('For every user: edit_fog_profile {path, set}. "
+                         "For this scene only: edit_fog_profile {path: <a new .fogprofile>, from: {profile}}, then "
+                         "apply_atmosphere_preset'); edit_fog_profile description ('It changes every user: for one scene only, "
+                         "create a copy (from: {profile}) and link that.')",
+        "source": "docs/specs/S101-vapor.md R37 (the third new case), R43",
+        "prompt": "Make the fog in Main much denser: attenuation distance 30. Level2 uses the same fog profile and must keep "
+                  "its look.",
+        # the shared profile, as the editor copied builtin night on first use
+        "files": {"FogProfiles/night.fogprofile": "{\n  \"version\": 1,\n  \"name\": \"Night\",\n  \"description\": \"A dark blue fog close to the ground, little sun scattering\",\n  \"fields\": {\n    \"color\": [0.0020508443, 0.0028788275, 0.00778151],\n    \"attenuationDistance\": 200.0,\n    \"baseHeight\": 0.0,\n    \"maximumHeight\": 60.0,\n    \"startDistance\": 0.0,\n    \"maxFogDistance\": 2000.0,\n    \"maxOpacity\": 0.95,\n    \"directionalInscattering\": 0.05,\n    \"anisotropy\": 0.3,\n    \"skyFill\": true,\n    \"skyFillAngle\": 4.0\n  }\n}\n"},
+        "mocks": [
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings_fog"}},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
+                "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
+                "  Shield [18] sprite\nEnemy [14] script sprite\nCrate [15] mesh\nDirectional Light [16] light\n"
+                "Skybox [17] skybox (no transform)\nFog [1005] fog\n",
+                {"entity_count": 9, "scene_id": 1, "scene_name": "Main", "truncated": False})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nFog [1005] fog", {"entities": [{"id": 1005, "path": "Fog"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": REAL | ok(
+                "Fog [1005] components: transform fog",
+                {"id": 1005, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "height", "profile": "FogProfiles/night.fogprofile", "color": [0.8, 0.8, 0.8],
+                                        "attenuationDistance": 400.0, "baseHeight": 0.0, "maximumHeight": 50.0,
+                                        "volumetric": False}}})},
+            {"tool": "get_atmosphere_info", "result": REAL | ok(
+                "Atmosphere (game view): quality high, 1 passes, fog profile FogProfiles/night.fogprofile.",
+                {"view": "game", "quality": "high", "fog": {"present": True, "type": "height",
+                                                            "profile": "FogProfiles/night.fogprofile"},
+                 "zones": [], "blend": None, "diagnostics": [], "opacity": {"at10": 0.04, "at50": 0.19, "at200": 0.55,
+                                                                           "includes": "analytic"}})},
+            {"tool": "list_atmosphere_presets", "result": REAL | ok(
+                "9 built-in fog profiles: morning_haze ground_mist mountain_valley horizon_haze night bright_haze murky "
+                "infernal toxic; 1 project profiles: FogProfiles/night.fogprofile (used by 2).",
+                {"kind": "fog", "profiles": [{"path": "FogProfiles/night.fogprofile", "name": "Night", "overrides": 10,
+                                              "usedBy": 2}]})},
+            {"tool": "set_properties", "result": {"recorded": "set_properties_fog_profile_field"}},
+            {"tool": "edit_fog_profile", "args": {"from": {"profile": "*"}}, "result": {"recorded": "edit_fog_profile_copy"}},
+            # as the editor answers: from given as text (not an object), a new path without from
+            {"tool": "edit_fog_profile", "args": {"from": "re:."}, "result": err(
+                "from takes one of builtin (an id), entity (a GameObject with a Fog or Fog Zone) or profile (a .fogprofile path).")},
+            {"tool": "edit_fog_profile", "args": {"path": "re:(^|/)night\\.fogprofile$"}, "result": {"recorded": "edit_fog_profile_shared"}},
+            {"tool": "undo", "after": {"tool": "edit_fog_profile", "args": {"path": "re:(^|/)night\\.fogprofile$"}},
+             "result": {"recorded": "undo_fog_profile_shared"}},
+            {"tool": "edit_fog_profile", "result": err(
+                "No fog profile at that path: pass from ({builtin}, {entity} or {profile}) to create it. Project profiles: "
+                "FogProfiles/night.fogprofile.")},
+            {"tool": "apply_atmosphere_preset", "after": "edit_fog_profile", "result": {"recorded": "apply_fog_profile_copy"}},
+            {"tool": "apply_atmosphere_preset", "result": err(
+                "Unknown fog profile: no fog profile at that path: give a project .fogprofile path or builtin:<id> (morning_haze, "
+                "ground_mist, mountain_valley, horizon_haze, night, bright_haze, murky, infernal, toxic). Project profiles: "
+                "FogProfiles/night.fogprofile.")},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_fog_profile", "args": {"from": {"profile": "re:night"}}},
+                             {"tool": "apply_atmosphere_preset", "args": {"preset": "re:\\.fogprofile$"}}],
+                   "order": [["edit_fog_profile", "apply_atmosphere_preset"]],
+                   "must_not_call": [{"tool": "edit_fog_profile", "args": {"path": "re:(^|/)night\\.fogprofile$", "set": "*"}}]},
+        "max_turns": 20,
+    },
+    {
+        "id": "bad_fog_not_showing_reads_diagnostics",
+        "kind": "bad",
+        "what_happened": "Before get_atmosphere_info's diagnostics an agent told the fog does not show could only guess: the "
+                         "Fog's fields and the passes looked right, so it thickened the fog, while the Scene view's Disable "
+                         "fog display setting hid it.",
+        "text_at_issue": "get_atmosphere_info description ('... diagnostics: why fog does not show or looks wrong, each with "
+                         "its fix. Call it first when fog is missing ...'); its result's diagnostics (scene_view_fog_disabled) "
+                         "and next ('set_scene_camera {display: {disable_fog: false}}'); docs/mcp/guide/atmosphere.md Diagnostics",
+        "source": "docs/specs/S101-vapor.md R37 (the second case): an agent reads diagnostics and fixes the named cause",
+        "prompt": "I added a height fog to Main (the Fog GameObject), but I can't see any fog in the editor. Fix it.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings_fog"}},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
+                "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
+                "  Shield [18] sprite\nEnemy [14] script sprite\nCrate [15] mesh\nDirectional Light [16] light\n"
+                "Skybox [17] skybox (no transform)\nFog [1005] fog\n",
+                {"entity_count": 9, "scene_id": 1, "scene_name": "Main", "truncated": False})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nFog [1005] fog", {"entities": [{"id": 1005, "path": "Fog"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": ok(
+                "Fog [1005] components: transform fog",
+                {"id": 1005, "name": "Fog", "path": "Fog", "active": True, "active_in_hierarchy": True, "layer": 0, "tag": "",
+                 "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "height", "color": [0.6, 0.6, 0.6], "colorMode": "color",
+                                        "attenuationDistance": 400.0, "baseHeight": 0.0, "maximumHeight": 50.0,
+                                        "maxOpacity": 1.0, "volumetric": False}}})},
+            {"tool": "set_scene_camera", "result": {"recorded": "scene_view_enable_fog"}},
+            {"tool": "get_atmosphere_info", "after": "set_scene_camera", "result": {"recorded": "get_atmosphere_info_fog_shown"}},
+            {"tool": "get_atmosphere_info", "result": {"recorded": "get_atmosphere_info_fog_hidden"}},
+            {"tool": "set_properties", "result": ok("Set 1 property on GameObject 1005 \"Fog\" (one undo step).", {"entity": {"id": 1005}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_camera", "args": {"display": {"disable_fog": False}}}]},
+        "max_turns": 20,
     },
     {
         "id": "bad_privacy_manifest_by_hand",
@@ -1438,6 +2667,61 @@ CASES = [
                    "max_calls": {"record_game": 1},
                    "reply_must": [r"disk|space", r"partial"]},
         "max_turns": 10,
+    },
+    {
+        "id": "bad_record_fallback_unreported",
+        "kind": "bad",
+        "what_happened": "A movie came out of another H.264 encoder than libx264 (a bitrate instead of CRF quality); the "
+                         "result named only the encoder used, so the agent could not tell the user it was a downgrade.",
+        "text_at_issue": "record_game's result: report.fallbacks [{step, from, to, reason}] (S99 R14)",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R14",
+        "groups_enabled": ["editor_tools"],
+        "prompt": "Record 3 seconds of the game as an MP4 to captures/clip.mp4 and tell me if anything came out worse than asked.",
+        "mocks": [
+            {"tool": "record_game", "result": {
+                "text": "Recorded 90 frames to captures/clip.mp4.",
+                "real": True,
+                "structured": {"frames": 90, "fps": 30, "width": 1920, "height": 1080, "encoder": "h264_nvenc", "scene": "Main", "take": 1,
+                               "startFrame": 0, "warnings": [], "wallSeconds": 6.1, "maxQueued": 3, "output": "captures/clip.mp4",
+                               "estimated_bytes": 1555200, "movie": "captures/clip.mp4", "sidecar": "captures/clip.mp4.recording.json",
+                               "report": {"seconds": 6.4, "estimated_seconds": 5.9, "ratio": 1.08,
+                                          "fallbacks": [{"step": "encoder", "from": "libx264", "to": "h264_nvenc",
+                                                         "reason": "this FFmpeg has no libx264"}]},
+                               "job": {"job_id": "job-1", "kind": "record", "title": "Record 90 frame(s) to mp4", "status": "succeeded",
+                                       "message": "Recorded 90 frames to captures/clip.mp4.", "elapsed_seconds": 6.4, "progress": 1.0,
+                                       "estimate": {"seconds": 5.9, "bytes": 1555200, "basis": "history", "confidence": "medium"},
+                                       "log_tail": []}}}},
+        ],
+        "checks": {"calls": [{"tool": "record_game"}], "max_calls": {"record_game": 1}, "reply_must": [r"libx264"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_build_estimate_unknown",
+        "kind": "bad",
+        "what_happened": "Asked how long a build would take, an agent could only guess: no job said what it expected to cost.",
+        "text_at_issue": "a job's estimate {seconds, basis, confidence} and remaining_seconds (S99 R13, R16)",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R13, R16",
+        "prompt": "Start a Linux build of the game, don't wait for it to finish, and tell me about how long it should take.",
+        "mocks": [
+            {"tool": "build_project", "result": {
+                "text": "Job job-3 (Build Linux (Release)) is still running. Poll get_job with job_id \"job-3\" until its status is "
+                        "succeeded, failed or cancelled; cancel_job stops it.",
+                "real": True,
+                "structured": {"job_id": "job-3", "kind": "build", "title": "Build Linux (Release)", "status": "running",
+                               "message": "Cooking textures...", "elapsed_seconds": 0.4, "progress": 0.05, "holds": "export",
+                               "estimate": {"seconds": 240.0, "basis": "history", "confidence": "high"}, "remaining_seconds": 236.0,
+                               "log_tail": []}}},
+            {"tool": "get_job", "result": {
+                "text": "Build Linux (Release): running - Cooking textures...",
+                "real": True,
+                "structured": {"job_id": "job-3", "kind": "build", "title": "Build Linux (Release)", "status": "running",
+                               "message": "Cooking textures...", "elapsed_seconds": 3.0, "progress": 0.06, "holds": "export",
+                               "estimate": {"seconds": 240.0, "basis": "history", "confidence": "high"}, "remaining_seconds": 234.0,
+                               "log_tail": []}}},
+        ],
+        "checks": {"calls": [{"tool": "build_project"}],
+                   "reply_must": [r"\b(4|four)\s*min|\b2[34]\d\s*s"]},
+        "max_turns": 8,
     },
     {
         "id": "guard_shadow_softness",
@@ -2372,6 +3656,44 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_muffle_one_source_with_a_group",
+        "kind": "bad",
+        "what_happened": "S97: muffling one sound (a radio, a voice behind a door) took a new mixer group with a low-pass and "
+                         "a reroute, since sources had no effects; that group's filter then catches every other source sent "
+                         "to it. A source now holds its own effects (Unity's Audio Low Pass Filter).",
+        "text_at_issue": "docs/mcp/guide/audio.md 7: 'Effects on one source' (to muffle one source, its own effects)",
+        "source": "S97 REQ-43 (a), spec-first",
+        "groups_enabled": ["audio"],
+        "prompt": "The Radio GameObject plays a song through its Audio Source, on the Music group with the level's music. "
+                  "Make the radio sound muffled, as if it were in the next room. The level's music must stay clear.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok(
+                "Radio (entity 7): Transform, AudioSource {filename: music/radio.ogg, outputGroup: Music, looping: true}",
+                {"entity": 7, "name": "Radio", "components": {"transform": {}, "audiosource": {
+                    "filename": "music/radio.ogg", "outputGroup": "Music", "looping": True, "volume": 1}}})},
+            {"tool": "audio_mixer", "args": {"action": "get"}, "result": ok(
+                "audio/Main.mixer (the project's mixer). Groups: Master, Music, SFX. Exposed: none. Snapshots: none.",
+                {"mixer": "audio/Main.mixer", "groups": [{"name": "Master", "effects": [{"type": "limiter"}]},
+                                                         {"name": "Music", "effects": []}, {"name": "SFX", "effects": []}]})},
+            {"tool": "set_properties", "result": ok(
+                "Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"entity": 7, "name": "Radio"}]})},
+            {"tool": "add_component", "result": ok(
+                "Added 1 component(s) (one undo step).",
+                {"added": [{"entity": 7, "component": "audiosource", "effect": "lowpass"}], "skipped": []})},
+        ],
+        # the source's own effects, by any spelling of the component (set_properties' values or changes), or
+        # Unity's filter by name; never a group edit
+        "checks": {"any_of": [
+            *[{"calls": [{"tool": "set_properties", "args": {"values": {key: {"effects": "*"}}}}],
+               "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]}
+              for key in ("audiosource", "AudioSource", "AudioSourceComponent", "audio_source", "Audio Source")],
+            {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:^effects"}]}}],
+             "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]},
+            {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)low ?pass"}}],
+             "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]}]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_sound_too_quiet_no_measure",
         "groups_enabled": ["audio"],
         "files": {"assets/sfx/jump.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
@@ -2425,6 +3747,62 @@ CASES = [
         "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"music": "*"}}}],
                    "must_not_call": ["write_file"]},
         "max_turns": 8,
+    },
+    {
+        "id": "bad_small_loop_streams_by_clip_load_type",
+        "groups_enabled": ["audio"],
+        "files": {"assets/ambience/rain.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "S97 AU2: a clip's Load Type was per Audio Source only, so agents asked to stream a sub-1-MiB loop set "
+                         "loadType on one source (others kept decoding it) or wrote the .meta by hand; the clip's own Load Type is "
+                         "the load_type import settings key.",
+        "text_at_issue": "set_audio_import_settings' description and settings key list (load_type); jasper://docs/sound's import settings table",
+        "source": "S97 REQ-16, REQ-43 (b) (spec-first)",
+        "prompt": "assets/ambience/rain.wav is a 700 KB loop several sources and Audio.play use. Make it stream from disk "
+                  "everywhere instead of being decoded into memory.",
+        "mocks": [
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/ambience/rain.wav: -24.0 LUFS, 4.000 s",
+                {"items": [{"n": 1, "path": "assets/ambience/rain.wav", "settings": {"load_type": "streaming"},
+                            "resolved": {"sample_rate": 44100, "frames": 176400}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"load_type": "streaming"}}}],
+                   "must_not_call": ["write_file", "set_properties"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_second_audio_source_by_slot_id",
+        "kind": "bad",
+        "what_happened": "S97 AU4: a GameObject held one Audio Source, add_component skipped a second, so agents asked for an engine "
+                         "and a horn on one car made a child GameObject for the horn or overwrote the engine's clip; a second "
+                         "add_component AudioSource now adds a slot and returns its entity to set its values on.",
+        "text_at_issue": "add_component's description (AudioSource adds another); its result's added[].audio_source and next",
+        "source": "S97 REQ-28, REQ-43 (c) (spec-first)",
+        "prompt": "The Car GameObject (id 12) in the open scene needs two sounds playing from it: an engine loop "
+                  "(sounds/engine.wav, looping) and a horn (sounds/horn.wav, not looping). Set both up.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok("Car [12] components: Transform Mesh",
+                                                {"id": 12, "name": "Car", "components": {"Transform": {}, "Mesh": {}}})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\n12 Car",
+                                                   {"count": 1, "entities": [{"id": 12, "name": "Car", "path": "Car"}]})},
+            {"tool": "add_component", "once": True, "result": ok(
+                "Added 1 component(s) (one undo step).",
+                {"scene_id": 1, "added": [{"entity": 12, "component": "AudioSource"}], "skipped": []})},
+            {"tool": "add_component", "after": "add_component", "result": ok(
+                "Added 1 component(s) (one undo step). Each further Audio Source is its own entity (31), hidden in the scene tree: "
+                "pass that id as entity to set_properties, get_entity and remove_component.",
+                {"scene_id": 1, "added": [{"entity": 12, "component": "AudioSource", "audio_source": 31, "slot": 1}], "skipped": [],
+                 "next": "Each further Audio Source is its own entity (31), hidden in the scene tree: pass that id as entity to "
+                         "set_properties, get_entity and remove_component."})},
+            {"tool": "set_properties", "result": ok("Set 2 propertie(s) (one undo step).", {"scene_id": 1, "values": {}})},
+            {"tool": "create_entity", "result": ok("Created GameObject \"Horn\" [40] under Car.", {"entity_id": 40})},
+        ],
+        "checks": {"min_calls": {"add_component": 2},
+                   "any_of": [{"calls": [{"tool": "set_properties", "args": {"entity": "re:^31$"}}]},
+                              {"calls": [{"tool": "add_component", "args": {"values": "*"}}],
+                               "must_not_call": [{"tool": "set_properties", "args": {"entity": "re:^12$"}}]}],
+                   "must_not_call": ["create_entity"]},
+        "max_turns": 10,
     },
     {
         "id": "guard_placeholder_coin_finds_the_group",
@@ -2583,6 +3961,54 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "bad_run_on_the_connected_phone",
+        "kind": "bad",
+        "what_happened": "Asked to try a change on the Android phone plugged in, an agent built an .aab and told the user to "
+                         "install it with adb: build_project had no way to install and launch on a device.",
+        "text_at_issue": "build_project run_device and its description 'run_device: Build And Run.'; get_build_info devices",
+        "source": "docs/specs/build-and-run-on-device.md R21, R22",
+        "prompt": "My Android phone is plugged in with USB debugging on. Put the current build of the game on it and start it.",
+        "mocks": [
+            {"tool": "get_build_info", "args": {"devices": True}, "result": real("Host linux. 2 usable Run Device(s) of 2.", {
+                "host_platform": "linux",
+                "devices": [{"id": "R58M123ABC", "platform": "android", "kind": "device", "name": "Galaxy S23", "state": "device",
+                             "usable": True, "abi": "arm64-v8a", "os_version": "34"},
+                            {"id": "web", "platform": "web", "kind": "browser", "name": "Default browser", "state": "ready", "usable": True}]})},
+            {"tool": "get_build_info", "result": {"recorded": "build_info_mobile"}},
+            {"tool": "build_project", "args": {"run_device": "re:^(R58M123ABC|auto)$"}, "result": ok(
+                "Build android (Release): succeeded - Built android (prebuilt player android-universal-gles3-development) in /work/out. "
+                "Installed on Galaxy S23 and launched.",
+                {"job_id": "job-1", "status": "succeeded", "next": "read_console categories [\"device\"] for its log; run_build device to watch it",
+                 "result": {"platform": "android", "device": {"id": "R58M123ABC", "name": "Galaxy S23", "installed": "full",
+                                                              "pushed_files": 0, "pushed_bytes": 0, "launch_ms": 900}}})},
+        ],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "android", "run_device": "re:^(R58M123ABC|auto)$"}}],
+                   "must_not_call": [{"tool": "build_project", "args": {"android_format": "aab"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_device_run_with_input",
+        "kind": "bad",
+        "what_happened": "To check a game on the emulator, an agent passed run_build an input script; input reaches desktop "
+                         "players only, so the run failed instead of returning the device's log and crash state.",
+        "text_at_issue": "run_build description 'here or on a device (get_build_info devices) ... input: send_input events (desktop "
+                         "Linux/X11)' and the error 'input is desktop-only (Linux/X11); on a device drive the game from Lua or its arguments'; "
+                         "the device group's description 'A build on a phone or emulator: build_project run_device, run_build device "
+                         "(core)' (without it agents enabled device, found only tiers and asked for adb)",
+        "source": "docs/specs/build-and-run-on-device.md R23",
+        "prompt": "The game is installed on the emulator emulator-5554. Run it there for 10 seconds and tell me whether it crashes.",
+        "mocks": [
+            {"tool": "run_build", "args": {"device": "emulator-5554", "input": "re:."}, "result": err(
+                "input is desktop-only (Linux/X11); on a device drive the game from Lua or its arguments.")},
+            {"tool": "run_build", "args": {"device": "emulator-5554"}, "result": ok(
+                "Pixel 7: launched, crashed. 40 log line(s), fatal: Fatal signal 11 (SIGSEGV).",
+                {"crashed": True, "fatal_lines": ["libc: Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR)"], "errors": [], "exit_code": None,
+                 "device": {"id": "emulator-5554", "name": "Pixel 7", "installed": "current"}})},
+        ],
+        "checks": {"calls": [{"tool": "run_build", "args": {"device": "emulator-5554"}}], "reply_must": [r"(?i)crash|SIGSEGV|signal 11"]},
+        "max_turns": 8,
+    },
+    {
         "id": "bad_build_check_on_the_host_not_the_targets",
         "kind": "bad",
         "what_happened": "In a game that ships on Android and iOS only, an agent proved a change by building for Linux, the "
@@ -2617,6 +4043,78 @@ CASES = [
                    "must_not_call": [{"tool": "build_project", "args": {"mode": "re:^(desktop|web)$"}},
                                      {"tool": "build_project", "args": {"platform": "re:^(windows|linux|macos|web)$"}}]},
         "max_turns": 14,
+    },
+    {
+        "id": "bad_build_over_download_budget",
+        "kind": "bad",
+        "what_happened": "A web build over the project's Download Budget: build_project's result said nothing about sizes, so "
+                         "agents listed the output folder with du and guessed which assets to shrink.",
+        "text_at_issue": "build_project result: build_bytes, build_categories, top_files, download_bytes_gzip, W-BUILD-OVER-BUDGET "
+                         "and its next ('Over the Download Budget: textures is the largest category (5.1 MB). get_texture_cook_report "
+                         "{\"platforms\": [\"web\"]} (tool_groups: assets_pipeline) names the source texture of each cooked "
+                         "file...'); jasper://docs/shipping Size",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R10, R11 (Crucible's build-size feedback); no transcript",
+        "files": GAME_FILES,
+        "prompt": "The web portal only takes games under 5 MB, and the project's web Download Budget is set to that. Build the web "
+                  "version and find out which files make it too big. Don't change anything yet.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "3 setting(s).", {"settings": {"player.download_budget_mb.desktop": 0.0, "player.download_budget_mb.mobile": 0.0,
+                                               "player.download_budget_mb.web": 5.0}}) | {"real": True}},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available (prebuilt player web-wasm32-gles3-release); source "
+                "export: available. 1 scene(s) in the build, 43 shader(s). Default platform: web.",
+                {"host_platform": "linux", "default_platform": "web", "last_build": None})},
+            {"tool": "build_project", "result": ok(
+                "Build web (Release): succeeded - Built web (prebuilt player web-wasm32-gles3-release) in /work/space-dodge-web. "
+                "1 build warning(s): see warnings.",
+                {"job_id": "job-4", "status": "succeeded", "result": {
+                    "mode": "player", "platform": "web", "method_used": "prebuilt", "output_dir": "/work/space-dodge-web",
+                    "artifacts": ["content.jpak", "index.html", "jasperengine-player-st.js", "jasperengine-player-st.wasm"],
+                    "errors": [], "error_count": 0, "warning_count": 0,
+                    "warnings": [{"code": "W-BUILD-OVER-BUDGET", "message":
+                                  "the web build downloads 7.9 MB (gzip estimate), over its Download Budget of 5.0 MB "
+                                  "(player.download_budget_mb.web); largest categories: textures 5.1 MB, engine 4.2 MB, audio 1.3 MB"}],
+                    "build_report": "/work/space-dodge-web/build-report.json", "build_bytes": 11534336,
+                    "build_categories": {"models": 524288, "textures": 5347737, "audio": 1363148, "scripts": 20480, "scenes": 61440,
+                                         "engine": 4404019, "other": 2048},
+                    "top_files": [{"path": "jasperengine-player-st.wasm", "bytes": 4194304},
+                                  {"path": "assets/je-cooked/web/1f/1f9a.ktx2", "bytes": 2097152},
+                                  {"path": "assets/je-cooked/web/7c/7c02.ktx2", "bytes": 1572864},
+                                  {"path": "assets/music/theme.ogg", "bytes": 1153433},
+                                  {"path": "assets/je-cooked/web/a4/a4d1.ktx2", "bytes": 786432}],
+                    "download_bytes_gzip": 8283750,
+                    "download_budget": {"budget_bytes": 5242880, "actual_bytes": 8283750, "over": True,
+                                        "largest_categories": [{"category": "textures", "bytes": 5347737},
+                                                               {"category": "engine", "bytes": 4404019},
+                                                               {"category": "audio", "bytes": 1363148}]}},
+                 "next": "Over the Download Budget: textures is the largest category (5.1 MB). get_texture_cook_report "
+                         "{\"platforms\": [\"web\"]} (tool_groups: assets_pipeline) names the source texture of each cooked "
+                         "file with its disk bytes; set_texture_import_settings lowers max_size or quality."}) | {"real": True}},
+            {"tool": "get_texture_cook_report", "result": ok(
+                "Texture cook report: 3 textures; web: 3 cooked, 4.3 MB on disk (source 18.0 MB).",
+                {"textures": [
+                    {"path": "assets/textures/background.png", "type": "default",
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "key": "1f9a", "width": 4096, "height": 4096, "mips": 13,
+                                           "disk_bytes": 2097152, "source_bytes": 9437184}}},
+                    {"path": "assets/textures/ship_atlas.png", "type": "sprite",
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "key": "7c02", "width": 2048, "height": 2048, "mips": 12,
+                                           "disk_bytes": 1572864, "source_bytes": 6291456}}},
+                    {"path": "assets/textures/asteroids.png", "type": "default",
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "key": "a4d1", "width": 2048, "height": 1024, "mips": 12,
+                                           "disk_bytes": 786432, "source_bytes": 3145728}}}],
+                 "totals": {"web": {"textures": 3, "cooked": 3, "failed": 0, "cache_hits": 3, "vram_bytes": 22369621,
+                                    "disk_bytes": 4456448, "source_bytes": 18874368}}}) | {"real": True}},
+        ],
+        "shell": [{"match": r"\bdu\b|\bls\b|\bfind\b", "output": ""}],
+        # mode web and the web player (platform web) are both the web build, held to the same budget
+        "checks": {"calls": [{"tool": "get_texture_cook_report"}],
+                   "any_of": [{"calls": [{"tool": "build_project", "args": {"platform": "web"}}]},
+                              {"calls": [{"tool": "build_project", "args": {"mode": "web"}}]}],
+                   "order": [["build_project", "get_texture_cook_report"]],
+                   "must_not_call": ["set_texture_import_settings", "set_project_settings"],
+                   "reply_must": [r"(?i)background\.png"]},
+        "max_turns": 12,
     },
     {
         "id": "guard_build_output_inside_project",
@@ -3103,6 +4601,122 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "focus_window", "args": {"window": "animator"}}], "must_not_call": ["screenshot"]},
         "max_turns": 6,
+    },
+    # ---- Mesh Space Rotation (docs/specs/mesh-space-rotation.md R36, R40)
+    {
+        "id": "guard_layer_twist_through_check_next",
+        "kind": "guard",
+        "what_happened": "New text (mesh-space-rotation R36, R40): an upper-body layer masked from the spine over a run turns "
+                         "the torso with the run's hips. check_animation's layer_blend measures it and its anim-layer-twist "
+                         "finding's next is the edit_animator_controller call that turns on the layer's Mesh Space Rotation, "
+                         "instead of a script copying a proxy bone after the update (Unity's Spine Proxy), which moves "
+                         "Transforms but not the skinned mesh, or a mask that takes the hips and twists the legs instead.",
+        "text_at_issue": "check_animation: 'layer_blend: how far a masked Animator layer's bones (a twisted torso) are from its own "
+                         "clip'; its result's finding next; animator.md's Mesh Space Rotation line",
+        "source": "docs/specs/mesh-space-rotation.md R36, R40 (new tool text); no failure on record",
+        "prompt": "The Knight runs on his Animator's base layer and swings his sword on the 'Upper Body' layer, whose mask starts "
+                  "at the spine. While he runs, his chest points off to the side, so the swing lands sideways. Fix it and show "
+                  "me with a number that it is fixed.",
+        "groups_enabled": ["animation"],
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nKnight [31] animator model transform",
+                                                  {"entities": [{"id": 31, "path": "Knight"}]})},
+            {"tool": "get_animator", "args": {"entity": "*"}, "result": ok(
+                "Animator on \"Knight\" (anim/knight.controller).",
+                {"entity": {"id": 31, "name": "Knight"}, "controller": "assets/anim/knight.controller", "enabled": True, "speed": 1,
+                 "apply_root_motion": False, "playing": False,
+                 "rig": {"bones": 24, "skins": 1, "humanoid": True,
+                         "clips": [{"clip": "models/knight.glb#Run", "loaded": True, "length": 0.8, "bound_tracks": 24, "tracks": 24},
+                                   {"clip": "models/knight.glb#Swing", "loaded": True, "length": 1.2, "bound_tracks": 24, "tracks": 24}]},
+                 "diagnostics": []})},
+            {"tool": "get_animator", "args": {"controller": "*"}, "result": ok(
+                "assets/anim/knight.controller: 1 parameter(s), 2 layer(s), 3 state(s), 0 warning(s), 1 user(s)",
+                {"path": "assets/anim/knight.controller", "parameters": [{"name": "Attack", "type": "trigger"}],
+                 "layers": [{"name": "Base Layer", "weight": 1, "blending": "override", "mesh_space_rotation": False,
+                             "state_machine": {"default_state": "Run", "states": [{"name": "Run", "motion": {"clip": "models/knight.glb#Run"}}]}},
+                            {"name": "Upper Body", "weight": 1, "blending": "override", "mask": "anim/upper_body.mask",
+                             "mesh_space_rotation": False,
+                             "state_machine": {"default_state": "Empty", "states": [
+                                 {"name": "Empty", "motion": None}, {"name": "Swing", "motion": {"clip": "models/knight.glb#Swing"}}]}}],
+                 "diagnostics": [], "warnings": [], "users": [{"scene": 1, "entity": {"id": 31, "name": "Knight"}}]})},
+            {"tool": "check_animation", "args": {"layer_blend": "*"}, "after": {"tool": "edit_animator_controller",
+                                                                              "args": {"ops": [{"mesh_space_rotation": True}]}},
+             "result": {"text": "layer_blend: 'Upper Body' (Upper Body.Swing) over Base Layer.Run: mixamorig:Hips/mixamorig:Spine off by "
+                                "0.00 degrees at 0.00 s, chest facing 0.00 degrees off; Mesh Space Rotation on; ok: true.", "real": True,
+                        "structured": {"ok": True, "findings": [], "job_id": "job-7", "status": "succeeded",
+                                       "layer_blend": {"layer": "Upper Body", "base_state": "Base Layer.Run", "state": "Upper Body.Swing",
+                                                       "mesh_space_rotation": True, "boundary_bones": ["mixamorig:Hips/mixamorig:Spine"],
+                                                       "max_angle_deg": 0.0001, "worst_bone": "mixamorig:Hips/mixamorig:Spine",
+                                                       "facing_delta_deg": 0.0001, "samples": []}}}},
+            {"tool": "check_animation", "args": {"layer_blend": "*"}, "result": {
+                "text": "layer_blend: 'Upper Body' (Upper Body.Swing) over Base Layer.Run: mixamorig:Hips/mixamorig:Spine off by 74.10 "
+                        "degrees at 0.60 s, chest facing 73.80 degrees off; Mesh Space Rotation off; ok: false.\nnext: "
+                        "edit_animator_controller {\"ops\":[{\"layer\":\"Upper Body\",\"mesh_space_rotation\":true,\"op\":\"set_layer\"}],"
+                        "\"path\":\"assets/anim/knight.controller\"}", "real": True,
+                "structured": {"ok": False, "job_id": "job-6", "status": "succeeded",
+                               "layer_blend": {"layer": "Upper Body", "base_state": "Base Layer.Run", "state": "Upper Body.Swing",
+                                               "mesh_space_rotation": False, "boundary_bones": ["mixamorig:Hips/mixamorig:Spine"],
+                                               "max_angle_deg": 74.1, "worst_bone": "mixamorig:Hips/mixamorig:Spine",
+                                               "facing_delta_deg": 73.8, "samples": [
+                                                   {"time": 0.6, "max_angle_deg": 74.1, "facing_delta_deg": 73.8,
+                                                    "bones": {"mixamorig:Hips/mixamorig:Spine": 74.1,
+                                                              "mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1": 74.1}}]},
+                               "findings": [{"tool": "anim", "path": "assets/anim/knight.controller", "line": 0, "col": 0,
+                                             "severity": "warning", "code": "anim-layer-twist",
+                                             "message": "layer 'Upper Body': mixamorig:Hips/mixamorig:Spine is 74.1 degrees from where the "
+                                                        "blend should turn it (limit 5): the mask starts or stops below a bone it leaves "
+                                                        "out, so that bone follows the other side's rotation (an upper body turned by the "
+                                                        "base layer's hips)",
+                                             "suggestion": "turn on Mesh Space Rotation on the layer: edit_animator_controller "
+                                                           "{\"ops\":[{\"layer\":\"Upper Body\",\"mesh_space_rotation\":true,\"op\":\"set_layer\"}],"
+                                                           "\"path\":\"assets/anim/knight.controller\"}",
+                                             "next": {"tool": "edit_animator_controller",
+                                                      "arguments": {"path": "assets/anim/knight.controller", "ops": [
+                                                          {"op": "set_layer", "layer": "Upper Body", "mesh_space_rotation": True}]}}}]}}},
+            {"tool": "list_assets", "result": ok(
+                "assets/ (4): anim/knight.controller (Animator Controller), anim/upper_body.mask (Avatar Mask), "
+                "models/knight.glb (model: Run, Swing), scenes/Main.scene (scene)",
+                {"assets": [{"path": "assets/anim/knight.controller", "type": "animator_controller"},
+                            {"path": "assets/anim/upper_body.mask", "type": "avatar_mask"},
+                            {"path": "assets/models/knight.glb", "type": "model"}, {"path": "assets/scenes/Main.scene", "type": "scene"}]})},
+            {"tool": "read_file", "args": {"path": "re:knight\\.controller"}, "result": ok(
+                "assets/anim/knight.controller lines 1-12 of 12:\n{\"format\": \"jasperengine.controller\", \"version\": 2, "
+                "\"parameters\": [{\"name\": \"Attack\", \"type\": \"trigger\"}], \"layers\": [{\"name\": \"Base Layer\", "
+                "\"weight\": 1, \"blending\": \"override\", \"state_machine\": {\"default_state\": \"Run\", \"states\": "
+                "[{\"name\": \"Run\", \"motion\": {\"clip\": \"models/knight.glb#Run\"}}]}}, {\"name\": \"Upper Body\", "
+                "\"weight\": 1, \"blending\": \"override\", \"mask\": \"anim/upper_body.mask\", \"state_machine\": "
+                "{\"default_state\": \"Empty\", \"states\": [{\"name\": \"Empty\"}, {\"name\": \"Swing\", \"motion\": "
+                "{\"clip\": \"models/knight.glb#Swing\"}}]}}]}\n")},
+            {"tool": "read_file", "args": {"path": "re:upper_body\\.mask"}, "result": ok(
+                "assets/anim/upper_body.mask lines 1-4 of 4:\n{\"format\": \"jasperengine.mask\", \"version\": 2, \"default\": 0, "
+                "\"paths\": [{\"path\": \"mixamorig:Hips/mixamorig:Spine\", \"weight\": 1, \"children\": true}]}\n")},
+            {"tool": "get_animation", "args": {"entity": "*"}, "result": ok(
+                "0 animation(s) for \"Knight\". Animator on \"Knight\": assets/anim/knight.controller\n  Upper Body: Mesh Space "
+                "Rotation off, mask edges at 1 bone(s)",
+                {"entity": {"id": 31, "name": "Knight"}, "players": [], "animations": [],
+                 "animator": {"entity": {"id": 31, "name": "Knight", "path": "Knight"}, "controller": "assets/anim/knight.controller",
+                              "mask_coverage": [{"layer": "Upper Body", "covered": 18, "total": 24, "warnings": [],
+                                                 "mesh_space_rotation": False, "boundary_bones": ["mixamorig:Hips/mixamorig:Spine"]}]}})},
+            {"tool": "control_animator", "result": ok(
+                "Previewing \"Knight\" in edit mode.",
+                {"live": {"layers": [{"name": "Base Layer", "weight": 1, "state": "Base Layer.Run", "normalized_time": 0.6, "length": 0.8},
+                                     {"name": "Upper Body", "weight": 1, "state": "Upper Body.Swing", "normalized_time": 0.4, "length": 1.2}],
+                          "parameters": {"Attack": False}}})},
+            {"tool": "sample_animation_pose", "result": ok(
+                "2 bone(s) of \"Knight\" at Base Layer.Run (evaluated in edit mode, scene unchanged).",
+                {"bones": {"hips": {"position": [0, 1, 0], "rotation": [0, 0.7071, 0, 0.7071]},
+                           "chest": {"position": [0, 1.3, 0.05], "rotation": [0.05, 0.6, 0.02, 0.8]}},
+                 "space": "world", "state": "Base Layer.Run", "normalized_time": 0.5})},
+            {"tool": "edit_animator_controller", "result": ok(
+                "assets/anim/knight.controller: 1 change(s), 0 diagnostic(s), 0 warning(s); one project undo step.",
+                {"path": "assets/anim/knight.controller", "changes": ["set_layer Upper Body"], "diagnostics": [], "warnings": [],
+                 "users": [{"scene": 1, "entity": {"id": 31, "name": "Knight"}}]})},
+        ],
+        "checks": {"calls": [{"tool": "check_animation", "args": {"layer_blend": {"layer": "Upper Body"}}},
+                             {"tool": "edit_animator_controller", "args": {"ops": [{"op": "set_layer", "mesh_space_rotation": True}]}}],
+                   "order": [["check_animation", "edit_animator_controller"]],
+                   "must_not_call": ["create_script", "write_file"]},
+        "max_turns": 14,
     },
     {
         "id": "guard_focus_graph_editor",
@@ -4245,6 +5859,25 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_lua_api_frame_order",
+        "kind": "guard",
+        "what_happened": "A Unity port wrote its own LateUpdate module because a camera moved in onPostUpdate was drawn a "
+                         "frame late and a handler swapped after RegisterEngineEvent kept the old function (JasperArcade "
+                         "S13, S24, S26); the engine now draws what onPostUpdate moves that frame, getWorldPosition is "
+                         "current, and handlers are looked up by name at each call.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 1.3 (the lookup by name; onPostUpdate's row), 2.17 frame order, "
+                         "4.2 getWorldPosition",
+        "source": "docs/specs/S95-lua-runtime-gaps.md REQ-5, REQ-6, REQ-7",
+        "prompt": "Going by the editor's Lua API guide: my camera script sets its position from the player's "
+                  "getWorldPosition() in onPostUpdate, after the player moved in onUpdate. Is the camera drawn a frame late, "
+                  "so I need a workaround? And after RegisterEngineEvent(self, 'onUpdate'), if I assign "
+                  "self.onUpdate = self.fastUpdate, which function runs on the next frame? Answer in a few lines, change nothing.",
+        "checks": {"must_not_call": ["write_file", "eval_lua"],
+                   "reply_must": [r"(same|this) frame", r"fastUpdate"],
+                   "reply_must_not": [r"(is|are|gets?|be) drawn (a|one) frame late", r"(the )?old (one|function|method|onUpdate) (still )?runs"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_lua_api_model_parts",
         "kind": "guard",
         "what_happened": "On a model imported from a glTF with several mesh nodes, Mesh/Model calls changed the root's empty mesh; "
@@ -4259,6 +5892,29 @@ CASES = [
         "max_turns": 10,
     },
 
+    {
+        "id": "bad_lua_veto_through_cancellable_event",
+        "kind": "bad",
+        "what_happened": "Asked for an action another script may refuse, agents fired a plain Event after the change (nothing can "
+                         "say no) or polled a shared flag; the Lua API guide now has CancellableEvent: listeners e:cancel(), and "
+                         "the emitter reads invoke's result and does not apply the change when it is true.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 'CancellableEvent()' (the emitter rule, e:cancel(), monitors)",
+        "source": "docs/specs/cancellable-prioritised-events.md R33",
+        "prompt": "Make the door refuse to open while another script says it is locked: Door should own an event that Lock "
+                  "(and any later script) can veto, and Lock vetoes it while self.locked is true. Edit scripts/Door.lua and "
+                  "scripts/Lock.lua; check the editor's Lua API guide for the engine's way to do it.",
+        "files": {
+            "scripts/Door.lua": "---@class Door : ScriptInstance\nlocal Door = { properties = {} }\n\n"
+                                "function Door:init()\n    self.isOpen = false\nend\n\n"
+                                "function Door:open(by)\n    self.isOpen = true\n    return true\nend\n\nreturn Door\n",
+            "scripts/Lock.lua": "---@class Lock : ScriptInstance\nlocal Lock = { properties = {} }\n\n"
+                                "function Lock:init()\n    self.locked = true\nend\n\nreturn Lock\n",
+        },
+        "checks": {"file_must": {"scripts/Door.lua": [r"CancellableEvent\(\)",
+                                                      r"(if\s+(not\s+)?[\w.:]*invoke\(|=\s*[\w.:]*invoke\()"],
+                                 "scripts/Lock.lua": [r"\w+:cancel\(\)"]}},
+        "max_turns": 18,
+    },
     # -- agent-authoring: building scenes, the guide past the client cut, terrain, shaders ------------
     {
         "id": "bad_repeat_without_prefab",
@@ -5025,6 +6681,260 @@ CASES = [
                    "must_not_call": ["create_entity"]},
         "max_turns": 12,
     },
+    # S78 WP-B
+    {
+        "id": "guard_s78_stone_floor_uses_stones",
+        "kind": "guard",
+        "what_happened": "New preset and setting (S78): a floor tile of light stones between dark gaps came out flat with "
+                         "tile (an opaque tile has no silhouette); the stones preset (gaps) gives every stone its own rim. "
+                         "The default preset's no_alpha fix now names it.",
+        "text_at_issue": "jasper://docs/sprite-normals 'Stone floors: gaps'; no_alpha fix 'For tiles use edges wrap or extend; for "
+                         "stones or bricks between dark gaps the stones preset (gaps).'",
+        "source": "S78 R9, R11, R25 (new preset, guide and fix text); no failure on record",
+        "groups_enabled": ["assets_pipeline"],
+        "prompt": "Our seamless 32 px floor tile assets/ground/cobbles.png still looks flat under the 2D lights with the tile "
+                  "preset. Make a normal map where every cobble catches the light on its own, and write it.",
+        "mocks": [
+            {"tool": "read_file", "args": {"path": "re:sprite-normals"}, "result": ok(
+                "## Stone floors: gaps\nA tile of stones or bricks between dark gaps comes out flat with `tile` (an opaque tile "
+                "has no silhouette): use `preset: \"stones\"`. `gaps: {share: 0..0.9}` (default 0, off) makes the darkest `share` "
+                "of each frame's pixels gaps: outside the shape, so every stone gets its own rim.")},
+            {"tool": "generate_sprite_normals", "args": {"preset": "stones", "output": "*"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset stones, radius 4.8 px) in 0.01 s. "
+                "Hint: Looks fine. Wrote assets/ground/cobbles_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/ground/cobbles_normal.png"], "undo": [{"scope": "project", "name": "Generate Normal Map cobbles_normal.png"}],
+                 "settings": {"preset": "stones", "edges": "wrap", "profile": "dome", "gaps": {"share": 0.3}}, "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"gaps": "*"}, "output": "*"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset tile, radius 4.8 px) in 0.01 s. "
+                "Wrote assets/ground/cobbles_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/ground/cobbles_normal.png"], "settings": {"preset": "tile", "edges": "wrap", "gaps": {"share": 0.3}},
+                 "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"preset": "stones"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset stones, radius 4.8 px) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"preset": "stones", "edges": "wrap", "profile": "dome", "gaps": {"share": 0.3}}, "hint": "Looks fine.",
+                 "warnings": [], "default_output": {"normal": "assets/ground/cobbles_normal.png"},
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/ground/cobbles_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"gaps": "*"}}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"gaps": {"share": 0.3}}, "hint": "Looks fine.", "warnings": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/ground/cobbles_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset default, radius 4.8 px) in 0.01 s. "
+                "Wrote assets/ground/cobbles_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/ground/cobbles_normal.png"], "settings": {"preset": "default", "edges": "transparent"},
+                 "hint": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps).",
+                 "warnings": [{"kind": "no_alpha", "message": "The image has no transparent pixels: volume only bevels its border.",
+                               "fix": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps)."}]})},
+            {"tool": "generate_sprite_normals", "result": ok(
+                "Normal map of assets/ground/cobbles.png (32x32, the whole image, preset default, radius 4.8 px) in 0.01 s.",
+                {"written": False, "settings": {"preset": "default", "edges": "transparent"},
+                 "hint": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps).",
+                 "warnings": [{"kind": "no_alpha", "message": "The image has no transparent pixels: volume only bevels its border.",
+                               "fix": "For tiles use edges wrap or extend; for stones or bricks between dark gaps the stones preset (gaps)."}],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/ground/cobbles_normal.png) to write exactly this."})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "generate_sprite_normals", "args": {"preset": "stones", "output": "*"}}]},
+                              {"calls": [{"tool": "generate_sprite_normals", "args": {"params": {"gaps": "*"}, "output": "*"}}]}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_s78_sprite_normals_preview_then_write_from_next",
+        "kind": "guard",
+        "what_happened": "generate_sprite_normals without output previews and writes nothing; the write step was only in the "
+                         "result's text, which a client like Claude Code does not show next to structuredContent (S78 R22).",
+        "text_at_issue": "generate_sprite_normals structuredContent next: 'Preview only, nothing written: call again with the same "
+                         "arguments plus output (true for ...) to write exactly this.'",
+        "source": "S78 R22 (text moved into structuredContent); docs/mcp/conventions.md results rule",
+        "groups_enabled": ["assets_pipeline"],
+        "prompt": "Preview a normal map for the sprite image assets/sprites/hero.png with the defaults. If the preview reports "
+                  "no problem, keep it: the map belongs next to the image.",
+        "mocks": [
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": real(
+                "Normal map of assets/sprites/hero.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. "
+                "Wrote assets/sprites/hero_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/hero_normal.png"], "undo": [{"scope": "project", "name": "Generate Normal Map hero_normal.png"}],
+                 "settings": {"preset": "default"}, "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "result": real(
+                "Normal map of assets/sprites/hero.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. Hint: Looks fine. "
+                "Preview only, nothing written: call again with the same arguments plus output (true for assets/sprites/hero_normal.png) "
+                "to write exactly this.",
+                {"written": False, "settings": {"preset": "default"}, "hint": "Looks fine.", "warnings": [],
+                 "default_output": {"normal": "assets/sprites/hero_normal.png", "atlas": None, "height": None, "frames_json": None},
+                 "sheet_legend": {"rows": "the frames", "columns": ["colour", "normal", "lit from the top-left", "lit from the top-right",
+                                                                   "lit from the bottom-right", "lit from the bottom-left"],
+                                  "light_elevation_deg": 34, "light_steps": 0},
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/hero_normal.png) to write exactly this."})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sprite_normals", "args": {"output": "*"}}], "max_calls": {"generate_sprite_normals": 3},
+                   "must_not_call": ["write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_s78_boxy_crate_follows_the_fix",
+        "kind": "guard",
+        "what_happened": "New warning (S78): a crate on the default preset (rounded at pixel-art sizes, inflate above) bulges into "
+                         "a pillow; boxy says so and names the fix (preset props, or profile bevel with a radius).",
+        "text_at_issue": "generate_sprite_normals warning boxy: 'Use preset props, or profile bevel with radius 1.'",
+        "source": "S78 R13 (new warning text); no failure on record",
+        "groups_enabled": ["assets_pipeline"],
+        "prompt": "Make a normal map for the sprite assets/sprites/block_07.png and write it. Fix any problem the tool reports "
+                  "about the map before you write it.",
+        "mocks": [
+            {"tool": "generate_sprite_normals", "args": {"preset": "props", "output": "*"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "props", "profile": "dome"},
+                 "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}, "output": "*"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "default", "profile": "bevel", "radius": 1},
+                 "hint": "Looks fine.", "warnings": []})},
+            {"tool": "generate_sprite_normals", "args": {"preset": "props"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset props, radius 4 px) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"preset": "props", "profile": "dome"}, "hint": "Looks fine.", "warnings": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 1 px) in 0.01 s. Hint: Looks fine.",
+                {"written": False, "settings": {"preset": "default", "profile": "bevel", "radius": 1}, "hint": "Looks fine.", "warnings": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
+            {"tool": "generate_sprite_normals", "args": {"output": "*"}, "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s. "
+                "Wrote assets/sprites/block_07_normal.png as one undo step (undo with scope project).",
+                {"written": True, "files": ["assets/sprites/block_07_normal.png"], "settings": {"preset": "default", "profile": "auto"},
+                 "profile_resolved": ["rounded"], "hint": "Use preset props, or profile bevel with radius 1.",
+                 "warnings": [{"kind": "boxy", "message": "1 sprite fills its box like a crate or panel, and the rounded profile bulges a box into a pillow.",
+                               "fix": "Use preset props, or profile bevel with radius 1."}]})},
+            {"tool": "generate_sprite_normals", "result": real(
+                "Normal map of assets/sprites/block_07.png (32x32, the whole image, preset default, radius 4 px) in 0.01 s.",
+                {"written": False, "settings": {"preset": "default", "profile": "auto"}, "profile_resolved": ["rounded"],
+                 "hint": "Use preset props, or profile bevel with radius 1.",
+                 "warnings": [{"kind": "boxy", "message": "1 sprite fills its box like a crate or panel, and the rounded profile bulges a box into a pillow.",
+                               "fix": "Use preset props, or profile bevel with radius 1."}],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output (true for "
+                         "assets/sprites/block_07_normal.png) to write exactly this."})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "generate_sprite_normals", "args": {"preset": "props", "output": "*"}}]},
+                              {"calls": [{"tool": "generate_sprite_normals", "args": {"params": {"profile": "bevel"}, "output": "*"}}]}]},
+        "max_turns": 12,
+    },
+    # S78 WP-C: a light too low over a large sprite is a generate_sprite_normals warning naming the height
+    {
+        "id": "guard_light_low_big_sprite",
+        "kind": "guard",
+        "what_happened": "New warning (S78): the editor's Light 2D height 64 is low over a 512 px sprite (it lights it from the "
+                         "side only); generate_sprite_normals warns light_low naming the height to set.",
+        "text_at_issue": "generate_sprite_normals warning light_low: 'Light 2D \"Lamp\" sits lower than half the sprite's larger "
+                         "side (512 world units), so it lights it from the side only.' Fix: 'Set its Height to at least 512 (the "
+                         "sprite's larger side).'",
+        "source": "S78 R14 (new warning text); no failure on record",
+        "prompt": "The GameObject \"Boss\" in the open 2D scene is a 512x512 sprite (assets/sprites/boss.png) lit by the Light 2D "
+                  "\"Lamp\". Give it a normal map, apply it, and make sure the lamp really shows the relief on the boss.",
+        "mocks": [
+            {"tool": "generate_sprite_normals", "args": {"output": True}, "result": ok(
+                "Normal map of assets/sprites/boss.png (512x512, 1 frame, preset auto, radius 9 px) in 0.80 s. Hint: Looks fine. "
+                "Wrote assets/sprites/boss_normal.png (undo with scope project) and applied it to Boss (undo with scope scene).\n"
+                "Warning: light_low: Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so it lights "
+                "it from the side only. Fix: Set its Height to at least 512 (the sprite's larger side).",
+                {"source": {"path": "assets/sprites/boss.png", "kind": "sprite", "width": 512, "height": 512},
+                 "files": ["assets/sprites/boss_normal.png"], "hint": "Looks fine.",
+                 "warnings": [{"kind": "light_low",
+                               "message": "Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so "
+                                          "it lights it from the side only.",
+                               "fix": "Set its Height to at least 512 (the sprite's larger side)."}]})},
+            {"tool": "generate_sprite_normals", "result": ok(
+                "Normal map of assets/sprites/boss.png (512x512, 1 frame, preset auto, radius 9 px) in 0.80 s. Hint: Looks fine. "
+                "Preview only, nothing written: call again with the same arguments plus output (true for "
+                "assets/sprites/boss_normal.png) to write exactly this.\n"
+                "Warning: light_low: Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so it lights "
+                "it from the side only. Fix: Set its Height to at least 512 (the sprite's larger side).",
+                {"source": {"path": "assets/sprites/boss.png", "kind": "sprite", "width": 512, "height": 512}, "hint": "Looks fine.",
+                 "default_output": {"normal": "assets/sprites/boss_normal.png", "atlas": None, "height": None, "frames_json": None},
+                 "warnings": [{"kind": "light_low",
+                               "message": "Light 2D \"Lamp\" sits lower than half the sprite's larger side (512 world units), so "
+                                          "it lights it from the side only.",
+                               "fix": "Set its Height to at least 512 (the sprite's larger side)."}]})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step). New values: "
+                                                    "{\"light2d\":{\"height\":512.0}}",
+                                                    {"scene_id": 1, "entities": [{"id": 30, "name": "Lamp"}],
+                                                     "values": {"light2d": {"height": 512.0}}})},
+            *scene_2d(SCENE_2D_BASE + [BOSS_512, LAMP_64]),
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"light2d": {"height": "*"}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:height"}]}}]}]},
+        "max_turns": 14,
+    },
+    # S78 WP-A
+    {
+        "id": "guard_light_steps",
+        "kind": "guard",
+        "what_happened": "New setting (S78): the stepped, banded 2D lighting of pixel-art games is the scene's Light Steps "
+                         "(light_2d_steps), one value for every Light 2D; without it agents fork library:sprite to quantize "
+                         "the light in GLSL, which leaves the tiles and every other 2D-lit surface smooth.",
+        "text_at_issue": "set_scene_settings names (light_2d_steps: 'Light Steps: each Light 2D's light in this many hard bands, "
+                         "0-16 (0 off: smooth)')",
+        "source": "docs/specs/S78-sprite-normals-improvements.md R1-R4 (new setting text); no failure on record",
+        "prompt": "Our 2D pixel-art level is lit by Light 2Ds and the sprites have normal maps. Make the lighting look stepped, "
+                  "in about 6 hard bands like classic pixel-art lighting, on every sprite and tile.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nlight_2d_steps = 6",
+                {"scene_id": 1, "settings": {"light_2d_steps": 6}})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_color = [1, 1, 1] (2D ambient light color [r,g,b] (sRGB))\n"
+                "ambient_light_2d_intensity = 1 (2D ambient light intensity)\n"
+                "light_2d_steps = 0 (Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth))\n"
+                "shadows_2d_quality = low (2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high))",
+                {"scene_id": 1, "settings": {"ambient_light_2d_color": [1, 1, 1], "ambient_light_2d_intensity": 1.0,
+                                             "light_2d_steps": 0, "shadows_2d_quality": "low"}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["light_2d_steps"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Level\" (scenes/Level.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"light_2d_steps": 6}}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(frag|glsl)$"}}]},
+        "max_turns": 10,
+    },
+    # S78 R7 at the main merge (old scenes keep their look)
+    {
+        "id": "guard_ambient_2d_without_lights",
+        "kind": "guard",
+        "what_happened": "New setting (S78): a scene saved before S78 keeps ambient_light_2d_without_lights off, so its dark "
+                         "2D ambient leaves unlit sprites untinted while it has no Light 2D; turning it on is the fix. Without "
+                         "the setting's text agents add a Light 2D out of range or tint every sprite's material instead.",
+        "text_at_issue": "get_scene_settings (ambient_light_2d_without_lights: 'the 2D ambient tints unlit 2D objects with no "
+                         "Light 2D in the scene too (on in new scenes; off in scenes saved before it, as they were drawn)')",
+        "source": "docs/specs/S78-sprite-normals-improvements.md Deviations, R7 (new setting text); no failure on record",
+        "prompt": "In our old 2D level I set a dark blue 2D ambient for a night look, but the sprites still draw at full "
+                  "brightness. The level has no 2D lights and shouldn't get any. Make the ambient darken the sprites.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_without_lights = true",
+                {"scene_id": 1, "settings": {"ambient_light_2d_without_lights": True}})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Level\" settings:\nambient_light_2d_color = [0.3, 0.3, 0.4] (2D ambient light color [r,g,b] (sRGB))\n"
+                "ambient_light_2d_intensity = 1 (2D ambient light intensity)\n"
+                "light_2d_steps = 0 (Light Steps: each Light 2D's light in this many hard bands, 0-16 (0 off: smooth))\n"
+                "ambient_light_2d_without_lights = false (the 2D ambient tints unlit 2D objects with no Light 2D in the scene "
+                "too (on in new scenes; off in scenes saved before it, as they were drawn))\n"
+                "shadows_2d_quality = low (2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high))",
+                {"scene_id": 1, "settings": {"ambient_light_2d_color": [0.3, 0.3, 0.4], "ambient_light_2d_intensity": 1.0,
+                                             "light_2d_steps": 0, "ambient_light_2d_without_lights": False,
+                                             "shadows_2d_quality": "low"}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["ambient_light_2d_without_lights"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Level\" (scenes/Level.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_light_2d_without_lights": True}}}],
+                   "must_not_call": [{"tool": "create_entity", "args": {"type": "light_2d"}}]},
+        "max_turns": 10,
+    },
     # -- S48 Pixel FX: the "Other areas" entry and capture_contact_sheet's lint and preview-then-write ----------------
     {
         "id": "guard_contact_sheet_lint",
@@ -5277,5 +7187,1610 @@ CASES = [
         "checks": {"calls": [{"tool": "apply_material_preset", "args": {"preset": "selout_outline"}}],
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
+    },
+    # ---- S94 P7 model import: rest pose and the GameObject that draws a model's mesh
+    {
+        "id": "guard_model_rest_pose_first_frame",
+        "kind": "guard",
+        "what_happened": "New text (S94 F40): get_model_info reports first_frame_differs (a take starting with the hips away from "
+                         "the file's nodes, CLEIVER's 5.6 m) and its next names set_model_import_settings rest_pose: first_frame; "
+                         "an agent fixes the pose there instead of moving bones by hand.",
+        "text_at_issue": "get_model_info next: 'Its clips start with the root or hips away from where the file's nodes put them "
+                         "... set_model_import_settings with settings {rest_pose: \"first_frame\"} ...'",
+        "source": "S94 F40 (new result text); ARCADE R37",
+        "prompt": "The Cleiver model stands about 5 metres too low compared to how it looks in its animations. Fix the model so it "
+                  "imports in the right pose.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCleiver [30] model", {"entities": [{"id": 30, "path": "Cleiver"}]})},
+            {"tool": "get_model_info", "result": ok(
+                "Model \"Cleiver\": 1 mesh(es), 52 bone(s), 1 animation(s).",
+                {"model": {"id": 30, "name": "Cleiver"}, "file": "assets/models/cleiver@T-Pose.fbx", "loading": False,
+                 "first_frame_differs": [{"animation": "mixamo.com", "node": "Hips", "node_translation": [0, 0.2, 0],
+                                          "first_frame": [0, 5.8, 0], "distance": 5.6}],
+                 "next": "Its clips start with the root or hips away from where the file's nodes put them (first_frame_differs). Unity "
+                         "imports such an FBX in the first frame's pose: set_model_import_settings with settings {rest_pose: "
+                         "\"first_frame\"} (rest_pose_take names another take) does the same, and the model reloads."})},
+            {"tool": "get_entity", "result": ok("Cleiver [30] components: model mesh transform", {"id": 30, "name": "Cleiver"})},
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["assets/models/cleiver@T-Pose.fbx"], "unchanged": 0, "models": []})},
+        ],
+        "checks": {"calls": [{"tool": "set_model_import_settings", "args": {"settings": {"rest_pose": "first_frame"}}}],
+                   "must_not_call": ["set_properties", "set_transform"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_model_node_material_on_root",
+        "kind": "guard",
+        "what_happened": "New text (S94 F45): a mesh value sent to a model node whose mesh the model's own GameObject draws fails "
+                         "naming that GameObject and preserveHierarchy; the agent sets it on the root (or turns Preserve Hierarchy "
+                         "on) instead of giving up or adding a Mesh to the node.",
+        "text_at_issue": "set_properties error: 'Shark/Body is a node of the model Shark, whose own GameObject draws this node's "
+                         "mesh: set the mesh and material values on Shark, or set model.preserveHierarchy true on it ...'",
+        "source": "S94 F45 (new error text); ARCADE R52 (M's shark)",
+        "prompt": "Turn off shadow casting on the shark's Body mesh (GameObject Shark/Body).",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObject(s) match:\nShark [50] model\nShark/Body [51] bone",
+                                                  {"entities": [{"id": 50, "path": "Shark"}, {"id": 51, "path": "Shark/Body"}]})},
+            {"tool": "set_properties", "args": {"entity": "re:(?i)^(51|Shark/Body)$"}, "result": err(
+                "Shark/Body is a node of the model Shark, whose own GameObject draws this node's mesh: set the mesh and material "
+                "values on Shark, or set model.preserveHierarchy true on it (every node then draws its own mesh).")},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 50 \"Shark\".", {"entity": {"id": 50}})},
+            {"tool": "get_entity", "result": ok("Shark/Body [51] components: bone transform", {"id": 51, "name": "Body"})},
+            {"tool": "get_model_info", "result": ok("Model \"Shark\": 1 mesh(es), 12 bone(s), 0 animation(s).",
+                {"model": {"id": 50, "name": "Shark"}, "mesh_nodes": [{"node": 1, "name": "Body", "entity": {"id": 51},
+                                                                       "drawn_by": {"id": 50, "name": "Shark"}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties", "args": {"entity": "re:(?i)^(50|Shark)$"}}],
+                   "must_not_call": ["add_component"]},
+        "max_turns": 10,
+    },
+    # ---- S94 P6: Root Transform Based Upon (F32)
+    {
+        "id": "guard_root_motion_body_orientation",
+        "kind": "guard",
+        "what_happened": "New text (S94 F32): edit_animation's root_motion takes Unity's Based Upon; asked to make a clip that "
+                         "starts turned away face forward, an agent sets rotation_based_upon instead of rewriting the hips' keys.",
+        "text_at_issue": "animation.md clip mode arguments: root_motion '... rotation_based_upon ... a clip that starts turned away "
+                         "or off the ground: rotation_based_upon: \"body_orientation\"'",
+        "source": "docs/specs/S94-rendering-anim-gaps.md F32 (new text); no failure on record",
+        "prompt": "assets/anims/walk.anim was captured with the actor turned about 30 degrees, so the character walks along its "
+                  "forward but faces off to the side. Make the clip face the GameObject's forward when it plays.",
+        "mocks": [
+            {"tool": "get_animation", "result": ok(
+                "assets/anims/walk.anim: 1.00 s, loop, 2 tracks (Hips position, Hips rotation), root_motion {bake_position_y}.",
+                {"clip": "assets/anims/walk.anim", "length": 1.0, "wrap": "loop",
+                 "tracks": [{"index": 0, "path": "Hips", "channel": "position", "keys": 3},
+                            {"index": 1, "path": "Hips", "channel": "rotation", "keys": 3}],
+                 "root_motion": {"bone": "", "bake_rotation": False, "bake_position_y": True, "bake_position_xz": False,
+                                 "rotation_based_upon": "original", "rotation_offset": 0, "position_y_based_upon": "original",
+                                 "position_y_offset": 0, "position_xz_based_upon": "original"}})},
+            {"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "root_motion": "*"}, "result": ok(
+                "assets/anims/walk.anim: root_motion changed (one project undo step).",
+                {"clip": "assets/anims/walk.anim", "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim",
+                                                                  "root_motion": {"rotation_based_upon": "body_orientation"}}}],
+                   "must_not_call": [{"tool": "edit_animation", "args": {"tracks": "*"}}]},
+        "max_turns": 8,
+    },
+    # ---- S94 P5: Text alignment, the Orthographic Size, Sprite Flip X ------------------------------------------------------
+    {
+        "id": "guard_camera_orthographic_size",
+        "kind": "guard",
+        "what_happened": "New text (S94 F28, R46): the camera guide names camera.orthographicSize (Unity's Size, following the "
+                         "aspect); without it an agent writes fixed left/right/top/bottom bounds for one aspect (the port's "
+                         "workaround) or leaves Auto Resize showing the canvas in pixels.",
+        "text_at_issue": "jasper://docs/camera 'Orthographic bounds': 'For Unity's Size, set camera.orthographicSize (> 0) ...'",
+        "source": "S94 F28 (new guide text); ARCADE ENGINE_LIMITATIONS R46",
+        "prompt": "The 2D level was made in Unity with an orthographic camera Size of 11. Make the Main Camera show the same "
+                  "vertical extent on every screen shape.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nMain Camera [10] camera transform",
+                                                   {"entities": [{"id": 10, "path": "Main Camera"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(10|Main Camera)$"}, "result": ok(
+                "Main Camera [10] components: camera transform; camera: type orthographic, autoResize true, left 0, right 1280, "
+                "bottom 0, top 720, orthographicSize 0", {"id": 10, "name": "Main Camera"})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"id": 10}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"camera": {"orthographicSize": 11}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "orthographicSize", "value": 11}]}}]}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_text_capline_anchor",
+        "kind": "guard",
+        "what_happened": "New text (S94 F24, R42): the UI guide's Text anchor names center + capline for a number centred on a "
+                         "point; without it an agent offsets the Text's position by guessed font metrics (the port's door numbers "
+                         "sat too high).",
+        "text_at_issue": "jasper://docs/ui 'Text anchor and size': 'To centre a number on a plaque, use center + capline.'",
+        "source": "S94 F24 (new guide text); ARCADE ENGINE_LIMITATIONS R42",
+        "prompt": "The world-space Text 'Door12' should have its digits centred exactly on its GameObject's position "
+                  "(it sits at the plaque's centre). Fix how the text is anchored.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDoor12 [21] text transform ui",
+                                                   {"entities": [{"id": 21, "path": "Door12"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(21|Door12)$"}, "result": ok(
+                "Door12 [21] components: rectTransform text transform ui; text: text \"12\", fontSize 40, anchorHorizontal "
+                "left, anchorVertical bottom", {"id": 21, "name": "Door12"})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on 1 GameObject(s) (one undo step).", {"entities": [{"id": 21}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"text": {"anchorHorizontal": "center",
+                                                                                                  "anchorVertical": "re:capline|middle"}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "anchorVertical", "value": "re:capline|middle"}]}}]}],
+                   "must_not_call": ["set_transform"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sprite_flip_x",
+        "kind": "guard",
+        "what_happened": "New text (S94 F29, R9): the sprites guide names sprite.flipX; without it an agent mirrors a sprite with a "
+                         "negative scale, which also flips its colliders and children.",
+        "text_at_issue": "jasper://docs/sprites 'Flip and Size': 'sprite.flipX mirrors the quad about its pivot'",
+        "source": "S94 F29 (new guide text); ARCADE ENGINE_LIMITATIONS R9",
+        "prompt": "Make the Hero sprite face left: mirror its picture horizontally, but leave its transform and collider alone.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nHero [7] sprite mesh transform rigidbody2d",
+                                                   {"entities": [{"id": 7, "path": "Hero"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(7|Hero)$"}, "result": ok(
+                "Hero [7] components: mesh rigidbody2d sprite transform; sprite: width 32, height 32, flipX false, flipY true",
+                {"id": 7, "name": "Hero"})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"id": 7}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"sprite": {"flipX": True}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "flipX", "value": True}]}}]}],
+                   "must_not_call": ["set_transform"]},
+        "max_turns": 10,
+    },
+
+    {   # -- S94 F1: Points sprite frames are UV rects (a Sprite's are pixels) ----------------------------------------
+        "id": "guard_points_frames_in_uv",
+        "kind": "guard",
+        "what_happened": "New text (S94 F1, the port's R54): Points:addSpriteFrame takes UV rects (0..1) while Sprite:addFrame "
+                         "takes pixels; a port passed pixel rects and the frames sampled outside the texture.",
+        "text_at_issue": "lua-api.md 4.18 Points: 'addSpriteFrame([id,] [name,] rect) takes the rect in UV units (0..1), not "
+                         "pixels as Sprite:addFrame does'",
+        "source": "JasperArcade-Ported ENGINE_LIMITATIONS.md R54 (paraphrased)",
+        "files": GAME_FILES,
+        "prompt": "Write scripts/confetti_frames.lua: a module with a function add(points) that adds the 8 cells of our "
+                  "confetti sheet (assets/confetti.png, 256x128 pixels, 4 columns x 2 rows of 64x64 cells) as sprite frames "
+                  "named c0..c7 on a Points object, row by row. Just write the file; don't attach or run it.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/confetti_frames.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"scripts/confetti_frames.lua": [r"addSpriteFrame", r"0\.25|1\s*/\s*4|/\s*(?:256|128|4\.0)\b"]},
+                   "file_must_not": {"scripts/confetti_frames.lua": [r"(?:addSpriteFrame|Rect)\(.*,\s*64\s*,\s*64\s*\)"]},
+                   "must_not_call": ["play", "attach_script", "write_file"]},
+        "max_turns": 16,
+    },
+    # ---- S94 F23: an outline on a model root (the ledger's R32)
+    {
+        "id": "bad_outline_preset_on_model_root",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port (ledger R32) applied an outline preset to a skinned model's root, which has no "
+                         "Mesh; apply_material_preset failed and the outline was given up. It now applies to the meshes below "
+                         "and its next names the Outline component, which outlines the whole model.",
+        "text_at_issue": "apply_material_preset next: 'Applied to the meshes below Drone ..., which have no Mesh of their own. "
+                         "To outline a whole object, add the Outline component to its root instead (add_component outline; "
+                         "set_properties outline.mode, outline.color, outline.width).'",
+        "source": "S94 F23 (new result text); JasperArcade-Ported ENGINE_LIMITATIONS.md R32",
+        "prompt": "Outline the Drone model in orange, a few pixels wide, and keep the outline when the drone flies behind walls.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDrone [20] model transform", {"entities": [{"id": 20, "path": "Drone"}]})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (3D).\nDrone [20] model\n  RootNode [21]\n    Body [22] mesh (skinned)\n",
+                                                    {"scene_id": 1})},
+            {"tool": "get_entity", "result": ok("Drone [20] components: model transform", {"id": 20, "name": "Drone"})},
+            {"tool": "list_material_presets", "result": ok(
+                "3 material preset(s); apply_material_preset applies one:\noutline_hull (Outline (hull)): Outline as an extra pass ...\n"
+                "outline_stencil (Outline (stencil)): through walls ...\nsee_through_silhouette (See-through silhouette) ...",
+                {"presets": [{"id": "outline_hull"}, {"id": "outline_stencil"}, {"id": "see_through_silhouette"}]})},
+            {"tool": "apply_material_preset", "result": ok(
+                "Applied preset outline_stencil to 1 submesh(es) (one undo step).",
+                {"preset": "outline_stencil", "applied": [{"entity": {"id": 22, "name": "Body"}, "submesh": 0}],
+                 "next": "Applied to the meshes below Drone (1 mesh(es)), which have no Mesh of their own. To outline a whole "
+                         "object, add the Outline component to its root instead (add_component outline; set_properties "
+                         "outline.mode, outline.color, outline.width)."})},
+            {"tool": "undo", "result": ok("Undid: Apply material preset.", {"undone": 1})},
+            {"tool": "add_component", "result": ok("Added Outline to Drone.", {"added": [{"entity": {"id": 20}, "component": "outline"}]})},
+            {"tool": "set_properties", "result": ok("Set properties of Drone.", {"entity": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)outline"}}],
+                   "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    # ---- S94 F42: an older project keeps the old FBX submesh order (the project migration)
+    {
+        "id": "guard_fbx_submesh_order_setting",
+        "kind": "guard",
+        "what_happened": "New text (S94 F42): projects made before submeshes followed the FBX material slots keep "
+                         "mesh.fbx_submesh_order used_materials; an agent porting a Unity model whose submeshes come out "
+                         "shifted (an empty slot) switches the setting instead of reordering the materials by hand.",
+        "text_at_issue": "get_project_settings describe: mesh.fbx_submesh_order 'An FBX mesh's submeshes: material_slots "
+                         "(submesh i is material slot i, Unity's order; new projects) or used_materials (the used slots in "
+                         "order, projects made before; a change reimports every FBX).'",
+        "source": "S94 F42 and the lead's old-projects rule (new setting text); no failure on record",
+        "prompt": "This project is older. In Unity, submesh 1 of assets/models/robot.fbx is the eyes (its material slot 0 "
+                  "is unused), but here the eyes are submesh 0. Make every FBX's submeshes follow Unity's material slots.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "mesh.fbx_submesh_order = used_materials (enum: material_slots, used_materials): An FBX mesh's submeshes: "
+                "material_slots (submesh i is material slot i, Unity's order; new projects) or used_materials (the used "
+                "slots in order, projects made before; a change reimports every FBX).",
+                {"mesh.fbx_submesh_order": "used_materials"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["mesh.fbx_submesh_order"]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "mesh.fbx_submesh_order = material_slots", {"mesh.fbx_submesh_order": "material_slots"})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"mesh.fbx_submesh_order": "material_slots"}}}],
+                   "must_not_call": ["set_properties", "link_material", "set_model_import_settings"],
+                   "edits_must_not": [r"project\.yaml$", r"\.meta$"]},
+        "max_turns": 10,
+    },
+    # ---- S94 P2: Property Overrides (MaterialPropertyBlock) and the shadowed Mesh value
+    {
+        "id": "guard_property_override_per_object_colour",
+        "kind": "guard",
+        "what_happened": "New text (S94 F7): set_shader_uniform's override parameter writes a Mesh's Property Override; "
+                         "an agent asked to tint one of several boxes sharing a material uses it instead of editing the shared "
+                         "material (which tints every box) or the Mesh's shaderUniforms (which the material's parameter hides).",
+        "text_at_issue": "set_shader_uniform: '... (+ component, + submesh; override: a Property Override, over its materials) ...'",
+        "source": "S94 F7, ARCADE ledger R15 (M's zone colours stuck under the material's values)",
+        "prompt": "Crate and Crate2 share the material materials/crate.material (library:unlit). Make only Crate2 red; Crate must stay as it is.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObject(s) match:\nCrate [30] mesh transform\nCrate2 [31] mesh transform",
+                                                   {"entities": [{"id": 30, "path": "Crate"}, {"id": 31, "path": "Crate2"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 31 \"Crate2\": transform, mesh (submeshes[0] material materials/crate.material, "
+                                               "shader library:unlit, shaderParams {baseColor: [1, 1, 1, 1]}).", {"id": 31, "name": "Crate2"})},
+            {"tool": "get_shader_uniforms", "result": ok("library:unlit on Crate2 submesh 0: baseColor [1, 1, 1, 1] (own), tiling [1, 1, 0, 0] (shader_default).",
+                                                        {"parameters": [{"member": "baseColor", "source": "own", "effective": [1, 1, 1, 1]}]})},
+            {"tool": "set_shader_uniform", "args": {"override": True}, "result": ok(
+                "Set baseColor on Crate2 (Property Override).", {"entity": {"id": 31, "name": "Crate2"}, "property": "propertyOverrides.values",
+                                                                 "name": "baseColor", "declared": True, "value": [1, 0, 0, 1]})},
+            {"tool": "set_shader_uniform", "result": ok(
+                "Set baseColor on Crate2 (submesh 0 material).", {"entity": {"id": 31, "name": "Crate2"}, "property": "submeshes[0].material.shaderParams",
+                                                                  "name": "baseColor", "declared": True, "value": [1, 0, 0, 1]})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 31 \"Crate2\".", {"entity": {"id": 31}})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}],
+                   "must_not_call": ["update_material"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_shadowed_mesh_uniform_next",
+        "kind": "guard",
+        "what_happened": "New text (S94 F8): set_shader_uniform's next says a Mesh value is hidden by its material's parameter "
+                         "of the same name and names override: true; the agent sets the value again as an override.",
+        "text_at_issue": "set_shader_uniform next: 'Submesh 0's material sets 'speed', which wins over this value: set it again "
+                         "with override: true (a Property Override) to win.'",
+        "source": "S94 F8, ARCADE ledger R15 (a silent failure)",
+        "prompt": "Set the Conveyor's shader uniform speed to 3.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nConveyor [40] mesh transform", {"entities": [{"id": 40, "path": "Conveyor"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 40 \"Conveyor\": transform, mesh (customShader shaders/belt, submeshes[0] material "
+                                               "shaderParams {speed: 1}).", {"id": 40, "name": "Conveyor"})},
+            {"tool": "set_shader_uniform", "args": {"override": True}, "result": ok(
+                "Set speed on Conveyor (Property Override).", {"entity": {"id": 40}, "property": "propertyOverrides.values", "name": "speed",
+                                                               "declared": True, "value": [3, 0, 0, 0]})},
+            {"tool": "set_shader_uniform", "result": ok(
+                "Set speed on Conveyor.", {"entity": {"id": 40}, "property": "shaderUniforms", "name": "speed", "declared": True,
+                                           "value": [3, 0, 0, 0],
+                                           "next": "Submesh 0's material sets 'speed', which wins over this value: set it again with "
+                                                   "override: true (a Property Override) to win."})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}]},
+        "max_turns": 8,
+    },
+    # ---- S94 F35, F36: Unity .anim / .controller / .mask import
+    {
+        "id": "guard_unity_anim_import",
+        "kind": "guard",
+        "what_happened": "New text (S94 F35): edit_animation's create.unity imports a Unity YAML .anim; an agent given a Unity "
+                         "clip imports it instead of hand-converting its curves into tracks or copying the YAML.",
+        "text_at_issue": "edit_animation: 'create {from?, humanoid?, unity: Unity .anim}' (schema: create.unity, create.mirror_x)",
+        "source": "S94 F35 (new description text); the JasperArcade port converted .anim files with its own script",
+        "prompt": "Bring the Unity clip /home/me/UnityGame/Assets/Anim/Walk.anim into this project as assets/anim/walk.anim.",
+        "mocks": [
+            {"tool": "edit_animation", "result": ok(
+                "assets/anim/walk.anim: created, 3 tracks, 1 s, loop; no Animation Player uses it yet (set_properties clips) "
+                "(one project undo step: undo scope project)\nimported the Unity clip Assets/Anim/Walk.anim (3 tracks, 1 event)",
+                {"path": "assets/anim/walk.anim", "created": True, "tracks": [], "wrap": "loop", "length": 1,
+                 "unity": {"source": "Assets/Anim/Walk.anim", "tracks": 3, "events": 1, "unmapped": [], "notes": [],
+                           "muscle_curves": {"count": 0, "names": []}}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim$", "create": {"unity": "re:Walk\\.anim$"}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.anim$"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_unity_anim_unmapped_next",
+        "kind": "guard",
+        "what_happened": "New text (S94 F35): edit_animation create.unity's next sends the agent to list_properties when Unity "
+                         "bindings did not map, so it keys their engine equivalents instead of reporting the clip done.",
+        "text_at_issue": "edit_animation next: 'unity.unmapped lists the Unity bindings with no engine property: key their engine "
+                         "equivalents with tracks (get_animation {root, list_properties} lists what a GameObject can animate)'",
+        "source": "S94 F35 (new result text); no failure on record",
+        "prompt": "Import the Unity clip /home/me/UnityGame/Assets/Anim/Blink.anim as assets/anim/blink.anim for the Hero "
+                  "GameObject, and make sure everything it animated in Unity is animated here too.",
+        "mocks": [
+            {"tool": "edit_animation", "args": {"create": "*"}, "result": ok(
+                "assets/anim/blink.anim: created, 1 track, 0.5 s, once; no Animation Player uses it yet (set_properties clips) "
+                "(one project undo step: undo scope project)\nimported the Unity clip Assets/Anim/Blink.anim (1 track, 0 events)",
+                {"path": "assets/anim/blink.anim", "created": True, "tracks": [], "wrap": "once", "length": 0.5,
+                 "unity": {"source": "Assets/Anim/Blink.anim", "tracks": 1, "events": 0, "notes": [],
+                           "unmapped": [{"binding": "Face: MonoBehaviour.eyeOpen", "reason": "script fields of Unity MonoBehaviours "
+                                         "have no engine binding: key the Lua script's field (script:<Class>) with edit_animation"}],
+                           "muscle_curves": {"count": 0, "names": []}},
+                 "next": "unity.unmapped lists the Unity bindings with no engine property: key their engine equivalents with tracks "
+                         "(get_animation {root, list_properties} lists what a GameObject can animate)"})},
+            {"tool": "get_animation", "result": ok(
+                "\"Face\": animatable properties (track component, property, kind):\nscript:face eyeOpen float\nmesh "
+                "submeshes[0].material.baseColorFactor color4",
+                {"properties": [{"component": "script:face", "property": "eyeOpen", "kind": "float"}]})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nHero [7] transform\nHero/Face [8] mesh script",
+                                                   {"entities": [{"id": 7, "path": "Hero"}, {"id": 8, "path": "Hero/Face"}]})},
+            {"tool": "edit_animation", "args": {"tracks": "*"}, "result": ok(
+                "assets/anim/blink.anim: 2 tracks, 0.5 s, once (one project undo step: undo scope project)",
+                {"path": "assets/anim/blink.anim", "created": False, "tracks": []})},
+        ],
+        "checks": {"calls": [{"tool": "get_animation", "args": {"list_properties": "*"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_unity_controller_import",
+        "kind": "guard",
+        "what_happened": "New text (S94 F36): edit_animator_controller's create.unity imports a Unity .controller with the clips "
+                         "and masks it uses; an agent imports it in one call instead of rebuilding states with ops or importing "
+                         "each clip first, and follows next for the model clip that did not map.",
+        "text_at_issue": "edit_animator_controller create: 'true, or {unity: an absolute Unity .controller}'; next: 'unity.unmapped "
+                         "lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's clip: set_state "
+                         "{clip: \"<model>#<clip>\"} once the model is in the project)'",
+        "source": "S94 F36 (new schema and result text); no failure on record",
+        "prompt": "Import the Unity Animator Controller /home/me/UnityGame/Assets/Anim/Hero.controller as "
+                  "assets/anim/hero.controller, with everything it needs. The Hero model is already in the project at "
+                  "assets/models/hero.fbx.",
+        "mocks": [
+            {"tool": "edit_animator_controller", "args": {"create": "*"}, "result": ok(
+                "assets/anim/hero.controller: imported Assets/Anim/Hero.controller (4 file(s), one project undo step); 1 unmapped "
+                "item(s): see unity.unmapped\nlayers[Base Layer].states[Jump].motion: a clip of the model Assets/Models/Hero.fbx "
+                "(\"Jump\"): import the model into the project, then set the state's clip to \"<model path>#Jump\" with "
+                "edit_animator_controller set_state",
+                {"path": "assets/anim/hero.controller", "created": True,
+                 "files": ["assets/anim/hero.controller", "assets/anim/Walk.anim", "assets/anim/Run.anim", "assets/anim/UpperBody.mask"],
+                 "unity": {"source": "Assets/Anim/Hero.controller", "kind": "controller", "layers": 2, "states": 5,
+                           "unmapped": [{"what": "layers[Base Layer].states[Jump].motion", "reason": "a clip of the model "
+                                         "Assets/Models/Hero.fbx (\"Jump\"): import the model into the project, then set the state's "
+                                         "clip to \"<model path>#Jump\" with edit_animator_controller set_state"}]},
+                 "next": "unity.unmapped lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's "
+                         "clip: set_state {clip: \"<model>#<clip>\"} once the model is in the project)"})},
+            {"tool": "edit_animator_controller", "args": {"ops": "*"}, "result": ok(
+                "assets/anim/hero.controller: 1 change(s), 0 diagnostic(s), 0 warning(s); one project undo step.",
+                {"path": "assets/anim/hero.controller", "changes": ["set_state Jump"], "diagnostics": [], "warnings": []})},
+            {"tool": "get_animator", "result": ok("assets/anim/hero.controller: 6 parameters, 2 layers, 5 states.",
+                                                  {"controller": {"layers": []}})},
+            {"tool": "get_model_info", "result": ok("assets/models/hero.fbx: 1 mesh, 32 bones, clips: Jump, Idle.",
+                                                    {"clips": [{"name": "Jump"}, {"name": "Idle"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animator_controller", "args": {"create": {"unity": "re:Hero\\.controller$"}}},
+                             {"tool": "edit_animator_controller", "args": {"ops": [{"clip": "re:hero\\.fbx#Jump"}]}}],
+                   "must_not_call": ["edit_animation"]},
+        "max_turns": 12,
+    },
+    # ---- S94 F48, F49: layered PSD/PSB import and 2D skinning
+    {
+        "id": "guard_psd_layers_import_mode",
+        "kind": "guard",
+        "what_happened": "New text (S94 F48): set_texture_import_settings takes import_mode: layers, which makes a PSD/PSB's "
+                         "layers sprites and a prefab; an agent asked for the layers as separate sprites sets it instead of "
+                         "exporting PNGs per layer by hand.",
+        "text_at_issue": "set_texture_import_settings: 'import_mode: layers gives a PSD/PSB a frame per layer and a prefab'",
+        "source": "S94 F48 (new parameter); the JasperArcade port decoded PSB layers with its own parser (ledger R45)",
+        "prompt": "assets/art/truck.psb is a layered Photoshop file. Bring its layers into the project as separate sprites, placed as "
+                  "in the document.",
+        "mocks": [
+            {"tool": "list_assets", "result": ok("1 asset: assets/art/truck.psb (texture)", {"assets": [{"path": "assets/art/truck.psb", "type": "texture"}]})},
+            {"tool": "get_asset_info", "result": ok("assets/art/truck.psb: texture 512x256 (PSB).", {"path": "assets/art/truck.psb", "kind": "texture"})},
+            {"tool": "get_texture_import_settings", "result": ok("assets/art/truck.psb: type default, max_size 2048.", {"path": "assets/art/truck.psb"})},
+            {"tool": "set_texture_import_settings", "result": ok(
+                "Updated the import settings of 1 texture(s); their cooks are queued. Undo with scope project.",
+                {"updated": ["assets/art/truck.psb"], "unchanged": 0,
+                 "layers": [{"path": "assets/art/truck.psb", "prefab": "assets/art/truck.psb.prefab",
+                             "sprites": [{"name": "Body", "key": "layer:1"}, {"name": "Wheel", "key": "layer:2"}]}],
+                 "next": "instantiate_prefab the prefab to place the layers; a Sprite's sheet is the document, its frame a layer's name."})},
+            {"tool": "instantiate_prefab", "result": ok("Instantiated assets/art/truck.psb.prefab as \"truck\" [20].", {"root": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "set_texture_import_settings", "args": {"settings": {"import_mode": "layers"}}}],
+                   "must_not_call": ["create_sprite", "edit_sprite"], "edits_must_not": [r"\.png$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sprite_skin_bones",
+        "kind": "guard",
+        "what_happened": "New tool (S94 F49): edit_sprite_skin makes a Sprite's bones, mesh and weights; an agent asked to make "
+                         "a sprite arm bend at the elbow skins it instead of cutting the sprite into two GameObjects.",
+        "text_at_issue": "edit_sprite_skin: '2D skinning of a Sprite's frame (Unity's Sprite Skin): bones create/remove, "
+                         "auto_geometry, auto_weights, set_weights ...'",
+        "source": "S94 F49 (new tool); the JasperArcade port rebuilt its rig as parent/child GameObjects (ledger R45)",
+        "prompt": "The Arm sprite (a 16x64 vertical arm, shoulder at the bottom) should bend smoothly at the elbow halfway up. "
+                  "Set that up so I can animate the bend.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nArm [12] sprite transform", {"entities": [{"id": 12, "path": "Arm"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Arm\": transform, sprite (sheet assets/skin/arm.png, frame arm).", {"id": 12})},
+            {"tool": "edit_sprite_skin", "result": ok(
+                "Edited the skin of 'arm' (assets/skin/arm.png): 2 bones, 27 vertices. One undo step (scope timeline).",
+                {"bones": [{"name": "upper_arm", "parent": None, "head": [8, 64], "tail": [8, 32], "vertices": 15, "gameobject": {"id": 30}},
+                           {"name": "forearm", "parent": "upper_arm", "head": [8, 32], "tail": [8, 0], "vertices": 15, "gameobject": {"id": 31}}],
+                 "vertices": 27, "triangles": 32, "weighted": True, "source": "assets/skin/arm.png", "frame": "arm", "changed": True,
+                 "next": "Move or rotate the bone GameObjects (set_properties transform) to pose the Sprite; check with screenshot."})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 31 \"forearm\".", {"entity": {"id": 31}})},
+            {"tool": "screenshot", "result": ok("Game view, 640x360.", {"width": 640, "height": 360})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_skin", "args": {"entity": "re:(?i)^(12|Arm)$"}}],
+                   "must_not_call": ["create_entity", "duplicate_entities", "edit_sprite"]},
+        "max_turns": 10,
+    },
+    # -- spatial queries (docs/specs/spatial-queries.md R25, R31) --------------------------------
+    {
+        "id": "guard_physics_query_verify",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "Asked to check that a pickup radius query is right, agents re-ran the same query; mode verify compares "
+                         "it with a brute-force sweep of every body.",
+        "text_at_issue": "query_physics description: 'verify compares an overlap with a brute-force sweep'; its mode enum's verify",
+        "source": "docs/specs/spatial-queries.md R16, R25, R31",
+        "prompt": "The game is playing. Check that the physics overlap for the pickup radius (a 3 m sphere at the player, at "
+                  "(0, 1, 0)) is right: that it finds exactly the colliders really inside it.",
+        "groups_enabled": ["physics"],
+        "mocks": [
+            {"tool": "query_physics", "args": {"mode": "verify"}, "result": ok(
+                "2 collider(s) overlap. The brute-force sweep agrees.",
+                {"dimension": "3d", "shape": "sphere", "mode": "verify",
+                 "hits": [{"entity": 12, "name": "Coin", "collider": 0}, {"entity": 13, "name": "Gem", "collider": 0}],
+                 "verify": {"reference_count": 2, "missing": [], "extra": [], "ok": True}})},
+            {"tool": "query_physics", "result": ok(
+                "2 collider(s) overlap.",
+                {"dimension": "3d", "shape": "sphere", "mode": "overlap",
+                 "hits": [{"entity": 12, "name": "Coin", "collider": 0}, {"entity": 13, "name": "Gem", "collider": 0}]})},
+        ],
+        "checks": {"calls": [{"tool": "query_physics", "args": {"mode": "verify"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_query_physics_drawn_trees",
+        "kind": "guard",
+        "groups_enabled": ["physics"],
+        "what_happened": "New text (spatial-queries R12, R25): Terrain trees have no colliders unless their prototype asks, and "
+                         "the scene is not playing; query_physics dimension drawn overlaps what is drawn (trees included) in "
+                         "edit mode, so the agent asks it instead of starting Play or reading every tree's position.",
+        "text_at_issue": "query_physics description: 'drawn: mesh/tree bounds, edit mode too.'; its dimension enum's drawn",
+        "source": "docs/specs/spatial-queries.md R12, R25 (new tool text; no failure on record)",
+        "prompt": "Without starting the game: which of the Terrain's trees stand within 3 m of the point (10, 2, 5)? Name "
+                  "their tree ids.",
+        "mocks": [
+            {"tool": "query_physics", "args": {"dimension": "drawn"}, "result": ok(
+                "2 drawn object(s) overlap: Terrain tree 17, Terrain tree 23.",
+                {"dimension": "drawn", "shape": "sphere", "mode": "overlap",
+                 "hits": [{"entity": 4, "name": "Terrain", "kind": "tree", "prototype": 0, "tree_id": 17},
+                          {"entity": 4, "name": "Terrain", "kind": "tree", "prototype": 1, "tree_id": 23}]})},
+            {"tool": "query_physics", "result": err("query_physics reads the running physics world: start Play first (play).")},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nTerrain [4] terrain transform",
+                                                  {"entities": [{"id": 4, "path": "Terrain"}]})},
+        ],
+        "checks": {"calls": [{"tool": "query_physics", "args": {"dimension": "drawn", "mode": "overlap"}}],
+                   "must_not_call": ["play"],
+                   "reply_must": [r"17", r"23"]},
+        "max_turns": 10,
+    },
+    # -- input-device-awareness: the input scheme (configure_game_view input_scheme, get_input_state's scheme) --------------
+    {
+        "id": "guard_input_scheme_forced",
+        "kind": "guard",
+        "what_happened": "New text (input-device-awareness R27): the Game view forces the input scheme before Play, so the HUD "
+                         "shows a scheme's prompts from the first frame; without the parameter an agent sends a pad press after "
+                         "Play started (the first frames show the other prompts) or edits scripts.",
+        "text_at_issue": "configure_game_view: '... the input scheme forced at Play start'; its input_scheme enum auto|keyboard_mouse|gamepad|touch",
+        "source": "input-device-awareness R24, R27 (new tool text); no failure on record",
+        "prompt": "I want to check the gamepad button prompts of the HUD from the very first frame of the game. Set the editor "
+                  "up so the game treats the player as using a gamepad from the start, press Play and take a Game view "
+                  "screenshot. Do not change the game's scripts.",
+        "groups_enabled": ["editor_ux"],
+        "mocks": [
+            {"tool": "configure_game_view", "args": {"input_scheme": "gamepad"}, "result": ok(
+                "Game view: input scheme gamepad (forced at Play start), aspect free, scale 1.",
+                {"input_scheme": "gamepad", "aspect": "free", "scale": 1})},
+            {"tool": "configure_game_view", "result": ok("Game view: input scheme auto, aspect free, scale 1.",
+                                                         {"input_scheme": "auto", "aspect": "free", "scale": 1})},
+            {"tool": "play", "result": ok("Playing \"Main\".", {"state": "playing"})},
+            {"tool": "get_input_state", "result": ok(
+                "Input of game frame 3\nscheme Gamepad (forced), 0 changes",
+                {"game_frame": 3, "scheme": {"current": "Gamepad", "pointer": "Keyboard&Mouse", "gamepad": None,
+                                             "gamepad_family": "Generic", "override": "Gamepad"}, "changes": 0})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+        ],
+        "checks": {"calls": [{"tool": "configure_game_view", "args": {"input_scheme": "gamepad"}}, "play"],
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_input_scheme_read",
+        "playing": True,
+        "kind": "guard",
+        # gameplay: the tool at issue; editor_ux: configure_game_view, whose input_scheme is the forced one (auto here)
+        "groups_enabled": ["gameplay", "editor_ux"],
+        "what_happened": "New text (input-device-awareness R27): which device the game treats as in use is in get_input_state "
+                         "(scheme), and send_input switches it as a player would; without it an agent reads the Game view's "
+                         "input_scheme (the scheme forced at Play start: auto), writes a Lua probe or guesses.",
+        "text_at_issue": "none: the description's sentence on the scheme was cut, as agents read get_input_state for it "
+                         "without it (4/4, the Game view's input_scheme in reach); the result's scheme field and the name decide",
+        "source": "input-device-awareness R27 (new tool text); no failure on record",
+        "prompt": "The game is playing and a tester just played it on the touch screen. Which input scheme is the game using "
+                  "right now?",
+        "mocks": [
+            {"tool": "get_input_state", "result": ok(
+                "Input of game frame 212\nscheme Touch, 1 changes",
+                {"game_frame": 212, "touches": [], "scheme": {"current": "Touch", "pointer": "Touch", "gamepad": None,
+                                                              "gamepad_family": "Generic", "override": None}, "changes": 1})},
+            {"tool": "configure_game_view", "args": {}, "result": {"recorded": "configure_game_view_read"}},
+            {"tool": "eval_lua", "args": {"code": "re:currentScheme"}, "result": ok("\"Touch\"", {"values": ["Touch"]})},
+        ],
+        "checks": {"calls": ["get_input_state"], "reply_must": [r"(?i)touch"], "must_not_call": ["send_input"]},
+        "max_turns": 10,
+    },
+    # ---- culling-group-and-simulation-distance: Culling Groups and Simulation Culling
+    {
+        "id": "guard_culling_stats",
+        "kind": "guard",
+        "what_happened": "New text (R29, R35): get_render_stats returns `culling` (groups, spheres, simulation culled/full/"
+                         "ground_not_loaded). Asked whether far enemies still simulate, an agent reads it (or the component's "
+                         "state through get_runtime_entity) instead of guessing from screenshots.",
+        "text_at_issue": "get_render_stats description: '... culling: what is culled or frozen.'; jasper://docs/profiling Culling",
+        "source": "docs/specs/culling-group-and-simulation-distance.md R35 (new tool text); no failure on record",
+        "playing": True,
+        "groups_enabled": ["profiling"],
+        "prompt": "The game is playing. Our enemies have Simulation Culling: are the far ones still simulating, or are they frozen?",
+        "mocks": [
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (frame): 42 draws (40 main, 2 shadow; 0 instanced), 3 passes, CPU 2.1 ms.",
+                {"view": "frame", "draw_calls": 42, "culling": {"groups": 0, "spheres": 0, "visible": 0, "per_band": [0],
+                 "evaluate_ms": 0.004, "simulation": {"components": 3, "full": 1, "reduced": 0, "culled": 2, "ground_not_loaded": 0,
+                                                      "focuses": 1, "script_updates_skipped": 6, "transitions_deferred": 0}}})},
+            {"tool": "get_runtime_entity", "result": ok(
+                "Enemy [13]: transform, simulationculling (state culled, reason distance, focusDistance 41.2).",
+                {"id": 13, "components": {"simulationculling": {"simulationDistance": 20, "state": "culled", "reason": "distance",
+                                                                "focusDistance": 41.2}}})},
+            {"tool": "list_runtime_entities", "result": ok("4 GameObjects: 10 Main Camera, 12 Player, 13 Enemy, 14 Enemy (1)",
+                                                          {"entities": [{"id": 13, "path": "Enemy"}, {"id": 14, "path": "Enemy (1)"}]})},
+            {"tool": "find_entities", "result": ok("2 GameObjects: 13 Enemy, 14 Enemy (1)",
+                                                  {"entities": [{"id": 13, "path": "Enemy"}, {"id": 14, "path": "Enemy (1)"}]})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+        ],
+        "checks": {"any_of": [{"calls": ["get_render_stats"]}, {"calls": ["get_runtime_entity"]}],
+                   "reply_must": [r"(?i)frozen|culled|not simulat|stopped"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_culling_debug",
+        "kind": "guard",
+        "what_happened": "New text (R30, R35): configure_game_view culling_debug draws the Simulation Culling and Culling Group "
+                         "spheres; asked to show what is culled, an agent turns it on and takes a Game view screenshot.",
+        "text_at_issue": "configure_game_view's culling_debug parameter, its result's next ('screenshot the Game view while "
+                         "playing: green spheres simulate ...'); jasper://docs/profiling Culling",
+        "source": "docs/specs/culling-group-and-simulation-distance.md R35 (new tool text); no failure on record",
+        "playing": True,
+        "groups_enabled": ["editor_ux"],
+        "prompt": "The game is playing. Show me which GameObjects are culled right now, as a picture.",
+        "mocks": [
+            {"tool": "configure_game_view", "result": ok("Updated the Game view: {\"culling_debug\": true, ...}",
+                                                        {"culling_debug": True, "changed": ["culling_debug"],
+                                                         "next": "screenshot the Game view while playing: green spheres simulate, yellow run "
+                                                                 "at the reduced rate, red are culled by distance, grey by unloaded ground; "
+                                                                 "cyan / dark blue are Culling Group spheres in / out of view."})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+            {"tool": "get_render_stats", "result": ok("Render stats (frame): 42 draws.", {"view": "frame", "draw_calls": 42})},
+        ],
+        "checks": {"calls": [{"tool": "configure_game_view", "args": {"culling_debug": True}}, "screenshot"],
+                   "order": [[{"tool": "configure_game_view", "args": {"culling_debug": True}}, "screenshot"]]},
+        "max_turns": 10,
+    },
+    # ---- build-profiles: a variant is a Build Profile, not an edit of the project's settings
+    {
+        "id": "guard_build_profile_demo",
+        "kind": "guard",
+        "what_happened": "New text (build-profiles R22, R23): edit_build_profile makes a named variant (identity, Scene List, "
+                         "defines) and build_project profile builds it; asked for a demo build, an agent makes a profile instead "
+                         "of renaming the project and removing scenes from its build list, then putting them back.",
+        "text_at_issue": "edit_build_profile: 'Build Profiles (Build Settings): named per-platform variants overriding identity, "
+                         "store, API, scenes, defines ...' and build_project: 'profile: a Build Profile sets platform, API, "
+                         "flavour, folder.'",
+        "source": "build-profiles R22, R23 (new tool text); no failure on record",
+        "prompt": "Make a Linux demo build of this game: only scenes/Level2.scene, titled \"Box Demo\", with a DEMO switch my "
+                  "scripts can check. Don't change the full game's settings.",
+        "mocks": [
+            # the sample project's own scenes (Main, Level2, Hud)
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 12 shader(s).",
+                {"host_platform": "linux", "scenes": [{"id": 1, "name": "Main", "path": "scenes/Main.scene"},
+                                                      {"id": 2, "name": "Level2", "path": "scenes/Level2.scene"},
+                                                      {"id": 3, "name": "Hud", "path": "scenes/Hud.scene"}],
+                 "profiles": [], "active_profile": None})},
+            {"tool": "edit_build_profile", "args": {"action": "create"}, "result": ok(
+                "Created Build Profile 'Demo' (linux).",
+                {"files_written": ["EditorSettings/BuildProfiles/Demo.buildprofile"],
+                 "values": {"product_name": "Box Demo", "scenes": [{"guid": "e9c340ed0a60324e2b3e529cd637f368", "path": "scenes/Level2.scene"}],
+                            "defines": ["DEMO"]},
+                 "next": "build it with build_project profile \"Demo\""})},
+            {"tool": "edit_build_profile", "args": {"action": "list"}, "after": {"tool": "edit_build_profile", "args": {"action": "create"}},
+             "result": ok("1 Build Profile: Demo (linux).", {"profiles": [{"name": "Demo", "platform": "linux"}], "active": None})},
+            {"tool": "edit_build_profile", "args": {"action": "list"}, "result": ok("No Build Profiles.", {"profiles": [], "active": None})},
+            {"tool": "edit_build_profile", "args": {"action": "get"}, "after": {"tool": "edit_build_profile", "args": {"action": "create"}},
+             "result": ok("Build Profile 'Demo' (linux): product_name \"Box Demo\", scenes [scenes/Level2.scene], defines [DEMO].",
+                          {"name": "Demo", "platform": "linux",
+                           "values": {"product_name": "Box Demo", "scenes": [{"guid": "e9c340ed0a60324e2b3e529cd637f368",
+                                                                               "path": "scenes/Level2.scene"}], "defines": ["DEMO"]}})},
+            {"tool": "build_project", "result": ok(
+                "Built linux (prebuilt player linux-x64-glcore-release) in /home/me/Box-Demo.",
+                {"profile": "Demo", "platform": "linux", "method_used": "prebuilt", "warnings": []})},
+            {"tool": "edit_build_scenes", "result": ok(
+                "3 scene(s) in the build: 0 scenes/Main.scene (start), 1 scenes/Level2.scene, 2 scenes/Hud.scene.", {})},
+        ],
+        "checks": {"calls": [{"tool": "edit_build_profile", "args": {"action": "create"}}, {"tool": "build_project", "args": {"profile": "*"}}],
+                   # reading the game's scene list is fine (edit_build_scenes defaults to list); changing it is not
+                   "must_not_call": ["set_project_settings", {"tool": "edit_build_scenes", "args": {"action": "re:^(add|remove|move|set_start)$"}}]},
+        "max_turns": 12,
+    },
+    # -- shipped-game-diagnostics R40, AC23: get_crash_reports folder and group (R37). ----------------
+    {
+        "id": "crash_reports_new_in_version",
+        "kind": "guard",
+        "groups_enabled": ["diagnostics"],
+        "what_happened": "Two hundred report folders from testers' devices: the agent must tell which crash is new in 1.4. A page "
+                         "of reports names no pattern; grouping by signature with counts per version does.",
+        "text_at_issue": "get_crash_reports: description sentence on folder and group; its folder and group parameters",
+        "source": "docs/specs/shipped-game-diagnostics.md R37, R40",
+        "prompt": "My testers pulled the crash folders off their phones and PCs into /home/me/crashes/forest-run (the game's "
+                  "crash folder, with reports/ inside). Version 1.4 went out last week: which crash is new in 1.4?",
+        "mocks": [
+            {"tool": "get_crash_reports", "args": {"group": True}, "result": real(
+                "5 groups of 212 reports in /home/me/crashes/forest-run/reports.", {
+                    "folder": "/home/me/crashes/forest-run/reports", "reports_read": 212, "session": "20261118T090000Z-4410",
+                    "notice_open": False,
+                    "next": "Names need symbols: python3 -I tools/crash/symbolicate.py --group /home/me/crashes/forest-run/reports --symbols <dir>",
+                    "groups": [
+                        {"signature": "crash | EXCEPTION_ACCESS_VIOLATION | game::Inventory::addItem | game::Player::pickUp | "
+                                      "(anonymous namespace)::onTouch", "kind": "crash", "count": 91, "versions": {"1.3": 58, "1.4": 33},
+                         "platforms": {"windows-x86_64": 91}, "first_seen": "2026-10-02T10:00:30Z", "last_seen": "2026-11-17T21:12:09Z",
+                         "report_ids": ["20261117T211200Z-8812"], "unresolved": False},
+                        {"signature": "crash | SIGSEGV | forestrun+0x4f2a0 | libjasperengine.so+0x1a000 | forestrun+0x4e100 | build "
+                                      "3f1c9e07b2d84a6c5e91f0a2b7c4d6e8f9a0b1c2", "kind": "crash", "count": 52, "versions": {"1.3": 30, "1.4": 22},
+                         "platforms": {"linux-x86_64": 52}, "first_seen": "2026-10-05T08:10:00Z", "last_seen": "2026-11-18T07:40:44Z",
+                         "report_ids": ["20261118T074000Z-1209"], "unresolved": True},
+                        {"signature": "crash | terminate | std::vector::_Xlength | game::Level::load | game::Game::start", "kind": "crash",
+                         "count": 37, "versions": {"1.4": 37}, "platforms": {"windows-x86_64": 29, "android-arm64": 8},
+                         "first_seen": "2026-11-11T14:02:13Z", "last_seen": "2026-11-18T08:55:01Z",
+                         "report_ids": ["20261118T085500Z-7310"], "unresolved": False},
+                        {"signature": "hang | lua | Spawning enemies | NtDelayExecution | SleepEx | game::Ai::think", "kind": "hang",
+                         "count": 20, "versions": {"1.3": 12, "1.4": 8}, "platforms": {"windows-x86_64": 20},
+                         "first_seen": "2026-10-09T19:30:00Z", "last_seen": "2026-11-16T12:00:30Z",
+                         "report_ids": ["20261116T120000Z-5001"], "unresolved": False},
+                        {"signature": "abnormal_exit", "kind": "abnormal_exit", "count": 12, "versions": {"1.3": 7, "1.4": 5},
+                         "platforms": {"unknown": 12}, "first_seen": "2026-10-03T07:00:00Z", "last_seen": "2026-11-15T22:10:00Z",
+                         "report_ids": ["20261115T221000Z-6120"], "unresolved": False},
+                    ]})},
+            {"tool": "get_crash_reports", "result": real(
+                "10 reports in /home/me/crashes/forest-run/reports.", {
+                    "folder": "/home/me/crashes/forest-run/reports", "session": "20261118T090000Z-4410", "notice_open": False,
+                    "reports": [{"id": f"2026111{d}T0{h}0000Z-{4000 + d * 10 + h}", "kind": "crash", "time": f"2026-11-1{d}T0{h}:00:30Z",
+                                 "reason": reason, "product": "Forest Run", "version": version,
+                                 "folder": f"/home/me/crashes/forest-run/reports/2026111{d}T0{h}0000Z-{4000 + d * 10 + h}",
+                                 "files": ["crash.txt", "log-tail.txt"], "handled": False, "this_session": False}
+                                for d, h, reason, version in [
+                                    (8, 8, "unhandled exception: vector too long", "1.4"), (8, 7, "SIGSEGV (invalid memory access)", "1.4"),
+                                    (8, 6, "unhandled Windows exception", "1.3"), (7, 9, "unhandled Windows exception", "1.4"),
+                                    (7, 5, "SIGSEGV (invalid memory access)", "1.3"), (7, 2, "unhandled Windows exception", "1.4"),
+                                    (6, 8, "SIGSEGV (invalid memory access)", "1.4"), (6, 4, "unhandled Windows exception", "1.3"),
+                                    (6, 1, "unhandled exception: vector too long", "1.4"), (5, 9, "unhandled Windows exception", "1.3")]]})},
+        ],
+        "checks": {"calls": [{"tool": "get_crash_reports", "args": {"folder": "re:forest-run", "group": True}}],
+                   "reply_must": [r"vector|_Xlength|Level::load|terminate"]},
+        "max_turns": 10,
+    },
+    # -- shipped-game-diagnostics P1/P2: the guide's "A game's own reports" lines and lua-api.md's Report a
+    # Problem and Journal paragraphs. -------------------------------------------------------------------------
+    {
+        "id": "user_report_in_play",
+        "kind": "guard",
+        "playing": True,
+        "groups_enabled": ["diagnostics"],
+        "what_happened": "A user report starts with a capture of the frame (Crash.beginReport), whose callback runs a frame "
+                         "later; only then does Crash.createReport write the folder. An agent that calls createReport alone gets "
+                         "no screenshot, and one that writes files by hand bypasses the engine's report.",
+        "text_at_issue": "crash-diagnostics.md 'A game's own reports' first line; lua-api.md 'Report a Problem' block",
+        "source": "docs/specs/shipped-game-diagnostics.md R11, R14, R38",
+        "prompt": "The game is playing in the editor. Check that a player's 'Report a Problem' works end to end: make a user "
+                  "report from the running game, with a screenshot of the frame and the note 'door stuck', then tell me which "
+                  "files the report folder holds.",
+        "mocks": [
+            {"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}, "result": ok("nil", {"values": []})},
+            {"tool": "wait", "result": ok("Waited 2 frames: the condition holds.", {"frames": 2, "met": True})},
+            {"tool": "search_engine_api", "args": {"query": "re:(?i)report|crash|problem|feedback|screenshot"}, "result": real(
+                "API symbols for the query:\n- Crash.beginReport(fn, options) [Function]\n- Crash.createReport(options) [Function]",
+                {"docs": [{"doc": "jasper://docs/lua-api/2-15-crash-static-reports-of-earlier-ses",
+                           "section": "2.15 Crash (static): reports of earlier sessions, the report hook, tags", "line": 24,
+                           "text": "\"Report a Problem\" (user reports, kind `\"user\"`): capture, then the game's own form, then write."}],
+                 "results": [{"detail": "Crash.beginReport(fn?: fun(ok: boolean, err: string|nil), options?) -- \"Report a Problem\": "
+                                        "captures the frame being drawn; fn(ok, err) runs the first frame after", "kind": "Function"},
+                             {"detail": "Crash.createReport(options: CrashReportOptions) -> CrashReport|nil, string|nil -- Writes a user "
+                                        "report (<session>-user<N>: user.txt, device.json, journal.txt, log-tail.txt, screenshot.jpg)",
+                              "kind": "Function"},
+                             {"detail": "Crash.cancelReport() -- Drops the draft Crash.beginReport captured", "kind": "Function"}]})},
+            {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}, "result": ok(
+                "{id = \"20261120T101500Z-4242-user1\", kind = \"user\", category = \"other\", files = {\"device.json\", "
+                "\"journal.txt\", \"log-tail.txt\", \"screenshot.jpg\", \"user.txt\"}}",
+                {"values": [{"id": "20261120T101500Z-4242-user1", "kind": "user", "category": "other",
+                             "files": ["device.json", "journal.txt", "log-tail.txt", "screenshot.jpg", "user.txt"]}]})},
+            {"tool": "eval_lua", "result": ok("true", {"values": [True]})},
+            {"tool": "get_crash_reports", "result": ok("1 report in /home/me/.config/jasperengine/reports.", {
+                "folder": "/home/me/.config/jasperengine/reports", "session": "20261120T101500Z-4242", "notice_open": False,
+                "reports": [{"id": "20261120T101500Z-4242-user1", "kind": "user", "time": "2026-11-20T10:15:02Z",
+                             "reason": "user report (other): door stuck", "product": "Space Dodge", "version": "0.3",
+                             "folder": "/home/me/.config/jasperengine/reports/20261120T101500Z-4242-user1",
+                             "files": ["device.json", "journal.txt", "log-tail.txt", "screenshot.jpg", "user.txt"],
+                             "handled": False, "this_session": False}]})},
+        ],
+        "checks": {"calls": [{"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}},
+                             {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}}],
+                   "order": [[{"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}},
+                              {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}}]],
+                   "reply_must": [r"screenshot\.jpg"],
+                   "edits_must_not": [r"user\.txt|screenshot"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "journal_before_the_error",
+        "kind": "guard",
+        "what_happened": "What the game did just before an error is in the Gameplay Journal, which the Console keeps in its "
+                         "journal category; without the hint an agent pages the whole Console or guesses from the script.",
+        "text_at_issue": "crash-diagnostics.md 'A game's own reports' second line (read_console categories journal)",
+        "source": "docs/specs/shipped-game-diagnostics.md R34, R38",
+        "prompt": "Play stopped a moment ago with a script error. Before touching any code: which level was the player in and "
+                  "what had they just done when it happened?",
+        "mocks": [
+            {"tool": "read_console", "args": {"categories": ["journal"]}, "result": console_result(JOURNAL_LINES + [PLAY_STOP], 414)},
+            {"tool": "read_console", "args": {"levels": "*"}, "result": console_result([SCRIPT_ERROR], 414)},
+            {"tool": "read_console", "args": {"only_problems": True}, "result": console_result([SCRIPT_ERROR], 414)},
+            {"tool": "read_console", "result": console_result(PATH_SPAM[-98:] + [SCRIPT_ERROR, PLAY_STOP], 414)},
+        ],
+        "checks": {"calls": [{"tool": "read_console", "args": {"categories": ["journal"]}}],
+                   "reply_must": [r"forest", r"key"],
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "journal_log_in_script",
+        "kind": "guard",
+        "files": GAME_FILES,
+        "what_happened": "Crash reports carry the game's events only through the Gameplay Journal (Journal.log); Crash.setTag "
+                         "keeps one value per key and Log lines are pushed out by a log storm.",
+        "text_at_issue": "lua-api.md 'Journal' paragraph",
+        "source": "docs/specs/shipped-game-diagnostics.md R2, R5, R39",
+        "prompt": "Our crash reports never say what the player was doing. Write scripts/LevelEvents.lua: when the level starts "
+                  "it records a game event for the crash reports with the level name 'forest-2' and the seed 42. Just write "
+                  "the file; don't attach or run it.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/LevelEvents.lua: no syntax errors.", {"ok": True, "problems": []})},
+            {"tool": "create_script", "result": ok("Created scripts/LevelEvents.lua.", {"path": "scripts/LevelEvents.lua"})},
+        ],
+        "checks": {"any_of": [{"file_must": {"scripts/LevelEvents.lua": [r"Journal\.log\s*\(", r"forest-2"]}},
+                              {"calls": [{"tool": "create_script", "args": {"content": r"re:(?s)Journal\.log\s*\(.*forest-2"}}]}],
+                   "must_not_call": ["play", "attach_script"]},
+        "max_turns": 20,
+    },
+    # -- text-entry-gamepad-cursor-back-button: send_input app back, gamepad cursor warp ----------------------------------------
+    {
+        "id": "guard_send_input_app_back",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "New text (text-entry-gamepad-cursor-back-button R30): Android's Back button is send_input's app action "
+                         "back, and the result names who took it; without it an agent presses Escape (which is not routed as "
+                         "the Back button: no Escape follows a game's Engine.onBack) or writes a Lua probe.",
+        "text_at_issue": "send_input app: '...|orientation (+orientation)|back' and the result's back field",
+        "source": "text-entry-gamepad-cursor-back-button R16, R30 (new tool text); no failure on record",
+        "prompt": "The game is playing. Press the Android Back button once, as a phone would, and tell me whether the pause menu "
+                  "document handled it or the game did.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "back"}]}, "result": ok(
+                "Sent 1 event over 1 frame; playing.", {"frames": 1, "state": "playing", "back": "document"})},
+            {"tool": "eval_lua", "result": ok("nil", {"result": None})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "back"}]}}],
+                   "reply_must": [r"(?i)document|menu"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_send_input_gamepad_cursor_target",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "New text (text-entry-gamepad-cursor-back-button R30): a gamepad event's x, y or target warps the "
+                         "gamepad cursor before its button, so an agent clicks a menu button with A in one event; without it "
+                         "an agent steers the cursor with stick axis events and guesses timings, or clicks with the mouse "
+                         "(which switches the scheme and hides the cursor).",
+        "text_at_issue": "send_input gamepad: '... value, x, y/target: warp cursor'",
+        "source": "text-entry-gamepad-cursor-back-button R30 (new tool text); no failure on record",
+        "prompt": "The game is playing and its menu shows the gamepad cursor. Click the menu's #start button with the gamepad's "
+                  "A button through the cursor (do not use the mouse or touch).",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "gamepad", "button": "a", "target": "#start"}]}, "result": ok(
+                "Sent 1 event over 3 frames; playing.", {"frames": 3, "state": "playing"})},
+            {"tool": "inspect_ui", "result": ok("menu.html", {"gamepad_cursor": {"active": True, "x": 640, "y": 360, "over": "#start"}})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "gamepad", "target": "#start"}]}}],
+                   "must_not_call": ["eval_lua"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_frame_waits_not_computes",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "Asked whether a slow Play scene is CPU-bound, agents read get_frame_times' cpu_ms (the frame's CPU "
+                         "time, waits on the driver included) and called it CPU-bound, then optimized scripts that were not "
+                         "the cost; the frame thread's own CPU (main_thread_cpu_ms, its thread clock) was a third of it.",
+        "text_at_issue": "get_frame_times' next: 'The frame thread waits more than it computes (driver, locks, I/O): see "
+                         "get_gpu_passes and the Timeline's Wait band.' (release-performance-and-gpu-quirks R34)",
+        "source": "docs/specs/release-performance-and-gpu-quirks.md R34, R38",
+        "prompt": "The game is playing in the editor and runs at about 30 fps. Is the main thread CPU-bound (our scripts and "
+                  "systems computing), or is it waiting on something? Measure, then answer in one or two sentences.",
+        "groups_enabled": ["profiling"],
+        "mocks": [
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 63 s, 0 error(s) logged.",
+                                                   {"state": "playing", "scene": {"id": 1, "name": "Main"}, "frame": 1890})},
+            {"tool": "get_frame_times", "result": ok(
+                "300 frames, median 33.4 ms.",
+                {"frames_in_window": 300,
+                 "summary": {"cpu_ms": {"median": 30.2, "p95": 31.9, "p99": 33.0, "max": 34.1},
+                             "gpu_ms": {"median": None, "p95": None, "p99": None, "max": None},
+                             "fps": {"median": 29.9, "p95": 31.2, "p99": 31.5, "max": 31.8},
+                             "frame_ms": {"median": 33.4, "p95": 34.8, "p99": 36.0, "max": 37.2}},
+                 "main_thread_cpu_ms": 9.8,
+                 "next": "The frame thread waits more than it computes (driver, locks, I/O): see get_gpu_passes and the "
+                         "Timeline's Wait band."})},
+            {"tool": "get_gpu_passes", "result": ok(
+                "game view frame 1892: 12 passes, gpu 27.9 ms (elapsed, frame = sum): Opaque 19.4 ms, Shadows 6.1 ms.",
+                {"frame": 1892, "semantics": "elapsed", "gpu_frame_ms": 27.9,
+                 "passes": [{"label": "Opaque", "gpu_ms": 19.4}, {"label": "Shadows", "gpu_ms": 6.1}]})},
+            {"tool": "capture_profile", "result": ok("Captured 120 frames: main thread median 30.1 ms, of which Wait 19.6 ms.",
+                                                    {"frames": 120, "categories": {"Wait": {"median_ms": 19.6}, "Scripts": {"median_ms": 3.1}}})},
+        ],
+        "checks": {"calls": ["get_frame_times"], "reply_must": [r"(?i)wait"],
+                   "reply_must_not": [r"(?i)\b(is|it's|it is) (cpu.bound|compute.bound)"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "bad_build_grew_find_why",
+        "kind": "bad",
+        "what_happened": "A web build was bigger than the day before; with only the last build's totals the agent guessed at "
+                         "causes (texture settings, engine modules) instead of comparing the two builds' reports.",
+        "text_at_issue": "get_build_report (shipping group) compare_to; get_build_info's '(sizes: get_build_report)' and its "
+                         "next 'get_build_report (group shipping): sizes, what grew, why a file ships'",
+        "source": "docs/specs/build-size-tools.md R7, R33, R38",
+        "prompt": "Our web build is bigger than yesterday's. Find out what grew.",
+        "mocks": [
+            {"tool": "get_build_report", "args": {"compare_to": "*"}, "result": real(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB (+3.2 MB vs 20261118-101500-prebuilt); textures +2.9 MB "
+                "(1 grown, 1 added); audio +0.3 MB (1 grown).",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]},
+                 "comparison": {"base": "20261118-101500-prebuilt",
+                                "total": {"before": 145541120, "after": 148897792, "delta": 3356672},
+                                "changes": [
+                                    {"change": "grown", "key": "textures/hero_sheet.png", "path": "assets/je-cooked/web/5e1.ktx2",
+                                     "category": "textures", "before": 524288, "after": 2621440, "delta": 2097152},
+                                    {"change": "added", "key": "textures/title_bg.png", "path": "assets/je-cooked/web/9ab.ktx2",
+                                     "category": "textures", "before": 0, "after": 943718, "delta": 943718},
+                                    {"change": "grown", "key": "assets/music/theme.ogg", "path": "assets/music/theme.ogg",
+                                     "category": "audio", "before": 2097152, "after": 2411724, "delta": 314572}],
+                                "counts": {"added": 1, "removed": 0, "grown": 2, "shrunk": 0, "unchanged": 812},
+                                "partial": False, "platform_differs": False, "truncated": False}})},
+            {"tool": "get_build_report", "result": real(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
+                "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2,
+                               "next": "get_build_report (group shipping): sizes, what grew, why a file ships"})},
+        ],
+        "checks": {"calls": [{"tool": "get_build_report", "args": {"compare_to": "re:."}}],
+                   "reply_must": [r"hero_sheet"], "must_not_call": ["build_project"]},
+        "max_turns": 14,  # the sandbox refuses the first shell probes; 10 turns ended a run before the comparison
+    },
+    {
+        "id": "bad_texture_should_not_ship",
+        "kind": "bad",
+        "what_happened": "Asked why a texture was in the build, the agent searched the scenes' files by hand and missed the "
+                         "material that pulled it in; the export already records which reference made each file ship.",
+        "text_at_issue": "get_build_report (shipping group) referenced_by; get_build_info's next 'get_build_report (group "
+                         "shipping): sizes, what grew, why a file ships' (without it agents grepped, then guessed that every file ships)",
+        "source": "docs/specs/build-size-tools.md R9, R33, R38",
+        "prompt": "textures/old_logo.png should not be in the build at all. Why is it in there?",
+        # the texture is on disk; the material and scene that pull it in are not in this copy (the report knows them)
+        "files": {"textures/old_logo.png": "(PNG bytes)\n",
+                  "textures/old_logo.png.meta": "metaVersion: 1\nguid: 7c1f0d2e9a4b4c55b8e61a3f0d9e2b47\nimport:\n  textureImporter:\n"
+                                                "    version: 1\n    type: default\n"},
+        "mocks": [
+            {"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}, "result": real(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792},
+                 "referenced_by": [{"file": "assets/je-cooked/web/77c.ktx2", "asset": "textures/old_logo.png", "reason": "reached",
+                                    "live": False, "chain": [
+                                        {"asset": "textures/old_logo.png", "field": "material/baseColorTexture", "kind": "material_texture"},
+                                        {"asset": "materials/splash.material", "field": "entity:14/MeshComponent.submeshes[0].material",
+                                         "kind": "mesh_material_file", "object": "Credits/Logo"},
+                                        {"asset": "scenes/Credits.scene", "field": "project/scenes[2].filepath", "kind": "scene_list"},
+                                        {"asset": "project.yaml", "field": "", "kind": "root"}]}]})},
+            {"tool": "get_build_report", "result": real(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
+                "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2,
+                               "next": "get_build_report (group shipping): sizes, what grew, why a file ships"})},
+        ],
+        "checks": {"calls": [{"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}}],
+                   "reply_must": [r"splash\.material|Credits"]},
+        "max_turns": 14,  # a grep of the project comes first; 10 turns ended runs after the report, before the reply
+    },
+    # -- S99 W2: screenshot findings (R6, R7); an image the agent cannot judge without them ----------
+    {
+        "id": "bad_screenshot_clipped_light",
+        "kind": "bad",
+        "what_happened": "Asked whether a scene looked right, agents described a screenshot they could not judge (a stub or "
+                         "a small image) and changed nothing; the result's findings and next now name the over-bright light "
+                         "and the call that lowers it (S99 R6, R7).",
+        "text_at_issue": "screenshot result: findings [{kind: exposure_clipped, ...}] and next 'exposure_clipped: ... Fix: "
+                         "set_properties {entity: 16, values: {light: {intensity: 0.75}}} halves it.'",
+        "source": "S99 spec, Crucible's frame-checks idea (paraphrased); no failure on record",
+        "prompt": "Take a Game view screenshot of the Main scene and fix anything that looks wrong with the lighting.",
+        "mocks": [
+            {"tool": "screenshot", "after": "set_properties", "result": ok(
+                "game view screenshot 768x432 of scene \"Main\".", {"view": "game", "width": 768, "height": 432, "findings": []})},
+            {"tool": "screenshot", "result": ok(
+                "game view screenshot 768x432 of scene \"Main\". Note: Frame checks: exposure_clipped (findings; next has the "
+                "first fix).",
+                {"view": "game", "width": 768, "height": 432, "findings_ms": 2.1,
+                 "findings": [{"kind": "exposure_clipped", "severity": "warning",
+                               "message": "41 % of the image is clipped white (luminance at or above 0.98); the brightest light "
+                                          "on it is Directional Light (#16), Directional at intensity 1.5.",
+                               "fix": "set_properties {entity: 16, values: {light: {intensity: 0.75}}} halves it", "entities": [16]}],
+                 "next": "exposure_clipped: 41 % of the image is clipped white (luminance at or above 0.98); the brightest "
+                         "light on it is Directional Light (#16), Directional at intensity 1.5. Fix: set_properties "
+                         "{entity: 16, values: {light: {intensity: 0.75}}} halves it."})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 16 \"Directional Light\".",
+                                                    {"entity": {"id": 16}})},
+            {"tool": "get_entity", "args": {"entity": "re:^(16|Directional Light)$"}, "result": ok(
+                "Directional Light [16] components: light transform",
+                {"id": 16, "name": "Directional Light", "path": "Directional Light", "components": {
+                    "light": {"type": "directional", "intensity": 1.5, "color": [1, 1, 1], "shadows": True}}}) | {"real": True}},
+        ],
+        # an intensity that looks ordinary in the data: only the finding shows it clips; lowered below 1.5
+        "checks": {"calls": ["screenshot", {"tool": "set_properties", "args": {
+            "entity": "re:^(16|Directional Light)$",
+            "values": {"light": {"intensity": r"re:^(0(\.\d+)?|1(\.[0-4]\d*)?|\.\d+)$"}}}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_screenshot_selection_out_of_frame",
+        "kind": "bad",
+        "what_happened": "Agents reported on a Scene view screenshot of the selected object when the object was off-screen; "
+                         "the findings say it is out of frame and next gives frame_entity (S99 R6, R7).",
+        "text_at_issue": "screenshot result: findings [{kind: subject_out_of_frame}] and next 'subject_out_of_frame: Crate (#15) "
+                         "(the selection) is 88 % outside the frame. Fix: frame_entity {entity: 15}.'",
+        "source": "S99 spec (paraphrased); no failure on record",
+        "prompt": "I lined the Scene view up on the selected Crate. Take a Scene view screenshot and tell me how the Crate "
+                  "looks.",
+        "mocks": [
+            {"tool": "screenshot", "after": "frame_entity", "result": ok(
+                "scene view screenshot 768x432 of scene \"Main\".", {"view": "scene", "width": 768, "height": 432, "findings": []})},
+            {"tool": "screenshot", "result": ok(
+                "scene view screenshot 768x432 of scene \"Main\". Note: Frame checks: subject_out_of_frame (findings; next has "
+                "the first fix).",
+                {"view": "scene", "width": 768, "height": 432, "findings_ms": 1.4,
+                 "findings": [{"kind": "subject_out_of_frame", "severity": "warning",
+                               "message": "Crate (#15) (the selection) is 88 % outside the frame.",
+                               "fix": "frame_entity {entity: 15}", "entities": [15]}],
+                 "next": "subject_out_of_frame: Crate (#15) (the selection) is 88 % outside the frame. Fix: frame_entity "
+                         "{entity: 15}."})},
+            {"tool": "frame_entity", "result": ok("Framed 1 GameObject in the Scene view.", {"framed": [15]})},
+            {"tool": "set_scene_camera", "result": ok("Scene view camera set.", {"position": [2, 1, 3], "target": [0, 0, 0]})},
+            {"tool": "get_selection", "result": ok("Selected: 15 Crate", {"entities": [{"id": 15, "path": "Crate"}]})},
+        ],
+        # the finding acted on: the Crate framed after the screenshot (frame_entity with no GameObject frames the
+        # selection), or, as the user aimed the view, the reply says it is out of frame instead of describing it
+        "checks": {"calls": ["screenshot"],
+                   "any_of": [{"calls": ["frame_entity"], "order": [["screenshot", "frame_entity"]]},
+                              {"reply_must": [r"(?i)(out of|outside) (the )?(frame|view|shot|screenshot)|off[- ]?screen"]}],
+                   "must_not_call": [{"tool": "frame_entity", "args": {"entity": "re:^(?!(15|Crate)$)"}},
+                                     {"tool": "frame_entity", "args": {"entities": ["re:^(?!(15|Crate)$)"]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_internal_fault_as_argument_error",
+        "kind": "bad",
+        "what_happened": "A handler's std::out_of_range reached the agent verbatim ('Tool create_entity failed: "
+                         "vector::_M_range_check ...'); it read that as a bad argument and kept changing a correct call.",
+        "text_at_issue": "McpServer.cpp failFromException: 'Internal error in <tool> (not caused by your arguments); details in "
+                         "editor.log as fault <id>. Check the state with <read tool>, retry once, and report it if it repeats.'",
+        "source": "S99 section 3 (raw what() of logic_error reached agents); S99 R3",
+        "prompt": "Add a cube named Crate2 at position (2, 0, 0).",
+        "mocks": [
+            {"tool": "create_entity", "once": True, "result": err(
+                "Internal error in create_entity (not caused by your arguments); details in editor.log as fault 3fa9c021. "
+                "Check the state with get_entity, retry once, and report it if it repeats.")},
+            {"tool": "get_entity", "args": {"entity": "re:Crate2"}, "after": "create_entity", "result": ok(
+                "GameObject 22 \"Crate2\": transform, mesh. Position [2, 0, 0].", {"id": 22, "name": "Crate2", "path": "Crate2"})},
+            {"tool": "get_entity", "args": {"entity": "re:Crate2"}, "result": err(
+                "No GameObject \"Crate2\" in scene 1 \"Main\".")},
+            {"tool": "find_entities", "after": "create_entity", "result": ok(
+                "1 GameObject(s) match:\nCrate2 [22] mesh", {"entities": [{"id": 22, "path": "Crate2"}]})},
+            {"tool": "find_entities", "result": ok("0 GameObject(s) match.", {"entities": []})},
+            {"tool": "editor_status", "result": ok("Project \"Space Dodge\", scene 1 \"Main\" (edit mode).",
+                                                   {"project": {"name": "Space Dodge"}, "playing": False})},
+            {"tool": "create_entity", "result": ok(
+                "Created GameObject 22 \"Crate2\" (cube) in scene 1 \"Main\".",
+                {"entity": {"id": 22, "name": "Crate2", "path": "Crate2"}, "scene": {"id": 1, "name": "Main"}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "create_entity", "args": {"name": "Crate2", "type": "re:^(cube|box)$"}}],
+                   "min_calls": {"create_entity": 2}, "max_calls": {"create_entity": 2},
+                   "any_of": [{"calls": ["get_entity"]}, {"calls": ["find_entities"]}, {"calls": ["editor_status"]}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_did_you_mean_argument",
+        "kind": "guard",
+        "what_happened": "An agent wrote a snake_case argument in camelCase; the registry refuses it naming the argument "
+                         "meant, and the agent resends with that name instead of dropping the argument.",
+        "text_at_issue": "McpRegistry.cpp argumentProblem: 'Unknown argument \"withComponents\" for find_entities (did you "
+                         "mean 'with_components'?). Arguments: ...'",
+        "source": "S99 R1 (camelCase for snake_case)",
+        "history": [
+            {"user": "List the GameObjects named Crate with their components."},
+            {"assistant": "Looking them up.", "calls": [{"tool": "find_entities", "args": {"name": "Crate", "withComponents": True},
+                "result": "Unknown argument \"withComponents\" for find_entities (did you mean 'with_components'?). Arguments: "
+                          "active, component, layer, limit, name, path, runtime, scene, tag, under, with_components."}]},
+        ],
+        "prompt": "Continue.",
+        "mocks": [
+            {"tool": "find_entities", "args": {"with_components": True}, "result": ok(
+                "1 GameObject(s) match:\nCrate [15] mesh rigidbody transform", {"entities": [{"id": 15, "path": "Crate",
+                                                                                     "components": ["mesh", "rigidbody", "transform"]}]})},
+        ],
+        "checks": {"calls": [{"tool": "find_entities", "args": {"with_components": True}}],
+                   "max_calls": {"find_entities": 2}},
+        "max_turns": 6,
+    },
+    # ---- S99 W5: the MCP call log (docs/mcp/guide/profiling.md "The MCP call log")
+    {
+        "id": "guard_mcp_call_log",
+        "kind": "guard",
+        "what_happened": "New text (S99 R17, R19): asked which of its own tool calls are slow or fail over many sessions, an "
+                         "agent points at the opt-in call log (JASPER_MCP_LOG or Log Calls To File) and call_profile.py, "
+                         "instead of timing calls by hand or reading editor.log.",
+        "text_at_issue": "docs/mcp/guide/profiling.md 'The MCP call log'",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R17-R19; no failure on record",
+        "prompt": "Over the next week I want to see which of your editor tool calls are slow or fail most, across all our "
+                  "sessions. What should I turn on in the editor and how do I read the result afterwards? Answer in a few "
+                  "lines from the editor's docs; change nothing.",
+        "checks": {"reply_must": [r"JASPER_MCP_LOG|Log Calls To File", r"call_profile"],
+                   "must_not_call": ["write_file", "set_project_settings"]},
+        "max_turns": 8,
+    },
+    # -- V1 R126, AC12: vertex colors (meshes group). Each fails on the text without the guide section or result. --
+    {
+        "id": "vc_find_tools",
+        "kind": "guard",
+        "what_happened": "Vertex painting is meshes-group work, listed only once the group is enabled: the agent must find it "
+                         "rather than tint the material or make a texture.",
+        "text_at_issue": "none: tool_groups lists edit_mesh_colors under meshes (passed 2/2 without new group text, so none was added)",
+        "source": "docs/specs/V1-vertex-colors.md R120, R126",
+        "prompt": "Use vertex colors to make the top of the Rock moss green. Don't touch its material or textures.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(created=True)}],
+        "checks": {"calls": [{"tool": "tool_groups", "args": {"enable": ["meshes"]}}, "edit_mesh_colors"],
+                   "must_not_call": ["update_material", "set_material", "create_material"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "vc_selection_fill_not_stroke",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Asked to color the faces the user selected, an agent swept brush strokes over where it guessed they "
+                         "were; the editor's element selection is an op target, filled exactly.",
+        "text_at_issue": "edit_mesh_colors ops' items '{op, target: {kind: ... selection ...}'; jasper://docs/meshes 'Targets and elements'",
+        "source": "docs/specs/V1-vertex-colors.md R23, R50, R126",
+        "prompt": "I've selected some faces of the Rock in the Vertex Paint window. Make exactly those selected faces dark red (#8B0000).",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=0, corners=36)},
+                               {"tool": "get_selection", "result": ok("Selected in \"Main\": Rock [50].", {"scene": {"id": 1, "name": "Main"},
+                                                                                                    "entities": [ROCK]})}],
+        "checks": {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"op": "re:^(set|fill)$", "target": {"kind": "selection"}}]}}],
+                   "must_not_call": [{"tool": "edit_mesh_colors", "args": {"ops": [{"op": "stroke"}]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "vc_check_in_vertex_color_view",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "After painting a roughness mask, an agent checked a shaded screenshot, where a mask shows only as a faint "
+                         "shine; the Vertex Color draw mode shows the stored values.",
+        "text_at_issue": "edit_mesh_colors result next ('... set_scene_camera {display: {draw_mode: \"vertex_color\"}} ...'); "
+                         "jasper://docs/meshes 'The loop'",
+        "source": "docs/specs/V1-vertex-colors.md R123, R126",
+        "prompt": "The Rock's material reads the red vertex color channel as a wetness (roughness) mask. Paint the bottom half "
+                  "of the Rock wet (red channel 1) and the top dry (0), then check visually that the mask is right.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=1200)}],
+        "checks": {"calls": ["edit_mesh_colors", {"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}, "screenshot"],
+                   "order": [["edit_mesh_colors", {"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}],
+                             [{"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}, "screenshot"]]},
+        "max_turns": 12,
+    },
+    {
+        "id": "vc_hard_edges_need_faces",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Asked for flat-colored faces with crisp borders, an agent set the faces' vertices, which blends each color "
+                         "into the neighbouring faces; a faces target writes the face's corners (hard edges).",
+        "text_at_issue": "edit_mesh_colors description ('faces/corners (or element: face) give hard edges'); jasper://docs/meshes "
+                         "'Targets and elements'",
+        "source": "docs/specs/V1-vertex-colors.md R3, R24, R126",
+        "prompt": "On the low-poly Rock, make triangles 0 to 5 solid #FF00FF with crisp, hard borders: no blending into the "
+                  "faces around them.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=0, corners=18)}],
+        "checks": {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"target": {"kind": "faces"}}]}}],
+                   "must_not_call": [{"tool": "edit_mesh_colors", "args": {"ops": [{"target": {"kind": "vertices"}}]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "vc_more_is_strength_not_repeat",
+        "kind": "guard",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Told a stroke it painted was too faint, an agent must change the strength (or blend add) in one call, not "
+                         "send the same stroke again and again (R126). Agents did so 2/2 without any text, so the tool text says nothing of it.",
+        "text_at_issue": "none in the tool text; jasper://docs/meshes 'Ops' explains strength as reference",
+        "source": "docs/specs/V1-vertex-colors.md R21, R31, R126",
+        "history": [
+            {"user": "Paint some light moss on the top of the Rock with a brush stroke."},
+            {"assistant": "Painting a stroke.", "calls": [{"tool": "edit_mesh_colors", "args": {"entity": 50, "ops": [
+                {"op": "stroke", "points": [[-0.5, 1.0, 0.0], [0.5, 1.0, 0.0]], "radius": 0.4, "value": "#5A7A2A", "strength": 0.3}]},
+                "result": "\"Rock\": 220 vertices and 0 corners changed in 1 target(s) (one undo step)."}]},
+            {"assistant": "Painted a light moss stroke over the top of the Rock (strength 0.3)."},
+        ],
+        "prompt": "The moss is far too faint. Make it much stronger along that same stroke.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=220)}],
+        "checks": {"calls": ["edit_mesh_colors"], "max_calls": {"edit_mesh_colors": 2},
+                   "any_of": [{"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"strength": "re:^(0\\.[6-9]\\d*|1(\\.0+)?)$"}]}}]},
+                              {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"blend": "add"}]}}]},
+                              {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"op": "re:^(stroke|fill)$", "buildup": True}]}}]}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "vc_view_asset_colors",
+        "kind": "guard",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Asked which parts of a model's own vertex colors are dark, agents swapped materials to an unlit one to "
+                         "see them, or guessed from a shaded screenshot; the Scene view's Vertex Color Draw Mode draws them, "
+                         "editor only.",
+        "text_at_issue": "jasper://docs/meshes ('draw_mode: \"vertex_color\" draws each mesh's raw vertex colours unlit'); "
+                         "set_scene_camera's draw_mode error. Passed 2/2 without the docs line (agents guess the name; the real "
+                         "server's error lists it), so it guards the behaviour, not that line",
+        "source": "docs/specs/V1-vertex-colors.md R123",
+        "prompt": "models/rock.glb came with baked vertex colors. In the Scene view, show me those colors on the Rock without "
+                  "lighting, and tell me which side is darkest. Don't change the Rock or its material.",
+        "mocks": ROCK_MOCKS,
+        "checks": {"calls": [{"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}],
+                   "must_not_call": ["set_properties", "update_material", "set_material", "create_material", "edit_mesh_colors"]},
+        "max_turns": 12,
+    },
+    # ---- S98 F1: .mesh assets
+    {
+        "id": "guard_mesh_save_as_asset",
+        "kind": "guard",
+        "what_happened": "New text (S98 F1): set_mesh_geometry's save_as writes a mesh's geometry to a .mesh asset the mesh "
+                         "then shows; an agent asked to make a GameObject's mesh reusable saves it there instead of exporting "
+                         "a model by hand, copying the scene YAML's buffers or writing the bytes from Lua.",
+        "text_at_issue": "set_mesh_geometry: 'save_as: also a .mesh asset it then shows (alone: the current geometry).'",
+        "source": "S98 F1 (new parameter); ledger E1 (scene files embed mesh buffers)",
+        "prompt": "Make the Rock GameObject's mesh a reusable asset at assets/meshes/rock.mesh so other scenes can use it. "
+                  "Keep its current shape.",
+        "mocks": [
+            {"tool": "set_mesh_geometry", "result": ok(
+                "Set the mesh of Rock to show assets/meshes/rock.mesh.",
+                {"entity": {"id": 12, "path": "Rock"}, "mesh_asset": "assets/meshes/rock.mesh", "local_size": [1.2, 0.8, 1.1],
+                 "local_center": [0, 0.4, 0]})},
+            {"tool": "find_entities", "result": ok("1 GameObject: 12 Rock (mesh)", {"entities": [{"id": 12, "path": "Rock"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Rock\": transform, mesh (612 vertices, its own geometry).",
+                                               {"id": 12})},
+            {"tool": "get_asset_info", "result": ok(
+                "assets/meshes/rock.mesh: mesh: 612 vertices, 3240 indices, 1 submesh(es), shown by 1 GameObject(s) of the open "
+                "scenes.", {"path": "assets/meshes/rock.mesh", "type": "mesh", "vertex_count": 612})},
+            {"tool": "save_scene", "result": ok("Saved scene Main.", {"scene_id": 1})},
+        ],
+        "checks": {"calls": [{"tool": "set_mesh_geometry", "args": {"save_as": "re:rock\\.mesh$"}}],
+                   "must_not_call": ["eval_lua", "write_file"]},
+        "max_turns": 10,
+    },
+    # ---- S98 WP-4: opening a scene leaves the build list alone (E8, REQ-28)
+    {
+        "id": "s98_open_scene_stays_out_of_build",
+        "kind": "bad",
+        "what_happened": "open_scene added every scene file it opened to project.yaml's build list, so the scenes an agent opened "
+                         "to look at shipped with the game (JasperArcade port, E8). Opening no longer lists a scene: asked to "
+                         "open one and ship it, the agent adds it with edit_build_scenes instead of taking the open for the add.",
+        "text_at_issue": "open_scene: 'an unlisted one stays out of the build (edit_build_scenes add).' (was: 'Opens a .scene file "
+                         "(adding it to the project if unlisted)')",
+        "source": "S98 REQ-28 (ENGINE_LIMITATIONS.md E8, paraphrased)",
+        "prompt": "Open scenes/Bonus.scene so I can work on it, and make sure it ships with the game.",
+        "mocks": [
+            {"tool": "open_scene", "args": {"scene": "re:Bonus"}, "result": ok(
+                "Opened scene 4 \"Bonus\" and selected it.",
+                {"scene": {"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene", "type": "3D", "opened": True, "modified": False,
+                           "selected": True, "start_scene": False, "entity_count": 3},
+                 "recovery": {"available": False, "autosaved_at": "", "status": "none", "applied": "none"},
+                 "load_report": {"skipped": 0, "preserved": 0, "dropped": 0}})},
+            {"tool": "edit_build_scenes", "args": {"action": "add", "scene": "re:Bonus|^4$"}, "result": ok(
+                "Added \"Bonus\". Scenes in build: 0=Main (scenes/Main.scene) 1=Bonus (scenes/Bonus.scene).",
+                {"scenes_in_build": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "index": 0, "start": True},
+                                     {"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene", "index": 1, "start": False}],
+                 "untitled_scenes": []})},
+            {"tool": "edit_build_scenes", "after": {"tool": "edit_build_scenes", "args": {"action": "add"}}, "result": ok(
+                "Scenes in build: 0=Main (scenes/Main.scene) 1=Bonus (scenes/Bonus.scene).",
+                {"scenes_in_build": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "index": 0, "start": True},
+                                     {"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene", "index": 1, "start": False}],
+                 "untitled_scenes": []})},
+            {"tool": "edit_build_scenes", "result": ok(
+                "Scenes in build: 0=Main (scenes/Main.scene). Open, not in the build (add puts one in): Bonus (scenes/Bonus.scene).",
+                {"scenes_in_build": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "index": 0, "start": True}],
+                 "untitled_scenes": [], "open_not_in_build": [{"id": 4, "name": "Bonus", "path": "scenes/Bonus.scene"}]})},
+        ],
+        "checks": {"calls": [{"tool": "open_scene", "args": {"scene": "re:Bonus"}},
+                             {"tool": "edit_build_scenes", "args": {"action": "add", "scene": "re:Bonus|^4$"}}],
+                   "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 10,
+    },
+    # ---- S98 WP-3: MCP tool fixes (create_prefab overwrite, wait at time scale 0, eval_lua's timeout, Material Creation Mode)
+    {
+        "id": "bad_prefab_replace_by_delete_and_create",
+        "kind": "bad",
+        "what_happened": "E2 (JasperArcade port): create_prefab refused an existing path, so the agent deleted the .prefab and created "
+                         "it again; the new file had a new GUID and every scene that placed the prefab lost its instances.",
+        "text_at_issue": "create_prefab's overwrite parameter ('Replace the prefab at path; GUID and instances stay.') and its "
+                         "refusal naming overwrite",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E2; S98 REQ-21",
+        "prompt": "I edited the Enemy GameObject in this scene (new collider, bigger sprite). Save it over prefabs/Enemy.prefab: "
+                  "Level1 and Level2 place that prefab and must get the change.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nEnemy [14] sprite collider2d transform",
+                                                   {"entities": [{"id": 14, "path": "Enemy"}]})},
+            {"tool": "create_prefab", "args": {"overwrite": True}, "result": ok(
+                "Overwrote prefabs/Enemy.prefab with the GameObject: same GUID, every open instance updated with its overrides kept, "
+                "the GameObject is now an instance of it (one undo step).",
+                {"scene_id": 1, "prefabs": [{"path": "prefabs/Enemy.prefab", "guid": "6f1c0d6a2b3e4f50a1b2c3d4e5f60718",
+                                             "overwritten": True, "instance": {"id": 14, "name": "Enemy"}}]})},
+            {"tool": "create_prefab", "result": err(
+                "A file already exists at \"prefabs/Enemy.prefab\". Pass overwrite: true to replace its content (its GUID and instances "
+                "stay), or pick another path; to make an existing instance follow another prefab use replace_prefab.")},
+            {"tool": "get_prefab_info", "result": ok("prefabs/Enemy.prefab: 3 GameObjects, used by 2 scenes (Level1: 4, Level2: 2).",
+                                                     {"path": "prefabs/Enemy.prefab", "guid": "6f1c0d6a2b3e4f50a1b2c3d4e5f60718"})},
+            {"tool": "list_prefabs", "result": ok("1 prefab: prefabs/Enemy.prefab (6 instances in 2 scenes).",
+                                                  {"prefabs": [{"path": "prefabs/Enemy.prefab"}]})},
+        ],
+        "checks": {"calls": [{"tool": "create_prefab", "args": {"path": "re:Enemy", "overwrite": True}}],
+                   "must_not_call": [{"tool": "delete_asset"}, {"tool": "move_asset"}, {"tool": "write_file"}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_wait_game_seconds_paused_game",
+        "kind": "guard",
+        "what_happened": "E44 (JasperArcade port): a game paused itself with Engine.timeScale = 0 (its pause menu); wait {game_seconds} "
+                         "then ran 60 s and failed as stalled, and the agent restarted Play. Now the wait ends after 1 s with "
+                         "reason time_scale_zero and a next naming seconds, frames or unpausing.",
+        "text_at_issue": "wait's next on a time-scale-0 game: 'the time scale is 0: wait with seconds or frames, or unpause'",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E44; S98 REQ-23",
+        "playing": True,
+        "prompt": "The game is running. Let it play for 2 seconds of game time, then tell me whether the score went up "
+                  "(script('GameController').score).",
+        "mocks": [
+            {"tool": "wait", "args": {"game_seconds": "*"}, "result": ok(
+                "Waited 1.02 s, 61 frame(s), game time +0.000 s; the time scale is 0, so game time does not advance: wait with "
+                "seconds or frames, or unpause. No new console output.",
+                {"state": "playing", "reason": "time_scale_zero", "game_seconds": 0.0, "frames": 61,
+                 "next": "the time scale is 0: wait with seconds or frames, or unpause"})},
+            {"tool": "wait", "result": ok("Waited 2.0 s, 120 frame(s), game time +0.000 s. No new console output.",
+                                          {"state": "playing", "reason": "seconds", "game_seconds": 0.0, "frames": 120})},
+            {"tool": "eval_lua", "result": ok("0, \"paused\"", {"values": [0, "paused"]})},
+            {"tool": "get_play_state", "result": ok("Playing Main (time_scale 0).", {"state": "playing", "time_scale": 0})},
+        ],
+        "checks": {"must_not_call": [{"tool": "play", "args": {"action": "stop"}}, {"tool": "play", "args": {"action": "start"}}],
+                   "max_calls": {"wait": 3},
+                   "reply_must": [r"(?i)time.?scale|paused|pause menu"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_eval_lua_timeout_parameter",
+        "kind": "guard",
+        "what_happened": "E17/E43 (JasperArcade port): eval_lua stopped a slow call after 5 s with 'infinite loop?', and the agent "
+                         "split the work into many calls or gave up. The error now names timeout_seconds and its 60 s maximum.",
+        "text_at_issue": "eval_lua's timeout error: 'timed out after 5.0 s: pass timeout_seconds (up to 60); for longer work, run it "
+                         "as a coroutine in a script and wait with wait {until}'",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E17, E43; S98 REQ-24",
+        "playing": True,
+        "prompt": "In the running game, call LevelGen.rebuildAll() through eval_lua (it regenerates every level and takes about "
+                  "15 seconds) and tell me how many levels it returns.",
+        "mocks": [
+            {"tool": "eval_lua", "args": {"timeout_seconds": "*"}, "result": ok("12", {"values": [12]})},
+            {"tool": "eval_lua", "result": err(
+                "eval_lua: timed out after 5.0 s: pass timeout_seconds (up to 60); for longer work, run it as a coroutine in a "
+                "script and wait with wait {until}")},
+        ],
+        "checks": {"calls": [{"tool": "eval_lua", "args": {"timeout_seconds": "*"}}],
+                   "max_calls": {"eval_lua": 3},
+                   "reply_must": [r"\b12\b"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_fbx_texture_warnings_no_materials",
+        "kind": "bad",
+        "what_happened": "E39/E40 (JasperArcade port): FBX models whose materials the game replaced logged a 'Texture not found' "
+                         "line per texture on every import; with no import setting to skip materials, the agent edited the .meta "
+                         "by hand or stripped the textures from the FBX. Material Creation Mode None imports no materials.",
+        "text_at_issue": "set_model_import_settings' settings.material_creation_mode ('FBX: none imports no materials or textures.')",
+        "source": "PORT docs/port/ENGINE_LIMITATIONS.md E39, E40; S98 REQ-35",
+        "groups_enabled": ["meshes"],
+        "files": {"models/Hall.fbx": "binary placeholder"},
+        "prompt": "models/Hall.fbx floods the Console with 'Texture not found' warnings on every import. We put our own materials on "
+                  "it in the scene anyway, so it should not import any materials. Make that so.",
+        "mocks": [
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["models/Hall.fbx"], "unchanged": 0, "models": [{"path": "models/Hall.fbx", "status": "cooked", "issues": []}]})},
+            {"tool": "inspect_models", "result": ok(
+                "1 model: models/Hall.fbx cooked, 3 warning(s): Hall.fbx: Texture not found: Wall.psd ...",
+                {"models": [{"path": "models/Hall.fbx", "status": "cooked", "issues": [
+                    {"code": "fbx-import-warning", "severity": "warning", "message": "Hall.fbx: Texture not found: Wall.psd"}]}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_model_import_settings", "args": {"settings": {"material_creation_mode": "none"}}}],
+                   "must_not_call": [{"tool": "write_file"}], "edits_must_not": [r"\.(meta|fbx)$"]},
+        "max_turns": 10,
+    },
+    # ---- S98 WP-5: FBX imports never block the tool server; a pending import is no failure
+    {
+        "id": "guard_model_import_pending",
+        "kind": "guard",
+        "what_happened": "New result text (S98 REQ-33): the models of a fresh clone appear once their first FBX import lands. "
+                         "editor_status lists the model_import job with done/total and says the models appear when ready, so an "
+                         "agent asked why they are missing waits for the job (get_job) instead of importing or placing them again.",
+        "text_at_issue": "editor_status: jobs[] {kind: model_import, done, total} and 'Importing models: 1/3 (job 4); they appear "
+                         "when ready.'; edit_terrain_details note '<mesh> is importing (job N): its layer draws once the import lands.'",
+        "source": "docs/specs/S98-editor-tooling-gaps.md E15, E21 (the JasperArcade port: 'Model load failed' before the FBX "
+                  "import ends, tools blocked during the first import)",
+        "prompt": "I just cloned the project and opened scenes/Hall.scene, but the three statues in it are invisible. Find out why "
+                  "and fix whatever is broken.",
+        "mocks": [
+            {"tool": "editor_status", "result": ok(
+                "Project \"Space Dodge\" at the current directory. 1 scene(s), selected: 1 \"Hall\". Running jobs: 1. Importing "
+                "models: 1/3 (job 4); they appear when ready.",
+                {"project": {"name": "Space Dodge"}, "playing": False,
+                 "scenes": [{"id": 1, "name": "Hall", "path": "scenes/Hall.scene", "selected": True, "opened": True}],
+                 "jobs": [{"job_id": "4", "kind": "model_import", "title": "Importing FBX models", "status": "running",
+                           "message": "1/3 models imported", "progress": 0.3333, "elapsed_seconds": 12.5, "log_tail": [],
+                           "done": 1, "total": 3}]})},
+            {"tool": "get_job", "result": ok(
+                "Importing FBX models: succeeded - Imported 3/3 model(s).",
+                {"job_id": "4", "kind": "model_import", "status": "succeeded", "message": "Imported 3/3 model(s).",
+                 "result": {"done": 3, "total": 3, "failed": 0}})},
+            {"tool": "read_console", "result": ok(
+                "3 entries:\n[info] Importing 3 models (first open): they appear when ready\n[info] Importing Statue.fbx\n"
+                "[info] Importing Statue2.fbx",
+                {"entries": [{"id": 1, "type": "info", "message": "Importing 3 models (first open): they appear when ready"}]})},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Hall\" (3D, 4 GameObjects).\nMain Camera [10] camera\nStatue [11] model\nStatue2 [12] model\n"
+                "Statue3 [13] model\n", {"scene_id": 1, "entity_count": 4})},
+        ],
+        "checks": {"must_not_call": ["import_files", "set_model", "create_entity", "delete_entities", "set_model_import_settings"],
+                   "reply_must": [r"(?i)import"]},
+        "max_turns": 10,
+    },
+    # ---- S98 WP-6: what ships (Asset Stripping)
+    {
+        "id": "guard_build_stripped_computed_paths",
+        "kind": "guard",
+        "what_happened": "New result fields (S98 REQ-10): under Asset Stripping: Referenced Only a build leaves out assets "
+                         "nothing references; build_project gives stripped_count and stripped_bytes and its next names "
+                         "player.always_include, so an agent whose script loads files by a path it builds puts them there "
+                         "instead of reporting a finished build that cannot load its levels.",
+        "text_at_issue": "build_project result: 'stripped_count', 'stripped_bytes', 'build_report'; next: 'build_report lists "
+                         "each asset left out and why; a script that builds a path at runtime needs its file in "
+                         "player.always_include (set_project_settings)'",
+        "source": "S98 REQ-10, REQ-46 (new result fields); the JasperArcade port's E24 ledger item",
+        "prompt": "Build the desktop game into /work/dodge-build. Our level select loads assets/levels/level1.png, level2.png "
+                  "and so on by building the file name in Lua, so make sure the build can still load every level.",
+        "mocks": [
+            {"tool": "build_project", "after": "set_project_settings", "result": ok(
+                "Built the Desktop player /work/dodge-build/SpaceDodge. Try it with run_build.",
+                {"status": "succeeded", "result": {"output_dir": "/work/dodge-build", "errors": [], "warnings": [],
+                                                   "build_report": "/work/dodge-build/build-report.json",
+                                                   "stripped_count": 0, "stripped_bytes": 0}})},
+            {"tool": "build_project", "result": ok(
+                "Built the Desktop player /work/dodge-build/SpaceDodge. Try it with run_build.",
+                {"status": "succeeded", "result": {"output_dir": "/work/dodge-build", "errors": [], "warnings": [],
+                                                   "build_report": "/work/dodge-build/build-report.json",
+                                                   "stripped_count": 3, "stripped_bytes": 412310,
+                                                   "next": "build_report lists each asset left out and why; a script that builds a "
+                                                           "path at runtime needs its file in player.always_include (set_project_settings)"}})},
+            {"tool": "get_project_settings", "result": ok(
+                "player.asset_stripping: referenced_only\nplayer.always_include: []\nplayer.exclude_from_build: []",
+                {"settings": {"player.asset_stripping": "referenced_only", "player.always_include": [], "player.exclude_from_build": []}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 setting(s); saved to project.yaml.",
+                                                          {"applied": ["player.always_include"]})},
+        ],
+        "shell": [{"match": r"build-report\.json", "output": json.dumps({"stripped": [
+            {"path": "assets/levels/level2.png", "bytes": 140211, "reason": "unreferenced"},
+            {"path": "assets/levels/level3.png", "bytes": 139870, "reason": "unreferenced"},
+            {"path": "assets/textures/old_logo.png", "bytes": 132229, "reason": "unreferenced"}]})}],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"player.always_include": "*"}}}],
+                   "max_calls": {"build_project": 3}},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_html_ui_drag_scroll_by_hand",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port re-implemented uGUI's ScrollRect in Lua (ScrollView.lua: pointer tracking, "
+                         "elasticity, deceleration) because the mouse never drag-scrolled an HTML list; S93 adds scroll-drag, "
+                         "scroll-movement and the other scroll physics properties instead.",
+        "text_at_issue": "html-ui.md 'Drag scrolling (uGUI ScrollRect)'",
+        "source": "docs/specs/S93-htmlui-gaps.md R8 (ledger U12)",
+        "files": {"assets/ui/shop.html": "<html>\n<head>\n<title>shop</title>\n<style>\n"
+                                         "  #items { position: absolute; left: 40px; top: 80px; width: 400px; height: 500px; overflow-y: auto; }\n"
+                                         "  .item { height: 80px; }\n</style>\n</head>\n<body>\n"
+                                         "  <div id=\"items\"><div class=\"item\">Sword</div><div class=\"item\">Shield</div></div>\n"
+                                         "</body>\n</html>\n"},
+        "prompt": "In assets/ui/shop.html, PC players must be able to drag the #items list with the mouse like a phone list, and it "
+                  "should bounce back when dragged past its ends.",
+        "mocks": [
+            {"tool": "inspect_ui", "result": ok("shop: #items (div, overflow-y auto, 2 children), no diagnostics.",
+                                               {"elements": [{"ref": "#items"}], "diagnostics": []})},
+        ],
+        "checks": {"file_must": {"assets/ui/shop.html": [r"scroll-drag\s*:\s*pointer", r"scroll-movement\s*:\s*elastic"]},
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_data_asset_written_by_hand",
+        "kind": "bad",
+        "what_happened": "S95 REQ-24: a .dataasset is JSON, so an agent asked for one writes the file itself and gets no GUID "
+                         "meta check, no type check of the values and no undo step. edit_data_asset sits in the scripting group, so "
+                         "it has to be found from the task: the group's line names Data Assets, the tool's description says to edit "
+                         "them with it, not by writing the JSON.",
+        "text_at_issue": "McpToolGroups.cpp scripting: '... numeric expressions and Data Assets.'; DataAssetTools.cpp edit_data_asset "
+                         "description: 'Edit them with this tool, not by writing the JSON.'",
+        "source": "docs/specs/S95-lua-runtime-gaps.md REQ-24, AC-21 (new tool; no failure on record)",
+        "files": {"lua/data/ItemData.lua": "---@dataasset\nlocal ItemData = { properties = {\n"
+                                           "    { name = 'displayName', type = 'string', default = 'Item' },\n"
+                                           "    { name = 'price', type = 'int', default = 10 },\n} }\nreturn ItemData\n"},
+        "prompt": "lua/data/ItemData.lua is a data class. Make a Data Asset of it at assets/items/sword.dataasset: a Sword that costs 30.",
+        "mocks": [
+            {"tool": "edit_data_asset", "args": {"action": "list"}, "result": ok(
+                "1 data class(es): ItemData (0 asset(s)).",
+                {"classes": [{"class": "ItemData", "script": "lua/data/ItemData.lua",
+                              "fields": [{"name": "displayName", "type": "string"}, {"name": "price", "type": "int"}], "assets": []}]})},
+            {"tool": "edit_data_asset", "args": {"action": "create"}, "result": ok(
+                "Created assets/items/sword.dataasset (ItemData, 2 field(s)). One undo step.",
+                {"path": "assets/items/sword.dataasset", "guid": "4b1e9c0d2a7f4e31b6c58d0f9e2a7c13", "class": "ItemData",
+                 "values": {"displayName": "Sword", "price": 30}, "problems": [], "written": True,
+                 "next": "Scripts reach it through a property typed \"ItemData\" (set_script_properties: this path), or "
+                         "DataAsset.load(\"items/sword.dataasset\") in Lua."})},
+            {"tool": "edit_data_asset", "args": {"action": "get"}, "result": ok(
+                "assets/items/sword.dataasset: ItemData, 2 field(s), 0 problem(s).",
+                {"path": "assets/items/sword.dataasset", "class": "ItemData", "values": {"displayName": "Sword", "price": 30}, "problems": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_data_asset", "args": {"action": "create", "class": "ItemData",
+                                                                  "values": {"displayName": "Sword", "price": 30}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.dataasset$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_drivable_car_wheel_colliders",
+        "kind": "guard",
+        "what_happened": "A drivable car is a dynamic body with a Wheel Collider on a child at each wheel (suspension and "
+                         "tire friction on Jolt's vehicle constraint), not four wheel bodies on hinge joints, which bounce and "
+                         "slide sideways.",
+        "text_at_issue": "component Wheel Collider 'A car wheel with suspension and tire friction, below a dynamic Rigidbody'; "
+                         "physics guide 'Vehicles (Wheel Collider)': 'A drivable car is a dynamic Rigidbody ... with a Wheel "
+                         "Collider ... on a child GameObject at each wheel: not four bodies on hinge joints'",
+        "source": "S96 REQ-47 (WP-A); no failure on record",
+        "prompt": "The Kart in the current scene is just a box mesh. Make it a drivable car with four wheels.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject: 21 Kart (mesh)", {"entities": [{"id": 21, "path": "Kart"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 21 \"Kart\": transform, mesh (cube, scale 2 1 4).", {"id": 21})},
+            {"tool": "list_component_types", "result": ok(
+                "... Rigidbody (rigidbody): Rigidbody with colliders, simulated by Jolt; Joint 3D (joint3d): Connects two "
+                "Rigidbodies; Character Controller (charactercontroller): A capsule moved by script that climbs steps and "
+                "slopes; Wheel Collider (wheelcollider): A car wheel with suspension and tire friction, below a dynamic "
+                "Rigidbody; Vehicle Drivetrain (vehicledrivetrain): An engine, gear box and differentials driving the body's "
+                "Wheel Colliders ...",
+                {"components": [{"key": "rigidbody", "name": "Rigidbody"}, {"key": "joint3d", "name": "Joint 3D"},
+                                {"key": "wheelcollider", "name": "Wheel Collider"},
+                                {"key": "vehicledrivetrain", "name": "Vehicle Drivetrain"}]})},
+            {"tool": "edit_colliders", "result": ok("Kart: dynamic body, 1 collider (box 2 x 1 x 4).", {"entity": {"id": 21}})},
+            {"tool": "create_entity", "result": ok("Created GameObject 30 \"Wheel\" under 21 \"Kart\".",
+                                                   {"entity_id": 30, "entity": {"id": 30}})},
+            {"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}, "result": ok(
+                "Added Wheel Collider to GameObject 30 \"Wheel\".", {"entity": {"id": 30}})},
+            {"tool": "run_command", "result": ok("Ran GameObject > 3D Object > Vehicle...", {"ran": "gameobject.create.3DObject.vehicle"})},
+            {"tool": "set_properties", "result": ok("Set 1 property.", {"entity": {"id": 21}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}}]},
+                              {"calls": [{"tool": "run_command", "args": {"id": "gameobject.create.3DObject.vehicle"}}]}],
+                   "must_not_call": [{"tool": "add_component", "args": {"component": "re:(?i)joint"}}, "set_joint"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_html_ui_render_mode_camera",
+        "kind": "guard",
+        "what_happened": "S92 moved screen HTML UI documents after post-processing (Screen Space - Overlay). A HUD meant to "
+                         "look like it is on the CRT then stays sharp; the switch is the scene setting html_ui_render_mode, "
+                         "not a shader fork or a document filter.",
+        "text_at_issue": "set_scene_settings html_ui_render_mode help: 'where screen HTML UI documents composite: overlay "
+                         "(default: after post-processing, at output resolution), camera (in the camera pass: render scale "
+                         "and post apply)'",
+        "source": "S92 R13, R14 (ledger U34); no failure on record",
+        "prompt": "The scene has the CRT effect on, but the HTML HUD on top is perfectly sharp and does not get the "
+                  "scanlines. I want the HUD to go through the CRT look like the rest of the screen.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\npost_processing = {crt_enabled: true}\nhtml_ui_render_mode = overlay\n"
+                "html_ui_msaa_samples = 0",
+                {"scene_id": 1, "settings": {"post_processing": {"crt_enabled": True}, "html_ui_render_mode": "overlay",
+                                             "html_ui_msaa_samples": 0},
+                 "schema": {"html_ui_render_mode": {"type": "enum", "default": "overlay", "options": ["overlay", "camera"],
+                            "help": "where screen HTML UI documents composite: overlay (default: after post-processing, at "
+                                    "output resolution), camera (in the camera pass: render scale and post apply)"}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["html_ui_render_mode"]})},
+            {"tool": "screenshot", "result": ok("Game view screenshot (640x360).", {"view": "game"})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"html_ui_render_mode": "camera"}}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(css|html)$"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_html_ui_msaa_scene_not_document",
+        "kind": "guard",
+        "what_happened": "A screen-mode UI Document shares the scene's target: its own msaaSamples does nothing. The "
+                         "set_properties result's next names the scene setting html_ui_msaa_samples.",
+        "text_at_issue": "set_properties next: 'msaaSamples applies to Texture-mode documents only; a screen document's "
+                         "MSAA is the scene's: set_scene_settings {html_ui_msaa_samples}.'",
+        "source": "S92 R17, R18 (ledger U37); no failure on record",
+        "prompt": "Turn MSAA off (1 sample) for the HUD UI Document (GameObject 12, screen mode) in this scene: it costs "
+                  "too much on phones.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok(
+                "GameObject 12 \"HUD\": transform, uidocument (filename assets/ui/hud.html, renderMode screen, msaaSamples 0).",
+                {"id": 12, "components": {"uidocument": {"filename": "assets/ui/hud.html", "renderMode": "screen",
+                                                         "msaaSamples": 0}}})},
+            {"tool": "set_properties", "result": ok(
+                "Set 1 property on 1 GameObject(s) (one undo step). New values: {\"uidocument\":{\"msaaSamples\":1}}",
+                {"scene_id": 1, "entities": [{"id": 12}], "values": {"uidocument": {"msaaSamples": 1}},
+                 "next": "msaaSamples applies to Texture-mode documents only; a screen document's MSAA is the scene's: "
+                         "set_scene_settings {html_ui_msaa_samples}."})},
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nhtml_ui_msaa_samples = 0",
+                {"scene_id": 1, "settings": {"html_ui_msaa_samples": 0},
+                 "schema": {"html_ui_msaa_samples": {"type": "int", "default": 0, "help":
+                     "MSAA samples of the screen HTML UI documents: 0 project default, 1, 2, 4, 8"}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["html_ui_msaa_samples"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"html_ui_msaa_samples": 1}}}]},
+        "max_turns": 10,
     },
 ]

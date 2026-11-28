@@ -1,0 +1,3 @@
+{"settings": {"version": 1, "targets": ["editor", "web", "android"], "fixed_fps": 60},
+ "files": ["smoke.test.lua"],
+ "data": {}}

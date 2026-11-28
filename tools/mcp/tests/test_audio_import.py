@@ -7,7 +7,11 @@ the WAV header gives, read with `wave`."""
 
 from __future__ import annotations
 
+import json
+import math
+import shutil
 import sys
+import time
 import wave
 from pathlib import Path
 
@@ -23,6 +27,9 @@ EDITOR = {"create": True}
 TIMEOUT = 600
 RATE = 44100
 CLIP = "assets/sfx/tone.wav"
+REPO = Path(__file__).resolve().parents[3]
+# a stereo Ogg Vorbis of the starter library (CC0, its manifest)
+STEREO_OGG = REPO / "editor/resources/sound-library/library/ambience/fs_463703_telephone_drone.ogg"
 
 
 def meta_of(ed: Editor, path: str = CLIP) -> Path:
@@ -128,6 +135,7 @@ async def test_all_paths_or_none(ed: Editor):
     ed.check("licence" in text, f"provenance keys: {text}")
     text = await ed.call("set_audio_import_settings", paths=[CLIP], expect_error=True)
     ed.check("settings" in text, f"nothing to set: {text}")
+    await ed.check_error("set_audio_import_settings", {"settings": {"gain_db": 1}}, contains="paths: pass a list")
     ed.check_eq((meta_of(ed).read_text(), meta_of(ed, other).read_text()), (a, b), "a refused call writes nothing")
 
 
@@ -159,7 +167,7 @@ async def test_analysis_measures_the_clip_as_it_plays(ed: Editor):
     ed.check_eq(r["items"][0]["analysis"]["momentary_max"], item["loudness"]["momentary_max"], "the reply's fresh analysis")
     cache = ed.project / ".jasperengine/cache/audio"
     # (earlier tests here measured the same bytes with other settings)
-    played = [yaml.safe_load(p.read_text())["played"]["frames"] for p in cache.glob(f"{item['sha1']}-i*-v1.json")]
+    played = [yaml.safe_load(p.read_text())["played"]["frames"] for p in cache.glob(f"{item['sha1']}-i*-v2.json")]
     ed.check_in(item["played"]["frames"], played, "its own cache file")
 
     # a wrap: whole cycles of the 1 kHz tone have a small seam, a wrap off the cycle a large one
@@ -189,3 +197,157 @@ async def test_group_is_hidden_until_enabled(ed: Editor):
     ed.check("set_audio_import_settings" not in listed and "analyze_audio" not in listed, "group audio is not in a new session's list")
     every = {t.name for t in await ed.tools()}
     ed.check({"set_audio_import_settings", "analyze_audio"} <= every, "listed once group audio is on")
+
+
+# -- Force To Mono (build-size-tools R15-R20, R34, R36)
+
+
+def near_mono(seconds: float, side_db: float = -24.0) -> list:
+    """two channels: a 440 Hz mid and a 1 kHz side `side_db` under it (L = m + s, R = m - s)"""
+    m = ar.sine(440.0, seconds, RATE, -12.0)
+    s = ar.sine(1000.0, seconds, RATE, -12.0 + side_db)
+    return [[a + b for a, b in zip(m, s)], [a - b for a, b in zip(m, s)]]
+
+
+async def source_export(ed: Editor, name: str) -> Path:
+    status = await ed.call("get_build_info")
+    if not status.get("scenes_in_build"):
+        await ed.call("create_entity", name="Box", type="box")
+        saved = await ed.call("save_project", untitled_scene_dir="scenes")
+        await ed.call("edit_build_scenes", action="set_start", scene=saved["scenes_in_build"][0]["id"])
+    out = ed.scratch.root / name
+    r = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", timeout_seconds=900)
+    deadline = time.monotonic() + TIMEOUT
+    while r.get("status") == "running" and time.monotonic() < deadline:
+        r = await ed.call("get_job", job_id=r.get("job_id") or r["id"])
+    ed.check_eq(r["status"], "succeeded", f"{r}")
+    return out
+
+
+async def test_force_to_mono_export(ed: Editor):
+    """AC12: a 16-bit and a 24-bit stereo WAV ship mono at half the data bytes, same rate and frames, each sample the
+    mean of the originals (+-1 LSB); a stereo Ogg ships byte-identical and plays folded at run time; the table says
+    force_mono for all three; two exports give the same WAV bytes; the Build Report gives their source bytes.
+    Oracle: the WAVs written and read here with audio_refs (Python's own PCM arithmetic)."""
+    clips = {"assets/mono/pcm16.wav": ar.PCM16, "assets/mono/pcm24.wav": ar.PCM24}
+    sources = {}
+    for path, encoding in clips.items():
+        ar.write_wav(ed.project / path, near_mono(3.0, -9.0), RATE, encoding)
+        sources[path] = ar.read_wav(ed.project / path)
+    ogg = "assets/mono/drone.ogg"
+    (ed.project / ogg).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(STEREO_OGG, ed.project / ogg)
+    paths = list(clips) + [ogg]
+    await ed.call("sync_files", paths=paths)
+    r = await ed.call("set_audio_import_settings", paths=paths, settings={"force_to_mono": "on"})
+    ed.check_eq([(i["resolved"]["force_mono"], i["resolved"]["channels"]) for i in r["items"]], [(True, 1)] * 3, "the reply's resolved channels")
+    # read as text: YAML 1.1 readers (PyYAML) take a bare `on` for true
+    importer = section_lines(meta_of(ed, paths[0]).read_text(), "import")
+    ed.check(any(line.strip() == "force_to_mono: on" for line in importer), f"the key in the .meta: {importer}")
+
+    first = await source_export(ed, "mono-a")
+    second = await source_export(ed, "mono-b")
+    table_file = next(first.rglob("je-audio-imports.json"))
+    assets = table_file.parent
+    table = json.loads(table_file.read_text())
+    # the clips by their path from the assets folder, which a new project's root is
+    for rel in paths:
+        ed.check_eq(table["clips"][rel].get("force_mono"), True, f"{rel}: force_mono in je-audio-imports.json")
+    report = json.loads(next(first.rglob("build-report.json")).read_text())
+    rows = {row["path"]: row for row in report.get("files", report["largest"])}
+    for path, encoding in clips.items():
+        rel = path
+        shipped = assets / rel
+        original = sources[path]
+        cooked = ar.read_wav(shipped)
+        ed.check_eq((len(cooked.channels), cooked.rate, cooked.frames, cooked.encoding), (1, RATE, original.frames, encoding),
+                    f"{rel}: mono, the same rate, frames and sample format")
+        ed.check_eq(cooked.chunks, ["fmt ", "data"], f"{rel}: only fmt and data")
+        width = 2 if encoding == ar.PCM16 else 3
+        data_before = original.frames * 2 * width
+        data_after = shipped.stat().st_size - 44 - (original.frames * width & 1)
+        ed.check_eq(data_after * 2, data_before, f"{rel}: half the data bytes")
+        lsb = 1.0 / (32767 if encoding == ar.PCM16 else 8388607)
+        worst = max(abs(cooked.channels[0][i] - (original.channels[0][i] + original.channels[1][i]) / 2) for i in range(original.frames))
+        ed.check(worst <= lsb * 1.01, f"{rel}: each sample the mean of the originals within 1 LSB (worst {worst / lsb:.2f} LSB)")
+        ed.check_eq(shipped.read_bytes(), (next(second.rglob("je-audio-imports.json")).parent / rel).read_bytes(),
+                    f"{rel}: two exports, the same bytes")
+        row = rows.get(f"assets/{rel}")
+        ed.check(row is not None, f"assets/{rel} is in the Build Report: {sorted(rows)[:40]}")
+        ed.check_eq((row.get("source"), row.get("source_bytes")), (rel, (ed.project / path).stat().st_size), f"{rel}: the report's source and its bytes")
+    ed.check_eq((assets / ogg).read_bytes(), STEREO_OGG.read_bytes(), "the Ogg ships byte-identical")
+
+
+async def test_force_to_mono_plays_mono(ed: Editor):
+    """AC13: Auto on a near-mono stereo clip (side 24 dB under the mid) resolves mono; in Play the AudioSource playing it
+    reads channels == 1 (the Play table, the pool, AudioClipSource); analyze_audio reports one channel as it plays and the
+    file's side_mid_db. A wide clip stays stereo."""
+    clip = "assets/mono/near.wav"
+    wide = "assets/mono/wide.wav"
+    ar.write_wav(ed.project / clip, near_mono(1.0), RATE, ar.PCM16)
+    ar.write_wav(ed.project / wide, near_mono(1.0, -9.0), RATE, ar.PCM16)
+    await ed.call("sync_files", paths=[clip, wide])
+    raw = (await ed.call("analyze_audio", paths=[clip], image="none"))["items"][0]
+    ed.check(abs(raw["stereo"]["side_mid_db"] - (-24.0)) < 0.3, f"the file's width: {raw['stereo']}")
+    ed.check_in("near_mono", [n["id"] for n in raw["notes"]], "the near-mono note")
+
+    r = await ed.call("set_audio_import_settings", paths=[clip, wide], settings={"force_to_mono": "auto"})
+    resolved = [(i["resolved"]["force_mono"], i["resolved"]["channels"]) for i in r["items"]]
+    ed.check_eq(resolved, [(True, 1), (False, 2)], "Auto: the near-mono clip folds, the wide one stays stereo")
+    bad = await ed.call("set_audio_import_settings", paths=[clip], settings={"force_to_mono": "yes"}, expect_error=True)
+    ed.check("force_to_mono must be off, on or auto" in bad, f"a bad value names the choices: {bad}")
+
+    item = (await ed.call("analyze_audio", paths=[clip], image="none"))["items"][0]
+    ed.check_eq(item["played"]["channels"], 1, "one channel as it plays")
+    ed.check(abs(item["source"]["stereo"]["side_mid_db"] - (-24.0)) < 0.3, f"the file's width under source: {item['source']}")
+    ed.check(item["stereo"]["side_mid_db"] is None, f"the played signal is mono: {item['stereo']}")
+
+    sid = (await ed.call("create_scene", name="Mono", type="2D"))["scene"]["id"]
+    await ed.call("create_entity", scene=sid, type="audio_source", name="S",
+                  values={"audiosource": {"filename": clip, "looping": True, "state": "playing"}})
+    await ed.call("create_entity", scene=sid, type="audio_source", name="W",
+                  values={"audiosource": {"filename": wide, "looping": True, "state": "playing"}})
+    await ed.call("save_scene", scene=sid, path="Mono.scene")
+    await ed.call("play", action="start", scene="Mono")
+    try:
+        deadline = time.monotonic() + 60
+        values = None
+        while time.monotonic() < deadline:
+            values = (await ed.call("eval_lua", code="local s = object('S', 'AudioSource'); local w = object('W', 'AudioSource'); "
+                                                      "return s:isPlaying(), s.channels, w.channels"))["values"]
+            if values[1] != 0 and values[2] != 0:
+                break
+            await ed.call("wait", frames=10)
+        ed.check_eq(values, [True, 1, 2], "AudioSource.channels as it plays: 1 under Force To Mono, 2 for the wide clip")
+    finally:
+        await ed.call("play", action="stop")
+async def test_load_type_key(ed: Editor):
+    """S97 AC16 (REQ-16, REQ-39): load_type round-trips through the .meta, undo restores it, and Play holds
+    the clip of an Auto source as the clip says"""
+    await tone(ed)
+    before = meta_of(ed).read_text()
+    r = await ed.call("set_audio_import_settings", paths=[CLIP], settings={"load_type": "streaming"})
+    ed.check_eq(r["items"][0]["settings"].get("load_type"), "streaming", "the reply")
+    ed.check_eq(yaml.safe_load(meta_of(ed).read_text())["import"]["audioImporter"], {"version": 1, "load_type": "streaming"}, "the section")
+    bad = await ed.call_raw("set_audio_import_settings", {"paths": [CLIP], "settings": {"load_type": "fast"}})
+    ed.check(bad.is_error and "decompress_on_load" in bad.text, f"the error names the values: {bad.text[:300]}")
+
+    scene = (await ed.call("create_scene", name="LoadType", type="2D", path="scenes/LoadType.scene"))["scene"]["id"]
+    await ed.call("save_scene", scene=scene)
+    await ed.call("play", action="start", scene=scene, fixed_fps=60, auto_pause=True)
+    try:
+        await ed.call("wait", frames=2)
+        got = (await ed.call("eval_lua", code=f"""
+            local auto = AudioSource(scene)
+            auto:loadSound('{CLIP}')
+            local own = AudioSource(scene)
+            own.loadType = AudioLoadType.DecompressOnLoad
+            own:loadSound('{CLIP}')
+            return {{auto:getResolvedLoadType(), own:getResolvedLoadType(), AudioLoadType.Streaming, AudioLoadType.DecompressOnLoad}}"""))["values"][0]
+        ed.check_eq(got[0], got[2], "an Auto source streams the clip, as its import settings say")
+        ed.check_eq(got[1], got[3], "a source's own Load Type wins")
+    finally:
+        await ed.call("play", action="stop")
+
+    await ed.call("undo", scope="project")
+    ed.check_eq(meta_of(ed).read_text(), before, "one undo restores the file")

@@ -8,7 +8,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/LatticeComponent.h"
@@ -17,7 +16,6 @@
 #include "component/LatticeTracksComponent.h"
 
 namespace jasperengine::editor::reflect {
-
     JE_REFLECT_STRUCT_TRAITS(LatticeBinding, kLatticeBindingStruct);
 
 namespace {
@@ -101,7 +99,7 @@ namespace {
     }
     constexpr TypeOps kPosesOps{"value", Kind::Custom, PropertyType::Custom, sizeof(Poses),
         &detail::construct<Poses>, &detail::destroy<Poses>, &detail::copy<Poses>, &equalPoses,
-        nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::customSchema};
+        nullptr, nullptr, nullptr, nullptr, nullptr, false, &detail::customSchema};
 
     // resolution, subdivisions and binding weight: an edit outside the range is clamped (Catalog::updateEntity),
     // as before reflection, not refused
@@ -186,7 +184,6 @@ const ComponentDesc kFluidSimulationDesc{
     .body = JE_STRUCT_DESC(FluidSimulationComponent, "FluidSimulationComponent", kFluidFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(FluidSimulationComponent),
     .postDecode = &fluidPostDecode,
-    .codegen = JE_FACTORY_CODEGEN(createFluidSimulationComponent),
 };
 
 const ComponentDesc kLatticeDesc{
@@ -195,7 +192,6 @@ const ComponentDesc kLatticeDesc{
     .body = JE_STRUCT_DESC(LatticeComponent, "LatticeComponent", kLatticeFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(LatticeComponent),
     .codec = &kLatticeCodec,
-    .codegen = JE_FACTORY_CODEGEN(createLatticeComponent),
     .extraKeys = kLatticeKnownKeys,
 };
 
@@ -205,7 +201,6 @@ const ComponentDesc kLatticeModifierDesc{
     .body = JE_STRUCT_DESC(LatticeModifierComponent, "LatticeModifierComponent", kLatticeModifierFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(LatticeModifierComponent),
     .codec = &kLatticeModifierCodec,
-    .codegen = JE_FACTORY_CODEGEN(createLatticeModifierComponent),
     .extraKeys = kLatticeModifierKnownKeys,
 };
 
@@ -214,7 +209,6 @@ const ComponentDesc kLatticeFollowerDesc{
     .displayName = "Lattice Follower", .icon = ICON_FA_LOCATION_ARROW,
     .body = JE_STRUCT_DESC(LatticeFollowerComponent, "LatticeFollowerComponent", kLatticeFollowerFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(LatticeFollowerComponent),
-    .codegen = JE_FACTORY_CODEGEN(createLatticeFollowerComponent),
 };
 
 const ComponentDesc kLatticeTracksDesc{
@@ -223,7 +217,6 @@ const ComponentDesc kLatticeTracksDesc{
     .body = JE_STRUCT_DESC(LatticeTracksComponent, "LatticeTracksComponent", kLatticeTracksFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(LatticeTracksComponent),
     .codec = &kLatticeTracksCodec,
-    .codegen = JE_FACTORY_CODEGEN(createLatticeTracksComponent),
     .extraKeys = kLatticeTracksKnownKeys,
 };
 

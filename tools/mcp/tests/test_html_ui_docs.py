@@ -410,7 +410,7 @@ async def play_checks(ed: Editor):
     # (eval_lua captures print while it runs: the callbacks' prints go to a global log instead)
     log = ("_G.guideLog = ''\nlocal print = function(...) "
            "_G.guideLog = _G.guideLog .. table.concat({...}, ' ') .. '\\n' end\n")
-    await lua(ed, prelude("Menu") + log + fragment("lua", "anime.createTimeline"))
+    await lua(ed, prelude("Menu") + log + fragment("lua", "anime.createTimeline({ defaults"))
     await ed.call("wait", frames=150)
     printed = (await lua(ed, "return _G.guideLog"))[0]
     lines = printed.splitlines()
@@ -477,7 +477,7 @@ async def test_search_engine_api_ui(ed: Editor):
         r = await ed.call("search_engine_api", query=query)
         ed.check(any(hit["detail"].startswith(signature) for hit in r["results"]),
                  f"search finds {signature}: {r['results']}")
-    r = await ed.call("search_engine_api", query="mix-blend-mode")
+    r = await ed.call("search_engine_api", query="background-blend-mode")
     ed.check(any(h["doc"].startswith("jasper://docs/html-ui-support") for h in r["docs"]),
              f"search finds the published support matrix: {r['docs']}")
 

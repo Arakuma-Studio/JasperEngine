@@ -68,7 +68,8 @@ async def test_user_settings_tool(ed: Editor):
     ed.check_eq((await ed.call("user_settings", action="set", key="Music", value=True))["value"], "true")
     ed.check_eq((await ed.call("user_settings", action="set", key="Gold", value=3, type="float"))["value"], "3")
     ed.check_eq((await ed.call("user_settings", action="set", key="best score", value="")),
-                {"key": "best score", "type": "string", "value": "", "file": f"{RUNDATA}/UserSettings.xml"})
+                {"key": "best score", "type": "string", "value": "", "file": f"{RUNDATA}/UserSettings.xml",
+                 "store": "prefs", "profile": "project"})
 
     listed = await ed.call("user_settings", action="list")
     ed.check_eq(listed["values"], {"Coins": "120", "Volume": "0.5", "Name": "Ana", "Music": "true", "Gold": "3",

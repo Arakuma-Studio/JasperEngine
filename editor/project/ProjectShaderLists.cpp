@@ -11,7 +11,6 @@
 #include "jobs/JobSystem.h"
 #include "LoadReport.h"
 #include "Out.h"
-#include "Factory.h"
 #include "System.h"
 #include "players/PlayerRuntimes.h"
 #include "pool/ShaderPool.h"
@@ -201,7 +200,6 @@ void editor::Project::setClosedScenePrefabs(SceneProject& sceneProject, const st
     for (const std::string& path : prefabs) {
         PrefabSceneInfo info;
         info.prefabPath = FileUtils::pathFromUtf8(path);
-        info.functionName = Factory::prefabToFunctionName(info.prefabPath);
         info.guid = getPrefabGuid(info.prefabPath);
         sceneProject.prefabs.push_back(std::move(info));
     }
@@ -425,6 +423,10 @@ editor::ShaderListStatus editor::Project::refreshClosedSceneShaderKeys(const Sha
 void editor::Project::collectBuildShaderKeys(std::set<ShaderKey>& keys, std::set<std::string>* deadForks) const {
     // the generated main.cpp registers every scene stack, so any of them can be loaded
     for (const SceneProject& sceneProject : scenes) {
+        // a scene opened without being listed is in no build (S98 REQ-28)
+        if (!sceneProject.inBuild) {
+            continue;
+        }
         std::set<ShaderKey> sceneKeys = sceneProject.shaderKeys;
         // stored keys are only as new as the last save of that scene
         collectSceneShaderKeys(&sceneProject, sceneKeys);
@@ -449,8 +451,9 @@ std::set<ShaderKey> editor::Project::finishBuildShaderKeys(const std::set<Shader
         keys.insert(ShaderPool::normalizeKey(key));
     }
     // the shader warm-up list's variants (spec S32 R11): what Play used ships, even when no scene
-    // records it (a material a script swaps in)
-    if (getShaderCreationSettings().includeInBuilds) {
+    // records it (a material a script swaps in). Whatever Include in Builds says: Stop puts there
+    // what it once wrote into the scene files (S98 REQ-27); the setting governs the replay at start
+    {
         std::ifstream file(getShaderWarmupPath(), std::ios::binary);
         if (file) {
             const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -483,4 +486,102 @@ std::set<ShaderKey> editor::Project::collectStandaloneShaderKeys() {
     std::set<ShaderKey> sceneKeys;
     collectBuildShaderKeys(sceneKeys);
     return finishBuildShaderKeys(sceneKeys, overrides.additions, overrides.exclusions);
+}
+
+void editor::Project::addPlayShaderKeysToWarmup(const std::map<uint32_t, std::set<ShaderKey>>& discovered) {
+    // what the list has already costs no scene collection below
+    std::set<ShaderKey> listed;
+    {
+        std::ifstream file(getShaderWarmupPath(), std::ios::binary);
+        if (file) {
+            const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            std::vector<ShaderKey> keys;
+            if (ShaderWarmup::readShaderKeys(text, keys)) {
+                for (ShaderKey key : keys) {
+                    listed.insert(ShaderPool::normalizeKey(key));
+                }
+            }
+        }
+    }
+    std::set<ShaderKey> required;
+    ShaderVariantCollector::addBuildRequiredKeys(required);
+
+    std::set<ShaderKey> added;
+    for (const auto& [sceneId, keys] : discovered) {
+        std::set<ShaderKey> candidates;
+        for (ShaderKey key : keys) {
+            const ShaderKey normalized = ShaderPool::normalizeKey(key);
+            if (!listed.count(normalized)) {
+                candidates.insert(normalized);
+            }
+        }
+        if (candidates.empty()) {
+            continue;
+        }
+        // the scene's static collection, as a build gathers it: its file's keys and what its
+        // content needs (an open scene's computed now it is back to its edit-time state)
+        if (const SceneProject* editorScene = getScene(sceneId)) {
+            std::set<ShaderKey> known = editorScene->shaderKeys;
+            if (editorScene->scene) {
+                collectSceneShaderKeys(editorScene, known);
+                collectRequiredShaderKeys(editorScene, known);
+            }
+            known.insert(required.begin(), required.end());
+            std::set<ShaderKey> normalized;
+            for (ShaderKey key : known) {
+                normalized.insert(ShaderPool::normalizeKey(key));
+            }
+            ShaderVariantCollector::addDirectionalOnlyTwins(normalized);
+            for (ShaderKey key : normalized) {
+                candidates.erase(key);
+            }
+        }
+        added.insert(candidates.begin(), candidates.end());
+    }
+    // a deleted fork's variants: a build could only fail on them
+    dropDeadForkKeys(added);
+    if (!added.empty()) {
+        mergeIntoShaderWarmup({}, added);
+    }
+}
+
+bool editor::Project::mergeIntoShaderWarmup(const std::string& recorded, const std::set<ShaderKey>& variants) {
+    const fs::path path = getShaderWarmupPath();
+    ShaderWarmup::clear();
+    bool replace = false;
+    std::error_code ec;
+    if (fs::exists(path, ec)) {
+        std::ifstream file(path, std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        std::string error;
+        if (!ShaderWarmup::loadFromString(text, &error)) {
+            Out::warning("Shader warm-up list %s was not readable (%s): it is replaced", path.string().c_str(), error.c_str());
+            ShaderWarmup::clear();
+            replace = true;
+        }
+    }
+    const size_t before = ShaderWarmup::getShaderCount() + ShaderWarmup::getPipelineCount();
+    if (!recorded.empty()) {
+        std::string error;
+        if (!ShaderWarmup::mergeFromString(recorded, &error)) {
+            Out::warning("Shader warm-up entries of this Play not merged: %s", error.c_str());
+        }
+    }
+    ShaderWarmup::addShaderKeys(std::vector<ShaderKey>(variants.begin(), variants.end()));
+    const size_t after = ShaderWarmup::getShaderCount() + ShaderWarmup::getPipelineCount();
+
+    // nothing new: the file stays as it is, byte for byte (S98 REQ-27)
+    bool written = false;
+    if (after > before || (replace && after > 0)) {
+        std::string error;
+        if (ShaderWarmup::save(path.string(), &error)) {
+            written = true;
+            Out::info("Shader warm-up list: %zu shaders, %zu pipelines (%s)", ShaderWarmup::getShaderCount(),
+                      ShaderWarmup::getPipelineCount(), path.filename().string().c_str());
+        } else {
+            Out::error("Shader warm-up list not saved: %s", error.c_str());
+        }
+    }
+    ShaderWarmup::clear();
+    return written;
 }

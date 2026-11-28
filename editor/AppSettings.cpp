@@ -177,6 +177,7 @@ int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
 bool AppSettings::mcpHttpAllowChanges = true;
 std::string AppSettings::mcpToolGroups;
+bool AppSettings::mcpLogCalls = false;
 bool AppSettings::htmlUiAutoImport = true;
 bool AppSettings::assetAutoRefresh = true;
 std::string AppSettings::assetWatcher = "auto";
@@ -514,6 +515,8 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (gameNode["pixelScale"]) gameViewSettings.pixelScale = std::clamp(gameNode["pixelScale"].as<int>(), 0, 8);
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
+                if (gameNode["culling_debug"]) gameViewSettings.cullingDebug = gameNode["culling_debug"].as<bool>();
+                if (gameNode["physics_queries"]) gameViewSettings.physicsQueries = gameNode["physics_queries"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
                 if (gameNode["device_tier"]) gameViewSettings.deviceTier = std::clamp(gameNode["device_tier"].as<int>(), -1, 3);
                 if (gameNode["device_platform"]) gameViewSettings.devicePlatform = std::clamp(gameNode["device_platform"].as<int>(), -1, 2);
@@ -579,6 +582,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (mcpNode["http_port"]) mcpHttpPort = mcpNode["http_port"].as<int>();
             if (mcpNode["http_token"]) mcpHttpToken = mcpNode["http_token"].as<std::string>();
             if (mcpNode["allow_changes"]) mcpHttpAllowChanges = mcpNode["allow_changes"].as<bool>();
+            if (mcpNode["log_calls"]) mcpLogCalls = mcpNode["log_calls"].as<bool>();
             // "a,b", "all" or a list of group names
             if (mcpNode["tool_groups"]) {
                 const YAML::Node groups = mcpNode["tool_groups"];
@@ -846,6 +850,8 @@ bool AppSettings::saveSettings() {
         if (gameViewSettings.pixelScale != 0) gameNode["pixelScale"] = gameViewSettings.pixelScale;
         gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
         gameNode["stats"] = gameViewSettings.showStats;
+        if (gameViewSettings.cullingDebug) gameNode["culling_debug"] = true;
+        if (gameViewSettings.physicsQueries) gameNode["physics_queries"] = true;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
         if (gameViewSettings.deviceTier >= 0) gameNode["device_tier"] = gameViewSettings.deviceTier;
         if (gameViewSettings.devicePlatform >= 0) gameNode["device_platform"] = gameViewSettings.devicePlatform;
@@ -908,6 +914,7 @@ bool AppSettings::saveSettings() {
         // The token lives in its own owner-only file (getMcpHttpTokenPath), not here
         mcpNode["allow_changes"] = mcpHttpAllowChanges;
         if (!mcpToolGroups.empty()) mcpNode["tool_groups"] = mcpToolGroups;
+        if (mcpLogCalls) mcpNode["log_calls"] = true;
         settingsData["mcp"] = mcpNode;
 
         YAML::Node latticeNode;
@@ -1649,6 +1656,15 @@ void AppSettings::setMcpHttpAllowChanges(bool allow) {
     saveSettings();
 }
 
+bool AppSettings::getMcpLogCalls() {
+    return mcpLogCalls;
+}
+
+void AppSettings::setMcpLogCalls(bool enabled) {
+    mcpLogCalls = enabled;
+    saveSettings();
+}
+
 } // namespace jasperengine::editor
 
 namespace jasperengine::editor {
@@ -1803,6 +1819,35 @@ bool AppSettings::setBuildSettings(const std::filesystem::path& projectFile, con
 
     YAML::Node local = loadLocalSettings(projectFile);
     local["build"] = entry;
+    return storeLocalSettings(projectFile, local);
+}
+
+CrashReportsLocations AppSettings::getCrashReportsLocations(const std::filesystem::path& projectFile) {
+    CrashReportsLocations result;
+    const YAML::Node entry = loadLocalSettings(projectFile)["crash_reports"];
+    if (!entry || !entry.IsMap()) return result;
+    try {
+        if (entry["folder"]) result.folder = std::filesystem::path(entry["folder"].as<std::string>());
+        if (entry["symbols"]) result.symbols = std::filesystem::path(entry["symbols"].as<std::string>());
+    } catch (const std::exception& e) {
+        Out::warning("Ignoring the Crash Reports folders in \"%s\": %s", localSettingsFile(projectFile).string().c_str(), e.what());
+        return CrashReportsLocations();
+    }
+    return result;
+}
+
+bool AppSettings::setCrashReportsLocations(const std::filesystem::path& projectFile, const CrashReportsLocations& value) {
+    const CrashReportsLocations previous = getCrashReportsLocations(projectFile);
+    if (previous.folder == value.folder && previous.symbols == value.symbols) return true;
+    YAML::Node local = loadLocalSettings(projectFile);
+    if (value.folder.empty() && value.symbols.empty()) {
+        local.remove("crash_reports");
+    } else {
+        YAML::Node entry(YAML::NodeType::Map);
+        if (!value.folder.empty()) entry["folder"] = value.folder.generic_string();
+        if (!value.symbols.empty()) entry["symbols"] = value.symbols.generic_string();
+        local["crash_reports"] = entry;
+    }
     return storeLocalSettings(projectFile, local);
 }
 

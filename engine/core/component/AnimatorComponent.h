@@ -115,6 +115,10 @@ namespace jasperengine{
         AssetRef controller;                // the .controller, asset-relative
         float speed = 1.0f;
         bool applyRootMotion = false;
+        // Apply Root Motion off: a clip with a root_motion block keeps its root's drift in the
+        // pose, as every Animator saved before S94 played it (set by the scene and prefab
+        // migrations); off, it plays in place as in Unity
+        bool legacyRootDrift = false;
         std::string rootMotionBone;         // path or slot name; empty: the clip's, the hips, the first root bone
         AnimatorUpdateMode updateMode = AnimatorUpdateMode::Normal;
         AnimatorCullingMode cullingMode = AnimatorCullingMode::AlwaysAnimate;

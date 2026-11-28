@@ -1,0 +1,126 @@
+{
+  "a_key_from_a_later_editor": {
+    "kept": true
+  },
+  "budgets": [
+    {
+      "bytes": 4096,
+      "category": "textures",
+      "limit_bytes": 1048576,
+      "over_bytes": 0,
+      "platform": "all"
+    }
+  ],
+  "categories": {
+    "audio": 1200,
+    "engine": 0,
+    "models": 2048,
+    "other": 10,
+    "scenes": 100,
+    "scripts": 50,
+    "textures": 4096
+  },
+  "created": "2026-11-19T14:22:33Z",
+  "editor_version": "0.0.0-test",
+  "files": [
+    {
+      "bytes": 10,
+      "category": "other",
+      "origin": "generated",
+      "path": "assets/je-asset-map.json"
+    },
+    {
+      "bytes": 4096,
+      "path": "assets/je-cooked/astc/1f.ktx2",
+      "source": "textures/wall.png",
+      "source_bytes": 8000
+    },
+    {
+      "bytes": 2048,
+      "category": "models",
+      "path": "assets/je-cooked/models/3fa1.glb",
+      "source": "models/crate.glb",
+      "source_bytes": 3000
+    },
+    {
+      "bytes": 1200,
+      "category": "audio",
+      "path": "assets/sounds/hit.wav"
+    },
+    {
+      "asset": "main.lua",
+      "bytes": 50,
+      "category": "scripts",
+      "path": "lua/main.lua"
+    },
+    {
+      "asset": "scenes/main.scene",
+      "bytes": 100,
+      "category": "scenes",
+      "path": "scenes/1.jscn"
+    }
+  ],
+  "id": "20261119-142233-source",
+  "largest": [
+    {
+      "bytes": 4096,
+      "category": "textures",
+      "path": "assets/je-cooked/astc/1f.ktx2",
+      "source": "textures/wall.png",
+      "source_bytes": 8000
+    },
+    {
+      "bytes": 2048,
+      "category": "models",
+      "path": "assets/je-cooked/models/3fa1.glb",
+      "source": "models/crate.glb",
+      "source_bytes": 3000
+    },
+    {
+      "bytes": 1200,
+      "category": "audio",
+      "path": "assets/sounds/hit.wav"
+    },
+    {
+      "bytes": 100,
+      "category": "scenes",
+      "path": "scenes/1.jscn"
+    },
+    {
+      "bytes": 50,
+      "category": "scripts",
+      "path": "lua/main.lua"
+    },
+    {
+      "bytes": 10,
+      "category": "other",
+      "path": "assets/je-asset-map.json"
+    }
+  ],
+  "left_out": [
+    {
+      "bytes": 8000,
+      "reason": "cooked_texture",
+      "source": "textures/wall.png"
+    }
+  ],
+  "left_out_bytes": 8000,
+  "method": "source",
+  "platform": "source",
+  "reachability": {
+    "assets": {
+      "project.yaml": [
+        "",
+        "",
+        "root"
+      ],
+      "scenes/main.scene": [
+        "project.yaml",
+        "project/scenes[0].filepath",
+        "scene_list"
+      ]
+    }
+  },
+  "total_bytes": 7504,
+  "version": 1
+}

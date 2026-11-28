@@ -95,30 +95,72 @@ void innerShape(vec4 outer, vec4 rx, vec4 ry, vec4 widths, out vec4 rect, out ve
     }
 }
 
-// A gradient instance's colour at g, its own px (mode 4: function in v_f.x, p and v in v_d, stops in
-// v_e and v_border0-3, their count in v_f.y)
+// The stop table (S92 R7, D9): a row per compiled gradient of more than four stops, its stops'
+// premultiplied colours in texels 0-15 and their positions in texels 16-31 (each the four bytes
+// of the float, low byte in red: exact)
+uniform texture2D u_htmluiStops;
+uniform sampler u_htmlui_smpStops;
+
+// stop i of a gradient instance (mode 4): its own four (positions in v_e, colours in v_border0-3)
+// or its row of the stop table (v_e.x), by its count (v_f.y)
+vec4 gradientStopColor(int i){
+    if (v_f.y < 4.5)
+        return (i == 0) ? v_border0 : ((i == 1) ? v_border1 : ((i == 2) ? v_border2 : v_border3));
+    return texelFetch(sampler2D(u_htmluiStops, u_htmlui_smpStops), ivec2(i, int(v_e.x + 0.5)), 0);
+}
+
+float gradientStopPosition(int i){
+    if (v_f.y < 4.5)
+        return (i == 0) ? v_e.x : ((i == 1) ? v_e.y : ((i == 2) ? v_e.z : v_e.w));
+    uvec4 b = uvec4(texelFetch(sampler2D(u_htmluiStops, u_htmlui_smpStops), ivec2(16 + i, int(v_e.x + 0.5)), 0) * 255.0 + 0.5);
+    return uintBitsToFloat(b.x | (b.y << 8u) | (b.z << 16u) | (b.w << 24u));
+}
+
+// A gradient instance's colour at g, its own px: htmlui_gradient.frag's six functions (v_f.x) with
+// p and v in v_d, at most 16 stops (v_f.y)
 vec4 gradientStops(vec2 g){
+    int func = int(v_f.x + 0.5);
+    int count = int(v_f.y + 0.5);
     float t;
-    if (v_f.x < 0.5){
+    if (func == 0 || func == 3){
+        // p: start point, v: vector to the end point
         float distSquare = max(dot(v_d.zw, v_d.zw), 1e-12);
         t = dot(v_d.zw, g - v_d.xy) / distSquare;
-    }else{
+    }else if (func == 1 || func == 4){
+        // p: centre, v: inverse radii
         t = length(v_d.zw * (g - v_d.xy));
+    }else{
+        // p: centre, v: unit vector of the start angle
+        mat2 R = mat2(v_d.z, -v_d.w, v_d.w, v_d.z);
+        vec2 V = R * (g - v_d.xy);
+        t = 0.5 + atan(-V.x, V.y) / 6.28318530;
     }
-    int count = int(v_f.y + 0.5);
-    vec4 stopColor = v_border0;
-    float previous = v_e.x;
-    for (int i = 1; i < 4; i++){
+    if (func >= 3 && count > 1){
+        float t0 = gradientStopPosition(0);
+        float t1 = gradientStopPosition(count - 1);
+        if (t1 > t0)
+            t = t0 + mod(t - t0, t1 - t0);
+    }
+    vec4 stopColor = gradientStopColor(0);
+    float previous = gradientStopPosition(0);
+    for (int i = 1; i < 16; i++){
         if (i >= count)
             break;
-        float position = (i == 1) ? v_e.y : ((i == 2) ? v_e.z : v_e.w);
-        vec4 next = (i == 1) ? v_border1 : ((i == 2) ? v_border2 : v_border3);
+        float position = gradientStopPosition(i);
         // a hard stop (equal positions) switches at its position
         float f = (position > previous) ? clamp((t - previous) / (position - previous), 0.0, 1.0) : step(position, t);
-        stopColor = mix(stopColor, next, f);
+        stopColor = mix(stopColor, gradientStopColor(i), f);
         previous = position;
     }
     return stopColor;
+}
+
+// Along one axis of a single tile of length `extent` (a negative period, S92 R7: no repeat along it),
+// the part of the pixel (`halfPixel` either side of g) inside the tile, as the multisampled tile
+// quad of the mesh path covers it
+float tileCover(float g, float extent, float halfPixel){
+    float h = max(halfPixel, 1e-4);
+    return clamp((min(g + h, extent) - max(g - h, 0.0)) / (2.0 * h), 0.0, 1.0);
 }
 
 // Along one axis of a gradient repeated with `period` (0: one tile): `at`, g in its tile; `other`, g in
@@ -202,16 +244,32 @@ void main() {
         float alpha = (mode == 2) ? shape * (1.0 - cut) : (1.0 - shape) * box;
         color = v_color * alpha;
     }else if (mode == 4){
-        // a gradient over its fill area (S16-F5): htmlui_gradient.frag's linear or radial function, at
-        // most four stops (positions in v_e, colours in v_border0-3), in the gradient's own px: from
-        // its origin (a background tile's, v_params.yw), repeated with the tiles' period (v_f.zw, 0:
-        // one tile). A pixel across a tile seam mixes the two tiles by its part in each, as the
-        // multisampled tile quads of the mesh path do (each tile's colour at the pixel's centre).
+        // a gradient over its fill area (S16-F5, S92 R7): htmlui_gradient.frag's functions and stops
+        // (gradientStops), in the gradient's own px: from its origin (a background tile's,
+        // v_params.yw), repeated with the tiles' period (v_f.zw, 0: one tile; negative: one tile of
+        // that length, nothing beyond it). A pixel across a tile seam mixes the two tiles by its
+        // part in each, as the multisampled tile quads of the mesh path do (each tile's colour at
+        // the pixel's centre).
         vec2 g = p - v_a.xy - v_params.yw;
         vec2 footprint = 0.5 * (abs(dpdx) + abs(dpdy));
         vec2 m, other, across;
-        across.x = tileSeam(g.x, v_f.z, footprint.x, m.x, other.x);
-        across.y = tileSeam(g.y, v_f.w, footprint.y, m.y, other.y);
+        float cover = 1.0;
+        if (v_f.z < 0.0){
+            cover *= tileCover(g.x, -v_f.z, footprint.x);
+            m.x = g.x;
+            other.x = g.x;
+            across.x = 0.0;
+        }else{
+            across.x = tileSeam(g.x, v_f.z, footprint.x, m.x, other.x);
+        }
+        if (v_f.w < 0.0){
+            cover *= tileCover(g.y, -v_f.w, footprint.y);
+            m.y = g.y;
+            other.y = g.y;
+            across.y = 0.0;
+        }else{
+            across.y = tileSeam(g.y, v_f.w, footprint.y, m.y, other.y);
+        }
         vec4 stops = gradientStops(m);
         if (across.x > 0.0 || across.y > 0.0){
             vec4 x = gradientStops(vec2(other.x, m.y));
@@ -219,7 +277,7 @@ void main() {
             vec4 xy = gradientStops(other);
             stops = mix(mix(stops, x, across.x), mix(y, xy, across.x), across.y);
         }
-        color = v_color * stops * htmluiClipShape(p, dpdx, dpdy, v_a, v_b, v_c);
+        color = v_color * stops * (cover * htmluiClipShape(p, dpdx, dpdy, v_a, v_b, v_c));
     }else{
         // a quad: the colour, times its slot's texture by kind
         color = v_color;

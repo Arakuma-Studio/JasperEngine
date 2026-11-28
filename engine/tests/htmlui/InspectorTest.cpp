@@ -114,7 +114,7 @@ TEST_F(InspectorTest, DocumentsListsTheUIDocuments){
 
 // 2. documentInfo: path, viewport, load count, diagnostics with their location
 TEST_F(InspectorTest, DocumentInfo){
-    page("info", "* { margin: 0; }\n.panel {\n  mix-blend-mode: multiply;\n  width: 100px;\n}\n", "<div class=\"panel\">x</div>");
+    page("info", "* { margin: 0; }\n.panel {\n  background-blend-mode: multiply;\n  width: 100px;\n}\n", "<div class=\"panel\">x</div>");
     SceneFixture fixture;
     UIDocument document = fixture.addDocument("ui/info.html", 3);
     ASSERT_TRUE(fixture.waitUntilLoaded());
@@ -137,7 +137,7 @@ TEST_F(InspectorTest, DocumentInfo){
 
     const hc::Diagnostic* blend = nullptr;
     for (const hc::Diagnostic& diagnostic : info.diagnostics){
-        if (diagnostic.subject == "mix-blend-mode")
+        if (diagnostic.subject == "background-blend-mode")
             blend = &diagnostic;
     }
     ASSERT_NE(blend, nullptr);
@@ -566,7 +566,7 @@ TEST_F(InspectorTest, DetailStyles){
     EXPECT_FALSE(HtmlUIInspector::detail(scene, entity, "#nothing", {"color"}, detail, error));
     EXPECT_EQ(error, "selector \"#nothing\" matched nothing");
     // a CSS property the engine has no value for
-    ASSERT_TRUE(HtmlUIInspector::detail(scene, entity, "#play", {"mix-blend-mode"}, detail, error)) << error;
+    ASSERT_TRUE(HtmlUIInspector::detail(scene, entity, "#play", {"background-blend-mode"}, detail, error)) << error;
     EXPECT_EQ(detail.styles[0].value, "");
     EXPECT_EQ(detail.styles[0].source, "not supported");
 

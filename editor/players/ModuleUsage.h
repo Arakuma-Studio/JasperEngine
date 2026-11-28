@@ -27,7 +27,8 @@
 // when a script can ask for a shader variant the export did not cook: it names a shader-relevant
 // entry point (ShaderNeutralApi), a script property has a shader-relevant type, or a script makes
 // a dynamic access. Navigation follows Project Settings > Navigation > Include in Builds; the sound
-// layer, a clip whose import settings change what it plays.
+// layer, a clip whose import settings change what it plays. Dialogue: a .dialogue in the project, a
+// Dialogue Runner, or a script naming Dialogue or DialogueRunner (their names stay as stubs without it).
 
 #include "mcp/McpJson.h"
 #include "ecs/Entity.h"
@@ -86,6 +87,7 @@ namespace jasperengine::editor {
         std::vector<ModuleSource> documents;    // .html .htm .rml .xhtml
         std::vector<std::string> cppScripts;    // C++ script sources (project-relative)
         std::vector<std::string> cueClips;      // .anim files with audio cues (project-relative; S40 §6.6)
+        std::vector<std::string> dialogues;     // .dialogue files (project-relative; dialogue-graphs.md R15)
         bool debugOverlayInBuilds = false;      // Project Settings > Debug: the overlay is an HTML UI document
         bool navigationInBuilds = true;         // Project Settings > Navigation > Include in Builds
         bool audioImportTable = false;          // the export writes je-audio-imports.json (a clip with import settings)

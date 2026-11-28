@@ -24,6 +24,8 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/CullingSystem.h"
+#include "component/SimulationCullingComponent.h"
 
 #include <cmath>
 #include <cstring>
@@ -548,6 +550,40 @@ TEST_F(AnimatorSystemTest, CullUpdateTransformsAdvancesWithoutWriting){
     const float time = instance(hero).currentState(0).normalizedTime;
     step(0.1, 5);
     EXPECT_EQ(instance(hero).currentState(0).normalizedTime, time) << "nothing advances";
+}
+
+// culling-group-and-simulation-distance D8: an Animator its Simulation Culling culled is Cull Completely
+TEST_F(AnimatorSystemTest, SimulationCulledAnimatorAdvancesNothing){
+    ClipData data;
+    data.wrap = ClipWrapMode::Loop;
+    data.tracks = {track("Hips", ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {1, 0, 0})})};
+    data.events = {event(0.5f, "tick")};
+    AnimatorComponent& component = animator(controllerFile("c", animatorSystemOneState(clip("simcull", data))));
+    component.cullingMode = AnimatorCullingMode::AlwaysAnimate;
+    listen();
+    step(0.0);
+    ASSERT_TRUE(instance().bound);
+    step(0.1, 2);
+    const float time = instance().currentState(0).normalizedTime;
+    const Vector3 hipsBefore = position(hips);
+    // no simulation focus at all (no camera): culled by distance
+    SimulationCullingComponent culling;
+    culling.simulateWhenVisible = false;
+    scene.addComponent<SimulationCullingComponent>(root, culling);
+    scene.getSystem<CullingSystem>()->evaluateNow();
+    ASSERT_EQ(scene.getComponent<SimulationCullingComponent>(root).state, SimulationState::Culled);
+    const uint64_t culledBefore = system().getStats().culled;
+    step(0.1, 10);
+    EXPECT_EQ(instance().currentState(0).normalizedTime, time) << "no time advances";
+    EXPECT_EQ(count("tick"), 0u) << "no events";
+    EXPECT_EQ(position(hips), hipsBefore);
+    EXPECT_GE(system().getStats().culled, culledBefore + 1) << "counted as Animators culled";
+    // resumed (disabled component): it advances again
+    scene.getComponent<SimulationCullingComponent>(root).enabled = false;
+    scene.getSystem<CullingSystem>()->evaluateNow();
+    step(0.1, 5);
+    EXPECT_GT(instance().currentState(0).normalizedTime, time);
+    EXPECT_EQ(count("tick"), 1u);
 }
 
 TEST_F(AnimatorSystemTest, ClipOverridesHotReloadAndOwnership){

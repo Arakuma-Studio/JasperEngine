@@ -6,6 +6,7 @@
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
 #include "device/Device.h"
+#include "device/GpuQuirks.h"
 
 #include <cstdio>
 
@@ -37,6 +38,8 @@ int jasperengine::player::launch(const std::vector<std::string>& args, ParseMode
     }
     const LaunchOptions& options = std::get<LaunchOptions>(parsed);
     RunControl::configure(options);
+    // before the render device is set up: quirks resolve once, there
+    GpuQuirks::setCommandLineOverrides(options.gpuQuirks);
 
     PlatformConfig& config = platformConfig();
     if (!options.content.empty())

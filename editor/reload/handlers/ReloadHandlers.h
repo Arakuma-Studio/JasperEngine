@@ -63,6 +63,10 @@ namespace jasperengine::editor::reload {
     void addGraphFileProblems(Project& project, const std::filesystem::path& path, Json& problems);
     // .palette files (S43 R3): Palette Swap, Palette Quantize and the ramp strips made from them
     void reloadPalettes(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // .mesh files another program changed (S98 F1): the Mesh Renderers showing them read them again
+    void reloadMeshAssets(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // .fogprofile files (docs/specs/S101-vapor.md R5): the Fogs and Fog Zones using one take it on the next frame
+    void reloadFogProfiles(Context& ctx, const std::vector<std::filesystem::path>& files);
     // .tileset files (S50 R11): the pool's copy goes, so the layers rebuild from the file
     void reloadTilesets(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Audio: a new sample for the next plays

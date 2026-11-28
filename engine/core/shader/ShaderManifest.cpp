@@ -200,6 +200,64 @@ namespace {
         return false;
     }
 
+    // Unity's ShaderLab Blend factor names (SrcAlpha, OneMinusDstColor...), any case
+    bool parseBlendFactor(const std::string& token, MaterialBlendFactor& factor){
+        static const std::pair<const char*, MaterialBlendFactor> names[] = {
+            {"zero", MaterialBlendFactor::ZERO}, {"one", MaterialBlendFactor::ONE},
+            {"srccolor", MaterialBlendFactor::SRC_COLOR}, {"oneminussrccolor", MaterialBlendFactor::ONE_MINUS_SRC_COLOR},
+            {"srcalpha", MaterialBlendFactor::SRC_ALPHA}, {"oneminussrcalpha", MaterialBlendFactor::ONE_MINUS_SRC_ALPHA},
+            {"dstcolor", MaterialBlendFactor::DST_COLOR}, {"oneminusdstcolor", MaterialBlendFactor::ONE_MINUS_DST_COLOR},
+            {"dstalpha", MaterialBlendFactor::DST_ALPHA}, {"oneminusdstalpha", MaterialBlendFactor::ONE_MINUS_DST_ALPHA}};
+        const std::string name = lower(token);
+        for (const auto& entry : names){
+            if (name == entry.first){
+                factor = entry.second;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ShaderLab BlendOp names (Sub and RevSub as Unity writes them, or spelled out)
+    bool parseBlendOp(const std::string& token, MaterialBlendOp& op){
+        const std::string name = lower(token);
+        if (name == "add") { op = MaterialBlendOp::ADD; return true; }
+        if (name == "sub" || name == "subtract") { op = MaterialBlendOp::SUBTRACT; return true; }
+        if (name == "revsub" || name == "reversesubtract") { op = MaterialBlendOp::REVERSE_SUBTRACT; return true; }
+        if (name == "min") { op = MaterialBlendOp::MIN; return true; }
+        if (name == "max") { op = MaterialBlendOp::MAX; return true; }
+        return false;
+    }
+
+    // blend=<src>,<dst> (colour and alpha alike) or <src>,<dst>,<srcAlpha>,<dstAlpha>
+    bool parseBlendFactors(const std::string& value, MaterialBlendFactors& factors){
+        std::vector<std::string> parts;
+        size_t start = 0;
+        while (start <= value.size()){
+            const size_t comma = value.find(',', start);
+            const size_t end = comma == std::string::npos ? value.size() : comma;
+            std::string part = value.substr(start, end - start);
+            part.erase(0, part.find_first_not_of(" \t"));
+            part.erase(part.find_last_not_of(" \t") + 1);
+            parts.push_back(part);
+            if (comma == std::string::npos)
+                break;
+            start = comma + 1;
+        }
+        if (parts.size() != 2 && parts.size() != 4)
+            return false;
+        MaterialBlendFactor parsed[4];
+        for (size_t i = 0; i < parts.size(); i++){
+            if (!parseBlendFactor(parts[i], parsed[i]))
+                return false;
+        }
+        factors.src = parsed[0];
+        factors.dst = parsed[1];
+        factors.srcAlpha = parts.size() == 4 ? parsed[2] : parsed[0];
+        factors.dstAlpha = parts.size() == 4 ? parsed[3] : parsed[1];
+        return true;
+    }
+
     // choice("A", "B", ...): the names, quoted, comma separated
     bool parseChoices(const std::string& token, std::vector<std::string>& choices){
         if (lower(token.substr(0, 7)) != "choice(" || token.back() != ')')
@@ -442,6 +500,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (input == "position") rule.require |= ShaderRequire_Position;
                 else if (input == "rawcolor") rule.require |= ShaderRequire_RawColor;
                 else if (input == "smoothnormals") rule.require |= ShaderRequire_SmoothNormals;
+                else if (input == "vertexnormals") rule.require |= ShaderRequire_VertexNormals;
                 else if (input == "scenedepth") rule.require |= ShaderRequire_SceneDepth;
                 else if (input == "scenecolor") rule.require |= ShaderRequire_SceneColor;
                 else if (input == "environment") rule.require |= ShaderRequire_Environment;
@@ -450,7 +509,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 // the world position the volumes and the map are tested at comes with them
                 else if (input == "waterexclusion") rule.require |= ShaderRequire_WaterExclusion | ShaderRequire_Position;
                 else if (input == "waterwake") rule.require |= ShaderRequire_WaterWake | ShaderRequire_Position;
-                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment, normalmap, planarreflection, waterexclusion, waterwake)");
+                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, vertexnormals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment, normalmap, planarreflection, waterexclusion, waterwake)");
             }
             if (!valid)
                 continue;
@@ -498,7 +557,28 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                     else if (v == "premultiplied") state.blend = MaterialBlendMode::PREMULTIPLIED;
                     else if (v == "additive") state.blend = MaterialBlendMode::ADDITIVE;
                     else if (v == "multiply") state.blend = MaterialBlendMode::MULTIPLY;
+                    else if (v.find(',') != std::string::npos){
+                        // ShaderLab's custom factors: Blend DstColor SrcColor
+                        if (!parseBlendFactors(value, state.blendFactors)){
+                            report(lineNumber, true, "@state blend= takes opaque, alpha, premultiplied, additive, multiply or factors <src>,<dst>[,<srcAlpha>,<dstAlpha>] "
+                                   "(One, Zero, SrcColor, SrcAlpha, DstColor, DstAlpha, OneMinusSrcColor, OneMinusSrcAlpha, OneMinusDstColor, OneMinusDstAlpha), got '" + value + "'");
+                            continue;
+                        }
+                        state.blend = MaterialBlendMode::CUSTOM;
+                    }
                     else valid = false;
+                }else if (key == "blendop"){
+                    // <op> for colour and alpha, or <colourOp>,<alphaOp> (ShaderLab's BlendOp)
+                    const size_t comma = v.find(',');
+                    MaterialBlendOp op = MaterialBlendOp::ADD;
+                    MaterialBlendOp opAlpha = MaterialBlendOp::ADD;
+                    if (!parseBlendOp(v.substr(0, comma), op) || !parseBlendOp(comma == std::string::npos ? v : v.substr(comma + 1), opAlpha)){
+                        report(lineNumber, true, "@state blendop= takes add, sub, revsub, min or max, or <colour op>,<alpha op>, got '" + value + "'");
+                        continue;
+                    }
+                    state.blendFactors.op = op;
+                    state.blendFactors.opAlpha = opAlpha;
+                    state.hasBlendOp = true;
                 }else if (key == "cull"){
                     if (v == "back") state.cull = MaterialCullMode::BACK;
                     else if (v == "front") state.cull = MaterialCullMode::FRONT;
@@ -621,7 +701,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 report(lineNumber, true, "invalid @property member name '" + property.member + "'");
                 continue;
             }
-            if (property.member == "time" || property.member == "gameTime" || property.member == "resolution"){
+            if (property.member == "time" || property.member == "resolution"){
                 report(lineNumber, true, "'" + property.member + "' is written by the engine and cannot be a @property");
                 continue;
             }
@@ -703,7 +783,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
 
         }else if (directive == "texture"){
             if (args.size() < 2){
-                report(lineNumber, true, "@texture takes <uniform> <default> [\"label\"] [cube] [feature=F] [default[F]=<default>]");
+                report(lineNumber, true, "@texture takes <uniform> <default> [\"label\"] [cube] [main] [feature=F] [default[F]=<default>]");
                 continue;
             }
             auto parseDefault = [](const std::string& name, ShaderTextureDefault& value){
@@ -730,10 +810,13 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 report(lineNumber, true, "@texture '" + texture.uniform + "' declared twice");
                 continue;
             }
-            if (!parseDefault(args[1].text, texture.defaultTexture)){
+            // "@texture <uniform> main": the default left out is white
+            const bool mainFirst = !args[1].quoted && lower(args[1].text) == "main";
+            if (!mainFirst && !parseDefault(args[1].text, texture.defaultTexture)){
                 report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal, ripples, noise, particle, ramp_grey)");
                 continue;
             }
+            texture.main = mainFirst;
             bool valid = true;
             for (size_t a = 2; a < args.size(); a++){
                 std::string key, value;
@@ -750,11 +833,21 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                     texture.feature = value;
                 }else if (!args[a].quoted && lower(args[a].text) == "cube"){
                     texture.cube = true;
+                }else if (!args[a].quoted && lower(args[a].text) == "main"){
+                    texture.main = true;
                 }else if (args[a].quoted && texture.label.empty()){
                     texture.label = args[a].text;
                 }else{
                     report(lineNumber, true, "unexpected @texture argument '" + args[a].text + "'");
                     valid = false;
+                }
+            }
+            if (valid && texture.main){
+                for (const ShaderManifestTexture& other : textures){
+                    if (other.main){
+                        report(lineNumber, true, "@texture '" + texture.uniform + "' main: '" + other.uniform + "' is the main texture already");
+                        valid = false;
+                    }
                 }
             }
             if (valid)
@@ -1216,6 +1309,14 @@ const ShaderManifestTexture* ShaderManifest::findTexture(const std::string& unif
     return nullptr;
 }
 
+const ShaderManifestTexture* ShaderManifest::getMainTexture() const{
+    for (const ShaderManifestTexture& texture : textures){
+        if (texture.main)
+            return &texture;
+    }
+    return textures.empty() ? nullptr : &textures.front();
+}
+
 const ShaderManifestPalette* ShaderManifest::findPalette(const std::string& uniform) const{
     for (const ShaderManifestPalette& palette : palettes){
         if (palette.uniform == uniform)
@@ -1485,6 +1586,18 @@ void ShaderManifest::validateReflection(const std::vector<const ShaderData*>& va
 
 void ShaderManifestState::apply(const ShaderManifestState& other){
     if (other.blend != MaterialBlendMode::AUTO) blend = other.blend;
+    if (other.blend == MaterialBlendMode::CUSTOM){
+        const MaterialBlendOp op = blendFactors.op;
+        const MaterialBlendOp opAlpha = blendFactors.opAlpha;
+        blendFactors = other.blendFactors;
+        blendFactors.op = op;
+        blendFactors.opAlpha = opAlpha;
+    }
+    if (other.hasBlendOp){
+        hasBlendOp = true;
+        blendFactors.op = other.blendFactors.op;
+        blendFactors.opAlpha = other.blendFactors.opAlpha;
+    }
     if (other.cull != MaterialCullMode::AUTO) cull = other.cull;
     if (other.depthWrite != MaterialDepthWrite::AUTO) depthWrite = other.depthWrite;
     if (other.depthTest != MaterialDepthTest::AUTO) depthTest = other.depthTest;
@@ -1574,7 +1687,7 @@ std::vector<std::string> ShaderManifest::getRequireNames(uint32_t require){
         {ShaderRequire_SceneDepth, "scenedepth"}, {ShaderRequire_SceneColor, "scenecolor"},
         {ShaderRequire_Environment, "environment"}, {ShaderRequire_NormalMap, "normalmap"},
         {ShaderRequire_PlanarReflection, "planarreflection"}, {ShaderRequire_WaterExclusion, "waterexclusion"},
-        {ShaderRequire_WaterWake, "waterwake"}};
+        {ShaderRequire_WaterWake, "waterwake"}, {ShaderRequire_VertexNormals, "vertexnormals"}};
     std::vector<std::string> result;
     for (const auto& name : names){
         if (require & name.first)

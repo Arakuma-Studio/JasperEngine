@@ -27,6 +27,8 @@
 // NSProcessInfo.thermalState to Device (spec S56): at start (reading it once is what makes the
 // notifications come) and on NSProcessInfoThermalStateDidChangeNotification
 + (void)thermalStateChanged;
+// NSCurrentLocaleDidChangeNotification: the game language resolves again (game-ui-localization.md R10)
++ (void)localesChanged;
 + (void)orientationChanged;
 #if TARGET_OS_IPHONE
 // Screen.safeArea: the view's safeAreaInsets (points) times its contentScaleFactor, the drawable's

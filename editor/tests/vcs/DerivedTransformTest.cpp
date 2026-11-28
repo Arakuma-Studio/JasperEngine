@@ -12,7 +12,6 @@
 
 #include "support/EditorTestSupport.h"
 #include "util/Prefab.h"
-#include "Factory.h"
 #include "Stream.h"
 #include "StreamMigrations.h"
 #include "component/CameraComponent.h"
@@ -22,6 +21,9 @@
 
 #include <gtest/gtest.h>
 
+#include "cook/SceneCooker.h"
+
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 
@@ -123,15 +125,17 @@ TEST(Stream, DerivedTransformNotWritten) {
     EXPECT_NE(resaved.find("scale: [2, 2, 2]"), std::string::npos);
     // the format version moved on, with the migration that drops them (then S18's identity 4 -> 5
     // and the Animation Player controllers' move to Animators, 5 -> 6 / prefab 6 -> 7, and the
-    // upstream curve form 6 -> 7 / prefab 7 -> 8, and the sprite sheets' identity 7 -> 8 / prefab 8 -> 9)
-    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 8);
-    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), 9);
-    EXPECT_EQ(Prefab::FILE_VERSION, 9);
+    // upstream curve form 6 -> 7 / prefab 7 -> 8, the sprite sheets' identity 7 -> 8 / prefab 8 -> 9,
+    // the mesh assets' identity 8 -> 9 / prefab 9 -> 10, S92's 9 -> 10 and S94's Text alignment 10 -> 11 /
+    // prefab 10 -> 11)
+    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 11);
+    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), 11);
+    EXPECT_EQ(Prefab::FILE_VERSION, 11);
     YAML::Node root = YAML::Load(old);
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
-    ASSERT_EQ(result.applied.size(), 5u);
+    ASSERT_EQ(result.applied.size(), 8u);
     EXPECT_EQ(result.versionRead, 3);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     expectNoDerivedKeys(YAML::Dump(root), "a migrated scene");
 }
 
@@ -146,7 +150,7 @@ TEST(Stream, DerivedTransformMigrationReachesPrefabsAndInstances) {
     StreamMigrations::migrate(DocumentKind::Prefab, prefab);
     expectNoDerivedKeys(YAML::Dump(prefab), "a migrated prefab");
     EXPECT_EQ(prefab["members"][0]["components"]["transform"]["position"].size(), 3u);
-    EXPECT_EQ(prefab["version"].as<int>(), 9);
+    EXPECT_EQ(prefab["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
 
     YAML::Node scene = YAML::Load(
         "formatVersion: 3\nentities:\n  - type: Entity\n    entity: 20\n    name: Instance\n    components:\n      transform:\n"
@@ -292,15 +296,16 @@ TEST(Stream, DerivedUiScissorNotWritten) {
 // or a fixture written headless) wrote 0, and its index count once drawn; the generated code too.
 TEST(Stream, SubmeshVertexCountNotTheLastDraws) {
     const DecodedScene decoded = decodeSceneFile(fixture("scenes/shader-library-export-lit.scene"));
-    Scene* scene = decoded.scene->scene;
-    auto meshes = scene->getComponentArray<MeshComponent>();
     // as drawn: the fixture was saved after a draw
     const std::string drawn = encodeSceneText(decoded);
     ASSERT_NE(drawn.find("vertexCount: 6\n"), std::string::npos);
-    std::vector<std::string> drawnCode;
-    for (size_t i = 0; i < meshes->size(); i++)
-        drawnCode.push_back(Factory::createComponent(0, scene, meshes->getEntity(i), ComponentType::MeshComponent, fs::path(), "scene", "entity"));
+    // a cook reads a scene once (a build cooks a copy of each): one decode per state
+    const DecodedScene undrawnDecoded = decodeSceneFile(fixture("scenes/shader-library-export-lit.scene"));
+    auto cook = [](const DecodedScene& scene) {
+        return editor::cook::SceneCooker::cookScene(scene.scene->scene, 1, scene.scene->entities, NULL_ENTITY, SceneResources{});
+    };
     // never drawn: no count yet on a mesh with its own buffers (a model's mesh keeps what it has)
+    auto meshes = undrawnDecoded.scene->scene->getComponentArray<MeshComponent>();
     size_t undrawn = 0;
     for (size_t i = 0; i < meshes->size(); i++) {
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
@@ -309,10 +314,12 @@ TEST(Stream, SubmeshVertexCountNotTheLastDraws) {
         for (unsigned int s = 0; s < mesh.numSubmeshes; s++) mesh.submeshes[s].vertexCount = 0;
     }
     ASSERT_GT(undrawn, 0u);
-    EXPECT_EQ(encodeSceneText(decoded), drawn) << "a save depends on whether the meshes were drawn";
-    for (size_t i = 0; i < meshes->size(); i++)
-        EXPECT_EQ(Factory::createComponent(0, scene, meshes->getEntity(i), ComponentType::MeshComponent, fs::path(), "scene", "entity"), drawnCode[i])
-            << "the generated code of entity " << meshes->getEntity(i) << " depends on whether it was drawn";
+    EXPECT_EQ(encodeSceneText(undrawnDecoded), drawn) << "a save depends on whether the meshes were drawn";
+    const std::vector<uint8_t> drawnCooked = cook(decoded);
+    const std::vector<uint8_t> undrawnCooked = cook(undrawnDecoded);
+    size_t differs = 0;
+    while (differs < std::min(drawnCooked.size(), undrawnCooked.size()) && drawnCooked[differs] == undrawnCooked[differs]) differs++;
+    EXPECT_EQ(undrawnCooked, drawnCooked) << "a build's cooked scene depends on whether the meshes were drawn (from byte " << differs << ")";
 }
 
 }  // namespace DerivedTransformTest_cpp

@@ -10,6 +10,7 @@
 #include "HangWatchdog.h"
 
 #include "CrashHandler.h"
+#include "Journal.h"
 #include "jobs/JobStats.h"
 #include "jobs/detail/TimedWait.h"
 #include "thread/ThreadUtil.h"
@@ -299,6 +300,8 @@ namespace je_hang {
         char name[32];
         std::snprintf(name, sizeof(name), "hang-%03u.txt", index);
         out.file = crash::writeSessionFile(name, text);
+        // the game's events up to the stall, beside it (a later hang of the session overwrites it)
+        if (!out.file.empty() && !journal::entries(1).empty()) crash::writeSessionFile("journal.txt", journal::text());
 
         std::fprintf(stderr, "JASPERENGINE HANG: main thread not responding for %llu ms (phase: %s, busy: %s)%s%s\n",
                      static_cast<unsigned long long>(out.stalledMs), out.phase.c_str(), scopeList(scopes).c_str(),

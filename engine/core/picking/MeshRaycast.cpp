@@ -9,6 +9,7 @@
 #include "PickCache.h"
 
 #include "Scene.h"
+#include "Log.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/MeshComponent.h"
 #include "component/PolygonComponent.h"
@@ -18,9 +19,6 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "subsystem/MeshSystem.h"
-#include "util/STBText.h"
-#include "pixelart/BitmapFont.h"
-#include "pixelart/BitmapText.h"
 
 #include <algorithm>
 #include <cmath>
@@ -396,9 +394,7 @@ namespace {
             // the rect, in its plane
             Vector2 center(0, 0);
             if (const TextComponent* text = scene->findComponent<TextComponent>(leaf.entity)){
-                if (text->pivotBaseline && text->stbtext) center.y = (float)text->stbtext->getAscent();
-                if (text->pivotBaseline && text->bitmapText) center.y = text->bitmapText->getAscent(text->pixelUnit);
-                if (text->pivotCentered) center.x = layout->width / 2.0f;
+                center = Vector2(-text->boxMin.x, -text->boxMin.y);
             }
             const Matrix4 inverse = transform.modelMatrix.inverse();
             const Vector3 localOrigin = inverse * origin;
@@ -525,6 +521,62 @@ RayReturn MeshRaycastHit::toRayReturn() const{
     result.body = body;
     result.colliderIndex = colliderIndex;
     return result;
+}
+
+MeshRaycastOptions MeshRaycast::overlapOptions(){
+    MeshRaycastOptions options;
+    options.kinds = OVERLAP_KINDS;
+    return options;
+}
+
+size_t MeshRaycast::overlapSphere(Scene* scene, const Vector3& center, float radius, std::vector<MeshOverlapHit>& out,
+                                  uint32_t layerMask, const MeshRaycastOptions& options){
+    out.clear();
+    if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)){
+        Log::error("MeshRaycast.overlapSphere: center must be a finite vector");
+        return 0;
+    }
+    if (!(radius > 0.0f) || !std::isfinite(radius)){
+        Log::error("MeshRaycast.overlapSphere: radius must be a positive finite number (got %g)", radius);
+        return 0;
+    }
+    if (!scene || layerMask == LAYER_MASK_NOTHING){
+        return 0;
+    }
+    SceneBvh::OverlapShape shape;
+    shape.center = center;
+    shape.radius = radius;
+    scene->getPickBvh().overlap(shape, makeFilter(layerMask, options), out, !options.current);
+    return out.size();
+}
+
+size_t MeshRaycast::overlapBox(Scene* scene, const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation,
+                               std::vector<MeshOverlapHit>& out, uint32_t layerMask, const MeshRaycastOptions& options){
+    out.clear();
+    if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)){
+        Log::error("MeshRaycast.overlapBox: center must be a finite vector");
+        return 0;
+    }
+    if (!(halfExtents.x > 0.0f) || !(halfExtents.y > 0.0f) || !(halfExtents.z > 0.0f) ||
+            !std::isfinite(halfExtents.x) || !std::isfinite(halfExtents.y) || !std::isfinite(halfExtents.z)){
+        Log::error("MeshRaycast.overlapBox: halfExtents must be positive and finite");
+        return 0;
+    }
+    const float length = std::sqrt(rotation.w * rotation.w + rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z);
+    if (!(length > 0.0f) || !std::isfinite(length)){
+        Log::error("MeshRaycast.overlapBox: rotation must be a non-zero finite quaternion");
+        return 0;
+    }
+    if (!scene || layerMask == LAYER_MASK_NOTHING){
+        return 0;
+    }
+    SceneBvh::OverlapShape shape;
+    shape.box = true;
+    shape.center = center;
+    shape.halfExtents = halfExtents;
+    shape.rotation = Quaternion(rotation.w / length, rotation.x / length, rotation.y / length, rotation.z / length);
+    scene->getPickBvh().overlap(shape, makeFilter(layerMask, options), out, !options.current);
+    return out.size();
 }
 
 PickFilter MeshRaycast::makeFilter(uint32_t layerMask, const MeshRaycastOptions& options){

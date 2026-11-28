@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ScriptAttach.h"
+#include "dataasset/DataAssets.h"
 
 #include "component/ScriptComponent.h"
 
@@ -18,6 +19,7 @@
 #include "util/Util.h"
 
 #include <algorithm>
+#include <set>
 #include <cctype>
 #include <regex>
 
@@ -217,9 +219,13 @@ std::vector<ScriptCandidate> ScriptAttach::findProjectScripts(Project* project) 
     std::vector<ScriptCandidate> scripts;
     const fs::path projectPath = project->getProjectPath();
     const fs::path luaPath = project->getLuaPath();
+    // a data class (S95) is no component: its assets are made with Create > Data Asset
+    std::set<std::string> dataClasses;
+    for (const DataAssets::Class& dataClass : DataAssets::listClasses(luaPath)) dataClasses.insert(dataClass.file.lexically_normal().generic_string());
     for (const fs::path& rel : project->findProjectFiles([](const std::string& p) { return Util::isLuaFile(p); })) {
         const fs::path file = (projectPath / rel).lexically_normal();
         if (!Util::isInsidePath(file, luaPath)) continue;
+        if (dataClasses.count(file.generic_string())) continue;
         ScriptCandidate candidate;
         candidate.type = ScriptType::LUA;
         candidate.name = file.stem().string();

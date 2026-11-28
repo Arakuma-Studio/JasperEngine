@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 7716a84f7d1dc0f2
+digest 2a88d927f4f13c29
 --- 0
 exposure: 2718.8833
 tonemap: agx
@@ -14,6 +14,7 @@ lutTexture: fonts/Main.ttf
 lutContribution: -0.7551421
 lutInputEncoding: linear
 lutSize: 16
+lutFlipGreen: true
 monochromeMode: sepia
 monochromeIntensity: 30
 vignetteEnabled: true
@@ -21,6 +22,8 @@ vignetteIntensity: .nan
 vignetteSmoothness: -10
 vignetteRoundness: -94
 vignetteColor: [3e+38, 6415.2837, -47]
+vignetteStart: .nan
+vignetteEnd: -.inf
 ditherEnabled: true
 fxaaEnabled: true
 chromaticAberrationIntensity: .inf
@@ -33,6 +36,15 @@ crtVignette: -0.9025024
 edgeDetectThreshold: -65.28571
 edgeDetectIntensity: 59
 edgeDetectColor: [0.9107096, 0.36135855, -39.142857]
+cavityEnabled: true
+cavityScreenRidge: -.inf
+cavityScreenValley: 6591.6724
+cavityScreenWidth: -42
+cavityWorldRadius: -0
+cavityWorldRidge: -37
+cavityWorldValley: -11
+cavityWorldSamples: 6
+cavityMaxPixelRadius: 41
 filmGrainIntensity: .inf
 filmGrainResponse: 1e-45
 filmGrainType: filmic
@@ -109,6 +121,8 @@ vignetteIntensity: -.inf
 vignetteSmoothness: -0.9070846
 vignetteRoundness: 122.42857
 vignetteColor: [1547.4135, 7981.1475, 0]
+vignetteStart: 1329.9739
+vignetteEnd: 0.4203688
 ditherEnabled: true
 chromaticAberrationIntensity: 33
 pixelateEnabled: true
@@ -120,6 +134,15 @@ crtVignette: 76
 edgeDetectThreshold: -39
 edgeDetectIntensity: 2347.1265
 edgeDetectColor: [0.9389774, 8922.052, -0.24561659]
+cavityEnabled: true
+cavityScreenRidge: .nan
+cavityScreenValley: 722.184
+cavityScreenWidth: 0.521612
+cavityWorldRadius: 79.85714
+cavityWorldRidge: 85.14286
+cavityWorldValley: -38
+cavityWorldSamples: -16
+cavityMaxPixelRadius: -66
 filmGrainIntensity: 8948.984
 filmGrainResponse: 6717.7573
 filmGrainType: lens
@@ -193,12 +216,15 @@ lutTexture: fonts/Main.ttf
 lutContribution: -36.142857
 lutInputEncoding: srgb
 lutSize: 20
+lutFlipGreen: true
 monochromeMode: sepia
 monochromeIntensity: -14
 vignetteIntensity: -.inf
 vignetteSmoothness: .inf
 vignetteRoundness: -0
 vignetteColor: [-49.714287, -0, 0]
+vignetteStart: 1827.2941
+vignetteEnd: 19
 chromaticAberrationEnabled: true
 chromaticAberrationIntensity: 0.16825324
 pixelateEnabled: true
@@ -210,6 +236,16 @@ crtVignette: 51
 edgeDetectThreshold: .nan
 edgeDetectIntensity: 4253.498
 edgeDetectColor: [-0.5129677, 7126.102, -63]
+cavityEnabled: true
+cavityScreenRidge: 1e-45
+cavityScreenValley: -0.62822735
+cavityScreenWidth: -0.95709926
+cavityWorldRadius: 2661.263
+cavityWorldRidge: -.inf
+cavityWorldValley: 3e+38
+cavityWorldSamples: -9
+cavityMaxPixelRadius: -0.503718
+cavityDebug: true
 filmGrainIntensity: 3e+38
 filmGrainResponse: 1e-45
 filmGrainType: filmic
@@ -291,6 +327,9 @@ vignetteIntensity: 22.857143
 vignetteSmoothness: -0.2784267
 vignetteRoundness: 0.7174981
 vignetteColor: [-0, 0, 0.2910294]
+vignetteFalloff: radii
+vignetteStart: 0.56022286
+vignetteEnd: .inf
 ditherEnabled: true
 chromaticAberrationIntensity: -24
 pixelateSize: -0.10567665
@@ -302,6 +341,15 @@ edgeDetectEnabled: true
 edgeDetectThreshold: .nan
 edgeDetectIntensity: 1451.6936
 edgeDetectColor: [82.85714, 0, 0]
+cavityScreenRidge: -0.093386345
+cavityScreenValley: -.inf
+cavityScreenWidth: 47
+cavityWorldRadius: 1838.5614
+cavityWorldRidge: 50
+cavityWorldValley: 78.71429
+cavityWorldSamples: 10
+cavityMaxPixelRadius: 7993.201
+cavityDebug: true
 filmGrainEnabled: true
 filmGrainIntensity: .nan
 filmGrainResponse: 37
@@ -382,6 +430,9 @@ vignetteIntensity: 1e-45
 vignetteSmoothness: -.inf
 vignetteRoundness: -.inf
 vignetteColor: [0, 5542.604, 2344.4878]
+vignetteFalloff: radii
+vignetteStart: -0.5676828
+vignetteEnd: -0.46167052
 fxaaEnabled: true
 chromaticAberrationEnabled: true
 chromaticAberrationIntensity: 88
@@ -395,6 +446,15 @@ edgeDetectEnabled: true
 edgeDetectThreshold: -.inf
 edgeDetectIntensity: 3e+38
 edgeDetectColor: [-23.428572, 0.15812615, -0.68292505]
+cavityType: world
+cavityScreenRidge: 513.5424
+cavityScreenValley: 10
+cavityScreenWidth: 1138.0507
+cavityWorldRadius: 138.71428
+cavityWorldRidge: 1281.6433
+cavityWorldValley: .inf
+cavityWorldSamples: 0
+cavityMaxPixelRadius: 62
 filmGrainEnabled: true
 filmGrainIntensity: .inf
 filmGrainResponse: 3e+38
@@ -469,6 +529,8 @@ vignetteIntensity: -100.28571
 vignetteSmoothness: 132.28572
 vignetteRoundness: -29.142857
 vignetteColor: [2665.969, -43.42857, -0.4721999]
+vignetteStart: -.inf
+vignetteEnd: 0.741531
 fxaaEnabled: true
 chromaticAberrationIntensity: 105.42857
 pixelateEnabled: true
@@ -481,6 +543,17 @@ edgeDetectEnabled: true
 edgeDetectThreshold: 3e+38
 edgeDetectIntensity: -0.21903998
 edgeDetectColor: [1e-45, -0.7016503, 6884.4976]
+cavityEnabled: true
+cavityType: screen
+cavityScreenRidge: .nan
+cavityScreenValley: 56
+cavityScreenWidth: 1e-45
+cavityWorldRadius: 0.09269413
+cavityWorldRidge: 1e-45
+cavityWorldValley: .inf
+cavityWorldSamples: 5
+cavityMaxPixelRadius: 8429.318
+cavityDebug: true
 filmGrainEnabled: true
 filmGrainIntensity: 0.5727632
 filmGrainResponse: -44.714287
@@ -549,6 +622,7 @@ gain: [41, 0, -86.14286]
 lutContribution: -0
 lutInputEncoding: logc3
 lutSize: -14
+lutFlipGreen: true
 monochromeEnabled: true
 monochromeMode: sepia
 monochromeIntensity: .inf
@@ -556,6 +630,9 @@ vignetteIntensity: -34
 vignetteSmoothness: 4129.9897
 vignetteRoundness: -0.09852078
 vignetteColor: [0.11438704, 1e-45, -107.57143]
+vignetteFalloff: radii
+vignetteStart: 66.85714
+vignetteEnd: 1854.0228
 fxaaEnabled: true
 chromaticAberrationIntensity: 7727.315
 pixelateEnabled: true
@@ -567,6 +644,15 @@ crtVignette: 9331.426
 edgeDetectThreshold: 1e-45
 edgeDetectIntensity: 4805.9663
 edgeDetectColor: [3e+38, 4840.1436, 9899.184]
+cavityType: screen
+cavityScreenRidge: -0.7441728
+cavityScreenValley: 0.5936587
+cavityScreenWidth: -.inf
+cavityWorldRadius: 0.020223016
+cavityWorldRidge: .inf
+cavityWorldValley: -43
+cavityWorldSamples: -2
+cavityMaxPixelRadius: -0
 filmGrainEnabled: true
 filmGrainIntensity: 91
 filmGrainResponse: 24.714285
@@ -641,11 +727,15 @@ gain: [-0.42673445, -0.49175474, 0.48483515]
 lutTexture: ui/menu.html
 lutContribution: -136.57143
 lutSize: 20
+lutFlipGreen: true
 monochromeIntensity: 81
 vignetteIntensity: .inf
 vignetteSmoothness: 0.41644153
 vignetteRoundness: -64
 vignetteColor: [0, -37, 2438.9873]
+vignetteFalloff: radii
+vignetteStart: 39
+vignetteEnd: 2555.96
 ditherEnabled: true
 chromaticAberrationIntensity: 0.92168254
 pixelateEnabled: true
@@ -659,6 +749,16 @@ edgeDetectEnabled: true
 edgeDetectThreshold: 37
 edgeDetectIntensity: 107.71429
 edgeDetectColor: [0, 3620.828, 113]
+cavityEnabled: true
+cavityType: screen
+cavityScreenRidge: .inf
+cavityScreenValley: -0
+cavityScreenWidth: 52
+cavityWorldRadius: -0
+cavityWorldRidge: 1e-45
+cavityWorldValley: 31
+cavityWorldSamples: 2
+cavityMaxPixelRadius: .inf
 filmGrainIntensity: 1248.5686
 filmGrainResponse: .inf
 filmGrainType: filmic

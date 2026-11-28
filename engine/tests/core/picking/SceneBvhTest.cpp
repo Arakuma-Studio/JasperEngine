@@ -355,4 +355,93 @@ TEST(SceneBvh, ZeroWhenUnused){
     EXPECT_NE(scene.findPickBvh(), nullptr);
 }
 
+namespace {
+
+    bool scanSphereTouches(const AABB& box, const Vector3& c, float r){
+        float d2 = 0.0f;
+        for (unsigned a = 0; a < 3; a++){
+            const float v = c[a];
+            if (v < box.getMinimum()[a]) d2 += (box.getMinimum()[a] - v) * (box.getMinimum()[a] - v);
+            else if (v > box.getMaximum()[a]) d2 += (v - box.getMaximum()[a]) * (v - box.getMaximum()[a]);
+        }
+        return d2 <= r * r;
+    }
+
+    // the oriented box against the leaf box: their 8 corners' projections on all 15 axes
+    bool scanBoxTouches(const AABB& box, const Vector3& c, const Vector3& half, const Quaternion& rotation){
+        const Vector3 axes[3] = {rotation * Vector3(1, 0, 0), rotation * Vector3(0, 1, 0), rotation * Vector3(0, 0, 1)};
+        const Vector3 world[3] = {Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1)};
+        Vector3 a[8], b[8];
+        for (int i = 0; i < 8; i++){
+            a[i] = c + axes[0] * ((i & 1) ? half.x : -half.x) + axes[1] * ((i & 2) ? half.y : -half.y) + axes[2] * ((i & 4) ? half.z : -half.z);
+            b[i] = Vector3((i & 1) ? box.getMaximum().x : box.getMinimum().x, (i & 2) ? box.getMaximum().y : box.getMinimum().y,
+                           (i & 4) ? box.getMaximum().z : box.getMinimum().z);
+        }
+        std::vector<Vector3> candidates(axes, axes + 3);
+        candidates.insert(candidates.end(), world, world + 3);
+        for (const Vector3& x : axes) for (const Vector3& y : world) candidates.push_back(x.crossProduct(y));
+        for (const Vector3& axis : candidates){
+            if (axis.squaredLength() < 1e-12f) continue;
+            float minA = 1e30f, maxA = -1e30f, minB = 1e30f, maxB = -1e30f;
+            for (int i = 0; i < 8; i++){
+                minA = std::min(minA, a[i].dotProduct(axis)); maxA = std::max(maxA, a[i].dotProduct(axis));
+                minB = std::min(minB, b[i].dotProduct(axis)); maxB = std::max(maxB, b[i].dotProduct(axis));
+            }
+            if (maxA < minB || maxB < minA) return false;
+        }
+        return true;
+    }
+
+}
+
+// spatial-queries AC10: sphere and oriented-box overlaps of the scene's leaves equal a scan of
+// every leaf (5,000 boxes, 1,000 queries)
+TEST(SceneBvh, OverlapMatchesLinearScan){
+    Scene scene;
+    std::mt19937 rng(17);
+    std::uniform_real_distribution<float> position(-60.0f, 60.0f);
+    std::uniform_real_distribution<float> size(0.2f, 3.0f);
+    std::vector<std::unique_ptr<Primitive>> boxes;
+    for (int i = 0; i < 5000; i++){
+        auto box = std::make_unique<Primitive>(&scene);
+        box->createBox(size(rng), size(rng), size(rng));
+        box->setPosition(position(rng), position(rng), position(rng));
+        boxes.push_back(std::move(box));
+    }
+    settleScene(scene);
+    SceneBvh& bvh = scene.getPickBvh();
+    PickFilter filter;
+    filter.kinds = MeshRaycast::OVERLAP_KINDS;
+    const std::vector<SceneBvh::Leaf> leaves = bvh.getLeaves();
+    ASSERT_EQ(leaves.size(), 5000u);
+    std::uniform_real_distribution<float> unit(-1.0f, 1.0f);
+    std::uniform_real_distribution<float> reach(0.5f, 12.0f);
+    std::vector<MeshOverlapHit> hits;
+    size_t found = 0;
+    for (int q = 0; q < 1000; q++){
+        SceneBvh::OverlapShape shape;
+        shape.box = q % 2 == 1;
+        shape.center = Vector3(position(rng), position(rng), position(rng));
+        shape.radius = reach(rng);
+        shape.halfExtents = Vector3(reach(rng), reach(rng) * 0.5f, reach(rng));
+        Quaternion rotation(unit(rng) + 1.5f, unit(rng), unit(rng), unit(rng));
+        shape.rotation = rotation.normalize();
+        hits.clear();
+        bvh.overlap(shape, filter, hits, false);
+        std::set<Entity> got;
+        for (const MeshOverlapHit& hit : hits) got.insert(hit.entity);
+        ASSERT_EQ(got.size(), hits.size()) << "each leaf once";
+        ASSERT_TRUE(std::is_sorted(hits.begin(), hits.end(), [](const MeshOverlapHit& a, const MeshOverlapHit& b){ return a.entity < b.entity; }));
+        std::set<Entity> expected;
+        for (const SceneBvh::Leaf& leaf : leaves){
+            const bool touches = shape.box ? scanBoxTouches(leaf.bounds, shape.center, shape.halfExtents, shape.rotation)
+                                           : scanSphereTouches(leaf.bounds, shape.center, shape.radius);
+            if (touches) expected.insert(leaf.entity);
+        }
+        ASSERT_EQ(got, expected) << "query " << q << (shape.box ? " (box)" : " (sphere)");
+        found += hits.size();
+    }
+    EXPECT_GT(found, 1000u);
+}
+
 }  // namespace SceneBvhTest_cpp

@@ -8,11 +8,19 @@
 
 #pragma once
 
+#include "graph/Graph.h"
+
+#include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
+#include <vector>
 
 namespace jasperengine::editor{
+
+    class Command;
+    class Project;
 
     struct GraphEditorHooks{
         // opens a graph file (any registered kind's) in the window of its kind; the Project
@@ -28,6 +36,15 @@ namespace jasperengine::editor{
             std::function<bool(const std::string& path)> open;     // a project-relative or absolute path
         };
         std::map<std::string, KindWindow> kindWindows;              // by kind id
+        // What a kind adds to an edit of its files (dialogue-graphs.md R21, R26): commands that
+        // join the edit's undo step (a dialogue's translations turned needs_review when a source
+        // text changed), and what a file made by edit_graph's create or a Create menu starts with
+        struct KindEdits{
+            std::function<std::vector<std::unique_ptr<Command>>(Project* project, const std::filesystem::path& file, const std::string& before,
+                                                                const std::string& after)> companions;
+            std::function<void(Project* project, const std::filesystem::path& file, graph::Graph& created)> created;
+        };
+        std::map<std::string, KindEdits> kindEdits;                 // by kind id
     };
 
     inline GraphEditorHooks& graphEditorHooks(){

@@ -142,6 +142,10 @@ bool sgj_query_device_memory(sgj_device_memory* out);
 const char* sgj_device_name(void);
 // the context's API version (GL_VERSION, the Vulkan apiVersion; "" elsewhere)
 const char* sgj_api_version(void);
+// The driver's version for the GPU quirk rules: GL/GLES GL_VERSION; Vulkan the driver name and
+// info (VkPhysicalDeviceDriverProperties, Vulkan 1.2), else driverVersion decoded; D3D11 the user-mode
+// driver's a.b.c.d; Metal the OS version; WebGL "".
+const char* sgj_driver_version(void);
 // Whether the API says the device is the CPU (Vulkan's VK_PHYSICAL_DEVICE_TYPE_CPU, lavapipe's).
 // False where the API has no such property: GL names its renderer only.
 bool sgj_device_is_cpu(void);

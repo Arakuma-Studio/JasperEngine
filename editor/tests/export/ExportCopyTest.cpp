@@ -10,10 +10,14 @@
 #include "Exporter.h"
 #include "export/ExportFiles.h"
 #include "support/TestTempDir.h"
+#include "titleart/fonts/WebFontDecode.h"
+#include "util/FontFace.h"
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
+#include <vector>
 
 #if !defined(_WIN32)
 #include <unistd.h>
@@ -75,3 +79,42 @@ TEST(ExportCopy, EnsureExecutableAddsTheExecuteBits) {
 
 }  // namespace ExportCopyTest_cpp
 #endif
+
+// A web font ships decoded (Exporter::shipWebFontDecoded): players have no web font decoder.
+// Red control: copying the .woff2 as it is ships bytes a player cannot open
+TEST(ExportCopy, WebFontsShipDecodedAtTheirPath) {
+    namespace wfs = std::filesystem;
+    using jasperengine::editor::Exporter;
+    namespace titlefonts = jasperengine::editor::titlefonts;
+    jasperengine::test::TestTempDir dir{"export-webfont"};
+    auto readAll = [](const wfs::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    };
+    auto writeAll = [](const wfs::path& path, const std::vector<uint8_t>& bytes) {
+        std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
+    };
+    const wfs::path fonts = wfs::path(JASPER_TEST_FIXTURES_DIR) / "titleart" / "fonts";
+    const std::vector<uint8_t> ttf = readAll(wfs::path(JASPER_TEST_REPO_DIR) / "engine" / "tests" / "core" / "titleart" / "fonts" / "Oswald-wght.ttf");
+    std::vector<uint8_t> damaged = readAll(fonts / "Oswald-wght.woff2");
+    ASSERT_FALSE(ttf.empty());
+    ASSERT_GT(damaged.size(), 48u);
+    damaged.resize(damaged.size() / 2);
+    writeAll(dir.path() / "plain.woff", ttf);
+    writeAll(dir.path() / "damaged.woff2", damaged);
+    writeAll(dir.path() / "brand.ttf", ttf);
+
+    for (const char* name : {"Oswald-wght.woff2", "Oswald-wght.woff"}) {
+        const wfs::path shipped = dir.path() / (std::string("out-") + name);
+        ASSERT_TRUE(Exporter::shipWebFontDecoded(fonts / name, shipped)) << name;
+        const std::vector<uint8_t> bytes = readAll(shipped);
+        EXPECT_EQ(titlefonts::sniffFontFormat(bytes.data(), bytes.size()), titlefonts::FontFileFormat::TrueType) << name;
+        std::string error;
+        EXPECT_NE(jasperengine::FontFace::loadMemory(bytes.data(), bytes.size(), 0, true, name, &error), nullptr) << error;
+    }
+    // left to the plain copy: a TrueType file named .woff, one that does not decode, not a web font
+    EXPECT_FALSE(Exporter::shipWebFontDecoded(dir.path() / "plain.woff", dir.path() / "out-plain.woff"));
+    EXPECT_FALSE(Exporter::shipWebFontDecoded(dir.path() / "damaged.woff2", dir.path() / "out-damaged.woff2"));
+    EXPECT_FALSE(Exporter::shipWebFontDecoded(dir.path() / "brand.ttf", dir.path() / "out-brand.ttf"));
+    EXPECT_FALSE(wfs::exists(dir.path() / "out-damaged.woff2"));
+}

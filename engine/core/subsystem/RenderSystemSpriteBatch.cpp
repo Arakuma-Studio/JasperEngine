@@ -320,6 +320,17 @@ void RenderSystem::packSpriteBatch(Entity entity, SpriteBatchComponent& componen
 
     CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
     const bool uiCamera = camera && camera->type == CameraType::CAMERA_UI;
+    // Flip X (S94 F29): the Sprite's quad is mirrored about its pivot already (its bounds too);
+    // each frame's quad is mirrored the same way, so the mapping keeps the mirror
+    mix(sprite.flipX ? 1u : 0u);
+    auto mirrored = [&sprite](SpriteBatchFrame entry){
+        if (sprite.flipX){
+            const float left = -entry.x1;
+            entry.x1 = -entry.x0;
+            entry.x0 = left;
+        }
+        return entry;
+    };
     if (!sprite.sheet.empty() && sprite.sheetData && sprite.loadedSheet == sprite.sheet.path){
         const SpriteSheetData& sheet = *sprite.sheetData;
         mix(sprite.sheetGeneration);
@@ -331,8 +342,10 @@ void RenderSystem::packSpriteBatch(Entity entity, SpriteBatchComponent& componen
         input.pixelRatio = sheet.pixelRatio;
         input.uiCamera = uiCamera;
         input.flipY = sprite.flipY;
+        input.size = sprite.size;
         mix((uint64_t)sprite.width << 32 | sprite.height);
         mix((uint64_t)sprite.pivotPreset | ((uint64_t)sprite.flipY << 8));
+        mixFloat(sprite.size.x); mixFloat(sprite.size.y);
         for (const SpriteFrame& frame : sheet.frames){
             if (frame.page >= sheet.pages.size()){
                 frames.push_back(SpriteBatchFrame());
@@ -348,7 +361,7 @@ void RenderSystem::packSpriteBatch(Entity entity, SpriteBatchComponent& componen
             entry.y1 = quad.y1;
             entry.rect = quad.textureRect;
             entry.page = frame.page;
-            frames.push_back(entry);
+            frames.push_back(mirrored(entry));
         }
         for (const SpritePage& page : sheet.pages)
             pages.push_back(page.texture);
@@ -372,6 +385,8 @@ void RenderSystem::packSpriteBatch(Entity entity, SpriteBatchComponent& componen
         input.pivot = sprite.pivotPreset;
         input.uiCamera = uiCamera;
         input.flipY = sprite.flipY;
+        input.size = sprite.size;
+        mixFloat(sprite.size.x); mixFloat(sprite.size.y);
         for (const Rect& rect : rects){
             const Rect pixels = rect.isNormalized() ? Rect(rect.getX() * width, rect.getY() * height, rect.getWidth() * width,
                                                            rect.getHeight() * height) : rect;
@@ -382,7 +397,9 @@ void RenderSystem::packSpriteBatch(Entity entity, SpriteBatchComponent& componen
                 input.pageWidth = sheet->pages[mapped.page].width;
                 input.pageHeight = sheet->pages[mapped.page].height;
                 const SpriteFrameQuad quad = spriteFrameQuad(mapped, input);
-                entry.x0 = quad.x0; entry.y0 = quad.y0; entry.x1 = quad.x1; entry.y1 = quad.y1;
+                SpriteBatchFrame frame;
+                frame.x0 = quad.x0; frame.y0 = quad.y0; frame.x1 = quad.x1; frame.y1 = quad.y1;
+                entry = mirrored(frame);
                 entry.rect = quad.textureRect;
                 entry.page = mapped.page;
             }

@@ -22,6 +22,10 @@ public:
 	/// Get the number of seconds elapsed since the start of the application.
 	/// @return Elapsed time, in seconds.
 	virtual double GetElapsedTime();
+	/// Fork (S93-F1): the seconds of an animation clock other than 0 (ElementDocument::SetAnimationClock), what the CSS
+	/// animations and transitions of a document on that clock see. Input timing keeps GetElapsedTime.
+	/// @return By default GetElapsedTime(), whatever the clock.
+	virtual double GetAnimationClockTime(int clock);
 
 	/// Translate the input string into the translated string.
 	/// @param[out] translated Translated string ready for display.

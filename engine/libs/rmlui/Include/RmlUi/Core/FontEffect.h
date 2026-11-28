@@ -43,6 +43,16 @@ public:
 	};
 	virtual bool GetDistanceEffect(DistanceEffect& effect) const;
 
+	/// Fork (S93 R12): what the glyph bitmaps of GenerateGlyphTexture depend on, so a font engine can share them between
+	/// effects. Two effects with the same 'shape' make the same bitmaps for a glyph; the colour is the quads' and 'offset'
+	/// (in the origin GetGlyphMetrics gives) moves the quads, neither is in the bitmap. False (the default): the bitmaps are
+	/// this effect's own, cached by its fingerprint.
+	struct BitmapKey {
+		size_t shape = 0;
+		Vector2i offset;
+	};
+	virtual bool GetBitmapKey(BitmapKey& key) const;
+
 	/// Sets the colour of the effect's geometry.
 	void SetColour(Colourb colour);
 	/// Returns the effect's colour.

@@ -143,6 +143,21 @@ namespace {
         return port;
     }
 
+    Json portsJson(const std::vector<Port>& ports){
+        Json out = Json::array();
+        for (const Port& port : ports) out.push_back(portJson(port));
+        return out;
+    }
+
+    bool samePorts(const std::vector<Port>& a, const std::vector<Port>& b){
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); i++) {
+            if (a[i].id != b[i].id || a[i].direction != b[i].direction || a[i].type != b[i].type || a[i].name != b[i].name ||
+                a[i].multi != b[i].multi || a[i].optional != b[i].optional) return false;
+        }
+        return true;
+    }
+
     Json portRefJson(const PortRef& ref){
         Json out = Json::object();
         out["node"] = ref.node;
@@ -959,12 +974,32 @@ GraphOp apply(Graph& graph, const GraphOp& op){
         Json previous;
         auto current = node->params.find(name);
         if (current != node->params.end()) previous = *current;
+        const Json paramsBefore = node->dynamicPorts ? node->params : Json();
         if (value == op.args.end() || value->is_null()) {
             node->params.erase(name);
         } else {
             node->params[name] = *value;
         }
-        return {"setParam", {{"node", nodeId}, {"name", name}, {"value", previous}}};
+        Json inverse = {{"node", nodeId}, {"name", name}, {"value", previous}};
+        // a dynamic-port node's ports follow its params when they change what its type computes
+        // (a dialogue line's options); the inverse carries the stored ports back exactly
+        if (auto ports = op.args.find("ports"); ports != op.args.end() && ports->is_array()) {
+            if (node->dynamicPorts) inverse["ports"] = portsJson(*node->dynamicPorts);
+            std::vector<Port> restored;
+            for (const Json& port : *ports) restored.push_back(portFrom(port));
+            node->dynamicPorts = std::move(restored);
+        } else if (node->dynamicPorts) {
+            auto kind = GraphRegistry::get().kind(graph.kind);
+            const NodeTypeDesc* type = kind ? GraphRegistry::nodeType(*kind, node->type) : nullptr;
+            if (type && type->dynamicPorts) {
+                std::vector<Port> after = type->dynamicPorts(node->params);
+                if (!samePorts(type->dynamicPorts(paramsBefore), after)) {
+                    inverse["ports"] = portsJson(*node->dynamicPorts);
+                    node->dynamicPorts = std::move(after);
+                }
+            }
+        }
+        return {"setParam", std::move(inverse)};
     }
 
     if (op.op == "connect") {

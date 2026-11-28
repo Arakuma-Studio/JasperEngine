@@ -7,6 +7,7 @@
 
 #include "NavBakeCollector.h"
 #if JASPERENGINE_VOXEL
+#include "component/VoxelVolumeComponent.h"
 #include "subsystem/VoxelSystem.h"
 #endif
 #include "subsystem/RenderSystem.h"
@@ -43,7 +44,6 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/CharacterControllerComponent.h"
 #include "component/RigidbodyComponent.h"
-#include "component/VoxelVolumeComponent.h"
 #endif
 
 #include <algorithm>

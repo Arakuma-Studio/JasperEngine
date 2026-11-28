@@ -100,6 +100,8 @@ namespace jasperengine {
         // ---- internal state, named after Anime's fields; read through the accessors above ----
         Kind kind = Kind::TIMER;
         AnimClock clock = AnimClock::UI;
+        // the parameters named the clock: the targets' documents do not choose it (S93 R35)
+        bool clockGiven = false;
         AnimParam id;
         AnimTimeline* parent = nullptr;
         double duration = 0;
@@ -139,13 +141,21 @@ namespace jasperengine {
         // keeps a running top-level timer alive while it is in the engine's list
         std::shared_ptr<AnimTimer> engineRef;
 
+        // the clock a timer without a "clock" parameter takes from its targets: GAME when one of
+        // them is an element of a Game Time UI Document, else UI
+        static AnimClock clockOfTargets(const AnimTargetList& targets);
+        // moves a top-level timer to another clock keeping its progress (a timeline whose first
+        // animated child is in a Game Time document)
+        void adoptClock(AnimClock next);
+
         AnimTickMode requestTick(double time);
         double computeDeltaTime(double time);
         // whether the timer only animates targets that are gone (AnimEngine cancels it)
         virtual bool hasOnlyInvalidTargets() const { return false; }
 
     protected:
-        AnimTimer(Kind kind, const AnimParam& params, AnimTimeline* parent, double parentPosition);
+        // implicitClock: the clock without a "clock" parameter (an animation's targets' choice)
+        AnimTimer(Kind kind, const AnimParam& params, AnimTimeline* parent, double parentPosition, AnimClock implicitClock = AnimClock::UI);
 
         friend class AnimEngine;
         friend class AnimTimeline;

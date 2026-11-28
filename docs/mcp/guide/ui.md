@@ -236,6 +236,8 @@ arguments change it. They are editor preferences, not undoable, and not saved wi
   or `system`), `device_overlay`, `safe_area_outline`, `custom_device` `{width, height, insets
   {top, right, bottom, left}, corner_radius}` in pixels with `dpi`: a simulated phone and system
   language, editor only; `safe_area` in the reply is `Screen.safeArea` (jasper://docs/safe-area).
+  `language: "en-XA"` (accented, longer) or `"ar-XB"` (right to left) is a pseudo-locale of the
+  String Tables; translating a UI is jasper://docs/localization.
 - `simulate_touch`: the mouse is one finger (not while playing); `simulate_textures`: every view
   shows the cooked textures of `desktop`, `mobile`, `android_etc2` or `web`.
 - `atmosphere_quality`: the preview's Atmosphere Quality (`project` = the project's desktop tier;
@@ -252,6 +254,19 @@ field sees them (one character, one backspace to erase). `maxTextSize` counts ch
 a character shows is up to the Text's font: the default font has Latin and Arabic; a game that
 shows Chinese, Japanese, Korean or emoji gives the Text a font with those glyphs. Check typing as
 Windows delivers it with `send_input {type:"text", text:"a😀", per_unit:true}` (`jasper://docs/input`).
+
+## Text anchor and size
+
+A Text's `anchorHorizontal` (`left`, `center`, `right`) and `anchorVertical` (`top`,
+`middle`, `bottom`, `baseline`, `capline`, `midline`) pick the point of its box that sits on its
+origin, Unity TextMesh's Anchor (Inspector: Text > Anchor buttons). The box is the fixed
+width/height when set, else the text; the anchor moves the box, not the lines inside it.
+Baseline puts the first line's baseline on the origin; Capline the middle of its capitals, Midline
+of its lowercase letters (the font's cap and x heights). To centre a number on a plaque, use
+`center` + `capline`. Bottom (the default) puts the box above the origin in a world view; a UI
+camera draws y down, so there Top and Bottom swap on screen. `fontSizeUnit: em` measures
+`fontSize` as the em square (CSS, TMP: about 10% larger glyphs than the default `pixel_height`).
+In Lua, `text.width` and `text.height` are final right after `text.text = ...`.
 
 ## Text outline and shadow
 

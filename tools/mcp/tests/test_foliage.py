@@ -6,6 +6,7 @@ writes into its own project.
 
 from __future__ import annotations
 
+import json
 import asyncio
 import hashlib
 from pathlib import Path
@@ -204,6 +205,31 @@ async def test_pick_at_reports_tree(ed: Editor):
     ed.check_eq(trees[0]["entity"], terrain, "the GameObject is the Terrain")
 
 
+async def test_query_physics_drawn_reports_tree(ed: Editor):
+    """spatial-queries R12: a drawn overlap finds a Terrain's tree, named as pick_at names it."""
+    sid, terrain = await terrain_scene(ed, "QueryTree")
+    await ed.call("tool_groups", enable=["physics"])
+    placed = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[
+        {"op": "place_trees", "prototype": 0, "points": [[0, 0]]}], space="local")
+    surface = await ed.call("sample_terrain", scene=sid, entity=terrain, space="local", points=[[0, 0]])
+    y = surface["samples"][0]["height"]
+    trees: list = []
+    for _ in range(60):
+        got = await ed.call("query_physics", scene=sid, dimension="drawn", mode="overlap", shape="sphere", radius=1,
+                            origin=[0, y + 3, 0])
+        trees = [hit for hit in got["hits"] if hit["kind"] == "tree"]
+        if trees:
+            break
+        await ed.call("wait", seconds=10, frames=5)
+    ed.check(trees, f"the tree is found once its cells and mesh are loaded: {got}")
+    ed.check_eq(trees[0]["tree_id"], placed["ops"][0]["ids"][0], f"{trees[0]}")
+    ed.check_eq(trees[0]["prototype"], 0, f"{trees[0]}")
+    ed.check_eq(trees[0]["entity"], terrain, "the GameObject is the Terrain")
+    beside = await ed.call("query_physics", scene=sid, dimension="drawn", mode="overlap", shape="sphere", radius=1,
+                           origin=[6, y + 3, 0])
+    ed.check(not [hit for hit in beside["hits"] if hit["kind"] == "tree"], f"past its bounds, no tree: {beside}")
+
+
 async def test_set_properties_reaches_prototypes(ed: Editor):
     sid, terrain = await terrain_scene(ed, "Props")
     await ed.call("set_properties", scene=sid, entity=terrain, values={"terrain": {
@@ -297,19 +323,19 @@ async def test_duplicate_terrain_copies_on_first_write(ed: Editor):
 
 
 
-async def test_foliage_quality_reaches_main_cpp(ed: Editor):
+async def test_foliage_quality_reaches_the_game(ed: Editor):
     """A project made now declares its Foliage Quality (High, Low, Low, capped), which differs from the engine's
-    default and so reaches the compiled game's main.cpp; a change of it follows. (A project from before T5 has no
-    line: the reflection fixtures' codegen goldens hold that.)"""
+    default and so reaches the game's game.json (the project's own build reads <internal>/cooked/game.json); a
+    change of it follows. (A project from before T5 writes none.)"""
     sid, _ = await terrain_scene(ed, "Quality")
-    main = ed.project / ".jasperengine" / "generated" / "main.cpp"
+    game = ed.project / ".jasperengine" / "cooked" / "game.json"
     await ed.call("save_scene", scene=sid)
-    ed.check("Engine::setFoliageQualityDefaults(FoliageQuality::HIGH, FoliageQuality::LOW, FoliageQuality::LOW, false);"
-             in main.read_text(encoding="utf-8"), "a new project's Foliage Quality reaches the compiled game")
+    ed.check_eq(json.loads(game.read_text(encoding="utf-8")).get("foliageQuality"), ["high", "low", "low"],
+                "a new project's Foliage Quality reaches the game")
     await ed.call("set_project_settings", values={"quality.foliage_quality_mobile": "medium"})
     try:
         await ed.call("save_scene", scene=sid)
-        ed.check("Engine::setFoliageQualityDefaults(FoliageQuality::HIGH, FoliageQuality::MEDIUM, FoliageQuality::LOW, false);"
-                 in main.read_text(encoding="utf-8"), "a changed Foliage Quality follows")
+        ed.check_eq(json.loads(game.read_text(encoding="utf-8")).get("foliageQuality"), ["high", "medium", "low"],
+                    "a changed Foliage Quality follows")
     finally:
         await ed.call("set_project_settings", values={"quality.foliage_quality_mobile": "low"})

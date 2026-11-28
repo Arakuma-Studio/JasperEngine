@@ -5,7 +5,10 @@ The same script, in a project with a mixer (a Music group at -12 dB) and non-def
 > Audio, runs in editor Play and in a real headless prebuilt player. It reports the groups, whether
 its clip plays through Music and the Music meter: Play and the player must agree. Without the
 project's mixer in game.json the player has only an implicit Master; with --headless muted, the
-clip would not play and the meter would stay silent.
+clip would not play and the meter would stay silent. The clip's import settings say Streaming (S97
+REQ-17): the player holds it so too (or compressed in memory, when the export packs the file), where
+Auto would decode a clip this small; Project Settings' Unused Clip Cache reaches game.json. The source
+is 2D (Spatial Blend 0) with an Audio Low Pass Filter (S97 AC27): the player plays it so too.
 
 Set JASPER_SLOW_BUILD=1 to run it: it uses the run's prebuilt glcore runtime (build_cache).
 """
@@ -39,15 +42,19 @@ function Probe:onUpdate(dt)
     self.frames = self.frames + 1
     if self.frames == 60 then
         local sound = AudioSource(self.scene, self.entity)
-        print(string.format("audioprobe groups=%s playing=%s output=%s meter=%.1f",
+        local lowpass = sound:getEffect(1)
+        print(string.format("audioprobe groups=%s playing=%s output=%s meter=%.1f load=%d blend=%.2f effects=%d:%s:%.0f",
             table.concat(AudioMixer.getGroupNames(), ","), tostring(sound:isPlaying()), sound.outputGroup,
-            AudioMixer.getMeter("Music")))
+            AudioMixer.getMeter("Music"), sound:getResolvedLoadType(), sound.spatialBlend, sound:getEffectCount(),
+            lowpass and lowpass.type or "none", lowpass and lowpass:getParameter("cutoff") or 0))
     end
 end
 return Probe
 """
 
-PROBE = re.compile(r"audioprobe groups=(\S+) playing=(\S+) output=(\S+) meter=(-?[\d.]+)")
+PROBE = re.compile(r"audioprobe groups=(\S+) playing=(\S+) output=(\S+) meter=(-?[\d.]+) load=(\d+) blend=([\d.]+) effects=(\S+)")
+# AudioLoadType: CompressedInMemory, Streaming
+COMPRESSED, STREAMING = 2, 3
 
 
 def write_tone(path, seconds=4.0, frequency=1000.0, amplitude=0.5, rate=44100):
@@ -62,7 +69,8 @@ def probe_of(lines):
     for line in lines:
         found = PROBE.search(line)
         if found:
-            return found.group(1), found.group(2), found.group(3), float(found.group(4))
+            return (found.group(1), found.group(2), found.group(3), float(found.group(4)), int(found.group(5)), float(found.group(6)),
+                    found.group(7))
     return None
 
 
@@ -75,9 +83,14 @@ async def test_a_prebuilt_headless_player_hears_as_play_does(ed: Editor):
         {"op": "set_group", "name": "Music", "volume": -12},
     ]})
     ed.check(not r.is_error, f"the project's mixer: {r.text[:300]}")
-    await ed.call("set_project_settings", values={"audio.max_real_voices": 20, "audio.max_voices": 100, "audio.sample_rate": 48000})
+    await ed.call("set_project_settings", values={"audio.max_real_voices": 20, "audio.max_voices": 100, "audio.sample_rate": 48000,
+                                                  "audio.unused_clip_cache": 8})
+    await ed.call("sync_files", paths=["music.wav"])
+    await ed.call("set_audio_import_settings", paths=["music.wav"], settings={"load_type": "streaming"})
     await ed.call("create_entity", name="Probe", type="audio_source")
-    await ed.call("set_properties", entity="Probe", values={"audiosource": {"filename": "music.wav", "looping": True}})
+    # 2D (create_entity's audio_source) with a low-pass well above the 1 kHz tone, so the meters still compare
+    await ed.call("set_properties", entity="Probe", values={"audiosource": {
+        "filename": "music.wav", "looping": True, "effects": [{"type": "lowpass", "params": {"cutoff": 8000}}]}})
     await ed.call("create_script", kind="lua", name="Probe", content=SCRIPT, entity="Probe")
     saved = await ed.call("save_project", untitled_scene_dir="scenes")
     await ed.call("edit_build_scenes", action="set_start", scene=saved["scenes_in_build"][0]["id"])
@@ -100,6 +113,8 @@ async def test_a_prebuilt_headless_player_hears_as_play_does(ed: Editor):
     ed.check_eq(heard[0], "Master,Music", "Play's groups")
     ed.check_eq(heard[1], "true", "it plays in Play")
     ed.check(heard[3] > -40, f"Music is heard in Play: {heard}")
+    ed.check_eq(heard[4], STREAMING, "the clip's Load Type in Play")
+    ed.check_eq(heard[5:], (0.0, "1:lowpass:8000"), "Play's source: 2D with its low-pass")
 
     runtime = await build_cache.player_runtime(ed, "glcore", "release")
     out = ed.scratch.root / "export-prebuilt-audio"
@@ -110,7 +125,8 @@ async def test_a_prebuilt_headless_player_hears_as_play_does(ed: Editor):
     ed.check_eq(job["status"], "succeeded", f"{job}")
     ed.check_eq((job["result"]["method_used"], job["result"]["player_id"]), ("prebuilt", runtime.name), f"{job}")
     audio = json.loads((out / "game.json").read_text())["audio"]
-    ed.check_eq((audio["maxRealVoices"], audio["maxVoices"], audio["sampleRate"]), (20, 100, 48000), "Project Settings > Audio")
+    ed.check_eq((audio["maxRealVoices"], audio["maxVoices"], audio["sampleRate"], audio["unusedClipCacheMb"]), (20, 100, 48000, 8),
+                "Project Settings > Audio")
 
     # the player itself, as a person runs it (run_build refuses a prebuilt player: build_project
     # records only what a compile produced)
@@ -126,3 +142,5 @@ async def test_a_prebuilt_headless_player_hears_as_play_does(ed: Editor):
     ed.check_eq(played[:3], heard[:3], "the groups, the clip playing and its output group, as in Play")
     # the same tone through the same fader; a meter reads the last blocks' peak
     ed.check(abs(played[3] - heard[3]) <= 3.0, f"the Music meter, as in Play: {played[3]} against {heard[3]}")
+    ed.check(played[4] in (STREAMING, COMPRESSED), f"the player holds the clip as its import settings say: {played}")
+    ed.check_eq(played[5:], heard[5:], "the player's source: 2D with its low-pass, as in Play")

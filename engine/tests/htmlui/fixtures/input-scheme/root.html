@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>scheme-root</title>
+<style>
+    html, body { margin: 0; width: 640px; height: 360px; }
+    .pad, .touch { display: none; }
+    html[data-input-scheme="gamepad"] .pad { display: block; }
+    html[data-input-scheme="touch"] .touch { display: block; }
+    html[data-gamepad-family="playstation"] .pad { width: 40px; }
+</style>
+</head>
+<body>
+    <div class="pad" id="pad">Press Cross</div>
+    <div class="touch" id="touch">Tap</div>
+</body>
+</html>

@@ -57,8 +57,7 @@ namespace jasperengine::editor::htmlui {
     // Remote stylesheets of any host but Google Fonts (cdnjs Font Awesome, Bootstrap Icons,
     // animate.css, …; phase-2 §3.13.3): the sheet goes to css/<host>/<path>.css, every url()
     // it references (images, fonts, @imports, recursively) is downloaded into the same tree and
-    // rewritten to a relative path; @font-face keeps its TrueType/OpenType sources (WOFF and
-    // WOFF2 candidates dropped when one exists; WOFF/WOFF2 only: HTMLUI-IMP-0007).
+    // rewritten to a relative path; @font-face keeps its TrueType/OpenType sources when supplied, otherwise its WOFF/WOFF2 sources.
     class StylesheetImporter {
     public:
         static constexpr int kMaxImportDepth = 8;
@@ -74,7 +73,7 @@ namespace jasperengine::editor::htmlui {
 
     private:
         // writes the sheet into staging under `localFile`; false when the sheet itself failed
-        void rewriteSheet(const std::string& url, const std::string& baseUrl, const std::string& body,
+        void rewriteSheet(const std::string& baseUrl, const std::string& body,
                           const std::string& localFile, int depth, const ImportLocation& at);
         // a resource a sheet references: staged, its asset path returned ("" when it failed)
         std::string importResource(const std::string& url, CssUrl::Context context, const std::string& fromFile,
@@ -86,7 +85,7 @@ namespace jasperengine::editor::htmlui {
         std::map<std::string, std::string> done;   // normalized URL -> asset path ("" while in progress)
     };
 
-    // A font file URL (.ttf/.otf) imported on its own: fonts/<host>/<sha1-12>-<name>.<ext>
+    // A font file URL (.ttf/.otf/.woff/.woff2) imported on its own: fonts/<host>/<sha1-12>-<name>.<ext>
     ImportedResource importFontFile(RemoteImporter& importer, const std::string& url, const std::string& body,
                                     const SniffedContent& sniffed, const ImportLocation& at);
 

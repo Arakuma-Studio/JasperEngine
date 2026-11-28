@@ -16,6 +16,8 @@
 #include "Project.h"
 #include "util/ExternalCodeEditor.h"
 #include "util/FileUtils.h"
+#include "platform/DeviceRunner.h"
+#include "thread/ThreadUtil.h"
 #include <cmath>
 
 namespace {
@@ -996,6 +998,7 @@ void ConsoleWindow::show() {
     }
 
     showToolbar();
+    showDeviceStrip();
 
     // List above, details pane below, split by a draggable bar.
     const float splitterH = Theme::dpi(4.0f);
@@ -1027,6 +1030,74 @@ void ConsoleWindow::show() {
     if (wasOpen && !windowOpen) {
         setOpen(false);
     }
+}
+
+void ConsoleWindow::showDeviceStrip() {
+    const std::vector<platform::DeviceRuns::Run> runs = platform::DeviceRuns::get().runs();
+    if (runs.empty()) return;
+    // the Category filter offers device from the first run on
+    if (seenCategories.insert(platform::DEVICE_LOG_CATEGORY).second) needsRebuild = true;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(6.0f, 3.0f)));
+    for (const platform::DeviceRuns::Run& run : runs) {
+        const platform::DeviceRunState& state = run.state;
+        ImGui::PushID(run.device.id.c_str());
+        ImGui::Dummy(ImVec2(Theme::dpi(4.0f), 0.0f));
+        ImGui::SameLine();
+        const char* icon = run.device.kind == platform::RunDeviceKind::Browser ? ICON_FA_GLOBE
+                         : run.device.kind == platform::RunDeviceKind::Host ? ICON_FA_DESKTOP : ICON_FA_MOBILE_SCREEN_BUTTON;
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("%s %s", icon, run.device.name.c_str());
+        ImGui::SameLine();
+        const ImVec4 color = state.crashed ? ImVec4(1.0f, 0.35f, 0.35f, 1.0f) : state.running ? ImVec4(0.3f, 1.0f, 0.3f, 1.0f)
+                                                                                            : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+        ImGui::TextColored(color, "%s", state.phase.empty() ? "Installing" : state.phase.c_str());
+        if (!state.url.empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", state.url.c_str());
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!state.running);
+        if (ImGui::SmallButton(ICON_FA_STOP " Stop")) platform::DeviceRuns::get().stop(run.device.id);
+        ImGui::SetItemTooltip("Stop the game on %s", run.device.name.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton(ICON_FA_CAMERA " Screenshot")) {
+            // a device answers in a second or two: off the UI thread
+            const std::string id = run.device.id;
+            jasperengine::thread::spawnNamed("je-device-shot", [id]() {
+                std::filesystem::path saved;
+                std::string error;
+                if (platform::DeviceRuns::get().saveScreenshot(id, saved, error)) Out::info("Device screenshot saved: %s", FileUtils::pathToUtf8(saved).c_str());
+                else Out::error("Device screenshot: %s", error.c_str());
+            }).detach();
+        }
+        ImGui::SetItemTooltip("Saved in Recordings/Device/ of the project");
+        ImGui::EndDisabled();
+        if (!state.running) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton(ICON_FA_XMARK)) platform::DeviceRuns::get().dismiss(run.device.id);
+            ImGui::SetItemTooltip("Remove this run from the strip");
+        }
+        // a crashed run's "crashed" line selects its first fatal line when clicked
+        if (state.crashed && !state.fatalLines.empty() && crashActions.insert(run.device.id).second) {
+            const std::string fatal = "[" + run.device.name + "] " + state.fatalLines.front();
+            setMessageAction("[" + run.device.name + "] crashed", [fatal](const std::string&) {
+                ConsoleWindow* console = Out::getConsoleWindow();
+                if (!console) return;
+                for (const LogEntry& entry : Out::getLogsSince(0)) {
+                    if (entry.category == platform::DEVICE_LOG_CATEGORY && entry.message == fatal) {
+                        console->selectLog(entry.id);
+                        return;
+                    }
+                }
+            });
+        } else if (!state.crashed && crashActions.erase(run.device.id)) {
+            setMessageAction("[" + run.device.name + "] crashed", nullptr);
+        }
+        ImGui::PopID();
+    }
+    ImGui::PopStyleVar();
+    // (the run's log lines wake the editor: each batch is a main-thread task)
+    ImGui::Separator();
 }
 
 bool ConsoleWindow::hasSelectedMessage() const {

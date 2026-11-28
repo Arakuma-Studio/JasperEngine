@@ -183,6 +183,10 @@ namespace jasperengine {
 
         // R18
         bool isAreaReady(float x, float z, float radius, TerrainWorldReadyLevel level) const;
+        // Simulation Culling's ground rule (culling-group-and-simulation-distance D11): every present
+        // tile touching the circle has its data in memory (CpuReady, Uploading or Resident), fine
+        // collision or not; absent tiles (the world's edge) count as loaded. No allocation.
+        bool isAreaLoaded(float x, float z, float radius) const;
         // A pending area is a focus until it is ready or dropped
         int waitForArea(float x, float z, float radius, TerrainWorldReadyLevel level);
         void dropAreaWait(int id);

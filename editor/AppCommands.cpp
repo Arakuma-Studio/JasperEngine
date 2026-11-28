@@ -15,6 +15,7 @@
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
+#include "recorder/RecordInput.h"
 #include "window/ProjectWindow.h"
 #include "render/SceneRender.h"
 #include "window/AnimationWindow.h"
@@ -38,6 +39,7 @@
 #include "Engine.h"
 #include "pixelart/PixelPerfectEditor.h"
 #include "util/Util.h"
+#include "util/FileDialogs.h"
 #include "window/PlayInput.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "lattice/LatticeSceneTools.h"
@@ -64,6 +66,7 @@
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "voxel/VoxelBrushTool.h"
+#include "vertexcolor/VertexPaintTool.h"
 
 #include "imgui_internal.h"
 
@@ -226,6 +229,10 @@ void editor::App::registerCommands(){
          [this]() { return mainToolbar->canPause() && !mainToolbar->isPaused(); });
     bind("playmode.stop", [this](const CommandArgs&) { mainToolbar->stopSession(); },
          [this]() { return mainToolbar->canStopSession(); });
+    bind("playmode.recordInput", [](const CommandArgs&) { recordinput::RecordInput::get().toggle(); },
+         []() { return recordinput::RecordInput::get().canToggle(); });
+    bind("playmode.replayInput", [this](const CommandArgs&) { mainToolbar->replayInput(); },
+         [this]() { return !mainToolbar->isInPlayMode() && mainToolbar->canTogglePlay(); });
     bind("playmode.releaseCursor", [this](const CommandArgs&) { playInput->releaseCursor(); },
          [this]() {
              const MouseMode mode = Engine::getMouseMode();
@@ -386,17 +393,23 @@ void editor::App::registerCommands(){
         const SceneProject* scene = project.getSelectedScene();
         return scene && scene->sceneRender && scene->sceneRender->isFluidPainting();
     };
-    auto brush = [this, &bind, terrainEditing, dyePainting, noDrag](const char* id, bool size, float factor) {
-        bind(id, [this, size, factor, dyePainting](const CommandArgs&) {
+    // an armed Vertex Paint tool (V1 R105): its brush's size and strength
+    auto vertexPainting = [this]() { return vertexcolor::VertexPaintTools::get().isArmedIn(project.getSelectedSceneId()); };
+    auto brush = [this, &bind, terrainEditing, dyePainting, vertexPainting, noDrag](const char* id, bool size, float factor) {
+        bind(id, [this, size, factor, dyePainting, vertexPainting](const CommandArgs&) {
             const SceneProject* selected = project.getSelectedScene();
             // the nav-grid brush (S19): a cell more or less across
             if (size && selected && NavigationEditor::get().isBrushPainting(selected->scene)) {
                 NavigationEditor::Brush& navBrush = NavigationEditor::get().getBrush();
                 navBrush.size = std::clamp(navBrush.size + (factor > 1.0f ? 1 : -1), 1, 64);
+            } else if (vertexPainting()) {
+                vertexcolor::VertexPaintSettings& paint = vertexcolor::VertexPaintTools::get().settings();
+                if (size) vertexcolor::adjustSize(paint, factor);
+                else vertexcolor::adjustStrength(paint, factor);
             } else if (size && dyePainting()) FluidEditorTools::adjustRadius(factor);
             else if (size) terrainEditWindow->adjustBrushSize(factor);
             else terrainEditWindow->adjustBrushStrength(factor);
-        }, [terrainEditing, dyePainting, size]() { return terrainEditing() || (size && dyePainting()); }, noDrag);
+        }, [terrainEditing, dyePainting, vertexPainting, size]() { return terrainEditing() || vertexPainting() || (size && dyePainting()); }, noDrag);
     };
     brush("terrain.brushSmaller", true, 1.0f / 1.15f);
     brush("terrain.brushLarger", true, 1.15f);
@@ -532,6 +545,12 @@ void editor::App::registerCommands(){
         bind(id, [command](const CommandArgs&) { titledesigner::runTitleAnimationCommand(command); },
              []() { return titledesigner::titleAnimationPanelFocused(); }, [this]() { return !titleDesignerWindow->typing(); });
     }
+
+    // S94 F35, F36: Assets > Import Unity Animation...
+    bind("assets.importUnityAnimation", [this](const CommandArgs&) {
+        const std::string file = FileDialogs::openFileDialog("", FILE_DIALOG_UNITY_ANIMATION);
+        if (!file.empty()) projectWindow->importUnityAnimations({std::filesystem::u8path(file)}, projectWindow->createTargetDirectory());
+    }, [this]() { return !project.getProjectPath().empty(); });
 
     // S87 R57: Assets > Import Title Art...
     bind("assets.importTitleArt", [](const CommandArgs&) { openTitleArtImportDialog(); }, [this]() { return !project.getProjectPath().empty(); });
@@ -710,6 +729,10 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (sceneWindow->isHovered() && project.getSelectedScene() && project.getSelectedScene()->scene &&
         terrainEditWindow->isEditingScene(project.getSelectedScene()->scene)) {
         state.panels.push_back(ShortcutContext::TerrainBrush);
+    }
+    // V1 R105: an armed Vertex Paint tool, the Scene view under the pointer or focused
+    if ((sceneWindow->isHovered() || sceneWindow->isFocused()) && vertexcolor::VertexPaintTools::get().isArmedIn(project.getSelectedSceneId())) {
+        state.panels.push_back(ShortcutContext::VertexPaint);
     }
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);

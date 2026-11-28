@@ -1,0 +1,7 @@
+# tools/android-emulator-test.sh --two-finger-tap --expect-file android-expect.txt --ime '[gate] form focused'
+# --ime-editor-info 'inputType=0x21 imeOptions=0x12000004' --expect-file (text-entry AC7): after the
+# scheme's second switch the form's e-mail field has the focus; the 8 characters typed leave 5
+# (maxlength), and Enter submits the form
+I/JasperEngine: [gate] form focused
+I/JasperEngine: [gate] value abcde (5)
+I/JasperEngine: [gate] submit

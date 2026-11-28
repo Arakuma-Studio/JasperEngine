@@ -5,6 +5,7 @@
 #define HTMLTEXTEFFECTS_H
 
 #include "Export.h"
+#include "htmlui/HtmlUIClock.h"
 #include "util/TextEffects.h"
 
 #include <RmlUi/Core/ElementText.h>
@@ -84,7 +85,8 @@ namespace jasperengine::htmlui {
             std::string value;
             HtmlTextEffect effect;
             int iterations = -1;     // -1 infinite
-            bool gameTime = false;
+            // text-effect-time: ui, game, or auto (the document's Update Mode)
+            UIDocumentUpdateMode clock = UIDocumentUpdateMode::UNSCALED_TIME;
             double start = 0.0;
             double cycleStart = 0.0;
             int iterationsDone = 0;

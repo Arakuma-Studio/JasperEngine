@@ -24,6 +24,9 @@ namespace jasperengine {
     // Format (version 1): {"version":1, "family":"gl"|"modern", "shaders":[{"key","custom"}],
     // "pipelines":[{"shader":<index>, "desc":{...}}]}. A key is the storage key's text (a fork's
     // session id stripped), "custom" the fork's base path; "desc" is SokolPipelineRecord's JSON.
+    // A shader may have no pipeline (a variant the editor's Play drew with, S98 REQ-27). Written
+    // sorted (shaders by key and custom, pipelines by shader and desc), so the same entries give the
+    // same file whatever order they were found in.
     // Main thread, except the recorder, which only queues.
     class JASPERENGINE_API ShaderWarmup {
     public:
@@ -37,6 +40,9 @@ namespace jasperengine {
         static bool save(const std::string& path, std::string* error = nullptr);
         // adds the entries of another list's text that are not in this one
         static bool mergeFromString(const std::string& text, std::string* error = nullptr);
+        // adds the variants not in the list, without pipelines; how many were added (a key of a
+        // fork this session does not know is skipped)
+        static size_t addShaderKeys(const std::vector<ShaderKey>& keys);
         static void clear();
         static size_t getShaderCount();
         static size_t getPipelineCount();

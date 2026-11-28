@@ -629,6 +629,8 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
         imagesText += ", the uncertainty map (brighter = worse match)";
     }
     state->images = std::move(images);
+    // a reply past the call's wait is a job_id: get_job then returns the images
+    job->setImages(state->images);
 
     std::string text = "Synthesized " + std::to_string(result.width) + "x" + std::to_string(result.height) + " " + ts::toString(spec.mode) + " (" +
                        ts::toString(spec.quality) + ", seed " + std::to_string(spec.seed) + ") in " + fixed(result.seconds, 1) + " s. ";

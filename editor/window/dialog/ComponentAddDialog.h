@@ -48,6 +48,8 @@ private:
     // the project's scripts (Unity's Add Component > Scripts), listed in the Scripts category and the search
     std::vector<ScriptCandidate> m_scripts;
     std::function<void(const ScriptCandidate&)> m_onScript;
+    // Unity's audio filters (SourceEffectEdit::filterAliases): what picking one does, null to list none
+    std::function<void(const std::string& effect)> m_onAudioFilter;
 
     void finish(bool cancelled);
 
@@ -66,6 +68,9 @@ public:
 
     // after open: the project's scripts it lists and what picking one does
     void setScripts(std::vector<ScriptCandidate> scripts, std::function<void(const ScriptCandidate&)> onScript);
+    // after open: the Audio category and the search list Unity's Audio Low Pass Filter and its
+    // siblings, each adding its effect to the Audio Source (S97 REQ-5)
+    void setAudioFilters(std::function<void(const std::string& effect)> onAudioFilter);
 
     void show();
     bool isOpen() const { return m_isOpen; }

@@ -1,0 +1,4 @@
+# String literals naming a GPU vendor or renderer that tools/check_gpu_vendor_branches.py lets stay in
+# engine/renders, engine/core/render and engine/shaderlib: log-only text, never a drawing decision
+# (a driver workaround is a GPU quirk: engine/core/device/gpu_quirks.json).
+#   <path> :: <literal text> :: <reason>

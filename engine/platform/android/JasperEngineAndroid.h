@@ -17,7 +17,11 @@ public:
     virtual bool isTouchDevice() override;
 
     virtual void showVirtualKeyboard(std::wstring text) override;
+    // the field's traits as the IME's EditorInfo (AndroidTextInput.h editorInfoOf)
+    virtual void showVirtualKeyboard(const std::wstring& text, const jasperengine::TextEntryTraits& traits) override;
     virtual void hideVirtualKeyboard() override;
+    virtual void updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd) override;
+    virtual bool keepsVirtualKeyboardText() override;
 
     virtual void setClipboardText(const std::string& utf8) override;
     virtual std::string getClipboardText() override;

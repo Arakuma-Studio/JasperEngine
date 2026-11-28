@@ -6,6 +6,7 @@
 
 #include "PickCache.h"
 
+#include "jobs/JobChannel.h"
 #include "jobs/JobSystem.h"
 #include "profiler/Profile.h"
 
@@ -71,6 +72,14 @@ namespace {
         return delay;
     }
 
+    // the delay's wait, on blocking threads: inside the build job it held a Background gate slot,
+    // and with 3 workers the gate has one, so the shaders queued behind it waited the whole delay
+    // (never destroyed, as the cache)
+    jobs::JobChannel& backgroundBuildDelayChannel(){
+        static jobs::JobChannel* channel = new jobs::JobChannel("mesh-bvh-delay", 4);
+        return *channel;
+    }
+
 }
 
 PickCache::EntryPtr PickCache::acquire(uint64_t hash){
@@ -114,16 +123,23 @@ PickCache::EntryPtr PickCache::create(uint64_t hash, PickGeometry&& geometry, bo
         options.gate = entry->triangles >= DISK_CACHE_TRIANGLES ? jobs::GateClass::Heavy : jobs::GateClass::Default;
         options.name = "mesh-bvh";
         std::weak_ptr<Entry> weak = entry;
-        entry->task = jobs::submit([this, weak](){
-            // tests: JASPER_PICK_BUILD_DELAY_MS keeps a background build pending that long, to
-            // see the Scene view's waiting click and refused drop (docs/testing.md)
-            if (const int delay = backgroundBuildDelayMs(); delay > 0){
-                std::this_thread::sleep_for(std::chrono::milliseconds(delay));
-            }
+        auto build = [this, weak](){
             if (EntryPtr owned = weak.lock()){
                 runBuild(owned);
             }
-        }, options);
+        };
+        // tests: JASPER_PICK_BUILD_DELAY_MS keeps a background build pending that long, to
+        // see the Scene view's waiting click and refused drop (docs/testing.md)
+        if (const int delay = backgroundBuildDelayMs(); delay > 0){
+            jobs::SubmitOptions held;
+            held.name = "mesh-bvh-delay";
+            const jobs::TaskRef wait = backgroundBuildDelayChannel().submit([delay](){
+                std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+            }, held);
+            entry->task = jobs::submit(build, options, {wait});
+        }else{
+            entry->task = jobs::submit(build, options);
+        }
     }
     return entry;
 }

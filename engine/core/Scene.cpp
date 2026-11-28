@@ -35,6 +35,7 @@
 #include "subsystem/AnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/NavigationSystem.h"
 #if JASPERENGINE_TERRAIN_WORLD
 #include "subsystem/TerrainWorldSystem.h"
@@ -110,6 +111,9 @@ void Scene::init(){
     // after Render's transforms, before physics: a Tilemap Collider 2D's chunks rebuild before the step
     registerSystem<TilemapSystem>();
     registerSystem<PhysicsSystem>();
+    // after Render's world transforms and camera planes; after physics, whose load makes the
+    // bodies it freezes (the next fixed steps read them frozen)
+    registerSystem<CullingSystem>();
     // after physics (world collisions query it, never while it steps) and the transforms
     registerSystem<ParticleSubsystem>();
     registerSystem<AudioSystem>();
@@ -155,6 +159,7 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     forEachComponentEvent(*this, [&substring](auto& event) { event.removeByTagSubstring(substring); });
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
     getSystem<TitleArtSystem>()->removeSubscriptionsByTag(substring);
+    getSystem<CullingSystem>()->removeSubscriptionsByTag(substring);
 }
 
 void Scene::setCamera(Camera* camera){
@@ -320,6 +325,24 @@ void Scene::setSceneColorScale(SceneColorScale scale){
 
 SceneColorScale Scene::getSceneColorScale() const{
     return settings.sceneColorScale;
+}
+
+void Scene::setHtmlUiRenderMode(UIRenderMode mode){
+    settings.htmlUiRenderMode = mode;
+}
+
+UIRenderMode Scene::getHtmlUiRenderMode() const{
+    return settings.htmlUiRenderMode;
+}
+
+void Scene::setHtmlUiMsaaSamples(int samples){
+    // UIDocumentSystem hands it to the screen context each frame; the context makes its target
+    // again when the count it resolves to changes
+    settings.htmlUiMsaaSamples = samples >= 8 ? 8 : samples >= 4 ? 4 : samples >= 2 ? 2 : samples >= 1 ? 1 : 0;
+}
+
+int Scene::getHtmlUiMsaaSamples() const{
+    return settings.htmlUiMsaaSamples;
 }
 
 void Scene::setPlanarReflectionResolution(PlanarReflectionResolution resolution){
@@ -603,6 +626,50 @@ Vector3 Scene::getGlobalIlluminationColorLinear() const{
     return settings.globalIllumColor;
 }
 
+void Scene::setAmbientMode(AmbientMode source){
+    settings.ambientMode = source;
+}
+
+AmbientMode Scene::getAmbientMode() const{
+    return settings.ambientMode;
+}
+
+void Scene::setAmbientSkyColor(Vector3 color){
+    settings.ambientSkyColor = Color::sRGBToLinear(color);
+}
+
+Vector3 Scene::getAmbientSkyColor() const{
+    return Color::linearTosRGB(settings.ambientSkyColor);
+}
+
+Vector3 Scene::getAmbientSkyColorLinear() const{
+    return settings.ambientSkyColor;
+}
+
+void Scene::setAmbientEquatorColor(Vector3 color){
+    settings.ambientEquatorColor = Color::sRGBToLinear(color);
+}
+
+Vector3 Scene::getAmbientEquatorColor() const{
+    return Color::linearTosRGB(settings.ambientEquatorColor);
+}
+
+Vector3 Scene::getAmbientEquatorColorLinear() const{
+    return settings.ambientEquatorColor;
+}
+
+void Scene::setAmbientGroundColor(Vector3 color){
+    settings.ambientGroundColor = Color::sRGBToLinear(color);
+}
+
+Vector3 Scene::getAmbientGroundColor() const{
+    return Color::linearTosRGB(settings.ambientGroundColor);
+}
+
+Vector3 Scene::getAmbientGroundColorLinear() const{
+    return settings.ambientGroundColor;
+}
+
 void Scene::setMaxLightsPerObject(int maxLightsPerObject){
     // a new capacity tier reloads the meshes (RenderSystem::update)
     settings.maxLightsPerObject = std::clamp(maxLightsPerObject, 1, MAX_LIGHTS_PER_OBJECT);
@@ -683,6 +750,23 @@ Vector3 Scene::getAmbientLight2DColorLinear() const{
     return settings.ambientLight2DColor;
 }
 
+void Scene::setLight2DSteps(int steps){
+    // on and off is a variant of the 2D-lit meshes (RenderSystem::update), the count a uniform
+    settings.light2DSteps = std::clamp(steps, 0, 16);
+}
+
+int Scene::getLight2DSteps() const{
+    return settings.light2DSteps;
+}
+
+void Scene::setAmbientLight2DWithoutLights(bool enabled){
+    settings.ambientLight2DWithoutLights = enabled;
+}
+
+bool Scene::isAmbientLight2DWithoutLights() const{
+    return settings.ambientLight2DWithoutLights;
+}
+
 void Scene::setShadow2DQuality(ShadowQuality quality){
     settings.shadow2DQuality = quality;
 }
@@ -738,6 +822,210 @@ int Scene::getPhysics2DSubSteps() const{
 #else
     return SceneSettings().physics2DSubSteps;
 #endif
+}
+
+void Scene::setFixedTimestep(float seconds){
+    settings.fixedTimestep = (std::isfinite(seconds) && seconds > 0.0f) ? seconds : 0.0f;
+}
+
+float Scene::getFixedTimestep() const{
+    return settings.fixedTimestep;
+}
+
+const ScenePhysics2DSettings& Scene::getPhysics2DWorldSettings() const{
+    return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->getWorldSettings2D();
+}
+
+void Scene::setPhysics2DWorldSettings(const ScenePhysics2DSettings& settings){
+    getSystem<PhysicsSystem>()->setWorldSettings2D(settings);
+}
+
+const ScenePhysics3DSettings& Scene::getPhysics3DWorldSettings() const{
+    return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->getWorldSettings3D();
+}
+
+void Scene::setPhysics3DWorldSettings(const ScenePhysics3DSettings& settings){
+    getSystem<PhysicsSystem>()->setWorldSettings3D(settings);
+}
+
+void Scene::setPhysics2DPointsPerMeter(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.pointsPerMeter = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DPointsPerMeter() const{
+    return getPhysics2DWorldSettings().pointsPerMeter;
+}
+
+void Scene::setPhysics2DMaxRotation(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.maxRotation = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DMaxRotation() const{
+    return getPhysics2DWorldSettings().maxRotation;
+}
+
+void Scene::setPhysics2DContactHertz(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.contactHertz = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DContactHertz() const{
+    return getPhysics2DWorldSettings().contactHertz;
+}
+
+void Scene::setPhysics2DContactDampingRatio(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.contactDampingRatio = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DContactDampingRatio() const{
+    return getPhysics2DWorldSettings().contactDampingRatio;
+}
+
+void Scene::setPhysics2DContactPushSpeed(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.contactPushSpeed = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DContactPushSpeed() const{
+    return getPhysics2DWorldSettings().contactPushSpeed;
+}
+
+void Scene::setPhysics2DJointHertz(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.jointHertz = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DJointHertz() const{
+    return getPhysics2DWorldSettings().jointHertz;
+}
+
+void Scene::setPhysics2DJointDampingRatio(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.jointDampingRatio = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DJointDampingRatio() const{
+    return getPhysics2DWorldSettings().jointDampingRatio;
+}
+
+void Scene::setPhysics2DBounceThreshold(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.bounceThreshold = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DBounceThreshold() const{
+    return getPhysics2DWorldSettings().bounceThreshold;
+}
+
+void Scene::setPhysics2DMaxLinearSpeed(float value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.maxLinearSpeed = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+float Scene::getPhysics2DMaxLinearSpeed() const{
+    return getPhysics2DWorldSettings().maxLinearSpeed;
+}
+
+void Scene::setPhysics2DWarmStarting(bool value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.warmStarting = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+bool Scene::isPhysics2DWarmStarting() const{
+    return getPhysics2DWorldSettings().warmStarting;
+}
+
+void Scene::setPhysics2DContinuous(bool value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.continuous = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+bool Scene::isPhysics2DContinuous() const{
+    return getPhysics2DWorldSettings().continuous;
+}
+
+void Scene::setPhysics2DSleep(bool value){
+    ScenePhysics2DSettings settings = getPhysics2DWorldSettings();
+    settings.sleep = value;
+    setPhysics2DWorldSettings(settings);
+}
+
+bool Scene::isPhysics2DSleep() const{
+    return getPhysics2DWorldSettings().sleep;
+}
+
+void Scene::setPhysics3DVelocityIterations(int value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.velocityIterations = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+int Scene::getPhysics3DVelocityIterations() const{
+    return getPhysics3DWorldSettings().velocityIterations;
+}
+
+void Scene::setPhysics3DPositionIterations(int value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.positionIterations = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+int Scene::getPhysics3DPositionIterations() const{
+    return getPhysics3DWorldSettings().positionIterations;
+}
+
+void Scene::setPhysics3DBounceThreshold(float value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.bounceThreshold = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+float Scene::getPhysics3DBounceThreshold() const{
+    return getPhysics3DWorldSettings().bounceThreshold;
+}
+
+void Scene::setPhysics3DSleepThreshold(float value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.sleepThreshold = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+float Scene::getPhysics3DSleepThreshold() const{
+    return getPhysics3DWorldSettings().sleepThreshold;
+}
+
+void Scene::setPhysics3DSpeculativeDistance(float value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.speculativeDistance = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+float Scene::getPhysics3DSpeculativeDistance() const{
+    return getPhysics3DWorldSettings().speculativeDistance;
+}
+
+void Scene::setPhysics3DCollisionSteps(int value){
+    ScenePhysics3DSettings settings = getPhysics3DWorldSettings();
+    settings.collisionSteps = value;
+    setPhysics3DWorldSettings(settings);
+}
+
+int Scene::getPhysics3DCollisionSteps() const{
+    return getPhysics3DWorldSettings().collisionSteps;
 }
 
 void Scene::setDefaultMeshShader(const std::string& path){
@@ -1109,6 +1397,24 @@ void Scene::notifyPickDirty(Entity entity){
 void Scene::destroy(){
     for (auto const& pair : systems){
         pair.second->destroy();
+    }
+}
+
+void Scene::releaseGpu(){
+    for (auto const& pair : systems){
+        pair.second->releaseGpu();
+    }
+}
+
+void Scene::restoreGpu(){
+    if (camera == NULL_ENTITY){
+        camera = createDefaultCamera();
+    }
+
+    for (auto const& pair : systems){
+        if (Engine::isViewLoaded()){
+            pair.second->restoreGpu();
+        }
     }
 }
 

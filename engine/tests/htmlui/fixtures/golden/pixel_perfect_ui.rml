@@ -1,0 +1,24 @@
+<html>
+<head>
+    <title>pixel perfect ui</title>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="golden.css"/>
+    <style>
+        /* S92 (HtmlUIScene.PixelPerfectBarsCoveredByOverlay): a 320 x 180 canvas drawn at 2 screen
+           pixels a canvas pixel; text and a diagonal edge show whether the document was drawn at
+           the screen's resolution or at the base image's and scaled up with it */
+        body { background-color: #3060c0; }
+        .mark { width: 10px; height: 10px; }
+        #tl { left: 0px; top: 0px; background-color: #ff0000; }
+        #br { right: 0px; bottom: 0px; background-color: #00ff00; }
+        #label { left: 20px; top: 40px; font-size: 13px; color: #ffffff; }
+        #tilt { left: 200px; top: 60px; width: 60px; height: 60px; background-color: #ffff00; transform: rotate(17deg); }
+    </style>
+</head>
+<body>
+    <div id="tl" class="abs mark"/>
+    <div id="br" class="abs mark"/>
+    <div id="label" class="abs">Pixel perfect UI text</div>
+    <div id="tilt" class="abs"/>
+</body>
+</html>

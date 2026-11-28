@@ -42,6 +42,7 @@ namespace jasperengine{
     struct LightComponent;
     struct LineRendererComponent;
     struct LocalVolumetricFogComponent;
+    struct FogZoneComponent;
     struct MeshComponent;
     struct MeshPolygonComponent;
     struct MirrorComponent;
@@ -73,6 +74,8 @@ namespace jasperengine{
     struct RotateTracksComponent;
     struct RotationTweenComponent;
     struct SafeAreaComponent;
+    struct SimulationCullingComponent;
+    struct DialogueRunnerComponent;
     struct AudioSnapshotComponent;
     struct TitleArtRendererComponent;
     struct ScaleTracksComponent;
@@ -81,6 +84,7 @@ namespace jasperengine{
     struct ScrollbarComponent;
     struct ShadowCaster2DComponent;
     struct SortingGroupComponent;
+    struct OutlineComponent;
     struct SpriteBatchComponent;
     struct GridComponent;
     struct TilemapLayerComponent;
@@ -92,6 +96,7 @@ namespace jasperengine{
     struct SplineInstantiateComponent;
     struct SpriteAnimationComponent;
     struct SpriteComponent;
+    struct SpriteSkinComponent;
     struct TerrainComponent;
     struct TerrainWorldComponent;
     struct TextComponent;
@@ -105,9 +110,12 @@ namespace jasperengine{
     struct UIComponent;
     struct UIDocumentComponent;
     struct VertexAnimatorComponent;
+    struct VertexColorsComponent;   // V1
     struct VideoPlayerComponent;
     struct VolumetricCloudsComponent;
     struct VoxelVolumeComponent;
+    struct VehicleDrivetrainComponent;   // S96
+    struct WheelColliderComponent;       // S96
     struct WaterExcluderComponent;
     struct WaterVolumeComponent;
     struct WaterWakeComponent;

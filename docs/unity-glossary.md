@@ -36,6 +36,7 @@ Projects made before the rename are migrated once with
 | A Prefab field in the Inspector (a script property of type Prefab: drag a `.prefab` from the Project window onto it) | none (new) |
 | Assets > Scenes in Build... | Project > Manage Scenes... |
 | File > Build Settings... | File > Export Project... |
+| Build Report (the Build Report Inspector package), comparing two builds' reports | Window > Analysis > Build Report: Compare With..., Changes, Referenced By, Unreferenced, Left Out; Size Budgets in Project Settings > Player (none before) |
 | Edit > Preferences... | Edit > Editor Settings... |
 | Edit > Project Settings... | Project > Project Settings... |
 | Project Settings > Physics / Physics 2D > Layer Collision Matrix | none (new) |
@@ -43,7 +44,7 @@ Projects made before the rename are migrated once with
 | Project Settings > Input Manager (virtual axes and buttons; the Input System's actions) | Project Settings > Input (the actions asset and its Input Manager map) and Window > Input Actions (see [Input](#input) below) |
 | Window menu | View menu |
 | GameObject, Component, Assets menus | Scene and Project menus, the Structure "+" menu |
-| Animation Clip (`.anim` asset; Assets > Create > Animation Clip) | none (new): keyframe animations lived only inside a scene or prefab as an Animation entity. A JasperEngine clip is JSON (`{"format": "jasperengine.anim"}`, not Unity's YAML), binds tracks by path relative to the GameObject that plays it, and is referenced by GUID; see [animation-clips.md](animation-clips.md) |
+| Animation Clip (`.anim` asset; Assets > Create > Animation Clip) | none (new): keyframe animations lived only inside a scene or prefab as an Animation entity. A JasperEngine clip is JSON (`{"format": "jasperengine.anim"}`; a Unity YAML clip comes in through Assets > Import Unity Animation...), binds tracks by path relative to the GameObject that plays it, and is referenced by GUID; see [animation-clips.md](animation-clips.md) |
 | An Animation Clip's `m_IsActive` curve (GameObject active) | the property track `gameobject.active` (stepped; applied after the other values, parents first) |
 | An Animation Clip's `m_Enabled` curve (a component's checkbox) | the property track `<component>.enabled` (`ui`, `light`, `canvasgroup`, `rigidbody`...; `script:<Class>.enabled` for a Lua script) |
 | An Animation Clip's `m_Color` curve (Image, Text, SpriteRenderer), TMP `m_fontColor` | `ui.color` on the UI element (keys in sRGB); a sprite's `mesh.submeshes[0].material.baseColorFactor` (Add Property: Sprite Renderer : Color); one channel: `ui.color.a` |
@@ -54,11 +55,17 @@ Projects made before the rename are migrated once with
 | Animation window key tangents (Clamped Auto, Free Smooth, Flat, Broken, Linear / Constant per side) | the curves view's key menu (Auto, Free Smooth, Flat, Broken, Left / Right / Both Tangents) and its draggable handles |
 | Animation window with an Animation Clip (Preview, Record, Dopesheet / Curves, Add Property, events) | Animation window (entity Animations only). It now edits clips when the selected GameObject or an ancestor has an Animation Player, or when a clip is opened from the Project window or the Inspector; entity Animations still open in its older mode |
 | A model's imported clips (the Animation tab of a model's Import Settings; sub-assets such as `Take 001`) | none (new): model clips, read-only, named `<model>#<animation>` (`hero.gltf#Walk`; `"Wave 2"` for a second animation named Wave), with **Extract to .anim** for an editable copy and the Model section's **Use Animation Player** |
+| Model Import Settings > Model: Preserve Hierarchy | none (new): the Model's **Preserve Hierarchy** (every node of the file its own GameObject; Project Settings > Mesh > Preserve Hierarchy for New Models, on in new projects) |
+| Model Import Settings > Geometry: Normals (Import, Calculate, None), Normals Mode, Smoothness Source, Tangents | Model Import Settings > Meshes: Normals (Import, Calculate, None), Normals Weighting (Area And Angle, Area), Smoothness Source (From Angle, From Smoothing Groups, Prefer Smoothing Groups), Tangents (Import, Calculate Mikktspace, None) |
+| The imported pose of an FBX that has clips (Unity takes the clip's first frame) | Model Import Settings > Rig: Rest Pose (Node Values, First Frame) and Take |
+| `Model@Clip.fbx` (an FBX with only animation) | an FBX of a skeleton and takes imports as a clip source: `"Model@Clip.fbx#<take>"` |
+| A model's submeshes, one per material slot of the FBX node in slot order | the same (Project Settings > Mesh > FBX Submesh Order: Material Slots); projects made before keep Used Materials: the used slots in order, an empty slot moving the next ones up |
 | Animator Controller (`.controller`), Animator window (Window > Animation > Animator: Layers, Parameters, state machine graph, blend trees), Avatar Mask (`.mask`), Animation Montage (Unreal's montages, `.montage`), Avatar / Configure Avatar | none (new): Assets > Create > Animator Controller / Avatar Mask / Animation Montage; the Avatar is the model's `.humanoid` map |
 | none: Unity has no pose-to-pose animation (the closest is keyframing a humanoid clip in the Animation window) | none (new): Pose Animation (Window > Animation > Pose Animation; `.poseanim` assets and templates), played by the Pose Animator or baked to an Animation Clip or an Animation; see [pose-animation.md](pose-animation.md) |
 | Avatar (Rig > Configure Avatar) | none (new): the model's humanoid map (22 body slots, fingers, eyes, jaw) detected from bone names, with twist corrections; edited in the Avatar Configuration window (Inspector > Model > Rig > Configure Avatar...) or MCP `set_humanoid`, stored in a `<model>.humanoid` file next to the model; see [pose-animation.md](pose-animation.md#the-avatar-configuration-window) |
 | Rig > Animation Type: Humanoid / Generic | Rig > Animation Type (`animation_type` in the `.humanoid` file): a Humanoid model's clips play retargeted on any humanoid character |
 | humanoid (muscle) clip, retargeting | humanoid clip: a `.anim` with `humanoid` tracks (per-slot joint rotations from the neutral pose, body position, foot goals; no muscles), from Animation Type Humanoid, an entry's **Retarget**, or Convert to Humanoid Clip...; see [animation-clips.md](animation-clips.md#humanoid-clips-and-retargeting) |
+| Animation clip Root Transform Rotation / Position (Y) / Position (XZ): Bake Into Pose, Based Upon (Original, Body Orientation, Center of Mass, Feet), Offset; Animator Apply Root Motion off keeps the character in place | the same names in the clip's (and the model clip's) Inspector Root Motion section, the `.anim`'s `root_motion` block (MCP `edit_animation {root_motion}`); the **Animation Player** has **Apply Root Motion** too (Lua `AnimationPlayer.applyRootMotion`); see [animator.md](animator.md#root-motion) |
 | Animator state Mirror / Foot IK | the Animator state's **Mirror** / **Foot IK** (and **Retarget**; a blend tree child's Mirror), the player entry's **Mirror** / **Foot IK**: one retarget path for both; Lua `state.mirror` / `state.footIK` (player), `AnimatorStateInfo.mirror` / `.footIK` |
 | Color picker (the Color window: Hexadecimal, Intensity, the eyedropper, Swatches and `.colors` libraries) | ImGui's colour popup (no eyedropper, swatches or HDR Intensity); see [editor/color-picker.md](editor/color-picker.md) |
 | Curve Editor, Gradient Editor, curve presets (`.curves`), Wrap Mode (Clamp, Loop, Ping Pong), tangent modes (Clamped Auto, Auto, Free Smooth, Flat, Broken; Free, Linear, Constant) | the Particle System's key tables; see [editor/curves.md](editor/curves.md) |
@@ -66,16 +73,19 @@ Projects made before the rename are migrated once with
 | Unity Hub (projects, templates, Add project from disk) | none (new): the Project Hub (File > Project Hub..., Shift at launch, `--hub`), with zip and Git import; the editor used to open a temporary project; see [editor/project-hub.md](editor/project-hub.md) |
 | Unity Recorder (Window > General > Recorder: Image Sequence and Movie recorders, Recording Mode, Take, Exit Play Mode) | none (new): movies go through the user's FFmpeg; see [editor/recorder.md](editor/recorder.md) |
 | none: Unity has no vertex animation textures built in (they come from Asset Store packages or Houdini's exporter, played by a custom material) | none (new): Vertex Animation (a `.vat` asset and its generated `.vat.glb`; Window > Animation > Vertex Animation Baker, the `.vat` Inspector's Rebake and Create Crowd...), baked from model clips, Animation Clips, Animation Players, pose animations and lattices, or imported from Houdini Labs VAT 3 and OpenVAT exports; see [vertex-animation.md](vertex-animation.md) |
-| Animator Controller (`.controller`; Assets > Create > Animator Controller; the Animator window with layers, parameters, states, Any State, transitions, 1D blend trees) | none (new): Animator Controller, a JSON `.controller` (`{"format": "jasperengine.controller"}`, not Unity's YAML, which is refused) played by an **Animator** component and edited in Window > Animation > Animator (`Ctrl+7`) or with MCP `edit_animator_controller`; an Animation Player's Create Animator Controller from Clips makes one; see [animator.md](animator.md) |
+| Animator Controller (`.controller`; Assets > Create > Animator Controller; the Animator window with layers, parameters, states, Any State, transitions, 1D blend trees) | none (new): Animator Controller, a JSON `.controller` (`{"format": "jasperengine.controller"}`; Assets > Import Unity Animation... or MCP `create: {unity}` imports a Unity one with its clips and masks) played by an **Animator** component and edited in Window > Animation > Animator (`Ctrl+7`) or with MCP `edit_animator_controller`; an Animation Player's Create Animator Controller from Clips makes one; see [animator.md](animator.md) |
 | Shader Graph / VFX Graph window (a node graph asset opened in its own window: Create Node search, ports and wires, Blackboard) | none (new): **Graph Editor** (Window > Assets > Graph Editor), the window of a graph file of any registered kind (S23's graph model); a kind with a window of its own (Procedural Material) opens there. Wires dragged between ports, a wire dropped on empty canvas opens the node search, the selected node's parameters in the Inspector, Copy / Paste as JSON text, Arrange; see [editor/graph-editor.md](editor/graph-editor.md) |
 | none: Unity has no procedural material authoring built in (Substance materials come from Adobe's plugin, baked to textures) | none (new): **Procedural Material**, a `.procmat` node graph (Assets > Create > Procedural Material; double-click opens the Procedural Material window) baked to ordinary PNGs and a `.material`. Every node shows its image and cost, the preview follows the selection (Pin A and B, a lit ball, a 2×2 tile, an image per output), the graph's Seed with Lock, Reroll and Variations, Exposed Properties and Presets; see [editor/procedural-material.md](editor/procedural-material.md) |
-| Avatar Mask (`.mask`; Assets > Create > Avatar Mask; Humanoid body parts and Transform paths) | none (new): Avatar Mask, a JSON `.mask` (humanoid body parts without the IK goals, hands and fingers apart, weights 0..1; transform paths with a weight and a children flag; a Default weight), set on an Animator layer or an Animation Player layer; see [animator.md](animator.md#layers-and-masks) and [animation-clips.md](animation-clips.md#avatar-masks) |
+| Avatar Mask (`.mask`; Assets > Create > Avatar Mask; Humanoid body parts and Transform paths) | none (new): Avatar Mask, a JSON `.mask` (Unity's import through Assets > Import Unity Animation...; humanoid body parts without the IK goals, hands and fingers apart, weights 0..1; transform paths with a weight and a children flag; a Default weight), set on an Animator layer or an Animation Player layer; see [animator.md](animator.md#layers-and-masks) and [animation-clips.md](animation-clips.md#avatar-masks) |
+| none: Unity has no equivalent (Unreal's Layered Blend Per Bone calls it "Mesh Space Rotation Blend"; Kevin Iglesias' Spine Proxy gets the same result in Unity with an extra `B-spineProxy` bone and a script) | none (new): a layer's **Mesh Space Rotation** (Animator and Animation Player layers; `mesh_space_rotation` in a `.controller`, `meshSpaceRotation` on a player layer; Lua `setLayerMeshSpaceRotation`): the bones where the mask starts or stops keep the layer clip's rotation relative to the character, so an upper-body layer's torso faces where its clip faces over any locomotion, with no extra bone; see [animator.md](animator.md#mesh-space-rotation) |
 
 ## Scripting API (Lua and C++)
 
 | Unity term | Old JasperEngine name |
 |---|---|
 | `GameObject` | `Object` |
+| `CullingGroup` (`SetBoundingSpheres`, `SetBoundingDistances`, `onStateChanged`, `QueryIndices`, `EraseSwapBack`), `BoundingSphere`, `CullingGroupEvent` | `CullingGroup`, `BoundingSphere`, `CullingGroupEvent` (none before); frustum only, no occlusion; Lua indices 1-based ([docs/scripting/culling-groups.md](scripting/culling-groups.md)) |
+| A per-object simulation distance (Unreal's tick significance, an entity ticking range) | the **Simulation Culling** component, `SimulationCulling` in Lua, messages `onSimulationCulled` / `onSimulationResumed` (none before) |
 | `Primitive` (box, sphere, plane... meshes) | `Shape` |
 | `Rigidbody2D` / `Rigidbody2DComponent` | `Body2D` / `Body2DComponent` |
 | `Rigidbody` / `RigidbodyComponent` | `Body3D` / `Body3DComponent` |
@@ -105,11 +115,12 @@ Projects made before the rename are migrated once with
 | `GameObject.instantiate` / `GameObject::instantiate` (Unity's `Object.Instantiate`: a prefab or a copy of a GameObject, optional parent and `instantiateInWorldSpace`, or position and rotation) | `BundleManager.createBundle`, then `PrefabManager.createPrefab` (removed) |
 | `GameObject.destroy(object [, delay])`, `GameObject.destroyImmediate(object)` (Unity's `Object.Destroy`, `DestroyImmediate`; scripts get `onDisable`, then `onDestroy`) | `BundleManager.destroyBundle`, then `PrefabManager.destroyPrefab` (removed) |
 | MonoBehaviour messages: `Awake` -> `init`, `Start` -> `start`, `OnEnable` -> `onEnable`, `OnDisable` -> `onDisable`, `OnDestroy` -> `onDestroy`, `OnApplicationPause/Focus/Quit` -> `onApplicationPause/Focus/Quit` (Lua methods called by name; C++ `ScriptBase` overrides), Unity's rules and order ([lua-api.md](mcp/guide/lua-api.md) 1.1) | `init` (enabled scripts only, at load) and `onDestroy` (runtime destroy only); the others none (new) |
-| `Update` / `FixedUpdate` / `LateUpdate` -> `onUpdate` / `onFixedUpdate` / `onPostUpdate` registered with `RegisterEngineEvent(self, "onUpdate")` (C++ `REGISTER_ENGINE_EVENT`) | unchanged |
+| `Update` / `FixedUpdate` / `LateUpdate` -> `onUpdate` / `onFixedUpdate` / `onPostUpdate` registered with `RegisterEngineEvent(self, "onUpdate")` (C++ `REGISTER_ENGINE_EVENT`); what `onPostUpdate` moves is drawn that frame, and `getWorldPosition()` is current, as `transform.position` | unchanged |
 | `MonoBehaviour.enabled` -> `self.enabled` (Lua, rw: fires `onEnable`/`onDisable`), `isEnabled()` / `setEnabled(bool)` (C++); `isActiveAndEnabled` -> `self.isActiveAndEnabled` / `isActiveAndEnabled()`; `gameObject` -> `self.gameObject` | none (new) |
 | `GetComponent<Enemy>()`, `GetComponents`, `GetComponentInChildren`, `GetComponentsInChildren`, `GetComponentInParent` (for scripts) -> `go:getScript("Enemy")`, `getScripts`, `getScriptInChildren`, `getScriptsInChildren`, `getScriptInParent` (also on `self`); C++ `getScript<T>()` | none (new): a script property typed with the script's class |
 | `transform.parent`, `SetParent(p, worldPositionStays)`, `childCount`, `GetChild(i)`, `Find("a/b")` -> `go.parent`, `go:setParent(p [, worldPositionStays])`, `go.childCount`, `go:getChild(i)` (0-based), `go:findChild("a/b")`, plus `go:getChildren()`; C++ `getParent()`, `setParent`, `getChildCount()`, `getChild`, `getChildren`, `findChild` | `addChild`, `removeParent` only (no way to read the parent or the children) |
 | `Vector3.Lerp` (t clamped), `Vector3.LerpUnclamped`, `Vector3.MoveTowards` (also Vector2, Vector4) -> `a:lerp(b, t)` / `Vector3.lerp(a, b, t)`, `lerpUnclamped`, `moveTowards`; C++ the same | `Vector3::lerp` unclamped, C++ only |
+| `Quaternion.Euler(x, y, z)`, `Quaternion.AngleAxis(angle, axis)` -> `Quaternion.euler(x, y, z, RotationOrder.YXZ)`, `Quaternion.angleAxis(angle, axis)`; C++ `Quaternion(x, y, z, RotationOrder::YXZ)`, `Quaternion(angle, axis)` | `Quaternion(x, y, z, RotationOrder)` (from Lua it never ran: four numbers are `(w, x, y, z)`) |
 | `Bounds` corners (`GetCorners` of a hand-written helper) -> `AABB:getCorners()` / `OBB:getCorners()` (8 `Vector3`) | one corner |
 | `Rigidbody2D.AddForce` (always wakes the body) -> `applyForce(f, p [, wake = true])` and the other force/impulse methods | `wake` read as false when left out |
 | Add Component > Scripts > a script, dragging a script onto a GameObject (Inspector or Hierarchy) -> the same: Add Component and the Script component's Add Script list the project's scripts; drops attach | Add Script added an empty C++ entry |
@@ -119,6 +130,7 @@ Projects made before the rename are migrated once with
 | `SceneManager.MoveGameObjectToScene(go, scene)` -> `SceneManager.moveGameObjectToScene(obj, scene)` (C++ `SceneManager::moveGameObjectToScene`) | none (new) |
 | Singleton pattern `if (instance == null) { instance = this; DontDestroyOnLoad(gameObject); } else if (instance != this) Destroy(gameObject);` -> `if GameObject.persistSingleton(self) ~= self then return end` in `init` (C++ `persistSingleton<T>()`); module tables are per instance, so no `static Instance` | none (new) |
 | `UnityEvent` / C# `event` (`AddListener` / `+=`, `RemoveListener` / `-=`, `Invoke`) -> `Event()` (`addListener`, `removeListener`, `invoke`); `-=` of an engine or component event -> `UnregisterEngineEvent` / `UnregisterEvent` | none (new): no unregister from Lua |
+| none: `UnityEvent` has no veto or listener order; C# `System.ComponentModel.CancelEventArgs` (`Cancel`) | none (new): `CancellableEvent()`, whose listeners get a `CancelEventArgs` first (`e:cancel()`, `e.cancelled`) and whose `invoke` returns whether one cancelled; every `Event` listener takes a `priority` (`Event.MONITOR` runs after the decision) |
 | `PrefabAsset` (what a Prefab script property holds; `PrefabAsset.load("path")`) | none (new) |
 | `PrefabManager` (the build's prefab registry: `findPrefab`, `getPrefabNames`, `prefabCount`) | `BundleManager` |
 | `PrefabComponent` | `BundleComponent` |
@@ -138,6 +150,8 @@ Projects made before the rename are migrated once with
 | `KeyCode.Space`, `KeyCode.LeftControl`, `KeyCode.Mouse0`, `KeyCode.JoystickButton0` | `Input.KEY_SPACE`, `Input.KEY_LEFT_CONTROL`, `Input.MOUSE_BUTTON_LEFT`, `Input.GAMEPAD_BUTTON_A`; as control names (bindings, `Input.getKeyDown("...")`): `"space"`, `"left_control"`, `"mouse_left"`, `"gamepad_a"` |
 | `Touch` (`fingerId`, `phase`, `position`, `deltaPosition`, `deltaTime`, `tapCount`), `TouchPhase`, `Input.touches`, `touchCount`, `GetTouch`, `multiTouchEnabled`, `touchSupported` | `Input.getTouches()` returned `{pointer, position}` tables; now `Touch` (same fields plus `startPosition`; `pointer` kept as the old name of `fingerId`), `TouchPhase`, `Input.touches`, `touchCount`, `getTouch`, `getTouchById`, `multiTouchEnabled`, `touchSupported` |
 | `Input.simulateMouseWithTouches` | `Engine.callMouseInTouchEvent` |
+| Input System touch simulation (`TouchSimulation.Enable()`: the mouse acts as a finger) | none (new): Project Settings > Input > Simulate Touch From Mouse (`input.simulate_touch_from_mouse`): `Engine.callTouchInMouseEvent` at the start of Play and of desktop and web builds; the Game view's Simulate Touch is a per-user preference for testing |
+| `new GameObject().AddComponent<Camera>()` (aims with its Transform rotation), `transform.LookAt(target)` | `cam = Camera(scene); cam.useTarget = false` aims with its rotation (`Camera(scene)` alone starts in target mode, looking at the origin); `cam:setTarget(x, y, z)` or `cam.target = v` turns target (look-at) mode on again |
 | Input System: on-screen controls, `InputAction`, rebinding (`PerformInteractiveRebinding`, `SaveBindingOverridesAsJson`, `LoadBindingOverridesFromJson`) | none (new): virtual sources (`Input.simulateButton`, `simulateAxis`, `addAxisDelta`, `InputActions::setSourceValue` in C++), `Input.getPressedControl`, `Input.setBindings`, `exportBindings`, `importBindings` |
 | EventSystem interfaces (`IPointerDownHandler`, `IPointerUpHandler`, `IPointerClickHandler`, `IPointerEnterHandler`, `IPointerExitHandler`, `IInitializePotentialDragHandler`, `IBeginDragHandler`, `IDragHandler`, `IEndDragHandler`, `IDropHandler`, `IScrollHandler`) | none (new): script methods `onPointerDown(e)`, `onPointerUp`, `onPointerClick`, `onPointerEnter`, `onPointerExit`, `onInitializePotentialDrag`, `onBeginDrag`, `onDrag`, `onEndDrag`, `onDrop`, `onScroll` (lua-api 1.7); the legacy `UIComponent.onPointerDown(x, y)` events stay |
 | `PointerEventData` (`pointerId`, `position`, `delta`, `pressPosition`, `button`, `clickCount`, `dragging`, `pointerPress`, `pointerDrag`, `useDragThreshold`, `Use()`) | none (new): `PointerEventData` (same names, `use()`) |
@@ -147,11 +161,22 @@ Projects made before the rename are migrated once with
 | `OnCollisionEnter/Stay/Exit(Collision)`, `OnTriggerEnter/Stay/Exit(Collider)`, and the `...2D` ones -> `onCollisionEnter/Stay/Exit`, `onTriggerEnter/Stay/Exit`, `onCollisionEnter2D/Stay2D/Exit2D`, `onTriggerEnter2D/Stay2D/Exit2D` (Lua methods called by name, also on disabled scripts; C++ `ScriptBase` overrides); after the fixed step, on the main thread ([physics.md](mcp/guide/physics.md)) | global events only (`beginContact2D`, `onContactAdded3D` on Jolt's job threads) |
 | `Collision` (`gameObject`, `collider`, `rigidbody`, `contactCount`, `GetContact(i)`, `contacts`, `impulse`, `relativeVelocity`), `ContactPoint` (`point`, `normal`, `separation`, `impulse`, `thisCollider`, `otherCollider`), `ContactPoint2D` -> the same names lowerCamelCase (`getContact(i)` 0-based), plus `thisCollider` / `thisRigidbody` | none (new) |
 | `Collision2D.otherCollider` / `otherRigidbody` (Unity: **this** side) -> the same (this side), plus the plain `thisCollider` / `thisRigidbody`; `collider` / `rigidbody` / `gameObject` are the other side's | none (new) |
+| `WheelCollider` (`motorTorque`, `brakeTorque`, `steerAngle`, `suspensionSpring` `JointSpring`, `forwardFriction` / `sidewaysFriction` `WheelFrictionCurve`, `GetGroundHit(out WheelHit)`, `GetWorldPose(out pos, out rot)`, `isGrounded`, `rpm`, `sprungMass`) | none (new): Wheel Collider (`WheelColliderComponent`, Lua `WheelCollider`: `go:getWheelCollider()`), the same names lowerCamelCase; `wc:getGroundHit()` returns the WheelHit or nil, `wc:getWorldPose()` returns position, rotation; plus `driveTransform` (the GameObject follows the pose) and a Vehicle Drivetrain (engine, gear box, differentials) Unity has none of ([physics.md](mcp/guide/physics.md), "Vehicles") |
 | A child GameObject's collider with its own script -> a collider of the body whose `receiver` (Inspector "Send Callbacks To") is that GameObject | none (new) |
+| Colliders on child GameObjects below a Rigidbody (a compound body) -> a Rigidbody (2D) on the child with `attachToParentBody` (Inspector "Attach To Parent Body"): its colliders join the parent's body, its scripts get their callbacks, `Collider.attachedRigidbody` is the parent's | none (new) |
+| `Rigidbody.MovePosition`, `MoveRotation`, `Move`, `Rigidbody2D.MovePosition`, `MoveRotation`, `MovePositionAndRotation` -> `movePosition`, `moveRotation`, `movePositionAndRotation` (interpolated; a kinematic body moves by velocity); a teleport that interpolates -> `setPosition(p, true)` / `setRotation(q, true)` (2D `setAngle(a, true)`) | none (new) |
+| Mesh Collider `convex` on a moving body (one hull) -> Decompose Into Convex Hulls on the Mesh collider (V-HACD, several hulls, baked into the scene; `edit_colliders` `decompose`); a Convex Hull collider is one hull | none (new) |
 | `Physics.IgnoreCollision(a, b, ignore)` / `Physics2D.IgnoreCollision` (colliders) -> `Physics.ignoreCollision(a, b [, ignore])` / `Physics2D.ignoreCollision` on bodies (GameObjects or Rigidbodies): every collider of the pair | none (new) |
+| `Physics.SphereCast`, `BoxCast`, `CapsuleCast` (and `...All`), `OverlapSphere`, `OverlapBox`, `OverlapCapsule`, `CheckSphere`, `CheckBox`, `CheckCapsule`, `ClosestPoint`, `Rigidbody.SweepTest` / `SweepTestAll`, `QueryTriggerInteraction`, `Physics.queriesHitTriggers`, `queriesHitBackfaces` -> the same names lowerCamelCase; casts return the hit or nil (no `out` argument), every query takes an options table last (`ignore`, `triggers`, `hitFromInside`, `hitBackfaces`) | none (new) |
+| `Physics2D.CircleCast`, `BoxCast`, `CapsuleCast` (and `...All`), `OverlapCircle`, `OverlapBox`, `OverlapCapsule`, `OverlapPoint`, `OverlapArea` (and `...All`), `Rigidbody2D.Cast`, `CapsuleDirection2D`, `Physics2D.queriesHitTriggers`, `queriesStartInColliders` -> the same names lowerCamelCase (`rigidbody2d:cast` / `castAll` return hits); `queriesStartInColliders` defaults to **false** (Unity: true), so a ray or cast from inside a collider (a player's ground check) does not hit it | none (new) |
+| `Physics.OverlapSphereNonAlloc` / `OverlapBoxNonAlloc` / `OverlapCapsuleNonAlloc`, `Physics2D.OverlapPointNonAlloc` / `OverlapCircleNonAlloc` / `OverlapBoxNonAlloc` / `OverlapCapsuleNonAlloc` / `OverlapAreaNonAlloc` -> the same names lowerCamelCase, Unity's argument order after the scene; `results` gets GameObject ids (no garbage, `#results` is the count), an optional `colliders` table their collider indices ([docs/scripting/spatial-queries.md](scripting/spatial-queries.md)) | none (new) |
+| `Physics.queriesHitTriggers`, `Physics2D.queriesHitTriggers` in Project Settings (Physics > Queries Hit Triggers, Physics 2D > Queries Hit Triggers) | the same rows; project.yaml `physicsQueries`, applied at Play start and in players |
+| What is drawn near a point, without colliders (a loop over Renderers' `bounds`) | none (new): `MeshRaycast.overlapSphere` / `overlapBox` (+ `NonAlloc`): drawn bounds, a Terrain's trees too (`MeshOverlapHit`, `MeshRaycast.TREE` / `DETAIL`) |
+| `RaycastHit` / `RaycastHit2D` (`point`, `normal`, `distance`, `collider`, `rigidbody`, `transform`) | `RayReturn` (alias `RaycastHit`): the same fields plus `gameObject`, `body` (entity), `colliderIndex`, `hit`; `transform` is the GameObject |
 | `Shader.SetGlobalFloat`, `SetGlobalInt`, `SetGlobalVector`, `SetGlobalColor`, `SetGlobalMatrix`, `SetGlobalFloatArray`, `SetGlobalVectorArray`, `SetGlobalTexture`, `GetGlobal*`, `Shader.PropertyToID` | none (new): `Shader.setGlobalFloat`, `setGlobalInt`, ..., `getGlobal*`, `Shader.propertyToID`, plus `hasGlobal`, `getGlobalNames`, `resetGlobals`; shaders read them as members of a `u_vs_globals` / `u_fs_globals` block (or a texture uniform of the name); C++ `ShaderGlobals` ([shaders guide, Global values](mcp/guide/shaders.md#global-values)) |
 | A material property a global feeds (Unity: the global applies when the material does not define the property) | none (new): an explicit binding, the Inspector's link button on a shader parameter row (`shaderGlobalBindings`, Lua `material:setShaderGlobalBinding(member, global)`) |
 | none: Unity has no per-scene shader property defaults (closest: `Shader.SetGlobal*`, applied when the material leaves the property undefined) | none (new): Scene > Default Shaders > <Shader> Properties, the values every object drawn with the scene's default shader inherits (Revert to Scene Default on an override); Lua `scene:setDefaultShaderUniform(ShaderType.MESH, name, value)`; `set_shader_uniform` `shader_type` |
+| QuickOutline `Outline` (Outline Mode: Outline All, Outline Visible, Outline Hidden, Outline And Silhouette, Silhouette Only; Outline Color, Outline Width) | none (new): the Outline component (Add Component > Rendering > Outline): the same modes, Outline Color, Outline Width in Width Units (Pixels or World), Include Children (a model root covers its skinned meshes); Lua `Outline(scene, entity)`, MCP `outline.*` ([materials guide, Outline](mcp/guide/materials.md#outline)) |
 | `Shader.EnableKeyword` (global keywords) | not supported: shader features are per material (`setShaderFeature`) |
 
 Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
@@ -255,6 +280,8 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `Time.deltaTime`, `unscaledDeltaTime`, `fixedDeltaTime`, `fixedUnscaledDeltaTime` | `Time.deltaTime`, `Time.unscaledDeltaTime`, `Time.fixedDeltaTime`, `Time.fixedUnscaledDeltaTime` (also `Engine.deltatime`, `Engine.unscaledDeltatime`, `Engine.updateTime`) |
 | `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
 | `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
+| Project Settings > Time > Fixed Timestep, Maximum Allowed Timestep | none (new): Project Settings > Time (`time.fixed_timestep`, `time.maximum_delta_time`), set before `init` in builds and at Play start, back to the defaults at Play stop; beyond Unity, a scene's Fixed Timestep (Inspector > Scene > Time, `fixed_timestep`, Lua `scene.fixedTimestep`) applies while it is the main scene |
+| Time settings: Maximum Allowed Timestep (no fixed step dropped within it) | `Time.maximumDeltaTime`: the fixed steps a frame runs at most, whatever the time scale; `Time.maximumFixedStepsPerFrame` above 0 lowers that cap (steps past it: `Time.droppedFixedSteps`) |
 | A shader's `_Time` (game time: held while paused, scaled by `Time.timeScale`); the Scene view's Always Refresh | the engine-written `sceneTime` member of a shader's custom block (`frame.time` stays the wall clock); library:water runs on it, `Water.getTime(scene)`; the Scene view's Rendering > Always Refresh (water, animated tiles and the shaders on the scene clock) |
 | HDRP Planar Reflection Probe (Resolution, Culling Mask, Clipping Planes) on a water surface | library:water's `PLANAR_REFLECTION` feature with the scene's Planar Reflections settings (Resolution, Layers, Shadows, Far Clip Plane, Clip Plane Offset, Max Planes) |
 | HDRP Water Excluder (a boat's hull keeping the water out) | Water Excluder (`WaterExcluderComponent`): Convex Hull of the GameObject's mesh, Box or Sphere; also dry for buoyancy, `Water.sample` and the underwater fade |
@@ -285,11 +312,21 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 |---|---|
 | `PlayerPrefs.GetInt/SetInt/GetFloat/SetFloat/GetString/SetString/HasKey/DeleteKey/DeleteAll/Save` | `PlayerPrefs.getInt/setInt/getFloat/setFloat/getString/setString/hasKey/deleteKey/deleteAll/save` (Lua), over the same store as `UserSettings` (`getIntegerForKey`, `setStringForKey`, ... and `hasKey`, `deleteKey`, `deleteAll`, `save`; C++ `jasperengine::UserSettings`) |
 | Edit > Clear All PlayerPrefs | Edit > Clear User Settings (PlayerPrefs)...; MCP `user_settings` (list, get, set, delete, clear) |
+| Save slots (a game's own; Unity has none built in; Unreal `USaveGame`, `SaveGameToSlot` / `LoadGameFromSlot` / `DoesSaveGameExist` / `DeleteGameInSlot` / `AsyncSaveGameToSlot`) | `SaveGame.write(slot, table)` / `SaveGame.read(slot)` / `exists` / `delete` (Lua; versions, migrations, backups: docs/saved-data.md); Window > General > Saved Data; MCP `user_settings` `store: "saves"` |
 | `JsonUtility.ToJson` / `FromJson`, Newtonsoft `JsonConvert.SerializeObject` / `DeserializeObject`, `JObject` | `Json.encode(value [, opts])` / `Json.decode(text [, opts])` (tables, not typed classes; `Json.null`, `Json.array`, `Json.object`); C++ `nlohmann::json`, `jasperengine::LuaJson` |
 | `Application.persistentDataPath` | `data://` (`System.getUserDataPath()`) |
 | `File.ReadAllText` / `WriteAllText` / `AppendAllText` / `Exists` / `Delete`, `Directory.CreateDirectory` / `GetFileSystemEntries` | `File.readText` / `writeText` (atomic) / `appendText` / `exists` / `remove`, `File.makeDirs` / `File.list` (return `nil, message` on failure) |
 | `Resources.Load<TextAsset>(path).text`, `StreamingAssets` files | `File.readText("asset://path")` (read-only, in the APK on Android too); `Json.readFile("asset://...")` |
-| ScriptableObject (data assets) | a JSON file (`Json.readFile("lua://data/items.json")`) or a Lua data module (`require("data.items")`): jasper://docs/lua-api 2.4.2 |
+| ScriptableObject, `[CreateAssetMenu]`, `List<T>` fields | Data Asset: a `.dataasset` of a data class (a Lua module marked `---@dataasset`, its `properties` the fields; `type = "list", of = ...`); Assets > Create > Data Asset > <class>; a script property typed with the class; Lua `DataAsset.load/loadAll/create`; MCP `edit_data_asset`: jasper://docs/lua-api 2.4.3 |
+
+## 2D Animation and the PSD Importer
+
+| Unity term | JasperEngine name |
+|---|---|
+| Sprite Skin (`SpriteSkin`: Root Bone, Bone Transforms) | Sprite Skin (Root Bone, Bones; Lua `SpriteSkin`), [sprites.md](sprites.md) |
+| Skinning Editor (Create Bone, Auto Geometry, Auto Weights, Weight Brush, Preview Pose) | Window > 2D > Skinning Editor; MCP `edit_sprite_skin` |
+| A sprite's bones, mesh and weights (`SpriteBone`, sprite geometry) | the frame's skin, kept in the source's meta (`import.spriteSkin`) |
+| PSD Importer (`.psd`, `.psb`): Import Mode Individual Sprites, the generated prefab, Use Layer Grouping, Character Rig | Texture importer > Import Mode: Layers (sprites + prefab, groups as parents), Character Rig |
 
 ## Debugging
 
@@ -412,14 +449,20 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioMixerSnapshot.TransitionTo`, `AudioMixer.TransitionToSnapshots`, `FindSnapshot` | `AudioMixer.transitionTo(name, seconds [, opts])`, `AudioMixer.transitionToSnapshots(names, weights, seconds)`, snapshots by name |
 | Audio Mixer update mode Normal / Unscaled Time | mixer `updateMode` "scaled" / "unscaled"; per call `{unscaled = true}` |
 | Lowpass / Highpass / Echo / SFX Reverb / ParamEQ / Distortion / Flange / Duck Volume effects | mixer effects `lowpass`, `highpass`, `bandpass`, `echo`, `reverb`, `equalizer`, `distortion`, `flanger`, `lofi`, `bassboost`, `duck`, `limiter` (up to 8 per group) |
+| Audio Low Pass Filter, Audio High Pass Filter, Audio Echo Filter, Audio Distortion Filter, Audio Reverb Filter (components) | effects of the Audio Source itself: `AudioSource.effects` (up to 4, `lowpass`, `highpass`, `echo`, `distortion`, `reverb` and the other mixer effects but `duck` and `limiter`); Add Component keeps Unity's names and adds the effect to the GameObject's Audio Source; Lua `sound:addEffect("lowpass")` -> `AudioSourceEffect` |
+| `AudioLowPassFilter.cutoffFrequency`, `lowpassResonanceQ`; `AudioHighPassFilter.cutoffFrequency`, `highpassResonanceQ` | the effect's `cutoff` and `resonance` (`effect:setParameter("cutoff", 500 [, seconds])`) |
 | `AudioSource.PlayOneShot(clip, volumeScale)` | `sound:playOneShot(path [, volumeScale])` (up to `maxVoices` overlapping voices) |
+| Several `AudioSource`s on one GameObject, `GetComponents<AudioSource>()` | Add Component > Audio Source again (MCP `add_component`: the further one's entity in `added[].audio_source`); Lua `AudioSource.getAll(gameObject)` / `add(gameObject)` / `remove(source)`; a further one is a hidden child entity |
 | `AudioSource.PlayClipAtPoint(clip, position, volume)` | `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` |
 | AudioClip Load Type Decompress On Load / Compressed In Memory / Streaming | `AudioSource.loadType` (`AudioLoadType.DecompressOnLoad` / `CompressedInMemory` / `Streaming`, default `Auto`: streams files of 1 MiB and more): per source, not a clip import setting |
 | `AudioImporter` | `.meta` section `import.audioImporter` (Inspector's Import Settings, MCP `set_audio_import_settings`) |
-| AudioClip import settings | `type`, `gain_db`, `trim_head_ms`, `trim_tail_ms`, `fade_in_ms`, `fade_out_ms`, `loop_start_ms`, `loop_end_ms`, `music` (tempo); the engine plays them in Play and in exports (see [mcp/guide/sound.md](mcp/guide/sound.md)) |
+| AudioClip import settings | `type`, `gain_db`, `trim_head_ms`, `trim_tail_ms`, `fade_in_ms`, `fade_out_ms`, `loop_start_ms`, `loop_end_ms`, `force_to_mono`, `music` (tempo); the engine plays them in Play and in exports (see [mcp/guide/sound.md](mcp/guide/sound.md)) |
+| `AudioImporter.forceToMono` (Force To Mono) | Import Settings' Force To Mono, key `force_to_mono`: `off`, `on`, `auto` (mono when the file's measured stereo width `side_mid_db` is at most -18 dB); `AudioSource.channels` reads 1 |
 | `AudioSource.pitch` | `pitch` (= `speed`) |
 | `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
+| `AudioSource.spatialBlend` (2D / 3D slider) | `spatialBlend` (Inspector Spatial Blend, 0 = 2D .. 1 = 3D); every new Audio Source is a GameObject, 2D at 0; `sound3D` sets 0 or 1 |
+| A looping `AudioSource` made for one sound (`loop = true`, then `Play`) | `Audio.play(path, {loop = true})` -> `SoundHandle` (`stop()` ends it), or an Audio Source with `looping` |
 | volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
 
 ## Terrain
@@ -434,6 +477,16 @@ Details: [mcp/guide/terrain.md](mcp/guide/terrain.md) (`jasper://docs/terrain`).
 | Details (Paint Details), Detail Mesh (`TerrainData.detailPrototypes`) | detail layers: `foliageLayers`, the Terrain window's "Detail layer"; MCP `edit_terrain_details` |
 | detail density (`SetDetailLayer`) | a detail layer's density map, painted with Paint Density (`sculpt_terrain paint_density`) |
 
+## Lighting, sky and post-processing
+
+| Unity term | JasperEngine |
+|---|---|
+| `RenderSettings.skybox = null`, a disabled skybox | `Skybox.visible = false` (the sky stops drawing, its lighting stays) or an inactive sky entity |
+| Skybox/Panoramic (Latitude Longitude, 360 degrees), `_Rotation` r | `library:panoramic_sky`, `rotation` = (r + 270) mod 360 (Unity's image centre faces Unity's +X, the engine's -Z at rotation 0; a Unity direction (x, y, z) is the engine's (-x, y, z)). Mobile: its Per-Vertex Mapping feature (`VERTEX_MAPPING`) |
+| Skybox/Cubemap (or 6 Sided), `_Rotation` r | the Skybox's six faces with +X and -X swapped and each face mirrored left to right, `rotation` = -r (the engine samples the cube in its own right-handed space) |
+| Post-processing Vignette: Intensity, Smoothness, Rounded; a custom vignette `smoothstep(start, end, r)` | Vignette: Intensity, Falloff Smoothness (`vignetteSmoothness`) or Radii (`vignetteStart`, `vignetteEnd`: radii where 1 is the middle of the screen's edge), Roundness |
+| Color Lookup (a strip of N*N x N, green 0 at the bottom row) | Color Grading > LUT Texture; Flip Green (`lutFlipGreen`) for a strip whose green 0 is its top row |
+
 ## Layers and physics
 
 Each physics backend has its Layer Collision Matrix (Project Settings > Physics for
@@ -446,9 +499,10 @@ the `Physics2D` one change it at runtime; in the editor that lasts until Play st
 Changing a GameObject's layer re-filters its Rigidbody (2D) before the next step.
 
 Ray casts take a layer mask (`LayerMask.getMask(...)`, `Physics.ALL_LAYERS`):
-`Physics.raycast(scene, ray [, layerMask])`,
-`Physics.raycast(scene, origin, direction, maxDistance [, layerMask])` and `raycastAll`,
-and the `Physics2D` ones with `Vector2` origin and direction. Without a mask they use
+`Physics.raycast(scene, ray [, layerMask [, options]])`,
+`Physics.raycast(scene, origin, direction, maxDistance [, layerMask [, options]])` and `raycastAll`,
+and the `Physics2D` ones with `Vector2` origin and direction. As in Unity, a 3D ray that starts
+inside a collider does not hit it (`options.hitFromInside` reports it at 0). Without a mask they use
 `DEFAULT_RAYCAST_LAYERS`, every layer but Ignore Raycast; so do the scene queries of
 `Ray:intersects`. With a `Ray`, `distance` is the fraction of `ray.direction`; with an
 origin, a direction and a distance it is in world units (scene units in 2D).
@@ -459,6 +513,7 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 |---|---|
 | `WheelJoint2D`, `HingeJoint2D`, `SliderJoint2D`, `DistanceJoint2D`, `SpringJoint2D`, `FixedJoint2D`, `RelativeJoint2D`, `FrictionJoint2D`, `TargetJoint2D` | one `Joint2D` component (Hierarchy > Physics > Joint 2D) with `type` `WHEEL`, `REVOLUTE`, `PRISMATIC`, `DISTANCE`, `DISTANCE` + `enableSpring`, `WELD`, `MOTOR`, `MOTOR` + `correctionFactor = 0`, `MOUSE` |
 | `connectedBody` | `bodyB` (alias `connectedBody`); the joint's own Rigidbody 2D is `bodyA` |
+| `gameObject.AddComponent<WheelJoint2D>()`, `GetComponents<Joint2D>()` | `go:addJoint2D(Joint2DType.WHEEL)` (a child joint GameObject with bodyA = `go`), `go:getJoints2D()` (the joints whose bodyA is `go`) |
 | `anchor`, `connectedAnchor`, `autoConfigureConnectedAnchor` | `anchorA`, `anchorB` (aliases `anchor`, `connectedAnchor`), `autoAnchors`, with `anchorSpace = LOCAL` |
 | `suspension.frequency`, `suspension.dampingRatio`, `suspension.angle` | `frequency`, `dampingRatio`, `axis` (angle 90 = `(0, 1)`) |
 | `useMotor`, `motor.motorSpeed`, `motor.maxMotorTorque` | `useMotor`, `motorSpeed` (deg/s), `maxMotorTorque` (`maxMotorForce` for sliders and distance) |
@@ -476,6 +531,9 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `collisionDetectionMode` (`CollisionDetectionMode2D`), `sleepMode` (`RigidbodySleepMode2D`) | `collisionDetection`, `sleepingMode` (same enum names) |
 | `isTrigger` (a collider) | the collider's `sensor` (`setColliderTrigger(i, b)`) |
 | Physics 2D settings: Velocity / Position Iterations | the scene's `physics2DSubSteps` (Box2D 3 sub-steps) |
+| Physics 2D settings: Max Rotation Speed (360), Velocity Threshold, Max Translation Speed | the scene's `physics2DMaxRotation` (45 degrees a step, Box2D's default), `physics2DBounceThreshold`, `physics2DMaxLinearSpeed`; the World foldout has Box2D's contact and joint stiffness too |
+| `Rigidbody2D` that must spin past Max Rotation Speed (wheels) | `allowFastRotation` (Box2D's; Unity has no per-body switch) |
+| pixels per unit of 2D physics (Unity: 1 unit = 1 m) | the scene's `physics2DPointsPerMeter` (64) |
 
 ## 3D physics: Unity names and their JasperEngine counterparts
 
@@ -495,8 +553,10 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `CharacterJoint.lowTwistLimit / highTwistLimit / swing1Limit / swing2Limit` | `twistMinAngle / twistMaxAngle / normalHalfConeAngle / planeHalfConeAngle` (Lua aliases of the Unity names) |
 | `ConfigurableJoint.xMotion ... angularZMotion` (`ConfigurableJointMotion`), drives, `targetPosition` / `targetRotation` | the same names (`JointMotion.LOCKED` / `LIMITED` / `FREE`), `useDrive` + stiffness / damping |
 | `enableCollision`, `breakForce`, `breakTorque`, `OnJointBreak(float)` | the same, `breakAction`, `onJointBreak(self, force, joint)` (C++ `onJointBreak(float, Joint3D&)`) |
-| Ragdoll Wizard (GameObject > 3D Object > Ragdoll...) | the same menu, `create_ragdoll` (MCP), the `Ragdoll` component (`simulated`) |
-| Physics Debugger, `Physics.autoSyncTransforms` | the Game view's Physics toggle, `Physics.debugDraw`; transforms always sync |
+| Ragdoll Wizard (GameObject > 3D Object > Ragdoll...) | the same menu, `create_ragdoll` (MCP), the `Ragdoll` component (`simulated`); at run time (no Unity API) `Ragdoll.create(root [, options])` |
+| `gameObject.AddComponent<HingeJoint>()`, `GetComponents<Joint>()` | `go:addJoint3D(Joint3DType.HINGE)` (a child joint GameObject with bodyA = `go`), `go:getJoints3D()` (the joints whose bodyA is `go`) |
+| Physics Debugger (its Queries view), `Physics.autoSyncTransforms` | the Game view's Physics toggle, `Physics.debugDraw`; Physics > Queries, `Physics.debugDrawQueries`; transforms always sync |
+| Physics settings: Default Solver Iterations / Velocity Iterations, Bounce Threshold, Sleep Threshold, Default Contact Offset | the scene's `physics3DPositionIterations` / `physics3DVelocityIterations`, `physics3DBounceThreshold`, `physics3DSleepThreshold`, `physics3DSpeculativeDistance` (Inspector > Scene > Physics > World); `physics3DCollisionSteps` has no Unity name |
 
 In scene and prefab files the component keys follow the class names, e.g.
 `rigidbody2d:`, `audiosource:`, `recttransform:`, `colliders:`, `prefabPath:`.

@@ -14,8 +14,10 @@
 #include "../../Include/RmlUi/Core/RenderBox.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
+#include "TransformState.h"
 #include "ElementStyle.h"
 #include "GeometryBackgroundBorder.h"
+#include <algorithm>
 #include <cmath>
 
 namespace Rml {
@@ -431,10 +433,14 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 				draw.decorator_data = draw.decorator->GenerateElementData(element, clip_area);
 				if (!draw.decorator_data)
 					continue;
+				draw.clip_area = clip_area;
 				const RenderBox clip_box = element->GetRenderBox(clip_area, 0, false);
 				// (fork, P5-2: a decorator that clips itself, as the engine's effects do, needs no mask)
 				if (clip_box.HasBorderRadius() && !canvas && !draw.decorator->PaintsOwnClip())
+				{
 					draw.clip_mask = MakeClipMask(*render_manager, clip_box, ElementBackgroundBorder::GetFeatherUnit(element));
+					draw.clip_rect = Rectanglef::FromPositionSize(clip_box.GetBorderOffset() + clip_box.GetFillOffset(), clip_box.GetFillSize());
+				}
 				draws.push_back(std::move(draw));
 				continue;
 			}
@@ -638,6 +644,8 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 			if (clip_box.HasBorderRadius() && !canvas)
 			{
 				draw.clip_mask = MakeClipMask(*render_manager, clip_box, ElementBackgroundBorder::GetFeatherUnit(element));
+				draw.clip_rect = Rectanglef::FromPositionSize(clip_box.GetBorderOffset() + clip_box.GetFillOffset(), clip_box.GetFillSize());
+				draw.clip_box_index = box_index;
 			}
 			draws.push_back(std::move(draw));
 		}
@@ -646,6 +654,60 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 	generated_offset = element_offset;
 	generated_scroll = Vector2f(element->GetScrollLeft(), element->GetScrollTop());
 	generated_canvas = canvas ? canvas->Size() : Vector2f(0.f);
+}
+
+// Fork (S92-F1): along each axis, the tiles' origins (their first, 'origin') are one start, or starts one tile size apart
+// that cover the clip rectangle: 'period' is then the negative tile size (the one tile alone; 0 where it covers the clip
+// rectangle), or the tile size. False otherwise (the gaps of 'space').
+static bool GradientTileAxes(const LayerTiles& tiles, const Rectanglef& clip_rect, Vector2f& origin, Vector2f& period)
+{
+	constexpr float epsilon = 0.01f;
+	for (int axis = 0; axis < 2; axis++)
+	{
+		const float size = (axis == 0 ? tiles.tile_size.x : tiles.tile_size.y);
+		const float clip_begin = (axis == 0 ? clip_rect.Left() : clip_rect.Top());
+		const float clip_end = (axis == 0 ? clip_rect.Right() : clip_rect.Bottom());
+		if (!(size > 0.f))
+			return false;
+		Vector<float> starts;
+		for (const LayerTile& tile : tiles.tiles)
+		{
+			const Vector2f tile_origin = tile.rect.TopLeft() - tile.uv0 * tiles.tile_size;
+			const float start = (axis == 0 ? tile_origin.x : tile_origin.y);
+			bool seen = false;
+			for (float known : starts)
+				seen = seen || Math::Absolute(known - start) <= epsilon;
+			if (!seen)
+				starts.push_back(start);
+		}
+		std::sort(starts.begin(), starts.end());
+		float result = 0.f;
+		if (starts.size() == 1)
+		{
+			const bool covers = starts[0] <= clip_begin + epsilon && starts[0] + size >= clip_end - epsilon;
+			result = (covers ? 0.f : -size);
+		}
+		else
+		{
+			for (size_t i = 1; i < starts.size(); i++)
+				if (Math::Absolute(starts[i] - starts[i - 1] - size) > epsilon)
+					return false;
+			if (starts.front() > clip_begin + epsilon || starts.back() + size < clip_end - epsilon)
+				return false;
+			result = size;
+		}
+		if (axis == 0)
+		{
+			origin.x = starts[0];
+			period.x = result;
+		}
+		else
+		{
+			origin.y = starts[0];
+			period.y = result;
+		}
+	}
+	return true;
 }
 
 // Fork (S16-F5): the gradient tiles of a background image as primitives (ElementBackgroundLayers::Draw::primitives), false
@@ -711,11 +773,16 @@ static bool MakeGradientTiles(RenderManager& render_manager, Element* element, B
 		for (Style::BorderStyle style : styles)
 			if (style != Style::BorderStyle::None && style != Style::BorderStyle::Hidden && style != Style::BorderStyle::Solid)
 				return false;
-		if (!grid)
+		Vector2f first = origin;
+		Vector2f period = repeat;
+		// Fork (S92-F1): tiles that do not cover the clip box, each axis one tile (no-repeat, and repeat-x or -y across the
+		// other), or tiles one tile size apart that cover it: one primitive whose tile is drawn alone along the first kind of
+		// axis (a negative period). Only 'space' with gaps between its tiles keeps the mask layer.
+		if (!grid && !GradientTileAxes(tiles, clip_rect, first, period))
 			return false;
 		const BorderMetrics metrics = GeometryBackgroundBorder::ComputeBorderMetrics(clip_box.GetBorderOffset(), clip_box.GetBorderWidths(),
 			clip_box.GetFillSize(), clip_box.GetBorderRadius());
-		add(Rectanglef::FromCorners(metrics.positions_inner[0], metrics.positions_inner[2]), metrics.inner_radii, origin, repeat);
+		add(Rectanglef::FromCorners(metrics.positions_inner[0], metrics.positions_inner[2]), metrics.inner_radii, first, period);
 		return true;
 	}
 	const CornerSizes2 square = {};
@@ -731,6 +798,51 @@ static bool MakeGradientTiles(RenderManager& render_manager, Element* element, B
 			add(rect, square, origin_of(tile), Vector2f(0.f));
 	}
 	return !out.empty();
+}
+
+bool ElementBackgroundLayers::GetClipShapes(Element* element, ClipMaskGeometryList& out)
+{
+	out.clear();
+	if (kind != Kind::Mask)
+		return false;
+	if (!dirty && depends_on_offset)
+	{
+		const Vector2f offset = element->GetAbsoluteOffset(BoxArea::Border);
+		const Vector2f scroll(element->GetScrollLeft(), element->GetScrollTop());
+		if (offset != generated_offset || scroll != generated_scroll || generated_canvas != Vector2f(0.f))
+			dirty = true;
+	}
+	if (dirty)
+	{
+		Generate(element, nullptr, nullptr);
+		dirty = false;
+	}
+	if (draws.size() != 1 || !draws[0].decorator || draws[0].clip_area == BoxArea::Auto)
+		return false;
+	const Draw& draw = draws[0];
+	ClipMaskGeometry clip{ClipMaskOperation::Set, nullptr, element->GetAbsoluteOffset(BoxArea::Border).Round(), nullptr};
+	const TransformState* transform_state = element->GetTransformState();
+	clip.transform = (transform_state ? transform_state->GetTransform() : nullptr);
+	clip.has_shape = true;
+	if (!draw.decorator->GetMaskClipShape(element, draw.decorator_data, clip.shape, clip.geometry) || !clip.geometry)
+		return false;
+	out.push_back(clip);
+	if (draw.clip_mask)
+	{
+		// the layer's rounded clip box (MakeClipMask's shape)
+		ElementBackgroundBorder* background_border = element->GetElementBackgroundBorder();
+		ClipMaskGeometry box = clip;
+		box.operation = ClipMaskOperation::Intersect;
+		box.geometry = background_border->GetClipGeometry(element, draw.clip_area);
+		box.shape = background_border->GetClipShape(element, draw.clip_area);
+		if (!box.geometry || !*box.geometry)
+		{
+			out.clear();
+			return false;
+		}
+		out.push_back(box);
+	}
+	return true;
 }
 
 void ElementBackgroundLayers::Render(Element* element, const Rectanglef* canvas, Element* area_element)
@@ -755,6 +867,26 @@ void ElementBackgroundLayers::Render(Element* element, const Rectanglef* canvas,
 		return;
 	const Vector2f offset = element->GetAbsoluteOffset(BoxArea::Border);
 
+	// Fork (S92-F4): a masked draw's layers cover its clip box (the mask's feathered edge included), not the viewport,
+	// within the layer they are composited into. Under a transform, the element's projected border box (the main box's:
+	// another box of an inline element keeps a layer of the region it is drawn in).
+	auto MaskWindow = [&](const Draw& draw) {
+		Rectanglef window = Rectanglef::MakeInvalid();
+		const TransformState* transform_state = element->GetTransformState();
+		if (transform_state && transform_state->GetTransform())
+		{
+			if (draw.clip_box_index != 0 || element->GetNumBoxes() > 1 || !ElementUtilities::GetBoundingBox(window, element, BoxArea::Border))
+				return render_manager->GetLayerRegion();
+		}
+		else
+		{
+			window = draw.clip_rect.Translate(offset);
+		}
+		window = window.Extend(1.f);
+		Math::ExpandToPixelGrid(window);
+		return Rectanglei(window).IntersectIfValid(render_manager->GetLayerRegion());
+	};
+
 	for (Draw& draw : draws)
 	{
 		if (!draw.primitives.empty())
@@ -764,7 +896,10 @@ void ElementBackgroundLayers::Render(Element* element, const Rectanglef* canvas,
 		}
 		const bool masked = bool(draw.clip_mask);
 		const bool fade = !draw.fade.empty();
-		if (masked || fade)
+		const Rectanglei mask_window = masked ? MaskWindow(draw) : Rectanglei::MakeInvalid();
+		if (masked)
+			render_manager->PushLayer(mask_window);
+		else if (fade)
 			render_manager->PushLayer();
 
 		if (fade)
@@ -798,7 +933,7 @@ void ElementBackgroundLayers::Render(Element* element, const Rectanglef* canvas,
 		if (masked)
 		{
 			// The layer, masked by the anti-aliased shape of its rounded clip box.
-			render_manager->PushLayer();
+			render_manager->PushLayer(mask_window);
 			draw.clip_mask.Render(offset);
 			CompiledFilter mask = render_manager->SaveLayerAsMaskImage();
 			render_manager->PopLayer();

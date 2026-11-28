@@ -67,6 +67,14 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     YAML::Node node;
     node["enabled"] = YamlNumbers::text(mesh.enabled);
 
+    // S98 F1: the geometry of a .mesh asset is the file's, so neither its buffers nor what they
+    // give (bounds, vertex counts) are written: a save is the same whether the file was read yet
+    if (!mesh.meshAsset.empty()) {
+        encodeAssetRef(node, "meshAsset", mesh.meshAsset);
+        encodeBuffers = false;
+        encodeGeneratedValues = false;
+    }
+
     if (encodeBuffers){
         node["buffer"] = encodeInterleavedBuffer(mesh.buffer);
         node["indices"] = encodeIndexBuffer(mesh.indices);
@@ -175,6 +183,8 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
         encodeShaderRef(node, "customDepthShader", mesh.customDepthShader);
     if (!mesh.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(mesh.shaderUniforms);
+    if (!mesh.propertyOverrides->empty())
+        node["propertyOverrides"] = encodePropertyOverrides(mesh.propertyOverrides, embedTextureData);
 
     return node;
 }
@@ -185,6 +195,13 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     // Use old values as defaults if provided
     if (oldMesh) {
         mesh = *oldMesh;
+    }
+
+    // S98 F1 (omitted when none): another file, or none, is read again by MeshSystem
+    const std::string readAsset = mesh.meshAsset.path;
+    mesh.meshAsset = node["meshAsset"] ? decodeAssetRef(node, "meshAsset") : AssetRef();
+    if (mesh.meshAsset.empty() || mesh.meshAsset.path != readAsset) {
+        mesh.loadedMeshAsset.clear();
     }
 
     // Decode buffers using generic methods
@@ -290,6 +307,8 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["customShader"]) mesh.customShader = decodeShaderRef(node, "customShader");
     if (node["customDepthShader"]) mesh.customDepthShader = decodeShaderRef(node, "customDepthShader");
     mesh.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    if (node["propertyOverrides"]) mesh.propertyOverrides = decodePropertyOverrides(node["propertyOverrides"]);
+    else mesh.propertyOverrides.reset();
     mesh.needUpdateShaderUniforms = true;
 
     if (node["enabled"]) mesh.enabled = YamlNumbers::as<bool>(node["enabled"]);
@@ -432,8 +451,11 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     node["height"] = YamlNumbers::integerText(sprite.height);
     node["automaticFlipY"] = YamlNumbers::text(sprite.automaticFlipY);
     node["flipY"] = YamlNumbers::text(sprite.flipY);
+    // S94: written only when set (a scene of before is unchanged)
+    if (sprite.flipX) node["flipX"] = YamlNumbers::text(sprite.flipX);
     node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
+    if (sprite.size.x != 0.0f || sprite.size.y != 0.0f) node["size"] = encodeVector2(sprite.size);
     // S45 R6: optional, written only when not Simple (an older editor keeps it as unknown data)
     if (sprite.drawMode != SpriteDrawMode::SIMPLE) node["drawMode"] = StreamSchema::spriteDrawMode().toString(sprite.drawMode);
     // S41: written only away from their defaults (a scene of before is unchanged)
@@ -481,6 +503,13 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["height"]) sprite.height = YamlNumbers::as<unsigned int>(node["height"]);
     if (node["automaticFlipY"]) sprite.automaticFlipY = YamlNumbers::as<bool>(node["automaticFlipY"]);
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
+    sprite.flipX = node["flipX"] ? YamlNumbers::as<bool>(node["flipX"]) : false;
+    if (node["size"]){
+        const Vector2 size = decodeVector2(node["size"]);
+        sprite.size = Vector2(std::isfinite(size.x) ? std::max(0.0f, size.x) : 0.0f, std::isfinite(size.y) ? std::max(0.0f, size.y) : 0.0f);
+    }else{
+        sprite.size = Vector2(0.0f, 0.0f);
+    }
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
     if (node["drawMode"]) sprite.drawMode = decodeEnum(node, "drawMode", StreamSchema::spriteDrawMode());
@@ -1087,6 +1116,8 @@ YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
     // written only when off (an Animation Player plays the model's clips, 9.R15), so files with
     // models save as before; decoding reads a missing key as on, never as the old value
     if (!model.animationEntities) node["animationEntities"] = false;
+    // written only when on, so files with models save as before; a missing key reads as off
+    if (model.preserveHierarchy) node["preserveHierarchy"] = true;
 
     node["skeleton"] = static_cast<uint32_t>(model.skeleton);
 
@@ -1156,6 +1187,19 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
                 model.animationEntities = value.as<bool>();
             } catch (const YAML::Exception&) {
                 model.animationEntities = true;
+            }
+        }
+    }
+    model.preserveHierarchy = false;
+    if (const YAML::Node value = node["preserveHierarchy"]; value && value.IsScalar() && !value.Scalar().empty()) {
+        bool flag = false;
+        if (YamlNumbers::readPlain(value.Scalar(), flag)) {
+            model.preserveHierarchy = flag;
+        } else {
+            try {
+                model.preserveHierarchy = value.as<bool>();
+            } catch (const YAML::Exception&) {
+                model.preserveHierarchy = false;
             }
         }
     }
@@ -1451,6 +1495,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
     node["linearDamping"] = body.linearDamping;
     node["angularDamping"] = body.angularDamping;
     node["fixedRotation"] = body.fixedRotation;
+    // S96: written only when set (an older editor keeps it as unknown data)
+    if (body.allowFastRotation) {
+        node["allowFastRotation"] = true;
+    }
     node["collisionDetection"] = collisionDetection2DToString(body.collisionDetection);
     node["sleepingMode"] = sleepMode2DToString(body.sleepingMode);
     node["useAutoMass"] = body.useAutoMass;
@@ -1460,6 +1508,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
     node["autoInertia"] = body.autoInertia;
     node["inertia"] = body.inertia;
     node["material"] = body.material;
+    // S96 WP-C: written only when set
+    if (body.attachToParentBody) {
+        node["attachToParentBody"] = true;
+    }
 
     YAML::Node shapesNode;
     for (const Collider2D& collider : body.colliders) {
@@ -1521,6 +1573,7 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
     if (node["linearDamping"]) body.linearDamping = YamlNumbers::as<float>(node["linearDamping"]);
     if (node["angularDamping"]) body.angularDamping = YamlNumbers::as<float>(node["angularDamping"]);
     if (node["fixedRotation"]) body.fixedRotation = YamlNumbers::as<bool>(node["fixedRotation"]);
+    if (node["allowFastRotation"]) body.allowFastRotation = YamlNumbers::as<bool>(node["allowFastRotation"]);
     if (node["collisionDetection"]) body.collisionDetection = stringToCollisionDetection2D(node["collisionDetection"].as<std::string>());
     if (node["sleepingMode"]) body.sleepingMode = stringToSleepMode2D(node["sleepingMode"].as<std::string>());
     if (node["useAutoMass"]) body.useAutoMass = YamlNumbers::as<bool>(node["useAutoMass"]);
@@ -1531,6 +1584,7 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
     if (node["inertia"]) body.inertia = YamlNumbers::as<float>(node["inertia"]);
     // keys written only when set: absent is the default, also over an existing component
     body.material = node["material"] ? node["material"].as<std::string>() : std::string();
+    body.attachToParentBody = node["attachToParentBody"] ? YamlNumbers::as<bool>(node["attachToParentBody"]) : false;
 
     if (node["colliders"]) {
         const YAML::Node collidersNode = node["colliders"];
@@ -1638,6 +1692,10 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     node["allowSleeping"] = body.allowSleeping;
     node["collideKinematicVsNonDynamic"] = body.collideKinematicVsNonDynamic;
     node["interpolation"] = rigidbodyInterpolationToString(body.interpolation);
+    // S96 WP-C: written only when set
+    if (body.attachToParentBody) {
+        node["attachToParentBody"] = true;
+    }
     if (body.overrideMassProperties) {
         node["overrideMassProperties"] = true;
         node["solidBoxSize"] = encodeVector3(body.solidBoxSize);
@@ -1749,6 +1807,8 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["allowSleeping"]) body.allowSleeping = YamlNumbers::as<bool>(node["allowSleeping"]);
     if (node["collideKinematicVsNonDynamic"]) body.collideKinematicVsNonDynamic = YamlNumbers::as<bool>(node["collideKinematicVsNonDynamic"]);
     if (node["interpolation"]) body.interpolation = stringToRigidbodyInterpolation(node["interpolation"].as<std::string>());
+    // keys written only when set: absent is the default, also over an existing component
+    body.attachToParentBody = node["attachToParentBody"] ? YamlNumbers::as<bool>(node["attachToParentBody"]) : false;
     if (node["overrideMassProperties"]) body.overrideMassProperties = YamlNumbers::as<bool>(node["overrideMassProperties"]);
     if (node["solidBoxSize"]) body.solidBoxSize = decodeVector3(node["solidBoxSize"]);
     if (node["solidBoxDensity"]) body.solidBoxDensity = YamlNumbers::as<float>(node["solidBoxDensity"]);
@@ -2052,6 +2112,8 @@ YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemCom
         for (Entity plane : particles.collisionPlanes) planes.push_back(plane);
         node["collisionPlanes"] = planes;
     }
+    // written only for a migrated system: a file from before it stays as it was
+    if (particles.legacyFrom != NULL_ENTITY) node["legacyFrom"] = particles.legacyFrom;
     return node;
 }
 
@@ -2093,6 +2155,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     if (node["collisionPlanes"] && node["collisionPlanes"].IsSequence()){
         for (const YAML::Node& plane : node["collisionPlanes"]) particles.collisionPlanes.push_back(YamlNumbers::as<Entity>(plane));
     }
+    particles.legacyFrom = node["legacyFrom"] ? YamlNumbers::as<Entity>(node["legacyFrom"]) : NULL_ENTITY;
     particles.needReload = true;
     return particles;
 }
@@ -3108,7 +3171,8 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
     // Layer (a missing key decodes to that default)
     const bool defaultLayers = player.layers.empty() ||
         (player.layers.size() == 1 && player.layers[0].name == anim::BASE_LAYER_NAME && player.layers[0].mask.empty() &&
-         player.layers[0].maskGuid.empty() && player.layers[0].weight == 1.0f && player.layers[0].blend == AnimationLayerBlend::Override);
+         player.layers[0].maskGuid.empty() && player.layers[0].weight == 1.0f && player.layers[0].blend == AnimationLayerBlend::Override &&
+         !player.layers[0].meshSpaceRotation);
     if (!defaultLayers) {
         YAML::Node layersNode(YAML::NodeType::Sequence);
         for (const AnimationPlayerLayer& layer : player.layers) {
@@ -3118,6 +3182,8 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
             if (layer.blend != AnimationLayerBlend::Override) layerNode["blend"] = anim::layerBlendName(layer.blend);
             if (!layer.mask.empty()) layerNode["mask"] = layer.mask;
             if (!layer.maskGuid.empty()) layerNode["maskGuid"] = layer.maskGuid;
+            // mesh-space-rotation spec R44: written only when set (an old scene re-saves byte for byte)
+            if (layer.meshSpaceRotation) layerNode["meshSpaceRotation"] = YamlNumbers::text(true);
             layersNode.push_back(layerNode);
         }
         node["layers"] = layersNode;
@@ -3128,6 +3194,9 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
     encodeFinite(node, "defaultFadeTime", player.defaultFadeTime);
     // S48: written only when set (an old scene re-saves byte for byte)
     if (player.poseFrameRate != 0.0f) encodeFinite(node, "poseFrameRate", player.poseFrameRate);
+    // S94 F34: written only when set
+    if (player.applyRootMotion) node["applyRootMotion"] = YamlNumbers::text(player.applyRootMotion);
+    if (player.legacyRootDrift) node["legacyRootDrift"] = YamlNumbers::text(player.legacyRootDrift);
     return node;
 }
 
@@ -3244,6 +3313,14 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
                 }
                 layer.mask = text("mask");
                 layer.maskGuid = text("maskGuid");
+                const YAML::Node meshSpace = layerNode["meshSpaceRotation"];
+                if (meshSpace && meshSpace.IsScalar() && !meshSpace.Scalar().empty()) {
+                    try {
+                        layer.meshSpaceRotation = YamlNumbers::as<bool>(meshSpace);
+                    } catch (const YAML::Exception&) {
+                        layer.meshSpaceRotation = false;
+                    }
+                }
             } else {
                 continue;
             }
@@ -3268,6 +3345,8 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     player.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
     player.defaultFadeTime = given("defaultFadeTime") ? std::max(0.0f, decodeFinite(node["defaultFadeTime"], defaults.defaultFadeTime)) : defaults.defaultFadeTime;
     player.poseFrameRate = given("poseFrameRate") ? std::max(0.0f, decodeFinite(node["poseFrameRate"], defaults.poseFrameRate)) : defaults.poseFrameRate;
+    player.applyRootMotion = boolean("applyRootMotion", defaults.applyRootMotion);
+    player.legacyRootDrift = boolean("legacyRootDrift", defaults.legacyRootDrift);
 
     if (oldPlayer && (oldPlayer->clips != player.clips || oldPlayer->layers != player.layers)) {
         player.needsLoad = true;

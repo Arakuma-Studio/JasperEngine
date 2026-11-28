@@ -21,6 +21,9 @@ static constexpr float POINTER_DOUBLE_CLICK_MAX_DIST = 3.f; // [dp]
 static constexpr float POINTER_TOUCH_SLOP = 3.f;            // [dp] TOUCH_CLICK_MAX_DISTANCE
 static constexpr float POINTER_SCROLL_INERTIA_DELAY = 0.1f;
 static constexpr float POINTER_TOUCH_MOVEMENT_DECAY_RATE = 5.0f;
+// Fork (S93 R9): how far the mouse moves with its button held before it pans a 'scroll-drag: pointer' container
+// (uGUI's EventSystem drag threshold), wider than a finger's so that a click with a shaky hand still clicks
+static constexpr float POINTER_MOUSE_PAN_SLOP = 10.f; // [dp]
 // Fork (P7-H): on touch, a draggable element inside a scroll container starts its drag after a press this long
 // that moved at most this far; a touch that moves further first scrolls the container instead.
 static constexpr float TOUCH_LONG_PRESS_TIME = 0.4f;    // [s]
@@ -54,6 +57,67 @@ namespace {
 		while (element && ElementCascade::IsUnfocusable(element))
 			element = element->GetParentNode();
 		return element;
+	}
+
+	// Fork (S93 R8): the drag scrolling physics of a scroll container, from its properties
+	ScrollPhysics ReadScrollPhysics(Element* container)
+	{
+		ScrollPhysics physics;
+		if (!container)
+			return physics;
+		if (const Property* drag = container->GetProperty(PropertyId::ScrollDrag))
+			physics.drag = (ScrollPhysics::Drag)drag->Get<int>();
+		if (const Property* movement = container->GetProperty(PropertyId::ScrollMovement))
+			physics.movement = (ScrollPhysics::Movement)movement->Get<int>();
+		if (const Property* inertia = container->GetProperty(PropertyId::ScrollInertia))
+			physics.inertia = (inertia->Get<int>() == 0);
+		if (const Property* rate = container->GetProperty(PropertyId::ScrollDecelerationRate))
+			physics.deceleration_rate = (rate->unit == Unit::KEYWORD ? -1.f : Math::Clamp(rate->Get<float>(), 0.f, 1.f));
+		// a <time>: "0.1s", "100ms" (an invalid one keeps the default)
+		if (const Property* elasticity = container->GetProperty(PropertyId::ScrollElasticity))
+		{
+			const String text = StringUtilities::ToLower(StringUtilities::StripWhitespace(elasticity->Get<String>()));
+			const bool ms = (text.size() > 2 && text.compare(text.size() - 2, 2, "ms") == 0);
+			const bool s = (!ms && text.size() > 1 && text.back() == 's');
+			float seconds = 0.f;
+			if ((ms || s) && TypeConverter<String, float>::Convert(text.substr(0, text.size() - (ms ? 2 : 1)), seconds) && seconds >= 0.f)
+				physics.elasticity = (ms ? seconds / 1000.f : seconds);
+		}
+		return physics;
+	}
+
+	bool IsScrollableAxis(Element* container, int axis)
+	{
+		const Style::Overflow overflow = (axis == 0 ? container->GetComputedValues().overflow_x() : container->GetComputedValues().overflow_y());
+		return overflow == Style::Overflow::Auto || overflow == Style::Overflow::Scroll;
+	}
+
+	// uGUI ScrollRect.RubberDelta: how far content dragged 'over_stretching' past an edge is drawn past it
+	float RubberDelta(float over_stretching, float view_size)
+	{
+		if (view_size <= 0.f)
+			return 0.f;
+		const float sign = (over_stretching < 0.f ? -1.f : 1.f);
+		return (1.f - (1.f / ((Math::Absolute(over_stretching) * 0.55f / view_size) + 1.f))) * view_size * sign;
+	}
+
+	// The velocity of a pan (px/s of scrolling, positive towards the end) from its decayed inertia position (6.3's touch
+	// inertia), at the pointer's position now.
+	Vector2f PanVelocity(Vector2f inertia_position, double start_time_x, double start_time_y, bool pan_x, bool pan_y, Vector2f position,
+		double now)
+	{
+		Vector2f velocity = -(position - inertia_position);
+		const float elapsed_x = static_cast<float>(now - start_time_x);
+		const float elapsed_y = static_cast<float>(now - start_time_y);
+		if (elapsed_x > 0)
+			velocity.x /= elapsed_x;
+		if (elapsed_y > 0)
+			velocity.y /= elapsed_y;
+		if (!pan_x)
+			velocity.x = 0;
+		if (!pan_y)
+			velocity.y = 0;
+		return velocity;
 	}
 
 	// 'touch-action' as a mask: bit 0 pan-x, bit 1 pan-y (auto and manipulation: both)
@@ -490,6 +554,11 @@ bool Context::ProcessPointerDown(const PointerInput& input)
 	created.scroll.last_position = input.position;
 	created.scroll.scrolling_last_time = GetSystemInterface()->GetElapsedTime();
 	created.scroll.scroll_container = touch_element ? touch_element->GetClosestScrollableContainer() : nullptr;
+	created.scroll.physics = ReadScrollPhysics(created.scroll.scroll_container);
+	// a pen pans under 'scroll-drag: pointer' only (fork, S93 R8)
+	if (created.type == PointerType::Pen && created.scroll.physics.drag != ScrollPhysics::Drag::Pointer)
+		created.scroll.scroll_container = nullptr;
+	// the press holds the content: inertia stops (an elastic overscroll stays where it is, for the pan or the release)
 	if (created.scroll.scroll_container && scroll_controller->GetTarget() == created.scroll.scroll_container)
 		scroll_controller->Reset();
 	ComputeTouchAction(created, touch_element);
@@ -661,7 +730,6 @@ bool Context::ProcessPointerMove(const PointerInput& input)
 	// panning (G5-4); not while a long press may still start a drag
 	if (scroll.scroll_container && !state->drag && !scroll.drag_candidate)
 	{
-		const Vector2f delta = input.position - scroll.last_position;
 		const Vector2f from_start = input.position - scroll.start_position;
 		const float slop = POINTER_TOUCH_SLOP * density_independent_pixel_ratio;
 		if (!state->panning && from_start.SquaredMagnitude() >= slop * slop)
@@ -677,38 +745,7 @@ bool Context::ProcessPointerMove(const PointerInput& input)
 		}
 		if (state->panning)
 		{
-			TouchState& pan = state->scroll;
-			Vector2f scroll_delta = delta;
-			if (!state->pan_x)
-				scroll_delta.x = 0;
-			if (!state->pan_y)
-				scroll_delta.y = 0;
-			if (scroll_delta.x != 0 || scroll_delta.y != 0)
-				scroll_controller->InstantScrollOnTarget(pan.scroll_container, -scroll_delta);
-
-			enum { Horizontal = 0, Vertical = 1 };
-			for (int axis : {Horizontal, Vertical})
-			{
-				bool& positive = (axis == Horizontal ? pan.scrolling_right : pan.scrolling_down);
-				double& start_time = (axis == Horizontal ? pan.scrolling_start_time_x : pan.scrolling_start_time_y);
-				const bool scroll_start = (start_time == 0);
-				const bool going_positive = (delta[axis] > 0);
-				if (delta[axis] != 0 && (going_positive != positive || scroll_start))
-				{
-					pan.inertia_position[axis] = input.position[axis];
-					positive = going_positive;
-					start_time = now;
-				}
-				else
-				{
-					const float elapsed = static_cast<float>(now - start_time);
-					const float weight = Math::Exp(-elapsed * POINTER_TOUCH_MOVEMENT_DECAY_RATE);
-					pan.inertia_position[axis] = input.position[axis] - (input.position[axis] - pan.inertia_position[axis]) * weight;
-					start_time = now - (now - start_time) * weight;
-				}
-			}
-			pan.scrolling_last_time = now;
-			pan.last_position = input.position;
+			UpdatePan(state->scroll, state->pan_x, state->pan_y, input.position, now);
 			return false; // a pan is not passed on
 		}
 	}
@@ -773,11 +810,220 @@ void Context::CancelPointerPan(PointerId id, PointerState& state, int key_modifi
 	current->hover = nullptr;
 	SwapHoverChain(old_hover, nullptr, current->hover_chain, empty, parameters, true);
 	if (PointerState* again = LookupPointer(id))
+		BeginPan(again->scroll, again->position);
+}
+
+void Context::BeginPan(TouchState& pan, Vector2f position)
+{
+	pan.inertia_position = position;
+	pan.scrolling_start_time_x = 0;
+	pan.scrolling_start_time_y = 0;
+	// (the move that starts the pan scrolls from the previous position, as 6.3's delta did)
+	pan.pan_origin_position = pan.last_position;
+	if (Element* container = pan.scroll_container)
+		pan.pan_origin_offset = Vector2f(container->GetScrollLeft(), container->GetScrollTop()) + container->GetScrollOverscroll();
+}
+
+void Context::UpdatePan(TouchState& pan, bool pan_x, bool pan_y, Vector2f position, double now)
+{
+	const Vector2f delta = position - pan.last_position;
+	Element* container = pan.scroll_container;
+	if (container && pan.physics.movement == ScrollPhysics::Movement::Clamped)
 	{
-		again->scroll.inertia_position = again->position;
-		again->scroll.scrolling_start_time_x = 0;
-		again->scroll.scrolling_start_time_y = 0;
+		Vector2f scroll_delta = delta;
+		if (!pan_x)
+			scroll_delta.x = 0;
+		if (!pan_y)
+			scroll_delta.y = 0;
+		if (scroll_delta.x != 0 || scroll_delta.y != 0)
+			scroll_controller->InstantScrollOnTarget(container, -scroll_delta);
 	}
+	else if (container)
+	{
+		// uGUI ScrollRect.OnDrag (fork, S93 R9): the content follows the pointer from where the pan began; past an edge,
+		// elastic content is drawn RubberDelta of the excess past it, unrestricted content the whole excess
+		const Vector2f raw = pan.pan_origin_offset - (position - pan.pan_origin_position);
+		const Vector2f max_offset = {Math::Max(container->GetScrollWidth() - container->GetClientWidth(), 0.f),
+			Math::Max(container->GetScrollHeight() - container->GetClientHeight(), 0.f)};
+		const Vector2f view = {container->GetClientWidth(), container->GetClientHeight()};
+		Vector2f scroll = {container->GetScrollLeft(), container->GetScrollTop()};
+		Vector2f overscroll = container->GetScrollOverscroll();
+		for (int axis = 0; axis < 2; axis++)
+		{
+			if (!(axis == 0 ? pan_x : pan_y) || !IsScrollableAxis(container, axis))
+				continue;
+			const float clamped = Math::Clamp(raw[axis], 0.f, max_offset[axis]);
+			const float excess = raw[axis] - clamped;
+			scroll[axis] = clamped;
+			overscroll[axis] = (pan.physics.movement == ScrollPhysics::Movement::Elastic ? RubberDelta(excess, view[axis]) : excess);
+		}
+		container->SetScrollLeft(scroll.x);
+		container->SetScrollTop(scroll.y);
+		container->SetScrollOverscroll(overscroll);
+	}
+
+	enum { Horizontal = 0, Vertical = 1 };
+	for (int axis : {Horizontal, Vertical})
+	{
+		bool& positive = (axis == Horizontal ? pan.scrolling_right : pan.scrolling_down);
+		double& start_time = (axis == Horizontal ? pan.scrolling_start_time_x : pan.scrolling_start_time_y);
+		const bool scroll_start = (start_time == 0);
+		const bool going_positive = (delta[axis] > 0);
+		if (delta[axis] != 0 && (going_positive != positive || scroll_start))
+		{
+			pan.inertia_position[axis] = position[axis];
+			positive = going_positive;
+			start_time = now;
+		}
+		else
+		{
+			const float elapsed = static_cast<float>(now - start_time);
+			const float weight = Math::Exp(-elapsed * POINTER_TOUCH_MOVEMENT_DECAY_RATE);
+			pan.inertia_position[axis] = position[axis] - (position[axis] - pan.inertia_position[axis]) * weight;
+			start_time = now - (now - start_time) * weight;
+		}
+	}
+	pan.scrolling_last_time = now;
+	pan.last_position = position;
+}
+
+void Context::EndPan(TouchState& pan, bool pan_x, bool pan_y, Vector2f position, double now)
+{
+	// the pan ends with inertia (now < 0: cancelled, without); no events (it was cancelled when it started)
+	if (!pan.scroll_container)
+		return;
+	const bool recent = (now >= 0.0 && now - pan.scrolling_last_time < POINTER_SCROLL_INERTIA_DELAY);
+	const Vector2f velocity =
+		recent ? PanVelocity(pan.inertia_position, pan.scrolling_start_time_x, pan.scrolling_start_time_y, pan_x, pan_y, position, now) : Vector2f(0.f);
+	if (pan.physics.IsDefault())
+	{
+		if (recent)
+			scroll_controller->ActivateInertia(pan.scroll_container, velocity);
+	}
+	else
+		scroll_controller->ActivateInertia(pan.scroll_container, velocity, pan.physics);
+}
+
+void Context::PrepareMousePan()
+{
+	mouse_pan = TouchState();
+	mouse_panning = false;
+	// (an element the mouse drags takes the press)
+	Element* container = (hover && !drag) ? hover->GetClosestScrollableContainer() : nullptr;
+	const ScrollPhysics physics = ReadScrollPhysics(container);
+	if (!container || physics.drag != ScrollPhysics::Drag::Pointer)
+		return;
+	const Vector2f position(mouse_position);
+	mouse_pan.scroll_container = container;
+	mouse_pan.physics = physics;
+	mouse_pan.start_position = position;
+	mouse_pan.inertia_position = position;
+	mouse_pan.last_position = position;
+	mouse_pan.scrolling_last_time = GetSystemInterface()->GetElapsedTime();
+	// what 'touch-action' lets a pan of this press do, as for a finger
+	int mask = 3;
+	for (Element* element = hover; element; element = element->GetParentNode())
+	{
+		mask &= TouchActionMask(element);
+		if (element == container)
+			break;
+	}
+	mouse_pan_x = (mask & 1) != 0;
+	mouse_pan_y = (mask & 2) != 0;
+	if (scroll_controller->GetTarget() == container)
+		scroll_controller->Reset();
+}
+
+bool Context::UpdateMousePan(int key_modifier_state)
+{
+	if (!mouse_pan.scroll_container || !(mouse_buttons & 1))
+		return false;
+	const Vector2f position(mouse_position);
+	const double now = GetSystemInterface()->GetElapsedTime();
+	if (!mouse_panning)
+	{
+		const Vector2f from_start = position - mouse_pan.start_position;
+		const float slop = POINTER_MOUSE_PAN_SLOP * density_independent_pixel_ratio;
+		const bool horizontal = Math::Absolute(from_start.x) >= Math::Absolute(from_start.y);
+		if (from_start.SquaredMagnitude() < slop * slop || !((horizontal && mouse_pan_x) || (!horizontal && mouse_pan_y)))
+		{
+			mouse_pan.scrolling_last_time = now;
+			mouse_pan.last_position = position;
+			return false;
+		}
+
+		// the pan starts: the press is cancelled (DOM pointercancel), loses ':active' and its capture, clicks nothing
+		Dictionary parameters;
+		GenerateMousePointerParameters(parameters, -1, key_modifier_state);
+		if (Element* target = GetPointerTarget(MousePointerId))
+			target->DispatchEvent(EventId::Pointercancel, parameters);
+		if (mouse_capture || mouse_pending_capture_set)
+		{
+			mouse_pending_capture = nullptr;
+			mouse_pending_capture_set = true;
+			ProcessPendingCapture(MousePointerId);
+		}
+		ResetActiveChain();
+		last_click_element = nullptr;
+		// (a listener may have removed the container)
+		if (!mouse_pan.scroll_container)
+			return false;
+		mouse_panning = true;
+		BeginPan(mouse_pan, position);
+	}
+	UpdatePan(mouse_pan, mouse_pan_x, mouse_pan_y, position, now);
+	return true;
+}
+
+bool Context::EndMousePan()
+{
+	const bool panned = mouse_panning;
+	if (Element* container = mouse_pan.scroll_container)
+	{
+		if (panned)
+			EndPan(mouse_pan, mouse_pan_x, mouse_pan_y, Vector2f(mouse_position), GetSystemInterface()->GetElapsedTime());
+		else if (container->GetScrollOverscroll() != Vector2f(0.f) && scroll_controller->GetTarget() != container)
+			scroll_controller->ActivateInertia(container, Vector2f(0.f), mouse_pan.physics);
+	}
+	mouse_pan = TouchState();
+	mouse_panning = false;
+	return panned;
+}
+
+Vector2f Context::GetScrollVelocity(Element* element) const
+{
+	if (!element)
+		return Vector2f(0.f);
+	if (scroll_controller->GetTarget() == element)
+		return scroll_controller->GetVelocity();
+	// a pan dragging it: the velocity its release would fling it with
+	const double now = GetSystemInterface()->GetElapsedTime();
+	const auto pan_velocity = [&](const TouchState& pan, bool pan_x, bool pan_y, Vector2f position) {
+		if (now - pan.scrolling_last_time >= POINTER_SCROLL_INERTIA_DELAY)
+			return Vector2f(0.f);
+		return PanVelocity(pan.inertia_position, pan.scrolling_start_time_x, pan.scrolling_start_time_y, pan_x, pan_y, position, now);
+	};
+	if (mouse_panning && mouse_pan.scroll_container == element)
+		return pan_velocity(mouse_pan, mouse_pan_x, mouse_pan_y, Vector2f(mouse_position));
+	for (const auto& pair : pointers)
+	{
+		const PointerState& state = pair.second;
+		if (state.panning && state.scroll.scroll_container == element)
+			return pan_velocity(state.scroll, state.pan_x, state.pan_y, state.position);
+	}
+	return Vector2f(0.f);
+}
+
+void Context::SetScrollVelocity(Element* element, Vector2f velocity)
+{
+	if (element)
+		scroll_controller->ActivateInertia(element, velocity, ReadScrollPhysics(element));
+}
+
+void Context::StopScrolling(Element* element)
+{
+	if (element && scroll_controller->GetTarget() == element)
+		scroll_controller->StopInertia();
 }
 
 void Context::EndPointer(PointerId id, bool released, Vector2f position, int key_modifier_state)
@@ -791,27 +1037,18 @@ void Context::EndPointer(PointerId id, bool released, Vector2f position, int key
 	{
 		// the pan ends with inertia; no events (it was cancelled when it started)
 		if (released)
-		{
-			TouchState& pan = state->scroll;
-			const double now = GetSystemInterface()->GetElapsedTime();
-			if (now - pan.scrolling_last_time < POINTER_SCROLL_INERTIA_DELAY && pan.scroll_container)
-			{
-				Vector2f velocity = -(position - pan.inertia_position);
-				const float elapsed_x = static_cast<float>(now - pan.scrolling_start_time_x);
-				const float elapsed_y = static_cast<float>(now - pan.scrolling_start_time_y);
-				if (elapsed_x > 0)
-					velocity.x /= elapsed_x;
-				if (elapsed_y > 0)
-					velocity.y /= elapsed_y;
-				if (!state->pan_x)
-					velocity.x = 0;
-				if (!state->pan_y)
-					velocity.y = 0;
-				scroll_controller->ActivateInertia(pan.scroll_container, velocity);
-			}
-		}
+			EndPan(state->scroll, state->pan_x, state->pan_y, position, GetSystemInterface()->GetElapsedTime());
+		else
+			EndPan(state->scroll, false, false, position, -1.0);
 		pointers.erase(id);
 		return;
+	}
+
+	// a press that held an elastic overscroll without panning lets it spring back (fork, S93 R9)
+	if (Element* container = state->scroll.scroll_container)
+	{
+		if (container->GetScrollOverscroll() != Vector2f(0.f) && scroll_controller->GetTarget() != container)
+			scroll_controller->ActivateInertia(container, Vector2f(0.f), state->scroll.physics);
 	}
 
 	ProcessPendingCapture(id);
@@ -935,6 +1172,11 @@ bool Context::ProcessPointerCancel(PointerId id)
 		GenerateMousePointerParameters(parameters, -1, 0);
 		Element* target = GetPointerTarget(MousePointerId);
 		mouse_buttons = 0;
+		// a pan ends without inertia (an elastic overscroll springs back)
+		if (mouse_panning)
+			EndPan(mouse_pan, false, false, Vector2f(mouse_position), -1.0);
+		mouse_pan = TouchState();
+		mouse_panning = false;
 		if (target)
 			target->DispatchEvent(EventId::Pointercancel, parameters);
 		mouse_pending_capture = nullptr;
@@ -1075,6 +1317,8 @@ void Context::DetachFromPointers(Element* element)
 		if (state.scroll.scroll_container == element)
 			state.scroll.scroll_container = nullptr;
 	}
+	if (mouse_pan.scroll_container == element)
+		mouse_pan.scroll_container = nullptr;
 	for (auto& pair : pointer_clicks)
 		if (pair.second.element == element)
 			pair.second = PointerClick();

@@ -43,6 +43,8 @@ namespace jasperengine::htmlui {
     class JASPERENGINE_INTERNAL EffectClock {
     public:
         static double now();
+        // an element's effect time: the fixed time, else its document's clock (Update Mode, S93 R35)
+        static double now(Rml::Element* element);
         static void setFixedTime(std::optional<double> seconds);
         static bool isFixed();
         static std::optional<double> getFixedTime();

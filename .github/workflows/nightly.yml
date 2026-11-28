@@ -70,17 +70,20 @@ jobs:
             ccache: linux
             run: UNITY=1 tools/build.sh linux
           # the test trees too: a file-local name two test sources define fails here, not in a user's
-          # unity build (each its own job: on 4 vCPUs the three cold builds are about 3 h in a row)
+          # unity build (each its own job: on 4 vCPUs the three cold builds are about 3 h in a row).
+          # 3 jobs: Ninja's default 6 compiles of 16-source units held 15-18 GB (measured locally), past
+          # the runner's 16 GB, and the editor tests' job died with its runner (nightlies 44898047889,
+          # 45017712750). Line tables and no PCH as in ci.yml: less memory, and the unit-core entry hits
           - name: Unity build (core tests)
             id: unity-core-tests
             image: linux
             ccache: unit-core
-            run: UNITY=1 RUN=0 UNIT_SUITE=core tools/build.sh unit-tests
+            run: JOBS=3 JASPERENGINE_DEBUG_INFO=lines JASPERENGINE_PCH=OFF UNITY=1 RUN=0 UNIT_SUITE=core tools/build.sh unit-tests
           - name: Unity build (editor tests)
             id: unity-editor-tests
             image: linux
             ccache: unit-core
-            run: UNITY=1 RUN=0 UNIT_SUITE=editor tools/build.sh unit-tests
+            run: JOBS=3 JASPERENGINE_DEBUG_INFO=lines JASPERENGINE_PCH=OFF UNITY=1 RUN=0 UNIT_SUITE=editor tools/build.sh unit-tests
           - name: Smoke tests (OpenGL, every fixture)
             id: smoke-opengl
             image: linux
@@ -432,11 +435,15 @@ jobs:
   # (tools/ci/plan_lanes.py NIGHTLY_LEFT_OUT: an MCP shard does not make one)
   # The Xcode project for iOS and macOS, whatever changed: the merge queue builds it only for an Apple-only
   # input (tools/ci/plan_lanes.py APPLE_INPUTS), so an iOS-only break the queue's macos lane did not catch
-  # shows here within a day. As ci.yml's ios job
+  # shows here within a day. As ci.yml's ios job, whose Xcode compilation cache entry this saves on main
+  # (one a day: a push would take a macOS runner for a lane the queue mostly leaves out)
   ios:
     name: ios
     runs-on: macos-latest
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write  # xcode-cache-save deletes the older entry
     env:
       JASPER_CI_REPRO: tools/ci/macos.sh xcode ios
     steps:
@@ -446,11 +453,19 @@ jobs:
       # dav1d's x86-64 asm: the simulator build has an x86_64 slice
       - name: NASM
         run: command -v nasm > /dev/null || tools/ci/retry.sh brew install nasm
+      # 2 GB: both SDKs' cache is 1.1-1.3 GB raw on the Mac, and grows by what each day changed
+      - uses: ./.github/actions/xcode-cache-restore
+        with:
+          fresh-over: '2000'
       - name: Xcode project (iOS)
+        id: ios
         run: tools/ci/macos.sh xcode ios
       - name: Xcode project (macOS)
+        id: macos
         if: ${{ !cancelled() }}
         run: tools/ci/macos.sh xcode macos
+      - uses: ./.github/actions/xcode-cache-save
+        if: github.ref == 'refs/heads/main' && steps.ios.outcome == 'success' && steps.macos.outcome == 'success'
       - uses: ./.github/actions/report
         if: always()
         with:

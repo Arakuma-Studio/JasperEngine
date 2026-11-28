@@ -11,6 +11,8 @@
 
 #ifdef WORLD_NOISE
     #define SURFACE_DISPLACE
+    // (the hook only writes the noise's varyings: the surface stays, and so does its normal)
+    #define SURFACE_DISPLACE_KEEPS_NORMAL
     #undef HAS_UV_SET1
 #else
     #define SURFACE_DEPTH_VARYINGS

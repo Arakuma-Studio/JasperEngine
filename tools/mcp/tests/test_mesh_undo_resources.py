@@ -54,6 +54,22 @@ def one_mesh_gltf(path, vertices: int) -> None:
     path.write_text(json.dumps(gltf))
 
 
+async def settled(ed: Editor, sid: int) -> tuple[dict, dict]:
+    """The counts of the state before the change and after it (undo, redo), once each was drawn again
+    after an undo or redo: a state's first draws make what stays with it, such as a cube's shadow-pass
+    index buffer ("Shadow indices", made at its first shadow draw, which the cube a create made may not
+    have had yet), a depth program variant, or a model file's thumbnail (get_vram_report names them).
+    A leak grows on every round after that."""
+    await ed.call("undo", scene=sid)
+    await alive(ed)
+    await ed.call("redo", scene=sid)
+    await alive(ed)
+    await ed.call("undo", scene=sid)
+    before = await alive(ed)
+    await ed.call("redo", scene=sid)
+    return before, await alive(ed)
+
+
 async def cycle(ed: Editor, sid: int, before: dict, after: dict, what: str) -> None:
     """Three undo/redo rounds: each lands on the counts of its state."""
     seen = []
@@ -71,9 +87,8 @@ async def cycle(ed: Editor, sid: int, before: dict, after: dict, what: str) -> N
 async def test_mesh_change_undo_frees_the_replaced_mesh(ed: Editor):
     sid = (await ed.call("create_scene", name="MeshUndo", type="3D", path="scenes/MeshUndo"))["scene"]["id"]
     shape = (await ed.call("create_entity", scene=sid, type="cube", name="Shape"))["entity_id"]
-    before = await alive(ed)
     await ed.call("set_mesh_geometry", scene=sid, entity=shape, shape="sphere", radius=1)
-    after = await alive(ed)
+    before, after = await settled(ed, sid)
     ed.check(after["buffers"] > 0 and after["pipelines"] > 0, f"the sphere is drawn: {after}")
     await cycle(ed, sid, before, after, "set_mesh_geometry")
 
@@ -90,10 +105,6 @@ async def test_model_load_undo_frees_the_replaced_model_mesh(ed: Editor):
     ed.check(entity is not None and not loaded["loading"], loaded)
     changed = await ed.call("set_model", scene=sid, entity=entity, path="assets/models/Fan9.gltf")
     ed.check(not changed["loading"], changed)
-    # the counts once both files have loaded: the first load of a file keeps an image of its own
-    # (it does not grow with undo and redo), which is not the replaced mesh's
-    await ed.call("undo", scene=sid)
-    before = await alive(ed)
-    await ed.call("redo", scene=sid)
-    after = await alive(ed)
+    # (a model file's thumbnail is one image of what a state's first draws keep)
+    before, after = await settled(ed, sid)
     await cycle(ed, sid, before, after, "set_model")

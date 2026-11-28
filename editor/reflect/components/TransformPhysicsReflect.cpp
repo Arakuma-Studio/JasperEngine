@@ -6,7 +6,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
@@ -46,15 +45,10 @@ namespace {
         static_cast<Transform*>(comp)->needUpdate = true;
     }
 
-    std::string transformCodegen(EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createTransform(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, false, ctx.assignExisting,
-                                        ctx.entityVarNames);
-    }
-
     // ---------------------------------------------------------------- Joint 2D
 
     constexpr FieldDesc kJoint2DFields[] = {
-        JE_FIELD(Joint2DComponent, enabled, .flags = CodegenIfChanged),
+        JE_FIELD(Joint2DComponent, enabled),
         JE_FIELD(Joint2DComponent, type, .enumDesc = &enums::kJoint2DType, .updateFlags = UpdateFlags_Joint2D),
         JE_FIELD(Joint2DComponent, bodyA, .ops = &ops::Entity, .updateFlags = UpdateFlags_Joint2D),
         JE_FIELD(Joint2DComponent, bodyB, .ops = &ops::Entity, .updateFlags = UpdateFlags_Joint2D),
@@ -67,8 +61,8 @@ namespace {
         // upstream (physics-2d / physics-3d): motors, springs, limits, breaking, anchor space
         JE_FIELD(Joint2DComponent, anchorSpace, .enumDesc = &enums::kJointAnchorSpace, .updateFlags = UpdateFlags_Joint2D),
         JE_FIELD(Joint2DComponent, enableCollision, .updateFlags = UpdateFlags_Joint2D_Params),
-        JE_FIELD(Joint2DComponent, breakForce, .ops = &ops::FloatOrInfinity, .flags = CodegenIfChanged, .updateFlags = UpdateFlags_Joint2D_Params),
-        JE_FIELD(Joint2DComponent, breakTorque, .ops = &ops::FloatOrInfinity, .flags = CodegenIfChanged, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, breakForce, .ops = &ops::FloatOrInfinity, .updateFlags = UpdateFlags_Joint2D_Params),
+        JE_FIELD(Joint2DComponent, breakTorque, .ops = &ops::FloatOrInfinity, .updateFlags = UpdateFlags_Joint2D_Params),
         JE_FIELD(Joint2DComponent, breakAction, .enumDesc = &enums::kJointBreakAction, .updateFlags = UpdateFlags_Joint2D_Params),
         JE_FIELD(Joint2DComponent, useLimits, .updateFlags = UpdateFlags_Joint2D_Params),
         JE_FIELD(Joint2DComponent, lowerAngle, .updateFlags = UpdateFlags_Joint2D_Params),
@@ -97,11 +91,7 @@ namespace {
         JE_FIELD(Joint2DComponent, maxTorque, .updateFlags = UpdateFlags_Joint2D_Params),
         JE_FIELD(Joint2DComponent, correctionFactor, .updateFlags = UpdateFlags_Joint2D_Params),
         // the exported joint is built on load
-        JE_FIELD(Joint2DComponent, needUpdateJoint, .flags = NoSave | Derived | Hidden | CodegenRuntime),
-    };
-
-    constexpr const char* kJoint2DCodegenOrder[] = {
-        "type", "bodyA", "bodyB", "anchorA", "anchorB", "axis", "target", "autoAnchors", "rope", "anchorSpace", "enableCollision", "breakForce", "breakTorque", "breakAction", "useLimits", "lowerAngle", "upperAngle", "lowerTranslation", "upperTranslation", "useMotor", "motorSpeed", "maxMotorTorque", "maxMotorForce", "enableSpring", "frequency", "dampingRatio", "length", "autoLength", "minLength", "maxLength", "linearFrequency", "angularFrequency", "linearDampingRatio", "angularDampingRatio", "linearOffset", "angularOffset", "autoOffset", "maxForce", "maxTorque", "correctionFactor", "needUpdateJoint", "enabled"
+        JE_FIELD(Joint2DComponent, needUpdateJoint, .flags = NoSave | Derived | Hidden),
     };
 
     void joint2DPostDecode(void* comp, const DecodeContext& ctx) {
@@ -114,7 +104,7 @@ namespace {
     constexpr uint64_t kJoint3D = UpdateFlags_Joint3D;
 
     constexpr FieldDesc kJoint3DFields[] = {
-        JE_FIELD(Joint3DComponent, enabled, .flags = CodegenIfChanged),
+        JE_FIELD(Joint3DComponent, enabled),
         JE_FIELD(Joint3DComponent, type, .enumDesc = &enums::kJoint3DType, .updateFlags = kJoint3D),
         JE_FIELD(Joint3DComponent, bodyA, .ops = &ops::Entity, .updateFlags = kJoint3D),
         JE_FIELD(Joint3DComponent, bodyB, .ops = &ops::Entity, .updateFlags = kJoint3D),
@@ -144,15 +134,15 @@ namespace {
         JE_FIELD(Joint3DComponent, numTeethRack, .updateFlags = kJoint3D),
         JE_FIELD(Joint3DComponent, numTeethGear, .updateFlags = kJoint3D),
         JE_FIELD(Joint3DComponent, rackLength, .updateFlags = kJoint3D),
-        JE_FIELD(Joint3DComponent, pathPoints, .ops = &ops::PushBackListCleared<Vector3>, .flags = NullIfEmpty | ListWhole | ListElements | ListTemplate, .updateFlags = kJoint3D),
+        JE_FIELD(Joint3DComponent, pathPoints, .ops = &ops::Array<Vector3>, .flags = NullIfEmpty | ListWhole | ListElements | ListTemplate, .updateFlags = kJoint3D),
         JE_FIELD(Joint3DComponent, pathPosition, .updateFlags = kJoint3D),
         JE_FIELD(Joint3DComponent, isLooping, .updateFlags = kJoint3D),
         JE_FIELD(Joint3DComponent, autoAnchors, .updateFlags = kJoint3D),
         // upstream (physics-2d / physics-3d): motors, springs, limits, breaking, anchor space
         JE_FIELD(Joint3DComponent, anchorSpace, .enumDesc = &enums::kJointAnchorSpace, .updateFlags = UpdateFlags_Joint3D),
         JE_FIELD(Joint3DComponent, enableCollision, .updateFlags = UpdateFlags_Joint3D_Params),
-        JE_FIELD(Joint3DComponent, breakForce, .ops = &ops::FloatOrInfinity, .flags = CodegenIfChanged, .updateFlags = UpdateFlags_Joint3D_Params),
-        JE_FIELD(Joint3DComponent, breakTorque, .ops = &ops::FloatOrInfinity, .flags = CodegenIfChanged, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, breakForce, .ops = &ops::FloatOrInfinity, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, breakTorque, .ops = &ops::FloatOrInfinity, .updateFlags = UpdateFlags_Joint3D_Params),
         JE_FIELD(Joint3DComponent, breakAction, .enumDesc = &enums::kJointBreakAction, .updateFlags = UpdateFlags_Joint3D_Params),
         JE_FIELD(Joint3DComponent, useLimits, .updateFlags = UpdateFlags_Joint3D_Params),
         JE_FIELD(Joint3DComponent, limitsSpringFrequency, .updateFlags = UpdateFlags_Joint3D_Params),
@@ -187,20 +177,13 @@ namespace {
         JE_FIELD(Joint3DComponent, driveDamping, .updateFlags = UpdateFlags_Joint3D_Params),
         JE_FIELD(Joint3DComponent, angularDriveStiffness, .updateFlags = UpdateFlags_Joint3D_Params),
         JE_FIELD(Joint3DComponent, angularDriveDamping, .updateFlags = UpdateFlags_Joint3D_Params),
-        JE_FIELD(Joint3DComponent, driveMaxForce, .ops = &ops::FloatOrInfinity, .flags = CodegenIfChanged, .updateFlags = UpdateFlags_Joint3D_Params),
-        JE_FIELD(Joint3DComponent, driveMaxTorque, .ops = &ops::FloatOrInfinity, .flags = CodegenIfChanged, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, driveMaxForce, .ops = &ops::FloatOrInfinity, .updateFlags = UpdateFlags_Joint3D_Params),
+        JE_FIELD(Joint3DComponent, driveMaxTorque, .ops = &ops::FloatOrInfinity, .updateFlags = UpdateFlags_Joint3D_Params),
         JE_FIELD(Joint3DComponent, targetPosition, .updateFlags = UpdateFlags_Joint3D_Params),
         JE_FIELD(Joint3DComponent, targetRotation, .updateFlags = UpdateFlags_Joint3D_Params),
         JE_FIELD(Joint3DComponent, targetVelocity, .updateFlags = UpdateFlags_Joint3D_Params),
         JE_FIELD(Joint3DComponent, targetAngularVelocity, .updateFlags = UpdateFlags_Joint3D_Params),
-        JE_FIELD(Joint3DComponent, needUpdateJoint, .flags = NoSave | Derived | Hidden | CodegenRuntime),
-    };
-
-    constexpr const char* kJoint3DCodegenOrder[] = {
-        "type", "bodyA", "bodyB", "anchorA", "anchorB", "anchor", "axis", "normal", "twistAxis", "planeAxis", "axisX", "axisY", "limitsMin",
-        "limitsMax", "normalHalfConeAngle", "planeHalfConeAngle", "twistMinAngle", "twistMaxAngle", "fixedPointA", "fixedPointB", "hingeA",
-        "hingeB", "hinge", "slider", "numTeethGearA", "numTeethGearB", "numTeethRack", "numTeethGear", "rackLength", "pathPoints",
-        "pathPosition", "isLooping", "autoAnchors", "anchorSpace", "enableCollision", "breakForce", "breakTorque", "breakAction", "useLimits", "limitsSpringFrequency", "limitsSpringDamping", "useMotor", "motorTargetVelocity", "motorMaxForce", "useSpring", "springStiffness", "springDamper", "springTargetPosition", "maxFriction", "minDistance", "maxDistance", "coneHalfAngle", "swingType", "motorTargetRotation", "motorSpringFrequency", "motorSpringDamping", "xMotion", "yMotion", "zMotion", "angularXMotion", "angularYMotion", "angularZMotion", "linearLimitMin", "linearLimitMax", "angularLimitMin", "angularLimitMax", "useDrive", "driveStiffness", "driveDamping", "angularDriveStiffness", "angularDriveDamping", "driveMaxForce", "driveMaxTorque", "targetPosition", "targetRotation", "targetVelocity", "targetAngularVelocity", "needUpdateJoint", "enabled"
+        JE_FIELD(Joint3DComponent, needUpdateJoint, .flags = NoSave | Derived | Hidden),
     };
 
     void joint3DPostDecode(void* comp, const DecodeContext& ctx) {
@@ -277,6 +260,8 @@ namespace {
         JE_FIELD(Rigidbody2DComponent, linearDamping, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
         JE_FIELD(Rigidbody2DComponent, angularDamping, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
         JE_FIELD(Rigidbody2DComponent, fixedRotation, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        // S96 WP-E: not capped by the scene's Max Rotation Per Step
+        JE_FIELD(Rigidbody2DComponent, allowFastRotation, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, collisionDetection, .enumDesc = &enums::kCollisionDetection2D, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, sleepingMode, .enumDesc = &enums::kSleepMode2D, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, useAutoMass, .updateFlags = UpdateFlags_Rigidbody2D_Params),
@@ -286,6 +271,8 @@ namespace {
         JE_FIELD(Rigidbody2DComponent, autoInertia, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, inertia, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
         JE_FIELD(Rigidbody2DComponent, material, .updateFlags = kBody2D),
+        // S96 WP-C: its colliders join the nearest ancestor's body (AttachedColliders.h)
+        JE_FIELD(Rigidbody2DComponent, attachToParentBody, .updateFlags = kBody2D),
         // upstream: a body's colliders are a list without a count limit (the files still write
         // numColliders, which the codec reads): the whole list is one property (a prefab override
         // when the count changes), each collider's members too
@@ -324,6 +311,8 @@ namespace {
         JE_FIELD(RigidbodyComponent, collideKinematicVsNonDynamic, .updateFlags = UpdateFlags_Rigidbody_Params),
         // read when the body is drawn
         JE_FIELD(RigidbodyComponent, interpolation, .enumDesc = &enums::kRigidbodyInterpolation),
+        // S96 WP-C: its colliders join the nearest ancestor's body (AttachedColliders.h)
+        JE_FIELD(RigidbodyComponent, attachToParentBody, .updateFlags = kBody3D),
         JE_FIELD(RigidbodyComponent, colliders, .flags = ListWhole | ListEachElement | ListTemplate, .updateFlags = kBody3D),
     };
 
@@ -340,16 +329,6 @@ namespace {
         [](const void* comp, const EncodeContext&) { return Stream::encodeRigidbodyComponent(*static_cast<const RigidbodyComponent*>(comp)); },
         &decodeRigidbody};
 
-    std::string rigidbody2DCodegen(EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createRigidbody2DComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting,
-                                                   ctx.entityVarNames);
-    }
-
-    std::string rigidbodyCodegen(EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createRigidbodyComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting,
-                                                 ctx.entityVarNames);
-    }
-
 }
 
 const ComponentDesc kTransformDesc{
@@ -358,7 +337,6 @@ const ComponentDesc kTransformDesc{
     .body = JE_STRUCT_DESC(Transform, "Transform", kTransformFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(Transform),
     .postDecode = &transformPostDecode,
-    .codegen = &transformCodegen,
 };
 
 namespace {
@@ -378,7 +356,6 @@ const ComponentDesc kJoint2DDesc{
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(Joint2DComponent),
     .codec = &kJoint2DCodec,
     .postDecode = &joint2DPostDecode,
-    .codegenVar = "joint2d", .codegenOrder = kJoint2DCodegenOrder,
     .codegenGuard = "JASPERENGINE_PHYSICS_2D",
     .extraKeys = kJoint2DKnownKeys,
 };
@@ -389,7 +366,6 @@ const ComponentDesc kJoint3DDesc{
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(Joint3DComponent),
     .codec = &kJoint3DCodec,
     .postDecode = &joint3DPostDecode,
-    .codegenVar = "joint3d", .codegenOrder = kJoint3DCodegenOrder,
     .codegenGuard = "JASPERENGINE_PHYSICS_3D",
     .extraKeys = kJoint3DKnownKeys,
 };
@@ -397,7 +373,7 @@ const ComponentDesc kJoint3DDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kRigidbody2DKnownKeys[] = {"angularDamping", "autoCenterOfMass", "autoInertia", "centerOfMass", "colliders", "collisionDetection",
+    constexpr const char* kRigidbody2DKnownKeys[] = {"allowFastRotation", "angularDamping", "attachToParentBody", "autoCenterOfMass", "autoInertia", "centerOfMass", "colliders", "collisionDetection",
                                                       "enabled", "fixedRotation", "gravityScale", "inertia", "linearDamping", "mass", "material",
                                                       "numColliders", "sleepingMode", "type", "useAutoMass"};
 
@@ -409,7 +385,6 @@ const ComponentDesc kRigidbody2DDesc{
     .body = JE_STRUCT_DESC(Rigidbody2DComponent, "Rigidbody2DComponent", kRigidbody2DFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(Rigidbody2DComponent),
     .codec = &kRigidbody2DCodec,
-    .codegen = &rigidbody2DCodegen,
     .codegenGuard = "JASPERENGINE_PHYSICS_2D",
     .extraKeys = kRigidbody2DKnownKeys,
 };
@@ -417,7 +392,7 @@ const ComponentDesc kRigidbody2DDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kRigidbodyKnownKeys[] = {"allowSleeping", "allowedDOFs", "angularDamping", "automaticCenterOfMass", "automaticInertiaTensor",
+    constexpr const char* kRigidbodyKnownKeys[] = {"allowSleeping", "allowedDOFs", "angularDamping", "attachToParentBody", "automaticCenterOfMass", "automaticInertiaTensor",
                                                     "automaticMass", "buoyancy", "centerOfMass", "collideKinematicVsNonDynamic", "colliders", "enabled", "friction",
                                                     "gravityFactor", "inertiaTensor", "inertiaTensorRotation", "interpolation", "linearDamping", "mass", "material",
                                                     "maxAngularVelocity", "maxLinearVelocity", "motionQuality", "numColliders", "overrideMassProperties", "restitution",
@@ -431,7 +406,6 @@ const ComponentDesc kRigidbodyDesc{
     .body = JE_STRUCT_DESC(RigidbodyComponent, "RigidbodyComponent", kRigidbodyFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(RigidbodyComponent),
     .codec = &kRigidbodyCodec,
-    .codegen = &rigidbodyCodegen,
     .codegenGuard = "JASPERENGINE_PHYSICS_3D",
     .extraKeys = kRigidbodyKnownKeys,
 };

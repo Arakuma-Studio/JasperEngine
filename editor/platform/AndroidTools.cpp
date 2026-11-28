@@ -155,4 +155,18 @@ bool AndroidTools::verifyApk(const fs::path& apk, std::string& output, std::stri
     return code == 0;
 }
 
+bool AndroidTools::dumpBadging(const fs::path& apk, std::string& output, std::string& error) {
+    const AndroidToolchain tools = discover(0);
+    if (!tools.aapt2.found()) {
+        error = "aapt2 not found: " + tools.aapt2.hint;
+        return false;
+    }
+    const int code = CommandRunner::captureResult({tools.aapt2.path.string(), "dump", "badging", apk.string()}, output, 60000);
+    if (code != 0) {
+        error = "aapt2 dump badging failed (exit " + std::to_string(code) + "): " + output.substr(0, 400);
+        return false;
+    }
+    return true;
+}
+
 }  // namespace jasperengine::editor::platform

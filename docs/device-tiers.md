@@ -84,13 +84,15 @@ Settings window focused, MCP `undo` scope `project`).
 | Target Frame Rate | fps | at most (the platform's default rate counts as above it) |
 | Max Pixel Lights | lights | at most |
 | Particle Budget | particles | at most |
+| Cavity Samples | 4, 8, 16 | Cavity's World samples at most (Screen lines unchanged; never turns Cavity off) |
+| Simulation Distance | factor 0.25..1 | multiplies every Simulation Culling distance (not thermal-adjusted) |
 
 The defaults:
 
 | Tier | Overrides |
 |---|---|
-| Low | Render Scale 0.5, Shadow Quality Low, LOD Bias 0.5, no Volumetrics, no SSAO |
-| Medium | Render Scale 0.85 |
+| Low | Render Scale 0.5, Shadow Quality Low, LOD Bias 0.5, no Volumetrics, no SSAO, Cavity Samples 4, Simulation Distance 0.6 |
+| Medium | Render Scale 0.85, Cavity Samples 8, Simulation Distance 0.8 |
 | High, Ultra | none: the project's values |
 
 A project saved before device tiers existed has these defaults, and they never change a High or
@@ -219,6 +221,8 @@ end
 | `Device.setTier(tier)`, `Device.resetTier()` | fn | a tier for the rest of the run, and back |
 | `Device.onThermalStateChanged` | event | `function(state)` |
 | `Device.onLowMemory` | event | after the caches were cleared |
+| `Device.gpuQuirks` | ro `string[]` | the names of the GPU quirks in effect ("GPU quirks" below) |
+| `Device.gpuDriver` | ro | the driver's version as the quirk rules read it (`""` on WebGL) |
 
 Enums: `DeviceTier.Low`, `Medium`, `High`, `Ultra`; `ThermalState.Nominal`, `Fair`, `Serious`,
 `Critical`.
@@ -227,12 +231,85 @@ Enums: `DeviceTier.Low`, `Medium`, `High`, `Ultra`; `ThermalState.Nominal`, `Fai
 
 The `device` group (`tool_groups enable: ["device"]`; callable either way):
 
-- `get_device_info`: the GPU, the detected tier and its reason, the tier in effect and where it
-  comes from, the thermal and memory state, the overrides in effect, the upload queue.
+- `get_device_info`: the GPU, its driver and GPU quirks (`quirks: [{name, reason, source}]`,
+  `quirks_forced_off`), the detected tier and its reason, the tier in effect and where it comes
+  from, the thermal and memory state, the overrides in effect, the upload queue.
 - `set_device_simulation`: `tier`, `platform`, `thermal_state` of the Game view's simulation.
 
 The table goes through `get_project_settings` / `set_project_settings`: one key per family and tier
 (`quality.device_tiers.mobile.low`), whose value is an object of cells merged in (`null` inherits).
+
+## GPU quirks
+
+A GPU quirk is a named driver workaround: it changes **how** a frame is made, never **what** it
+shows. Tiers answer "how much quality can this device afford" and may change the image within the
+project's settings; quirks answer "how must this driver be fed" and must not change it. They are
+separate files, separate code and separate reports.
+
+| Quirk | What it does | Where it applies |
+|---|---|---|
+| `gl_no_worker_context` | GL: no shared worker context; programs are made on the render thread (parallel or deferred) | a software GL (llvmpipe, softpipe, SwiftShader, Apple's Software Rasterizer) |
+| `gl_no_compile_threads` | GL: the driver's compile threads stay off in parallel mode | the same renderers |
+| `gl_no_warm_draws` | GL: the worker context never draws a new program before the frame does | every GLES device, until an Adreno/Mali run verifies warm draws |
+
+**Levers in C++, rules in data.** `enum class GpuQuirk` (`engine/core/device/GpuQuirks.h`) lists what
+a quirk can do; each lever is read in exactly one place (`GpuQuirks::active(GpuQuirk::...)`). The
+rules saying where one applies are `engine/core/device/gpu_quirks.json`, embedded by
+`python3 -I tools/device/convert_forge_gpu_data.py --embed` (`--check` verifies it):
+
+```json
+{"version": 1, "rules": [
+  {"quirk": "gl_no_warm_draws", "reason": "what goes wrong without it (20+ characters)",
+   "issue": "the spec, deviation or issue with the device run", "check": ["the test proving the same image"],
+   "match": {"api": "gles3"}}]}
+```
+
+Match keys (every key present must match; a list matches any element): `api` (`glcore`, `gles3`,
+`metal`, `d3d11`, `vulkan`), `platform` (`android`, `apple`, `pc`, `web`), `vendor` (a vendor of
+`gpu_tiers.json`), `renderer` (family patterns, the tier database's syntax, against the normalized
+renderer; on the web the unmasked WebGL renderer), `driver` (a family pattern against the
+normalized driver string), `driver_at_least` / `driver_below` (dotted numbers compared
+component-wise with the driver's version; a driver string without one never matches a range; on GL
+the version after `GL_VERSION`'s API version, so `OpenGL ES 3.2 V@415.0` reads `415.0`),
+`os_at_least` / `os_below` (the Android API level on Android, the OS version elsewhere).
+
+The driver string (`SystemRender::getDriverVersion`, Lua `Device.gpuDriver`): GL and GLES
+`GL_VERSION`; Vulkan the driver name and info (Vulkan 1.2), else the decoded `driverVersion`; D3D11
+the user-mode driver as `a.b.c.d`; Metal the OS version; WebGL `""`.
+
+**Resolved once.** The set is resolved when the render system is set up, after the device exists and
+before the shader creation mode is chosen, and logged in one line (`GPU quirks: gl_no_worker_context
+(rule: ...), gl_no_warm_draws (forced on)` or `GPU quirks: none`). It does not change for the run.
+
+**Overrides** (the command line wins over the environment; later items win):
+
+| Where | Form |
+|---|---|
+| a player | `--gpu-quirk=<name>:on\|off` (repeatable, or comma-separated); an unknown name exits 2 naming the known ones |
+| the web page | `?gpu-quirk=<name>:off` |
+| the editor, tests, players | `JASPERENGINE_GPU_QUIRKS=<name>:on\|off,...` (an unknown name is a warning) |
+| the benchmark | `jasperengine-editor benchmark --gpu-quirk <name>:on\|off` |
+
+`JASPER_GL_SOFTWARE_WORKER=1` and `JASPER_GL_WARM_DRAWS=1` remain deprecated aliases of
+`gl_no_worker_context:off` and `gl_no_warm_draws:off`.
+
+Reports: `get_device_info` (`driver`, `quirks`, `quirks_forced_off`), the benchmark's `device`, the
+Performance summary's `driver` and `quirks` (`docs/profiling.md`), Lua `Device.gpuQuirks`, and Project
+Settings > Quality > Device Tiers (`GPU Quirks:` beside this machine's tier, the reason in the tooltip).
+
+**How, never what.** A quirk may change object creation and its thread, contexts, upload method and
+timing, synchronization, buffer and texture usage flags, and pass and draw submission order where
+the result does not depend on it. It may not change shader arithmetic or precision, formats of
+different precision, sampling, blending, culling, LOD, what is drawn or quality settings: drawing
+cutout foliage opaque for a tile GPU is a quality setting or a tier cell, not a quirk.
+
+**Adding a rule** (a device to an existing lever): a reproduced issue, its device run in `issue`, and
+a `check` naming the test that renders a scene with the lever forced on and compares it with the same
+scene without it (`GpuQuirksGpu.CompileThreadsLeverDrawsTheLitCube`,
+`test_async_shaders.py::test_forced_gpu_quirks_draw_the_same_image`). `GpuQuirks.EmbeddedTableIsValid`
+fails a rule whose check names no test. **Adding a lever** is a code change: a `GpuQuirk` value, its
+one consumer and its equivalence test. `tools/check_gpu_vendor_branches.py` fails on a string literal
+naming a GPU vendor or renderer in `engine/renders`, `engine/core/render` or `engine/shaderlib`.
 
 ## C++
 

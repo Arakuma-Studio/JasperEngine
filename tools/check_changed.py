@@ -7,7 +7,10 @@ unit and MCP tests that can see it; the full gate is CI's (the merge queue and t
                                         # with oe-port, else main, else origin/main)
     tools/check-changed --no-cache      # run even when the same inputs passed before
     tools/check-changed --no-mcp        # builds and unit tests only: the MCP selection stays the integrator's
-    CHECK_CHANGED_VERBOSE=1 tools/check-changed   # every step's output, not only a failed one's
+    tools/check-changed --json          # the plan, the step results, logs and fix commands as one JSON document
+    tools/check-changed --red-control   # then the same selected tests without the change: some must fail
+    tools/check-changed --red-control --restore   # the tree an interrupted red control left reverted
+    CHECK_CHANGED_VERBOSE=1 tools/check-changed   # every step's output on the terminal too
     tools/check-changed --plan-json plan.json --deps-from DIR   # CI's `changes` job (tools/ci/plan_lanes.py):
                                         # the plan as JSON, nothing run; the test trees' dependency
                                         # databases from DIR (tools/ci/dump_deps.sh) instead of Ninja
@@ -43,14 +46,29 @@ unit and MCP tests that can see it; the full gate is CI's (the merge queue and t
 5. A pass is cached (build/.cache/check-changed.json) by a hash of the base, the diff, the
    untracked files, the build images' Dockerfiles, the map's version and this script; the same
    inputs reprint the last summary. A run during which the files changed caches nothing.
-6. Exit 1 when a step failed or a selected test could not run. Inside the Linux image the web and
-   Android builds are left out, and said to be (their images are the host's to run).
+6. Exit 1 when a step failed or a selected test could not run. Independent steps go on after a
+   failure; a step whose build failed is skipped, and said to be. Each step's whole output is in
+   build/check-changed/<step>.log; a failed step shows its parsed failures (googletest, unittest,
+   pytest, the MCP results, build diagnostics and crashes through tools/ci/report.py, a lint's
+   findings; at most FAILURE_LINES) and its log. The run ends with one line per step, ok, FAIL,
+   skip or cached, a FAIL with the command that reruns it (narrowed to the tests that failed).
+   Inside the Linux image the web and Android builds are left out, and said to be (their images
+   are the host's to run).
 7. After the Linux editor's build: every header the change edits still compiles alone
    (tools/check_headers.py) and no component header passes the fan-out limits (tools/check_fanout.py).
 8. When a header under engine/core, engine/CMakeLists.txt or what ALL_TRIGGERS names changes: the
    engine builds with every optional module off (tools/check-physics-off.sh all-off). The editor's
    engine has every module, so nothing else here sees a source that lost a header only a module's
    code gave it; a game's Compile build and the smaller prebuilt players do.
+9. The area lints (AREA_LINTS), before the builds: each when a path it reads changes, with its
+   --self-test when the lint or its fixtures change.
+10. --red-control (a clean tree): after the pass, or its cached one, the branch's change outside the
+   tests (RED_CONTROL_KEEPS) is saved to build/red-control/patch.diff and reverse-applied in place;
+   the same selected tests are rebuilt and rerun, and the tree is restored (finally) and verified
+   byte-identical (status, diff, untracked files). It prints which tests failed without the change
+   (one whose build failed: red (build)) and exits 1 when none did; never cached. A marker
+   (build/red-control/in-progress.json) lives from the revert to the verified restore: a run killed
+   in between leaves it, and every later run refuses until --red-control --restore.
 """
 
 from __future__ import annotations
@@ -58,19 +76,23 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_FILE = ROOT / "build" / ".cache" / "check-changed.json"
+LOG_DIR = ROOT / "build" / "check-changed"      # each step's whole output
+RED_DIR = ROOT / "build" / "red-control"        # the red control's patch, logs and in-progress marker
 RB_CHANGES = ROOT / "build" / ".rb-changes.json"
 MCP_TESTS = ROOT / "tools" / "mcp" / "tests"
 CORE_TREE = ROOT / "build" / "linux" / "core-tests"
@@ -94,8 +116,10 @@ MCP_ALL_TRIGGERS = ("tools/mcp/harness.py", "tools/mcp/run_tests.py", "tools/mcp
 # the test harness's and this tool's own Python: their self-tests (python3 -I <test>, no image)
 SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/check-changed": "tools/test_check_changed.py",
               "tools/test_check_changed.py": "tools/test_check_changed.py", "tools/mcp/coverage_map.py": "tools/test_check_changed.py",
+              "tools/ci/report.py": "tools/test_check_changed.py",   # (its parsers read check-changed's logs)
               "tools/mcp/shard.py": "tools/mcp/test_shard.py", "tools/mcp/test_shard.py": "tools/mcp/test_shard.py",
               "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py",
+              "tools/mcp/call_profile.py": "tools/mcp/test_call_profile.py", "tools/mcp/test_call_profile.py": "tools/mcp/test_call_profile.py",
               "tools/check_fanout.py": "tools/test_check_fanout.py", "tools/test_check_fanout.py": "tools/test_check_fanout.py",
               "tools/xcode_sync_sources.py": "tools/test_xcode_sync_sources.py",
               "tools/test_xcode_sync_sources.py": "tools/test_xcode_sync_sources.py",
@@ -122,6 +146,34 @@ CI_SUITE_GUARD_TRIGGERS = ("tools/mcp/tests/test_*.py", "tools/mcp/run_tests.py"
 # The lint reads every engine source but the vendored libraries, the tests and the IDE projects
 EVENT_CLEARS_LINT = "tools/check_event_clears.py"
 EVENT_CLEARS_SKIPPED = ("engine/libs/", "engine/tests/", "engine/workspaces/")
+# render code changes: no string literal names a GPU vendor or renderer (a workaround is a GPU quirk)
+GPU_VENDOR_LINT = "tools/check_gpu_vendor_branches.py"
+GPU_VENDOR_TRIGGERS = ("engine/renders/*", "engine/core/render/*", "engine/shaderlib/*", "engine/core/device/gpu_tiers.json",
+                       GPU_VENDOR_LINT, "tools/gpu_vendor_branches_allowlist.txt")
+# the area lints (AGENTS.md, Test), each run when a path it reads changes, before the builds: the
+# paths it scans (its own skips: tests, libraries), its allow-list. lint -> (the paths it reads, the
+# fixtures of its --self-test, None when it has none): a change of the lint or of those fixtures also
+# runs its --self-test
+LINT_SKIPPED_DIRS = {"tests", "libs", "external"}
+
+
+def _scans(path: str, tops: tuple[str, ...], extensions: tuple[str, ...]) -> bool:
+    return path.startswith(tops) and path.endswith(extensions) and not LINT_SKIPPED_DIRS & set(path.split("/")[:-1])
+
+
+AREA_LINTS = {
+    "tools/check_raw_writes.py": (
+        lambda f: _scans(f, ("editor/", "engine/core/"), (".cpp", ".h", ".hpp", ".cc", ".mm"))
+        or f == "tools/raw_writes_allowlist.txt", ()),
+    "tools/check_stream_keys.py": (lambda f: match(f, ("editor/Stream*.cpp", "editor/reflect/components/*")), None),
+    EVENT_CLEARS_LINT: (lambda f: f.startswith("engine/") and f.endswith(CXX) and not f.startswith(EVENT_CLEARS_SKIPPED), ()),
+    "tools/check_text_encoding.py": (
+        lambda f: _scans(f, ("editor/", "engine/"), (".cpp", ".h", ".hpp", ".cc", ".mm", ".m", ".c", ".inl"))
+        or f == "tools/text_encoding_allowlist.txt", ()),
+    "tools/ci/check-hardcoded-shortcuts.py": (
+        lambda f: f.startswith("editor/") and f.endswith((".cpp", ".h", ".mm")) and not f.startswith("editor/tests/"),
+        ("tools/ci/fixtures/hardcoded-shortcuts/",)),
+}
 # the engine with every optional module off: a header's include can reach a source only through a
 # module's code, and the editor's engine, which has them all, never shows it
 MODULES_OFF_CHECK = "tools/check-physics-off.sh"
@@ -309,6 +361,7 @@ class Plan:
     unit_htmlui: list[str] = field(default_factory=list)
     htmlui_all: bool = False
     self_tests: list[str] = field(default_factory=list)      # tools' own Python tests
+    lints: list[str] = field(default_factory=list)           # area lints: "<script> [--self-test]"
     unit_notes: list[str] = field(default_factory=list)
     mcp_all: bool = False
     mcp_ci: bool = False
@@ -358,9 +411,13 @@ def plan_builds(files: list[str], plan: Plan) -> None:
             plan.self_tests.append(test)
         if match(f, CI_SUITE_GUARD_TRIGGERS) and CI_SUITE_GUARD not in plan.self_tests:
             plan.self_tests.append(CI_SUITE_GUARD)
-        holds_events = f.startswith("engine/") and f.endswith(CXX) and not f.startswith(EVENT_CLEARS_SKIPPED)
-        if (holds_events or f == EVENT_CLEARS_LINT) and EVENT_CLEARS_LINT not in plan.self_tests:
-            plan.self_tests.append(EVENT_CLEARS_LINT)
+        if match(f, GPU_VENDOR_TRIGGERS) and GPU_VENDOR_LINT not in plan.self_tests:
+            plan.self_tests.append(GPU_VENDOR_LINT)
+    for lint, (reads, fixtures) in AREA_LINTS.items():
+        if any(reads(f) or f == lint for f in files):
+            plan.lints.append(lint)
+        if fixtures is not None and any(f == lint or f.startswith(fixtures) for f in files):
+            plan.lints.append(f"{lint} --self-test")
     # engine code may call a required-reason API the Apple privacy manifest must declare
     if any(f.startswith("engine/") and f.endswith(CXX) for f in files) or "engine/workspaces/xcode/ios/PrivacyInfo.xcprivacy" in files:
         if APPLE_PRIVACY_CHECK not in plan.self_tests:
@@ -908,61 +965,359 @@ def cached(key: str, cache_file: Path = CACHE_FILE) -> dict | None:
     return data if data.get("key") == key and data.get("passed") else None
 
 
-def store(key: str, summary: str, cache_file: Path = CACHE_FILE) -> None:
+def store(key: str, summary: str, cache_file: Path = CACHE_FILE, text: str = "", steps: list[dict] | None = None,
+          plan: dict | None = None) -> None:
+    """A pass: its summary, its plan (text and --json's) and its steps, which a hit reprints as cached."""
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     tmp = cache_file.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"key": key, "passed": True, "summary": summary, "at": time.time()}, indent=1))
+    tmp.write_text(json.dumps({"key": key, "passed": True, "summary": summary, "text": text or summary, "steps": steps or [],
+                               "plan": plan or {}, "at": time.time()}, indent=1))
     os.replace(tmp, cache_file)
 
 
 # ---------------------------------------------------------------------------------------- running
 
+FAILURE_LINES = 40      # a failed step's parsed failures on the terminal; the rest is in its log
+UNITTEST_FAIL = re.compile(r"^(?:FAIL|ERROR): (\w+) \(([^)]+)\)")
+PYTEST_FAIL = re.compile(r"^FAILED (\S+::\S+)|^(\S+\.py::\S+) FAILED")
+LINT_FINDING = re.compile(r"^[\w./+-]+:\d+[:) ]")
+TEST_KINDS = ("unit", "htmlui", "mcp", "tool", "navigation")   # the steps that run tests (the red control's)
+_REPORT = None
+
+
+def ci_report():
+    """tools/ci/report.py, whose parsers read a log as CI's failure report does (loaded by path:
+    python3 -I keeps this script's directory off sys.path)."""
+    global _REPORT
+    if _REPORT is None:
+        path = Path(__file__).resolve().parent / "ci" / "report.py"
+        spec = importlib.util.spec_from_file_location("jasper_ci_report", path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        _REPORT = module
+    return _REPORT
+
+
+def command_text(command: list[str], env: dict | None = None) -> str:
+    """A command as the shell line that reruns it, its own environment first (this interpreter as python3)."""
+    words = ["python3" if c == sys.executable else shlex.quote(c) for c in command]
+    return " ".join([f"{k}={shlex.quote(v)}" for k, v in (env or {}).items()] + words)
+
+
+def slug(label: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-") or "step"
+
+
+def parse_failures(lines: list[str], log: Path, repro: str) -> tuple[list[str], list[str]]:
+    """A failed step's output: its failures as terminal lines (at most FAILURE_LINES), and the names of
+    the tests that failed. googletest, unittest and pytest results; build diagnostics, crashes,
+    sanitizer reports and gate verdicts through tools/ci/report.py; else a lint's file:line findings;
+    else the output's tail."""
+    report = ci_report()
+    clean = [report.clean_line(line) for line in lines]
+    shown: list[str] = []
+    tests: list[str] = []
+    for run in report.gtest_runs(clean):
+        if run["outcome"] == "failed":
+            tests.append(run["name"])
+            body = [l for l in clean[run["start"] + 1:run["end"]] if l.strip() and not report.END_RE.search(l)]
+            shown += [f"FAILED {run['name']}"] + [f"    {report.relative_text(l.strip())}" for l in body[:6]]
+        elif run["outcome"] == "unfinished" and run["died"]:
+            tests.append(run["name"])   # (report.parse_log shows the crash)
+    for i, line in enumerate(clean):
+        m = UNITTEST_FAIL.match(line)
+        if m:
+            where = m.group(2).removeprefix("__main__.")
+            name = where if where.endswith("." + m.group(1)) else f"{where}.{m.group(1)}"
+            tests.append(name)
+            end = next((k for k in range(i + 2, len(clean)) if clean[k].startswith(("=" * 20, "-" * 20))), len(clean))
+            body = [l.strip() for l in clean[i + 2:end] if l.strip()]
+            shown += [f"FAILED {name}"] + [f"    {l}" for l in body[-3:]]
+            continue
+        m = PYTEST_FAIL.match(line)
+        if m:
+            tests.append(m.group(1) or m.group(2))
+            shown.append(line.strip())
+    for f in report.parse_log(log, repro):
+        shown.append(f["title"] + (f"  ({f['location']})" if f["location"] else ""))
+        shown += [f"    {l}" for l in f["excerpt"].splitlines()[:4] if l.strip() and l.strip() != f["title"]]
+    if not shown:
+        shown = [l for l in clean if LINT_FINDING.match(l)]
+    if not shown:
+        shown = [l for l in clean if l.strip()][-15:] or ["(no output)"]
+    if len(shown) > FAILURE_LINES:
+        shown = shown[:FAILURE_LINES - 1] + [f"... {len(shown) - FAILURE_LINES + 1} more line(s): see the log"]
+    return shown, list(dict.fromkeys(tests))
+
+
+def narrowed(kind: str, command: list[str], env: dict | None, tests: list[str]) -> str:
+    """The command that reruns a failed step, narrowed to the tests that failed (one binary's
+    googletest tests, the MCP files)."""
+    env = dict(env or {})
+    if tests and kind == "unit" and "UNIT_SUITE" in env:
+        env["UNIT_TEST_ARGS"] = "--gtest_filter=" + ":".join(tests)
+    elif tests and kind == "htmlui":
+        env["HTMLUI_TEST_ARGS"] = "--gtest_filter=" + ":".join(tests)
+    elif tests and kind == "mcp":
+        files = sorted({Path(t.split("::", 1)[0]).name for t in tests})
+        command = [c for c in command if not c.startswith("tools/mcp/tests/")] + [f"tools/mcp/tests/{f}" for f in files]
+    return command_text(command, env)
+
+
+@dataclass
+class Step:
+    label: str
+    status: str                    # ok | FAIL | skip | cached
+    kind: str = "test"             # build | lint | tool | unit | htmlui | mcp | navigation | test
+    seconds: float = 0.0
+    log: str = ""                  # its whole output (repository-relative)
+    fix: str = ""                  # the command that reruns it, narrowed to what failed
+    reason: str = ""               # FAIL: the exit code or what could not run; skip: why
+    blocked_by: str = ""           # skip: the step it needed, which failed or was left out
+    failures: list[str] = field(default_factory=list)
+    tests: list[str] = field(default_factory=list)   # the tests that failed
+
+    def lines(self, status: str | None = None) -> list[str]:
+        """Its summary line, `ok|FAIL|skip|cached  <step>  <seconds>`, and a failure's fix and log."""
+        status = status or self.status
+        out = [f"{status:<6}  {self.label}  {self.seconds:.0f}s" + (f"  ({self.reason})" if self.reason and status != "cached" else "")]
+        if status == "FAIL":
+            out.append(f"        fix: {self.fix}")
+            if self.log:
+                out.append(f"        log: {self.log}")
+        return out
+
+
 class Runner:
-    def __init__(self, verbose: bool, jobs: int | None):
+    """Runs the steps: each one's whole output in log_dir/<step>.log, a failed one's parsed failures on
+    the terminal, a step whose prerequisite failed or was left out reported as skipped."""
+
+    def __init__(self, verbose: bool, log_dir: Path, out=None):
         self.verbose = verbose
-        self.steps: list[tuple[str, str, float]] = []
+        self.log_dir = log_dir
+        self.out = out or sys.stdout
+        self.steps: list[Step] = []
         self.failed = False
         self.unrunnable: list[str] = []
         self.partial = False
+        self.logs: set[str] = set()
 
-    def mcp_results(self, label: str) -> None:
-        """A selected MCP test that skipped could not run: a failure of the step (the full suite
-        skips none on a build server)."""
-        try:
-            data = json.loads((ROOT / "build" / "test-results" / "mcp.json").read_text())
-        except (OSError, ValueError):
-            self.failed = True
-            self.unrunnable.append(f"{label}: no results (build/test-results/mcp.json)")
-            return
-        for r in data.get("results", []):
-            if r.get("status") == "skip":
-                self.failed = True
-                self.unrunnable.append(f"{r['name']}: {r.get('detail', '')[:200]}")
+    def say(self, text: str) -> None:
+        print(text, file=self.out, flush=True)
 
-    def run(self, label: str, command: list[str], env: dict | None = None) -> bool:
-        print(f"[check-changed] {label}: {' '.join(shlex.quote(c) for c in command)}", flush=True)
+    def step(self, label: str) -> Step | None:
+        return next((s for s in reversed(self.steps) if s.label == label), None)
+
+    def skip(self, label: str, reason: str, kind: str = "test", partial: bool = False, blocked_by: str = "") -> None:
+        self.steps.append(Step(label, "skip", kind, reason=reason, blocked_by=blocked_by))
+        self.partial |= partial
+        self.say(f"[check-changed] {label}: skipped ({reason})")
+
+    def fail(self, label: str, reason: str, fix: str, kind: str = "test") -> None:
+        """A selected step that cannot run here."""
+        self.steps.append(Step(label, "FAIL", kind, reason=reason, fix=fix))
+        self.failed = True
+        self.say(f"[check-changed] {label}: FAILED ({reason})")
+
+    def log_path(self, label: str) -> Path:
+        name = slug(label)
+        n = 2
+        while name in self.logs:
+            name = f"{slug(label)}-{n}"
+            n += 1
+        self.logs.add(name)
+        return self.log_dir / f"{name}.log"
+
+    def run(self, label: str, command: list[str], env: dict | None = None, kind: str = "test", needs=()) -> bool:
+        for need in needs:
+            before = self.step(need)
+            if before is not None and before.status not in ("ok", "cached"):
+                self.skip(label, f"{need}: {'failed' if before.status == 'FAIL' else 'skipped'}", kind, blocked_by=need)
+                return False
+        fix = command_text(command, env)
+        self.say(f"[check-changed] {label}: {fix}")
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        log = self.log_path(label)
+        results = ROOT / "build" / "test-results" / "mcp.json"
+        if kind == "mcp":
+            results.unlink(missing_ok=True)   # (a stale one is no result of this run)
         t0 = time.monotonic()
-        full_env = dict(os.environ, **(env or {}))
-        if self.verbose:
-            r = subprocess.run(command, cwd=str(ROOT), env=full_env)
-            out = ""
-        else:
-            r = subprocess.run(command, cwd=str(ROOT), env=full_env, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, text=True, errors="replace")
-            out = r.stdout or ""
-        dt = time.monotonic() - t0
-        ok = r.returncode == 0
-        self.steps.append((label, "PASS" if ok else f"FAIL (exit {r.returncode})", dt))
-        if not ok:
+        lines: list[str] = []
+        with open(log, "w", encoding="utf-8", errors="replace") as f:
+            f.write(f"$ {fix}\n")
+            with subprocess.Popen(command, cwd=str(ROOT), env=dict(os.environ, **(env or {})), stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True, errors="replace") as p:
+                try:
+                    for line in p.stdout:
+                        f.write(line)
+                        lines.append(line.rstrip("\n"))
+                        if self.verbose:
+                            self.out.write(line)
+                            self.out.flush()
+                    code = p.wait()
+                except BaseException:
+                    p.kill()
+                    raise
+        step = Step(label, "ok" if code == 0 else "FAIL", kind, time.monotonic() - t0, os.path.relpath(log, ROOT), fix,
+                    "" if code == 0 else f"exit {code}")
+        self.steps.append(step)
+        if kind == "mcp":
+            self.mcp_results(step, results)
+        if step.status == "FAIL":
             self.failed = True
-            print(f"[check-changed] {label} FAILED (exit {r.returncode}, {dt:.0f}s); its output:", flush=True)
-            if out:
-                print(out[-20000:], flush=True)
+            failures, tests = parse_failures(lines, log, fix)
+            step.failures = step.failures or failures
+            step.tests = step.tests or tests
+            step.fix = narrowed(kind, command, env, step.tests)
+            self.say(f"[check-changed] {label} FAILED ({step.reason}, {step.seconds:.0f}s):")
+            for line in step.failures:
+                self.say(f"  {line}")
+            self.say(f"  log: {step.log}")
         else:
-            summary = [l for l in out.splitlines() if re.search(r"\d+ passed|tests? ran|\[  PASSED  \]", l)]
-            print(f"[check-changed] {label}: ok in {dt:.0f}s{' (' + summary[-1].strip() + ')' if summary else ''}",
-                  flush=True)
-        return ok
+            summary = [l for l in lines if re.search(r"\d+ passed|tests? ran|\[  PASSED  \]", l)]
+            self.say(f"[check-changed] {label}: ok in {step.seconds:.0f}s{' (' + summary[-1].strip() + ')' if summary else ''}")
+        return step.status == "ok"
+
+    def mcp_results(self, step: Step, path: Path) -> None:
+        """The MCP run's results: its failed tests, and a selected test that skipped, which could not
+        run: a failure of the step (the full suite skips none on a build server)."""
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, ValueError):
+            self.unrunnable.append(f"{step.label}: no results (build/test-results/mcp.json)")
+            step.reason = "; ".join(r for r in (step.reason, "could not run: no results (build/test-results/mcp.json)") if r)
+            step.status = "FAIL"
+            return
+        skipped = [r for r in data.get("results", []) if r.get("status") == "skip"]
+        for r in skipped:
+            self.unrunnable.append(f"{r['name']}: {r.get('detail', '')[:200]}")
+        failed = [r for r in data.get("results", []) if r.get("status") == "fail"]
+        crashed = [m.group(1) for m in (re.search(r"(test_[\w-]+\.py)", str(c)) for c in data.get("crashed") or []) if m]
+        step.tests = [str(r.get("name", "?")) for r in failed] + crashed
+        _, found, _ = ci_report().parse_mcp_json(path, step.fix)
+        for f in found:
+            step.failures += [f"FAILED {f['title']}"] + [f"    {l}" for l in f["excerpt"].splitlines()[-4:] if l.strip()]
+        if len(step.failures) > FAILURE_LINES:
+            step.failures = step.failures[:FAILURE_LINES - 1] + [f"... {len(step.failures) - FAILURE_LINES + 1} more line(s): see the log"]
+        if skipped and step.status == "ok":
+            step.status, step.reason = "FAIL", f"could not run: {len(skipped)} selected test(s) skipped"
+            step.failures = [f"skipped {r['name']}: {r.get('detail', '')[:200]}" for r in skipped][:FAILURE_LINES]
+
+
+def run_steps(runner: Runner, plan: Plan, changes: Changes, args, finish_plan=None, red: bool = False) -> None:
+    """The plan's steps. Independent ones go on after a failure; one whose build failed is skipped.
+    finish_plan: the unit and MCP selection, once the unit test trees are built (their dependency
+    database). red: the red control's rerun, only what builds and runs the selected tests."""
+    build_env = {"WERROR": "1"}
+    # 1. the area lints: seconds, and a finding needs no build
+    for lint in plan.lints if not red else ():
+        if (ROOT / lint.split()[0]).is_file():   # (a checkout without it: an older branch's, --root)
+            runner.run(f"lint {lint}", [sys.executable, "-I", *lint.split()], kind="lint")
+    unit_selected = plan.unit_all or plan.unit_core or plan.unit_editor
+    # 2. builds (the unit test trees first: their dependency database picks the suites)
+    if "unit-tests" in plan.builds and (not red or unit_selected):
+        runner.run("build the unit tests", ["tools/build.sh", "unit-tests"], dict(build_env, RUN="0"), "build")
+    if "htmlui-tests" in plan.builds and (not red or plan.htmlui_all or plan.unit_htmlui):
+        runner.run("build the HTML UI tests", ["tools/build.sh", "htmlui-tests"], dict(build_env, RUN="0"), "build")
+    if finish_plan:
+        finish_plan()
+    for test in plan.self_tests:
+        if (ROOT / test).is_file():
+            runner.run(f"tool tests ({test})", [sys.executable, "-I", test], kind="tool")
+    mcp_selected = plan.mcp_all or plan.mcp_ci or plan.mcp_files
+    for b in plan.builds:
+        if b in ("unit-tests", "htmlui-tests"):
+            continue
+        if red and b != "navigation-off" and not (b == "linux" and mcp_selected and not args.no_mcp):
+            continue   # (no selected test runs in it)
+        if b in ("web", "android") and in_image():
+            # (their images are not this one: the check goes on, its pass is not cached, and the summary says so)
+            runner.skip(f"build {b}", "not in the Linux image: tools/check-changed outside it builds it", "build", partial=True)
+            continue
+        if b == "navigation-off":
+            # (a script of the Linux image, not a build.sh target)
+            script = ["tools/check-navigation-off.sh"]
+            runner.run("navigation OFF (NavStubTest, NavGridTest)", script if in_image() else ["tools/build.sh", "exec", "linux", *script],
+                       kind="navigation")
+            continue
+        env = dict(build_env, SKIP_ENGINE="1") if b == "linux" else dict(build_env)
+        runner.run(f"build {b}", ["tools/build.sh", b], env, "build")
+    # the header gates: they read the Linux editor's tree, whose paths are the image's
+    # (a checkout without them: an older branch's, --root)
+    in_tree = (lambda *c: list(c)) if in_image() else (lambda *c: ["tools/build.sh", "exec", "linux", *c])
+    if not red and "linux" in plan.builds and (ROOT / "tools/check_fanout.py").is_file():
+        headers = sorted(f for f in changes.files if f.endswith(HEADER) and f not in changes.deleted)
+        if headers:
+            runner.run(f"headers compile alone ({len(headers)} edited)", in_tree("python3", "-I", "tools/check_headers.py", *headers),
+                       kind="build", needs=("build linux",))
+        runner.run("header fan-out limits", in_tree("python3", "-I", "tools/check_fanout.py"), kind="lint", needs=("build linux",))
+    if not red and plan.modules_off and (ROOT / MODULES_OFF_CHECK).is_file():
+        jobs = os.environ["JOBS"] if os.environ.get("JOBS", "").isdigit() else str(os.cpu_count() or 4)
+        runner.run("the engine with every module off", in_tree("env", "WERROR=1", "bash", MODULES_OFF_CHECK, "-j", jobs, "all-off"),
+                   kind="build")
+    # 3. unit tests
+    unit_build = ("build the unit tests",)
+    if "unit-tests" in plan.builds:
+        if plan.unit_all:
+            runner.run("unit tests (all)", ["tools/build.sh", "unit-tests"], build_env, "unit", unit_build)
+        else:
+            for suite, names in (("core", plan.unit_core), ("editor", plan.unit_editor)):
+                if names:
+                    runner.run(f"unit tests ({suite}: {len(names)} suite(s))", ["tools/build.sh", "unit-tests"],
+                               dict(build_env, UNIT_SUITE=suite, UNIT_TEST_ARGS=f"--gtest_filter={suite_filter(names)}"),
+                               "unit", unit_build)
+    if "htmlui-tests" in plan.builds:
+        htmlui_build = ("build the HTML UI tests",)
+        if plan.htmlui_all:
+            runner.run("HTML UI tests (all)", ["tools/build.sh", "htmlui-tests"], build_env, "htmlui", htmlui_build)
+        elif plan.unit_htmlui:
+            runner.run(f"HTML UI tests ({len(plan.unit_htmlui)} suite(s))", ["tools/build.sh", "htmlui-tests"],
+                       dict(build_env, HTMLUI_TEST_ARGS=f"--gtest_filter={suite_filter(plan.unit_htmlui)}"), "htmlui", htmlui_build)
+    # 4. MCP tests
+    if args.no_mcp and mcp_selected:
+        runner.skip("MCP tests", "--no-mcp", "mcp", partial=True)
+        return
+    if not mcp_selected:
+        return
+    editor = "build linux"
+    if "linux" not in plan.builds and not (ROOT / "build/linux/editor-install/bin/jasperengine-editor").exists():
+        editor = "build linux (the MCP tests' editor)"
+        runner.run(editor, ["tools/build.sh", "linux"], dict(build_env, SKIP_ENGINE="1"), "build")
+    needs = (editor,) if runner.step(editor) else ()
+    # (the container's CPUs, rb.sh's JOBS, for two each: LP_NUM_THREADS 2, docs/testing.md)
+    cpus = int(os.environ["JOBS"]) if os.environ.get("JOBS", "").isdigit() else (os.cpu_count() or 4)
+    jobs = args.j or max(2, cpus // 2)
+    # (a runner without --split-seconds: an older checkout's, --root)
+    runner_source = ROOT / "tools/mcp/run_tests.py"
+    split = ["--split-seconds", "600"] if runner_source.is_file() and "--split-seconds" in runner_source.read_text() else []
+    mcp_env = {"JASPER_SLOW_BUILD": "1", "JASPER_SLOW_TESTS": "1", "MCP_SUITE": "all"}
+    if plan.mcp_all:
+        runner.run("MCP tests (the whole suite)", ["tools/build.sh", "mcp-tests", "-j", str(jobs), *split], mcp_env, "mcp", needs)
+        return
+    if plan.mcp_ci:
+        runner.run("MCP tests (the CI suite)", ["tools/build.sh", "mcp-tests", "-j", str(jobs)],
+                   {"MCP_SUITE": "ci", "JASPER_SLOW_BUILD": "1", "JASPER_SLOW_TESTS": "1"}, "mcp", needs)
+    files = [f for f in plan.mcp_files if (MCP_TESTS / f).is_file()]
+    missing = [f for f in plan.mcp_files if f not in files]
+    if plan.mcp_ci:   # (the CI suite above ran those)
+        files = [f for f in files if not re.search(r"^CI = True", (MCP_TESTS / f).read_text(errors="replace"), re.M)]
+    if missing:
+        runner.fail("MCP tests (selected, not in the checkout)", f"cannot run: {missing}", "git status", "mcp")
+    if not files:
+        return
+    if "test_mesh_raycast.py" not in files:
+        mcp_env["MCP_SKIP_WEB_BUILD"] = "1"
+    elif in_image():
+        # (its latency gate loads a web build, which this image cannot make)
+        runner.unrunnable.append("test_mesh_raycast.py: needs the web image: run on the host")
+        runner.fail("MCP tests (test_mesh_raycast.py)", "cannot run: needs the web image",
+                    "tools/build.sh mcp-tests tools/mcp/tests/test_mesh_raycast.py   # on the host", "mcp")
+        files = [f for f in files if f != "test_mesh_raycast.py"]
+        mcp_env["MCP_SKIP_WEB_BUILD"] = "1"
+    if files:
+        runner.run(f"MCP tests ({len(files)} file(s))", ["tools/build.sh", "mcp-tests", "-j", str(jobs),
+                   *split, *[f"tools/mcp/tests/{f}" for f in files]], mcp_env, "mcp", needs)
 
 
 def describe(changes: Changes, plan: Plan, cmap_info: str) -> str:
@@ -979,6 +1334,8 @@ def describe(changes: Changes, plan: Plan, cmap_info: str) -> str:
     else:
         lines.append("unit tests: none see the change")
     lines += [f"  {n}" for n in plan.unit_notes if not plan.unit_all]
+    if plan.lints:
+        lines.append("lints: " + ", ".join(plan.lints))
     if plan.self_tests:
         lines.append("tool tests: " + ", ".join(plan.self_tests))
     if plan.modules_off:
@@ -1006,9 +1363,11 @@ def commits_since(root: Path):
 
 def use_root(root: Path) -> None:
     """The checkout the run works in (tools/test_check_changed.py points it at a scratch repository)."""
-    global ROOT, CACHE_FILE, RB_CHANGES, MCP_TESTS, CORE_TREE, EDITOR_TEST_TREE, EDITOR_TREE, HTMLUI_TREE
+    global ROOT, CACHE_FILE, RB_CHANGES, MCP_TESTS, CORE_TREE, EDITOR_TEST_TREE, EDITOR_TREE, HTMLUI_TREE, LOG_DIR, RED_DIR
     ROOT = root
     CACHE_FILE = root / "build" / ".cache" / "check-changed.json"
+    LOG_DIR = root / "build" / "check-changed"
+    RED_DIR = root / "build" / "red-control"
     RB_CHANGES = root / "build" / ".rb-changes.json"
     MCP_TESTS = root / "tools" / "mcp" / "tests"
     CORE_TREE = root / "build" / "linux" / "core-tests"
@@ -1036,10 +1395,182 @@ def plan_document(changes: Changes, plan: Plan, cmap_info: str, deps_from: Path 
         "mcp_selected": selected,
         # suite -> [kind, why] per test binary (REASON_KINDS)
         "unit_reasons": {b: {s: list(r) for s, r in sorted(plan.unit_reasons[b].items())} for b in ("core", "editor", "htmlui")},
-        "self_tests": plan.self_tests, "modules_off": plan.modules_off, "navigation_off": "navigation-off" in plan.builds,
+        "self_tests": plan.self_tests, "lints": plan.lints, "modules_off": plan.modules_off, "navigation_off": "navigation-off" in plan.builds,
         "fallbacks": plan.fallbacks, "notes": plan.unit_notes + plan.mcp_notes,
         "map": cmap_info, "deps_from": str(deps_from) if deps_from else None,
     }
+
+
+
+
+# ---------------------------------------------------------------------------------------- red control
+
+# what the red control keeps: the tests and their data (the tools' own tests and fixtures too, so a
+# tool's change has one); everything else the branch changed it reverts
+RED_CONTROL_KEEPS = ("engine/tests/*", "editor/tests/*", "tools/mcp/tests/*", "tools/fixtures/*", "docs/*", "*/golden/*",
+                     "*/goldens/*", "tools/*test_*.py", "tools/tests/*", "tools/*/tests/*", "tools/*/fixtures/*")
+RESTORE = "tools/check-changed --red-control --restore"
+
+
+def marker_file() -> Path:
+    """Written before the revert, removed once the tree is verified restored: a run killed in between
+    leaves it, and every later run refuses until --restore."""
+    return RED_DIR / "in-progress.json"
+
+
+def tree_state(root: Path) -> str:
+    """The working tree as git sees it: its status (untracked files too), its diff against HEAD and
+    the untracked files' bytes."""
+    h = hashlib.sha256()
+    for args in (["status", "--porcelain=v1", "-z", "--untracked-files=all"], ["diff", "--binary", "HEAD"]):
+        h.update(subprocess.run(["git", *args], cwd=str(root), capture_output=True, check=True).stdout + b"\0")
+    for name in git("ls-files", "--others", "--exclude-standard", "-z", cwd=root).split("\0"):
+        if name and (root / name).is_file():
+            h.update(name.encode() + b"\0" + (root / name).read_bytes())
+    return h.hexdigest()
+
+
+def dirty_paths(root: Path) -> list[str]:
+    return [l[3:] for l in git("status", "--porcelain=v1", "--untracked-files=all", cwd=root).splitlines() if l.strip()]
+
+
+def restore_paths(head: str, paths: list[str], root: Path) -> None:
+    """The reverted paths as HEAD has them: checked out where HEAD has them, removed where it has none
+    (a file the branch deleted, which the revert brought back)."""
+    in_head: set[str] = set()
+    for i in range(0, len(paths), 200):
+        chunk = paths[i:i + 200]
+        in_head.update(git("ls-tree", "-r", "--name-only", head, "--", *chunk, cwd=root).splitlines())
+    present = [p for p in paths if p in in_head]
+    for i in range(0, len(present), 200):
+        git("checkout", head, "--", *present[i:i + 200], cwd=root)
+    for p in paths:
+        if p in in_head:
+            continue
+        target = root / p
+        if target.is_file() or target.is_symlink():
+            target.unlink()
+        parent = target.parent
+        while parent != root and parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
+
+
+def restore_command(out) -> int:
+    """--restore: the tree an interrupted red control left reverted, back as it was."""
+    marker = marker_file()
+    if not marker.is_file():
+        print("check-changed: nothing to restore (no interrupted --red-control)", file=out, flush=True)
+        return 0
+    data = json.loads(marker.read_text())
+    head = git("rev-parse", "HEAD", cwd=ROOT).strip()
+    if head != data["head"]:
+        print(f"check-changed: HEAD moved since the interrupted red control (it ran on {data['head'][:12]}): "
+              f"`git checkout {data['head']}`, then `{RESTORE}`", file=out, flush=True)
+        return 1
+    restore_paths(head, data["paths"], ROOT)
+    if tree_state(ROOT) != data["state"]:
+        print(f"check-changed: the {len(data['paths'])} reverted path(s) are restored, but the tree differs from before the red "
+              f"control elsewhere (`git status`); when it is as you want it, delete {os.path.relpath(marker, ROOT)}",
+              file=out, flush=True)
+        return 2
+    marker.unlink()
+    print(f"check-changed: restored: the tree is byte-identical to before the red control ({len(data['paths'])} path(s))",
+          file=out, flush=True)
+    return 0
+
+
+def interrupt(signum, _frame):
+    raise KeyboardInterrupt(f"signal {signum}")
+
+
+def red_control(plan: Plan, changes: Changes, args, verbose: bool, out) -> tuple[int, dict]:
+    """--red-control after a pass: the branch's change outside the tests reverted in place, the same
+    selected tests rebuilt and rerun, the tree restored (finally) and verified byte-identical. Exit 1
+    when no selected test went red."""
+    def say(text: str) -> None:
+        print(text, file=out, flush=True)
+    patch = RED_DIR / "patch.diff"
+    head = git("rev-parse", "HEAD", cwd=ROOT).strip()
+    changed = [p for p in git("diff", "--name-only", "--no-renames", changes.base, "HEAD", cwd=ROOT).splitlines() if p]
+    reverted = [p for p in changed if not match(p, RED_CONTROL_KEEPS)]
+    doc: dict = {"patch": os.path.relpath(patch, ROOT), "reverted": reverted, "steps": [], "red": 0, "restored": None}
+    if not reverted:
+        say(f"red control: the branch changes no path outside the tests ({len(changed)} path(s)): nothing to revert")
+        return 1, doc
+    RED_DIR.mkdir(parents=True, exist_ok=True)
+    diff = subprocess.run(["git", "diff", "--binary", "--no-renames", changes.base, "HEAD", "--", *reverted], cwd=str(ROOT),
+                          capture_output=True, check=True).stdout
+    patch.write_bytes(diff)
+    before = tree_state(ROOT)
+    marker = marker_file()
+    tmp = marker.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"head": head, "base": changes.base, "paths": reverted, "state": before, "pid": os.getpid(),
+                               "patch": doc["patch"], "at": time.time()}, indent=1))
+    os.replace(tmp, marker)
+    say(f"\n== red control: the change outside the tests reverted in place ({len(reverted)} path(s), {doc['patch']}); "
+        f"rebuilding and rerunning the same selected tests")
+    runner = Runner(verbose, RED_DIR / "logs", out)
+    previous = {s: signal.signal(s, interrupt) for s in (signal.SIGTERM, signal.SIGHUP)}
+    try:
+        r = subprocess.run(["git", "apply", "-R", "--binary", "--whitespace=nowarn", str(patch)], cwd=str(ROOT),
+                           capture_output=True, text=True, errors="replace")
+        if r.returncode != 0:
+            say(f"red control: the patch does not reverse-apply ({r.stderr.strip()[:500]}): nothing was reverted")
+        else:
+            run_steps(runner, plan, changes, args, red=True)
+    finally:
+        restore_paths(head, reverted, ROOT)
+        doc["restored"] = tree_state(ROOT) == before
+        if doc["restored"]:
+            marker.unlink()
+        for s, handler in previous.items():
+            signal.signal(s, handler)
+    if not doc["restored"]:
+        say(f"red control: the tree is NOT as it was before (`git status`); {os.path.relpath(marker, ROOT)} stays: `{RESTORE}`")
+        return 2, doc
+    if r.returncode != 0:
+        return 1, doc
+    rows = []
+    for step in runner.steps:
+        if step.kind not in TEST_KINDS:
+            continue
+        blocker = runner.step(step.blocked_by) if step.blocked_by else None
+        if step.status == "skip":
+            verdict = "red (build)" if blocker is not None and blocker.status == "FAIL" else "not run"
+        elif step.status == "FAIL":
+            verdict = "not run" if "could not run" in step.reason or step.reason.startswith("cannot run") else "red"
+        else:
+            verdict = "green"
+        rows.append({"step": step.label, "verdict": verdict, "tests": step.tests, "log": step.log, "reason": step.reason})
+    doc["steps"] = rows
+    doc["red"] = sum(1 for row in rows if row["verdict"].startswith("red"))
+    say("\n== red control: the selected tests without the change")
+    for row in rows:
+        detail = {"red": ": " + ", ".join(row["tests"][:20]) if row["tests"] else "",
+                  "green": ": passes without the change, so it does not pin it",
+                  "not run": f": {row['reason']}" if row["reason"] else ""}.get(row["verdict"], "")
+        say(f"{row['verdict']:<12} {row['step']}{detail}")
+    if not rows:
+        say("(no selected test: nothing can go red)")
+    say(f"the tree is restored: byte-identical to before (status and diff); the patch stays in {doc['patch']}")
+    if not doc["red"]:
+        say("red control FAILED: no selected test failed without the change: they do not pin it")
+        return 1, doc
+    say(f"red control: {doc['red']} of {len(rows)} selected test step(s) went red without the change (never cached)")
+    return 0, doc
+
+
+def run_document(plan_doc: dict, steps: list[Step], runner: Runner | None, exit_code: int, seconds: float,
+                 cached_pass: bool = False, red: dict | None = None) -> dict:
+    """--json: the plan, every step's result, log and fix command, and the red control's verdicts."""
+    status = "cached" if cached_pass else None
+    return {"plan": plan_doc,
+            "steps": [dict(name=s.label, status=status or s.status, kind=s.kind, seconds=round(s.seconds, 1), log=s.log, fix=s.fix,
+                           reason=s.reason, failures=s.failures, tests=s.tests) for s in steps],
+            "could_not_run": runner.unrunnable if runner else [], "partial": bool(runner and runner.partial),
+            "cached": cached_pass, "passed": not (runner and runner.failed) and (exit_code == 0 or red is not None), "exit": exit_code,
+            "seconds": round(seconds, 1), "red_control": red}
 
 
 def main(argv: list[str], root: Path | None = None) -> int:
@@ -1050,9 +1581,14 @@ def main(argv: list[str], root: Path | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="print the plan only")
     ap.add_argument("--no-cache", action="store_true", help="run even when the same inputs passed before")
     ap.add_argument("-j", type=int, default=0, help="MCP editors at once (default: the CPUs / 2, at least 2)")
-    ap.add_argument("--keep-going", action="store_true", help="run the tests after a failed step (the exit code stays 1)")
     ap.add_argument("--no-mcp", action="store_true", help="leave the MCP tests out, and say so: for a change that selects "
                     "the whole suite, which the integrator runs once per wave (the pass is not cached)")
+    ap.add_argument("--json", action="store_true", help="print the plan, the step results, their logs and fix commands as "
+                    "one JSON document on stdout (the progress goes to stderr)")
+    ap.add_argument("--red-control", action="store_true", help="after a pass (or its cached one), revert the branch's change "
+                    "outside the tests in place, rerun the same selected tests and restore the tree: exit 1 when none "
+                    "fails without the change. Needs a clean tree")
+    ap.add_argument("--restore", action="store_true", help="with --red-control: restore the tree an interrupted one left reverted")
     ap.add_argument("--list-mcp", type=Path, help="write the selected MCP test files here (one per line)")
     ap.add_argument("--root", type=Path, help="check this checkout instead of the one holding this script "
                     "(e.g. an older branch's worktree, with this check-changed)")
@@ -1063,16 +1599,39 @@ def main(argv: list[str], root: Path | None = None) -> int:
     args = ap.parse_args(argv)
     if args.plan_json:
         args.dry_run = True
+    if args.restore and not args.red_control:
+        ap.error("--restore goes with --red-control")
+    if args.red_control and args.dry_run:
+        ap.error("--red-control runs the tests: not with --dry-run or --plan-json")
     if args.root is not None:
         use_root(args.root.resolve())
     verbose = os.environ.get("CHECK_CHANGED_VERBOSE", "") not in ("", "0")
+    out = sys.stderr if args.json else sys.stdout
+
+    def say(text: str) -> None:
+        print(text, file=out, flush=True)
     t0 = time.monotonic()
 
+    if args.restore:
+        return restore_command(out)
+    if marker_file().is_file():
+        say(f"check-changed: an interrupted --red-control left the change outside the tests reverted "
+            f"({os.path.relpath(marker_file(), ROOT)}): restore the tree first: {RESTORE}")
+        return 1
+    if args.red_control:
+        dirty = dirty_paths(ROOT)
+        if dirty:
+            say(f"check-changed: --red-control reverts the tree in place and needs it clean: {len(dirty)} uncommitted "
+                f"path(s) (e.g. {dirty[0]}): commit them first")
+            return 1
     try:
         changes = read_changes(args.base, ROOT, RB_CHANGES)
     except (LookupError, RuntimeError) as e:
         print(f"check-changed: {e}", file=sys.stderr)
         return 2 if args.plan_json else 1
+    if args.red_control and changes.source != "git":
+        say("check-changed: --red-control needs the branch's history (this diff came through rb.sh)")
+        return 1
     plan = Plan()
     plan_builds(changes.files, plan)
     cpath = map_path()
@@ -1087,145 +1646,88 @@ def main(argv: list[str], root: Path | None = None) -> int:
             changes.map_commit, changes.map_diff = cmap["commit"], parse_hunks(r.stdout)
     options = f"{args.base}"
     key = inputs_hash(changes, cmap_version, options, ROOT)
-    if not args.no_cache and not args.dry_run:
-        hit = cached(key, CACHE_FILE)
-        if hit:
-            print(hit["summary"])
-            print(f"[check-changed] the same inputs passed before (build/.cache/check-changed.json); --no-cache runs again")
-            return 0
+    planned = {"text": ""}
 
-    runner = Runner(verbose, args.j)
-    build_env = {"WERROR": "1"}
-    # 2. builds (the unit test trees first: their dependency database picks the suites)
-    if "unit-tests" in plan.builds and not args.dry_run:
-        runner.run("build the unit tests", ["tools/build.sh", "unit-tests"], dict(build_env, RUN="0"))
-    if "htmlui-tests" in plan.builds and not args.dry_run:
-        runner.run("build the HTML UI tests", ["tools/build.sh", "htmlui-tests"], dict(build_env, RUN="0"))
-    staleness = map_staleness(cmap, time.time(), commits_since(ROOT)) if cmap else None
-    if args.deps_from:
-        deps = [dumped_deps(args.deps_from, name, plan) if name != "htmlui-tests" or "htmlui-tests" in plan.builds else None
-                for name in DEPS_DUMPS]
-        plan_units(changes, plan, *deps)
-    else:
-        plan_units(changes, plan, ninja_deps(CORE_TREE), ninja_deps(EDITOR_TEST_TREE),
-                   ninja_deps(HTMLUI_TREE) if "htmlui-tests" in plan.builds else None)
-    plan_mcp(changes, plan, cmap, test_files(MCP_TESTS), staleness)
-    text = describe(changes, plan, cmap_info)
-    print(text, flush=True)
-    if args.list_mcp:
-        args.list_mcp.write_text("\n".join(plan.mcp_files) + "\n")
-    if args.plan_json:
-        args.plan_json.parent.mkdir(parents=True, exist_ok=True)
-        args.plan_json.write_text(json.dumps(plan_document(changes, plan, cmap_info, args.deps_from), indent=1) + "\n")
+    def finish_plan() -> None:
+        """The unit and MCP selection (the unit test trees' dependency database: after their build)."""
+        staleness = map_staleness(cmap, time.time(), commits_since(ROOT)) if cmap else None
+        if args.deps_from:
+            deps = [dumped_deps(args.deps_from, name, plan) if name != "htmlui-tests" or "htmlui-tests" in plan.builds else None
+                    for name in DEPS_DUMPS]
+            plan_units(changes, plan, *deps)
+        else:
+            plan_units(changes, plan, ninja_deps(CORE_TREE), ninja_deps(EDITOR_TEST_TREE),
+                       ninja_deps(HTMLUI_TREE) if "htmlui-tests" in plan.builds else None)
+        plan_mcp(changes, plan, cmap, test_files(MCP_TESTS), staleness)
+        planned["text"] = describe(changes, plan, cmap_info)
+        say(planned["text"])
+        if args.list_mcp:
+            args.list_mcp.write_text("\n".join(plan.mcp_files) + "\n")
+        if args.plan_json:
+            args.plan_json.parent.mkdir(parents=True, exist_ok=True)
+            args.plan_json.write_text(json.dumps(plan_document(changes, plan, cmap_info, args.deps_from), indent=1) + "\n")
+
+    def emit(document: dict) -> None:
+        if args.json:
+            print(json.dumps(document, indent=1), flush=True)
+
+    hit = None if args.no_cache or args.dry_run else cached(key, CACHE_FILE)
     if args.dry_run:
-        print(GAP)
+        finish_plan()
+        say(GAP)
+        emit(run_document(plan_document(changes, plan, cmap_info, args.deps_from), [], None, 0, time.monotonic() - t0))
         return 0
-
-    for test in plan.self_tests:
-        if (ROOT / test).is_file():
-            runner.run(f"tool tests ({test})", [sys.executable, "-I", test])
-    for b in plan.builds:
-        if b in ("unit-tests", "htmlui-tests"):
-            continue
-        if b in ("web", "android") and in_image():
-            # (their images are not this one: the check goes on, its pass is not cached, and the summary says so)
-            runner.steps.append((f"build {b}", "SKIP (not in the Linux image: tools/check-changed outside it builds it)", 0.0))
-            runner.partial = True
-            continue
-        if b == "navigation-off":
-            # (a script of the Linux image, not a build.sh target)
-            script = ["tools/check-navigation-off.sh"]
-            runner.run("navigation OFF (NavStubTest, NavGridTest)", script if in_image() else ["tools/build.sh", "exec", "linux", *script])
-            continue
-        env = dict(build_env, SKIP_ENGINE="1") if b == "linux" else dict(build_env)
-        runner.run(f"build {b}", ["tools/build.sh", b], env)
-    # the header gates: they read the Linux editor's tree, whose paths are the image's
-    # (a checkout without them: an older branch's, --root)
-    in_tree = (lambda *c: list(c)) if in_image() else (lambda *c: ["tools/build.sh", "exec", "linux", *c])
-    if "linux" in plan.builds and (ROOT / "tools/check_fanout.py").is_file() and (args.keep_going or not runner.failed):
-        headers = sorted(f for f in changes.files if f.endswith(HEADER) and f not in changes.deleted)
-        if headers:
-            runner.run(f"headers compile alone ({len(headers)} edited)", in_tree("python3", "-I", "tools/check_headers.py", *headers))
-        runner.run("header fan-out limits", in_tree("python3", "-I", "tools/check_fanout.py"))
-    if plan.modules_off and (ROOT / MODULES_OFF_CHECK).is_file() and (args.keep_going or not runner.failed):
-        jobs = os.environ["JOBS"] if os.environ.get("JOBS", "").isdigit() else str(os.cpu_count() or 4)
-        runner.run("the engine with every module off", in_tree("env", "WERROR=1", "bash", MODULES_OFF_CHECK, "-j", jobs, "all-off"))
-    # 3. unit tests
-    if (args.keep_going or not runner.failed) and "unit-tests" in plan.builds:
-        if plan.unit_all:
-            runner.run("unit tests (all)", ["tools/build.sh", "unit-tests"], build_env)
-        else:
-            for suite, names in (("core", plan.unit_core), ("editor", plan.unit_editor)):
-                if names:
-                    runner.run(f"unit tests ({suite}: {len(names)} suite(s))", ["tools/build.sh", "unit-tests"],
-                               dict(build_env, UNIT_SUITE=suite, UNIT_TEST_ARGS=f"--gtest_filter={suite_filter(names)}"))
-    if (args.keep_going or not runner.failed) and "htmlui-tests" in plan.builds:
-        if plan.htmlui_all:
-            runner.run("HTML UI tests (all)", ["tools/build.sh", "htmlui-tests"], build_env)
-        elif plan.unit_htmlui:
-            runner.run(f"HTML UI tests ({len(plan.unit_htmlui)} suite(s))", ["tools/build.sh", "htmlui-tests"],
-                       dict(build_env, HTMLUI_TEST_ARGS=f"--gtest_filter={suite_filter(plan.unit_htmlui)}"))
-    # 4. MCP tests
-    if args.no_mcp and (plan.mcp_all or plan.mcp_ci or plan.mcp_files):
-        runner.steps.append(("MCP tests", "SKIP (--no-mcp)", 0.0))
-        runner.partial = True
-    elif (args.keep_going or not runner.failed) and (plan.mcp_all or plan.mcp_ci or plan.mcp_files):
-        if "linux" not in plan.builds and not (ROOT / "build/linux/editor-install/bin/jasperengine-editor").exists():
-            runner.run("build linux (the MCP tests' editor)", ["tools/build.sh", "linux"], dict(build_env, SKIP_ENGINE="1"))
-        # (the container's CPUs, rb.sh's JOBS, for two each: LP_NUM_THREADS 2, docs/testing.md)
-        cpus = int(os.environ["JOBS"]) if os.environ.get("JOBS", "").isdigit() else (os.cpu_count() or 4)
-        jobs = args.j or max(2, cpus // 2)
-        # (a runner without --split-seconds: an older checkout's, --root)
-        runner_source = ROOT / "tools/mcp/run_tests.py"
-        split = ["--split-seconds", "600"] if runner_source.is_file() and "--split-seconds" in runner_source.read_text() else []
-        mcp_env = {"JASPER_SLOW_BUILD": "1", "JASPER_SLOW_TESTS": "1", "MCP_SUITE": "all"}
-        if plan.mcp_all:
-            runner.run("MCP tests (the whole suite)", ["tools/build.sh", "mcp-tests", "-j", str(jobs), *split], mcp_env)
-            runner.mcp_results("MCP tests (the whole suite)")
-        else:
-            if plan.mcp_ci:
-                runner.run("MCP tests (the CI suite)", ["tools/build.sh", "mcp-tests", "-j", str(jobs)],
-                           {"MCP_SUITE": "ci", "JASPER_SLOW_BUILD": "1", "JASPER_SLOW_TESTS": "1"})
-                runner.mcp_results("MCP tests (the CI suite)")
-            files = [f for f in plan.mcp_files if (MCP_TESTS / f).is_file()]
-            missing = [f for f in plan.mcp_files if f not in files]
-            if plan.mcp_ci:   # (the CI suite above ran those)
-                files = [f for f in files if not re.search(r"^CI = True", (MCP_TESTS / f).read_text(errors="replace"), re.M)]
-            if missing:
-                runner.steps.append(("MCP tests", f"CANNOT RUN: {missing} (selected, not in the checkout)", 0.0))
-                runner.failed = True
-            if files:
-                if "test_mesh_raycast.py" not in files:
-                    mcp_env["MCP_SKIP_WEB_BUILD"] = "1"
-                elif in_image():
-                    # (its latency gate loads a web build, which this image cannot make)
-                    runner.unrunnable.append("test_mesh_raycast.py: needs the web image: run on the host")
-                    runner.failed = True
-                    files = [f for f in files if f != "test_mesh_raycast.py"]
-                    mcp_env["MCP_SKIP_WEB_BUILD"] = "1"
-                runner.run(f"MCP tests ({len(files)} file(s))", ["tools/build.sh", "mcp-tests", "-j", str(jobs),
-                           *split, *[f"tools/mcp/tests/{f}" for f in files]], mcp_env)
-                runner.mcp_results(f"MCP tests ({len(files)} file(s))")
-    wall = time.monotonic() - t0
-    lines = ["", "== check-changed summary", text]
-    lines += [f"  could not run: {s}" for s in runner.unrunnable]
-    for label, status, dt in runner.steps:
-        lines.append(f"{status:4} {label} ({dt:.0f}s)")
-    if not runner.steps:
-        lines.append("nothing to build or test")
-    lines.append(f"{'FAILED' if runner.failed else 'passed'} in {wall:.0f}s")
-    lines.append(GAP)
-    summary = "\n".join(lines)
-    print(summary, flush=True)
-    if runner.partial:
-        print("[check-changed] a step was left out (above): the pass is not cached", flush=True)
-    elif not runner.failed:
-        if inputs_hash(changes, cmap_version, options, ROOT) == key and \
-                read_changes(args.base, ROOT, RB_CHANGES).files == changes.files:
-            store(key, summary, CACHE_FILE)
-        else:
-            print("[check-changed] files changed during the run: the pass is not cached", flush=True)
-    return 1 if runner.failed else 0
+    runner = Runner(verbose, LOG_DIR, out)
+    if hit:
+        steps = [Step(**s) for s in hit.get("steps", [])]
+        say(hit["text"])
+        say(GAP)
+        for step in steps:
+            for line in step.lines("cached"):
+                say(line)
+        say("[check-changed] the same inputs passed before (build/.cache/check-changed.json); --no-cache runs again")
+        if not args.red_control:
+            emit(run_document(hit.get("plan", {}), steps, None, 0, time.monotonic() - t0, cached_pass=True))
+            return 0
+        finish_plan()   # (the trees the pass built: the same selection)
+    else:
+        for old in LOG_DIR.glob("*.log"):
+            old.unlink()
+        run_steps(runner, plan, changes, args, finish_plan)
+        steps = runner.steps
+        wall = time.monotonic() - t0
+        lines = ["", "== check-changed summary", planned["text"], GAP]
+        lines += [f"  could not run: {s}" for s in runner.unrunnable]
+        for step in steps:
+            lines += step.lines()
+        if not steps:
+            lines.append("nothing to build or test")
+        lines.append(f"{'FAILED' if runner.failed else 'passed'} in {wall:.0f}s")
+        summary = "\n".join(lines)
+        say(summary)
+        if runner.partial:
+            say("[check-changed] a step was left out (above): the pass is not cached")
+        elif not runner.failed:
+            if inputs_hash(changes, cmap_version, options, ROOT) == key and \
+                    read_changes(args.base, ROOT, RB_CHANGES).files == changes.files:
+                store(key, summary, CACHE_FILE, planned["text"], [asdict(s) for s in steps],
+                      plan_document(changes, plan, cmap_info, args.deps_from))
+            else:
+                say("[check-changed] files changed during the run: the pass is not cached")
+        if runner.failed or not args.red_control:
+            code = 1 if runner.failed else 0
+            if args.red_control:
+                say("red control: not run: the change's own selection failed (above); fix that first")
+            emit(run_document(plan_document(changes, plan, cmap_info, args.deps_from), steps, runner, code, wall))
+            return code
+    try:
+        code, red = red_control(plan, changes, args, verbose, out)
+    except KeyboardInterrupt:
+        say(f"red control: interrupted{'; the tree is restored' if not marker_file().is_file() else ': ' + RESTORE}")
+        return 130
+    emit(run_document(plan_document(changes, plan, cmap_info, args.deps_from), steps, runner, code, time.monotonic() - t0,
+                      cached_pass=bool(hit), red=red))
+    return code
 
 
 if __name__ == "__main__":

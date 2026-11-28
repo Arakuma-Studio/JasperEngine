@@ -61,7 +61,8 @@
 # JASPER_HTMLUI_WRITE_ACTUAL=1 keeps every compared image in the test output directory (both backends).
 # JASPER_HTMLUI_S16_OFF=1 runs the HTML UI tests with S16's batching, SDF primitives and transform-aware
 # text off (docs/specs/S16-ui-render-text.md AC1); JASPER_HTMLUI_BATCHING=0 / JASPER_HTMLUI_SDF_PRIMITIVES=0
-# turn one of them off.
+# turn one of them off. JASPER_HTMLUI_VERIFY_KEPT=1 replays every frame S92 keeps into a scratch target
+# and compares it with the kept image (the golden harnesses draw a second frame for it; S92 R3, AC3).
 # JASPER_ZERO_COST_UPDATE=1 rewrites the built-in Lit's zero-cost hash list (ShaderZeroCostTest, unit-tests).
 # htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
 # HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
@@ -95,9 +96,10 @@ ENGINE_TARGET=jasperengine-project
 # AC7 of docs/specs/S02-build-ci-tests.md: what an unfiltered run must at least execute
 CORE_MIN_TESTS=300
 EDITOR_MIN_TESTS=150
-# jasperengine-htmlui-tests skips these on purpose (docs/html-ui/phase-6-acceptance.md §4.2), and
-# upstream's opt-in EffectFluidProfile.LiveCost (JASPER_EFFECT_FLUID_PROFILE=1)
-HTMLUI_MAX_SKIPPED=75
+# jasperengine-htmlui-tests skips 9 on purpose (CI runs 45037289790 OpenGL, 45017712750 Vulkan): the 8
+# VatEndToEndTest.* without tools/vat_e2e.sh's bundle and HtmlUIRenderPerf.ProfileTarget without
+# JASPER_HTMLUI_PROFILE=1; one more for headroom, so a run whose GPU tests skip ("no GPU") fails.
+HTMLUI_MAX_SKIPPED=10
 
 usage() {
     sed -n '2,80p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -181,12 +183,13 @@ JOBS_FLAG=""
 
 # mcp-tests, the full suite: the web build test_mesh_raycast.py's latency gate loads (the
 # mesh-raycast test project for Emscripten, in the web image), built once and kept up to date
-# (ninja, ccache). Before the Linux image is picked below: while it builds, another worktree's
+# (ninja, ccache), in Release: its budgets are release figures (a Debug build's overlap queries took
+# 0.12 ms of spatial-queries' 0.04). Before the Linux image is picked below: while it builds, another worktree's
 # image build may retag the shared name and its old image be pruned.
 # (MCP_SKIP_WEB_BUILD=1: a shard of the suite without test_mesh_raycast.py, tools/mcp/shard.py)
 if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && "${MCP_SKIP_WEB_BUILD:-0}" != 1 && $SHELL_MODE -eq 0 && $EXEC_MODE -eq 0 ]]; then
-    env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE -u JASPER_DOCKER_IMAGE WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
-        || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
+    env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE -u JASPER_DOCKER_IMAGE BUILD_TYPE=Release WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
+        || { echo "mcp-tests: the mesh-raycast web build (BUILD_TYPE=Release WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
 fi
 # Rebuilding an unchanged image is a no-op thanks to the layer cache. The image is tagged with
 # image_hash (above, jasperengine/<target>-build:<12 hex>), and :latest names the newest build (for
@@ -310,7 +313,7 @@ fi
 for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TITLE_UPDATE_GOLDEN JASPER_TITLE_LIBRARY_KINDS JASPER_TITLE_LIBRARY_ONLY JASPER_TEST_WRITE_ACTUAL \
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK \
             HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_PICK_SIMD \
-            JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
+            JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPER_HTMLUI_VERIFY_KEPT JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
             JASPER_TEST_UPDATE_FIXTURES JASPER_SLOW_BUILD JASPER_SLOW_TESTS JASPER_BUILD_TIMEOUT JASPER_MCP_PERF_SLACK \
             JASPER_UPDATE_GOLDEN JASPER_PARTICLES_UPDATE_GOLDEN JASPER_POST_FX_UPDATE_GOLDEN JASPER_REFLECTION_UPDATE_GOLDEN \
             JASPER_RENDER_UPDATE_GOLDEN JASPER_SCENE_VIEW_UPDATE_GOLDEN JASPER_SHADOW_UPDATE_GOLDEN \
@@ -794,9 +797,12 @@ web-gate)
         *)
             [[ "$NAME" =~ ^[A-Za-z0-9_-]+$ && -f "$ROOT/tools/web/gates/$NAME.json" ]] \
                 || { echo "GATE must be sample-project, sample-project-threads or a tools/web/gates/<name>.json" >&2; exit 1; }
-            WEB_DIR="$OUT-$NAME"
+            # a gate of another test project's build names it ("project": savegame-quota runs build/web-savegame)
+            PROJECT_NAME="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("project", sys.argv[2]))' \
+                "$ROOT/tools/web/gates/$NAME.json" "$NAME")"
+            WEB_DIR="$OUT-$PROJECT_NAME"
             # a test project's pthreads build (WEB_THREADS=1 WEB_PROJECT=<name> tools/build.sh web)
-            [[ "${WEB_THREADS:-0}" == 1 ]] && WEB_DIR="$OUT-threads-$NAME" ;;
+            [[ "${WEB_THREADS:-0}" == 1 ]] && WEB_DIR="$OUT-threads-$PROJECT_NAME" ;;
     esac
     SHOT_NAME="$NAME"
     if [[ "${WASM_SIMD:-1}" == 0 ]]; then
@@ -835,6 +841,8 @@ android)
     # The NDK app/build.gradle pins, installed before Gradle when the SDK lacks it: the Android Gradle
     # plugin's own download of it has no retry (main's run 44404218432 failed on a Premature EOF)
     run bash -euo pipefail -c "
+        # the NDK and CMake the template pins are the image's (no download in a fresh container)
+        tools/ci/check_android_image.sh
         cd engine/workspaces/androidstudio
         ndk=\$(sed -n 's/^ *ndkVersion = \"\\(.*\\)\"\$/\\1/p' app/build.gradle)
         [[ -n \"\$ndk\" ]] || { echo 'no ndkVersion in app/build.gradle' >&2; exit 1; }

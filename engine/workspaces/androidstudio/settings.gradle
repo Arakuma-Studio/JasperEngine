@@ -11,3 +11,5 @@ plugins {
 }
 include ':app'
 include ':jasperbridge'
+// the App Bundle's install-time asset pack (app/build.gradle)
+include ':game_content'

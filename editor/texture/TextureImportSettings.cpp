@@ -41,6 +41,7 @@ namespace {
         {TextureChannel::R, "r"}, {TextureChannel::G, "g"}, {TextureChannel::B, "b"}, {TextureChannel::A, "a"},
         {TextureChannel::Luma, "luma"}};
     const EnumName<TextureShape> shapeNames[] = {{TextureShape::Tex2D, "2d"}, {TextureShape::Cube, "cube"}};
+    const EnumName<TextureImportMode> importModeNames[] = {{TextureImportMode::Flattened, "flattened"}, {TextureImportMode::Layers, "layers"}};
     const EnumName<TextureFilterMode> filterModeNames[] = {
         {TextureFilterMode::Point, "point"}, {TextureFilterMode::Bilinear, "bilinear"}, {TextureFilterMode::Trilinear, "trilinear"}};
     const EnumName<TextureImportType> typeNames[] = {
@@ -88,7 +89,8 @@ namespace {
     const char* const sectionKeys[] = {
         "version", "type", "inferredFrom", "shape", "srgb", "alphaSource", "alphaIsTransparency", "readable", "maxSize",
         "resizeFilter", "mipmaps", "mipFilter", "mipLimit", "preserveCoverage", "alphaCutoff", "flipGreen", "channel",
-        "quality", "effort", "streamable", "shipSource", "platforms", "pixelArt", "alphaClip", "filterMode", "pixelsPerUnit"};
+        "quality", "effort", "streamable", "shipSource", "platforms", "pixelArt", "alphaClip", "filterMode", "pixelsPerUnit",
+        "importMode", "characterRig", "removeSunDisc"};
 
     bool isKnownKey(const std::string& key){
         return std::find_if(std::begin(sectionKeys), std::end(sectionKeys), [&](const char* k){ return key == k; }) != std::end(sectionKeys);
@@ -174,6 +176,7 @@ const char* editor::mipFilterName(MipFilter filter){ return nameOf(filterNames, 
 const char* editor::alphaSourceName(TextureAlphaSource source){ return nameOf(alphaSourceNames, source); }
 const char* editor::textureChannelName(TextureChannel channel){ return nameOf(channelNames, channel); }
 const char* editor::textureShapeName(TextureShape shape){ return nameOf(shapeNames, shape); }
+const char* editor::textureImportModeName(TextureImportMode mode){ return nameOf(importModeNames, mode); }
 const char* editor::textureFilterModeName(TextureFilterMode mode){ return nameOf(filterModeNames, mode); }
 bool editor::textureFilterModeFromName(const std::string& name, TextureFilterMode& mode){ return valueOf(filterModeNames, name, mode); }
 
@@ -204,7 +207,7 @@ const std::vector<std::string>& editor::textureEnumValues(const std::string& fie
         {"type", namesOf(typeNames)}, {"shape", namesOf(shapeNames)}, {"alphaSource", namesOf(alphaSourceNames)},
         {"resizeFilter", namesOf(filterNames)}, {"mipFilter", namesOf(filterNames)}, {"channel", namesOf(channelNames)},
         {"quality", namesOf(qualityNames)}, {"effort", namesOf(effortNames)}, {"platform", namesOf(familyNames)},
-        {"filterMode", namesOf(filterModeNames)}};
+        {"filterMode", namesOf(filterModeNames)}, {"importMode", namesOf(importModeNames)}};
     static const std::vector<std::string> none;
     auto it = values.find(field);
     return it == values.end() ? none : it->second;
@@ -270,6 +273,9 @@ bool TextureImportSettings::parse(const YAML::Node& node, TextureImportSettings&
     r.boolean("alphaClip", out.alphaClip);
     r.enumeration("filterMode", filterModeNames, out.filterMode);
     r.integer("pixelsPerUnit", out.pixelsPerUnit, 1, 256);
+    r.enumeration("importMode", importModeNames, out.importMode);
+    r.boolean("characterRig", out.characterRig);
+    r.boolean("removeSunDisc", out.removeSunDisc);
     if (const YAML::Node platforms = node["platforms"]){
         if (!platforms.IsMap()){
             r.fail("platforms", "expected a map of desktop, mobile, android_etc2, web");
@@ -342,6 +348,9 @@ YAML::Node TextureImportSettings::serialize() const{
     if (alphaClip) node["alphaClip"] = *alphaClip;
     if (filterMode) node["filterMode"] = nameOf(filterModeNames, *filterMode);
     if (pixelsPerUnit) node["pixelsPerUnit"] = *pixelsPerUnit;
+    if (importMode) node["importMode"] = nameOf(importModeNames, *importMode);
+    if (characterRig) node["characterRig"] = *characterRig;
+    if (removeSunDisc) node["removeSunDisc"] = *removeSunDisc;
     YAML::Node platformsNode(YAML::NodeType::Map);
     for (size_t f = 0; f < kTextureFamilyCount; f++){
         const TexturePlatformSettings& p = platforms[f];
@@ -411,6 +420,7 @@ ResolvedTextureSettings TextureImportSettings::resolve(TextureFamily family, con
     r.format = (overrides && p.format) ? *p.format : std::string();
     r.rdo = (overrides && p.rdo) ? *p.rdo : -1.0f;
     r.strategy = project.strategy;
+    r.removeSunDisc = removeSunDisc.value_or(false);
     return r;
 }
 
@@ -467,6 +477,8 @@ std::string ResolvedTextureSettings::canonical() const{
     // older texture resolves to, so those keep their cook keys (S42 R8)
     if (alphaClip)
         out << ",\"alphaClip\":1";
+    if (removeSunDisc)
+        out << ",\"removeSunDisc\":1";
     out << "}";
     return out.str();
 }

@@ -988,6 +988,80 @@ void MeshBvh::raycastAll(const MeshBvhRay& ray, std::vector<MeshBvhHit>& hits) c
     keepNearest(hits, MAX_ALL_HITS);
 }
 
+bool MeshBvh::overlapping(const AABB& box, std::vector<Triangle>& out, size_t limit) const{
+    out.clear();
+    if (triangles.empty() || box.isNull()){
+        return true;
+    }
+    const bool everything = box.isInfinite();
+    const Vector3& lo = box.getMinimum();
+    const Vector3& hi = box.getMaximum();
+    auto touches = [&](const Triangle& t){
+        if (everything){
+            return true;
+        }
+        for (unsigned a = 0; a < 3; a++){
+            const float mn = std::min(t.v0[a], std::min(t.v1[a], t.v2[a]));
+            const float mx = std::max(t.v0[a], std::max(t.v1[a], t.v2[a]));
+            if (mn > hi[a] || mx < lo[a]){
+                return false;
+            }
+        }
+        return true;
+    };
+    // false once the limit is reached (the caller is told the list was cut)
+    auto take = [&](const Triangle& t){
+        if (!touches(t)){
+            return true;
+        }
+        if (limit > 0 && out.size() >= limit){
+            return false;
+        }
+        out.push_back(t);
+        return true;
+    };
+
+    if (nodes.empty()){
+        for (const Triangle& triangle : triangles){
+            if (!take(triangle)){
+                return false;
+            }
+        }
+        return true;
+    }
+
+    uint32_t stack[TRAVERSAL_STACK];
+    int top = 0;
+    stack[top++] = 0;
+    while (top > 0){
+        const Node& node = nodes[stack[--top]];
+        for (int s = 0; s < 8; s++){
+            if (!(node.valid & (1u << s))) continue;
+            if (!everything){
+                const float loX = decode(node.boxMin[0], node.qMinX[s], node.scale[0]);
+                const float loY = decode(node.boxMin[1], node.qMinY[s], node.scale[1]);
+                const float loZ = decode(node.boxMin[2], node.qMinZ[s], node.scale[2]);
+                const float hiX = decode(node.boxMin[0], node.qMaxX[s], node.scale[0]);
+                const float hiY = decode(node.boxMin[1], node.qMaxY[s], node.scale[1]);
+                const float hiZ = decode(node.boxMin[2], node.qMaxZ[s], node.scale[2]);
+                if (loX > hi.x || hiX < lo.x || loY > hi.y || hiY < lo.y || loZ > hi.z || hiZ < lo.z) continue;
+            }
+            if (node.count[s] > 0){
+                for (uint32_t t = node.first[s]; t < node.first[s] + node.count[s]; t++){
+                    if (!take(triangles[t])){
+                        return false;
+                    }
+                }
+            }else if (top < TRAVERSAL_STACK){
+                stack[top++] = node.first[s];
+            }else{
+                Log::error("MeshBvh: traversal stack overflow (a tree deeper than its build allows)");
+            }
+        }
+    }
+    return true;
+}
+
 // ---- serialization
 
 namespace {

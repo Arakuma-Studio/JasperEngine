@@ -32,6 +32,19 @@ namespace jasperengine{
         float maxOpacity = 1.0f;
     };
 
+    // The light of a height fog in the Lit colour mode (FogColorMode::LIT, docs/specs/S101-vapor.md
+    // R12). The volumetric march scatters ambient and sun by the medium's albedo per step, so a
+    // Local Volumetric Fog volume scatters them by its own; the analytic fog reads one colour
+    // and one sun colour (includes/height_fog.glsl), so it takes them with the albedo folded in.
+    struct LitFogLight{
+        Vector3 albedo = Vector3(1.0f, 1.0f, 1.0f);     // the fog's, no channel below 0
+        Vector3 ambient = Vector3(0.0f, 0.0f, 0.0f);    // scene ambient × ambient multiplier: scattered, not yet tinted
+        Vector3 emissive = Vector3(0.0f, 0.0f, 0.0f);   // no channel below 0
+        Vector3 sun = Vector3(0.0f, 0.0f, 0.0f);        // the main light's colour × intensity, not yet tinted
+        Vector3 color = Vector3(0.0f, 0.0f, 0.0f);      // the analytic fog colour: albedo × ambient + emissive
+        Vector3 sunColor = Vector3(0.0f, 0.0f, 0.0f);   // the analytic sun colour: albedo × sun
+    };
+
     // the fog of a part of a view ray: what it adds (in-scattered radiance) and lets through
     struct HeightFogSegment{
         Vector3 scattering = Vector3(0.0f, 0.0f, 0.0f);
@@ -80,6 +93,9 @@ namespace jasperengine{
         // share (sunColor linear times intensity, sunDirection towards the light)
         static Vector3 inscatteredLight(const Vector3& fogColor, const Vector3& sunColor, const Vector3& sunDirection,
                                         float directionalInscattering, float anisotropy, const Vector3& dir, float visibility);
+        // the Lit colour mode's light of a fog under a scene ambient (the scene's ambient colour
+        // × intensity, linear: what meshes receive) and a main light (linear colour × intensity)
+        static LitFogLight litLight(const FogComponent& fog, const Vector3& sceneAmbient, const Vector3& sunColor);
         // the fog colour of the Sky colour mode: the horizon ring (azimuths +Z, +X, -Z, -X)
         // blended by the direction's azimuth
         static Vector3 horizonRingColor(const Vector3 ring[4], const Vector3& dir);
@@ -100,9 +116,18 @@ namespace jasperengine{
         // frustum (cameraFar 0: no far plane) and lie within maxDistance of the camera, the
         // nearest first (distance to the bounding sphere, entity order on ties), at most cap.
         // Writes their indices into selected and returns how many were left out (culled or
-        // past the cap).
+        // past the cap). reasons, when given, gets one entry per volume: null for a selected
+        // one, else why it was left out ("distance", "frustum" or "tier_cap").
         static int selectFogVolumes(const std::vector<FogVolumeData>& volumes, const Plane frustumPlanes[6], float cameraFar,
-                                    const Vector3& cameraPosition, float maxDistance, int cap, std::vector<int>& selected);
+                                    const Vector3& cameraPosition, float maxDistance, int cap, std::vector<int>& selected,
+                                    std::vector<const char*>* reasons = nullptr);
+
+        // How much of what lies distance metres along origin + t dir (dir a unit vector) the
+        // scene's analytic fog hides (0..1): 1 minus the transmittance the fogged meshes apply
+        // (includes/fog.glsl, includes/height_fog.glsl). Exact for the height fog; the distance
+        // fogs take distance as their fog distance, which is the fragment's depth there (equal
+        // along the camera's forward axis, about it elsewhere). No volumes, no noise.
+        static float fogOpacity(const FogComponent& fog, const Vector3& origin, const Vector3& dir, float distance);
     };
 
 }

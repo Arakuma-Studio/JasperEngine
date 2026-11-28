@@ -65,7 +65,7 @@ Before editing these paths, read the rule file:
 - `docker`: the build images.
 
 A game is a prebuilt player plus cooked scenes and assets, or, when compiled, `engine/project` plus
-C++ the editor generates (scene factories, script bindings).
+the same cooked content and the C++ script bindings the editor generates.
 
 ## Generated files
 
@@ -78,6 +78,8 @@ Run the generator and commit its output:
 | `docs/mcp/guide/html-ui-effects.md`, `docs/mcp/guide/img/effects/`, `engine/shaderlib/effects/LICENSE.shaders-com.txt` | `tools/htmlui/gen_effects_docs.py` |
 | `engine/core/htmlui/effects/BuiltinEffectManifests.gen.cpp` | `tools/htmlui/gen_effect_manifests.py` |
 | `engine/core/render/BlueNoise64.h` | `tools/gen_blue_noise.py` |
+| `engine/core/localization/PluralRules.gen.inc`, `engine/core/localization/LICENSE.cldr.txt`, `engine/tests/core/localization/PluralSamples.gen.inc` | `python3 tools/l10n/gen_plural_rules.py` |
+| `engine/core/render/LtcLut.h` | `python3 -I tools/gen_ltc_lut.py --source <clone of selfshadow/ltc_code at its recorded commit>` |
 | `tools/test-projects/noise/NoisePresetData.h` | `tools/noise/gen_test_project_presets.py` |
 | `engine/tests/core/noise/NoiseGoldenTable.inc` | `jasperengine-noise-golden --write-table`, only before a kernel first lands on main |
 | `editor/window/widget/RcssProperties.h` | `tools/gen_rcss_properties.py` |
@@ -139,18 +141,19 @@ Run the generator and commit its output:
 ## Test
 
 - **Per commit: `tools/check-changed`**, which runs what the change can affect.
-- `--dry-run` shows its plan; `--no-cache` reruns a cached pass.
+- `--dry-run` shows its plan; `--no-cache` reruns a cached pass; `--json` prints the plan and results as JSON.
+- A failed step prints its failures, its log (`build/check-changed/`) and a `fix:` command that reruns it.
+- `tools/check-changed --red-control`, on a clean tree, reverts the change outside the tests in place, reruns the
+  selected tests, restores the tree, and exits 1 when none failed: that is the red run.
 - **CI owns the full suite.** Don't run the full unit, MCP or smoke suites locally unless asked. For a
   big change, `gh workflow run ci.yml --ref <branch> -f full=true` runs every lane on your branch.
 - **A PR is done when `Check` is green on its latest commit** and its body meets Evidence.
 - During rollout `Check` ignores the lanes in the CI workflow's `ADVISORY_LANES`; fix what your change
   broke there.
 - What CI runs, and how to reproduce a lane: `docs/testing.md`, "CI".
-- Lints check-changed does not run; run the one for each area you changed, with `python3`:
-  - `tools/check_raw_writes.py`, `tools/check_stream_keys.py`: file writes, decoders.
-  - `tools/check_event_clears.py`: engine events (`FunctionSubscribe` members) cleared at Stop; `tools/build.sh linux` runs it too.
-  - `tools/check_text_encoding.py`: code-page conversions, Win32 `-A` calls, Apple string encodings, vswhere.
-  - `tools/ci/check-hardcoded-shortcuts.py`: editor keys.
+- check-changed runs the area lints for the paths you changed, before the builds: `tools/check_raw_writes.py`,
+  `tools/check_stream_keys.py`, `tools/check_event_clears.py`, `tools/check_text_encoding.py` and
+  `tools/ci/check-hardcoded-shortcuts.py`.
 - After renaming a path or build target these docs name: `python3 tools/check_agent_docs.py`.
 - Unit tests: `tools/build.sh unit-tests`.
 - Narrow them with `UNIT_TEST_ARGS=--gtest_filter=...` and `UNIT_SUITE=core` or `UNIT_SUITE=editor`;

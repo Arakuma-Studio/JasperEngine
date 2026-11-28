@@ -340,6 +340,7 @@ void registerPublishTools(McpRegistry& registry) {
         tool.handler = publishDeployDeckTool;
         registry.addTool(std::move(tool));
     }
+    registerBuildProfileTools(registry);
 }
 
 }

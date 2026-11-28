@@ -27,7 +27,7 @@ using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
 bool reload::isHtmlUiFile(const std::string& path) {
-    if (ProjectChecks::isUiFile(path) || Util::isImageFile(path) || Util::isFontFile(path)) return true;
+    if (ProjectChecks::isUiFile(path) || Util::isImageFile(path) || getHtmlUIReferenceKind(path) == HtmlUIReference::FONT) return true;
     const std::string ext = watch::lowerExtension(FileUtils::pathFromUtf8(path));
     // .frag and .glsl: a project UI effect (@effect src) and its includes, which the documents
     // declaring it read (phase 5)

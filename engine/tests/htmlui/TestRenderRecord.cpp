@@ -439,3 +439,48 @@ TEST(RenderRecordTest, AContextWithEffectsRemovedBeforeTheFrameEnds){
     target.destroy();
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
 }
+
+// S92 R12 (AC12): every draw tested against the clip mask runs on a depth-stencil holding the
+// current mask: layer 0's, which every ordinary layer shares, or a region layer's own, with filter
+// layers interleaved with plain draws under a turned rounded clip (a pass break at each layer),
+// one of them reaching beyond the viewport (a region layer), batched and replayed call by call
+TEST(RenderRecordTest, StencilAuditHoldsAcrossPassBreaks){
+    JASPER_REQUIRE_GPU();
+    // every frame's own layer passes, not results drawn from the layer cache (S92 R9)
+    LayerCacheOff cacheOff;
+    const std::string rml = R"(<rml><head><style>
+body { margin: 0; width: 240px; height: 160px; }
+div { display: block; }
+#clip { position: absolute; left: 30px; top: 20px; width: 220px; height: 110px; border-radius: 24px; overflow: hidden;
+        transform: rotate(7deg); background-color: #303848; }
+.plain { height: 14px; margin: 4px; background-color: #e0e0e0; }
+.blur { height: 14px; margin: 4px; background-color: #e04040; filter: blur(2px); }
+.shadow { height: 14px; margin: 4px; width: 260px; background-color: #40c040; filter: drop-shadow(#000000 3px 3px 2px); }
+</style></head><body><div id="clip">
+<div class="plain"/><div class="blur"/><div class="plain"/><div class="shadow"/><div class="plain"/><div class="blur"/><div class="plain"/>
+</div></body></rml>)";
+    for (bool batched : {true, false}){
+        const bool previousBatching = RmlRenderer::isBatching();
+        RmlRenderer::setBatchingForTesting(batched);
+        {
+            RenderTestContext test(240, 160, 0, 0, 4);
+            ASSERT_TRUE(test.isValid());
+            ASSERT_NE(test.loadFromMemory(rml, "render/stencil-audit.rml"), nullptr);
+            ASSERT_TRUE(test.renderUntilDrawn());
+            std::vector<RmlRenderer::StencilAuditEntry> audit;
+            test.renderer.setStencilAuditForTesting(&audit);
+            // a replayed frame (S92 R1 keeps an unchanged one: nothing to audit)
+            test.renderer.addLiveSource(RmlRenderer::LIVE_REQUESTED);
+            ASSERT_TRUE(test.renderFrame());
+            test.renderer.setStencilAuditForTesting(nullptr);
+            const char* label = batched ? "batched" : "call by call";
+            EXPECT_GE(test.renderer.getStats().layersPushed, 2u) << label;
+            EXPECT_GT(test.renderer.getStats().stencilDraws, 0u) << label;
+            ASSERT_FALSE(audit.empty()) << label;
+            for (size_t i = 0; i < audit.size(); i++)
+                EXPECT_EQ(audit[i].attachmentVersion, audit[i].maskVersion) << label << ": draw " << i << " of " << audit.size();
+            EXPECT_GT(test.renderer.getStats().regionLayers, 0u) << label;
+        }
+        RmlRenderer::setBatchingForTesting(previousBatching);
+    }
+}

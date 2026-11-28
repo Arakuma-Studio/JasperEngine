@@ -10,6 +10,7 @@
 // per backend.
 
 #include "McpTools.h"
+#include "ProfilingHints.h"
 #include "shader/ShaderWarmup.h"
 
 #include "mcp/McpCall.h"
@@ -20,12 +21,14 @@
 #include "App.h"
 #include "Project.h"
 #include "render/RenderUtil.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "render/DrawBatcher.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "render/LightingTiers.h"
 #include "render/SystemRender.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
 #include "profiler/GpuMemory.h"
 #include "profiler/Profiler.h"
 #include "util/Base64.h"
@@ -367,6 +370,44 @@ void getRenderStatsTool(const CallPtr& call){
             }
         }
     }
+    // Culling Groups and Simulation Culling of the running scenes (absent when none has any)
+    {
+        CullingSystem::Stats culling;
+        bool used = false;
+        for (Scene* scene : Engine::getSceneLayers()){
+            std::shared_ptr<CullingSystem> system = scene->findSystem<CullingSystem>();
+            if (!system) continue;
+            const CullingSystem::Stats c = system->getStats();
+            if (!c.groups && !c.components) continue;
+            used = true;
+            culling.groups += c.groups;
+            culling.spheres += c.spheres;
+            culling.visible += c.visible;
+            for (size_t b = 0; b < c.perBand.size(); b++) culling.perBand[b] += c.perBand[b];
+            culling.evaluateMs += c.evaluateMs;
+            culling.components += c.components;
+            culling.full += c.full;
+            culling.reduced += c.reduced;
+            culling.culled += c.culled;
+            culling.groundNotLoaded += c.groundNotLoaded;
+            culling.focuses += c.focuses;
+            culling.scriptUpdatesSkipped += c.scriptUpdatesSkipped;
+            culling.transitionsDeferred += c.transitionsDeferred;
+        }
+        if (used){
+            // the bands up to the farthest one in use
+            size_t bands = culling.perBand.size();
+            while (bands > 1 && culling.perBand[bands - 1] == 0) bands--;
+            Json perBand = Json::array();
+            for (size_t b = 0; b < bands; b++) perBand.push_back(culling.perBand[b]);
+            data["culling"] = {{"groups", culling.groups}, {"spheres", culling.spheres}, {"visible", culling.visible}, {"per_band", perBand},
+                               {"evaluate_ms", round3(culling.evaluateMs)},
+                               {"simulation", {{"components", culling.components}, {"full", culling.full}, {"reduced", culling.reduced},
+                                               {"culled", culling.culled}, {"ground_not_loaded", culling.groundNotLoaded},
+                                               {"focuses", culling.focuses}, {"script_updates_skipped", culling.scriptUpdatesSkipped},
+                                               {"transitions_deferred", culling.transitionsDeferred}}}};
+        }
+    }
     std::string text = "Render stats (" + name + "): " + std::to_string(data["draw_calls"].get<uint32_t>()) + " draws (" +
         std::to_string(data["draw_calls_by_pass"]["main"].get<uint32_t>()) + " main, " +
         std::to_string(data["draw_calls_by_pass"]["shadow"].get<uint32_t>()) + " shadow; " +
@@ -449,6 +490,21 @@ void getFrameTimesTool(const CallPtr& call){
         }
         data["monitors"] = monitors;
     }
+    // the frame thread's CPU (its thread clock, once a second) over the window's seconds (R34)
+    double windowSeconds = 0.0;
+    for (double ms : frameMs)
+        windowSeconds += ms / 1000.0;
+    PerfSampler::watchThreadCpu();
+    const double threadCpu = PerfSampler::mainThreadCpuMsOver(windowSeconds);
+    data["main_thread_cpu_ms"] = threadCpu >= 0.0 ? Json(round3(threadCpu)) : Json(nullptr);
+    // the Performance sampler's window while Play samples
+    Project* project = call->ctx().project();
+    const PerfSummary perf = PerfSampler::summary();
+    if (project && project->isAnyScenePlaying() && (PerfSampler::isSampling() || perf.seconds > 0.0))
+        data["performance"] = Json::parse(PerfSampler::toJson(perf));
+    const std::string hint = frameTimesHint(cpu.empty() ? 0.0 : percentile(cpu, 0.5), threadCpu);
+    if (!hint.empty())
+        data["next"] = hint;
     std::string text = std::to_string(samples.size()) + " frames";
     if (!frameMs.empty())
         text += ", median " + std::to_string(round3(percentile(frameMs, 0.5))).substr(0, 6) + " ms";
@@ -957,7 +1013,7 @@ void capturePassOutputTool(const CallPtr& call){
     }
     // the pass: an index in the frame, or a label (its first pass, or `occurrence`)
     const PassRecord* pass = nullptr;
-    const Json& which = args["pass"];
+    const Json& which = args.contains("pass") ? args["pass"] : Json();
     if (which.is_number_integer()){
         const long long index = which.get<long long>();
         if (index >= 0 && index < (long long)list.passes.size())
@@ -1194,7 +1250,7 @@ void registerProfilerTools(McpRegistry& registry){
             "A view's last drawn frame: draws, instances, triangles, vertices, passes, pipelines/bindings, uniform and upload bytes, "
             "alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,"
             "pending_*,max_main_ms,warmup}, lod{lod_histogram,fading,culled_by_size,fade_draws}, batching. One frame is one sample. "
-            "gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.";
+            "gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). culling: what is culled or frozen. Also jasper://stats.";
         tool.inputSchema = object({{"view", viewSchema()}, {"batch_breaks", integer("Lists the first N draws that did not batch and why.", 0, 100)}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

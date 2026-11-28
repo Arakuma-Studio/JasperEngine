@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "localization/StringTableDocument.h"
 #include "AssetOps.h"
 
 #include "Out.h"
@@ -43,6 +44,10 @@ namespace {
                 const fs::path rest = file.parent_path().lexically_relative(from.parent_path());
                 pairs.push_back({file, (to.parent_path() / rest / newName).lexically_normal()});
             }
+        }
+        // a String Table's translations follow it (game-ui-localization.md R41): <stem>.<lang>.translation
+        if (fs::is_regular_file(from, ec) && from.extension() == editor::l10n::STRINGTABLE_EXTENSION) {
+            for (const auto& [language, file] : editor::l10n::translationSiblings(from)) pairs.push_back({file, editor::l10n::translationPathFor(to, language)});
         }
         if (fs::is_regular_file(from, ec)) {
             const fs::path meta = AssetTypes::metaPathFor(from);

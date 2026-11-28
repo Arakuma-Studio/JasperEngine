@@ -85,6 +85,12 @@ namespace jasperengine::pose {
                                           HumanExtraMap& extra, std::string* error, std::vector<std::string>* notes = nullptr,
                                           std::string* extraError = nullptr);
 
+    // The note for a spine proxy bone (Unity's Spine Proxy): one line per animated glTF node whose
+    // name contains "spine" and "proxy" (any case) outside the subtree of `map`'s hips, read from
+    // the Model's glTF data (nothing without it). Such a node is no skin joint, so the skeleton
+    // never shows it; it and its tracks stay as they are, unused.
+    JASPERENGINE_API void noteSpineProxies(Scene* scene, Entity model, const HumanoidMap& map, std::vector<std::string>& notes);
+
     // The sidecar's content in `stamp`, "" when there is none: what decides whether a cached rig
     // is current (the engine file API has no modification times in exported games, the text is
     // tiny). False with `error` when the sidecar exists but cannot be read (as the editor fails).

@@ -6,6 +6,7 @@
 
 #include "Export.h"
 #include "Entity.h"
+#include "math/Matrix4.h"
 #include "math/Ray.h"
 #include "math/Vector2.h"
 
@@ -28,6 +29,11 @@ namespace jasperengine {
     // length bounds it) interpolates TEXCOORD1. Skinned and morph-target meshes are tested in
     // their bind pose. No hit for a disabled, invisible or uv-less mesh.
     JASPERENGINE_API UIWorldHit raycastMeshUV(Scene* scene, Entity meshEntity, const Ray& worldRay);
+
+    // The texture coordinate a world ray hits on a World Space document's quad (S93 R36):
+    // worldFromQuad maps the corners (-1,1) top-left .. (1,-1) bottom-right of the z = 0 square;
+    // both faces, nearest within the ray's length. uv (0,0) = top-left texel.
+    JASPERENGINE_API UIWorldHit raycastQuadUV(const Matrix4& worldFromQuad, const Ray& worldRay);
 
 }
 

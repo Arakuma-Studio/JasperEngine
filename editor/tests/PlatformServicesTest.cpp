@@ -10,6 +10,9 @@
 #include <gtest/gtest.h>
 
 #include "Engine.h"
+#include "Input.h"
+#include "input/InputScheme.h"
+#include "subsystem/GamepadCursor.h"
 #include "Screen.h"
 #include "System.h"
 #include "log/Logger.h"
@@ -449,6 +452,50 @@ TEST_F(PlatformServicesTest, PauseAndResumeAreIdempotentAndFocusComesFirst) {
     EXPECT_FALSE(Engine::isPaused());
 }
 
+// Pause On Focus Loss (text-entry-gamepad-cursor-back-button R20, D11): one request per focus loss,
+// after onFocus(false); a pause the focus loss announced adds none; a pause alone asks "app_paused";
+// the Gamepad scheme's pad going asks "gamepad_disconnected"; off, nothing (the menu case is the
+// htmlui suite's DocumentBackTest.PauseRequestedOnlyWithoutMenu)
+TEST_F(PlatformServicesTest, PauseRequestedOnlyWithoutMenu) {
+    std::vector<std::string> events;
+    Engine::onFocus.add("test_focus", [&events](bool focused) { events.push_back(focused ? "focus" : "blur"); });
+    Engine::onPause.add("test_pause", [&events]() { events.push_back("pause"); });
+    Engine::onPauseRequested.add("test_request", [&events](const std::string& reason) { events.push_back("request:" + reason); });
+
+    Engine::setPauseOnFocusLoss(true);
+    Engine::systemFocus(false);
+    EXPECT_EQ(events, (std::vector<std::string>{"blur", "request:focus_lost"}));
+    events.clear();
+    Engine::systemPause();
+    EXPECT_EQ(events, (std::vector<std::string>{"pause"})) << "the focus loss asked already";
+
+    events.clear();
+    Engine::systemResume();
+    Engine::systemFocus(true);
+    Engine::systemPause();
+    EXPECT_EQ(events, (std::vector<std::string>{"focus", "blur", "pause", "request:app_paused"}));
+    Engine::systemResume();
+    Engine::systemFocus(true);
+
+    // the pad that holds the Gamepad scheme disconnects
+    events.clear();
+    Engine::systemGamepadConnect(3, "Test Gamepad");
+    Engine::systemGamepadButtonDown(3, D_GAMEPAD_BUTTON_X);
+    Engine::systemGamepadButtonUp(3, D_GAMEPAD_BUTTON_X);
+    InputSchemeTracker::latch();
+    ASSERT_EQ(InputSchemeTracker::getCurrent(), InputScheme::Gamepad);
+    Engine::systemGamepadDisconnect(3);
+    EXPECT_EQ(events, (std::vector<std::string>{"request:gamepad_disconnected"}));
+    InputSchemeTracker::reset(false);
+
+    // off: nothing
+    events.clear();
+    Engine::setPauseOnFocusLoss(false);
+    Engine::systemFocus(false);
+    Engine::systemFocus(true);
+    EXPECT_EQ(events, (std::vector<std::string>{"blur", "focus"}));
+}
+
 TEST_F(PlatformServicesTest, OrientationEventOnlyOnChangeAfterTheFirst) {
     std::vector<int> events;
     Engine::onOrientationChanged.add("test_orientation", [&events](int orientation) { events.push_back(orientation); });
@@ -691,6 +738,45 @@ TEST(PresentationSettings, ProjectYamlRoundTripAndMigration) {
         Project project;
         Stream::decodeProject(&project, YAML::Load("canvasWidth: 1280\ncanvasHeight: 720\n"), workspace);
         EXPECT_FALSE(Stream::encodeProject(&project)["presentation"]);
+    }
+}
+
+// text-entry-gamepad-cursor-back-button R28, R32: Player > Pause On Focus Loss and Input > Gamepad
+// Cursor are additive project keys: absent, the defaults (and nothing written back); set, they
+// round-trip and reach the engine
+TEST(PresentationSettings, PauseOnFocusLossAndGamepadCursorRoundTrip) {
+    Workspace workspace;
+    {
+        Project project;
+        Stream::decodeProject(&project, YAML::Load("canvasWidth: 1280\ncanvasHeight: 720\n"), workspace);
+        EXPECT_FALSE(project.getPresentationSettings().pauseOnFocusLoss);
+        EXPECT_EQ(project.getGamepadCursorSettings(), GamepadCursorSettings());
+        const YAML::Node saved = Stream::encodeProject(&project);
+        EXPECT_FALSE(saved["presentation"]);
+        EXPECT_FALSE(saved["input"]);
+    }
+    {
+        Project project;
+        Stream::decodeProject(&project, YAML::Load(
+            "presentation:\n  pauseOnFocusLoss: true\n"
+            "input:\n  gamepadCursor:\n    speed: 500\n    scrollSpeed: 10\n    graphic: ui/cursor.png\n    size: 48\n    hotSpot: [24, 24]\n"),
+            workspace);
+        EXPECT_TRUE(project.getPresentationSettings().pauseOnFocusLoss);
+        const GamepadCursorSettings& cursor = project.getGamepadCursorSettings();
+        EXPECT_EQ(cursor.speed, 500.0f);
+        EXPECT_EQ(cursor.scrollSpeed, 10.0f);
+        EXPECT_EQ(cursor.graphic, "ui/cursor.png");
+        EXPECT_EQ(cursor.size, 48.0f);
+        EXPECT_EQ(cursor.hotSpot, Vector2(24.0f, 24.0f));
+        EXPECT_EQ(cursor.deadzone, 0.2f) << "unset: the default";
+        EXPECT_EQ(GamepadCursor::getDefaults().speed, 500.0f) << "the engine has them";
+
+        const YAML::Node saved = Stream::encodeProject(&project);
+        EXPECT_TRUE(saved["presentation"]["pauseOnFocusLoss"].as<bool>());
+        EXPECT_EQ(saved["input"]["gamepadCursor"]["speed"].as<float>(), 500.0f);
+        EXPECT_FALSE(saved["input"]["gamepadCursor"]["deadzone"]);
+        EXPECT_EQ(saved["input"]["gamepadCursor"]["hotSpot"][1].as<float>(), 24.0f);
+        project.setGamepadCursorSettings(GamepadCursorSettings());
     }
 }
 

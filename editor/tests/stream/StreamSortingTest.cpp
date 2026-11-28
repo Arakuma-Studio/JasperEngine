@@ -14,6 +14,7 @@
 #include "LoadReport.h"
 #include "Project.h"
 #include "Stream.h"
+#include "StreamSchema.h"
 #include "Workspace.h"
 #include "component/LineRendererComponent.h"
 #include "component/MeshComponent.h"
@@ -44,6 +45,14 @@ namespace {
     struct SortingLayersReset {
         ~SortingLayersReset() { SortingLayers::reset(); }
     };
+
+    // project.yaml's loader reports a root key missing from the schema as an unknown key on every
+    // load (the S94 project migration writes transparencySortMode into every older project)
+    void expectSortingRootKeysKnown(const YAML::Node& saved){
+        for (auto it = saved.begin(); it != saved.end(); ++it)
+            EXPECT_TRUE(StreamSchema::isKnownRootKey(RootKind::Project, it->first.Scalar()))
+                << it->first.Scalar() << " is written to project.yaml but not a known root key";
+    }
 
     // a 2D scene of two sprites, the second naming `layer`
     std::string spriteScene(int layer){
@@ -264,6 +273,7 @@ TEST(StreamSorting, ProjectSettingsRoundTrip){
 
     project.setSortingLayers({{3, "Background"}, {0, "Default"}, {7, "Foreground"}});
     project.setTransparencySort(TransparencySortMode::CUSTOM_AXIS, Vector3(0.0f, 1.0f, -0.5f));
+    expectSortingRootKeysKnown(Stream::encodeProject(&project));
     const std::string saved = YAML::Dump(Stream::encodeProject(&project));
     SortingLayers::reset();
     Project reloaded;
@@ -332,6 +342,7 @@ TEST(StreamSorting, RemovedIdsAreNeverGivenAgain){
     EXPECT_GT(next, front);
     const YAML::Node saved = Stream::encodeProject(&project);
     ASSERT_TRUE(saved["sortingLayerNextId"].IsDefined()) << YAML::Dump(saved);
+    expectSortingRootKeysKnown(saved);
     SortingLayers::reset();
     Stream::decodeProject(&reloaded, saved, Workspace());
     EXPECT_EQ(SortingLayers::getNextId(), next);

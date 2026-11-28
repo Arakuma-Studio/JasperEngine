@@ -10,7 +10,10 @@ follows edits made on disk.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import shutil
+import time
 
 import harness
 from harness import Editor
@@ -22,6 +25,66 @@ TIMEOUT = 600
 HERO = "assets/models/hero_tpose.gltf"
 ROBOT = "assets/models/robot_apose.gltf"
 WALK = "assets/anim/walk.poseanim"
+B_RIG = "assets/models/b_rig_proxy.gltf"
+B_RIG_SOURCE = harness.REPO / "tools" / "fixtures" / "b-rig" / B_RIG
+PROXY_NOTE = ("B-spineProxy is a spine proxy bone for Unity's Spine Proxy. JasperEngine does not need it: "
+              "turn on Mesh Space Rotation on the layer instead.")
+
+
+# B- rig bones (Kevin Iglesias' naming, tools/fixtures/b-rig): name, parent, world position in meters
+# (Y up, facing +Z, the left side on +X)
+B_RIG_FBX_BONES = [("B-root", None, (0, 0, 0)), ("B-hips", "B-root", (0, 0.95, 0)), ("B-spine", "B-hips", (0, 1.05, 0)),
+                   ("B-chest", "B-spine", (0, 1.25, 0)), ("B-neck", "B-chest", (0, 1.5, 0)), ("B-head", "B-neck", (0, 1.6, 0))]
+for _side, _x in (("L", 1), ("R", -1)):
+    B_RIG_FBX_BONES += [(f"B-shoulder.{_side}", "B-chest", (0.05 * _x, 1.45, 0)),
+                        (f"B-upperArm.{_side}", f"B-shoulder.{_side}", (0.18 * _x, 1.45, 0)),
+                        (f"B-forearm.{_side}", f"B-upperArm.{_side}", (0.45 * _x, 1.45, 0)),
+                        (f"B-hand.{_side}", f"B-forearm.{_side}", (0.7 * _x, 1.45, 0)),
+                        (f"B-thigh.{_side}", "B-hips", (0.1 * _x, 0.9, 0)),
+                        (f"B-shin.{_side}", f"B-thigh.{_side}", (0.1 * _x, 0.5, 0)),
+                        (f"B-foot.{_side}", f"B-shin.{_side}", (0.1 * _x, 0.08, 0)),
+                        (f"B-toe.{_side}", f"B-foot.{_side}", (0.1 * _x, 0.02, 0.12))]
+
+
+def b_rig_fbx() -> str:
+    """A minimal ASCII FBX of the B- rig: the bones as LimbNodes and a mesh with one vertex at each
+    bone, skinned to it (one cluster per bone), as rigged_cube.fbx is written"""
+    world = {name: pos for name, _, pos in B_RIG_FBX_BONES}
+    def nums(values):
+        return ",".join(f"{v:g}" for v in values)
+    def matrix(t):
+        return nums([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, t[0], t[1], t[2], 1])
+    n = len(B_RIG_FBX_BONES)
+    vertices = [c for _, _, pos in B_RIG_FBX_BONES for c in pos]
+    polygons = [v for i in range(n - 2) for v in (i, i + 1, -(i + 2) - 1)]
+    out = ["; FBX 7.4.0 project file", "FBXHeaderExtension:  {", "\tFBXHeaderVersion: 1003", "\tFBXVersion: 7400", "}",
+           "GlobalSettings:  {", "\tVersion: 1000", "\tProperties70:  {",
+           '\t\tP: "UpAxis", "int", "Integer", "",1', '\t\tP: "UpAxisSign", "int", "Integer", "",1',
+           '\t\tP: "FrontAxis", "int", "Integer", "",2', '\t\tP: "FrontAxisSign", "int", "Integer", "",1',
+           '\t\tP: "CoordAxis", "int", "Integer", "",0', '\t\tP: "CoordAxisSign", "int", "Integer", "",1',
+           '\t\tP: "UnitScaleFactor", "double", "Number", "",100', "\t}", "}",
+           "Objects:  {",
+           '\tGeometry: 100, "Geometry::RigMesh", "Mesh" {',
+           f"\t\tVertices: *{len(vertices)} {{", f"\t\t\ta: {nums(vertices)}", "\t\t}",
+           f"\t\tPolygonVertexIndex: *{len(polygons)} {{", f"\t\t\ta: {nums(polygons)}", "\t\t}",
+           "\t\tGeometryVersion: 124", "\t}",
+           '\tModel: 200, "Model::RigMesh", "Mesh" {', "\t\tVersion: 232", "\t}",
+           '\tDeformer: 600, "Deformer::Skin", "Skin" {', "\t\tVersion: 101", "\t}"]
+    connections = ['\tC: "OO",200,0', '\tC: "OO",100,200', '\tC: "OO",600,100']
+    for i, (name, parent, pos) in enumerate(B_RIG_FBX_BONES):
+        local = [a - b for a, b in zip(pos, world[parent] if parent else (0, 0, 0))]
+        out += [f'\tModel: {1000 + i}, "Model::{name}", "LimbNode" {{', "\t\tVersion: 232", "\t\tProperties70:  {",
+                f'\t\t\tP: "Lcl Translation", "Lcl Translation", "", "A",{nums(local)}', "\t\t}", "\t}",
+                f'\tNodeAttribute: {2000 + i}, "NodeAttribute::{name}", "LimbNode" {{', '\t\tTypeFlags: "Skeleton"', "\t}",
+                f'\tDeformer: {3000 + i}, "SubDeformer::{name}", "Cluster" {{', "\t\tVersion: 100",
+                "\t\tIndexes: *1 {", f"\t\t\ta: {i}", "\t\t}", "\t\tWeights: *1 {", "\t\t\ta: 1", "\t\t}",
+                "\t\tTransform: *16 {", f"\t\t\ta: {matrix([-c for c in pos])}", "\t\t}",
+                "\t\tTransformLink: *16 {", f"\t\t\ta: {matrix(pos)}", "\t\t}", "\t}"]
+        parent_id = 1000 + [b[0] for b in B_RIG_FBX_BONES].index(parent) if parent else 0
+        connections += [f'\tC: "OO",{1000 + i},{parent_id}', f'\tC: "OO",{2000 + i},{1000 + i}',
+                        f'\tC: "OO",{3000 + i},600', f'\tC: "OO",{1000 + i},{3000 + i}']
+    out += ["}", "Connections:  {"] + connections + ["}"]
+    return "\n".join(out) + "\n"
 
 
 def file_json(ed: Editor, rel: str) -> dict:
@@ -326,6 +389,57 @@ async def test_rig_and_metrics_on_the_preview_model(ed: Editor):
     ed.check(approx(air["lowest"], 0.3, 2e-3) and not air["balanced"], f"air: {air}")
     ed.check(one["feet"]["right"]["contact"] and not one["feet"]["left"]["contact"], f"one leg: {one}")
     ed.check(one["feet"]["left"]["height"] > 0.1, f"one leg: {one}")
+
+
+async def test_b_rig_maps_and_notes_its_spine_proxy(ed: Editor):
+    # Kevin Iglesias' B- names map every required slot of a new import; the animated spine proxy
+    # node beside the hips is said once in the notes (mesh-space-rotation R1, R3)
+    # the B- rig lives outside the fixture project, so opening the project cooks no extra model
+    shutil.copyfile(B_RIG_SOURCE, ed.project / B_RIG)
+    await ed.call("sync_files")
+    path = "assets/anim/b_rig.poseanim"
+    await ed.call("edit_pose_animation", path=path, create={"preview_model": B_RIG}, ops=[{"op": "add_pose", "name": "Stand"}])
+    rig = (await ed.call("get_pose_animation", path=path))["rig"]
+    ed.check(rig is not None and "error" not in rig, f"rig: {rig}")
+    ed.check_eq((rig["mapped"], rig["missing"]), (21, []), f"every slot but the upper chest: {rig}")
+    ed.check_eq((rig["bones"]["hips"], rig["bones"]["spine"], rig["bones"]["left_upper_arm"]),
+                ("B-hips", "B-spine", "B-upperArm.L"), "B- names")
+    ed.check_eq(rig.get("notes", []).count(PROXY_NOTE), 1, f"the proxy note once: {rig.get('notes')}")
+    # the import recorded the naming rules that map it; a model imported before them (no name_rules)
+    # keeps its status, not a humanoid, until an explicit reimport
+    sidecar = ed.project / (B_RIG + ".humanoid")
+    ed.check(sidecar.is_file() and json.loads(sidecar.read_text()).get("name_rules") == 2,
+             f"the import's sidecar: {sidecar.read_text() if sidecar.is_file() else 'none'}")
+    sidecar.unlink()
+    await ed.call("sync_files")
+    rig = (await ed.call("get_pose_animation", path=path))["rig"]
+    ed.check("error" in rig and rig["mapped"] < 21, f"imported before the B- rules: {rig}")
+    ed.check(any("Reimport the model" in note for note in rig.get("notes", [])), f"the note says how: {rig.get('notes')}")
+    await ed.call("reimport_models", paths=[B_RIG])
+    rig = (await ed.call("get_pose_animation", path=path))["rig"]
+    ed.check_eq((rig["mapped"], rig["missing"], "error" in rig), (21, [], False), f"the reimport maps it: {rig}")
+
+
+async def test_a_new_fbx_b_rig_takes_the_naming_rules_once_imported(ed: Editor):
+    # #128's new-import rule on S98's queued FBX import (REQ-32): the main thread only queues the
+    # conversion, so the B- names are read from the .glb once it lands and the sidecar records the
+    # naming rules that map it
+    fbx = "assets/models/b_rig_new.fbx"
+    sidecar = ed.project / (fbx + ".humanoid")
+    # the project is open first: a model there when it opens is no new import
+    await ed.call("editor_status")
+    (ed.project / fbx).write_text(b_rig_fbx(), encoding="utf-8")
+    await ed.call("sync_files", paths=[fbx])
+    deadline = time.monotonic() + 120
+    while not (sidecar.is_file() and json.loads(sidecar.read_text()).get("name_rules") == 2):
+        if time.monotonic() > deadline:
+            info = await ed.call("get_asset_info", path=fbx)
+            console = await ed.call("read_console", limit=30)
+            ed.fail(f"no sidecar with name_rules 2 after the import: {sidecar.read_text() if sidecar.is_file() else 'none'}; "
+                    f"the import: {info.get('fbx_import')}; console: {str(console)[-1500:]}")
+        await asyncio.sleep(0.5)
+    rig = (await ed.call("get_asset_info", path=fbx)).get("fbx_import", {})
+    ed.check_eq(rig.get("state"), "current", f"the FBX was imported: {rig}")
 
 
 async def test_joint_limits_clamp_touched_poses(ed: Editor):

@@ -8,6 +8,7 @@
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/MeshComponent.h"
+#include "component/ModelComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "lattice/LatticeSolver.h"
@@ -321,7 +322,7 @@ void LatticeRender::prepare(Scene* scene, LatticeRenderState& state){
 
         LatticeRenderState::PathEntry entry;
         entry.entity = entity;
-        entry.inherited = (own && own->enabled && own->includeChildren) ? own : nullptr;
+        entry.inherited = (own && own->enabled && reachesChildren(scene, entity, *own)) ? own : nullptr;
         entry.modifierIndex = ownIndex;
         state.path.push_back(entry);
         if (entry.inherited)
@@ -395,10 +396,19 @@ bool LatticeRender::isLatticeTarget(EntityRegistry* registry, Entity entity){
     for (int depth = 0; transform && transform->parent != NULL_ENTITY && depth < 1024; depth++){
         const Entity parent = transform->parent;
         if (const LatticeModifierComponent* inherited = registry->findComponent<LatticeModifierComponent>(parent)){
-            if (inherited->includeChildren && bindsLattice(*inherited))
+            if (reachesChildren(registry, parent, *inherited) && bindsLattice(*inherited))
                 return true;
         }
         transform = registry->findComponent<Transform>(parent);
     }
     return false;
+}
+
+bool LatticeRender::reachesChildren(EntityRegistry* registry, Entity entity, const LatticeModifierComponent& modifier){
+    if (modifier.includeChildren)
+        return true;
+    if (!registry || !registry->findComponent<ModelComponent>(entity))
+        return false;
+    const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity);
+    return !mesh || mesh->numSubmeshes == 0;
 }

@@ -24,7 +24,6 @@
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
 #include "titleart/TitleArtDocument.h"
-#include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
 #include "reflect/Reflect.h"
@@ -141,7 +140,6 @@ void editor::Project::resolveScenePrefabInfos(SceneProject& sceneProject) {
         }
         if (info.prefabPath.lexically_normal() != resolved.lexically_normal()) {
             info.prefabPath = resolved;
-            info.functionName = Factory::prefabToFunctionName(resolved);
         }
         if (info.guid.empty()) {
             info.guid = assetDatabase.getGuid(resolved);
@@ -156,7 +154,7 @@ void editor::Project::invalidateClosedSceneSources(const std::function<bool(cons
             continue;
         }
         if (std::any_of(sceneProject.prefabs.begin(), sceneProject.prefabs.end(), affected)) {
-            generator.clearSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath());
+            clearCookedScene(sceneProject.id);
             invalidated = true;
         }
     }
@@ -438,7 +436,6 @@ void editor::Project::remapPrefabPathsInMemory(const fs::path& oldRelative, cons
             fs::path updatedPath;
             if (remapRelativePath(oldRelative, newRelative, info.prefabPath, updatedPath)) {
                 info.prefabPath = updatedPath;
-                info.functionName = Factory::prefabToFunctionName(updatedPath);
             }
         }
 
@@ -865,6 +862,10 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
     prefabNode["guid"] = guid;
     prefabNode["nextEntity"] = prefab->getNextEntity();
     prefabNode["root"] = prefab->root;
+    // an older file keeps its embedded material copies across saves (S98 REQ-29, prefab 9 -> 10)
+    if (!prefab->followMaterialFiles) {
+        prefabNode["followMaterialFiles"] = false;
+    }
     std::vector<Entity> topLevel = getTopLevelEntities(prefab->registry.get(), prefab->registryEntities);
     auto rootIt = std::find(topLevel.begin(), topLevel.end(), prefab->root);
     if (rootIt != topLevel.end() && rootIt != topLevel.begin()) {

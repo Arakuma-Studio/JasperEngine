@@ -10,6 +10,7 @@
 #pragma once
 
 #include "GpuEnvironment.h"
+#include "JobsTestUtil.h"
 #include "Readback.h"
 
 #include "render/SystemRender.h"
@@ -350,13 +351,17 @@ namespace jasperengine::titleart::test {
     // ---- running a job ----
 
     // frames until the job is done (its programs compile on the way, a cold shader cache takes
-    // a while on a software device); false on failure or after three minutes. The frames are not
+    // a while on a software device); false on failure or after three minutes, ten times that
+    // under a sanitizer (testsupport::timeScale): a render without float targets builds its
+    // 1024 environment on the CPU twin, in the one Background slot of a 4-core runner's three
+    // workers, which took 340 s under ASan (a job slow, not hung). The frames are not
     // limited unless a test asks: on a fast GPU a million frames that wait for the shader worker
     // took 1.5 s, less than a cold process's first compiles
     inline ::testing::AssertionResult runJob(TitleRenderJob& job, const StepBudget& budget = {},
                                              int maxFrames = std::numeric_limits<int>::max()) {
         const auto start = std::chrono::steady_clock::now();
-        for (int i = 0; i < maxFrames && std::chrono::steady_clock::now() - start < std::chrono::minutes(3); i++) {
+        const auto limit = std::chrono::duration<double>(180.0 * testsupport::timeScale());
+        for (int i = 0; i < maxFrames && std::chrono::steady_clock::now() - start < limit; i++) {
             SystemRender::updateGpuCreation();
             RuntimeShaderCompiler::beginFrame();
             const bool done = job.step(budget);

@@ -1,0 +1,50 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest baf24f9d67ff8125
+--- 0
+dialogue: ""
+startEntry: "  padded  "
+autoStart: true
+seed: -4
+view: 1
+--- 1
+dialogue: ""
+startEntry: with "quotes"
+autoStart: false
+seed: 5
+view: 46
+--- 2
+dialogue: sounds/hit.wav
+startEntry: a/b/c.html
+autoStart: true
+seed: 5778
+view: 329
+--- 3
+dialogue: fonts/Main.ttf
+startEntry: a
+autoStart: false
+seed: 20
+view: 248
+--- 4
+dialogue: ""
+startEntry: true
+autoStart: false
+seed: -14
+view: 212
+--- 5
+dialogue: sounds/hit.wav
+startEntry: "#hash"
+autoStart: false
+seed: -18
+view: 45
+--- 6
+dialogue: sounds/hit.wav
+startEntry: ""
+autoStart: true
+seed: 16
+view: 285
+--- 7
+dialogue: a b/c.png
+startEntry: "~"
+autoStart: true
+seed: -2
+view: 225

@@ -136,7 +136,13 @@ namespace jasperengine::editor{
         // GameObject > UI > Title Art and 2D Object > Title Art (S81 R6): an Image or a Sprite with a
         // Title Art Renderer (setTitleArt: its asset, at the bake's native size)
         TITLE_ART_UI,
-        TITLE_ART_SPRITE
+        TITLE_ART_SPRITE,
+        // not a GameObject: the Hierarchy's "3D Object > Vehicle..." makes the rig (VehicleRig.h, S96)
+        VEHICLE_RIG,
+        // GameObject > Light > Area Light (S99 R38): a 1 m x 1 m Rectangle facing down
+        AREA_LIGHT,
+        // GameObject > Effects > Fog Zone (docs/specs/S101-vapor.md R27): a Transform and a Fog Zone
+        FOG_ZONE
     };
 
     class CreateEntityCmd: public Command{

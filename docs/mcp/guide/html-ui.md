@@ -26,14 +26,22 @@ lists, forms or animation. Edit mode runs no Lua: a document's script logic runs
 - It draws over its scene's camera in the Game view (edit mode and play mode) and in the
   exported game, in front of the component UI. A scene stacked as a layer draws its documents
   over the scenes below; within a scene a higher `sortOrder` draws on top. A scene's screen
-  documents draw together into one offscreen target that the camera composites (post-process
-  applies to it, as to the component UI).
+  documents draw together into one offscreen target the size of the output.
+- **Render Mode** (scene setting `html_ui_render_mode`, Lua `scene.htmlUiRenderMode`, Unity's
+  Canvas Render Mode): `overlay` (Screen Space - Overlay, the default) composites them after
+  post-processing at the output resolution, so `renderScale`, dynamic resolution, FXAA, CRT,
+  VHS, pixelate and the other post effects leave them sharp; `camera` (Screen Space - Camera)
+  composites them in the camera's pass, so render scale and post-processing apply to them, as
+  to the component UI. Set `camera` for a HUD that should go through a CRT or VHS look.
+- In game views (the Game view, Play, exported games) Overlay documents fill the viewport
+  under every camera: perspective, orthographic of any size, UI. Under `camera`, UI and
+  orthographic cameras show the canvas in world space, moving with the camera.
 - **CSS `px` = canvas pixels.** The page is the project canvas (`canvasWidth` x
   `canvasHeight`): `100vw` x `100vh` is the canvas and media queries see its size. With a
   scaled canvas (letterbox, high-DPI screens) the document is drawn at screen resolution, so
   text and edges stay sharp.
 - A document can also render into a **texture** for a mesh or an `Image` (`renderMode:
-  texture`, below).
+  texture`), or stand in the 3D world as a quad (`renderMode: world`, World Space), below.
 - **No browser and no JavaScript.** The layout engine is a fork of RmlUi 6.3 drawn with the
   engine's own renderer on every backend. Logic is Lua: a script on the GameObject
   (`UIDocument(self.scene, self.entity)`) or `<script type="text/lua">` in the document.
@@ -48,10 +56,14 @@ lists, forms or animation. Edit mode runs no Lua: a document's script logic runs
 | `sortOrder` | int | Higher draws on top (default 0). |
 | `enabled` | bool | Shown and receiving input (the Inspector's checkbox; Lua `doc.visible`, `show()`, `hide()`). |
 | `interactive` | bool | Receives pointer, keyboard and text input (default true). Off: every event goes to the game. |
-| `renderMode` | enum | `screen` (default) or `texture`. |
-| `textureWidth`, `textureHeight` | int | `texture` mode: texture size, 1..8192 (default 1024 x 1024). |
+| `renderMode` | enum | `screen` (default), `texture` or `world` (Inspector "World Space"). |
+| `updateMode` | enum | `unscaled` (default, "Unscaled Time") or `game` ("Game Time"): the clock of its animations (Animation, below). |
+| `textureWidth`, `textureHeight` | int | `texture` and `world` modes: texture size, 1..8192 (default 1024 x 1024). |
+| `pixelsPerUnit` | float | `world` mode: texture pixels per world unit (default 100). |
+| `billboard` | bool | `world` mode: the quad turns to the camera (default false). |
 | `inputSurface` | entity | `texture` mode: the mesh whose UVs receive the pointer; none = the document's own GameObject. |
 | `pixelRatio` | float | Document pixels per CSS pixel; 0 = automatic (the canvas-to-screen scale; 1 in `texture` mode). |
+| `msaaSamples` | int | `texture` mode: MSAA samples of its texture, 0 (default: the scene's `html_ui_msaa_samples`), 1, 2, 4 or 8. A `screen` document shares the scene's target: the scene setting decides. Inspector "Anti-aliasing (MSAA)". |
 
 - Saved with the scene (YAML key `uidocument`; properties written only when they differ from
   their defaults), copied with copy/paste, duplicate and prefabs (with overrides), exported with
@@ -59,7 +71,8 @@ lists, forms or animation. Edit mode runs no Lua: a document's script logic runs
   `[HTML UI] could not load document '<path>'` and draws nothing; nothing crashes. Every
   HTML UI Console line starts with `[HTML UI]`.
 - The Scene view of UI and 2D scenes shows a scene's documents in place on the canvas
-  rectangle (outlined while a UI Document is selected; select documents in the Hierarchy).
+  rectangle of world space, which pans and zooms with the view (outlined while a UI Document is
+  selected; select documents in the Hierarchy).
   A 3D scene's Scene view has no canvas: its documents show in the Game view.
 
 ### What "Chromium parity" means, and where it stops
@@ -78,7 +91,7 @@ Parity stops at:
   Lua's `Http` makes requests, `jasper://docs/networking`).
   `<video>` plays AV1 + Opus WebM everywhere and MP4 through the platform's decoders (see "Video"). Remote fonts, images and videos are
   imported into the project by the editor.
-- **The unsupported CSS** listed under "CSS that differs": container queries, blend modes,
+- **The unsupported CSS** listed under "CSS that differs": container queries, `background-blend-mode`,
   vertical text, multi-column layout, `subgrid`, scroll snapping, ... Each use is reported.
 - **Small differences without a diagnostic**, also listed there: whole-pixel font sizes,
   table column sizing, no built-in monospace or serif face.
@@ -138,6 +151,22 @@ return Terminal
   (primitives, sprites, imported models), ignores other objects in front of the surface and
   tests skinned or morph-target meshes in their bind pose. The mouse cursor shape follows
   screen documents only.
+
+### World Space documents
+
+`renderMode: world` (Unity's Canvas World Space) draws the document as a quad at its
+GameObject, with no mesh or material: `textureWidth x textureHeight / pixelsPerUnit` world
+units, centred on the GameObject, in its XY plane facing +Z (`billboard: true` turns it to the
+camera). `create_ui_document` takes them as `properties` (`render_mode`, `pixels_per_unit`,
+`billboard`).
+
+- It is drawn with the scene's transparent objects (sorted by distance), depth tested: objects
+  in front hide it, it hides objects behind it. Both faces show.
+- Pointer input hits the quad as a texture document's mesh (above), and an object in front of
+  the quad takes the ray, as it hides the quad.
+- Everything else is a texture document's: its own layout context and `getTargetTexture()`.
+  `inspect_ui at`, `send_input` selectors and `screenshot document` work on screen documents
+  only: click it at its canvas point with `send_input` x, y.
 
 ## Quick start
 
@@ -229,7 +258,7 @@ and `attach_script {"entity": "Menu", "path": "scripts/MenuUI.lua"}`.
   stylesheet. A leading `/` (`/ui/logo.png`) or `asset://ui/logo.png` starts at the assets
   directory.
 - Formats: PNG, JPG and the other image formats the engine loads (not WebP or AVIF), SVG,
-  Lottie `.json` / `.lottie`, fonts TTF / OTF (not WOFF / WOFF2).
+  Lottie `.json` / `.lottie`, fonts TTF / OTF / WOFF / WOFF2.
 - **No remote URLs at run time.** An `http(s)://` font, stylesheet, image or animation is
   imported into the project by the editor ("Images, SVG, Lottie, fonts, icons"); until then
   it is an `HTMLUI-IMP-0001` error.
@@ -291,7 +320,7 @@ pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder
 | `<input>` | `text`, `password` (shows `*`), `search`, `email`, `url`, `tel`; `number` (filters typing, Up/Down step by `step` within `min`/`max`, clamps on blur/Enter); `range` (a slider), `checkbox`, `radio` (Space toggles); `date`, `time`, `datetime-local`, `month`, `week` and `color` are text fields showing the format or value (no picker, no `::before`/`::after`, `HTMLUI-HTML-0008`); `image` submits and shows `src`; `file` is a disabled button; Enter in a text field submits its form; `autofocus` |
 | `<select>`, `<textarea>`, `<progress>`, `<meter>` | a drop-down, a multi-line field, a bar (`meter` drawn as `progress`) |
 | `<label>` | a click activates its control (`for="id"`, or the control inside it) |
-| `<a href>` | Enter activates; `#id` scrolls to the element; another link dispatches `htmlnavigate` on the document (`href`, `url`, `fragment`, `document`, `external`): a `.html` link loads that document in the same component unless a listener calls `preventDefault()`; external links only notify |
+| `<a href>` | Enter activates; `#id` scrolls to the element; another link dispatches `htmlnavigate` on the document (`href`, `url`, `fragment`, `document`, `external`): a `.html` link loads that document in the same component and an external link opens in the system browser (`System.openURL`), unless a listener calls `preventDefault()` |
 | `<details>`/`<summary>` | clicking (or Enter/Space on) the summary toggles `open`, then a `toggle` event; details with the same `name` form an accordion |
 | `<dialog>` | `open` shows it; Lua `dialog:showModal()`, `show()`, `close(value)`; Escape closes a modal one (`cancel`, then `close`). No backdrop and no focus trap: add a backdrop element |
 | `<img>` | `object-fit`, `object-position`, `image-rendering: pixelated`; SVG files drawn as vectors at their size; `srcset`/`<picture>` resolved once at load |
@@ -315,6 +344,15 @@ pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder
 Lucide and LottieFiles player `<script>`s are not needed: both are built in (an info says so).
 `<noscript>` content shows. Duplicate ids warn (`HTMLUI-HTML-0011`): `getElementById` finds
 the first.
+
+### Localised text: `data-l10n-id`
+
+`<button data-l10n-id="ui.menu.play">Play</button>` shows the String Table message of that key in the
+game language; `data-l10n-args='{"count": 3}'` gives its arguments and `data-l10n-attr-<name>`
+(`placeholder`, `title`, `alt`, `aria-label`, `value`) sets an attribute. The element holds only
+text (child elements: `HTMLUI-LOC-0001`, left as written); `translate="no"` keeps a subtree out of
+the literal-text scan. Lua: `element:setLocalized(key, args)`, `doc:translate()`. Tables and checks:
+jasper://docs/localization.
 
 ### `.rml` documents: RmlUi's own dialect
 
@@ -382,7 +420,8 @@ Native or exactly rewritten, as in Chrome:
   as in a browser.
 - **At-rules**: `@media` (width, height, aspect-ratio, orientation, resolution, range syntax,
   `prefers-color-scheme` and `prefers-reduced-motion` switched from Lua; `hover` and `pointer`
-  evaluated once at load: `none`/`coarse` on touch devices), `@supports` (evaluated against
+  follow the last pointer used, live: `none`/`coarse` after a finger, `hover`/`fine` after the
+  mouse; `any-hover` and `any-pointer` are the device's, at load), `@supports` (evaluated against
   the engine's tables), `@layer`, `@import`, CSS nesting, `@keyframes`, `@starting-style`,
   `@font-face`, `@property` (registered: typed, animated, `inherits: false`; see "Animating custom
   properties (@property)").
@@ -395,10 +434,14 @@ Native or exactly rewritten, as in Chrome:
   several, blurred; a zero-offset blur is a glow); `outline` with every style and
   `outline-offset`; `opacity` as a group (the subtree fades as one image); `filter`
   (`blur`, `drop-shadow`, `brightness`, `contrast`, `grayscale`, `hue-rotate`, `invert`,
-  `opacity`, `saturate`, `sepia`); `backdrop-filter`; `mask-image`/`mask` layers;
-  `clip-path` shapes (`inset()`, `circle()`, `ellipse()`, `polygon()`, `path()`);
+  `opacity`, `saturate`, `sepia`); `backdrop-filter`; `mix-blend-mode` (all 16 modes and
+  `plus-lighter`, with what the document drew below the element: a document never blends with
+  the 3D scene behind it); `mask-image`/`mask` layers;
+  `clip-path` shapes (`inset()`, `circle()`, `ellipse()`, `polygon()`, `path()`, `xywh()`,
+  `rect()`, `calc()` lengths; they clip the hit area too);
   `object-fit`; `image-rendering: pixelated`; `accent-color` and `appearance: none` on form
-  controls; `cursor` keywords. Everything is anti-aliased (MSAA 4x by default). Filters apply
+  controls; `cursor` keywords. Everything is anti-aliased: boxes, borders, shadows and clips at
+  any MSAA count, other edges by MSAA (Auto: 4x on desktop, 1 sample on phones and the web). Filters apply
   left to right to the element and everything it contains (overflowing children too);
   `drop-shadow` without a colour uses the text colour; `backdrop-filter` filters what is behind
   the border box; mask layers take images and gradients with size, position and repeat (not
@@ -453,8 +496,8 @@ Each item below is reported where you write it (the code in brackets), with the 
 - **Container queries** (`@container`, `container-type`, `cqw` units: `HTMLUI-AT-0001`,
   `HTMLUI-CSS-0002`, `HTMLUI-CSS-0014`): use `@media` on the canvas size, or toggle a class
   from Lua on the component that changes size.
-- **Blend modes** (`mix-blend-mode`, `background-blend-mode`: `HTMLUI-CSS-0002`): use `opacity`,
-  or blend the image beforehand.
+- **Background blend modes** (`background-blend-mode`: `HTMLUI-CSS-0002`, effect layers apart): put
+  the image in a child with `mix-blend-mode`, or blend the image beforehand.
 - **Vertical text** (`writing-mode`: `HTMLUI-CSS-0002`): rotate the element with
   `transform: rotate(90deg)`, or stack the characters in a column.
 - **Multi-column layout** (`columns`, `column-count`: `HTMLUI-CSS-0002`): grid or
@@ -479,8 +522,6 @@ Each item below is reported where you write it (the code in brackets), with the 
 - **SVG filters** (`filter: url(#f)`: `HTMLUI-CSS-0004`): the CSS filter functions.
 - **`border-collapse: collapse`** (`HTMLUI-CSS-0006`): removes the spacing but keeps each
   cell's borders: put borders on one side of each cell.
-- **Fonts other than TTF/OTF** (WOFF/WOFF2-only `@font-face`: `HTMLUI-CSS-0022`): convert to
-  TTF; remote fonts are imported as TTF.
 - **`cursor: url()`** (info): the fallback keyword is used.
 - **`direction: rtl`** mirrors the text only: flex rows, grid columns, `start`/`end` and
   sticky/fixed insets stay left to right (info).
@@ -530,6 +571,22 @@ any other `display` it does nothing (info `HTMLUI-CSS-0003`). In a transition it
 once (with `transition-behavior: allow-discrete`, at half the duration); transition the width
 or `max-height` instead.
 
+### Fitting text to its box: `text-autosize`
+
+A title, a score or a button label that must fill its box without overflowing (TextMeshPro's
+Auto Size) takes the engine's `text-autosize: <min> <max>` (two lengths; `none` is the default):
+
+```css
+.title { width: 300px; height: 80px; font-size: 40px; text-autosize: 18px 80px; }
+```
+
+The font size is the largest whole px between the two at which the text fits the content box,
+wrapped as it is laid out: across, and down too when the box's `height` is set (a box whose height
+follows its text grows with the size). It is fitted in the update that lays the text out, so no
+frame shows another size, and again only when the text, the box or the font change. Children
+sized in `em` follow it. Chrome ignores the property: the authored `font-size` is what a browser
+preview shows. From Lua, `el.style.fontSize` reads the fitted size (`"34px"`).
+
 ### Text effects
 
 `text-shadow` (hard shadows, glows with a blur radius, several shadows) and
@@ -546,8 +603,10 @@ colour is multiplied by the element's `opacity`):
 
 Shadows, outlines, glows, blurs and blurred `text-shadow`s up to 0.3 em are drawn on the GPU
 from distance-field glyphs, sharp at any pixel ratio and without layers; larger ones (and the
-first frame before those glyphs exist) are drawn the old way, through an offscreen layer or CPU
-glyphs.
+first frame before those glyphs exist) are drawn from CPU glyphs, made in time linear in the
+glyph's area whatever the width (a 324 px glyph's 15 px outline in about a millisecond). Effects of
+one shape share their CPU glyphs: an `outline(4px red)` and a `glow(4px 0px 3px 2px blue)` draw
+from the same bitmaps, moved and tinted.
 
 ### Animated text: `text-effect`
 
@@ -575,8 +634,8 @@ h1 { text-effect: wave(0.12em 1.5s), gradient(1.5s add #ffffff, #ffd040); }
 The index runs on across elements (`Hello <b>World</b>` waves as one text) and lines; outlines and
 shadows (`font-effect`, `text-shadow`) follow each glyph. `text-effect-iteration: infinite |
 <integer>` repeats the one-shot functions (typewriter, fade-in, grow, unfold), then `texteffectend`
-(bubbles) fires at the element that declares the effect; `text-effect-time: ui` (default, unscaled:
-runs at `Engine.timeScale = 0`) or `game`. `doc:setReducedMotion(true)` holds the motion functions
+(bubbles) fires at the element that declares the effect; `text-effect-time: auto` (default: the
+document's Update Mode), `ui` (unscaled: runs at `Engine.timeScale = 0`) or `game`. `doc:setReducedMotion(true)` holds the motion functions
 still (wave, bounce, shake, pulse, grow, unfold; an effect of only those still ends). Lua:
 `el.style.textEffect = "bounce()"` (set, changed or `none` at runtime; new content types again, a
 new line wrap does not), `el:restartTextEffect()` (on any element of the effect: all of it). An animating text regenerates its glyphs each frame (never its layout):
@@ -591,7 +650,7 @@ cheap for titles and dialog lines.
   are the built-in **Roboto** (Latin, Cyrillic, Greek) with **Noto Sans Arabic**. A family
   that is not loaded is skipped (info `HTMLUI-CSS-0023`) and the next one in the list is
   used.
-- Your own fonts: `@font-face` with the project's TTF/OTF files ("Images, SVG, Lottie, fonts,
+- Your own fonts: `@font-face` with the project's TTF/OTF/WOFF/WOFF2 files ("Images, SVG, Lottie, fonts,
   icons"), or a **Google Fonts `<link>`** kept as written and imported by the editor
   (`import_files {"fonts": ["Inter:400,700"]}` or `{"from_document": ...}`).
 - Icons: `<i data-lucide="play"></i>` is a built-in **Lucide** icon, colored by `color`
@@ -629,7 +688,7 @@ is the global `document`.
 
 | Group | Members |
 |---|---|
-| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (CSS selectors, rewritten like the stylesheet), `doc.body`, `doc.documentElement` (`<html>`), `doc.title`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:show()`, `doc:hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc.onLoad`, `doc.onUnload`, `doc:getDiagnostics()`, `doc:getRenderStats()` (the last frame's draw, batching and atlas counters: `drawCalls`, `runsMerged`, `stencilDraws`, `atlasBytes`, ...), `doc:setColorScheme("dark")`, `doc:setReducedMotion(true)`, `doc:getTargetTexture()`, `doc:getUIDocumentComponent()`, `UIDocument.setDebuggerVisible(bool)` |
+| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (CSS selectors, rewritten like the stylesheet), `doc.body`, `doc.documentElement` (`<html>`), `doc.title`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:show()`, `doc:hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc.onLoad`, `doc.onUnload`, `doc:getDiagnostics()`, `doc:getRenderStats()` (the last frame's draw, batching, atlas and target counters: `drawCalls`, `runsMerged`, `stencilDraws`, `atlasBytes`, `framesKept`, `samples`, `targetBytes`, ...), `doc:setColorScheme("dark")`, `doc:setReducedMotion(true)`, `doc:getTargetTexture()`, `doc:getUIDocumentComponent()`, `UIDocument.setDebuggerVisible(bool)` |
 | Tree | `id`, `tagName` (`"DIV"`; lower case in `.rml`), `localName` (`"div"`), `className`, `parentElement`, `children` (array), `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains` |
 | Mutation | `appendChild(el)`, `insertBefore(el, ref)` (nil appends), `removeChild(el)`, `replaceChild(new, old)`, `remove()`, `cloneNode(deep)` |
 | Content | `textContent` (text, never parsed), `innerHTML`/`outerHTML` (HTML, parsed and rewritten like the document), `insertAdjacentHTML(position, html)`, `content` (`<template>`: `tpl.content:cloneNode(true)`, then `appendChild` it) |
@@ -637,7 +696,7 @@ is the global `document`.
 | Classes and style | `classList:add(...)`, `remove(...)`, `toggle(name[, force])`, `contains(name)`; `style.backgroundColor` or `style["background-color"]` (write: inline, `""` or nil removes; read: the computed value as CSS text), `style:getPropertyValue/setProperty/removeProperty`, `style.cssText` |
 | Forms | `value`, `checked`, `disabled` (read the new value in `input`/`change` listeners from `event.target.value`) |
 | Focus and actions | `focus()`, `blur()`, `click()`; `<dialog>`: `show()`, `showModal()`, `close([value])`; `<lottie>`: `play()`, `pause()`, `stop()`, `seek(s)`, ... |
-| Geometry and scroll | `getBoundingClientRect()` (`x y width height top left right bottom`, document px = canvas px for screen documents, through transforms), `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight` (all 0 for an element with `display: none` on it or an ancestor, a `data-if` that is false, or one not in the document, as in a browser), `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])` |
+| Geometry and scroll | `getBoundingClientRect()` (`x y width height top left right bottom`, document px = canvas px for screen documents, through transforms), `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight` (all 0 for an element with `display: none` on it or an ancestor, a `data-if` that is false, or one not in the document, as in a browser), `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])`, `scrollVelocity` (Vector2 px/s, settable), `stopScrolling()` (drag scrolling, Input and focus) |
 | Events | `addEventListener(type, fn[, capture or {capture=, once=}])`, `removeEventListener(type, fn[, capture])`, `dispatchEvent(type[, detail[, bubbles]])` (false when a listener prevented it) |
 
 Queries that find nothing return `nil`. The engine's own attributes (`data-htmlui-*`) and
@@ -679,7 +738,7 @@ A listener gets a `UIEvent`: `type`, `target`, `currentTarget`, `eventPhase` (1 
 `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`, `key` (browser key names:
 `"Enter"`, `"Escape"`, `"ArrowUp"`, `"a"`), `code` (`"KeyA"`; a gamepad's `"GamepadA"`, ...),
 `keyCode` (`Input.KEY_*`), `repeat` (`event["repeat"]`), `gamepad` (the pad's id, -1 for the
-keyboard), `pointerId`, `pointerType` (`"mouse"`, `"touch"`, `"pen"`), `isPrimary`, `buttons` (1
+keyboard), `enterKeyHint` (the soft keyboard's action key, "Text fields"), `pointerId`, `pointerType` (`"mouse"`, `"touch"`, `"pen"`), `isPrimary`, `buttons` (1
 left, 2 right, 4 middle), `pressure` (0.5 while pressed), `width`, `height`, `fingerId` (the
 `Input` finger id, -1 for the mouse), `data` (`textinput`), `animationName`, `propertyName`,
 `elapsedTime`, `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`, and
@@ -712,6 +771,11 @@ games (layout needs no GPU). A later change of the document reloads it in one of
   elements are cancelled and listeners of elements without an id are dropped with one warning.
   `onUnload` then `onLoad` fire.
 
+A view loss is not a reload: when Android drops the GPU context in the background or a browser
+loses the WebGL context, the documents keep their DOM, handles, listeners, data models and scroll,
+and no `onLoad`/`onUnload` fires; only their textures are made again (`send_input` app
+`view_lost` / `view_restored` tries it in Play).
+
 A stylesheet-only change restyles in place and keeps everything. Each reload logs one Console
 line, `[HTML UI] Patched ui/menu.html: 3 updated, 1 inserted, 0 removed, 0 replaced, 12
 runtime nodes kept (2.1 ms)` (click it for the full report), and `doc.lastReloadReport` holds
@@ -733,6 +797,22 @@ element and why). `inspect_ui {"reload": true}` reports it too.
 - When play stops, everything scripts made in documents goes (listeners, data models, DOM
   changes, animations; `UIDocument.getLiveLuaRefCount()` is 0) and the documents load again as
   they are on disk.
+
+### Adding style sheets from Lua
+
+`doc:addStyleSheet(css[, name])` adds CSS to an `.html` document, and `doc:addStyleSheetFile(path)`
+a `.css` file of the project: a theme, a pressed tint, a per-level skin. The sheet goes through the
+same translation and diagnostics as the document's own (`doc:getDiagnostics()`, the Console), cascades
+after them (so it wins at equal specificity), can style `::before` and `::after`, and stays with the
+UI Document over reloads and live patches. It returns a handle: `sheet.enabled = false` takes it out
+of the cascade and `true` back, `sheet:remove()` drops it (`sheet.valid` is then false). `inspect_ui`
+`detail` names a rule of a text sheet `injected:<name>:<line>` (`sheetN` without a name), and a file's
+by its path.
+
+```lua
+local pressed = doc:addStyleSheet(".btn::before { content: '>'; } .btn { color: #ffd040; }", "press-tint")
+pressed.enabled = false
+```
 
 ### Scripts inside a document: `<script type="text/lua">`
 
@@ -1095,6 +1175,13 @@ Two ways, both on the **UI clock** (the engine's frame time before `Engine.timeS
 menu animates while the game is frozen; deterministic with `play {fixed_fps}`; still while
 `auto_pause` holds the simulation):
 
+- A document whose HUD should freeze and slow with the game takes **Update Mode Game Time**
+  (`updateMode: game`; Lua `doc.updateMode = UIDocumentUpdateMode.GAME_TIME`): its CSS
+  transitions and `@keyframes`, the anime animations of its elements, its effects, Lottie and
+  text effects follow `Engine.timeScale`, and stop while the game is paused and in the editor
+  outside Play. Input timing (double click, long press, scroll inertia) stays unscaled. A change
+  keeps running animations where they are.
+
 - **CSS** transitions and `@keyframes` for state changes and loops declared in the stylesheet
   (hover, `.open`, a pulsing badge). They start on any change, including a class set from Lua.
 - **`anime`**, a Lua port of [Anime.js v4](https://animejs.com/documentation/) (4.5.0), for
@@ -1130,7 +1217,8 @@ anime.animate(stats, { hp = 0, duration = 2000, modifier = anime.utils.round(0),
 - **Parameters**: `duration` (ms, default 1000), `delay`, `loop` (count or `true`), `loopDelay`,
   `alternate`, `reversed`, `autoplay` (default true), `playbackRate`, `frameRate`, `ease`
   (default `"out(2)"`), `composition` (`"replace"`, `"none"`, `"blend"`), `modifier`, `id`,
-  `root`, `clock = "game"` (scaled game time: freezes with the game).
+  `root`, `clock = "game"` (scaled game time: freezes with the game) or `"ui"`; without it, the
+  clock of the targets' document (a timeline: of its first animated targets).
 - **Callbacks** (they get the animation): `onBegin`, `onBeforeUpdate`, `onUpdate`, `onRender`,
   `onLoop`, `onPause`, `onComplete`; `anim:andThen(fn)` is Anime's `then()`.
 - **Control**: `play pause resume restart reverse alternate seek(ms) stretch(ms) cancel revert
@@ -1155,8 +1243,138 @@ anime.animate(stats, { hp = 0, duration = 2000, modifier = anime.utils.round(0),
 - **Lifetime of handles**: an animation handle kept in a global stays valid after play stops,
   but cancelled.
 - Differences from Anime.js: `andThen` for `then` (no Promises), string forms of the ease
-  functions, modifiers return numbers, plain tables get colours back as `#rrggbbaa`, no SVG,
-  draggable, scroll, layout, text, WAAPI, scope or animatable modules.
+  functions, modifiers return numbers, plain tables get colours back as `#rrggbbaa`, no draggable,
+  scroll, layout, WAAPI, scope or animatable modules.
+
+### Shape and gradient reveals
+
+`clip-path` animates in `@keyframes` and `transition`: `inset()`, `circle()` and `ellipse()`
+interpolate their components, including length/percentage radii. `polygon()` interpolates
+when both endpoints have the same vertex count and fill rule. Keep the same reference box at
+both endpoints; percentages resolve against that box. Circle/ellipse radii must be lengths
+or percentages; keyword radii and incompatible shape pairs switch discretely. Use literal
+length/percentage endpoints: input `calc()` arguments inside basic shapes are not supported.
+The shape updates on every animated frame, including after its reference box resizes.
+
+```css
+.image-reveal { animation: reveal 1s cubic-bezier(.16,1,.3,1) both; }
+@keyframes reveal {
+  from { clip-path: inset(100% 0 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+.soft-reveal {
+  mask-image: linear-gradient(to bottom, #000 45%, transparent 55%);
+  mask-size: 100% 200%;
+  mask-position: 0 100%;
+  animation: soft-reveal 1s ease-out forwards;
+}
+@keyframes soft-reveal { to { mask-position: 0 0; } }
+```
+
+Linear and radial gradient masks support animated `mask-position` and `mask-size`. Set an
+explicit `mask-size` when animating its dimensions; changes to or from `auto`, `cover` or
+`contain` are discrete. Changing between gradient `mask-image` values is discrete, as in CSS;
+move or scale the gradient for a continuous soft reveal.
+
+`clip-path` does not clip pointer hit testing. On one element, `clip-path` and `mask-image`
+overwrite each other: apply them to separate nested elements to combine their clipping.
+Masks use the border box; `mask-origin`, `mask-clip`, `mask-mode` and `mask-composite` have the
+limits listed in the [support matrix](jasper://docs/html-ui-support).
+
+### Splitting text for reveals
+
+`anime.splitText(target, options)` returns a splitter with animatable `chars`, `words` and
+`lines` arrays of `UIElement`s. A character is a grapheme cluster: `ñ`, a letter plus combining
+accents and joined emoji stay together. `words` defaults to true; `chars` and `lines` default
+to false. `includeSpaces = true` includes spaces in `chars`. `accessible = true` (the default)
+keeps the unsplit text as the accessible label and hides the visual wrappers from assistive
+technology.
+
+```lua
+local title = anime.splitText("#headline", {
+    chars = { wrap = "clip" }, words = true, lines = { wrap = "clip" },
+})
+anime.animate(title.chars, {
+    translateY = { from = "110%", to = "0%" },
+    duration = 850, delay = anime.stagger(38), ease = "cubicBezier(.16,1,.3,1)",
+})
+```
+
+Each split option accepts a boolean or `{ wrap = "clip", class = "my-class" }`. A `clip` or
+`hidden` wrapper uses `overflow: hidden`, so translated glyphs emerge from inside their line.
+`splitter:revert()` restores the original markup and accessibility attributes.
+`splitter:refresh()` rebuilds from that original content after layout or style changes; a
+width, font-size or line-height change also refreshes automatically. With `lines = false`,
+automatic layout refresh preserves character/word elements and their animations. Regrouping
+lines or calling `refresh()` explicitly replaces wrappers: retrieve the arrays again and
+restart animations targeting them. To adopt newly
+authored text, revert first, edit the text, then call `anime.splitText` again.
+
+### Drawing and following SVG shapes
+
+Inline SVG children are selectable `UIElement`s. Changing `d`, `points`, `stroke-dasharray`,
+`stroke-dashoffset` or `transform` with `setAttribute` invalidates the SVG geometry for its next
+render. Keep editable SVG inline; an `<img src="logo.svg">` exposes the image element.
+
+```lua
+local path = doc:getElementById("logo-path")
+local drawable = anime.createDrawable(path)       -- UIElement array, initially draw = "0 0"
+anime.animate(drawable, { draw = "0 1", duration = 1500, ease = "inOutSine" })
+-- Other ranges reveal just that fraction of the stroke, for example draw = "0.5 1".
+
+local destination = doc:getElementById("round-shape")
+anime.animate(path, { d = anime.morphTo(destination), duration = 1200 })
+-- Use points = anime.morphTo(destination) for polygons and polylines.
+
+local motion = anime.createMotionPath(doc:getElementById("route"))
+anime.animate("#follower", {
+    translateX = motion.translateX, translateY = motion.translateY, rotate = motion.rotate,
+    duration = 4000, ease = "linear",
+})
+```
+
+`createDrawable(targets, start, end)` supports paths, lines, polylines, polygons, circles and
+ellipses; start/end default to zero and use normalized stroke positions. `morphTo(target,
+precision)` returns a function value for `d` or `points`, resampling shapes with different
+point counts (default precision `.33`). `createMotionPath(path, offset)` returns three
+function values; offset defaults to zero. Put an HTML follower over the SVG viewport to use
+the path's position and tangent as its transform.
+Use SVG transform attributes on the guide or a child `<g>`: CSS guide transforms are not
+included in motion coordinates, and the renderer ignores transforms on the outermost `<svg>`.
+
+### Procedural geometry and exact time
+
+Use a timeline's `currentTime` in `onRender` (or `onUpdate`) to generate SVG each frame. Create
+seeded random parameters once, then calculate geometry from those parameters and the current
+time. Seeking backwards and rendering the same time again then produces the same geometry.
+Avoid accumulating positions from the wall clock or drawing new random values each frame.
+
+```lua
+local random = anime.utils.createSeededRandom(2718)
+local phase = random(0, 6283) / 1000
+local state = { time = 0 }
+local root = anime.createTimeline({
+    onRender = function(animation)
+        local t = animation.currentTime / 1000
+        local y = 80 + math.sin(t + phase) * 30
+        doc:getElementById("wave"):setAttribute("d",
+            string.format("M0 80 Q150 %.4f 300 80", y))
+    end,
+})
+root:add(state, { time = 6, duration = 6000, ease = "linear" }, 0)
+root:pause()
+root:seek(2500)                              -- milliseconds, callbacks update geometry too
+```
+
+`record_game` advances both the default UI clock and the game clock (`clock = "game"`, Game
+Time documents) by the fixed recording step; game-clock animations still obey `Engine.timeScale`. At 30 fps, frame `k` samples time
+`k / 30` seconds. An animation or root timeline already has `seek(ms)` for exact sampling.
+The `motion_graphics` example contains thirty seeded stars updated in one SVG path, a masked
+letter stagger, a drawn-and-filled logo, a morph and a motion-path follower. Its
+`motion_graphics.procedural` profiler scope measures the Lua geometry callback; SVG
+rasterization belongs to the renderer's scopes. Use `capture_profile` and `get_cpu_profile`
+to measure both on the target device.
 
 ### Animating custom properties (@property)
 
@@ -1253,7 +1471,10 @@ transforms, clipping and filters apply to them as to `<img>`.
 | `<img src="icons/play.svg" width="24" height="24">` | a vector image rasterized at its size (crisp at any size); `currentColor` in it follows the CSS `color` |
 | `<svg width="48" height="48" viewBox="0 0 24 24"> <path .../> </svg>` | inline SVG |
 | `background: url(icons/bg.svg) center / contain no-repeat;` | an SVG background, rasterized at its drawn size |
-| `image-color: #ff8000;` | (engine property) multiplies every pixel of an image, SVG or Lottie by the colour |
+| `image-color: #ff8000;` | (engine property) multiplies every pixel of an `<img>`, `background-image`, `border-image`, SVG or Lottie by the colour (not a `mask-image`) |
+| `url("ui/atlas.png#xywh=32,0,16,16")` | a region of the file in image pixels (`#xywh=percent:50,0,25,25` in percent), in `<img src>`, `background-image`, `border-image`, `mask-image`, `list-style-image` and `content` |
+| `url("ui/atlas.png#sprite=coin")` | the frame `coin` of the texture's Sprite Mode sheet (its Import Settings; a `name@16x16.png` file is a grid named `name_0`, `name_1`, ...) |
+| `<img src="ui/splash.png" decoding="sync">` | decoded before the first frame that shows it |
 
 - Paths, shapes, strokes, gradients, patterns, `clipPath`, masks, markers, `<use>`/`<symbol>`,
   CSS inside the SVG, `<text>` (in Roboto) work. `currentColor` follows the element's `color`
@@ -1264,6 +1485,19 @@ transforms, clipping and filters apply to them as to `<img>`.
   (`HTMLUI-SVG-0003`).
 - Not supported: SVG filters, SMIL animation, scripts, `<foreignObject>` (`HTMLUI-SVG-0002`),
   external `<image href>` files (`data:` URIs only).
+- Raster images decode on a background thread: the first frame lays the image out at its size
+  and draws nothing for it, the frame after its decode draws it (a 2048 px PNG in a few frames).
+  A screen that must appear whole uses `decoding="sync"` on its `<img>`, or `doc:prewarm()` /
+  `HtmlUI.prewarmImage(paths)` while the player is elsewhere (Prewarming text and images). Play with `fixed_fps`, a fixed UI time
+  and screenshots wait for the decode, so goldens and `screenshot` never catch an image missing.
+- A region is cut into its own texture, so `repeat`, `round` and `space` tile the region alone. A
+  region outside the image or an unknown sprite draws nothing, with a warning `HTMLUI-GEN-0008`
+  in the Console and `doc:getDiagnostics()`.
+- One cache holds every document's images: a second document, scene or texture-mode document
+  showing a file neither decodes nor uploads it. Released images stay within Project Settings >
+  Graphics > *HTML UI Image Cache (MiB)* (`graphics.html_ui_image_cache_mib`: -1 = the platform's
+  default, 64 on desktop and 32 on Android, iOS and the web; 0 keeps none). Changing a file on disk
+  shows the new pixels (hot reload).
 - RmlUi's own `<svg src="icons/play.svg">` element also works (`crop-to-content` trims it to
   the drawing). `.svg` textures outside HTML UI (`Image`, `Sprite`, materials;
   `path.svg?svgScale=2`) use the same rasterizer.
@@ -1422,8 +1656,14 @@ about 1000 particles (one mesh is rebuilt each frame).
 
 ### Fonts
 
+WOFF and WOFF2 files work directly in `@font-face`: the editor decodes them when it loads
+them, and an export ships each one decoded at its own path, so the player needs no decoder.
+Decoded fonts are limited to 64 MiB. A font that does not decode reports its path, format and
+reason in the Console, and the export warns that it ships undecoded. The remote importer
+prefers a TTF/OTF source when one is supplied and imports WOFF/WOFF2 sources otherwise.
+
 - Built in: Roboto and Noto Sans Arabic; every generic family maps to them.
-- Project fonts: `@font-face` with TTF/OTF files, relative to the stylesheet; `font-weight` and
+- Project fonts: `@font-face` with TTF/OTF/WOFF/WOFF2 files, relative to the stylesheet; `font-weight` and
   `font-style` pick the face. A weight or style without a face is synthesized (bold strokes
   `max(1, size / 24)` px wider, italic slanted 12 degrees); load the real face when the design
   depends on it.
@@ -1435,9 +1675,37 @@ about 1000 particles (one mesh is rebuilt each frame).
 
 - C++ can load a face before documents use it: `HtmlUI::loadFontFace("fonts/Roboto-Bold.ttf")`
   (`#include "htmlui/HtmlUI.h"`).
+- A character the first available face of `font-family` lacks comes from the next family of
+  the list that has it, then the registered fallback fonts, then Roboto and Noto Sans Arabic,
+  each in the text's weight and style (synthesized when the family has no such face), with the
+  text's `font-effect` and `text-effect`. `HTMLUI-FONT-0001` names such characters: an info in
+  `doc:getDiagnostics()` once the text is drawn, a warning from `check --ui` for the static text of
+  the document's own fonts.
+  Fix it with a font that has them, or name one after the first in `font-family`.
 - A character no loaded font covers draws a missing-glyph box; control characters draw
   nothing. Text is rasterized at each context's pixel ratio (the screen's, or `pixelRatio` for
   documents on meshes), so it stays sharp.
+
+### Prewarming text and images
+
+The glyph and image caches outlive documents, scenes and a lost view: a screen shown a second time
+makes no glyph and decodes no image. The first show makes them in its frame; when a screen must
+appear whole on its first frame (a pause menu, a big outlined countdown), make them before:
+
+```lua
+local job = doc:prewarm()              -- every text and image of the document, display: none parts too
+job.onDone = function() print("ready") end   -- also job.done, job.progress (0..1)
+HtmlUI.prewarmText{ family = "Title", size = 324, weight = 700,
+                    effect = "outline(15px #000)", text = "GO!0123456789" }
+HtmlUI.prewarmImage({ "ui/power-ups.png", "ui/atlas.png#sprite=star" })
+```
+
+- `doc:prewarm()` reads each element's font, size and `font-effect` as styled now, the text of
+  `data-warm="0123456789:"` attributes (characters a script will write later), and the images of
+  its `<img>` elements and style sheets (`doc:prewarm{ images = false }`: text only).
+- The glyphs are made on background jobs and put in the atlas within `HtmlUI.prewarmBudgetMs` a
+  frame (default 2); images decode in the background and upload a few a frame. With a fixed clock
+  (play's `fixed_fps`, a fixed UI time) a prewarm is done at the next update.
 
 ### Icons
 
@@ -1506,12 +1774,15 @@ page or the document.**
 - Where a page has neither, the pointer goes on to the next document below (lower
   `sortOrder` or scene layer), then to the game. A HUD under a transparent menu document still
   gets clicks where the menu has nothing, and the game gets the rest.
-- To make a transparent page take every pointer event (a modal, "click outside closes the
-  menu"), give it a background (`rgba(0, 0, 0, 0.01)` is enough) or add a pointer listener
-  (`click`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `wheel`, with
-  `addEventListener` or `data-event-*`) on the document or `doc.body`. It is decided per
-  document and follows the listeners: removing the last one gives the empty parts back.
-  `body` is only as tall as its content, so listen on the document to catch every empty part.
+- To make a transparent page take every press (a modal, "click outside closes the menu"),
+  give it a background (`rgba(0, 0, 0, 0.01)` is enough) or add a press listener (`click`,
+  `dblclick`, `contextmenu`, `mousedown`, `pointerdown`, with `addEventListener` or
+  `data-event-*`) on the document or `doc.body`. The Console and `doc:getDiagnostics()` then
+  note `HTMLUI-INPUT-0001` once. It is decided per document and follows the listeners:
+  removing the last one gives the empty parts back. `body` is only as tall as its content, so
+  listen on the document to catch every empty part.
+- Move, up, over, out, enter and leave listeners on the page take nothing (a drag tracker on
+  `body` does not block the game's joystick); a `wheel` listener takes only the wheel.
 
 ```lua
 local doc = UIDocument(self.scene, self.entity)
@@ -1524,9 +1795,18 @@ end)
 
 - `pointer-events: none` removes an element from hit testing: a full-screen HUD wrapper with
   it is click-through, and its children can set `pointer-events: auto`.
-- A press that no document takes blurs the focused field. A release, and the moves of a drag,
-  go to whoever got the press. The wheel is taken when it scrolls an element (one step is 80
-  px) or the pointer is over content.
+- An element is hit only where it is drawn: through every `transform` on it and its ancestors,
+  inside the clips of `overflow` (rounded corners included) and `clip-path`. `mask-image` does
+  not clip the hit area (CSS Masking).
+- A press that no document takes blurs the focused field.
+- **The press decides who owns a pointer.** A finger or mouse button the game got at its press
+  stays the game's until its release: its moves and release reach `onTouchMove`/`onTouchEnd`
+  (`onMouseMove`/`onMouseUp`) also over a document or a popup shown meanwhile, which still see
+  it hover. A press a document took keeps its moves and release, also over the game.
+- A release outside the canvas of a press the game got reaches it at the nearest canvas point;
+  a document's is cancelled.
+- The wheel is taken when it scrolls an element (one step is 80 px) or the pointer is over
+  content.
 
 ### Focus, keys and gamepads
 
@@ -1554,7 +1834,7 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
 |---|---|---|---|
 | d-pad, left stick | `"ArrowUp"` ... `"ArrowRight"` | `"GamepadDPadUp"` ..., `"GamepadLeftThumbstickUp"` ... | moves the focus to the nearest element that way and scrolls it into view; a focused range adjusts with left/right, an open select moves through its options |
 | A | `"Enter"` | `"GamepadA"` | activates the focused element as the keyboard does (Enter: a click on press; Space on a checkbox or radio: a toggle on release; a select opens and chooses); `:active` while held; on a text field it opens the virtual keyboard |
-| B | `"Escape"` | `"GamepadB"` | closes an open select or a modal `<dialog>`; otherwise nothing: your menu closes on it |
+| B | `"Escape"` | `"GamepadB"` | closes an open select or a modal `<dialog>`; otherwise it is Back first (below, "Back and menus"), then nothing: your menu closes on it |
 | X, Y, shoulders, triggers, View, Menu, Guide, stick buttons | the `code` | `"GamepadX"`, `"GamepadY"`, `"GamepadLeftShoulder"`, `"GamepadRightShoulder"`, `"GamepadLeftTrigger"`, `"GamepadRightTrigger"`, `"GamepadView"` (Back), `"GamepadMenu"` (Start), `"GamepadGuide"`, `"GamepadLeftThumbstickButton"`, `"GamepadRightThumbstickButton"` | none |
 
 - `event.gamepad` is the pad's id (`-1` for the keyboard), `event.keyCode` the keyboard key it
@@ -1583,16 +1863,85 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
   gamepad is used, so style it (`.btn:focus-visible`).
 - Documents on meshes get the gamepad like the keys: the one that took the last press.
 
+### Gamepad cursor
+
+Turn on **Gamepad Cursor** on a UI Document (`set_properties UIDocument gamepadCursor true`,
+Lua `doc.gamepadCursor = true`) for menus a pad player should point at, not only Tab through.
+While the input scheme is Gamepad (jasper://docs/input "Input scheme") and such a document
+shows (screen mode, interactive), the engine draws a pointer above every document:
+
+- The left stick moves it (Project Settings > Input > Gamepad Cursor: Cursor Speed at a 1080 px
+  tall canvas, Acceleration Time, slower over buttons, links, form controls and component UI
+  Buttons by Slow Over Controls, Deadzone); it starts on the focused element, else where it
+  was, else the canvas centre.
+- A is a mouse click at it (`pointerType "mouse"`, `:hover` follows it); holding A drags
+  ranges, scroll boxes, `drag` sources and `setPointerCapture` sliders. The right stick scrolls
+  under it (Scroll Speed lines/s). The d-pad moves the focus as above (from the element under
+  the cursor when nothing is focused) and the cursor jumps to it; so does `el:focus()`.
+- The sticks, A, B and the d-pad are the UI's while it shows: the game sees them at rest, input
+  actions that ignore UI input skip them. B is Back. It never moves `Input.getMousePosition()`,
+  presses `Input.getMouseButton`, fires `Engine.onMouse*` or changes the scheme; a real mouse
+  move switches the scheme, which hides it (a held A ends with `pointercancel`, no click).
+- Lua `GamepadCursor.isActive()`, `GamepadCursor.position` (set warps), `.enabled`, `.speed`,
+  `.scrollSpeed` (this Play only). Agents: `send_input` gamepad events take `x, y` or `target`
+  to warp it first; `inspect_ui` returns `gamepad_cursor {active, x, y, over}`.
+
+### Back and menus
+
+**Is Menu.** Mark pause menus, dialogs and settings screens Is Menu (`isMenu`); HUDs stay off.
+`Engine.isMenuShowing()` is true while a shown, interactive Is Menu document exists. A menu
+appearing releases what the game held in the next frame: keys and buttons come up, the game's
+and the HUD's fingers are cancelled (on-screen sticks let go), nothing is replayed after.
+
+**Back** is Android's Back button, Escape and gamepad B (never a repeat), and
+`send_input {type: "app", action: "back"}`:
+
+1. An open select or a modal `<dialog>` holding the focus closes as today; that is not a Back.
+2. The top menu document (highest sort order, top scene first) gets a cancelable, bubbling
+   `back` event at its focused element, else its root. `event:preventDefault()` takes it;
+   otherwise it closes an open select, else the topmost open modal `<dialog>`.
+3. Not taken: `Engine.onBack(source)` (`"back_button"`, `"escape"`, `"gamepad"`, `"agent"`);
+   one subscriber takes it.
+4. Not taken: Escape and B go on as keys; Android's Back presses Escape, as before.
+
+A taken Escape or B reaches no `keydown` and not the game.
+
+```lua
+menu:addEventListener("back", function(event)
+    closeMenu()
+    event:preventDefault()
+end)
+Engine.onBack = function(source) openPauseMenu() end
+```
+
 ### Touch, text fields and the cursor
 
 **Touch.** Every finger is a pointer of its own: its own `:hover` (only while it is down),
 `:active`, capture, drag and click. Two fingers press two buttons; lifting one releases and
 clicks only its own. Hover-only affordances do not exist on touch: show them by default or on
-`:focus`/`:active`, or use `@media (hover: hover)`, evaluated once at load (false on touch
-devices). A finger that starts on a scrollable box pans it once it moves past a few pixels,
+`:focus`/`:active`, or use `@media (hover: hover)`, which follows the last pointer used (false
+after a finger, true after the mouse, also on a touch device with a mouse attached). A finger that starts on a scrollable box pans it once it moves past a few pixels,
 where `touch-action` allows (then it gets `pointercancel` and loses `:active`); on-screen
 controls and game surfaces use `touch-action: none`. Linux desktops have no multi-touch: the
 Game view's Simulate Touch with an Alt-pinned finger and `send_input` cover testing.
+
+**Drag scrolling (uGUI ScrollRect).** Engine properties on the scroll container (browsers
+ignore them); the defaults keep the touch pan and inertia above:
+
+- `scroll-drag: touch | pointer` (default `touch`): `pointer` lets the mouse and pen drag the
+  content too. A mouse press that moves 10 px pans: the press gets `pointercancel` and clicks
+  nothing. Use it for game lists; desktop pages keep the wheel and scrollbars.
+- `scroll-movement: clamped | elastic | unrestricted` (Movement Type, default `clamped`):
+  `elastic` rubber-bands a drag past an edge and springs back in `scroll-elasticity` (default
+  `0.1s`); `unrestricted` lets the content go anywhere.
+- `scroll-inertia: auto | none` and `scroll-deceleration-rate: auto | <number>` (Inertia and
+  Deceleration Rate: the share of the velocity kept per second, uGUI's default is `0.135`).
+- It runs on the unscaled UI clock. Lua: `el.scrollVelocity` (Vector2, px/s; set it to fling)
+  and `el:stopScrolling()`.
+
+```css
+.list { overflow-y: auto; scroll-drag: pointer; scroll-movement: elastic; scroll-deceleration-rate: 0.135; }
+```
 
 **Pointer events.** As in a browser (W3C Pointer Events 3): per pointer `pointerover` →
 `pointerenter` → `pointerdown` → `pointermove`s → `pointerup` → `click` → `pointerout` →
@@ -1633,7 +1982,7 @@ pointer that presses it; three fingers on three controls work at once.
 
 | Element | Attributes (defaults) | State and events |
 |---|---|---|
-| `onscreen-stick` | `mode` (`fixed`, `floating`: the base appears under the finger, `dynamic`: it follows past `move-threshold`), `handle-range` (1), `dead-zone` (0), `move-threshold` (1), `axes` (`both`, `horizontal`, `vertical`), `snap-x`, `snap-y`, `horizontal-action` (`Horizontal`), `vertical-action` (`Vertical`), `visibility` (`always`, `touch-devices-only`) | `data-pressed`, `data-x`, `data-y` (-1..1, y up); `:active` while held; `stickstart`, `stickmove`, `stickend` (`event.detail.x` / `.y`) |
+| `onscreen-stick` | `mode` (`fixed`, `floating`: the base appears under the finger, `dynamic`: it follows past `move-threshold`), `handle-range` (1), `dead-zone` (0), `move-threshold` (1), `axes` (`both`, `horizontal`, `vertical`), `snap-x`, `snap-y`, `horizontal-action` (`Horizontal`), `vertical-action` (`Vertical`), `visibility` (`always`, `touch-devices-only`, `touch-scheme`: while the player uses touch) | `data-pressed`, `data-x`, `data-y` (-1..1, y up); `:active` while held; `stickstart`, `stickmove`, `stickend` (`event.detail.x` / `.y`) |
 | `onscreen-button` | `action` (`Fire1`), `value` (1; -1 on an axis), `press-on-enter`, `release-on-leave`, `visibility` | `data-pressed`, `:active`; the usual pointer and click events |
 | `touch-area` | `horizontal-action` (`Mouse X`), `vertical-action` (`Mouse Y`), `sensitivity` (0.1), `invert-x`, `invert-y`, `visibility` | `data-pressed`; `areadrag` (`event.detail.dx` / `.dy`, document px) |
 
@@ -1641,10 +1990,42 @@ A stick without children gets `<div class="stick-base"><div class="stick-knob"><
 (a 160 px translucent circle and a 64 px knob from the UA sheet; give your own children these
 classes to restyle). The stick maths is Joystick Pack's in document px: the base's half width is
 the radius; the knob moves with `transform: translate(...)`. Released, removed, hidden with
-`display: none`, or with its document hidden or unloaded, a control clears what it wrote.
+`display: none` or by its `visibility`, or with its document hidden or unloaded, a control
+clears what it wrote.
+
+**Input scheme.** Every document's `<html>` carries `data-input-scheme` (`keyboard-mouse`,
+`gamepad`, `touch`) and `data-gamepad-family` (`xbox`, `playstation`, `nintendo`, `generic`),
+updated the frame the player switches device (jasper://docs/input), so CSS alone follows it:
+`html[data-input-scheme="touch"] .kbd-hint { display: none; }`. A script that sets them is
+overwritten at the next change. `<input-prompt action="Gameplay/Jump">` shows the action's binding
+for the scheme in use ("Space", "Cross", "Touch"; `scheme="gamepad"` and the others pin one) and
+sets `data-glyph` (a glyph key such as `gamepad/playstation/cross`), `data-scheme` and
+`data-empty` (no binding for that scheme); it follows rebinding too. Children you give it replace
+the text, the attributes still update: `<input-prompt action="Gameplay/Jump"><img class="glyph"></input-prompt>`
+with CSS on `[data-glyph="..."]` shows your art.
 
 **Text fields.** Focusing one opens the virtual keyboard (Android, iOS, Web) and places the IME
-window at the caret. Composition shows inside the field on Windows, macOS, iOS, Android and
+window at the caret. The field picks the keyboard (desktop platforms ignore it):
+
+| Attribute | Keyboard |
+|---|---|
+| `type` | `email`, `url`, `tel`: their keyboards; `search`: the search keyboard and key; `number`: digits when `step` is whole and `min` ≥ 0, else a decimal pad (with a minus while `min` is absent or negative); `password`: secure, no suggestions; `<textarea>`: multi-line, the Enter key |
+| `inputmode` | `text`, `decimal`, `numeric`, `tel`, `search`, `email`, `url` override it; `none` shows no keyboard (hardware keys still type) |
+| `enterkeyhint` | the action key: `enter`, `done`, `go`, `next`, `previous`, `search`, `send` |
+| `autocapitalize` | `off`/`none` (default), `on`/`sentences`, `words`, `characters` |
+| `autocorrect` | `on`: suggestions (Android; iOS and the web keep no text to correct, so stay off); default off |
+| `maxlength` | the keyboard stops there too |
+
+The action key arrives as an Enter `keydown` on the field with `event.enterKeyHint` ("next",
+"send", ...; "" for the platform's default key); `preventDefault()` stops what follows. Otherwise
+`next` / `previous` focus the next / previous text field in tab order (none: the field blurs),
+`done` blurs (the keyboard closes), and `go`, `search`, `send`, `enter` or none submit an
+`<input>`'s form as Enter does, then blur; in a `<textarea>` the key breaks the line. A hardware
+Enter on a field with `enterkeyhint` does the same (as Chrome on Android with a Bluetooth
+keyboard); without one, it submits as before. Moving between fields keeps the keyboard open and
+changes it; the field's value stays the truth: text it rejects (`maxlength`, a number filter, a
+script setting `value`) is sent back to the Android and iOS keyboards. `inspect_ui` reports the
+focused field's keyboard as `focus`; the Game view shows it in a chip during Play. Composition shows inside the field on Windows, macOS, iOS, Android and
 Web; on Linux the input method draws it, and in the editor's Game view composed text arrives
 committed. Ctrl/Cmd + C/X/V/A copy, cut, paste and select all. `System.setClipboardText` /
 `System.getClipboardText` reach the system clipboard (asynchronous on Web).
@@ -1756,6 +2137,28 @@ introduced it (errors every time). JSON findings carry `code` and `suggestion`. 
 `docs/mcp/checks.md` in the engine repository; `jasperengine-editor ui-support` prints the support
 tables as JSON.
 
+### Exact-time frame previews
+
+`render_ui_frames` (group `html_ui`) renders CSS animations and document-script `anime`
+tweens at requested seconds while the editor stays out of Play. Pass `document` with a
+project-relative HTML/RML asset, or `scene` for its enabled screen UI Documents. Each sample
+starts from a fresh document at time zero; request order and duplicate times are preserved.
+Inline Lua and Lua scripts attached to the scene's UI Documents run in the isolated preview,
+including `init` and `start`. Procedural `onUpdate`/`onRender` code should derive its output
+from the animation's current time and a fixed seed. Use `record_game` for gameplay.
+
+```sh
+jasperengine-editor call --project P render_ui_frames --document assets/ui/title.html --times 0.3,1,2.5 --out sheet.png
+jasperengine-editor call --project P render_ui_frames --times 0.3,1,2.5 --out sheet.png --watch
+```
+
+The default output is a labelled contact sheet. `layout: "frames"` writes one PNG per time
+into the `out` directory. `width` and `height` default to the project canvas; `columns` sets
+the sheet's grid. `watch: true` renders once, then regenerates when the existing file watcher
+reports a change to a document or dependency. Its result includes a running `job_id`;
+`cancel_job` stops it. The CLI stays attached until Ctrl-C. Stop Play and other captures
+before starting a preview.
+
 ### UI hot reload
 
 The editor checks every document's files (the `.html`, stylesheets, templates, images, fonts,
@@ -1809,7 +2212,8 @@ Read-only, edit mode and play. Returns:
   (`drawCalls`, `geometrySubmitted`, `runsMerged`, `runCacheHits`, `instancesDrawn`,
   `stencilDraws`, `stencilClipsElided`, `analyticClips`, `boxShadowTextures`, `layersPushed`,
   `glyphsRasterized`, `msdfGlyphsPending`, `textRegenerations`, `textEffectFallbacks`,
-  `atlasBytes`, `atlasEvictions`, ...); with `"detail": "full"` each element also has
+  `atlasBytes`, `atlasEvictions`, `imagesDecoded`, `imageCacheHits`, `imagesPending`, ...); with
+  `"detail": "full"` each element also has
   `paint: {path: "primitive" | "mesh", reason}` and, with text, `raster: {mode: "bitmap" | "msdf" |
   "stretched", scale}`;
 - a `<video>`'s entry has `media`: `currentSrc`, `backend`, `currentTime`, `duration`, `paused`, `ended`,
@@ -1903,9 +2307,8 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | Tailwind Play CDN | run the Tailwind CLI and `<link>` its CSS output | `HTMLUI-HTML-0007` |
 | Google Fonts `<link>` | keep it; the editor imports it (`import_files {"from_document": ...}` or `{"fonts": [...]}`) | `HTMLUI-IMP-0001` until imported |
 | remote `<img src="https://...">`, CDN CSS | keep it and import it, or put the file in `assets/ui/<name>_assets/` | `HTMLUI-IMP-0001` until imported |
-| WOFF/WOFF2 `@font-face` | TTF or OTF | `HTMLUI-CSS-0022` |
 | `@container`, `container-type` | `@media` on the canvas size, or classes set from Lua | `HTMLUI-AT-0001`, `HTMLUI-CSS-0002` |
-| `mix-blend-mode`, `background-blend-mode` | `opacity`, or a pre-blended image | `HTMLUI-CSS-0002` |
+| `background-blend-mode` | a child with `mix-blend-mode`, or a pre-blended image | `HTMLUI-CSS-0002` |
 | `writing-mode: vertical-rl` | `transform: rotate(90deg)` | `HTMLUI-CSS-0002` |
 | `columns: 2` | grid or `flex-wrap` | `HTMLUI-CSS-0002` |
 | `line-clamp: 2` (the standard shorthand) | `display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden` | `HTMLUI-CSS-0002` |
@@ -1934,7 +2337,7 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 
 ## Examples
 
-Thirteen polished examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
+Fourteen examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
 `assets/`), compat-clean, tested at several viewports. Get them with
 `create_ui_document {"html": "assets/ui/<name>.html", "template": "<name>"}` (files renamed to
 your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read them in
@@ -1949,7 +2352,7 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `hud` | health and shield bars, score and timer, minimap, ammo, ability cooldowns, damage flash; data binding (`{{ }}`, `data-style-width`, `data-class-*`) | within_viewport, no_overlap, text_fits, contrast with background, visible |
 | `inventory` | a CSS grid of slots from `data-for`, HTML5 drag and drop (`draggable`, `dropzone`, `dataTransfer`, the ghost and drop classes), rich tooltips from `setTooltip`, equipment | count, no_overlap, within_parent, within_viewport, text_fits, visible |
 | `settings` | tabs, sliders, switches, selects, key bindings; two-way `data-value`/`data-checked` | visible, no_overlap, min_size, text_fits, within_parent, within_viewport |
-| `dialogue` | portrait, typewriter text, choices; `onUpdate` timing | text_fits, within_viewport, contrast, no_overlap, min_size |
+| `dialogue` | portrait, typewriter text, choices; `onUpdate` timing; the view of a Dialogue Runner (its conversation is `<stem>_assets/demo.dialogue`, edit it with `edit_graph`) | text_fits, within_viewport, contrast, no_overlap, min_size |
 | `shop` | filter chips, cards with `data-for` + `data-if`, buy buttons disabled by `data-attr-disabled`, a quantity dialog, an animated gold counter | text_fits, no_overlap, within_parent, contrast, min_size, within_viewport |
 | `toasts` | toasts created from Lua (`createElement`, `appendChild`), enter and exit animations | within_viewport, no_overlap, text_fits, contrast |
 | `loading` | progress bar, Lottie spinner, rotating tips, "press any key" | visible, text_fits, within_viewport |
@@ -1957,7 +2360,13 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `server_browser` | 10 000 servers in a `<table-view>`: sort, resizable columns, region chips, keyboard and gamepad selection, row and header tooltips, a details panel | min_size, no_overlap, text_fits, virtual_window, visible, within_viewport |
 | `chat_log` | Markdown messages of any height in a `<list-view item-height="auto" anchor="end">`, a composer, teammates writing on game time | contrast, min_size, text_fits, virtual_window, visible, within_viewport |
 | `quest_log` | chapters and quests in a `<tree-view>` with keyboard and gamepad navigation, a `<markdown src>` journal | text_fits, virtual_window, visible, within_viewport |
+| `motion_graphics` | a six-second 1080 × 1350 composition: masked `splitText` stagger, SVG draw and fill, morph, motion path and thirty procedural stars from a fixed seed | count, within_viewport, text_fits; every decoded frame of two 180-frame recordings compared exactly |
 | `blank` | an empty page with a heading (the default template; no script) | visible |
+
+The `dialogue` example shows the lines of its GameObject's Dialogue Runner (`runner.onLine` drives
+`say`, a choice calls `runner:choose(i)`, Space or a click `runner:advance()`, a line's voice plays
+through `Audio`); a runner without a dialogue gets the demo conversation. Give the runner your own
+`.dialogue` and the same view plays it (`jasper://docs/dialogue`).
 
 Each example's Lua class is `<Name>UI`, gets the document with
 `UIDocument(self.scene, self.entity)`, looks elements up through an asserting `byId`, and binds
@@ -1969,11 +2378,18 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   `font-size`): transforms and opacity change one value per frame, layout properties lay the
   document out again. For a bar animated every frame, `transform: scaleX()` beats `width`; a
   width set once per event (the HUD above) is fine.
-- **Layers cost passes.** A static document without filters or masks is one offscreen pass and
-  uploads nothing per frame. Every `filter`, `backdrop-filter` and `mask-image` draws through
-  extra offscreen passes (a blur 4 to 6, a backdrop blur a few more), and `opacity` below 1 on an
-  element with several children draws it into a layer: keep them on the few elements that need
-  them. Box shadows, blurred `text-shadow`s and `font-effect`s do not need layers (below).
+- **A document that does not change costs nothing.** A frame that records what the last one
+  drew is not drawn again: 0 passes, 0 draws (`render_stats` `framesKept` 1), and only the
+  64-px tiles that hold content are composited (`compositePixels`). A change draws the whole
+  document again in one pass, plus its uncached layers; video, a camera's texture, time-based
+  effects, `<particle-system>` and glyphs still being made draw every frame (`liveSources`).
+- **Layers cost passes, once.** `filter`, `mask-image`, `clip-path: polygon()`/`path()` and
+  `text-shadow` blurs draw through layers the size of their element; the result is kept while the
+  element's content does not change (`layerCacheHits`), also while it moves or fades its
+  `opacity`. `backdrop-filter` and a layer reading a live source draw every frame. Gradients
+  (up to 16 stops, linear, radial, conic, repeating) on square and rounded boxes and
+  `clip-path: inset()`/`circle()`/`ellipse()` need no layer. Box shadows, blurred
+  `text-shadow`s and `font-effect`s do not need layers (below).
 - **Draws are batched.** Consecutive boxes and text of the same clip and transform are one draw:
   a list of 500 cards with rounded borders, box shadows and two labels each is a handful of draws.
   Solid backgrounds, `solid` borders (one colour per rounded corner), `solid` and `auto` outlines
@@ -1991,16 +2407,27 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   `geometricPrecision` always draws distance fields (any size, 3D, no re-rasterization).
   `text-shadow` blurs and `font-effect` outlines, glows and blurs up to 0.3 em are drawn from the
   distance glyphs without layers; larger ones fall back to layers (or CPU glyphs).
+- **Glyphs are made once.** The glyph cache outlives documents and scenes; a screen's first show
+  makes its glyphs in its frame (`glyphsRasterized`, `textEffectFallbacks` in `inspect_ui`
+  `render_stats`): `doc:prewarm()` makes them before (Prewarming text, above).
 - **Keep documents small**: hundreds of elements, not thousands. Long lists: page or window
   them in Lua. One document per screen; hide the screens you do not show (`doc:hide()`, or a
   class with `display: none`) instead of destroying and rebuilding them.
 - **Change the least**: assigning one data-model field or `textContent` updates one element;
   replacing `innerHTML` rebuilds the subtree and drops its listeners.
-- **Images**: an SVG is rasterized once per size and colour; a Lottie element re-rasterizes
+- **Images**: a raster file is decoded once per process and shared by every document
+  (`imagesDecoded` 0 and `imageCacheHits` > 0 in `inspect_ui` render stats when a screen reuses
+  them); an atlas with `#sprite=` regions decodes once for all its sprites. An SVG is rasterized
+  once per size and colour; a Lottie element re-rasterizes
   only when its frame changes (a 30 fps animation 30 times a second; paused, never). Texture
   documents redraw only when they change.
 - Anti-aliasing: Project Settings > Graphics > HTML UI MSAA (`graphics.html_ui_msaa_samples`:
-  1, 2, 4 or 8, default 4; devices that cannot multisample use 1).
+  0 = Auto, new projects: 1 sample on Android, iOS and the web, 4 on desktop; else 1, 2, 4 or 8;
+  a project saved without it keeps 4). A scene's Anti-aliasing (MSAA) (`html_ui_msaa_samples`,
+  Lua `scene.htmlUiMsaaSamples`: 0 = the project's) replaces it for its screen documents, a
+  texture-mode document's `msaaSamples` for its texture. Devices that cannot multisample use 1.
+  At 1 sample a 2.6-megapixel document target (2400 x 1080) is about 21 MB (colour and depth-stencil), at 4
+  about 83 MB plus the resolved copy (`render_stats` `samples`, `targetBytes`).
 - Project Settings > Graphics > HTML UI also has *Glyph Atlas Budget (MiB)*
   (`graphics.html_ui_glyph_atlas_mib`: 0 = the platform's default, 24 MiB on desktop and 12 on
   Android, iOS and the web, else 4-256; pages of glyphs not drawn lately are cleared when text needs

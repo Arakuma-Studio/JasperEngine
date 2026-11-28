@@ -48,9 +48,11 @@
 #include "component/AnimatorComponent.h"
 #include "animation/AnimationEvent.h"
 #include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
 #include "component/FogComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/TilemapComponent.h"
@@ -211,6 +213,22 @@ namespace {
         return 1;
     }
 
+    // AudioSystem.unload(path [, loadType]) -> integer
+    int luaAudioUnload(lua_State* L){
+        const std::string path = luaL_checkstring(L, 1);
+        const AudioLoadType type = (AudioLoadType)lua_tointeger(L, 2);
+        lua_pushinteger(L, AudioSystem::unload(path, lua_isnumber(L, 2) ? &type : nullptr));
+        return 1;
+    }
+
+    // AudioSystem.getLoadState(path [, loadType]) -> AudioLoadState
+    int luaAudioGetLoadState(lua_State* L){
+        const std::string path = luaL_checkstring(L, 1);
+        const AudioLoadType type = lua_isnumber(L, 2) ? (AudioLoadType)lua_tointeger(L, 2) : AudioLoadType::Auto;
+        lua_pushinteger(L, (lua_Integer)AudioSystem::getLoadState(path, type));
+        return 1;
+    }
+
     // RenderSystem:getLoadCount() -> loaded, total
     int luaRenderGetLoadCount(lua_State* L){
         RenderSystem* self = luabridge::detail::Userdata::get<RenderSystem>(L, 1, true);
@@ -250,6 +268,26 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("Streaming", AudioLoadType::Streaming)
         .endNamespace();
 
+    // Unity's AudioDataLoadState names (AudioSource.loadState, AudioSystem.getLoadState)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AudioLoadState")
+        .addVariable("Unloaded", AudioLoadState::Unloaded)
+        .addVariable("Loading", AudioLoadState::Loading)
+        .addVariable("Loaded", AudioLoadState::Loaded)
+        .addVariable("Failed", AudioLoadState::Failed)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("InputFieldKeyboardType")
+        .addVariable("DEFAULT", InputFieldKeyboardType::DEFAULT)
+        .addVariable("NUMBER_PAD", InputFieldKeyboardType::NUMBER_PAD)
+        .addVariable("DECIMAL_PAD", InputFieldKeyboardType::DECIMAL_PAD)
+        .addVariable("PHONE_PAD", InputFieldKeyboardType::PHONE_PAD)
+        .addVariable("EMAIL_ADDRESS", InputFieldKeyboardType::EMAIL_ADDRESS)
+        .addVariable("URL", InputFieldKeyboardType::URL)
+        .addVariable("SEARCH", InputFieldKeyboardType::SEARCH)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("AnchorPreset")
         .addVariable("NONE", AnchorPreset::NONE)
@@ -283,6 +321,27 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("TOP_RIGHT", PivotPreset::TOP_RIGHT)
         .addVariable("BOTTOM_RIGHT", PivotPreset::BOTTOM_RIGHT)
         .addVariable("FRAME", PivotPreset::FRAME)
+        .endNamespace();
+
+    // Text.anchorHorizontal and Text.anchorVertical (Unity TextMesh's Anchor): one table, values the
+    // other property refuses
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextAnchor")
+        .addVariable("Left", TextAnchorHorizontal::LEFT)
+        .addVariable("Center", TextAnchorHorizontal::CENTER)
+        .addVariable("Right", TextAnchorHorizontal::RIGHT)
+        .addVariable("Top", TextAnchorVertical::TOP)
+        .addVariable("Middle", TextAnchorVertical::MIDDLE)
+        .addVariable("Bottom", TextAnchorVertical::BOTTOM)
+        .addVariable("Baseline", TextAnchorVertical::BASELINE)
+        .addVariable("Capline", TextAnchorVertical::CAPLINE)
+        .addVariable("Midline", TextAnchorVertical::MIDLINE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextFontSizeUnit")
+        .addVariable("PixelHeight", TextFontSizeUnit::PIXEL_HEIGHT)
+        .addVariable("Em", TextFontSizeUnit::EM)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -365,6 +424,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("OnScreenVisibility")
         .addVariable("ALWAYS", OnScreenVisibility::ALWAYS)
         .addVariable("TOUCH_DEVICES_ONLY", OnScreenVisibility::TOUCH_DEVICES_ONLY)
+        .addVariable("TOUCH_SCHEME", OnScreenVisibility::TOUCH_SCHEME)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -385,6 +445,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("FogColorMode")
         .addVariable("COLOR", FogColorMode::COLOR)
         .addVariable("SKY", FogColorMode::SKY)
+        .addVariable("LIT", FogColorMode::LIT)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -397,6 +458,12 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("FogVolumeFalloff")
         .addVariable("LINEAR", FogVolumeFalloff::LINEAR)
         .addVariable("EXPONENTIAL", FogVolumeFalloff::EXPONENTIAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FogZoneShape")
+        .addVariable("BOX", FogZoneShape::BOX)
+        .addVariable("SPHERE", FogZoneShape::SPHERE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -507,6 +574,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addStaticFunction("checkActive", &AudioSystem::checkActive)
         .addStaticProperty("globalVolume", &AudioSystem::getGlobalVolume,  &AudioSystem::setGlobalVolume)
         .addStaticFunction("preload", &luaAudioPreload)
+        .addStaticFunction("unload", &luaAudioUnload)
+        .addStaticFunction("getLoadState", &luaAudioGetLoadState)
         .addStaticFunction("isOutputAvailable", &AudioSystem::isOutputAvailable)
         .addStaticFunction("getVoiceCount", &AudioSystem::getVoiceCount)
         // the sounds of this system's scene only (stopAll: every scene's)
@@ -1071,6 +1140,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("scrollOffset", &InputFieldComponent::scrollOffset, &setTrackedMember<&InputFieldComponent::scrollOffset>)
         .addProperty("disabled", &InputFieldComponent::disabled, &setTrackedMember<&InputFieldComponent::disabled>)
         .addProperty("password", &InputFieldComponent::password, &setTrackedMember<&InputFieldComponent::password>)
+        .addProperty("keyboardType", &InputFieldComponent::keyboardType, &setTrackedMember<&InputFieldComponent::keyboardType>)
+        .addProperty("characterLimit", &InputFieldComponent::characterLimit, &setTrackedMember<&InputFieldComponent::characterLimit>)
         .addProperty("onChange", [] (InputFieldComponent* self, lua_State* L) { return &self->onChange; }, [] (InputFieldComponent* self, lua_State* L) { self->onChange = L; })
         .addProperty("onSubmit", [] (InputFieldComponent* self, lua_State* L) { return &self->onSubmit; }, [] (InputFieldComponent* self, lua_State* L) { self->onSubmit = L; })
         .addProperty("needUpdateInputField", &InputFieldComponent::needUpdateInputField, &setTrackedMember<&InputFieldComponent::needUpdateInputField>)
@@ -1124,6 +1195,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("speed", &AnimationPlayerComponent::speed, &setTrackedMember<&AnimationPlayerComponent::speed>)
         .addProperty("defaultFadeTime", &AnimationPlayerComponent::defaultFadeTime, &setTrackedMember<&AnimationPlayerComponent::defaultFadeTime>)
         .addProperty("poseFrameRate", &AnimationPlayerComponent::poseFrameRate, &setTrackedMember<&AnimationPlayerComponent::poseFrameRate>)
+        .addProperty("applyRootMotion", &AnimationPlayerComponent::applyRootMotion, &setTrackedMember<&AnimationPlayerComponent::applyRootMotion>)
+        .addProperty("legacyRootDrift", &AnimationPlayerComponent::legacyRootDrift, &setTrackedMember<&AnimationPlayerComponent::legacyRootDrift>)
         .addProperty("needsLoad", &AnimationPlayerComponent::needsLoad, &AnimationPlayerComponent::needsLoad)
         .addProperty("onEvent", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onEvent = L; })
         .addProperty("onFinish", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onFinish; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onFinish = L; })
@@ -1167,6 +1240,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("speed", &AnimatorComponent::speed, &setTrackedMember<&AnimatorComponent::speed>)
         .addProperty("poseFrameRate", &AnimatorComponent::poseFrameRate, &setTrackedMember<&AnimatorComponent::poseFrameRate>)
         .addProperty("applyRootMotion", &AnimatorComponent::applyRootMotion, &setTrackedMember<&AnimatorComponent::applyRootMotion>)
+        .addProperty("legacyRootDrift", &AnimatorComponent::legacyRootDrift, &setTrackedMember<&AnimatorComponent::legacyRootDrift>)
         .addProperty("rootMotionBone", &AnimatorComponent::rootMotionBone, &setTrackedMember<&AnimatorComponent::rootMotionBone>)
         .addProperty("updateMode", &AnimatorComponent::updateMode, &setTrackedMember<&AnimatorComponent::updateMode>)
         .addProperty("cullingMode", &AnimatorComponent::cullingMode, &setTrackedMember<&AnimatorComponent::cullingMode>)
@@ -1197,6 +1271,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("onStart", [] (AudioSourceComponent* self, lua_State* L) { return &self->onStart; }, [] (AudioSourceComponent* self, lua_State* L) { self->onStart = L; })
         .addProperty("onPause", [] (AudioSourceComponent* self, lua_State* L) { return &self->onPause; }, [] (AudioSourceComponent* self, lua_State* L) { self->onPause = L; })
         .addProperty("onStop", [] (AudioSourceComponent* self, lua_State* L) { return &self->onStop; }, [] (AudioSourceComponent* self, lua_State* L) { self->onStop = L; })
+        .addProperty("onLoad", [] (AudioSourceComponent* self, lua_State* L) { return &self->onLoad; }, [] (AudioSourceComponent* self, lua_State* L) { self->onLoad = L; })
         .addProperty("volume", &AudioSourceComponent::volume, &setTrackedMember<&AudioSourceComponent::volume>)
         .addProperty("pan", &AudioSourceComponent::pan, &setTrackedMember<&AudioSourceComponent::pan>)
         .addProperty("speed", &AudioSourceComponent::speed, &setTrackedMember<&AudioSourceComponent::speed>)
@@ -1219,6 +1294,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("priority", &AudioSourceComponent::priority, &AudioSourceComponent::priority)
         .addProperty("maxVoices", &AudioSourceComponent::maxVoices, &AudioSourceComponent::maxVoices)
         .addProperty("ignoreListenerPause", &AudioSourceComponent::ignoreListenerPause, &AudioSourceComponent::ignoreListenerPause)
+        .addProperty("spatialBlend", &AudioSourceComponent::spatialBlend, &setTrackedMember<&AudioSourceComponent::spatialBlend>)
+        .addProperty("slot", &AudioSourceComponent::slot)
         .endClass();
 
     // the raw fields of a Video Player (VideoPlayer's setters clamp; entity fields are entity numbers here)

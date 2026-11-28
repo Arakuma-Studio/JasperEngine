@@ -57,6 +57,13 @@ namespace {
         // upstream's shader globals (before S11's lobes on SYNC#4)
         ShaderGlobalBindings shaderGlobalBindings;
         MaterialBlendMode blendMode;
+        // S94's Blend Mode Custom factors (after the lobes, not part of their budget)
+        MaterialBlendFactor blendSrc;
+        MaterialBlendFactor blendDst;
+        MaterialBlendFactor blendSrcAlpha;
+        MaterialBlendFactor blendDstAlpha;
+        MaterialBlendOp blendOp;
+        MaterialBlendOp blendOpAlpha;
         MaterialCullMode cullMode;
         MaterialDepthWrite depthWrite;
         MaterialDepthTest depthTest;
@@ -446,6 +453,142 @@ TEST(PbrVariant, UniformBlockLayout){
 TEST(MaterialPbr, CountLitVariantsSeesAll64Bits){
     const uint64_t lit = (1ull << 1) | (1ull << 3);
     EXPECT_EQ(MaterialPbr::countLitVariants({{1u, lit}, {1u, lit | (1ull << 40)}, {1u, lit}, {0u, lit}}), 2u);
+}
+
+// V1 R70, R130: the Vertex Color section's defines. Tint with the alpha (the default, what Lit always
+// did) asks for none, so a material made before it draws the program it always drew; every other
+// choice is a define of its own, an unlit variant keeping only the masks a colour has
+TEST(VertexColorUse, TintAsksForNoDefine){
+    const MaterialPbrExtensions defaults;
+    EXPECT_EQ(defaults.vertexColor.use, VertexColorUse::TINT);
+    EXPECT_TRUE(defaults.vertexColor.alphaOpacity);
+    EXPECT_TRUE(MaterialPbr::getVertexColorDefines(defaults, false).empty());
+    EXPECT_TRUE(MaterialPbr::getVertexColorDefines(defaults, true).empty());
+    // a material at Tint draws with no reference of its own (builtin:lit), mesh colours or not
+    Material material;
+    SubmeshShaderInputs inputs;
+    inputs.normal = true;
+    inputs.receiveLights = true;
+    inputs.vertexColor4 = true;
+    inputs.material = &material;
+    MeshShaderEnvironment lit;
+    lit.lights = true;
+    EXPECT_TRUE(RenderSystem::getSubmeshShaderVariant(lit, inputs).litDefines.empty());
+}
+
+TEST(VertexColorUse, EachChoiceIsItsDefines){
+    MaterialPbrExtensions pbr;
+    pbr.vertexColor.alphaOpacity = false;
+    EXPECT_EQ(MaterialPbr::getVertexColorDefines(pbr, false), std::vector<std::string>({"LIT_VC_ALPHA_IGNORED"}));
+    pbr.vertexColor.use = VertexColorUse::OFF;
+    EXPECT_EQ(MaterialPbr::getVertexColorDefines(pbr, false), std::vector<std::string>({"LIT_VC_OFF"}));
+
+    // Masks: one define per input mapped (two channels on one input make one define), RGB tinting
+    // when none of R, G, B is mapped
+    pbr.vertexColor.use = VertexColorUse::MASKS;
+    EXPECT_EQ(MaterialPbr::getVertexColorDefines(pbr, false), std::vector<std::string>({"LIT_VC_ALPHA_IGNORED"}));
+    pbr.vertexColor.a = VertexColorTarget::ROUGHNESS_MULTIPLY;
+    EXPECT_EQ(MaterialPbr::getVertexColorDefines(pbr, false), std::vector<std::string>({"LIT_VC_RGB_TINT", "LIT_VC_ROUGHNESS"}));
+    pbr.vertexColor.r = VertexColorTarget::EMISSION;
+    pbr.vertexColor.g = VertexColorTarget::ROUGHNESS_MULTIPLY;
+    pbr.vertexColor.b = VertexColorTarget::OPACITY;
+    EXPECT_EQ(MaterialPbr::getVertexColorDefines(pbr, false), std::vector<std::string>({"LIT_VC_EMISSION", "LIT_VC_OPACITY", "LIT_VC_ROUGHNESS"}));
+    // unlit: the opacity alone stays
+    EXPECT_EQ(MaterialPbr::getVertexColorDefines(pbr, true), std::vector<std::string>({"LIT_VC_OPACITY"}));
+    // and nothing an unlit colour has: the colour is then ignored (R, G or B is mapped, so no tint)
+    pbr.vertexColor.b = VertexColorTarget::METALLIC;
+    EXPECT_EQ(MaterialPbr::getVertexColorDefines(pbr, true), std::vector<std::string>({"LIT_VC_OFF"}));
+
+    // every input's define, and the numbers the shader compares (includes/pbr.glsl vertexColorMask)
+    const std::pair<VertexColorTarget, const char*> inputs[] = {
+        {VertexColorTarget::OCCLUSION, "LIT_VC_OCCLUSION"}, {VertexColorTarget::ROUGHNESS_MULTIPLY, "LIT_VC_ROUGHNESS"},
+        {VertexColorTarget::ROUGHNESS_REPLACE, "LIT_VC_ROUGHNESS_SET"}, {VertexColorTarget::METALLIC, "LIT_VC_METALLIC"},
+        {VertexColorTarget::EMISSION, "LIT_VC_EMISSION"}, {VertexColorTarget::OPACITY, "LIT_VC_OPACITY"},
+        {VertexColorTarget::ALBEDO_TINT, "LIT_VC_ALBEDO"}};
+    for (const auto& [target, define] : inputs){
+        MaterialPbrExtensions one;
+        one.vertexColor.use = VertexColorUse::MASKS;
+        one.vertexColor.g = target;
+        const std::vector<std::string> defines = MaterialPbr::getVertexColorDefines(one, false);
+        EXPECT_EQ(defines, std::vector<std::string>({define})) << define;
+        EXPECT_TRUE(MaterialPbr::isBuiltinLitDefine(define)) << define;
+        EXPECT_TRUE(MaterialPbr::isVertexColorDefine(define)) << define;
+        float masks[4];
+        MaterialPbr::getVertexColorMasks(one, masks);
+        EXPECT_EQ(masks[0], 0.0f);
+        EXPECT_EQ(masks[1], (float)(int)target) << define;
+        EXPECT_EQ(masks[2], 0.0f);
+        EXPECT_EQ(masks[3], 0.0f);
+    }
+    // the masks only in Masks
+    MaterialPbrExtensions tint;
+    tint.vertexColor.r = VertexColorTarget::OCCLUSION;
+    float masks[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    MaterialPbr::getVertexColorMasks(tint, masks);
+    EXPECT_EQ(masks[0], 0.0f);
+}
+
+TEST(VertexColorUse, DefinesHaveCodesAndRoundTrip){
+    std::vector<std::string> every = {"LIT_VC_OFF", "LIT_VC_ALPHA_IGNORED", "LIT_VC_RGB_TINT", "LIT_VC_OCCLUSION", "LIT_VC_ROUGHNESS",
+                                      "LIT_VC_ROUGHNESS_SET", "LIT_VC_METALLIC", "LIT_VC_EMISSION", "LIT_VC_OPACITY", "LIT_VC_ALBEDO"};
+    std::sort(every.begin(), every.end());
+    const std::string basename = MaterialPbr::getVariantBasename(every);
+    EXPECT_EQ(basename, "lit_WfWnWcWoWrWqWmWeWaWt");
+    std::vector<std::string> parsed;
+    ASSERT_TRUE(MaterialPbr::parseVariantBasename(basename, parsed));
+    EXPECT_EQ(parsed, every);
+    EXPECT_EQ(MaterialPbr::getDefinesFromBits(MaterialPbr::getDefineBits(every)), every);
+    // the lobes' basenames stay what they were
+    EXPECT_EQ(MaterialPbr::getVariantBasename({"PBR_CLEARCOAT"}), "lit_Cc");
+}
+
+TEST(VertexColorUse, NamesRoundTripAndClamp){
+    for (int use = 0; use < 3; use++){
+        VertexColorUse parsed = VertexColorUse::TINT;
+        EXPECT_TRUE(MaterialPbr::parseVertexColorUse(MaterialPbr::getVertexColorUseName((VertexColorUse)use), parsed));
+        EXPECT_EQ((int)parsed, use);
+    }
+    for (int target = 0; target < (int)VertexColorTarget::COUNT; target++){
+        VertexColorTarget parsed = VertexColorTarget::NONE;
+        EXPECT_TRUE(MaterialPbr::parseVertexColorTarget(MaterialPbr::getVertexColorTargetName((VertexColorTarget)target), parsed));
+        EXPECT_EQ((int)parsed, target);
+    }
+    VertexColorUse use = VertexColorUse::OFF;
+    EXPECT_FALSE(MaterialPbr::parseVertexColorUse("multiply", use));
+    EXPECT_EQ(use, VertexColorUse::OFF);
+
+    // a value past the enums (a newer writer) reads as the default
+    MaterialPbrExtensions pbr;
+    pbr.vertexColor.use = (VertexColorUse)7;
+    pbr.vertexColor.a = (VertexColorTarget)42;
+    EXPECT_TRUE(MaterialPbr::clamp(pbr));
+    EXPECT_EQ(pbr.vertexColor.use, VertexColorUse::TINT);
+    EXPECT_EQ(pbr.vertexColor.a, VertexColorTarget::NONE);
+    EXPECT_FALSE(MaterialPbr::clamp(pbr));
+}
+
+// the defines reach the variant only for a mesh with vertex colours and the built-in Lit (no
+// manifest), and they make a reference of their own
+TEST(VertexColorUse, VariantNeedsVertexColours){
+    Material material;
+    MaterialPbrExtensions::VertexColor& vertexColor = material.pbr.edit().vertexColor;
+    vertexColor.use = VertexColorUse::MASKS;
+    vertexColor.r = VertexColorTarget::ROUGHNESS_REPLACE;
+    vertexColor.g = VertexColorTarget::EMISSION;
+    SubmeshShaderInputs inputs;
+    inputs.normal = true;
+    inputs.receiveLights = true;
+    inputs.material = &material;
+    MeshShaderEnvironment lit;
+    lit.lights = true;
+    EXPECT_TRUE(RenderSystem::getSubmeshShaderVariant(lit, inputs).litDefines.empty()) << "no vertex colours: no masks";
+    inputs.vertexColor3 = true;
+    const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(lit, inputs);
+    EXPECT_EQ(variant.litDefines, std::vector<std::string>({"LIT_VC_EMISSION", "LIT_VC_ROUGHNESS_SET"}));
+    // the terrain has its layers
+    inputs.terrain = true;
+    for (const std::string& define : RenderSystem::getSubmeshShaderVariant(lit, inputs).litDefines)
+        EXPECT_FALSE(MaterialPbr::isVertexColorDefine(define)) << define;
 }
 
 }  // namespace MaterialPbrTest_cpp

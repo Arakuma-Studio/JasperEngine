@@ -3,6 +3,7 @@
 #include "../../Include/RmlUi/Core/CallbackTexture.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
 #include "../../Include/RmlUi/Core/Types.h"
+#include "GeometryBoxShadow.h"
 
 namespace Rml {
 namespace Style {
@@ -30,7 +31,9 @@ public:
 	/// @param[in] computed The computed style values of the element.
 	/// @return A handle to the BoxShadow data, with automatic reference counting.
 	// include_border = false: the border is drawn separately (above the element's decorators)
-	static SharedPtr<BoxShadowRenderable> GetHandle(Element* element, const Style::ComputedValues& computed, bool include_border = true);
+	// part = Inset (fork, S93 R24): the inset shadows alone, over no background or border (drawn above the decorators)
+	static SharedPtr<BoxShadowRenderable> GetHandle(Element* element, const Style::ComputedValues& computed, bool include_border = true,
+		BoxShadowPart part = BoxShadowPart::All);
 };
 
 } // namespace Rml

@@ -71,7 +71,10 @@ void Enemy::think(){
 name), `JE_PROFILE_THREAD(name)`, `JE_PROFILE_COUNTER(name, value)` and
 `JE_GPU_ALLOC_SCOPE(Category, owner)` (what the GPU resources made in the scope are for: Textures,
 RenderTargets, ShadowMaps, PostFX, Meshes, Uniforms, UI, Particles, Terrain, Editor, Other). Lua
-has the `Profiler` table (`docs/mcp/guide/lua-api.md` 2.14).
+has the `Profiler` table (`docs/mcp/guide/lua-api.md` 2.14): `Profiler.gpuTiming = true` turns GPU
+timing on (the timer `get_gpu_passes` arms; false lets it go), and `Profiler.frameStats()` then
+has `gpuMs` and `gpuPasses`, `{name, ms}` per pass of the newest timed frame. Where the backend
+has no GPU timer, and in a release export, `gpuTiming` stays false and those fields are absent.
 
 A scope costs one relaxed atomic load and a branch while nothing records, and two reads of the
 CPU's counter (rdtsc, cntvct_el0) and two writes into the thread's own ring while it records; job workers name themselves
@@ -98,6 +101,64 @@ web development builds write their captures to the path given, for Load in the P
 
 `JASPERENGINE_FRAME_STATS=1` (and `=all`, `JASPERENGINE_FRAME_STATS_ACTIONS=1`) still logs the
 frame's sokol statistics and its camera pass list, unchanged, in every build.
+
+## Performance in shipped games
+
+A Release export has no profiler, but every build has the **Performance sampler**
+(`engine/core/profiler/PerfSampler.h`, Lua `Performance`): it summarizes the frames of gameplay so a
+game can tell its developer how fast it runs on players' devices. The engine sends nothing: the game
+asks the player before it sends a summary anywhere. A summary holds no personal data (frame times,
+the GPU, its driver, the OS family, the tier).
+
+```lua
+Performance.setSampling(true)                    -- gameplay starts
+Performance.setSampling(false, "menu")           -- the main menu: excluded, named
+Performance.onSample(function(s)                 -- every 5 minutes of gameplay
+    MyAnalytics.send("perf", {p50 = s.fps.p50, p10 = s.fps.p10, cpu = s.mainThreadCpuMs})
+end, 300)
+```
+
+Off (the default) it costs one branch per frame. On, each frame of the frame-time ring goes into a
+pending second, which once a wall second is **committed** to the window or **discarded**. A second is
+discarded when the app was paused or hidden in it (`paused`), within 2 s after a resume, a focus
+regain or the window becoming visible (`resume`), within 1 s after a scene load or while scenes are
+loading (`loading`), when a frame in it took 1 s or more (`stall`), or when the game turned sampling
+off (`game`, and its reason in `excluded.reasons`; at most 8 names, then `other`). Editor frames that
+ran an MCP tool are skipped. A pause menu over gameplay (`Engine.timeScale = 0`) is the game's call:
+`Performance.setSampling(false, "pause_menu")`.
+
+The summary (`Performance.getSummary{histogram = true}`, `onSample`'s argument): `seconds`, `frames`,
+`fps {avg, p50, p10}` (p10 is the rate 90 % of frames reach: 1000 / `frameMs.p90`), `frameMs {p50,
+p90, p99, max}`, `cpuMs {avg, p90}`, `mainThreadCpuMs`, `gpuMs {avg, frames}` (only while something
+times the GPU: the sampler never starts the timer), `hitches` (frames of 250 ms to 1 s), `excluded`,
+`thermal` (seconds per thermal state), `tier`, `tierChanges`, `gpu`, `driver`, `quirks`, `backend`,
+`platform`, `version`, `buildId`. Frame times go into 201 fixed bins (0.5 ms below 50 ms, centred on
+multiples of 0.5 ms; 2 ms to 250 ms; one above), so a percentile below 50 ms is within 0.25 ms.
+
+**Main-thread CPU** is what the frame thread computed, from its thread clock read once a second:
+`cpuMs` counts the frame's waits on the driver, locks and I/O, `mainThreadCpuMs` does not. A
+`mainThreadCpuMs` far below `cpuMs` means the frame waits more than it computes.
+
+| Platform | Thread clock |
+|---|---|
+| Linux, Android, macOS, iOS | `CLOCK_THREAD_CPUTIME_ID`, exact over committed seconds |
+| Windows on x64 | `QueryThreadCycleTime` over the time-stamp counter's rate (measured over 2 ms at the first read), exact over committed seconds |
+| Windows without an invariant time-stamp counter, Windows on ARM | `GetThreadTimes` (user + kernel), advanced at the scheduler tick (about 15.6 ms) |
+| the web | none: `mainThreadCpuMs` is nil, `mainThreadCpu = "unavailable"` |
+
+"Main thread" is the frame thread (the one that runs `Engine::runFrame`), which on Android and iOS is
+not the platform's UI thread.
+
+**On a device without code:** every player takes `--perf-summary=<path>`: sampling starts at the
+frame that logs `Engine ready:` (unless the game called `Performance.setSampling`), and the summary is
+written as JSON (snake_case keys) at quit and at each window end. The web prints it instead
+(`?perf-summary=1`): `JASPERENGINE PERF: <json>` on the console.
+
+In the editor the sampler works in Play (it resets at Play start; `onSample` is cleared at Stop); the
+Game view's Stats show **Main Thread CPU** (the last full second) and, while the sampler runs,
+**Sampling** (`63 s · p50 58 fps · p10 41 fps`); the Profiler's Monitors have `Main thread CPU ms`;
+`get_frame_times` adds `main_thread_cpu_ms` and the sampler's `performance`; the benchmark's
+`result.json` adds `mainThreadCpuMs {mean}` and `device {gpu, driver, tier, quirks}`.
 
 ## Measuring GPU passes from the command line
 

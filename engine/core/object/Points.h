@@ -7,11 +7,18 @@
 #include "GameObject.h"
 #include "buffer/ExternalBuffer.h"
 #include "component/PointsComponent.h"
+#include "ecs/ComponentFwd.h"
 #include "texture/Material.h"
 
 namespace jasperengine{
 
     class JASPERENGINE_API Points: public GameObject{
+    private:
+        // an old script's Points(scene, entity) on the GameObject of a migrated Particle System
+        // (the migration removed its empty PointsComponent): the system its frame and blend
+        // calls go to, with one deprecation note; null when the Points is its own
+        ParticleSystemComponent* legacyParticles(const char* call) const;
+
     public:
 
         // component checkbox (Unity Behaviour.enabled): a disabled Points is skipped by its system
@@ -59,6 +66,9 @@ namespace jasperengine{
 
         void clearPoints();
 
+        // frame rects are in UV units (0..1; a Sprite's frames are pixels): one outside them warns
+        // once per Points. On an old system's target the frames are its Texture Sheet
+        // Animation sprites (deprecated)
         void addSpriteFrame(int id, const std::string& name, Rect rect);
         void addSpriteFrame(const std::string& name, float x, float y, float width, float height);
         void addSpriteFrame(float x, float y, float width, float height);
@@ -98,7 +108,8 @@ namespace jasperengine{
         std::string getShaderTexture(const std::string& name) const;
         void setShaderFeature(const std::string& define, bool enabled);
         bool isShaderFeatureEnabled(const std::string& define) const;
-        // AUTO keeps the built-in state: alpha blending, depth writes on
+        // AUTO keeps the built-in state: alpha blending, depth writes on. On an old system's
+        // target both are its Renderer module's (deprecated)
         void setBlendMode(MaterialBlendMode blendMode);
         MaterialBlendMode getBlendMode() const;
         void setDepthWrite(MaterialDepthWrite depthWrite);

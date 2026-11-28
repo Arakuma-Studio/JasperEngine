@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "ObjectManager.h"
+#include "dialogue/DialogueSwitch.h"
+#if JASPERENGINE_DIALOGUE_ENABLED
+#include "object/DialogueRunner.h"
+#endif
 #include "script/ScriptScheduler.h"
 #include "script/AsyncOwner.h"
 #include "PrefabManager.h"
@@ -458,6 +462,10 @@ void ObjectManager::initializeScripts(Scene* scene, const std::vector<Entity>& e
     if (!scene || entities.empty()) {
         return;
     }
+#if JASPERENGINE_DIALOGUE_ENABLED
+    // dialogue-graphs.md R13: an instantiated Auto Start runner starts after its scripts' init
+    dialogue::scheduleAutoStart(scene, &entities);
+#endif
     bool lua, cpp;
     scriptKinds(scene, entities, lua, cpp);
     if (!lua && !cpp) {

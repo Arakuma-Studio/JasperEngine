@@ -20,13 +20,15 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
-bool ModelExport::gather(Project& project, const std::vector<ModelFamily>& families, ModelExportInputs& inputs, std::string& error){
+bool ModelExport::gather(Project& project, const std::vector<ModelFamily>& families, ModelExportInputs& inputs, std::string& error,
+                         const std::function<bool(const std::string& assetPath)>& ships){
     inputs = ModelExportInputs();
     ModelUsageIndex& usage = ModelUsageIndex::get();
     usage.refresh(project);
     inputs.scripts = project.getModelSettings().scriptMeshData;
     inputs.scriptReaders = usage.scriptReaders();
     for (const std::string& assetPath : projectModelSources(project)){
+        if (ships && !ships(assetPath)) continue;
         for (ModelFamily family : families){
             ModelBatchItem item;
             item.assetPath = assetPath;

@@ -22,7 +22,10 @@ The full reference is `docs/device-tiers.md`. This page is what an agent needs t
   applies), `thermal_state`, `thermal_response`, `thermal_response_enabled`, `recovery_seconds`,
   `low_memory_warnings`, `texture_mip_drop`, `applied_overrides` (`{setting, value | factor |
   extra_mips, source: tier | thermal | memory}`), `lod_bias`, `shadow_lod_bias`, `upload_budget_mb`,
-  `deferred_uploads`, `playing`, `simulation`.
+  `deferred_uploads`, `playing`, `simulation`, `driver`, `quirks` (`{name, reason, source: rule |
+  forced_on}`), `quirks_forced_off`. GPU quirks are driver workarounds that change how a frame is made,
+  never what it shows; force one with `JASPERENGINE_GPU_QUIRKS=<name>:on|off` (an editor's environment)
+  or a player's `--gpu-quirk`.
 - `set_device_simulation`: `tier` (`auto` applies none), `platform` (`auto` is `mobile` while the
   Game view simulates a phone, else `desktop`), `thermal_state` (`device` is the machine's). It is
   an editor preference (not undoable), applied in Play. While playing it replies with
@@ -42,7 +45,8 @@ The full reference is `docs/device-tiers.md`. This page is what an agent needs t
 Cells: `render_scale` (0.5..1), `msaa_samples` (1, 2, 4), `shadow_quality` (`low`..`ultra`),
 `shadow_distance` (m), `lod_bias`, `shadow_lod_bias` (factors), `lit_quality` (`standard`, `high`),
 `texture_quality` (mips dropped, 0..3), `bloom`, `ssao`, `volumetrics` (`false` turns off; `true` is
-refused), `target_frame_rate`, `max_pixel_lights`, `particle_budget`.
+refused), `target_frame_rate`, `max_pixel_lights`, `particle_budget`, `cavity_samples` (4, 8, 16:
+caps Cavity's World samples).
 
 Example: Low on mobile at a 0.6 render scale, without MSAA, SSAO inherited:
 

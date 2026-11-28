@@ -7,6 +7,8 @@
 //   lit3d   a lit 3D scene: coloured boxes and a sphere on a floor under a directional light
 //   ui2d    2D and UI: a textured Image (the logo), coloured Polygons and a Text
 //   htmlui  an HTML UI document: a gradient panel with rounded swatches, a bar, text, a button
+//   htmlui-u27  the JasperArcade port's U27 layout (S92 R11): a scaled panel holding an overflow: hidden
+//             list whose rows carry filtered tiles and text, cut at both edges of the list
 //   titleart  Title Art Renderers (S81 AC19): a Realtime and a Glyph Atlas title (a plate, so the
 //             Glyph Atlas one renders through the Realtime path) with the sweep at a fixed
 //             position and the tint; debug.jasperengine.titleart_rgba8=1 forces the RGBA8 pixel path,
@@ -152,9 +154,9 @@ namespace {
         Engine::setScene(&titleartScene);
     }
 
-    void setupHtmlui(){
+    void setupHtmlui(const char* filename){
         htmluiScene.setBackgroundColor(0.08f, 0.09f, 0.12f);
-        document.setFilename("ui/gate.html");
+        document.setFilename(filename);
         Engine::setScene(&htmluiScene);
     }
 
@@ -169,11 +171,14 @@ JASPERENGINE_INIT void init(){
     if (scene == "ui2d"){
         setupUi2d();
     }else if (scene == "htmlui"){
-        setupHtmlui();
+        setupHtmlui("ui/gate.html");
+    }else if (scene == "htmlui-u27"){
+        setupHtmlui("ui/u27.html");
     }else if (scene == "titleart"){
         setupTitleart();
     }else{
         setupLit3d();
     }
-    Log::print("[render-gate] scene %s", scene == "ui2d" || scene == "htmlui" || scene == "titleart" ? scene.c_str() : "lit3d");
+    const bool known = scene == "ui2d" || scene == "htmlui" || scene == "htmlui-u27" || scene == "titleart";
+    Log::print("[render-gate] scene %s", known ? scene.c_str() : "lit3d");
 }

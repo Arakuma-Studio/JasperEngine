@@ -27,6 +27,9 @@
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::test::compat;
 
+// Release builds only: a Debug build (every sanitizer build) has no test here to use the helpers
+#ifdef NDEBUG
+
 namespace {
 
     double slack(){
@@ -50,8 +53,6 @@ namespace {
     }
 
 }
-
-#ifdef NDEBUG
 
 // The HTML stage's budget: 3 ms was the target on the development machine; a cloud CPU (Xeon
 // E5-2630 v4, 2.2 GHz, the RTX 3060 Ti box) took 3.051-3.227 ms over 13 runs, so the budget is

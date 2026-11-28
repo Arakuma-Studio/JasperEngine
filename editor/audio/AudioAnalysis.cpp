@@ -806,28 +806,7 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
         {"envelope_peak_ms", envelopePeakMs}
     };
     item["silence"] = silence(signal);
-    // -- stereo: Pearson correlation of channels 0 and 1
-    Json correlation = nullptr;
-    if (channels >= 2 && n > 1) {
-        const float* a = signal.channel(0);
-        const float* b = signal.channel(1);
-        double ma = 0.0, mb = 0.0;
-        for (size_t i = 0; i < n; i++) {
-            ma += a[i];
-            mb += b[i];
-        }
-        ma /= (double)n;
-        mb /= (double)n;
-        double sab = 0.0, saa = 0.0, sbb = 0.0;
-        for (size_t i = 0; i < n; i++) {
-            const double da = a[i] - ma, db = b[i] - mb;
-            sab += da * db;
-            saa += da * da;
-            sbb += db * db;
-        }
-        if (saa > 0.0 && sbb > 0.0) correlation = rounded(sab / std::sqrt(saa * sbb), 0.001);
-    }
-    item["stereo"] = {{"correlation", correlation}};
+    item["stereo"] = stereo(signal);
     // -- loop seam: the wrap against the signal's own steps next to it
     item["loop"] = loopSeam(signal, 0, n);
     // -- pitch: normalised autocorrelation of the loudest 100 ms
@@ -1694,6 +1673,19 @@ Json aliasingOf(const std::vector<float>& m, double rate) {
 AudioAnalysis::Signal AudioAnalysis::played(const Signal& file, const Region& region) {
     const Played played(file, region);
     Signal out;
+    if (region.mono && file.channels > 1) {
+        // the mean of the channels as AudioClipSource gives it: summed, then scaled once
+        out.channels = 1;
+        out.sampleRate = file.sampleRate;
+        out.frames = played.frames;
+        out.samples.assign(out.frames, 0.0f);
+        const float scale = 1.0f / (float)file.channels;
+        for (unsigned int c = 0; c < file.channels; c++) {
+            for (size_t i = 0; i < out.frames; i++) out.samples[i] += played.sample(c, i);
+        }
+        for (float& v : out.samples) v *= scale;
+        return out;
+    }
     out.channels = file.channels;
     out.sampleRate = file.sampleRate;
     out.frames = played.frames;
@@ -1714,11 +1706,12 @@ AudioAnalysis::Region AudioAnalysis::Region::of(const ClipImportSettings& settin
     const uint32_t length = region.end(fileFrames) - region.startFrame;
     region.fadeInFrames = std::min(settings.fadeInFrames, length);
     region.fadeOutFrames = std::min(settings.fadeOutFrames, length);
+    region.mono = settings.forceMono;
     return region;
 }
 
 bool AudioAnalysis::Region::isWholeFile() const {
-    return startFrame == 0 && endFrame == FILE_END && fadeInFrames == 0 && fadeOutFrames == 0 && gainDb == 0.0f;
+    return startFrame == 0 && endFrame == FILE_END && fadeInFrames == 0 && fadeOutFrames == 0 && gainDb == 0.0f && !mono;
 }
 
 uint32_t AudioAnalysis::Region::end(size_t fileFrames) const {
@@ -1743,7 +1736,7 @@ Json AudioAnalysis::Region::toJson(size_t fileFrames) const {
 
 bool AudioAnalysis::Region::sameAs(const Region& other, size_t fileFrames) const {
     return startFrame == other.startFrame && end(fileFrames) == other.end(fileFrames) && fadeIn(fileFrames) == other.fadeIn(fileFrames) &&
-           fadeOut(fileFrames) == other.fadeOut(fileFrames) && gainDb == other.gainDb;
+           fadeOut(fileFrames) == other.fadeOut(fileFrames) && gainDb == other.gainDb && mono == other.mono;
 }
 
 bool AudioAnalysis::edgeSampleClicks(double v, double d, double peak) {
@@ -1884,6 +1877,44 @@ bool AudioAnalysis::analyzeBytes(const std::string& bytes, Json& cached, std::st
     return true;
 }
 
+Json AudioAnalysis::stereo(const Signal& signal) {
+    const size_t n = signal.frames;
+    // the Pearson correlation of channels 0 and 1
+    Json correlation = nullptr;
+    // the side over the mid, 10 log10(sum (L - R)^2 / sum (L + R)^2): -90 (clamped) for identical
+    // channels, about 0 for independent ones; 60 for a silent mid under a side (opposite channels)
+    Json sideMid = nullptr;
+    if (signal.channels >= 2 && n > 1) {
+        const float* a = signal.channel(0);
+        const float* b = signal.channel(1);
+        double ma = 0.0, mb = 0.0;
+        for (size_t i = 0; i < n; i++) {
+            ma += a[i];
+            mb += b[i];
+        }
+        ma /= (double)n;
+        mb /= (double)n;
+        double sab = 0.0, saa = 0.0, sbb = 0.0, side = 0.0, mid = 0.0;
+        for (size_t i = 0; i < n; i++) {
+            const double da = a[i] - ma, db = b[i] - mb;
+            sab += da * db;
+            saa += da * da;
+            sbb += db * db;
+            const double s = (double)a[i] - (double)b[i], m = (double)a[i] + (double)b[i];
+            side += s * s;
+            mid += m * m;
+        }
+        if (saa > 0.0 && sbb > 0.0) correlation = rounded(sab / std::sqrt(saa * sbb), 0.001);
+        if (mid > 0.0) {
+            const double db = side > 0.0 ? 10.0 * std::log10(side / mid) : SIDE_MID_MIN_DB;
+            sideMid = rounded(std::clamp(db, SIDE_MID_MIN_DB, SIDE_MID_MAX_DB), 0.1);
+        } else if (side > 0.0) {
+            sideMid = SIDE_MID_MAX_DB;
+        }
+    }
+    return {{"correlation", correlation}, {"side_mid_db", sideMid}};
+}
+
 Json AudioAnalysis::silence(const Signal& signal) {
     const size_t n = signal.frames;
     const double rate = signal.sampleRate > 0 ? (double)signal.sampleRate : 1.0;
@@ -1925,6 +1956,46 @@ bool AudioAnalysis::silenceOfFile(const fs::path& file, const std::string& bytes
     if (!decode(bytes, signal, error)) return false;
     silenceOut = silence(signal);
     return true;
+}
+
+bool AudioAnalysis::stereoOfFile(const fs::path& file, const std::string& bytes, const fs::path& cacheDirectory,
+                                 Json& stereoOut, std::string& error) {
+    std::error_code ec;
+    const uint64_t size = fs::file_size(file, ec);
+    const fs::file_time_type mtime = fs::last_write_time(file, ec);
+    std::string sha1;
+    if (ec || size != bytes.size() || !knownHash(file, size, mtime, sha1)) {
+        sha1 = SHA1::hash(bytes);
+        if (!ec && size == bytes.size()) rememberHash(file, size, mtime, sha1);
+    }
+    Json cached;
+    if (readCache(cacheDirectory, sha1, cached) && cached.contains("stereo")) {
+        stereoOut = cached["stereo"];
+        return true;
+    }
+    if (bytes.size() > MAX_FILE_BYTES) {
+        error = "larger than " + std::to_string(MAX_FILE_BYTES / (1024 * 1024)) + " MB";
+        return false;
+    }
+    Signal signal;
+    if (!decode(bytes, signal, error)) return false;
+    stereoOut = stereo(signal);
+    return true;
+}
+
+bool AudioAnalysis::cachedFile(const fs::path& file, const fs::path& cacheDirectory, Json& cached) {
+    std::error_code ec;
+    const uint64_t size = fs::file_size(file, ec);
+    if (ec || size == 0 || size > MAX_FILE_BYTES) return false;
+    const fs::file_time_type mtime = fs::last_write_time(file, ec);
+    std::string sha1;
+    if (ec || !knownHash(file, size, mtime, sha1)) {
+        std::string bytes, error;
+        if (!readFileBytes(file, bytes, error)) return false;
+        sha1 = SHA1::hash(bytes);
+        rememberHash(file, size, mtime, sha1);
+    }
+    return readCache(cacheDirectory, sha1, cached);
 }
 
 bool AudioAnalysis::analyzeFile(const fs::path& file, const fs::path& cacheDirectory, Json& cached, std::string& error,
@@ -2000,7 +2071,7 @@ bool AudioAnalysis::analyzePlayed(const fs::path& file, const fs::path& cacheDir
     const size_t start = region.startFrame;
     const size_t end = region.end(signal->frames);
     Json source = Json::object();
-    for (const char* key : {"loudness", "peak", "rms_dbfs", "dc_offset", "silence", "onset", "measured_kind"}) {
+    for (const char* key : {"loudness", "peak", "rms_dbfs", "dc_offset", "silence", "onset", "stereo", "measured_kind"}) {
         if (cached.contains(key)) source[key] = cached[key];
     }
     if (end <= start + 1) {
@@ -2029,6 +2100,8 @@ bool AudioAnalysis::analyzePlayed(const fs::path& file, const fs::path& cacheDir
     out["import_hash"] = hashText(hash);
     out["played"] = region.toJson(signal->frames);
     out["played"]["frames"] = end > start ? end - start : 0;
+    // the channels a voice gives: one under Force To Mono
+    out["played"]["channels"] = region.mono && signal->channels > 1 ? 1u : signal->channels;
     out["played"]["duration_s"] = rounded(signal->sampleRate > 0 ? (double)(end > start ? end - start : 0) / signal->sampleRate : 0.0, 0.001);
     writeCache(cacheDirectory, out);
     return true;
@@ -2053,6 +2126,7 @@ bool AudioAnalysis::analyzeClip(const fs::path& file, const fs::path& cacheDirec
         if (decoded) *decoded = std::move(raw);
         return true;
     }
+    settings.resolveChannels(AudioImportSettings::Channels::fromAnalysis(cached), clip, &resolved);
     if (!analyzePlayed(file, cacheDirectory, cached, clip, out, error, decoded ? &raw : nullptr)) return false;
     if (!settings.isDefault()) out["import"] = std::move(resolved);
     if (decoded) {
@@ -2433,6 +2507,11 @@ Json AudioAnalysis::notes(const Json& item, const std::string& kind, const std::
     const double correlation = field(item, "stereo", "correlation");
     if (std::isfinite(correlation) && correlation < SoundTypes::PHASE_CORRELATION_MIN) {
         add("phase", "stereo correlation " + formatText("%.2f", correlation) + ": cancels in mono");
+    }
+    const double sideMid = field(item, "stereo", "side_mid_db");
+    if (!capture && std::isfinite(sideMid) && sideMid <= SoundTypes::MONO_SIDE_MID_DB) {
+        add("near_mono", "near-mono stereo: Force To Mono plays it the same, pans it correctly as a positional sound and, for a WAV, "
+                         "halves its bytes");
     }
     if (!capture && item.contains("defects") && item["defects"].is_object()) {
         const Json format = item.value("format", Json::object());

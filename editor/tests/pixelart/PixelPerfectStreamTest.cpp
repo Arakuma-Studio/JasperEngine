@@ -265,10 +265,36 @@ TEST(PixelFxShaders, ShaderCacheVersionCoversPixelFx){
     EXPECT_GE(std::stoi(name.substr(1)), 64) << name;
 }
 
-// S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65, after
-// S48's v64: an older cache holds tilemap programs that sample past their frames
+// S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65 or later
+// (S78 took v66, S100's Cavity v71), after S48's v64: an older cache holds tilemap programs that sample past their frames
 TEST(TilemapShaders, ShaderCacheVersionCoversTheTileClamp){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v65");
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 65) << name;
+}
+
+// S100's Cavity depth programs (DEPTH 'Cvn' 26, includes/depth_normals.glsl and the compiler's main wrapper)
+// are cached under v71 or later: an older cache holds depth programs without the normals output
+TEST(CavityShaders, ShaderCacheVersionCoversTheDepthNormals){
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 71) << name;
+}
+
+// S93's World Space quad (htmlui.vert keeps its depth) is cached under v73 and later: an older cache
+// holds the HTMLUI program that draws it in front of everything
+TEST(HtmlUIShaders, ShaderCacheVersionCoversWorldSpaceDepth){
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 73) << name;
+}
+
+// V1's Vertex Color view (MESH 56-59) and the Lit's Vertex Color section (LIT_VC_*) are cached under v74 or later
+// (S101 took v75), after S93's v73: an older cache holds MESH programs whose bits 56-59 were unnamed
+TEST(VertexColorShaders, ShaderCacheVersionCoversTheVertexColorBits){
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 74) << name;
 }
 
 }  // namespace PixelPerfectStreamTest_cpp

@@ -25,6 +25,9 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <string>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -392,6 +395,36 @@ TEST_F(UIDocumentReloadTest, DocumentChangeKeepsScrollFocusAndValues){
     updateDocuments(scene);
     EXPECT_EQ(loads, 2);
 
+    EXPECT_EQ(errors(), 0u);
+}
+
+// S95 REQ-16: a reload that builds the DOM again ends the old document first, whatever starts it
+// (the file changed, or needReload: a script's load, the component edited)
+TEST_F(UIDocumentReloadTest, ReloadFiresUnloadFirst){
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument(path("reload.rml"));
+    UIDocumentComponent& component = document.getComponent<UIDocumentComponent>();
+    std::vector<std::string> events;
+    component.onLoad.add("test_load", std::function<void()>([&events](){ events.push_back("load"); }));
+    component.onUnload.add("test_unload", std::function<void()>([&events](){ events.push_back("unload"); }));
+    updateDocuments(scene);
+    ASSERT_TRUE(document.isLoaded());
+    ASSERT_EQ(events, std::vector<std::string>({"load"}));
+
+    // the file changed: a rebuild (an .rml document is never patched)
+    write("reload.rml", reloadHtml("    <p id=\"added\">new paragraph</p>\n"));
+    ASSERT_EQ(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).size(), 1u);
+    updateDocuments(scene);
+    EXPECT_EQ(events, std::vector<std::string>({"load", "unload", "load"}));
+
+    // needReload
+    events.clear();
+    component.needReload = true;
+    updateDocuments(scene);
+    updateDocuments(scene);
+    EXPECT_EQ(events, std::vector<std::string>({"unload", "load"}));
+    EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), 3u);
     EXPECT_EQ(errors(), 0u);
 }
 

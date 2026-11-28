@@ -445,7 +445,8 @@ TEST(SpriteNormalsHires, TileWrapsSeamlessly) {
 // ---------------------------------------------------------------- presets
 
 TEST(SpriteNormalsHires, PresetsAndNames) {
-    EXPECT_EQ(presetNames(), "soft, default, crisp, detailed, chunky, toon, painted, props, tile");
+    // (S78 appended stones)
+    EXPECT_EQ(presetNames(), "soft, default, crisp, detailed, chunky, toon, painted, props, tile, stones");
     for (Preset p : allPresets()) {
         Preset back;
         ASSERT_TRUE(parsePreset(toString(p), back));

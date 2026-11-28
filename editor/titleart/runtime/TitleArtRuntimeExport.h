@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -31,6 +32,7 @@
 namespace jasperengine::editor {
 
     class Project;
+    struct TitleArtGlyphPrebakeWork;
 
     struct TitleArtShippedInstance {
         std::string where;                  // "scene Main", "prefab Coin"
@@ -78,6 +80,8 @@ namespace jasperengine::editor {
         std::map<uint64_t, std::string> keys;   // state key -> file written (dedup by state, R11)
         std::set<size_t> glyphsDone;            // instances whose glyph atlas was prebaked
         std::set<size_t> instancesDone;
+        // the glyph atlases being prebaked, by instance: a slice per call (drop them on the main thread)
+        std::map<size_t, std::shared_ptr<TitleArtGlyphPrebakeWork>> glyphWork;
     };
     // renders and writes the prebaked initial states of the plan's Realtime and Glyph Atlas
     // instances into `assetsDst` (the build's assets root, mirroring the project's paths below
@@ -86,10 +90,12 @@ namespace jasperengine::editor {
     // title prebakes once per S86 tier it renders at on `platforms` (its state hash holds the tier)
     void writeTitleArtPrebakes(Project* project, const TitleArtExportPlan& plan, const std::filesystem::path& assetsDst,
                                const std::vector<std::string>& platforms, TitleArtPrebakeResult& result);
-    // R32 for one Glyph Atlas instance: its initial text and each digit at every digit place in it
-    // render in the editor (at most 1,024 cells); the atlas's pages, plates and manifest ship as
-    // <title>.glyphs-<style>.json beside the title
-    void writeGlyphPrebake(Project* project, const TitleArtShippedInstance& instance, std::shared_ptr<const titleart::TitleArtDoc> doc,
+    // R32 for one Glyph Atlas instance (the plan's `index`): its initial text and each digit at
+    // every digit place in it render in the editor (at most 1,024 cells); the atlas's pages, plates
+    // and manifest ship as <title>.glyphs-<style>.json beside the title. Each call renders a slice
+    // and returns false while there is more (call again on a later frame), true once it is written
+    // or a warning says why not
+    bool writeGlyphPrebake(Project* project, size_t index, const TitleArtShippedInstance& instance, std::shared_ptr<const titleart::TitleArtDoc> doc,
                            uint64_t shippedHash, const titleart::TitleArtLiveState& state, const std::filesystem::path& assetsDst,
                            const std::string& assetsPrefix, TitleArtPrebakeResult& result);
 

@@ -7,6 +7,7 @@
 #include "PayloadValidator.h"
 
 #include "io/JPak.h"
+#include "platform/AndroidPackager.h"
 #include "platform/AndroidTools.h"
 #include "player/ContentManifest.h"
 #include "player/PlayerModules.h"
@@ -170,10 +171,13 @@ namespace {
             return;
         }
         const bool bundle = apk.extension() == ".aab";
-        const std::string assets = bundle ? "base/assets/game/" : "assets/game/";
         const std::string libs = bundle ? "base/lib/" : "lib/";
         std::set<std::string> names;
         for (const ZipEntryInfo& entry : zip.entries()) names.insert(entry.name);
+        // a bundle's content is its install-time asset pack (AndroidPackager), an older one's in the base
+        std::string assets = bundle ? "base/assets/game/" : "assets/game/";
+        if (bundle && names.count(std::string(platform::kAndroidContentPack) + "/manifest/AndroidManifest.xml"))
+            assets = std::string(platform::kAndroidContentPack) + "/assets/game/";
         size_t storedLibraries = 0, compressedLibraries = 0;
         for (const ZipEntryInfo& entry : zip.entries()) {
             if (entry.name.rfind(libs, 0) != 0 || fs::path(entry.name).extension() != ".so") continue;
@@ -232,6 +236,21 @@ namespace {
                 if (!why.empty()) output = why;
             }
             if (!verified) findings.push_back(relative + ": apksigner verify failed: " + output);
+            // a Development Build's package lets run-as into its files: never in a release
+            if (target.flavour == "release") {
+                std::string badging;
+                bool dumped = false;
+                if (target.dumpBadging) {
+                    dumped = target.dumpBadging(apk, badging);
+                } else {
+                    std::string why;
+                    dumped = platform::AndroidTools::dumpBadging(apk, badging, why);
+                    if (!why.empty()) badging = why;
+                }
+                if (!dumped) findings.push_back(relative + ": cannot tell whether it is debuggable (aapt2 dump badging: " + badging + ")");
+                else if (badging.find("application-debuggable") != std::string::npos)
+                    findings.push_back(relative + ": a release package is debuggable (android:debuggable): build it without Development Build");
+            }
         }
     }
 

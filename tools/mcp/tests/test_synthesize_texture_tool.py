@@ -10,7 +10,7 @@ project with small generated textures (value noise; a 16-bit height companion; a
   each with its recipe (iTXt jasper.synthesis, role), the height map still 16-bit;
 - the whole set is one undo step (undo removes the files, redo puts them back);
 - existing outputs are refused without overwrite: true;
-- the job path: a tiny timeout returns a job_id that get_job follows to the result; cancel_job
+- the job path: a tiny timeout returns a job_id that get_job follows to the result and its images; cancel_job
   stops a run and nothing is written;
 - inpaint keeps the pixels outside the mask; make_tileable keeps the size;
 - get_asset_info / view_asset show the recipe, its sources' state and regenerate arguments that
@@ -282,6 +282,11 @@ async def test_job_and_cancel(ed: Editor):
         await asyncio.sleep(0.5)
     check(state["status"] == "succeeded", f"the job finishes: {state}")
     check(state["result"]["width"] == 768 and "metrics" in state["result"], f"its result: {state['result']}")
+    # the finished job's get_job carries the images the call would have returned
+    done = await ed.call_raw("get_job", {"job_id": job})
+    check(len(done.images) >= 1, f"get_job returns the result image: {len(done.images)} images")
+    w, h, _, _ = decode_png(done.images[0][0])
+    check((w, h) == (512, 512), f"the result fitted to 512: {w}x{h}")
 
     out = f"{TEX}/cancelled.png"
     r = await ed.call_raw("synthesize_texture", {"examples": [ALBEDO], "size": 1024, "quality": "high", "seed": 4,

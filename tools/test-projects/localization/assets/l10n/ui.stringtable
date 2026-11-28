@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.stringtable",
+  "version": 1,
+  "guid": "5c1a0000000000000000000000000001",
+  "namespace": "ui",
+  "source_language": "en",
+  "entries": [
+    {
+      "key": "menu.play",
+      "text": "Play"
+    }
+  ]
+}

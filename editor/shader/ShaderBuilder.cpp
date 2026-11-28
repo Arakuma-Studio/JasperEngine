@@ -399,6 +399,11 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         Out::build("Shader %s (%s): no 2D light shadows, its textures leave no texture unit for them; 2D lights light it unshadowed",
                    getShaderDisplayName(shaderKey).c_str(), ShaderPool::getShaderLangStr(backend).c_str());
     }
+    if (compileLog.find(ShaderVariantCompiler::LIGHT_PROFILES_LEFT_OUT) != std::string::npos){
+        Out::build("Shader %s (%s): no light profiles, its textures leave no texture unit for them; IES Profiles are left out and "
+                   "Area Lights shade with the representative point",
+                   getShaderDisplayName(shaderKey).c_str(), ShaderPool::getShaderLangStr(backend).c_str());
+    }
     // what a fork reads of the global shader values that Project Settings does not declare as
     // such (once: for the editor's own backend)
     if (ShaderPool::getCustomIdFromKey(shaderKey) != 0 && backend == ShaderPool::getShaderBackend()) {

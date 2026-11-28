@@ -3,7 +3,10 @@ section 5.3): Light 2Ds the editor makes (create_entity light_2d, add_component)
 removes them; a sprite with an OpenGL normal map (a hemisphere, green up) is brighter on the side of a Light 2D at
 its left, and on its top under one above, with the built-in shader and with library:sprite; library:sprite keeps
 the material's Normal Texture property; a Lua script in play mode assigns the normal map
-(Sprite:setNormalTexture, getNormalTexture) and the sprite lights the same."""
+(Sprite:setNormalTexture, getNormalTexture) and the sprite lights the same.
+
+S78 (docs/specs/S78-sprite-normals-improvements.md R14): generate_sprite_normals warns light_low for a Light 2D under
+half a 512 px sprite's side, not for a 16 px one, nor once the light is raised."""
 
 from __future__ import annotations
 
@@ -224,3 +227,38 @@ async def test_lua_assigns_the_normal_map(ed: Editor):
     finally:
         await ed.call("play", action="stop")
     await ed.check_alive()
+
+
+BIG_WHITE = "assets/sprites/white512.png"
+SMALL_WHITE = "assets/sprites/white16.png"
+
+
+async def test_light_low_over_a_large_sprite(ed: Editor):
+    folder = ed.project / "assets" / "sprites"
+    folder.mkdir(parents=True, exist_ok=True)
+    (ed.project / BIG_WHITE).write_bytes(pngdiff.encode(512, 512, b"\xff" * (512 * 512 * 4)))
+    (ed.project / SMALL_WHITE).write_bytes(pngdiff.encode(16, 16, b"\xff" * (16 * 16 * 4)))
+    made = await ed.call("create_scene", name="Light Low", type="2D")
+    sid = made["scene"]["id"]
+    await ed.call("set_scene_settings", scene=sid, settings={"ambient_light_2d_intensity": 0.2})
+    await ed.call("select_scene", scene=sid)
+    # drawn at their textures' sizes (a Sprite's Width and Height are what light_low measures)
+    await ed.call("create_entity", scene=sid, type="sprite", name="Boss",
+                  values={"mesh": {M + "baseColorTexture": BIG_WHITE}, "sprite": {"width": 512, "height": 512}})
+    await ed.call("create_entity", scene=sid, type="sprite", name="Imp",
+                  values={"mesh": {M + "baseColorTexture": SMALL_WHITE}, "sprite": {"width": 16, "height": 16}})
+    lamp = (await ed.call("create_entity", scene=sid, type="light_2d", name="Lamp"))["entity_id"]
+    ed.check_eq(await light_height(ed, sid, lamp), 64.0, "the editor's height")
+
+    def low(result: dict):
+        return next((w for w in result["warnings"] if w["kind"] == "light_low"), None)
+
+    boss = await ed.call("generate_sprite_normals", scene=sid, source="Boss")
+    w = low(boss)
+    ed.check(w and "\"Lamp\"" in w["message"] and "512" in w["fix"], f"light_low over the 512 px Boss (a new project: 1 px per unit): {boss['warnings']}")
+    imp = await ed.call("generate_sprite_normals", scene=sid, source="Imp")
+    ed.check(low(imp) is None, f"not over the 16 px Imp: {imp['warnings']}")
+    await ed.call("set_properties", scene=sid, entity=lamp, values={"light2d": {"height": 512}})
+    boss = await ed.call("generate_sprite_normals", scene=sid, source="Boss")
+    ed.check(low(boss) is None, f"raised to the sprite's side: {boss['warnings']}")
+    await ed.call("close_scene", scene=sid, unsaved="discard")

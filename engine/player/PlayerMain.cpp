@@ -5,33 +5,25 @@
 // and flavour that runs any game's cooked content. Before the window exists it finds its content
 // (next to the executable, the bundle's resources, --content), checks content-manifest.json
 // (exit 5 on a mismatch) and reads game.json into the platform configuration; its init() then
-// does what a Compile build's generated init() does, with the scenes and prefabs read from their
-// cooked files instead of compiled in.
+// runs the game (GameRunner.h), as a Compile build's generated init() does.
 
 #include "JasperEngine.h"
-#include "pixelart/BitmapTextCache.h"
 
 #include "PlatformConfig.h"
 #include "io/Data.h"
 #include "io/FileData.h"
 #include "io/ResourcePack.h"
-#include "particles/ParticleWorld.h"
+#include "io/StrippedAssets.h"
 #include "player/ContentManifest.h"
+#include "player/DevelopmentContent.h"
+#include "player/GameRunner.h"
 #include "player/PlayerLaunch.h"
 #include "player/PlayerConfig.h"
 #include "player/RunControl.h"
-#include "serialization/CookedScene.h"
-#if JASPERENGINE_VOXEL
-#include "subsystem/VoxelSystem.h"
-#endif
 #include "util/Sha256.h"
 
-#include <algorithm>
 #include <cstdio>
 #include <filesystem>
-#include <map>
-#include <memory>
-#include <mutex>
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
@@ -158,6 +150,64 @@ namespace {
         return EXIT_CONTENT_MISMATCH;
     }
 
+    // Patch And Run's development content folder of a mobile app's data (Android: files/, iOS:
+    // Library/), "" where there is none (desktop and web players)
+    std::string developmentContentFolder() {
+#if defined(__ANDROID__)
+        // the platform's System (the early one on Android) knows the app's files folder
+        if (!System::hasInstance()) return "";
+        const std::string data = System::instance().getUserDataPath();
+        return data.empty() ? std::string() : data + "/" + DEVELOPMENT_CONTENT_DIR;
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
+        std::string home;
+        if (CFURLRef url = CFCopyHomeDirectoryURL()) {
+            char path[4096];
+            if (CFURLGetFileSystemRepresentation(url, true, reinterpret_cast<UInt8*>(path), sizeof(path))) home = path;
+            CFRelease(url);
+        }
+        return home.empty() ? std::string() : home + "/Library/" + DEVELOPMENT_CONTENT_DIR;
+#else
+        return "";
+#endif
+    }
+
+    // R7: Patch And Run's folder as the content root when its manifest is this player's; a release
+    // player compiles this to false
+    bool selectDevelopmentContent(PlatformConfig& platform, bool contentGiven) {
+        if constexpr (!DEVELOPMENT_CONTENT_CHECKED) {
+            (void)platform;
+            (void)contentGiven;
+            return false;
+        } else {
+            DevelopmentContentAccess access;
+            access.exists = [](const std::string& path) {
+                std::error_code ec;
+                return std::filesystem::is_regular_file(path, ec);
+            };
+            access.read = [](const std::string& path, std::string& text) {
+                FILE* file = std::fopen(path.c_str(), "rb");
+                if (!file) return false;
+                char buffer[16384];
+                for (size_t n; (n = std::fread(buffer, 1, sizeof(buffer), file)) > 0;) text.append(buffer, n);
+                std::fclose(file);
+                return true;
+            };
+            access.warn = [](const std::string& message) { report(message); };
+            // the packaged manifest's player hash: read only when the folder has a manifest
+            const auto packagedSha = []() {
+                std::string text, error;
+                ContentManifest packaged;
+                return readContent("content-manifest.json", text) && ContentManifest::parse(text, packaged, error) ? packaged.playerSha256
+                                                                                                                  : std::string("-");
+            };
+            const auto found = findDevelopmentContent(developmentContentFolder(), contentGiven, runtimePlayerId(), packagedSha, access);
+            if (!found) return false;
+            platform.contentRoot = found->root;
+            System::setContentPatch(found->patch);
+            return true;
+        }
+    }
+
     // the player's step before the window (PlayerLaunch.h)
     int configure(const LaunchOptions& options) {
         PlatformConfig& platform = platformConfig();
@@ -166,6 +216,11 @@ namespace {
         // the platform's System comes with its window; until then the content root's
         ContentSystem early;
         EarlySystemScope earlyScope(&early);
+
+        // R7: a development player runs Patch And Run's folder when it holds this player's content
+        // (an explicit --content wins)
+        const std::string packagedRoot = platform.contentRoot;
+        bool developmentContent = selectDevelopmentContent(platform, !options.content.empty());
 
         // a packed build's content.jpak (the web mounted its fetched one already)
         if (!ResourcePack::contentPack()) {
@@ -178,19 +233,34 @@ namespace {
         }
 
         std::string text;
-        if (!readContent("content-manifest.json", text))
-            return failContent("no content-manifest.json in " + (platform.contentRoot.empty() ? std::string("the content pack") : platform.contentRoot) +
-                               ": run a game built for this player (Build Settings > Build, or jasperengine-editor build), or give "
-                               "--content <folder of the build>");
         ContentManifest manifest;
         std::string error;
-        if (!ContentManifest::parse(text, manifest, error)) return failContent(error);
         std::vector<std::string> problems;
         const ContentAccess access{&contentExists, &contentSha256};
-        if (!checkContent(manifest, runtimePlayerId(), access, options.verifyContent, problems)) {
-            for (const std::string& problem : problems) report("Content check failed: " + problem);
-            return EXIT_CONTENT_MISMATCH;
+        // a development folder whose files do not match its manifest (a patch cut short) falls back
+        // to the packaged content
+        if (developmentContent && (!readContent("content-manifest.json", text) || !ContentManifest::parse(text, manifest, error) ||
+                                   !checkContent(manifest, runtimePlayerId(), access, options.verifyContent, problems))) {
+            report(std::string("development content in ") + DEVELOPMENT_CONTENT_DIR + " does not match its manifest; using the packaged content");
+            platform.contentRoot = packagedRoot;
+            System::setContentPatch(0);
+            developmentContent = false;
+            problems.clear();
         }
+        if (!developmentContent) {
+            if (!readContent("content-manifest.json", text))
+                return failContent("no content-manifest.json in " + (platform.contentRoot.empty() ? std::string("the content pack") : platform.contentRoot) +
+                                   ": run a game built for this player (Build Settings > Build, or jasperengine-editor build), or give "
+                                   "--content <folder of the build>");
+            if (!ContentManifest::parse(text, manifest, error)) return failContent(error);
+            if (!checkContent(manifest, runtimePlayerId(), access, options.verifyContent, problems)) {
+                for (const std::string& problem : problems) report("Content check failed: " + problem);
+                return EXIT_CONTENT_MISMATCH;
+            }
+        }
+
+        // a Development Build names the setting at a load of an asset its build left out
+        StrippedAssets::set(manifest.stripped);
 
         if (!readContent("game.json", text)) return failContent("game.json is missing");
         if (!PlayerConfig::parse(text, game, error)) return failContent(error);
@@ -220,6 +290,8 @@ namespace {
         platform.hangWatchdog = game.hangWatchdog ? 1 : 0;
         platform.hangMs = game.hangMs;
         platform.crashWebOverlay = game.crashWebOverlay ? 1 : 0;
+        platform.crashJournalBytes = game.crashJournalBytes;
+        platform.crashJournalEngineEvents = game.crashJournalEngineEvents ? 1 : 0;
         return -1;
     }
 
@@ -227,174 +299,8 @@ namespace {
         ConfiguratorRegistrar() { setGameConfigurator(&configure); }
     } configuratorRegistrar;
 
-    // ---------------------------------------------------------------- scene stacks
-
-    // the scenes made so far, by id (a Compile build's static Scene* per scene)
-    std::map<uint32_t, Scene*>& sceneSlots() {
-        static std::map<uint32_t, Scene*> slots;
-        return slots;
-    }
-
-    void destroyScene(uint32_t id) {
-        Scene*& scene = sceneSlots()[id];
-        if (!scene) return;
-        LuaBinding::cleanupLuaScripts(scene);
-        SceneManager::removeScenePtr(id);
-        delete scene;
-        scene = nullptr;
-    }
-
-    // create the scenes, register their pointers so cross-scene references resolve, then build
-    // and start the new ones (Generator::configure's stack setup)
-    void setupStack(const GameScene& stack) {
-        std::vector<uint32_t> made;
-        for (uint32_t id : stack.involved) {
-            Scene*& scene = sceneSlots()[id];
-            if (!scene) {
-                scene = new Scene();
-                SceneManager::setScenePtr(id, scene);
-                made.push_back(id);
-            }
-        }
-        for (uint32_t id : made) {
-            const GameScene* info = game.findScene(id);
-            std::string error;
-            if (!info || !CookedSceneLoader::loadScene(sceneSlots()[id], "content://" + info->file, &error))
-                Log::error("Scene %u: %s", id, info ? error.c_str() : "not in game.json");
-        }
-        for (uint32_t id : made) LuaBinding::initializeLuaScripts(sceneSlots()[id]);
-    }
-
-    void loadStack(const GameScene& stack) {
-        // a loaded stack starts again, except scenes still on screen (the loading scene)
-        for (uint32_t id : stack.involved) {
-            Scene* scene = sceneSlots()[id];
-            if (scene && !Engine::isSceneRunning(scene)) destroyScene(id);
-        }
-        setupStack(stack);
-        for (uint32_t id : stack.active) {
-            Scene* scene = sceneSlots()[id];
-            if (!scene) continue;
-            if (id == stack.id) Engine::setScene(scene);
-            else Engine::addSceneLayer(scene);
-        }
-        // the scenes no stack on screen involves go
-        for (const GameScene& other : game.scenes) {
-            if (other.id == stack.id) continue;
-            if (std::find(stack.involved.begin(), stack.involved.end(), other.id) != stack.involved.end()) continue;
-            Scene* scene = sceneSlots()[other.id];
-            if (!scene) continue;
-            bool kept = false;
-            for (const GameScene& owner : game.scenes) {
-                if (std::find(owner.involved.begin(), owner.involved.end(), other.id) == owner.involved.end()) continue;
-                Scene* ownerScene = sceneSlots()[owner.id];
-                if (ownerScene && Engine::isSceneRunning(ownerScene)) kept = true;
-            }
-            if (!kept) destroyScene(other.id);
-        }
-    }
-
-    // a prefab's cooked bytes, read once
-    std::shared_ptr<const std::vector<uint8_t>> prefabBytes(const std::string& file) {
-        static std::mutex mutex;
-        static std::map<std::string, std::shared_ptr<const std::vector<uint8_t>>> cache;
-        std::lock_guard<std::mutex> lock(mutex);
-        auto it = cache.find(file);
-        if (it != cache.end()) return it->second;
-        Data data;
-        auto bytes = std::make_shared<std::vector<uint8_t>>();
-        if (data.open(("content://" + file).c_str()) == FileErrors::FILEDATA_OK)
-            bytes->assign(data.getMemPtr(), data.getMemPtr() + data.length());
-        cache[file] = bytes;
-        return bytes;
-    }
-
 }
 
 JASPERENGINE_INIT void init() {
-    const ThreadingSettings threadingDefaults;
-    if (game.threading.workers != threadingDefaults.workers || game.threading.reservedFrameWorkers != threadingDefaults.reservedFrameWorkers ||
-        game.threading.ioThreads != threadingDefaults.ioThreads || game.threading.webPumpBudgetMs != threadingDefaults.webPumpBudgetMs)
-        Engine::setThreadingSettings(game.threading);
-    Engine::setCanvasSize(game.canvasWidth, game.canvasHeight);
-    Engine::setScalingMode(game.scaling);
-    Engine::setPixelsPerUnit(game.pixelsPerUnit);
-    if (game.defaultFilterPoint) Engine::setDefaultTextureFilter(TextureFilter::NEAREST);
-    pixelart::BitmapTextCache::get().setBudgetMiB(game.bitmapTextCacheMiB);
-    Engine::setTextureStrategy(game.textureStrategy);
-    Engine::setAtmosphereQualityDefaults(game.atmosphereQuality[0], game.atmosphereQuality[1], game.atmosphereQuality[2]);
-    Engine::setFoliageQualityDefaults(game.foliageQuality[0], game.foliageQuality[1], game.foliageQuality[2], game.foliageQualityUncapped);
-    Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
-    if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);
-    if (!game.inputActions.empty()) InputActions::loadDefault(game.inputActions);
-    if (game.navigation != nav::NavigationSettings()) nav::setSettings(game.navigation);
-#if JASPERENGINE_VOXEL
-    if (game.voxelMaxDimension > 0 || game.voxelCpuBudgetMB > 0 || game.voxelMeshBudgetMB > 0) {
-        constexpr int64_t mebibyte = 1024 * 1024;
-        VoxelLimits limits = voxelPlatformLimits();
-        if (game.voxelMaxDimension > 0) limits.maxDimension = std::min(limits.maxDimension, game.voxelMaxDimension);
-        if (game.voxelCpuBudgetMB > 0) limits.cpuBudget = std::min(limits.cpuBudget, game.voxelCpuBudgetMB * mebibyte);
-        if (game.voxelMeshBudgetMB > 0) limits.meshBudget = std::min(limits.meshBudget, game.voxelMeshBudgetMB * mebibyte);
-        setVoxelLimitsOverride(limits);
-    }
-#endif
-    Engine::setTextureDefaults(game.textureDefaults[0], game.textureDefaults[1], game.textureDefaults[2]);
-    UIDocumentSystem::setPreferredSampleCount(game.htmlUiMsaa);
-    UIDocumentSystem::setHtmlUiRenderOptions(game.glyphAtlasMiB, game.sdfPrimitives, game.transformAwareText);
-    if (game.mobilePbrTier != PbrTier::REDUCED) MaterialPbr::setMobileTier(game.mobilePbrTier);
-    Engine::setDynamicBatchingDefault(game.dynamicBatching);
-    if (game.lightMode != LightMode::AUTOMATIC) LightingTiers::setLightMode(game.lightMode);
-    // Screen Transitions (S48): Lua's defaults
-    pixelart::ScreenTransition::setDefaults(game.transitions);
-    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++)
-        if (game.shadowTiers[platform] != ShadowTiers::defaultTier(platform)) ShadowTiers::setPlatformTier(platform, game.shadowTiers[platform]);
-    // the Device Tier the GPU gets applies from here on (spec S56)
-    Device::configure(game.device);
-    if (!game.tags.empty()) TagManager::setTags(game.tags);
-    if (!game.sortingLayers.empty()) SortingLayers::setLayers(game.sortingLayers);
-    SortingLayers::setTransparencySortMode(game.transparencySortMode);
-    SortingLayers::setTransparencySortAxis(game.transparencySortAxis);
-    for (size_t layer = 0; layer < game.layerNames.size(); layer++)
-        if (!game.layerNames[layer].empty()) TagManager::setLayerName(static_cast<int>(layer), game.layerNames[layer]);
-    for (int layer = 0; layer < MAX_LAYERS; layer++) {
-        if (game.collision3D[layer] != LAYER_MASK_EVERYTHING) Physics::setLayerCollisionMask(layer, game.collision3D[layer]);
-        if (game.collision2D[layer] != LAYER_MASK_EVERYTHING) Physics2D::setLayerCollisionMask(layer, game.collision2D[layer]);
-    }
-    // the voices and the project's mixer, before the first scene (as a Compile build's init)
-    player::applyAudio(game);
-    // native plugins with code for other platforms only: "unavailable" here, and a Lua mock
-    // standing in for one says so once (as a Compile build's init)
-    if (!game.nativePlatformOnly.empty()) {
-        NativeBridge::setPlatformOnlyPlugins(game.nativePlatformOnly);
-        NativeBridge::setMockWarnings(true);
-    }
-
-    for (const GameScene& scene : game.scenes) {
-        const GameScene stack = scene;
-        SceneManager::registerScene(stack.id, stack.name, [stack]() { loadStack(stack); }, [stack]() { setupStack(stack); }, stack.active,
-                                    [file = stack.file]() { return CookedSceneLoader::sceneResources("content://" + file); });
-    }
-    for (const GamePrefab& prefab : game.prefabs) {
-        const std::string file = prefab.file;
-        PrefabManager::registerPrefab(prefab.id, prefab.name, prefab.guid, [file](Scene* scene, Entity root) {
-            const auto bytes = prefabBytes(file);
-            std::string error;
-            if (bytes->empty() || !CookedSceneLoader::instantiatePrefab(scene, root, *bytes, nullptr, &error)) {
-                Log::error("Prefab %s: %s", file.c_str(), bytes->empty() ? "cannot be read" : error.c_str());
-                return false;
-            }
-            return true;
-        });
-    }
-
-    if (game.particleWorldBudget != 0) particles::ParticleWorld::setProjectBudget(game.particleWorldBudget);
-    if (game.asyncLoading) Engine::setAsyncLoading(true);
-    if (game.loadingScene != 0 && game.findScene(game.loadingScene)) SceneManager::setLoadingScene(game.loadingScene);
-    if (game.loadingDelay != 0.0f) SceneManager::setLoadingDelay(game.loadingDelay);
-    if (game.loadingTimeout != 5.0f) SceneManager::setLoadingTimeout(game.loadingTimeout);
-
-    const std::string& requested = RunControl::options().scene;
-    const GameScene* start = requested.empty() ? game.findScene(game.startScene) : game.findScene(requested);
-    if (!start && !game.scenes.empty()) start = &game.scenes.front();
-    if (start) SceneManager::loadScene(start->id);
+    runGame(game);
 }

@@ -3,6 +3,7 @@
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
 #include "Screen.h"
+#include "window/SkinningEditorWindow.h"
 #include "window/widget/InputTextContextMenu.h"
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
@@ -50,6 +51,7 @@
 #include "pool/ShaderPool.h"
 #include "pool/TextureDataPool.h"
 #include "render/SystemRender.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -66,6 +68,7 @@
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/CrashReportsWindow.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "window/PlayModeChangesWindow.h"
@@ -76,6 +79,7 @@
 #include "util/UiItemLocator.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseViewport.h"
+#include "sceneview/FrameChecks.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -278,6 +282,11 @@ struct CaptureJob {
     std::function<void(w3::CaptureResult)> done;
     Clock::time_point deadline;
     bool finished = false;
+    // the frame checks' input (req.findings): the scene shot, through which view, and the image's
+    // luminance (the game canvas only, without its letterbox bars)
+    uint32_t checkSceneId = NULL_PROJECT_SCENE;
+    bool checkSceneView = false;
+    framechecks::Luminance luminance;
     // the rest of the content had not settled when the wait for it gave up
     bool stillSettling = false;
     Clock::time_point settleWaitStart;
@@ -350,6 +359,46 @@ void captureScene(const CaptureJobPtr& job);
     return stbi_write_png_to_func(append, &png, outWidth, outHeight, 3, rgb.data(), outWidth * 3) != 0;
 }
 
+// S99 R6: the frame checks of the scene the job shot, as findings, the first one's fix in next
+void addFindings(const CaptureJobPtr& job, Json& info, std::string& note) {
+    Project* project = job->call->ctx().project();
+    SceneProject* sp = project ? project->getScene(job->checkSceneId) : nullptr;
+    if (!sp || !sp->scene) return;
+    framechecks::Request request;
+    request.project = project;
+    request.sceneProject = sp;
+    request.sceneView = job->checkSceneView;
+    request.luminance = job->luminance;
+    request.refreshMissingAssets = true;
+    if (job->checkSceneView) {
+        Camera* camera = sp->sceneRender ? sp->sceneRender->getCamera() : nullptr;
+        if (!camera) return;
+        request.cameraScene = camera->getScene();
+        request.camera = camera->getEntity();
+        request.layerMask = sp->viewState.layerFilter.visible;
+    } else {
+        request.cameraScene = sp->scene;
+        request.camera = project->getGameCamera(sp->id);
+    }
+    const framechecks::Result checks = framechecks::run(request);
+    Json findings = Json::array();
+    std::string kinds;
+    for (const framechecks::Finding& finding : checks.findings) {
+        Json item = {{"kind", finding.kind}, {"severity", framechecks::severityName(finding.severity)},
+                     {"message", finding.message}, {"fix", finding.fix}};
+        if (!finding.entities.empty()) item["entities"] = finding.entities;
+        findings.push_back(std::move(item));
+        kinds += (kinds.empty() ? "" : ", ") + finding.kind;
+    }
+    info["findings"] = std::move(findings);
+    info["findings_ms"] = std::round(checks.ms * 100.0) / 100.0;
+    if (!checks.findings.empty()) {
+        const framechecks::Finding& first = checks.findings.front();
+        info["next"] = first.kind + ": " + first.message + " Fix: " + first.fix + ".";
+        note += std::string(note.empty() ? "" : " ") + "Frame checks: " + kinds + " (findings; next has the first fix).";
+    }
+}
+
 // Fills image + common info, writes save_path, and finishes the job
 void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width, int height, int sourceWidth,
                    int sourceHeight, Json info) {
@@ -367,6 +416,7 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         info["flat_colour"] = colour;
         result.note = "The image is one flat colour (" + colour + "): nothing visible rendered there yet?";
     }
+    if (job->req.findings && job->checkSceneId != NULL_PROJECT_SCENE) addFindings(job, info, result.note);
     if (job->stillSettling) {
         info["assets_loading"] = true;
         result.note += std::string(result.note.empty() ? "" : " ") +
@@ -404,7 +454,8 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
     job->finish(std::move(result));
 }
 
-void readFramebuffer(const CaptureJobPtr& job, Framebuffer* framebuffer, Json info) {
+// region: the part of the framebuffer the frame checks measure (null: all of it)
+void readFramebuffer(const CaptureJobPtr& job, Framebuffer* framebuffer, Json info, const Rect* region = nullptr) {
     std::vector<uint8_t> png;
     int width = 0, height = 0;
     if (!framebuffer || !framebuffer->isCreated()) {
@@ -413,8 +464,26 @@ void readFramebuffer(const CaptureJobPtr& job, Framebuffer* framebuffer, Json in
     }
     const int sourceWidth = static_cast<int>(framebuffer->getWidth());
     const int sourceHeight = static_cast<int>(framebuffer->getHeight());
-    if (!GraphicUtils::encodeFramebufferPng(framebuffer, png, false, job->req.maxWidth, &width, &height)) {
+    if (!job->req.findings) {
+        if (!GraphicUtils::encodeFramebufferPng(framebuffer, png, false, job->req.maxWidth, &width, &height)) {
+            job->fail("Reading the view's framebuffer back failed.");
+            return;
+        }
+        finishWithPng(job, std::move(png), width, height, sourceWidth, sourceHeight, std::move(info));
+        return;
+    }
+    // the same readback and encoding, with the full-size pixels measured on the way
+    std::vector<uint8_t> rgba;
+    if (!GraphicUtils::readFramebufferRGBA(framebuffer, rgba)) {
         job->fail("Reading the view's framebuffer back failed.");
+        return;
+    }
+    job->luminance = region ? framechecks::measureLuminance(rgba.data(), sourceWidth, sourceHeight, 4, (int)std::lround(region->getX()),
+                                                            (int)std::lround(region->getY()), (int)std::lround(region->getWidth()),
+                                                            (int)std::lround(region->getHeight()))
+                            : framechecks::measureLuminance(rgba.data(), sourceWidth, sourceHeight, 4);
+    if (!encodePixels(rgba.data(), sourceWidth, sourceHeight, 4, job->req.maxWidth, png, width, height)) {
+        job->fail("Encoding the screenshot failed.");
         return;
     }
     finishWithPng(job, std::move(png), width, height, sourceWidth, sourceHeight, std::move(info));
@@ -441,19 +510,25 @@ void readGameView(const CaptureJobPtr& job, uint32_t sceneId, bool running) {
     Framebuffer* fb = gw->getFramebuffer();
     Json info = {{"scene", sp ? McpRefs::sceneJson(project, *sp) : Json(nullptr)},
                  {"playing", running}};
+    job->checkSceneId = sceneId;
+    job->checkSceneView = false;
+    // where the game canvas is drawn (the frame checks measure it, not its letterbox bars)
+    Rect canvasRect;
+    bool hasCanvasRect = false;
     if (fb && fb->isCreated()) {
         const int fbWidth = static_cast<int>(fb->getWidth());
         const int fbHeight = static_cast<int>(fb->getHeight());
         if (running) {
-            addCanvasInfo(info, Engine::getCanvasWidth(), Engine::getCanvasHeight(), Engine::getViewRect(), fbWidth,
+            canvasRect = Engine::getViewRect();
+            addCanvasInfo(info, Engine::getCanvasWidth(), Engine::getCanvasHeight(), canvasRect, fbWidth,
                           job->req.maxWidth);
         } else {
             int canvasWidth = 0, canvasHeight = 0;
-            Rect viewRect;
             Engine::computeViewLayout(fbWidth, fbHeight, (int)project->getCanvasWidth(), (int)project->getCanvasHeight(),
-                                      project->getScalingMode(), canvasWidth, canvasHeight, viewRect);
-            addCanvasInfo(info, canvasWidth, canvasHeight, viewRect, fbWidth, job->req.maxWidth);
+                                      project->getScalingMode(), canvasWidth, canvasHeight, canvasRect);
+            addCanvasInfo(info, canvasWidth, canvasHeight, canvasRect, fbWidth, job->req.maxWidth);
         }
+        hasCanvasRect = canvasRect.getWidth() > 0.0f && canvasRect.getHeight() > 0.0f;
         // a simulated device: where its safe area is in the image, and its screen drawn over it
         const DeviceProfile* device = Platform::getSimulation().device;
         Rect safe;
@@ -466,6 +541,12 @@ void readGameView(const CaptureJobPtr& job, uint32_t sceneId, bool running) {
                 if (!GraphicUtils::readFramebufferRGBA(fb, rgba)) {
                     job->fail("Reading the view's framebuffer back failed.");
                     return;
+                }
+                // what the game drew, before the device's frame covers parts of it
+                if (job->req.findings && hasCanvasRect) {
+                    job->luminance = framechecks::measureLuminance(rgba.data(), fbWidth, fbHeight, 4, (int)std::lround(canvasRect.getX()),
+                                                                   (int)std::lround(canvasRect.getY()), (int)std::lround(canvasRect.getWidth()),
+                                                                   (int)std::lround(canvasRect.getHeight()));
                 }
                 rasterizeDeviceOverlay(rgba.data(), fbWidth, fbHeight, *device, gw->getLayoutOrientation(),
                                        gw->getSettings().safeAreaOutline, &safe, gw->getSettings().deviceOverlay);
@@ -482,7 +563,7 @@ void readGameView(const CaptureJobPtr& job, uint32_t sceneId, bool running) {
             }
         }
     }
-    readFramebuffer(job, fb, std::move(info));
+    readFramebuffer(job, fb, std::move(info), hasCanvasRect ? &canvasRect : nullptr);
 }
 
 void captureGame(const CaptureJobPtr& job) {
@@ -713,6 +794,8 @@ void captureScene(const CaptureJobPtr& job) {
                 info["view_rect_in_window"] = {{"x", std::round(vx)}, {"y", std::round(vy)},
                                                {"width", std::round(vw)}, {"height", std::round(vh)}};
             }
+            job->checkSceneId = sceneId;
+            job->checkSceneView = true;
             readFramebuffer(job, sc->sceneRender->getFramebuffer(), std::move(info));
         });
     });
@@ -856,6 +939,11 @@ void captureView(const CallPtr& call, const CaptureRequest& request, std::functi
                   "window, or run the editor with mcp --headless.");
         return;
     }
+    if (request.view == "game" && Platform::isViewLostSimulated() && call->ctx().project()->isPlaySessionActive()) {
+        job->fail("The game's view is lost (send_input app view_lost): nothing draws. Send {type: \"app\", action: "
+                  "\"view_restored\"} first.");
+        return;
+    }
     if (request.view == "game" && Platform::isGameHiddenSimulated() && call->ctx().project()->isPlaySessionActive()) {
         job->fail("The game is hidden (send_input app hide): it updates without drawing. Send {type: \"app\", action: "
                   "\"show\"} first.");
@@ -918,6 +1006,7 @@ void screenshotTool(const CallPtr& call) {
     request.focus = args.value("focus", true);
     request.timeoutMs = static_cast<int>(std::clamp(args.value("timeout_seconds", 30.0), 1.0, 600.0) * 1000.0);
     request.deviceOverlay = args.value("device_overlay", true);
+    request.findings = true;
     if (request.view != "game" && request.view != "scene" && request.view != "editor" && request.view != "title_designer") {
         call->fail("view must be \"game\" (the Game view: the running game, or the scene through its game camera), "
                    "\"scene\" (a Scene view with gizmos), \"editor\" (the whole editor window) or \"title_designer\" (that window).");
@@ -1040,6 +1129,8 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"show_ik", &SceneDisplaySettings::showIK},
         {"show_root_motion", &SceneDisplaySettings::showRootMotion},
         {"show_foot_trails", &SceneDisplaySettings::showFootTrails},
+        {"show_torso_direction", &SceneDisplaySettings::showTorsoDirection},
+        {"frame_checks", &SceneDisplaySettings::frameChecks},
         // S41 (in a scene with a Pixel Perfect Camera)
         {"pixel_zoom", &SceneDisplaySettings::pixelZoom},
         {"pixel_grid", &SceneDisplaySettings::pixelGrid},
@@ -1096,7 +1187,7 @@ void setSceneCameraTool(const CallPtr& call) {
             if (it.key() == "draw_mode") {
                 ViewDrawMode mode;
                 if (!it.value().is_string() || !drawModeFromKey(it.value().get<std::string>(), mode)) {
-                    call->fail("display.draw_mode must be shaded, wireframe, shaded_wireframe, lod_level or overdraw.");
+                    call->fail("display.draw_mode must be shaded, wireframe, shaded_wireframe, lod_level, overdraw or vertex_color.");
                     return;
                 }
                 if (!is3D && mode != ViewDrawMode::SHADED) {
@@ -1105,11 +1196,19 @@ void setSceneCameraTool(const CallPtr& call) {
                 }
                 continue;
             }
+            if (it.key() == "vertex_color_channel") {
+                ViewVertexColorChannel channel;
+                if (!it.value().is_string() || !vertexColorChannelFromKey(it.value().get<std::string>(), channel)) {
+                    call->fail("display.vertex_color_channel must be rgb, r, g, b or a (the channel draw_mode vertex_color shows).");
+                    return;
+                }
+                continue;
+            }
             if (!displayFlags().count(it.key()) || !it.value().is_boolean()) {
                 std::string valid;
                 for (const auto& [name, member] : displayFlags()) valid += " " + name;
                 call->fail("display." + it.key() + " is not a boolean display flag. Valid:" + valid +
-                           ", grid_spacing_2d, grid_spacing_3d (numbers).");
+                           ", grid_spacing_2d, grid_spacing_3d (numbers), draw_mode, vertex_color_channel.");
                 return;
             }
         }
@@ -1310,6 +1409,7 @@ void setSceneCameraTool(const CallPtr& call) {
                 if (it.key() == "grid_spacing_2d" && it.value().is_number()) s->displaySettings.gridSpacing2D = it.value().get<float>();
                 else if (it.key() == "grid_spacing_3d" && it.value().is_number()) s->displaySettings.gridSpacing3D = it.value().get<float>();
                 else if (it.key() == "draw_mode") drawModeFromKey(it.value().get<std::string>(), s->displaySettings.drawMode);
+                else if (it.key() == "vertex_color_channel") vertexColorChannelFromKey(it.value().get<std::string>(), s->displaySettings.vertexColorChannel);
                 else if (displayFlags().count(it.key())) s->displaySettings.*(displayFlags().at(it.key())) = it.value().get<bool>();
             }
             changed.push_back("display");
@@ -1321,6 +1421,8 @@ void setSceneCameraTool(const CallPtr& call) {
         Json displayJson = Json::object();
         for (const auto& [name, member] : displayFlags()) displayJson[name] = s->displaySettings.*member;
         displayJson["draw_mode"] = drawModeKey(s->displaySettings.drawMode);
+        if (s->displaySettings.drawMode == ViewDrawMode::VERTEX_COLOR)
+            displayJson["vertex_color_channel"] = vertexColorChannelKey(s->displaySettings.vertexColorChannel);
         data["display"] = displayJson;
         std::string text = (changed.empty() ? "Scene view camera of \"" : "Moved the Scene view camera of \"") + s->name +
                            "\": " + data["camera"].dump() + ".";
@@ -1774,6 +1876,9 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "jobs_memory") {
         app.getJobsMemoryWindow()->setOpen(true);
         imguiName = JobsMemoryWindow::WINDOW_NAME;
+    } else if (window == "crash_reports") {
+        app.getCrashReportsWindow()->setOpen(true);
+        imguiName = CrashReportsWindow::WINDOW_NAME;
     } else if (window == "profiler") {
         ProfilerWindow* profiler = app.getProfilerWindow();
         profiler->setOpen(true);
@@ -1813,13 +1918,17 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "pixel_art_cleanup") {
         app.getPixelArtCleanupWindow()->open();
         imguiName = PixelArtCleanupWindow::WINDOW_NAME;
+    } else if (window == "skinning_editor") {
+        // on the selected Sprite (S94 F49)
+        app.getSkinningEditorWindow()->open();
+        imguiName = SkinningEditorWindow::WINDOW_NAME;
     } else if (window == "title_designer") {
         imguiName = TitleDesignerWindow::WINDOW_NAME;
         if (!focusTitleDesigner(call, app.getTitleDesignerWindow())) return;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
-                   "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
-                   "vertex_animation_baker, sprite_normals, pixel_art_cleanup, title_designer, graph_editor.");
+                   "systems, jobs_memory, crash_reports, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
+                   "vertex_animation_baker, sprite_normals, pixel_art_cleanup, skinning_editor, title_designer, graph_editor.");
         return;
     }
     // A window opened just now exists after its next draw.
@@ -1939,6 +2048,14 @@ void configureGameViewTool(const CallPtr& call) {
         }
         changed.push_back("simulate_touch");
     }
+    if (args.contains("input_scheme")) {
+        // forced from the next frame during Play, else at Play start
+        if (!GameWindow::chooseInputScheme(project, args.value("input_scheme", ""))) {
+            call->fail("input_scheme must be auto, keyboard_mouse, gamepad or touch.");
+            return;
+        }
+        changed.push_back("input_scheme");
+    }
     static const std::vector<std::string> atmosphereNames = {"project", "off", "low", "medium", "high"};
     if (args.contains("atmosphere_quality")) {
         const std::string quality = args.value("atmosphere_quality", "");
@@ -1999,6 +2116,16 @@ void configureGameViewTool(const CallPtr& call) {
     if (args.contains("physics_debug_contacts")) {
         Physics::setDebugDrawContacts(args.value("physics_debug_contacts", false));
         changed.push_back("physics_debug_contacts");
+    }
+    if (args.contains("physics_debug_queries")) {
+        Physics::setDebugDrawQueries(args.value("physics_debug_queries", false));
+        changed.push_back("physics_debug_queries");
+    }
+    // the Game view's Culling toggle: Simulation Culling and Culling Group spheres, every playing scene
+    if (args.contains("culling_debug")) {
+        settings.cullingDebug = args.value("culling_debug", false);
+        CullingSystem::setDebugDraw(settings.cullingDebug);
+        changed.push_back("culling_debug");
     }
     if (args.contains("network")) {
         const std::string network = args.value("network", "");
@@ -2155,11 +2282,14 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         {"maximized", gw->isMaximizedNow()},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
+        {"input_scheme", project->getInputSchemeOverride()},
         {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},
         {"atmosphere_quality", std::vector<std::string>{"project", "off", "low", "medium", "high"}[(size_t)std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
         {"physics_debug", Physics::isDebugDraw()},
         {"physics_debug_contacts", Physics::isDebugDrawContacts()},
+        {"physics_debug_queries", Physics::isDebugDrawQueries()},
         {"physics_debug_lines", physicsDebugLines},
+        {"culling_debug", CullingSystem::isDebugDraw()},
         {"network", Http::isOfflineSimulated() ? "offline" : "online"},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
@@ -2186,6 +2316,10 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         const CustomDeviceSettings& c = settings.custom;
         data["custom_device"] = {{"width", c.width}, {"height", c.height}, {"corner_radius", c.cornerRadius},
                                  {"dpi", c.dpi}, {"insets", {{"top", c.top}, {"right", c.right}, {"bottom", c.bottom}, {"left", c.left}}}};
+    }
+    if (std::find(changed.begin(), changed.end(), "culling_debug") != changed.end() && CullingSystem::isDebugDraw()) {
+        data["next"] = "screenshot the Game view while playing: green spheres simulate, yellow run at the reduced rate, "
+                       "red are culled by distance, grey by unloaded ground; cyan / dark blue are Culling Group spheres in / out of view.";
     }
     call->ok(std::string(changed.empty() ? "Game view settings: " : "Updated the Game view: ") + data.dump(), data);
 }
@@ -2303,26 +2437,27 @@ void registerViewTools(McpRegistry& registry) {
         // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
         // state. Budget-neutral with the pose_animation window added. title_designer (S82 R78): its keys
         // are in jasper://docs/title-art and an unknown key fails listing them, which pays for its schema;
-        // its words were cut again when the wave-2 merges took core 16 characters over its limit.
+        // its words were cut again when the wave-2 merges took core 16 characters over its limit, and the
+        // parameter notes once more to pay for skinning_editor (S94 F49).
         tool.description =
             "Fronts a panel (screenshot needs none). console: "
             "its rows, categories, selection; systems: each row's Enabled rect; "
             "pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
-                                       "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
+                                       "terrain", "mcp", "systems", "jobs_memory", "crash_reports", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
-                                       "pixel_art_cleanup", "title_designer", "graph_editor"})},
-            {"scene", sceneRef("window scene: whose tab.")},
+                                       "pixel_art_cleanup", "skinning_editor", "title_designer", "graph_editor"})},
+            {"scene", sceneRef("window scene's tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "Categories the filter hides.")},
                 {"collapse", boolean("")},
-                {"select", integer("Click this message id's row.")}
+                {"select", integer("Clicks message id's row.")}
             })},
             {"page", string("preferences: a page title.")},
             {"close", boolean("preferences: close it.")},
-            {"profiler", object({{"load", string("A .jetrace.json to load.")}})},
-            {"path", string("graph_editor: file to open")},
+            {"profiler", object({{"load", string(".jetrace.json path.")}})},
+            {"path", string("graph_editor: its file")},
             {"pose", anyObject("")},
             {"title_designer", anyObject("")}
         }, {"window"});
@@ -2354,9 +2489,9 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "configure_game_view";
         tool.title = "Configure Game View";
         tool.description =
-            "Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = "
-            "the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated "
-            "device, orientation and language (editor only; safe_area is Screen.safeArea). Options: jasper://docs/ui.";
+            "Read (no args) or set the Game view toolbar (editor preferences; no undo): aspect (project = "
+            "the canvas size), resolution (the game and screenshots render at it), a simulated "
+            "device, orientation, language (editor only), the input scheme forced at Play start. Options: jasper://docs/ui.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
@@ -2364,14 +2499,17 @@ void registerViewTools(McpRegistry& registry) {
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("")},
+            {"input_scheme", stringEnum("", {"auto", "keyboard_mouse", "gamepad", "touch"})},
             {"simulate_textures", stringEnum("", {"desktop", "mobile", "android_etc2", "web"})},
             {"atmosphere_quality", stringEnum("", {"project", "off", "low", "medium", "high"})},
             {"physics_debug", boolean("")},
             {"physics_debug_contacts", boolean("")},
+            {"physics_debug_queries", boolean("")},
+            {"culling_debug", boolean("")},
             {"network", stringEnum("", {"online", "offline"})},
-            {"device", string("A devices id, custom or none.")},
+            {"device", string("Id, custom, none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
-            {"language", string("es-MX..., or system.")},
+            {"language", string("en-XA..., or system.")},
             {"device_overlay", boolean("")},
             {"safe_area_outline", boolean("")},
             {"custom_device", anyObject("")},

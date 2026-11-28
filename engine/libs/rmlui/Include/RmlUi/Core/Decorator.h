@@ -11,6 +11,8 @@
 namespace Rml {
 
 class Element;
+class Geometry;
+struct ClipShape;
 class PropertyDictionary;
 struct Sprite;
 class Texture;
@@ -49,6 +51,11 @@ public:
 	/// beyond it on purpose), so a background or mask layer painted with it needs no clip mask: it draws into the current
 	/// layer, where its blending sees what lies below it.
 	virtual bool PaintsOwnClip() const;
+
+	/// Fork (S92-F2): as a mask image, the decorator is opaque inside a rounded rectangle and clear outside it (a clip-path
+	/// basic shape): that shape relative to the element's border box, and a mesh covering it (for a stencil clip), so the
+	/// element can be clipped by the shape instead of masked through a layer. False for every other mask (the default).
+	virtual bool GetMaskClipShape(Element* element, DecoratorDataHandle element_data, ClipShape& shape, Geometry*& geometry) const;
 
 	/// Value specifying an invalid or non-existent Decorator data handle.
 	/// @note This value will prevent the decorator from being rendered on the given element.

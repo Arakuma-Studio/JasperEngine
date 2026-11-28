@@ -65,7 +65,7 @@ namespace jasperengine {
         void setImmediatePipelines(bool immediate);
         // builds every pipeline type in pipelines with the render state; the PIP_MSAA* types
         // take msaaSamples (the post-processed camera's multisampled target, 2 or 4)
-        bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
+        bool endLoad(uint32_t pipelines, const RenderState& state, int msaaSamples = 1);
         bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
         // The dynamic path: records the shader, vertex layout and index type and creates no
         // pipeline; every draw then picks its state with beginDraw(const PipelineState&).
@@ -92,9 +92,15 @@ namespace jasperengine {
         // lodFadeShader draws with the pipeline's LOD cross-fade variant on that shader (the
         // submesh's MESH 'Lfd' variant, whose bindings are its shader's; spec S54 R6), made on
         // first use and shared like the mirrored one; false while it is not ready
-        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false, ShaderRender* lodFadeShader = nullptr);
+        // viewShader draws with the pipeline's variant on the submesh's view variant (the editor's
+        // Vertex Color Draw Mode, MESH 'Vcv': its bindings its shader's too), never with a fade;
+        // false while it is not ready
+        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false, ShaderRender* lodFadeShader = nullptr,
+                       ShaderRender* viewShader = nullptr);
         // that fade variant made (asked for on the first call) and warm: a fade may start
         bool isLodFadeReady(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader);
+        // releases the view variant's pipelines (the Draw Mode was left)
+        void releaseViewVariants();
         // the backend id of the pipeline the last beginDraw applied (0: none; diagnostics, tests)
         uint32_t getAppliedPipelineId() const;
         // the pipeline of that state from the pipeline cache (created on first use), applied

@@ -1,0 +1,20 @@
+{
+ "format": "jasperengine-test-results",
+ "version": 1,
+ "run": {"id": "20261119-101500-3f2a", "project": "Garden",
+         "target": {"platform": "android", "arch": "arm64", "backend": "gles3", "editor": false, "device": "emulator-5554"},
+         "revision": {"vcs": "none", "id": "", "dirty": false},
+         "editor_version": "sample", "engine_version": "sample", "started": "2026-11-19T10:15:00Z",
+         "wall_seconds": 4.2, "filter": "tag:smoke", "mode": "all"},
+ "counts": {"total": 2, "passed": 1, "failed": 0, "skipped": 1, "error": 0, "hung": 0, "excluded_edit": 0},
+ "cases": [
+  {"id": "menu.test.lua#Player starts with three lives", "file": "menu.test.lua", "line": 2,
+   "name": "Player starts with three lives", "mode": "play", "status": "passed", "tags": ["smoke"],
+   "frames": 2, "game_seconds": 0.033, "wall_ms": 410, "skip_reason": "", "failures": [], "captures": [],
+   "console": [], "log": []},
+  {"id": "menu.test.lua#The shop refuses a purchase", "file": "menu.test.lua", "line": 20,
+   "name": "The shop refuses a purchase", "mode": "play", "status": "skipped", "tags": ["smoke"],
+   "frames": 0, "game_seconds": 0, "wall_ms": 0, "skip_reason": "the shop is not built", "failures": [], "captures": [],
+   "console": [], "log": []}
+ ]
+}

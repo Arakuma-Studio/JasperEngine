@@ -187,6 +187,10 @@ using namespace jasperengine::editor::test;
         const auto isWeatherMap = [](const std::string& line) { return line.find("VolumetricCloudsComponent.weatherMap") != std::string::npos; };
         EXPECT_EQ(std::count_if(results.begin(), results.end(), isWeatherMap), 2);
         results.erase(std::remove_if(results.begin(), results.end(), isWeatherMap), results.end());
+        // V1's Vertex Colors came after the freeze: its .vcolors, in both walks
+        const auto isVertexColors = [](const std::string& line) { return line.find("VertexColorsComponent.data") != std::string::npos; };
+        EXPECT_EQ(std::count_if(results.begin(), results.end(), isVertexColors), 2);
+        results.erase(std::remove_if(results.begin(), results.end(), isVertexColors), results.end());
         EXPECT_EQ(results, readLines(frozenPath("asset_ref_results_frozen.txt")));
     }
 
@@ -348,6 +352,10 @@ entities:
         l.get().needUpdateShadowCamera = false;
         EXPECT_TRUE(moveField(l.registry, l.entity, "spotMask"));
         EXPECT_TRUE(l.get().needUpdateShadowCamera);
+        // S99: a spot or point light's IES Profile, an .ies asset the renderer reads by path
+        l.get().iesProfile = AssetRef("lights/beam.ies");
+        EXPECT_TRUE(moveField(l.registry, l.entity, "iesProfile"));
+        EXPECT_EQ(l.get().iesProfile.path, "moved/lights/beam.ies");
 
         ReflectionProbeComponent probe;
         probe.texture = textureAt("textures/a.png");

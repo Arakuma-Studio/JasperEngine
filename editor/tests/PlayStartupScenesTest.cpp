@@ -12,6 +12,9 @@
 #include "Project.h"
 #include "command/type/DeleteFileCmd.h"
 #include "window/HierarchyWindow.h"
+#include "window/GameWindow.h"
+#include "Workspace.h"
+#include "input/InputScheme.h"
 #include "Engine.h"
 #include "manager/SceneManager.h"
 #include "manager/ObjectManager.h"
@@ -22,6 +25,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 
@@ -417,6 +421,61 @@ TEST(PersistentPlayScene, HierarchyRowAndSelectionFollowTheMove) {
         if (i == 0) Engine::setScene(previousScenes[i]);
         else Engine::addSceneLayer(previousScenes[i]);
     }
+}
+
+// ---- the Game view's Input Scheme (input-device-awareness AC16) -------------------------------
+
+// the toolbar's choice is a workspace preference, forced at Play start (at once during Play) and
+// independent of Simulate Touch
+TEST(GameWindowTest, InputSchemeMenu) {
+    const fs::path dir = tempDir("input-scheme");
+    InputSchemeTracker::setOverride(std::nullopt);
+    InputSchemeTracker::reset(false);
+    {
+        Project project;
+        PlaySessionTestAccess::setProjectPath(project, dir);
+        EXPECT_EQ(project.getInputSchemeOverride(), "auto");
+        ASSERT_TRUE(GameWindow::chooseInputScheme(&project, "gamepad"));
+        EXPECT_FALSE(GameWindow::chooseInputScheme(&project, "joystick"));
+        EXPECT_EQ(project.getInputSchemeOverride(), "gamepad");
+        EXPECT_FALSE(project.isSimulateTouch());
+        // edit mode: nothing forced until Play starts
+        EXPECT_FALSE(InputSchemeTracker::getOverride().has_value());
+
+        {
+            // closed before the next save: Windows cannot replace a file a reader holds open
+            std::ifstream file(Workspace::getUserDirectory(dir) / "workspace.yaml");
+            const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            EXPECT_NE(text.find("inputScheme: gamepad"), std::string::npos) << text;
+            EXPECT_NE(text.find("simulateTouch: false"), std::string::npos) << text;
+        }
+
+        // Play start (Project::start: applyInputSchemeOverride, then the input reset)
+        project.applyInputSchemeOverride();
+        InputSchemeTracker::reset(false);
+        EXPECT_EQ(InputSchemeTracker::getOverride().value_or(InputScheme::KeyboardMouse), InputScheme::Gamepad);
+        EXPECT_EQ(InputSchemeTracker::getCurrent(), InputScheme::Gamepad);
+
+        // during Play a choice applies at once
+        Scene* playedScene = new Scene();
+        addScene(project, 950, "Played").scene = playedScene;
+        PlaySessionTestAccess::beginSession(project, 950);
+        ASSERT_TRUE(GameWindow::chooseInputScheme(&project, "touch"));
+        EXPECT_EQ(InputSchemeTracker::getOverride().value_or(InputScheme::KeyboardMouse), InputScheme::Touch);
+        ASSERT_TRUE(GameWindow::chooseInputScheme(&project, "auto"));
+        EXPECT_FALSE(InputSchemeTracker::getOverride().has_value());
+        ASSERT_TRUE(GameWindow::chooseInputScheme(&project, "keyboard_mouse"));
+        PlaySessionTestAccess::endSession(project);
+        findScene(project, 950)->scene = nullptr;
+        delete playedScene;
+    }
+    // a new session of the editor reads it back
+    Workspace workspace;
+    workspace.load(dir);
+    EXPECT_EQ(workspace.getInputScheme(), "keyboard_mouse");
+    InputSchemeTracker::setOverride(std::nullopt);
+    InputSchemeTracker::reset(false);
+    fs::remove_all(dir);
 }
 
 }  // namespace PlayStartupScenesTest_cpp

@@ -43,6 +43,7 @@ namespace {
         <div id="list-box"><div id="list"><div id="list-top"></div><div id="list-rows"></div><div id="list-bottom"></div></div></div>
         <div id="empty" class="hidden">No messages</div>
         <div id="commandbar"><input type="text" id="command" placeholder="Command (type help)"/></div>
+        <div id="chips" class="hidden"></div>
     </div>
 </body>
 </rml>
@@ -107,6 +108,9 @@ body {
 .btn.toggle.on { color: #ffffff; background-color: #3d6bff55; }
 .badge { color: #9aa3b5; }
 #searchbar, #commandbar { flex: 0 0 auto; padding: 0.1538rem 0.3846rem; }
+/* the completion's candidates under the command field on touch devices (tap one to apply it) */
+#chips { flex: 0 0 auto; display: flex; flex-direction: row; flex-wrap: wrap; padding: 0px 0.3846rem 0.1538rem 0.3846rem; }
+.chip { padding: 0.3846rem 0.6154rem; }
 input {
     display: block; width: 100%; height: 2rem; padding: 0.3077rem 0.4615rem; box-sizing: border-box;
     background-color: #ffffff12; border-radius: 0.3077rem; color: #ffffff; font-size: 1rem; cursor: text;
@@ -143,7 +147,7 @@ scrollbarvertical sliderbar { background-color: #ffffff40; border-radius: 0.2308
 scrollbarhorizontal { height: 0px; }
 
 /* last, and as specific as the rules that set a display: hidden panels take no input */
-.hidden, #console.hidden, #stats.hidden, #popup.hidden, .count.hidden { display: none; }
+.hidden, #console.hidden, #stats.hidden, #popup.hidden, .count.hidden, #chips.hidden, #commandbar.hidden { display: none; }
 )rcss";
 
     struct Resource {

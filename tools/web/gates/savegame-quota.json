@@ -1,0 +1,13 @@
+{
+  "description": "tools/test-projects/savegame with the site's storage quota at 64 KiB (CDP Storage.overrideQuotaForOrigin): the 256 KiB slot's IndexedDB sync fails and its onComplete gets code quota.",
+  "project": "savegame",
+  "isolated": true,
+  "quota_bytes": 65536,
+  "seconds": 6,
+  "console": [
+    {"text": "savegame: written", "level": "log"},
+    {"text": "savegame: quota (", "level": "log"}
+  ],
+  "allow": ["Failed to save in iDB file system"],
+  "ordered": true
+}

@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "Generator.h"
+#include "Out.h"
 #include "util/CommandRunner.h"
 
 #ifdef _WIN32
@@ -212,6 +213,27 @@ TEST(CommandRunner, RunPassesTheGivenEnvironmentOnly) {
     lines.clear();
     ASSERT_TRUE(runner.run({"/usr/bin/env"}, fs::path(), [&lines](const std::string& line) { lines.push_back(line); }));
     EXPECT_GT(lines.size(), 2u);
+}
+#endif
+
+#ifndef _WIN32
+TEST(CommandRunner, CancelStopsTheProgramWithoutAWarning) {
+    // cancel() signals the program's group and the run loop, seeing the cancel, signals it again:
+    // the program has exited by then and waits to be reaped, and macOS refuses to signal such a
+    // group (EPERM). Stopping a device's log stream said "Failed to send SIGTERM" each time
+    if (!Out::memorySinkId()) Out::startLogging();
+    for (int round = 0; round < 5; round++) {
+        const uint64_t before = Out::lastLogId();
+        CommandRunner runner;
+        std::thread running([&runner]() { runner.run({"/bin/sleep", "30"}, fs::path(), [](const std::string&) {}); });
+        for (int i = 0; i < 1000 && runner.processId() == 0; i++) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        ASSERT_NE(runner.processId(), 0) << "sleep did not start";
+        runner.cancel();
+        running.join();
+        EXPECT_EQ(runner.processId(), 0);
+        for (const auto& entry : Out::getLogsSince(before))
+            EXPECT_EQ(entry.message.find("Failed to send SIGTERM"), std::string::npos) << "round " << round << ": " << entry.message;
+    }
 }
 #endif
 

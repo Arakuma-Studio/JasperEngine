@@ -70,6 +70,9 @@
     [center addObserver:self selector:@selector(thermalStateChanged) name:NSProcessInfoThermalStateDidChangeNotification object:nil];
     [Renderer thermalStateChanged];
 
+    // the user's languages changed in Settings (game-ui-localization.md R10)
+    [center addObserver:self selector:@selector(localesChanged) name:NSCurrentLocaleDidChangeNotification object:nil];
+
     // Screen.orientation / Screen.autorotateTo* changed
     [center addObserver:self selector:@selector(updateOrientationPolicy) name:JasperEngineOrientationPolicyNotification object:nil];
 }
@@ -104,6 +107,10 @@
 
 - (void)thermalStateChanged {
     [Renderer thermalStateChanged];
+}
+
+- (void)localesChanged {
+    [Renderer localesChanged];
 }
 
 // Screen.orientation: a fixed orientation alone, or the autorotateTo* set (Unity's

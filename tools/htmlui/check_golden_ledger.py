@@ -2,8 +2,8 @@
 # The golden policy of S16 (docs/specs/S16-ui-render-text.md AC2, AC3): every self-golden PNG under
 # engine/tests/htmlui/golden that a branch changed has a row in docs/html-ui/goldens-S16.md (its
 # name, the metric before and after, the category, the reason), the Chromium references
-# (golden/browser/**, written by tools/htmlui/render-reference.mjs) are never changed, and at
-# most 60 rows exist without the ledger's "Reviewed:" line.
+# (golden/browser/**, written by tools/htmlui/render-reference.mjs) are never changed (a new
+# fixture adds its own), and at most 60 rows exist without the ledger's "Reviewed:" line.
 #
 #   python3 tools/htmlui/check_golden_ledger.py [--base <git ref>]
 #
@@ -19,7 +19,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GOLDEN = "engine/tests/htmlui/golden/"
 LEDGER = os.path.join(ROOT, "docs", "html-ui", "goldens-S16.md")
-CATEGORIES = {"sdf-aa", "analytic-clip", "analytic-shadow", "exact-scale-text", "gpu-text-effect"}
+CATEGORIES = {"sdf-aa", "analytic-clip", "analytic-shadow", "exact-scale-text", "gpu-text-effect", "filter-blur"}
 MAX_UNREVIEWED = 60
 
 
@@ -64,7 +64,9 @@ def check(changes, ledger_text):
     updated, added, reviewed = parse_ledger(ledger_text)
     for status, name in changes:
         if name.startswith("browser/"):
-            problems.append("golden/%s.png is a Chromium reference: it is never regenerated (AC2)" % name)
+            # (a new fixture's reference is added: the existing ones are never written again)
+            if status != "A":
+                problems.append("golden/%s.png is a Chromium reference: it is never regenerated (AC2)" % name)
             continue
         if status == "A":
             if name not in added:

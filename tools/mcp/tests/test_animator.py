@@ -6,14 +6,20 @@ component assigned with the generic tools; the edit-mode preview through control
 Montage (A -> B sections, an event); get_animator's settings, rig (humanoid), clips (retargeted
 onto the T-pose hero from the animated hero's file) and diagnostics; play mode: parameters and
 triggers drive the transitions, a montage plays its sections and calls a Lua script method,
-Lua's onStateEnter / onMontageEnded fire; one call through the CLI. Runs on a scratch copy of
-tools/fixtures/pose-animation (Hero: Mixamo names, Robot: Blender names)."""
+Lua's onStateEnter / onMontageEnded fire; one call through the CLI. Mesh Space Rotation
+(docs/specs/mesh-space-rotation.md AC22, AC24): sample_animation_pose's space and solo_layer on the
+B- rig with a mask from the spine (the solo spine is 110 degrees from the blended one with the
+option off and equal with it on), get_animation {entity}'s Animator coverage with its boundary bones.
+Runs on a scratch copy of tools/fixtures/pose-animation (Hero: Mixamo names, Robot: Blender names),
+with tools/fixtures/b-rig's b_rig_proxy.gltf (B- names) copied in."""
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -193,6 +199,9 @@ async def test_edit_preview_restores(ed: Editor):
     pose = await ed.call("sample_animation_pose", entity="Hero", state="Jump", time=0.25, bones=["left_hand"])
     ed.check(pose["state"].endswith("Jump"), f"the state asked for: {pose['state']}")
     ed.check(approx(await local_rotation(ed, arm), rest, 1e-5), "sampling leaves the scene as it was")
+    # no entity: an error that names it (the handler once read the missing argument)
+    await ed.check_error("control_animator", {}, contains="entity")
+    await ed.check_error("sample_animation_pose", {}, contains="entity")
 
 
 async def test_mask_and_montage(ed: Editor):
@@ -311,3 +320,79 @@ async def test_from_player_and_cli(ed: Editor):
     envelope = json.loads(p.stdout.strip().splitlines()[-1])
     ed.check("Locomotion" in json.dumps(envelope), f"the CLI returns the controller: {json.dumps(envelope)[:800]}")
     ed.check(not any((root / "cwd").iterdir()), "the CLI writes nothing to its working directory")
+
+
+# ---------------------------------------------------------------------------- Mesh Space Rotation
+
+PROXY_MODEL = "assets/models/b_rig_proxy.gltf"
+PROXY_SOURCE = REPO / "tools" / "fixtures" / "b-rig" / PROXY_MODEL
+PROXY_CONTROLLER = "assets/anim/proxy.controller"
+HIPS = "Rig/B-root/B-hips"
+SPINE = HIPS + "/B-spine"
+
+
+def quat_angle(a, b) -> float:
+    """degrees between two [x, y, z, w] rotations (atan2 of conj(a) * b: exact near 0)"""
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    dot = ax * bx + ay * by + az * bz + aw * bw
+    vx = aw * bx - bw * ax - (ay * bz - az * by)
+    vy = aw * by - bw * ay - (az * bx - ax * bz)
+    vz = aw * bz - bw * az - (ax * by - ay * bx)
+    return math.degrees(2 * math.atan2(math.sqrt(vx * vx + vy * vy + vz * vz), abs(dot)))
+
+
+async def proxy_animator(ed: Editor) -> None:
+    """AC4's setup on the copied-in B- rig: Run (hips turned 90 degrees) on the base layer, Attack (hips
+    turned -20 degrees) on an Upper Body layer whose mask starts at the spine"""
+    # the B- rig lives outside the fixture project, so opening the project cooks no extra model
+    shutil.copyfile(PROXY_SOURCE, ed.project / PROXY_MODEL)
+    await ed.call("sync_files")
+    await ed.call("set_model", path=PROXY_MODEL, create={"name": "Proxy", "position": [3, 0, 0]})
+    await ed.call("edit_avatar_mask", path="assets/anim/upper_spine.mask", create=True, default=0,
+                  paths={SPINE: {"weight": 1, "children": True}})
+    await ed.call("edit_animator_controller", path=PROXY_CONTROLLER, create=True, ops=[
+        {"op": "add_state", "name": "Run", "clip": PROXY_MODEL + "#Run", "default": True},
+        {"op": "add_layer", "name": "Upper Body", "mask": "assets/anim/upper_spine.mask"},
+        {"op": "add_state", "layer": "Upper Body", "name": "Attack", "clip": PROXY_MODEL + "#Attack", "default": True}])
+    await ed.call("add_component", entity="Proxy", component="animator", values={"animator": {"controller": PROXY_CONTROLLER}})
+
+
+async def test_mesh_space_rotation_pose_and_coverage(ed: Editor):
+    await proxy_animator(ed)
+
+    async def spine_and_hips() -> tuple:
+        # time 1 s on clips of 1 s that play once: the end of both, whatever the earlier samples left
+        args = {"entity": "Proxy", "state": "Attack", "time": 1.0, "space": "model", "bones": [SPINE, HIPS]}
+        blended = await ed.call("sample_animation_pose", **args)
+        solo = await ed.call("sample_animation_pose", **args, solo_layer="Upper Body")
+        ed.check(not blended.get("unknown_bones") and not solo.get("unknown_bones"), f"the B- paths: {blended} {solo}")
+        return blended, solo
+
+    blended, solo = await spine_and_hips()
+    ed.check_eq((blended["space"], solo["space"], solo.get("solo_layer"), "solo_layer" in blended), ("model", "model", "Upper Body", False),
+                "space and solo_layer are echoed")
+    off = quat_angle(blended["bones"][SPINE]["rotation"], solo["bones"][SPINE]["rotation"])
+    ed.check(abs(off - 110) < 0.5, f"option off: the spine follows the run's hips, 110 degrees from the layer's clip: {off}")
+    hips = quat_angle(blended["bones"][HIPS]["rotation"], solo["bones"][HIPS]["rotation"])
+    ed.check(abs(hips - 110) < 0.5, f"the solo pose has the layer clip's own hips (unmasked): {hips}")
+    world = await ed.call("sample_animation_pose", entity="Proxy", state="Attack", time=1.0, bones=[SPINE])
+    moved = [w - m for w, m in zip(world["bones"][SPINE]["position"], blended["bones"][SPINE]["position"])]
+    ed.check(world["space"] == "world" and approx(moved, [3, 0, 0], 1e-4), f"world: the model space moved by the GameObject's position: {moved}")
+    await refused(ed, "sample_animation_pose", {"entity": "Proxy", "solo_layer": "Legs"}, "Upper Body")
+
+    # get_animation {entity}: where the pass applies, before any check runs (R38)
+    got = await ed.call("get_animation", entity="Proxy")
+    coverage = got.get("animator", {}).get("mask_coverage", [])
+    ed.check_eq([(c["layer"], c["mesh_space_rotation"], c.get("boundary_bones")) for c in coverage], [("Upper Body", False, [SPINE])],
+                f"the masked layer's boundary bones: {json.dumps(got.get('animator'))[:600]}")
+
+    await ed.call("edit_animator_controller", path=PROXY_CONTROLLER, ops=[{"op": "set_layer", "layer": "Upper Body", "mesh_space_rotation": True}])
+    blended, solo = await spine_and_hips()
+    on = quat_angle(blended["bones"][SPINE]["rotation"], solo["bones"][SPINE]["rotation"])
+    ed.check(on < 1e-4, f"option on: the blended spine is the layer clip's: {on} degrees")
+    hips = quat_angle(blended["bones"][HIPS]["rotation"], solo["bones"][HIPS]["rotation"])
+    ed.check(abs(hips - 110) < 0.5, f"the hips outside the mask stay the run's: {hips}")
+    got = await ed.call("get_animation", entity="Proxy")
+    ed.check_eq([c["mesh_space_rotation"] for c in got["animator"]["mask_coverage"]], [True], "the coverage says it is on")
+    await ed.call("undo", scope="project")

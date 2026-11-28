@@ -102,25 +102,3 @@ std::string editor::voxelDimensionProblem(const std::string& volumeName, const v
     return "";
 }
 
-std::string editor::generateVoxelSettingsCode(const VoxelProjectSettings& settings, const std::string& indent) {
-    if (settings.maxDimension <= 0 && settings.cpuBudgetMB <= 0 && settings.meshBudgetMB <= 0) return "";
-    // the game's own platform decides the rest, so these are comparisons and not values. The
-    // module may be off in this build (S34): the settings then have nothing to lower.
-    const std::string in = indent + "    ";
-    std::string code = "#if JASPERENGINE_VOXEL\n" + indent + "{\n";
-    code += in + "VoxelLimits voxelLimits = voxelPlatformLimits();\n";
-    if (settings.maxDimension > 0) {
-        const std::string value = std::to_string(settings.maxDimension);
-        code += in + "if (voxelLimits.maxDimension > " + value + ") voxelLimits.maxDimension = " + value + ";\n";
-    }
-    if (settings.cpuBudgetMB > 0) {
-        const std::string value = std::to_string(settings.cpuBudgetMB) + "ll * 1024 * 1024";
-        code += in + "if (voxelLimits.cpuBudget > " + value + ") voxelLimits.cpuBudget = " + value + ";\n";
-    }
-    if (settings.meshBudgetMB > 0) {
-        const std::string value = std::to_string(settings.meshBudgetMB) + "ll * 1024 * 1024";
-        code += in + "if (voxelLimits.meshBudget > " + value + ") voxelLimits.meshBudget = " + value + ";\n";
-    }
-    code += in + "setVoxelLimitsOverride(voxelLimits);\n" + indent + "}\n#endif\n";
-    return code;
-}

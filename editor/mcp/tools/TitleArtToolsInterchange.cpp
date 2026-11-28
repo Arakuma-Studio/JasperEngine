@@ -58,12 +58,17 @@ void titletools::exportTitleInterchange(const CallPtr& call, Project* project, c
             request.more.emplace_back(other, std::move(doc));
         }
     }
+    // S99 R13: layers x canvas, per format (a PSD's layers and a sheet's frames cost differently)
+    const double modelSeconds = jobmodel::titleExportSeconds(titleart::countLayers(request.doc.root), request.doc.canvasWidth(),
+                                                             request.doc.canvasHeight(), 1 + request.languages.size() + request.more.size());
     std::shared_ptr<TitleExportJob> job = startTitleExport(std::move(request), code, error);
     if (!job) {
         call->fail(code + ": " + error + ". Nothing was written.", Json{{"code", code}});
         return;
     }
     auto task = std::make_shared<FrameTask>();
+    task->historyKind = "export_title:" + format;
+    task->modelSeconds = modelSeconds;
     std::weak_ptr<FrameTask> weakTask = task;
     task->tick = [job, relative, format, weakTask](McpJob& mcpJob) {
         auto t = weakTask.lock();
@@ -72,6 +77,7 @@ void titletools::exportTitleInterchange(const CallPtr& call, Project* project, c
         mcpJob.setProgress(job->progress(), job->progressText());
         if (!done) return false;
         const TitleExportResult& result = job->result();
+        addDownscaleFallbacks(mcpJob, result.warnings);
         Json out = fromOrdered(result.toJson());
         out["path"] = relative;
         out["format"] = format;

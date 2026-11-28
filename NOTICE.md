@@ -179,9 +179,9 @@ Shipping of the editor (S30, `docs/shipping.md`; editor-only: never part of a ga
 
 | Library | Version | Location | License | Used for |
 |---|---|---|---|---|
-| [miniz](https://github.com/richgel999/miniz) | 3.0.2 | `libs/miniz/` (`LICENSE`, `README.jasper.md`) | MIT | zip reading and writing: player runtime archives, APK and AAB assembly, the Project Hub's zip import (S27); the zlib tables of `.woff` fonts the Title Designer imports (S82) |
-| [Brotli](https://github.com/google/brotli) | 1.2.1 (`v1.2.1`), the decoder only (`c/common`, `c/dec`, `c/include`) | `libs/brotli/` (`LICENSE`, `README.jasper.md`) | MIT | the Brotli streams of `.woff2` fonts the Title Designer imports (S82, `editor/titleart/fonts/WebFontDecode`) |
-| [woff2](https://github.com/google/woff2) | 1.0.2 (`v1.0.2`), the decoder only (`woff2_dec.cc`, `woff2_common.cc`, `table_tags.cc`, `variable_length.cc`, `woff2_out.cc` and their headers) | `libs/woff2/` (`LICENSE`, `README.jasper.md`; one local patch: upstream's `23a34adec39d`, byte loads and stores instead of unaligned word casts) | MIT | `.woff2` to TrueType/OpenType: the glyf/loca and hmtx transforms reversed, when the Title Designer imports a web font (S82) |
+| [miniz](https://github.com/richgel999/miniz) | 3.0.2 | `libs/miniz/` (`LICENSE`, `README.jasper.md`) | MIT | zip reading and writing: player runtime archives, APK and AAB assembly, the Project Hub's zip import (S27); the zlib tables of `.woff` fonts the Title Designer imports (S82) and the editor's HTML UI opens |
+| [Brotli](https://github.com/google/brotli) | 1.2.1 (`v1.2.1`), the decoder only (`c/common`, `c/dec`, `c/include`) | `libs/brotli/` (`LICENSE`, `README.jasper.md`) | MIT | the Brotli streams of `.woff2` fonts the Title Designer imports (S82, `editor/titleart/fonts/WebFontDecode`), the HTML UI opens in the editor and the export ships decoded |
+| [woff2](https://github.com/google/woff2) | 1.0.2 (`v1.0.2`), the decoder only (`woff2_dec.cc`, `woff2_common.cc`, `table_tags.cc`, `variable_length.cc`, `woff2_out.cc` and their headers) | `libs/woff2/` (`LICENSE`, `README.jasper.md`; one local patch: upstream's `23a34adec39d`, byte loads and stores instead of unaligned word casts) | MIT | `.woff2` to TrueType/OpenType: the glyf/loca and hmtx transforms reversed, when the Title Designer imports a web font (S82), the editor's HTML UI opens one, or the export ships one decoded |
 | [bundletool](https://github.com/google/bundletool) | 1.17.2 (`bundletool-all-1.17.2.jar`, SHA-256 `2d4ad908faea64047c1cc9cb747e6aa667c6ab192e09607bd16b67246a8cd6ae`) | not vendored: downloaded by the editor into its cache on the first Android App Bundle build (`editor/platform/AndroidTools.cpp`) and checked against that hash | Apache-2.0 | building `.aab` files from a prebuilt Android player |
 
 The code editor's line diff (`editor/util/LineDiff.cpp`, from Doriax) follows the clean-up passes of [Visual Studio Code](https://github.com/microsoft/vscode)'s line diff (`defaultLinesDiffComputer`: joining and sliding changes over repeated lines, better boundaries, joining across short matches; MIT, Copyright (c) Microsoft Corporation), so its change markers land where VS Code's do; the file names that origin.
@@ -191,7 +191,7 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | Code | Location | Used for |
 |---|---|---|
 | `Apps/Editor/Source/Diagnostics/MainThreadHangWatchdog.{h,cpp}` (the heartbeat armed by the first beat, the poll, the re-report interval, the "recovered after" line, the shutdown window, the job-occupancy section; adapted) and `Tests/Editor/MainThreadHangWatchdogTests.cpp` (ported cases) | `engine/core/diag/HangWatchdog.*`, `engine/tests/core/diag/HangWatchdogTest.cpp` | the main-thread hang watchdog (S28) |
-| `Engine/Modules/Types/Include/Types/NearestName.h` (copied, namespace changed) | `engine/core/util/NearestName.h` | "did you mean" suggestions of the scene load report (S03), graph issues and particle effect patches (BF23) |
+| `Engine/Modules/Types/Include/Types/NearestName.h` (copied, namespace changed; our `NearestIdentifier` added at its end) | `engine/core/util/NearestName.h` | "did you mean" suggestions of the scene load report (S03), graph issues, particle effect patches (BF23) and MCP errors (S99) |
 | `Engine/Modules/NativeScripting/Include/NativeScripting/NativeScriptingABI.h` (the `GE_ToolchainFingerprint` fill, adapted and extended) | `engine/core/script/ToolchainFingerprint.h` | the toolchain fingerprint of C++ script libraries (S23) |
 | `Apps/Editor/Source/ScriptEditor/SourceLocation.cpp` (the path-start scan and the `:L:C` / `(L,C)` readers, adapted and extended) | `editor/util/SourceLocation.*` | the Console's source-location parser (S23) |
 | `Engine/Modules/FileWatcher` (FileWatcher, FileIdentity), `Engine/Include/Assets/ExpectedWriteLedger.h` (+ its tests), `Engine/Modules/AssetCore/.../SharedFileRead.*` (adapted, headers kept) | `engine/core/io/watch/`, `engine/tests/core/io/watch/ExpectedWriteLedgerTest.cpp` | the file watcher's rename pairing and delete hold, file identities, the self-write ledger, share-delete reads on Windows (S05) |
@@ -548,6 +548,52 @@ Ported or copied, each file keeping the original notice next to ours:
 
 The `blob_47` sheet layout follows cr31's "Blob" Wang tileset page (minimum 7x7 packing, found by Caeles at OpenGameArt.org), and `blob_47_godot` follows the layout of Godot's "3x3 minimal" autotile template; both are layouts of index numbers, no code or image from them ships here. `tileset::cellHash` uses the block step and finaliser of MurmurHash3 (Austin Appleby, public domain).
 
+## Area Lights' LTC tables (S99)
+
+`engine/core/render/LtcLut.h` holds the fitted GGX tables `fit/results/ltc_1.dds` and `ltc_2.dds` of
+[selfshadow/ltc_code](https://github.com/selfshadow/ltc_code) at `31e5e96b54f98f33098f8503003119ba2231a1c6`,
+converted bit for bit by `tools/gen_ltc_lut.py`, for the High Lit Quality's Area Lights. The shading code
+(`engine/shaderlib/includes/area_lights.glsl`, `engine/core/render/AreaLightMath.cpp`) is ours, after the paper:
+Real-Time Polygonal-Light Shading with Linearly Transformed Cosines. Eric Heitz, Jonathan Dupuy, Stephen Hill and
+David Neubelt. ACM Transactions on Graphics (Proceedings of ACM SIGGRAPH 2016) 35(4), 2016. The tables' licence
+(BSD-2-Clause with a request to cite the paper):
+
+```
+Copyright (c) 2017, Eric Heitz, Jonathan Dupuy, Stephen Hill and David Neubelt.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* If you use (or adapt) the source code in your own work, please include a 
+  reference to the paper:
+
+  Real-Time Polygonal-Light Shading with Linearly Transformed Cosines.
+  Eric Heitz, Jonathan Dupuy, Stephen Hill and David Neubelt.
+  ACM Transactions on Graphics (Proceedings of ACM SIGGRAPH 2016) 35(4), 2016.
+  Project page: https://eheitzresearch.wordpress.com/415-2/
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
 ## Ideas re-implemented, no code copied
 
 [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) (MIT, 0.17.0 `744eb9d`, (c) Guillaume Blanc): `editor/animation/ClipReduction.*` re-implements the idea of its `AnimationOptimizer` and `decimate.h` (a hierarchical error metric and Ramer-Douglas-Peucker decimation), with the changes of `docs/specs/S77-clip-quality.md` D5. No ozz source ships here.
+
+Kevin Iglesias' [Spine Proxy](https://www.keviniglesias.com/spine-proxy.html) for Unity (`SpineProxy.cs`, and its Godot port `spine_proxy.gd` by hlarsen; neither states a licence) and Unreal Engine's Layered Blend Per Bone option "Mesh Space Rotation Blend", read for the idea only: an upper-body layer's torso keeps its rotation relative to the character, not to the base layer's hips. `engine/core/animation/AnimatorPose.*`, `AnimatorInstance.*`, `AvatarMaskWeights.*` and `engine/core/subsystem/ActionSystemLayers.cpp` implement it as a layer's Mesh Space Rotation, with no proxy bone, per `docs/specs/mesh-space-rotation.md`. None of their code is here.

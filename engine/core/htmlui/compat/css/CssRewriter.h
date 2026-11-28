@@ -73,6 +73,7 @@ namespace jasperengine::htmlui::compat {
         // decoded data: URIs found in the CSS: the loader registers them in VirtualFiles under its owner
         std::vector<std::pair<std::string, std::shared_ptr<const std::string>>> virtualFiles;
         bool dependsOnViewport = false;
+        bool dependsOnPointer = false;                  // a media query read hover or pointer
         std::vector<std::string> animationFillNames;   // keyframes needing AnimationFill
         std::vector<std::string> fontFamilies;         // families named in font-family/font declarations
         std::vector<std::string> declaredFontFamilies; // families an @font-face declares

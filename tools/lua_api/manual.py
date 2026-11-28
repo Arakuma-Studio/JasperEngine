@@ -26,6 +26,12 @@ MANUAL_SYMBOLS = [
     ('anime', 'createSpring', 'StaticMethod',
      'anime.createSpring({bounce, duration} or {mass, stiffness, damping, velocity}) -> AnimeSpring; use as params.ease'),
     ('anime', 'spring', 'StaticMethod', 'anime.spring(params) -> AnimeSpring (same as anime.createSpring)'),
+    ('anime', 'createDrawable', 'StaticMethod',
+     'anime.createDrawable(targets, start=0, end=0) -> UIElement[]; animate draw="0 1" to reveal SVG strokes'),
+    ('anime', 'morphTo', 'StaticMethod',
+     'anime.morphTo(target, precision=.33) -> AnimeStagger; use as d or points property value'),
+    ('anime', 'createMotionPath', 'StaticMethod',
+     'anime.createMotionPath(path, offset=0) -> {translateX, translateY, rotate}; function values for animation properties'),
     ('anime', 'stagger', 'StaticMethod',
      'anime.stagger(value or {from, to}, {start, from = "first"|"center"|"last"|index, ease, grid, axis}) -> '
      'a per-target value for delay or a property'),
@@ -36,6 +42,7 @@ MANUAL_SYMBOLS = [
     ('anime', 'utils', 'Property',
      'anime.utils: set(targets, props), get(target, property), remove(targets), random, clamp, round, snap, wrap, '
      'mapRange, lerp, damp, roundPad, padStart, padEnd, shuffle, stagger'),
+    ('anime', 'svg', 'Property', 'anime.svg: createDrawable, morphTo, createMotionPath (also available directly on anime)'),
     ('anime', 'eases', 'Property', 'anime.eases.<name>: linear, in/out/inOut/outIn + Quad Cubic Quart Quint Sine Expo Circ Bounce Back Elastic'),
     ('AnimeTimeline', 'add', 'Method', 'AnimeTimeline:add(targets, params, position) -> AnimeTimeline; or add(timerParams, position)'),
     ('AnimeTimeline', 'set', 'Method', 'AnimeTimeline:set(targets, props, position) -> AnimeTimeline'),
@@ -67,6 +74,16 @@ MANUAL_SYMBOLS = [
      'UIDocument:getDiagnostics() -> {{severity, code, name, message, suggestion, file, line, column, text}, ...}'),
     ('UIDocument', 'getTargetTexture', 'Method', 'UIDocument:getTargetTexture() -> Framebuffer or nil (TEXTURE render mode)'),
     ('UIDocument', 'getLiveLuaRefCount', 'StaticMethod', 'UIDocument.getLiveLuaRefCount() -> integer'),
+    ('UIDocument', 'prewarm', 'Method',
+     'UIDocument:prewarm([{images = false}]) -> UIPrewarm (the glyphs of every text, hidden ones too, data-warm attributes and '
+     'the images, made before they show)'),
+    ('HtmlUI', 'prewarmImage', 'StaticMethod',
+     'HtmlUI.prewarmImage(path or {paths}) -> UIPrewarm (done, progress, onDone = fn): images decoded off the main thread '
+     'and uploaded a few a frame, so the first frame that shows them is complete'),
+    ('HtmlUI', 'prewarmText', 'StaticMethod',
+     'HtmlUI.prewarmText({family = "LINESeedSans", size = 324, weight = 700, style = "normal", effect = "outline(15px #000)", '
+     'text = "GO!0123456789"}) -> UIPrewarm'),
+    ('UIPrewarm', 'onDone', 'Property', 'UIPrewarm.onDone = function() end (called once when done; the next frame if it already is)'),
     ('UIClassList', 'add', 'Method', 'UIClassList:add(name, ...) (el.classList:add("open"))'),
     ('UIClassList', 'remove', 'Method', 'UIClassList:remove(name, ...)'),
     ('UIClassList', 'toggle', 'Method', 'UIClassList:toggle(name, force) -> bool'),

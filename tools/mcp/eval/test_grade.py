@@ -139,6 +139,19 @@ class StubTest(unittest.TestCase):
         self.assertTrue(res["isError"])
         self.assertEqual(res["content"][0]["text"], 'Unknown argument "speed" for play. Arguments: action.')
 
+    def test_names_get_the_registry_suggestion(self):
+        surface = {"tools": [{"name": "find_entities", "inputSchema": {"type": "object", "properties": {
+            "name": {"type": "string"}, "with_components": {"type": "boolean"}}}}]}
+        s = stub_server.Stub(surface, {}, None)
+        self.assertEqual(s.call("find_entities", {"withComponents": True})["content"][0]["text"],
+                         "Unknown argument \"withComponents\" for find_entities (did you mean 'with_components'?). "
+                         "Arguments: name, with_components.")
+        self.assertEqual(s.call("find_entities", {"zzqxwvut": 1})["content"][0]["text"],
+                         'Unknown argument "zzqxwvut" for find_entities. Arguments: name, with_components.')
+        self.assertEqual(s.call("find_entitie", {})["content"][0]["text"],
+                         "Unknown tool: find_entitie (did you mean 'find_entities'?). tool_groups lists every tool by group.")
+        self.assertEqual(stub_server.nearest_identifier("maxDocResluts", ["max_results", "max_doc_results"]), "max_doc_results")
+
     def test_required(self):
         self.assertEqual(self.stub().call("play", {})["content"][0]["text"], "action is required.")
 

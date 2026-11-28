@@ -1149,6 +1149,7 @@ void checkFit(ImportWork& work) {
             work.error = clip.rel + ": " + error;
             return;
         }
+        clip.settings.resolveChannels(AudioImportSettings::Channels::fromAnalysis(cached), resolved, &clip.resolved);
     }
 }
 
@@ -1228,6 +1229,10 @@ void setAudioImportSettingsTool(const CallPtr& call) {
     const bool hasLabels = args.contains("labels") && !args["labels"].is_null();
     if (!hasSettings && !hasProvenance && !hasLabels) {
         call->fail("Give settings, provenance or labels to set.");
+        return;
+    }
+    if (!args.contains("paths") || !args["paths"].is_array()) {
+        call->fail("paths: pass a list of the sound files to set, inside the assets folder.");
         return;
     }
     // a file written since the last look has no .meta yet, and the section needs its GUID beside it
@@ -1446,14 +1451,14 @@ void registerSoundTools(McpRegistry& registry) {
         set.title = "Set Audio Import Settings";
         set.description =
             "Sets how clips play and where they came from, in their .meta: gain, trims, click-safe fades, loop region, "
-            "type, licence and labels (jasper://docs/sound lists the keys). A null key resets it. All paths or none, one "
+            "load type (streaming...), type, licence and labels (jasper://docs/sound lists the keys). A null key resets it. All paths or none, one "
             "undo step. Replies with the settings resolved to frames and a fresh analysis, as the clip now plays.";
         Json clips = array(assetPath(""), "Sound files inside the assets folder.");
         clips["minItems"] = 1;
         clips["maxItems"] = 64;
         set.inputSchema = object({
             {"paths", clips},
-            {"settings", anyObject("Import settings keys: type, gain_db, trim_head_ms, trim_tail_ms, fade_in_ms, fade_out_ms, loop_start_ms, loop_end_ms, music.")},
+            {"settings", anyObject("Import settings keys: type, gain_db, trim_head_ms, trim_tail_ms, fade_in_ms, fade_out_ms, loop_start_ms, loop_end_ms, force_to_mono, music, load_type.")},
             {"provenance", anyObject("Provenance keys: licence, licence_url, author, attribution, source, url.")},
             {"labels", array(Json{{"type", "string"}}, "S25 labels to set: replaces the clips' labels.")}
         }, {"paths"});

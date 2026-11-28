@@ -6,6 +6,7 @@
 // every golden must pass unchanged. Set before main(), so every test sees it; the tests of S16's
 // own features that turn a toggle on for themselves still do.
 
+#include "HtmlUIImageCache.h"
 #include "RmlFontEngine.h"
 #include "RmlRenderer.h"
 
@@ -19,6 +20,12 @@ namespace {
     // the background lane's timing
     [[maybe_unused]] const bool synchronousDistanceGlyphs = [](){
         jasperengine::RmlFontEngine::setSynchronousDistanceGlyphsForTesting(true);
+        return true;
+    }();
+
+    // and images decoded when loaded (S93 R18: the deterministic rule of the tests)
+    [[maybe_unused]] const bool synchronousImages = [](){
+        jasperengine::HtmlUIImageCache::setSynchronousForTesting(true);
         return true;
     }();
 

@@ -14,7 +14,18 @@
 #include "HtmlUIClock.h"
 #include "HtmlUIContext.h"
 #include "Input.h"
+#include "input/InputScheme.h"
 #include "object/ui/UIEvent.h"
+#include "subsystem/GamepadCursor.h"
+#include "component/ButtonComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "input/InputActions.h"
+#include "object/ui/Button.h"
+#include "object/ui/OnScreenControls.h"
+#include "AllocationCounter.h"
+
+#include <chrono>
+#include <cstdio>
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -708,4 +719,414 @@ TEST_F(InputGamepadTest, TypingFieldKeepsEnterFromAnUpperDocument){
     Engine::removeScene(&fixture->getScene());
     lower.reset();
     Engine::setScene(&fixture->getScene());
+}
+
+// ---- the gamepad cursor (GamepadCursor): a Gamepad Cursor document in the Gamepad scheme
+
+namespace {
+
+    const char* cursorTag = "htmlui-tests-gamepad-cursor";
+    constexpr double cursorFrame = 1.0 / 60.0;
+
+    class InputGamepadCursorTest : public InputGamepadTest {
+    protected:
+        void SetUp() override{
+            InputGamepadTest::SetUp();
+            if (HasFatalFailure())
+                return;
+            // game time and the cursor's unscaled time advance one 60 Hz frame per drawn frame
+            Engine::setFixedDeltatime(cursorFrame);
+            Engine::onMouseDown.add(cursorTag, std::function<void(int, float, float, int)>([this](int, float, float, int){ gameMouseDowns++; }));
+        }
+
+        void TearDown() override{
+            Engine::onMouseDown.remove(cursorTag);
+            Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 0.0f);
+            Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_Y, 0.0f);
+            Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_RIGHT_Y, 0.0f);
+            InputSchemeTracker::setOverride(std::nullopt);
+            GamepadCursor::resetSession();
+            Engine::setFixedDeltatime(0.0);
+            InputGamepadTest::TearDown();
+        }
+
+        // the document with Gamepad Cursor on, and the Gamepad scheme from a pad press (X: nobody's)
+        void loadCursor(const std::string& css, const std::string& body){
+            load(css, body);
+            doc().setGamepadCursor(true);
+            GpuEnvironment::drawFrames(1);
+            usePad();
+        }
+
+        void usePad(){
+            press(D_GAMEPAD_BUTTON_X);
+            GpuEnvironment::drawFrames(1);
+            ASSERT_EQ(InputSchemeTracker::getCurrent(), InputScheme::Gamepad);
+        }
+
+        // the UI clock advances with the frames (smooth scrolling and transitions run on it)
+        void frames(int count){
+            for (int i = 0; i < count; i++){
+                uiTime += cursorFrame;
+                HtmlUIClock::setFixedTime(uiTime);
+                GpuEnvironment::drawFrames(1);
+            }
+        }
+
+        int gameMouseDowns = 0;
+        double uiTime = 100.0;
+    };
+
+    // pointer moves with the left button held (a drag in progress)
+    class HeldMoves : public Rml::EventListener {
+    public:
+        int moves = 0;
+        float lastX = 0.0f;
+        void ProcessEvent(Rml::Event& event) override{
+            if (event.GetParameter<int>("buttons", 0) & 1){
+                moves++;
+                lastX = event.GetParameter<float>("mouse_x", 0.0f);
+            }
+        }
+    };
+
+    // canvas px per second at full stick on this 1280x720 canvas
+    const float fullSpeed = 1000.0f * 720.0f / 1080.0f;
+
+}
+
+// the left stick moves it at speed x |stick|^2 after the acceleration ramp, slower over a button;
+// the game sees the stick at rest; another scheme hides it
+TEST_F(InputGamepadCursorTest, CursorMovesAndConsumes){
+    loadCursor("html, body { margin: 0; }\n#slow { position: absolute; left: 0; top: 500px; width: 1280px; height: 100px; }\n",
+               "<button id=\"slow\">Slow</button>");
+    ASSERT_TRUE(GamepadCursor::isActive());
+    EXPECT_EQ(GamepadCursor::getPosition(), Vector2(640.0f, 360.0f)) << "the canvas centre: nothing focused";
+
+    GamepadCursor::setPosition(Vector2(100.0f, 200.0f));
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 1.0f);
+    // the ramp: each frame's step grows over the 0.15 s acceleration time, then stays
+    std::vector<float> steps;
+    float last = GamepadCursor::getPosition().x;
+    for (int i = 0; i < 12; i++){
+        frames(1);
+        steps.push_back(GamepadCursor::getPosition().x - last);
+        last = GamepadCursor::getPosition().x;
+    }
+    EXPECT_LT(steps[1], steps[5]);
+    EXPECT_LT(steps[5], steps[9]);
+    EXPECT_NEAR(steps[10], steps[11], 0.01f) << "full speed after the ramp";
+
+    // one second at full stick
+    float start = GamepadCursor::getPosition().x;
+    frames(60);
+    EXPECT_NEAR(GamepadCursor::getPosition().x - start, fullSpeed, fullSpeed * 0.02f);
+
+    // half way: a quarter as fast
+    GamepadCursor::setPosition(Vector2(100.0f, 200.0f));
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 0.5f);
+    frames(12);
+    start = GamepadCursor::getPosition().x;
+    frames(60);
+    EXPECT_NEAR(GamepadCursor::getPosition().x - start, fullSpeed * 0.25f, fullSpeed * 0.25f * 0.02f);
+
+    // over the button: half the speed (Slow Over Controls 0.5)
+    GamepadCursor::setPosition(Vector2(100.0f, 550.0f));
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 1.0f);
+    frames(12);
+    start = GamepadCursor::getPosition().x;
+    frames(30);
+    EXPECT_NEAR(GamepadCursor::getPosition().x - start, fullSpeed * 0.5f * 0.5f, fullSpeed * 0.25f * 0.02f);
+
+    // the game's stick is at rest
+    for (const auto& axis : gameAxes) {
+        EXPECT_EQ(axis.second, 0.0f) << "axis " << axis.first;
+    }
+    EXPECT_EQ(Input::getGamepadAxisForGame(pad, D_GAMEPAD_AXIS_LEFT_X), 0.0f);
+    EXPECT_EQ(Input::getGamepadAxis(pad, D_GAMEPAD_AXIS_LEFT_X), 1.0f) << "polling the device still reads it";
+
+    // Keyboard&Mouse: hidden
+    InputSchemeTracker::setOverride(InputScheme::KeyboardMouse);
+    frames(1);
+    EXPECT_FALSE(GamepadCursor::isActive());
+}
+
+// A clicks at the cursor through the documents' mouse pointer (:hover follows it), A held drags a
+// range; none of it reaches Input, the game's mouse events or the scheme
+TEST_F(InputGamepadCursorTest, CursorClicksHoversDrags){
+    loadCursor("html, body { margin: 0; }\n"
+               "#go { position: absolute; left: 100px; top: 100px; width: 200px; height: 60px; }\n"
+               "#drag { position: absolute; left: 100px; top: 300px; width: 600px; height: 30px; }\n",
+               "<button id=\"go\">Go</button>\n<div id=\"drag\"></div>");
+    ClickCounter clicks;
+    element("go")->AddEventListener(Rml::EventId::Click, &clicks);
+    const Vector2 mouse = Input::getMousePosition();
+
+    GamepadCursor::setPosition(Vector2(200.0f, 130.0f));
+    EXPECT_TRUE(element("go")->IsPseudoClassSet("hover"));
+    press(D_GAMEPAD_BUTTON_A);
+    EXPECT_EQ(clicks.clicks, 1);
+    EXPECT_TRUE(gameDowns == std::vector<int>{D_GAMEPAD_BUTTON_X}) << "A is the cursor's";
+
+    // A held over the drag pad, the stick moves right: pointer moves with the button held reach it
+    HeldMoves held;
+    Rml::Element* dragPad = element("drag");
+    dragPad->AddEventListener(Rml::EventId::Pointermove, &held);
+    GamepadCursor::setPosition(Vector2(110.0f, 315.0f));
+    Engine::systemGamepadButtonDown(pad, D_GAMEPAD_BUTTON_A);
+    EXPECT_FALSE(Input::getMouseButton(D_MOUSE_BUTTON_LEFT));
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 1.0f);
+    frames(30);
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 0.0f);
+    Engine::systemGamepadButtonUp(pad, D_GAMEPAD_BUTTON_A);
+    EXPECT_GT(held.moves, 10) << "a drag: moves with the left button held";
+    EXPECT_GT(held.lastX, 200.0f);
+    dragPad->RemoveEventListener(Rml::EventId::Pointermove, &held);
+
+    EXPECT_EQ(Input::getMousePosition(), mouse) << "the cursor is not the mouse";
+    EXPECT_FALSE(Input::getMouseButton(D_MOUSE_BUTTON_LEFT));
+    EXPECT_EQ(gameMouseDowns, 0);
+    frames(1);
+    EXPECT_EQ(InputSchemeTracker::getCurrent(), InputScheme::Gamepad);
+    element("go")->RemoveEventListener(Rml::EventId::Click, &clicks);
+}
+
+// the right stick scrolls at the cursor at Scroll Speed lines/s; the d-pad moves the focus and the
+// cursor jumps to it; a focus set by a script moves it too
+TEST_F(InputGamepadCursorTest, CursorScrollsAndJumpsToFocus){
+    loadCursor("html, body { margin: 0; }\n"
+               "#list { position: absolute; left: 0; top: 0; width: 400px; height: 300px; overflow-y: auto; }\n"
+               "#list div { height: 4000px; }\n"
+               "#b1, #b2 { position: absolute; left: 600px; width: 200px; height: 40px; }\n"
+               "#b1 { top: 100px; } #b2 { top: 300px; }\n",
+               "<div id=\"list\"><div></div></div>\n<button id=\"b1\">1</button><button id=\"b2\">2</button>");
+    Rml::Element* list = element("list");
+    GamepadCursor::setPosition(Vector2(200.0f, 150.0f));
+    // one wheel line down at the cursor (the documents' mouse pointer), as the reference
+    ASSERT_TRUE(system().eventOnWheel(0.0f, -1.0f, 0));
+    frames(30);
+    const float lineHeight = list->GetScrollTop();
+    ASSERT_GT(lineHeight, 0.0f);
+    list->SetScrollTop(0.0f);
+    frames(1);
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_RIGHT_Y, 1.0f);
+    frames(60);
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_RIGHT_Y, 0.0f);
+    frames(30);
+    EXPECT_NEAR(list->GetScrollTop(), 20.0f * lineHeight, 20.0f * lineHeight * 0.05f) << "Scroll Speed 20 lines/s for 1 s";
+
+    // the d-pad: from the element under the cursor (nothing focused) to the next one
+    GamepadCursor::setPosition(Vector2(700.0f, 120.0f));
+    press(D_GAMEPAD_BUTTON_DPAD_DOWN);
+    EXPECT_EQ(focusId(), "b2");
+    EXPECT_EQ(GamepadCursor::getPosition(), Vector2(700.0f, 320.0f)) << "the centre of the new focus";
+    EXPECT_TRUE(element("b2")->IsPseudoClassSet("focus-visible"));
+
+    doc().getElementById("b1").focus();
+    frames(1);
+    EXPECT_EQ(GamepadCursor::getPosition(), Vector2(700.0f, 120.0f));
+}
+
+// a press the cursor holds ends without a click when it goes: the mouse moved (Keyboard&Mouse) or
+// the document hidden
+TEST_F(InputGamepadCursorTest, CursorCancelsOnDeactivate){
+    loadCursor("html, body { margin: 0; }\n#go { position: absolute; left: 100px; top: 100px; width: 200px; height: 60px; }\n",
+               "<button id=\"go\">Go</button>");
+    ClickCounter clicks, cancels;
+    element("go")->AddEventListener(Rml::EventId::Click, &clicks);
+    element("go")->AddEventListener(Rml::EventId::Pointercancel, &cancels);
+
+    GamepadCursor::setPosition(Vector2(200.0f, 130.0f));
+    Engine::systemGamepadButtonDown(pad, D_GAMEPAD_BUTTON_A);
+    Engine::systemMouseMove(150.0f, 130.0f, 0);
+    Engine::systemMouseMove(170.0f, 130.0f, 0);
+    frames(2);
+    EXPECT_NE(InputSchemeTracker::getCurrent(), InputScheme::Gamepad);
+    EXPECT_FALSE(GamepadCursor::isActive());
+    Engine::systemGamepadButtonUp(pad, D_GAMEPAD_BUTTON_A);
+    EXPECT_EQ(cancels.clicks, 1);
+    EXPECT_EQ(clicks.clicks, 0);
+
+    // back on the pad, then the document goes while A is held
+    usePad();
+    frames(1);
+    ASSERT_TRUE(GamepadCursor::isActive());
+    GamepadCursor::setPosition(Vector2(200.0f, 130.0f));
+    Engine::systemGamepadButtonDown(pad, D_GAMEPAD_BUTTON_A);
+    doc().hide();
+    frames(2);
+    EXPECT_FALSE(GamepadCursor::isActive());
+    Engine::systemGamepadButtonUp(pad, D_GAMEPAD_BUTTON_A);
+    EXPECT_FALSE(element("go")->IsPseudoClassSet("active")) << "the press ended";
+    EXPECT_EQ(clicks.clicks, 0);
+    element("go")->RemoveEventListener(Rml::EventId::Click, &clicks);
+    element("go")->RemoveEventListener(Rml::EventId::Pointercancel, &cancels);
+}
+
+// off (no Gamepad Cursor document) with a pad moving: the overlay never loads, the stick is the game's
+TEST_F(InputGamepadCursorTest, CursorZeroCostWhenOff){
+    load(kGridCss, kGridBody);
+    usePad();
+    const uint32_t loads = UIDocumentSystem::getCursorOverlayLoads();
+    for (int i = 0; i < 60; i++){
+        Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, (i % 2) ? 0.8f : -0.8f);
+        frames(1);
+    }
+    EXPECT_FALSE(GamepadCursor::isActive());
+    EXPECT_EQ(UIDocumentSystem::getCursorOverlayLoads(), loads);
+    EXPECT_FALSE(gameAxes.empty()) << "nothing took the stick";
+
+    // the cursor's share of a frame, 600 frames with the pad's stick moving: no allocation (R26)
+    constexpr int offFrames = 600;
+    testsupport::ThreadAllocationCount allocations;
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < offFrames; i++){
+        Input::setGamepadAxisValue(pad, D_GAMEPAD_AXIS_LEFT_X, (i % 2) ? 0.8f : -0.8f);
+        GamepadCursor::update(cursorFrame);
+    }
+    const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / offFrames;
+    std::printf("[bench] cursor_off_frame_ns %.1f, %llu allocations in %d frames (budget: one cached boolean, 0 allocations)\n", ns,
+                (unsigned long long)allocations.count(), offFrames);
+    if (testsupport::countsAllocations()) {
+        EXPECT_EQ(allocations.count(), 0u);
+    }
+    EXPECT_FALSE(GamepadCursor::isActive());
+}
+
+// R26: active and moving, the cursor's frame (one hit test, one pointer move, the overlay) within
+// 20 us on a desktop; printed here, enforced with JASPER_TEST_PERF_SLACK (the benchmark run)
+TEST_F(InputGamepadCursorTest, CursorFrameBench){
+    loadCursor("html, body { margin: 0; }\n"
+               ".row { display: flex; flex-wrap: wrap; gap: 4px; }\nbutton { width: 60px; height: 30px; }\n",
+               std::string("<div class=\"row\">") +
+               "<button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button>"
+               "<button>7</button><button>8</button><button>9</button><button>10</button><button>11</button><button>12</button></div>");
+    ASSERT_TRUE(GamepadCursor::isActive());
+    GamepadCursor::setPosition(Vector2(10.0f, 10.0f));
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 0.6f);
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_Y, 0.1f);
+    frames(12);   // past the acceleration ramp
+
+    constexpr int benchFrames = 300;
+    double total = 0.0;
+    uint64_t cursorAllocations = 0;
+    std::vector<Vector2> path;
+    path.reserve(benchFrames);
+    for (int i = 0; i < benchFrames; i++){
+        // back and forth across the buttons: a hover change most frames
+        if (GamepadCursor::getPosition().x > 700.0f)
+            GamepadCursor::setPosition(Vector2(10.0f, 10.0f));
+        const testsupport::ThreadAllocationCount allocations;
+        const auto start = std::chrono::steady_clock::now();
+        GamepadCursor::update(cursorFrame);
+        total += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+        cursorAllocations += allocations.count();
+        path.push_back(GamepadCursor::getPosition());
+    }
+    const double us = total / benchFrames;
+
+    // the documents' own mouse move along the same path (RmlUi's hover and event dispatch): what
+    // the cursor's frame may allocate, since the cursor adds nothing of its own
+    uint64_t documentAllocations = 0;
+    for (const Vector2& point : path){
+        const testsupport::ThreadAllocationCount allocations;
+        system().eventOnPointerMove(0, point.x, point.y, 0, false, false);
+        documentAllocations += allocations.count();
+    }
+
+    // still (the stick at rest): no allocation at all
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 0.0f);
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_Y, 0.0f);
+    GamepadCursor::update(cursorFrame);
+    const testsupport::ThreadAllocationCount still;
+    for (int i = 0; i < benchFrames; i++)
+        GamepadCursor::update(cursorFrame);
+
+    std::printf("[bench] cursor_frame_us %.2f (budget 20 us desktop, 60 us mobile), %.1f allocations per moving frame "
+                "(the documents' own mouse move: %.1f), %llu in %d still frames\n", us, double(cursorAllocations) / benchFrames,
+                double(documentAllocations) / benchFrames, (unsigned long long)still.count(), benchFrames);
+    if (testsupport::countsAllocations()){
+        EXPECT_EQ(still.count(), 0u) << "an active cursor that does not move allocates nothing";
+        EXPECT_LE(cursorAllocations, documentAllocations) << "a moving cursor allocates no more than the documents' pointer move";
+    }
+    if (testsupport::perfSlack() > 0.0) {
+        EXPECT_LE(us, 20.0 * testsupport::perfSlack());
+    }
+    EXPECT_TRUE(GamepadCursor::isActive());
+}
+
+// AC13: the cursor clicks a component UI Button and drags a component On-Screen Stick with A held
+TEST_F(InputGamepadCursorTest, GamepadCursorPressesComponentButton){
+    InputActions::loadDefaults();
+    InputActions::resetRuntimeState();
+    // the document has nothing over the component UI: its pointer passes through to it
+    loadCursor("html, body { margin: 0; }\n#corner { position: absolute; left: 1100px; top: 600px; width: 100px; height: 60px; }\n",
+               "<button id=\"corner\">Corner</button>");
+    Button& button = fixture->add<Button>();
+    button.setPosition(700, 100);
+    button.setSize(200, 80);
+    int clicks = 0;
+    button.getComponent<ButtonComponent>().onClick.add(cursorTag, std::function<void()>([&clicks](){ clicks++; }));
+    OnScreenStick& stick = fixture->add<OnScreenStick>();
+    stick.setPosition(100, 300);
+    stick.setSize(200, 200);
+    stick.getStick().mode = OnScreenStickMode::FIXED;
+    stick.getStick().background = stick.getEntity();   // its own rect: centre (200, 400), radius 100
+    frames(2);
+
+    GamepadCursor::setPosition(Vector2(800.0f, 140.0f));
+    press(D_GAMEPAD_BUTTON_A);
+    EXPECT_EQ(clicks, 1) << "A clicked the component Button once";
+    EXPECT_EQ(gameMouseDowns, 0);
+
+    // A held on the stick's centre, the cursor moves right: the stick follows, then lets go
+    GamepadCursor::setPosition(Vector2(200.0f, 400.0f));
+    Engine::systemGamepadButtonDown(pad, D_GAMEPAD_BUTTON_A);
+    EXPECT_TRUE(stick.getStick().pressed);
+    GamepadCursor::setPosition(Vector2(250.0f, 400.0f));
+    frames(1);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.5f, 0.05f) << "half a radius right";
+    Engine::systemGamepadButtonUp(pad, D_GAMEPAD_BUTTON_A);
+    frames(1);
+    EXPECT_FALSE(stick.getStick().pressed);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.0f, 1e-4f);
+    button.getComponent<ButtonComponent>().onClick.remove(cursorTag);
+    InputActions::resetRuntimeState();
+}
+
+// the cursor graphic: an overlay above every document, its hot spot on the point, never hit
+TEST_F(InputGamepadCursorTest, CursorDrawnOnTop){
+    loadCursor("html, body { margin: 0; }\n#go { position: absolute; left: 100px; top: 100px; width: 200px; height: 60px; }\n",
+               "<button id=\"go\">Go</button>");
+    GamepadCursor::setPosition(Vector2(200.0f, 130.0f));
+    frames(1);
+    Rml::Context* rml = context();
+    Rml::ElementDocument* overlay = nullptr;
+    for (int i = 0; i < rml->GetNumDocuments(); i++){
+        if (rml->GetDocument(i)->GetSourceURL() == "[gamepad-cursor]")
+            overlay = rml->GetDocument(i);
+    }
+    ASSERT_NE(overlay, nullptr);
+    EXPECT_TRUE(overlay->IsVisible());
+    Rml::Element* image = overlay->GetElementById("cursor");
+    ASSERT_NE(image, nullptr);
+    const Rml::Vector2f at = image->GetAbsoluteOffset(Rml::BoxArea::Border);
+    EXPECT_NEAR(at.x, 200.0f, 0.5f);
+    EXPECT_NEAR(at.y, 130.0f, 0.5f);
+    EXPECT_NEAR(image->GetBox().GetSize(Rml::BoxArea::Border).x, 32.0f, 0.5f);
+    // above the documents, and the button under it still hovers
+    EXPECT_TRUE(element("go")->IsPseudoClassSet("hover"));
+
+    // a hot spot of (16, 16): the graphic's centre on the point
+    GamepadCursorSettings settings;
+    settings.hotSpot = Vector2(16.0f, 16.0f);
+    GamepadCursor::setDefaults(settings);
+    GamepadCursor::setPosition(Vector2(200.0f, 130.0f));
+    frames(1);
+    EXPECT_NEAR(image->GetAbsoluteOffset(Rml::BoxArea::Border).x, 184.0f, 0.5f);
+    GamepadCursor::setDefaults(GamepadCursorSettings());
+
+    InputSchemeTracker::setOverride(InputScheme::KeyboardMouse);
+    frames(1);
+    EXPECT_FALSE(overlay->IsVisible());
 }

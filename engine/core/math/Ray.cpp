@@ -6,6 +6,8 @@
 
 #include "Scene.h"
 #include "component/MeshComponent.h"
+#include "physics/PhysicsQueryOptions.h"
+#include "registry/PhysicsLayers.h"
 #include "registry/TagManager.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
@@ -368,7 +370,10 @@ RayReturn Ray::intersects(const Rigidbody2D& body) const{
         Vector3 point = Vector3(intersectionPoint.x * ptmScale, intersectionPoint.y * ptmScale, 0);
         Vector3 normal = Vector3(intersectionNormal.x, intersectionNormal.y, 0);
 
-        return {true, closestFraction, point, normal, body.getEntity(), colliderIndex};
+        RayReturn result = {true, closestFraction, point, normal, body.getEntity(), colliderIndex};
+        result.scene = body.getScene();
+        result.body2D = true;
+        return result;
     }
 
     return NO_HIT;
@@ -410,7 +415,10 @@ RayReturn Ray::intersects(const Rigidbody2D& body, size_t shape) const{
         Vector3 point = Vector3(closest.point.x * ptmScale, closest.point.y * ptmScale, 0);
         Vector3 normal = Vector3(closest.normal.x, closest.normal.y, 0);
 
-        return {true, closest.fraction, point, normal, body.getEntity(), shape};
+        RayReturn result = {true, closest.fraction, point, normal, body.getEntity(), shape};
+        result.scene = body.getScene();
+        result.body2D = true;
+        return result;
     }
 
     return NO_HIT;
@@ -444,7 +452,9 @@ RayReturn Ray::intersects(const Rigidbody& body) const{
 
             size_t colliderIndex = shapeRef->GetSubShapeUserData(hit.mSubShapeID2);
 
-            return {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), body.getEntity(), colliderIndex};
+            RayReturn result = {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), body.getEntity(), colliderIndex};
+            result.scene = body.getScene();
+            return result;
         }
     }
 
@@ -463,7 +473,9 @@ RayReturn Ray::intersects(const Rigidbody& body, size_t shape) const{
             if (bodycomp.colliders[shape].shape->CastRay(ray, id_creator, hit)){
                 JPH::Vec3 normal = bodycomp.colliders[shape].shape->GetSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
 
-                return {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), body.getEntity(), shape};
+                RayReturn result = {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), body.getEntity(), shape};
+                result.scene = body.getScene();
+                return result;
             }
         }
     }
@@ -536,7 +548,7 @@ namespace{
 
 }
 
-RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities, uint32_t layerMask, std::vector<RayReturn>* allHits) const{
+RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities, uint32_t layerMask, std::vector<RayReturn>* allHits, const QueryOptions* options) const{
     if (allHits){
         allHits->clear();
     }
@@ -601,15 +613,38 @@ RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool
         context.onlyStatic = onlyStatic;
         context.ignoreEntities = ignoreEntities;
         context.maskBits = maskBits;
+        context.skipSensors = options && !Physics2D::hitsTriggers(*options);
 
-        b2World_CastRay(world, bOrigin, translation, Box2DLayers::makeQueryFilter(categoryBits, layerMask), Box2DAux::CastCallback, &context);
+        const b2QueryFilter queryFilter = Box2DLayers::makeQueryFilter(categoryBits, layerMask);
+        // Unity queriesStartInColliders: the colliders around the origin, at fraction 0 (Box2D's
+        // ray leaves a polygon it starts in without a hit). Found first, so a closest-hit ray
+        // stops there.
+        if (options && Physics2D::startsInColliders(*options) && b2LengthSquared(translation) > 0.0f){
+            struct StartContext{
+                Box2DWorldRayCastContext* ray;
+                b2Vec2 origin;
+                b2Vec2 normal;
+            } start{&context, bOrigin, b2Neg(b2Normalize(translation))};
+            b2World_OverlapPoint(world, bOrigin, b2Transform_identity, queryFilter, [](b2ShapeId shapeId, void* data) -> bool {
+                StartContext* start = static_cast<StartContext*>(data);
+                // the ray callback's own filters, at fraction 0
+                Box2DAux::CastCallback(shapeId, start->origin, start->normal, 0.0f, start->ray);
+                return start->ray->outputs != nullptr || !start->ray->hit;
+            }, &start);
+        }
+        if (!context.hit || context.outputs){
+            b2World_CastRay(world, bOrigin, translation, queryFilter, Box2DAux::CastCallback, &context);
+        }
 
         auto toRayReturn = [&](const Box2DWorldRayCastOutput& output) -> RayReturn {
             Entity entity = static_cast<Entity>(reinterpret_cast<uintptr_t>(b2Body_GetUserData(output.bodyId)));
             size_t colliderIndex = reinterpret_cast<size_t>(b2Shape_GetUserData(output.shapeId));
             Vector3 point = Vector3(output.point.x * ptmScale, output.point.y * ptmScale, 0);
             Vector3 normal = Vector3(output.normal.x, output.normal.y, 0);
-            return {true, output.fraction, point, normal, entity, colliderIndex};
+            RayReturn hit = {true, output.fraction, point, normal, entity, colliderIndex};
+            hit.scene = scene;
+            hit.body2D = true;
+            return hit;
         };
 
         if (allHits){
@@ -646,7 +681,7 @@ RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool
 
             // layer, category and mask are tested per body in Jolt's broad phase walk
             const JoltQueryObjectLayerFilter objectLayerFilter(physicsSystem->getObjectLayerTable3D(), layerMask, categoryBits, maskBits);
-            const OnlyStaticBodyFilter bodyFilter(onlyStatic, ignoreEntities);
+            const OnlyStaticBodyFilter bodyFilter(onlyStatic, ignoreEntities, options && !Physics::hitsTriggers(*options));
             const JPH::BroadPhaseLayerFilter anyBroadPhaseLayer;
             const JPH::SpecifiedBroadPhaseLayerFilter specifiedBroadPhaseLayer(JPH::BroadPhaseLayer(broadPhaseLayer3D < 0 ? 0 : (uint8_t)broadPhaseLayer3D));
             const JPH::BroadPhaseLayerFilter& broadPhaseFilter = broadPhaseLayer3D < 0
@@ -664,18 +699,37 @@ RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool
                     entity = PhysicsCallbacks::bodyEntity(hit_body.GetUserData());
                     colliderIndex = hit_body.GetShape()->GetSubShapeUserData(subShapeId);
                 }
-                return {true, fraction, getPoint(fraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), entity, colliderIndex};
+                RayReturn result = {true, fraction, getPoint(fraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), entity, colliderIndex};
+                result.scene = scene;
+                return result;
             };
+
+            // Unity's rules: a convex collider the ray starts in is hollow, so its inside is a
+            // back face and not a hit; mesh back faces only when asked
+            JPH::RayCastSettings settings;
+            if (options){
+                settings.mTreatConvexAsSolid = options->hitFromInside;
+                settings.mBackFaceModeTriangles = Physics::hitsBackfaces(*options) ? JPH::EBackFaceMode::CollideWithBackFaces : JPH::EBackFaceMode::IgnoreBackFaces;
+            }
 
             if (allHits){
                 JPH::AllHitCollisionCollector<JPH::CastRayCollector> collector;
-                physicsSystem->getNarrowPhaseQuery3D().CastRay(JPH::RRayCast(ray), JPH::RayCastSettings(), collector, broadPhaseFilter, objectLayerFilter, bodyFilter);
+                physicsSystem->getNarrowPhaseQuery3D().CastRay(JPH::RRayCast(ray), settings, collector, broadPhaseFilter, objectLayerFilter, bodyFilter);
                 allHits->reserve(collector.mHits.size());
                 for (const JPH::RayCastResult& hit : collector.mHits){
                     allHits->push_back(toRayReturn(hit.mBodyID, hit.mSubShapeID2, hit.mFraction));
                 }
                 sortAndDedupeHits(*allHits);
                 return allHits->empty() ? NO_HIT : allHits->front();
+            }
+
+            if (options){
+                JPH::ClosestHitCollisionCollector<JPH::CastRayCollector> collector;
+                physicsSystem->getNarrowPhaseQuery3D().CastRay(JPH::RRayCast(ray), settings, collector, broadPhaseFilter, objectLayerFilter, bodyFilter);
+                if (collector.HadHit()){
+                    return toRayReturn(collector.mHit.mBodyID, collector.mHit.mSubShapeID2, collector.mHit.mFraction);
+                }
+                return NO_HIT;
             }
 
             JPH::RayCastResult hit;

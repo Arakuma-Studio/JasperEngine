@@ -2,6 +2,10 @@
 
 Served as `jasper://docs/shaders`.
 
+A Blender-style cavity, edge highlight or bevel look on 3D meshes is not a shader: it is the
+scene's Cavity post effect, `set_scene_settings` `post_processing.cavity_enabled`
+(jasper://docs/post-processing).
+
 ## Library shaders (use these first)
 
 The engine ships ready-made shaders, referenced as `"library:<name>"`. `list_shaders` lists
@@ -123,13 +127,25 @@ rock, sand, dirt); bricks, tiles and planks lose their grid.
   (`stochasticSetup`, `stochasticTextureLuminance`, `stochasticTexture`, `stochasticNormal`...).
   The texture must wrap (REPEAT).
 
+## Vertex Blend
+
+`library:vertex_blend` blends texture layers by the mesh's vertex colours: a base and the R, G,
+B, A layers (`shaderFeatures` `LAYERS_TWO` default, to `LAYERS_FIVE`). Paint black for the base
+alone; a channel at 1 is its layer. Each layer has `u_<layer>Albedo` (height in alpha: where it
+is higher it shows first), `u_<layer>Normal`, `<layer>Tiling`, `<layer>Contrast` (wider
+blends), `<layer>Roughness`, `<layer>Metallic` (`<layer>`: `base`, `r`, `g`, `b`, `a`). `ORM`
+adds `u_<layer>Orm` maps up to four layers; `TRIPLANAR` projects by world position instead of
+`uv1`.
+
 ## Presets, stencil and the extra pass
 
-Outlines, see-through silhouettes, stencil masks (portals, windows, sprite masks) and
+An object's outline is the Outline component (`jasper://docs/materials`, Outline); the presets
+below are hand-made looks per material. Outlines, see-through silhouettes, stencil masks (portals, windows, sprite masks) and
 draw-once transparency are set up in one step by a **material preset**:
 `list_material_presets` lists them (id, name, description and the material fields each
 sets); `apply_material_preset preset="outline_hull" entity="Hero"` applies one to every
-submesh (or `submesh`) of the given GameObjects as one undo step, or to a `.material` file
+submesh (or `submesh`) of the given GameObjects (one without a Mesh: the meshes below it) as one
+undo step, or to a `.material` file
 (`path`; linked submeshes follow). A preset changes only the fields it sets; a submesh
 linked to a `.material` file becomes its own material. Tune the result with the paths below.
 
@@ -305,8 +321,15 @@ uniform u_fs_customParams {
   with `get_shader_uniforms`. Scripts: `mesh:setShaderUniform("amplitude", 0.3)`,
   `scene:setPostProcessUniform(0, "amount", 0.5)`.
 - The engine writes `time` (seconds since startup), `sceneTime` (the scene clock: scaled game
-  seconds, held while paused) and `resolution` (xy = render target size, zw = 1/size) every
-  frame: declare them to animate, never set them.
+  seconds, held while paused; Unity's `_Time.y`) and `resolution` (xy = render target size, zw =
+  1/size) every frame: declare them to animate, never set them. `gameTime` is an ordinary name.
+- A material parameter of the same name wins over the Mesh's `shaderUniforms` (a warning says
+  so). Per-object values over a shared material are Property Overrides (Unity's
+  MaterialPropertyBlock): `set_shader_uniform` with `override: true` (with `submesh`: that
+  submesh's), Lua `MaterialPropertyBlock` and `mesh:setPropertyBlock`, or the Mesh Inspector's
+  Property Overrides foldout. They are saved with the mesh and take any member and `@texture`
+  (textures through `set_properties` `propertyOverrides.textures`); the built-in Lit takes
+  `baseColorFactor`, `emissiveFactor` and `baseColorTexture`.
 - One scalar kind per block (do not mix int and float members: GL flattens the block after
   its first member). No matrix or array members (they stay zero): one scalar/vector member per
   value. An unset member reads zero: set it or give the effect a sensible fallback.
@@ -498,7 +521,19 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
 - `// @state shadows=off`: the submesh casts no shadows (the mesh's `castShadows` still
   turns them off too). Other keys: `blend`, `cull`, `zwrite`, `ztest`, `offset`, `queue`,
   `priority`. A shader can offset its queue order with `@state priority=N`, added to the
-  material's sort priority.
+  material's sort priority; each submesh keeps its own (a hull at priority 1 draws after the
+  opaque meshes at 0).
+- `// @state blend=<src>,<dst>[,<srcAlpha>,<dstAlpha>] blendop=<op>`: ShaderLab's `Blend` and
+  `BlendOp` (factors `One`, `Zero`, `SrcColor`, `SrcAlpha`, `DstColor`, `DstAlpha` and the
+  `OneMinus` forms; ops `add`, `sub`, `revsub`, `min`, `max`, or `<colour op>,<alpha op>`); a
+  material sets its own with `blendMode: custom` and `blendSrc`, `blendDst`, `blendSrcAlpha`,
+  `blendDstAlpha`, `blendOp`, `blendOpAlpha`.
+- `// @texture <uniform> <default> main`: the texture `Mesh:setTexture` writes (else the first
+  `@texture`).
+- `// @depth` with `<name>_depth.vert` / `<name>_depth.frag` beside a fork: its own depth
+  program, which shadows, the depth pre-pass and SSAO draw with (a missing one is the library's
+  generic `surface_depth`); a mesh's `customDepthShader` wins. Forking a library shader with
+  `@depth` copies its depth program.
 - `// @state[<DEFINE>] key=value...`: state applied while a `@feature` or `@keywords`
   value (`<GROUP>_<VALUE>`) is on; `[!<DEFINE>]` while it is off. Order: material value,
   then the matching `@state[...]` lines (later wins), then `@state`, then the engine's.
@@ -511,8 +546,9 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
   files (`library:water`'s `BUILTIN_TEXTURES`, `library:unlit`'s `PARTICLE_TEXTURE`: what Particle
   Systems draw with when no base map is set, jasper://docs/particles).
 - `// @require <inputs> feature=<DEFINE>`: inputs required only while that define is on
-  (`feature=!<DEFINE>`: while off). Inputs: `normals tangents uv1 uv2 color rawcolor
-  position smoothnormals normalmap`; `rawcolor` gives `v_rawColor`, the vertex colour without the
+  (`feature=!<DEFINE>`: while off). Inputs: `normals vertexnormals tangents uv1 uv2 color rawcolor
+  position smoothnormals normalmap`; `vertexnormals` feeds the vertex stage the mesh's normals
+  without the `v_normal` varying `normals` adds (lighting or displacing in the vertex stage); `rawcolor` gives `v_rawColor`, the vertex colour without the
   instance colour (`v_color` is their product); `smoothnormals` gives a `SURFACE_DISPLACE`
   hook `surfaceSmoothNormal`, the object-space normal averaged over the vertices sharing a
   position (the engine makes it), so an inverted hull pushed along it has no gaps at hard

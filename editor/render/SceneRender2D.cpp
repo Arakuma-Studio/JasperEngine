@@ -72,57 +72,10 @@ editor::SceneRender2D::~SceneRender2D(){
     // a gizmo the scene destroyed is not deleted through an id that may be another entity's now
     dropGoneGizmos();
 
-    for (auto& pair : containerLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : stickLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : bodyLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : jointLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : controllerLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : light2DLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : shadowCaster2DLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : linePointLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : polygonPointLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : trackLines) {
-        delete pair.second;
-    }
-
-    for (auto& pair : cameraObjects) {
-        delete pair.second.icon;
-        delete pair.second.lines;
-    }
-
-    for (auto& pair : soundObjects) {
-        delete pair.second.icon;
-    }
-
-    for (auto& pair : light2DObjects) {
-        delete pair.second.icon;
+    const RenderSystem& render = *scene->getSystem<RenderSystem>();
+    deleteGizmos(icons, render);
+    for (GizmoLineBatch* batch : lineBatches()) {
+        deleteGizmos(*batch, render);
     }
 
     delete gridLines;
@@ -135,7 +88,7 @@ editor::SceneRender2D::~SceneRender2D(){
 }
 
 // square marker for an editable point (occluder polygon points, line endpoints)
-void editor::SceneRender2D::addPointHandle(LineRenderer* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color){
+void editor::SceneRender2D::addPointHandle(GizmoLineBatch* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color){
     linesObj->addLine(worldPoint + Vector3(-halfSize, -halfSize, 0.0f), worldPoint + Vector3(halfSize, -halfSize, 0.0f), color);
     linesObj->addLine(worldPoint + Vector3(halfSize, -halfSize, 0.0f), worldPoint + Vector3(halfSize, halfSize, 0.0f), color);
     linesObj->addLine(worldPoint + Vector3(halfSize, halfSize, 0.0f), worldPoint + Vector3(-halfSize, halfSize, 0.0f), color);
@@ -143,10 +96,7 @@ void editor::SceneRender2D::addPointHandle(LineRenderer* linesObj, const Vector3
 }
 
 void editor::SceneRender2D::createOrUpdateLight2DLines(Entity entity, const Transform& transform, const Light2DComponent& light, bool visible, bool highlighted){
-    LineRenderer* lightLinesObj = light2DLines[entity];
-
-    lightLinesObj->clearLines();
-    lightLinesObj->setVisible(transform.visible && visible);
+    GizmoLineBatch* lightLinesObj = &light2DLines;
 
     if (!transform.visible || !visible){
         return;
@@ -167,13 +117,11 @@ void editor::SceneRender2D::createOrUpdateLight2DLines(Entity entity, const Tran
 
 // the circles the knob travels in (handle range) and reads 0 in (dead zone), on the base
 void editor::SceneRender2D::createOrUpdateStickLines(Entity entity, const OnScreenStickComponent& stick, bool visible){
-    LineRenderer* linesObj = stickLines[entity];
-    linesObj->clearLines();
+    GizmoLineBatch* linesObj = &stickLines;
 
     const Transform* transform = scene->findComponent<Transform>(stick.background);
     const RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(stick.background);
     const bool shown = visible && transform && layout;
-    linesObj->setVisible(shown);
     if (!shown){
         return;
     }
@@ -194,10 +142,7 @@ void editor::SceneRender2D::createOrUpdateStickLines(Entity entity, const OnScre
 }
 
 void editor::SceneRender2D::createOrUpdateShadowCaster2DLines(Entity entity, const Transform& transform, const ShadowCaster2DComponent& occluder, bool visible, bool highlighted){
-    LineRenderer* occluderLinesObj = shadowCaster2DLines[entity];
-
-    occluderLinesObj->clearLines();
-    occluderLinesObj->setVisible(transform.visible && visible && occluder.enabled);
+    GizmoLineBatch* occluderLinesObj = &shadowCaster2DLines;
 
     if (!transform.visible || !visible || !occluder.enabled){
         return;
@@ -262,10 +207,7 @@ void editor::SceneRender2D::createOrUpdateShadowCaster2DLines(Entity entity, con
 // entity's own rendered geometry); the sub-selected endpoint is drawn bigger
 // and in the selection color
 void editor::SceneRender2D::createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible){
-    LineRenderer* handlesObj = linePointLines[entity];
-
-    handlesObj->clearLines();
-    handlesObj->setVisible(transform.visible && visible);
+    GizmoLineBatch* handlesObj = &linePointLines;
 
     if (!transform.visible || !visible){
         return;
@@ -285,25 +227,11 @@ void editor::SceneRender2D::createOrUpdateLinePointLines(Entity entity, const Tr
     }
 }
 
-bool editor::SceneRender2D::instanciateTrackLines(Entity entity){
-    if (trackLines.find(entity) == trackLines.end()){
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        trackLines[entity] = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
 // path of a selected TranslateTracks entity: a polyline through its keyframe
 // values (in the action target's parent space) with square point handles; the
 // sub-selected point is drawn bigger and in the selection color
 void editor::SceneRender2D::createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible){
-    LineRenderer* trackObj = trackLines[entity];
-
-    trackObj->clearLines();
-    trackObj->setVisible(visible);
+    GizmoLineBatch* trackObj = &trackLines;
 
     if (!visible){
         return;
@@ -335,10 +263,7 @@ void editor::SceneRender2D::createOrUpdateTrackLines(Entity entity, const Transl
 // vertex handles for a selected Polygon / MeshPolygon entity; the sub-selected
 // vertex is drawn bigger and in the selection color
 void editor::SceneRender2D::createOrUpdatePolygonPointLines(Entity entity, const Transform& transform, const std::vector<PolygonPoint>& points, bool isMesh, bool visible){
-    LineRenderer* handlesObj = polygonPointLines[entity];
-
-    handlesObj->clearLines();
-    handlesObj->setVisible(transform.visible && visible);
+    GizmoLineBatch* handlesObj = &polygonPointLines;
 
     if (!transform.visible || !visible){
         return;
@@ -359,10 +284,7 @@ void editor::SceneRender2D::createOrUpdatePolygonPointLines(Entity entity, const
 }
 
 void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transform& transform, Rigidbody2DComponent& body, bool visible, bool highlighted){
-    LineRenderer* bodyLinesObj = bodyLines[entity];
-
-    bodyLinesObj->clearLines();
-    bodyLinesObj->setVisible(transform.visible && visible);
+    GizmoLineBatch* bodyLinesObj = &bodyLines;
 
     const bool hasGenerated = body.generated && !body.generated->chunks.empty();
     if (!transform.visible || !visible || (body.colliders.empty() && !hasGenerated)){
@@ -611,9 +533,7 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
 // the upright capsule the CharacterController2DSystem moves: as it sizes it, the world scale
 // (radius by x, height by y) and no rotation
 void editor::SceneRender2D::createOrUpdateController2DLines(Entity entity, const Transform& transform, const CharacterController2DComponent& controller, bool visible, bool highlighted){
-    LineRenderer* linesObj = controllerLines[entity];
-    linesObj->clearLines();
-    linesObj->setVisible(transform.visible && visible);
+    GizmoLineBatch* linesObj = &controllerLines;
     if (!transform.visible || !visible){
         return;
     }
@@ -650,10 +570,7 @@ void editor::SceneRender2D::createOrUpdateController2DLines(Entity entity, const
 }
 
 void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2DComponent& joint, bool visible, bool highlighted){
-    LineRenderer* jointLinesObj = jointLines[entity];
-
-    jointLinesObj->clearLines();
-    jointLinesObj->setVisible(visible);
+    GizmoLineBatch* jointLinesObj = &jointLines;
 
     if (!visible){
         return;
@@ -860,22 +777,19 @@ void editor::SceneRender2D::updateGridLines(){
     }
 }
 
+std::vector<editor::GizmoLineBatch*> editor::SceneRender2D::lineBatches(){
+    return {&containerLines, &bodyLines, &jointLines, &controllerLines, &light2DLines, &shadowCaster2DLines, &linePointLines,
+            &polygonPointLines, &trackLines, &stickLines, &cameraLines};
+}
+
 void editor::SceneRender2D::dropGoneGizmos(){
     SceneRender::dropGoneGizmos();
 
     const RenderSystem& render = *scene->getSystem<RenderSystem>();
-    dropGoneGizmos(containerLines, render);
-    dropGoneGizmos(bodyLines, render);
-    dropGoneGizmos(jointLines, render);
-    dropGoneGizmos(light2DLines, render);
-    dropGoneGizmos(shadowCaster2DLines, render);
-    dropGoneGizmos(linePointLines, render);
-    dropGoneGizmos(polygonPointLines, render);
-    dropGoneGizmos(trackLines, render);
-    dropGoneGizmos(stickLines, render);
-    dropGoneGizmos(cameraObjects, render, &CameraObjects::icon, &CameraObjects::lines);
-    dropGoneGizmos(soundObjects, render, &SoundObjects::icon);
-    dropGoneGizmos(light2DObjects, render, &Light2DObjects::icon);
+    dropGoneGizmos(icons, render);
+    for (GizmoLineBatch* batch : lineBatches()) {
+        dropGoneGizmos(*batch, render);
+    }
 }
 
 void editor::SceneRender2D::hideAllGizmos(){
@@ -886,65 +800,9 @@ void editor::SceneRender2D::hideAllGizmos(){
     tileLines->setVisible(false);
     documentLines->setVisible(false);
     navigationLines->setVisible(false);
-    for (auto& pair : containerLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : bodyLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : jointLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : controllerLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : light2DLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : stickLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : shadowCaster2DLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : linePointLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : polygonPointLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : trackLines) {
-        pair.second->setVisible(false);
-    }
-    for (auto& pair : cameraObjects) {
-        pair.second.icon->setVisible(false);
-        pair.second.lines->setVisible(false);
-    }
-    for (auto& pair : soundObjects) {
-        pair.second.icon->setVisible(false);
-    }
-    for (auto& pair : light2DObjects) {
-        pair.second.icon->setVisible(false);
-    }
-}
-
-void editor::SceneRender2D::hideEntityGizmos(Entity entity){
-    SceneRender::hideEntityGizmos(entity);
-
-    for (auto* lines : {&containerLines, &bodyLines, &jointLines, &controllerLines, &light2DLines, &stickLines,
-                        &shadowCaster2DLines, &linePointLines, &polygonPointLines, &trackLines}) {
-        auto it = lines->find(entity);
-        if (it != lines->end()) it->second->setVisible(false);
-    }
-    if (auto cameraObject = cameraObjects.find(entity); cameraObject != cameraObjects.end()) {
-        cameraObject->second.icon->setVisible(false);
-        cameraObject->second.lines->setVisible(false);
-    }
-    if (auto sound = soundObjects.find(entity); sound != soundObjects.end()) {
-        sound->second.icon->setVisible(false);
-    }
-    if (auto light = light2DObjects.find(entity); light != light2DObjects.end()) {
-        light->second.icon->setVisible(false);
+    icons.hide();
+    for (GizmoLineBatch* batch : lineBatches()) {
+        batch->hide();
     }
 }
 
@@ -1009,43 +867,31 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
         return false;
     };
 
-    std::set<Entity> currentContainers;
-    std::set<Entity> currentBodies;
-    std::set<Entity> currentJoints;
-    std::set<Entity> currentControllers;
-    std::set<Entity> currentLights2D;
-    std::set<Entity> currentSticks;
-    std::set<Entity> currentOccluders2D;
-    std::set<Entity> currentLinePoints;
-    std::set<Entity> currentParticleShapes;
-    std::set<Entity> currentPolygonPoints;
-    std::set<Entity> currentTrackLines;
-    std::set<Entity> currentCameras;
-    std::set<Entity> currentSounds;
+    // every kind's batch is rebuilt from the entities each update; a batch is written to its
+    // renderer only when what it draws changed
+    icons.begin();
+    particleShapeLines.begin();
+    for (GizmoLineBatch* batch : lineBatches()) {
+        batch->begin();
+    }
+    const float iconScale = 0.25f;
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
-        // what an inactive GameObject has stays made (no churn when it toggles), hidden below
-        const bool active = gizmoActive(entity);
+        // Unity draws no gizmo for a GameObject inactive in hierarchy (the icon picker refuses it too)
+        if (!gizmoActive(entity)){
+            continue;
+        }
         if (signature.test(scene->getComponentId<LayoutGroupComponent>()) && 
             signature.test(scene->getComponentId<Transform>()) && 
             signature.test(scene->getComponentId<RectTransformComponent>())){
 
-            currentContainers.insert(entity);
-
-            if (containerLines.find(entity) == containerLines.end()){
-                ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-                containerLines[entity] = overlay(new LineRenderer(scene));
-            }
-
-            LineRenderer* containerLinesObj = containerLines[entity];
-            containerLinesObj->clearLines();
+            GizmoLineBatch* containerLinesObj = &containerLines;
 
             Transform& transform = scene->getComponent<Transform>(entity);
             RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
             LayoutGroupComponent& container = scene->getComponent<LayoutGroupComponent>(entity);
 
             if (transform.visible && !displaySettings.hideContainerGuides){
-                containerLinesObj->setVisible(true);
 
                 Vector4 borderColor(0.55f, 0.35f, 0.85f, 1.0f); // Purple color for container
                 Vector4 divColor(0.55f, 0.35f, 0.85f, 0.5f); // Semi-transparent purple for divisions
@@ -1079,8 +925,6 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
                         containerLinesObj->addLine(bp4, bp1, divColor);
                     }
                 }
-            }else{
-                containerLinesObj->setVisible(false);
             }
         }
 
@@ -1088,8 +932,6 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            currentBodies.insert(entity);
-            ensureOverlayLines(bodyLines, entity);
             bool highlighted = isDescendantSelected(entity);
             bool isVisible = displaySettings.showAllBodies || highlighted;
 
@@ -1100,15 +942,11 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             const CharacterController2DComponent& controller = scene->getComponent<CharacterController2DComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            currentControllers.insert(entity);
-            ensureOverlayLines(controllerLines, entity);
             const bool highlighted = isDescendantSelected(entity);
             createOrUpdateController2DLines(entity, transform, controller, displaySettings.showAllBodies || highlighted, highlighted);
         }
 
         if (signature.test(scene->getComponentId<OnScreenStickComponent>())){
-            currentSticks.insert(entity);
-            ensureOverlayLines(stickLines, entity);
             createOrUpdateStickLines(entity, scene->getComponent<OnScreenStickComponent>(entity), isDescendantSelected(entity));
         }
 
@@ -1116,50 +954,32 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             Light2DComponent& light2d = scene->getComponent<Light2DComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            currentLights2D.insert(entity);
-            ensureOverlayLines(light2DLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdateLight2DLines(entity, transform, light2d, highlighted, highlighted);
 
-            bool newLight = false;
-            if (light2DObjects.find(entity) == light2DObjects.end()){
-                ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
-                light2DObjects[entity].icon = new Sprite(toolslayer.getScene());
-                newLight = true;
+            if (transform.visible){
+                icons.add(GizmoIcon::Bulb, transform.worldPosition, billboardScreenScale(transform.worldPosition, iconScale));
             }
-
-            Light2DObjects& lo = light2DObjects[entity];
-            if (newLight){
-                setupLight2DIcon(lo);
-            }
-
-            lo.icon->setPosition(transform.worldPosition);
-            lo.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
-            lo.icon->setVisible(transform.visible);
         }
 
         if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
             ShadowCaster2DComponent& shadowcaster2d = scene->getComponent<ShadowCaster2DComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            currentOccluders2D.insert(entity);
-            ensureOverlayLines(shadowCaster2DLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdateShadowCaster2DLines(entity, transform, shadowcaster2d, highlighted, highlighted);
         }
 
         if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
-            updateParticleShapeLines(entity, selectedEntities.find(entity) != selectedEntities.end(), currentParticleShapes);
+            updateParticleShapeLines(entity, selectedEntities.find(entity) != selectedEntities.end());
         }
 
         if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())){
             LineRendererComponent& linesComp = scene->getComponent<LineRendererComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            currentLinePoints.insert(entity);
-            ensureOverlayLines(linePointLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdateLinePointLines(entity, transform, linesComp, highlighted);
@@ -1169,8 +989,6 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             PolygonComponent& polygon = scene->getComponent<PolygonComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            currentPolygonPoints.insert(entity);
-            ensureOverlayLines(polygonPointLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdatePolygonPointLines(entity, transform, polygon.points, false, highlighted);
@@ -1178,8 +996,6 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             MeshPolygonComponent& polygon = scene->getComponent<MeshPolygonComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            currentPolygonPoints.insert(entity);
-            ensureOverlayLines(polygonPointLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdatePolygonPointLines(entity, transform, polygon.points, true, highlighted);
@@ -1188,8 +1004,6 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
         if (signature.test(scene->getComponentId<TranslateTracksComponent>())){
             TranslateTracksComponent& tracks = scene->getComponent<TranslateTracksComponent>(entity);
 
-            currentTrackLines.insert(entity);
-            instanciateTrackLines(entity);
             // the tracks entity has no Transform, so gate on direct selection
             bool isSelected = selectedEntities.find(entity) != selectedEntities.end();
 
@@ -1199,8 +1013,6 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
         if (signature.test(scene->getComponentId<Joint2DComponent>())){
             Joint2DComponent& joint = scene->getComponent<Joint2DComponent>(entity);
 
-            currentJoints.insert(entity);
-            ensureOverlayLines(jointLines, entity);
 
             bool isSelectedJoint = selectedEntities.find(entity) != selectedEntities.end();
             bool isBodyASelected = joint.bodyA != NULL_ENTITY && isDescendantSelected(joint.bodyA);
@@ -1216,46 +1028,13 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
                 Transform& transform = scene->getComponent<Transform>(entity);
                 CameraComponent& cameraComp = scene->getComponent<CameraComponent>(entity);
 
-                currentCameras.insert(entity);
-
-                bool newCamera = false;
-                if (cameraObjects.find(entity) == cameraObjects.end()){
-                    ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
-                    cameraObjects[entity].icon = new Sprite(toolslayer.getScene());
-                    cameraObjects[entity].lines = new LineRenderer(toolslayer.getScene());
-                    newCamera = true;
-                }
-
-                CameraObjects& co = cameraObjects[entity];
-
-                if (newCamera){
-                    setupCameraIcon(co);
-                }
-
-                // Update icon position and scale
-                co.icon->setPosition(transform.worldPosition);
-                co.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
-
-                // Update frustum lines
-                co.lines->setPosition(transform.worldPosition);
-
-                Quaternion rotation;
-                rotation.fromRotationMatrix(cameraComp.viewMatrix.inverse());
-                co.lines->setRotation(rotation);
-
                 if (transform.visible && !displaySettings.hideCameraView){
-                    co.icon->setVisible(true);
-                    co.lines->setVisible(true);
-
-                    bool isMainCam = (mainCamera == entity);
+                    icons.add(GizmoIcon::Camera, transform.worldPosition, billboardScreenScale(transform.worldPosition, iconScale));
+                    Quaternion rotation;
+                    rotation.fromRotationMatrix(cameraComp.viewMatrix.inverse());
                     // a selected camera shows its whole frustum, near to far (Unity)
-                    updateCameraFrustum(co, cameraComp, isMainCam, selectedEntities.find(entity) != selectedEntities.end());
-                }else{
-                    co.icon->setVisible(false);
-                    co.lines->clearLines();
-                    co.lines->setVisible(false);
-                    // Reset cache so lines are redrawn when visible again
-                    co.type = CameraType::CAMERA_UI;
+                    drawCameraFrustumLines(cameraLines, cameraComp, mainCamera == entity, selectedEntities.find(entity) != selectedEntities.end(),
+                                           Matrix4::composeTRS(transform.worldPosition, rotation, Vector3(1.0f, 1.0f, 1.0f)));
                 }
             }
         }
@@ -1263,32 +1042,17 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
         if (signature.test(scene->getComponentId<AudioSourceComponent>()) && signature.test(scene->getComponentId<Transform>())){
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            currentSounds.insert(entity);
 
-            bool newSound = false;
-            if (soundObjects.find(entity) == soundObjects.end()){
-                ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
-                soundObjects[entity].icon = new Sprite(toolslayer.getScene());
-                newSound = true;
-            }
-
-            SoundObjects& so = soundObjects[entity];
-            if (newSound){
-                setupSoundIcon(so);
-            }
-
-            so.icon->setPosition(transform.worldPosition);
-            so.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
-            so.icon->setVisible(transform.visible);
-
-            if (displaySettings.hideSoundIcons) {
-                so.icon->setVisible(false);
+            if (transform.visible && !displaySettings.hideSoundIcons){
+                icons.add(GizmoIcon::Sound, transform.worldPosition, billboardScreenScale(transform.worldPosition, iconScale));
             }
         }
+    }
 
-        if (!active) {
-            hideEntityGizmos(entity);
-        }
+    flushGizmos(icons);
+    flushGizmos(particleShapeLines);
+    for (GizmoLineBatch* batch : lineBatches()) {
+        flushGizmos(*batch);
     }
 
     // --- Canvas outline for a selected UI Document (documents are not pickable here:
@@ -1344,138 +1108,6 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
                     tileLines->addLine(p4, p1, color);
                 }
             }
-        }
-    }
-
-    auto it = containerLines.begin();
-    while (it != containerLines.end()) {
-        if (currentContainers.find(it->first) == currentContainers.end()) {
-            delete it->second;
-            it = containerLines.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    auto itBody = bodyLines.begin();
-    while (itBody != bodyLines.end()) {
-        if (currentBodies.find(itBody->first) == currentBodies.end()) {
-            delete itBody->second;
-            itBody = bodyLines.erase(itBody);
-        } else {
-            ++itBody;
-        }
-    }
-
-    auto itController = controllerLines.begin();
-    while (itController != controllerLines.end()) {
-        if (currentControllers.find(itController->first) == currentControllers.end()) {
-            delete itController->second;
-            itController = controllerLines.erase(itController);
-        } else {
-            ++itController;
-        }
-    }
-
-    auto itJoint = jointLines.begin();
-    while (itJoint != jointLines.end()) {
-        if (currentJoints.find(itJoint->first) == currentJoints.end()) {
-            delete itJoint->second;
-            itJoint = jointLines.erase(itJoint);
-        } else {
-            ++itJoint;
-        }
-    }
-
-    for (auto it = stickLines.begin(); it != stickLines.end();) {
-        if (currentSticks.find(it->first) == currentSticks.end()) {
-            delete it->second;
-            it = stickLines.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    auto itLight2D = light2DLines.begin();
-    while (itLight2D != light2DLines.end()) {
-        if (currentLights2D.find(itLight2D->first) == currentLights2D.end()) {
-            delete itLight2D->second;
-            itLight2D = light2DLines.erase(itLight2D);
-        } else {
-            ++itLight2D;
-        }
-    }
-
-    auto itLight2DObj = light2DObjects.begin();
-    while (itLight2DObj != light2DObjects.end()) {
-        if (currentLights2D.find(itLight2DObj->first) == currentLights2D.end()) {
-            delete itLight2DObj->second.icon;
-            itLight2DObj = light2DObjects.erase(itLight2DObj);
-        } else {
-            ++itLight2DObj;
-        }
-    }
-
-    auto itShadowCaster2D = shadowCaster2DLines.begin();
-    while (itShadowCaster2D != shadowCaster2DLines.end()) {
-        if (currentOccluders2D.find(itShadowCaster2D->first) == currentOccluders2D.end()) {
-            delete itShadowCaster2D->second;
-            itShadowCaster2D = shadowCaster2DLines.erase(itShadowCaster2D);
-        } else {
-            ++itShadowCaster2D;
-        }
-    }
-
-    dropParticleShapeLines(currentParticleShapes);
-
-    auto itLinePoints = linePointLines.begin();
-    while (itLinePoints != linePointLines.end()) {
-        if (currentLinePoints.find(itLinePoints->first) == currentLinePoints.end()) {
-            delete itLinePoints->second;
-            itLinePoints = linePointLines.erase(itLinePoints);
-        } else {
-            ++itLinePoints;
-        }
-    }
-
-    auto itPolygonPoints = polygonPointLines.begin();
-    while (itPolygonPoints != polygonPointLines.end()) {
-        if (currentPolygonPoints.find(itPolygonPoints->first) == currentPolygonPoints.end()) {
-            delete itPolygonPoints->second;
-            itPolygonPoints = polygonPointLines.erase(itPolygonPoints);
-        } else {
-            ++itPolygonPoints;
-        }
-    }
-
-    auto itTrackLines = trackLines.begin();
-    while (itTrackLines != trackLines.end()) {
-        if (currentTrackLines.find(itTrackLines->first) == currentTrackLines.end()) {
-            delete itTrackLines->second;
-            itTrackLines = trackLines.erase(itTrackLines);
-        } else {
-            ++itTrackLines;
-        }
-    }
-
-    auto itCam = cameraObjects.begin();
-    while (itCam != cameraObjects.end()) {
-        if (currentCameras.find(itCam->first) == currentCameras.end()) {
-            delete itCam->second.icon;
-            delete itCam->second.lines;
-            itCam = cameraObjects.erase(itCam);
-        } else {
-            ++itCam;
-        }
-    }
-
-    auto itSound = soundObjects.begin();
-    while (itSound != soundObjects.end()) {
-        if (currentSounds.find(itSound->first) == currentSounds.end()) {
-            delete itSound->second.icon;
-            itSound = soundObjects.erase(itSound);
-        } else {
-            ++itSound;
         }
     }
 

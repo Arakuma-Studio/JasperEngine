@@ -1,4 +1,4 @@
-# Camera shake and camera follow
+# Camera bounds, shake and follow
 
 Served as `jasper://docs/camera`. Two components, both run by the scene's `CameraControlSystem`:
 
@@ -11,6 +11,14 @@ Served as `jasper://docs/camera`. Two components, both run by the scene's `Camer
 
 User guide: `docs/camera.md`. Lua reference: `jasper://docs/lua-api`, section 4.9.1.
 
+## Orthographic bounds
+
+An orthographic camera with `autoResize` (the default) takes the canvas's pixels as its bounds.
+`set_properties` of `camera.left`, `right`, `bottom` or `top` turns `autoResize` off in the same
+undo step, so the bounds stay. For Unity's Size, set `camera.orthographicSize` (> 0): the bounds
+become +-size up and down and +-size x aspect sideways, and follow every canvas or render target
+size; a bound written later turns it off. A Pixel Perfect Camera sets the bounds itself.
+
 ## Frame order
 
 Each frame, `Scene::update` runs the systems in order. Animations and physics interpolation come
@@ -21,7 +29,10 @@ Shakers**, then the UI layout and `RenderSystem`, which builds the view matrices
 - A target moved in `onUpdate`, by physics or by an animation is followed the same frame. The
   follower composes the target's local transforms itself and does not use the world matrices
   cached by the last render.
-- Writes made in `onPostUpdate` reach the camera one frame late.
+- A target moved in `onPostUpdate`, a timer or a coroutine is followed the same frame: the
+  follow step runs again from where the frame's step started, with its delta, so damping is the
+  same as for a target moved in `onUpdate`. A camera a script moves itself in `onPostUpdate` (no
+  Camera Follow) is drawn there the same frame, and the 3D listener hears from there.
 - A held simulation or a paused app freezes everything. The offset holds.
 
 ## Shakes

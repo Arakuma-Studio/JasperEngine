@@ -6,6 +6,8 @@
 #include "EditorVersion.h"
 #include "Out.h"
 #include "diag/HangWatchdog.h"
+#include "diag/Journal.h"
+#include "log/Logger.h"
 #include "script/LuaWatchdog.h"
 
 #include <cstdio>
@@ -19,6 +21,17 @@ using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
 namespace {
+
+    // the Console's "journal" category (Category menu): every Gameplay Journal entry, its time
+    // left to the Console
+    JE_LOG_CATEGORY(logCategoryJournal, "journal", ::jasperengine::LogLevel::Info)
+
+    // the entry after "+<seconds> f<frame> ": the Console records both itself
+    void mirrorJournalEntry(std::string_view entry) {
+        const size_t space = entry.find(' ');
+        Logger::write(LogLevel::Info, logCategoryJournal(), space == std::string_view::npos ? entry : entry.substr(space + 1),
+                      nullptr, LogFlagNoRateLimit);
+    }
 
     struct State {
         std::mutex mutex;
@@ -81,6 +94,10 @@ void EditorDiagnostics::install(const fs::path& configDirectory) {
     if (const char* allow = std::getenv("JASPERENGINE_ALLOW_DEBUG_CRASH"); allow && std::strcmp(allow, "1") == 0) {
         s.debugCrashAllowed = true;
     }
+
+    // the editor's Gameplay Journal: 64 KiB, before the handler takes its ring
+    diag::journal::configure(64 << 10);
+    diag::journal::setListener(&mirrorJournalEntry);
 
     diag::crash::Config config = diag::crash::editorConfig(configDirectory, JASPERENGINE_EDITOR_VERSION);
     config.logFile = configDirectory / "editor.log";
@@ -217,7 +234,7 @@ fs::path EditorDiagnostics::primaryFile(const diag::crash::ReportInfo& report) {
     fs::path best;
     for (const fs::path& file : report.files) {
         const std::string name = file.filename().string();
-        if (name == "crash.txt") return file;
+        if (name == "crash.txt" || name == "user.txt") return file;
         if (name.rfind("hang-", 0) == 0 && file.extension() == ".txt") best = file;
         if (best.empty() && name == "session.json") best = file;
     }

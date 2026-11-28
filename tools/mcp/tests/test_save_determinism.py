@@ -80,11 +80,13 @@ async def source_export(ed: Editor, name: str) -> Path:
 
 
 def generated_sources(root: Path) -> dict:
-    """{relative path: text} of the generated C++ of a source export"""
+    """{relative path: bytes} of what a source export generates: its C++ and its cooked content
+    (game.json, the scenes and prefabs every build loads: S98 D1)"""
     project = root / "project"
-    sources = {p.relative_to(root).as_posix(): p.read_text(errors="replace")
-               for p in sorted(project.rglob("*")) if p.is_file() and p.suffix in (".cpp", ".h")}
+    sources = {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(project.rglob("*"))
+               if p.is_file() and (p.suffix in (".cpp", ".h") or (project / "content") in p.parents)}
     assert any(rel.endswith("/main.cpp") for rel in sources), f"no generated main.cpp under {project}"
+    assert any(rel.endswith(".jscn") for rel in sources), f"no cooked scene under {project}"
     return sources
 
 
@@ -172,9 +174,7 @@ async def test_text_atlas_is_not_saved(ed: Editor):
     await ed.call("save_scene", scene=sid)
     ed.check(path.read_bytes() == sampler_save, f"the sampler-only texture re-saves byte for byte: {first_difference(sampler_save, path.read_bytes())}")
     sources = generated_sources(await source_export(ed, "export-text"))
-    text = "\n".join(sources.values())
-    ed.check("font|" not in text, "the generated code names no font atlas")
-    ed.check("ui.texture.setMinFilter(TextureFilter::NEAREST);" in text, "the generated code sets the authored sampler")
+    ed.check(not any(b"font|" in data for data in sources.values()), "the build names no font atlas")
 
 
 # -- the Scene view's icons and derived transparency ----------------------------------------------------------
@@ -368,7 +368,7 @@ async def test_added_gameobject_of_a_missing_prefab_resaves_alike(ed: Editor):
     ed.check(missing == before, f"the Missing Prefab's scene as before:\n{first_difference(before, missing)}")
 
 
-# -- the Default Camera's generated code ---------------------------------------------------------------------
+# -- the Default Camera in a build ---------------------------------------------------------------------
 
 
 async def test_default_camera_code_does_not_follow_the_editor_view(ed: Editor):
@@ -386,9 +386,8 @@ async def test_default_camera_code_does_not_follow_the_editor_view(ed: Editor):
     second = generated_sources(await source_export(ed, "camera-2"))
     await ed.call("set_scene_view_layout", scene=sid, layout="single")
     differ = {}
-    for name, text in first.items():
-        if second.get(name) != text:
-            a, b = text.splitlines(), (second.get(name) or "").splitlines()
-            differ[name] = [f"{x!r} / {y!r}" for x, y in zip(a, b) if x != y][:6]
+    for name, data in first.items():
+        if second.get(name) != data:
+            differ[name] = first_difference(data, second.get(name) or b"")
     ed.check_eq(sorted(first), sorted(second), "the same generated files")
     ed.check_eq(differ, {}, "two exports with another editor view size generate the same sources")

@@ -24,6 +24,8 @@ TEST(CompatCodes, AppendixFSeverities){
         {"HTMLUI-AT-0007", "import-problem", Severity::Warning, true},
         {"HTMLUI-IMP-0001", "not-imported", Severity::Error, false},
         {"HTMLUI-SVG-0003", "svg-internal-css", Severity::Info, false},
+        {"HTMLUI-FONT-0001", "fallback-glyph", Severity::Info, true},
+        {"HTMLUI-INPUT-0001", "page-press-listener", Severity::Info, false},
     };
     for (const Expected& e : expected){
         const DiagCodeInfo* byId = findDiagnosticCode(e.id);

@@ -3,6 +3,8 @@
 
 #include "SchemaArgs.h"
 
+#include "util/NearestName.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
@@ -628,6 +630,12 @@ std::vector<std::string> closeMatches(const std::string& word, const std::vector
     std::stable_sort(scored.begin(), scored.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
     std::vector<std::string> out;
     for (const auto& item : scored) out.push_back(item.second);
+    // the server's suggestion first (McpRegistry): a camelCase spelling or one '_' off beats a typo
+    const std::string nearest = NearestIdentifier(word, candidates);
+    if (!nearest.empty()) {
+        out.erase(std::remove(out.begin(), out.end(), nearest), out.end());
+        out.insert(out.begin(), nearest);
+    }
     return out;
 }
 

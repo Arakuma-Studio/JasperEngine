@@ -106,7 +106,8 @@ void HtmlImageElement::ensureLoaded(){
     const std::string source = GetAttribute<Rml::String>("src", "");
     if (source.empty())
         return;
-    loaded = image.load(this, source);
+    // decoding="sync": complete in the first frame that shows it (default async: drawn once decoded)
+    loaded = image.load(this, source, GetAttribute<Rml::String>("decoding", "") == "sync");
     if (!loaded)
         return;
     natural = image.intrinsicSize();
@@ -228,7 +229,8 @@ void HtmlImageElement::OnResize(){
 
 void HtmlImageElement::OnAttributeChange(const Rml::ElementAttributes& changed_attributes){
     Rml::Element::OnAttributeChange(changed_attributes);
-    if (changed_attributes.count("src") || changed_attributes.count("sprite") || changed_attributes.count("rect")){
+    if (changed_attributes.count("src") || changed_attributes.count("sprite") || changed_attributes.count("rect") ||
+        changed_attributes.count("decoding")){
         sourceDirty = true;
         DirtyLayout();
     }

@@ -4,7 +4,8 @@
 // S28: crash and hang diagnostics (docs/crash-diagnostics.md), tool group "diagnostics"
 //
 //   get_editor_health      responsive or hung, answered off the main thread
-//   get_crash_reports      the report folders (crash, hang, abnormal exit) and the startup notice
+//   get_crash_reports      the report folders (crash, hang, abnormal exit, user) and the startup notice;
+//                          a game's reports root (folder), kinds, files to inline, group (util/CrashGroups)
 //   dismiss_crash_notice   the notice's Dismiss: writes `handled`
 //   set_hang_watchdog      Preferences > Diagnostics
 //   debug_crash            crash or hang the editor on purpose (--allow-debug-crash only)
@@ -18,10 +19,14 @@
 #include "mcp/McpCall.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
+#include "util/CrashGroups.h"
 #include "util/EditorDiagnostics.h"
+#include "util/StringUtils.h"
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <map>
 #include <thread>
 
 namespace jasperengine::editor::mcp {
@@ -64,42 +69,123 @@ std::string readText(const fs::path& file, size_t limit) {
     return text;
 }
 
+// R37: a game's reports root holds the report folders, or (as pulled from a device) reports/ does
+std::optional<fs::path> reportsFolderAt(const fs::path& path) {
+    if (!diag::crash::listReportsIn(path, 1).empty()) return path;
+    if (!diag::crash::listReportsIn(path / "reports", 1).empty()) return path / "reports";
+    return std::nullopt;
+}
+
+// a file's text for `files`: at most 64 KiB, a binary file only named
+Json inlinedText(const fs::path& file) {
+    std::string text = readText(file, 64 * 1024);
+    if (text.find('\0') != std::string::npos) {
+        std::error_code ec;
+        return "(binary, " + std::to_string(fs::file_size(file, ec)) + " bytes: read it from folder)";
+    }
+    return StringUtils::repairUtf8(text);
+}
+
 void getCrashReportsTool(const CallPtr& call) {
     const Json& args = call->args();
     const size_t limit = static_cast<size_t>(args.value("limit", 10));
     const bool includeText = args.value("include_text", false);
-    const std::optional<diag::crash::ReportInfo> notice = EditorDiagnostics::notice();
-    Json reports = Json::array();
-    for (const diag::crash::ReportInfo& report : diag::crash::listReports(limit)) {
-        Json files = Json::array();
-        for (const fs::path& file : report.files) files.push_back(file.filename().string());
-        Json entry = {
-            {"id", report.id},
-            {"kind", report.kind},
-            {"time", report.time},
-            {"reason", report.reason},
-            {"product", report.product},
-            {"version", report.version},
-            {"folder", report.folder.string()},
-            {"files", files},
-            {"handled", report.handled},
-            {"this_session", report.id == diag::crash::sessionId()},
-        };
-        if (includeText) {
-            const fs::path primary = EditorDiagnostics::primaryFile(report);
-            if (primary != report.folder) entry["text"] = readText(primary, 64 * 1024);
+    const bool grouped = args.value("group", false);
+    fs::path folder = diag::crash::reportsDirectory();
+    const bool foreign = args.contains("folder");
+    if (foreign) {
+        const fs::path given = fs::path(args["folder"].get<std::string>());
+        const std::optional<fs::path> found = given.is_absolute() ? reportsFolderAt(given) : std::nullopt;
+        if (!found) {
+            call->fail("No report folder at " + given.string() + ": give a reports root (it holds <yyyymmddThhmmssZ>-<pid> folders).");
+            return;
         }
-        reports.push_back(std::move(entry));
+        folder = *found;
     }
+    std::vector<std::string> kinds;
+    for (const Json& kind : args.value("kinds", Json::array())) kinds.push_back(kind.get<std::string>());
+    std::vector<std::string> files;
+    for (const Json& name : args.value("files", Json::array())) {
+        const std::string file = name.get<std::string>();
+        if (file.empty() || file == "." || file == ".." || file.find_first_of("/\\") != std::string::npos) {
+            call->fail("files: " + file + " is not a file name; give names inside a report folder, as journal.txt.");
+            return;
+        }
+        files.push_back(file);
+    }
+
+    // a filter or groups need every report; a plain listing reads only the newest `limit`
+    std::vector<diag::crash::ReportInfo> listed = diag::crash::listReportsIn(folder, kinds.empty() && !grouped ? limit : 0);
+    if (!kinds.empty()) {
+        listed.erase(std::remove_if(listed.begin(), listed.end(), [&](const diag::crash::ReportInfo& r) {
+            return std::find(kinds.begin(), kinds.end(), r.kind) == kinds.end();
+        }), listed.end());
+    }
+    const std::optional<diag::crash::ReportInfo> notice = EditorDiagnostics::notice();
     Json data = {
-        {"reports", reports},
-        {"folder", diag::crash::reportsDirectory().string()},
+        {"folder", folder.string()},
         {"session", diag::crash::sessionId()},
         {"notice_open", notice.has_value()},
     };
     if (notice) data["notice"] = {{"id", notice->id}, {"text", EditorDiagnostics::noticeText(*notice)}};
-    std::string text = std::to_string(reports.size()) + (reports.size() == 1 ? " report" : " reports") + " in " +
-                       diag::crash::reportsDirectory().string();
+    std::string text;
+    if (grouped) {
+        std::map<int64_t, std::string> isoOf;
+        for (const diag::crash::ReportInfo& report : listed) isoOf[report.timeUnix] = report.time;
+        Json groups = Json::array();
+        bool unresolved = false;
+        for (const crashgroups::Group& g : crashgroups::group(listed)) {
+            if (groups.size() >= limit) break;
+            Json versions = Json::object(), platforms = Json::object();
+            for (const auto& [name, count] : g.versions) versions[name] = count;
+            for (const auto& [name, count] : g.platforms) platforms[name] = count;
+            // the newest 20: count says how many there are
+            std::vector<std::string> ids(g.reportIds.begin(), g.reportIds.begin() + static_cast<std::ptrdiff_t>(std::min<size_t>(g.reportIds.size(), 20)));
+            groups.push_back({{"signature", g.signature}, {"kind", g.kind}, {"count", g.count}, {"versions", versions},
+                              {"platforms", platforms}, {"first_seen", isoOf[g.firstSeen]}, {"last_seen", isoOf[g.lastSeen]},
+                              {"report_ids", ids}, {"unresolved", g.unresolved}});
+            unresolved = unresolved || g.unresolved;
+        }
+        data["groups"] = groups;
+        data["reports_read"] = listed.size();
+        if (unresolved) data["next"] = "Names need symbols: python3 -I tools/crash/symbolicate.py --group " + folder.string() + " --symbols <dir>";
+        text = std::to_string(groups.size()) + (groups.size() == 1 ? " group" : " groups") + " of " + std::to_string(listed.size()) +
+               (listed.size() == 1 ? " report" : " reports") + " in " + folder.string();
+    } else {
+        if (listed.size() > limit) listed.resize(limit);
+        Json reports = Json::array();
+        for (const diag::crash::ReportInfo& report : listed) {
+            Json names = Json::array();
+            for (const fs::path& file : report.files) names.push_back(file.filename().string());
+            Json entry = {
+                {"id", report.id},
+                {"kind", report.kind},
+                {"time", report.time},
+                {"reason", report.reason},
+                {"product", report.product},
+                {"version", report.version},
+                {"folder", report.folder.string()},
+                {"files", names},
+                {"handled", report.handled},
+                {"this_session", !foreign && report.id == diag::crash::sessionId()},
+            };
+            if (includeText) {
+                const fs::path primary = EditorDiagnostics::primaryFile(report);
+                if (primary != report.folder) entry["text"] = readText(primary, 64 * 1024);
+            }
+            if (!files.empty()) {
+                Json texts = Json::object();
+                for (const std::string& name : files) {
+                    std::error_code ec;
+                    if (fs::is_regular_file(report.folder / name, ec)) texts[name] = inlinedText(report.folder / name);
+                }
+                entry["texts"] = texts;
+            }
+            reports.push_back(std::move(entry));
+        }
+        data["reports"] = reports;
+        text = std::to_string(reports.size()) + (reports.size() == 1 ? " report" : " reports") + " in " + folder.string();
+    }
     if (notice) text += "; the startup notice is open (" + notice->id + ")";
     call->ok(text + ".", data);
 }
@@ -195,11 +281,16 @@ void registerDiagnosticsTools(McpRegistry& registry) {
         tool.name = "get_crash_reports";
         tool.title = "Get Crash Reports";
         tool.description =
-            "Crash, hang and abnormal_exit report folders of this editor, newest first ({id, kind, time, reason, "
-            "files, handled}), and notice_open (the startup notice). include_text adds crash.txt or the hang report.";
+            "Crash, hang, abnormal_exit and user report folders of this editor, newest first ({id, kind, time, reason, "
+            "files, handled}), and notice_open (the startup notice). include_text adds crash.txt or the hang report. "
+            "folder reads a game's reports; group: true merges similar crashes with counts per version and platform.";
         tool.inputSchema = object({
             {"limit", withDefault(integer("", 1, 100), 10)},
             {"include_text", withDefault(boolean(""), false)},
+            {"folder", string("Absolute path of a reports root. Default: this editor's.")},
+            {"kinds", array(stringEnum("", {"crash", "hang", "abnormal_exit", "user"}), "")},
+            {"group", withDefault(boolean(""), false)},
+            {"files", array(string(""), "File names to inline as text, 64 KiB each.")},
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

@@ -24,8 +24,8 @@ namespace jasperengine{
 
     // the exclusive variants of ShaderType::HTMLUI_POST, in property-bit order
     // YUV: <video> frames (phase 6), appended
-    enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY, YUV };
-    static const int HTMLUI_POST_VARIANT_COUNT = 7;
+    enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY, YUV, BLEND_MODE };
+    static const int HTMLUI_POST_VARIANT_COUNT = 8;
 
     // what a particle system draw needs of its variant (ShaderType::PARTICLES)
     struct ParticlesShaderFlags {
@@ -183,6 +183,11 @@ namespace jasperengine{
         static uint64_t getVatProperty(ShaderType shaderType, bool bones);
         // MESH's LOD cross-fade bit ('Lfd', spec S54): the dithered variant of fading draws
         static uint64_t getLodFadeProperty();
+        // MESH's Vertex Color Draw Mode bits (V1 R102: 'Vcv', 'Vcs', 'Vk1', 'Vk2'): the editor's
+        // view variant of a mesh's shader, its raw vertex colour (channel: 0 RGB, 1-4 R, G, B, A),
+        // and their mask
+        static uint64_t getVertexColorViewProperties(int channel);
+        static uint64_t getVertexColorViewMask();
         static uint64_t getVatProperties(ShaderType shaderType);
         // the variant bit of automatic GPU instancing (HAS_AUTO_INSTANCING: the object block per
         // instance, spec S55) of MESH and DEPTH, 0 for another type
@@ -199,12 +204,21 @@ namespace jasperengine{
         // MESH's 'Dlo': the built-in Lit of a scene whose lights are all directional
         // (DIRECTIONAL_LIGHTS_ONLY: no point or spot path, spot mask or point shadow resources)
         static uint64_t getDirectionalOnlyProperty();
+        // MESH's 'Lst': the scene's Light Steps on a 2D-lit variant (LIGHT2D_STEPS, S78 R3; the
+        // count is u_fs_lighting2d's atlasInfo.z)
+        static uint64_t getLight2DStepsProperty();
         // the variant bit of a terrain's holes (T3 R20: TERRAIN_HOLES) of MESH, DEPTH and GBUFFER, 0 for
         // another type. Never in getFallbackProperties: a dropped hole would draw over the hole.
         static uint64_t getTerrainHolesProperty(ShaderType shaderType);
         // the variant bit of a Terrain World (T4 R58: HAS_TERRAIN_WORLD, 'Twd') of MESH, DEPTH and GBUFFER,
         // 0 for another type. It widens u_vs_terrainParams, so no fallback drops it.
         static uint64_t getTerrainWorldProperty(ShaderType shaderType);
+        // DEPTH's 'Cvn' (S100 R2, DEPTH_NORMALS): the program also writes the view-space normal into
+        // a second attachment (includes/depth_normals.glsl). Never in getFallbackProperties: the
+        // pipelines of a depth pre-pass with normals take two attachments
+        static uint64_t getDepthNormalsProperty();
+        // CAVITY's terms (S100): 'Scr' Screen, 'Wld' World, both for Both
+        static uint64_t getCavityProperties(bool screen, bool world);
         // the GBUFFER bits of a terrain's tier and of its twelve layers (T3 D2: Lit defines do not reach
         // a G-buffer); High has no bit, so its keys stay
         static uint64_t getTerrainTierProperty(terraincore::TerrainQuality quality);

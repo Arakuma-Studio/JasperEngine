@@ -34,9 +34,12 @@ async def test_setup(ed: Editor):
         {"clip": {"guid": b, "path": "sounds/b.wav"}, "weight": 2}]}
     await ed.call("write_file", path=EVENT, content=json.dumps(body, indent=2))
     await ed.call("sync_files")
+    # the .meta comes with the database's take on the new file: a background walk applied on a
+    # later frame (S04 R23), so not always yet when sync_files returns; a tool answering from the
+    # database takes the file in first
+    guid = await guid_of(ed, EVENT)
     ed.check((ed.project / (EVENT + ".meta")).is_file(), "the event got its .meta")
     meta = (ed.project / (EVENT + ".meta")).read_text()
-    guid = await guid_of(ed, EVENT)
     ed.check(guid in meta, f"the GUID is the .meta's: {meta}")
     ed.check(guid not in (ed.project / EVENT).read_text(), "the file body holds no GUID")
 

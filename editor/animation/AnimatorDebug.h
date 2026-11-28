@@ -11,7 +11,11 @@
 //   foot goals it has): an Animator without them reports contact_source "none" and no slide,
 //   never a guess from heights or speeds (R37).
 // - AnimatorOverlayPass is the Scene view's per-frame step: with every flag off it takes no
-//   snapshot and draws no line (R40), and its counters say so.
+//   snapshot and draws no line (R40), and its counters say so. Torso Direction
+//   (docs/specs/mesh-space-rotation.md R30) draws for the selected Animators only and turns their
+//   runtime's recording (AnimatorInstance::setMeshSpaceDebug) on while it draws them, off after.
+// - meshSpaceWarnings is the one rule of the Mesh Space Rotation warning (R29) that the Animator
+//   Inspector and the Animator window's Problems strip show; it proposes and changes nothing.
 // - Thread-safety: main thread (the runtime is read between frames, as the Inspector does).
 // - Editor only: nothing here compiles into a player.
 
@@ -42,6 +46,7 @@ namespace jasperengine{
 namespace jasperengine::anim{
 
     class AnimatorInstance;
+    struct ControllerDef;
 
     // One IK constraint as its last solve left it, world space
     struct AnimatorDebugIK{
@@ -159,8 +164,9 @@ namespace jasperengine::anim{
         bool ik = false;
         bool rootMotion = false;
         bool footTrails = false;
+        bool torsoDirection = false;        // the selected Animators only
 
-        bool any() const { return ik || rootMotion || footTrails; }
+        bool any() const { return ik || rootMotion || footTrails || torsoDirection; }
     };
 
     struct AnimatorOverlayLine{
@@ -182,6 +188,9 @@ namespace jasperengine::anim{
         inline const Vector4 planted(0.25f, 0.9f, 0.3f, 1.0f);
         inline const Vector4 rootPast(0.95f, 0.2f, 0.15f, 1.0f);
         inline const Vector4 rootFuture(0.25f, 0.9f, 0.3f, 1.0f);
+        // Torso Direction: the axis the pass gives, and its ghost without the pass
+        inline const Vector4 applied(0.25f, 0.9f, 0.3f, 1.0f);
+        inline const Vector4 rejected(0.95f, 0.2f, 0.15f, 1.0f);
     }
     // a foot trail's colour: green planted and still, yellow to red with the slide speed, a dim
     // white in the air
@@ -207,22 +216,54 @@ namespace jasperengine::anim{
     void appendAnimatorOverlayLines(const AnimatorDebugSnapshot& snapshot, const AnimatorOverlayFlags& flags,
                                     const AnimatorOverlayHistory* history, std::vector<AnimatorOverlayLine>& out);
 
+    // Torso Direction's axis length, metres; each axis is an arrow (a shaft and a two-line head)
+    inline constexpr float kTorsoAxisLength = 0.6f;
+    inline constexpr size_t kTorsoAxisLines = 3;
+
+    // Torso Direction (R30): per boundary bone of each layer the pass runs on, from the bone, the
+    // way the character's front at rest (+Z of the rig) points at that bone now
+    // (overlaycolor::applied), and where it points without the pass (overlaycolor::rejected) once
+    // an update recorded it (AnimatorInstance::layerMeshSpaceUnpassed)
+    void appendTorsoDirectionLines(const AnimatorInstance& instance, const AnimatorRoot& root, std::vector<AnimatorOverlayLine>& out);
+
     class AnimatorOverlayPass{
     public:
         using Draw = std::function<void(Entity, const std::vector<AnimatorOverlayLine>&)>;
 
         // Once a frame: the Animators among `entities` that ran get a snapshot and their lines
-        // through `draw`. With every flag off nothing happens at all and the history is dropped.
-        void update(Scene* scene, const std::vector<Entity>& entities, const AnimatorOverlayFlags& flags, const Draw& draw);
+        // through `draw`, Torso Direction's for the ones in `selected`. With every flag off
+        // nothing happens at all and the history is dropped.
+        void update(Scene* scene, const std::vector<Entity>& entities, const AnimatorOverlayFlags& flags, const Draw& draw,
+                    const std::vector<Entity>& selected = {});
 
         uint64_t snapshots() const { return snapshotCount; }
         uint64_t lines() const { return lineCount; }
 
     private:
         std::unordered_map<Entity, AnimatorOverlayHistory> histories;
+        // the Animators whose runtime records for Torso Direction (set by this pass)
+        std::vector<Entity> recording;
         std::vector<AnimatorOverlayLine> scratch;
         uint64_t snapshotCount = 0;
         uint64_t lineCount = 0;
     };
+
+    // ---- Mesh Space Rotation in the editor (docs/specs/mesh-space-rotation.md R27, R29) ----
+
+    // the GameObject names of a layer's boundary bones, parents first: where the mask starts or
+    // stops on the bound rig; empty before the bind and for an unmasked layer
+    std::vector<std::string> meshSpaceBoundaryNames(const AnimatorInstance& instance, int layer);
+
+    // R29: a layer of `def` (matched to the bound Animator by name) above 0, Override, the option
+    // off in `def` and in `instance` (a Lua override), weight above 0 in `instance`, whose mask starts at a torso bone under a torso bone it
+    // leaves out (weight 0): by the humanoid's slots when the rig has one (Hips, Spine, Chest,
+    // Upper Chest), else by name (pose::isTorsoBoneName). A mask that takes the hips (under
+    // `Armature` or `B-root`) or starts at an arm does not split the torso. The message names the
+    // first such start in rig order (parents first).
+    struct MeshSpaceWarning{
+        int layer = -1;                     // index in def
+        std::string message;
+    };
+    std::vector<MeshSpaceWarning> meshSpaceWarnings(const ControllerDef& def, const AnimatorInstance& instance);
 
 }

@@ -11,6 +11,8 @@
 #include <game-activity/GameActivity.h>
 #include <string>
 #include "util/FrameLimiter.h"
+#include "input/TextEntry.h"
+#include "AndroidTextInput.h"
 
 struct NativeEngineSavedState {
     bool mHasFocus;
@@ -164,6 +166,11 @@ private:
     bool isAnimating();
 
     void handleGameActivityInput();
+    // the text GameActivity flagged (textInputState): to the document or component field
+    void applyTextInputState();
+
+    // the EditorInfo this activity's IME has (a recreated activity starts from its defaults)
+    jasperengine::android::ImeEditorInfoCache mImeEditorInfo;
 
     void setupJNI();
     void setupPlatformJNI(JNIEnv* env);
@@ -201,8 +208,10 @@ public:
     int getDeviceDegrees();
     // frame pacing without Swappy: applied at the next frame (the context is current there)
     void setFallbackPacing(int swapInterval, double limiterFps);
-    void showSoftInput(std::wstring text);
+    void showSoftInput(const std::wstring& text, const jasperengine::TextEntryTraits& traits);
     void hideSoftInput();
+    // the field's text replaces the IME's (the field rejected or changed what it typed)
+    void setSoftInputText(const std::wstring& text, int selectionStart, int selectionEnd);
 
     std::string getInternalDataPath();
 

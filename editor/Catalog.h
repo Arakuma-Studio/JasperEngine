@@ -114,6 +114,9 @@ namespace jasperengine::editor{
         UpdateFlags_Button              = (uint64_t)1 << 56,
         // a Grid, Tilemap Layer or Tilemap Collider 2D field (S50): their chunks rebuild
         UpdateFlags_TileLayer           = (uint64_t)1 << 57,
+        // a Vertex Colors field (V1 R15): its data reads again when `data` changed and its streams bind
+        // again (enabled, format, initial value)
+        UpdateFlags_VertexColors        = (uint64_t)1 << 58,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -249,12 +252,27 @@ namespace jasperengine::editor{
         TilemapLayerComponent,
         TilemapCollider2DComponent,
         // shows a .titleart through its Image or Sprite (S81 R1)
-        TitleArtRendererComponent
+        TitleArtRendererComponent,
+        // S96 vehicles: Unity's WheelCollider, and an engine and gear box driving them
+        WheelColliderComponent,
+        VehicleDrivetrainComponent,
+        // freezes far or unloaded-ground GameObjects (culling-group-and-simulation-distance R10)
+        SimulationCullingComponent,
+        // plays a .dialogue (dialogue-graphs.md R13)
+        DialogueRunnerComponent,
+        // QuickOutline: outlines its Mesh and the Meshes below it (S94 F22)
+        OutlineComponent,
+        // deforms its Sprite with bone GameObjects (S94 F49)
+        SpriteSkinComponent,
+        // the vertex colors of one placed Model or Mesh, in a .vcolors (V1 R1)
+        VertexColorsComponent,
+        // a place with its own fog look, blended by the camera's position (docs/specs/S101-vapor.md R40)
+        FogZoneComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::TitleArtRendererComponent;
+    constexpr ComponentType LastComponentType = ComponentType::FogZoneComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
@@ -491,6 +509,17 @@ namespace jasperengine::editor{
             return nullptr;
         }
 
+        // Scene property of a physics world setting (S96, physicsWorldSettingFields): a float, int
+        // or bool field of the scene's ScenePhysics2DSettings / ScenePhysics3DSettings
+        template<typename T>
+        static bool physicsWorldFieldMatches(const PhysicsWorldSettingField& field) {
+            using FT = PhysicsWorldSettingField::Type;
+            if constexpr (std::is_same_v<T, bool>) return field.type == FT::Bool;
+            else if constexpr (std::is_same_v<T, int>) return field.type == FT::Int;
+            else if constexpr (std::is_same_v<T, float>) return field.type == FT::Float;
+            else return false;
+        }
+
         // Scene property "post_processing.<snake name>": a PostProcessingSettings field (bool,
         // int (Int and Enum fields: the enum's value), float, Vector3, std::string), null for
         // any other name
@@ -547,16 +576,24 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
+                if constexpr (std::is_same_v<T, UIRenderMode>) return UIRenderMode::OVERLAY;
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
                 if constexpr (std::is_same_v<T, WaterWakeResolution>) return WaterWakeResolution::AUTO;
                 if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
                 if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
+                if constexpr (std::is_same_v<T, AmbientMode>) return AmbientMode::COLOR;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
                 if constexpr (std::is_same_v<T, std::string>) return std::string();
                 if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
                 // Add other types as needed
             }
 
+            if (const PhysicsWorldSettingField* field = findPhysicsWorldSettingField(propertyName)) {
+                if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float>) {
+                    if (physicsWorldFieldMatches<T>(*field))
+                        return static_cast<T>(getPhysicsWorldSetting(*field, scene->getPhysics2DWorldSettings(), scene->getPhysics3DWorldSettings()));
+                }
+            }
             if (const PostProcessingSettings::Field* field = getPostProcessingField(propertyName)) {
                 if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||
                               std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
@@ -624,6 +661,26 @@ namespace jasperengine::editor{
                     return scene->getGlobalIlluminationIntensity();
                 }
             }
+            else if (propertyName == "ambient_mode") {
+                if constexpr (std::is_same_v<T, AmbientMode>) {
+                    return scene->getAmbientMode();
+                }
+            }
+            else if (propertyName == "ambient_sky_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    return scene->getAmbientSkyColor();
+                }
+            }
+            else if (propertyName == "ambient_equator_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    return scene->getAmbientEquatorColor();
+                }
+            }
+            else if (propertyName == "ambient_ground_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    return scene->getAmbientGroundColor();
+                }
+            }
             else if (propertyName == "max_lights_per_object") {
                 if constexpr (std::is_same_v<T, int>) {
                     return scene->getMaxLightsPerObject();
@@ -649,6 +706,16 @@ namespace jasperengine::editor{
                     return scene->getAmbientLight2DIntensity();
                 }
             }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    return scene->getLight2DSteps();
+                }
+            }
+            else if (propertyName == "ambient_light_2d_without_lights") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isAmbientLight2DWithoutLights();
+                }
+            }
             else if (propertyName == "shadows_2d_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) {
                     return scene->getShadow2DQuality();
@@ -672,6 +739,11 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_2d_sub_steps") {
                 if constexpr (std::is_same_v<T, int>) {
                     return scene->getPhysics2DSubSteps();
+                }
+            }
+            else if (propertyName == "fixed_timestep") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getFixedTimestep();
                 }
             }
             else if (propertyName == "light_state") {
@@ -708,6 +780,12 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, SceneColorScale>) {
                     return scene->getSceneColorScale();
                 }
+            }
+            else if (propertyName == "html_ui_render_mode") {
+                if constexpr (std::is_same_v<T, UIRenderMode>) return scene->getHtmlUiRenderMode();
+            }
+            else if (propertyName == "html_ui_msaa_samples") {
+                if constexpr (std::is_same_v<T, int>) return scene->getHtmlUiMsaaSamples();
             }
             else if (propertyName == "planar_reflection_resolution") {
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return scene->getPlanarReflectionResolution();
@@ -867,7 +945,9 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
             if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
+            if constexpr (std::is_same_v<T, UIRenderMode>) return UIRenderMode::OVERLAY;
             if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
+            if constexpr (std::is_same_v<T, AmbientMode>) return AmbientMode::COLOR;
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
             if constexpr (std::is_same_v<T, std::string>) return std::string();
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
@@ -891,6 +971,12 @@ namespace jasperengine::editor{
         static T getScenePropertyDefault(const std::string& propertyName) {
             static const SceneSettings d;
 
+            if (const PhysicsWorldSettingField* field = findPhysicsWorldSettingField(propertyName)) {
+                if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float>) {
+                    if (physicsWorldFieldMatches<T>(*field))
+                        return static_cast<T>(getPhysicsWorldSetting(*field, d.physics2DWorld, d.physics3DWorld));
+                }
+            }
             if (const PostProcessingSettings::Field* field = getPostProcessingField(propertyName)) {
                 if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||
                               std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
@@ -934,6 +1020,18 @@ namespace jasperengine::editor{
             else if (propertyName == "global_illumination_intensity") {
                 if constexpr (std::is_same_v<T, float>) return d.globalIllumIntensity;
             }
+            else if (propertyName == "ambient_mode") {
+                if constexpr (std::is_same_v<T, AmbientMode>) return d.ambientMode;
+            }
+            else if (propertyName == "ambient_sky_color") {
+                if constexpr (std::is_same_v<T, Vector3>) return Color::linearTosRGB(d.ambientSkyColor);
+            }
+            else if (propertyName == "ambient_equator_color") {
+                if constexpr (std::is_same_v<T, Vector3>) return Color::linearTosRGB(d.ambientEquatorColor);
+            }
+            else if (propertyName == "ambient_ground_color") {
+                if constexpr (std::is_same_v<T, Vector3>) return Color::linearTosRGB(d.ambientGroundColor);
+            }
             else if (propertyName == "max_lights_per_object") {
                 if constexpr (std::is_same_v<T, int>) return d.maxLightsPerObject;
             }
@@ -949,6 +1047,12 @@ namespace jasperengine::editor{
             else if (propertyName == "ambient_light_2d_intensity") {
                 if constexpr (std::is_same_v<T, float>) return d.ambientLight2DIntensity;
             }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) return d.light2DSteps;
+            }
+            else if (propertyName == "ambient_light_2d_without_lights") {
+                if constexpr (std::is_same_v<T, bool>) return d.ambientLight2DWithoutLights;
+            }
             else if (propertyName == "shadows_2d_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) return d.shadow2DQuality;
             }
@@ -963,6 +1067,9 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "physics_2d_sub_steps") {
                 if constexpr (std::is_same_v<T, int>) return d.physics2DSubSteps;
+            }
+            else if (propertyName == "fixed_timestep") {
+                if constexpr (std::is_same_v<T, float>) return d.fixedTimestep;
             }
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) return d.lightState;
@@ -984,6 +1091,12 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "scene_color_scale") {
                 if constexpr (std::is_same_v<T, SceneColorScale>) return d.sceneColorScale;
+            }
+            else if (propertyName == "html_ui_render_mode") {
+                if constexpr (std::is_same_v<T, UIRenderMode>) return d.htmlUiRenderMode;
+            }
+            else if (propertyName == "html_ui_msaa_samples") {
+                if constexpr (std::is_same_v<T, int>) return d.htmlUiMsaaSamples;
             }
             else if (propertyName == "planar_reflection_resolution") {
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return d.planarReflectionResolution;
@@ -1094,6 +1207,19 @@ namespace jasperengine::editor{
         static void setSceneProperty(Scene* scene, const std::string& propertyName, const T& value) {
             if (!scene) return;
 
+            if (const PhysicsWorldSettingField* field = findPhysicsWorldSettingField(propertyName)) {
+                if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float>) {
+                    if (physicsWorldFieldMatches<T>(*field)) {
+                        ScenePhysics2DSettings settings2D = scene->getPhysics2DWorldSettings();
+                        ScenePhysics3DSettings settings3D = scene->getPhysics3DWorldSettings();
+                        setPhysicsWorldSetting(*field, settings2D, settings3D, static_cast<double>(value));
+                        if (field->is3D) scene->setPhysics3DWorldSettings(settings3D);
+                        else scene->setPhysics2DWorldSettings(settings2D);
+                    }
+                }
+                return;
+            }
+
             if (const PostProcessingSettings::Field* field = getPostProcessingField(propertyName)) {
                 if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||
                               std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
@@ -1164,6 +1290,26 @@ namespace jasperengine::editor{
                     scene->setGlobalIllumination(value);
                 }
             }
+            else if (propertyName == "ambient_mode") {
+                if constexpr (std::is_same_v<T, AmbientMode>) {
+                    scene->setAmbientMode(value);
+                }
+            }
+            else if (propertyName == "ambient_sky_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    scene->setAmbientSkyColor(value);
+                }
+            }
+            else if (propertyName == "ambient_equator_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    scene->setAmbientEquatorColor(value);
+                }
+            }
+            else if (propertyName == "ambient_ground_color") {
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    scene->setAmbientGroundColor(value);
+                }
+            }
             else if (propertyName == "max_lights_per_object") {
                 if constexpr (std::is_same_v<T, int>) {
                     scene->setMaxLightsPerObject(value);
@@ -1189,6 +1335,16 @@ namespace jasperengine::editor{
                     scene->setAmbientLight2D(value);
                 }
             }
+            else if (propertyName == "light_2d_steps") {
+                if constexpr (std::is_same_v<T, int>) {
+                    scene->setLight2DSteps(value);
+                }
+            }
+            else if (propertyName == "ambient_light_2d_without_lights") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setAmbientLight2DWithoutLights(value);
+                }
+            }
             else if (propertyName == "shadows_2d_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) {
                     scene->setShadow2DQuality(value);
@@ -1212,6 +1368,11 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_2d_sub_steps") {
                 if constexpr (std::is_same_v<T, int>) {
                     scene->setPhysics2DSubSteps(value);
+                }
+            }
+            else if (propertyName == "fixed_timestep") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setFixedTimestep(value);
                 }
             }
             else if (propertyName == "light_state") {
@@ -1248,6 +1409,12 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, SceneColorScale>) {
                     scene->setSceneColorScale(value);
                 }
+            }
+            else if (propertyName == "html_ui_render_mode") {
+                if constexpr (std::is_same_v<T, UIRenderMode>) scene->setHtmlUiRenderMode(value);
+            }
+            else if (propertyName == "html_ui_msaa_samples") {
+                if constexpr (std::is_same_v<T, int>) scene->setHtmlUiMsaaSamples(value);
             }
             else if (propertyName == "planar_reflection_resolution") {
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) scene->setPlanarReflectionResolution(value);

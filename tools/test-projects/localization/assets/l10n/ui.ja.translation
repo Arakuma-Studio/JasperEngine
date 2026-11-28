@@ -1,0 +1,17 @@
+{
+  "format": "jasperengine.translation",
+  "version": 1,
+  "guid": "5c1a0000000000000000000000000003",
+  "owner": {
+    "guid": "5c1a0000000000000000000000000001",
+    "path": "assets/l10n/ui.stringtable"
+  },
+  "language": "ja",
+  "entries": {
+    "menu.play": {
+      "text": "プレイ",
+      "status": "translated",
+      "source_hash": "29ab6f83"
+    }
+  }
+}

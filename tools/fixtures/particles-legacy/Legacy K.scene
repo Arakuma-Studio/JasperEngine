@@ -1,0 +1,170 @@
+id: 2
+name: Legacy K
+scene:
+  backgroundColor: [0.02655, 0.07176, 0.19397, 1]
+  gravity3D: [0, -9.81, 0]
+sceneType: scene_3d
+mainCamera: 1488
+entities:
+  - type: Entity
+    entity: 1488
+    name: Main Camera
+    components:
+      transform:
+        position: [0, 1, 10]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+      camera:
+        enabled: true
+        type: camera_perspective
+        target: [0, 0, 0]
+        up: [0, 1, 0]
+        yfov: 0.75
+        nearClip: 0.3
+        farClip: 1000
+        useTarget: false
+        autoResize: true
+  - type: Entity
+    entity: 1575
+    name: FxConfetti
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: true
+        autoTransparency: true
+        points: ~
+        blendMode: ALPHA
+        depthWrite: DISABLED
+  - type: Entity
+    entity: 1576
+    name: FxConfettiSystem
+    components:
+      action:
+        state: Stopped
+        speed: 1
+        target: 1575
+        ownedTarget: false
+      particlesystem:
+        enabled: true
+        maxParticles: 45
+        emitter: false
+        loop: false
+        localSpace: false
+        rate: 0
+        maxPerUpdate: 100
+        bursts:
+          - time: 0.001
+            minCount: 40
+            maxCount: 40
+        lifeInitializer:
+          minLife: 0.8
+          maxLife: 1.2
+        positionInitializer:
+          shape: Sphere
+          minPosition: [0, 0, 0]
+          maxPosition: [0, 0, 0]
+          radius: 0.5
+          innerRadius: 0
+          coneAngle: 25
+          coneHeight: 1
+        positionModifier:
+          fromTime: 0
+          toTime: 0
+          fromPosition: [0, 0, 0]
+          toPosition: [0, 0, 0]
+          function: LINEAR
+        velocityInitializer:
+          minVelocity: [-9, 3, -5]
+          maxVelocity: [9, 13, 5]
+        velocityModifier:
+          fromTime: 0
+          toTime: 0
+          fromVelocity: [0, 0, 0]
+          toVelocity: [0, 0, 0]
+          function: LINEAR
+        accelerationInitializer:
+          minAcceleration: [0, -16, 0]
+          maxAcceleration: [0, -16, 0]
+        accelerationModifier:
+          fromTime: 0
+          toTime: 0
+          fromAcceleration: [0, 0, 0]
+          toAcceleration: [0, 0, 0]
+          function: LINEAR
+        colorInitializer:
+          minColor: [1, 1, 1]
+          maxColor: [1, 1, 1]
+          useSRGB: true
+        colorModifier:
+          fromTime: 0
+          toTime: 0
+          fromColor: [0, 0, 0]
+          toColor: [0, 0, 0]
+          function: LINEAR
+          useSRGB: true
+        colorGradient:
+          useSRGB: true
+          stops: ~
+        alphaInitializer:
+          minAlpha: 1
+          maxAlpha: 1
+        alphaModifier:
+          fromTime: 0
+          toTime: 1.2
+          fromAlpha: 1
+          toAlpha: 0.2
+          function: LINEAR
+        sizeInitializer:
+          minSize: 0.22
+          maxSize: 0.42
+        sizeModifier:
+          fromTime: 0
+          toTime: 0
+          fromSize: 0
+          toSize: 0
+          function: LINEAR
+        spriteInitializer:
+          frames: ~
+        spriteModifier:
+          fromTime: 0
+          toTime: 0
+          function: LINEAR
+          frames: ~
+        rotationInitializer:
+          minRotation: [1, 0, 0, 0]
+          maxRotation: [1, 0, 0, 0]
+          shortestPath: false
+        rotationModifier:
+          fromTime: 0
+          toTime: 0
+          fromRotation: [1, 0, 0, 0]
+          toRotation: [1, 0, 0, 0]
+          function: LINEAR
+          shortestPath: false
+        scaleInitializer:
+          minScale: [1, 1, 1]
+          maxScale: [1, 1, 1]
+          linearSort: true
+        scaleModifier:
+          fromTime: 0
+          toTime: 0
+          fromScale: [1, 1, 1]
+          toScale: [1, 1, 1]
+          function: LINEAR

@@ -7,6 +7,11 @@
 
 #include "pixelart/PixelArtInput.h"
 #include "pixelart/PixelArtMode.h"
+#include "pose/PoseRigProvider.h"
+#include "sprite/SpriteAtlasBuilder.h"
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheetSources.h"
+#include "animation/ModelSubClips.h"
 #include "texture/TextureCookQueue.h"
 #include "tilemap/TilesetPool.h"
 #include "Project.h"
@@ -451,6 +456,18 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
     // instances, added ones relink them (PREFABS.md §3)
     applyAssetChanges(changes);
     assetIndex.update(changes);
+    // S45: a member the database saw move (renamed with its .meta) rebuilds the atlases packing it, which
+    // find it by GUID: the rebuild its file change started ran on the database before this walk, and
+    // found the GUID's old path gone
+    if (sprite::SpriteAtlasBuilder::get().getProject() == this) {
+        for (const AssetDatabase::Change& change : changes) {
+            if (change.type != AssetDatabase::Change::Type::Moved) continue;
+            const std::string path = (getProjectPath() / change.path).string();
+            if (!SpriteSheetSources::isTexturePath(path) && !SpriteSheetPool::isAsepritePath(path)) continue;
+            sprite::SpriteAtlasBuilder::get().memberChanged((getProjectPath() / change.oldPath).string());
+            sprite::SpriteAtlasBuilder::get().memberChanged(path);
+        }
+    }
     // S25: an asset edited, put back or arriving outside the editor brings its labels
     for (const AssetDatabase::Change& change : changes) {
         if (change.type != AssetDatabase::Change::Type::Removed && Guid::isValidText(change.guid)) {
@@ -473,6 +490,14 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
             const fs::path absolute = getProjectPath() / change.path;
             if (isInsideAssetsPath(absolute)) writeImportSettingsNow(*this, normalizeToAssetsRelative(absolute).generic_string());
         }
+    }
+    // a model arriving is a new import: it takes the current humanoid naming rules where they map it
+    // otherwise (a model imported before keeps its status until a reimport, pose/HumanoidMap.h)
+    for (const AssetDatabase::Change& change : changes) {
+        // glTF and FBX (an OBJ has no skeleton)
+        if (change.type != AssetDatabase::Change::Type::Added || !anim::isModelFilePath(change.path.generic_string())) continue;
+        const fs::path absolute = getProjectPath() / change.path;
+        if (isInsideAssetsPath(absolute)) PoseRigProvider::adoptNameRules(this, absolute);
     }
     // what the pixel-art check kept of closed scenes follows the files' stamps; files added, moved
     // or removed (references resolve by GUID) and prefabs (instances in those scenes) it cannot see

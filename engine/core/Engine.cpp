@@ -2,22 +2,31 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "dialogue/DialogueSwitch.h"
 #include "component/OnScreenControlComponents.h"
 #include "Engine.h"
 #include "component/ComponentEvents.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "shader/ShaderGlobals.h"
 #include "Log.h"
 #include "log/Logger.h"
 #include "diag/CrashHandler.h"
 #include "diag/HangWatchdog.h"
+#include "diag/Journal.h"
+#include "diag/UserReport.h"
 #include "script/LuaWatchdog.h"
 #include "util/Scheduler.h"
 #include "Scene.h"
 #include "Input.h"
 #include "Screen.h"
 #include "io/UserSettings.h"
+#include "save/SaveGameStore.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
+#include "input/InputScriptRunner.h"
+#include "input/InputRecorder.h"
+#include "input/InputReplay.h"
 #include "debug/DebugOverlay.h"
 #include "render/SystemRender.h"
 #include "shader/ShaderWarmup.h"
@@ -40,6 +49,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/GamepadCursor.h"
 #include "subsystem/TitleArtSystem.h"
 #if JASPERENGINE_TERRAIN_WORLD
 #include "subsystem/TerrainWorldSystem.h"
@@ -68,6 +78,13 @@
 #include "component/VertexAnimatorComponent.h"
 #include "pool/TexturePool.h"
 #include "device/Device.h"
+#include "localization/Localization.h"
+#if JASPERENGINE_DIALOGUE_ENABLED
+#include "dialogue/DialogueKind.h"
+#include "dialogue/DialogueVariables.h"
+#include "object/DialogueRunner.h"
+#endif
+#include "object/SimulationCulling.h"
 #include "device/QualityResolver.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -98,6 +115,7 @@
 #include "model/ModelCpuData.h"
 #include "picking/PickCache.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
 #include "profiler/Profile.h"
 #if JASPERENGINE_PROFILER
 #include "profiler/EngineProfiling.h"
@@ -121,6 +139,7 @@
 #include <map>
 #include <set>
 #include <functional>
+#include <limits>
 #include <optional>
 
 using namespace jasperengine;
@@ -193,17 +212,26 @@ Engine::FrameStats Engine::currentFrameStats;
 // and physics never receive a giant step that teleports objects or triggers the
 // spiral of death.
 double Engine::maxDeltatime = 0.25;
+int Engine::maxFixedStepsPerFrame = 0;
+uint64_t Engine::droppedFixedSteps = 0;
+bool Engine::reportedDroppedFixedSteps = false;
 
 double Engine::updateTime = 1.0 / 60.0; //60Hz
+double Engine::projectUpdateTime = 1.0 / 60.0;
+bool Engine::sceneUpdateTimeApplied = false;
+int Engine::startScreenWidth = 0;
+int Engine::startScreenHeight = 0;
 
 double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
 bool Engine::captureFrame = false;
+bool Engine::userCaptureFrame = false;
 double Engine::shaderTime = 0.0;
 bool Engine::shaderTimeFixed = false;
 double Engine::pinnedShaderTime = -1.0;
 std::atomic<uint64_t> Engine::gameFrames{0};
+uint64_t Engine::frameIndex = 0;
 // the clocks of Time (EngineTime.h): the unscaled frame delta and its sum, the fixed steps' sum,
 // the game time at the last scene load, the wall clock at start
 double Engine::unscaledDeltatime = 0.0;
@@ -215,6 +243,7 @@ bool Engine::inFixedStep = false;
 float Engine::smoothDeltatime = 0.0f;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
+bool Engine::releasingScenesGpu = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
@@ -285,6 +314,47 @@ FunctionSubscribe<void(int,int)> Engine::onGamepadButtonUp;
 FunctionSubscribe<void(int,int,float)> Engine::onGamepadAxisMove;
 FunctionSubscribe<void(const std::string&)> Engine::onButtonDown;
 FunctionSubscribe<void(const std::string&)> Engine::onButtonUp;
+FunctionSubscribe<void(const std::string&)> Engine::onBack;
+FunctionSubscribe<void(const std::string&)> Engine::onPauseRequested;
+
+namespace {
+
+    // ---- Back and menus (Engine::systemBack, Engine::isMenuShowing)
+    BackRoute lastBackRoute = BackRoute::Unconsumed;
+    // the Escape a Back button or agent Back pressed: released at the start of the frame after the
+    // one that latched it (as Android's Back always played)
+    bool backEscapeDown = false;
+    uint64_t backEscapeFrame = 0;
+    // the Escape key and the pads' B whose down Back consumed: their ups are swallowed too
+    bool backEscapeKeyHeld = false;
+    std::set<std::pair<int, int>> backPadButtonsHeld;
+    // isMenuShowing's and isGamepadCursorShown's cache: valid for a document revision and a scene count
+    bool menuCacheValid = false;
+    bool menuCacheValue = false;
+    bool cursorCacheValue = false;
+    uint32_t menuCacheRevision = 0;
+    size_t menuCacheScenes = 0;
+    // the pads' buttons the gamepad cursor took (A, the d-pad, B it routed): their ups are the UI's too
+    std::set<std::pair<int, int>> cursorPadButtonsHeld;
+    // what the last input latch saw (a menu appearing releases the game's input once)
+    bool menuShownAtLatch = false;
+
+    // ---- Pause On Focus Loss (Engine::onPauseRequested)
+    bool pauseOnFocusLoss = false;
+    // a focus loss happened since the focus last came back: a pause adds no second request
+    bool focusLossSeen = false;
+    // systemPause's own focus loss: the pause asks instead ("app_paused")
+    bool focusLossFromPause = false;
+    // the first frame of a Play warns once when nothing subscribes
+    bool pauseRequestCheckPending = true;
+
+    void requestPause(const char* reason){
+        if (!pauseOnFocusLoss || Engine::isMenuShowing())
+            return;
+        Engine::onPauseRequested.call(std::string(reason));
+    }
+
+}
 
 FunctionSubscribe<void()>& Engine::getOnInit() {
     // This static variable is guaranteed to be created the first time this function is called
@@ -594,8 +664,24 @@ void Engine::setCanvasSize(int canvasWidth, int canvasHeight){
         refreshCanvas(true);
     }else{
         // Scenes and scripts can start before the view exists; the screen refines this once it loads
-        Engine::canvasWidth = canvasWidth;
-        Engine::canvasHeight = canvasHeight;
+        layoutBeforeView();
+    }
+}
+
+void Engine::setStartScreenSize(int width, int height){
+    startScreenWidth = std::max(width, 0);
+    startScreenHeight = std::max(height, 0);
+    if (!viewLoaded)
+        layoutBeforeView();
+}
+
+void Engine::layoutBeforeView(){
+    if (startScreenWidth > 0 && startScreenHeight > 0 && preferredCanvasWidth > 0 && preferredCanvasHeight > 0){
+        computeViewLayout(startScreenWidth, startScreenHeight, preferredCanvasWidth, preferredCanvasHeight, scalingMode,
+                          Engine::canvasWidth, Engine::canvasHeight, viewRect);
+    }else{
+        Engine::canvasWidth = preferredCanvasWidth;
+        Engine::canvasHeight = preferredCanvasHeight;
     }
 }
 
@@ -616,6 +702,8 @@ void Engine::setScalingMode(Scaling scalingMode){
 
     if (viewLoaded){
         refreshCanvas(true);
+    }else{
+        layoutBeforeView();
     }
 }
 
@@ -869,6 +957,30 @@ void Engine::setUpdateTime(float updateTime){
 
 float Engine::getUpdateTime(){
     return (float)Engine::updateTime;
+}
+
+void Engine::setProjectUpdateTime(double seconds){
+    if (!(seconds > 0.0) || !std::isfinite(seconds)){
+        Log::warn("Engine::setProjectUpdateTime: non-positive or non-finite value (%f) ignored", seconds);
+        return;
+    }
+    projectUpdateTime = seconds;
+    updateTime = seconds;
+    sceneUpdateTimeApplied = false;
+}
+
+double Engine::getProjectUpdateTime(){
+    return projectUpdateTime;
+}
+
+void Engine::applySceneUpdateTime(double sceneSeconds){
+    if (sceneSeconds > 0.0 && std::isfinite(sceneSeconds)){
+        updateTime = sceneSeconds;
+        sceneUpdateTimeApplied = true;
+    }else if (sceneUpdateTimeApplied){
+        updateTime = projectUpdateTime;
+        sceneUpdateTimeApplied = false;
+    }
 }
 
 int Engine::getFixedStepsLeft(){
@@ -1237,6 +1349,38 @@ void Engine::setMaxDeltatime(float seconds){
     maxDeltatime = seconds;
 }
 
+void Engine::setMaxFixedStepsPerFrame(int steps){
+    maxFixedStepsPerFrame = std::max(0, steps);
+}
+
+int Engine::getMaxFixedStepsPerFrame(){
+    return maxFixedStepsPerFrame;
+}
+
+int Engine::getFixedStepCap(){
+    if (!(updateTime > 0.0)){
+        return 1;
+    }
+    // the spiral-of-death guard, Unity's Maximum Allowed Timestep: the steps of the longest frame
+    // runFrame lets through (the fixed frame delta when set, else maxDeltatime), +1 for the part of
+    // a step the last frame left, and the whole steps it left (only right after the fixed step was
+    // made shorter: a frame leaves less than one step). Neither the time scale nor a script raises
+    // it: every step past it would make the next frame longer still
+    const double frameSeconds = fixedDeltatime > 0.0 ? fixedDeltatime : maxDeltatime;
+    const double steps = std::ceil(frameSeconds / updateTime) + 1.0 + std::floor(updateTimeCount / updateTime);
+    const int bound = (int)std::clamp(steps, 1.0, (double)std::numeric_limits<int>::max());
+    return maxFixedStepsPerFrame > 0 ? std::min(maxFixedStepsPerFrame, bound) : bound;
+}
+
+uint64_t Engine::getDroppedFixedSteps(){
+    return droppedFixedSteps;
+}
+
+void Engine::resetDroppedFixedSteps(){
+    droppedFixedSteps = 0;
+    reportedDroppedFixedSteps = false;
+}
+
 float Engine::getUnscaledDeltatime(){
     return (float)unscaledDeltatime;
 }
@@ -1364,6 +1508,10 @@ double Engine::getGameTime(){
 
 uint64_t Engine::getGameFrames(){
     return gameFrames.load(std::memory_order_relaxed);
+}
+
+uint64_t Engine::getFrameIndex(){
+    return frameIndex;
 }
 
 void Engine::setSimulationHeld(bool held){
@@ -1605,7 +1753,7 @@ void Engine::beginCompositeFramebuffer(){
     // differ: a pipeline made on the capture frame would leave it empty). The debug overlay's
     // Scene is drawn as one more layer (while it draws anything).
     const bool screenshotRun = player::RunControl::isActive() && player::RunControl::wantsScreenshot();
-    if (framebuffer || !(stacked || DebugOverlay::isDrawn() || captureFrame || screenshotRun))
+    if (framebuffer || !(stacked || DebugOverlay::isDrawn() || captureFrame || userCaptureFrame || screenshotRun))
         return;
 
     if (ensureCompositeFramebuffer())
@@ -1620,6 +1768,20 @@ bool Engine::readCompositeFrame(std::vector<uint8_t>& rgba, int& width, int& hei
     width = static_cast<int>(compositeFramebuffer.getWidth());
     height = static_cast<int>(compositeFramebuffer.getHeight());
     return FrameReadback::readFramebuffer(compositeFramebuffer, rgba, &error);
+}
+
+bool Engine::readUserReportFrame(std::vector<uint8_t>& rgba, int& width, int& height, std::string& error){
+    // a host drawing the game into its own target (the editor's Game view) keeps it set
+    if (framebuffer && framebuffer != &compositeFramebuffer){
+        if (!framebuffer->isCreated()){
+            error = "the game's target is not created";
+            return false;
+        }
+        width = static_cast<int>(framebuffer->getWidth());
+        height = static_cast<int>(framebuffer->getHeight());
+        return FrameReadback::readFramebuffer(*framebuffer, rgba, &error);
+    }
+    return readCompositeFrame(rgba, width, height, error);
 }
 
 bool Engine::isHeadless(){
@@ -1725,16 +1887,25 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onLowMemory.removeByTagSubstring(substring);
     onSafeAreaChanged.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
+    onBack.removeByTagSubstring(substring);
+    onPauseRequested.removeByTagSubstring(substring);
 
     // Log.onMessageReceived and the console commands a released script added
     Log::onMessageReceived.removeByTagSubstring(substring);
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
+    InputSchemeTracker::onSchemeChanged.removeByTagSubstring(substring);
+    Localization::onLanguageChanged.removeByTagSubstring(substring);
+    PerfSampler::onWindow.removeByTagSubstring(substring);
+#if JASPERENGINE_DIALOGUE_ENABLED
+    dialogue::Variables::onChanged.removeByTagSubstring(substring);
+#endif
 #if JASPERENGINE_SOUND_LAYER
     Audio::onMusicBeat.removeByTagSubstring(substring);
     Audio::onMusicSection.removeByTagSubstring(substring);
 #endif
     DebugOverlay::removeCommandsByTag(substring);
+    console::Events::onCheatUsed.removeByTagSubstring(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
     // (Input.simulateAxis(name, value, self), InputActions::setSourceValue(this, ...))
@@ -1777,17 +1948,31 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     onGamepadAxisMove.clear();
     onButtonDown.clear();
     onButtonUp.clear();
+    onBack.clear();
+    onPauseRequested.clear();
 
     // what scripts subscribed to the log and the console commands they added
     Log::onMessageReceived.clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
+    InputSchemeTracker::onSchemeChanged.clear();
+    Localization::onLanguageChanged.clear();
+    // Crash.beginReport's and createReport's callbacks, with the draft they were for
+    diag::userreport::reset();
+    // Performance.onSample (R11)
+    PerfSampler::onWindow.clear();
+#if JASPERENGINE_DIALOGUE_ENABLED
+    // dialogue-graphs.md R9, R27: the handlers hold script functions; Auto Start's pending list
+    dialogue::Variables::onChanged.clear();
+    dialogue::clearRuntime();
+#endif
 #if JASPERENGINE_SOUND_LAYER
     // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
     Audio::onMusicBeat.clear();
     Audio::onMusicSection.clear();
 #endif
     DebugOverlay::removeOwnedCommands();
+    console::Events::onCheatUsed.clear();
 
     if (includeLifecycle) {
         onViewLoaded.clear();
@@ -1803,6 +1988,10 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onLowMemory.clear();
         onSafeAreaChanged.clear();
     }
+    // the input scripts the game ran (a Lua replay, a test's input) end with it; what they held is
+    // released once no game callback is left to hear it
+    input::Replay::stopAll();
+    input::ScriptRunner::stopAll();
 }
 
 // A script can leave callbacks on components (button.onPress.add(...)) that outlive it, and the
@@ -1816,6 +2005,7 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
     forEachComponentEvent(*scene, [](auto& event) { event.clear(); });
     scene->getSystem<PhysicsSystem>()->clearSubscriptions();
     scene->getSystem<TitleArtSystem>()->clearSubscriptions();
+    scene->getSystem<CullingSystem>()->clearSubscriptions();
 }
 
 void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,
@@ -2027,6 +2217,11 @@ namespace {
         // a prebuilt player's Player > Crash Handling (game.json) over the build's
         const PlatformConfig& platform = platformConfig();
         auto setting = [](int runtime, int built) { return runtime >= 0 ? runtime != 0 : built != 0; };
+        // the Gameplay Journal before the handler takes its ring (D3), and with the handler off
+        // too: user reports and Journal.getText use it
+        const int journalBytes = platform.crashJournalBytes >= 0 ? platform.crashJournalBytes : platform.builtCrashJournalBytes;
+        diag::journal::configure(static_cast<size_t>(std::clamp(journalBytes, 0, 256 << 10)));
+        diag::journal::setEngineEvents(setting(platform.crashJournalEngineEvents, platform.builtCrashJournalEngineEvents));
     #if JASPERENGINE_CRASH_HANDLER
         if (!setting(platform.crashHandler, 1)) {
             (void)system;
@@ -2092,6 +2287,12 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     Scheduler::game().setOwnerThread();
 
     Engine::setCanvasSize(1000,480);
+    // the input scheme starts from the device (input-device-awareness R3)
+    InputSchemeTracker::reset(system->isTouchDevice());
+#if JASPERENGINE_DIALOGUE_ENABLED
+    // dialogue-graphs.md R1: players load .dialogue files and their texts
+    dialogue::registerDialogueKind();
+#endif
 
     lastTime = 0;
     updateTimeCount = 0;
@@ -2161,6 +2362,17 @@ void Engine::systemViewLoaded(){
               SystemRender::getDeviceName().c_str());
     // the GPU's tier (spec S56 R2), logged with its reason; a player applies it from here
     Device::detect();
+    {
+        // the Gameplay Journal's first engine entry: what the game runs on
+        const std::string gpu = Device::getGpuName();
+        const char* tier = DeviceNames::tier(Device::getTier());
+        const std::string version = diag::journal::identityVersion();
+        const diag::journal::Field fields[] = {{"backend", std::string_view(SystemRender::getBackendName())},
+                                               {"gpu", std::string_view(gpu)},
+                                               {"tier", std::string_view(tier)},
+                                               {"version", std::string_view(version)}};
+        diag::journal::logEngine("engine.start", fields);
+    }
 #ifndef JASPERENGINE_EDITOR
     // what the export recorded is created before the scenes need it (spec S32 R12)
     ShaderWarmup::beginShipped();
@@ -2206,7 +2418,7 @@ void Engine::systemViewLoaded(){
     }
     
     for (Scene* scene : getScenesSnapshot()){
-        scene->load();
+        scene->restoreGpu();
     }
 }
 
@@ -2389,6 +2601,8 @@ void Engine::signalReadyOnce(){
         readySignalled = true;
         signalledFrame = frames;
         Log::print("Engine ready: every scene loaded and no shader build pending (frame %llu)", (unsigned long long)frames);
+        // --perf-summary starts sampling here unless the game chose already
+        player::RunControl::engineReady();
         for (Scene* scene : scenes){
             scene->getSystem<RenderSystem>()->logRenderObjects();
         }
@@ -2418,8 +2632,6 @@ void Engine::systemUpdate(){
 }
 
 void Engine::runFrame(bool draw){
-    const int MAX_UPDATES_PER_FRAME = 100;
-
     // a game's frame starts here; the editor marks its own (FrameTimes::setExternalFrames)
     const bool ownFrame = !FrameTimes::hasExternalFrames();
     if (ownFrame){
@@ -2510,6 +2722,12 @@ void Engine::runFrame(bool draw){
 
     {
         JE_PROFILE_SCOPE("Input");
+        // the Escape a Back pressed comes up the frame after the one that saw it
+        if (backEscapeDown && drawnFrames >= backEscapeFrame + 2){
+            backEscapeDown = false;
+            const input::InputRecorder::EngineMade engineMade;
+            systemKeyUp(D_KEY_ESCAPE, false, Input::getModifiers());
+        }
         // the input of this frame is over: no low surrogate will follow a pending high one
         flushCharInput();
         // held gamepad directions repeat on the UI clock
@@ -2532,6 +2750,7 @@ void Engine::runFrame(bool draw){
 
     // memory the last-but-one frame allocated per frame goes back now
     memory::frameArena().beginFrame();
+    frameIndex++;
     // job results posted for the main thread, then (single-thread mode) the queued jobs:
     // everything urgent, Background work for the pump budget
     jobs::drainMainQueue();
@@ -2581,6 +2800,10 @@ void Engine::runFrame(bool draw){
 
     // a --screenshot run's capture frame draws offscreen (R20); a run without it never does
     captureFrame = draw && player::RunControl::isActive() && player::RunControl::wantsOffscreenFrame();
+    // a player's "Report a Problem" capture draws its frame offscreen too (no frame otherwise)
+    userCaptureFrame = draw && diag::userreport::wantsCapture();
+    if (userCaptureFrame)
+        diag::userreport::beforeCaptureFrame();
 
     // before the update, which bakes the PIP_RTT pipelines from the target in use
     if (draw)
@@ -2588,10 +2811,21 @@ void Engine::runFrame(bool draw){
 
     // avoid increment updateTimeCount after resume; a held simulation only draws
     if (!paused && !simulationHeld) {
+        // input scripts apply what is due into the pending window this frame latches, as the
+        // recorded run's events arrived before it
+        if (input::ScriptRunner::isActive())
+            input::ScriptRunner::beforeFrame(true);
         // the input of the frame: the events since the last running frame (Input.h), then
         // the actions it drives (their callbacks, onButtonDown / onButtonUp run here, before the
         // fixed steps), on the unscaled frame time
+        // a menu appeared since the last latch: what the game holds lets go, once
+        const bool menuShown = isMenuShowing();
+        if (menuShown && !menuShownAtLatch)
+            releaseInputForMenu();
+        menuShownAtLatch = menuShown;
         Input::beginFrame(frameTime);
+        // the gamepad cursor on the latched sticks and scheme, before the scenes' UI updates
+        GamepadCursor::update(frameTime);
 
         double frameDelta = deltatime;
         gameTime += frameDelta;
@@ -2602,6 +2836,9 @@ void Engine::runFrame(bool draw){
             scenes[i]->advanceSceneTime(frameDelta);
         // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
         const bool gameClocks = advanceGameClocks(scheduler, frameTime);
+        // the Game Time UI Documents' clock (S93 R35): the scaled delta, while the game clocks run
+        if (gameClocks)
+            HtmlUIClock::advanceGame(frameDelta);
 
         unscaledTime += unscaledDeltatime;
         smoothDeltatime = (gameFrames <= 1) ? (float)frameDelta : smoothDeltatime + 0.2f * ((float)frameDelta - smoothDeltatime);
@@ -2617,6 +2854,13 @@ void Engine::runFrame(bool draw){
             if (auto cameras = scenes[i]->findSystem<CameraControlSystem>()) cameras->preUpdate();
         }
 
+        // Simulation Culling's first evaluation of a scene and the GameObjects made since its last
+        // update, before their scripts start and the fixed steps run (culling-group-and-
+        // simulation-distance R18)
+        for (int i = 0; i < scenes.size(); i++) {
+            if (auto culling = scenes[i]->findSystem<CullingSystem>()) culling->preUpdate();
+        }
+
         // 0) start of the scripts enabled since the last frame, before their first fixed
         //    update and update (Unity)
         ScriptRuntime::flushStarts();
@@ -2625,15 +2869,18 @@ void Engine::runFrame(bool draw){
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().
         if (updateTime > 0.0) {
             JE_PROFILE_SCOPE("FixedUpdate");
+            // S96 WP-E: Time.maximumFixedStepsPerFrame, automatic by default (with what earlier
+            // frames left, before this frame's time is added)
+            const int maxFixedSteps = getFixedStepCap();
             updateTimeCount += frameDelta;
 
             int fixedLoops = 0;
-            while (updateTimeCount >= updateTime && fixedLoops < MAX_UPDATES_PER_FRAME) {
+            while (updateTimeCount >= updateTime && fixedLoops < maxFixedSteps) {
                 // edges read in the step are the fixed window's: each is seen by one step
                 Input::beginFixedStep();
                 // counted like this loop, so its last step sees 1
                 fixedStepsLeft = 0;
-                for (double remaining = updateTimeCount; remaining >= updateTime && fixedLoops + fixedStepsLeft < MAX_UPDATES_PER_FRAME; remaining -= updateTime) {
+                for (double remaining = updateTimeCount; remaining >= updateTime && fixedLoops + fixedStepsLeft < maxFixedSteps; remaining -= updateTime) {
                     fixedStepsLeft++;
                 }
 
@@ -2659,8 +2906,16 @@ void Engine::runFrame(bool draw){
 
             fixedStepsLeft = 1;
 
-            if (fixedLoops >= MAX_UPDATES_PER_FRAME) {
-                Log::warn("Dropping fixed-update steps - more than %i per frame", MAX_UPDATES_PER_FRAME);
+            if (fixedLoops >= maxFixedSteps && updateTimeCount >= updateTime) {
+                const uint64_t dropped = (uint64_t)std::floor(updateTimeCount / updateTime);
+                droppedFixedSteps += dropped;
+                if (!reportedDroppedFixedSteps) {
+                    reportedDroppedFixedSteps = true;
+                    Log::warn("Dropped %llu fixed step(s): a frame needed more than %d, the cap that Time.maximumDeltaTime "
+                              "(%.3f s) gives at this fixed step, or Time.maximumFixedStepsPerFrame when lower. Logged once, "
+                              "Time.droppedFixedSteps counts them",
+                              (unsigned long long)dropped, maxFixedSteps, maxDeltatime);
+                }
                 // Discard remaining backlog so we don't fall further behind next frame.
                 updateTimeCount = 0.0;
             }
@@ -2681,6 +2936,12 @@ void Engine::runFrame(bool draw){
             MainThreadQueue::drain();
         }
         Engine::onUpdate.call();
+        // Pause On Focus Loss without a listener: one warning in the first frame of a Play
+        if (pauseRequestCheckPending && Engine::onUpdate.isEnabled()){
+            pauseRequestCheckPending = false;
+            if (pauseOnFocusLoss && !onPauseRequested.hasSubscribers())
+                Log::warn("Pause On Focus Loss is on but nothing subscribes to Engine.onPauseRequested: the game is never asked to pause");
+        }
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
         }
@@ -2702,6 +2963,10 @@ void Engine::runFrame(bool draw){
         }
         ScriptScheduler::updatePhase();
         Engine::onPostUpdate.call();
+        if (input::ScriptRunner::isActive())
+            input::ScriptRunner::afterUpdate();
+        if (input::InputRecorder::isActive())
+            input::InputRecorder::afterUpdate();
 
         // GameObject::destroy: after the update, before the draw (Unity)
         ObjectManager::update(frameDelta);
@@ -2709,8 +2974,27 @@ void Engine::runFrame(bool draw){
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->compactComponents();
         }
+        // the late transform pass (S95 REQ-5): what onPostUpdate, the timers, the coroutines and
+        // the PixelFX and transition callbacks moved since the scenes' update is drawn this frame
+        // (a Camera Follow follows a target moved then); the 3D listener and sources are heard where
+        // they are drawn. Nothing moved: one compare per scene
+        bool lateMoved = false;
+        bool viewMoved = false;
+        for (int i = 0; i < scenes.size(); i++) {
+            const LateTransformResult late = scenes[i]->getSystem<RenderSystem>()->updateLateTransforms();
+            lateMoved = lateMoved || late.moved;
+            viewMoved = viewMoved || late.viewMoved;
+        }
+        if (lateMoved) {
+            for (int i = 0; i < scenes.size(); i++) {
+                scenes[i]->getSystem<AudioSystem>()->updateLate(viewMoved);
+            }
+        }
         // what was for this frame only (the virtual sources' deltas) goes
         Input::endFrame();
+    } else if (paused && input::ScriptRunner::isActive()) {
+        // an app a script paused does not update: its frames still pace the script (its resume)
+        input::ScriptRunner::beforeFrame(false);
     }
 
 #if JASPERENGINE_SOUND_LAYER
@@ -2814,6 +3098,14 @@ void Engine::runFrame(bool draw){
         player::RunControl::frameDrawn(readySignalled, captured ? player::FrameReader(&Engine::readCompositeFrame) : player::FrameReader());
     }
 
+    // Crash.beginReport: the draft's callbacks of what finished before this frame, then the frame
+    // just drawn
+    diag::userreport::update();
+    if (userCaptureFrame){
+        userCaptureFrame = false;
+        diag::userreport::frameDrawn(&Engine::readUserReportFrame);
+    }
+
 #if JASPERENGINE_PROFILER
     // the built-in monitors, and the command line's capture once the scenes are loaded
     profiler::engineFrameEnd(areScenesLoaded());
@@ -2865,6 +3157,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.atmosphereQuality = layer.atmosphereQuality;
         desc.shadows = layer.shadows;
         desc.drawMode = (ViewDrawMode)layer.drawMode;
+        desc.vertexColorChannel = (ViewVertexColorChannel)layer.vertexColorChannel;
         desc.snapPreviewScale = layer.snapPreviewScale;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
@@ -2910,8 +3203,10 @@ void Engine::systemViewDestroyed(){
 
     //TODO: must destroy all scenes (even if not a layer)
     for (int i = 0; i < scenes.size(); i++){
-        scenes[i]->destroy();
+        scenes[i]->releaseGpu();
     }
+    // the frame that brings the view back measured the time without it
+    clampNextDelta = true;
 
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
@@ -2927,6 +3222,37 @@ void Engine::systemViewDestroyed(){
     drawSemaphore.release();
 }
 
+void Engine::releaseScenesGpu(const std::vector<Scene*>& list){
+    if (!viewLoaded)
+        return;
+
+    drawSemaphore.acquire();
+    // the systems tell a view loss from a teardown by the view (RenderSystem keeps its CPU
+    // assets for the next load, UISystem its buttons' textures)
+    viewLoaded = false;
+    releasingScenesGpu = true;
+    for (Scene* scene : list){
+        if (scene)
+            scene->releaseGpu();
+    }
+    releasingScenesGpu = false;
+    viewLoaded = true;
+    clampNextDelta = true;
+    drawSemaphore.release();
+}
+
+void Engine::restoreScenesGpu(const std::vector<Scene*>& list){
+    for (Scene* scene : list){
+        if (scene)
+            scene->restoreGpu();
+    }
+    clampNextDelta = true;
+}
+
+bool Engine::isReleasingScenesGpu(){
+    return releasingScenesGpu;
+}
+
 void Engine::systemShutdown(){
 #ifndef JASPERENGINE_EDITOR
     // teardown is watched on its own window; the job system is not read past here
@@ -2937,6 +3263,8 @@ void Engine::systemShutdown(){
     ScriptRuntime::quitAll();
 
     Engine::onShutdown.call();
+    // what the game queued in SaveGame (its onShutdown handlers too) lands before anything goes
+    savegame::flushForLifecycle("the app quit");
 
 #if JASPERENGINE_AUDIO_CAPTURE
     // a player's capture ends with the run; its voices are still in their scenes
@@ -2951,6 +3279,8 @@ void Engine::systemShutdown(){
 
     // what the game (and its onShutdown handlers) stored is on disk before it goes
     UserSettings::save();
+    // --perf-summary's last window
+    player::RunControl::writePerfSummary();
 
     // anime's, the timers', the script coroutines' and the input actions' Lua references go
     // while the Lua state still exists
@@ -2964,6 +3294,8 @@ void Engine::systemShutdown(){
     InputActions::unload();
     // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
     SceneManager::destroyPersistentScene();
+    // and what scripts saved in their onDestroy
+    savegame::flushForLifecycle("the app quit");
 
     // HTTP requests end without their callbacks and the HTTP stack's threads stop; what other
     // threads posted for the game is dropped
@@ -3007,14 +3339,23 @@ void Engine::systemShutdown(){
 
 void Engine::systemPause(){
     if (osPaused) return;
+    if (input::InputRecorder::isActive()) input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::Pause));
     // leaving: the focus goes first (Unity: OnApplicationFocus(false), then OnApplicationPause(true))
+    focusLossFromPause = true;
     systemFocus(false);
+    focusLossFromPause = false;
     osPaused = true;
     applyPause();
+    // Pause On Focus Loss: a pause no focus loss announced asks once (after onPause)
+    if (!focusLossSeen){
+        focusLossSeen = true;
+        requestPause("app_paused");
+    }
 }
 
 void Engine::systemResume(){
     if (!osPaused) return;
+    if (input::InputRecorder::isActive()) input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::Resume));
     osPaused = false;
     applyPause();
 }
@@ -3030,7 +3371,21 @@ void Engine::applyPause(){
     paused = want;
     // a backgrounded app expects no heartbeat; resume re-arms on the next frame
     diag::watchdog::setPaused(want);
+    {
+        static double journalPausedAt = 0.0;
+        if (want){
+            journalPausedAt = getSystemTime();
+            diag::journal::logEngine("engine.pause");
+        }else{
+            const diag::journal::Field fields[] = {{"after_s", getSystemTime() - journalPausedAt}};
+            diag::journal::logEngine("engine.resume", fields);
+        }
+    }
+    // the Performance sampler drops the paused seconds and the 2 s after a resume (R3)
+    PerfSampler::notePaused(want);
     if (!want){
+        // the first frame back measured the time in the background: no game clock jumps by it
+        clampNextDelta = true;
         AudioSystem::setPlatformPaused(false);
         ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
             [](ScriptBase& script) { script.onApplicationPause(false); });
@@ -3051,17 +3406,26 @@ void Engine::applyPause(){
     // controls let go (D6)
     cancelAllUIPointers();
 
-    // a paused app may be killed without another call (after the handlers, which may set some)
+    // a paused app may be killed without another call (after the handlers, which may set some):
+    // the saves first, then the PlayerPrefs
+    savegame::flushForLifecycle("the app paused");
     UserSettings::save();
 }
 
 void Engine::systemFocus(bool hasFocus){
     if (hasFocus == focused) return;
+    if (input::InputRecorder::isActive()) input::InputRecorder::record(input::RecordedEvent::of(hasFocus ? input::RecordKind::FocusGained : input::RecordKind::FocusLost));
     // coming back: the resume goes first (OnApplicationPause(false), then OnApplicationFocus(true))
     if (hasFocus && osPaused){
         systemResume();
     }
     focused = hasFocus;
+    {
+        const diag::journal::Field fields[] = {{"focused", hasFocus}};
+        diag::journal::logEngine("engine.focus", fields);
+    }
+    if (hasFocus)
+        PerfSampler::noteResumed();
     // the key and button ups after a focus loss go to another window: the next frame sees them; the
     // UI presses end now (D6, cancelled)
     if (!hasFocus){
@@ -3074,11 +3438,20 @@ void Engine::systemFocus(bool hasFocus){
     ScriptRuntime::broadcast(ScriptMessage::ApplicationFocus, [hasFocus](lua_State* L) { lua_pushboolean(L, hasFocus ? 1 : 0); return 1; },
         [hasFocus](ScriptBase& script) { script.onApplicationFocus(hasFocus); });
     Engine::onFocus.call(hasFocus);
+    // Pause On Focus Loss, after onFocus(false); a pause's own focus loss leaves it to the pause
+    if (hasFocus){
+        focusLossSeen = false;
+    }else if (!focusLossFromPause){
+        focusLossSeen = true;
+        requestPause("focus_lost");
+    }
 }
 
 void Engine::systemVisibilityChanged(bool isVisible){
     if (isVisible == visible) return;
+    if (input::InputRecorder::isActive()) input::InputRecorder::record(input::RecordedEvent::of(isVisible ? input::RecordKind::Show : input::RecordKind::Hide));
     visible = isVisible;
+    PerfSampler::noteHidden(!isVisible);
     if (isVisible)
         Log::print("Window visible: drawing again");
     else
@@ -3119,6 +3492,8 @@ void Engine::systemOrientationChanged(){
     }
     orientationPendingSince = 0.0;
     lastOrientation = orientation;
+    // a turn the game sees, not each call: the editor's Game view calls this every frame
+    if (input::InputRecorder::isActive()) input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::Orientation), PlatformRules::orientationName(Screen::getOrientation()));
     Engine::onOrientationChanged.call(orientation);
     // the insets the platform pushed while the turn waited for its size (the timeout: a view that
     // keeps its shape); after a size change systemViewChanged already used them
@@ -3130,6 +3505,7 @@ bool Engine::isOrientationPending(){
 }
 
 void Engine::systemLowMemory(){
+    if (input::InputRecorder::isActive()) input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::LowMemory));
     Engine::onLowMemory.call();
     // the response (caches, texture mips, Device.onLowMemory) runs at the next frame's start
     Device::reportLowMemory();
@@ -3158,15 +3534,32 @@ void Engine::resetApplicationState(){
     }
     focused = true;
     visible = true;
+    focusLossSeen = false;
+    pauseRequestCheckPending = true;
+    menuShownAtLatch = false;
+    menuCacheValid = false;
+    backEscapeDown = false;
+    backEscapeKeyHeld = false;
+    backPadButtonsHeld.clear();
+    cursorPadButtonsHeld.clear();
+    lastBackRoute = BackRoute::Unconsumed;
+    GamepadCursor::resetSession();
     lastOrientation = 0;
     orientationPendingSince = 0.0;
     targetFrameRate = -1;
     // no tier a script set, no Game view simulation, the thermal and memory response at rest
     Device::resetSession();
+    // the Performance sampler off, its window and the game's reasons gone (R11)
+    PerfSampler::resetSession();
+    // a Simulation Culling distance scale a script set (the per-scene state goes with the scenes)
+    SimulationCulling::resetSession();
     applyFramePacing();
     dynamicBatching = dynamicBatchingDefault;
     // no extra insets, and the next safe area is where the game starts (no event)
     Screen::resetSafeAreaState();
+    // the step cap a script set, and the drops of the last Play (S96 WP-E)
+    maxFixedStepsPerFrame = 0;
+    resetDroppedFixedSteps();
 }
 
 bool Engine::isFocused(){
@@ -3265,27 +3658,49 @@ std::vector<Scene*> Engine::getInputScenes(bool keys){
     return inputScenes;
 }
 
+void Engine::getInputScenesTopFirst(std::vector<Scene*>& out){
+    out.clear();
+    if (Scene* overlay = DebugOverlay::getScene())
+        out.push_back(overlay);
+    std::lock_guard<std::mutex> lock(sceneListMutex);
+    out.insert(out.end(), scenes.rbegin(), scenes.rend());
+}
+
+namespace {
+
+    // the canvas the pointer coordinates are in: a Pixel Perfect Camera's canvas is its base
+    // image over the Pixels Per Unit, which the integer canvas rounds (R6): the camera spans
+    // the exact one
+    Vector2 pointerCanvasSize(){
+        const pixelart::PixelPerfectLayout& layout = Engine::getPixelPerfectLayout();
+        if (Engine::getPixelPerfectView().active && layout.canvasWidth > 0.0f && layout.canvasHeight > 0.0f)
+            return Vector2(layout.canvasWidth, layout.canvasHeight);
+        return Vector2((float)Engine::getCanvasWidth(), (float)Engine::getCanvasHeight());
+    }
+
+    // a release outside the canvas, at its nearest point on the canvas (S93 R2)
+    void clampToCanvas(float& x, float& y){
+        const Vector2 canvas = pointerCanvasSize();
+        x = std::min(std::max(x, 0.0f), canvas.x);
+        y = std::min(std::max(y, 0.0f), canvas.y);
+    }
+
+}
+
 bool Engine::transformCoordPos(float& x, float& y){
 
     // the sub-pixel smoothing's shift of the drawn image (S41 R12)
     x = (x - viewShift.x - viewRect.getX()) / viewRect.getWidth();
     y = (y - viewShift.y - viewRect.getY()) / viewRect.getHeight();
     
-    // a Pixel Perfect Camera's canvas is its base image over the Pixels Per Unit, which the
-    // integer canvas rounds (R6): the camera spans the exact one
-    float canvasWidth = (float)Engine::getCanvasWidth();
-    float canvasHeight = (float)Engine::getCanvasHeight();
-    if (pixelPerfectRequest.active && pixelPerfectLayout.canvasWidth > 0.0f && pixelPerfectLayout.canvasHeight > 0.0f){
-        canvasWidth = pixelPerfectLayout.canvasWidth;
-        canvasHeight = pixelPerfectLayout.canvasHeight;
-    }
-    x = canvasWidth * x;
-    y = canvasHeight * y;
+    const Vector2 canvas = pointerCanvasSize();
+    x = canvas.x * x;
+    y = canvas.y * y;
     
     if (allowEventsOutCanvas || mouseMode == MouseMode::CAPTURED)
         return true;
     
-    return ((x >= 0) && (x <= canvasWidth) && (y >= 0) && (y <= canvasHeight));
+    return ((x >= 0) && (x <= canvas.x) && (y >= 0) && (y <= canvas.y));
 }
 
 // ---- input. Order per pointer event (phase-1 spec §3.6.1, §3.15): HTML UI screen documents,
@@ -3302,6 +3717,12 @@ namespace {
 
     // a document set the cursor on the last pointer move (systemMouseMove)
     bool documentCursorSet = false;
+
+    // The fingers and mouse buttons whose press the game got (onTouchStart, onMouseDown):
+    // their release reaches it also outside the canvas, clamped to it (S93 R2), so a game never
+    // misses the end of a press it saw. Set at every press, cleared at its release or cancel
+    std::set<int> gameTouches;
+    std::set<int> gameButtons;
 
     std::string toUtf8(const std::vector<uint32_t>& codepoints){
         std::string out;
@@ -3671,10 +4092,28 @@ namespace {
 
 }
 
+namespace {
+
+    // Engine::setInputSource lasts for one event
+    struct InputSourceScope {
+        ~InputSourceScope(){ InputSchemeTracker::setSource(InputSourceTag::None, -1); }
+    };
+
+}
+
+void Engine::setInputSource(InputSourceTag tag, int deviceId){
+    InputSchemeTracker::setSource(tag, deviceId);
+}
+
 void Engine::systemTouchStart(int pointer, float x, float y){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::TouchStart, 0, (int16_t)pointer, x, y))) return;
+    const InputSourceScope sourceScope;
     // the debug overlay's gestures (three fingers held) see every finger; never consumed
     DebugOverlay::handleTouch(pointer, x, y, 0);
+    gameTouches.erase(pointer);
     if (transformCoordPos(x, y)){
+        // the scheme's evidence before the UI routes it: a finger a document took is touch use
+        InputSchemeTracker::noteTouchStart(x, y, InputSchemeTracker::clock());
 #if JASPERENGINE_AUDIO_CAPTURE
         if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "down", pointer, x, y);
 #endif
@@ -3708,6 +4147,7 @@ void Engine::systemTouchStart(int pointer, float x, float y){
             Input::setTouchConsumedByUI(pointer);
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
+            gameTouches.insert(pointer);
             Engine::onTouchStart.call(pointer, x, y);
             if (Engine::isCallMouseInTouchEvent()){
                 // the simulated mouse is one device: a finger multiTouchEnabled hides does not press it
@@ -3723,20 +4163,34 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 }
 
 void Engine::systemTouchEnd(int pointer, float x, float y){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::TouchEnd, 0, (int16_t)pointer, x, y))) return;
+    const InputSourceScope sourceScope;
     DebugOverlay::handleTouch(pointer, x, y, 2);
     // a finger Input.multiTouchEnabled hides does not move or press the simulated mouse
     const bool visible = Input::isTouchVisible(pointer);
     const bool onCanvas = transformCoordPos(x, y);
+    InputSchemeTracker::noteTouchEnd(x, y, InputSchemeTracker::clock());
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "up", pointer, x, y);
 #endif
+    const bool gamePress = gameTouches.erase(pointer) > 0;
     if (!onCanvas){
-        // lifted outside the canvas: no event, but the finger is not down any more, and the
-        // documents and the component UI that tracked it let go of it without a click (D6)
+        // lifted outside the canvas: the finger is not down any more, and the documents and the
+        // component UI that tracked it let go of it without a click (D6). The game gets the end
+        // of a press it got, at the nearest canvas point (S93 R2)
+        clampToCanvas(x, y);
+        Input::setTouchPosition(pointer, x, y);
         Input::removeTouch(pointer);
         if (Engine::isCallMouseInTouchEvent() && visible)
             Input::releaseMousePressed(D_MOUSE_BUTTON_1);
         cancelUIPointer(pointer, true);
+        if (gamePress){
+            Engine::onTouchEnd.call(pointer, x, y);
+            if (Engine::isCallMouseInTouchEvent()){
+                Input::setMousePosition(x, y);
+                Engine::onMouseUp.call(D_MOUSE_BUTTON_1, x, y, 0);
+            }
+        }
         return;
     }
     {
@@ -3777,6 +4231,8 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
 }
 
 void Engine::systemTouchMove(int pointer, float x, float y){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::TouchMove, 0, (int16_t)pointer, x, y))) return;
+    const InputSourceScope sourceScope;
     DebugOverlay::handleTouch(pointer, x, y, 1);
     if (transformCoordPos(x, y)){
         Input::setTouchPosition(pointer, x, y);
@@ -3825,6 +4281,18 @@ void Engine::cancelUIPointer(int pointerOrButton, bool touch){
     }
 }
 
+void Engine::releaseInputForMenu(){
+    // the presses of the other documents and of the component UI end (on-screen controls let go of
+    // their actions); a menu document keeps what it holds
+    std::vector<int> keptFingers;
+    for (Scene* scene : getInputScenes(false)){
+        scene->getSystem<UIDocumentSystem>()->cancelPointersOutsideMenus(keptFingers);
+        scene->getSystem<UISystem>()->cancelAllPointers();
+    }
+    // keys, buttons and fingers the game holds come up in this latch; nothing is replayed later
+    Input::releaseGameHeld(keptFingers);
+}
+
 void Engine::cancelAllUIPointers(){
     // the debug overlay's gestures too: no finger stays held across a pause or a focus loss
     DebugOverlay::cancelGestures();
@@ -3843,8 +4311,10 @@ void Engine::systemTouchCancel(){
 }
 
 void Engine::systemTouchCancel(int pointer){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::TouchCancel, 0, (int16_t)pointer))) return;
     // the debug overlay sees every finger, also those outside the canvas that Input never had
     DebugOverlay::handleTouch(pointer, 0.0f, 0.0f, 3);
+    gameTouches.erase(pointer);
     // Drop this finger only. Pointer-up would release the control and can click it.
     size_t index = Input::findTouchIndex(pointer);
     if (index == -1)
@@ -3869,7 +4339,11 @@ void Engine::systemTouchCancel(int pointer){
 }
 
 void Engine::systemMouseDown(int button, float x, float y, int mods){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::MouseDown, button, 0, x, y, mods))) return;
+    const InputSourceScope sourceScope;
+    gameButtons.erase(button);
     if (transformCoordPos(x, y)){
+        InputSchemeTracker::noteMouseButton(x, y, InputSchemeTracker::clock());
 #if JASPERENGINE_AUDIO_CAPTURE
         if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "down", button, x, y);
 #endif
@@ -3907,6 +4381,7 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
             Input::setPressConsumedByUI(Input::mouseControl(button));
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
+            gameButtons.insert(button);
             Engine::onMouseDown.call(button, x, y, mods);
             if (Engine::isCallTouchInMouseEvent()){
                 Input::addTouch(0, x, y);
@@ -3917,17 +4392,30 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
     }
 }
 void Engine::systemMouseUp(int button, float x, float y, int mods){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::MouseUp, button, 0, x, y, mods))) return;
+    const InputSourceScope sourceScope;
     const bool onCanvas = transformCoordPos(x, y);
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "up", button, x, y);
 #endif
+    const bool gamePress = gameButtons.erase(button) > 0;
     if (!onCanvas){
-        // released outside the canvas: no event, but the button is not held any more, and the
-        // documents and the component UI that tracked it let go of it without a click (D6)
+        // released outside the canvas: the button is not held any more, and the documents and
+        // the component UI that tracked it let go of it without a click (D6). The game gets the
+        // release of a press it got, at the nearest canvas point (S93 R2)
         Input::releaseMousePressed(button);
         if (Engine::isCallTouchInMouseEvent())
             Input::removeTouch(0);
         cancelUIPointer(button, false);
+        if (gamePress){
+            clampToCanvas(x, y);
+            Input::setMousePosition(x, y);
+            if (mods != 0)
+                Input::setModifiers(mods);
+            Engine::onMouseUp.call(button, x, y, mods);
+            if (Engine::isCallTouchInMouseEvent())
+                Engine::onTouchEnd.call(0, x, y);
+        }
         return;
     }
     {
@@ -3957,20 +4445,24 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
             }))
             uiEventReceived = true;
 
+        // the simulated touch ends with the button also when the release was consumed (S93 R3)
+        if (Engine::isCallTouchInMouseEvent())
+            Input::removeTouch(0);
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onMouseUp.call(button, x, y, mods);
-            if (Engine::isCallTouchInMouseEvent()){
-                Input::removeTouch(0);
+            if (Engine::isCallTouchInMouseEvent())
                 Engine::onTouchEnd.call(0, x, y);
-            }
         }
         uiEventReceived = false;
     }
 }
 
 void Engine::systemMouseMove(float x, float y, int mods){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::MouseMove, 0, 0, x, y, mods))) return;
     // the movement counts outside the canvas too (a captured or dragged mouse looks around)
+    const InputSourceScope sourceScope;
     const bool insideCanvas = transformCoordPos(x, y);
+    InputSchemeTracker::noteMouseMove(x, y, InputSchemeTracker::clock());
     Input::addMouseMovement(x, y);
     if (insideCanvas){
         Input::setMousePosition(x, y);
@@ -4036,6 +4528,9 @@ void Engine::systemMouseMove(float x, float y, int mods){
 }
 
 void Engine::systemMouseScroll(float xoffset, float yoffset, int mods){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::MouseScroll, 0, 0, xoffset, yoffset, mods))) return;
+    const InputSourceScope sourceScope;
+    InputSchemeTracker::noteMouseScroll();
     Input::setMouseScroll(xoffset, yoffset);
     if (mods != 0)
         Input::setModifiers(mods);
@@ -4058,12 +4553,14 @@ void Engine::systemMouseScroll(float xoffset, float yoffset, int mods){
 }
 
 void Engine::systemMouseEnter(){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::MouseEnter))) return;
     Input::addMouseEntered();
     // documents hover again with the next move
     Engine::onMouseEnter.call();
 }
 
 void Engine::systemMouseLeave(){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::MouseLeave))) return;
     Input::releaseMouseEntered();
     for (Scene* scene : getInputScenes(false)){
         scene->getSystem<UIDocumentSystem>()->eventOnMouseLeave();
@@ -4073,6 +4570,10 @@ void Engine::systemMouseLeave(){
 }
 
 void Engine::systemKeyDown(int key, bool repeat, int mods){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::keyRecord(input::RecordKind::KeyDown, key, repeat, mods))) return;
+    const InputSourceScope sourceScope;
+    // typing in a text field never switches the scheme (a phone's soft keyboard)
+    InputSchemeTracker::noteKey(key, repeat, !repeat && isTextInputFocused(), InputSchemeTracker::clock());
 #if JASPERENGINE_AUDIO_CAPTURE
     if (!repeat && AudioMarkers::isEnabled()) AudioMarkers::input("key", "down", key, 0.0f, 0.0f);
 #endif
@@ -4082,6 +4583,17 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
 
     // the debug overlay's toggle and stats keys; never consumed
     DebugOverlay::handleKey(key, mods, true, repeat);
+
+    // Escape is Back first (the engine's own Escape of a Back button already was); a consumed press
+    // and its up reach neither the documents nor the game
+    if (key == D_KEY_ESCAPE && (repeat ? backEscapeKeyHeld : InputSchemeTracker::getSourceTag() != InputSourceTag::Synthetic && systemBack(BackSource::Escape))){
+        backEscapeKeyHeld = true;
+        if (!repeat)
+            Input::setPressConsumedByUI(Input::keyControl(key));
+        // the ESC character a platform sends after the key (Windows) is not typed
+        navigationSwallowedChar = 0x1B;
+        return;
+    }
 
     const std::vector<Scene*> scenes = getInputScenes(true);
 
@@ -4136,11 +4648,18 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
 }
 
 void Engine::systemKeyUp(int key, bool repeat, int mods){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::KeyUp, key, 0, 0.0f, 0.0f, mods))) return;
+    const InputSourceScope sourceScope;
+    InputSchemeTracker::noteKeyUp(key);
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("key", "up", key, 0.0f, 0.0f);
 #endif
     Input::releaseKeyPressed(key);
     Input::setModifiers(mods); // Now it can be 0
+    if (key == D_KEY_ESCAPE && backEscapeKeyHeld){
+        backEscapeKeyHeld = false;
+        return;
+    }
 
     // every document hears the release; the one that took the press consumes it. While a text
     // field is typed in, the other documents do not hear a typing key's release either (a focused
@@ -4168,6 +4687,7 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
 }
 
 void Engine::systemCharInput(char32_t unit){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::Char, (int32_t)unit))) return;
     std::vector<uint32_t> codepoints;
     charInputCombiner.push(static_cast<uint32_t>(unit), codepoints);
     // half of a pair: nothing until its other half
@@ -4220,6 +4740,7 @@ void Engine::deliverCodepoints(const std::vector<uint32_t>& input){
 }
 
 void Engine::systemTextInput(const std::string& typed){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::Text), typed)) return;
     // the character of a key the selection submitted with is not typed anywhere
     std::string utf8 = typed;
     if (navigationSwallowedChar != 0 && !utf8.empty() && (unsigned char)utf8[0] == navigationSwallowedChar){
@@ -4259,12 +4780,14 @@ void Engine::systemTextInput(const std::string& typed){
 }
 
 void Engine::systemImeComposition(const std::string& utf8, int cursorCodepoints){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::Ime, cursorCodepoints), utf8)) return;
     dispatchToDocuments(getInputScenes(true), [&](UIDocumentSystem* documents){
         return documents->eventOnImeComposition(utf8, cursorCodepoints);
     });
 }
 
 void Engine::systemImeCancel(){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::ImeCancel))) return;
     for (Scene* scene : getInputScenes(false))
         scene->getSystem<UIDocumentSystem>()->eventOnImeCancel();
 }
@@ -4293,11 +4816,14 @@ void Engine::setTextInputArea(const Rect& canvasRect){
 }
 
 void Engine::systemGamepadConnect(int gamepad, const std::string& name){
+    if (input::InputRecorder::isActive()) input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::GamepadConnect, 0, (int16_t)gamepad), name);
+    InputSchemeTracker::noteGamepadConnected(gamepad, name);
     Input::addGamepad(gamepad, name);
     Engine::onGamepadConnect.call(gamepad);
 }
 
 void Engine::systemGamepadDisconnect(int gamepad){
+    if (input::InputRecorder::isActive()) input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::GamepadDisconnect, 0, (int16_t)gamepad));
     // the documents let go of what the pad held (:active, the keys' ups)
     const std::vector<Scene*> scenes = getScenesSnapshot();
     std::vector<GamepadUIKey> held;
@@ -4316,15 +4842,61 @@ void Engine::systemGamepadDisconnect(int gamepad){
         if (it->first == gamepad) it = gamepadUI.takenAxes.erase(it); else ++it;
     }
 
+    for (auto it = backPadButtonsHeld.begin(); it != backPadButtonsHeld.end();){
+        if (it->first == gamepad) it = backPadButtonsHeld.erase(it); else ++it;
+    }
+    for (auto it = cursorPadButtonsHeld.begin(); it != cursorPadButtonsHeld.end();){
+        if (it->first != gamepad){ ++it; continue; }
+        if (it->second == D_GAMEPAD_BUTTON_A) GamepadCursor::releaseA(gamepad);
+        it = cursorPadButtonsHeld.erase(it);
+    }
+
+    // the pad that holds the Gamepad scheme went: Pause On Focus Loss asks after the event
+    const bool schemePad = InputSchemeTracker::getCurrent() == InputScheme::Gamepad && InputSchemeTracker::getLastGamepad() == gamepad;
     Input::removeGamepad(gamepad);
+    InputSchemeTracker::noteGamepadDisconnected(gamepad);
     Engine::onGamepadDisconnect.call(gamepad);
+    if (schemePad)
+        requestPause("gamepad_disconnected");
 }
 
 void Engine::systemGamepadButtonDown(int gamepad, int button){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::GamepadButtonDown, button, (int16_t)gamepad))) return;
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("gamepad", "down", button, 0.0f, 0.0f);
 #endif
+    InputSchemeTracker::noteGamepadButton(gamepad);
     Input::addGamepadButtonPressed(gamepad, button);
+
+    // B is Back first (not a platform's repeat of a held B); a consumed press and its up reach
+    // neither the documents nor the game
+    if (button == D_GAMEPAD_BUTTON_B){
+        const std::pair<int, int> id(gamepad, button);
+        if (backPadButtonsHeld.count(id) || (!findGamepadHeld(gamepad, GamepadUIKey::B) && systemBack(BackSource::Gamepad))){
+            backPadButtonsHeld.insert(id);
+            Input::setPressConsumedByUI(Input::gamepadControl(Input::getGamepadSlot(gamepad), button));
+            return;
+        }
+    }
+
+    // the gamepad cursor owns A (a click at it), the d-pad (the focus, which it follows) and B (Back,
+    // then the documents' Escape): never the game's while it shows
+    if (GamepadCursor::isActive() && (button == D_GAMEPAD_BUTTON_A || button == D_GAMEPAD_BUTTON_B ||
+                                      gamepadMoveDirection(gamepadKeyOfButton(button)) != MoveDirection::NONE)){
+        cursorPadButtonsHeld.insert(std::make_pair(gamepad, button));
+        Input::setPressConsumedByUI(Input::gamepadControl(Input::getGamepadSlot(gamepad), button));
+        if (button == D_GAMEPAD_BUTTON_A){
+            GamepadCursor::pressA(gamepad);
+        }else{
+            const bool direction = button != D_GAMEPAD_BUTTON_B;
+            if (direction)
+                GamepadCursor::prepareNavigation();
+            gamepadKeyDown(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
+            if (direction)
+                GamepadCursor::followFocus();
+        }
+        return;
+    }
 
     const bool consumed = gamepadKeyDown(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
     if (consumed)
@@ -4335,10 +4907,20 @@ void Engine::systemGamepadButtonDown(int gamepad, int button){
 }
 
 void Engine::systemGamepadButtonUp(int gamepad, int button){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::GamepadButtonUp, button, (int16_t)gamepad))) return;
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("gamepad", "up", button, 0.0f, 0.0f);
 #endif
     Input::releaseGamepadButtonPressed(gamepad, button);
+    if (backPadButtonsHeld.erase(std::make_pair(gamepad, button)))
+        return;
+    if (cursorPadButtonsHeld.erase(std::make_pair(gamepad, button))){
+        if (button == D_GAMEPAD_BUTTON_A)
+            GamepadCursor::releaseA(gamepad);
+        else
+            gamepadKeyUp(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
+        return;
+    }
 
     // consumed iff its down was, so the game never gets an up without a down
     const bool consumed = gamepadKeyUp(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
@@ -4348,9 +4930,14 @@ void Engine::systemGamepadButtonUp(int gamepad, int button){
 }
 
 void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
+    if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::axisRecord(gamepad, axis, value))) return;
+    InputSchemeTracker::noteGamepadAxis(gamepad, axis, Input::getGamepadAxis(gamepad, axis), value);
     Input::setGamepadAxisValue(gamepad, axis, value);
 
-    const bool consumed = gamepadAxisToDocuments(getScenesSnapshot(), gamepad, axis, value);
+    // the gamepad cursor's sticks (the left one moves it, the right one scrolls) are never the game's
+    const bool cursorAxis = GamepadCursor::isActive() && (axis == D_GAMEPAD_AXIS_LEFT_X || axis == D_GAMEPAD_AXIS_LEFT_Y ||
+                                                          axis == D_GAMEPAD_AXIS_RIGHT_X || axis == D_GAMEPAD_AXIS_RIGHT_Y);
+    const bool consumed = cursorAxis || gamepadAxisToDocuments(getScenesSnapshot(), gamepad, axis, value);
     Input::setGamepadAxisConsumedByUI(gamepad, axis, consumed);
 
     const std::pair<int, int> id(gamepad, axis);
@@ -4374,6 +4961,216 @@ void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
     Engine::onGamepadAxisMove.call(gamepad, axis, value);
 }
 
+const char* Engine::backSourceName(BackSource source){
+    switch (source){
+        case BackSource::BackButton: return "back_button";
+        case BackSource::Escape: return "escape";
+        case BackSource::Gamepad: return "gamepad";
+        default: return "agent";
+    }
+}
+
+BackRoute Engine::getLastBackRoute(){
+    return lastBackRoute;
+}
+
+bool Engine::systemBack(BackSource source){
+    // an Escape or a B that is a Back is recorded as its key or button, which a replay makes a Back
+    // again; the Back button's and an agent's are recorded here
+    if ((source == BackSource::BackButton || source == BackSource::Agent) && input::InputRecorder::isActive() &&
+        !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::Back, static_cast<int32_t>(source))))
+        return false;
+    // keys go to every scene that takes keys; the pad's B to every scene, as their own routing does
+    const std::vector<Scene*> scenes = (source == BackSource::Gamepad) ? getScenesSnapshot() : getInputScenes(true);
+    BackRoute route = BackRoute::Unconsumed;
+    // 0. an open select or modal dialog where the key goes closes as today: not a Back
+    for (auto it = scenes.rbegin(); it != scenes.rend() && route == BackRoute::Unconsumed; ++it){
+        if (canSendDocumentEvents(*it) && (*it)->getSystem<UIDocumentSystem>()->hasBackOverlay())
+            route = BackRoute::Key;
+    }
+    // 1. the top menu document: the first scene with one, top layer first
+    if (route == BackRoute::Unconsumed){
+        for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
+            UIDocumentSystem* documents = (*it)->getSystem<UIDocumentSystem>().get();
+            if (!canSendDocumentEvents(*it) || !documents->hasMenuDocument())
+                continue;
+            if (documents->dispatchBack())
+                route = BackRoute::Document;
+            break;
+        }
+    }
+    // 2. the game, when it listens
+    if (route == BackRoute::Unconsumed && onBack.hasSubscribers()){
+        route = BackRoute::Game;
+        onBack.call(std::string(backSourceName(source)));
+    }
+    lastBackRoute = route;
+    const bool consumed = route == BackRoute::Document || route == BackRoute::Game;
+    // 3. the Back button and an agent's Back press Escape (a game written for Back = Escape), released
+    //    the frame after the one that sees it
+    if (!consumed && (source == BackSource::BackButton || source == BackSource::Agent)){
+        // made from the Back just recorded: a replay of it presses this Escape again
+        const input::InputRecorder::EngineMade engineMade;
+        if (backEscapeDown)
+            systemKeyUp(D_KEY_ESCAPE, false, Input::getModifiers());
+        systemCharInput(U'\x1b');
+        // the engine's Escape, not a key the player pressed: no second Back, the scheme stays
+        setInputSource(InputSourceTag::Synthetic);
+        systemKeyDown(D_KEY_ESCAPE, false, Input::getModifiers());
+        backEscapeDown = true;
+        backEscapeFrame = drawnFrames;
+    }
+    return consumed;
+}
+
+namespace {
+
+    // the documents report when one starts or stops counting (UIDocumentSystem::getMenuRevision): a
+    // look at the scenes only after a change
+    template<typename Scenes>
+    void refreshDocumentFlags(const Scenes& scenes, Scene* overlay){
+        const uint32_t revision = UIDocumentSystem::getMenuRevision();
+        const size_t sceneCount = scenes.size() + (overlay ? 1 : 0);
+        if (menuCacheValid && revision == menuCacheRevision && sceneCount == menuCacheScenes)
+            return;
+        menuCacheValue = false;
+        cursorCacheValue = false;
+        for (size_t i = 0; i <= scenes.size(); i++){
+            Scene* scene = i < scenes.size() ? scenes[i] : overlay;
+            if (!scene)
+                continue;
+            const std::shared_ptr<UIDocumentSystem> documents = scene->getSystem<UIDocumentSystem>();
+            menuCacheValue = menuCacheValue || documents->hasMenuDocument();
+            cursorCacheValue = cursorCacheValue || documents->hasCursorDocument();
+        }
+        menuCacheValid = true;
+        menuCacheRevision = revision;
+        menuCacheScenes = sceneCount;
+    }
+
+}
+
+bool Engine::isMenuShowing(){
+    std::lock_guard<std::mutex> lock(sceneListMutex);
+    refreshDocumentFlags(scenes, DebugOverlay::getScene());
+    return menuCacheValue;
+}
+
+bool Engine::isGamepadCursorShown(){
+    std::lock_guard<std::mutex> lock(sceneListMutex);
+    refreshDocumentFlags(scenes, DebugOverlay::getScene());
+    return cursorCacheValue;
+}
+
+bool Engine::dispatchCursorPointer(CursorPhase phase, float x, float y){
+    const int button = D_MOUSE_BUTTON_LEFT;
+    bool consumed = false;
+    if (phase == CURSOR_MOVE)
+        return dispatchCursorMove(x, y);
+    const std::vector<Scene*> scenes = getInputScenes(false);
+    if (phase == CURSOR_DOWN){
+        Scene* documentScene = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+            return documents->eventOnPointerDown(0, button, x, y, 0, false, false);
+        });
+        consumed = documentScene != nullptr;
+        if (!documentScene){
+            for (Scene* scene : scenes){
+                if (canSendUIEvents(scene) && scene->getSystem<UISystem>()->eventOnPointerDown(-1 - button, button, x, y, false))
+                    consumed = true;
+            }
+        }
+        if (dispatchToWorldDocuments(scenes, consumed, false, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(0, button, x, y, 0, PointerPhase::DOWN, false, covered);
+            }))
+            consumed = true;
+    }else if (phase == CURSOR_UP){
+        consumed = dispatchReleaseToDocuments(scenes, 0, button, false, [&](UIDocumentSystem* documents){
+            return documents->eventOnPointerUp(0, button, x, y, 0, false, false);
+        });
+        for (Scene* scene : scenes){
+            if (scene->canReceiveUIEvents() && scene->getSystem<UISystem>()->eventOnPointerUp(-1 - button, button, x, y, false))
+                consumed = true;
+        }
+        if (dispatchToWorldDocuments(scenes, consumed, true, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(0, button, x, y, 0, PointerPhase::UP, false, covered);
+            }))
+            consumed = true;
+    }
+    return consumed;
+}
+
+bool Engine::dispatchCursorMove(float x, float y){
+    // the cursor's frame: the scenes into a reused buffer, no std::function (R26). A handler that
+    // moves the cursor again (GamepadCursor.position) dispatches on a buffer of its own: refilling
+    // the reused one would change the scenes under the outer dispatch (or free them, growing)
+    static std::vector<Scene*> reused;
+    static int depth = 0;
+    std::vector<Scene*> nested;
+    std::vector<Scene*>& topFirst = depth == 0 ? reused : nested;
+    struct DepthGuard {
+        int& value;
+        explicit DepthGuard(int& value): value(value) { value++; }
+        ~DepthGuard() { value--; }
+    } depthGuard(depth);
+    getInputScenesTopFirst(topFirst);
+    bool consumed = false;
+    // as the mouse: below the document it is over, documents lose their hover
+    bool over = false;
+    for (Scene* scene : topFirst){
+        if (!canSendDocumentEvents(scene))
+            continue;
+        UIDocumentSystem* documents = scene->getSystem<UIDocumentSystem>().get();
+        if (over && !documents->hasPointerCapture(0, D_MOUSE_BUTTON_1, false)){
+            documents->eventOnMouseLeave();
+            continue;
+        }
+        if (documents->eventOnPointerMove(0, x, y, 0, false, false)){
+            over = true;
+            consumed = true;
+        }
+    }
+    bool overComponentUI = false;
+    for (auto it = topFirst.rbegin(); it != topFirst.rend(); ++it){
+        if (canSendUIEvents(*it)){
+            UISystem* ui = (*it)->getSystem<UISystem>().get();
+            if (ui->eventOnPointerMove(-1, x, y, false))
+                consumed = true;
+            overComponentUI = overComponentUI || ui->isPointerOverUI(-1);
+        }
+    }
+    // the documents on meshes, after the screen-space UI that covers them
+    bool covered = consumed || overComponentUI;
+    for (Scene* scene : topFirst){
+        if (!canSendDocumentEvents(scene))
+            continue;
+        if (scene->getSystem<UIDocumentSystem>()->dispatchWorldPointer(0, -1, x, y, 0, PointerPhase::MOVE, false, covered)){
+            consumed = true;
+            covered = true;
+        }
+    }
+    return consumed;
+}
+
+bool Engine::dispatchCursorWheel(float dx, float dy){
+    const std::vector<Scene*> scenes = getInputScenes(false);
+    bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+        return documents->eventOnWheel(dx, dy, 0);
+    }) != nullptr;
+    for (auto it = scenes.rbegin(); it != scenes.rend() && !consumed; ++it){
+        if (canSendUIEvents(*it) && (*it)->getSystem<UISystem>()->eventOnScroll(dx, dy))
+            consumed = true;
+    }
+    return consumed;
+}
+
+void Engine::setPauseOnFocusLoss(bool enabled){
+    pauseOnFocusLoss = enabled;
+}
+
+bool Engine::isPauseOnFocusLoss(){
+    return pauseOnFocusLoss;
+}
+
 void Engine::getUINavigationWants(bool& gamepad, bool& keyboard){
     const std::vector<Scene*> scenes = getScenesSnapshot();
     // a selected Button (the component UI's menu, or one its history gives back); no callbacks here
@@ -4384,7 +5181,8 @@ void Engine::getUINavigationWants(bool& gamepad, bool& keyboard){
             break;
         }
     }
-    gamepad = keyboard || documentsHaveGamepadFocus(scenes);
+    // the gamepad cursor holds the sticks, A and the d-pad while it shows
+    gamepad = keyboard || GamepadCursor::isActive() || documentsHaveGamepadFocus(scenes);
 }
 
 bool Engine::wantsGamepadNavigation(){

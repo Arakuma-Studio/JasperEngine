@@ -1,17 +1,28 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "audio/AudioAnalysis.h"
+#include "audio/AudioImportRegistry.h"
 #include "audio/AudioImportSettings.h"
 #include "audio/AudioProvenance.h"
+#include "component/AudioSourceComponent.h"
+#include "pool/SoundPool.h"
+
+#include "ScriptDataTestSupport.h"
 
 #include <gtest/gtest.h>
 
-namespace AudioImportSettingsTest_cpp {
+#include <cmath>
+#include <fstream>
+
+namespace audio_import_settings_test {
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
+
+constexpr double importSettingsPi = 3.14159265358979323846;
 
 AudioImportSettings parsed(const std::string& text) {
     AudioImportSettings settings;
@@ -182,6 +193,198 @@ TEST(AudioImportSettings, ApplySetsAndRemovesTheMusicBlock) {
     EXPECT_TRUE(settings.toYaml().IsNull());
 }
 
+TEST(AudioImportSettings, ForceToMonoKey) {
+    // absent when off; after loop_end_ms (before music) otherwise; a later version's key still round-trips
+    EXPECT_TRUE(parsed("force_to_mono: off\n").isDefault());
+    const AudioImportSettings settings = parsed("later_key: 7\nmusic: {bpm: 90}\nforce_to_mono: auto\nloop_end_ms: 2000\nversion: 1\n");
+    EXPECT_EQ(settings.forceToMono, AudioImportSettings::ForceToMono::Auto);
+    EXPECT_EQ(YAML::Dump(settings.toYaml()),
+              "version: 1\n"
+              "loop_end_ms: 2000\n"
+              "force_to_mono: auto\n"
+              "music:\n"
+              "  bpm: 90\n"
+              "  beats_per_bar: 4\n"
+              "  first_beat_ms: 0\n"
+              "later_key: 7");
+    EXPECT_TRUE(parsed(YAML::Dump(settings.toYaml())) == settings);
+    EXPECT_EQ(parsed("force_to_mono: on\n").forceToMono, AudioImportSettings::ForceToMono::On);
+    EXPECT_EQ(parsed(YAML::Dump(parsed("force_to_mono: on\n").toYaml())).forceToMono, AudioImportSettings::ForceToMono::On);
+    EXPECT_EQ(refused("force_to_mono: yes please\n"), "force_to_mono must be off, on or auto");
+    EXPECT_EQ(refused("force_to_mono: [on]\n"), "force_to_mono must be off, on or auto");
+
+    AudioImportSettings applied;
+    std::string error;
+    ASSERT_TRUE(applied.apply({{"force_to_mono", "on"}}, error)) << error;
+    EXPECT_EQ(applied.toJson()["force_to_mono"], "on");
+    EXPECT_FALSE(applied.sameSound(AudioImportSettings()));
+    EXPECT_FALSE(applied.apply({{"force_to_mono", "stereo"}}, error));
+    EXPECT_NE(error.find("force_to_mono must be off, on or auto"), std::string::npos);
+    ASSERT_TRUE(applied.apply({{"force_to_mono", nullptr}}, error)) << error;
+    EXPECT_TRUE(applied.isDefault());
+}
+
+namespace {
+
+// two channels of 48000 frames: a mid tone with a side tone (orthogonal over whole cycles) `sideDb` below it
+AudioAnalysis::Signal stereoSignal(double sideDb, bool invertRight = false, float dc = 0.0f) {
+    AudioAnalysis::Signal signal;
+    signal.channels = 2;
+    signal.sampleRate = 48000;
+    signal.frames = 48000;
+    signal.samples.resize(signal.frames * 2);
+    const double side = std::pow(10.0, sideDb / 20.0);
+    for (size_t i = 0; i < signal.frames; i++) {
+        const double t = (double)i / 48000.0;
+        const double m = 0.4 * std::sin(2.0 * importSettingsPi * 440.0 * t);
+        const double s = 0.4 * side * std::sin(2.0 * importSettingsPi * 1000.0 * t);
+        signal.samples[i] = dc + (float)(m + s);
+        signal.samples[signal.frames + i] = invertRight ? dc - (float)(m + s) : (float)(m - s) + dc;
+    }
+    return signal;
+}
+
+AudioImportSettings::Channels channelsOf(const AudioAnalysis::Signal& signal) {
+    return AudioImportSettings::Channels::fromAnalysis({{"format", {{"channels", signal.channels}}}, {"stereo", AudioAnalysis::stereo(signal)}});
+}
+
+} // namespace
+
+TEST(AudioImportSettings, AutoResolvesFromWidth) {
+    AudioImportSettings settings;
+    settings.forceToMono = AudioImportSettings::ForceToMono::Auto;
+    ClipImportSettings clip;
+    nlohmann::json resolved = nlohmann::json::object();
+
+    const AudioImportSettings::Channels nearMono = channelsOf(stereoSignal(-24.0));
+    ASSERT_TRUE(nearMono.sideMidDb.has_value());
+    EXPECT_NEAR(*nearMono.sideMidDb, -24.0, 0.2);
+    settings.resolveChannels(nearMono, clip, &resolved);
+    EXPECT_TRUE(clip.forceMono);
+    EXPECT_EQ(resolved["force_mono"], true);
+    EXPECT_EQ(resolved["channels"], 1);
+    EXPECT_NE(nearMono.autoHint().find("Mono (width -24.0 dB)"), std::string::npos) << nearMono.autoHint();
+
+    const AudioImportSettings::Channels wide = channelsOf(stereoSignal(-9.0));
+    settings.resolveChannels(wide, clip, &resolved);
+    EXPECT_FALSE(clip.forceMono);
+    EXPECT_EQ(resolved["channels"], 2);
+    EXPECT_NE(wide.autoHint().find("Stereo (width -9.0 dB: a wide image)"), std::string::npos) << wide.autoHint();
+
+    // phase-inverted channels: their side is all there is
+    settings.resolveChannels(channelsOf(stereoSignal(-90.0, true)), clip);
+    EXPECT_FALSE(clip.forceMono);
+    // quiet inverted content riding a shared offset: a narrow width (the offset is all mid), but the
+    // correlation says the content cancels in mono
+    AudioAnalysis::Signal offset;
+    offset.channels = 2;
+    offset.sampleRate = 48000;
+    offset.frames = 48000;
+    offset.samples.resize(offset.frames * 2);
+    for (size_t i = 0; i < offset.frames; i++) {
+        const float x = 0.02f * (float)std::sin(2.0 * importSettingsPi * 440.0 * (double)i / 48000.0);
+        offset.samples[i] = 0.5f + x;
+        offset.samples[offset.frames + i] = 0.5f - x;
+    }
+    const AudioImportSettings::Channels cancels = channelsOf(offset);
+    ASSERT_TRUE(cancels.sideMidDb.has_value() && cancels.correlation.has_value());
+    EXPECT_LE(*cancels.sideMidDb, -18.0);
+    EXPECT_LT(*cancels.correlation, -0.3);
+    settings.resolveChannels(cancels, clip);
+    EXPECT_FALSE(clip.forceMono);
+    EXPECT_NE(cancels.autoHint().find("cancels in mono"), std::string::npos) << cancels.autoHint();
+
+    // On folds any stereo file; nothing folds a mono one
+    settings.forceToMono = AudioImportSettings::ForceToMono::On;
+    settings.resolveChannels(wide, clip);
+    EXPECT_TRUE(clip.forceMono);
+    AudioImportSettings::Channels mono;
+    mono.channels = 1;
+    settings.resolveChannels(mono, clip, &resolved);
+    EXPECT_FALSE(clip.forceMono);
+    EXPECT_EQ(resolved["channels"], 1);
+    settings.forceToMono = AudioImportSettings::ForceToMono::Off;
+    settings.resolveChannels(nearMono, clip);
+    EXPECT_FALSE(clip.forceMono);
+}
+
+// S97 REQ-16, REQ-17: load_type is the last key, never changes the samples, and travels in the export
+TEST(AudioImportSettings, LoadTypeKeyRoundTripsAndApplies) {
+    AudioImportSettings settings = parsed("load_type: streaming\ngain_db: -3\n");
+    EXPECT_EQ(settings.loadType, AudioLoadType::Streaming);
+    EXPECT_EQ(YAML::Dump(settings.toYaml()), "version: 1\ngain_db: -3\nload_type: streaming");
+    EXPECT_EQ(settings.toJson()["load_type"], "streaming");
+    EXPECT_TRUE(parsed("load_type: auto\n").toYaml().IsNull()) << "auto is the default: not written";
+    EXPECT_NE(refused("load_type: fast\n").find("decompress_on_load"), std::string::npos) << "names the values";
+
+    std::string error;
+    AudioImportSettings applied;
+    ASSERT_TRUE(applied.apply({{"load_type", "compressed_in_memory"}}, error)) << error;
+    EXPECT_EQ(applied.loadType, AudioLoadType::CompressedInMemory);
+    EXPECT_FALSE(applied.isDefault());
+    EXPECT_FALSE(applied.apply({{"load_type", "fast"}}, error));
+    EXPECT_NE(error.find("streaming"), std::string::npos);
+    EXPECT_FALSE(applied.apply({{"load_type", 3}}, error));
+    ASSERT_TRUE(applied.apply({{"load_type", nullptr}}, error)) << error;
+    EXPECT_TRUE(applied.isDefault());
+
+    // resolved with the clip, outside its hash: the samples are the same
+    ClipImportSettings plain;
+    ClipImportSettings streamed;
+    ASSERT_TRUE(parsed("gain_db: -3\n").resolve(48000, 48000, 0, 0, plain, error)) << error;
+    ASSERT_TRUE(settings.resolve(48000, 48000, 0, 0, streamed, error)) << error;
+    EXPECT_EQ(streamed.loadType, AudioLoadType::Streaming);
+    EXPECT_EQ(streamed.hash(), plain.hash());
+    EXPECT_FALSE(streamed == plain);
+    ClipImportSettings onlyStreamed;
+    onlyStreamed.loadType = AudioLoadType::Streaming;
+    EXPECT_FALSE(onlyStreamed.isDefault());
+    EXPECT_TRUE(onlyStreamed.playsAsFile()) << "not wrapped";
+
+    // je-audio-imports.json: an optional key, read back by a player
+    const std::string text = AudioImportRegistry::exportText({{"music/loop.ogg", onlyStreamed}});
+    EXPECT_NE(text.find("\"load_type\": \"streaming\""), std::string::npos) << text;
+    ASSERT_TRUE(AudioImportTable::parse(text, &error)) << error;
+    const std::optional<ClipImportSettings> read = AudioImportTable::find("music/loop.ogg");
+    ASSERT_TRUE(read.has_value());
+    EXPECT_EQ(read->loadType, AudioLoadType::Streaming);
+    ASSERT_TRUE(AudioImportTable::parse(R"({"format": "jasperengine.audio-imports", "version": 1, "clips": {"a.wav": {"gain_db": -1}}})", &error));
+    EXPECT_EQ(AudioImportTable::find("a.wav")->loadType, AudioLoadType::Auto) << "an older export's file";
+    AudioImportTable::clear();
+}
+
+    class AudioImportSettingsLoadType : public scriptdata::ScriptDataTest {
+    protected:
+        void TearDown() override {
+            AudioImportTable::clear();
+            SoundPool::clear();
+            ScriptDataTest::TearDown();
+        }
+    };
+}
+namespace audio_import_settings_test {
+
+using audio_import_settings_test::AudioImportSettingsLoadType;
+
+// AC16 (REQ-16, D9): the source's own load type, then the clip's, then Auto by size
+TEST_F(AudioImportSettingsLoadType, ResolvesAfterTheSource) {
+    {
+        // 100 KB: Auto decodes it
+        std::ofstream out(root / "assets" / "loop.wav", std::ios::binary);
+        out << std::string(100 * 1024, '\0');
+    }
+    SoundPool::clear();
+    EXPECT_EQ(SoundPool::resolveLoadType("loop.wav", AudioLoadType::Auto), AudioLoadType::DecompressOnLoad);
+    ClipImportSettings clip;
+    clip.loadType = AudioLoadType::Streaming;
+    AudioImportTable::set("loop.wav", clip);
+    EXPECT_EQ(SoundPool::resolveLoadType("loop.wav", AudioLoadType::Auto), AudioLoadType::Streaming) << "the clip's setting";
+    EXPECT_EQ(SoundPool::resolveLoadType("loop.wav", AudioLoadType::DecompressOnLoad), AudioLoadType::DecompressOnLoad) << "the source's wins";
+    EXPECT_EQ(SoundPool::key("loop.wav", AudioLoadType::Streaming), "loop.wav#streaming") << "no wrapped sample";
+    AudioImportTable::set("loop.wav", ClipImportSettings());
+    EXPECT_EQ(SoundPool::resolveLoadType("loop.wav", AudioLoadType::Auto), AudioLoadType::DecompressOnLoad);
+}
+
 TEST(AudioProvenance, RoundTripAndApply) {
     AudioProvenance provenance;
     std::string error;
@@ -199,4 +402,4 @@ TEST(AudioProvenance, RoundTripAndApply) {
     EXPECT_NE(error.find("object"), std::string::npos);
 }
 
-}  // namespace AudioImportSettingsTest_cpp
+}  // namespace audio_import_settings_test

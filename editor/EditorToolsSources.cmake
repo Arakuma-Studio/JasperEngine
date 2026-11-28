@@ -38,6 +38,10 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/recorder/RecorderSettings.cpp
     ${EDITOR_DIR}/recorder/RecorderSession.cpp
     ${EDITOR_DIR}/recorder/RecorderWindow.cpp
+    ${EDITOR_DIR}/recorder/RecordInput.cpp
+    ${EDITOR_DIR}/recorder/InputCapture.cpp
+    ${EDITOR_DIR}/recorder/CaptureScreenshotsDialog.cpp
+    ${EDITOR_DIR}/recorder/InputRecordingInspector.cpp
 )
 
 # the MCP tools (editor_tools, and the hub's core ones)

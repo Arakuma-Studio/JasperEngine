@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: PhysicsPlacement
 canvasWidth: 1280
 canvasHeight: 720
@@ -14,7 +14,10 @@ windowWidth: 1280
 windowHeight: 720
 windowResizable: true
 luaDir: .
+transparencySortMode: perspective
 startSceneId: 2685538481
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: TableCrate.scene
     filepathGuid: 1082f39094f679d9fd1c631216e5bc6a

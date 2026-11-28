@@ -68,6 +68,9 @@ async def test_device_tier_settings_with_undo(ed: Editor):
     ed.check_eq(low["volumetrics"], False)
     ed.check_eq(low["msaa_samples"], None, "an empty cell inherits")
     ed.check(abs(got["quality.device_tiers.mobile.medium"]["render_scale"] - 0.85) < 1e-6, "Medium renders at 0.85")
+    # S100: Cavity's World samples at most 4 on Low and 8 on Medium
+    ed.check_eq(low["cavity_samples"], 4)
+    ed.check_eq(got["quality.device_tiers.mobile.medium"]["cavity_samples"], 8)
     ed.check(all(v is None for v in got["quality.device_tiers.mobile.high"].values()), "High is the project's values")
     ed.check_eq(got["quality.thermal_response.mobile"], True)
     ed.check_eq(got["quality.thermal_response.desktop"], False)
@@ -102,6 +105,7 @@ async def test_device_tier_settings_with_undo(ed: Editor):
 
     await ed.check_error("set_project_settings", values={low_key: {"render_scale": 2}}, contains="render_scale")
     await ed.check_error("set_project_settings", values={low_key: {"ssao": True}}, contains="off")
+    await ed.check_error("set_project_settings", values={low_key: {"cavity_samples": 6}}, contains="4, 8 or 16")
     await ed.check_error("set_project_settings", values={low_key: {"sparkle": 1}}, contains="not a cell")
     await ed.check_error("set_project_settings", values={"graphics.upload_budget_mb.mobile": 0})
 
@@ -172,3 +176,19 @@ async def test_device_simulation_in_play(ed: Editor):
     ed.check_eq(info["simulation"]["tier"], "medium", "the toolbar keeps its choice for the next Play")
     await ed.call("set_device_simulation", tier="auto", platform="auto", thermal_state="device")
     await ed.check_error("set_device_simulation", tier="extreme")
+
+
+async def test_device_info_quirks(ed: Editor):
+    """GPU quirks (docs/specs/release-performance-and-gpu-quirks.md AC22): on llvmpipe get_device_info
+    has the driver and the two software-GL quirks with their reasons, and Lua sees the same."""
+    info = await ed.call("get_device_info")
+    ed.check(info["driver"], f"a GL driver string: {info.get('driver')!r}")
+    names = {q["name"]: q for q in info["quirks"]}
+    ed.check_eq(set(names), {"gl_no_worker_context", "gl_no_compile_threads"}, f"the software-GL quirks: {info['quirks']}")
+    for quirk in names.values():
+        ed.check_eq(quirk["source"], "rule", f"{quirk}")
+        ed.check(len(quirk["reason"]) >= 20, f"with its reason: {quirk}")
+    ed.check_eq(info["quirks_forced_off"], [], "nothing forced off")
+    lua = await ed.call("eval_lua", code="return #Device.gpuQuirks, Device.gpuDriver", allow_edit_mode=True)
+    ed.check_eq(lua["values"][0], 2, "Device.gpuQuirks")
+    ed.check_eq(lua["values"][1], info["driver"], "Device.gpuDriver")

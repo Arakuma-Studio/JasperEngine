@@ -23,7 +23,7 @@
 
 namespace jasperengine{
 
-    enum FrustumPlane{
+    enum FrustumPlane : int {
         FRUSTUM_PLANE_NEAR   = 0,
         FRUSTUM_PLANE_FAR    = 1,
         FRUSTUM_PLANE_LEFT   = 2,
@@ -105,6 +105,10 @@ namespace jasperengine{
         // rotation; when false the rotation drives it (forward = rotation * -Z)
         bool useTarget = true;
         bool autoResize = true;
+        // Unity's orthographic Size (S94 F28): > 0 on an orthographic camera centres its bounds,
+        // +-size up and down and +-size x aspect sideways, the aspect the canvas's or the render
+        // target's (ahead of autoResize); 0 keeps the clips. A Pixel Perfect Camera wins.
+        float orthographicSize = 0.0f;
 
         // engine-driven override (planar reflection): when set, updateCamera uses
         // customViewMatrix instead of position/target, and invertCulling flips

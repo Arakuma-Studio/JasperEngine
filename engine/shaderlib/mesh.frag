@@ -110,6 +110,11 @@ out vec4 g_finalColor;
     defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HEX_TILING) || defined(PBR_HAIR)
     #define PBR_EXT
 #endif
+// the material's vertex colour masks (V1 R70, includes/pbr.glsl): their channels end this block
+#if defined(LIT_VC_OCCLUSION) || defined(LIT_VC_ROUGHNESS) || defined(LIT_VC_ROUGHNESS_SET) || defined(LIT_VC_METALLIC) || \
+    defined(LIT_VC_EMISSION) || defined(LIT_VC_OPACITY) || defined(LIT_VC_ALBEDO)
+    #define LIT_VC_MASKS
+#endif
 uniform u_fs_pbrParams {
     //Metallic material
     vec4 baseColorFactor;
@@ -164,6 +169,11 @@ uniform u_fs_pbrParams {
             vec4 hair1;     // rgb secondary highlight colour (linear), w its shift
             vec4 hair2;     // x primary exponent, y secondary exponent, z cos(rotation), w sin(rotation)
         #endif
+    #endif
+    #ifdef LIT_VC_MASKS
+        // per channel (R, G, B, A) the input it masks (MaterialPbr::getVertexColorMasks), last (the
+        // upload writes it at its reflected offset, RenderSystem pbrVertexColorOffset)
+        vec4 vertexColorMasks;
     #endif
 } pbrParams;
 
@@ -253,6 +263,10 @@ const float M_PI = 3.141592653589793;
         vec3 litEnergyCompensation;
     #endif
     #include "includes/pbr_ext.glsl"
+    // a scene's Area Lights (S99, builtin:lit#USE_AREA_LIGHTS)
+    #if defined(USE_PUNCTUAL) && defined(USE_AREA_LIGHTS)
+        #include "includes/area_lights.glsl"
+    #endif
 #endif
 #ifdef USE_LIGHT2D
     // the lit path shades 2D lights with its real normals (N.L at the light's height); the
@@ -523,6 +537,12 @@ void main() {
             // apply ambient occlusion too all lighting that is not punctual
             f_specular = mix(f_specular, f_specular * ao, occlusionStrength);
         #endif
+        #ifdef LIT_VC_OCCLUSION
+            // the vertex colour's occlusion (V1 R70), as the map's: the light that is not punctual
+            float vertexColorOcclusion = vertexColorMask(1.0);
+            f_diffuse *= vertexColorOcclusion;
+            f_specular *= vertexColorOcclusion;
+        #endif
 
         #ifdef HAS_TERRAIN_PBR
             f_diffuse *= terrainSurface.occlusion;
@@ -566,6 +586,18 @@ void main() {
                 Light light = getLightData(i);
 
                 if (light.intensity > 0.0){
+                    #ifdef USE_AREA_LIGHTS
+                        // an Area Light shades by its shape (includes/area_lights.glsl)
+                        AreaLight area;
+                        if (getAreaLight(i, light, v_position, area)){
+                            float areaShadow = 1.0;
+                            #ifdef USE_SHADOWS
+                                areaShadow = lightShadowD(i, v_position, n, shadowDpdx, shadowDpdy);
+                            #endif
+                            areaLightShade(area, materialInfo, v_position, n, v, areaShadow, f_diffuse, f_specular);
+                            continue;
+                        }
+                    #endif
 
                     vec3 pointToLight = getLightVector(light, v_position);
 
@@ -629,6 +661,9 @@ void main() {
         f_emissive = pbrParams.emissiveFactor;
         #if (defined(HAS_UV_SET1) || defined(HAS_UV_SET2)) && !defined(NO_EMISSIVE_TEXTURE)
             f_emissive *= sRGBToLinear(getEmissiveTexture().rgb);
+        #endif
+        #ifdef LIT_VC_EMISSION
+            f_emissive *= vertexColorMask(5.0);
         #endif
 
         #ifdef PBR_TRANSMISSION

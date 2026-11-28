@@ -8,7 +8,8 @@
 //
 //   header   magic "JSCN" / "JPFB", u16 major, u16 minor, u32 scene (prefab) id, u32 entity
 //            count, u32 flags, u64 string table offset                                  (28 bytes)
-//   body     a scene: the settings record, the entity records, the camera, the resources;
+//   body     a scene: the settings record, the entity records, the camera, the resources, the
+//            hierarchy (1.7);
 //            a prefab: its link, the root and slot records, the components, the hierarchy
 //   strings  varint count, then each string as varint length and UTF-8 bytes
 //
@@ -17,7 +18,8 @@
 // a Compile build's do); a prefab's are numbered from 1 (its root) and made when instantiated.
 // Readers refuse another major version. A newer minor adds only fields and records they skip
 // (length-prefixed), so a player reads it without those, warning once; the editor pairs its
-// content only with runtimes that read its minor (PlayerRuntimes::find).
+// content only with runtimes that read its minor (PlayerRuntimes::find). A build's content can
+// need a newer minor than its cooked files for what game.json carries (BUILD_PROFILE_MINOR).
 
 #include "Export.h"
 #include "ecs/Entity.h"
@@ -37,17 +39,37 @@ namespace jasperengine {
         constexpr char SCENE_MAGIC[4] = {'J', 'S', 'C', 'N'};
         constexpr char PREFAB_MAGIC[4] = {'J', 'P', 'F', 'B'};
         constexpr uint16_t FORMAT_MAJOR = 1;
-        // 1: the scene settings' capsule shadows (S57); 2: the LOD cross-fade's (S54); 3: the default shaders'
-        // property values; 4: the planar reflections (water-reflections); 5: the Water Wakes' map (water-boats)
-        constexpr uint16_t FORMAT_MINOR = 5;
+        // The cooked files' layout. 1: the scene settings' capsule shadows (S57); 2: the LOD cross-fade's (S54);
+        // 3: the default shaders' property values; 4: the planar reflections (water-reflections); 5: the Water
+        // Wakes' map (water-boats); 6: the Box2D sub-steps and the physics world settings, and the scene
+        // hierarchy (S96); 7: a Mesh Renderer's .mesh asset (S98 F1: its geometry is not in the scene), the
+        // scene resources' VATs, masks, controllers and bitmap fonts (S98 REQ-52), the scene's own Canvas
+        // Scaler (S98 D1); 8: the Light Steps and the 2D ambient without a Light 2D (S78); 9: the screen HTML
+        // UI documents' render mode and MSAA samples (S92); 10: Environment Lighting's ambientMode and
+        // gradient (S99); 11: BUILD_PROFILE_MINOR's (below); 12: script list properties (a value kind) and,
+        // after a Script component's scripts, their element types (S95 REQ-20); 13: the scene's Fixed
+        // Timestep (S95 REQ-13)
+        constexpr uint16_t FORMAT_MINOR = 13;
+        // Content minors past the cooked files' layout: what a build's game.json uses. A build stamps one
+        // only when it uses it, so a build that does not stays playable by every runtime of FORMAT_MINOR.
+        // 11: game.json's buildProfile and defines (build-profiles: a runtime of 10 or older ignores them and
+        // would run a demo as the full game)
+        constexpr uint16_t BUILD_PROFILE_MINOR = 11;
+        // The newest content minor this runtime reads: its player-info's contentFormatVersion
+        // (tools/players/package_player.py reads this line)
+        constexpr uint16_t CONTENT_MINOR = 13;
+        static_assert(CONTENT_MINOR >= FORMAT_MINOR && CONTENT_MINOR >= BUILD_PROFILE_MINOR, "CONTENT_MINOR is the newest minor");
         constexpr size_t HEADER_BYTES = 28;
 
         // entity record flags
         constexpr uint8_t ENTITY_SYSTEM = 1;     // made with createSystemEntity (a default camera)
         constexpr uint8_t ENTITY_PRESENT = 2;    // a prefab slot that holds a GameObject
 
-        // "1.0": the content-manifest's and player-info's contentFormatVersion
+        // "1.11": the newest content format this runtime reads (player-info's contentFormatVersion)
         JASPERENGINE_API std::string contentFormatVersion();
+        // The content format a build's content needs (its content manifest's contentFormatVersion):
+        // the cooked files' layout, or no older than BUILD_PROFILE_MINOR when game.json carries a Build Profile
+        JASPERENGINE_API std::string buildContentFormatVersion(bool buildProfile);
         // A reader of format `reader` ("1.5") reads all of content of format `content`: the same
         // major and no newer a minor. False for a version that is not "<major>.<minor>".
         JASPERENGINE_API bool readsContentFormat(std::string_view reader, std::string_view content);

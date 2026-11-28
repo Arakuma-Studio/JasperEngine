@@ -389,9 +389,10 @@ async def test_source_export(ed: Editor):
     ed.check((out / "project" / "plugins" / "native" / "android" / "java" / "com" / "t" / "Device.java").is_file(), "plugin sources copied")
     ed.check(not (out / "project" / "assets" / "plugins").exists(), "plugins/native is not an asset")
     ed.check((out / "project" / "scripts" / "plugins" / "native" / "cpp" / "CalcPlugin.cpp").is_file(), "the C++ plugins ship as a script root")
-    main_cpp = (out / "project" / "main.cpp").read_text()
-    ed.check_in('{"Device", "Java/Kotlin plugins run only on Android; Objective-C/Swift plugins run only on iOS and macOS"}', main_cpp)
-    ed.check("{\"Calc\"" not in main_cpp, "a C++ plugin runs everywhere")
+    # what each platform of the source project cannot run (game.json, read by every build: S98 D1)
+    only = json.loads((out / "project" / "content" / "game.json").read_text())["nativePlatformOnlyByTarget"]
+    ed.check_eq(only["desktop"].get("Device"), "Java/Kotlin plugins run only on Android; Objective-C/Swift plugins run only on iOS and macOS")
+    ed.check(all("Calc" not in plugins for plugins in only.values()), f"a C++ plugin runs everywhere: {only}")
 
     # Xcode
     xcode = out / "workspaces" / "xcode"
@@ -526,7 +527,7 @@ async def test_source_export(ed: Editor):
                studio / "nativeplugins" / "build.gradle", studio / "app" / "src" / "main" / "AndroidManifest.xml",
                xcode / "JasperEngine.xcodeproj" / "project.pbxproj", xcode / "Podfile", xcode / "ios" / "Info.plist",
                xcode / "ios" / "JasperEngine.entitlements", out / "project" / "export-settings" / "apply.cmake",
-               out / "project" / "main.cpp"]
+               out / "project" / "main.cpp", out / "project" / "content" / "game.json"]
     before = digest(watched)
     await export()
     ed.check_eq(digest(watched), before, "a re-export writes the same files")

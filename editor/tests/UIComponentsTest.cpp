@@ -6,6 +6,7 @@
 // selection, navigation, Submit and Cancel, the typing guard, the stick hand-back, transitions.
 
 #include "ScriptTestHarness.h"
+#include "EngineTestAccess.h"
 
 #include "subsystem/UISystem.h"
 #include "input/InputActions.h"
@@ -24,22 +25,12 @@
 #include "Input.h"
 #include "Catalog.h"
 #include "registry/EntityCloner.h"
+#include "input/TextEntry.h"
+#include "Stream.h"
 
 #include <cmath>
 #include <cstdio>
 #include <map>
-
-namespace jasperengine {
-    // TEST-ONLY seam (Engine.h befriends it): a view loaded without a GPU, the per-frame gamepad step
-    struct EngineTestAccess {
-        static bool setViewLoaded(bool loaded) {
-            const bool previous = Engine::viewLoaded;
-            Engine::viewLoaded = loaded;
-            return previous;
-        }
-        static void updateGamepadNavigation() { Engine::updateGamepadNavigation(); }
-    };
-}
 
 namespace UIComponentsTest_cpp {
 
@@ -588,6 +579,144 @@ TEST_F(UIComponentsTest, TypingGuardAcrossScenes) {
     Engine::systemCharInput(U' ');
     EXPECT_EQ(ui(top).getSelected(), x) << "the upper scene's menu does not move";
     EXPECT_EQ(scene->getComponent<TextComponent>(text).text, "w ") << "Space typed, not a click";
+}
+
+// text-entry spec AC8: Keyboard Type reaches the soft keyboard, Character Limit holds on typing and
+// paste, the action key submits, older scenes read the defaults
+TEST_F(UIComponentsTest, InputFieldKeyboardTypeAndLimit) {
+    const Entity field = element("Field", 0, 0, 200, 30);
+    const Entity text = element("Text", 0, 0, 200, 30, field);
+    scene->removeComponent<ImageComponent>(text);
+    scene->addComponent<TextComponent>(text, {});
+    scene->getComponent<RectTransformComponent>(text).ignoreEvents = true;
+    InputFieldComponent inputfield;
+    inputfield.text = text;
+    inputfield.keyboardType = InputFieldKeyboardType::EMAIL_ADDRESS;
+    inputfield.characterLimit = 4;
+    scene->addComponent<InputFieldComponent>(field, inputfield);
+    count(scene->getComponent<InputFieldComponent>(field).onSubmit, "submit");
+    start();
+
+    const int shows = system.keyboardShows;
+    ui().eventOnPointerDown(-1, D_MOUSE_BUTTON_LEFT, 10, 10, false);
+    ui().eventOnPointerUp(-1, D_MOUSE_BUTTON_LEFT, 10, 10, false);
+    ASSERT_TRUE(uic(field).focused);
+    EXPECT_EQ(system.keyboardShows, shows + 1);
+    EXPECT_EQ(system.keyboardTraits.keyboard, KeyboardType::Email);
+    EXPECT_EQ(system.keyboardTraits.maxLength, 4);
+
+    // typed: the fifth and sixth characters are refused
+    for (char32_t c : std::u32string(U"abcdef"))
+        Engine::systemCharInput(c);
+    EXPECT_EQ(scene->getComponent<TextComponent>(text).text, "abcd");
+
+    // pasted (text from the platform): the same limit
+    scene->getComponent<TextComponent>(text).text = "";
+    scene->getComponent<InputFieldComponent>(field).cursorIndex = 0;
+    scene->getComponent<InputFieldComponent>(field).selectionAnchor = 0;
+    Engine::systemTextInput("abcdef");
+    EXPECT_EQ(scene->getComponent<TextComponent>(text).text, "abcd");
+
+    // the soft keyboard's action key submits, once
+    Engine::systemEditorAction(EnterKey::Send);
+    EXPECT_EQ(counts["submit"], 1);
+
+    // saved only away from the defaults; a scene without the keys reads the defaults
+    const YAML::Node saved = editor::Stream::encodeComponents(field, scene, scene->getSignature(field));
+    EXPECT_EQ(saved["inputfield"]["keyboardType"].as<std::string>(), "email_address");
+    EXPECT_EQ(saved["inputfield"]["characterLimit"].as<int>(), 4);
+    Scene old;
+    const Entity loaded = old.createUserEntity();
+    YAML::Node oldComponents;
+    oldComponents["inputfield"] = YAML::Load("{placeholder: Name}");
+    editor::Stream::decodeComponents(loaded, NULL_ENTITY, &old, oldComponents);
+    ASSERT_TRUE(old.findComponent<InputFieldComponent>(loaded));
+    EXPECT_EQ(old.getComponent<InputFieldComponent>(loaded).keyboardType, InputFieldKeyboardType::DEFAULT);
+    EXPECT_EQ(old.getComponent<InputFieldComponent>(loaded).characterLimit, 0);
+    const YAML::Node again = editor::Stream::encodeComponents(loaded, &old, old.getSignature(loaded));
+    EXPECT_FALSE(again["inputfield"]["keyboardType"]) << "the defaults are not written";
+    EXPECT_FALSE(again["inputfield"]["characterLimit"]);
+}
+
+// a keyboard that keeps the text (Android) holds what was typed past Character Limit: the field
+// sends its own text back once, so a backspace erases what the player sees
+TEST_F(UIComponentsTest, InputFieldLimitResyncsAKeyboardThatKeepsText) {
+    const Entity field = element("Field", 0, 0, 200, 30);
+    const Entity text = element("Text", 0, 0, 200, 30, field);
+    scene->removeComponent<ImageComponent>(text);
+    scene->addComponent<TextComponent>(text, {});
+    scene->getComponent<RectTransformComponent>(text).ignoreEvents = true;
+    InputFieldComponent inputfield;
+    inputfield.text = text;
+    inputfield.characterLimit = 4;
+    scene->addComponent<InputFieldComponent>(field, inputfield);
+    system.keepsKeyboardText = true;
+    start();
+    ui().eventOnPointerDown(-1, D_MOUSE_BUTTON_LEFT, 10, 10, false);
+    ui().eventOnPointerUp(-1, D_MOUSE_BUTTON_LEFT, 10, 10, false);
+    ASSERT_TRUE(uic(field).focused);
+
+    for (char32_t c : std::u32string(U"abc"))
+        Engine::systemCharInput(c);
+    frame();
+    EXPECT_EQ(system.keyboardTextUpdates, 0) << "nothing refused: the keyboard already has the text";
+
+    for (char32_t c : std::u32string(U"def"))
+        Engine::systemCharInput(c);
+    EXPECT_EQ(scene->getComponent<TextComponent>(text).text, "abcd");
+    frame();
+    EXPECT_EQ(system.keyboardTextUpdates, 1);
+    EXPECT_EQ(system.keyboardText, L"abcd");
+    EXPECT_EQ(system.keyboardSelection[0], 4);
+    EXPECT_EQ(system.keyboardSelection[1], 4);
+    frame();
+    EXPECT_EQ(system.keyboardTextUpdates, 1) << "once";
+
+    // a keyboard that keeps no text (desktop, iOS, the web) is told nothing
+    system.keepsKeyboardText = false;
+    Engine::systemCharInput(U'g');
+    frame();
+    EXPECT_EQ(system.keyboardTextUpdates, 1);
+}
+
+// the gamepad cursor's move (Engine::dispatchCursorMove) reads the scenes into a reused buffer: a
+// handler that moves the cursor again (GamepadCursor.position) while a scene loads refills it under
+// the outer dispatch, which must still go to the scenes it started with
+TEST_F(UIComponentsTest, CursorMoveReentryKeepsItsOwnScenes) {
+    const Entity bottom = element("Bottom", 0, 0, 200, 200);
+    Scene* top = uiScene();
+    const Entity topElement = element("Top", 0, 0, 200, 200, NULL_ENTITY, top);
+    Scene* late = uiScene();
+    const Entity lateElement = element("Late", 0, 0, 200, 200, NULL_ENTITY, late);
+    Engine::addSceneLayer(top);
+    Engine::addSceneLayer(late);
+    start();
+    frame();
+    // the buffer has room for more scenes than this test uses: the nested call refills it in place
+    std::vector<Scene*> extra;
+    for (int i = 0; i < 8; i++){
+        extra.push_back(uiScene());
+        Engine::addSceneLayer(extra.back());
+    }
+    EngineTestAccess::cursorMove(950.0f, 950.0f);
+    for (Scene* gone : extra)
+        Engine::removeScene(gone);
+    Engine::removeScene(late);
+
+    int topEnters = 0, lateEnters = 0, bottomEnters = 0;
+    uic(topElement, top).onPointerEnter.add("reentry", [&](float, float){ topEnters++; });
+    uic(lateElement, late).onPointerEnter.add("reentry", [&](float, float){ lateEnters++; });
+    uic(bottom).onPointerEnter.add("reentry", [&](float, float){
+        if (bottomEnters++ > 0)
+            return;
+        // a scene loads and the cursor moves away, inside the bottom scene's handler
+        Engine::addSceneLayer(late);
+        EngineTestAccess::cursorMove(900.0f, 900.0f);
+    });
+    EngineTestAccess::cursorMove(10.0f, 10.0f);
+    EXPECT_EQ(bottomEnters, 1);
+    EXPECT_EQ(topEnters, 1) << "the outer move skipped a scene it started with";
+    EXPECT_EQ(lateEnters, 0) << "the outer move reached a scene added during it";
 }
 
 TEST_F(UIComponentsTest, InputActionsSuppressedWhileSelected) {

@@ -33,9 +33,10 @@ namespace jasperengine{
         SCREEN    // a quarter-resolution march per pixel, in front of far geometry; main camera
     };
 
-    // What a tier runs (docs/specs/S12-atmosphere.md R11). Volumetric fog: its targets at
-    // 1/fogDivisor of the colour pass per axis, fogSteps march steps, fogLocalLights point/spot
-    // lights and fogVolumes Local Volumetric Fog volumes. Clouds: the mode AUTO picks, the Sky
+    // What a tier runs (docs/specs/S12-atmosphere.md R11, docs/specs/S101-vapor.md R13, R15).
+    // Volumetric fog: its targets at 1/fogDivisor of the colour pass per axis, fogSteps march
+    // steps, fogLocalLights point/spot lights, fogVolumes Local Volumetric Fog volumes, the sun's
+    // shadow taps per step (light shafts) and the denoise's radius (1: 3x3, 2: 5x5). Clouds: the mode AUTO picks, the Sky
     // Map's side and the frames one refresh takes, the march's primary and light steps,
     // detail erosion, the Screen mode's divisor.
     struct AtmosphereTier{
@@ -44,6 +45,8 @@ namespace jasperengine{
         int fogSteps = 0;
         int fogLocalLights = 0;
         int fogVolumes = 0;
+        int fogSunShadowTaps = 1;
+        int fogDenoiseRadius = 1;
         CloudsRendering cloudsAuto = CloudsRendering::SKY_MAP;
         int skyMapSize = 0;
         int skyMapSliceFrames = 1;

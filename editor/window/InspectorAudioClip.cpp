@@ -24,6 +24,7 @@
 #include "audio/SoundTypes.h"
 #include "command/CommandHistory.h"
 #include "command/type/SetAssetMetaCmd.h"
+#include "component/AudioSourceComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "io/Data.h"
 #include "audio/AudioFileCheck.h"
@@ -512,6 +513,13 @@ void editor::InspectorWindow::drawAudioClipAsset(const fs::path& asset) {
             }
             ImGui::EndCombo();
         }
+        // how sources whose Load Type is Auto, free voices, events and music hold the clip (S97 REQ-16)
+        {
+            static const char* const loadTypeLabels[] = {"Auto", "Decompress On Load", "Compressed In Memory", "Streaming"};
+            int loadType = (int)view.edited.loadType;
+            if (ImGui::Combo("Load Type", &loadType, loadTypeLabels, IM_ARRAYSIZE(loadTypeLabels))) view.edited.loadType = (AudioLoadType)loadType;
+            ImGui::SetItemTooltip("Auto streams files of 1 MiB and more and decodes smaller ones. An Audio Source's own Load Type wins.");
+        }
         auto dragField = [](const char* label, double& value, double low, double high, const char* format) {
             ImGui::DragScalar(label, ImGuiDataType_Double, &value, 0.25f, &low, &high, format, ImGuiSliderFlags_AlwaysClamp);
         };
@@ -533,6 +541,25 @@ void editor::InspectorWindow::drawAudioClipAsset(const fs::path& asset) {
         dragField("Fade Out", view.edited.fadeOutMs, 0.0, AudioImportSettings::FADE_MAX_MS, "%.1f ms");
         dragField("Loop Start", view.edited.loopStartMs, -1.0, std::max(fileMs, 1.0), view.edited.loopStartMs < 0.0 ? "Trimmed Start" : "%.1f ms");
         dragField("Loop End", view.edited.loopEndMs, -1.0, std::max(fileMs, 1.0), view.edited.loopEndMs < 0.0 ? "Trimmed End" : "%.1f ms");
+
+        // -- Force To Mono: what a stereo file costs and how it pans as a positional sound
+        const AudioImportSettings::Channels channels = AudioImportSettings::Channels::fromAnalysis(analysis.item);
+        const bool monoFile = channels.channels == 1;
+        ImGui::BeginDisabled(monoFile);
+        static const char* const forceToMonoLabels[] = {"Off", "On", "Auto"};
+        int forceToMono = (int)view.edited.forceToMono;
+        if (ImGui::Combo("Force To Mono", &forceToMono, forceToMonoLabels, IM_ARRAYSIZE(forceToMonoLabels))) {
+            view.edited.forceToMono = (AudioImportSettings::ForceToMono)forceToMono;
+        }
+        ImGui::EndDisabled();
+        if (monoFile) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(the file is mono)");
+        } else if (view.edited.forceToMono == AudioImportSettings::ForceToMono::Auto) {
+            const std::string hint = channels.autoHint();
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", !hint.empty() ? hint.c_str() : analysis.pending ? "(measuring the stereo width...)" : "(stereo width not measured)");
+        }
 
         // -- tempo: beat 1 from the file's start, before the trims
         AudioImportSettings::Music& music = view.edited.music;

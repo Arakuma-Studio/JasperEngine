@@ -2,16 +2,25 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "buildprofile/BuildProfile.h"
+#include "test/GameTests.h"
+#include "test/PlayData.h"
+#include "Out.h"
+#include "util/FileUtils.h"
+#include "localization/Localization.h"
+#include "window/LocalizationTablesWindow.h"
 #include "window/ContactSheetWindow.h"
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
 #include "util/UIProbe.h"
+#include "recorder/RecordInput.h"
 #include "recorder/RecorderSession.h"
 #include "widget/ColorField.h"
 #include "widget/ColorPickerWindow.h"
 #include "Theme.h"
 #include "texture/TextureCookQueue.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
 
 #include "imgui_internal.h"
 #include "Engine.h"
@@ -22,13 +31,17 @@
 #include "util/PlatformRules.h"
 #include "window/DeviceProfiles.h"
 #include "Backend.h"
+#include "App.h"
 #include "Theme.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/CameraControlSystem.h"
 #include "registry/PhysicsLayers.h"
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
 #include "net/Http.h"
+#include "input/InputScheme.h"
+#include "input/TextEntry.h"
 #include "shortcuts/CommandCatalog.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -48,6 +61,29 @@
 using namespace jasperengine;
 
 namespace {
+
+    // the keyboard chip (text-entry R29): what the focused field asks of a phone's soft keyboard
+    std::string keyboardChipText(const TextEntryTraits& traits){
+        static const char* const keyboards[] = {"Text", "Number", "Decimal", "Phone", "Email", "URL", "Search", "None"};
+        static const char* const keys[] = {"Default key", "Enter", "Done", "Go", "Next", "Previous", "Search", "Send"};
+        static const char* const capitals[] = {"", "Sentences", "Words", "Characters"};
+        std::string text = std::string("Keyboard: ") + keyboards[(int)traits.keyboard] + " \xC2\xB7 " + keys[(int)traits.enterKey];
+        if (traits.maxLength >= 0) text += " \xC2\xB7 max " + std::to_string(traits.maxLength);
+        if (traits.capitalize != AutoCapitalize::Off) text += std::string(" \xC2\xB7 ") + capitals[(int)traits.capitalize];
+        if (traits.autocorrect) text += " \xC2\xB7 Autocorrect";
+        if (traits.secure) text += " \xC2\xB7 Secure";
+        if (traits.multiline) text += " \xC2\xB7 Multiline";
+        return text;
+    }
+
+    // the same traits as inspect_ui's focus reports them
+    std::string keyboardChipJson(const TextEntryTraits& traits){
+        return std::string("{\"keyboard\": \"") + keyboardTypeName(traits.keyboard) + "\", \"enter_key\": \"" +
+               (traits.enterKey == EnterKey::Default ? "default" : enterKeyName(traits.enterKey)) + "\", \"autocapitalize\": \"" +
+               autoCapitalizeName(traits.capitalize) + "\", \"autocorrect\": " + (traits.autocorrect ? "true" : "false") +
+               ", \"secure\": " + (traits.secure ? "true" : "false") + ", \"multiline\": " + (traits.multiline ? "true" : "false") +
+               ", \"max_length\": " + (traits.maxLength < 0 ? std::string("null") : std::to_string(traits.maxLength)) + "}";
+    }
 
     struct AspectPreset {
         const char* label;
@@ -102,6 +138,8 @@ void editor::GameWindow::loadSettings() {
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
     settings.pixelScale = std::clamp(settings.pixelScale, 0, MAX_PIXEL_SCALE);
     Engine::setPixelPerfectForcedScale(settings.pixelScale);
+    Physics::setDebugDrawQueries(settings.physicsQueries);
+    CullingSystem::setDebugDraw(settings.cullingDebug);
     applySimulation();
 }
 
@@ -338,7 +376,9 @@ bool editor::GameWindow::turnDevice(ScreenOrientation orientation) {
 const std::vector<std::string>& editor::GameWindow::languagePresets() {
     static const std::vector<std::string> languages = {
         "", "en-US", "es-ES", "es-MX", "pt-BR", "fr-FR", "de-DE", "it-IT", "ja-JP", "ko-KR", "zh-Hans", "zh-Hant",
-        "ru-RU", "ar-SA", "hi-IN"
+        "ru-RU", "ar-SA", "hi-IN",
+        // game-ui-localization.md R19, R31: the pseudo-locales (accented and longer; right to left)
+        "en-XA", "ar-XB"
     };
     return languages;
 }
@@ -468,6 +508,8 @@ bool editor::GameWindow::hasKeyboardFocus() const {
 
 void editor::GameWindow::resetProjectState() {
     playInput->releaseAll();
+    // another project: its own Play Data choice
+    playDataChoice.clear();
     visible = false;
     focused = false;
     cursorInView = false;
@@ -491,6 +533,7 @@ void editor::GameWindow::applySettings(const GameViewSettings& newSettings) {
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
     settings.pixelScale = std::clamp(settings.pixelScale, 0, MAX_PIXEL_SCALE);
     Engine::setPixelPerfectForcedScale(settings.pixelScale);
+    CullingSystem::setDebugDraw(settings.cullingDebug);
     applySimulation();
     editPassDirty = true;
     saveSettings();
@@ -773,6 +816,15 @@ void editor::GameWindow::drawToolbar() {
     }
     ImGui::SetItemTooltip("Target display");
 
+    // Build Profiles R9: the active profile, whose identity, defines and Scene List Play uses
+    if (const auto& profiles = buildprofiles::view(project->getProjectPath()); profiles.active) {
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("Profile: %s", profiles.active->name.c_str());
+        ImGui::SetItemTooltip("Play uses Build Profile '%s''s Product Name, Identifier, Version Suffix, Scripting Define Symbols and Scene "
+                              "List; its other overrides apply to builds only (File > Build Settings)", profiles.active->name.c_str());
+    }
+
     const std::string projectAspect = std::to_string(project->getCanvasWidth()) + "x"
         + std::to_string(project->getCanvasHeight()) + " (Project)";
     auto aspectLabel = [&](int index) -> const char* {
@@ -937,6 +989,16 @@ void editor::GameWindow::drawToolbar() {
     // Right side toggles, as icons when the view is too narrow for their names
     const char* debuggerLabel = "HTML UI Debugger##GameHtmlUiDebugger";
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
+    // the scheme the game treats as the device in use (during Play), else the forced one
+    const std::string& forcedScheme = project->getInputSchemeOverride();
+    InputScheme shownScheme = InputScheme::KeyboardMouse;
+    if (project->isAnyScenePlaying())
+        shownScheme = InputSchemeTracker::getCurrent();
+    else if (forcedScheme != "auto")
+        InputSchemeTracker::parseScheme(forcedScheme, shownScheme);
+    const char* inputSchemeLabel = shownScheme == InputScheme::Gamepad ? ICON_FA_GAMEPAD "##GameInputScheme"
+                                 : shownScheme == InputScheme::Touch ? ICON_FA_HAND "##GameInputScheme"
+                                                                      : ICON_FA_KEYBOARD "##GameInputScheme";
     const char* networkLabel = ICON_FA_WIFI "##GameNetwork";
     const char* maximizeLabel = "Maximize On Play##GameMaximize";
     const char* statsLabel = "Stats##GameStats";
@@ -945,13 +1007,21 @@ void editor::GameWindow::drawToolbar() {
     const TextureFamily viewFamily = cooks.getViewFamily();
     std::string texturesLabel = std::string(ICON_FA_IMAGE " ") + textureFamilyLabel(viewFamily) + "##GameTextures";
     const char* physicsLabel = "Physics##GamePhysicsDebug";
+    const char* queriesLabel = "Queries##GamePhysicsQueries";
+    const char* cullingLabel = "Culling##GameCullingDebug";
+    // Play Data: its name in full while it is not Project, even as icons
+    if (playDataChoice.empty()) playDataChoice = gametests::PlayData::selected(project);
+    const bool customPlayData = playDataChoice != "project";
+    std::string playDataLabel = customPlayData ? std::string(ICON_FA_DATABASE " ") + (playDataChoice == "clean" ? std::string("Clean") : playDataChoice) + "##GamePlayData"
+                                               : std::string("Play Data##GamePlayData");
     const ImGuiStyle& style = ImGui::GetStyle();
     auto buttonWidth = [&](const char* label) {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
     auto groupWidth = [&]() {
-        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) +
-               buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 6.0f;
+        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) + buttonWidth(playDataLabel.c_str()) +
+               buttonWidth(touchLabel) + buttonWidth(inputSchemeLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) +
+               buttonWidth(physicsLabel) + buttonWidth(queriesLabel) + buttonWidth(cullingLabel) + style.ItemSpacing.x * 10.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -961,6 +1031,9 @@ void editor::GameWindow::drawToolbar() {
         statsLabel = ICON_FA_CHART_SIMPLE "##GameStats";
         texturesLabel = ICON_FA_IMAGE "##GameTextures";
         physicsLabel = ICON_FA_CUBES "##GamePhysicsDebug";
+        queriesLabel = ICON_FA_MAGNIFYING_GLASS_LOCATION "##GamePhysicsQueries";
+        cullingLabel = ICON_FA_EYE_SLASH "##GameCullingDebug";
+        if (!customPlayData) playDataLabel = ICON_FA_DATABASE "##GamePlayData";
     }
     const float rightX = contentRight - groupWidth();
     if (rightX > ImGui::GetCursorPosX()) {
@@ -1010,6 +1083,19 @@ void editor::GameWindow::drawToolbar() {
     }
 
     ImGui::SameLine();
+    // Play Data (project-test-runner R21, R41): picked before Play, as Simulate Touch
+    ImGui::BeginDisabled(project->isAnyScenePlaying());
+    if (customPlayData) ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::PrefabText);
+    if (toggleButton(playDataLabel.c_str(), customPlayData,
+                     "Play Data: the folder data:// and PlayerPrefs are in Play. Project (the project's own), Clean (an empty folder each "
+                     "Play) or a snapshot of Tests/Data (a fresh copy each Play)")) {
+        ImGui::OpenPopup("##GamePlayDataMenu");
+    }
+    if (customPlayData) ImGui::PopStyleColor();
+    ImGui::EndDisabled();
+    drawPlayDataMenu();
+
+    ImGui::SameLine();
     const bool simulateTouch = project->isSimulateTouch();
     ImGui::BeginDisabled(project->isAnyScenePlaying());
     if (toggleButton(touchLabel, simulateTouch, "Simulate touch: play as a touch device (the mouse acts as one finger). Release the left button with Alt held to keep that finger down: the next drag is a second finger (release Alt to lift the first)")) {
@@ -1017,6 +1103,30 @@ void editor::GameWindow::drawToolbar() {
         project->saveWorkspaceFile();
     }
     ImGui::EndDisabled();
+
+    // Input Scheme: Auto follows the last device used; a forced one applies at Play start and at
+    // once during Play (Simulate Touch stays the device's capability)
+    ImGui::SameLine();
+    if (toggleButton(inputSchemeLabel, forcedScheme != "auto",
+                     "Input Scheme: what the game treats as the device in use (Auto follows the last device used)")) {
+        ImGui::OpenPopup("##GameInputSchemeMenu");
+    }
+    if (ImGui::BeginPopup("##GameInputSchemeMenu")) {
+        static const char* const choices[][2] = {
+            {"Auto", "auto"}, {"Keyboard & Mouse", "keyboard_mouse"}, {"Gamepad", "gamepad"}, {"Touch", "touch"}};
+        for (const auto& choice : choices) {
+            if (ImGui::MenuItem(choice[0], nullptr, forcedScheme == choice[1]))
+                chooseInputScheme(project, choice[1]);
+        }
+        ImGui::Separator();
+        const InputScheme current = InputSchemeTracker::getCurrent();
+        std::string line = std::string("Current: ") +
+            (current == InputScheme::KeyboardMouse ? "Keyboard & Mouse" : InputSchemeTracker::groupName(current));
+        if (current == InputScheme::Gamepad)
+            line += std::string(" (") + InputSchemeTracker::familyName(InputSchemeTracker::getGamepadFamily()) + ")";
+        ImGui::MenuItem(line.c_str(), nullptr, false, false);
+        ImGui::EndPopup();
+    }
 
     ImGui::SameLine();
     if (toggleButton(maximizeLabel, settings.maximizeOnPlay, "Maximize On Play: fill the editor with the Game view while playing")) {
@@ -1037,7 +1147,96 @@ void editor::GameWindow::drawToolbar() {
         Physics::setDebugDraw(!physicsShown);
     }
 
+    ImGui::SameLine();
+    // Simulation Culling and Culling Group spheres while playing (saved with the Game view)
+    if (toggleButton(cullingLabel, settings.cullingDebug, "Culling: draw Simulation Culling spheres (green Full, yellow Reduced, red culled by "
+            "distance, grey by unloaded ground), Culling Group spheres (cyan visible, dark blue not) and the focuses while playing")) {
+        settings.cullingDebug = !settings.cullingDebug;
+        CullingSystem::setDebugDraw(settings.cullingDebug);
+        saveSettings();
+    }
+
+    ImGui::SameLine();
+    // the spatial queries scripts run (Physics.debugDrawQueries): shape, sweep and hits for 1 s
+    const bool queriesShown = Physics::isDebugDrawQueries();
+    if (toggleButton(queriesLabel, queriesShown, "Physics Queries: draw the overlaps, casts and raycasts scripts run while playing "
+                                                 "(green with hits, red without), in the Game and Scene views")) {
+        Physics::setDebugDrawQueries(!queriesShown);
+        settings.physicsQueries = !queriesShown;
+        saveSettings();
+    }
+
     ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());
+}
+
+bool editor::GameWindow::chooseInputScheme(Project* project, const std::string& scheme) {
+    if (!project->setInputSchemeOverride(scheme))
+        return false;
+    project->saveWorkspaceFile();
+    return true;
+}
+
+void editor::GameWindow::drawPlayDataMenu() {
+    if (ImGui::BeginPopup("##GamePlayDataMenu")) {
+        auto pick = [this](const std::string& profile) {
+            playDataChoice = profile;
+            gametests::PlayData::select(project, profile);
+        };
+        if (ImGui::MenuItem("Project", nullptr, playDataChoice == "project")) pick("project");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The project's own Play data (.jasperengine/user/rundata)");
+        if (ImGui::MenuItem("Clean", nullptr, playDataChoice == "clean")) pick("clean");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("An empty folder each Play, deleted when Play stops");
+        const std::vector<std::string> snapshots = gametests::listSnapshots(project->getProjectPath());
+        if (ImGui::BeginMenu("Snapshot", !snapshots.empty())) {
+            for (const std::string& name : snapshots)
+                if (ImGui::MenuItem(name.c_str(), nullptr, playDataChoice == name)) pick(name);
+            ImGui::EndMenu();
+        }
+        ImGui::Separator();
+        const bool hasRoot = !gametests::findRoot(project->getProjectPath()).empty();
+        if (ImGui::MenuItem("Save Snapshot...", nullptr, false, hasRoot)) {
+            snapshotPopupRequested = true;
+            snapshotName[0] = '\0';
+            snapshotError.clear();
+        }
+        if (!hasRoot && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Snapshots go into the test folder: Window > General > Test Runner > Create > Test Folder");
+        if (ImGui::MenuItem("Open Data Folder")) {
+            std::string error;
+            if (!Platform::openWithSystemDefault(FileUtils::pathToUtf8(project->getUserDataPath()), &error)) Out::error("Open Data Folder: %s", error.c_str());
+        }
+        ImGui::EndPopup();
+    }
+    if (snapshotPopupRequested) {
+        ImGui::OpenPopup("Save Snapshot##GamePlayDataSnapshot");
+        snapshotPopupRequested = false;
+    }
+    if (EditorModal::begin("Save Snapshot##GamePlayDataSnapshot", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted("Copies the Play data into Tests/Data/<name>/ (one undo step).");
+        EditorModal::message("Copies the Play data into Tests/Data/<name>/ (one undo step).");
+        EditorModal::inputText("Name", "name", snapshotName, sizeof(snapshotName));
+        const std::string name = snapshotName;
+        const std::vector<std::string> snapshots = gametests::listSnapshots(project->getProjectPath());
+        const bool exists = std::find(snapshots.begin(), snapshots.end(), name) != snapshots.end();
+        if (exists) ImGui::TextColored(Theme::Colors::WarningText, "A snapshot named %s exists: Save replaces its files.", name.c_str());
+        if (!snapshotError.empty()) {
+            ImGui::TextColored(Theme::Colors::ErrorText, "%s", snapshotError.c_str());
+            EditorModal::error(snapshotError);
+        }
+        if (EditorModal::button(exists ? "Replace" : "Save", "ok")) {
+            std::string error, warning;
+            if (gametests::PlayData::get().saveSnapshot(project, name, error, warning)) {
+                if (!warning.empty()) Out::warning("%s", warning.c_str());
+                Out::info("Saved the Play data snapshot %s", name.c_str());
+                ImGui::CloseCurrentPopup();
+            } else {
+                snapshotError = error;
+            }
+        }
+        ImGui::SameLine();
+        if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
 }
 
 // "Add custom...": a named size and dpi, kept in this project's editor workspace
@@ -1141,7 +1340,10 @@ void editor::GameWindow::drawDeviceTierMenu() {
 void editor::GameWindow::drawDeviceMenu() {
     const PlatformSimulation& simulation = Platform::getSimulation();
     const DeviceProfile* device = simulation.device;
-    const std::string languageLabel = settings.language.empty() ? std::string() : " | " + settings.language;
+    std::string languageLabel = settings.language.empty() ? std::string() : " | " + settings.language;
+    // R31: the language the game resolved, when the String Tables made it another ("ja-JP -> ja")
+    const std::string& resolved = Localization::getLanguage();
+    if (!settings.language.empty() && !resolved.empty() && resolved != settings.language) languageLabel += " \xE2\x86\x92 " + resolved;
     const std::string label = std::string(ICON_FA_MOBILE_SCREEN_BUTTON " ") + (device ? device->name : "No Device") + languageLabel +
         "##GameDevice";
 
@@ -1170,7 +1372,8 @@ void editor::GameWindow::drawDeviceMenu() {
         ImGui::Separator();
         if (ImGui::BeginMenu("Language")) {
             for (const std::string& language : languagePresets()) {
-                const char* name = language.empty() ? "System" : language.c_str();
+                const char* name = language.empty() ? "System" : language == "en-XA" ? "Pseudo (en-XA)"
+                                 : language == "ar-XB" ? "Pseudo RTL (ar-XB)" : language.c_str();
                 if (ImGui::MenuItem(name, nullptr, settings.language == language)) {
                     settings.language = language;
                     applySimulation();
@@ -1468,6 +1671,19 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             drawList->AddText(at, IM_COL32(255, 70, 70, 255), recording.c_str());
         }
 
+        // Replay Input (input-recorder-and-input-scripts R40): what replays and where it is, and the
+        // divergence once a checkpoint differs; the game ignores the editor's input meanwhile
+        const std::string replaying = recordinput::RecordInput::get().bannerText();
+        if (!replaying.empty()) {
+            const std::string diverged = recordinput::RecordInput::get().divergenceText();
+            const std::string text = replaying + (diverged.empty() ? std::string() : "\n" + diverged) + "\nEditor input to the game is ignored";
+            const ImVec2 size = ImGui::CalcTextSize(text.c_str());
+            const ImVec2 at(areaMin.x + (areaSize.x - size.x) * 0.5f, areaMin.y + Theme::dpi(8.0f));
+            drawList->AddRectFilled(ImVec2(at.x - 8.0f, at.y - 4.0f), ImVec2(at.x + size.x + 8.0f, at.y + size.y + 4.0f), IM_COL32(20, 20, 20, 210), 4.0f);
+            drawList->AddText(at, diverged.empty() ? IM_COL32(255, 200, 80, 255) : IM_COL32(255, 110, 90, 255), text.c_str());
+            UIProbe::rect("game.replayBanner", at.x, at.y, at.x + size.x, at.y + size.y);
+        }
+
         // a capture mutes the device: say why the game is silent (S35 R31)
         if (AudioCapture::isActive()) {
             static const char* const capturing = "Capturing audio: output muted";
@@ -1505,7 +1721,29 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
                 ImGui::GetColorU32(ImGuiCol_TextDisabled), message);
         }
 
-        const bool hovered = ImGui::IsWindowHovered();
+        // the keyboard chip: while a field of the game is focused, the soft keyboard a phone would show;
+        // a click copies its traits (and does not reach the game)
+        bool overKeyboardChip = false;
+        TextEntryTraits chipTraits;
+        bool chipKeyboardOpen = false;
+        if (running && sceneProject->playState == ScenePlayState::PLAYING && Engine::getTextEntryFocus(chipTraits, chipKeyboardOpen)) {
+            const std::string chip = keyboardChipText(chipTraits);
+            const ImVec2 size = ImGui::CalcTextSize(chip.c_str());
+            const ImVec2 pad = Theme::dpi(ImVec2(8.0f, 4.0f));
+            const ImVec2 chipMin(areaMin.x + (areaSize.x - size.x) * 0.5f - pad.x, areaMin.y + areaSize.y - size.y - pad.y * 2.0f - Theme::dpi(8.0f));
+            const ImVec2 chipMax(chipMin.x + size.x + pad.x * 2.0f, chipMin.y + size.y + pad.y * 2.0f);
+            overKeyboardChip = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(chipMin, chipMax);
+            drawList->AddRectFilled(chipMin, chipMax, overKeyboardChip ? IM_COL32(45, 45, 45, 230) : IM_COL32(20, 20, 20, 210), Theme::dpi(3.0f));
+            drawList->AddText(ImVec2(chipMin.x + pad.x, chipMin.y + pad.y), IM_COL32(235, 235, 235, 255), chip.c_str());
+            UIProbe::rect("game.keyboardChip", chipMin.x, chipMin.y, chipMax.x, chipMax.y);
+            if (overKeyboardChip) {
+                ImGui::SetTooltip("Click to copy the keyboard's traits as JSON");
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    ImGui::SetClipboardText(keyboardChipJson(chipTraits).c_str());
+            }
+        }
+
+        const bool hovered = ImGui::IsWindowHovered() && !overKeyboardChip;
 
         if (running && sceneProject->playState == ScenePlayState::PLAYING) {
             // Escape is the game's while it plays here (Unity): ImGui's keyboard navigation
@@ -1517,10 +1755,21 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
                 ImGui::SetKeyOwner(ImGuiKey_Escape, ImGui::GetID("##GameCanvasKeys"));
             }
             const ImVec2 inputScale(engineScale.x / zoom, engineScale.y / zoom);
-            playInput->forward(sceneId, imageMin, inputScale, hovered, focused);
-            cursorInView = hovered;
+            if (inputBlockedReason.empty()) {
+                playInput->forward(sceneId, imageMin, inputScale, hovered, focused);
+                cursorInView = hovered;
+            } else {
+                playInput->release(sceneId);
+            }
         } else {
             playInput->release(sceneId);
+        }
+        if (!inputBlockedReason.empty() && running) {
+            const ImVec2 pad(Theme::dpi(8.0f), Theme::dpi(4.0f));
+            const ImVec2 textSize = ImGui::CalcTextSize(inputBlockedReason.c_str());
+            const ImVec2 bannerMin(areaMin.x, areaMin.y + areaSize.y - textSize.y - pad.y * 2.0f);
+            drawList->AddRectFilled(bannerMin, ImVec2(areaMin.x + areaSize.x, areaMin.y + areaSize.y), IM_COL32(20, 20, 20, 220));
+            drawList->AddText(ImVec2(bannerMin.x + pad.x, bannerMin.y + pad.y), IM_COL32(255, 200, 80, 255), inputBlockedReason.c_str());
         }
 
         if (settings.showStats) {
@@ -1535,7 +1784,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[16][112];
+    char lines[18][112];
     int lineCount = 5;
     // the view's vertices and detail levels (spec S54 R12): the frame while playing, else the Game view's own
     const bool playing = project && project->isPlaySessionActive();
@@ -1582,6 +1831,21 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
             snprintf(lines[lineCount], sizeof(lines[lineCount]), "CPU %.2f ms", frameTime.cpuMs);
         lineCount++;
     }
+    // the main thread's own CPU per frame over the last full second (its thread clock: without
+    // the waits CPU above includes), and the Performance sampler's window while it samples
+    PerfSampler::watchThreadCpu();
+    const double threadCpu = PerfSampler::mainThreadCpuMsLastSecond();
+    if (threadCpu >= 0.0)
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Main Thread CPU: %.2f ms", threadCpu);
+    else
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Main Thread CPU: measuring...");
+    lineCount++;
+    if (PerfSampler::isSampling()) {
+        const PerfSummary perf = PerfSampler::summary();
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Sampling: %.0f s \xC2\xB7 p50 %.0f fps \xC2\xB7 p10 %.0f fps", perf.seconds, perf.fpsP50,
+                 perf.fpsP10);
+        lineCount++;
+    }
     if (const DeviceProfile* device = Platform::getSimulation().device) {
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "Device: %s, %s", device->name,
                  PlatformRules::orientationName(Platform::getSimulation().orientation));
@@ -1612,6 +1876,21 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
             lineCount++;
         }
     }
+    // Culling Groups and Simulation Culling, when the scene has any
+    if (sceneProject && sceneProject->scene) {
+        if (auto culling = sceneProject->scene->findSystem<CullingSystem>()) {
+            const CullingSystem::Stats c = culling->getStats();
+            if (c.groups > 0) {
+                snprintf(lines[lineCount], sizeof(lines[lineCount]), "Culling groups: %u (%u spheres, %u visible)", c.groups, c.spheres, c.visible);
+                lineCount++;
+            }
+            if (c.components > 0) {
+                snprintf(lines[lineCount], sizeof(lines[lineCount]), "Simulation: %u full, %u reduced, %u culled (%u ground)  Script updates skipped: %u",
+                         c.full, c.reduced, c.culled, c.groundNotLoaded, c.scriptUpdatesSkipped);
+                lineCount++;
+            }
+        }
+    }
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)
     UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
     if (documents && documents->hasDocuments()) {
@@ -1622,10 +1901,28 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u stencil draws, glyph atlas %.1f MiB", ui.stencilDraws,
                  (double)ui.atlasBytes / (1024.0 * 1024.0));
         lineCount++;
+        // S92: frames kept unchanged (no pass), the layer result cache and the composite's area
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %s, %ux MSAA, cache %u hits %.1f MiB, composite %.2f MP",
+                 ui.framesKept ? "kept" : "drawn", ui.samples, ui.layerCacheHits, (double)ui.layerCacheBytes / (1024.0 * 1024.0),
+                 (double)ui.compositePixels / 1.0e6);
+        lineCount++;
+    }
+
+    // the spatial queries and raycasts of the last frame, when any ran
+    const uint64_t queryTotal = Physics::getQueryCount();
+    const uint64_t queryHitTotal = Physics::getQueryHitCount();
+    const uint64_t frameQueries = queryTotal - statsQueryTotal;
+    const uint64_t frameQueryHits = queryHitTotal - statsQueryHitTotal;
+    statsQueryTotal = queryTotal;
+    statsQueryHitTotal = queryHitTotal;
+    if (frameQueries > 0 && lineCount < 16) {
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Physics queries: %llu (%llu hits)", (unsigned long long)frameQueries,
+                 (unsigned long long)frameQueryHits);
+        lineCount++;
     }
 
     // S48: the game frozen by a hit-stop, and for how long still
-    if (playing && ::jasperengine::pixelart::HitStop::isActive() && lineCount < 16) {
+    if (playing && ::jasperengine::pixelart::HitStop::isActive() && lineCount < 18) {
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "HIT STOP %.2f s", ::jasperengine::pixelart::HitStop::getRemaining());
         lineCount++;
     }
@@ -1633,5 +1930,38 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     std::vector<std::string> all(lines, lines + lineCount);
     // after "Draw calls: ... Tris: ..."
     all.insert(all.begin() + 3, meshLines.begin(), meshLines.end());
-    drawStatsBox(ImGui::GetWindowDrawList(), imageMin, imageMax, all);
+    // game-ui-localization.md R31: this Play's localisation misses; a click opens the window on them
+    size_t missLine = all.size();
+    if (playing && Localization::isActive()) {
+        uint32_t misses = 0;
+        for (const Localization::Miss& miss : Localization::getMisses()) misses += miss.count;
+        all.push_back("Localization: " + std::to_string(misses) + " misses (click: Localization Tables)");
+    }
+    const ImVec2 textMin = drawStatsBox(ImGui::GetWindowDrawList(), imageMin, imageMax, all);
+    // the Main Thread CPU and Sampling rows as items find_ui_item reports (drawn text is no item;
+    // these take no input)
+    const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+    ImGuiContext& g = *GImGui;   // (IMGUI_TEST_ENGINE_ITEM_INFO reads it)
+    (void)g;
+    for (size_t i = 0; i < all.size(); i++) {
+        const char* label = all[i].rfind("Main Thread CPU", 0) == 0 ? "Main Thread CPU##stats"
+                            : all[i].rfind("Sampling", 0) == 0     ? "Sampling##stats"
+                                                                   : nullptr;
+        if (!label)
+            continue;
+        const ImVec2 min(textMin.x, textMin.y + lineHeight * (float)i);
+        const ImRect rect(min, ImVec2(min.x + ImGui::CalcTextSize(all[i].c_str()).x, min.y + ImGui::GetTextLineHeight()));
+        const ImGuiID id = ImGui::GetID(label);
+        if (ImGui::ItemAdd(rect, id, nullptr, ImGuiItemFlags_NoNav))
+            IMGUI_TEST_ENGINE_ITEM_INFO(id, label, 0);
+    }
+    if (missLine < all.size() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        // the misses line, from drawStatsBox's text origin (one text line each)
+        const ImVec2 min(textMin.x, textMin.y + lineHeight * (float)missLine);
+        const ImVec2 mouse = ImGui::GetMousePos();
+        if (mouse.x >= min.x && mouse.x <= min.x + ImGui::CalcTextSize(all[missLine].c_str()).x &&
+            mouse.y >= min.y && mouse.y < min.y + lineHeight) {
+            Backend::getApp().getLocalizationTablesWindow()->openMisses();
+        }
+    }
 }

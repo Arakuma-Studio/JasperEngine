@@ -1976,6 +1976,39 @@ OVERRIDES = {
     },
 }
 
+# S93 R15: HtmlUI.prewarmImage and prewarmText read their arguments by hand
+OVERRIDES[('UIDocument', 'prewarm')] = {
+    'doc': ['Makes the glyphs of every text of the document (display: none parts too) and of its data-warm attributes, and its',
+            'images, before they show. `{images = false}`: the text only.'],
+    'overloads': [([('options?', '{images: boolean?}')], 'UIPrewarm')]}
+OVERRIDES[('HtmlUI', 'prewarmImage')] = {
+    'doc': ['Decodes images on a background thread and uploads a few a frame, so the first frame that shows them is complete.',
+            'Paths as in CSS: an asset path, with a `#xywh=x,y,w,h` or `#sprite=<name>` region. The images stay cached while',
+            'the UIPrewarm lives.'],
+    'overloads': [([('paths', 'string|string[]')], 'UIPrewarm')]}
+OVERRIDES[('HtmlUI', 'prewarmText')] = {
+    'doc': ['Makes the glyphs of a text (base, distance and font-effect glyphs) on background jobs before it is shown, at the',
+            'scale of every context drawing now; raises an error for bad options or a font-effect that does not parse.'],
+    'overloads': [([('options', 'UIPrewarmTextOptions')], 'UIPrewarm')]}
+
+# S95 REQ-1: Quaternion.euler reads its order by hand (an enum argument takes any value)
+OVERRIDES[('Quaternion', 'euler')] = {
+    'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('order?', 'RotationOrder')], 'Quaternion')]}
+
+# S95 REQ-3: GameObject's transform members are nil only on an entity without a Transform (an
+# action, a tween); typed as before, so a script reading go.position needs no nil check
+for _name, _type in (('getWorldPosition', 'Vector3'), ('getWorldRotation', 'Quaternion'), ('getWorldScale', 'Vector3')):
+    OVERRIDES[('GameObject', _name)] = {'doc': ['Current (composed when it moved since the last transform pass); nil without a Transform.'],
+                                        'overloads': [([], _type)]}
+
+# S96 REQ-29: the Ragdoll wizard at run time, its arguments read by hand (LuaRef)
+OVERRIDES[('Ragdoll', 'create')] = {
+    'doc': ["Unity's Ragdoll Wizard on a live character: bodies, colliders and joints on its bones, all made before",
+            'the next step, and the Ragdoll on root. Unnamed bones are guessed (humanoid map, bone names); raises an',
+            'error naming the bones it could not find.'],
+    'overloads': [([('root', _OBJ), ('options?', '{bones?: table<string, GameObject|string>, totalMass?: number, '
+                    'start?: "simulated"|"animated", selfCollision?: boolean, flipForward?: boolean}')], 'Ragdoll')]}
+
 # T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
 OVERRIDES[('TerrainWorld', 'waitForArea')] = {
     'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
@@ -1985,6 +2018,17 @@ OVERRIDES[('TerrainWorld', 'onAreaReady')] = {
     'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('callback', 'fun()')], '')]}
 OVERRIDES[('TerrainWorld', 'getStats')] = {'overloads': [([], 'TerrainWorldStats')]}
 
+OVERRIDES[('System', 'showVirtualKeyboard')] = {
+    'doc': ['Opens the soft keyboard (Android, iOS, the web) for text the script handles itself. `options` picks',
+            'the keyboard with the HTML attribute values; without them the platform\'s plain keyboard. HTML text',
+            'fields and the component InputField open theirs on their own.'],
+    'overloads': [([('text?', 'string'), ('options?', 'VirtualKeyboardOptions')], '')],
+}
+OVERRIDES[('System', 'updateVirtualKeyboardText')] = {
+    'doc': ['Replaces the text the soft keyboard holds (Android, iOS), caret in code points (default: the end):',
+            'after the script changed what was typed.'],
+    'overloads': [([('text', 'string'), ('caret?', 'integer')], '')],
+}
 OVERRIDES[('Screen', 'setExtraInsets')] = {
     'doc': ['Space the game keeps free per edge on top of the device insets (a banner ad): every safe-area',
             'consumer includes it (Screen.safeArea, the Safe Area component, HTML env()). `unit` is',
@@ -2039,9 +2083,12 @@ OVERRIDES.update({
         'overloads': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any[]')]},
     ('Event', 'addListener'): {
         'doc': ["Adds a listener (Unity's AddListener / C# `+=`): a function, or a method of a script instance",
-                "(`ev:addListener(self, \"onScore\")`), which is dropped once that script is destroyed. Adding the",
-                "same one again does nothing."],
-        'overloads': [([('fn', 'function')], ''), ([('owner', 'table'), ('methodName', 'string')], '')]},
+                "(`ev:addListener(self, \"onScore\")`), which is dropped once that script is destroyed. Listeners run by",
+                "`priority` (default 0, -1000000..1000000), highest first, equal ones in the order added; `Event.MONITOR`",
+                "runs after every other one. Adding the same one again does nothing, whatever its priority: remove it",
+                "first to change it."],
+        'overloads': [([('fn', 'function'), ('priority?', 'integer')], ''),
+                      ([('owner', 'table'), ('methodName', 'string'), ('priority?', 'integer')], '')]},
     ('Event', 'removeListener'): {
         'doc': ["Removes a listener added with the same arguments (C# `-=`); true if one was removed."],
         'overloads': [([('fn', 'function')], 'boolean'), ([('owner', 'table'), ('methodName', 'string')], 'boolean')]},
@@ -2049,21 +2096,41 @@ OVERRIDES.update({
         'doc': ["Removes every listener."],
         'overloads': [([], '')]},
     ('Event', 'invoke'): {
-        'doc': ["Calls the listeners in the order they were added with these arguments. A listener's error is",
-                "logged with its traceback and the others still run; one added meanwhile runs from the next invoke."],
+        'doc': ["Calls the listeners by priority with these arguments. A listener's error is logged with its",
+                "traceback and the others still run; one added meanwhile runs from the next invoke."],
         'overloads': [([('...', 'any')], '')]},
     ('Event', 'add'): {
-        'doc': ["Subscribes `fn` under `tag` (the event object protocol RegisterEvent uses); replaces that tag's."],
-        'overloads': [([('tag', 'string'), ('fn', 'function')], 'boolean')]},
+        'doc': ["Subscribes `fn` under `tag` (the event object protocol RegisterEvent uses); replaces that tag's,",
+                "which takes the new `priority` (default 0)."],
+        'overloads': [([('tag', 'string'), ('fn', 'function'), ('priority?', 'integer')], 'boolean')]},
     ('Event', 'remove'): {
         'doc': ["Removes the subscription with `tag`; true if there was one."],
         'overloads': [([('tag', 'string')], 'boolean')]},
     ('Event', 'has'): {
         'doc': ["Whether a subscription with `tag` exists."],
         'overloads': [([('tag', 'string')], 'boolean')]},
+    ('Event', 'getListeners'): {
+        'doc': ["The listeners in the order they run: `name` is \"Class:method\" for a script's method (also",
+                "RegisterEvent's), the tag of another tagged one, \"function <source>:<line>\" for a function."],
+        'overloads': [([], '{name: string, priority: integer, monitor: boolean}[]')]},
+    ('Event', 'cancel'): {
+        'doc': ["Always an error: a CancellableEvent's listener cancels through its first argument (`e:cancel()`)."],
+        'overloads': [([], '')]},
     ('Event', '__tostring'): {
         'doc': [],
         'overloads': [([], 'string')]},
+    ('CancellableEvent', '__tostring'): {
+        'doc': [],
+        'overloads': [([], 'string')]},
+    ('CancellableEvent', 'invoke'): {
+        'doc': ["Calls the listeners as `fn(e, ...)` by priority until one calls `e:cancel()`, then the MONITOR",
+                "listeners. True when one cancelled: then do not apply the change."],
+        'overloads': [([('...', 'any')], 'boolean')],
+        'nodiscard': True},
+    ('CancelEventArgs', 'cancel'): {
+        'doc': ["Vetoes the change (nothing undoes it); the deciding listeners left are skipped. An error in a",
+                "MONITOR listener or after the invoke ended."],
+        'overloads': [([], '')]},
     # persistence (DontDestroyOnLoad)
     ('GameObject', 'dontDestroyOnLoad'): {
         'doc': ["Unity's DontDestroyOnLoad (also the global `DontDestroyOnLoad`): the root GameObject of `obj` (a",
@@ -2083,6 +2150,11 @@ OVERRIDES.update({
                 "(at the next safe point, with its running state). False (logged) when the scene is not loaded."],
         'overloads': [([('obj', 'EntityHandle|ScriptInstance'), ('scene', 'Scene')], 'boolean')]},
 })
+
+# Mesh Space Rotation (docs/specs/mesh-space-rotation.md R14): read from the stack so that
+# `enabled` is required and the layer is an index or a name
+OVERRIDES[('Animator', 'setLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string'), ('enabled', 'boolean')], '')]}
+OVERRIDES[('Animator', 'getLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string')], 'boolean')]}
 
 # Line and Trail Renderers (lines and trails spec 6.6): the points by 0-based index (Unity's
 # SetPosition / GetPosition); an index out of range raises an error naming positionCount.
@@ -2123,6 +2195,12 @@ OVERRIDES[('NoiseGraph', 'sampleGrid')] = {'doc': ['A grid of at most 4,000,000 
 OVERRIDES[('NoiseGraph', 'sampleGridAsync')] = {'doc': ['The same bits as sampleGrid on small jobs, which keep the frame and work without worker threads.'],
                                                 'overloads': [([('args', 'NoiseGridArgs')], 'NoiseGridTask')]}
 OVERRIDES[('NoiseGridTask', 'result')] = {'doc': ['The grid once done; nil before, or after cancel.'], 'overloads': [([], 'NoiseGrid?')]}
+# dialogue-graphs.md R27: DialogueRunner's lua_CFunctions (DialogueClassesLua.cpp); DialogueLine in stubs/Dialogue.lua
+OVERRIDES[('DialogueRunner', 'start')] = {'doc': ['Starts at an entry ("" or nil: Start Entry, else `start`, else the lowest id) with message arguments that',
+                                                  'win over variables ({player = "Ana"}). False when there is no dialogue or no such entry.'],
+                                          'overloads': [([('entry?', 'string'), ('args?', 'table<string, string|number|boolean>')], 'boolean')]}
+OVERRIDES[('DialogueRunner', 'setArg')] = {'doc': ['A message argument for this conversation ({name} in a text, {name} in an expression).'],
+                                           'overloads': [([('name', 'string'), ('value', 'string|number|boolean')], '')]}
 OVERRIDES[('ParticleSystemModule', 'setBursts')] = {
     'doc': ['ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01, probability = 1}, ...}): replaces',
             'the bursts (count a number or a MinMaxCurve; cycles 0 repeats forever). Version 2 systems only.'],
@@ -2582,8 +2660,17 @@ OVERRIDES.update({
         'overloads': [([('name', 'string')], 'number?')]},
     ('AudioSystem', 'preload'): {
         'doc': ['Decodes (or opens, for streaming) a clip ahead so its first play or one-shot has no load; held until',
-                'the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
+                'AudioSystem.unload or the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
         'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'boolean')]},
+    ('AudioSystem', 'unload'): {
+        'doc': ["Unity's AudioClip.UnloadAudioData: removes the clip's preload pin and drops its cached copies that nothing",
+                'holds (every load type, or the one `loadType` resolves to). Returns how many it dropped; a clip a source',
+                'or a voice holds stays until released.'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'integer')]},
+    ('AudioSystem', 'getLoadState'): {
+        'doc': ["Unity's AudioClip.loadState of a clip in the cache: Loaded, Loading while its load is on its way, Failed",
+                'after a failed load, else Unloaded. `loadType` as AudioSource.loadType (default Auto).'],
+        'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'AudioLoadState')]},
     ('AudioSource', 'playOneShot'): {
         'doc': ["Unity's PlayOneShot: the clip, or a Sound Event's pick (its .soundevent path or GUID), as an extra",
                 "voice over what plays (volume x volumeScale, the source's group, pitch, pan and position). Up to",
@@ -2650,6 +2737,24 @@ OVERRIDES.update({
         'doc': ["Unity's AudioSource.PlayClipAtPoint: the clip at a world position (3D when the scene has a camera),",
                 'through a mixer group (name; default Master); it belongs to `scene` and stops with it.'],
         'overloads': [([('scene', 'Scene'), ('path', 'string'), ('position', 'Vector3'), ('volume?', 'number'), ('group?', 'string')], '')]},
+    # S97: a source's own effects (GameObjectClassesLua.cpp)
+    ('AudioSource', 'addEffect'): {
+        'doc': ["Appends a mixer effect to this source's own list (Unity's Audio Low Pass Filter...): lowpass, highpass, bandpass,",
+                'echo, reverb, equalizer, distortion, flanger, lofi or bassboost, up to 4. Nil (logged) for another type or a fifth.'],
+        'overloads': [([('type', 'string')], 'AudioSourceEffect?')]},
+    ('AudioSource', 'getEffect'): {
+        'doc': ["An effect of the source's own list by index (1-based) or type (\"lowpass\": the first of it); nil when none."],
+        'overloads': [([('index', 'integer')], 'AudioSourceEffect?'), ([('type', 'string')], 'AudioSourceEffect?')]},
+    ('AudioSource', 'removeEffect'): {
+        'doc': ['Removes an effect by index (1-based) or type (the first of it); false when none. Heard from the next play().'],
+        'overloads': [([('index', 'integer')], 'boolean'), ([('type', 'string')], 'boolean')]},
+    ('AudioSourceEffect', 'setParameter'): {
+        'doc': ['Sets a parameter of the effect ("cutoff", "resonance", "wet", ...: docs audio.md), over `seconds` of scaled',
+                'time (opts.unscaled: unscaled), along the mixer curves. False when the effect has no such parameter.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('seconds?', 'number'), ('opts?', 'AudioTimeOptions')], 'boolean')]},
+    ('AudioSourceEffect', 'getParameter'): {
+        'doc': ['The value a parameter has now (what it sets, else its default); nil when the effect has no such parameter.'],
+        'overloads': [([('name', 'string')], 'number?')]},
 })
 
 # http (NetClassesLua.cpp): the request functions are lua_CFunctions (positional options and
@@ -2818,9 +2923,15 @@ OVERRIDES.update({
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
 PROPERTY_OVERRIDES = {
+    # S93 R15: the prewarm's callback
+    ('UIPrewarm', 'onDone'): ('fun()|nil', False),
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
+    # dialogue-graphs.md R8: the last line shown (stubs/Dialogue.lua: DialogueLine)
+    ('DialogueRunner', 'currentLine'): ('DialogueLine?', True),
     ('Mesh', 'material'): ('Material', True),
+    # the active GPU quirks' names
+    ('Device', 'gpuQuirks'): ('string[]', True),
     # the Particle System module views (binding/stubs/ParticleSystemModules.lua, from
     # tools/gen_particle_stubs.py): live views, not copies
     **{('ParticleSystem', _m): ('ParticleSystem' + _m[0].upper() + _m[1:] + 'Module', False) for _m in (
@@ -2828,6 +2939,10 @@ PROPERTY_OVERRIDES = {
         'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
         'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'collision', 'trails',
         'customData', 'externalForces', 'renderer', 'pixelArt')},
+    # S95 REQ-3: typed as before (nil only without a Transform), copies as before
+    **{('GameObject', _m): (_t, True) for _m, _t in (
+        ('position', 'Vector3'), ('rotation', 'Quaternion'), ('scale', 'Vector3'), ('localMatrix', 'Matrix4'),
+        ('modelMatrix', 'Matrix4'), ('normalMatrix', 'Matrix4'))},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
     # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
@@ -2844,6 +2959,11 @@ PROPERTY_OVERRIDES = {
     ('HttpRequest', 'response'): ('HttpResponse|nil', False),
     ('NativeCall', 'result'): ('JsonValue', False),
     ('NativeCall', 'errorCode'): ('NativeErrorCode|nil', False),
+    # S96 RaycastHit fields: resolved through the hit's scene, nil without a physics body
+    ('RayReturn', 'collider'): ('Collider|Collider2D|nil', False),
+    ('RayReturn', 'gameObject'): ('GameObject|nil', False),
+    ('RayReturn', 'rigidbody'): ('Rigidbody|Rigidbody2D|nil', False),
+    ('RayReturn', 'transform'): ('GameObject|nil', False),
     ('NativeCall', 'errorMessage'): ('string|nil', False),
     ('HttpResponse', 'headers'): ('table<string, string>', True),
     ('HttpResponse', 'body'): ('string', False),
@@ -2918,14 +3038,109 @@ for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
     OVERRIDES[(_phys, 'resetLayerCollisionMatrix')] = {
         'doc': ['Every layer collides with every layer again.'],
         'overloads': [([], '')]}
+    _opts = 'PhysicsQueryOptions2D' if _phys == 'Physics2D' else 'PhysicsQueryOptions'
     for _all in (False, True):
         _ret = 'RayReturn[]' if _all else 'RayReturn'
         OVERRIDES[(_phys, 'raycastAll' if _all else 'raycast')] = {
             'doc': [('Every hit' if _all else 'The closest hit') + f' of a ray in the scene\'s physics world ({_vec} origin and',
-                    'direction, or a Ray), on the layers of `layerMask` (default: Physics.DEFAULT_RAYCAST_LAYERS).'],
-            'overloads': [([('scene', 'Scene'), ('ray', 'Ray'), ('layerMask?', 'integer')], _ret),
+                    'direction, or a Ray), on the layers of `layerMask` (default: Physics.DEFAULT_RAYCAST_LAYERS).',
+                    'options: ignore, triggers, ' + ('startInColliders' if _phys == 'Physics2D' else 'hitFromInside (3D: a collider around the origin is no hit), hitBackfaces') + '.'],
+            'overloads': [([('scene', 'Scene'), ('ray', 'Ray'), ('layerMask?', 'integer'), ('options?', _opts)], _ret),
                           ([('scene', 'Scene'), ('origin', _vec), ('direction', _vec), ('maxDistance', 'number'),
-                            ('layerMask?', 'integer')], _ret)]}
+                            ('layerMask?', 'integer'), ('options?', _opts)], _ret)]}
+
+# S96: the shape queries (PhysicsQueriesLua.cpp, lua_CFunctions); options: stubs/Physics.lua
+_Q3 = [('layerMask?', 'integer'), ('options?', 'PhysicsQueryOptions')]
+_Q2 = [('layerMask?', 'integer'), ('options?', 'PhysicsQueryOptions2D')]
+for _all in (False, True):
+    _ret = 'RayReturn[]' if _all else 'RayReturn|nil'
+    _what = 'Every collider hit, nearest first, once each,' if _all else 'The nearest hit (nil for none)'
+    _sfx = 'All' if _all else ''
+    OVERRIDES[('Physics', 'sphereCast' + _sfx)] = {
+        'doc': [f'{_what} of a sphere moved from `origin` along `direction` for `maxDistance` (Unity Physics.SphereCast).',
+                'A collider the shape starts in is skipped unless options.hitFromInside (then at distance 0).'],
+        'overloads': [([('scene', 'Scene'), ('origin', 'Vector3'), ('radius', 'number'), ('direction', 'Vector3'),
+                        ('maxDistance', 'number')] + _Q3, _ret)]}
+    OVERRIDES[('Physics', 'boxCast' + _sfx)] = {
+        'doc': [f'{_what} of a box (half extents, orientation: nil = identity) moved along `direction` (Unity Physics.BoxCast).'],
+        'overloads': [([('scene', 'Scene'), ('center', 'Vector3'), ('halfExtents', 'Vector3'), ('direction', 'Vector3'),
+                        ('orientation', 'Quaternion|nil'), ('maxDistance', 'number')] + _Q3, _ret)]}
+    OVERRIDES[('Physics', 'capsuleCast' + _sfx)] = {
+        'doc': [f'{_what} of a capsule (the centres of its two spheres) moved along `direction` (Unity Physics.CapsuleCast).'],
+        'overloads': [([('scene', 'Scene'), ('point1', 'Vector3'), ('point2', 'Vector3'), ('radius', 'number'),
+                        ('direction', 'Vector3'), ('maxDistance', 'number')] + _Q3, _ret)]}
+    OVERRIDES[('Physics2D', 'circleCast' + _sfx)] = {
+        'doc': [f'{_what} of a circle (points) moved from `origin` along `direction` for `distance` (Unity Physics2D.CircleCast).'],
+        'overloads': [([('scene', 'Scene'), ('origin', 'Vector2'), ('radius', 'number'), ('direction', 'Vector2'),
+                        ('distance', 'number')] + _Q2, _ret)]}
+    OVERRIDES[('Physics2D', 'boxCast' + _sfx)] = {
+        'doc': [f'{_what} of a box (its whole size, turned by `angle`) moved along `direction` (Unity Physics2D.BoxCast).'],
+        'overloads': [([('scene', 'Scene'), ('origin', 'Vector2'), ('size', 'Vector2'), ('angle', 'number'),
+                        ('direction', 'Vector2'), ('distance', 'number')] + _Q2, _ret)]}
+    OVERRIDES[('Physics2D', 'capsuleCast' + _sfx)] = {
+        'doc': [f'{_what} of a capsule (size, CapsuleDirection2D, angle) moved along `direction` (Unity Physics2D.CapsuleCast).'],
+        'overloads': [([('scene', 'Scene'), ('origin', 'Vector2'), ('size', 'Vector2'), ('capsuleDirection', 'integer'),
+                        ('angle', 'number'), ('direction', 'Vector2'), ('distance', 'number')] + _Q2, _ret)]}
+    _ret2 = 'Collider2D[]' if _all else 'Collider2D|nil'
+    _what2 = 'Every collider' if _all else 'The first collider (lowest GameObject, then index; nil for none)'
+    OVERRIDES[('Physics2D', 'overlapCircle' + _sfx)] = {
+        'doc': [f'{_what2} touching or inside the circle (Unity Physics2D.OverlapCircle).'],
+        'overloads': [([('scene', 'Scene'), ('point', 'Vector2'), ('radius', 'number')] + _Q2, _ret2)]}
+    OVERRIDES[('Physics2D', 'overlapBox' + _sfx)] = {
+        'doc': [f'{_what2} touching or inside the box (whole size, angle) (Unity Physics2D.OverlapBox).'],
+        'overloads': [([('scene', 'Scene'), ('point', 'Vector2'), ('size', 'Vector2'), ('angle', 'number')] + _Q2, _ret2)]}
+    OVERRIDES[('Physics2D', 'overlapCapsule' + _sfx)] = {
+        'doc': [f'{_what2} touching or inside the capsule (Unity Physics2D.OverlapCapsule).'],
+        'overloads': [([('scene', 'Scene'), ('point', 'Vector2'), ('size', 'Vector2'), ('capsuleDirection', 'integer'),
+                        ('angle', 'number')] + _Q2, _ret2)]}
+    OVERRIDES[('Physics2D', 'overlapPoint' + _sfx)] = {
+        'doc': [f'{_what2} containing the point (Unity Physics2D.OverlapPoint).'],
+        'overloads': [([('scene', 'Scene'), ('point', 'Vector2')] + _Q2, _ret2)]}
+    OVERRIDES[('Physics2D', 'overlapArea' + _sfx)] = {
+        'doc': [f'{_what2} touching or inside the box between two opposite corners (Unity Physics2D.OverlapArea).'],
+        'overloads': [([('scene', 'Scene'), ('pointA', 'Vector2'), ('pointB', 'Vector2')] + _Q2, _ret2)]}
+    OVERRIDES[('Rigidbody', 'sweepTest' + _sfx)] = {
+        'doc': [f'{_what} of the body\'s solid colliders moved along `direction`, never the body itself (Unity Rigidbody.SweepTest).'],
+        'overloads': [([('direction', 'Vector3'), ('maxDistance', 'number'), ('options?', 'PhysicsQueryOptions')], _ret)]}
+    OVERRIDES[('Rigidbody2D', 'cast' + _sfx)] = {
+        'doc': [f'{_what} of the body\'s shapes moved along `direction` (points), never the body itself (Unity Rigidbody2D.Cast).'],
+        'overloads': [([('direction', 'Vector2'), ('distance', 'number'), ('options?', 'PhysicsQueryOptions2D')], _ret)]}
+for _name, _shape, _args in (
+        ('Sphere', 'sphere', [('center', 'Vector3'), ('radius', 'number')]),
+        ('Box', 'box (half extents, orientation: nil = identity)', [('center', 'Vector3'), ('halfExtents', 'Vector3'), ('orientation?', 'Quaternion')]),
+        ('Capsule', 'capsule (the centres of its two spheres)', [('point1', 'Vector3'), ('point2', 'Vector3'), ('radius', 'number')])):
+    OVERRIDES[('Physics', 'overlap' + _name)] = {
+        'doc': [f'Every collider touching or inside the {_shape}, once each (Unity Physics.Overlap{_name}).'],
+        'overloads': [([('scene', 'Scene')] + _args + _Q3, 'Collider[]')]}
+    OVERRIDES[('Physics', 'check' + _name)] = {
+        'doc': [f'Whether any collider touches the {_shape}, stopping at the first (Unity Physics.Check{_name}).'],
+        'overloads': [([('scene', 'Scene')] + _args + _Q3, 'boolean')]}
+OVERRIDES[('Physics', 'closestPoint')] = {
+    'doc': ['The point of a convex collider nearest to `point`, `point` itself inside (Unity Physics.ClosestPoint);',
+            'an error for a mesh or heightfield collider.'],
+    'overloads': [([('scene', 'Scene'), ('point', 'Vector3'), ('collider', 'Collider')], 'Vector3')]}
+# spatial-queries: the NonAlloc overlaps (PhysicsQueryLua.cpp) beside S96's; options as theirs
+for _name, _args, _after in (
+        ('Sphere', [('center', 'Vector3'), ('radius', 'number')], []),
+        ('Box', [('center', 'Vector3'), ('halfExtents', 'Vector3')], [('orientation?', 'Quaternion')]),
+        ('Capsule', [('point1', 'Vector3'), ('point2', 'Vector3'), ('radius', 'number')], [])):
+    OVERRIDES[('Physics', 'overlap' + _name + 'NonAlloc')] = {
+        'doc': [f'Physics.overlap{_name} into `results`: the colliders\' GameObject ids (entries past the count cleared, so',
+                '#results is the count), their collider indices into `colliders` when given. Returns the count; no garbage',
+                'once the tables have grown.'],
+        'overloads': [([('scene', 'Scene')] + _args + [('results', 'SpatialQueryResults')] + _after + _Q3 +
+                       [('colliders?', 'SpatialQueryColliders')], 'integer')]}
+for _name, _args in (
+        ('Point', [('point', 'Vector2')]),
+        ('Circle', [('point', 'Vector2'), ('radius', 'number')]),
+        ('Box', [('point', 'Vector2'), ('size', 'Vector2'), ('angle', 'number')]),
+        ('Capsule', [('point', 'Vector2'), ('size', 'Vector2'), ('capsuleDirection', 'integer'), ('angle', 'number')]),
+        ('Area', [('pointA', 'Vector2'), ('pointB', 'Vector2')])):
+    OVERRIDES[('Physics2D', 'overlap' + _name + 'NonAlloc')] = {
+        'doc': [f'Physics2D.overlap{_name}All into `results` (GameObject ids; #results is the count after), collider',
+                'indices into `colliders` when given. Returns the count; no garbage once the tables have grown.'],
+        'overloads': [([('scene', 'Scene')] + _args + [('results', 'SpatialQueryResults')] + _Q2 +
+                       [('colliders?', 'SpatialQueryColliders')], 'integer')]}
 
 # S26: MeshRaycast, the triangle-exact raycast without physics (Physics.raycast's arguments)
 _MESH_RAYCAST_OPTIONS = '{hitBackfaces: boolean?, includeInactive: boolean?, ignore: (EntityHandle|integer)[]?, kinds: integer?}'
@@ -2943,6 +3158,19 @@ OVERRIDES[('MeshRaycast', 'raycastEntity')] = {
     'doc': ['The closest hit of a ray on one GameObject only (distance: the fraction of ray.direction).'],
     'overloads': [([('scene', 'Scene'), ('entity', 'EntityHandle|integer'), ('ray', 'Ray'), ('options?', _MESH_RAYCAST_OPTIONS)],
                    'MeshRaycastHit')]}
+_MESH_OVERLAP_OPTIONS = 'MeshOverlapOptions'
+for _box in (False, True):
+    _args = [('center', 'Vector3'), ('halfExtents', 'Vector3')] if _box else [('center', 'Vector3'), ('radius', 'number')]
+    _name = 'overlapBox' if _box else 'overlapSphere'
+    OVERRIDES[('MeshRaycast', _name)] = {
+        'doc': ['Objects whose world bounds touch the ' + ('oriented box' if _box else 'sphere') + ' (bounds, not triangles), by (entity,',
+                'instance); the bounds of the frame\'s first overlap unless options.current. Default kinds MESH | INSTANCE | BOUNDS.'],
+        'overloads': [([('scene', 'Scene')] + _args + ([('rotation?', 'Quaternion')] if _box else []) +
+                       [('layerMask?', 'integer'), ('options?', _MESH_OVERLAP_OPTIONS)], 'MeshOverlapHit[]')]}
+    OVERRIDES[('MeshRaycast', _name + 'NonAlloc')] = {
+        'doc': ['The objects\' entity ids into `results` (#results is the count after). Returns the count.'],
+        'overloads': [([('scene', 'Scene')] + _args + ([('rotation', 'Quaternion')] if _box else []) +
+                       [('results', 'SpatialQueryResults'), ('layerMask?', 'integer'), ('options?', _MESH_OVERLAP_OPTIONS)], 'integer')]}
 OVERRIDES[('MeshRaycast', 'prepare')] = {
     'doc': ['Builds the triangle trees of these GameObjects\' meshes (all when none) in the background, so a later',
             'raycast does not build them inline.'],
@@ -3020,6 +3248,17 @@ OVERRIDES[('SpriteBatch', 'setFx')] = {
     'doc': ['Every instance\'s amount of one effect slot: `"palette"`, `"flash"`, `"fade"` or `"dissolve"`.'],
     'overloads': [([('slot', 'string'), ('amounts', 'number[]')], '')]}
 
+# S94 MaterialPropertyBlock: its setters take any vector (engine/core/script/binding/MaterialPropertyBlockLua.cpp)
+OVERRIDES[('MaterialPropertyBlock', 'setFloat')] = {
+    'doc': ['Overrides the shader member `name` with a number.'],
+    'overloads': [([('name', 'string'), ('value', 'number')], '')]}
+OVERRIDES[('MaterialPropertyBlock', 'setVector')] = {
+    'doc': ['Overrides the shader member `name` with a vector (missing components 0).'],
+    'overloads': [([('name', 'string'), ('value', 'Vector4|Vector3|Vector2')], '')]}
+OVERRIDES[('MaterialPropertyBlock', 'setColor')] = {
+    'doc': ['Overrides the colour member `name`: sRGB in (Unity\'s SetColor), linear in the shader; a Vector3 is opaque.'],
+    'overloads': [([('name', 'string'), ('value', 'Vector4|Vector3')], '')]}
+
 # S48 Hit-Stop: HitStop.play takes an options table (HitStopOptions, engine/core/script/binding/stubs/CameraShake.lua)
 OVERRIDES[('HitStop', 'play')] = {
     'doc': ['Freezes (or slows, `opts.timeScale` 0..1) the game for `seconds` of unscaled time: Time.deltaTime,',
@@ -3078,6 +3317,14 @@ OVERRIDES[('UIDocument', 'createDataModel')] = {
 OVERRIDES[('UIDocument', 'getDataModel')] = {
     'doc': ['The proxy of a data model this document created, or nil.'],
     'overloads': [([('name', 'string')], 'UIDataModel|nil')]}
+# build-profiles: the build's define list and BuildInfo (LuaRef tables; BuildInfo is in
+# engine/core/script/binding/stubs/BuildInfo.lua)
+OVERRIDES[('System', 'getDefines')] = {
+    'doc': ["The build's Scripting Define Symbols (in Play: the active Build Profile's); {} without a profile."],
+    'overloads': [([], 'string[]')]}
+OVERRIDES[('System', 'getBuildInfo')] = {
+    'doc': ['What the build is: its Build Profile, defines, Development Build flag and Patch And Run patch.'],
+    'overloads': [([], 'BuildInfo')]}
 # anim-retarget: addClip's options table, Model:getHumanoidInfo's table (LuaRef in C++)
 OVERRIDES[('AnimationPlayer', 'addClip')] = {
     'doc': ["Adds a clip entry (an authored change: the next update reloads): an asset-relative .anim or",
@@ -3223,6 +3470,12 @@ OVERRIDES[('NavigationSystem', 'setAreaInVolume')] = {
     'overloads': [([('center', 'Vector3'), ('size', 'Vector3'), ('area', 'integer'),
                     ('options?', '{rotation: Quaternion|nil, agentType: string|integer|nil}')], 'NavAreaOverride|nil')]}
 
+# S96 vehicles: WheelCollider.getWorldPose returns two values (VehicleClassesLua.cpp)
+OVERRIDES[('WheelCollider', 'getWorldPose')] = {
+    'doc': ['The wheel\'s drawn pose after the last fixed step (Unity\'s GetWorldPose): the position of its',
+            'centre and its rotation with suspension, steer and spin. Before the first step, its GameObject\'s.'],
+    'overloads': [([], 'Vector3, Quaternion')]}
+
 # S19 navigation: the queries returning (bool, hit) and the link data table
 _NAV_FILTER = 'NavMeshQueryFilter|integer'
 OVERRIDES[('NavigationSystem', 'samplePosition')] = {
@@ -3252,6 +3505,37 @@ OVERRIDES[('Terrain', 'setHeights')] = {
     'doc': ['Writes w * h terrain-local heights to the height map\'s texel rectangle; needs Allow Runtime Edits.',
             'Returns the result table, as applyOps.'],
     'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer'), ('values', 'number[]')], 'table')]}
+# V1 R125: VertexColors, raw functions taking and returning tables (docs/mcp/guide/lua-api.md 4.3.1)
+_VC_TARGET = 'integer|{node: integer, primitive: integer}|{submesh: integer}'
+OVERRIDES[('VertexColors', 'applyOps')] = {
+    'doc': ['Runs edit_mesh_colors\' op tables (world space) on every target or on `target`, all or nothing; errors name',
+            'ops[i] from 1. Returns one result table per target.'],
+    'overloads': [([('ops', 'table[]'), ('target?', _VC_TARGET)], 'table[]')]}
+OVERRIDES[('VertexColors', 'getValue')] = {
+    'doc': ['The stored value of a GPU vertex (0-based), without runtime paint.'],
+    'overloads': [([('target', _VC_TARGET), ('vertex', 'integer')], 'Vector4')]}
+OVERRIDES[('VertexColors', 'getValues')] = {
+    'doc': ['The stored values of `count` GPU vertices from `first` (0-based), at most 65,536.'],
+    'overloads': [([('target', _VC_TARGET), ('first', 'integer'), ('count', 'integer')], 'Vector4[]')]}
+OVERRIDES[('VertexColors', 'setValues')] = {
+    'doc': ['Sets GPU vertices from `first` (0-based) to `values` (Vector4 or {r, g, b[, a]}), clearing their face colours.'],
+    'overloads': [([('target', _VC_TARGET), ('first', 'integer'), ('values', 'table')], 'boolean')]}
+OVERRIDES[('VertexColors', 'stats')] = {
+    'doc': ['Per-channel count, min, mean, max, p05, p50, p95 and histogram of a target.'],
+    'overloads': [([('target', _VC_TARGET)], 'table')]}
+OVERRIDES[('VertexColors', 'sampleAt')] = {
+    'doc': ['The value drawn at the surface point nearest to a world point (bind pose) or at a MeshRaycast hit,',
+            'runtime paint included; nil when nothing is loaded.'],
+    'overloads': [([('point', 'Vector3')], 'Vector4|nil'), ([('hit', 'MeshRaycastHit')], 'Vector4|nil')]}
+OVERRIDES[('VertexColors', 'paint')] = {
+    'doc': ['Runtime paint over the stored colours at a world point or a MeshRaycast hit: radius (world), value,',
+            'channels, strength, hardness, hold and fade (game seconds). Returns the vertices touched.'],
+    'overloads': [([('point', 'Vector3'), ('opts?', '{radius: number|nil, value: table|Vector4|string|nil, channels: string|nil, '
+                    'strength: number|nil, hardness: number|nil, hold: number|nil, fade: number|nil}')], 'integer'),
+                  ([('hit', 'MeshRaycastHit'), ('opts?', 'table')], 'integer')]}
+PROPERTY_OVERRIDES[('VertexColors', 'channelNames')] = ('string[]', True)
+PROPERTY_OVERRIDES[('VertexColors', 'targets')] = ('{node: integer|nil, primitive: integer|nil, submesh: integer|nil, name: string, '
+                                                   'vertexCount: integer, triangleCount: integer}[]', True)
 # S75 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
 OVERRIDES[('NavigationSystem', 'isReachable')] = {
     'doc': ['Whether a Complete path joins the points, then why not ("none" when it does): rejected at once',
@@ -3336,6 +3620,39 @@ OVERRIDES[('Palette', 'getRamp')] = {
 PROPERTY_OVERRIDES[('Palette', 'variants')] = ('string[]', True)
 PROPERTY_OVERRIDES[('Palette', 'ramps')] = ('string[]', True)
 
+# Fog Profiles (docs/specs/S101-vapor.md R36, R43; FogClassesLua.cpp): the field functions read a field
+# name and a value of that field's type from the Lua stack (colours sRGB, as Fog's properties)
+_FOG_VALUE = 'number|boolean|Vector3|FogColorMode'
+_FOG_PROFILE = 'FogProfile|string|nil'
+OVERRIDES[('FogProfile', 'get')] = {
+    'doc': ['The value the profile sets for a look field ("attenuationDistance", "color", ...), or nil when it',
+            'leaves the field to each Fog.'],
+    'overloads': [([('field', 'string')], _FOG_VALUE + '|nil')]}
+OVERRIDES[('FogProfile', 'isSet')] = {
+    'doc': ['Whether the profile sets the look field (an override); the others are each Fog\'s own.'],
+    'overloads': [([('field', 'string')], 'boolean')]}
+OVERRIDES[('FogProfile', 'set')] = {
+    'doc': ['Sets (and overrides) a look field of a clone. A loaded or built-in profile is shared by every Fog',
+            'using it and is read-only: change `profile:clone()`, then link the clone (`fog.profile = clone`).'],
+    'overloads': [([('field', 'string'), ('value', _FOG_VALUE)], '')]}
+OVERRIDES[('FogProfile', 'clear')] = {
+    'doc': ['Removes a clone\'s override of the field: each Fog\'s own value shows again.'],
+    'overloads': [([('field', 'string')], '')]}
+OVERRIDES[('Fog', 'blendTo')] = {
+    'doc': ['Cross-fades the fog to this Fog\'s own fields under `profile` (nil: none) over `seconds` of game',
+            'time; <= 0 applies at once. Called again mid-blend it starts from the current mix. At the end',
+            'the profile is the Fog\'s runtime profile (never saved).'],
+    'overloads': [([('profile', _FOG_PROFILE), ('seconds', 'number')], '')]}
+OVERRIDES[('Fog', 'getResolved')] = {
+    'doc': ['The look field as the main camera sees it now: own field, profile, blend, Fog Zones and script',
+            'writes applied.'],
+    'overloads': [([('field', 'string')], _FOG_VALUE)]}
+OVERRIDES[('Fog', 'clearOverride')] = {
+    'doc': ['Drops the script\'s writes to the field in Play: the profile, blend and zones show again.'],
+    'overloads': [([('field', 'string')], '')]}
+PROPERTY_OVERRIDES[('Fog', 'profile')] = ('FogProfile|nil', False)
+PROPERTY_OVERRIDES[('FogZone', 'profile')] = ('FogProfile|nil', False)
+
 # S48 PixelFX player: lua_CFunctions taking a GameObject, an effect name and an options table
 # (PixelFXOptions in engine/core/script/binding/stubs/PixelFX.lua)
 OVERRIDES[('PixelFX', 'play')] = {
@@ -3372,6 +3689,8 @@ HTML_UI_FIELD_OVERRIDES = {
     ('UIDocument', 'body'): {'doc': ['the <body> element (the root of an .rml document)']},
     ('UIDocument', 'documentElement'): {'doc': ['the <html> element (CSS :root; the same as body in an .rml document)']},
     ('UIEvent', 'gamepad'): {'doc': ['the id of the gamepad that sent this keydown/keyup (code "GamepadA", ...), -1 for the keyboard']},
+    ('UIEvent', 'enterKeyHint'): {'doc': ['an Enter keydown of the soft keyboard\'s action key or of a field with an enterkeyhint: the hint',
+                                          '("next", "send", ...; "" for the platform\'s default key); preventDefault stops its action']},
 }
 
 # HTML UI (phase 4, p4-guide): the event names of UIElement/UIDocument addEventListener
@@ -3468,6 +3787,20 @@ _PARAM_TYPE_OVERRIDES = {
 # are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
 _ANIME_TARGETS = 'AnimeTargets'
 OVERRIDES.update({
+    ('anime', 'splitText'): {
+        'doc': ['Splits the first matching element into animatable words, grapheme characters and layout lines.',
+                'Words default on. Split options accept {wrap = "clip"} for masked reveals; revert restores the original markup.'],
+        'overloads': [([('target', _ANIME_TARGETS), ('params?', 'AnimeSplitTextParams')], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'split'): {
+        'doc': ['Recomputes line metadata, rebuilding line splits from the original markup.',
+                'Retrieve chars, words and lines again after a line rebuild.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'refresh'): {
+        'doc': ['Rebuilds after layout or style edits. Width and font layout changes also refresh automatically.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'revert'): {
+        'doc': ['Restores the original markup and disconnects automatic layout refresh.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
     ('anime', 'animate'): {
         'doc': ['Animates `targets` (a CSS selector, a UIElement, a plain table, or a list of them) as',
                 '`params` says: properties to animate plus duration, delay, ease, loop, callbacks ... (Anime.js v4).'],
@@ -3484,6 +3817,15 @@ OVERRIDES.update({
     ('anime', 'spring'): {
         'doc': ['Same as anime.createSpring.'],
         'overloads': [([('params?', 'AnimeSpringParams')], 'AnimeSpring')]},
+    ('anime', 'createDrawable'): {
+        'doc': ['SVG geometry targets with an animatable normalized `draw` range ("0 1", "0.5 1").'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('start?', 'number'), ('finish?', 'number')], 'UIElement[]')]},
+    ('anime', 'morphTo'): {
+        'doc': ['A function value morphing a path, polygon or polyline to `target`; precision defaults to .33.'],
+        'overloads': [([('target', _ANIME_TARGETS), ('precision?', 'number')], 'AnimeStagger')]},
+    ('anime', 'createMotionPath'): {
+        'doc': ['Function values for translateX, translateY and rotate along SVG geometry.'],
+        'overloads': [([('path', _ANIME_TARGETS), ('offset?', 'number')], 'AnimeMotionPath|nil')]},
     ('anime', 'stagger'): {
         'doc': ['A function value spreading `value` (or the range {from, to}) over the targets: for',
                 'delays, property values or timeline positions.'],
@@ -3506,7 +3848,7 @@ OVERRIDES.update({
         'overloads': [([('t', 'number')], 'number'), ([('...', 'number')], 'AnimeEase')]},
     ('AnimeStagger', '__call'): {
         'doc': ['The staggered value of the target at `index` (0-based, as Anime) of `total`.'],
-        'overloads': [([('target', 'any'), ('index', 'integer'), ('total?', 'integer')], 'number|string')]},
+        'overloads': [([('target', 'any'), ('index', 'integer'), ('total?', 'integer')], 'number|string|table')]},
     ('AnimeTimer', 'andThen'): {
         'doc': ['Calls `fn(self)` once completed (at once when already completed): Anime\'s then(),',
                 'renamed because `then` is a Lua keyword.'],
@@ -3551,6 +3893,7 @@ EVENT_FIELD_ARGS = {
     ('Audio', 'onMusicBeat'): ['bar', 'beat'],
     ('Audio', 'onMusicSection'): ['section', 'clip'],
     ('Device', 'onThermalStateChanged'): ['state'],
+    ('DebugOverlay', 'onCheatUsed'): ['name'],
 }
 
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
@@ -3621,7 +3964,11 @@ class Builder:
                             if cn == vname:
                                 v = cv
                                 break
-                if v is None and expr and not qual:
+                strings = [x for x in expr if x.k == 'str'] if expr else []
+                if v is None and len(strings) == 1:
+                    # a string constant (`std::string("Touch")`: InputScheme, GamepadFamily)
+                    v = literal(strings)
+                elif v is None and expr and not qual:
                     # a literal value (a namespace of plain constants: ParticleSystemStopBehavior)
                     v = eval_int(expr, {}, self.model)
                 vals.append((name, v, call))
@@ -3650,6 +3997,8 @@ class Builder:
                 if not call.targs:
                     for arg in call.args:
                         targ = self.lambda_ctor_targ(arg)
+                        if targ is None:
+                            targ = self.scene_ctor_targ(arg)
                         if targ is not None:
                             c.lua_ctors.append(self.ctor_sig(c, targ))
             fs = re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.cpp) or \
@@ -3662,6 +4011,23 @@ class Builder:
                     self.function_member(c, m)
                 else:
                     self.property_member(c, m)
+
+    @staticmethod
+    def scene_ctor_targ(arg):
+        # script/binding/SceneConstructors.h: sceneconstructors::ofScene<T>() is T(Scene*),
+        # ofEntity<T>() T(Scene*, Entity), ofSceneWith<T, A>() T(Scene*, A); None for other args
+        m = re.match(r'^sceneconstructors::(ofScene|ofEntity|ofSceneWith)<([^,<>]+)(?:,([^<>]+))?>\(\)$',
+                     ''.join(tok.t for tok in arg))
+        if not m:
+            return None
+        line, cond = arg[0].line, arg[0].cond
+        params = ['Scene', '*']
+        if m.group(1) == 'ofEntity':
+            params += [',', 'Entity']
+        elif m.group(1) == 'ofSceneWith' and m.group(3):
+            params += [','] + re.findall(r'[A-Za-z_][A-Za-z0-9_:]*|\S', m.group(3))
+        toks = ['void', '('] + params + [')']
+        return [Tok('id' if re.match(r'[A-Za-z_]', t) else 'op', t, line, cond) for t in toks]
 
     @staticmethod
     def lambda_ctor_targ(arg):
@@ -3761,6 +4127,7 @@ class Builder:
             m.lua_sigs = [self.override_sig(o) for o in ov['overloads']]
             m.doc = m.call.doc + ov.get('doc', [])
             m.is_async = ov.get('async', False)
+            m.nodiscard = ov.get('nodiscard', False)
             return
         sigs = []
         m.cpp_sigs = []
@@ -3962,7 +4329,64 @@ OVERRIDES[('DebugOverlay', 'getStats')] = {
             'frame-time ring (S15), draw calls, memory, audio, physics, entities, coroutines, timers.'],
     'overloads': [([], 'DebugStats')]}
 OVERRIDES[('DebugOverlay', 'addCommand')] = {
-    'doc': ['Adds a console command (name `[a-z0-9_-]+`; re-adding replaces): `fn(args)` gets the words after',
-            'the name. It goes with `owner` (default: the `self` of the calling script method). False for a bad',
-            'or built-in name.'],
-    'overloads': [([('name', 'string'), ('description', 'string?'), ('fn', 'fun(args: string[])'), ('owner?', 'table')], 'boolean')]}
+    'doc': ['Adds a console command: the table form takes typed arguments, aliases, a cheat flag; `run(args, call)` gets',
+            'the arguments by name and by position and returns the result\'s value. The old form\'s `fn(args)` gets the words',
+            'after the name. Re-adding a name replaces it. It goes with `owner` (default: the `self` of the calling script',
+            'method). True, or false and the reason (a bad name, an alias another command holds, `help`).'],
+    'overloads': [([('spec', 'ConsoleCommandSpec')], 'boolean, string?'),
+                  ([('name', 'string'), ('description', 'string?'), ('fn', 'fun(args: string[])'), ('owner?', 'table')], 'boolean, string?')]}
+OVERRIDES[('DebugOverlay', 'executeCommand')] = {
+    'doc': ['Runs a console line as the game\'s own call (Console Commands does not gate it) and returns its result.'],
+    'overloads': [([('line', 'string')], 'ConsoleResult')]}
+OVERRIDES[('DebugOverlay', 'completeCommand')] = {
+    'doc': ['The completion of the word at the cursor (the bytes of `line` before it; default: the end).'],
+    'overloads': [([('line', 'string'), ('cursor?', 'integer')], 'ConsoleCompletion')]}
+OVERRIDES[('DebugOverlay', 'resetCheatsUsed')] = {
+    'doc': ['Clears DebugOverlay.cheatsUsed (a new game); the next cheat fires onCheatUsed again.'],
+    'overloads': [([], '')]}
+OVERRIDES[('DebugOverlay', 'getCommands')] = {
+    'doc': ['Every command listed, sorted by name.'],
+    'overloads': [([], 'ConsoleCommandInfo[]')]}
+
+# Culling Groups and Simulation Culling (engine/core/script/binding/CullingClassesLua.cpp): the
+# lua_CFunctions taking 1-based indices, GameObjects or ids, Lua lists and functions
+_SPHERE_TARGET = 'GameObject|integer'
+OVERRIDES[('CullingGroup', 'setSphereTarget')] = {
+    'doc': ['Sphere `index` follows the GameObject\'s world position plus `offset` at each evaluation;',
+            'a destroyed GameObject\'s sphere keeps its last position.'],
+    'overloads': [([('index', 'integer'), ('target', _SPHERE_TARGET), ('radius', 'number'), ('offset?', 'Vector3')], '')]}
+OVERRIDES[('CullingGroup', 'setSphere')] = {
+    'doc': ['Sets sphere `index` (it stops following).'],
+    'overloads': [([('index', 'integer'), ('sphere', 'BoundingSphere')], '')]}
+OVERRIDES[('CullingGroup', 'getSphere')] = {'overloads': [([('index', 'integer')], 'BoundingSphere')]}
+OVERRIDES[('CullingGroup', 'setBoundingSpheres')] = {
+    'doc': ['Copies the spheres (at most 100,000); they stop following.'],
+    'overloads': [([('spheres', 'BoundingSphere[]')], '')]}
+OVERRIDES[('CullingGroup', 'setBoundingDistances')] = {
+    'doc': ['0 to 8 ascending, positive distances: band 0 below the first, band n at or beyond the last.'],
+    'overloads': [([('distances', 'number[]')], '')]}
+OVERRIDES[('CullingGroup', 'setDistanceReferencePoint')] = {
+    'doc': ['Distances are measured from this point, or from this GameObject (followed). None set: the',
+            'target camera, else the scene\'s main camera.'],
+    'overloads': [([('point', 'Vector3|GameObject|integer')], '')]}
+OVERRIDES[('CullingGroup', 'eraseSwapBack')] = {
+    'doc': ['Removes sphere `index`: the last sphere and its state move into it.'],
+    'overloads': [([('index', 'integer')], '')]}
+OVERRIDES[('CullingGroup', 'isVisible')] = {'overloads': [([('index', 'integer')], 'boolean')]}
+OVERRIDES[('CullingGroup', 'getDistance')] = {
+    'doc': ['The sphere\'s band (0 nearest); -1 before the first evaluation.'],
+    'overloads': [([('index', 'integer')], 'integer')]}
+OVERRIDES[('CullingGroup', 'queryIndices')] = {
+    'doc': ['Fills `out[1..n]` with the 1-based indices of the matching spheres, skipping the first `first`',
+            'matches, and returns n (CullingGroupIndices).'],
+    'overloads': [([('visible', 'boolean'), ('out', 'CullingGroupIndices'), ('first?', 'integer')], 'integer'),
+                  ([('band', 'integer'), ('out', 'CullingGroupIndices'), ('first?', 'integer')], 'integer'),
+                  ([('visible', 'boolean'), ('band', 'integer'), ('out', 'CullingGroupIndices'), ('first?', 'integer')], 'integer')]}
+OVERRIDES[('SimulationCulling', 'addFocus')] = {
+    'doc': ['A simulation focus at a position, or following a GameObject (one per player); its id. At most 16.'],
+    'overloads': [([('scene', 'Scene'), ('focus', 'Vector3|GameObject|integer')], 'integer')]}
+OVERRIDES[('SimulationCulling', 'setGroundCheck')] = {
+    'doc': ['The game\'s own ground check for worlds it streams itself; nil removes it.'],
+    'overloads': [([('scene', 'Scene'), ('check', 'SimulationGroundCheck|nil')], '')]}
+PROPERTY_OVERRIDES[('CullingGroup', 'targetCamera')] = ('integer|nil', False)
+PROPERTY_OVERRIDES[('CullingGroup', 'onStateChanged')] = ('CullingGroupStateChanged|nil', False)

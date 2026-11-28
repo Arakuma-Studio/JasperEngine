@@ -69,6 +69,31 @@ RECORD = {
     "search_api_game_view": ("search_engine_api", {"query": "game view resolution aspect device"}),
     "search_api_tags_layers": ("search_engine_api", {"query": "tags layers collision matrix"}),
     "settings_search_game_view": ("get_project_settings", {"search": "game view resolution"}),
+    # a height fog the Scene view hides (its Disable fog), then shown again: what get_atmosphere_info says of
+    # each (last, so the Fog is in no other recording; build_world discards this scene)
+    "create_entity_fog": ("create_entity", {"type": "fog", "name": "Fog"}),
+    "set_properties_fog_height": ("set_properties", {"entity": "Fog", "values": {"fog": {"type": "height"}}}),
+    "get_scene_settings_fog": ("get_scene_settings", {}),
+    "scene_view_disable_fog": ("set_scene_camera", {"display": {"disable_fog": True}}),
+    "get_atmosphere_info_fog_hidden": ("get_atmosphere_info", {"view": "scene"}),
+    "scene_view_enable_fog": ("set_scene_camera", {"display": {"disable_fog": False}}),
+    "get_atmosphere_info_fog_shown": ("get_atmosphere_info", {"view": "scene"}),
+    # Fog Profiles (docs/specs/S101-vapor.md R31-R33, R43): the Fog and a Fog Zone share builtin night's copy, so
+    # set_properties refuses a field it sets; a copy for the Fog alone; the zone takes a profile of its own
+    "list_atmosphere_presets_fog": ("list_atmosphere_presets", {"kind": "fog"}),
+    "apply_fog_profile_night": ("apply_atmosphere_preset", {"entity": "Fog", "preset": "night"}),
+    "create_entity_fog_zone": ("create_entity", {"type": "fog_zone", "name": "Cave Fog", "position": [40, 0, 0]}),
+    "apply_fog_profile_zone_shared": ("apply_atmosphere_preset", {"entity": "Cave Fog", "preset": "night"}),
+    "set_properties_fog_profile_field": ("set_properties", {"entity": "Fog", "values": {"fog": {"attenuationDistance": 30.0}}}),
+    "edit_fog_profile_shared": ("edit_fog_profile", {"path": "FogProfiles/night.fogprofile", "set": {"attenuationDistance": 30.0}}),
+    "undo_fog_profile_shared": ("undo", {"scope": "project"}),
+    "edit_fog_profile_copy": ("edit_fog_profile", {"path": "FogProfiles/night_dense.fogprofile",
+                                                   "from": {"profile": "FogProfiles/night.fogprofile"},
+                                                   "set": {"attenuationDistance": 30.0}}),
+    "apply_fog_profile_copy": ("apply_atmosphere_preset", {"entity": "Fog", "preset": "FogProfiles/night_dense.fogprofile"}),
+    "edit_fog_profile_cave": ("edit_fog_profile", {"path": "FogProfiles/cave.fogprofile", "from": {"builtin": "murky"},
+                                                   "set": {"albedo": [0.05, 0.3, 0.05], "attenuationDistance": 15.0}}),
+    "apply_fog_profile_zone": ("apply_atmosphere_preset", {"entity": "Cave Fog", "preset": "FogProfiles/cave.fogprofile"}),
 }
 # edit-mode results first (the play calls come last)
 RECORD = {"eval_lua_edit_mode": ("eval_lua", {"code": "return 1"}), **RECORD}
@@ -129,6 +154,8 @@ async def record(out: Path) -> dict:
                                  "structured": r.structured, "is_error": r.is_error}
 
         await record_calls(RECORD)
+        # the Fog Profiles the recordings wrote are no part of the world a sample starts from
+        shutil.rmtree(ed.project / "FogProfiles", ignore_errors=True)
         await build_world(ed)
         await record_calls(RECORD_WORLD)
         contents = {}

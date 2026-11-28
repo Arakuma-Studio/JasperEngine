@@ -15,6 +15,7 @@
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/ButtonComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/NavMeshAgentComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
@@ -45,6 +46,7 @@ namespace jasperengine {
         AnimatorComponent,
         AudioSourceComponent,
         ButtonComponent,
+        DialogueRunnerComponent,
         InputFieldComponent,
         NavMeshAgentComponent,
         NavMeshSurfaceComponent,

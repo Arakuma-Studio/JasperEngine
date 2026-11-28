@@ -373,14 +373,13 @@ void ModelClipSettingsView::drawSettings(){
     // each field's value over the selection: mixed when the clips differ
     const ClipWrapMode wrap = wrapOf(names.front());
     const anim::ClipRootMotion rootMotion = rootMotionOf(names.front());
-    bool wrapMixed = false, boneMixed = false, rotationMixed = false, yMixed = false, xzMixed = false;
+    bool wrapMixed = false, boneMixed = false;
+    inspectorclips::RootTransformMixed rootMixed;
     for (const std::string& name : names){
         const anim::ClipRootMotion other = rootMotionOf(name);
         wrapMixed = wrapMixed || wrapOf(name) != wrap;
         boneMixed = boneMixed || other.bone != rootMotion.bone;
-        rotationMixed = rotationMixed || other.bakeRotation != rootMotion.bakeRotation;
-        yMixed = yMixed || other.bakePositionY != rootMotion.bakePositionY;
-        xzMixed = xzMixed || other.bakePositionXZ != rootMotion.bakePositionXZ;
+        rootMixed.add(rootMotion, other);
     }
     auto editRootMotion = [&](auto change){
         for (const std::string& name : names){
@@ -418,29 +417,9 @@ void ModelClipSettingsView::drawSettings(){
             editRootMotion([&](anim::ClipRootMotion& changed){ changed.bone = value; });
         }
 
-        struct BakeRow {
-            const char* label;
-            const char* id;
-            bool anim::ClipRootMotion::* member;
-            bool mixed;
-            const char* tooltip;
-        };
-        const BakeRow bakes[] = {
-            {"Root Transform Rotation", "Bake Into Pose##model_clip_bake_rotation", &anim::ClipRootMotion::bakeRotation, rotationMixed,
-             "Keep the heading in the pose: no turning root motion"},
-            {"Root Transform Position (Y)", "Bake Into Pose##model_clip_bake_y", &anim::ClipRootMotion::bakePositionY, yMixed,
-             "Keep the height in the pose"},
-            {"Root Transform Position (XZ)", "Bake Into Pose##model_clip_bake_xz", &anim::ClipRootMotion::bakePositionXZ, xzMixed,
-             "Keep the horizontal motion in the pose"},
-        };
-        for (const BakeRow& row : bakes){
-            clipSettingLabel(row.label, row.tooltip);
-            bool value = rootMotion.*row.member;
-            if (row.mixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
-            const bool changed = ImGui::Checkbox(row.id, &value);
-            if (row.mixed) ImGui::PopItemFlag();
-            if (changed) editRootMotion([&](anim::ClipRootMotion& edited){ edited.*row.member = value; });
-        }
+        const inspectorclips::RootTransformEdit edit = inspectorclips::drawRootTransformRows(
+            rootMotion, rootMixed, "model_clip", [](const char* label, const char* tooltip){ clipSettingLabel(label, tooltip); });
+        if (edit.changed()) editRootMotion([&](anim::ClipRootMotion& changed){ edit.applyTo(changed); });
         ImGui::EndTable();
     }
 

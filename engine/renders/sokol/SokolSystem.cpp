@@ -24,6 +24,7 @@
 #include "SokolPipelineCache.h"
 #include "SokolTraceHub.h"
 #include "render/SystemRender.h"
+#include "device/GpuQuirks.h"
 #include "SokolTexture.h"
 #include "Log.h"
 #if JASPERENGINE_PROFILER
@@ -373,6 +374,9 @@ void SokolSystem::setup(){
 #endif
 
     SokolCmdQueue::start();
+
+    // the driver workarounds, once, before the creation mode they choose (GPU quirks R17)
+    GpuQuirks::resolveForDevice();
 
     // shaders and pipelines created off the render thread from here on (spec S32)
     SokolAsyncCreate::setup();
@@ -1166,6 +1170,10 @@ bool SokolSystem::isCpuDevice(){
 
 std::string SokolSystem::getApiVersion(){
     return sg_isvalid() ? std::string(sgj_api_version()) : std::string();
+}
+
+std::string SokolSystem::getDriverVersion(){
+    return sg_isvalid() ? std::string(sgj_driver_version()) : std::string();
 }
 
 void SokolSystem::setVulkanHostQueryReset(bool enabled){

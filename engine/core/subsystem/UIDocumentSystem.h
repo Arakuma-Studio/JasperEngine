@@ -13,9 +13,12 @@
 
 #include "SubSystem.h"
 #include "UIDocumentInput.h"
+#include "math/Matrix4.h"
 #include "math/Rect.h"
+#include "render/PipelineState.h"
 #include "render/Render.h"
 #include "component/UIDocumentComponent.h"
+#include "htmlui/UIWorldRaycast.h"
 #include "System.h"
 #include "htmlui/HtmlUIRenderStats.h"
 
@@ -58,6 +61,7 @@ namespace jasperengine{
     struct HtmlUIReloadState;   // p1-editor  (UIDocumentSystemReload.cpp)
     struct HtmlUITextureState;  // p1-rtt     (UIDocumentSystemTexture.cpp)
     struct HtmlUICompatState;   // p2-html    (UIDocumentSystemCompat.cpp)
+    struct HtmlUIStyleSheetState;   // S93 R29 (UIDocumentSystemStyle.cpp)
 
     enum class HtmlUIMessageLevel { Info, Warning, Error };
 
@@ -79,6 +83,10 @@ namespace jasperengine{
 
         void load() override;                 // nothing heavy: the context is created lazily in update()
         void destroy() override;              // destroy context, HtmlUI::release() if acquired
+        // a view loss: the contexts, documents, DOM, element handles, listeners, data models and
+        // scroll stay; their textures, geometry buffers and targets go and are made again when
+        // they draw next (restoreGpu is load(): only documents that never loaded load)
+        void releaseGpu() override;
         void update(double dt) override;
         void draw() override;                 // empty: RenderSystem drives drawing
         void onComponentAdded(Entity entity, ComponentId componentId) override;    // mark needReload
@@ -86,7 +94,14 @@ namespace jasperengine{
 
         // RenderSystem hooks; one-line delegations to the context
         void renderOffscreen(const Rect& viewRect);                 // context->render(viewRect)
-        void drawComposite(PipelineType colorPipeline, bool flipY); // context->composite(...)
+        // the screen documents filling the pass's viewport: the camera pass of a Screen Space -
+        // Camera scene, or the pass that writes the main camera's output (S92 R13: the uber pass,
+        // a blit) of a Screen Space - Overlay one; msaaSamples as below. viewCanvasWidth and
+        // viewCanvasHeight: the canvas the camera shows (the editor's Game view outside Play frames
+        // the project canvas, which the documents' layout may not be): the documents' frame keeps
+        // its canvas pixels' size in it from the top-left corner; 0 fills the viewport
+        void drawComposite(PipelineType colorPipeline, bool flipY, int msaaSamples = 1, float viewCanvasWidth = 0.0f,
+                           float viewCanvasHeight = 0.0f);
 
         // Engine::system* hooks, canvas coordinates (top-left origin, y down); true = consumed
         bool eventOnPointerDown(int button, float x, float y, int mods);
@@ -122,19 +137,23 @@ namespace jasperengine{
         // ---- phase 1. Declared by the wave-0 commit, defined by each package in its own .cpp ----
 
         // --- p1-render (UIDocumentSystemRender.cpp, §3.5) ---
-        // camera-aware composite: UI and orthographic cameras draw the canvas rectangle in world
-        // space (the editor's Scene view shows it in place), perspective ones fill the viewport
-        // like drawComposite(PipelineType, bool). msaaSamples: the camera pass's sample count when
-        // colorPipeline is PIP_MSAA* (the post-processed camera's multisampled scene target)
+        // camera-aware composite: with throughCamera (the editor's Scene view, and every view of a
+        // Screen Space - Camera scene, as before S92), UI and orthographic cameras draw the canvas
+        // rectangle in world space, so the document shows in place; a perspective camera, and
+        // every camera of a Screen Space - Overlay game view (S92 R15), fill the viewport like
+        // drawComposite(PipelineType, bool, int, float, float). msaaSamples: the camera pass's sample
+        // count when colorPipeline is PIP_MSAA* (the post-processed camera's multisampled scene target)
         void drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY,
-                           int msaaSamples = 1);
+                           int msaaSamples = 1, bool throughCamera = false, float viewCanvasWidth = 0.0f, float viewCanvasHeight = 0.0f);
         const HtmlUIRenderStats& getRenderStats() const;    // last frame, summed over the scene's contexts
         // the last frame of the context that draws the entity's document (its own in texture mode,
         // else the screen context; empty without one)
         HtmlUIRenderStats getRenderStats(Entity entity) const;
-        // MSAA samples of every UI target (1/2/4/8, default 4): the exported entry to
-        // HtmlUIContext::setPreferredSampleCount for the editor's project setting and the
-        // generated game init code (neither can reach the internal HtmlUIContext)
+        // MSAA samples of the UI targets (0 = Auto: 1 on Android, iOS and the web, 4 on desktop;
+        // else 1/2/4/8; default 4): the exported entry to HtmlUIContext::setPreferredSampleCount
+        // for the editor's project setting and the generated game init code (neither can reach
+        // the internal HtmlUIContext). A scene's htmlUiMsaaSamples and a texture-mode document's
+        // msaaSamples replace it for their context (renderOffscreen hands them over)
         static void setPreferredSampleCount(int samples);
         static int getPreferredSampleCount();
         // S16 (D1, R13): the glyph atlas budget in MiB (0: the platform's default), SDF primitives
@@ -142,6 +161,10 @@ namespace jasperengine{
         // htmlUiSdfPrimitives and htmlUiTransformAwareText. Documents already drawn generate
         // their backgrounds and text again
         static void setHtmlUiRenderOptions(int glyphAtlasMiB, bool sdfPrimitives, bool transformAwareText);
+        // S93 R19: MiB of released images the process's image cache keeps (negative: the platform's
+        // default, 64 on desktop and 32 on Android, iOS and the web; 0: none); the exported entry
+        // for the project's htmlUiImageCacheMiB
+        static void setHtmlUiImageCacheMiB(int mib);
 
         // --- p1-input (UIDocumentSystemInput.cpp, §3.6.2); the phase-0 pointer methods above become wrappers ---
         // world = false: the screen documents only (and a pointer a texture-mode document
@@ -183,6 +206,41 @@ namespace jasperengine{
         // an element of a shown document has the focus of the context keys go to: the documents take the
         // gamepad's navigation (the d-pad, the left stick, A)
         bool hasGamepadFocus() const;
+
+        // Back and menus (Engine::systemBack, Engine::isMenuShowing; docs/mcp/guide/html-ui.md "Back and menus")
+        // a shown, interactive Is Menu document of this scene
+        bool hasMenuDocument() const { return !menuEntities.empty(); }
+        // the focus keys go to is an open <select> or sits in an open modal <dialog>: Escape and B
+        // close it as keys (not a Back)
+        bool hasBackOverlay() const;
+        // the top menu document (highest sortOrder, then the later shown) gets a cancelable, bubbling
+        // `back` at its focused element, else its root; unless prevented, its default action closes
+        // an open <select>, else the topmost open modal <dialog>. True: prevented or something closed
+        bool dispatchBack();
+        // a menu opened (Engine, R19): the pointers this scene's non-menu documents hold end without a
+        // click; the fingers over a menu document stay and are added to keptFingers
+        void cancelPointersOutsideMenus(std::vector<int>& keptFingers);
+        // bumped whenever a document of any scene starts or stops counting as a menu or a cursor document
+        static uint32_t getMenuRevision();
+
+        // The gamepad cursor (GamepadCursor; docs/mcp/guide/html-ui.md "Gamepad cursor"); canvas px
+        // a shown, interactive, screen-mode Gamepad Cursor document of this scene
+        bool hasCursorDocument() const { return !cursorEntities.empty(); }
+        // the element under the documents' mouse pointer takes pointer input (a button, a link, a
+        // form control, [onclick], a click or pointerdown listener)
+        bool isMouseOverControl() const;
+        // the element under the documents' mouse pointer (engine-internal; null: none)
+        Rml::Element* getMouseHoverElement() const;
+        // the focused element of a shown screen document: its centre; false when none
+        bool getFocusCenter(float& x, float& y, const void*& focus) const;
+        // nothing focused: the element under the mouse pointer (or its nearest ancestor in the Tab
+        // order) takes the focus, so the d-pad navigates from it; true when one did
+        bool focusHoveredElement();
+        // the cursor graphic above every document of the screen context (an engine overlay document,
+        // loaded the first time it shows): its hot spot at (x, y); graphic empty = the built-in arrow
+        void setCursorOverlay(bool show, float x, float y, const std::string& graphic, float size, float hotX, float hotY);
+        // overlay documents loaded (any scene): tests check an unused cursor costs nothing
+        static uint32_t getCursorOverlayLoads();
 
         // --- p1-editor (UIDocumentSystemReload.cpp, §3.8.6-§3.8.7); paths are asset-relative ---
         struct Reloaded { Entity entity; bool stylesheetOnly; };
@@ -251,6 +309,17 @@ namespace jasperengine{
         // NULL_ENTITY when that was the screen context, the game or nothing
         Entity getTextureFocus() const;
 
+        // --- S93 R36 World Space (UIDocumentSystemWorld.cpp) ---
+        // a WORLD-mode document in the scene (RenderSystem then looks for their GameObjects)
+        bool hasWorldDocuments() const;
+        // a World Space document's quad: maps its corners (-1,1) top-left .. (1,-1)
+        // bottom-right to the world (Billboard: turned to camera's view; no camera: unturned).
+        // False when the entity has no WORLD-mode document with a target
+        bool getWorldQuad(Entity entity, const CameraComponent* camera, Matrix4& worldFromQuad) const;
+        // RenderSystem's transparent queue: the shown document's quad inside camera's pass of
+        // format target (flipY: the pass renders flipped, as drawComposite's)
+        void drawWorldDocument(Entity entity, CameraComponent& camera, const RenderTargetFormat& target, bool flipY);
+
         // --- p2-html (UIDocumentSystemCompat.cpp, phase-2 §3.12, hooks H1b/H4) ---
         // the compile of an .html document (the compat layer's RML, source map, diagnostics);
         // null for .rml documents and before the load
@@ -265,6 +334,15 @@ namespace jasperengine{
         // the scene's Lua scripts started (LuaBinding::initializeLuaScripts): the documents'
         // <script type="text/lua"> run now and after every later (re)load, until the play stops
         void startDocumentScripts();
+        // --- S93 R29 (UIDocumentSystemStyle.cpp): style sheets a script adds to an .html document ---
+        // CSS text (its source "injected:<name>") or an asset .css file (path set, css ignored), compiled
+        // with the document's sheets and cascading after them; kept with the component over reloads, live
+        // patches and other files it loads. The id names it (never 0).
+        uint64_t addStyleSheet(Entity entity, const std::string& css, const std::string& name, const std::string& path);
+        bool removeStyleSheet(Entity entity, uint64_t id);   // false: no such sheet
+        bool setStyleSheetEnabled(Entity entity, uint64_t id, bool enabled);
+        // false when the sheet is not there (removed, or its component)
+        bool getStyleSheet(Entity entity, uint64_t id, bool* enabled, std::string* name) const;
         // ---- phase 2 ----
         // --- p2-importers: the editor's AppSettings::htmlUiVerboseDiagnostics; document loads
         // build CompatOptions::verboseDiagnostics from it (Info diagnostics logged one by one) ---
@@ -301,6 +379,18 @@ namespace jasperengine{
         float frameWidth = 0.0f, frameHeight = 0.0f;
         std::vector<Entity> runtimeEntities;
         bool debuggerVisible = false;   // asked before the context existed
+        // the documents counted as menus (applyComponent), with the order they started counting in
+        std::unordered_map<Entity, uint64_t> menuEntities;
+        std::unordered_map<Entity, bool> cursorEntities;
+        void setInputFlagsApplied(Entity entity, UIDocumentComponent& document, bool menu, bool cursor);
+        // the gamepad cursor's overlay document in the screen context (null until it first shows)
+        Rml::ElementDocument* cursorOverlay = nullptr;
+        Rml::Element* cursorOverlayImage = nullptr;   // its <img>, owned by the overlay
+        std::string cursorOverlayGraphic;
+        float cursorOverlayLook[3] = {-1.0f, 0.0f, 0.0f};   // the size and hot spot applied
+        float cursorOverlayAt[2] = {0.0f, 0.0f};            // the position applied, context px
+        // canvas px to context px and back
+        void toCanvas(float& x, float& y) const;
 
         // safe-area spec 6.4: env(safe-area-inset-*) reads the --jasper-safe-area-inset-* custom
         // properties set on each document root; what each document got last
@@ -373,6 +463,7 @@ namespace jasperengine{
         void textureRenderOffscreen();               // renderOffscreen(): each texture context into its target
         bool textureAllRendered() const;             // isAllLoaded(): every shown texture document drawn once
         void textureDestroyAll();                    // destroyContext(): before RmlUi is released
+        void textureReleaseGpu();                    // releaseGpu(): each texture context's GPU objects and target
         std::vector<HtmlUIContext*> getTextureContexts() const;   // renderOffscreen(): statistics
         // the context data models of owner live in (its texture context, else the screen one; p1-lua)
         HtmlUIContext* modelContext(Entity owner) const;
@@ -386,6 +477,9 @@ namespace jasperengine{
         bool dispatchWorldWheel(float dx, float dy, int mods);   // the hovered texture document
         void textureMouseLeave();
         void textureCancelAll();   // ui-multitouch D6: pause, focus loss
+        // where a ray hits a document's input surface: a WORLD document's quad (unless a mesh
+        // in front of it takes the ray, as its depth test does), else its mesh's uv
+        UIWorldHit raycastDocumentSurface(Entity entity, const UIDocumentComponent& document, const Ray& ray) const;
 
         // --- p2-html ---
         std::shared_ptr<HtmlUICompatState> compatState;
@@ -408,6 +502,13 @@ namespace jasperengine{
         bool compatScriptsRun() const;
         // hook H2: the compat dependencies of a loaded .html document (CSS, imports, Lua src, manifest)
         std::vector<std::string> compatDependencies(Rml::ElementDocument* document) const;
+
+        // --- S93 R29 ---
+        std::shared_ptr<HtmlUIStyleSheetState> styleSheetState;
+        // the entity's enabled sheets compiled into its loaded document (a restyle) when they differ from
+        // what it has; compatDocumentLoaded (every load) and every change
+        void applyStyleSheets(Entity entity);
+        void styleSheetsComponentRemoved(Entity entity);
 
         // --- S17 (UIDocumentSystemPatch.cpp) ---
         std::optional<UIReloadMode> reloadMode;   // unset: the default (setDefaultReloadMode)

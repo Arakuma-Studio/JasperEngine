@@ -11,6 +11,7 @@ Types the parser could not resolve are `any` (never a wrong type), and the bindi
 `-- unresolved:` in the stub, which tools/mcp/tests/test_stubs.py checks stays empty.
 """
 
+import json
 import os
 
 FILE_HEADER = ('---@meta _\n'
@@ -387,6 +388,8 @@ class Emitter:
                 L.append('---@deprecated')   # a binding commented "deprecated: ..." (an old alias)
             if m.get('async'):
                 L.append('---@async')   # it yields: only inside an engine coroutine
+            if m.get('nodiscard'):
+                L.append('---@nodiscard')   # LuaLS reports a call whose result is dropped
             for u in m['unresolved']:
                 L.append(f'-- unresolved: {c["name"]}.{m["name"]}: {u}')
             if not sigs:
@@ -421,7 +424,8 @@ class Emitter:
             for v in en['values']:
                 for dl in doc_lines(v['doc'], '    '):
                     L.append(dl)
-                L.append(f'    {v["name"]} = {v["value"]},')
+                value = json.dumps(v["value"]) if isinstance(v["value"], str) else v["value"]
+                L.append(f'    {v["name"]} = {value},')
             L.append('}')
         else:
             # values the generator could not compute: still typed, not numbered
@@ -453,7 +457,9 @@ class Emitter:
         L += [
             '---Subscribes `self:<methodName>(...)` to the Engine event of the same name (`Engine.<methodName>`):',
             '---`RegisterEngineEvent(self, "onUpdate")` in `init()` makes the engine call `self:onUpdate()` every',
-            '---frame. The method must already exist on `self`. Registering the same method again (same tag)',
+            '---frame. The method must already exist on `self`; it is looked up by name at each call, so',
+            '---`self.onUpdate = other` takes effect at the next event (not a function: skipped, warned once).',
+            '---Registering the same method again (same tag)',
             '---replaces the subscription; subscriptions end when the script instance is released. Engine events',
             '---are skipped while the script\'s GameObject is inactive or the script is disabled.',
             '---@param self table # the script instance (`self`)',
@@ -463,12 +469,13 @@ class Emitter:
             '',
             '---Subscribes `self:<methodName>(...)` to any event object: a component or physics event such as',
             '---`self.scene:getPhysicsSystem().beginContact2D` or `Button(self.scene, self.entity):getButtonComponent().onPress`.',
-            '---Not guarded by the GameObject\'s active state.',
+            '---Not guarded by the GameObject\'s active state. The method is looked up by name at each call.',
             '---@param self table # the script instance (`self`)',
-            '---@param event FunctionSubscribe|function # the event object (an event field: its type also lists the function it accepts)',
+            '---@param event FunctionSubscribe|Event|function # the event object (an event field: its type also lists the function it accepts)',
             '---@param methodName string',
             '---@param tag? string',
-            'function RegisterEvent(self, event, methodName, tag) end',
+            '---@param priority? integer # an Event or CancellableEvent only (higher first; Event.MONITOR last): pass nil as the tag',
+            'function RegisterEvent(self, event, methodName, tag, priority) end',
             '',
             '---Unity\'s DontDestroyOnLoad (same as GameObject.dontDestroyOnLoad): the root GameObject of `obj`, with',
             '---its children, scripts\' state, sounds and bodies, survives every SceneManager.loadScene in the',

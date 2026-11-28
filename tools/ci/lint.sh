@@ -79,6 +79,7 @@ check python3 -I tools/test_check_fanout.py
 check python3 -I tools/test_xcode_sync_sources.py
 check python3 -I tools/mcp/test_shard.py
 check python3 -I tools/mcp/test_build_cache.py
+check python3 -I tools/mcp/test_call_profile.py
 check python3 -I tools/mcp/eval/test_grade.py
 check python3 -I tools/players/test_write_hashes.py
 # S90's node importer and the Lua API tools (S23 AC19): no other lane runs them
@@ -88,9 +89,6 @@ for test in tools/ci/test_*.py; do
     case "$test" in
         # needs a built editor and the runtime image: the smoke lane's business
         tools/ci/test_player_cli.py) continue ;;
-        # scans the shader library, which main fails today (the Title Art shaders): tools/check-changed
-        # runs it for a shader change
-        tools/ci/test_check_shader_lod.py) continue ;;
     esac
     check python3 -I "$test"
 done

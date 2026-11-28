@@ -3,11 +3,11 @@
 
 #pragma once
 
-// game.json v1 (docs/specs/S30-shipping.md D4): what a prebuilt player knows of the game it runs,
-// replacing the generated init() of a Compile build: the scenes and prefabs, the window, the
-// canvas and everything else Project Settings put in that init. The editor fills one from the
-// project (writeGameConfig) and writes toJson(); the player reads it with fromJson() and
-// applies it. One schema for both.
+// game.json v1 (docs/specs/S30-shipping.md D4, S98 D1): what a game knows of itself, the prebuilt
+// player's and a Compile build's alike: the scenes and prefabs, the window, the canvas and
+// everything else Project Settings set at start. The editor fills one from the project
+// (cook::makeGameConfig) and writes toJson(); a game reads it with fromJson() and runs it
+// (GameRunner.h). One schema for both.
 
 #include "Export.h"
 #include "Engine.h"
@@ -20,6 +20,14 @@
 #include "texture/MaterialPbr.h"
 #include "device/DeviceSettings.h"
 #include "pixelart/ScreenTransition.h"
+#include "debug/DebugOverlay.h"
+#include "render/GpuCreation.h"
+#include "shader/ShaderGlobals.h"
+#include "util/CanvasScaler.h"
+#include "Log.h"
+#include "System.h"
+#include "save/SaveGameStore.h"
+#include "subsystem/GamepadCursor.h"
 
 #include "json.hpp"
 
@@ -65,6 +73,8 @@ namespace jasperengine::player {
         bool vsync = true;
         // Project Settings > Graphics > Dynamic Batching
         bool dynamicBatching = true;
+        // Player > Pause On Focus Loss
+        bool pauseOnFocusLoss = false;
         std::string icon;                  // content-relative PNG ("icon.png"), the window icon
         std::string storageId;
 
@@ -95,14 +105,23 @@ namespace jasperengine::player {
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
+        // Input > Simulate Touch From Mouse (Engine::callTouchInMouseEvent)
+        bool simulateTouchFromMouse = false;
+        // Project Settings > Time, seconds: the fixed step and the frame delta cap
+        double fixedTimestep = 1.0 / 60.0;
+        double maximumDeltaTime = 0.25;
+        // the String Tables' manifest ("l10n/manifest.json") when the game has any (game-ui-localization.md D5)
+        std::string localization;
+        GamepadCursorSettings gamepadCursor;
         nav::NavigationSettings navigation;
         // Project Settings > Voxels (T6 R7): what the project lowers of the platform's limits, 0: nothing
         int voxelMaxDimension = 0;
         int voxelCpuBudgetMB = 0;
         int voxelMeshBudgetMB = 0;
         std::array<Engine::TexturePlatformDefaults, 3> textureDefaults;
-        int htmlUiMsaa = 4;
+        int htmlUiMsaa = 0;   // HTML UI MSAA samples, 0 = Auto (1 on phones and the web, 4 on desktop)
         int glyphAtlasMiB = 0;
+        int imageCacheMiB = -1;   // S93: -1 the platform's default
         bool sdfPrimitives = true;
         bool transformAwareText = true;
         PbrTier mobilePbrTier = PbrTier::REDUCED;
@@ -127,6 +146,9 @@ namespace jasperengine::player {
         Vector3 transparencySortAxis = Vector3(0.0f, 1.0f, 0.0f);
         std::array<uint32_t, MAX_LAYERS> collision3D{};
         std::array<uint32_t, MAX_LAYERS> collision2D{};
+        // Project Settings > Physics / Physics 2D > Queries Hit Triggers (absent: true)
+        bool queriesHitTriggers3D = true;
+        bool queriesHitTriggers2D = true;
 
         // Player > Logging and Crash Handling (a Compile build's macros)
         std::string logLevel;
@@ -138,6 +160,12 @@ namespace jasperengine::player {
         bool hangWatchdog = true;
         int hangMs = 5000;
         bool crashWebOverlay = true;
+        int crashJournalBytes = 32 << 10;
+        bool crashJournalEngineEvents = true;
+
+        // Project Settings > Debug > Console Commands (development, always or never): whether
+        // --command, agents and the console field may run commands (console::setCommandsEnabled)
+        std::string consoleCommands = "development";
 
         // Project Settings > Audio (a Compile build's generated AudioSystem::configure and
         // AudioMixer::load): the defaults are AudioConfig's, the mixer asset-relative ("" = none)
@@ -150,11 +178,58 @@ namespace jasperengine::player {
         std::string audioIosSession = "default";
         // the group music plays through when nothing names one ("" = Master)
         std::string audioMusicGroup;
+        // MiB unused clips stay cached (SoundPool::setUnusedBudget)
+        int audioUnusedClipCacheMb = 16;
 
-        // the project's native plugins with code for other platforms only (the Compile build's
-        // NativeBridge::setPlatformOnlyPlugins): a call to one fails with "unavailable", and its
-        // Lua mock answering logs a warning
+        // the project's native plugins with code for other platforms only (NativeBridge::
+        // setPlatformOnlyPlugins): a call to one fails with "unavailable", and its Lua mock
+        // answering logs a warning. A prebuilt build's are its platform's; a source export runs
+        // on several (an Xcode project builds iOS and macOS), so it names them per target
+        // ("android", "ios", "macos", "macos-cmake", "web", "desktop"), used when the first is empty
         std::map<std::string, std::string> nativePlatformOnly;
+        std::map<std::string, std::map<std::string, std::string>> nativePlatformOnlyByTarget;
+
+        // "player": Player > Resolution and Presentation and Other Settings. A game.json without it
+        // (an older editor's) leaves the engine's defaults
+        bool hasPlayerSettings = false;
+        int targetFrameRate = -1;
+        std::string defaultLanguage = "en";
+        ScreenOrientation defaultOrientation = ScreenOrientation::AutoRotation;
+        uint8_t allowedOrientations = (1u << 1) | (1u << 3) | (1u << 4);
+        bool keepScreenOn = true;
+        bool allowInsecureHttp = false;
+        // what System.getAppName... return where no package says (desktops, the web)
+        ApplicationInfo linuxApp, windowsApp, macosApp, webApp;
+
+        // Project Settings > Graphics > Shader Creation (S32), GPU Instancing (S55) and Shader
+        // Globals; the UI's Canvas Scaler default
+        ShaderCreationSettings shaderCreation;
+        bool gpuInstancing = true;
+        std::vector<ShaderGlobalDecl> shaderGlobals;
+        CanvasScalerSettings canvasScaler;
+
+        // "physics3D": the 3D world's capacity, before any scene makes its world (absent: the engine's)
+        bool hasPhysics3DCapacity = false;
+        unsigned int maxBodies3D = 8192;
+        unsigned int maxBodyPairs3D = 8192;
+        unsigned int maxContactConstraints3D = 8192;
+
+        // "debug": Project Settings > Debug (absent: the overlay is not configured). The overlay
+        // and its Lua command are on never, in Development Builds or always
+        enum class BuildMode { Never, Development, Always };
+        bool hasDebugSettings = false;
+        BuildMode debugOverlayMode = BuildMode::Development;
+        BuildMode debugAllowLuaMode = BuildMode::Development;
+        DebugOverlaySettings debugOverlay;     // its enabled and allowLua follow the modes
+        unsigned int logBufferSize = 500;
+        LogStackTraces logStackTraces = LogStackTraces::Warnings;
+
+        // the Build Profile the game was built with and its Scripting Define Symbols (System.isDefined);
+        // both absent without a profile
+        std::string buildProfile;
+        std::vector<std::string> defines;
+        // Player > Saved Data (savegame::configure before the first scene; written only away from the defaults)
+        savegame::SaveSettings saveGame;
 
         PlayerConfig();
 

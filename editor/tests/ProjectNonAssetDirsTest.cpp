@@ -58,4 +58,27 @@ TEST(Project, NonAssetTopLevelDirs) {
     project.releaseScenes();
 }
 
+// project-test-runner R1, AC17: a top-level Tests folder is an asset folder until it holds tests.yaml
+TEST(ProjectNonAssetDirs, TestsFolderNeedsItsMarker) {
+    TestTempDir dir("tests-folder-marker");
+    const fs::path root = dir.path() / "Game";
+    Project project;
+    project.setSkipProjectLock(true);
+    std::string error;
+    ASSERT_TRUE(project.createProjectAt(root, "Game", &error)) << error;
+    const fs::path top = project.getProjectPath();
+    fs::create_directories(top / "Tests");
+    fs::create_directories(top / "GameTests");
+    fs::create_directories(top / "art" / "Tests");
+    EXPECT_FALSE(project.isNonAssetDir(top / "Tests")) << "no marker: the old project's assets stay";
+    EXPECT_FALSE(project.isNonAssetDir(top / "GameTests"));
+    std::ofstream(top / "Tests" / "tests.yaml") << "version: 1\n";
+    EXPECT_TRUE(project.isNonAssetDir(top / "Tests"));
+    EXPECT_FALSE(project.isNonAssetDir(top / "GameTests")) << "the root is the first of Tests, GameTests holding the marker";
+    std::ofstream(top / "art" / "Tests" / "tests.yaml") << "version: 1\n";
+    EXPECT_FALSE(project.isNonAssetDir(top / "art" / "Tests")) << "only at the project's top";
+    for (SceneProject& scene : project.getScenes()) CommandHandle::remove(scene.id);
+    project.releaseScenes();
+}
+
 }  // namespace ProjectNonAssetDirsTest_cpp

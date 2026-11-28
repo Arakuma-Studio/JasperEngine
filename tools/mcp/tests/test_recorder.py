@@ -11,7 +11,9 @@ points per game second. record_game:
 - without FFmpeg (JASPER_FFMPEG=/nonexistent) a movie fails pointing at Preferences, png works;
 - throughput: 1080p30 PNG keeps >= 10 recorded frames per wall second (perf_slack applies) and the
   queue never holds more than 8 frames;
-- the editor_tools group is not listed until tool_groups enables it.
+- the editor_tools group is not listed until tool_groups enables it;
+- S99 AC4: an estimate at submit (a corrupt job history tolerated), a report on completion, the
+  next estimate from the history, the clamps it took as fallbacks.
 """
 
 import array
@@ -136,6 +138,61 @@ async def test_deterministic(ed: Editor):
     ed.check_eq(len(files), 90, f"{r}")
     same = sum(1 for a, b in zip(S["first"], (f.read_bytes() for f in files)) if a == b)
     ed.check_eq(same, 90, "two recordings at a fixed fps are byte-identical")
+
+
+async def finished_job(ed: Editor, job_id: str) -> dict:
+    for _ in range(600):
+        state = await ed.call("get_job", job_id=job_id)
+        if state.get("status") not in ("running", "pending"):
+            break
+        try:
+            await ed.call("wait", frames=5, timeout_seconds=60)
+        except harness.ToolError as e:
+            # the recording ends Play (exit_play): the job finishes with it
+            ed.check("Play ended" in str(e), f"{e}")
+    play = await ed.call("get_play_state")
+    if play.get("state") not in (None, "stopped"):
+        await ed.call("play", action="stop")
+    return state
+
+
+async def test_estimate_and_report(ed: Editor):
+    """S99 R13-R16 (AC4): record_game estimates at submit and reports on completion. A corrupt
+    job history is tolerated (the cost model), the completion replaces it with a good one, and the
+    next recording of the format is estimated from it; the clamps it took are its fallbacks."""
+    await setup(ed)
+    history = ed.project / ".jasperengine" / "user" / "job-history.json"
+    history.parent.mkdir(parents=True, exist_ok=True)
+    history.write_bytes(b"\x01 not json {")
+    started = await ed.call("record_game", frames=6, fps=30, format="png", width=320, height=180,
+                            output=str(ed.scratch.root / "rec-estimate"), wait=False)
+    estimate = started.get("estimate")
+    ed.check(isinstance(estimate, dict), f"an estimate at submit: {json.dumps(started)[:600]}")
+    ed.check_eq((estimate["basis"], estimate["confidence"]), ("model", "low"), f"a corrupt history: the model alone: {estimate}")
+    ed.check(estimate["seconds"] > 0 and estimate["bytes"] > 0, f"seconds and bytes: {estimate}")
+    ed.check(started["status"] == "succeeded" or started.get("remaining_seconds", -1) >= 0, f"the time left while it runs: {started}")
+    state = await finished_job(ed, started["job_id"])
+    ed.check_eq(state["status"], "succeeded", f"{json.dumps(state)[:800]}")
+    report = state["result"].get("report")
+    ed.check(isinstance(report, dict), f"a report on completion: {json.dumps(state['result'])[:800]}")
+    ed.check(report["seconds"] > 0, f"the time measured: {report}")
+    ed.check_eq(report["estimated_seconds"], estimate["seconds"], "against the estimate given at submit")
+    # (each rounded: seconds to 0.1, the ratio to 0.01)
+    ed.check(abs(report["ratio"] * report["estimated_seconds"] - report["seconds"]) <= 0.06 + 0.005 * report["estimated_seconds"], f"ratio: {report}")
+    ed.check_eq(report["fallbacks"], [], "nothing was downgraded")
+    stored = json.loads(history.read_text())
+    ed.check_eq(len(stored["kinds"]["record_game:png"]), 1, f"the completion replaced the corrupt history: {stored}")
+
+    # fps and width past the Recorder's limits: clamped, and listed as fallbacks
+    started = await ed.call("record_game", frames=4, fps=500, format="png", width=8, height=180,
+                            output=str(ed.scratch.root / "rec-clamped"), wait=False)
+    ed.check_eq(started["estimate"]["basis"], "history", f"estimated from the last recording: {started['estimate']}")
+    state = await finished_job(ed, started["job_id"])
+    ed.check_eq(state["status"], "succeeded", f"{json.dumps(state)[:800]}")
+    fallbacks = {f["step"]: f for f in state["result"]["report"]["fallbacks"]}
+    ed.check_eq((fallbacks.get("frame_rate", {}).get("from"), fallbacks.get("frame_rate", {}).get("to")), ("500", "240"), f"{fallbacks}")
+    ed.check_eq((fallbacks.get("resolution", {}).get("from"), fallbacks.get("resolution", {}).get("to")), ("8x180", "16x180"), f"{fallbacks}")
+    ed.check_eq((state["result"]["fps"], state["result"]["width"]), (240, 16), "what was recorded is what the fallbacks say")
 
 
 async def test_frame_interval(ed: Editor):

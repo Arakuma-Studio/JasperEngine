@@ -61,9 +61,16 @@ def qualified_definition(head):
     return False
 
 
+PRIVATE = set()  # named namespaces only the file being wrapped opens (its helper namespaces)
+
+
 def wrappable(item):
     if item.kind == "anon":
         return True
+    if item.kind == "namespace":
+        # a helper namespace of this file's own goes inside with the rest; one a header or another
+        # source opens too (jasperengine, a test-support namespace) stays where it is
+        return item.name in PRIVATE and item.name.split("::")[0] != "jasperengine"
     if item.kind != "stmt":
         return False
     head = re.sub(r"\s+", " ", item.head)
@@ -283,6 +290,35 @@ def adopt_existing(text, name, owners, relative):
     return merged.replace("namespace %s {\n" % name, "namespace %s {\n" % theirs).replace("}  // namespace %s\n" % name, "}  // namespace %s\n" % theirs)
 
 
+def nest_in_tested_namespace(text, name):
+    """Tests that live in the namespace they test (`namespace jasperengine::pixelart { ... TEST ... }`)
+    behind a preamble the wrap put in <Stem>_cpp: the tests' namespace gets a namespace of this file's
+    own inside it, `jasperengine::pixelart::<Stem>_cpp`, and takes the preamble."""
+    m = re.search(r"^namespace %s \{\n\n?(.*?)\n*\}  // namespace %s\n" % (re.escape(name), re.escape(name)), text, re.M | re.S)
+    if not m or text.count("namespace %s {" % name) != 1:
+        return text
+    rest = text[m.end():]
+    n = re.match(r"((?:[ \t]*\n|[ \t]*//[^\n]*\n)*)namespace (jasperengine(?:::\w+)+) \{[ \t]*\n", rest)
+    if not n:
+        return text
+    items, _, _ = cus.parse(text)
+    start_line = text[:m.end() + n.end()].count("\n") - 1
+    block = next((it for it in items if it.kind == "namespace" and it.start == start_line), None)
+    if block is None or block is not items[-1] or not any(it.kind == "stmt" and cus.TEST_MACRO.match(it.head + "(") for it in cus.walk(block.children)):
+        return text
+    if any(it.kind == "stmt" and re.match(r"^(?:struct|class)\s+\w*TestAccess\b", it.head) for it in block.children):
+        return text  # a friend's definition must stay in the namespace itself
+    preamble = "\n".join(l for l in m.group(1).split("\n") if not re.match(r"^using namespace (::)?jasperengine;$", l.strip()))
+    inner = n.group(2) + "::" + name
+    lines = text[m.end() + n.end():].split("\n")
+    end_index = block.end - (start_line + 1)
+    closing = lines[end_index]
+    if closing.strip().startswith("}"):
+        lines[end_index] = "}  // namespace %s" % inner
+    head = text[:m.start()] + n.group(1) + "namespace %s {\n" % inner + ("\n" + preamble.strip("\n") + "\n" if preamble.strip() else "")
+    return head + "\n".join(lines)
+
+
 def namespace_owners(root):
     owners = {}
     for relative, path in cus.files_of(root):
@@ -296,7 +332,15 @@ def namespace_owners(root):
 
 def flagged_tests(root):
     problems = cus.check(root)
-    return sorted({p.split(":")[0] for p in problems if p.startswith(cus.TEST_TREES) and p.split(":")[0].endswith(cus.SOURCES)})
+    # a support source (no TEST in it) implements its header's namespace like an engine source: not this tool's
+    out = set()
+    for p in problems:
+        relative = p.split(":")[0]
+        if relative.startswith(cus.TEST_TREES) and relative.endswith(cus.SOURCES):
+            with open(os.path.join(root, relative), encoding="utf-8", errors="replace") as handle:
+                if cus.TEST_MACRO.search(handle.read()):
+                    out.add(relative)
+    return sorted(out)
 
 
 def run(root, files, check):
@@ -318,11 +362,14 @@ def run(root, files, check):
             continue
         path = os.path.join(root, relative)
         text = open(path, encoding="utf-8").read()
+        PRIVATE.clear()
+        PRIVATE.update(n for n, files in owners.items() if files == {relative})
         result, why = wrap(relative, text, name)
         if result is None:
             manual.append((relative, why))
             continue
         result = adopt_existing(result, name, owners, relative)
+        result = nest_in_tested_namespace(result, name)
         result = re.sub(r"\n(\}  // namespace [\w:]+\n)\n+$", r"\n\1", result)
         owners[name] = {relative}
         wrapped.append(relative)

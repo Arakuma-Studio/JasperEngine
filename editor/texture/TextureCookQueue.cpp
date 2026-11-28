@@ -112,10 +112,15 @@ const char* editor::textureCookStatusName(TextureCookStatus status){
 }
 
 bool editor::isCookableTexture(const std::string& path){
-    static const std::set<std::string> extensions = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".gif", ".hdr", ".exr", ".pic", ".pnm"};
+    static const std::set<std::string> extensions = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".psb", ".tif", ".tiff", ".gif", ".hdr", ".exr", ".pic", ".pnm"};
     // a name that is not UTF-8 (a Latin-1 file) cannot be a key of the cache's tables or of an
     // export's index.json: such a file loads from its source, as before cooks
     return extensions.count(cookLowerExtension(path)) > 0 && texsynth::isValidUtf8(path);
+}
+
+bool editor::isEditorDecodedTexture(const std::string& path){
+    const std::string extension = cookLowerExtension(path);
+    return extension == ".tif" || extension == ".tiff" || extension == ".psb";
 }
 
 bool editor::isTextureSource(const std::string& path){

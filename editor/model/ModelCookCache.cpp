@@ -285,7 +285,7 @@ void ModelCookCache::saveSources(){
 }
 
 std::string ModelCookCache::key(const std::string& sourceSha256, const ResolvedModelSettings& settings, ModelFamily family,
-                                const std::set<std::pair<int, int>>& blended){
+                                const std::set<std::pair<int, int>>& blended, const std::set<std::pair<int, int>>& painted){
     std::ostringstream text;
     text.imbue(std::locale::classic());
     text << "jasperengine-model-cook\n"
@@ -299,6 +299,12 @@ std::string ModelCookCache::key(const std::string& sourceSha256, const ResolvedM
     for (const auto& [mesh, primitive] : blended)
         text << " " << mesh << "/" << primitive;
     text << "\n";
+    if (!painted.empty()){
+        text << "painted";
+        for (const auto& [mesh, primitive] : painted)
+            text << " " << mesh << "/" << primitive;
+        text << "\n";
+    }
     return htmlui::compat::sha256Hex(text.str());
 }
 

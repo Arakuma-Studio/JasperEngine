@@ -43,6 +43,7 @@
 #include "titleart/render/TitleTargetPool.h"
 #include "titleart/runtime/TitleArtLive.h"
 
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -202,9 +203,39 @@ namespace jasperengine::titleart {
     // digit at every place a digit stands in it (a counter's every value of that length)
     JASPERENGINE_API std::vector<std::string> titleGlyphPrebakeStrings(const std::string& initial);
 
-    // R32: `strings` rendered through `live` (a Glyph Atlas title) one after the other until its
-    // atlas holds `maxCells` cells; `overrides` are the instance's (their text replaced); false
-    // with `error` when a string fails (the cells before it stay)
+    // R32's prebake a slice at a time: `strings` rendered through `live` (a Glyph Atlas title) one
+    // after the other until its atlas holds `maxCells` cells; `overrides` are the instance's (their
+    // text replaced). Each step() works for about `budgetMs` and returns, so the frames that build
+    // a program it waits for go on (S80 Deviation 61). A string that fails, or is not in within 60 s
+    // of its start, ends it with error() (the cells before it stay).
+    class JASPERENGINE_API TitleGlyphPrebake {
+    public:
+        TitleGlyphPrebake(TitleArtLive& live, TitleJobFactory factory, TitleArtLiveState state, std::vector<FieldOverride> overrides,
+                          std::string textLayer, std::vector<std::string> strings, size_t maxCells);
+        // true once done (error() empty when every string went in)
+        bool step(double budgetMs);
+        bool done() const { return finished; }
+        const std::string& error() const { return failure; }
+
+    private:
+        TitleArtLive& live;
+        TitleJobFactory factory;
+        TitleArtLiveState state;
+        std::vector<FieldOverride> overrides;
+        std::string textLayer;
+        std::vector<std::string> strings;
+        size_t maxCells = 0;
+        size_t next = 0;                    // the string being rendered
+        bool started = false;               // its state was set
+        std::chrono::steady_clock::time_point stringStart;
+        double clock = 0.0;
+        TitleLiveLimits limits;
+        bool finished = false;
+        std::string failure;
+    };
+
+    // R32 to the end on this thread, with the GPU objects made between the steps (no frame runs
+    // meanwhile); false with `error` when a string fails (the cells before it stay)
     JASPERENGINE_API bool prebakeTitleGlyphAtlas(TitleArtLive& live, const TitleJobFactory& factory, const TitleArtLiveState& state,
                                                  const std::vector<FieldOverride>& overrides, const std::string& textLayer,
                                                  const std::vector<std::string>& strings, size_t maxCells, std::string& error);

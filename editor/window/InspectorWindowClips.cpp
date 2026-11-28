@@ -61,6 +61,7 @@
 #include "EditorHost.h"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <algorithm>
 #include <cctype>
@@ -117,6 +118,124 @@ const char* inspectorclips::wrapLabel(ClipWrapMode wrap){
         case ClipWrapMode::ClampForever: return "Clamp Forever";
     }
     return "Default";
+}
+
+void inspectorclips::RootTransformMixed::add(const anim::ClipRootMotion& a, const anim::ClipRootMotion& b){
+    bakeRotation = bakeRotation || a.bakeRotation != b.bakeRotation;
+    rotationBasedUpon = rotationBasedUpon || a.rotationBasedUpon != b.rotationBasedUpon;
+    rotationOffset = rotationOffset || a.rotationOffset != b.rotationOffset;
+    bakePositionY = bakePositionY || a.bakePositionY != b.bakePositionY;
+    positionYBasedUpon = positionYBasedUpon || a.positionYBasedUpon != b.positionYBasedUpon;
+    positionYOffset = positionYOffset || a.positionYOffset != b.positionYOffset;
+    bakePositionXZ = bakePositionXZ || a.bakePositionXZ != b.bakePositionXZ;
+    positionXZBasedUpon = positionXZBasedUpon || a.positionXZBasedUpon != b.positionXZBasedUpon;
+}
+
+void inspectorclips::RootTransformEdit::applyTo(anim::ClipRootMotion& target) const{
+    switch (field){
+        case RootTransformField::None: break;
+        case RootTransformField::BakeRotation: target.bakeRotation = value.bakeRotation; break;
+        case RootTransformField::RotationBasedUpon: target.rotationBasedUpon = value.rotationBasedUpon; break;
+        case RootTransformField::RotationOffset: target.rotationOffset = value.rotationOffset; break;
+        case RootTransformField::BakePositionY: target.bakePositionY = value.bakePositionY; break;
+        case RootTransformField::PositionYBasedUpon: target.positionYBasedUpon = value.positionYBasedUpon; break;
+        case RootTransformField::PositionYOffset: target.positionYOffset = value.positionYOffset; break;
+        case RootTransformField::BakePositionXZ: target.bakePositionXZ = value.bakePositionXZ; break;
+        case RootTransformField::PositionXZBasedUpon: target.positionXZBasedUpon = value.positionXZBasedUpon; break;
+    }
+}
+
+const char* inspectorclips::rootRotationBasisLabel(anim::RootRotationBasis basis){
+    return basis == anim::RootRotationBasis::BodyOrientation ? "Body Orientation" : "Original";
+}
+
+const char* inspectorclips::rootPositionYBasisLabel(anim::RootPositionYBasis basis){
+    switch (basis){
+        case anim::RootPositionYBasis::Original: return "Original";
+        case anim::RootPositionYBasis::CenterOfMass: return "Center of Mass";
+        case anim::RootPositionYBasis::Feet: return "Feet";
+    }
+    return "Original";
+}
+
+const char* inspectorclips::rootPositionXZBasisLabel(anim::RootPositionXZBasis basis){
+    return basis == anim::RootPositionXZBasis::CenterOfMass ? "Center of Mass" : "Original";
+}
+
+inspectorclips::RootTransformEdit inspectorclips::drawRootTransformRows(const anim::ClipRootMotion& value, const RootTransformMixed& mixed,
+                                                                       const char* idPrefix, const RootTransformLabel& label){
+    RootTransformEdit edit;
+    edit.value = value;
+    const std::string prefix = idPrefix;
+    auto bake = [&](const char* part, const char* id, bool anim::ClipRootMotion::* member, bool isMixed, const char* tooltip,
+                    RootTransformField field){
+        label(part, tooltip);
+        bool checked = value.*member;
+        if (isMixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
+        const bool changed = ImGui::Checkbox(("Bake Into Pose##" + prefix + id).c_str(), &checked);
+        if (isMixed) ImGui::PopItemFlag();
+        ImGui::SetItemTooltip("%s", tooltip);
+        if (changed){
+            edit.value.*member = checked;
+            edit.field = field;
+            edit.undoName = part;
+        }
+    };
+    auto basis = [&](const char* id, int current, bool isMixed, int count, const char* (*name)(int), RootTransformField field,
+                     auto set){
+        const char* tooltip = "What the root follows (at start: what the pose is aligned on). Body Orientation, Center of Mass and "
+                              "Feet need a humanoid rig; without one they act as Original";
+        label("Based Upon", tooltip);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::BeginCombo(("##" + prefix + id).c_str(), isMixed ? "\xE2\x80\x94" : name(current))){
+            for (int i = 0; i < count; i++){
+                if (ImGui::Selectable(name(i), !isMixed && i == current) && (isMixed || i != current)){
+                    set(i);
+                    edit.field = field;
+                    edit.undoName = "Root Transform Based Upon";
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SetItemTooltip("%s", tooltip);
+    };
+    auto offset = [&](const char* id, float anim::ClipRootMotion::* member, bool isMixed, float speed, const char* format,
+                      const char* tooltip, RootTransformField field){
+        label("Offset", tooltip);
+        float number = value.*member;
+        ImGui::SetNextItemWidth(-1);
+        if (isMixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
+        ImGui::DragFloat(("##" + prefix + id).c_str(), &number, speed, 0.0f, 0.0f, format);
+        if (isMixed) ImGui::PopItemFlag();
+        ImGui::SetItemTooltip("%s", tooltip);
+        // one undo step per drag (the edit lands on release)
+        if (ImGui::IsItemDeactivatedAfterEdit() && std::isfinite(number)){
+            edit.value.*member = number;
+            edit.field = field;
+            edit.undoName = "Root Transform Offset";
+        }
+    };
+
+    bake("Root Transform Rotation", "_bake_rotation", &anim::ClipRootMotion::bakeRotation, mixed.bakeRotation,
+         "Keep the heading in the pose: no turning root motion", RootTransformField::BakeRotation);
+    basis("_rotation_based_upon", (int)value.rotationBasedUpon, mixed.rotationBasedUpon, 2,
+          [](int i){ return rootRotationBasisLabel((anim::RootRotationBasis)i); }, RootTransformField::RotationBasedUpon,
+          [&](int i){ edit.value.rotationBasedUpon = (anim::RootRotationBasis)i; });
+    offset("_rotation_offset", &anim::ClipRootMotion::rotationOffset, mixed.rotationOffset, 0.5f, "%.1f\xC2\xB0",
+           "Degrees the pose (and its motion) turns about Y", RootTransformField::RotationOffset);
+    bake("Root Transform Position (Y)", "_bake_y", &anim::ClipRootMotion::bakePositionY, mixed.bakePositionY,
+         "Keep the height in the pose", RootTransformField::BakePositionY);
+    basis("_y_based_upon", (int)value.positionYBasedUpon, mixed.positionYBasedUpon, 3,
+          [](int i){ return rootPositionYBasisLabel((anim::RootPositionYBasis)i); }, RootTransformField::PositionYBasedUpon,
+          [&](int i){ edit.value.positionYBasedUpon = (anim::RootPositionYBasis)i; });
+    offset("_y_offset", &anim::ClipRootMotion::positionYOffset, mixed.positionYOffset, 0.005f, "%.3f m",
+           "Meters added to the pose's height", RootTransformField::PositionYOffset);
+    bake("Root Transform Position (XZ)", "_bake_xz", &anim::ClipRootMotion::bakePositionXZ, mixed.bakePositionXZ,
+         "Keep the horizontal motion in the pose", RootTransformField::BakePositionXZ);
+    basis("_xz_based_upon", (int)value.positionXZBasedUpon, mixed.positionXZBasedUpon, 2,
+          [](int i){ return rootPositionXZBasisLabel((anim::RootPositionXZBasis)i); }, RootTransformField::PositionXZBasedUpon,
+          [&](int i){ edit.value.positionXZBasedUpon = (anim::RootPositionXZBasis)i; });
+    return edit;
 }
 
 std::string inspectorclips::formatRatio(float ratio){
@@ -886,6 +1005,15 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     propertyRow(RowPropertyType::Float, cpType, "speed", "Speed", sceneProject, entities, speedSettings);
     propertyRow(RowPropertyType::FloatPositive, cpType, "defaultFadeTime", "Default Fade", sceneProject, entities, fadeSettings);
     drawPoseFrameRateRow(cpType, sceneProject, entities, sceneProject->scene->getComponent<AnimationPlayerComponent>(entities[0]).poseFrameRate);
+    RowSettings rootSettings;
+    rootSettings.help = "The base layer's clips' root motion moves the GameObject. Off, a clip with Root Transform settings plays in place.";
+    propertyRow(RowPropertyType::Bool, cpType, "applyRootMotion", "Apply Root Motion", sceneProject, entities, rootSettings);
+    // an Animation Player migrated from before S94 (unticking it gives Unity's in-place play)
+    if (sceneProject->scene->getComponent<AnimationPlayerComponent>(entities[0]).legacyRootDrift){
+        RowSettings driftSettings;
+        driftSettings.help = "Apply Root Motion off: a clip with Root Transform settings keeps its root's drift, as scenes saved before this version played it. Untick to play it in place, as Unity does.";
+        propertyRow(RowPropertyType::Bool, cpType, "legacyRootDrift", "Legacy Root Drift", sceneProject, entities, driftSettings);
+    }
     endTable();
 
     if (entities.size() != 1){
@@ -1576,6 +1704,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         bitmapFontInspector->draw(asset, !vectorFont);
         return true;
     }
+    // a .fogprofile: its fields and users (InspectorFogProfiles.cpp)
+    if (Util::isFogProfileFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawFogProfileAsset(asset);
+        return true;
+    }
     // a .shake: its own view (InspectorWindowCamera.cpp)
     if (Util::isShakePresetFile(file)){
         std::error_code ec;
@@ -1583,11 +1718,25 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawShakePresetAsset(asset);
         return true;
     }
+    // an .ies: its polar plot and metadata (InspectorIesProfile.cpp)
+    if (Util::isIesFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawIesProfileAsset(asset);
+        return true;
+    }
     // a .soundevent: its editor (InspectorSoundEvent.cpp)
     if (Util::isSoundEventFile(file)){
         std::error_code ec;
         if (!fs::is_regular_file(asset, ec)) return false;
         drawSoundEventAsset(asset);
+        return true;
+    }
+    // a .dataasset: its fields (InspectorDataAsset.cpp)
+    if (Util::isDataAssetFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawDataAssetAsset(asset);
         return true;
     }
     // a .mixer: its summary (audio-mixer spec 9)
@@ -1998,9 +2147,10 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
     ImGui::EndDisabled();
     endTable();
 
-    // Root Motion (Unity's clip import names): the block a .anim keeps for the Animator. Each toggle
-    // is one project undo step through document.commit; a model's clip reads as it is
-    if (!data.isHumanoid() && ImGui::CollapsingHeader("Root Motion##clip_asset_root_motion")){
+    // Root Motion (Unity's clip import names): the block a .anim keeps for the Animator and the
+    // Animation Player. Each edit is one project undo step through document.commit; a model's
+    // clip reads as it is
+    if (ImGui::CollapsingHeader("Root Motion##clip_asset_root_motion")){
         const anim::ClipRootMotion rootMotion = anim::readClipRootMotion(data.unknownKeys);
         auto commitRootMotion = [&](const anim::ClipRootMotion& changed, const std::string& undoName){
             ClipData newData = data;
@@ -2012,37 +2162,25 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
         };
         beginTable(ComponentType::AnimationPlayerComponent, getLabelSize("Root Transform Position (XZ)"), "clip_asset_root_motion");
         ImGui::BeginDisabled(readOnly);
-        propertyHeader("Root Motion Node");
-        char bone[256];
-        std::snprintf(bone, sizeof(bone), "%s", rootMotion.bone.c_str());
-        ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputTextWithHint("##clip_root_motion_bone", "Auto", bone, sizeof(bone), ImGuiInputTextFlags_EnterReturnsTrue) && rootMotion.bone != bone){
-            anim::ClipRootMotion changed = rootMotion;
-            changed.bone = bone;
-            commitRootMotion(changed, "Root Motion Node");
-        }
-        ImGui::SetItemTooltip("The bone's path. Auto: the Animator's Root Motion bone, the hips, then the shallowest bone the clip moves");
-        struct Row{
-            const char* label;
-            const char* id;
-            bool anim::ClipRootMotion::* member;
-            const char* tooltip;
-        };
-        const Row rows[] = {
-            {"Root Transform Rotation", "Bake Into Pose##clip_root_rotation", &anim::ClipRootMotion::bakeRotation, "Keep the heading in the pose: no turning root motion"},
-            {"Root Transform Position (Y)", "Bake Into Pose##clip_root_y", &anim::ClipRootMotion::bakePositionY, "Keep the height in the pose"},
-            {"Root Transform Position (XZ)", "Bake Into Pose##clip_root_xz", &anim::ClipRootMotion::bakePositionXZ, "Keep the horizontal motion in the pose"},
-        };
-        for (const Row& row : rows){
-            propertyHeader(row.label);
-            bool value = rootMotion.*row.member;
-            if (ImGui::Checkbox(row.id, &value)){
+        // a humanoid clip's root is its hips
+        if (!data.isHumanoid()){
+            propertyHeader("Root Motion Node");
+            char bone[256];
+            std::snprintf(bone, sizeof(bone), "%s", rootMotion.bone.c_str());
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputTextWithHint("##clip_root_motion_bone", "Auto", bone, sizeof(bone), ImGuiInputTextFlags_EnterReturnsTrue) && rootMotion.bone != bone){
                 anim::ClipRootMotion changed = rootMotion;
-                changed.*row.member = value;
-                commitRootMotion(changed, row.label);
+                changed.bone = bone;
+                commitRootMotion(changed, "Root Motion Node");
             }
-            ImGui::SetItemTooltip("%s", row.tooltip);
+            ImGui::SetItemTooltip("The bone's path. Auto: the Animator's Root Motion bone, the hips, then the shallowest bone the clip moves");
         }
+        const inspectorclips::RootTransformEdit edit = inspectorclips::drawRootTransformRows(
+            rootMotion, inspectorclips::RootTransformMixed(), "clip_root", [&](const char* label, const char* tooltip){
+                propertyHeader(label);
+                (void)tooltip;
+            });
+        if (edit.changed()) commitRootMotion(edit.value, edit.undoName);
         ImGui::EndDisabled();
         endTable();
     }

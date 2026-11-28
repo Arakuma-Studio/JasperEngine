@@ -316,6 +316,17 @@ namespace {
         return it == floatDecoders().end() ? nullptr : it->second;
     }
 
+    std::map<std::string, TextureData::ImageDecoder>& imageDecoders(){
+        static auto* decoders = new std::map<std::string, TextureData::ImageDecoder>();
+        return *decoders;
+    }
+
+    TextureData::ImageDecoder imageDecoderFor(const std::string& path){
+        std::lock_guard<std::mutex> lock(floatDecoderMutex());
+        auto it = imageDecoders().find(textureLowerExtension(path));
+        return it == imageDecoders().end() ? nullptr : it->second;
+    }
+
     uint32_t flagsFromKeyValues(const Ktx2Info& info){
         uint32_t flags = 0;
         if (TextureFallback::hasFlag(info, "alpha")) flags |= TEXTURE_FLAG_ALPHA;
@@ -338,6 +349,16 @@ void TextureData::registerFloatDecoder(const std::string& extension, FloatDecode
 bool TextureData::hasFloatDecoder(const std::string& extension){
     std::lock_guard<std::mutex> lock(floatDecoderMutex());
     return floatDecoders().count(extension) > 0;
+}
+
+void TextureData::registerImageDecoder(const std::string& extension, ImageDecoder decoder){
+    std::lock_guard<std::mutex> lock(floatDecoderMutex());
+    imageDecoders()[extension] = decoder;
+}
+
+bool TextureData::hasImageDecoder(const std::string& extension){
+    std::lock_guard<std::mutex> lock(floatDecoderMutex());
+    return imageDecoders().count(extension) > 0;
 }
 
 bool TextureData::loadKtx2(const unsigned char* bytes, unsigned int length, uint32_t firstLevel,
@@ -568,6 +589,8 @@ bool TextureData::loadTextureFromFile(const char* filename) {
         result = loadSvgTexture(&filedata);
     } else if (FloatDecoder decoder = floatDecoderFor(cleanPath)) {
         result = loadFloatTexture(decoder, filedata.getMemPtr(), filedata.length());
+    } else if (ImageDecoder imageDecoder = imageDecoderFor(cleanPath)) {
+        result = loadImageTexture(imageDecoder, filedata.getMemPtr(), filedata.length());
     } else {
         result = loadTexture(&filedata);
     }
@@ -609,6 +632,40 @@ bool TextureData::loadFloatTexture(FloatDecoder decoder, const unsigned char* by
     return true;
 }
 
+bool TextureData::loadImageTexture(ImageDecoder decoder, const unsigned char* bytes, size_t length){
+    if (dataOwned && data)
+        releaseImageData();
+    levels.clear();
+    levelStorage.reset();
+    cpuCopy.reset();
+    flags = 0;
+    droppedLevels = 0;
+    fullLevelCount = 1;
+    std::vector<uint8_t> rgba;
+    int w = 0, h = 0;
+    std::string error;
+    if (!decoder(bytes, length, rgba, w, h, error) || w <= 0 || h <= 0 || rgba.size() < (size_t)w * (size_t)h * 4){
+        Log::error("Error loading texture: %s", error.c_str());
+        return false;
+    }
+    const size_t bytesNeeded = (size_t)w * (size_t)h * 4;
+    // stb_image's buffers are malloc'd: releaseImageData frees this one the same way
+    unsigned char* pixels = static_cast<unsigned char*>(malloc(bytesNeeded));
+    if (!pixels)
+        return false;
+    std::memcpy(pixels, rgba.data(), bytesNeeded);
+    data = pixels;
+    width = originalWidth = w;
+    height = originalHeight = h;
+    channels = 4;
+    color_format = ColorFormat::RGBA;
+    size = (unsigned int)bytesNeeded;
+    gpuFormat = GpuTextureFormat::RGBA8;
+    srgb = true;
+    transparent = hasAlpha();
+    return true;
+}
+
 bool TextureData::loadTextureFromMemory(unsigned char* data, unsigned int dataLength){
     Data filedata;
 
@@ -638,6 +695,8 @@ bool TextureData::loadTextureFromFileData(const char* filename, unsigned char* b
         result = loadSvgTexture(&filedata);
     } else if (FloatDecoder decoder = floatDecoderFor(cleanPath)) {
         result = loadFloatTexture(decoder, bytes, dataLength);
+    } else if (ImageDecoder imageDecoder = imageDecoderFor(cleanPath)) {
+        result = loadImageTexture(imageDecoder, bytes, dataLength);
     } else {
         result = loadTexture(&filedata);
     }

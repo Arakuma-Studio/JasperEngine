@@ -71,6 +71,7 @@ namespace jasperengine::editor {
         int m_defaultOrientationIndex = 4;
         uint8_t m_allowedOrientations = PresentationSettings{}.allowedOrientations;
         bool m_keepScreenOn = true;
+        bool m_pauseOnFocusLoss = false;
         int m_targetFrameRate = -1;
         char m_applicationNameBuffer[256] = {0};
         char m_applicationIdentifierBuffer[256] = {0};
@@ -84,6 +85,7 @@ namespace jasperengine::editor {
         LoadingSettings m_loadingSettings;
         ThreadingProjectSettings m_threading;
         ShaderCreationProjectSettings m_shaderCreation;
+        SaveGameSettings m_saveGame;
         HtmlUiRenderSettings m_htmlUiRender;
         DrawSubmissionSettings m_drawSubmission;
         // Graphics > Screen Transitions (S48 R41)
@@ -96,7 +98,11 @@ namespace jasperengine::editor {
         NavigationProjectSettings m_navigation;
         TitleArtProjectSettings m_titleArt;
         LocalizationSettings m_localization;
+        DialogueSettings m_dialogue;
         char m_localizationInput[64] = {0};
+        char m_localizationFontLanguage[32] = {0};
+        std::vector<std::string> m_localizationTables;   // the Default Table list, read when it opens
+        char m_localizationFontPath[260] = {0};
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};
         char m_audioDefaultGroupBuffer[128] = {0};
@@ -118,7 +124,13 @@ namespace jasperengine::editor {
         // .inputactions files of the assets directory as the picker lists them
         fs::path m_inputActionsAsset;
         float m_inputDeadzone = 0.15f;
+        bool m_simulateTouchFromMouse = false;
+        GamepadCursorSettings m_gamepadCursor;
+        char m_gamepadCursorGraphic[512] = {};
         std::vector<fs::path> m_inputActionsFiles;
+        // Time (S95 REQ-13), seconds
+        double m_fixedTimestep = 1.0 / 60.0;
+        double m_maximumDeltaTime = 0.25;
         std::string m_inputStatus;
         // Pixel Art: the Default Palette (project-relative, or "builtin:<id>" until OK copies it
         // into the project), and the project's palettes as the picker lists them (path, name)
@@ -131,6 +143,7 @@ namespace jasperengine::editor {
         char m_newCheckScreen[32] = "";
         std::unique_ptr<PixelArtPresetDialog> m_presetDialog;
         Physics3DWorldSettings m_physics3DWorld;
+        PhysicsQuerySettings m_physicsQueries;
         int m_particleWorldBudget = 0;
         ParticleQaSettings m_particleQa;
         procmat::ProcMatQaSettings m_procMatQa;
@@ -143,9 +156,16 @@ namespace jasperengine::editor {
         int m_buildMethodIndex = 0;
         bool m_packContent = false;
         bool m_stripEngineCode = true;
+        // Download Budget (S99 R11) per ModelFamily, applied as one undo step
+        double m_downloadBudgetMB[kModelFamilyCount] = {};
+        // S98 REQ-8: Player > Build (one undo step on Apply), and the globs typed but not added yet
+        AssetStrippingSettings m_assetStripping;
+        char m_alwaysIncludeInput[256] = {0};
+        char m_excludeInput[256] = {0};
         int m_androidPackageFormatIndex = 0;   // apk, aab
         fs::path m_androidKeystorePath;
         char m_androidKeystoreAliasBuffer[128] = {0};
+        char m_androidDebugPackageSuffixBuffer[64] = {0};
         char m_iosTeamIdBuffer[32] = {0};
         int m_iosExportMethodIndex = 0;        // development, ad-hoc, app-store, enterprise
         bool m_allowInsecureHttp = false;
@@ -289,6 +309,8 @@ namespace jasperengine::editor {
         void drawPlayerSettings();
         // Default Orientation, Allowed Orientations, Keep Screen On, Target Frame Rate (rows of the open table)
         void drawPresentationSettings();
+        // Player > Build: Asset Stripping, Always Include, Exclude From Build
+        void drawAssetStrippingSettings();
         void drawGraphicsSettings();
         void drawShaderCreationSettings();
         void drawShaderGlobals();
@@ -309,6 +331,8 @@ namespace jasperengine::editor {
         void drawMeshSettings();
         void drawTitleArtSettings();
         void drawLocalizationSettings();
+        void drawTimeSettings();
+        void drawDialogueSettings();
         void draw2DSettings();
         void drawAnimationSettings();
         void drawPixelArtSettings();
@@ -368,8 +392,9 @@ namespace jasperengine::editor {
         void drawRootsConfirmation();
 
     public:
-        // category: a page to show, e.g. "Player"; nullptr keeps the last one.
-        void open(Project* project, const char* category = nullptr);
+        // category: a page to show, e.g. "Player"; nullptr keeps the last one. search: the filter
+        // typed for it ("Size Budgets" shows that row only)
+        void open(Project* project, const char* category = nullptr, const char* search = nullptr);
         void show();
         bool isOpen() const { return m_isOpen; }
         // a native plugin's Lua mock the Create Plugin dialog wrote (to open in the code editor); once

@@ -43,6 +43,8 @@
 #include "component/ScaleTweenComponent.h"
 #include "component/ScrollbarComponent.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "component/TextComponent.h"
 #include "component/Transform.h"
 #include "component/TranslateTracksComponent.h"
@@ -259,6 +261,10 @@ PARITY_COMPONENT(RectTransform)
 PARITY_COMPONENT(LayoutGroup)
 PARITY_COMPONENT(Text)
 PARITY_COMPONENT(Image)
+// culling-group-and-simulation-distance R36: a table-only component
+PARITY_COMPONENT(SimulationCulling)
+// dialogue-graphs.md R13: a table-only component
+PARITY_COMPONENT(DialogueRunner)
 PARITY(Transform, Transform)
 // a document (a scene or prefab file) leaves out the derived world values (S29 R20); every other
 // encode writes them

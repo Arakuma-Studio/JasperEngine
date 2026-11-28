@@ -1,24 +1,35 @@
 """Profiling and render diagnostics (spec S15, docs/mcp/guide/profiling.md): get_render_stats and
 jasper://stats, GPU pass times of the frame (AC5), the VRAM report (AC8, AC17), the pass output
 preview (AC10), frame-time spikes (AC11), profiler captures as .jetrace.json and their CPU trees
-(AC12), the Lua Profiler table (AC13) and the CLI's capture (R38).
+(AC12), the Lua Profiler table (AC13) and the CLI's capture (R38). The Performance sampler
+(docs/specs/release-performance-and-gpu-quirks.md): Lua Performance and get_frame_times' main-thread
+CPU in Play (AC6, AC9), the Stats overlay's rows (AC12), a player's --perf-summary (AC11, with
+JASPER_SLOW_BUILD=1) and the benchmark's main-thread CPU and device (AC13).
 
 GPU timing on the build servers' software devices: llvmpipe answers GL_TIME_ELAPSED queries and
 lavapipe writes timestamps, so every pass is timed on both (a Vulkan editor: JASPER_EDITOR)."""
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 
-from harness import Editor
+import build_cache
+import harness
+from harness import Editor, skip
+from project_fixture import write_project
 
 sys.path.insert(0, str(Path(__file__).parent))
 from test_runtime_regressions import decode_png  # noqa: E402
 
 CI = True
-EDITOR = {"create": True, "name": "Profiler"}
+PREBUILT_PLAYERS = ["glcore-release"]
+EDITOR = {"create": True, "name": "Profiler", "env": build_cache.player_env("glcore", "release")}
 TIMEOUT = 900
 
 DISPLAY = {"show_grid_3d": False, "hide_light_icons": True, "hide_selection_outline": True,
@@ -154,6 +165,7 @@ async def test_capture_pass_output(ed: Editor):
         s = await ed.call("capture_pass_output", **{"pass": swap[0]["index"]})
         ed.check(s.get("preview_unavailable") is True and "swapchain" in s["reason"], f"swapchain: {s}")
     await ed.check_error("capture_pass_output", {"pass": 100000})
+    await ed.check_error("capture_pass_output", {}, contains="No such pass")
 
 
 async def test_capture_profile(ed: Editor):
@@ -256,3 +268,129 @@ async def test_lua_profiler(ed: Editor):
     logged = await ed.call("read_console", contains="endSample")
     await ed.call("play", action="stop")
     ed.check_eq(len(logged["entries"]), 1, f"logged once: {logged['entries']}")
+
+
+# ---------------------------------------------------------------------------- Performance sampler
+
+async def lua(ed: Editor, code: str):
+    return (await ed.call("eval_lua", code=code))["values"][0]
+
+
+async def test_performance_in_play(ed: Editor):
+    """AC9: Lua Performance samples Play; get_frame_times reports the frame thread's CPU and the
+    sampler's window. AC6: Stop clears onSample: a second Play's window grows past 30 s, which a
+    leftover subscriber would have ended at 30."""
+    scene = await red_scene(ed)
+    await ed.call("play", action="start", scene=scene)
+    await lua(ed, "Performance.setSampling(true); return true")
+    await ed.call("wait", seconds=4)
+    r = await ed.call("get_frame_times", window=120, frames=0)
+    ed.check(r["main_thread_cpu_ms"] is not None and r["main_thread_cpu_ms"] > 0, f"main_thread_cpu_ms: {r.get('main_thread_cpu_ms')}")
+    perf = r.get("performance") or {}
+    ed.check(perf.get("seconds", 0) >= 2, f"performance: {perf}")
+    ed.check(perf.get("main_thread_cpu") == "thread_clock" and "frame_ms" in perf, f"snake_case summary: {perf}")
+    ed.check(await lua(ed, "return Performance.getSummary().fps.p50 > 0"), "getSummary().fps.p50 > 0")
+    ed.check_eq(await lua(ed, "return #Performance.getSummary{histogram = true}.histogram.counts"), 201, "201 bins")
+    await lua(ed, 'Performance.onSample(function(s) print("perf old sample " .. s.seconds) end, 30); return true')
+    await ed.call("play", action="stop")
+
+    await ed.call("clear_console")
+    await ed.call("play", action="start", scene=scene)
+    ed.check(not await lua(ed, "return Performance.isSampling()"), "Play starts with the sampler off")
+    await lua(ed, "Performance.setSampling(true); return true")
+    deadline = time.monotonic() + 240
+    seconds = 0
+    while seconds < 31 and time.monotonic() < deadline:
+        await ed.call("wait", seconds=2)
+        seconds = await lua(ed, "return Performance.getSummary().seconds")
+    logged = await ed.call("read_console", contains="perf old sample")
+    await ed.call("play", action="stop")
+    ed.check(seconds >= 31, f"the window grew past 30 s with no subscriber: {seconds}")
+    ed.check_eq(len(logged["entries"]), 0, f"the first Play's onSample never ran: {logged['entries']}")
+
+
+async def test_stats_overlay_rows(ed: Editor):
+    """AC12: the Game view's Stats show Main Thread CPU, and Sampling while the sampler runs."""
+    scene = await red_scene(ed)
+    await ed.call("configure_game_view", show_stats=True)
+    try:
+        await ed.call("play", action="start", scene=scene)
+        await ed.call("focus_window", window="game")
+        await ed.call("wait", frames=10)
+        found = await ed.call("find_ui_item", label="Main Thread CPU")
+        ed.check(found.get("items"), f"Main Thread CPU row: {found}")
+        missing = await ed.call("find_ui_item", label="Sampling")
+        ed.check(not missing.get("items"), f"no Sampling row while the sampler is off: {missing}")
+        await lua(ed, "Performance.setSampling(true); return true")
+        await ed.call("wait", seconds=3)
+        found = await ed.call("find_ui_item", label="Sampling")
+        ed.check(found.get("items"), f"Sampling row: {found}")
+        shot = await ed.call_raw("screenshot", {"view": "editor"})
+        if shot.images:
+            # the evidence, beside the run's results (build/test-results outlives the image's container)
+            evidence = harness.REPO / "build" / "test-results" / "stats-overlay.png"
+            evidence.parent.mkdir(parents=True, exist_ok=True)
+            evidence.write_bytes(shot.images[0][0])
+    finally:
+        await ed.call("play", action="stop")
+        await ed.call("configure_game_view", show_stats=False)
+
+
+async def test_player_perf_summary(ed: Editor):
+    """AC11: a prebuilt player with --perf-summary samples from its ready frame and writes the summary
+    (snake_case JSON) at quit. The player quits by itself (--quit-after): run_build ends a run past its
+    seconds with SIGTERM, which a player does not turn into a quit."""
+    if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
+        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (the run builds its prebuilt runtime once)")
+    scene = await red_scene(ed)
+    # a build holds saved scenes only
+    await ed.call("save_scene", scene=scene, path="ProfilerRed.scene")
+    runtime = await build_cache.player_runtime(ed, "glcore", "release")
+    out = ed.scratch.root / "export-perf"
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
+    if r.get("status") == "running":
+        deadline = time.monotonic() + 600
+        while r.get("status") == "running" and time.monotonic() < deadline:
+            await asyncio.sleep(3)
+            r = await ed.call("get_job", job_id=r["job_id"], log_lines=10)
+    ed.check_eq(r.get("status", "succeeded"), "succeeded", f"{r}")
+    r = r.get("result", r)
+    ed.check_eq((r.get("method_used"), r.get("player_id")), ("prebuilt", runtime.name), f"{r}")
+    summary = ed.scratch.root / "perf.json"
+    raw = await ed.call_raw("run_build", {"after_ready": True, "quit_after": 360, "seconds": 120, "screenshot": False,
+                                          "args": [f"--perf-summary={summary}"]})
+    ed.check(not raw.is_error, raw.text)
+    ed.check_eq(raw.value.get("exit_code"), 0, f"the player quit after its frames: {raw.value}")
+    ed.check(summary.is_file(), f"--perf-summary wrote {summary}: {raw.text[-2000:]}")
+    data = json.loads(summary.read_text())
+    ed.check(data["seconds"] >= 3, f"seconds: {data}")
+    keys = set(data) | set(data["excluded"]) | set(data.get("frame_ms", {}))
+    ed.check(all(k == k.lower() for k in keys), f"snake_case keys: {sorted(keys)}")
+    ed.check_eq(data.get("main_thread_cpu"), "thread_clock", f"{data}")
+    ed.check(data.get("main_thread_cpu_ms", 0) > 0 and data["fps"]["p50"] > 0, f"{data}")
+
+
+async def test_benchmark_device_and_main_thread_cpu(ed: Editor):
+    """AC13: the benchmark's result.json has the main thread's CPU per frame and the device with the
+    GPU quirks get_device_info reports."""
+    info = await ed.call("get_device_info")
+    project = write_project(ed.scratch.root / "bench-project", scenes=True)
+    out = ed.scratch.root / "bench-result.json"
+    home = ed.scratch.root / "bench-home"
+    home.mkdir(exist_ok=True)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_")}
+    env.update(HOME=str(home), LIBGL_ALWAYS_SOFTWARE="1")
+    xvfb = harness.Xvfb()
+    env["DISPLAY"] = xvfb.start()
+    try:
+        r = await asyncio.to_thread(subprocess.run, harness.editor_command() + [
+            "benchmark", "--project", str(project), "--scene", "World.scene", "--frames", "30", "--warmup", "5", "--out", str(out)],
+            cwd=str(ed.scratch.root), env=env, capture_output=True, text=True, timeout=600)
+    finally:
+        xvfb.stop()
+    ed.check(r.returncode == 0, f"benchmark exit {r.returncode}: {r.stderr[-3000:]}")
+    result = json.loads(out.read_text())
+    ed.check(result["mainThreadCpuMs"]["mean"] is not None and result["mainThreadCpuMs"]["mean"] > 0, f"{result.get('mainThreadCpuMs')}")
+    device = result["device"]
+    ed.check(device["gpu"] and device["tier"], f"device: {device}")
+    ed.check_eq(device["quirks"], [q["name"] for q in info["quirks"]], "the benchmark's quirks are get_device_info's")

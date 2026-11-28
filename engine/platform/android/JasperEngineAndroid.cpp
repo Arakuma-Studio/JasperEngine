@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "JasperEngineAndroid.h"
+#include "input/TextEntry.h"
 #include "PlatformConfig.h"
 
 #include <errno.h>
@@ -146,11 +147,23 @@ bool JasperEngineAndroid::isTouchDevice(){
 }
 
 void JasperEngineAndroid::showVirtualKeyboard(std::wstring text){
-    NativeEngine::getInstance()->showSoftInput(text);
+    NativeEngine::getInstance()->showSoftInput(text, jasperengine::TextEntryTraits());
+}
+
+void JasperEngineAndroid::showVirtualKeyboard(const std::wstring& text, const jasperengine::TextEntryTraits& traits){
+    NativeEngine::getInstance()->showSoftInput(text, traits);
 }
 
 void JasperEngineAndroid::hideVirtualKeyboard(){
     NativeEngine::getInstance()->hideSoftInput();
+}
+
+void JasperEngineAndroid::updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd){
+    NativeEngine::getInstance()->setSoftInputText(text, selectionStart, selectionEnd);
+}
+
+bool JasperEngineAndroid::keepsVirtualKeyboardText(){
+    return true;
 }
 
 void JasperEngineAndroid::setClipboardText(const std::string& utf8){

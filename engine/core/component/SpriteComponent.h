@@ -8,6 +8,7 @@
 #include "util/GrowArray.h"
 #include "asset/AssetRef.h"
 #include "math/Rect.h"
+#include "math/Vector2.h"
 #include "Engine.h"
 #include "pixelart/PixelPerfectLayout.h"
 #include "sprite/PivotPreset.h"
@@ -92,6 +93,8 @@ namespace jasperengine{
 
         bool automaticFlipY = true;
         bool flipY = false;
+        // Unity's Flip X (S94 F29): the quad mirrored about the pivot, in every draw mode
+        bool flipX = false;
 
         float textureScaleFactor = 0.0;
 
@@ -109,6 +112,9 @@ namespace jasperengine{
         PixelRotation pixelRotation = PixelRotation::CAMERA;
         // S52 R2: what Custom Axis sorting measures (beside pixelRotation, in its padding)
         SpriteSortPoint spriteSortPoint = SpriteSortPoint::CENTER;
+        // Unity's SpriteRenderer.size (S94 F30): the quad's size in world units, in every draw mode
+        // (Sliced corners keep theirs); an axis at 0 is width or height over the Pixels Per Unit
+        Vector2 size = Vector2(0.0f, 0.0f);
 
         // Frame chosen before the texture size was known, in pixels
         Rect pendingFrameRect;
@@ -158,8 +164,8 @@ namespace jasperengine{
     // the texels per world unit a pixelsPerUnit of a sprite or a tilemap stands for (0: the
     // project's), always positive
     JASPERENGINE_API float resolvePixelsPerUnit(float pixelsPerUnit);
-    // the sprite's quad in world units (its pixel size over its Pixels Per Unit): what bounds,
-    // colliders fitted to it and world-size readers use
+    // the sprite's quad in world units (its Size, else its pixel size over its Pixels Per Unit):
+    // what bounds, colliders fitted to it and world-size readers use
     JASPERENGINE_API Vector2 spriteWorldSize(const SpriteComponent& sprite);
     
 }

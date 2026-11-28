@@ -7,6 +7,7 @@
 
 #include <string>
 #include <filesystem>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -26,6 +27,9 @@
 #include "ecs/ComponentFwd.h"
 
 namespace jasperengine{
+    class MeshSystem;
+    class SplineSystem;
+    class VoxelSystem;
     struct LineRendererComponent;
     struct ScriptEntry;
     struct TrailRendererComponent;
@@ -62,6 +66,10 @@ private:
         bool byTransformParent; // a bone or node: its Transform parent when it has one
     };
     Scene* scene;
+    // the systems that own generated entities, looked up once (each a map lookup a call)
+    std::shared_ptr<MeshSystem> meshes;
+    std::shared_ptr<VoxelSystem> voxels;
+    std::shared_ptr<SplineSystem> splines;
     std::unordered_map<Entity, ModelReference> modelReferences;
     std::unordered_map<Entity, Entity> panelParts;
 };
@@ -100,7 +108,12 @@ public:
     // assets as assets/ui/onscreen/stick_base.png and stick_knob.png (generated, not bundled);
     // the assets-relative path a Texture stores, "" when it could not be written
     static std::string ensureOnScreenControlTexture(const std::filesystem::path& assetsPath, bool knob);
-    static std::string makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities = {});
+    // The names of the GameObjects of `entities` whose Hierarchy parent is `parent` (the roots
+    // for NULL_ENTITY; an action's is its target), the ignored ones left out. Unity numbers a new
+    // or copied name ("Cube 2") only when a sibling has it: these are the names it looks at
+    static std::unordered_set<std::string> siblingNames(Scene* scene, const std::vector<Entity>& entities, Entity parent, const std::unordered_set<Entity>& ignoredEntities = {});
+    // `baseName`, numbered when a sibling under `parent` has it (siblingNames)
+    static std::string makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, Entity parent, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities = {});
 
     static size_t getTransformIndex(EntityRegistry* registry, Entity entity);
     // The Transform array holds each branch in one run, a GameObject after its parent and
@@ -222,6 +235,7 @@ public:
             std::filesystem::path path;    // absolute
             std::string content;
         };
+        // the copied includes, and a library source's own depth program (<base>_depth.*)
         std::vector<IncludeFile> includeFiles;
     };
 

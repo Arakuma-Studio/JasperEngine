@@ -302,6 +302,7 @@ namespace {
         Json result = Json{{"rows", s.numbered}, {"sheet", Json{{"width", image.width}, {"height", image.height}, {"columns", s.columns}}},
                            {"render_ms", std::lround(s.ms)}};
         task.text = std::to_string(s.items.size()) + " items rendered; cells numbered as the rows";
+        job.setImages(task.images);
         job.succeed(task.text, result);
         return true;
     }

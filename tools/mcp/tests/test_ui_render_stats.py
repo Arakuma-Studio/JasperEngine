@@ -9,7 +9,9 @@ scaled label in a UI scene:
   text's raster (a bitmap at the label's on-screen scale);
 - the project settings graphics.html_ui_glyph_atlas_mib, graphics.html_ui_sdf_primitives and
   graphics.html_ui_transform_aware_text read and write project.yaml, reject bad values, and reach
-  the renderer at once (the cards become meshes, the label a stretched bitmap).
+  the renderer at once (the cards become meshes, the label a stretched bitmap);
+- S93: graphics.html_ui_image_cache_mib (-1 the platform's default, 0-1024) reads and writes
+  project.yaml and rejects values out of range; render_stats has the image counters.
 
 Runs on a scratch copy of the fixture project (canvas 1280 x 720).
 """
@@ -40,6 +42,11 @@ HTML = """<!DOCTYPE html>
   .card span { position: absolute; left: 44px; top: 15px; color: #f0f0f0; font-size: 15px; }
   #dashed { position: absolute; left: 800px; top: 40px; width: 200px; height: 80px; border: 3px dashed #ffffff; }
   #label { position: absolute; left: 800px; top: 200px; font-size: 20px; color: #ffffff; transform: scale(2); transform-origin: 0 0; }
+  /* S92: an unchanged frame is kept (no pass, no draw); the pulse changes every frame, so the
+     counters below are of a replayed frame */
+  #pulse { position: absolute; left: 1200px; top: 680px; width: 8px; height: 8px; background-color: #ffffff;
+           animation: pulse 1s infinite alternate; }
+  @keyframes pulse { from { opacity: 0.2; } to { opacity: 1; } }
 </style>
 </head>
 <body>
@@ -48,6 +55,7 @@ HTML = """<!DOCTYPE html>
   </div>
   <div id="dashed"></div>
   <div id="label">Scaled label</div>
+  <div id="pulse"></div>
 </body>
 </html>
 """
@@ -56,7 +64,11 @@ FIELDS = ["passes", "drawCalls", "pipelineApplies", "pipelineCacheMisses", "text
           "compositesFused", "regionLayers", "regionTargetsCreated", "clipMasksRedrawn", "geometryLive", "geometryBytes",
           "geometrySubmitted", "runsMerged", "runCacheHits", "instancesDrawn", "verticesGathered", "stencilDraws",
           "stencilClipsElided", "analyticClips", "boxShadowTextures", "glyphsRasterized", "msdfGlyphsPending",
-          "textRegenerations", "textEffectFallbacks", "atlasBytes", "atlasEvictions"]
+          "textRegenerations", "textEffectFallbacks", "atlasBytes", "atlasEvictions", "imagesDecoded", "imageCacheHits",
+          "imagesPending",
+          # S92 R6
+          "framesKept", "liveSources", "keptMismatches", "compositeTiles", "compositePixels", "layerPixels", "layerCacheHits",
+          "layerCacheMisses", "layerCacheBytes", "samples", "targetBytes", "depthStencilStores"]
 
 
 async def render(ed: Editor, label: str):
@@ -100,10 +112,15 @@ async def test_render_stats(ed: Editor):
     ed.check(got["stencilDraws"] == 0, f"no stencil draw: {got}")
     ed.check(got["boxShadowTextures"] == 0, f"no box-shadow texture: {got}")
     ed.check(got["atlasBytes"] > 0 and got["atlasBytes"] % (1024 * 1024) == 0, f"R8 glyph pages of 1 MiB: {got}")
+    # S92: the pulse draws every frame; the composite covers the tiles with content, not the view
+    ed.check(got["framesKept"] == 0 and got["samples"] >= 1 and got["targetBytes"] > 0, f"a drawn frame of the target: {got}")
+    ed.check(0 < got["compositePixels"] < 1280 * 720, f"the composite covers the tiles with content: {got}")
     # S15's generic render stats carry the selected scene's HTML UI counters too (R27)
     generic = await ed.call("get_render_stats")
     html_ui = generic.get("html_ui", {})
-    ed.check(all(field in html_ui for field in FIELDS) and html_ui.get("drawCalls", 0) > 0, f"get_render_stats html_ui: {html_ui}")
+    # (a frame that drew, or one S92 kept: the editor's clock may not have moved since the last)
+    drew = html_ui.get("drawCalls", 0) > 0 or html_ui.get("framesKept", 0) == 1
+    ed.check(all(field in html_ui for field in FIELDS) and drew, f"get_render_stats html_ui: {html_ui}")
 
 
 async def test_paint_and_raster(ed: Editor):
@@ -152,6 +169,18 @@ async def test_project_settings(ed: Editor):
     await render(ed, "on")
     card = await detail(ed, "#card3")
     ed.check(card.get("paint", {}).get("path") == "primitive", f"primitives again: {card.get('paint')}")
+
+
+async def test_image_cache_setting(ed: Editor):
+    key = "graphics.html_ui_image_cache_mib"
+    got = await ed.call("get_project_settings", keys=[key])
+    ed.check_in("-1", str(got), "the image cache budget defaults to the platform's (-1)")
+    msg = await ed.call("set_project_settings", values={key: 5000}, expect_error=True)
+    ed.check_in("1024", msg, "the error names the range")
+    await ed.call("set_project_settings", values={key: 0})
+    yaml = (ed.project / "project.yaml").read_text()
+    ed.check("htmlUiImageCacheMiB: 0" in yaml, "the budget saved to project.yaml")
+    await ed.call("set_project_settings", values={key: -1})
 
 
 async def test_console_clean(ed: Editor):

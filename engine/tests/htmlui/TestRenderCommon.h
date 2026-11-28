@@ -53,6 +53,16 @@ namespace jasperengine { namespace test {
         ClassicReplay& operator=(const ClassicReplay&) = delete;
     };
 
+    // S92 R9: the layer cache off for a scope: the tests of what a layer's own passes do (its
+    // region, its filters) in every frame they draw, not only in the first
+    struct LayerCacheOff {
+        bool cache = RmlRenderer::isLayerCache();
+        LayerCacheOff(){ RmlRenderer::setLayerCacheForTesting(false); }
+        ~LayerCacheOff(){ RmlRenderer::setLayerCacheForTesting(cache); }
+        LayerCacheOff(const LayerCacheOff&) = delete;
+        LayerCacheOff& operator=(const LayerCacheOff&) = delete;
+    };
+
     // S16 on for a scope, whatever the run's switches (JASPER_HTMLUI_S16_OFF=1, AC1): the tests of
     // S16's own features
     struct S16On {
@@ -71,6 +81,16 @@ namespace jasperengine { namespace test {
         }
         S16On(const S16On&) = delete;
         S16On& operator=(const S16On&) = delete;
+    };
+
+    // S92's frame reuse on or off for a scope (read by endFrame): off, every frame is replayed (what
+    // the tests of the replay itself count: its run cache, its passes and draws frame after frame)
+    struct FrameReuseMode {
+        bool previous = RmlRenderer::isFrameReuse();
+        explicit FrameReuseMode(bool on){ RmlRenderer::setFrameReuseForTesting(on); }
+        ~FrameReuseMode(){ RmlRenderer::setFrameReuseForTesting(previous); }
+        FrameReuseMode(const FrameReuseMode&) = delete;
+        FrameReuseMode& operator=(const FrameReuseMode&) = delete;
     };
 
     // what Engine::systemDraw does before a frame that the tests need: the shaders and pipelines
@@ -177,6 +197,9 @@ namespace jasperengine { namespace test {
                 renderRequested = context->GetRenderManager().ConsumeRenderRequest();
             }
             bool drawn = renderer.endFrame();
+            // as HtmlUIContext: the settle draws the next frame whatever it records (S92 R2)
+            if (renderRequested)
+                renderer.addLiveSource(RmlRenderer::LIVE_TEXT_SETTLE);
             if (drawn)
                 compositeToScreen();
             SystemRender::commit();
@@ -188,11 +211,15 @@ namespace jasperengine { namespace test {
         }
 
         // frames until one is drawn (the UI shader variants compile, one per frame, on the
-        // first ones), then one more so anything loaded during the first frame is in place
+        // first ones), then one more so anything loaded during the first frame is in place; that
+        // one is replayed (S92 R1 would keep it when nothing changed): its statistics are a drawn
+        // frame's
         bool renderUntilDrawn(int maxFrames = 30){
             for (int i = 0; i < maxFrames; i++){
-                if (renderFrame())
+                if (renderFrame()){
+                    renderer.addLiveSource(RmlRenderer::LIVE_REQUESTED);
                     return renderFrame();
+                }
             }
             return false;
         }
@@ -216,19 +243,30 @@ namespace jasperengine { namespace test {
                 result.message = "readback of the screen target failed";
                 return result;
             }
-            return compareWithGolden(goldenName, rgba, targetSize.x, targetSize.y, options);
+            CompareResult result = compareWithGolden(goldenName, rgba, targetSize.x, targetSize.y, options);
+            verifyKeptFrames(result);
+            return result;
         }
 
-        Rml::Context* context = nullptr;
-        // the last frame asked for another one (HtmlUIContext keeps updatedSinceRender then)
-        bool renderRequested = false;
-        RmlRenderer renderer;
-        RmlRenderTarget target;
-        FramebufferRender screen;
-        Rml::Vector2i contextSize;
-        Rml::Vector2i targetSize;
+        // S92 R3 (JASPER_HTMLUI_VERIFY_KEPT=1): a second frame of the golden, which a static one
+        // keeps, verified against a fresh replay (after the comparison: an animated golden's image
+        // is the one compared; none after a frame with a live source, which is never kept); a
+        // difference fails the comparison
+        void verifyKeptFrames(CompareResult& result){
+            if (!RmlRenderer::isKeptFrameVerification() || !context || renderer.getStats().liveSources != 0)
+                return;
+            const uint32_t before = renderer.getKeptMismatchCount();
+            renderFrame();
+            renderFrame();
+            renderer.checkKeptFrame();
+            if (renderer.getKeptMismatchCount() != before){
+                result.passed = false;
+                result.message += " (a kept frame differs from a fresh replay: [HTML UI] kept frame differs in the log)";
+            }
+        }
 
-    private:
+        // layer 0 composited over the opaque background into the screen target (renderFrame does it
+        // after every drawn or kept frame)
         void compositeToScreen(){
             const float bg = background / 255.0f;
             screenPass.setClearColor(Vector4(bg, bg, bg, 1.0f));
@@ -241,6 +279,16 @@ namespace jasperengine { namespace test {
             screenPass.endRenderPass();
         }
 
+        Rml::Context* context = nullptr;
+        // the last frame asked for another one (HtmlUIContext reports it as a live source of the next)
+        bool renderRequested = false;
+        RmlRenderer renderer;
+        RmlRenderTarget target;
+        FramebufferRender screen;
+        Rml::Vector2i contextSize;
+        Rml::Vector2i targetSize;
+
+    private:
         std::string name;
         bool acquired = false;
         CameraRender screenPass;

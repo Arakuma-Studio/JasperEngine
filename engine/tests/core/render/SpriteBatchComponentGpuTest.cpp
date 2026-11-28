@@ -660,4 +660,35 @@ TEST_F(SpriteBatchComponentGpu, AttachedBatchDrawsAsItsGameObject){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// S94 F29 (AC29): instances of a flipped Sprite draw what flipped Sprites draw: trimmed frames with a
+// bottom-left pivot (an instance's quad mirrored about its position, as the Sprite's about its pivot)
+TEST_F(SpriteBatchComponentGpu, FlipXMatchesSprites){
+    JASPER_REQUIRE_GPU();
+    std::vector<float> positions;
+    std::vector<int32_t> frames;
+    for (int i = 0; i < 16; i++){
+        const float x = (float)(i % 4) * 50.0f + 40.0f;
+        const float y = (float)(i / 4) * 50.0f + 20.0f;
+        positions.insert(positions.end(), {x, y});
+        frames.push_back(i % 2);
+        Sprite& s = trimmedSprite(i % 2, PivotPreset::BOTTOM_LEFT);
+        s.setFlipX(true);
+        s.setPosition(x, y, 0.0f);
+    }
+    ASSERT_TRUE(settle());
+    const std::vector<uint8_t> reference = image();
+    sprites.clear();
+
+    Sprite& base = trimmedSprite(0, PivotPreset::BOTTOM_LEFT);
+    base.setFlipX(true);
+    SpriteBatch batch(&scene, base.getEntity());
+    ASSERT_EQ(batch.setPositions(positions), "");
+    ASSERT_EQ(batch.setFrames(frames), "");
+    ASSERT_TRUE(settle());
+    const std::vector<uint8_t> instanced = image();
+    EXPECT_GT(lit(reference), 500u);
+    EXPECT_EQ(differing(instanced, reference), 0u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 }  // namespace SpriteBatchComponentGpuTest_cpp

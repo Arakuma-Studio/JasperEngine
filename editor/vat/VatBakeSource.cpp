@@ -354,7 +354,14 @@ namespace{
             addHierarchyHashes(project, target);
         }else if (anim::isModelFilePath(relative)){
             const std::string asset = assetRelative(project, absolute);
-            if (!project->prepareModelFile(asset)){
+            const Project::ModelImport import = project->prepareModelFile(asset);
+            if (import == Project::ModelImport::Pending){
+                // the import runs on its job (S98 REQ-32): nothing waits for it here
+                issues.push_back(makeIssue("invalid_source", true, "the model '" + relative + "' is still importing",
+                                           "bake again once editor_status lists no model_import job"));
+                return false;
+            }
+            if (import == Project::ModelImport::Failed){
                 issues.push_back(makeIssue("invalid_source", true, "the model '" + relative + "' could not be imported", "check the file"));
                 return false;
             }

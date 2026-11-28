@@ -147,6 +147,9 @@ void UIDocumentSystem::compatDocumentLoaded(Entity entity){
     if (!htmlui::compat::DocumentLoader::compiledOf(document))
         return;   // an .rml document
 
+    // the style sheets a script added, over a reload or another file of the component (S93 R29)
+    applyStyleSheets(entity);
+
     HtmlUICompatState& state = getCompatState();
     if (!state.colorScheme.empty() && target->getColorScheme() != state.colorScheme)
         target->setColorScheme(state.colorScheme);

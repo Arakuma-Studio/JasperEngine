@@ -555,4 +555,51 @@ TEST_F(LightingGpu, HairShadingModelSphere){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// S99 AC7: Environment Lighting Source Gradient, through the per-object SH alone: a white sphere
+// on a white plane under a blue sky, grey equator and orange ground, a dim sun so the objects
+// are lit (the Color source draws the same scene with its flat Ambient Color)
+TEST_F(LightingGpu, GradientAmbientSphere){
+    JASPER_REQUIRE_GPU();
+    camera.setPosition(0.0f, 1.2f, 4.0f);
+    camera.setTarget(0.0f, 0.4f, 0.0f);
+    Primitive ground(&scene);
+    ground.createPlane(8.0f, 8.0f);
+    ground.setColor(0.9f, 0.9f, 0.9f);
+    Primitive sphere(&scene);
+    sphere.createSphere(1.0f, 48, 32);
+    sphere.setPosition(0.0f, 1.0f, 0.0f);
+    sphere.setColor(0.9f, 0.9f, 0.9f);
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(0.6f, -0.4f, -0.7f);
+    sun.setIntensity(0.3f);
+    sun.setShadows(false);
+    scene.setGlobalIllumination(0.3f, Vector3(1.0f, 1.0f, 1.0f));
+
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> flat = readLightingTarget();
+
+    scene.setAmbientMode(AmbientMode::GRADIENT);
+    scene.setAmbientSkyColor(Vector3(0.35f, 0.55f, 1.0f));
+    scene.setAmbientEquatorColor(Vector3(0.5f, 0.5f, 0.5f));
+    scene.setAmbientGroundColor(Vector3(0.8f, 0.4f, 0.1f));
+    ASSERT_TRUE(render());
+    EXPECT_GOLDEN("lighting_gradient_ambient");
+    const std::vector<uint8_t> gradient = readLightingTarget();
+    EXPECT_GT(lightingDifferenceOf(flat, gradient).badFraction, 0.05) << "the Gradient drew as the flat Ambient Color";
+
+    // the plane facing up (most of the lit pixels) takes the sky's blue: the frame turns bluer
+    // against the white ambient (the background, the same in both, adds nothing)
+    long bluer = 0;
+    for (size_t i = 0; i + 3 < gradient.size() && i + 3 < flat.size(); i += 4)
+        bluer += ((long)gradient[i + 2] - (long)gradient[i]) - ((long)flat[i + 2] - (long)flat[i]);
+    EXPECT_GT(bluer, 0) << "the upward faces are not lit by the Sky Color";
+
+    // back to Color: the flat Ambient Color again
+    scene.setAmbientMode(AmbientMode::COLOR);
+    ASSERT_TRUE(render());
+    EXPECT_LE(lightingDifferenceOf(flat, readLightingTarget()).maxDiff, 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 }  // namespace LightingGpuTest_cpp

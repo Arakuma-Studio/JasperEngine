@@ -10,7 +10,6 @@
 #include "component/PrefabComponent.h"
 #include "component/ScriptComponent.h"
 #include "DocumentFile.h"
-#include "Factory.h"
 #include "Out.h"
 #include "PrefabManager.h"
 #include "ObjectManager.h"
@@ -81,7 +80,6 @@ void editor::Project::addScriptPrefabReferences(SceneProject* sceneProject) {
         if (!listed) {
             PrefabSceneInfo info;
             info.prefabPath = path;
-            info.functionName = Factory::prefabToFunctionName(path);
             info.guid = getPrefabGuid(path);
             sceneProject->prefabs.push_back(std::move(info));
         }
@@ -160,7 +158,6 @@ std::vector<editor::PrefabSceneInfo> editor::Project::collectAllPrefabs() const 
     for (const fs::path& path : all) {
         PrefabSceneInfo info;
         info.prefabPath = path;
-        info.functionName = Factory::prefabToFunctionName(path);
         info.guid = getPrefabGuid(path);
         result.push_back(std::move(info));
     }

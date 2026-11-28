@@ -217,6 +217,7 @@ SPEC_GROUPS = {
                   "edit_asset_labels", "edit_saved_searches", "edit_bookmarks"],
     "rendering_fx": ["get_shadow_stats", "set_shadow_debug",                               # S10
                      "list_atmosphere_presets", "apply_atmosphere_preset", "get_atmosphere_info",  # S12
+                     "edit_fog_profile",                                                   # Vapor
                      "inspect_color_lut", "get_post_processing_status", "set_post_processing_debug"],  # S13
     "assets_pipeline": ["resolve_asset", "find_references", "get_asset_dependencies", "list_missing_assets",  # S04
                         "retarget_asset_references", "clear_asset_references",

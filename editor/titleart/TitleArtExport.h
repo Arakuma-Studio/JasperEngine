@@ -8,18 +8,23 @@
 // - Before the textures cook, prepare() applies title_art.stale_bakes_on_export to every
 //   document's outputs that are stale or missing: `rebake` bakes them first, `warn` lists them,
 //   `fail` fails the export naming them. Documents of a newer version are listed, never rebaked.
+// - The rebakes are TitleArtBakeJobs that stepRebakes() advances a slice at a time, one call per
+//   main-thread task: a bake that meets a Title Art program still being built waits for the frames
+//   that build it instead of holding the main thread (S80 Deviation 61).
 // - Thread-safety: main thread (the exporter calls it through a main-thread task).
 
 #pragma once
 
 #include "TitleArtSettings.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace jasperengine::editor {
 
     class Project;
+    class TitleArtBakeJob;
 
     namespace TitleArtExport {
 
@@ -34,8 +39,13 @@ namespace jasperengine::editor {
             std::vector<std::string> warnings;  // `warn` (and rebakes that could not run)
             std::vector<std::string> rebaked;   // "<document> (<outputs>)"
             size_t documents = 0;
+            // `rebake`: the bakes stepRebakes() has still to finish, with their "<document> (<outputs>)"
+            std::vector<std::pair<std::string, std::shared_ptr<TitleArtBakeJob>>> rebakes;
         };
         Prepared prepare(Project* project, TitleStaleBakesPolicy policy);
+        // advances the rebakes for about `budgetMs`; true once every one finished (listed in
+        // `rebaked`, or in `warnings` when it failed)
+        bool stepRebakes(Prepared& prepared, double budgetMs);
 
     }
 

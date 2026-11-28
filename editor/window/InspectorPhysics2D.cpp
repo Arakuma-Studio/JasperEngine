@@ -24,6 +24,7 @@
 #include "physics/PhysicsMaterial.h"
 #include "physics/PolygonDecomposition2D.h"
 #include "subsystem/PhysicsSystem.h"
+#include "physics/AttachedColliders.h"
 #include "util/Angle.h"
 #include "util/PhysicsMaterialAssets.h"
 #include "util/UIProbe.h"
@@ -347,7 +348,25 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
     RowSettings settingsInertia;
     settingsInertia.help = "Rotational inertia about the centre of mass, kg m\xC2\xB2. Auto: from the colliders (scaled with Mass)";
 
-    beginTable(cpType, getLabelSize("Collision Detection"));
+    beginTable(cpType, getLabelSize("Attach To Parent Body"));
+    // S96 WP-C: Unity's colliders below a Rigidbody 2D; the body fields of an attached child are not used
+    RowSettings settingsAttach;
+    settingsAttach.help = "Its colliders join the body of the nearest parent with a Rigidbody 2D (their contacts reach this GameObject too); it has no body of its own";
+    propertyRow(RowPropertyType::Bool, cpType, "attachToParentBody", "Attach To Parent Body", sceneProject, entities, settingsAttach);
+    bool attachedToParent = false;
+    if (body.attachToParentBody && entities.size() == 1){
+        const Entity joined = AttachedColliders::findBody2D(sceneProject->scene, entities[0]);
+        attachedToParent = joined != NULL_ENTITY;
+        propertyHeader("");
+        if (attachedToParent){
+            ImGui::TextDisabled("Joins the body of \"%s\"", sceneProject->scene->getEntityName(joined).c_str());
+        }else{
+            ImGui::TextDisabled("No parent body: this is its own body");
+        }
+    }
+    if (attachedToParent){
+        ImGui::BeginDisabled();
+    }
     propertyRow(RowPropertyType::Enum, cpType, "type", "Body Type", sceneProject, entities, settingsBodyType);
     physicsMaterialRow(cpType, "material", "Material", sceneProject, entities,
                        "The material of the colliders that have none of their own (friction, bounciness, combine modes)");
@@ -375,10 +394,16 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
         RowSettings settingsFixedRotation;
         settingsFixedRotation.help = "The body never turns (Unity Constraints > Freeze Rotation)";
         propertyRow(RowPropertyType::Bool, cpType, "fixedRotation", "Fixed Rotation", sceneProject, entities, settingsFixedRotation);
+        RowSettings settingsFastRotation;
+        settingsFastRotation.help = "Not capped by the scene's Max Rotation Per Step (Physics 2D): for wheels and other round bodies that spin fast";
+        propertyRow(RowPropertyType::Bool, cpType, "allowFastRotation", "Allow Fast Rotation", sceneProject, entities, settingsFastRotation);
         propertyRowWithAutoButton(RowPropertyType::Vector2, cpType, "centerOfMass", "Center of Mass", "autoCenterOfMass", "Auto Center of Mass (the colliders' centroid)", sceneProject, entities, settingsCenter);
         propertyRowWithAutoButton(RowPropertyType::FloatPositive, cpType, "inertia", "Inertia", "autoInertia", "Auto Inertia (from the colliders)", sceneProject, entities, settingsInertia);
     }
     endTable();
+    if (attachedToParent){
+        ImGui::EndDisabled();
+    }
 
     if (playing && b2Body_IsValid(body.body) && entities.size() == 1){
         // the live body (read only)

@@ -18,6 +18,7 @@
 #include "htmlui/compat/DiagnosticCodes.h"
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/RmlRenderer.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/ParticleSystemState.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -587,4 +588,7 @@ void UIParticleSystemElement::renderQuads(Rml::RenderManager* renderManager, con
 
     state.geometry = renderManager->MakeGeometry(std::move(mesh));
     state.geometry.Render(GetAbsoluteOffset(Rml::BoxArea::Content), state.texture);
+    // the simulation moves on whatever the document does: its frames are always drawn (S92 R2)
+    if (RmlRenderer* renderer = RmlRenderer::forContext(GetContext()))
+        renderer->addLiveSource(RmlRenderer::LIVE_PARTICLES);
 }

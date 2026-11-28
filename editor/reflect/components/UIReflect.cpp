@@ -6,7 +6,6 @@
 
 #include "reflect/components/MaterialReflect.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/ButtonComponent.h"
 #include "component/UISelectable.h"
@@ -24,6 +23,40 @@
 #include "pixelart/BitmapFont.h"
 
 namespace jasperengine::editor::reflect {
+
+namespace enums {
+
+    namespace {
+        constexpr int textValue(TextAnchorHorizontal alignment) { return static_cast<int>(alignment); }
+        constexpr int textValue(TextAnchorVertical alignment) { return static_cast<int>(alignment); }
+        constexpr int textValue(TextFontSizeUnit unit) { return static_cast<int>(unit); }
+
+        constexpr EnumItem kTextAnchorHorizontalItems[] = {
+            {textValue(TextAnchorHorizontal::LEFT), "left", "Left", "TextAnchorHorizontal::LEFT"},
+            {textValue(TextAnchorHorizontal::CENTER), "center", "Center", "TextAnchorHorizontal::CENTER"},
+            {textValue(TextAnchorHorizontal::RIGHT), "right", "Right", "TextAnchorHorizontal::RIGHT"},
+        };
+
+        constexpr EnumItem kTextAnchorVerticalItems[] = {
+            {textValue(TextAnchorVertical::TOP), "top", "Top", "TextAnchorVertical::TOP"},
+            {textValue(TextAnchorVertical::MIDDLE), "middle", "Middle", "TextAnchorVertical::MIDDLE"},
+            {textValue(TextAnchorVertical::BOTTOM), "bottom", "Bottom", "TextAnchorVertical::BOTTOM"},
+            {textValue(TextAnchorVertical::BASELINE), "baseline", "Baseline", "TextAnchorVertical::BASELINE"},
+            {textValue(TextAnchorVertical::CAPLINE), "capline", "Capline", "TextAnchorVertical::CAPLINE"},
+            {textValue(TextAnchorVertical::MIDLINE), "midline", "Midline", "TextAnchorVertical::MIDLINE"},
+        };
+
+        constexpr EnumItem kTextFontSizeUnitItems[] = {
+            {textValue(TextFontSizeUnit::PIXEL_HEIGHT), "pixel_height", "Pixel Height", "TextFontSizeUnit::PIXEL_HEIGHT"},
+            {textValue(TextFontSizeUnit::EM), "em", "Em", "TextFontSizeUnit::EM"},
+        };
+    }
+
+    const EnumDesc kTextAnchorHorizontal{"TextAnchorHorizontal", kTextAnchorHorizontalItems, textValue(TextAnchorHorizontal::LEFT)};
+    const EnumDesc kTextAnchorVertical{"TextAnchorVertical", kTextAnchorVerticalItems, textValue(TextAnchorVertical::BOTTOM)};
+    const EnumDesc kTextFontSizeUnit{"TextFontSizeUnit", kTextFontSizeUnitItems, textValue(TextFontSizeUnit::PIXEL_HEIGHT)};
+
+}
 
 namespace {
 
@@ -65,9 +98,9 @@ namespace {
                  .uiOrder = 3),
         JE_FIELD(RectTransformComponent, usingAnchors, .label = "Use Anchors", .uiOrder = 2),
         // the layout's own bookkeeping: saved, not edited
-        JE_FIELD(RectTransformComponent, panel, .ops = &ops::Entity, .flags = Derived | Hidden | NoCodegen),
-        JE_FIELD(RectTransformComponent, containerBoxIndex, .flags = Derived | Hidden | NoCodegen),
-        JE_FIELD(RectTransformComponent, scissor, .flags = Derived | Hidden | NoCodegen | NotWritten),
+        JE_FIELD(RectTransformComponent, panel, .ops = &ops::Entity, .flags = Derived | Hidden),
+        JE_FIELD(RectTransformComponent, containerBoxIndex, .flags = Derived | Hidden),
+        JE_FIELD(RectTransformComponent, scissor, .flags = Derived | Hidden | NotWritten),
         JE_FIELD(RectTransformComponent, ignoreScissor, .uiOrder = 14),
         JE_FIELD(RectTransformComponent, ignoreEvents, .uiOrder = 15),
     };
@@ -189,6 +222,12 @@ namespace {
         JE_FIELD(InputFieldComponent, selectionAnchor, .step = 1.0f, .group = "Selection", .uiOrder = 13),
         JE_FIELD(InputFieldComponent, disabled, .uiOrder = 4),
         JE_FIELD(InputFieldComponent, password, .uiOrder = 5),
+        // the soft keyboard (text-entry R7); absent in older scenes
+        JE_FIELD(InputFieldComponent, keyboardType, .enumDesc = &enums::kInputFieldKeyboardType, .flags = OmitIfDefault | EmptyIsDefault,
+                 .label = "Keyboard Type", .tooltip = "The phone keyboard the field asks for (Email Address shows @, Number Pad digits).",
+                 .group = "Content", .uiOrder = 6),
+        JE_FIELD(InputFieldComponent, characterLimit, .flags = OmitIfDefault | EmptyIsDefault, .min = 0.0f, .step = 1.0f,
+                 .label = "Character Limit", .tooltip = "Characters the player can type or paste. 0: no limit.", .group = "Content", .uiOrder = 6),
     };
 
     // ---------------------------------------------------------------- Panel
@@ -266,10 +305,14 @@ namespace {
     // a bitmap font's rows (S51 R22): pixel outline neighbours; a vector font's: SDF softness, dilate
     // (the bitmap rows are the Text drawer's own: InspectorPixelFont.cpp)
     bool textIsVector(const void* text) { return !::jasperengine::pixelart::isBitmapFontPath(static_cast<const TextComponent*>(text)->font[0]); }
+    bool textAutoSizes(const void* text) { return static_cast<const TextComponent*>(text)->autoSize; }
 
     constexpr FieldDesc kTextFields[] = {
         JE_FIELD(TextComponent, font, .updateFlags = UpdateFlags_Text_Atlas, .asset = AssetKind::Font, .uiOrder = 1),
         JE_FIELD(TextComponent, text, .updateFlags = kText, .drawer = "multiline"),
+        // game-ui-localization.md R16, R40: "" by default, written only when set
+        JE_FIELD(TextComponent, localizationKey, .flags = OmitIfDefault | Hidden, .updateFlags = kText, .label = "Localization Key",
+                 .tooltip = "A String Table key (ns.key): the text shows its message in the game language; the text stays the fallback."),
         JE_FIELD(TextComponent, fontSize, .updateFlags = UpdateFlags_Text_Atlas, .unit = Unit::Pixels, .step = 1.0f, .label = "FontSize",
                  .visibleIf = &textIsVector, .uiOrder = 2),
         JE_FIELD(TextComponent, multiline, .updateFlags = kText, .uiOrder = 3),
@@ -277,8 +320,30 @@ namespace {
                  .uiOrder = 10),
         JE_FIELD(TextComponent, fixedWidth, .updateFlags = kText, .label = "Width", .group = "Fixed size"),
         JE_FIELD(TextComponent, fixedHeight, .updateFlags = kText, .label = "Height", .group = "Fixed size"),
-        JE_FIELD(TextComponent, pivotBaseline, .updateFlags = kText, .label = "Baseline", .group = "Pivot"),
-        JE_FIELD(TextComponent, pivotCentered, .updateFlags = kText, .label = "Center", .group = "Pivot"),
+        // S94 F24: Unity TextMesh's Anchor (the box point on the origin), drawn as the Text drawer's button rows (InspectorPixelFont.cpp)
+        JE_FIELD(TextComponent, anchorHorizontal, .enumDesc = &enums::kTextAnchorHorizontal, .flags = Hidden, .updateFlags = kText,
+                 .label = "Anchor Horizontal", .group = "Anchor"),
+        JE_FIELD(TextComponent, anchorVertical, .enumDesc = &enums::kTextAnchorVertical, .flags = Hidden, .updateFlags = kText,
+                 .label = "Anchor Vertical", .group = "Anchor"),
+        // S94 F26: written only when Em
+        JE_FIELD(TextComponent, fontSizeUnit, .enumDesc = &enums::kTextFontSizeUnit, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
+                 .label = "Font Size Unit", .tooltip = "Pixel Height: Font Size is ascender to descender. Em: the em square, as CSS and TextMesh Pro.",
+                 .visibleIf = &textIsVector, .uiOrder = 2),
+        // S93 R37 (TMP): drawn by the Text drawer's two Alignment button rows; Auto Size's rows here
+        JE_FIELD(TextComponent, horizontalAlignment, .enumDesc = &enums::kTextHorizontalAlignment, .flags = OmitIfDefault | Hidden,
+                 .updateFlags = kText, .label = "Horizontal Alignment",
+                 .tooltip = "Each line inside the fixed width: Left, Center, Right or Justified (a paragraph's last line stays left)."),
+        JE_FIELD(TextComponent, verticalAlignment, .enumDesc = &enums::kTextVerticalAlignment, .flags = OmitIfDefault | Hidden,
+                 .updateFlags = kText, .label = "Vertical Alignment",
+                 .tooltip = "The lines inside the fixed height: Top, Middle, Bottom, or Baseline (the first baseline on the middle)."),
+        JE_FIELD(TextComponent, autoSize, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas, .label = "Auto Size",
+                 .tooltip = "The largest whole font size from Min to Max whose text fits the fixed width and height "
+                            "(a bitmap font: the largest multiple of its native size).",
+                 .group = "Auto Size"),
+        JE_FIELD(TextComponent, fontSizeMin, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
+                 .unit = Unit::Pixels, .min = 1.0f, .step = 1.0f, .label = "Min", .group = "Auto Size", .visibleIf = &textAutoSizes),
+        JE_FIELD(TextComponent, fontSizeMax, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
+                 .unit = Unit::Pixels, .min = 1.0f, .step = 1.0f, .label = "Max", .group = "Auto Size", .visibleIf = &textAutoSizes),
         // upstream (ui-scaling-text): outline, shadow and visible characters, written only when set;
         // the widths read finite and not below 0, the visible characters not below -1 (its decode)
         JE_FIELD(TextComponent, outlineWidth, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Outline",
@@ -316,38 +381,62 @@ namespace {
     // ---------------------------------------------------------------- UI Document
 
     bool documentInTexture(const void* document) {
+        return rendersToTexture(static_cast<const UIDocumentComponent*>(document)->renderMode);
+    }
+
+    bool documentOnMesh(const void* document) {
         return static_cast<const UIDocumentComponent*>(document)->renderMode == UIDocumentRenderMode::TEXTURE;
+    }
+
+    bool documentInWorld(const void* document) {
+        return static_cast<const UIDocumentComponent*>(document)->renderMode == UIDocumentRenderMode::WORLD;
     }
 
     constexpr uint64_t kDocumentReload = UpdateFlags_UIDocument_Reload;
 
     constexpr FieldDesc kUIDocumentFields[] = {
-        JE_FIELD(UIDocumentComponent, enabled, .flags = NonStructural | CodegenIfChanged),
+        JE_FIELD(UIDocumentComponent, enabled, .flags = NonStructural),
         // written when empty too: decoding over a component with a file must clear it
         JE_FIELD(UIDocumentComponent, filename, .updateFlags = kDocumentReload, .asset = AssetKind::UIDocument, .label = "Source",
                  .tooltip = "HTML file of the document, relative to the assets folder (e.g. ui/menu.html)."),
         JE_FIELD(UIDocumentComponent, sortOrder, .flags = NonStructural,
                  .tooltip = "Documents with a higher sort order draw on top of the scene's other documents."),
         // phase 1: only what differs from the defaults; an empty value is the default too
-        JE_FIELD(UIDocumentComponent, interactive, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged,
+        JE_FIELD(UIDocumentComponent, interactive, .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
                  .tooltip = "Receives pointer, keyboard and text input. Off: the game gets every event."),
         JE_FIELD(UIDocumentComponent, renderMode, .enumDesc = &enums::kUIDocumentRenderMode,
-                 .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged, .updateFlags = kDocumentReload,
-                 .tooltip = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows."),
-        JE_FIELD(UIDocumentComponent, textureWidth, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged | Clamped,
+                 .flags = OmitIfDefault | EmptyIsDefault, .updateFlags = kDocumentReload,
+                 .tooltip = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows. "
+                            "World Space: drawn as a quad at this GameObject, hidden behind what is in front of it."),
+        JE_FIELD(UIDocumentComponent, textureWidth, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | Clamped,
                  .updateFlags = kDocumentReload, .unit = Unit::Pixels, .min = 1.0f, .max = 8192.0f, .visibleIf = &documentInTexture),
-        JE_FIELD(UIDocumentComponent, textureHeight, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged | Clamped,
+        JE_FIELD(UIDocumentComponent, textureHeight, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | Clamped,
                  .updateFlags = kDocumentReload, .unit = Unit::Pixels, .min = 1.0f, .max = 8192.0f, .visibleIf = &documentInTexture),
-        JE_FIELD(UIDocumentComponent, inputSurface, .ops = &ops::Entity, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged,
+        JE_FIELD(UIDocumentComponent, inputSurface, .ops = &ops::Entity, .flags = OmitIfDefault | EmptyIsDefault,
                  .tooltip = "Mesh whose surface receives the pointer (hit test on its UVs). None: this GameObject's own mesh.",
-                 .visibleIf = &documentInTexture),
+                 .visibleIf = &documentOnMesh),
         JE_FIELD(UIDocumentComponent, pixelRatio, .ops = &ops::NonNegativeFiniteFloat,
-                 .flags = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | NonStructural | CodegenIfChanged, .updateFlags = kDocumentReload,
+                 .flags = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | NonStructural, .updateFlags = kDocumentReload,
                  .min = 0.0f, .tooltip = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode)."),
-    };
-
-    constexpr const char* kUIDocumentCodegenOrder[] = {
-        "filename", "sortOrder", "enabled", "interactive", "renderMode", "textureWidth", "textureHeight", "inputSurface", "pixelRatio"
+        JE_FIELD(UIDocumentComponent, isMenu, .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
+                 .tooltip = "Back goes here first; opening it releases the game's held input; Pause On Focus Loss does not fire while it shows."),
+        JE_FIELD(UIDocumentComponent, gamepadCursor, .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
+                 .tooltip = "While the player uses a gamepad, the stick moves a pointer over this document."),
+        // S92 R18: read each frame by UIDocumentSystem (no reload); another count goes to the one below it
+        JE_FIELD(UIDocumentComponent, msaaSamples, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | Clamped,
+                 .min = 0.0f, .max = 8.0f, .label = "Anti-aliasing (MSAA)",
+                 .tooltip = "Texture mode: MSAA samples of the document's texture, 0 (the scene's), 1, 2, 4 or 8. Screen documents use the scene's.",
+                 .visibleIf = &documentInTexture),
+        // S93: optional, the defaults keep the old behaviour
+        JE_FIELD(UIDocumentComponent, updateMode, .enumDesc = &enums::kUIDocumentUpdateMode,
+                 .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
+                 .tooltip = "Unscaled Time: animations run while the game is paused or slowed. Game Time: they follow Time Scale and stop with the game."),
+        JE_FIELD(UIDocumentComponent, pixelsPerUnit, .ops = &ops::FiniteFloat,
+                 .flags = OmitIfDefault | EmptyIsDefault | NonStructural, .min = 0.01f,
+                 .label = "Pixels Per Unit", .tooltip = "Texture pixels per world unit: the quad is Texture Width x Height / Pixels Per Unit.",
+                 .visibleIf = &documentInWorld),
+        JE_FIELD(UIDocumentComponent, billboard, .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
+                 .tooltip = "Turns the quad to the camera.", .visibleIf = &documentInWorld),
     };
 
     // the old one's runtime state (its loaded document) stays while the file and render settings do
@@ -390,16 +479,11 @@ namespace {
         JE_FIELD(UIComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
-        JE_FIELD(UIComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
+        JE_FIELD(UIComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload, .enumMask = enums::kComponentBlendModes),
         JE_FIELD(UIComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
     };
-
-    std::string uiCodegen(EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createUIComponent(ctx.indentSpaces, registry, entity, ctx.projectPath, ctx.sceneName, ctx.entityName,
-                                          ctx.assignExisting, ctx.entityVarNames);
-    }
 
     constexpr const char* kUIExtraKeys[] = {"buffer", "indices", "minBufferCount", "minIndicesCount", "primitiveType", "vertexCount", "aabb",
         "worldAABB", "texture", "color", "automaticFlipY", "flipY", "pointerMoved", "focused", "customShader", "shaderUniforms", "shaderTextures",
@@ -412,14 +496,13 @@ const ComponentDesc kRectTransformDesc{
     .displayName = "Rect Transform", .icon = ICON_FA_VECTOR_SQUARE,
     .body = JE_STRUCT_DESC(RectTransformComponent, "RectTransformComponent", kRectTransformFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(RectTransformComponent),
-    .codegenVar = "layout",
 };
 
 const ComponentDesc kButtonDesc{
     .type = ComponentType::ButtonComponent, .cppName = "ButtonComponent", .key = "button", .displayName = "Button", .icon = ICON_FA_SQUARE_CHECK,
     .body = JE_STRUCT_DESC(ButtonComponent, "ButtonComponent", kButtonFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ButtonComponent),
-    .codegenVar = "button", .edited = &markForUpdate<ButtonComponent, &ButtonComponent::needUpdateButton>,
+    .edited = &markForUpdate<ButtonComponent, &ButtonComponent::needUpdateButton>,
 };
 
 const ComponentDesc kScrollbarDesc{
@@ -428,7 +511,7 @@ const ComponentDesc kScrollbarDesc{
     .body = JE_STRUCT_DESC(ScrollbarComponent, "ScrollbarComponent", kScrollbarFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ScrollbarComponent),
     .postDecode = [](void* comp, const DecodeContext&) { static_cast<ScrollbarComponent*>(comp)->needUpdateScrollbar = true; },
-    .codegenVar = "scrollbar", .edited = &markForUpdate<ScrollbarComponent, &ScrollbarComponent::needUpdateScrollbar>,
+    .edited = &markForUpdate<ScrollbarComponent, &ScrollbarComponent::needUpdateScrollbar>,
 };
 
 const ComponentDesc kProgressbarDesc{
@@ -437,7 +520,7 @@ const ComponentDesc kProgressbarDesc{
     .body = JE_STRUCT_DESC(ProgressbarComponent, "ProgressbarComponent", kProgressbarFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ProgressbarComponent),
     .postDecode = [](void* comp, const DecodeContext&) { static_cast<ProgressbarComponent*>(comp)->needUpdateProgressbar = true; },
-    .codegenVar = "progressbar", .edited = &markForUpdate<ProgressbarComponent, &ProgressbarComponent::needUpdateProgressbar>,
+    .edited = &markForUpdate<ProgressbarComponent, &ProgressbarComponent::needUpdateProgressbar>,
 };
 
 const ComponentDesc kInputFieldDesc{
@@ -446,7 +529,7 @@ const ComponentDesc kInputFieldDesc{
     .body = JE_STRUCT_DESC(InputFieldComponent, "InputFieldComponent", kInputFieldFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(InputFieldComponent),
     .postDecode = [](void* comp, const DecodeContext&) { static_cast<InputFieldComponent*>(comp)->needUpdateInputField = true; },
-    .codegenVar = "inputfield", .edited = &markForUpdate<InputFieldComponent, &InputFieldComponent::needUpdateInputField>,
+    .edited = &markForUpdate<InputFieldComponent, &InputFieldComponent::needUpdateInputField>,
 };
 
 const ComponentDesc kPanelDesc{
@@ -454,7 +537,7 @@ const ComponentDesc kPanelDesc{
     .body = JE_STRUCT_DESC(PanelComponent, "PanelComponent", kPanelFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(PanelComponent),
     .postDecode = [](void* comp, const DecodeContext&) { static_cast<PanelComponent*>(comp)->needUpdatePanel = true; },
-    .codegenVar = "panel", .edited = &markForUpdate<PanelComponent, &PanelComponent::needUpdatePanel>,
+    .edited = &markForUpdate<PanelComponent, &PanelComponent::needUpdatePanel>,
 };
 
 const ComponentDesc kLayoutGroupDesc{
@@ -462,21 +545,18 @@ const ComponentDesc kLayoutGroupDesc{
     .icon = ICON_FA_TABLE_CELLS,
     .body = JE_STRUCT_DESC(LayoutGroupComponent, "LayoutGroupComponent", kLayoutGroupFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(LayoutGroupComponent),
-    .codegenVar = "container",
 };
 
 const ComponentDesc kTextDesc{
     .type = ComponentType::TextComponent, .cppName = "TextComponent", .key = "text", .displayName = "Text", .icon = ICON_FA_FONT,
     .body = JE_STRUCT_DESC(TextComponent, "TextComponent", kTextFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(TextComponent),
-    .codegenVar = "text",
 };
 
 const ComponentDesc kImageDesc{
     .type = ComponentType::ImageComponent, .cppName = "ImageComponent", .key = "image", .displayName = "Image", .icon = ICON_FA_IMAGE,
     .body = JE_STRUCT_DESC(ImageComponent, "ImageComponent", kImageFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(ImageComponent),
-    .codegenVar = "image",
 };
 
 const ComponentDesc kUIDocumentDesc{
@@ -485,7 +565,6 @@ const ComponentDesc kUIDocumentDesc{
     .body = JE_STRUCT_DESC(UIDocumentComponent, "UIDocumentComponent", kUIDocumentFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(UIDocumentComponent),
     .postDecode = &uiDocumentPostDecode,
-    .codegenVar = "uidocument", .codegenOrder = kUIDocumentCodegenOrder,
 };
 
 const ComponentDesc kUIDesc{
@@ -493,9 +572,7 @@ const ComponentDesc kUIDesc{
     .body = JE_STRUCT_DESC(UIComponent, "UIComponent", kUIFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(UIComponent),
     .codec = &kUICodec,
-    .codegen = &uiCodegen,
     .extraKeys = kUIExtraKeys,
 };
-
 
 }

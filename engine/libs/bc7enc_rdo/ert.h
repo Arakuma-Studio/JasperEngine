@@ -9,6 +9,8 @@
 #include <time.h>
 #include <vector>
 #include <string>
+// JasperEngine patch: GCC 13 and later no longer bring uint8_t and uint32_t through the other headers
+#include <cstdint>
 
 namespace ert
 {

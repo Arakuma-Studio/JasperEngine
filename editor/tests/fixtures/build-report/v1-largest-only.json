@@ -1,0 +1,51 @@
+{
+  "categories": {
+    "audio": 1200,
+    "engine": 0,
+    "models": 2048,
+    "other": 10,
+    "scenes": 100,
+    "scripts": 50,
+    "textures": 4096
+  },
+  "largest": [
+    {
+      "bytes": 4096,
+      "category": "textures",
+      "path": "assets/je-cooked/astc/1f.ktx2",
+      "source": "textures/wall.png",
+      "source_bytes": 8000
+    },
+    {
+      "bytes": 2048,
+      "category": "models",
+      "path": "assets/je-cooked/models/3fa1.glb",
+      "source": "models/crate.glb",
+      "source_bytes": 3000
+    },
+    {
+      "bytes": 1200,
+      "category": "audio",
+      "path": "assets/sounds/hit.wav"
+    },
+    {
+      "bytes": 100,
+      "category": "scenes",
+      "path": "scenes/1.jscn"
+    },
+    {
+      "bytes": 50,
+      "category": "scripts",
+      "path": "lua/main.lua"
+    },
+    {
+      "bytes": 10,
+      "category": "other",
+      "path": "assets/je-asset-map.json"
+    }
+  ],
+  "method": "source",
+  "platform": "source",
+  "total_bytes": 7504,
+  "version": 1
+}

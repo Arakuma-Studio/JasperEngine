@@ -24,6 +24,10 @@ namespace{
     const char* const filmGrainTypeValues[] = {"CLASSIC", "LENS", "FILMIC", nullptr};
     const char* const filmGateMaskNames[] = {"none", "rounded", "academy_137", "widescreen_185", "anamorphic_239", nullptr};
     const char* const filmGateMaskValues[] = {"NONE", "ROUNDED", "ACADEMY_137", "WIDESCREEN_185", "ANAMORPHIC_239", nullptr};
+    const char* const vignetteFalloffNames[] = {"smoothness", "radii", nullptr};
+    const char* const vignetteFalloffValues[] = {"SMOOTHNESS", "RADII", nullptr};
+    const char* const cavityTypeNames[] = {"screen", "world", "both", nullptr};
+    const char* const cavityTypeValues[] = {"SCREEN", "WORLD", "BOTH", nullptr};
     const char* const lutEncodingNames[] = {"auto", "srgb", "linear", "logc3", "acescct", "cineon", "davinci_intermediate", nullptr};
     const char* const lutEncodingValues[] = {"AUTO", "SRGB", "LINEAR", "LOGC3", "ACESCCT", "CINEON", "DAVINCI_INTERMEDIATE", nullptr};
 
@@ -58,6 +62,7 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_ENUM(lutInputEncoding, "lut_input_encoding", lutEncodingNames, "LutInputEncoding", lutEncodingValues,
                 "a .cube LUT's input: auto (from its title and range), srgb, linear (display), logc3, acescct, cineon, davinci_intermediate (scene, before the tone mapping)"),
         PP_FIELD(lutSize, "lut_size", T::Int, 16.0f, 32.0f, "side of the engine's colour LUT: 16 or 32"),
+        PP_FIELD(lutFlipGreen, "lut_flip_green", T::Bool, 0.0f, 1.0f, "an image strip LUT with green 0 at the top row (not Unity's layout)"),
         PP_FIELD(monochromeEnabled, "monochrome_enabled", T::Bool, 0.0f, 1.0f, "grayscale or sepia"),
         PP_ENUM(monochromeMode, "monochrome_mode", monochromeNames, "MonochromeMode", monochromeValues, "monochrome look: grayscale, sepia"),
         PP_FIELD(monochromeIntensity, "monochrome_intensity", T::Float, 0.0f, 1.0f, "monochrome mix (0..1)"),
@@ -66,6 +71,10 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_FIELD(vignetteSmoothness, "vignette_smoothness", T::Float, 0.01f, 1.0f, "vignette falloff width (0..1)"),
         PP_FIELD(vignetteRoundness, "vignette_roundness", T::Float, 0.0f, 1.0f, "1 a circle, 0 the screen's shape"),
         PP_FIELD(vignetteColor, "vignette_color", T::Vector3, 0.0f, 1.0f, "vignette colour [r,g,b] (sRGB)"),
+        PP_ENUM(vignetteFalloff, "vignette_falloff", vignetteFalloffNames, "VignetteFalloff", vignetteFalloffValues,
+                "vignette falloff: smoothness (vignette_smoothness), radii (vignette_start to vignette_end)"),
+        PP_FIELD(vignetteStart, "vignette_start", T::Float, 0.0f, 2.0f, "radii falloff: radius the darkening starts at (1 the screen edge's midpoint)"),
+        PP_FIELD(vignetteEnd, "vignette_end", T::Float, 0.0f, 3.0f, "radii falloff: radius of full darkening (above vignette_start)"),
         PP_FIELD(ditherEnabled, "dither_enabled", T::Bool, 0.0f, 1.0f, "dither against 8-bit banding"),
         PP_FIELD(fxaaEnabled, "fxaa_enabled", T::Bool, 0.0f, 1.0f, "FXAA anti-aliasing (uber pass)"),
         PP_FIELD(chromaticAberrationEnabled, "chromatic_aberration_enabled", T::Bool, 0.0f, 1.0f, "chromatic aberration (uber pass)"),
@@ -81,6 +90,18 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_FIELD(edgeDetectThreshold, "edge_detect_threshold", T::Float, 0.0f, 1.0f, "luma gradient where edges start (0..1)"),
         PP_FIELD(edgeDetectIntensity, "edge_detect_intensity", T::Float, 0.0f, 1.0f, "edge colour mix (0..1)"),
         PP_FIELD(edgeDetectColor, "edge_detect_color", T::Vector3, 0.0f, 1.0f, "edge colour [r,g,b] (sRGB)"),
+        PP_FIELD(cavityEnabled, "cavity_enabled", T::Bool, 0.0f, 1.0f, "Blender-style cavity: lightens convex edges and darkens creases of opaque 3D meshes"),
+        PP_ENUM(cavityType, "cavity_type", cavityTypeNames, "CavityType", cavityTypeValues,
+                "cavity: screen (thin edge lines), world (soft bevel within a world radius), both"),
+        PP_FIELD(cavityScreenRidge, "cavity_screen_ridge", T::Float, 0.0f, 2.0f, "how much the edge lines brighten convex edges (0..2)"),
+        PP_FIELD(cavityScreenValley, "cavity_screen_valley", T::Float, 0.0f, 2.0f, "how much the edge lines darken creases (0..2)"),
+        PP_FIELD(cavityScreenWidth, "cavity_screen_width", T::Float, 1.0f, 4.0f, "edge line width in pixels at 1080p, scaled with the screen height (1..4)"),
+        PP_FIELD(cavityWorldRadius, "cavity_world_radius", T::Float, 0.01f, 5.0f, "world-space width of the soft bevel; raise it when nothing shows on large objects (0.01..5)"),
+        PP_FIELD(cavityWorldRidge, "cavity_world_ridge", T::Float, 0.0f, 2.5f, "how much the bevel brightens convex edges (0..2.5)"),
+        PP_FIELD(cavityWorldValley, "cavity_world_valley", T::Float, 0.0f, 2.5f, "how much the bevel darkens creases (0..2.5)"),
+        PP_FIELD(cavityWorldSamples, "cavity_world_samples", T::Int, 4.0f, 16.0f, "bevel depth samples per pixel: 4, 8 or 16 (smoother, same width)"),
+        PP_FIELD(cavityMaxPixelRadius, "cavity_max_pixel_radius", T::Float, 0.0f, 64.0f, "caps how wide the bevel gets on screen when the camera is close, pixels at 1080p (0 no cap)"),
+        PP_FIELD(cavityDebug, "cavity_debug", T::Bool, 0.0f, 1.0f, "shows the cavity alone as grey (mid grey: no change)"),
         PP_FIELD(filmGrainEnabled, "film_grain_enabled", T::Bool, 0.0f, 1.0f, "film grain (uber pass)"),
         PP_FIELD(filmGrainIntensity, "film_grain_intensity", T::Float, 0.0f, 1.0f, "grain amount (0..1)"),
         PP_FIELD(filmGrainResponse, "film_grain_response", T::Float, 0.0f, 1.0f, "less grain in bright areas (0..1)"),
@@ -204,9 +225,11 @@ void PostProcessingSettings::clamp(){
     dynamicResolutionTargetFps = std::min(std::max(dynamicResolutionTargetFps, 0), 240);
     glitchTears = std::min(std::max(glitchTears, 0), 8);
     glitchSeed = std::min(std::max(glitchSeed, 0), 65535);
+    cavityWorldSamples = cavityWorldSamples >= 16 ? 16 : (cavityWorldSamples >= 8 ? 8 : 4);
     if ((int)tonemap < 0 || (int)tonemap > (int)TonemapMode::AGX) tonemap = TonemapMode::NONE;
     if ((int)monochromeMode < 0 || (int)monochromeMode > (int)MonochromeMode::SEPIA) monochromeMode = MonochromeMode::GRAYSCALE;
     if ((int)filmGrainType < 0 || (int)filmGrainType > (int)FilmGrainType::FILMIC) filmGrainType = FilmGrainType::CLASSIC;
+    if ((int)cavityType < 0 || (int)cavityType > (int)CavityType::BOTH) cavityType = CavityType::BOTH;
     if ((int)filmGateMask < 0 || (int)filmGateMask > (int)FilmGateMask::ANAMORPHIC_239) filmGateMask = FilmGateMask::NONE;
     if ((int)lutInputEncoding < 0 || (int)lutInputEncoding > (int)LutInputEncoding::DAVINCI_INTERMEDIATE) lutInputEncoding = LutInputEncoding::AUTO;
     if ((int)paletteDither < 0 || (int)paletteDither > (int)PaletteDither::BAYER8) paletteDither = PaletteDither::BAYER4;

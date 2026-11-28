@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>S92: inset-clip</title>
+<!-- S92 R29 (docs/specs/S92-htmlui-render-cost.md): clip-path inset() with round and circle(): analytic clips once basic shapes are.
+     Drawn at 1280x720, pixel ratio 1; #tick is the element another frame changes (the warm column). -->
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; font-family: sans-serif; color: #ffffff; }
+  #tick { position: absolute; left: 1180px; top: 680px; font-size: 16px; }
+  .shape { position: absolute; width: 240px; height: 160px; background-color: #e04a7a; }
+  .shape span { position: absolute; left: 20px; top: 60px; font-size: 24px; }
+</style>
+</head>
+<body>
+  <div class="shape" style="left: 80px; top: 80px; clip-path: inset(10px 20px 10px 20px round 24px)"><span>inset</span></div>
+  <div class="shape" style="left: 400px; top: 80px; width: 200px; height: 200px; clip-path: circle(90px at 50% 50%)"><span>circle</span></div>
+  <span id="tick">0</span>
+</body>
+</html>

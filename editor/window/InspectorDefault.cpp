@@ -12,19 +12,25 @@
 
 #include "InspectorWindow.h"
 #include "component/MeshComponent.h"
+#include "component/OutlineComponent.h"
+#include "component/Transform.h"
 #include "component/TerrainComponent.h"
 
 #include "Catalog.h"
 #include "Theme.h"
 #include "component/FogComponent.h"
+#include "component/Light2DComponent.h"
 #include "component/ModelComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "command/CommandHandle.h"
+#include "command/type/MultiPropertyCmd.h"
 #include "command/type/ReflectedValueCmd.h"
+#include "command/type/ScenePropertyCmd.h"
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
 #include "external/IconsFontAwesome6.h"
 #include "terrainworld/TerrainWorldPanel.h"
+#include "util/Ambient2D.h"
 
 #include "imgui.h"
 
@@ -369,18 +375,76 @@ void editor::InspectorWindow::drawDefaultArray(ComponentType cpType, SceneProjec
     }
 }
 
-void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>&) {
-    if (cpType == ComponentType::LocalVolumetricFogComponent) {
-        // it shows through the scene's volumetric fog only
-        FogComponent* fog = sceneProject->scene->findComponentFromIndex<FogComponent>(0);
-        if (!fog || fog->type != FogType::HEIGHT || !fog->volumetric) {
+void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities) {
+    if (cpType == ComponentType::OutlineComponent) {
+        // an Outline draws the Mesh of its GameObject and, with Include Children, the ones below
+        Scene* scene = sceneProject->scene;
+        auto drawsMesh = [scene](Entity entity) {
+            const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            return mesh && mesh->numSubmeshes > 0;
+        };
+        bool nothing = false;
+        for (Entity entity : entities) {
+            const OutlineComponent* outline = scene->findComponent<OutlineComponent>(entity);
+            if (!outline || drawsMesh(entity) || !scene->findComponent<Transform>(entity)) continue;
+            bool below = false;
+            if (outline->includeChildren) {
+                auto transforms = scene->getComponentArray<Transform>();
+                const size_t last = scene->findBranchLastIndex(entity);
+                for (size_t index = transforms->getIndex(entity) + 1; index <= last && index < transforms->size() && !below; index++)
+                    below = drawsMesh(transforms->getEntity(index));
+            }
+            nothing = nothing || !below;
+        }
+        if (nothing) {
             ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
             ImGui::SameLine();
-            ImGui::TextWrapped("Local Volumetric Fog shows through volumetric fog only: add a Fog of Type Height and turn its Volumetric Fog on.");
+            ImGui::TextWrapped("Nothing to outline: this GameObject has no Mesh%s.",
+                               entities.size() == 1 && scene->findComponent<OutlineComponent>(entities[0]) &&
+                               !scene->findComponent<OutlineComponent>(entities[0])->includeChildren
+                                   ? " (turn Include Children on to outline the Meshes below it)" : ", nor has any GameObject below it");
         }
+    }
+    if (cpType == ComponentType::LocalVolumetricFogComponent && !entities.empty()) {
+        // it shows through the scene's volumetric fog only
+        drawAtmosphereDiagnostics(sceneProject, entities[0], true);
     }
     if (cpType == ComponentType::TerrainWorldComponent) {
         TerrainWorldPanel::drawInspectorNotes(project, sceneProject);
+    }
+    if (cpType == ComponentType::Light2DComponent) {
+        // what keeps a Light 2D from showing on normal maps (S78 R20), each with its fix
+        std::vector<Entity> flat;
+        for (Entity entity : entities) {
+            const Light2DComponent* light = sceneProject->scene->findComponent<Light2DComponent>(entity);
+            if (light && light->height == 0.0f) flat.push_back(entity);
+        }
+        if (!flat.empty()) {
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+            ImGui::SameLine();
+            ImGui::TextWrapped("Height 0: normal maps are ignored.");
+            if (ImGui::Button("Set Height 64##light2d_height")) {
+                auto* multi = new MultiPropertyCmd();
+                for (Entity entity : flat) {
+                    multi->addPropertyCmd<float>(project, sceneProject->id, entity, cpType, "height", Light2DComponent::NEW_HEIGHT);
+                }
+                multi->setNoMerge();
+                CommandHandle::get(sceneProject->id)->addCommand(multi);
+            }
+        }
+        if (isAmbientLight2DBright(*sceneProject->scene)) {
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+            ImGui::SameLine();
+            ImGui::TextWrapped("The scene's Ambient Light 2D is bright: it washes out 2D lights and normal maps.");
+            if (ImGui::Button("Darken Ambient##light2d_ambient")) {
+                auto* multi = new MultiPropertyCmd();
+                multi->addCommand(std::make_unique<ScenePropertyCmd<Vector3>>(
+                    project, sceneProject->id, "ambient_light_2d_color", Vector3(kDarkAmbient2DColor[0], kDarkAmbient2DColor[1], kDarkAmbient2DColor[2])));
+                multi->addCommand(std::make_unique<ScenePropertyCmd<float>>(project, sceneProject->id, "ambient_light_2d_intensity", 1.0f));
+                multi->setNoMerge();
+                CommandHandle::get(sceneProject->id)->addCommand(multi);
+            }
+        }
     }
 }
 
@@ -405,6 +469,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::ShadowCaster2DComponent: return &InspectorWindow::drawShadowCaster2DComponent;
         case ComponentType::CapsuleShadowCasterComponent: return &InspectorWindow::drawCapsuleShadowCasterComponent;
         case ComponentType::FogComponent: return &InspectorWindow::drawFogComponent;
+        case ComponentType::FogZoneComponent: return &InspectorWindow::drawFogZoneComponent;
         case ComponentType::VolumetricCloudsComponent: return &InspectorWindow::drawVolumetricCloudsComponent;
         case ComponentType::ReflectionProbeComponent: return &InspectorWindow::drawReflectionProbeComponent;
         case ComponentType::UIDocumentComponent: return &InspectorWindow::drawUIDocumentComponent;
@@ -413,6 +478,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::AudioSourceComponent: return &InspectorWindow::drawAudioComponent;
         case ComponentType::AudioSnapshotComponent: return &InspectorWindow::drawAudioSnapshotComponent;
         case ComponentType::TitleArtRendererComponent: return &InspectorWindow::drawTitleArtRendererComponent;
+        case ComponentType::SpriteSkinComponent: return &InspectorWindow::drawSpriteSkinComponent;
         case ComponentType::SkyboxComponent: return &InspectorWindow::drawSkyboxComponent;
         case ComponentType::ParticleSystemComponent: return &InspectorWindow::drawParticleSystemComponent;
         case ComponentType::ForceFieldComponent: return &InspectorWindow::drawForceFieldComponent;
@@ -431,7 +497,11 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::WaterVolumeComponent: return &InspectorWindow::drawWaterVolumeComponent;
         case ComponentType::WaterExcluderComponent: return &InspectorWindow::drawWaterExcluderComponent;
         case ComponentType::WaterWakeComponent: return &InspectorWindow::drawWaterWakeComponent;
+        case ComponentType::SimulationCullingComponent: return &InspectorWindow::drawSimulationCullingComponent;
+        case ComponentType::DialogueRunnerComponent: return &InspectorWindow::drawDialogueRunnerComponent;
         case ComponentType::BuoyancyComponent: return &InspectorWindow::drawBuoyancyComponent;
+        case ComponentType::WheelColliderComponent: return &InspectorWindow::drawWheelColliderComponent;
+        case ComponentType::VehicleDrivetrainComponent: return &InspectorWindow::drawVehicleDrivetrainComponent;
         case ComponentType::Joint3DComponent: return &InspectorWindow::drawJoint3DComponent;
         case ComponentType::ActionComponent: return &InspectorWindow::drawActionComponent;
         case ComponentType::PositionTweenComponent: return &InspectorWindow::drawPositionTweenComponent;
@@ -469,6 +539,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::VertexAnimatorComponent: return &InspectorWindow::drawVertexAnimatorComponent;
         // T6 R65 (InspectorVoxels.cpp)
         case ComponentType::VoxelVolumeComponent: return &InspectorWindow::drawVoxelVolumeComponent;
+        // V1 R100 (vertexcolor/VertexColorInspector.cpp)
+        case ComponentType::VertexColorsComponent: return &InspectorWindow::drawVertexColorsComponent;
         // upstream's (InspectorUpstream.cpp)
         case ComponentType::OnScreenStickComponent: return &InspectorWindow::drawOnScreenStickComponent;
         case ComponentType::OnScreenButtonComponent: return &InspectorWindow::drawOnScreenButtonComponent;

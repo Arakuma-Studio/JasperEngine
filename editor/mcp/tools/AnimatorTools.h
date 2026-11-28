@@ -52,6 +52,10 @@ namespace jasperengine::editor::mcp::animator_tools {
     // mask, states; play mode: live weight, mask, blend and queue), `mask_coverage`, and
     // `animator` when the player hands over to the GameObject's Animator
     void addPlayerLayers(Project* project, SceneProject* scene, Entity root, Json& player);
+    // get_animation {entity}'s Animator (the GameObject's, else its nearest ancestor's): entity,
+    // controller and `mask_coverage` of its masked layers with mesh_space_rotation and the
+    // boundary bones (paths from the Animator's GameObject) of the bound rig; null when none
+    Json animatorLayers(Project* project, SceneProject* scene, Entity entity);
 
     // write_file of a .mask / .controller: false + error when the text can't be read (not JSON,
     // another format, a newer version, Unity YAML); `warnings` the lenient reader's ("path:

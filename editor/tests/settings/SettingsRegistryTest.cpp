@@ -79,7 +79,8 @@ TEST(SettingsRegistry, PreferencePagesFollowTheWindowsCategories) {
     std::vector<std::string> titles;
     for (const SettingsPage* page : registry.pages(SettingsScope::Preference)) titles.push_back(page->displayName());
     EXPECT_EQ(titles, (std::vector<std::string>{"General", "Code Editor", "Asset Pipeline", "Scripting", "Undo", "Lattice", "Scene View",
-                                                "External Tools", "Logging", "Pixel Art", "Diagnostics", "Shader Cache", "Version Control"}));
+                                                "External Tools", "Logging", "Pixel Art", "Diagnostics", "Shader Cache", "Version Control",
+                                                "Play Mode"}));
     const SettingRow* highlight = registry.find("preferences.pixel_art.agent_edit_highlight");
     ASSERT_NE(highlight, nullptr);
     EXPECT_TRUE(highlight->mcp);
@@ -161,6 +162,25 @@ TEST(SettingsSearch, FiltersRows) {
     // typos are forgiven in Filter mode, bare subsequences are not
     EXPECT_FALSE(registry.search("vsnyc").empty());
     EXPECT_TRUE(registry.search("qzx").empty());
+}
+
+// S98 REQ-44: each new setting is found by its Unity name, on the page that draws it
+TEST(SettingsSearch, FindsTheS98Settings) {
+    const SettingsRegistry& registry = SettingsRegistry::get();
+    const std::vector<std::pair<std::string, std::string>> settings = {
+        {"Asset Stripping", "player.asset_stripping"}, {"Always Include", "player.always_include"},
+        {"Exclude From Build", "player.exclude_from_build"}, {"Debug Package Suffix", "android.debug_package_suffix"},
+        {"Material Creation Mode", "mesh.material_creation_mode"}};
+    for (const auto& [label, key] : settings) {
+        bool found = false;
+        for (const SettingRow* row : registry.search(label)) found = found || row->key == key;
+        EXPECT_TRUE(found) << label << " does not find " << key;
+    }
+    const SettingRow* materials = registry.find("mesh.material_creation_mode");
+    ASSERT_NE(materials, nullptr);
+    EXPECT_EQ(materials->page, "Mesh");
+    EXPECT_EQ(materials->label, "Material Creation Mode");
+    EXPECT_TRUE(materials->mcp && materials->get && materials->set);
 }
 
 }  // namespace SettingsRegistryTest_cpp

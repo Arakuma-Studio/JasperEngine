@@ -111,7 +111,9 @@ void ImGuiTestEngineHook_ItemAdd(ImGuiContext* context, ImGuiID id, const ImRect
     LocatorState& locator = state();
     ImGuiWindow* window = context->CurrentWindow;
     if (!locator.recording || !window || id == 0 || !windowMatches(locator.window, window)) return;
-    if (id != window->GetID(locator.label.c_str())) return;
+    // ImGui registers a window itself (its title bar) with its ID stack emptied for the call: no
+    // label id hashes there (GetID would read the empty stack), and ItemInfo matches it by name
+    if (window->IDStack.Size == 0 || id != window->GetID(locator.label.c_str())) return;
     record(window, id, locator.label.c_str(), itemData ? itemData->Rect : bb,
            itemData ? itemData->ItemFlags : context->CurrentItemFlags);
 }

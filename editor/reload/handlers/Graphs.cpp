@@ -8,6 +8,7 @@
 #include "ReloadHandlers.h"
 
 #include "Project.h"
+#include "dialogue/DialogueProgram.h"
 #include "graph/Graph.h"
 #include "graph/GraphDocument.h"
 #include "util/ProjectChecks.h"
@@ -48,5 +49,9 @@ void reload::reloadGraphs(Context& ctx, const std::vector<fs::path>& external, c
     std::vector<fs::path> reread = external;
     reread.insert(reread.end(), documents.begin(), documents.end());
     if (!reread.empty()) GraphDocument::filesChanged(reread);
+    // dialogue-graphs.md R12: a running conversation moves to the edited dialogue at once
+    for (const fs::path& path : reread) {
+        if (path.extension() == dialogue::FILE_EXTENSION) dialogue::Programs::fileChanged(path.string());
+    }
     if (ctx.options.full) GraphDocument::checkDiskChanges();
 }

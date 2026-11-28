@@ -75,7 +75,7 @@ TEST(Preservation, RoundTrip) {
     std::vector<IssueKey> expected = {
         {LoadIssueKind::UnknownRootKey, "", "lighting2", lineOf(text, "lighting2:"), LoadIssueFate::Preserved},
         {LoadIssueKind::InvalidValue, "transform", "position", lineOf(text, "position: [a, b]"), LoadIssueFate::Preserved},
-        {LoadIssueKind::UnknownEnumValue, "light", "type", lineOf(text, "type: area"), LoadIssueFate::Preserved},
+        {LoadIssueKind::UnknownEnumValue, "light", "type", lineOf(text, "type: spots"), LoadIssueFate::Preserved},
         {LoadIssueKind::UnknownField, "light", "areaSize", lineOf(text, "        areaSize:"), LoadIssueFate::Preserved},
         {LoadIssueKind::UnknownComponent, "jumpable", "", lineOf(text, "      jumpable:"), LoadIssueFate::Preserved},
         {LoadIssueKind::UnknownRootKey, "", "stance", lineOf(text, "    stance:"), LoadIssueFate::Preserved},
@@ -88,12 +88,12 @@ TEST(Preservation, RoundTrip) {
     const LoadIssue* type = preservationFindIssue(decoded.report, "light", "type");
     ASSERT_NE(type, nullptr);
     EXPECT_EQ(type->suggestion, "spot");
-    EXPECT_EQ(type->value, "area");
+    EXPECT_EQ(type->value, "spots");
     EXPECT_EQ(type->entityPath, "Player");
-    EXPECT_EQ(type->describe(), "Player \xE2\x80\xBA light.type = \"area\": unknown value (did you mean \"spot\"?) \xE2\x80\x94 future.scene:" +
+    EXPECT_EQ(type->describe(), "Player \xE2\x80\xBA light.type = \"spots\": unknown value (did you mean \"spot\"?) \xE2\x80\x94 future.scene:" +
               std::to_string(type->line));
     EXPECT_EQ(type->consoleLine(), "future.scene:" + std::to_string(type->line) +
-              ": light.type: unknown value \"area\" (did you mean \"spot\"?) (in Player) \xE2\x80\x94 kept");
+              ": light.type: unknown value \"spots\" (did you mean \"spot\"?) (in Player) \xE2\x80\x94 kept");
 
     // the live values took their defaults; the hierarchy and the other fields are intact
     const Entity player = preservationEntityNamed(*decoded.scene, "Player");
@@ -124,7 +124,7 @@ TEST(Preservation, Retire) {
     ASSERT_NE(store, nullptr);
 
     // still the load's live value: the authored one stands
-    EXPECT_EQ(encodeScene(decoded)["entities"][0]["components"]["light"]["type"].Scalar(), "area");
+    EXPECT_EQ(encodeScene(decoded)["entities"][0]["components"]["light"]["type"].Scalar(), "spots");
 
     // the user picks a type: it wins and the stand-in retires
     scene->getComponent<LightComponent>(player).type = LightType::POINT;

@@ -1,0 +1,74 @@
+formatVersion: 8
+id: 9409
+name: Root motion v8
+scene:
+  backgroundColor: [0.25, 0.45, 0.65, 1]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Hero
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      animator:
+        enabled: true
+        controller: anim/hero.controller
+        speed: 1
+        applyRootMotion: false
+    children:
+      - type: Entity
+        entity: 1002
+        name: Dancer
+        components:
+          transform:
+            position: [0, 0, 1]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+          animationplayer:
+            enabled: true
+            clips:
+              - name: Dance
+                clip: anim/dance.anim
+            defaultClip: Dance
+            playAutomatically: true
+            speed: 1
+            defaultFadeTime: 0.25
+  - type: Entity
+    entity: 1003
+    name: Runner
+    components:
+      transform:
+        position: [2, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      animator:
+        enabled: true
+        controller: anim/runner.controller
+        speed: 1
+        applyRootMotion: true
+  - type: Entity
+    entity: 1004
+    name: HeroInstance
+    components:
+      transform:
+        position: [4, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      prefab:
+        name: Walker
+        path: prefabs/Walker.prefab
+        guid: 2d0c8b1f5e3e4d4c9b7f6e5d4c3b2a19
+    prefabInstance:
+      version: 3
+      overrides:
+        - registryEntity: 1001
+          components:
+            animator:
+              speed: 2
+          properties:
+            animator:
+              - speed

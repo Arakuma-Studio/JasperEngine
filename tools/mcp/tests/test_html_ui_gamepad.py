@@ -172,3 +172,86 @@ async def test_gamepad_input_routing(ed: Editor):
 
     finally:
         await ed.call("play", action="stop")
+
+
+MENU = "assets/ui/cursor_menu.html"
+
+MENU_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Cursor menu</title>
+  <style>
+    html, body { margin: 0; background-color: #1e1e1e; color: #ffffff; font-family: sans-serif; }
+    #start { position: absolute; left: 100px; top: 100px; width: 200px; height: 60px; }
+  </style>
+</head>
+<body>
+  <button id="start">Start</button>
+</body>
+</html>
+"""
+
+
+async def test_gamepad_cursor_and_back_route(ed: Editor):
+    """The gamepad cursor through send_input and inspect_ui, and send_input app back's route."""
+    try:
+        await ed.console_since(None, limit=1)
+        made = await ed.call("create_scene", name="HtmlUiCursor", type="UI")
+        scene = made["scene"]["id"]
+        await ed.call("write_file", path=MENU, content=MENU_HTML)
+        ent = await ed.call("create_entity", scene=scene, type="ui_document", name="Menu")
+        entity = ent["entity_id"]
+        await ed.call("set_properties", scene=scene, entity=entity, values={"uidocument": {"filename": MENU}})
+        await ed.call("save_scene", scene=scene, path="scenes/HtmlUiCursor")
+        await ed.call("wait", frames=10)
+        ed.check(await ed.call("play", action="start", scene=scene, fixed_fps=60), "play started")
+        await ed.call("wait", frames=10)
+        await lua(ed, """_G.starts = 0
+            object('Menu', 'UIDocument'):getElementById('start'):addEventListener('click', function()
+                _G.starts = _G.starts + 1
+                print('[gate] start')
+            end)""")
+
+        # no Gamepad Cursor document: a warp is an error that names the fix
+        r = await ed.call_raw("send_input", {"events": [{"type": "gamepad", "button": "a", "target": "#start"}]})
+        ed.check(r.is_error and "set_properties UIDocument gamepadCursor true" in r.text, f"the error names the fix: {r.text[:300]}")
+
+        await lua(ed, "object('Menu', 'UIDocument').gamepadCursor = true")
+        await send(ed, press("x"))
+        cursor = (await ed.call("inspect_ui", entity=entity, selector="#start", depth=0))["gamepad_cursor"]
+        ed.check(cursor["active"], f"the cursor shows in the Gamepad scheme: {cursor}")
+        x0 = cursor["x"]
+        await send(ed, {"type": "gamepad", "axis": "left_x", "value": 1.0}, frames_after=30)
+        await send(ed, {"type": "gamepad", "axis": "left_x", "value": 0.0})
+        cursor = (await ed.call("inspect_ui", entity=entity, selector="#start", depth=0))["gamepad_cursor"]
+        ed.check(cursor["x"] > x0 + 50, f"the stick moved the cursor right: {x0} -> {cursor['x']}")
+
+        await send(ed, {"type": "gamepad", "button": "a", "target": "#start"})
+        ed.check_eq(await lua(ed, "return _G.starts"), [1], "A at the warped cursor clicked #start")
+        cursor = (await ed.call("inspect_ui", entity=entity, selector="#start", depth=0))["gamepad_cursor"]
+        ed.check_eq(cursor["over"], "#start", "inspect_ui names the element under the cursor")
+        lines = [e.get("message", "") for e in await ed.console_since(limit=1000)]
+        ed.check(any("[gate] start" in line for line in lines), "the click's console marker")
+
+        # Back: the menu's `back` listener, then Engine.onBack, else Escape
+        await lua(ed, """local doc = object('Menu', 'UIDocument')
+            doc.isMenu = true
+            _G.takeBack = true
+            doc:addEventListener('back', function(event) if _G.takeBack then event:preventDefault() end end)""")
+        await ed.call("wait", frames=2)
+        ed.check((await ed.call("get_play_state"))["menu_showing"], "get_play_state: menu_showing")
+        r = await ed.call("send_input", events=[{"type": "app", "action": "back"}])
+        ed.check_eq(r.get("back"), "document", "the menu's listener took Back")
+        await lua(ed, "_G.takeBack = false")
+        r = await ed.call("send_input", events=[{"type": "app", "action": "back"}])
+        ed.check_eq(r.get("back"), "escape", "nobody took it: Escape was pressed")
+        await lua(ed, "Engine.onBack = function(source) _G.backSource = source end")
+        r = await ed.call("send_input", events=[{"type": "app", "action": "back"}])
+        ed.check_eq(r.get("back"), "game", "Engine.onBack took it")
+        ed.check_eq(await lua(ed, "return _G.backSource"), ["agent"], "with the agent's source")
+        await lua(ed, "object('Menu', 'UIDocument').isMenu = false")
+        await ed.call("wait", frames=2)
+        ed.check(not (await ed.call("get_play_state"))["menu_showing"], "menu_showing follows isMenu")
+    finally:
+        await ed.call("play", action="stop")

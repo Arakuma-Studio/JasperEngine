@@ -6,6 +6,13 @@
 
 namespace jasperengine::cook {
 
+template<> struct Codec<ShaderPropertyOverrides> {
+    static void write(Writer& w, const ShaderPropertyOverrides& value);
+    static void read(Reader& r, ShaderPropertyOverrides& value);
+};
+template<> struct TextureVisit<ShaderPropertyOverrides> {
+    static void visit(ShaderPropertyOverrides& value, const TextureVisitor& f);
+};
 template<> struct Codec<MaterialStencil> {
     static void write(Writer& w, const MaterialStencil& value);
     static void read(Reader& r, MaterialStencil& value);
@@ -83,6 +90,13 @@ template<> struct Codec<MaterialPbrExtensions::Hair> {
 template<> struct TextureVisit<MaterialPbrExtensions::Hair> {
     static void visit(MaterialPbrExtensions::Hair& value, const TextureVisitor& f);
 };
+template<> struct Codec<MaterialPbrExtensions::VertexColor> {
+    static void write(Writer& w, const MaterialPbrExtensions::VertexColor& value);
+    static void read(Reader& r, MaterialPbrExtensions::VertexColor& value);
+};
+template<> struct TextureVisit<MaterialPbrExtensions::VertexColor> {
+    static void visit(MaterialPbrExtensions::VertexColor& value, const TextureVisitor& f);
+};
 template<> struct Codec<MaterialPbrExtensions> {
     static void write(Writer& w, const MaterialPbrExtensions& value);
     static void read(Reader& r, MaterialPbrExtensions& value);
@@ -152,6 +166,13 @@ template<> struct Codec<ActionFrame> {
 };
 template<> struct TextureVisit<ActionFrame> {
     static void visit(ActionFrame& value, const TextureVisitor& f);
+};
+template<> struct Codec<AudioSourceEffectDef> {
+    static void write(Writer& w, const AudioSourceEffectDef& value);
+    static void read(Reader& r, AudioSourceEffectDef& value);
+};
+template<> struct TextureVisit<AudioSourceEffectDef> {
+    static void visit(AudioSourceEffectDef& value, const TextureVisitor& f);
 };
 #ifdef JASPERENGINE_PHYSICS_2D
 template<> struct Codec<Collider2D> {
@@ -297,6 +318,42 @@ template<> struct Codec<TitleArtOverride> {
 template<> struct TextureVisit<TitleArtOverride> {
     static void visit(TitleArtOverride& value, const TextureVisitor& f);
 };
+#ifdef JASPERENGINE_PHYSICS_3D
+template<> struct Codec<JointSpring3D> {
+    static void write(Writer& w, const JointSpring3D& value);
+    static void read(Reader& r, JointSpring3D& value);
+};
+template<> struct TextureVisit<JointSpring3D> {
+    static void visit(JointSpring3D& value, const TextureVisitor& f);
+};
+#endif // JASPERENGINE_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
+template<> struct Codec<WheelFrictionCurve> {
+    static void write(Writer& w, const WheelFrictionCurve& value);
+    static void read(Reader& r, WheelFrictionCurve& value);
+};
+template<> struct TextureVisit<WheelFrictionCurve> {
+    static void visit(WheelFrictionCurve& value, const TextureVisitor& f);
+};
+#endif // JASPERENGINE_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
+template<> struct Codec<VehicleDifferential> {
+    static void write(Writer& w, const VehicleDifferential& value);
+    static void read(Reader& r, VehicleDifferential& value);
+};
+template<> struct TextureVisit<VehicleDifferential> {
+    static void visit(VehicleDifferential& value, const TextureVisitor& f);
+};
+#endif // JASPERENGINE_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
+template<> struct Codec<VehicleAntiRollBar> {
+    static void write(Writer& w, const VehicleAntiRollBar& value);
+    static void read(Reader& r, VehicleAntiRollBar& value);
+};
+template<> struct TextureVisit<VehicleAntiRollBar> {
+    static void visit(VehicleAntiRollBar& value, const TextureVisitor& f);
+};
+#endif // JASPERENGINE_PHYSICS_3D
 
 }
 
@@ -305,6 +362,15 @@ template<> struct TextureVisit<TitleArtOverride> {
 #if defined(JE_RUNTIME_FIELDS_DEFINE)
 
 namespace jasperengine::cook {
+
+const FieldEntry kStruct_ShaderPropertyOverrides_fields[] = {
+    JE_RF(ShaderPropertyOverrides, values, 0xc3ebfa7eu, Custom),
+    JE_RF(ShaderPropertyOverrides, textures, 0x826a84d0u, Custom),
+};
+const StructTable kStruct_ShaderPropertyOverrides{"ShaderPropertyOverrides", kStruct_ShaderPropertyOverrides_fields, std::size(kStruct_ShaderPropertyOverrides_fields)};
+void Codec<ShaderPropertyOverrides>::write(Writer& w, const ShaderPropertyOverrides& value) { writeStruct(w, kStruct_ShaderPropertyOverrides, &value); }
+void Codec<ShaderPropertyOverrides>::read(Reader& r, ShaderPropertyOverrides& value) { readStruct(r, kStruct_ShaderPropertyOverrides, &value); }
+void TextureVisit<ShaderPropertyOverrides>::visit(ShaderPropertyOverrides& value, const TextureVisitor& f) { visitStructTextures(kStruct_ShaderPropertyOverrides, &value, f); }
 
 const FieldEntry kStruct_MaterialStencil_fields[] = {
     JE_RF(MaterialStencil, compare, 0xa190d50du, Enum),
@@ -326,6 +392,12 @@ const FieldEntry kStruct_MaterialPass_fields[] = {
     JE_RF(MaterialPass, shaderTextures, 0x1264f2e0u, Custom),
     JE_RF(MaterialPass, shaderFeatures, 0xd4db1b9fu, Custom),
     JE_RF(MaterialPass, blendMode, 0x3e922b3bu, Enum),
+    JE_RF(MaterialPass, blendSrc, 0x8ed7cf9eu, Enum),
+    JE_RF(MaterialPass, blendDst, 0x30f3dd13u, Enum),
+    JE_RF(MaterialPass, blendSrcAlpha, 0xe8712786u, Enum),
+    JE_RF(MaterialPass, blendDstAlpha, 0xbf757a75u, Enum),
+    JE_RF(MaterialPass, blendOp, 0x0fe7196fu, Enum),
+    JE_RF(MaterialPass, blendOpAlpha, 0x3131cc31u, Enum),
     JE_RF(MaterialPass, cullMode, 0x21cee422u, Enum),
     JE_RF(MaterialPass, depthWrite, 0x8b82a1a5u, Enum),
     JE_RF(MaterialPass, depthTest, 0x2be356dau, Enum),
@@ -454,6 +526,19 @@ void Codec<MaterialPbrExtensions::Hair>::write(Writer& w, const MaterialPbrExten
 void Codec<MaterialPbrExtensions::Hair>::read(Reader& r, MaterialPbrExtensions::Hair& value) { readStruct(r, kStruct_MaterialPbrExtensions__Hair, &value); }
 void TextureVisit<MaterialPbrExtensions::Hair>::visit(MaterialPbrExtensions::Hair& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Hair, &value, f); }
 
+const FieldEntry kStruct_MaterialPbrExtensions__VertexColor_fields[] = {
+    JE_RF(MaterialPbrExtensions::VertexColor, use, 0xa343eafbu, Enum),
+    JE_RF(MaterialPbrExtensions::VertexColor, alphaOpacity, 0x4a600699u, Bool),
+    JE_RF(MaterialPbrExtensions::VertexColor, r, 0x887eb44eu, Enum),
+    JE_RF(MaterialPbrExtensions::VertexColor, g, 0x7d7ea2fdu, Enum),
+    JE_RF(MaterialPbrExtensions::VertexColor, b, 0x787e9b1eu, Enum),
+    JE_RF(MaterialPbrExtensions::VertexColor, a, 0x777e998bu, Enum),
+};
+const StructTable kStruct_MaterialPbrExtensions__VertexColor{"VertexColor", kStruct_MaterialPbrExtensions__VertexColor_fields, std::size(kStruct_MaterialPbrExtensions__VertexColor_fields)};
+void Codec<MaterialPbrExtensions::VertexColor>::write(Writer& w, const MaterialPbrExtensions::VertexColor& value) { writeStruct(w, kStruct_MaterialPbrExtensions__VertexColor, &value); }
+void Codec<MaterialPbrExtensions::VertexColor>::read(Reader& r, MaterialPbrExtensions::VertexColor& value) { readStruct(r, kStruct_MaterialPbrExtensions__VertexColor, &value); }
+void TextureVisit<MaterialPbrExtensions::VertexColor>::visit(MaterialPbrExtensions::VertexColor& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__VertexColor, &value, f); }
+
 const FieldEntry kStruct_MaterialPbrExtensions_fields[] = {
     JE_RF(MaterialPbrExtensions, clearcoat, 0xabaa10f2u, Struct),
     JE_RF(MaterialPbrExtensions, sheen, 0xa0ae6679u, Struct),
@@ -464,6 +549,7 @@ const FieldEntry kStruct_MaterialPbrExtensions_fields[] = {
     JE_RF(MaterialPbrExtensions, specular, 0x32677989u, Struct),
     JE_RF(MaterialPbrExtensions, hex, 0x08ecd2f5u, Struct),
     JE_RF(MaterialPbrExtensions, hair, 0xecf5b1a4u, Struct),
+    JE_RF(MaterialPbrExtensions, vertexColor, 0xce880bb9u, Struct),
 };
 const StructTable kStruct_MaterialPbrExtensions{"MaterialPbrExtensions", kStruct_MaterialPbrExtensions_fields, std::size(kStruct_MaterialPbrExtensions_fields)};
 void Codec<MaterialPbrExtensions>::write(Writer& w, const MaterialPbrExtensions& value) { writeStruct(w, kStruct_MaterialPbrExtensions, &value); }
@@ -502,6 +588,12 @@ const FieldEntry kStruct_Material_fields[] = {
     JE_RF(Material, shaderGlobalBindings, 0xf2e1a5eeu, Custom),
     JE_RF(Material, shaderPalettes, 0xbf00e75bu, Custom),
     JE_RF(Material, blendMode, 0xe5aaad6eu, Enum),
+    JE_RF(Material, blendSrc, 0x00ef2a6du, Enum),
+    JE_RF(Material, blendDst, 0xed300ba0u, Enum),
+    JE_RF(Material, blendSrcAlpha, 0x3da7e023u, Enum),
+    JE_RF(Material, blendDstAlpha, 0x9ff8a894u, Enum),
+    JE_RF(Material, blendOp, 0x8dc4d7deu, Enum),
+    JE_RF(Material, blendOpAlpha, 0x5a291ec6u, Enum),
     JE_RF(Material, cullMode, 0x468be231u, Enum),
     JE_RF(Material, depthWrite, 0xf0420936u, Enum),
     JE_RF(Material, depthTest, 0x416653b7u, Enum),
@@ -525,6 +617,7 @@ const FieldEntry kStruct_Submesh_fields[] = {
     JE_RF(Submesh, faceCulling, 0x3d4d2cf5u, Bool),
     JE_RF(Submesh, textureShadow, 0xc50665adu, Bool),
     JE_RF(Submesh, textureRect, 0x4cf2534bu, Rect),
+    JE_RF(Submesh, propertyOverrides, 0x506cb058u, Struct),
 };
 const StructTable kStruct_Submesh{"Submesh", kStruct_Submesh_fields, std::size(kStruct_Submesh_fields)};
 void Codec<Submesh>::write(Writer& w, const Submesh& value) { writeStruct(w, kStruct_Submesh, &value); }
@@ -660,6 +753,17 @@ void Codec<ActionFrame>::write(Writer& w, const ActionFrame& value) { writeStruc
 void Codec<ActionFrame>::read(Reader& r, ActionFrame& value) { readStruct(r, kStruct_ActionFrame, &value); }
 void TextureVisit<ActionFrame>::visit(ActionFrame& value, const TextureVisitor& f) { visitStructTextures(kStruct_ActionFrame, &value, f); }
 
+const FieldEntry kStruct_AudioSourceEffectDef_fields[] = {
+    JE_RF(AudioSourceEffectDef, type, 0x20e72f9eu, String),
+    JE_RF(AudioSourceEffectDef, bypass, 0x7f580c1au, Bool),
+    JE_RF(AudioSourceEffectDef, wet, 0xb0418e7au, Float),
+    JE_RF(AudioSourceEffectDef, params, 0x2b103f44u, Custom),
+};
+const StructTable kStruct_AudioSourceEffectDef{"AudioSourceEffectDef", kStruct_AudioSourceEffectDef_fields, std::size(kStruct_AudioSourceEffectDef_fields)};
+void Codec<AudioSourceEffectDef>::write(Writer& w, const AudioSourceEffectDef& value) { writeStruct(w, kStruct_AudioSourceEffectDef, &value); }
+void Codec<AudioSourceEffectDef>::read(Reader& r, AudioSourceEffectDef& value) { readStruct(r, kStruct_AudioSourceEffectDef, &value); }
+void TextureVisit<AudioSourceEffectDef>::visit(AudioSourceEffectDef& value, const TextureVisitor& f) { visitStructTextures(kStruct_AudioSourceEffectDef, &value, f); }
+
 #ifdef JASPERENGINE_PHYSICS_2D
 const FieldEntry kStruct_Collider2D_fields[] = {
     JE_RF(Collider2D, type, 0x95e8b837u, Enum),
@@ -790,6 +894,7 @@ const FieldEntry kStruct_AnimationPlayerLayer_fields[] = {
     JE_RF(AnimationPlayerLayer, blend, 0x527aec04u, Enum),
     JE_RF(AnimationPlayerLayer, mask, 0xb6a887b5u, String),
     JE_RF(AnimationPlayerLayer, maskGuid, 0x64d378fcu, String),
+    JE_RF(AnimationPlayerLayer, meshSpaceRotation, 0x64a8098cu, Bool),
 };
 const StructTable kStruct_AnimationPlayerLayer{"AnimationPlayerLayer", kStruct_AnimationPlayerLayer_fields, std::size(kStruct_AnimationPlayerLayer_fields)};
 void Codec<AnimationPlayerLayer>::write(Writer& w, const AnimationPlayerLayer& value) { writeStruct(w, kStruct_AnimationPlayerLayer, &value); }
@@ -950,6 +1055,59 @@ void Codec<TitleArtOverride>::write(Writer& w, const TitleArtOverride& value) { 
 void Codec<TitleArtOverride>::read(Reader& r, TitleArtOverride& value) { readStruct(r, kStruct_TitleArtOverride, &value); }
 void TextureVisit<TitleArtOverride>::visit(TitleArtOverride& value, const TextureVisitor& f) { visitStructTextures(kStruct_TitleArtOverride, &value, f); }
 
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kStruct_JointSpring3D_fields[] = {
+    JE_RF(JointSpring3D, spring, 0xee04fb9cu, Float),
+    JE_RF(JointSpring3D, damper, 0x373325b0u, Float),
+    JE_RF(JointSpring3D, targetPosition, 0x7d4fc8ebu, Float),
+};
+const StructTable kStruct_JointSpring3D{"JointSpring3D", kStruct_JointSpring3D_fields, std::size(kStruct_JointSpring3D_fields)};
+void Codec<JointSpring3D>::write(Writer& w, const JointSpring3D& value) { writeStruct(w, kStruct_JointSpring3D, &value); }
+void Codec<JointSpring3D>::read(Reader& r, JointSpring3D& value) { readStruct(r, kStruct_JointSpring3D, &value); }
+void TextureVisit<JointSpring3D>::visit(JointSpring3D& value, const TextureVisitor& f) { visitStructTextures(kStruct_JointSpring3D, &value, f); }
+#endif // JASPERENGINE_PHYSICS_3D
+
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kStruct_WheelFrictionCurve_fields[] = {
+    JE_RF(WheelFrictionCurve, extremumSlip, 0x1e070e20u, Float),
+    JE_RF(WheelFrictionCurve, extremumValue, 0x4da17707u, Float),
+    JE_RF(WheelFrictionCurve, asymptoteSlip, 0xcca8787du, Float),
+    JE_RF(WheelFrictionCurve, asymptoteValue, 0x9f9996a8u, Float),
+    JE_RF(WheelFrictionCurve, stiffness, 0x32bcad56u, Float),
+};
+const StructTable kStruct_WheelFrictionCurve{"WheelFrictionCurve", kStruct_WheelFrictionCurve_fields, std::size(kStruct_WheelFrictionCurve_fields)};
+void Codec<WheelFrictionCurve>::write(Writer& w, const WheelFrictionCurve& value) { writeStruct(w, kStruct_WheelFrictionCurve, &value); }
+void Codec<WheelFrictionCurve>::read(Reader& r, WheelFrictionCurve& value) { readStruct(r, kStruct_WheelFrictionCurve, &value); }
+void TextureVisit<WheelFrictionCurve>::visit(WheelFrictionCurve& value, const TextureVisitor& f) { visitStructTextures(kStruct_WheelFrictionCurve, &value, f); }
+#endif // JASPERENGINE_PHYSICS_3D
+
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kStruct_VehicleDifferential_fields[] = {
+    JE_RF_ENTITY(VehicleDifferential, leftWheel, 0x1dbeb058u, Entity),
+    JE_RF_ENTITY(VehicleDifferential, rightWheel, 0x5e69d641u, Entity),
+    JE_RF(VehicleDifferential, ratio, 0x867b36dbu, Float),
+    JE_RF(VehicleDifferential, leftRightSplit, 0x805e0937u, Float),
+    JE_RF(VehicleDifferential, limitedSlipRatio, 0x29a70427u, Float),
+    JE_RF(VehicleDifferential, engineTorqueRatio, 0x5f168e53u, Float),
+};
+const StructTable kStruct_VehicleDifferential{"VehicleDifferential", kStruct_VehicleDifferential_fields, std::size(kStruct_VehicleDifferential_fields)};
+void Codec<VehicleDifferential>::write(Writer& w, const VehicleDifferential& value) { writeStruct(w, kStruct_VehicleDifferential, &value); }
+void Codec<VehicleDifferential>::read(Reader& r, VehicleDifferential& value) { readStruct(r, kStruct_VehicleDifferential, &value); }
+void TextureVisit<VehicleDifferential>::visit(VehicleDifferential& value, const TextureVisitor& f) { visitStructTextures(kStruct_VehicleDifferential, &value, f); }
+#endif // JASPERENGINE_PHYSICS_3D
+
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kStruct_VehicleAntiRollBar_fields[] = {
+    JE_RF_ENTITY(VehicleAntiRollBar, leftWheel, 0xe43b17cfu, Entity),
+    JE_RF_ENTITY(VehicleAntiRollBar, rightWheel, 0x5a4b8b4cu, Entity),
+    JE_RF(VehicleAntiRollBar, stiffness, 0x40fa83beu, Float),
+};
+const StructTable kStruct_VehicleAntiRollBar{"VehicleAntiRollBar", kStruct_VehicleAntiRollBar_fields, std::size(kStruct_VehicleAntiRollBar_fields)};
+void Codec<VehicleAntiRollBar>::write(Writer& w, const VehicleAntiRollBar& value) { writeStruct(w, kStruct_VehicleAntiRollBar, &value); }
+void Codec<VehicleAntiRollBar>::read(Reader& r, VehicleAntiRollBar& value) { readStruct(r, kStruct_VehicleAntiRollBar, &value); }
+void TextureVisit<VehicleAntiRollBar>::visit(VehicleAntiRollBar& value, const TextureVisitor& f) { visitStructTextures(kStruct_VehicleAntiRollBar, &value, f); }
+#endif // JASPERENGINE_PHYSICS_3D
+
 const FieldEntry kBody_Transform_fields[] = {
     JE_RF(Transform, position, 0x89d4084cu, Vector3),
     JE_RF(Transform, rotation, 0x9ad00671u, Quat),
@@ -969,6 +1127,7 @@ const StructTable kBody_ScriptComponent{"script", kBody_ScriptComponent_fields, 
 
 const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, enabled, 0x787b2403u, Bool),
+    JE_RF(MeshComponent, meshAsset, 0x4fad0fd9u, AssetPath),
     JE_RF(MeshComponent, receiveLights, 0x5fa69afau, Bool),
     JE_RF(MeshComponent, receiveIBL, 0x5ef87748u, Bool),
     JE_RF(MeshComponent, castShadows, 0x37e4a2feu, Bool),
@@ -990,6 +1149,7 @@ const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, customShader, 0x2001d200u, AssetPath),
     JE_RF(MeshComponent, customDepthShader, 0xeece191bu, AssetPath),
     JE_RF(MeshComponent, shaderUniforms, 0xcd4a788eu, Custom),
+    JE_RF(MeshComponent, propertyOverrides, 0x04b95b48u, Struct),
     JE_RF(MeshComponent, numSubmeshes, 0x677dfcfdu, UInt),
     JE_RF(MeshComponent, submeshes, 0x0ec3fc65u, Array),
     JE_RF(MeshComponent, morphWeights, 0x4c647c89u, Array),
@@ -1063,6 +1223,11 @@ const FieldEntry kBody_LightComponent_fields[] = {
     JE_RF(LightComponent, intensityUnit, 0xcbf60f3eu, Enum),
     JE_RF(LightComponent, useColorTemperature, 0xc5aafe45u, Bool),
     JE_RF(LightComponent, colorTemperature, 0xcd5d3778u, Float),
+    JE_RF(LightComponent, areaShape, 0xc4b6fc3bu, Enum),
+    JE_RF(LightComponent, areaWidth, 0x6a7dd45au, Float),
+    JE_RF(LightComponent, areaHeight, 0x91033c35u, Float),
+    JE_RF(LightComponent, areaRadius, 0x3a021f6cu, Float),
+    JE_RF(LightComponent, iesProfile, 0xf6ad894bu, AssetPath),
 };
 const StructTable kBody_LightComponent{"light", kBody_LightComponent_fields, std::size(kBody_LightComponent_fields)};
 
@@ -1155,6 +1320,7 @@ const FieldEntry kBody_ModelComponent_fields[] = {
     JE_RF(ModelComponent, filename, 0xd893ddd1u, AssetPath),
     JE_RF(ModelComponent, mergeStaticMeshes, 0xc4ab8017u, Bool),
     JE_RF(ModelComponent, animationEntities, 0x062d0905u, Bool),
+    JE_RF(ModelComponent, preserveHierarchy, 0xfc594a07u, Bool),
     JE_RF_ENTITY(ModelComponent, skeleton, 0x423c5073u, Entity),
     JE_RF_ENTITIES(ModelComponent, animations, 0x44efadebu, Array),
 };
@@ -1264,6 +1430,9 @@ const FieldEntry kBody_AudioSourceComponent_fields[] = {
     JE_RF(AudioSourceComponent, fullVolumeImpactSpeed, 0xd50acf0eu, Float),
     JE_RF(AudioSourceComponent, pitchRandomSemitones, 0xa6b06beeu, Float),
     JE_RF(AudioSourceComponent, volumeRandomDb, 0x7255c581u, Float),
+    JE_RF(AudioSourceComponent, effects, 0x3ab94640u, Array),
+    JE_RF(AudioSourceComponent, spatialBlend, 0x292dbcfdu, Float),
+    JE_RF(AudioSourceComponent, slot, 0x851121bau, Int),
 };
 const StructTable kBody_AudioSourceComponent{"audiosource", kBody_AudioSourceComponent_fields, std::size(kBody_AudioSourceComponent_fields)};
 
@@ -1275,6 +1444,7 @@ const FieldEntry kBody_Rigidbody2DComponent_fields[] = {
     JE_RF(Rigidbody2DComponent, linearDamping, 0x822b9a71u, Float),
     JE_RF(Rigidbody2DComponent, angularDamping, 0x77f306a8u, Float),
     JE_RF(Rigidbody2DComponent, fixedRotation, 0xb1ac8b38u, Bool),
+    JE_RF(Rigidbody2DComponent, allowFastRotation, 0xd7ccfbfdu, Bool),
     JE_RF(Rigidbody2DComponent, collisionDetection, 0x991527b3u, Enum),
     JE_RF(Rigidbody2DComponent, sleepingMode, 0xfd9d9582u, Enum),
     JE_RF(Rigidbody2DComponent, useAutoMass, 0xe18d2ee8u, Bool),
@@ -1284,6 +1454,7 @@ const FieldEntry kBody_Rigidbody2DComponent_fields[] = {
     JE_RF(Rigidbody2DComponent, autoInertia, 0x1be21bd7u, Bool),
     JE_RF(Rigidbody2DComponent, inertia, 0x1f0cbb8eu, Float),
     JE_RF(Rigidbody2DComponent, material, 0x0ad64729u, String),
+    JE_RF(Rigidbody2DComponent, attachToParentBody, 0x622adf48u, Bool),
     JE_RF(Rigidbody2DComponent, colliders, 0xa1ab1c35u, Array),
 };
 const StructTable kBody_Rigidbody2DComponent{"rigidbody2d", kBody_Rigidbody2DComponent_fields, std::size(kBody_Rigidbody2DComponent_fields)};
@@ -1319,6 +1490,7 @@ const FieldEntry kBody_RigidbodyComponent_fields[] = {
     JE_RF(RigidbodyComponent, allowSleeping, 0xd5d0787eu, Bool),
     JE_RF(RigidbodyComponent, collideKinematicVsNonDynamic, 0x456d6d16u, Bool),
     JE_RF(RigidbodyComponent, interpolation, 0xeb948100u, Enum),
+    JE_RF(RigidbodyComponent, attachToParentBody, 0x89377c5au, Bool),
     JE_RF(RigidbodyComponent, colliders, 0xaa51737bu, Array),
 };
 const StructTable kBody_RigidbodyComponent{"rigidbody", kBody_RigidbodyComponent_fields, std::size(kBody_RigidbodyComponent_fields)};
@@ -1388,6 +1560,7 @@ const FieldEntry kBody_CameraComponent_fields[] = {
     JE_RF(CameraComponent, depthTest, 0xf932cca5u, Bool),
     JE_RF(CameraComponent, useTarget, 0xbca34c66u, Bool),
     JE_RF(CameraComponent, autoResize, 0x71a84fdfu, Bool),
+    JE_RF(CameraComponent, orthographicSize, 0x749dd4dfu, Float),
     JE_RF(CameraComponent, framebufferWidth, 0xd5ea99f5u, UInt),
     JE_RF(CameraComponent, framebufferHeight, 0xb5849a0cu, UInt),
     JE_RF(CameraComponent, framebufferFilter, 0xfb40220du, Enum),
@@ -1405,11 +1578,15 @@ const StructTable kBody_ColorTweenComponent{"colortween", kBody_ColorTweenCompon
 
 const FieldEntry kBody_FogComponent_fields[] = {
     JE_RF(FogComponent, type, 0x8c93b3fbu, Enum),
+    JE_RF(FogComponent, profile, 0x1c69160cu, AssetPath),
     JE_RF(FogComponent, color, 0x687955a2u, Vector3),
     JE_RF(FogComponent, density, 0xca2e3d0du, Float),
     JE_RF(FogComponent, linearStart, 0x1a82c52eu, Float),
     JE_RF(FogComponent, linearEnd, 0x6606503bu, Float),
     JE_RF(FogComponent, colorMode, 0xb0189ce9u, Enum),
+    JE_RF(FogComponent, albedo, 0x30395abeu, Vector3),
+    JE_RF(FogComponent, ambientMultiplier, 0x94ce6556u, Float),
+    JE_RF(FogComponent, emissive, 0x4e514a38u, Vector3),
     JE_RF(FogComponent, attenuationDistance, 0xbaa52ecau, Float),
     JE_RF(FogComponent, baseHeight, 0xa084a125u, Float),
     JE_RF(FogComponent, maximumHeight, 0x90172dfcu, Float),
@@ -1643,6 +1820,7 @@ const FieldEntry kBody_ParticleSystemComponent_fields[] = {
     JE_RF(ParticleSystemComponent, useUnscaledTime, 0x54d44b97u, Bool),
     JE_RF(ParticleSystemComponent, exposedValues, 0xfac14eb6u, Custom),
     JE_RF_ENTITIES(ParticleSystemComponent, collisionPlanes, 0x5027e34bu, Array),
+    JE_RF_ENTITY(ParticleSystemComponent, legacyFrom, 0x0c6e8893u, Entity),
 };
 const StructTable kBody_ParticleSystemComponent{"particlesystem", kBody_ParticleSystemComponent_fields, std::size(kBody_ParticleSystemComponent_fields)};
 
@@ -1728,6 +1906,8 @@ const FieldEntry kBody_SpriteComponent_fields[] = {
     JE_RF(SpriteComponent, height, 0x3d0b5a9du, UInt),
     JE_RF(SpriteComponent, automaticFlipY, 0x3ef6b209u, Bool),
     JE_RF(SpriteComponent, flipY, 0xbacad8a4u, Bool),
+    JE_RF(SpriteComponent, flipX, 0xbbcada37u, Bool),
+    JE_RF(SpriteComponent, size, 0xa6631eb7u, Vector2),
     JE_RF(SpriteComponent, textureScaleFactor, 0x1909ab5eu, Float),
     JE_RF(SpriteComponent, pivotPreset, 0xc80217ddu, Enum),
     JE_RF(SpriteComponent, sheet, 0xff7f8fc1u, AssetPath),
@@ -1745,13 +1925,20 @@ const StructTable kBody_SpriteComponent{"sprite", kBody_SpriteComponent_fields, 
 const FieldEntry kBody_TextComponent_fields[] = {
     JE_RF(TextComponent, font, 0xb59282fdu, Font),
     JE_RF(TextComponent, text, 0x538c6907u, String),
+    JE_RF(TextComponent, localizationKey, 0x756bf148u, String),
     JE_RF(TextComponent, fontSize, 0xc3119214u, UInt),
     JE_RF(TextComponent, multiline, 0x24769fc7u, Bool),
     JE_RF(TextComponent, maxTextSize, 0x52da0394u, UInt),
     JE_RF(TextComponent, fixedWidth, 0x63011216u, Bool),
     JE_RF(TextComponent, fixedHeight, 0x4053cda9u, Bool),
-    JE_RF(TextComponent, pivotBaseline, 0x921eadabu, Bool),
-    JE_RF(TextComponent, pivotCentered, 0xeba1acf4u, Bool),
+    JE_RF(TextComponent, anchorHorizontal, 0xbab89cadu, Enum),
+    JE_RF(TextComponent, anchorVertical, 0x512f54c7u, Enum),
+    JE_RF(TextComponent, fontSizeUnit, 0xd180defau, Enum),
+    JE_RF(TextComponent, horizontalAlignment, 0x4cfaeba5u, Enum),
+    JE_RF(TextComponent, verticalAlignment, 0x4ee575efu, Enum),
+    JE_RF(TextComponent, autoSize, 0xf43e5aceu, Bool),
+    JE_RF(TextComponent, fontSizeMin, 0x064720c8u, UInt),
+    JE_RF(TextComponent, fontSizeMax, 0xfc5c2bc2u, UInt),
     JE_RF(TextComponent, outlineWidth, 0x5563a8d2u, Float),
     JE_RF(TextComponent, outlineColor, 0x6b800909u, Vector4),
     JE_RF(TextComponent, outlineNeighbors, 0x15f6a8cdu, Int),
@@ -1779,6 +1966,8 @@ const FieldEntry kBody_InputFieldComponent_fields[] = {
     JE_RF(InputFieldComponent, selectionAnchor, 0x8c85cbe8u, Int),
     JE_RF(InputFieldComponent, disabled, 0xf5ea7571u, Bool),
     JE_RF(InputFieldComponent, password, 0x5e3d4d6cu, Bool),
+    JE_RF(InputFieldComponent, keyboardType, 0xf65183f0u, Enum),
+    JE_RF(InputFieldComponent, characterLimit, 0x64eca537u, Int),
 };
 const StructTable kBody_InputFieldComponent{"inputfield", kBody_InputFieldComponent_fields, std::size(kBody_InputFieldComponent_fields)};
 
@@ -1868,6 +2057,12 @@ const FieldEntry kBody_UIDocumentComponent_fields[] = {
     JE_RF(UIDocumentComponent, textureHeight, 0xe657e304u, Int),
     JE_RF_ENTITY(UIDocumentComponent, inputSurface, 0xdf0ce86fu, Entity),
     JE_RF(UIDocumentComponent, pixelRatio, 0x9ecbc5dbu, Float),
+    JE_RF(UIDocumentComponent, isMenu, 0xe9c0839fu, Bool),
+    JE_RF(UIDocumentComponent, gamepadCursor, 0x7c5c9c11u, Bool),
+    JE_RF(UIDocumentComponent, msaaSamples, 0x16930f21u, Int),
+    JE_RF(UIDocumentComponent, updateMode, 0x48bad56eu, Enum),
+    JE_RF(UIDocumentComponent, pixelsPerUnit, 0xb5e6283eu, Float),
+    JE_RF(UIDocumentComponent, billboard, 0x18df0bf3u, Bool),
 };
 const StructTable kBody_UIDocumentComponent{"uidocument", kBody_UIDocumentComponent_fields, std::size(kBody_UIDocumentComponent_fields)};
 
@@ -2090,6 +2285,8 @@ const FieldEntry kBody_AnimationPlayerComponent_fields[] = {
     JE_RF(AnimationPlayerComponent, speed, 0xa82cb315u, Float),
     JE_RF(AnimationPlayerComponent, defaultFadeTime, 0x3dc0f0a8u, Float),
     JE_RF(AnimationPlayerComponent, poseFrameRate, 0xd7dfba9eu, Float),
+    JE_RF(AnimationPlayerComponent, applyRootMotion, 0x11500aacu, Bool),
+    JE_RF(AnimationPlayerComponent, legacyRootDrift, 0x0ed71920u, Bool),
 };
 const StructTable kBody_AnimationPlayerComponent{"animationplayer", kBody_AnimationPlayerComponent_fields, std::size(kBody_AnimationPlayerComponent_fields)};
 
@@ -2314,6 +2511,7 @@ const FieldEntry kBody_AnimatorComponent_fields[] = {
     JE_RF(AnimatorComponent, speed, 0xe0cb0d91u, Float),
     JE_RF(AnimatorComponent, poseFrameRate, 0x7900b90au, Float),
     JE_RF(AnimatorComponent, applyRootMotion, 0x48a13828u, Bool),
+    JE_RF(AnimatorComponent, legacyRootDrift, 0x9bba942cu, Bool),
     JE_RF(AnimatorComponent, rootMotionBone, 0x5625d33eu, String),
     JE_RF(AnimatorComponent, updateMode, 0x6b93e230u, Enum),
     JE_RF(AnimatorComponent, cullingMode, 0x3a1bad41u, Enum),
@@ -2724,6 +2922,113 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
 };
 const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
 
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kBody_WheelColliderComponent_fields[] = {
+    JE_RF(WheelColliderComponent, enabled, 0x514f739fu, Bool),
+    JE_RF(WheelColliderComponent, mass, 0x90358932u, Float),
+    JE_RF(WheelColliderComponent, radius, 0xaf5cb7e0u, Float),
+    JE_RF(WheelColliderComponent, wheelDampingRate, 0xebe26ea3u, Float),
+    JE_RF(WheelColliderComponent, suspensionDistance, 0x7a9d231cu, Float),
+    JE_RF(WheelColliderComponent, forceAppPointDistance, 0x3245b1a5u, Float),
+    JE_RF(WheelColliderComponent, center, 0xef9def97u, Vector3),
+    JE_RF(WheelColliderComponent, suspensionSpring, 0x1e243b9au, Struct),
+    JE_RF(WheelColliderComponent, forwardFriction, 0x88e31ec1u, Struct),
+    JE_RF(WheelColliderComponent, sidewaysFriction, 0xe4420cefu, Struct),
+    JE_RF(WheelColliderComponent, maxSteerAngle, 0x40291cf8u, Float),
+    JE_RF(WheelColliderComponent, maxBrakeTorque, 0x8cd05e25u, Float),
+    JE_RF(WheelColliderComponent, maxHandBrakeTorque, 0x4c1c470eu, Float),
+    JE_RF(WheelColliderComponent, driveTransform, 0xc5d6af8eu, Bool),
+};
+const StructTable kBody_WheelColliderComponent{"wheelcollider", kBody_WheelColliderComponent_fields, std::size(kBody_WheelColliderComponent_fields)};
+#endif // JASPERENGINE_PHYSICS_3D
+
+#ifdef JASPERENGINE_PHYSICS_3D
+const FieldEntry kBody_VehicleDrivetrainComponent_fields[] = {
+    JE_RF(VehicleDrivetrainComponent, enabled, 0xf03b414eu, Bool),
+    JE_RF(VehicleDrivetrainComponent, maxTorque, 0x56662527u, Float),
+    JE_RF(VehicleDrivetrainComponent, minRPM, 0x4f7f6440u, Float),
+    JE_RF(VehicleDrivetrainComponent, maxRPM, 0xe0452eeau, Float),
+    JE_RF(VehicleDrivetrainComponent, torqueCurve, 0x613cd082u, Custom),
+    JE_RF(VehicleDrivetrainComponent, engineInertia, 0x721bec9bu, Float),
+    JE_RF(VehicleDrivetrainComponent, engineDamping, 0xfd0ac4afu, Float),
+    JE_RF(VehicleDrivetrainComponent, transmission, 0x6e11b5d5u, Enum),
+    JE_RF(VehicleDrivetrainComponent, gearRatios, 0xdc29d962u, Array),
+    JE_RF(VehicleDrivetrainComponent, reverseGearRatios, 0xcbcb4e62u, Array),
+    JE_RF(VehicleDrivetrainComponent, switchTime, 0xdc142038u, Float),
+    JE_RF(VehicleDrivetrainComponent, clutchReleaseTime, 0xed59b07cu, Float),
+    JE_RF(VehicleDrivetrainComponent, switchLatency, 0x20e9479du, Float),
+    JE_RF(VehicleDrivetrainComponent, shiftUpRPM, 0x13638997u, Float),
+    JE_RF(VehicleDrivetrainComponent, shiftDownRPM, 0xcba3816cu, Float),
+    JE_RF(VehicleDrivetrainComponent, clutchStrength, 0x63ccbae1u, Float),
+    JE_RF(VehicleDrivetrainComponent, differentials, 0xb84c14d5u, Array),
+    JE_RF(VehicleDrivetrainComponent, differentialLimitedSlipRatio, 0xe3e55863u, Float),
+    JE_RF(VehicleDrivetrainComponent, antiRollBars, 0x5e3e71c4u, Array),
+    JE_RF(VehicleDrivetrainComponent, maxPitchRollAngle, 0x616003f5u, Float),
+};
+const StructTable kBody_VehicleDrivetrainComponent{"vehicledrivetrain", kBody_VehicleDrivetrainComponent_fields, std::size(kBody_VehicleDrivetrainComponent_fields)};
+#endif // JASPERENGINE_PHYSICS_3D
+
+const FieldEntry kBody_SimulationCullingComponent_fields[] = {
+    JE_RF(SimulationCullingComponent, enabled, 0xaf7f9315u, Bool),
+    JE_RF(SimulationCullingComponent, simulationDistance, 0x7be7276cu, Float),
+    JE_RF(SimulationCullingComponent, reducedRateDistance, 0x61257efbu, Float),
+    JE_RF(SimulationCullingComponent, reducedUpdateInterval, 0xa69dd5a2u, Int),
+    JE_RF(SimulationCullingComponent, hysteresis, 0x067c857bu, Float),
+    JE_RF(SimulationCullingComponent, boundsRadius, 0xf1a54d53u, Float),
+    JE_RF(SimulationCullingComponent, simulateWhenVisible, 0x1130f258u, Bool),
+    JE_RF(SimulationCullingComponent, freezeWhenGroundNotLoaded, 0x4fc844a8u, Bool),
+    JE_RF(SimulationCullingComponent, cullScripts, 0x434b1508u, Bool),
+    JE_RF(SimulationCullingComponent, cullAnimator, 0xd1bc3b2du, Bool),
+    JE_RF(SimulationCullingComponent, cullPhysics, 0xe162a179u, Bool),
+};
+const StructTable kBody_SimulationCullingComponent{"simulationculling", kBody_SimulationCullingComponent_fields, std::size(kBody_SimulationCullingComponent_fields)};
+
+const FieldEntry kBody_DialogueRunnerComponent_fields[] = {
+    JE_RF(DialogueRunnerComponent, dialogue, 0x774a9063u, AssetPath),
+    JE_RF(DialogueRunnerComponent, startEntry, 0xd4953c39u, String),
+    JE_RF(DialogueRunnerComponent, autoStart, 0x74f9a0a6u, Bool),
+    JE_RF(DialogueRunnerComponent, seed, 0x17a438bcu, Int),
+    JE_RF_ENTITY(DialogueRunnerComponent, view, 0x857da7a8u, Entity),
+};
+const StructTable kBody_DialogueRunnerComponent{"dialoguerunner", kBody_DialogueRunnerComponent_fields, std::size(kBody_DialogueRunnerComponent_fields)};
+
+const FieldEntry kBody_OutlineComponent_fields[] = {
+    JE_RF(OutlineComponent, enabled, 0x7ac7ddc2u, Bool),
+    JE_RF(OutlineComponent, mode, 0x21f8bb06u, Enum),
+    JE_RF(OutlineComponent, color, 0xd49eb1ecu, Vector4),
+    JE_RF(OutlineComponent, width, 0x7dbfee43u, Float),
+    JE_RF(OutlineComponent, widthUnits, 0xebe692beu, Enum),
+    JE_RF(OutlineComponent, includeChildren, 0xad9417e4u, Bool),
+};
+const StructTable kBody_OutlineComponent{"outline", kBody_OutlineComponent_fields, std::size(kBody_OutlineComponent_fields)};
+
+const FieldEntry kBody_SpriteSkinComponent_fields[] = {
+    JE_RF(SpriteSkinComponent, enabled, 0x92a8c7b2u, Bool),
+    JE_RF_ENTITY(SpriteSkinComponent, rootBone, 0xca6e03d3u, Entity),
+    JE_RF_ENTITIES(SpriteSkinComponent, bones, 0x53e25968u, Array),
+};
+const StructTable kBody_SpriteSkinComponent{"spriteskin", kBody_SpriteSkinComponent_fields, std::size(kBody_SpriteSkinComponent_fields)};
+
+const FieldEntry kBody_VertexColorsComponent_fields[] = {
+    JE_RF(VertexColorsComponent, enabled, 0x5fd953d8u, Bool),
+    JE_RF(VertexColorsComponent, data, 0xc58db50bu, AssetPath),
+    JE_RF(VertexColorsComponent, format, 0x989e9c4cu, Enum),
+    JE_RF(VertexColorsComponent, initialValue, 0x3aba7f3eu, Enum),
+    JE_RF(VertexColorsComponent, customInitial, 0xf09c5324u, Vector4),
+    JE_RF(VertexColorsComponent, channelNames, 0xc794fd86u, Array),
+};
+const StructTable kBody_VertexColorsComponent{"vertexcolors", kBody_VertexColorsComponent_fields, std::size(kBody_VertexColorsComponent_fields)};
+
+const FieldEntry kBody_FogZoneComponent_fields[] = {
+    JE_RF(FogZoneComponent, shape, 0x1862110au, Enum),
+    JE_RF(FogZoneComponent, size, 0xc3d4c9e8u, Vector3),
+    JE_RF(FogZoneComponent, blendDistance, 0xf811876fu, Float),
+    JE_RF(FogZoneComponent, priority, 0xdc1e74ddu, Int),
+    JE_RF(FogZoneComponent, weight, 0xf49e906du, Float),
+    JE_RF(FogZoneComponent, profile, 0xbe8c9a8au, AssetPath),
+};
+const StructTable kBody_FogZoneComponent{"fogzone", kBody_FogZoneComponent_fields, std::size(kBody_FogZoneComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2843,6 +3148,18 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TilemapLayerComponent, "tilemaplayer", 0x94e4d9f6u),
     JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
+#ifdef JASPERENGINE_PHYSICS_3D
+    JE_RF_COMPONENT(WheelColliderComponent, "wheelcollider", 0x8c5df4c8u),
+#endif // JASPERENGINE_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
+    JE_RF_COMPONENT(VehicleDrivetrainComponent, "vehicledrivetrain", 0x26164119u),
+#endif // JASPERENGINE_PHYSICS_3D
+    JE_RF_COMPONENT(SimulationCullingComponent, "simulationculling", 0x71370112u),
+    JE_RF_COMPONENT(DialogueRunnerComponent, "dialoguerunner", 0x1ce95539u),
+    JE_RF_COMPONENT(OutlineComponent, "outline", 0x361ad8bdu),
+    JE_RF_COMPONENT(SpriteSkinComponent, "spriteskin", 0x5e8efcadu),
+    JE_RF_COMPONENT(VertexColorsComponent, "vertexcolors", 0x1504a1dfu),
+    JE_RF_COMPONENT(FogZoneComponent, "fogzone", 0x7df84fedu),
     JE_RF_COMPONENTS_END
 };
 

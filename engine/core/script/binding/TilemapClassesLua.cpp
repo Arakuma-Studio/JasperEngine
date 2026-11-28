@@ -11,6 +11,7 @@
 #include "lua.hpp"
 
 #include "LuaBridge.h"
+#include "script/binding/SceneConstructors.h"
 #include "LuaBridgeAddon.h"
 
 #include "Scene.h"
@@ -258,7 +259,7 @@ void LuaBinding::registerTilemapClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<TilemapLayer, Mesh>("TilemapLayer")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<TilemapLayer>(), sceneconstructors::ofEntity<TilemapLayer>())
         .addProperty("tileset", &TilemapLayer::getTileset)
         .addProperty("cellCount", &TilemapLayer::getCellCount)
         .addProperty("chunkCount", &TilemapLayer::getChunkCount)

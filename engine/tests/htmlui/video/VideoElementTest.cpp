@@ -12,6 +12,7 @@
 
 #include "FixtureRunner.h"
 #include "harness/GpuEnvironment.h"
+#include "harness/RecordingRenderInterface.h"
 #include "harness/TestSystem.h"
 
 #include "Engine.h"
@@ -24,6 +25,7 @@
 #include "media/VideoDecoder.h"
 #include "media/VideoStream.h"
 #include "media/VideoSourceFactory.h"
+#include "htmlui/compat/DocumentLoader.h"
 
 #include <RmlUi/Core.h>
 
@@ -145,6 +147,32 @@ namespace {
 
 }
 
+TEST_F(VideoElementTest, AnotherRenderInterfaceGetsNoTexture){
+    // a context another render interface draws (the compat check's, which draws nothing): the
+    // element makes no HtmlUITexture, which only an RmlRenderer gives back to be deleted (each one
+    // the check made leaked, with its GPU images)
+    RecordingRenderInterface recording;
+    Rml::Context* context = Rml::CreateContext("video-another-interface", Rml::Vector2i(640, 400), &recording);
+    ASSERT_NE(context, nullptr);
+    htmlui::compat::CompatOptions options;
+    options.viewport = htmlui::compat::CompatSize{640, 400};
+    HtmlUIClock::setFixedTime(0.0);
+    Rml::ElementDocument* document = htmlui::compat::DocumentLoader::load(context, "fixtures/video/pages/single.html", options);
+    ASSERT_NE(document, nullptr);
+    document->Show();
+    context->Update();
+    context->Update();
+    UIVideoElement* v = rmlui_dynamic_cast<UIVideoElement*>(document->GetElementById("v"));
+    ASSERT_NE(v, nullptr);
+    EXPECT_EQ(v->getVideoWidth(), CARD_WIDTH) << "the first frame is decoded";
+    EXPECT_EQ(v->getTexture(), nullptr);
+    EXPECT_EQ(v->getStats().texturesCreated, 0u);
+    document->Close();
+    context->Update();
+    Rml::RemoveContext("video-another-interface");
+    Rml::ReleaseTextures(&recording);
+}
+
 TEST_F(VideoElementTest, LoadEventsInChromiumsOrder){
     load("single.html");
     UIVideoElement* v = video();
@@ -166,7 +194,6 @@ TEST_F(VideoElementTest, LoadEventsInChromiumsOrder){
     runner->frameAt(0.0, true);
     EXPECT_EQ(drawnIndex(), 0);
     EXPECT_GE(v->getStats().conversionsQueued, 1u);
-    EXPECT_EQ(v->getStats().cpuConversions, 0u);
 }
 
 TEST_F(VideoElementTest, AutoplayPlaysOnTheUIClock){

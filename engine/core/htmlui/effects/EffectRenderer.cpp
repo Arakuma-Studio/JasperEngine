@@ -432,7 +432,9 @@ void EffectRenderer::renderShader(Rml::CompiledShaderHandle handle, Rml::Compile
         bindStates(*instance, *program);
 
     const uint64_t misses = SystemRender::getPipelineCacheMisses();
-    if (!program->object.beginDraw(renderer.getGeometryState(blendModeOf(instance->blend))))
+    const PipelineState state = renderer.getGeometryState(blendModeOf(instance->blend));
+    renderer.auditStencilDraw(state);
+    if (!program->object.beginDraw(state))
         return;
     const uint64_t created = SystemRender::getPipelineCacheMisses() - misses;
     runtime.mutableStats().pipelinesCreated += created;

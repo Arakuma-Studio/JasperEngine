@@ -10,6 +10,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "htmlui/HtmlUIInspectorInternal.h"
+#include "htmlui/anim/AnimSvg.h"
 #include "htmlui/compat/LuaHooks.h"
 #include "htmlui/compat/runtime/HtmlDialogElement.h"
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
@@ -27,6 +28,7 @@
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/Property.h>
 #include <RmlUi/Core/PropertyDictionary.h>
+#include <RmlUi/Core/StringUtilities.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
 #include <RmlUi/Core/StyleTypes.h>
 
@@ -263,6 +265,12 @@ std::string UIElement::getInnerHTML() const{
 
 void UIElement::setInnerHTML(const std::string& markup){
     HTMLUI_ELEMENT()
+    for (Rml::Element* ancestor = element; ancestor; ancestor = ancestor->GetParentNode()){
+        if (ancestor->GetTagName() == "svg"){
+            element->SetInnerRML(markup);
+            return;
+        }
+    }
     if (isCompatElement(element)){
         element->SetInnerRML(LuaHooks::fragmentToRml(markup, documentOf(element), "innerHTML"));
         return;
@@ -290,6 +298,10 @@ std::string UIElement::getAttribute(const std::string& name) const{
 
 void UIElement::setAttribute(const std::string& name, const std::string& value){
     HTMLUI_ELEMENT()
+    if (name == "draw" && element->HasAttribute("data-anime-drawable")){
+        AnimSvg::setDraw(*this, value);
+        return;
+    }
     if (isCompatElement(element)){
         if (LuaHooks::isHiddenAttribute(name)){
             Log::warn("[HTML UI] UIElement::setAttribute: '%s' is reserved for the engine", name.c_str());
@@ -735,6 +747,9 @@ std::string UIElement::getStyle(const std::string& property) const{
     // a line-clamp container computes to flow-root or inline-block, as Chromium's getComputedStyle (fork, P6-L1)
     if (property == "display" && element->GetComputedValues().line_clamp() > 0)
         return element->GetComputedValues().display() == Rml::Style::Display::InlineBlock ? "inline-block" : "flow-root";
+    // the size text-autosize fitted, as Chromium's getComputedStyle gives a computed font size (S93 R31)
+    if (property == "font-size" && element->GetTextAutosizeFontSize() > 0.0f)
+        return Rml::CreateString("%gpx", element->GetTextAutosizeFontSize());
     const Rml::Property* value = element->GetProperty(property);
     return value ? value->ToString() : std::string();
 }
@@ -883,6 +898,25 @@ float UIElement::getScrollTop() const{
 void UIElement::setScrollTop(float value){
     HTMLUI_ELEMENT()
     element->SetScrollTop(value);
+}
+
+Vector2 UIElement::getScrollVelocity() const{
+    HTMLUI_ELEMENT(Vector2(0, 0))
+    Rml::Context* context = element->GetContext();
+    const Rml::Vector2f velocity = context ? context->GetScrollVelocity(element) : Rml::Vector2f(0.0f);
+    return Vector2(velocity.x, velocity.y);
+}
+
+void UIElement::setScrollVelocity(const Vector2& velocity){
+    HTMLUI_ELEMENT()
+    if (Rml::Context* context = element->GetContext())
+        context->SetScrollVelocity(element, Rml::Vector2f(velocity.x, velocity.y));
+}
+
+void UIElement::stopScrolling(){
+    HTMLUI_ELEMENT()
+    if (Rml::Context* context = element->GetContext())
+        context->StopScrolling(element);
 }
 
 float UIElement::getScrollLeft() const{

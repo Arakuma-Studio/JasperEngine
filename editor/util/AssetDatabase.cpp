@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "localization/StringTableDocument.h"
 #include "AssetDatabase.h"
 #include "io/AtomicFile.h"
 
@@ -254,10 +255,43 @@ namespace {
         return SpriteSheetSources::isAtlasPath(path.string());
     }
 
+    // String Tables and their translations (game-ui-localization.md R41)
+    bool isStringTableFile(const fs::path& path) {
+        return path.extension() == editor::l10n::STRINGTABLE_EXTENSION || path.extension() == editor::l10n::TRANSLATION_EXTENSION;
+    }
+
+    // a String Table or translation file with that GUID (formerGuids among its unknown members), written canonically
+    bool withStringTableIdentity(const fs::path& path, std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        auto setFormer = [&](editor::l10n::Json& extra) {
+            extra.erase("formerGuids");
+            if (formerGuids.empty()) return;
+            std::vector<Guid> sorted = formerGuids;
+            std::sort(sorted.begin(), sorted.end());
+            sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+            editor::l10n::Json list = editor::l10n::Json::array();
+            for (const Guid& former : sorted) list.push_back(former.str());
+            extra["formerGuids"] = std::move(list);
+        };
+        if (path.extension() == editor::l10n::STRINGTABLE_EXTENSION) {
+            editor::l10n::StringTableDoc doc;
+            if (!editor::l10n::parseStringTable(text, doc)) return false;
+            doc.guid = guid.str();
+            setFormer(doc.extra);
+            text = editor::l10n::saveStringTable(doc);
+            return true;
+        }
+        editor::l10n::TranslationDoc doc;
+        if (!editor::l10n::parseTranslation(text, doc)) return false;
+        doc.guid = guid.str();
+        setFormer(doc.extra);
+        text = editor::l10n::saveTranslation(doc);
+        return true;
+    }
+
     bool isClipFile(const fs::path& path) {
         return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string()) ||
-               editor::Util::isAnimatorAssetFile(path.string()) || editor::Util::isProceduralMaterialFile(path.string()) ||
-               isSpriteAtlasFile(path) || editor::Util::isTitleArtFile(path.string());
+               editor::Util::isAnimatorAssetFile(path.string()) || (editor::Util::isProceduralMaterialFile(path.string()) || editor::Util::isDialogueFile(path.string())) ||
+               isSpriteAtlasFile(path) || editor::Util::isTitleArtFile(path.string()) || isStringTableFile(path);
     }
 
     // a Title Art document with "formerGuids" set (an unknown member to its reader, written back)
@@ -341,7 +375,7 @@ namespace {
             const titleart::TitleArtParseResult parsed = titleart::parseTitleArt(text);
             return parsed.ok || parsed.error.code == "version_newer";
         }
-        if (editor::Util::isProceduralMaterialFile(path.string())) {
+        if ((editor::Util::isProceduralMaterialFile(path.string()) || editor::Util::isDialogueFile(path.string()))) {
             graph::LoadReport report;
             graph::load(text, report);
             return report.ok;
@@ -393,7 +427,7 @@ namespace {
     bool withJsonAssetIdentity(const fs::path& path, std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
         // a graph file has no "version" member to insert after: written canonically, the identity
         // among its unknown keys, which the graph model keeps
-        if (editor::Util::isProceduralMaterialFile(path.string())) {
+        if ((editor::Util::isProceduralMaterialFile(path.string()) || editor::Util::isDialogueFile(path.string()))) {
             graph::LoadReport report;
             graph::Graph file = graph::load(text, report);
             if (!report.ok) {
@@ -434,6 +468,9 @@ namespace {
         }
         if (editor::Util::isTitleArtFile(path.string())) {
             return withTitleArtIdentity(text, guid, formerGuids);
+        }
+        if (isStringTableFile(path)) {
+            return withStringTableIdentity(path, text, guid, formerGuids);
         }
         if (editor::Util::isVertexAnimationFile(path.string())) {
             vat::VatParseResult parsed = vat::parseVat(text);

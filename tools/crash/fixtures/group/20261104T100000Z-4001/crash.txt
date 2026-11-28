@@ -1,0 +1,27 @@
+JasperEngine crash report v1
+product: Forest Run
+version: 1.4
+build_id: 0b9e44d1a7c24f2e9d61f3a8b5c7e902-1
+platform: windows-x86_64
+backend: vulkan
+session: 20261104T100000Z-4001
+reason: unhandled exception: vector too long
+exception_code: 0x40000015
+fault_address: 0x7ffd1b2e4f0e
+thread: 5532
+thread_name: main
+pc: 0x7ffd1b2e4f0e
+sp: 0x9e2c1ff3a0
+time_since_start_ms: 5120
+minidump: crash.dmp
+backtrace:
+#0 ucrtbase.dll+0x74f0e [abort+0x4e]
+#1 ForestRun.exe+0x8840 [jasperengine::diag::crash::`anonymous namespace'::onTerminate+0x60]
+#2 ForestRun.exe+0x9100 [std::terminate+0x10]
+#3 ForestRun.exe+0x31a00 [std::vector<int,std::allocator<int> >::_Xlength+0x12]
+#4 ForestRun.exe+0x52f00 [game::Level::load+0x99]
+#5 ForestRun.exe+0x53010 [game::Game::start+0x20]
+#6 ForestRun.exe+0x40010 [main+0x10]
+modules:
+C:\Games\Forest Run\ForestRun.exe 0x7ff7c1d40000 size=0x518000
+C:\Windows\System32\ucrtbase.dll 0x7ffd1b270000 size=0x100000

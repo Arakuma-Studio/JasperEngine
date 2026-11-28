@@ -3,6 +3,7 @@
 
 #include "ModelLoadCmd.h"
 #include "component/BoneComponent.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "sceneview/SurfacePlacement.h"
@@ -18,6 +19,9 @@
 #include "util/ProjectUtils.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/AnimatorComponent.h"
+#include "command/type/MultiPropertyCmd.h"
 #include "Engine.h"
 #include "subsystem/MeshSystem.h"
 #include "io/FileData.h"
@@ -30,6 +34,10 @@
 
 using namespace jasperengine;
 namespace fs = std::filesystem;
+
+struct editor::ModelLoadCmd::SavedSubmeshes {
+    MeshSystem::SubmeshOverrides overrides;
+};
 
 editor::ModelLoadCmd::ModelLoadCmd(Project* project, uint32_t sceneId, Entity entity, const std::string& modelPath){
     this->project = project;
@@ -476,6 +484,10 @@ void editor::ModelLoadCmd::restoreArrangement(SceneProject* sceneProject, const 
 }
 
 bool editor::ModelLoadCmd::tryLoad(){
+    // an FBX whose import still runs has nothing to load yet: no error, the poll waits for it
+    if (MeshSystem::isModelImportPending(modelPath)){
+        return false;
+    }
     Scene* scene = project->getScene(sceneId)->scene;
     std::shared_ptr<MeshSystem> meshSys = scene->getSystem<MeshSystem>();
     bool useAsync = Engine::isAsyncLoading();
@@ -531,7 +543,7 @@ void editor::ModelLoadCmd::finalizeLoad(){
     }
 
     // Put back on whichever mesh the primitive ended up in, which a merge change moves.
-    scene->getSystem<MeshSystem>()->applySubmeshOverrides(savedSubmeshOverrides, entity, newModel);
+    if (savedSubmeshOverrides) scene->getSystem<MeshSystem>()->applySubmeshOverrides(savedSubmeshOverrides->overrides, entity, newModel);
 
     sceneProject->isModified = true;
 
@@ -542,21 +554,62 @@ void editor::ModelLoadCmd::finalizeLoad(){
 
 void editor::ModelLoadCmd::schedulePoll(){
     auto cancel = cancelFlag;
-    Backend::getApp().enqueueMainThreadTask([this, cancel]() {
+    auto poll = [this, cancel]() {
         if (cancel->load()) return;
+        Scene* scene = project->getScene(sceneId)->scene;
+        applyAutoAnimationEntities(scene->getComponent<ModelComponent>(entity));
         if (tryLoad()){
             setAsyncPending(false);
             finalizeLoad();
             return;
         }
-        Scene* scene = project->getScene(sceneId)->scene;
-        if (scene->getSystem<MeshSystem>()->isAsyncModelLoadPending(entity, modelPath)){
+        if (scene->getSystem<MeshSystem>()->isAsyncModelLoadPending(entity, modelPath) || MeshSystem::isModelImportPending(modelPath)){
             schedulePoll();
         } else {
             // Terminal worker failure — drop pending state; rollback happens via the next undo
             setAsyncPending(false);
         }
-    });
+    };
+    // an import takes seconds to minutes: the poll runs once it ends, not every frame
+    if (MeshSystem::isModelImportPending(modelPath)){
+        project->whenModelImported(project->resolveAssetPath(FileUtils::pathFromUtf8(modelPath)), poll);
+        return;
+    }
+    Backend::getApp().enqueueMainThreadTask(poll);
+}
+
+void editor::ModelLoadCmd::applyAutoAnimationEntities(ModelComponent& model){
+    // Project Settings > Animation > Animation Entities: Auto (S77 R38): a model placed with many
+    // clips, or one an Animator or Animation Player plays (on it or an ancestor, S94 F47), makes no
+    // Animation entity per clip. Only a first load: a reload keeps the user's choice.
+    if (!isNewModel || !model.animationEntities || project->getModelSettings().animationEntities != AnimationEntitiesMode::Auto) {
+        return;
+    }
+    {
+        Scene* scene = project->getScene(sceneId)->scene;
+        for (Entity current = entity; current != NULL_ENTITY && scene->isEntityCreated(current);) {
+            if (scene->findComponent<AnimatorComponent>(current) || scene->findComponent<AnimationPlayerComponent>(current)) {
+                autoClipCount = kAutoAnimationEntitiesClips;
+                break;
+            }
+            const Transform* parent = scene->findComponent<Transform>(current);
+            current = parent ? parent->parent : NULL_ENTITY;
+        }
+    }
+    if (autoClipCount < 0) {
+        const fs::path absolute = project->resolveAssetPath(FileUtils::pathFromUtf8(modelPath));
+        const fs::path read = FbxImporter::isFbxFile(absolute) ? project->getImportedModelPath(absolute) : absolute;
+        ModelHeader header;
+        std::string headerError;
+        if (readModelHeader(read, header, headerError)) {
+            autoClipCount = header.animations;
+        } else if (!MeshSystem::isModelImportPending(modelPath)) {
+            autoClipCount = 0;
+        }
+    }
+    if (autoClipCount >= kAutoAnimationEntitiesClips) {
+        model.animationEntities = false;
+    }
 }
 
 std::map<std::pair<uint32_t, Entity>, editor::ModelLoadCmd*>& editor::ModelLoadCmd::getPendingLoads(){
@@ -600,6 +653,26 @@ bool editor::ModelLoadCmd::isLoadPending(uint32_t sceneId, Entity entity){
     return getPendingLoads().count({sceneId, entity}) > 0;
 }
 
+bool editor::ModelLoadCmd::isLoadOption(const std::string& property){
+    return property == "animationEntities" || property == "preserveHierarchy";
+}
+
+editor::Command* editor::ModelLoadCmd::setLoadOption(Project* project, uint32_t sceneId, Entity entity, const std::string& property, bool value){
+    if (!isLoadOption(property)) {
+        return nullptr;
+    }
+    SceneProject* sceneProject = project->getScene(sceneId);
+    const ModelComponent* model = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<ModelComponent>(entity) : nullptr;
+    auto* multi = new MultiPropertyCmd();
+    multi->addPropertyCmd<bool>(project, sceneId, entity, ComponentType::ModelComponent, property, value);
+    // the value, then the reload that reads it (its undo puts the old entities back, the value's the old value)
+    if (model && !model->filename.empty()) {
+        multi->addCommand(std::make_unique<ModelLoadCmd>(project, sceneId, entity, model->filename.str(), model->mergeStaticMeshes));
+    }
+    multi->setNoMerge();
+    return multi;
+}
+
 void editor::ModelLoadCmd::completePendingLoad(uint32_t sceneId, Entity entity){
     auto& pendingLoads = getPendingLoads();
     auto it = pendingLoads.find({sceneId, entity});
@@ -623,8 +696,8 @@ bool editor::ModelLoadCmd::execute(){
             PoseEditSession::suspendActiveFor(sceneId, {entity});
         }
     }
-    // An FBX loads from its import, created here the first time
-    if (!project->prepareModelFile(modelPath)) {
+    // An FBX loads from its import, queued here the first time: the load waits for it (S98 REQ-33)
+    if (project->prepareModelFile(modelPath) == Project::ModelImport::Failed) {
         return false;
     }
 
@@ -712,7 +785,8 @@ bool editor::ModelLoadCmd::execute(){
     // the submesh edits, taken now because the meshes holding them are deleted below. A reuse keeps
     // those meshes, so the loader restores them and these ordinals would be the pre-remap ones.
     if (sameModelFile && !reuseHierarchy) {
-        savedSubmeshOverrides = scene->getSystem<MeshSystem>()->collectSubmeshOverrides(entity, model);
+        savedSubmeshOverrides = std::make_unique<SavedSubmeshes>();
+        savedSubmeshOverrides->overrides = scene->getSystem<MeshSystem>()->collectSubmeshOverrides(entity, model);
     } else if (!sameModelFile) {
         for (unsigned int i = 0; i < mesh.numSubmeshes; i++) {
             mesh.submeshes[i].overrideFields = 0;
@@ -763,20 +837,7 @@ bool editor::ModelLoadCmd::execute(){
     }
     model.mergeStaticMeshes = requestedMergeStaticMeshes;
 
-    // Project Settings > Animation > Animation Entities: Auto (S77 R38): a model placed with many
-    // clips makes no Animation entity per clip. Only a first load: a reload keeps the user's choice.
-    if (isNewModel && model.animationEntities && project->getModelSettings().animationEntities == AnimationEntitiesMode::Auto) {
-        if (autoClipCount < 0) {
-            const fs::path absolute = project->resolveAssetPath(FileUtils::pathFromUtf8(modelPath));
-            const fs::path read = FbxImporter::isFbxFile(absolute) ? project->getImportedModelPath(absolute) : absolute;
-            ModelHeader header;
-            std::string headerError;
-            autoClipCount = readModelHeader(read, header, headerError) ? header.animations : 0;
-        }
-        if (autoClipCount >= kAutoAnimationEntitiesClips) {
-            model.animationEntities = false;
-        }
-    }
+    applyAutoAnimationEntities(model);
 
     // The scene root node gets an entity of its own in the node hierarchy, which carries the
     // matrix the legacy model entity stood in for: taken off the entity, everything stays where
@@ -794,8 +855,9 @@ bool editor::ModelLoadCmd::execute(){
         return true;
     }
 
-    if (Engine::isAsyncLoading()){
-        // Load is in progress on a worker thread — accept the command and finalize when ready
+    if (Engine::isAsyncLoading() || MeshSystem::isModelImportPending(modelPath)){
+        // Load (or the FBX's import) is in progress on a worker thread — accept the command and
+        // finalize when ready
         setAsyncPending(true);
         cancelFlag = std::make_shared<std::atomic<bool>>(false);
         schedulePoll();

@@ -88,6 +88,8 @@ INHERENT_NOTES = {
     "low_end": lambda c, it: c["type"] in ALLOW_LOW,
     "harsh_resonance": lambda c, it: c["kind"] in ("riser", "speech"),
     "aliasing": lambda c, it: c["kind"] in ("tonal", "glitch"),
+    # build-size-tools R16: a fact of a stereo clip whose side is 18 dB or more under its mid (Force To Mono's Auto)
+    "near_mono": lambda c, it: (it.get("stereo") or {}).get("side_mid_db") is not None and it["stereo"]["side_mid_db"] <= -18.0,
 }
 # P5 §5.7 (the review's L-3): tags, ids and descriptions name the sound, not its file or licence
 FORMAT_WORDS = {"wav", "ogg", "mp3", "flac", "aif", "aiff", "aifc", "m4a", "wma", "aac"}

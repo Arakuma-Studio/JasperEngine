@@ -1,0 +1,25 @@
+{
+  "format": "jasperengine.mixer",
+  "version": 2,
+  "updateMode": "scaled",
+  "groups": [
+    {
+      "id": "e93ea9d2",
+      "name": "Master",
+      "parent": null,
+      "volume": 0,
+      "effects": [
+        {
+          "id": "a9c2bf84",
+          "type": "limiter",
+          "params": {
+            "threshold": -1,
+            "release": 0.1,
+            "lookahead": 1.5,
+            "truePeak": 1
+          }
+        }
+      ]
+    }
+  ]
+}

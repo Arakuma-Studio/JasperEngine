@@ -56,7 +56,10 @@ namespace jasperengine::editor {
     class ModelExport {
     public:
         // The requests of every model source x family (main thread)
-        static bool gather(Project& project, const std::vector<ModelFamily>& families, ModelExportInputs& inputs, std::string& error);
+        // `ships` (when set) leaves out a model source the build does not ship (S98 Asset Stripping:
+        // not cooked, an FBX not imported)
+        static bool gather(Project& project, const std::vector<ModelFamily>& families, ModelExportInputs& inputs, std::string& error,
+                           const std::function<bool(const std::string& assetPath)>& ships = {});
 
         // Cooks the inputs (any thread) into <assetsOut>/je-cooked/models; an empty assetsOut
         // cooks into the cache only. `progress` gets (done, total, path).

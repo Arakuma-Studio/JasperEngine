@@ -368,7 +368,8 @@ HtmlUIPrimitive RmlRenderer::toInstance(const Rml::BoxPrimitive& primitive, Rml:
         setRadii(instance.e, instance.f, primitive.clip_radii);
         break;
     case Rml::BoxPrimitive::Kind::Gradient: {
-        // the fill area painted by the gradient (htmlui_gradient.frag's p, v and stops, at most four)
+        // the fill area painted by the gradient: htmlui_gradient.frag's function, p and v, its stops
+        // (four in the instance, more in the shader's row of the stop table)
         instance.params[0] = (float)HtmlUIPrimitive::GRADIENT;
         const RmlCompiledShader* shader = reinterpret_cast<const RmlCompiledShader*>(primitive.shader);
         if (!shader)
@@ -377,20 +378,25 @@ HtmlUIPrimitive RmlRenderer::toInstance(const Rml::BoxPrimitive& primitive, Rml:
         instance.d[1] = shader->p.y;
         instance.d[2] = shader->v.x;
         instance.d[3] = shader->v.y;
-        const int count = std::min((int)shader->stopPositions.size(), (int)HtmlUIPrimitive::GRADIENT_STOPS);
-        for (int i = 0; i < count; i++){
-            instance.e[i] = shader->stopPositions[(size_t)i];
-            const Rml::Colourf& c = shader->stopColors[(size_t)i];
-            setColor(instance.border[i], Rml::ColourbPremultiplied((Rml::byte)std::lround(c.red * 255.0f), (Rml::byte)std::lround(c.green * 255.0f),
-                                                                   (Rml::byte)std::lround(c.blue * 255.0f), (Rml::byte)std::lround(c.alpha * 255.0f)));
+        const int count = std::min((int)shader->stopPositions.size(), (int)HtmlUIPrimitive::GRADIENT_TABLE_STOPS);
+        if (count > HtmlUIPrimitive::GRADIENT_STOPS){
+            instance.e[0] = (float)std::max(shader->stopRow, 0);
+        }else{
+            for (int i = 0; i < count; i++){
+                instance.e[i] = shader->stopPositions[(size_t)i];
+                const Rml::Colourf& c = shader->stopColors[(size_t)i];
+                setColor(instance.border[i], Rml::ColourbPremultiplied((Rml::byte)std::lround(c.red * 255.0f), (Rml::byte)std::lround(c.green * 255.0f),
+                                                                       (Rml::byte)std::lround(c.blue * 255.0f), (Rml::byte)std::lround(c.alpha * 255.0f)));
+            }
         }
-        instance.f[0] = (shader->function == RmlCompiledShader::Function::RADIAL) ? 1.0f : 0.0f;
+        instance.f[0] = (float)(int)shader->function;
         instance.f[1] = (float)count;
         // the shader's (0, 0) in the area's px (a background tile's origin) and the tiles' period
+        // (negative: one tile of that length)
         instance.params[1] = primitive.gradient_origin.x;
         instance.params[3] = primitive.gradient_origin.y;
-        instance.f[2] = std::max(primitive.gradient_repeat.x, 0.0f);
-        instance.f[3] = std::max(primitive.gradient_repeat.y, 0.0f);
+        instance.f[2] = primitive.gradient_repeat.x;
+        instance.f[3] = primitive.gradient_repeat.y;
         break;
     }
     }
@@ -400,9 +406,13 @@ HtmlUIPrimitive RmlRenderer::toInstance(const Rml::BoxPrimitive& primitive, Rml:
 bool RmlRenderer::SupportsGradientPrimitive(Rml::CompiledShaderHandle handle){
     if (!sdfPrimitivesEnabled || !handle || htmlui::EffectRenderer::isEffectHandle(handle))
         return false;
+    // every function, plain and repeating, of up to 16 stops (S92 R7): at most four in the
+    // instance, more through the stop table; a list longer than 16 keeps the mesh path
     const RmlCompiledShader* shader = reinterpret_cast<const RmlCompiledShader*>(handle);
-    const bool plain = shader->function == RmlCompiledShader::Function::LINEAR || shader->function == RmlCompiledShader::Function::RADIAL;
-    return plain && !shader->stopPositions.empty() && shader->stopPositions.size() <= (size_t)HtmlUIPrimitive::GRADIENT_STOPS;
+    const size_t count = shader->stopPositions.size();
+    if (count == 0 || shader->declaredStops > (size_t)HtmlUIPrimitive::GRADIENT_TABLE_STOPS)
+        return false;
+    return count <= (size_t)HtmlUIPrimitive::GRADIENT_STOPS || shader->stopRow >= 0;
 }
 
 bool RmlRenderer::classifyQuadList(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices, std::vector<HtmlUIPrimitive>* instances){
@@ -475,7 +485,15 @@ void RmlRenderer::RenderPrimitives(Rml::Span<const Rml::BoxPrimitive> primitives
         const size_t first = commandPrimitives.size();
         for (const Rml::BoxPrimitive& primitive : primitives)
             commandPrimitives.push_back(toInstance(primitive, Rml::Vector2f(0.0f, 0.0f)));
-        const uint64_t hash = hashBytes(0x2545f4914f6cdd1dull, commandPrimitives.data() + first, primitives.size() * sizeof(HtmlUIPrimitive));
+        uint64_t hash = hashBytes(0x2545f4914f6cdd1dull, commandPrimitives.data() + first, primitives.size() * sizeof(HtmlUIPrimitive));
+        // a gradient's stops in the table are what it draws too (a row is used again by another
+        // gradient once released)
+        for (const Rml::BoxPrimitive& primitive : primitives){
+            const RmlCompiledShader* shader = primitive.kind == Rml::BoxPrimitive::Kind::Gradient ? reinterpret_cast<const RmlCompiledShader*>(primitive.shader)
+                                                                                                    : nullptr;
+            if (shader && shader->stopRow >= 0 && (size_t)shader->stopRow < stopRowHashes.size())
+                hash = mix(hash, stopRowHashes[(size_t)shader->stopRow]);
+        }
         command.i[2] = (int32_t)(uint32_t)(hash & 0xffffffffull);
         command.i[3] = (int32_t)(uint32_t)(hash >> 32);
         return;
@@ -547,6 +565,10 @@ bool RmlRenderer::drawInstances(BufferRender& buffer, size_t byteOffset, uint32_
             break;
         }
     }
+    // the gradients' stop table (S92 R7): white while no gradient has a row
+    if (primStopsSlot.first >= 0)
+        primObject.addTexture(primStopsSlot, ShaderStageType::FRAGMENT, currentStopTable());
+    auditStencilDraw(state);
     if (!primObject.beginDraw(state))
         return false;
     // `matrix` is to the target's clip space, the layer drawn into covers `frame` of it
@@ -645,14 +667,23 @@ void RmlRenderer::planClipScopes(){
         bool analytic = primitivesFrame && !masks.empty() && masks.size() <= 2 && masks[0].operation == Rml::ClipMaskOperation::Set &&
                         (masks.size() == 1 || masks[1].operation == Rml::ClipMaskOperation::Intersect);
         regions.clear();
+        // S92 (U27): masks that are all rectangles on the target's axes clip a layer composite in
+        // the composite's shader (compositeRect) instead of the stencil
+        bool squareMasks = !masks.empty();
+        int polygons = 0;
         for (const Mask& mask : masks){
             if (mask.shape < 0 || mask.operation == Rml::ClipMaskOperation::SetInverse){
-                elidable = analytic = false;
+                elidable = analytic = squareMasks = false;
                 break;
+            }
+            // S92: a convex polygon clips in the shaders only (its bounds admit what it may not)
+            if (commandClipShapes[(size_t)mask.shape].polygonPoints > 0){
+                elidable = squareMasks = false;
+                polygons++;
             }
             const AxisMap map = axisMapOf(matrixOf(mask.transform));
             if (!map.valid){
-                elidable = false;
+                elidable = squareMasks = false;
                 continue;
             }
             const ClipShapeRecord& shape = commandClipShapes[(size_t)mask.shape];
@@ -676,9 +707,14 @@ void RmlRenderer::planClipScopes(){
                 region.hasCorner[i] = r[i].x > 0.0f && r[i].y > 0.0f;
                 if (region.hasCorner[i])
                     region.corners[i] = mapRect(map, pixel, boxes[i][0], boxes[i][1], boxes[i][2], boxes[i][3]);
+                squareMasks = squareMasks && !region.hasCorner[i];
             }
             regions.push_back(region);
         }
+
+        // one polygon per scope fits u_fs_htmluiClip
+        if (polygons > 1)
+            analytic = false;
 
         // the content: up to the next clip change
         int contentTransform = t;
@@ -743,7 +779,9 @@ void RmlRenderer::planClipScopes(){
                     elidable = false;
                 break;
             case CommandType::COMPOSITE: {
-                analytic = false;
+                // drawn in the target's space: clipped by the masks' rectangle there, or by the stencil
+                if (!squareMasks)
+                    analytic = false;
                 // a composite draws within the scissor; a filter that spreads may reach the corners
                 for (int f = 0; f < c.i[3]; f++){
                     if (filterSpreads(commandFilters[(size_t)(c.i[2] + f)]))
@@ -759,8 +797,16 @@ void RmlRenderer::planClipScopes(){
                     elidable = false;
                 break;
             }
-            case CommandType::PUSH_LAYER:
             case CommandType::POP_LAYER:
+                // draws nothing (a composite's layer popped after it)
+                break;
+            case CommandType::PUSH_LAYER:
+                // draws nothing either: under masks that are rectangles on the target's axes, what
+                // is drawn into it is checked as any draw (the next element's layer pushed before
+                // it sets its own clip)
+                if (!squareMasks)
+                    analytic = false;
+                break;
             case CommandType::SAVE_TEXTURE:
             case CommandType::SAVE_MASK:
                 // no stencil test of their own; what they hold was drawn by the scope's checked draws
@@ -788,9 +834,29 @@ void RmlRenderer::planClipScopes(){
             scope.scissor = Rml::Rectanglei::FromCorners(p0, Rml::Math::Max(p0, Rml::Vector2i((int)x1, (int)y1)));
         }else if (analytic && primitivesFrame){
             scope.mode = ScopeMode::ANALYTIC;
+            if (squareMasks){
+                // the rectangles' intersection, target px (a layer composite's clip)
+                RectF r = regions[0].rect;
+                for (const ShapeRegion& region : regions){
+                    r.x0 = std::max(r.x0, region.rect.x0);
+                    r.y0 = std::max(r.y0, region.rect.y0);
+                    r.x1 = std::max(r.x0, std::min(r.x1, region.rect.x1));
+                    r.y1 = std::max(r.y0, std::min(r.y1, region.rect.y1));
+                }
+                scope.compositeRect = Rml::Rectanglef::FromCorners(Rml::Vector2f(r.x0, r.y0), Rml::Vector2f(r.x1, r.y1));
+                scope.compositeClip = true;
+            }
             scope.clip.params[0] = (float)masks.size();
             for (size_t m = 0; m < masks.size(); m++){
                 const ClipShapeRecord& shape = commandClipShapes[(size_t)masks[m].shape];
+                if (shape.polygonPoints > 0){
+                    scope.clip.params[2] = (float)(m + 1);
+                    scope.clip.params[3] = (float)shape.polygonPoints;
+                    for (int i = 0; i < shape.polygonPoints; i++){
+                        scope.clip.polygon[i / 2][(i % 2) * 2] = shape.polygon[i].x + masks[m].translation.x;
+                        scope.clip.polygon[i / 2][(i % 2) * 2 + 1] = shape.polygon[i].y + masks[m].translation.y;
+                    }
+                }
                 scope.clip.rect[m][0] = shape.rect.Left() + masks[m].translation.x;
                 scope.clip.rect[m][1] = shape.rect.Top() + masks[m].translation.y;
                 scope.clip.rect[m][2] = shape.rect.Width();
@@ -1041,6 +1107,9 @@ void RmlRenderer::planRuns(){
     const size_t count = commands.size();
     for (size_t ci = 0; ci < count; ci++){
         const Command& c = commands[ci];
+        // S92 R9: what a scope drawn from the layer cache draws is not replayed
+        if (!cacheOps.empty() && cacheOps[ci] == CacheOp::SKIP)
+            continue;
         switch (c.type){
         case CommandType::TRANSFORM: {
             const int next = c.flag ? c.i[0] : -1;
@@ -1469,6 +1538,7 @@ void RmlRenderer::drawRun(const BatchRun& run){
             geometryObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, run.texture ? run.texture->render : &placeholderWhite);
             stats.textureBinds++;
             noteDrawn(run.texture);
+            auditStencilDraw(state);
             if (!geometryObject.beginDraw(state))
                 return;
             HtmlUIParams params;
@@ -1498,7 +1568,10 @@ void RmlRenderer::applyClipEnable(const Command& command, int32_t scope){
 }
 
 void RmlRenderer::executePlan(){
+    // S92 R5: which passes need their depth-stencil (replayPosition follows the ops)
+    planDepthStencil();
     for (const ReplayOp& op : replayOps){
+        replayPosition = (size_t)(&op - replayOps.data());
         if (op.kind == ReplayOp::Kind::RUN){
             drawRun(batchRuns[op.index]);
             continue;
@@ -1516,6 +1589,7 @@ void RmlRenderer::executePlan(){
 void RmlRenderer::replayScoped(){
     int32_t scope = -1;
     for (size_t ci = 0; ci < commands.size(); ci++){
+        replayPosition = ci;
         const Command& c = commands[ci];
         if (c.type == CommandType::CLIP_ENABLE){
             scope = c.flag ? scopeOfCommand[ci] : -1;

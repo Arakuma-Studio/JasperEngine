@@ -625,9 +625,15 @@ namespace {
         }
 
         std::optional<std::string> staticIdent(const std::string& name) const {
-            if (name == "hover" || name == "any-hover")
+            // hover and pointer: the pointer in use (live: the document is restyled with the
+            // other variant when it changes); any-*: what the device has
+            if (name == "hover")
+                return std::string(options.coarsePointer ? "none" : "hover");
+            if (name == "pointer")
+                return std::string(options.coarsePointer ? "coarse" : "fine");
+            if (name == "any-hover")
                 return std::string(options.touchDevice ? "none" : "hover");
-            if (name == "pointer" || name == "any-pointer")
+            if (name == "any-pointer")
                 return std::string(options.touchDevice ? "coarse" : "fine");
             if (name == "color-gamut")
                 return std::string("srgb");
@@ -656,6 +662,10 @@ namespace {
 
         void reportStatic(const std::string& text, const std::string& name){
             rewritten = true;
+            if (name == "hover" || name == "pointer"){
+                dependsOnPointer = true;
+                return;
+            }
             std::string value;
             if (std::optional<std::string> ident = staticIdent(name))
                 value = *ident;
@@ -682,6 +692,7 @@ namespace {
 
     public:
         bool emConverted = false;
+        bool dependsOnPointer = false;
     };
 
     std::string canonicalInput(const ValueList& query){
@@ -813,6 +824,8 @@ MediaResult MediaQuery::normalize(const ValueList& prelude, SourceRef ref, const
         Normalizer normalizer(options, sink, ref);
         Dnf dnf;
         normalizer.query(query, dnf);
+        if (normalizer.dependsOnPointer)
+            result.dependsOnPointer = true;
         bool reportedInexpressible = false;
         size_t kept = 0;
         std::vector<std::string> texts;

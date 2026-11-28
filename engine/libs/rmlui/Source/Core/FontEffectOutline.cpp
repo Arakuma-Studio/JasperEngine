@@ -1,5 +1,8 @@
 #include "FontEffectOutline.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
+#include "GlyphFilters.h"
+#include <functional>
+#include <vector>
 
 namespace Rml {
 
@@ -23,24 +26,6 @@ bool FontEffectOutline::Initialise(int _width)
 
 	width = _width;
 
-	filter.Initialise(width, FilterOperation::Dilation);
-	for (int x = -width; x <= width; ++x)
-	{
-		for (int y = -width; y <= width; ++y)
-		{
-			float weight = 1;
-
-			float distance = Math::SquareRoot(float(x * x + y * y));
-			if (distance > width)
-			{
-				weight = (width + 1) - distance;
-				weight = Math::Max(weight, 0.0f);
-			}
-
-			filter[x + width][y + width] = weight;
-		}
-	}
-
 	return true;
 }
 
@@ -50,6 +35,14 @@ bool FontEffectOutline::GetDistanceEffect(DistanceEffect& effect) const
 	effect.dilation = float(width) + 0.5f;
 	effect.sigma = 0.f;
 	effect.offset = Vector2f(0.f);
+	return true;
+}
+
+bool FontEffectOutline::GetBitmapKey(BitmapKey& key) const
+{
+	// a glow of the same outline and no blur makes the same bitmaps
+	key.shape = std::hash<int>()(width) * 31u + 1u;
+	key.offset = Vector2i(0);
 	return true;
 }
 
@@ -72,10 +65,12 @@ bool FontEffectOutline::GetGlyphMetrics(Vector2i& origin, Vector2i& dimensions, 
 void FontEffectOutline::GenerateGlyphTexture(byte* destination_data, const Vector2i destination_dimensions, int destination_stride,
 	const FontGlyph& glyph) const
 {
-	filter.Run(destination_data, destination_dimensions, destination_stride, ColorFormat::RGBA8, glyph.bitmap_data, glyph.bitmap_dimensions,
-		Vector2i(width), glyph.color_format);
-
-	FillColorValuesFromAlpha(destination_data, destination_dimensions, destination_stride);
+	// Fork (S93 R11): a distance-transform dilation in place of the dense kernel
+	const size_t area = (size_t)destination_dimensions.x * (size_t)destination_dimensions.y;
+	std::vector<byte> placed(area), dilated(area);
+	GlyphFilters::Place(placed.data(), destination_dimensions, glyph.bitmap_data, glyph.bitmap_dimensions, Vector2i(width), glyph.color_format);
+	GlyphFilters::Dilate(dilated.data(), placed.data(), destination_dimensions, width);
+	GlyphFilters::WriteWhite(destination_data, destination_dimensions, destination_stride, dilated.data());
 }
 
 FontEffectOutlineInstancer::FontEffectOutlineInstancer() : id_width(PropertyId::Invalid), id_color(PropertyId::Invalid)

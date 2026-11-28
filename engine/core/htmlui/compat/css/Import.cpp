@@ -66,6 +66,8 @@ std::optional<ImportedSheet> Import::load(Session& session, const Rule& rule, ui
     }
     if (!media.empty())
         imported.media = MediaQuery::normalize(trimWhitespace(media), extentOf(fromFile, media), session.options, session.sink);
+    if (imported.media.dependsOnPointer && session.result)
+        session.result->dependsOnPointer = true;
 
     const std::string fromPath = session.files.path(fromFile);
     const ResolvedUrl resolved = session.urls.resolve(url, fromPath, "stylesheet", SourceRef{fromFile, first.offset, first.length}, session.sink);

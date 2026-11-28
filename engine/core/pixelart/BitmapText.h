@@ -63,6 +63,8 @@ namespace jasperengine::pixelart {
         // the size a string takes, font pixels: the widest line (advances, or ink past them) and
         // the lines times the line height (Lua BitmapFont:measure)
         static void measure(const BitmapFont& font, const std::string& text, int& width, int& height);
+        // the same, word wrapped at widthPx when wrap (a Text's fixed width: Auto Size's fit)
+        static void measure(const BitmapFont& font, const std::string& text, bool wrap, int widthPx, int& width, int& height);
 
         // width and height in and out are in units (whole units, as the layout rect)
         void createText(const std::string& text, Buffer* buffer, std::vector<uint16_t>& indices, std::vector<Vector2>& charPositions,

@@ -159,6 +159,11 @@ namespace jasperengine{
 
         void load();
         void destroy();
+        // A view loss (Engine::systemViewDestroyed / systemViewLoaded): every system releases
+        // (restores) its GPU objects and keeps its CPU state (SubSystem::releaseGpu); destroy()
+        // is the real teardown
+        void releaseGpu();
+        void restoreGpu();
         void draw();
         void update(double dt);
         void fixedUpdate(double dt);
@@ -251,6 +256,14 @@ namespace jasperengine{
 
         void setSceneColorScale(SceneColorScale scale);
         SceneColorScale getSceneColorScale() const;
+
+        // The screen HTML UI documents (SceneSettings, S92): read each frame, no reload. Samples:
+        // 0 = the project's, else 1, 2, 4 or 8 (another count goes to the one below it); a change
+        // makes the next frame recreate the document target
+        void setHtmlUiRenderMode(UIRenderMode mode);
+        UIRenderMode getHtmlUiRenderMode() const;
+        void setHtmlUiMsaaSamples(int samples);
+        int getHtmlUiMsaaSamples() const;
 
         // Planar reflections (SceneSettings): read each frame by RenderSystem, no reload
         void setPlanarReflectionResolution(PlanarReflectionResolution resolution);
@@ -356,6 +369,20 @@ namespace jasperengine{
         Vector3 getGlobalIlluminationColor() const;
         Vector3 getGlobalIlluminationColorLinear() const;
 
+        // Environment Lighting > Source and the Gradient's colours (sRGB; the Linear getters as
+        // stored)
+        void setAmbientMode(AmbientMode source);
+        AmbientMode getAmbientMode() const;
+        void setAmbientSkyColor(Vector3 color);
+        Vector3 getAmbientSkyColor() const;
+        Vector3 getAmbientSkyColorLinear() const;
+        void setAmbientEquatorColor(Vector3 color);
+        Vector3 getAmbientEquatorColor() const;
+        Vector3 getAmbientEquatorColorLinear() const;
+        void setAmbientGroundColor(Vector3 color);
+        Vector3 getAmbientGroundColor() const;
+        Vector3 getAmbientGroundColorLinear() const;
+
         // lights each object is lit by (1..16); the other lights reaching it are folded into
         // its spherical-harmonics ambient
         void setMaxLightsPerObject(int maxLightsPerObject);
@@ -385,6 +412,14 @@ namespace jasperengine{
         Vector3 getAmbientLight2DColor() const;
         Vector3 getAmbientLight2DColorLinear() const;
 
+        // Light Steps: the bands each Light 2D's light is quantized into, 0 (off) to 16 (clamped)
+        void setLight2DSteps(int steps);
+        int getLight2DSteps() const;
+        // the Ambient Light 2D tints the unlit 2D materials of a scene without a Light 2D too
+        // (on in new scenes, off in scenes saved before it)
+        void setAmbientLight2DWithoutLights(bool enabled);
+        bool isAmbientLight2DWithoutLights() const;
+
         void setShadow2DQuality(ShadowQuality quality);
         ShadowQuality getShadow2DQuality() const;
 
@@ -405,6 +440,54 @@ namespace jasperengine{
         // forwarder to PhysicsSystem::setSubSteps2D: Box2D sub-steps of each fixed step (1..16)
         void setPhysics2DSubSteps(int subSteps);
         int getPhysics2DSubSteps() const;
+
+        // Fixed Timestep override while this is the main scene (seconds; 0 = the project's).
+        // Applied when a load makes it the main scene, not by this setter
+        void setFixedTimestep(float seconds);
+        float getFixedTimestep() const;
+        // S96 WP-E: forwarders to PhysicsSystem::setWorldSettings2D/3D: the 2D world's units,
+        // rotation cap and tuning and the 3D solver (physics/WorldSettings.h; a value out of its
+        // range is clamped)
+        void setPhysics2DWorldSettings(const ScenePhysics2DSettings& settings);
+        const ScenePhysics2DSettings& getPhysics2DWorldSettings() const;
+        void setPhysics3DWorldSettings(const ScenePhysics3DSettings& settings);
+        const ScenePhysics3DSettings& getPhysics3DWorldSettings() const;
+        void setPhysics2DPointsPerMeter(float pointsPerMeter);
+        float getPhysics2DPointsPerMeter() const;
+        void setPhysics2DMaxRotation(float maxRotation);
+        float getPhysics2DMaxRotation() const;
+        void setPhysics2DContactHertz(float contactHertz);
+        float getPhysics2DContactHertz() const;
+        void setPhysics2DContactDampingRatio(float contactDampingRatio);
+        float getPhysics2DContactDampingRatio() const;
+        void setPhysics2DContactPushSpeed(float contactPushSpeed);
+        float getPhysics2DContactPushSpeed() const;
+        void setPhysics2DJointHertz(float jointHertz);
+        float getPhysics2DJointHertz() const;
+        void setPhysics2DJointDampingRatio(float jointDampingRatio);
+        float getPhysics2DJointDampingRatio() const;
+        void setPhysics2DBounceThreshold(float bounceThreshold);
+        float getPhysics2DBounceThreshold() const;
+        void setPhysics2DMaxLinearSpeed(float maxLinearSpeed);
+        float getPhysics2DMaxLinearSpeed() const;
+        void setPhysics2DWarmStarting(bool warmStarting);
+        bool isPhysics2DWarmStarting() const;
+        void setPhysics2DContinuous(bool continuous);
+        bool isPhysics2DContinuous() const;
+        void setPhysics2DSleep(bool sleep);
+        bool isPhysics2DSleep() const;
+        void setPhysics3DVelocityIterations(int velocityIterations);
+        int getPhysics3DVelocityIterations() const;
+        void setPhysics3DPositionIterations(int positionIterations);
+        int getPhysics3DPositionIterations() const;
+        void setPhysics3DBounceThreshold(float bounceThreshold);
+        float getPhysics3DBounceThreshold() const;
+        void setPhysics3DSleepThreshold(float sleepThreshold);
+        float getPhysics3DSleepThreshold() const;
+        void setPhysics3DSpeculativeDistance(float speculativeDistance);
+        float getPhysics3DSpeculativeDistance() const;
+        void setPhysics3DCollisionSteps(int collisionSteps);
+        int getPhysics3DCollisionSteps() const;
 
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;

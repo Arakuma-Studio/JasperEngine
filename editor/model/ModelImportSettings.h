@@ -13,6 +13,8 @@
 //       version: 1
 //       meshCompression: medium
 //       generateLods: on
+//       normals: calculate
+//       restPose: first_frame
 //       platforms:
 //         mobile: {override: true, lodCount: 2, lodReduction: smallest}
 
@@ -37,7 +39,20 @@ namespace jasperengine::editor {
     enum class MeshCompression : uint8_t { Off, Lossless, Low, Medium, High };
     enum class IndexFormat : uint8_t { Auto, Bits16, Bits32 };
     enum class ModelReadWrite : uint8_t { Automatic, On };
-    enum class ModelNormals : uint8_t { Import, Calculate };
+    // None writes no normals: the Lit shades with the faces' own normals (from screen derivatives)
+    enum class ModelNormals : uint8_t { Import, Calculate, None };
+    // Normals Calculate's weighting of a face at a corner (spec S94 F43). Unset (an older section)
+    // keeps the calculation earlier versions made (meshoptimizer's angle and edge lengths)
+    enum class NormalsWeighting : uint8_t { AreaAndAngle, Area };
+    // What makes an edge hard under Normals Calculate. The smoothing groups are an FBX's, read when
+    // the FBX is converted, so it is a setting of the model (no platform or project value); a glTF
+    // has none and uses the angle
+    enum class SmoothnessSource : uint8_t { FromAngle, FromSmoothingGroups, PreferSmoothingGroups };
+    // Calculate is MikkTSpace (meshoptimizer's compatible mode); None writes no tangents
+    enum class ModelTangents : uint8_t { Import, Calculate, None };
+    // The pose an FBX's nodes import with: their values, or the first frame of a take (Unity's
+    // imported pose, spec S94 F40). Read when the FBX is converted: a setting of the model only
+    enum class RestPose : uint8_t { NodeValues, FirstFrame };
     enum class GenerateLods : uint8_t { Automatic, On, Off };
     enum class LodReduction : uint8_t { PreserveDetail, Balanced, Smallest };
 
@@ -49,6 +64,10 @@ namespace jasperengine::editor {
     const char* indexFormatName(IndexFormat value);               // "auto", "u16", "u32"
     const char* modelReadWriteName(ModelReadWrite value);
     const char* modelNormalsName(ModelNormals value);
+    const char* normalsWeightingName(NormalsWeighting value);     // "area_and_angle", "area"
+    const char* smoothnessSourceName(SmoothnessSource value);     // "from_angle"...
+    const char* modelTangentsName(ModelTangents value);
+    const char* restPoseName(RestPose value);                     // "node_values", "first_frame"
     const char* generateLodsName(GenerateLods value);             // "automatic", "on", "off"
     const char* lodReductionName(LodReduction value);             // "preserve_detail"
     // the Inspector's words ("Polygon Order", "16 bit", "Preserve Detail")
@@ -56,6 +75,17 @@ namespace jasperengine::editor {
     const char* meshCompressionLabel(MeshCompression value);
     const char* indexFormatLabel(IndexFormat value);
     const char* lodReductionLabel(LodReduction value);
+    const char* modelNormalsLabel(ModelNormals value);
+    const char* normalsWeightingLabel(NormalsWeighting value);
+    const char* smoothnessSourceLabel(SmoothnessSource value);
+    const char* modelTangentsLabel(ModelTangents value);
+    const char* restPoseLabel(RestPose value);
+
+    // Material Creation Mode (S98 REQ-35): Import makes the model's materials and resolves their
+    // textures; None makes none, so every submesh draws with the default material. A model-level
+    // setting with no platform override: an FBX is imported once for every platform.
+    enum class MaterialCreationMode : uint8_t { Import, None };
+    const char* materialCreationModeName(MaterialCreationMode value);   // "import", "none"
 
     // The allowed values of an enum setting (its meta key), for errors that list them
     const std::vector<std::string>& modelEnumValues(const std::string& field);
@@ -70,6 +100,11 @@ namespace jasperengine::editor {
         std::optional<ModelReadWrite> readWrite;
         std::optional<ModelNormals> normals;
         std::optional<float> smoothingAngle;       // degrees, 0-180
+        std::optional<NormalsWeighting> normalsWeighting;
+        std::optional<SmoothnessSource> smoothnessSource;   // model only
+        std::optional<ModelTangents> tangents;
+        std::optional<RestPose> restPose;                   // model only
+        std::optional<std::string> restPoseTake;            // model only; the take's name (absent: the first)
         std::optional<GenerateLods> generateLods;
         std::optional<int> lodCount;               // levels after LOD 0, 1-3
         std::optional<LodReduction> lodReduction;
@@ -99,6 +134,16 @@ namespace jasperengine::editor {
     // Animator). A missing key is Always, so an older project keeps its behaviour.
     enum class AnimationEntitiesMode : uint8_t { Always, Auto };
     const char* animationEntitiesModeName(AnimationEntitiesMode value);    // "always", "auto"
+
+    // Project Settings > Mesh > FBX Submesh Order (spec S94 F42): Material Slots makes submesh i the
+    // FBX node's material slot i (Unity's order), Used Materials the used slots in order, an empty
+    // slot shifting the next ones (the importer before S94). New projects take Material Slots; the
+    // project migration keeps an older project on Used Materials, so its saved per-submesh values
+    // stay on their submeshes.
+    enum class FbxSubmeshOrder : uint8_t { MaterialSlots, UsedMaterials };
+    const char* fbxSubmeshOrderName(FbxSubmeshOrder value);     // "material_slots", "used_materials"
+    const char* fbxSubmeshOrderLabel(FbxSubmeshOrder value);    // "Material Slots", "Used Materials"
+    bool fbxSubmeshOrderFromName(const std::string& name, FbxSubmeshOrder& value);
     inline constexpr int kAutoAnimationEntitiesClips = 5;
 
     // A platform's render budget (R25): 0 is no limit for that metric
@@ -112,8 +157,8 @@ namespace jasperengine::editor {
         bool operator==(const RenderBudget&) const = default;
     };
 
-    // Project Settings > Mesh (R19), Quality's render budgets (R25) and Animation's Animation
-    // Entities (S77 R38): project.yaml's `mesh:`
+    // Project Settings > Mesh (R19, S94 F44), Quality's render budgets (R25) and Animation's
+    // Animation Entities (S77 R38): project.yaml's `mesh:`
     struct ModelProjectSettings {
         // the defaults of every model setting a model does not set, per platform
         std::array<ModelSettingValues, kModelFamilyCount> defaults;
@@ -121,6 +166,13 @@ namespace jasperengine::editor {
         ScriptMeshData scriptMeshData = ScriptMeshData::Automatic;
         std::array<RenderBudget, kModelFamilyCount> renderBudgets;
         AnimationEntitiesMode animationEntities = AnimationEntitiesMode::Always;
+        // Project Settings > Mesh > Preserve Hierarchy for New Models (spec S94 F44): a Model made in
+        // the editor starts with ModelComponent::preserveHierarchy on. On in new projects; a missing
+        // key is off, so an older project places models as it did.
+        bool preserveHierarchyForNewModels = false;
+        FbxSubmeshOrder fbxSubmeshOrder = FbxSubmeshOrder::MaterialSlots;
+        // the Material Creation Mode of FBX models that do not set their own (S98 REQ-44)
+        MaterialCreationMode materialCreationMode = MaterialCreationMode::Import;
 
         bool operator==(const ModelProjectSettings&) const = default;
     };
@@ -135,6 +187,9 @@ namespace jasperengine::editor {
         ModelReadWrite readWrite = ModelReadWrite::Automatic;
         ModelNormals normals = ModelNormals::Import;
         float smoothingAngle = 60.0f;
+        std::optional<NormalsWeighting> normalsWeighting;  // unset: the earlier versions' calculation
+        SmoothnessSource smoothnessSource = SmoothnessSource::FromAngle;
+        ModelTangents tangents = ModelTangents::Import;
         GenerateLods generateLods = GenerateLods::Automatic;
         int lodCount = 3;
         LodReduction lodReduction = LodReduction::Balanced;
@@ -152,6 +207,7 @@ namespace jasperengine::editor {
 
         int version = currentVersion;
         ModelSettingValues values;
+        std::optional<MaterialCreationMode> materialCreationMode;   // absent: Import
         std::array<ModelPlatformSettings, kModelFamilyCount> platforms;
         // keys this version does not know, kept as they were
         YAML::Node unknown;
@@ -176,6 +232,11 @@ namespace jasperengine::editor {
     bool validateModelSettingsField(const std::string& field, const YAML::Node& value, std::string& error);
     // the meta keys of R8's settings, in the Inspector's order
     const std::vector<std::string>& modelSettingKeys();
+    // a key the FBX conversion reads (Smoothness Source, Rest Pose and its Take): set on the model,
+    // never in a platform block or a project default
+    bool isModelOnlySettingKey(const std::string& key);
+    // every key a model's section sets: R8's settings and the model-level materialCreationMode
+    const std::vector<std::string>& modelImporterKeys();
 
     // project.yaml's `mesh:`: only what differs from the defaults is written (an empty map when
     // nothing does); decoding clamps out-of-range values and skips unknown names

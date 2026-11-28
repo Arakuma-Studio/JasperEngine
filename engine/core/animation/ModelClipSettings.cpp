@@ -40,8 +40,9 @@ namespace{
     bool sameRootMotion(const std::optional<anim::ClipRootMotion>& a, const std::optional<anim::ClipRootMotion>& b){
         if (a.has_value() != b.has_value()) return false;
         if (!a) return true;
-        return a->bone == b->bone && a->bakeRotation == b->bakeRotation && a->bakePositionY == b->bakePositionY &&
-               a->bakePositionXZ == b->bakePositionXZ;
+        anim::ClipRootMotion x = *a, y = *b;
+        x.present = y.present = true;   // a block that exists either way
+        return x == y;
     }
 
     void readClipSetting(const std::string& name, const SidecarJson& value, anim::ModelClipSetting& out, std::vector<std::string>& warnings){
@@ -71,6 +72,19 @@ namespace{
                     if (key == "bone"){
                         if (field.is_string()) rootMotion.bone = field.get<std::string>();
                         else warnings.push_back(where + ".root_motion.bone: expected a string, ignored");
+                        continue;
+                    }
+                    if (key == "rotation_offset" || key == "position_y_offset"){
+                        if (field.is_number()) (key == "rotation_offset" ? rootMotion.rotationOffset : rootMotion.positionYOffset) = field.get<float>();
+                        else warnings.push_back(where + ".root_motion." + key + ": expected a number, ignored");
+                        continue;
+                    }
+                    if (key == "rotation_based_upon" || key == "position_y_based_upon" || key == "position_xz_based_upon"){
+                        const std::string text = field.is_string() ? field.get<std::string>() : std::string();
+                        const bool known = key == "rotation_based_upon" ? anim::rootRotationBasisFromName(text, rootMotion.rotationBasedUpon)
+                                         : key == "position_y_based_upon" ? anim::rootPositionYBasisFromName(text, rootMotion.positionYBasedUpon)
+                                         : anim::rootPositionXZBasisFromName(text, rootMotion.positionXZBasedUpon);
+                        if (!known) warnings.push_back(where + ".root_motion." + key + ": unknown value, ignored");
                         continue;
                     }
                     bool* flag = key == "bake_rotation" ? &rootMotion.bakeRotation : key == "bake_position_y" ? &rootMotion.bakePositionY
@@ -169,6 +183,12 @@ std::string anim::writeModelClipSettings(const ModelClipSettings& settings){
             rootMotion[rootMotionMembers[1]] = setting.rootMotion->bakeRotation;
             rootMotion[rootMotionMembers[2]] = setting.rootMotion->bakePositionY;
             rootMotion[rootMotionMembers[3]] = setting.rootMotion->bakePositionXZ;
+            const anim::ClipRootMotion& rm = *setting.rootMotion;
+            if (rm.rotationBasedUpon != anim::RootRotationBasis::Original) rootMotion["rotation_based_upon"] = anim::rootRotationBasisName(rm.rotationBasedUpon);
+            if (rm.rotationOffset != 0.0f) rootMotion["rotation_offset"] = rm.rotationOffset;
+            if (rm.positionYBasedUpon != anim::RootPositionYBasis::Original) rootMotion["position_y_based_upon"] = anim::rootPositionYBasisName(rm.positionYBasedUpon);
+            if (rm.positionYOffset != 0.0f) rootMotion["position_y_offset"] = rm.positionYOffset;
+            if (rm.positionXZBasedUpon != anim::RootPositionXZBasis::Original) rootMotion["position_xz_based_upon"] = anim::rootPositionXZBasisName(rm.positionXZBasedUpon);
             putUnknown(rootMotion, setting.rootMotionUnknownKeys);
             clip["root_motion"] = std::move(rootMotion);
         }

@@ -4,9 +4,12 @@
 #include "Joint2D.h"
 
 #include "Scene.h"
+#include "object/GameObject.h"
+#include "manager/ObjectManager.h"
 #include "subsystem/PhysicsSystem.h"
 #include "component/Joint2DComponent.h"
 #include "component/Rigidbody2DComponent.h"
+#include "component/Transform.h"
 #include "util/Angle.h"
 
 #include <cmath>
@@ -42,6 +45,9 @@ namespace {
 }
 
 Joint2D::Joint2D(Scene* scene): EntityHandle(scene){
+    // a GameObject, so it can go under its bodyA
+    addComponent<Transform>();
+    scene->setEntityName(entity, "Joint 2D");
     addComponent<Joint2DComponent>();
 }
 
@@ -70,6 +76,33 @@ void Joint2D::rebuild(){
     joint().needUpdateJoint = true;
 }
 
+void Joint2D::liveUnderBodyA(){
+    const Entity bodyA = joint().bodyA;
+    if (!entityOwned || bodyA == NULL_ENTITY || bodyA == entity || !scene->isEntityCreated(bodyA) ||
+            !scene->findComponent<Transform>(bodyA) || scene->isParentOf(entity, bodyA)){
+        return;
+    }
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform || transform->parent != NULL_ENTITY){
+        return;
+    }
+    const GameObject body(scene, bodyA);
+    GameObject(scene, entity).setParent(&body, true);
+    if (scene->getComponent<Transform>(entity).parent == bodyA){
+        setEntityOwned(false);
+    }
+}
+
+GameObject Joint2D::getGameObject() const{
+    return GameObject(scene, entity);
+}
+
+void Joint2D::destroy(float delay){
+    // the handle must not destroy the entity (or a later one with its id) again
+    setEntityOwned(false);
+    ObjectManager::destroy(scene, entity, delay);
+}
+
 b2JointId Joint2D::getBox2DJoint() const{
     return joint().joint;
 }
@@ -78,48 +111,56 @@ void Joint2D::setDistanceJoint(Entity bodyA, Entity bodyB){
     Joint2DComponent& component = joint();
     setJoint2DLegacyParameters(component, Joint2DType::DISTANCE);
     component.needUpdateJoint = !scene->getSystem<PhysicsSystem>()->loadDistanceJoint2D(entity, component, bodyA, bodyB, Vector2::ZERO, Vector2::ZERO, true, false);
+    liveUnderBodyA();
 }
 
 void Joint2D::setDistanceJoint(Entity bodyA, Entity bodyB, Vector2 worldAnchorOnBodyA, Vector2 worldAnchorOnBodyB, bool rope){
     Joint2DComponent& component = joint();
     setJoint2DLegacyParameters(component, Joint2DType::DISTANCE);
     component.needUpdateJoint = !scene->getSystem<PhysicsSystem>()->loadDistanceJoint2D(entity, component, bodyA, bodyB, worldAnchorOnBodyA, worldAnchorOnBodyB, false, rope);
+    liveUnderBodyA();
 }
 
 void Joint2D::setRevoluteJoint(Entity bodyA, Entity bodyB, Vector2 worldAnchor){
     Joint2DComponent& component = joint();
     setJoint2DLegacyParameters(component, Joint2DType::REVOLUTE);
     component.needUpdateJoint = !scene->getSystem<PhysicsSystem>()->loadRevoluteJoint2D(entity, component, bodyA, bodyB, worldAnchor);
+    liveUnderBodyA();
 }
 
 void Joint2D::setPrismaticJoint(Entity bodyA, Entity bodyB, Vector2 worldAnchor, Vector2 worldAxis){
     Joint2DComponent& component = joint();
     setJoint2DLegacyParameters(component, Joint2DType::PRISMATIC);
     component.needUpdateJoint = !scene->getSystem<PhysicsSystem>()->loadPrismaticJoint2D(entity, component, bodyA, bodyB, worldAnchor, worldAxis);
+    liveUnderBodyA();
 }
 
 void Joint2D::setMouseJoint(Entity bodyA, Entity bodyB, Vector2 target){
     Joint2DComponent& component = joint();
     setJoint2DLegacyParameters(component, Joint2DType::MOUSE);
     component.needUpdateJoint = !scene->getSystem<PhysicsSystem>()->loadMouseJoint2D(entity, component, bodyA, bodyB, target);
+    liveUnderBodyA();
 }
 
 void Joint2D::setWheelJoint(Entity bodyA, Entity bodyB, Vector2 worldAnchor, Vector2 worldAxis){
     Joint2DComponent& component = joint();
     setJoint2DLegacyParameters(component, Joint2DType::WHEEL);
     component.needUpdateJoint = !scene->getSystem<PhysicsSystem>()->loadWheelJoint2D(entity, component, bodyA, bodyB, worldAnchor, worldAxis);
+    liveUnderBodyA();
 }
 
 void Joint2D::setWeldJoint(Entity bodyA, Entity bodyB, Vector2 worldAnchor){
     Joint2DComponent& component = joint();
     setJoint2DLegacyParameters(component, Joint2DType::WELD);
     component.needUpdateJoint = !scene->getSystem<PhysicsSystem>()->loadWeldJoint2D(entity, component, bodyA, bodyB, worldAnchor);
+    liveUnderBodyA();
 }
 
 void Joint2D::setMotorJoint(Entity bodyA, Entity bodyB){
     Joint2DComponent& component = joint();
     setJoint2DLegacyParameters(component, Joint2DType::MOTOR);
     component.needUpdateJoint = !scene->getSystem<PhysicsSystem>()->loadMotorJoint2D(entity, component, bodyA, bodyB);
+    liveUnderBodyA();
 }
 
 Joint2DType Joint2D::getType() const{
@@ -148,7 +189,6 @@ void Joint2D::setType(Joint2DType type){
         parametersChanged(); \
     }
 
-JOINT2D_REBUILD_FIELD(Entity, bodyA, getBodyA, setBodyA)
 JOINT2D_REBUILD_FIELD(Entity, bodyB, getBodyB, setBodyB)
 JOINT2D_REBUILD_FIELD(JointAnchorSpace, anchorSpace, getAnchorSpace, setAnchorSpace)
 JOINT2D_REBUILD_FIELD(Vector2, anchorA, getAnchorA, setAnchorA)
@@ -185,6 +225,19 @@ JOINT2D_LIVE_FIELD(Vector2, target, getTarget, setTarget)
 
 #undef JOINT2D_REBUILD_FIELD
 #undef JOINT2D_LIVE_FIELD
+
+Entity Joint2D::getBodyA() const{
+    return joint().bodyA;
+}
+
+void Joint2D::setBodyA(Entity body){
+    Joint2DComponent& component = joint();
+    if (component.bodyA != body){
+        component.bodyA = body;
+        rebuild();
+    }
+    liveUnderBodyA();
+}
 
 float Joint2D::getLength() const{
     return joint().length;

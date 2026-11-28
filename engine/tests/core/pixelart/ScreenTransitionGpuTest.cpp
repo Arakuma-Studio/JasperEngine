@@ -28,11 +28,11 @@
 #include <string>
 #include <vector>
 
-namespace ScreenTransitionGpuTest_cpp {
+// the tests in Pixel Art's namespace, in a namespace of this file's own: a file-scope using-directive
+// or helper would reach the next source of a unity unit (docs/testing.md, Unity build)
+namespace jasperengine::pixelart::ScreenTransitionGpuTest_cpp {
 
-using namespace jasperengine;
 using namespace jasperengine::test;
-using namespace jasperengine::pixelart;
 
 namespace {
 
@@ -185,4 +185,4 @@ TEST_F(ScreenTransitionGpu, ProgramMadeOnFirstUse){
     EXPECT_TRUE(ScreenTransition::isProgramCreated());
 }
 
-}  // namespace ScreenTransitionGpuTest_cpp
+}

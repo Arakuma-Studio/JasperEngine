@@ -9,6 +9,8 @@
 
 namespace jasperengine{
 
+    class GameObject;
+
     // A 3D joint (Joint3DComponent). Setting a field writes the component: motor, spring,
     // limit, friction and break values reach the live joint at once, the type, bodies, anchors,
     // axes and anchor space rebuild it before the next step. The read-outs are 0 without a live
@@ -20,12 +22,18 @@ namespace jasperengine{
         void parametersChanged();
         // the joint is made again before the next step
         void rebuild();
+        // a root joint GameObject this handle owns goes under its bodyA (world pose
+        // kept) and the handle stops owning it, so it lives and dies with bodyA as joints made
+        // in the editor do
+        void liveUnderBodyA();
 
     public:
 
         // component checkbox (Unity Behaviour.enabled): a disabled Joint3D is skipped by its system
         void setEnabled(bool enabled);
         bool isEnabled() const;
+        // a new root GameObject "Joint 3D" owned by this handle (destroyed with it) until its
+        // bodyA is set, when it goes under bodyA (liveUnderBodyA)
         Joint3D(Scene* scene);
         Joint3D(Scene* scene, Entity entity);
         virtual ~Joint3D();
@@ -36,6 +44,11 @@ namespace jasperengine{
         Joint3D& operator=(Joint3D&& rhs) noexcept;
 
         JPH::TwoBodyConstraint* getJoltJoint() const;
+
+        // the joint's GameObject
+        GameObject getGameObject() const;
+        // GameObject.destroy of the joint's GameObject (after delay seconds); this handle stops owning it
+        void destroy(float delay = 0.0f);
 
         // Joints as before local anchors: world points and axes, the other fields as Jolt had them
         void setFixedJoint(Entity bodyA, Entity bodyB);

@@ -40,11 +40,22 @@ reports record the main module UUID; use the matching dSYM and the authoritative
     crash.txt        "JasperEngine crash report v1", key: value lines, then the frames
     crash.dmp        Windows only
     log-tail.txt     the last log lines (the crash ring)
+    journal.txt      the Gameplay Journal: the game's last events (crashes and hangs)
     hang-001.txt …   hang watchdog reports
     session.json     a session that ended without a report (its marker, kept)
     handled          the notice was dismissed, or a game's hook took the report
+<root>/reports/<session>-user<N>/             a player's "Report a Problem" (kind user)
+    user.txt         "JasperEngine user report v1", key: value lines, the tags, field.<key> lines, then note:
+    device.json      the device: product, version, build_id, platform, backend, os_version, gpu, device_tier ...
+    journal.txt      the Gameplay Journal when the report was made
+    log-tail.txt     the last log lines (unless logTail = false)
+    screenshot.jpg   the frame Crash.beginReport captured (at most 1280 px wide, 600 KiB)
 <root>/sessions/<pid>.json                    this session is running
 ```
+
+Kinds: `crash` (a `crash.txt`), `user` (a `user.txt`), `hang` (a `hang-NNN.txt`), else
+`abnormal_exit`. An editor or engine older than the user reports lists a user folder as an
+abnormal exit.
 
 | | Root |
 |---|---|
@@ -130,7 +141,85 @@ C++: `diag::crash::setReportHook`, `pendingReports`, `markHandled`, `lastSession
 `setTag` (`engine/core/diag/CrashHandler.h`).
 
 **Privacy.** Reports hold file paths, log lines and (Windows With Heap) memory of the game. Get
-the player's consent before your hook sends one anywhere.
+the player's consent before your hook sends one anywhere. What a game writes into the Gameplay
+Journal, a user report's note and its fields goes into reports too: keep player names, emails and
+other personal data out of them, or clear the journal (`Journal.clear()`). None of the engine's
+own journal entries name a player.
+
+## The Gameplay Journal
+
+A fixed-size ring of one-line game events, kept in memory and saved as `journal.txt` with every
+crash report (written by the fatal handler itself), beside a hang report, and in every user
+report. Events, not frames: a level start, a boss phase, a purchase, a menu opened. A crash report
+then says what the player was doing, not only where the code died.
+
+```lua
+Journal.log("level.start", {name = "forest-2", seed = 42, hard = true})
+local on = Journal.enabled   -- read-only: false when Gameplay Journal (KiB) is 0
+Journal.getEntries(20)       -- the newest 20: {{time = 412.031, frame = 24718, kind = "level.start", text = "..."}, ...}
+Journal.getText()            -- journal.txt as a report would hold it now
+Journal.clear()              -- a new run of a level, a privacy reset
+```
+
+An entry is `+<seconds since start> f<frame> <kind> <key>=<value>...`, its fields sorted by key:
+`+412.031 f24718 level.start hard=true name=forest-2 seed=42`. A kind is `[A-Za-z0-9_.:-]{1,48}`
+(another is written as `invalid kind="..."` with one warning: a diagnostics call never raises);
+at most 12 fields; strings print bare when they are `[A-Za-z0-9_.:/+-]+`, else quoted; an entry
+longer than 256 bytes ends in `~`. `journal.txt` is `JasperEngine journal v1`, then `product`,
+`version`, `session`, `started`, `capacity`, `dropped` lines, `---` and the entries oldest first.
+
+**Project Settings › Player › Crash Handling › Gameplay Journal (KiB)** (32, 0–256; 0 turns it
+off and allocates nothing) and **Journal Engine Events** (on): the engine's own entries,
+`engine.start` (version, backend, gpu, tier), `engine.scene_loaded` (name, ms),
+`engine.scene_unloaded`, `engine.pause`, `engine.resume` (after_s), `engine.focus`,
+`engine.low_memory`, `engine.thermal`, `engine.tier` (tier, source), `engine.guard_recovered`,
+`engine.user_report` (id), and in the editor `engine.play` (state start, pause, resume, stop). The
+editor keeps 64 KiB, and its Console shows every entry in the `journal` category (pick it in the
+**Category** menu; `read_console categories: ["journal"]`).
+
+A write costs about what a log line's copy does (≤ 250 ns with four fields, no allocation); the
+journal is separate from the log tail, so a log storm does not push the game's events out.
+C++: `diag::journal::log(kind, fields)` (`engine/core/diag/Journal.h`), any thread.
+
+## Report a Problem
+
+A game's own "Report a Problem" form, with what the engine gives it: a screenshot of the frame the
+player saw, the journal, the log tail and the device, written as a report folder of kind `user`.
+The engine never sends it: the game uploads the files with `Http` after asking the player.
+
+```lua
+-- the pause menu's button: capture first, then open the form (so the form is not in the image)
+Crash.beginReport(function(ok, err)      -- ok: a screenshot is in the draft
+    openReportForm()
+end)
+-- the form's Send
+local report, err = Crash.createReport{note = text, category = "gameplay", fields = {level = "forest-2"}}
+if report then
+    Http.post(url, Crash.readReportFile(report.id, "user.txt"), function(response)
+        if response.ok then Crash.markHandled(report.id) end   -- else offered again at the next start
+    end)
+end
+Crash.cancelReport()                     -- the form's Cancel
+```
+
+- `Crash.beginReport(fn [, {maxWidth, maxBytes}])` draws the next frame offscreen and reads it
+  (nothing is drawn offscreen otherwise); while shaders or pipelines are still being made, it reads
+  a later frame, for up to 30 frames, then `fn(false, "screenshot_unavailable: shaders still
+  building")`. A job scales it to at most 1280 px wide and encodes a JPEG at quality 80, then 70,
+  60, 50, 40 until it fits 600 KiB (else once at half the width, else no screenshot,
+  `screenshot_too_large`); the web encodes on the main thread in the frame after.
+- `Crash.createReport{note, category, fields, screenshot, logTail, done}` writes
+  `<session>-user<N>/` and returns the report table (`kind = "user"`, `category`); with `done`,
+  the files are written on a job and `done(report, err)` runs on the main thread after. `note` is
+  required (at most 4000 bytes), `category` is `[a-z0-9_]{1,32}` (`other`), at most 16 fields.
+- At most 3 unhandled user reports: a 4th returns `nil, "too_many_pending: upload a report or
+  Crash.markHandled(id) first"`. They count in the folder retention.
+- A user report is not pending in the session that made it; at the next start an unhandled one is
+  offered to `Crash.setReportHook` (`kind = "user"`): a draft kept until it was sent.
+- `Crash.readReportFile(id, name)` returns a report file's bytes (at most 8 MiB), else `nil,
+  "not_found"`.
+- **Web**: no folders; user reports live in memory for the session (same limit, `markHandled`
+  frees one) and do not survive a reload: upload at once.
 
 **Development builds** also take `JASPERENGINE_DEBUG_CRASH=<mode>[@<frame>]` (segv, abort,
 terminate, stack_overflow, worker_segv, fpe, pure_call, hang; without a frame: 30 frames after
@@ -143,8 +232,9 @@ whole path once.
 it. The first fatal event (an abort, an uncaught error, an unhandled rejection) logs
 `JASPERENGINE CRASH: <message>`, the stack and the last 200 console lines with `console.error`,
 calls `window.jasperengine.onCrash(report)` when the page defines it (`report = {message, stack,
-logTail, buildHash, product, userAgent, time}`), and shows "The game stopped working.
-[Reload]" unless Show Crash Overlay is off.
+logTail, buildHash, product, userAgent, time, journal}`, `journal` being `journal.txt`'s text read
+from the Gameplay Journal's ring in the wasm heap, also logged after the log tail), and shows "The
+game stopped working. [Reload]" unless Show Crash Overlay is off.
 
 ## Symbolication
 
@@ -171,20 +261,65 @@ report prints the steps: `cdb -z crash.dmp -y <symbols> -c "!analyze -v; .ecxr; 
 (`build_id` matches the binary: ELF build id, Mach-O UUID as `dwarfdump --uuid` prints it, the
 PDB GUID and age).
 
+## Grouping reports
+
+Many report folders (a game's, pulled from testers' devices, or the editor's) are merged into
+groups of the same problem. A report's **signature** is:
+
+| Kind | Signature |
+|---|---|
+| crash | `crash`, the signal or exception (`SIGSEGV`, `EXCEPTION_ACCESS_VIOLATION`, `abort`, `terminate`), and the first 3 frames of the game's executable or `libjasperengine*` (else of any module) |
+| hang | `hang`, the phase, the innermost busy scope, and the stack's first 3 frames as above |
+| user | `user` and the category |
+| abnormal_exit | `abnormal_exit` |
+
+Frames resolved to `abort`, `raise`, `__pthread_kill*`, `std::terminate`, `__cxa_*`,
+`jasperengine::diag::*` or `jasperengine::CrashGuard*` are skipped. A frame is its short name
+(`std::vector<int>::push_back(int const&)` is `std::vector::push_back`, a lambda
+`game::World::tick::<lambda>`), else `<module>+0x<offset>`. A frame without a name holds only
+within one build, so such a group also keys on the build id and is marked **unresolved**: add
+symbols. Each group has its count, versions, platforms, first and last seen, and its reports.
+
+```sh
+python3 -I tools/crash/symbolicate.py --group <folder> [--symbols <dir>]... [--binary-dir <dir>]... \
+    [--by version|platform] [--kinds crash,hang,abnormal_exit,user] [--since 2026-11-01] [--json] [--top N]
+```
+
+`<folder>` is searched to depth 3 for report folders (a folder holding `crash.txt`, `hang-*.txt`,
+`user.txt` or `session.json`). Each group prints its count, signature, versions, platforms, first
+and last seen, up to 3 example folders and the newest report's top frames; `--by` splits groups by
+version or platform. `--symbols` takes any tree (S28's `<platform>/<build_id>/`, a release's
+`symbols/` from `publish prepare`): its ELF and Mach-O files are indexed by build id, and a frame
+is named only from a file whose build id is the report's. A file of another build is never used,
+even under the same name. One symbolizer runs per module file. Exit 0 when a report was read, 1
+when none, 2 on a bad argument.
+
+The editor groups the same way without a symbolizer (names only where the report has them, as
+Windows reports do): **Window > Analysis > Crash Reports** shows the editor's reports or a game's
+(**Open Folder...**, remembered per project), one row per report or per group (**Group
+Similar**), filtered by **Kinds** and a search, with the selected report's Report, Journal, Log
+Tail, Device and Screenshot. **Mark Handled** writes `handled` (a group: every report in it);
+**Copy Symbolicate Command** copies the command above for the selection, with the **Symbols
+Folder...** chosen there. Both follow the cases of `tools/crash/fixtures/group/expected.json`.
+
 ## Agents (MCP)
 
 The `diagnostics` tool group: `get_editor_health` (answered off the main thread, so it replies
 while the editor is hung), `get_crash_reports`, `dismiss_crash_notice`, `set_hang_watchdog`,
 `debug_crash` (refused unless the editor started with `--allow-debug-crash` or
-`JASPERENGINE_ALLOW_DEBUG_CRASH=1`). `run_build` adds `crash_report` when the player printed a
+`JASPERENGINE_ALLOW_DEBUG_CRASH=1`). `get_crash_reports` reads a game's reports with `folder`,
+filters `kinds`, inlines `files` and returns groups with `group: true`. `run_build` adds `crash_report` when the player printed a
 `JASPERENGINE CRASH:` line. See `jasper://docs/crash-diagnostics`.
 
 ## Budgets
 
 `je-bench-diag` (built with the core tests) measures what the diagnostics cost a running
 program, gated by `tools/perf/check_bench.py` against `tools/perf/bench-thresholds.json`: the
-heartbeat (≤ 5 ns), a 120-byte crash-ring write (≤ 150 ns), the install (≤ 3 ms) and the idle
-watchdog thread (≤ 0.1 % of one core). Run it on a quiet machine:
+heartbeat (≤ 5 ns), a 120-byte crash-ring write (≤ 150 ns), the install (≤ 3 ms), the idle
+watchdog thread (≤ 0.1 % of one core) and a Gameplay Journal entry with four fields (≤ 250 ns).
+The core tests' `CrashUserBench` prints a user report's write (≤ 10 ms), its capture's main-thread
+share (≤ 2 ms) and its encode at 1920x1080 (≤ 60 ms); `JournalBench` the journal write; both
+enforce them with `JASPER_TEST_PERF_SLACK`. Run it on a quiet machine:
 
 ```bash
 tools/build.sh exec linux bash -c 'cmake -S engine -B build/linux/bench -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_TESTS=ON \

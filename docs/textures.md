@@ -5,9 +5,9 @@ How JasperEngine turns texture files into what each platform's GPU samples (spec
 
 ## The pipeline
 
-1. **Sources** stay what they are in the project: png, jpg, tga, bmp, psd, gif, hdr, exr (and svg
-   and ktx2, which load as they are, never cooked). Scenes, materials and scripts keep naming
-   the source path.
+1. **Sources** stay what they are in the project: png, jpg, tga, bmp, psd, psb, tif, tiff, gif,
+   hdr, exr (and svg and ktx2, which load as they are, never cooked). Scenes, materials and
+   scripts keep naming the source path. See [Source formats](#source-formats) for what each reads.
 2. **Import settings** live in the source's sidecar, `<file>.meta`, under
    `import.textureImporter` (`version: 1`). A texture without them gets its type inferred from
    its references the first time the editor opens the project, and that is written down once.
@@ -19,6 +19,23 @@ How JasperEngine turns texture files into what each platform's GPU samples (spec
    `assets/je-cooked/<family>/<k>.ktx2` with `index.json`; the sources they replace stay out.
 5. **The runtime** looks a texture path up in its family's `index.json`; anything not there (user
    files, svg, ktx2, files only read from their source) loads raw.
+
+## Source formats
+
+- png, jpg, tga, bmp, gif, psd, hdr: stb_image. A psd gives its flattened (merged) image.
+- exr: tinyexr, in the editor only; a float source, imported as `hdr`.
+- tif, tiff: the editor's baseline TIFF reader (`editor/texture/TiffReader.h`). It reads the
+  first image of the file, stored in strips or tiles, uncompressed or LZW, Deflate or PackBits
+  (Predictor 2 too), 8 or 16 bits per sample, grey or RGB with an optional alpha (premultiplied
+  alpha is made straight), chunky or planar. 16-bit samples are rounded to 8 bits. It refuses,
+  naming that set, JPEG and other compressions, palette, CMYK, YCbCr and Lab images, float or
+  signed samples, 1, 4 and 32 bits, and BigTIFF.
+- psb: the flattened (merged) image of an 8- or 16-bit RGB or Grayscale Large Document. A file
+  saved without Maximize Compatibility has none and is refused.
+
+tif, tiff and psb decode in the editor only, so a game reads only their cooks. An export refuses
+one that a reference reads as a file (an HTML UI image, a terrain layer), naming the file and
+the reference: convert it to PNG for that use.
 
 ## Families and formats
 

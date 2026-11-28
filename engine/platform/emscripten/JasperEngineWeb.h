@@ -7,6 +7,7 @@
 #include <emscripten/html5.h>
 
 #include "System.h"
+#include "input/TextEntry.h"
 
 #include <string>
 #include <vector>
@@ -38,6 +39,8 @@ private:
 
     static double mousePosX;
     static double mousePosY;
+    // the engine mouse buttons pressed on the canvas whose release it has not had yet (bit per button)
+    static unsigned int canvasButtonsDown;
 
     static int sampleCount;
 
@@ -48,6 +51,8 @@ private:
     static bool pageHidden;
     static bool adPlaying;
     static bool contextLost;
+    // made once (init); a lost context comes back in the same handle
+    static EMSCRIPTEN_WEBGL_CONTEXT_HANDLE glContext;
     // the window's focus (applied once the project has started)
     static bool windowFocused;
     // requestAnimationFrame intervals of the first frames (Screen.refreshRate)
@@ -59,6 +64,7 @@ private:
 
     static EM_BOOL key_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData);
     static EM_BOOL mouse_callback(int eventType, const EmscriptenMouseEvent *e, void *userData);
+    static EM_BOOL window_mouseup_callback(int eventType, const EmscriptenMouseEvent *e, void *userData);
     static EM_BOOL wheel_callback(int eventType, const EmscriptenWheelEvent *e, void *userData);
     static EM_BOOL touch_callback(int emsc_type, const EmscriptenTouchEvent* emsc_event, void* user_data);
 
@@ -88,6 +94,8 @@ public:
     JasperEngineWeb();
 
     static void setEnabledIDB(bool enabledIDB);
+    // IndexedDB holds the user data (false: private mode, storage disabled; saves last the session)
+    static bool isEnabledIDB() { return enabledIDB; }
     static bool hasProjectStarted() { return projectStarted; }
 
     static int init(int argc, char **argv);
@@ -114,6 +122,8 @@ public:
     virtual void quit() override;
 
     virtual void showVirtualKeyboard(std::wstring text) override;
+    // the field's traits on the IME textarea (WebTextEntry.h)
+    virtual void showVirtualKeyboard(const std::wstring& text, const jasperengine::TextEntryTraits& traits) override;
     virtual void hideVirtualKeyboard() override;
 
     // async browser clipboard: writes go to navigator.clipboard, reads return the text of the

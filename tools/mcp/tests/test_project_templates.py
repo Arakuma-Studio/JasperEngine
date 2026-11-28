@@ -50,7 +50,7 @@ async def test_pixel_art_template_is_clean_and_pixel_exact(ed: Editor):
     # the base image at 1:1 in the middle of the view, bars around
     x0, y0 = (width - 320) // 2, (height - 180) // 2
     background = rgba_at(rgba, width, x0 + 2, y0 + 2)
-    player_w, player_h, player_rgba = pngdiff.decode((target / "sprites" / "player.png").read_bytes())
+    player_w, player_h, player_rgba = pngdiff.decode((target / "assets" / "sprites" / "player.png").read_bytes())
     # the reference: background, and the player's texels at (152, 82) from the bottom-left (y up)
     px, py = 152, 180 - 82 - player_h
     diffs = 0

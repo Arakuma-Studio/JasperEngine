@@ -261,6 +261,7 @@ void editor::AvatarWindow::syncWithProject(){
 void editor::AvatarWindow::resolve(){
     current = Resolved();
     std::string error;
+    Scene* sceneptr = scene();
     if (!pose::resolveHumanoid(skeleton, edited, current.humanoid, current.extra, &error, &current.notes, &current.extraError)){
         current.error = error;
         // what auto-detect and the overrides give, for the rows, even when it does not validate
@@ -272,9 +273,10 @@ void editor::AvatarWindow::resolve(){
         for (int x = 0; x < pose::HUMAN_EXTRA_BONE_COUNT; x++){
             if (edited.extraBones[(size_t)x]) current.extra.bones[(size_t)x] = *edited.extraBones[(size_t)x];
         }
+        pose::noteSpineProxies(sceneptr, entity, current.humanoid, current.notes);
         return;
     }
-    Scene* sceneptr = scene();
+    pose::noteSpineProxies(sceneptr, entity, current.humanoid, current.notes);
     auto rig = std::make_shared<pose::PoseRig>();
     if (sceneptr) rig->setSkin(pose::buildSkin(sceneptr, entity, skeleton, boneEntities));
     const std::array<float, pose::HUMAN_BONE_COUNT> twist = edited.twistDegrees();
@@ -315,9 +317,12 @@ void editor::AvatarWindow::autoMapAll(){
 }
 
 void editor::AvatarWindow::clearOverrides(){
+    // the overrides go; what the model is (its type, the naming rules of its import) stays
     const std::optional<pose::AnimationType> type = edited.animationType;
+    const std::optional<int> rules = edited.nameRules;
     edited = pose::HumanoidOverrides();
     edited.animationType = type;
+    edited.nameRules = rules;
     resolve();
 }
 

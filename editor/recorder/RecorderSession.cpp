@@ -12,6 +12,8 @@
 #include "Out.h"
 #include "audio/AudioTap.h"
 #include "htmlui/VideoImporter.h"
+#include "htmlui/HtmlUIClock.h"
+#include "htmlui/anim/AnimEngine.h"
 #include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
 #include "Scene.h"
@@ -54,6 +56,11 @@ namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
 namespace {
+
+    // Each recorded frame samples k / fps plus this: start + k / fps rounds up or down depending on
+    // the take's start, which decided whether a frame exactly at an authored boundary (a step, a
+    // child starting at 900 ms: frame 27 at 30 fps) was before or after it, differently per take
+    constexpr double RECORDER_BOUNDARY_NUDGE = 1e-7;
 
     void appendPng(void* context, void* data, int size) {
         auto* out = static_cast<std::string*>(context);
@@ -710,6 +717,14 @@ bool RecorderSession::start(const Settings& settings, std::string& error) {
     return arm(settings, false, error);
 }
 
+bool RecorderSession::startWithPlay(const Settings& settings, std::string& error) {
+    if (active()) {
+        error = "a recording is already running (stop it first)";
+        return false;
+    }
+    return arm(settings, true, error);
+}
+
 void RecorderSession::onPlayStarting(const Settings& settings) {
     if (active() || !settings.recordOnPlay) return;
     std::string error;
@@ -726,7 +741,9 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
     working = Result();
     int gw = 0, gh = 0;
     if (host.gameViewSize) host.gameViewSize(gw, gh);
-    outputSize(current, gw > 0 ? gw : 1920, gh > 0 ? gh : 1080, host.maxTextureSize ? host.maxTextureSize() : 0, width, height);
+    const int maxTexture = host.maxTextureSize ? host.maxTextureSize() : 0;
+    outputSize(current, gw > 0 ? gw : 1920, gh > 0 ? gh : 1080, maxTexture, width, height);
+    noteSizeDowngrade(gw > 0 ? gw : 1920, gh > 0 ? gh : 1080, maxTexture);
     frameRange(current, first, last);
     sink = std::make_unique<Sink>();
     sink->settings = current;
@@ -759,17 +776,22 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
         }
         sink->ffmpeg = ffmpegInfo.path;
         sink->encoder = current.format == Format::Mov ? std::string("prores_ks") : ffmpegInfo.h264;
+        // pickH264's first choice (CRF quality control); the others take a bitrate
+        if (current.format == Format::Mp4 && sink->encoder != "libx264")
+            working.downgrades.push_back({"encoder", "libx264", sink->encoder, "this FFmpeg has no libx264"});
     }
     // audio is the deterministic driver's, from the scene's start: only a recording that starts with Play has it
     const bool playing = host.isPlaying() || (host.isPlayStarting && host.isPlayStarting());
     audio = current.kind == Kind::Movie && current.captureAudio;
     if (audio && playing && !fromPlayStart) {
         working.warnings.push_back("Capture Audio needs the recording to start with Play: this one has no audio");
+        working.downgrades.push_back({"audio", "captured", "none", "Capture Audio needs the recording to start with Play"});
         audio = false;
     }
     if (audio && !AudioSystem::beginDeterministic()) {
         AudioSystem::endDeterministic();
         working.warnings.push_back("the deterministic audio driver did not start: no audio");
+        working.downgrades.push_back({"audio", "captured", "none", "the deterministic audio driver did not start"});
         audio = false;
     }
     sink->audio = audio;
@@ -800,9 +822,22 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
     // the game frames from now on are the recording's (frame 0: the first one Play runs)
     gameFramesAtStart = Engine::getGameFrames();
     gameFramesSeen = gameFramesAtStart;
+    previousFixedUiTime = HtmlUIClock::getFixedTime();
+    recordingUiStart = HtmlUIClock::now();
+    // Documents may load before Play's first frame. Holding their origin throughout arming
+    // keeps CSS and anime independent of how long that load took, while the shared UI
+    // epoch stays continuous for documents outside the recorded scene stack.
+    HtmlUIClock::setFixedTime(recordingUiStart);
+    // the Game Time clock holds while a fixed time is set: the recording advances it itself
+    previousFixedGameTime = HtmlUIClock::getFixedGameTime();
+    recordingGameTime = HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME);
+    recordingGameFrame = 0;
+    HtmlUIClock::setFixedGameTime(recordingGameTime);
+    animationClocksAligned = false;
     startTime = Clock::now();
     startedPlay = false;
     currentState = State::Arming;
+    if ((!playing || fromPlayStart) && host.resetUiDocuments) host.resetUiDocuments();
     if (!playing && !fromPlayStart) {
         std::string playError;
         if (!host.startPlay || !host.startPlay(playError)) {
@@ -816,6 +851,28 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
     }
     if (host.isPlaying()) beginRecording();
     return true;
+}
+
+void RecorderSession::noteSizeDowngrade(int gameWidth, int gameHeight, int maxTextureSize) {
+    int askedWidth = gameWidth, askedHeight = gameHeight;
+    if (current.resolution == Resolution::Custom) {
+        askedWidth = current.customWidth;
+        askedHeight = current.customHeight;
+    } else if (current.resolution != Resolution::MatchGameView) {
+        presetSize(current.resolution, askedWidth, askedHeight);
+    }
+    if (askedWidth == width && askedHeight == height) return;
+    const int limit = maxTextureSize > 0 ? std::min(kMaxSize, maxTextureSize) : kMaxSize;
+    std::string reason;
+    if (std::max(askedWidth, askedHeight) > limit) {
+        reason = limit < kMaxSize ? "over the GPU's maximum texture size " + std::to_string(limit) : "over the Recorder's maximum " + std::to_string(kMaxSize);
+    } else if (std::min(askedWidth, askedHeight) < kMinSize) {
+        reason = "under the Recorder's minimum " + std::to_string(kMinSize);
+    } else {
+        reason = "4:2:0 video needs even sizes";
+    }
+    working.downgrades.push_back({"resolution", std::to_string(askedWidth) + "x" + std::to_string(askedHeight),
+                                  std::to_string(width) + "x" + std::to_string(height), reason});
 }
 
 void RecorderSession::warnAboutFreeSpace() {
@@ -836,6 +893,26 @@ void RecorderSession::warnAboutFreeSpace() {
 
 void RecorderSession::beginRecording() {
     currentState = State::Recording;
+}
+
+void RecorderSession::prepareFrame() {
+    if (!recording() || !host.isPlaying() || Engine::isSimulationHeld() || Engine::isPaused()) return;
+    const uint64_t frames = Engine::getGameFrames();
+    const uint64_t index = frames >= gameFramesAtStart ? frames - gameFramesAtStart : 0;
+    HtmlUIClock::setFixedTime(recordingUiStart + (double)index / current.frameRate + RECORDER_BOUNDARY_NUDGE);
+    // game time moves by the scaled step of each recorded frame (Engine.timeScale read per frame)
+    if (index > recordingGameFrame) {
+        recordingGameTime += (double)(index - recordingGameFrame) * Engine::getTimeScale() / current.frameRate;
+        recordingGameFrame = index;
+    }
+    HtmlUIClock::setFixedGameTime(recordingGameTime + RECORDER_BOUNDARY_NUDGE);
+    if (!animationClocksAligned) {
+        // frame zero: CSS and both anime clocks at their initial values
+        // anime's timers start at the frame's unnudged time, as the documents' CSS does
+        AnimEngine::instance().alignClockSources(HtmlUIClock::now() - RECORDER_BOUNDARY_NUDGE,
+                                                 HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME) - RECORDER_BOUNDARY_NUDGE);
+        animationClocksAligned = true;
+    }
 }
 
 bool RecorderSession::assetsLoading() const {
@@ -965,6 +1042,7 @@ void RecorderSession::checkHold(const FrameMarks& before) {
         if (before.textureEpoch != drawn.textureEpoch) add("textures becoming ready");
         if (before.created != drawn.created) add("shaders or pipelines being made");
         working.warnings.push_back("frame " + std::to_string(frameIndex) + " on: recorded without waiting for what does not settle: " + what);
+        working.downgrades.push_back({"settle", "every frame settled", "frame " + std::to_string(frameIndex) + " on unsettled", what});
         settleGivenUp = true;
     }
 }
@@ -1047,6 +1125,9 @@ void RecorderSession::stop() {
 
 void RecorderSession::restoreEngine() {
     releaseHold();
+    HtmlUIClock::setFixedTime(previousFixedUiTime);
+    HtmlUIClock::setFixedGameTime(previousFixedGameTime);
+    AnimEngine::instance().alignClockSources(HtmlUIClock::now(), HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME));
     Engine::setFixedDeltatime(previousFixedDelta);
     if (host.setGameRenderSize) host.setGameRenderSize(0, 0);
     if (audio) {

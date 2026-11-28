@@ -373,6 +373,10 @@ S80's.
   would write them (S81 R34: a keyed `sweepPosition` turns `sweepAuto` off while it plays). While a
   `live.*` track plays, its Live Effect is enabled at runtime with the instance's other settings.
   When nothing plays, the feature is off and S81 R48 (an idle title costs an Image) holds.
+  An export cooks the variants a playing animation draws for every shipped title whose document
+  has animations (ANIM, with each combination of the Live Effects its `live.*` tracks turn on, and
+  without Glow over a Baked flipbook frame), so a player without the runtime shader compiler
+  (lite2d, lite3d) draws them (S81 R47).
 - **R14. Layer live in Realtime.** A layer with layer-live tracks becomes a **layer split**: S80's
   renderer keeps the layer's own composite as a cached split, and S81's live compose draws it
   every frame with the sampled transform, opacity, tint and flash, in z order with the S83 L

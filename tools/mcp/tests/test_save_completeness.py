@@ -208,8 +208,9 @@ return scene:findBranchLastIndex(entity("Holder"))
 async def test_a_save_that_would_lose_a_gameobject_is_refused():
     """A Transform order split by hand (a script's moveChildToIndex of a child past another root,
     an engine API games have): every way the editor writes the scene refuses, naming the GameObject,
-    and the file on disk stays as it was: Play (its snapshot), build_project (it saves every scene
-    first), save_scene, save_scene all, Ctrl+S (the background save). Mended, the save writes it."""
+    and the file on disk stays as it was: Play (its snapshot), build_project (it cooks the scene as
+    its file would hold it: S98 REQ-5), save_scene, save_scene all, Ctrl+S (the background save).
+    Mended, the save writes it."""
     async with Editor(project=str(SCENE_INPUTS), label="save-guard", xvfb="harness") as ed:
         h = await Checked.create(ed, "Save Guard", "guard")
         sid = h.sid
@@ -244,15 +245,15 @@ async def test_a_save_that_would_lose_a_gameobject_is_refused():
             await refused("play", r.text + " " + errors)
         scene_file.write_bytes(good)
 
-        # the export saves every scene first
+        # the build cooks the scene as its file would hold it: it refuses too, writing nothing
         out = ed.scratch.root / "guard-build"
         r = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "allow_missing_assets": True,
                                                 "timeout_seconds": 600})
         print(f"[guard] build_project: error {r.is_error}: {r.text[:400]}")
-        if not r.is_error or "could not be saved" not in r.text:
+        if not r.is_error:
             h.problem(f"build_project: the export went on: {r.text[:300]}")
-        if scene_file.read_bytes() != good:
-            h.problem("build_project: the file on disk changed")
+        else:
+            await refused("build_project", r.text)
         scene_file.write_bytes(good)
 
         # modified now (a script's moveChildToIndex is not an edit), for the saves of modified scenes

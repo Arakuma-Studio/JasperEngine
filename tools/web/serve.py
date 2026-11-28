@@ -33,9 +33,10 @@ class WebBuildHandler(http.server.SimpleHTTPRequestHandler):
         ".mjs": "text/javascript",
     }
 
-    def __init__(self, *args, cross_origin_isolation: bool = True, quiet: bool = False, **kwargs):
+    def __init__(self, *args, cross_origin_isolation: bool = True, quiet: bool = False, extra_files: dict | None = None, **kwargs):
         self.cross_origin_isolation = cross_origin_isolation
         self.quiet = quiet
+        self.extra_files = extra_files or {}
         super().__init__(*args, **kwargs)
 
     def end_headers(self):
@@ -51,6 +52,16 @@ class WebBuildHandler(http.server.SimpleHTTPRequestHandler):
             self.send_response(204)
             self.end_headers()
             return
+        # a file served beside the build at a URL path of its own (browser_gate.py's "serve")
+        extra = self.extra_files.get(self.path.split("?", 1)[0])
+        if extra is not None:
+            body = Path(extra).read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json" if str(extra).endswith(".json") else "application/octet-stream")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         super().do_GET()
 
     def log_message(self, format, *args):
@@ -58,10 +69,12 @@ class WebBuildHandler(http.server.SimpleHTTPRequestHandler):
             super().log_message(format, *args)
 
 
-def make_server(root: Path, port: int = 0, cross_origin_isolation: bool = True, quiet: bool = False):
-    """A ThreadingHTTPServer on 127.0.0.1 serving root (port 0: a free one, server.server_port)."""
+def make_server(root: Path, port: int = 0, cross_origin_isolation: bool = True, quiet: bool = False,
+                extra_files: dict | None = None):
+    """A ThreadingHTTPServer on 127.0.0.1 serving root (port 0: a free one, server.server_port), and
+    extra_files ({"/url/path": file}) at their own paths."""
     handler = functools.partial(WebBuildHandler, directory=str(root), cross_origin_isolation=cross_origin_isolation,
-                                quiet=quiet)
+                                quiet=quiet, extra_files=extra_files)
     return http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
 
 

@@ -415,6 +415,9 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
         env.setdefault("MESA_SHADER_CACHE_MAX_SIZE", "4G")
     # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
     env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
+    # a created project keeps the flat layout (assets and scripts at its root) the tests are written
+    # against; a new project's real layout (assets/, scripts/) is tested with env {"...": "0"}
+    env.setdefault("JASPER_TEST_FLAT_NEW_PROJECT", "1")
     # test-only widget locator (editor/util/UIProbe.h): the editor writes the rectangles of the
     # widgets it names there (Editor.ui_rect)
     if ui_probe:
@@ -422,6 +425,7 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
     else:
         env.pop("JASPER_UI_PROBE", None)
     env.update(extra_env or {})
+    _empty_compile_home(env)
     return cmd + args, env, scratch.root
 
 
@@ -509,11 +513,27 @@ def build_jobs() -> int:
     return max(1, cpus)
 
 
+# the compile homes (compile_env) this process has emptied: once, as its first editor starts
+_emptied_compile_homes: set[str] = set()
+
+
+def _empty_compile_home(env: dict[str, str]) -> None:
+    """Empties the compile home of an editor's environment the first time this process starts an
+    editor with it. Not at compile_env: test files call it as they load, and the runner's --list
+    (any run's -k, check-changed) loads every file, which wiped the tree of a run building in it."""
+    home = env.get("XDG_CACHE_HOME", "")
+    if not home or home in _emptied_compile_homes or Path(home).parent != REPO / "build" / "mcp-compile-home":
+        return
+    _emptied_compile_homes.add(home)
+    shutil.rmtree(home, ignore_errors=True)
+    Path(home).mkdir(parents=True, exist_ok=True)
+
+
 def compile_env(name: str, lto: bool = False) -> dict[str, str]:
     """The environment of an editor whose tests compile games (build_project method "compile"):
     the user cache (XDG_CACHE_HOME, where the kit's compile tree goes) at a fixed path,
     build/mcp-compile-home/<name> of the checkout (/src/... in the Linux image whatever the
-    worktree), emptied now, and ccache as the compiler launcher (CMAKE_<LANG>_COMPILER_LAUNCHER,
+    worktree), emptied when this process starts its first editor with it, and ccache as the compiler launcher (CMAKE_<LANG>_COMPILER_LAUNCHER,
     which CMake takes from the environment) when the run has one (CCACHE_DIR, as tools/build.sh's
     containers do). Every run still compiles from an empty tree, its configure, every compile
     command and the link: an object comes from ccache only when its preprocessed source, compiler,
@@ -522,8 +542,6 @@ def compile_env(name: str, lto: bool = False) -> dict[str, str]:
     engine/CMakeLists.txt), which costs a quarter of an hour of link and changes nothing the test
     checks; the suite's LTO check is test_build.py's compiled game (lto=True, docs/testing.md)."""
     home = REPO / "build" / "mcp-compile-home" / name
-    shutil.rmtree(home, ignore_errors=True)
-    home.mkdir(parents=True, exist_ok=True)
     env = {"XDG_CACHE_HOME": str(home)}
     if not lto:
         env["JASPERENGINE_RELEASE_LTO"] = "OFF"

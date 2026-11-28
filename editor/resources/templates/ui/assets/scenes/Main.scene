@@ -1,0 +1,86 @@
+formatVersion: 10
+guid: 099969e867182cb8de1d308701f07804
+id: 1786302292
+name: Main
+scene:
+  backgroundColor: [0.525, 0.525, 0.525, 1]
+  shadowQuality: auto
+  meshLodEnabled: true
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: off
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  litQuality: high
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  ambientLight2DWithoutLights: true
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_ui
+mainCamera: 0
+shaderKeys:
+  - type: blit
+  - type: blit
+    properties: 4096
+  - type: htmlui
+  - type: htmlui
+    properties: 1
+  - type: htmluigradient
+  - type: htmluipost
+    properties: 1
+  - type: htmluipost
+    properties: 2
+  - type: htmluipost
+    properties: 4
+  - type: htmluipost
+    properties: 8
+  - type: htmluipost
+    properties: 16
+  - type: htmluipost
+    properties: 32
+  - type: htmluipost
+    properties: 64
+  - type: htmluiprim
+entities:
+  - type: Entity
+    entity: 1001
+    name: Main Menu
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      uidocument:
+        enabled: true
+        filename: ui/main_menu.html
+        filenameGuid: d040c39a7f1e39495fff76ebd26de686
+        sortOrder: 0
+      script:
+        scripts:
+          - type: lua
+            path: MainMenuUI.lua
+            pathGuid: f2a6f255dd6ff67261fb9fcec6ddcbee
+            className: MainMenuUI
+            enabled: true

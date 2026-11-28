@@ -194,7 +194,11 @@ namespace {
     class HumanoidEditorTest : public ::testing::Test {
     protected:
         HumanoidRetargetHost host;
+        // loadedModel() and the project load set it; the suites after this one load with the
+        // mode they had (a synchronous load of a missing clip stops its AudioSource at once)
+        bool asyncLoadingBefore = false;
         void SetUp() override {
+            asyncLoadingBefore = Engine::isAsyncLoading();
             ASSERT_TRUE(humanoidRetargetHeadless().ready);
             setEditorHost(&host);
         }
@@ -202,6 +206,7 @@ namespace {
             ClipRecordHooks::endAllGestures();
             AnimationClipController::release(humanoidRetargetProject());
             setEditorHost(nullptr);
+            Engine::setAsyncLoading(asyncLoadingBefore);
         }
     };
 

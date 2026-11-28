@@ -18,6 +18,7 @@
 
 #include "Engine.h"
 #include "device/Device.h"
+#include "device/GpuQuirks.h"
 
 #include <climits>
 #include <cmath>
@@ -25,6 +26,7 @@
 #include "util/SubscriptionOwnerIndex.h"
 #include "debug/DebugOverlay.h"
 #include "debug/DebugStats.h"
+#include "script/LuaJson.h"
 #include "Scene.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
@@ -34,8 +36,10 @@
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 #include "input/InputManagerFormat.h"
+#include "input/TextEntry.h"
 #include "json.hpp"
 
+#include <cstdio>
 #include <cstring>
 #include <set>
 #include <stdexcept>
@@ -43,10 +47,12 @@
 #include "render/SystemRender.h"
 #include "player/RunControl.h"
 #include "Screen.h"
+#include "util/StringUtils.h"
 #include "util/CanvasScalerRef.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
 #include "picking/MeshRaycast.h"
+#include "script/binding/PhysicsQueriesLua.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "Contact2D.h"
@@ -214,6 +220,83 @@ static int luaScreenSetExtraInsets(lua_State* L){
         }
     }
     Screen::setExtraInsets(EdgeInsets(values[0], values[1], values[2], values[3]), pixels);
+    return 0;
+}
+
+// System.showVirtualKeyboard(text [, options]): options {keyboard, enterKey, autocapitalize,
+// autocorrect, secure, multiline, maxLength} with the HTML attribute values (text-entry R6);
+// without options the platform's plain keyboard, as before
+// The options and arguments are read and checked before the text becomes a std::wstring: Lua is
+// compiled as C, and luaL_error longjmps over this frame (no destructor runs; MSVC may end the
+// process)
+static int luaSystemShowVirtualKeyboard(lua_State* L){
+    const char* utf8 = luaL_optstring(L, 1, "");
+    const bool withOptions = !lua_isnoneornil(L, 2);
+    if (withOptions && !lua_istable(L, 2))
+        return luaL_error(L, "System.showVirtualKeyboard: options must be a table {keyboard=, enterKey=, autocapitalize=, autocorrect=, secure=, multiline=, maxLength=}");
+
+    TextEntryTraits traits;
+    // the field a value of which is not one of `values`, or null
+    const char* wrongField = nullptr;
+    const char* wrongValues = nullptr;
+    auto name = [L, &wrongField, &wrongValues](const char* field, auto parse, const char* values){
+        if (wrongField)
+            return;
+        lua_getfield(L, 2, field);
+        if (!lua_isnil(L, -1)){
+            const char* value = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : nullptr;
+            if (!value || !parse(value)){
+                wrongField = field;
+                wrongValues = values;
+            }
+        }
+        lua_pop(L, 1);
+    };
+    auto flag = [L](const char* field, bool& out){
+        lua_getfield(L, 2, field);
+        if (!lua_isnil(L, -1))
+            out = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+    };
+    if (withOptions){
+        name("keyboard", [&](const char* v){ return keyboardTypeFromName(v, traits.keyboard); },
+             "\"text\", \"numeric\", \"decimal\", \"tel\", \"email\", \"url\", \"search\", \"none\"");
+        name("enterKey", [&](const char* v){ return enterKeyFromName(v, traits.enterKey); },
+             "\"enter\", \"done\", \"go\", \"next\", \"previous\", \"search\", \"send\"");
+        name("autocapitalize", [&](const char* v){ return autoCapitalizeFromName(v, traits.capitalize); },
+             "\"off\", \"sentences\", \"words\", \"characters\"");
+        if (wrongField)
+            return luaL_error(L, "System.showVirtualKeyboard: %s must be one of %s", wrongField, wrongValues);
+        flag("autocorrect", traits.autocorrect);
+        flag("secure", traits.secure);
+        flag("multiline", traits.multiline);
+        lua_getfield(L, 2, "maxLength");
+        if (lua_isnumber(L, -1))
+            traits.maxLength = std::max(-1, (int)lua_tointeger(L, -1));
+        lua_pop(L, 1);
+    }
+    bool hadInvalid = false;
+    const std::wstring text = StringUtils::utf8ToWString(utf8, hadInvalid);
+    if (withOptions)
+        System::instance().showVirtualKeyboard(text, traits);
+    else
+        System::instance().showVirtualKeyboard(text);
+    return 0;
+}
+
+// System.updateVirtualKeyboardText(text [, caret]): the soft keyboard's text replaced, caret in
+// code points (default: the end)
+static int luaSystemUpdateVirtualKeyboardText(lua_State* L){
+    const char* utf8 = luaL_checkstring(L, 1);
+    // (checked before any std:: object lives here: see luaSystemShowVirtualKeyboard)
+    const bool caretGiven = !lua_isnoneornil(L, 2);
+    const lua_Integer caretArg = caretGiven ? luaL_checkinteger(L, 2) : 0;
+    bool hadInvalid = false;
+    const std::wstring text = StringUtils::utf8ToWString(utf8, hadInvalid);
+    const int length = (int)StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid).size();
+    const int caret = caretGiven ? std::clamp((int)caretArg, 0, length) : length;
+    Engine::resetTextInputState(utf8, (size_t)caret);
+    System::instance().updateVirtualKeyboardText(text, caret, caret);
     return 0;
 }
 
@@ -885,8 +968,9 @@ namespace{
         }
     }
 
-    // Physics.raycast(scene, ray [, layerMask]) or (scene, origin, direction, maxDistance [, layerMask]),
-    // and the 2D versions with Vector2 origin and direction
+    // Physics.raycast(scene, ray [, layerMask [, options]]) or (scene, origin, direction, maxDistance
+    // [, layerMask [, options]]), and the 2D versions with Vector2 origin and direction. options:
+    // luaphysics::readQueryOptions (S96 REQ-12)
     template<typename VectorT, bool all, bool is2D>
     int luaRaycast(lua_State* L){
         const char* function = is2D ? (all ? "Physics2D.raycastAll" : "Physics2D.raycast")
@@ -894,37 +978,40 @@ namespace{
         Scene* scene = luaSceneArg(L, function);
 
         Ray ray;
-        uint32_t layerMask;
+        QueryOptions options;
+        std::vector<Entity> ignore;
         if (luaRayArg(L, 2, ray)){
-            layerMask = luaOptLayerMask(L, 3, Physics::DEFAULT_RAYCAST_LAYERS);
+            options.layerMask = luaOptLayerMask(L, 3, Physics::DEFAULT_RAYCAST_LAYERS);
+            luaphysics::readQueryOptions(L, 4, function, is2D, options, ignore);
         }else{
             if (!luabridge::isInstance<VectorT>(L, 2) || !luabridge::isInstance<VectorT>(L, 3)){
-                return luaL_error(L, "%s: expected (scene, ray [, layerMask]) or (scene, origin, direction, distance [, layerMask])", function);
+                return luaL_error(L, "%s: expected (scene, ray [, layerMask [, options]]) or (scene, origin, direction, distance [, layerMask [, options]])", function);
             }
             auto origin = luabridge::get<VectorT>(L, 2);
             auto direction = luabridge::get<VectorT>(L, 3);
             if (!origin || !direction){
-                return luaL_error(L, "%s: expected (scene, ray [, layerMask]) or (scene, origin, direction, distance [, layerMask])", function);
+                return luaL_error(L, "%s: expected (scene, ray [, layerMask [, options]]) or (scene, origin, direction, distance [, layerMask [, options]])", function);
             }
             const float maxDistance = (float)luaL_checknumber(L, 4);
-            layerMask = luaOptLayerMask(L, 5, Physics::DEFAULT_RAYCAST_LAYERS);
+            options.layerMask = luaOptLayerMask(L, 5, Physics::DEFAULT_RAYCAST_LAYERS);
+            luaphysics::readQueryOptions(L, 6, function, is2D, options, ignore);
 
             const VectorT originValue = origin.value();
             const VectorT directionValue = direction.value();
             if constexpr (is2D){
 #ifdef JASPERENGINE_PHYSICS_2D
                 if (all){
-                    luaPushRayReturns(L, Physics2D::raycastAll(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturns(L, Physics2D::raycastAll(scene, originValue, directionValue, maxDistance, options));
                 }else{
-                    luaPushRayReturn(L, Physics2D::raycast(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturn(L, Physics2D::raycast(scene, originValue, directionValue, maxDistance, options));
                 }
 #endif
             }else{
 #ifdef JASPERENGINE_PHYSICS_3D
                 if (all){
-                    luaPushRayReturns(L, Physics::raycastAll(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturns(L, Physics::raycastAll(scene, originValue, directionValue, maxDistance, options));
                 }else{
-                    luaPushRayReturn(L, Physics::raycast(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturn(L, Physics::raycast(scene, originValue, directionValue, maxDistance, options));
                 }
 #endif
             }
@@ -934,17 +1021,17 @@ namespace{
         if constexpr (is2D){
 #ifdef JASPERENGINE_PHYSICS_2D
             if (all){
-                luaPushRayReturns(L, Physics2D::raycastAll(scene, ray, layerMask));
+                luaPushRayReturns(L, Physics2D::raycastAll(scene, ray, options));
             }else{
-                luaPushRayReturn(L, Physics2D::raycast(scene, ray, layerMask));
+                luaPushRayReturn(L, Physics2D::raycast(scene, ray, options));
             }
 #endif
         }else{
 #ifdef JASPERENGINE_PHYSICS_3D
             if (all){
-                luaPushRayReturns(L, Physics::raycastAll(scene, ray, layerMask));
+                luaPushRayReturns(L, Physics::raycastAll(scene, ray, options));
             }else{
-                luaPushRayReturn(L, Physics::raycast(scene, ray, layerMask));
+                luaPushRayReturn(L, Physics::raycast(scene, ray, options));
             }
 #endif
         }
@@ -1303,14 +1390,35 @@ namespace {
         integer("coroutines", s.coroutines);
         integer("timers", s.timers);
         integer("htmlUiDrawCalls", s.htmlUiDrawCalls);
+        integer("cullingGroups", s.cullingGroups);
+        integer("cullingSpheres", s.cullingSpheres);
+        integer("cullingVisible", s.cullingVisible);
+        integer("simulationFull", s.simulationFull);
+        integer("simulationReduced", s.simulationReduced);
+        integer("simulationCulled", s.simulationCulled);
+        integer("scriptUpdatesSkipped", s.scriptUpdatesSkipped);
         return 1;
     }
 
-    // a console command's Lua function, unreferenced when the command goes (while its state lives)
+    // a console command's Lua functions (run, complete), unreferenced when the command goes (while
+    // their state lives)
     struct LuaCommandFunction {
         lua_State* L = nullptr;
         int ref = LUA_NOREF;
+        int completeRef = LUA_NOREF;
         ~LuaCommandFunction(){
+            if (L && LuaBinding::getLuaState() == L){
+                if (ref != LUA_NOREF) luaL_unref(L, LUA_REGISTRYINDEX, ref);
+                if (completeRef != LUA_NOREF) luaL_unref(L, LUA_REGISTRYINDEX, completeRef);
+            }
+        }
+    };
+
+    // what a command's run returned, kept for a Lua caller of executeCommand (console::Result::scriptValue)
+    struct LuaCommandValue {
+        lua_State* L = nullptr;
+        int ref = LUA_NOREF;
+        ~LuaCommandValue(){
             if (L && ref != LUA_NOREF && LuaBinding::getLuaState() == L)
                 luaL_unref(L, LUA_REGISTRYINDEX, ref);
         }
@@ -1353,10 +1461,377 @@ namespace {
         return owners;
     }
 
-    // DebugOverlay.addCommand(name, description, fn [, owner]): fn(args) gets the words after the
-    // name. The owner (a script table; by default the `self` of the calling method) takes the
-    // command with it when it is released
-    int luaDebugOverlayAddCommand(lua_State* L){
+    // ---- the `call` a command's run gets: call:print(...), call:fail(message); a full userdata
+    // whose pointer is cleared when the call ends (a coroutine keeping it gets an error)
+    const char* const consoleCallMeta = "jasperengine.ConsoleCall";
+
+    console::Call* checkConsoleCall(lua_State* L){
+        auto** slot = static_cast<console::Call**>(luaL_checkudata(L, 1, consoleCallMeta));
+        return *slot;
+    }
+
+    // the values joined with tabs (tostring), pushed as one string
+    void pushJoined(lua_State* L, int from){
+        // (before luaL_buffinit, which may push a placeholder of its own)
+        const int top = lua_gettop(L);
+        luaL_Buffer buffer;
+        luaL_buffinit(L, &buffer);
+        for (int i = from; i <= top; i++){
+            if (i > from)
+                luaL_addchar(&buffer, '\t');
+            luaL_tolstring(L, i, nullptr);
+            luaL_addvalue(&buffer);
+        }
+        luaL_pushresult(&buffer);
+    }
+
+    int luaConsoleCallPrint(lua_State* L){
+        console::Call* call = checkConsoleCall(L);
+        if (!call)
+            return luaL_error(L, "call:print: the command's call has ended");
+        pushJoined(L, 2);
+        size_t length = 0;
+        const char* text = lua_tolstring(L, -1, &length);
+        call->print(std::string(text, length));
+        return 0;
+    }
+
+    int luaConsoleCallFail(lua_State* L){
+        console::Call* call = checkConsoleCall(L);
+        if (!call)
+            return luaL_error(L, "call:fail: the command's call has ended");
+        pushJoined(L, 2);
+        size_t length = 0;
+        const char* text = lua_tolstring(L, -1, &length);
+        call->fail(std::string(text, length));
+        return 0;
+    }
+
+    console::Call** pushConsoleCall(lua_State* L, console::Call* call){
+        auto** slot = static_cast<console::Call**>(lua_newuserdatauv(L, sizeof(console::Call*), 0));
+        *slot = call;
+        if (luaL_newmetatable(L, consoleCallMeta)){
+            lua_createtable(L, 0, 2);
+            lua_pushcfunction(L, &luaConsoleCallPrint);
+            lua_setfield(L, -2, "print");
+            lua_pushcfunction(L, &luaConsoleCallFail);
+            lua_setfield(L, -2, "fail");
+            lua_setfield(L, -2, "__index");
+        }
+        lua_setmetatable(L, -2);
+        return slot;
+    }
+
+    void pushArgValue(lua_State* L, const console::ArgValue& value){
+        switch (value.type){
+            case console::ArgType::Int: lua_pushinteger(L, static_cast<lua_Integer>(value.i)); break;
+            case console::ArgType::Float: lua_pushnumber(L, value.f); break;
+            case console::ArgType::Bool: lua_pushboolean(L, value.b); break;
+            case console::ArgType::Vector3:
+                if (!luabridge::push<Vector3>(L, value.v)) lua_pushnil(L);
+                break;
+            case console::ArgType::GameObject:
+                if (!luabridge::push<GameObject>(L, GameObject(value.scene, value.entity))) lua_pushnil(L);
+                break;
+            default: lua_pushlstring(L, value.text.data(), value.text.size()); break;
+        }
+    }
+
+    // run(args, call): typed commands get each argument by name and by position (an optional one
+    // left out is nil); untyped ones the words, as before
+    void runLuaCommand(const std::shared_ptr<LuaCommandFunction>& function, const std::string& name,
+                       const std::vector<std::string>& argNames, console::Call& call){
+        lua_State* L = function->L;
+        if (!L || LuaBinding::getLuaState() != L){
+            call.fail("its Lua state is gone");
+            return;
+        }
+        const int top = lua_gettop(L);
+        console::Call** slot = pushConsoleCall(L, &call);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, function->ref);
+        if (!argNames.empty()){
+            const std::vector<console::ArgValue>& args = call.args();
+            lua_createtable(L, static_cast<int>(args.size()), static_cast<int>(args.size()));
+            for (size_t i = 0; i < args.size() && i < argNames.size(); i++){
+                if (!args[i].given)
+                    continue;
+                pushArgValue(L, args[i]);
+                lua_pushvalue(L, -1);
+                lua_rawseti(L, -3, static_cast<lua_Integer>(i + 1));
+                lua_setfield(L, -2, argNames[i].c_str());
+            }
+        }else{
+            const std::vector<std::string>& words = call.words();
+            lua_createtable(L, static_cast<int>(words.size()), 0);
+            for (size_t i = 0; i < words.size(); i++){
+                lua_pushlstring(L, words[i].data(), words[i].size());
+                lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+            }
+        }
+        lua_pushvalue(L, top + 1);
+        const int status = LuaBinding::pcallWithTraceback(L, 2, 1);
+        // the userdata below the results keeps the slot alive until here
+        *slot = nullptr;
+        if (status != LUA_OK){
+            const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
+            lua_settop(L, top);
+            Log::error("Lua Error: console command '%s': %s", name.c_str(), error.c_str());
+            // the message's first line and the traceback's first frame
+            const std::string message = error.substr(0, error.find('\n'));
+            std::string frame;
+            const size_t trace = error.find("stack traceback:\n");
+            if (trace != std::string::npos){
+                frame = error.substr(trace + 17);
+                frame = frame.substr(0, frame.find('\n'));
+                while (!frame.empty() && (frame.front() == '\t' || frame.front() == ' '))
+                    frame.erase(frame.begin());
+            }
+            call.raise(frame.empty() ? message : message + " (" + frame + ")");
+            return;
+        }
+        if (!lua_isnil(L, -1)){
+            nlohmann::json value;
+            std::string problem;
+            LuaJson::EncodeOptions options;
+            options.utf8 = LuaJson::InvalidUtf8::Replace;
+            if (LuaJson::toJson(L, -1, value, options, problem)){
+                call.setValue(std::move(value));
+            }else{
+                size_t length = 0;
+                const char* text = luaL_tolstring(L, -1, &length);
+                call.setValue(std::string(text, length));
+                lua_pop(L, 1);
+            }
+            auto kept = std::make_shared<LuaCommandValue>();
+            kept->L = L;
+            lua_pushvalue(L, -1);
+            kept->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+            call.setScriptValue(kept);
+        }
+        lua_settop(L, top);
+    }
+
+    std::vector<std::string> completeLuaCommand(const std::shared_ptr<LuaCommandFunction>& function, const std::string& name, int argIndex,
+                                                const std::string& prefix, const std::vector<std::string>& words){
+        std::vector<std::string> out;
+        lua_State* L = function->L;
+        if (!L || LuaBinding::getLuaState() != L || function->completeRef == LUA_NOREF)
+            return out;
+        const int top = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, function->completeRef);
+        lua_pushinteger(L, argIndex + 1);
+        lua_pushlstring(L, prefix.data(), prefix.size());
+        lua_createtable(L, static_cast<int>(words.size()), 0);
+        for (size_t i = 0; i < words.size(); i++){
+            lua_pushlstring(L, words[i].data(), words[i].size());
+            lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+        }
+        if (LuaBinding::pcallWithTraceback(L, 3, 1) != LUA_OK){
+            const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
+            lua_settop(L, top);
+            Log::error("Lua Error: console command '%s' complete: %s", name.c_str(), error.c_str());
+            return out;
+        }
+        if (lua_istable(L, -1)){
+            const lua_Integer length = static_cast<lua_Integer>(lua_rawlen(L, -1));
+            for (lua_Integer i = 1; i <= length; i++){
+                lua_rawgeti(L, -1, i);
+                size_t textLength = 0;
+                if (lua_type(L, -1) == LUA_TSTRING){
+                    const char* text = lua_tolstring(L, -1, &textLength);
+                    out.emplace_back(text, textLength);
+                }
+                lua_pop(L, 1);
+            }
+        }
+        lua_settop(L, top);
+        return out;
+    }
+
+    // a field of the table at `index` (raw: no metamethods), pushed
+    int coreRawField(lua_State* L, int index, const char* key){
+        lua_pushstring(L, key);
+        return lua_rawget(L, index);
+    }
+
+    std::string fieldText(lua_State* L, int index, const char* key, bool& wrongType){
+        std::string out;
+        const int type = coreRawField(L, index, key);
+        if (type == LUA_TSTRING || type == LUA_TNUMBER){
+            size_t length = 0;
+            const char* text = lua_tolstring(L, -1, &length);
+            out.assign(text, length);
+        }else if (type == LUA_TBOOLEAN){
+            out = lua_toboolean(L, -1) ? "true" : "false";
+        }else if (type != LUA_TNIL){
+            wrongType = true;
+        }
+        lua_pop(L, 1);
+        return out;
+    }
+
+    // a list of strings at `key` (absent: none); false when it is something else
+    bool fieldStrings(lua_State* L, int index, const char* key, std::vector<std::string>& out){
+        const int type = coreRawField(L, index, key);
+        bool ok = type == LUA_TNIL;
+        if (type == LUA_TTABLE){
+            ok = true;
+            const lua_Integer length = static_cast<lua_Integer>(lua_rawlen(L, -1));
+            for (lua_Integer i = 1; i <= length; i++){
+                if (lua_rawgeti(L, -1, i) == LUA_TSTRING){
+                    size_t textLength = 0;
+                    const char* text = lua_tolstring(L, -1, &textLength);
+                    out.emplace_back(text, textLength);
+                }else{
+                    ok = false;
+                }
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+        return ok;
+    }
+
+    // DebugOverlay.addCommand{name, description, usage, aliases, args, minArgs, maxArgs, cheat, run,
+    // complete, owner}: what the spec table says, or `problem` (a malformed table: raised by the caller)
+    void addCommandFromTable(lua_State* L, std::string& problem, bool& added, std::string& refusal){
+        console::CommandSpec spec;
+        bool wrong = false;
+        spec.name = fieldText(L, 1, "name", wrong);
+        spec.description = fieldText(L, 1, "description", wrong);
+        spec.usage = fieldText(L, 1, "usage", wrong);
+        if (wrong){
+            problem = "DebugOverlay.addCommand: name, description and usage are strings";
+            return;
+        }
+        if (!fieldStrings(L, 1, "aliases", spec.aliases)){
+            problem = "DebugOverlay.addCommand: aliases is a list of strings";
+            return;
+        }
+        if (coreRawField(L, 1, "cheat") != LUA_TNIL)
+            spec.cheat = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        for (const char* key : {"minArgs", "maxArgs"}){
+            const int type = coreRawField(L, 1, key);
+            if (type == LUA_TNUMBER)
+                (std::strcmp(key, "minArgs") == 0 ? spec.minArgs : spec.maxArgs) = static_cast<int>(lua_tointeger(L, -1));
+            else if (type != LUA_TNIL)
+                wrong = true;
+            lua_pop(L, 1);
+        }
+        if (wrong){
+            problem = "DebugOverlay.addCommand: minArgs and maxArgs are whole numbers";
+            return;
+        }
+        if (coreRawField(L, 1, "args") == LUA_TTABLE){
+            const lua_Integer length = static_cast<lua_Integer>(lua_rawlen(L, -1));
+            for (lua_Integer i = 1; i <= length && problem.empty(); i++){
+                if (lua_rawgeti(L, -1, i) != LUA_TTABLE){
+                    problem = "DebugOverlay.addCommand: args[" + std::to_string(i) + "] is not a table {name, type, ...}";
+                }else{
+                    const int at = lua_gettop(L);
+                    console::ArgSpec arg;
+                    arg.name = fieldText(L, at, "name", wrong);
+                    const std::string type = fieldText(L, at, "type", wrong);
+                    arg.defaultValue = fieldText(L, at, "default", wrong);
+                    if (!type.empty() && !console::parseType(type, arg.type))
+                        problem = "DebugOverlay.addCommand: args[" + std::to_string(i) + "].type '" + type +
+                                  "' is not string, int, float, bool, enum, vector3, gameobject or rest";
+                    if (coreRawField(L, at, "optional") != LUA_TNIL)
+                        arg.optional = lua_toboolean(L, -1) != 0;
+                    lua_pop(L, 1);
+                    if (coreRawField(L, at, "min") == LUA_TNUMBER) arg.min = lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                    if (coreRawField(L, at, "max") == LUA_TNUMBER) arg.max = lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                    if (!fieldStrings(L, at, "choices", arg.choices) || wrong)
+                        problem = "DebugOverlay.addCommand: args[" + std::to_string(i) + "] has a field of the wrong type";
+                    spec.args.push_back(arg);
+                }
+                lua_pop(L, 1);
+            }
+        }else if (!lua_isnil(L, -1)){
+            problem = "DebugOverlay.addCommand: args is a list of tables {name, type, ...}";
+        }
+        lua_pop(L, 1);
+        if (!problem.empty())
+            return;
+
+        if (coreRawField(L, 1, "run") != LUA_TFUNCTION){
+            lua_pop(L, 1);
+            problem = "DebugOverlay.addCommand: run must be a function(args, call)";
+            return;
+        }
+        auto function = std::make_shared<LuaCommandFunction>();
+        function->L = L;
+        function->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        const int completeType = coreRawField(L, 1, "complete");
+        if (completeType == LUA_TFUNCTION){
+            function->completeRef = luaL_ref(L, LUA_REGISTRYINDEX);
+        }else{
+            lua_pop(L, 1);
+            if (completeType != LUA_TNIL){
+                problem = "DebugOverlay.addCommand: complete must be a function(argIndex, prefix, words)";
+                return;
+            }
+        }
+        const void* owner = nullptr;
+        const int ownerType = coreRawField(L, 1, "owner");
+        if (ownerType == LUA_TTABLE)
+            owner = lua_topointer(L, -1);
+        lua_pop(L, 1);
+        if (ownerType != LUA_TNIL && ownerType != LUA_TTABLE){
+            problem = "DebugOverlay.addCommand: owner must be a script table";
+            return;
+        }
+        if (!owner)
+            owner = callerSelf(L);
+
+        const std::string name = spec.name;
+        std::vector<std::string> argNames;
+        for (const console::ArgSpec& arg : spec.args)
+            argNames.push_back(arg.name);
+        spec.run = [function, name, argNames](console::Call& call){ runLuaCommand(function, name, argNames, call); };
+        if (function->completeRef != LUA_NOREF){
+            spec.complete = [function, name](int argIndex, const std::string& prefix, const std::vector<std::string>& words){
+                return completeLuaCommand(function, name, argIndex, prefix, words);
+            };
+        }
+        // without an owner a Lua command still goes with the Lua state (Play stop, quit)
+        spec.ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
+        added = console::add(std::move(spec), &refusal);
+        if (added && owner)
+            SubscriptionOwnerIndex::add(ownerKeyOf(owner), debugCommandOwners(), ownerKeyOf(owner));
+    }
+
+    // The work of DebugOverlay.addCommand, whose C++ objects all live here: the number of results,
+    // or ADD_COMMAND_RAISE with the message pushed. Lua is compiled as C, and a raise longjmps over
+    // the frames it crosses; on MSVC one from the frame that had made C++ objects ended the core
+    // tests (CI run 45006454127), so the lua_CFunction below holds none and raises once this returned.
+    constexpr int ADD_COMMAND_RAISE = -1;
+    // (never inlined into the lua_CFunction, which would then make the objects itself)
+#if defined(_MSC_VER)
+    #define CORE_LUA_OUT_OF_LINE __declspec(noinline)
+#else
+    #define CORE_LUA_OUT_OF_LINE __attribute__((noinline))
+#endif
+
+    CORE_LUA_OUT_OF_LINE int addCommandImpl(lua_State* L){
+        if (lua_istable(L, 1)){
+            bool added = false;
+            std::string problem, refusal;
+            addCommandFromTable(L, problem, added, refusal);
+            if (!problem.empty()){
+                lua_pushlstring(L, problem.data(), problem.size());
+                return ADD_COMMAND_RAISE;
+            }
+            lua_pushboolean(L, added);
+            if (added)
+                return 1;
+            lua_pushlstring(L, refusal.data(), refusal.size());
+            return 2;
+        }
+        // (the checks raise before any C++ object exists)
         size_t nameLength = 0;
         const char* name = luaL_checklstring(L, 1, &nameLength);
         size_t descriptionLength = 0;
@@ -1371,35 +1846,126 @@ namespace {
         }
         lua_pushvalue(L, 3);
         const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
-        bool added = false;
-        {
-            const std::string commandName(name, nameLength);
-            auto function = std::make_shared<LuaCommandFunction>();
-            function->L = L;
-            function->ref = ref;
-            // without an owner a Lua command still goes with the Lua state (Play stop, quit)
-            const std::string ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
-            added = DebugOverlay::addCommand(commandName, std::string(description, descriptionLength),
-                [function, commandName](const std::vector<std::string>& args){
-                    lua_State* state = function->L;
-                    if (!state || LuaBinding::getLuaState() != state)
-                        return;
-                    lua_rawgeti(state, LUA_REGISTRYINDEX, function->ref);
-                    lua_createtable(state, static_cast<int>(args.size()), 0);
-                    for (size_t i = 0; i < args.size(); i++){
-                        lua_pushlstring(state, args[i].data(), args[i].size());
-                        lua_rawseti(state, -2, static_cast<lua_Integer>(i + 1));
-                    }
-                    if (LuaBinding::pcallWithTraceback(state, 1, 0) != LUA_OK){
-                        const std::string error = LuaBinding::getLuaStackErrorString(state, -1);
-                        lua_pop(state, 1);
-                        Log::error("Lua Error: console command '%s': %s", commandName.c_str(), error.c_str());
-                    }
-                }, ownerTag);
-            if (added && owner)
-                SubscriptionOwnerIndex::add(ownerKeyOf(owner), debugCommandOwners(), ownerKeyOf(owner));
-        }
+        const std::string commandName(name, nameLength);
+        auto function = std::make_shared<LuaCommandFunction>();
+        function->L = L;
+        function->ref = ref;
+        console::CommandSpec spec;
+        spec.name = commandName;
+        spec.description = std::string(description, descriptionLength);
+        spec.run = [function, commandName](console::Call& call){ runLuaCommand(function, commandName, {}, call); };
+        // without an owner a Lua command still goes with the Lua state (Play stop, quit)
+        spec.ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
+        std::string refusal;
+        const bool added = console::add(std::move(spec), &refusal);
+        if (added && owner)
+            SubscriptionOwnerIndex::add(ownerKeyOf(owner), debugCommandOwners(), ownerKeyOf(owner));
         lua_pushboolean(L, added);
+        if (added)
+            return 1;
+        lua_pushlstring(L, refusal.data(), refusal.size());
+        return 2;
+    }
+
+    // DebugOverlay.addCommand(name, description, fn [, owner]): fn(args) gets the words after the
+    // name; or DebugOverlay.addCommand{...} (typed arguments, aliases, cheat). The owner (a script
+    // table; by default the `self` of the calling method) takes the command with it when it is
+    // released. true, or false and the reason
+    int luaDebugOverlayAddCommand(lua_State* L){
+        const int results = addCommandImpl(L);
+        if (results == ADD_COMMAND_RAISE)
+            return lua_error(L);
+        return results;
+    }
+
+    void pushConsoleResult(lua_State* L, const console::Result& result){
+        lua_createtable(L, 0, 9);
+        lua_pushboolean(L, result.ok());
+        lua_setfield(L, -2, "ok");
+        lua_pushstring(L, console::statusName(result.status));
+        lua_setfield(L, -2, "status");
+        lua_pushlstring(L, result.command.data(), result.command.size());
+        lua_setfield(L, -2, "command");
+        lua_createtable(L, static_cast<int>(result.lines.size()), 0);
+        for (size_t i = 0; i < result.lines.size(); i++){
+            lua_pushlstring(L, result.lines[i].data(), result.lines[i].size());
+            lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+        }
+        lua_setfield(L, -2, "lines");
+        lua_createtable(L, static_cast<int>(result.log.size()), 0);
+        for (size_t i = 0; i < result.log.size(); i++){
+            lua_createtable(L, 0, 2);
+            lua_pushinteger(L, static_cast<lua_Integer>(result.log[i].level));
+            lua_setfield(L, -2, "level");
+            lua_pushlstring(L, result.log[i].message.data(), result.log[i].message.size());
+            lua_setfield(L, -2, "message");
+            lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+        }
+        lua_setfield(L, -2, "log");
+        const auto* kept = static_cast<const LuaCommandValue*>(result.scriptValue.get());
+        if (kept && kept->L == L && kept->ref != LUA_NOREF){
+            lua_rawgeti(L, LUA_REGISTRYINDEX, kept->ref);
+            lua_setfield(L, -2, "value");
+        }else if (!result.value.is_null()){
+            LuaJson::push(L, result.value);
+            lua_setfield(L, -2, "value");
+        }
+        if (!result.error.empty()){
+            lua_pushlstring(L, result.error.data(), result.error.size());
+            lua_setfield(L, -2, "error");
+        }
+        if (!result.usage.empty()){
+            lua_pushlstring(L, result.usage.data(), result.usage.size());
+            lua_setfield(L, -2, "usage");
+        }
+        lua_pushboolean(L, result.cheat);
+        lua_setfield(L, -2, "cheat");
+    }
+
+    // DebugOverlay.executeCommand(line): the result table (the game's own call: not gated)
+    int luaDebugOverlayExecuteCommand(lua_State* L){
+        size_t length = 0;
+        const char* line = luaL_checklstring(L, 1, &length);
+        {
+            const console::Result result = console::execute(std::string(line, length), console::Source::Game);
+            pushConsoleResult(L, result);
+        }
+        return 1;
+    }
+
+    // DebugOverlay.completeCommand(line [, cursor]): {replacement, candidates, start}; cursor and
+    // start count the bytes before them (default: the whole line)
+    int luaDebugOverlayCompleteCommand(lua_State* L){
+        size_t length = 0;
+        const char* line = luaL_checklstring(L, 1, &length);
+        const lua_Integer cursor = luaL_optinteger(L, 2, static_cast<lua_Integer>(length));
+        if (cursor < 0)
+            return luaL_argerror(L, 2, "the bytes before the cursor, 0 or more");
+        {
+            const console::Completion completion = console::complete(std::string(line, length), static_cast<size_t>(cursor));
+            lua_createtable(L, 0, 3);
+            lua_pushlstring(L, completion.replacement.data(), completion.replacement.size());
+            lua_setfield(L, -2, "replacement");
+            lua_createtable(L, static_cast<int>(completion.candidates.size()), 0);
+            for (size_t i = 0; i < completion.candidates.size(); i++){
+                lua_pushlstring(L, completion.candidates[i].data(), completion.candidates[i].size());
+                lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+            }
+            lua_setfield(L, -2, "candidates");
+            lua_pushinteger(L, static_cast<lua_Integer>(completion.start));
+            lua_setfield(L, -2, "start");
+        }
+        return 1;
+    }
+
+    // DebugOverlay.getCommands(): {name, description, usage, aliases, cheat, builtIn, args} each, by name
+    int luaDebugOverlayGetCommands(lua_State* L){
+        {
+            nlohmann::json list = nlohmann::json::array();
+            for (const console::CommandSpec* spec : console::list())
+                list.push_back(console::describe(*spec));
+            LuaJson::push(L, list);
+        }
         return 1;
     }
 
@@ -1734,6 +2300,31 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("PREMULTIPLIED", MaterialBlendMode::PREMULTIPLIED)
         .addVariable("ADDITIVE", MaterialBlendMode::ADDITIVE)
         .addVariable("MULTIPLY", MaterialBlendMode::MULTIPLY)
+        .addVariable("CUSTOM", MaterialBlendMode::CUSTOM)
+        .endNamespace();
+
+    // Blend Mode Custom (Unity's ShaderLab Blend factors and BlendOp)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialBlendFactor")
+        .addVariable("ZERO", MaterialBlendFactor::ZERO)
+        .addVariable("ONE", MaterialBlendFactor::ONE)
+        .addVariable("SRC_COLOR", MaterialBlendFactor::SRC_COLOR)
+        .addVariable("ONE_MINUS_SRC_COLOR", MaterialBlendFactor::ONE_MINUS_SRC_COLOR)
+        .addVariable("SRC_ALPHA", MaterialBlendFactor::SRC_ALPHA)
+        .addVariable("ONE_MINUS_SRC_ALPHA", MaterialBlendFactor::ONE_MINUS_SRC_ALPHA)
+        .addVariable("DST_COLOR", MaterialBlendFactor::DST_COLOR)
+        .addVariable("ONE_MINUS_DST_COLOR", MaterialBlendFactor::ONE_MINUS_DST_COLOR)
+        .addVariable("DST_ALPHA", MaterialBlendFactor::DST_ALPHA)
+        .addVariable("ONE_MINUS_DST_ALPHA", MaterialBlendFactor::ONE_MINUS_DST_ALPHA)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialBlendOp")
+        .addVariable("ADD", MaterialBlendOp::ADD)
+        .addVariable("SUBTRACT", MaterialBlendOp::SUBTRACT)
+        .addVariable("REVERSE_SUBTRACT", MaterialBlendOp::REVERSE_SUBTRACT)
+        .addVariable("MIN", MaterialBlendOp::MIN)
+        .addVariable("MAX", MaterialBlendOp::MAX)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -1935,6 +2526,24 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("STANDARD", ShadingModel::STANDARD)
         .addVariable("HAIR", ShadingModel::HAIR)
         .endNamespace();
+    // V1 R70: the built-in Lit's Vertex Color section
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("VertexColorUse")
+        .addVariable("TINT", VertexColorUse::TINT)
+        .addVariable("MASKS", VertexColorUse::MASKS)
+        .addVariable("OFF", VertexColorUse::OFF)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("VertexColorTarget")
+        .addVariable("NONE", VertexColorTarget::NONE)
+        .addVariable("OCCLUSION", VertexColorTarget::OCCLUSION)
+        .addVariable("ROUGHNESS_MULTIPLY", VertexColorTarget::ROUGHNESS_MULTIPLY)
+        .addVariable("ROUGHNESS_REPLACE", VertexColorTarget::ROUGHNESS_REPLACE)
+        .addVariable("METALLIC", VertexColorTarget::METALLIC)
+        .addVariable("EMISSION", VertexColorTarget::EMISSION)
+        .addVariable("OPACITY", VertexColorTarget::OPACITY)
+        .addVariable("ALBEDO_TINT", VertexColorTarget::ALBEDO_TINT)
+        .endNamespace();
     luabridge::getGlobalNamespace(L)
         .beginNamespace("CapsuleCastShadows")
         .addVariable("ON", CapsuleCastShadows::ON)
@@ -1980,10 +2589,25 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HIGH", LitQuality::HIGH)
         .endNamespace();
 
+    // Environment Lighting > Source (Scene.ambientMode)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AmbientMode")
+        .addVariable("COLOR", AmbientMode::COLOR)
+        .addVariable("GRADIENT", AmbientMode::GRADIENT)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("SceneColorScale")
         .addVariable("FULL", SceneColorScale::FULL)
         .addVariable("HALF", SceneColorScale::HALF)
+        .endNamespace();
+
+    // where the scene's screen HTML UI documents composite (Scene.htmlUiRenderMode): OVERLAY after
+    // post-processing at the output resolution, CAMERA in the camera pass before it
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIRenderMode")
+        .addVariable("OVERLAY", UIRenderMode::OVERLAY)
+        .addVariable("CAMERA", UIRenderMode::CAMERA)
         .endNamespace();
 
     // the resolution of the water reflection passes (Scene.planarReflectionResolution)
@@ -2055,6 +2679,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("CavityType")
+        .addVariable("SCREEN", CavityType::SCREEN)
+        .addVariable("WORLD", CavityType::WORLD)
+        .addVariable("BOTH", CavityType::BOTH)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("LutInputEncoding")
         .addVariable("AUTO", LutInputEncoding::AUTO)
         .addVariable("SRGB", LutInputEncoding::SRGB)
@@ -2063,6 +2694,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("ACESCCT", LutInputEncoding::ACESCCT)
         .addVariable("CINEON", LutInputEncoding::CINEON)
         .addVariable("DAVINCI_INTERMEDIATE", LutInputEncoding::DAVINCI_INTERMEDIATE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("VignetteFalloff")
+        .addVariable("SMOOTHNESS", VignetteFalloff::SMOOTHNESS)
+        .addVariable("RADII", VignetteFalloff::RADII)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -2421,6 +3058,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         // Dynamic Batching (Project Settings > Graphics): the same image, fewer draw calls
         .addStaticProperty("dynamicBatching", &Engine::isDynamicBatching, &Engine::setDynamicBatching)
         .addStaticProperty("isFocused", &Engine::isFocused)
+        // a shown, interactive UIDocument with Is Menu exists (Back goes there first)
+        .addStaticFunction("isMenuShowing", &Engine::isMenuShowing)
         // false while the window can't be seen: the game updates without drawing (desktops)
         .addStaticProperty("isVisible", &Engine::isVisible)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
@@ -2446,6 +3085,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onResume", [] () { return &Engine::onResume; }, [] (lua_State* L) { Engine::onResume = L; })
         .addStaticProperty("onShutdown", [] () { return &Engine::onShutdown; }, [] (lua_State* L) { Engine::onShutdown = L; })
         .addStaticProperty("onFocus", [] () { return &Engine::onFocus; }, [] (lua_State* L) { Engine::onFocus = L; })
+        .addStaticProperty("onBack", [] () { return &Engine::onBack; }, [] (lua_State* L) { Engine::onBack = L; })
+        .addStaticProperty("onPauseRequested", [] () { return &Engine::onPauseRequested; }, [] (lua_State* L) { Engine::onPauseRequested = L; })
         .addStaticProperty("onVisibilityChanged", [] () { return &Engine::onVisibilityChanged; }, [] (lua_State* L) { Engine::onVisibilityChanged = L; })
         .addStaticProperty("onOrientationChanged", [] () { return &Engine::onOrientationChanged; }, [] (lua_State* L) { Engine::onOrientationChanged = L; })
         .addStaticProperty("onLowMemory", [] () { return &Engine::onLowMemory; }, [] (lua_State* L) { Engine::onLowMemory = L; })
@@ -2512,6 +3153,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("lutContribution", &PostProcessingSettings::lutContribution, &PostProcessingSettings::lutContribution)
         .addProperty("lutInputEncoding", &PostProcessingSettings::lutInputEncoding, &PostProcessingSettings::lutInputEncoding)
         .addProperty("lutSize", &PostProcessingSettings::lutSize, &PostProcessingSettings::lutSize)
+        .addProperty("lutFlipGreen", &PostProcessingSettings::lutFlipGreen, &PostProcessingSettings::lutFlipGreen)
         .addProperty("monochromeEnabled", &PostProcessingSettings::monochromeEnabled, &PostProcessingSettings::monochromeEnabled)
         .addProperty("monochromeMode", &PostProcessingSettings::monochromeMode, &PostProcessingSettings::monochromeMode)
         .addProperty("monochromeIntensity", &PostProcessingSettings::monochromeIntensity, &PostProcessingSettings::monochromeIntensity)
@@ -2520,6 +3162,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("vignetteSmoothness", &PostProcessingSettings::vignetteSmoothness, &PostProcessingSettings::vignetteSmoothness)
         .addProperty("vignetteRoundness", &PostProcessingSettings::vignetteRoundness, &PostProcessingSettings::vignetteRoundness)
         .addProperty("vignetteColor", &PostProcessingSettings::vignetteColor, &PostProcessingSettings::vignetteColor)
+        .addProperty("vignetteFalloff", &PostProcessingSettings::vignetteFalloff, &PostProcessingSettings::vignetteFalloff)
+        .addProperty("vignetteStart", &PostProcessingSettings::vignetteStart, &PostProcessingSettings::vignetteStart)
+        .addProperty("vignetteEnd", &PostProcessingSettings::vignetteEnd, &PostProcessingSettings::vignetteEnd)
         .addProperty("ditherEnabled", &PostProcessingSettings::ditherEnabled, &PostProcessingSettings::ditherEnabled)
         .addProperty("fxaaEnabled", &PostProcessingSettings::fxaaEnabled, &PostProcessingSettings::fxaaEnabled)
         .addProperty("chromaticAberrationEnabled", &PostProcessingSettings::chromaticAberrationEnabled, &PostProcessingSettings::chromaticAberrationEnabled)
@@ -2535,6 +3180,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("edgeDetectThreshold", &PostProcessingSettings::edgeDetectThreshold, &PostProcessingSettings::edgeDetectThreshold)
         .addProperty("edgeDetectIntensity", &PostProcessingSettings::edgeDetectIntensity, &PostProcessingSettings::edgeDetectIntensity)
         .addProperty("edgeDetectColor", &PostProcessingSettings::edgeDetectColor, &PostProcessingSettings::edgeDetectColor)
+        .addProperty("cavityEnabled", &PostProcessingSettings::cavityEnabled, &PostProcessingSettings::cavityEnabled)
+        .addProperty("cavityType", &PostProcessingSettings::cavityType, &PostProcessingSettings::cavityType)
+        .addProperty("cavityScreenRidge", &PostProcessingSettings::cavityScreenRidge, &PostProcessingSettings::cavityScreenRidge)
+        .addProperty("cavityScreenValley", &PostProcessingSettings::cavityScreenValley, &PostProcessingSettings::cavityScreenValley)
+        .addProperty("cavityScreenWidth", &PostProcessingSettings::cavityScreenWidth, &PostProcessingSettings::cavityScreenWidth)
+        .addProperty("cavityWorldRadius", &PostProcessingSettings::cavityWorldRadius, &PostProcessingSettings::cavityWorldRadius)
+        .addProperty("cavityWorldRidge", &PostProcessingSettings::cavityWorldRidge, &PostProcessingSettings::cavityWorldRidge)
+        .addProperty("cavityWorldValley", &PostProcessingSettings::cavityWorldValley, &PostProcessingSettings::cavityWorldValley)
+        .addProperty("cavityWorldSamples", &PostProcessingSettings::cavityWorldSamples, &PostProcessingSettings::cavityWorldSamples)
+        .addProperty("cavityMaxPixelRadius", &PostProcessingSettings::cavityMaxPixelRadius, &PostProcessingSettings::cavityMaxPixelRadius)
+        .addProperty("cavityDebug", &PostProcessingSettings::cavityDebug, &PostProcessingSettings::cavityDebug)
         .addProperty("filmGrainEnabled", &PostProcessingSettings::filmGrainEnabled, &PostProcessingSettings::filmGrainEnabled)
         .addProperty("filmGrainIntensity", &PostProcessingSettings::filmGrainIntensity, &PostProcessingSettings::filmGrainIntensity)
         .addProperty("filmGrainResponse", &PostProcessingSettings::filmGrainResponse, &PostProcessingSettings::filmGrainResponse)
@@ -2989,6 +3645,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("setCubePaths", &Texture::setCubePaths)
         .addFunction("setFramebuffer", &Texture::setFramebuffer)
         .addFunction("load", &Texture::load)
+        // its GPU texture exists: swapping it onto a mesh shows it at once (no stand-in frame)
+        .addProperty("ready", &Texture::isReady)
         .addFunction("destroy", &Texture::destroy)
         .addFunction("getRender", &Texture::getRender)
         .addFunction("getPath", &Texture::getPath)
@@ -3092,6 +3750,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addConstructor<void (*) (void)>()
         .addProperty("shader", &MaterialPass::shader, &MaterialPass::shader)
         .addProperty("blendMode", &MaterialPass::blendMode, &MaterialPass::blendMode)
+        .addProperty("blendSrc", &MaterialPass::blendSrc, &MaterialPass::blendSrc)
+        .addProperty("blendDst", &MaterialPass::blendDst, &MaterialPass::blendDst)
+        .addProperty("blendSrcAlpha", &MaterialPass::blendSrcAlpha, &MaterialPass::blendSrcAlpha)
+        .addProperty("blendDstAlpha", &MaterialPass::blendDstAlpha, &MaterialPass::blendDstAlpha)
+        .addProperty("blendOp", &MaterialPass::blendOp, &MaterialPass::blendOp)
+        .addProperty("blendOpAlpha", &MaterialPass::blendOpAlpha, &MaterialPass::blendOpAlpha)
         .addProperty("cullMode", &MaterialPass::cullMode, &MaterialPass::cullMode)
         .addProperty("depthWrite", &MaterialPass::depthWrite, &MaterialPass::depthWrite)
         .addProperty("depthTest", &MaterialPass::depthTest, &MaterialPass::depthTest)
@@ -3205,6 +3869,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         PBR_LUA_PROPERTY("hairSecondaryShift", hair, Hair, secondaryShift)
         PBR_LUA_PROPERTY("hairSecondaryWidth", hair, Hair, secondaryWidth)
         PBR_LUA_PROPERTY("hairRotation", hair, Hair, rotation)
+        // the Vertex Color section (V1 R70)
+        PBR_LUA_PROPERTY("vertexColorUse", vertexColor, VertexColor, use)
+        PBR_LUA_PROPERTY("vertexColorAlphaOpacity", vertexColor, VertexColor, alphaOpacity)
+        PBR_LUA_PROPERTY("vertexColorR", vertexColor, VertexColor, r)
+        PBR_LUA_PROPERTY("vertexColorG", vertexColor, VertexColor, g)
+        PBR_LUA_PROPERTY("vertexColorB", vertexColor, VertexColor, b)
+        PBR_LUA_PROPERTY("vertexColorA", vertexColor, VertexColor, a)
         PBR_LUA_TEXTURE("clearcoatTexture", clearcoat, Clearcoat, map)
         PBR_LUA_TEXTURE("clearcoatNormalTexture", clearcoat, Clearcoat, normalMap)
         PBR_LUA_TEXTURE("sheenTexture", sheen, Sheen, map)
@@ -3222,6 +3893,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         // shader is "" (built-in Lit), "library:<name>" or a project fork
         .addProperty("shader", &Material::shader, &Material::shader)
         .addProperty("blendMode", &Material::blendMode, &Material::blendMode)
+        .addProperty("blendSrc", &Material::blendSrc, &Material::blendSrc)
+        .addProperty("blendDst", &Material::blendDst, &Material::blendDst)
+        .addProperty("blendSrcAlpha", &Material::blendSrcAlpha, &Material::blendSrcAlpha)
+        .addProperty("blendDstAlpha", &Material::blendDstAlpha, &Material::blendDstAlpha)
+        .addProperty("blendOp", &Material::blendOp, &Material::blendOp)
+        .addProperty("blendOpAlpha", &Material::blendOpAlpha, &Material::blendOpAlpha)
         .addProperty("cullMode", &Material::cullMode, &Material::cullMode)
         .addProperty("depthWrite", &Material::depthWrite, &Material::depthWrite)
         .addProperty("depthTest", &Material::depthTest, &Material::depthTest)
@@ -3403,6 +4080,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)
         .addFunction("getGlobalIlluminationColorLinear", &Scene::getGlobalIlluminationColorLinear)
         .addFunction("setGlobalIllumination", (void (Scene::*)(float, Vector3))&Scene::setGlobalIllumination)
+        // Environment Lighting: the source (AmbientMode.COLOR, GRADIENT) and the Gradient's
+        // colours (sRGB, used as they are)
+        .addProperty("ambientMode", &Scene::getAmbientMode, &Scene::setAmbientMode)
+        .addProperty("ambientSkyColor", &Scene::getAmbientSkyColor, &Scene::setAmbientSkyColor)
+        .addProperty("ambientEquatorColor", &Scene::getAmbientEquatorColor, &Scene::setAmbientEquatorColor)
+        .addProperty("ambientGroundColor", &Scene::getAmbientGroundColor, &Scene::setAmbientGroundColor)
         .addProperty("maxLightsPerObject", &Scene::getMaxLightsPerObject, &Scene::setMaxLightsPerObject)
         // the built-in Lit's quality (LitQuality.STANDARD, HIGH) and the exposure lights in
         // physical units are drawn at (EV100)
@@ -3415,6 +4098,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("ambientLight2DIntensity", &Scene::getAmbientLight2DIntensity, (void (Scene::*)(float))&Scene::setAmbientLight2D)
         .addFunction("getAmbientLight2DColorLinear", &Scene::getAmbientLight2DColorLinear)
         .addFunction("setAmbientLight2D", (void (Scene::*)(float, Vector3))&Scene::setAmbientLight2D)
+        // the bands each Light 2D's light is quantized into, 0 (off) to 16
+        .addProperty("light2DSteps", &Scene::getLight2DSteps, &Scene::setLight2DSteps)
+        // a tinting 2D ambient on the unlit 2D materials of a scene without a Light 2D
+        .addProperty("ambientLight2DWithoutLights", &Scene::isAmbientLight2DWithoutLights, &Scene::setAmbientLight2DWithoutLights)
         .addProperty("shadow2DQuality", &Scene::getShadow2DQuality, &Scene::setShadow2DQuality)
         .addProperty("gravity2D", &Scene::getGravity2D, (void (Scene::*)(Vector2))&Scene::setGravity2D)
         .addFunction("setGravity2D",
@@ -3426,6 +4113,26 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<float, float, float>(&Scene::setGravity3D))
         .addProperty("physicsInterpolation", &Scene::isPhysicsInterpolation, &Scene::setPhysicsInterpolation)
         .addProperty("physics2DSubSteps", &Scene::getPhysics2DSubSteps, &Scene::setPhysics2DSubSteps)
+        .addProperty("fixedTimestep", &Scene::getFixedTimestep, &Scene::setFixedTimestep)
+        // S96: the 2D world's units, rotation cap and tuning, and the 3D solver (physics.md "World settings")
+        .addProperty("physics2DPointsPerMeter", &Scene::getPhysics2DPointsPerMeter, &Scene::setPhysics2DPointsPerMeter)
+        .addProperty("physics2DMaxRotation", &Scene::getPhysics2DMaxRotation, &Scene::setPhysics2DMaxRotation)
+        .addProperty("physics2DContactHertz", &Scene::getPhysics2DContactHertz, &Scene::setPhysics2DContactHertz)
+        .addProperty("physics2DContactDampingRatio", &Scene::getPhysics2DContactDampingRatio, &Scene::setPhysics2DContactDampingRatio)
+        .addProperty("physics2DContactPushSpeed", &Scene::getPhysics2DContactPushSpeed, &Scene::setPhysics2DContactPushSpeed)
+        .addProperty("physics2DJointHertz", &Scene::getPhysics2DJointHertz, &Scene::setPhysics2DJointHertz)
+        .addProperty("physics2DJointDampingRatio", &Scene::getPhysics2DJointDampingRatio, &Scene::setPhysics2DJointDampingRatio)
+        .addProperty("physics2DBounceThreshold", &Scene::getPhysics2DBounceThreshold, &Scene::setPhysics2DBounceThreshold)
+        .addProperty("physics2DMaxLinearSpeed", &Scene::getPhysics2DMaxLinearSpeed, &Scene::setPhysics2DMaxLinearSpeed)
+        .addProperty("physics2DWarmStarting", &Scene::isPhysics2DWarmStarting, &Scene::setPhysics2DWarmStarting)
+        .addProperty("physics2DContinuous", &Scene::isPhysics2DContinuous, &Scene::setPhysics2DContinuous)
+        .addProperty("physics2DSleep", &Scene::isPhysics2DSleep, &Scene::setPhysics2DSleep)
+        .addProperty("physics3DVelocityIterations", &Scene::getPhysics3DVelocityIterations, &Scene::setPhysics3DVelocityIterations)
+        .addProperty("physics3DPositionIterations", &Scene::getPhysics3DPositionIterations, &Scene::setPhysics3DPositionIterations)
+        .addProperty("physics3DBounceThreshold", &Scene::getPhysics3DBounceThreshold, &Scene::setPhysics3DBounceThreshold)
+        .addProperty("physics3DSleepThreshold", &Scene::getPhysics3DSleepThreshold, &Scene::setPhysics3DSleepThreshold)
+        .addProperty("physics3DSpeculativeDistance", &Scene::getPhysics3DSpeculativeDistance, &Scene::setPhysics3DSpeculativeDistance)
+        .addProperty("physics3DCollisionSteps", &Scene::getPhysics3DCollisionSteps, &Scene::setPhysics3DCollisionSteps)
         .addProperty("ssaoEnabled", &Scene::isSSAOEnabled, &Scene::setSSAOEnabled)
         .addProperty("ssaoRadius", &Scene::getSSAORadius, &Scene::setSSAORadius)
         .addProperty("ssaoIntensity", &Scene::getSSAOIntensity, &Scene::setSSAOIntensity)
@@ -3459,6 +4166,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("crossFadeDuration", &Scene::getMeshLodCrossFadeDuration, &Scene::setMeshLodCrossFadeDuration)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
         .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
+        // the screen HTML UI documents: their composite (UIRenderMode) and MSAA samples (0: the project's)
+        .addProperty("htmlUiRenderMode", &Scene::getHtmlUiRenderMode, &Scene::setHtmlUiRenderMode)
+        .addProperty("htmlUiMsaaSamples", &Scene::getHtmlUiMsaaSamples, &Scene::setHtmlUiMsaaSamples)
         // water planar reflections (library:water's PLANAR_REFLECTION; a quality menu sets OFF)
         .addProperty("planarReflectionResolution", &Scene::getPlanarReflectionResolution, &Scene::setPlanarReflectionResolution)
         .addProperty("planarReflectionLayers", &Scene::getPlanarReflectionLayers, &Scene::setPlanarReflectionLayers)
@@ -3675,7 +4385,18 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getStats", &luaDebugOverlayGetStats)
         .addStaticFunction("addCommand", &luaDebugOverlayAddCommand)
         .addStaticFunction("removeCommand", &DebugOverlay::removeCommand)
-        .addStaticFunction("executeCommand", &DebugOverlay::executeCommand)
+        .addStaticFunction("executeCommand", &luaDebugOverlayExecuteCommand)
+        .addStaticFunction("completeCommand", &luaDebugOverlayCompleteCommand)
+        .addStaticFunction("getCommands", &luaDebugOverlayGetCommands)
+        // Project Settings > Debug > Console Commands: the command field, agents and --command
+        // (a game may turn them on after a secret code)
+        .addStaticProperty("commandsEnabled", [] () -> bool { return console::commandsEnabled(); },
+                           [] (bool enabled) { console::setCommandsEnabled(enabled); })
+        .addStaticProperty("cheatsUsed", [] () -> bool { return console::cheatsUsed(); })
+        .addStaticFunction("resetCheatsUsed", &console::resetCheatsUsed)
+        // (name) of the first cheat command that ends ok
+        .addStaticProperty("onCheatUsed", [] () -> FunctionSubscribe<void(const std::string&)>* { return &console::Events::onCheatUsed; },
+                           [] (lua_State* L) { console::Events::onCheatUsed = L; })
         .endClass();
 
     // Unity's TouchPhase (the values of Input.TOUCH_BEGAN ...)
@@ -4009,7 +4730,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .beginClass<System>("System")
         .addStaticFunction("getScreenWidth", [] () { return System::instance().getScreenWidth(); })
         .addStaticFunction("getScreenHeight", [] () { return System::instance().getScreenHeight(); })
-        .addStaticFunction("showVirtualKeyboard", [] (std::wstring text) { System::instance().showVirtualKeyboard(text); })
+        .addStaticFunction("showVirtualKeyboard", &luaSystemShowVirtualKeyboard)
+        .addStaticFunction("updateVirtualKeyboardText", &luaSystemUpdateVirtualKeyboardText)
         .addStaticFunction("hideVirtualKeyboard", [] () { System::instance().hideVirtualKeyboard(); })
         .addStaticFunction("setClipboardText", [] (const std::string& text) { System::instance().setClipboardText(text); })
         .addStaticFunction("getClipboardText", [] () { return System::instance().getClipboardText(); })
@@ -4065,6 +4787,29 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getAppBuild", [] () { return System::instance().getAppBuild(); })
         .addStaticFunction("getAppIdentifier", [] () { return System::instance().getAppIdentifier(); })
         .addStaticFunction("getAppName", [] () { return System::instance().getAppName(); })
+        // Build Profiles: the build's profile ("" none; in Play the active one) and its Scripting
+        // Define Symbols. Defines are values, not a preprocessor: code behind them still ships.
+        .addStaticFunction("getBuildProfile", [] () { return System::getBuildProfile(); })
+        .addStaticFunction("isDefined", [] (const std::string& symbol) { return System::isDefined(symbol); })
+        .addStaticFunction("getDefines", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& define : System::getDefines()) table[index++] = define;
+            return table;
+        })
+        .addStaticFunction("getBuildInfo", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef info = luabridge::newTable(L);
+            luabridge::LuaRef defines = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& define : System::getDefines()) defines[index++] = define;
+            info["profile"] = System::getBuildProfile();
+            info["defines"] = defines;
+            info["development"] = Engine::isDevelopmentBuild();
+            // Patch And Run: which patch of the development content folder runs (0: packaged)
+            info["contentPatch"] = System::getContentPatch();
+            info["contentPatched"] = System::getContentPatch() > 0;
+            return info;
+        })
         .addStaticFunction("getOperatingSystem", [] () { return System::instance().getOperatingSystem(); })
         .addStaticFunction("getOperatingSystemVersion", [] () { return System::instance().getOperatingSystemVersion(); })
         .addStaticFunction("getAndroidApiLevel", [] () { return System::instance().getAndroidApiLevel(); })
@@ -4105,6 +4850,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("tierApplied", &Device::isTierApplied)
         // the platform's thermal state (ThermalState); Nominal on desktops and the web
         .addStaticProperty("thermalState", &Device::getThermalState)
+        // the GPU quirks in effect: the names of the driver workarounds this device runs with
+        // (read-only: a quirk changes how a frame is made, never what it shows)
+        .addStaticProperty("gpuQuirks", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& name : GpuQuirks::activeNames())
+                table[index++] = name;
+            return table;
+        })
+        // the driver's version as the quirk rules read it (GL_VERSION, the Vulkan driver; "" on WebGL)
+        .addStaticProperty("gpuDriver", [] () { return SystemRender::getDriverVersion(); })
         // a graphics menu's choice: this tier's overrides for the rest of the run
         .addStaticFunction("setTier", &Device::setTier)
         // back to the detected tier

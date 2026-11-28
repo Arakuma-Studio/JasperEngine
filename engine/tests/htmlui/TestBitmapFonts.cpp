@@ -224,3 +224,22 @@ TEST(TestBitmapFontsRunner, AFamilyRegisteredAgainDropsTheOldGlyphs){
     EXPECT_EQ(engine.getBitmapGlyphCount(firstSerial), 0u);
     EXPECT_GT(engine.getBitmapGlyphCount(second->getSerial()), 0u);
 }
+
+TEST(TestBitmapFontsRunner, AFamilyRegisteredAgainWithAVectorFaceIsVector){
+    // the newest face of a family wins the other way too: a vector @font-face of a name an earlier
+    // document registered as a bitmap font draws the vector face (the bitmap family led every
+    // later document's text of that name: UIDocumentReloadTest.FontChangeReloadsTheDocument
+    // after ThreeSizesUseNoMorePagesOrDrawsThanVectorText)
+    JASPER_REQUIRE_GPU();
+    FixtureRunner runner(160, 60, 1);
+    ASSERT_TRUE(runner.valid());
+    RmlFontEngine& engine = HtmlUI::getFontEngine();
+    ASSERT_TRUE(tbfLoad(runner, "swap_a.html"));
+    std::shared_ptr<pixelart::BitmapFont> bitmap = RmlFontEngine::bitmapFamilyFont("Swap");
+    ASSERT_TRUE(bitmap);
+    EXPECT_GT(engine.getBitmapGlyphCount(bitmap->getSerial()), 0u);
+    const std::string vector = std::string(JASPER_HTMLUI_TEST_SOURCE_DIR) + "/fixtures/fonts/Roboto-Bold.ttf";
+    ASSERT_TRUE(engine.LoadFontFace(vector, 0, "Swap", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, false));
+    EXPECT_FALSE(RmlFontEngine::bitmapFamilyFont("Swap")) << "still a bitmap family";
+    EXPECT_EQ(engine.getBitmapGlyphCount(bitmap->getSerial()), 0u) << "the bitmap font's glyphs stay";
+}

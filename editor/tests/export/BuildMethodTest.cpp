@@ -389,6 +389,45 @@ TEST(AndroidPackage, CarriesNativeManifestSettings) {
     EXPECT_NE(error.find("android.manifest_xml"), std::string::npos) << error;
 }
 
+// Patch And Run reaches a Development Build's files through run-as, which needs android:debuggable;
+// a release package never says it, and a runtime whose template predates the marker builds as before
+// (docs/specs/build-and-run-on-device.md R9, AC7)
+TEST(AndroidPackage, DebuggableOnlyInDevelopmentBuilds) {
+    std::ifstream in(fs::path(JASPER_TEST_REPO_DIR) / "engine/platform/android/player/AndroidManifest.template.xml");
+    ASSERT_TRUE(in);
+    const std::string templateText((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    platform::AndroidPackage package;
+    package.label = "Game";
+    package.applicationId = "com.example.game";
+    std::string manifest, error;
+    package.debug = true;
+    ASSERT_TRUE(platform::writeAndroidManifest(package, templateText, manifest, error)) << error;
+    const size_t application = manifest.find("<application");
+    const size_t debuggable = manifest.find("android:debuggable=\"true\"");
+    ASSERT_NE(debuggable, std::string::npos) << manifest;
+    EXPECT_GT(debuggable, application);
+    EXPECT_LT(debuggable, manifest.find('>', application)) << "an attribute of <application>: " << manifest;
+    EXPECT_EQ(manifest.find("{{DEBUGGABLE}}"), std::string::npos);
+
+    package.debug = false;
+    ASSERT_TRUE(platform::writeAndroidManifest(package, templateText, manifest, error)) << error;
+    EXPECT_EQ(manifest.find("debuggable"), std::string::npos) << manifest;
+    EXPECT_EQ(manifest.find("{{DEBUGGABLE}}"), std::string::npos);
+
+    // a runtime of an older editor: no marker, the package as before
+    std::string older = templateText;
+    older.erase(older.find("{{DEBUGGABLE}}"), std::string("{{DEBUGGABLE}}").size());
+    package.debug = true;
+    ASSERT_TRUE(platform::writeAndroidManifest(package, older, manifest, error)) << error;
+    EXPECT_EQ(manifest.find("debuggable"), std::string::npos) << manifest;
+
+    TestTempDir dir("android-debuggable-marker");
+    TestTempDir::write(dir / "AndroidManifest.template.xml", templateText);
+    EXPECT_TRUE(platform::androidRuntimeHasDebuggableMarker(dir.path()));
+    TestTempDir::write(dir / "AndroidManifest.template.xml", older);
+    EXPECT_FALSE(platform::androidRuntimeHasDebuggableMarker(dir.path()));
+}
+
 // native libraries as the Android Gradle plugin packages them: compressed in an APK for devices
 // before Android 6 (extracted at install), stored from minSdk 23 and in a bundle
 TEST(AndroidPackage, NativeLibrariesCompressedBelowApi23) {
@@ -522,6 +561,10 @@ if [ "$key" != "$FAKE_KEY" ]; then echo "keytool error: java.security.Unrecovera
             ZipWriter zip;
             EXPECT_TRUE(zip.open(dir / "package.zip", zipError)) << zipError;
             EXPECT_TRUE(zip.add("AndroidManifest.xml", "x", 1, true, zipError)) << zipError;
+            // the content where an APK and a bundle's asset pack hold it: the package's content
+            // check (S98 REQ-13) finds every file it was given
+            for (const char* entry : {"assets/game/project.bin", "game_content/assets/game/project.bin"})
+                EXPECT_TRUE(zip.add(entry, "content", 7, false, zipError)) << zipError;
             EXPECT_TRUE(zip.finish(zipError)) << zipError;
 
             const fs::path runtime = dir / "runtime" / "android";
@@ -568,6 +611,41 @@ if [ "$key" != "$FAKE_KEY" ]; then echo "keytool error: java.security.Unrecovera
 }
 
 namespace build_method_test {
+
+// S98 REQ-13, REQ-14, REQ-16: a content file the package lost fails the build naming it (red before:
+// the build succeeded); hidden and VCS files are left out of the staging and said; a bundle's
+// content is in its install-time asset pack; the debug key's package takes the Debug Package Suffix
+TEST(AndroidPackage, EveryContentFileIsInThePackage) {
+    FakeAndroid android;
+    ScopedVariable store("FAKE_STORE", "android"), key("FAKE_KEY", "android"), alias("FAKE_ALIAS", "androiddebugkey");
+    android.package.debug = true;
+    android.package.settings.debugPackageSuffix = ".dbg";
+    TestTempDir::write(android.dir / "content" / "_Onboarding" / ".gitkeep", "");
+    ASSERT_TRUE(android.build()) << android.error;
+    ASSERT_EQ(android.warnings.size(), 1u);
+    EXPECT_EQ(android.warnings.front().code, "W-ANDROID-ASSET-IGNORED");
+    EXPECT_NE(android.warnings.front().message.find("_Onboarding/.gitkeep"), std::string::npos) << android.warnings.front().message;
+    EXPECT_FALSE(fs::exists(android.package.workDir / "assets" / "game" / "_Onboarding" / ".gitkeep"));
+    EXPECT_NE(android.tools().find("--rename-manifest-package com.example.game.dbg"), std::string::npos) << android.tools();
+
+    TestTempDir::write(android.dir / "content" / "_Onboarding" / "a.png", "png");
+    EXPECT_FALSE(android.build());
+    EXPECT_NE(android.error.find("lacks 1 file(s) of the game's content"), std::string::npos) << android.error;
+    EXPECT_NE(android.error.find("assets/game/_Onboarding/a.png"), std::string::npos) << android.error;
+
+    // a bundle: the pack's manifest is linked, the content looked up in game_content/
+    android.package.format = AndroidFormat::Aab;
+    android.package.output = android.dir / "out" / "Game.aab";
+    EXPECT_FALSE(android.build());
+    EXPECT_NE(android.error.find("game_content/assets/game/_Onboarding/a.png"), std::string::npos) << android.error;
+    const std::string packManifest = TestTempDir::read(android.package.workDir / "game_content-manifest.xml");
+    EXPECT_NE(packManifest.find("<dist:install-time />"), std::string::npos) << packManifest;
+    EXPECT_NE(packManifest.find("split=\"game_content\""), std::string::npos) << packManifest;
+    fs::remove(android.dir / "content" / "_Onboarding" / "a.png");
+    ASSERT_TRUE(android.build()) << android.error;
+    EXPECT_NE(android.tools().find("--modules=" + (android.package.workDir / "base.zip").string() + "," +
+                                   (android.package.workDir / "game_content.zip").string()), std::string::npos) << android.tools();
+}
 
 TEST(AndroidSigning, TheDebugKeyByDefaultMadeWhenMissing) {
     FakeAndroid android;

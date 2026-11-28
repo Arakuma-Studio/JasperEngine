@@ -113,10 +113,9 @@ async def open_luts(ed: Editor) -> dict:
     if state["project_window"]["directory"] != "assets/luts":
         if not tree_node(state, "assets/luts"):
             x, y = tree_node(state, "assets")["arrow"]
-            xdo(ed, "mousemove", "--window", window(ed), str(int(x)), str(int(y)))
-            await frames(ed)
-            xdo(ed, "click", "1")
-            await frames(ed, 3)
+            window(ed)
+            ui = ui_input.for_editor(ed)
+            await ui.click(ui.at((x, y)))
             state = await wait_ui(ed, lambda s: tree_node(s, "assets/luts"), "assets opened in the tree")
         await click(ed, tree_node(state, "assets/luts")["rect"])
         state = await wait_ui(ed, lambda s: s["project_window"]["directory"] == "assets/luts" and entry(s, CUBE),

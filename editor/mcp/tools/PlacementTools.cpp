@@ -447,7 +447,7 @@ bool specFromArgs(Project* project, SceneProject* sp, SceneWindow* sceneWindow, 
     }
     // a screen ray means a pixel of the view as it is: framing would move the camera, and the
     // same arguments would then aim elsewhere on the next call
-    if (screenRay && !(args["screenshot"].is_object() && args["screenshot"].contains("frame"))) shot.frame = false;
+    if (screenRay && !(args.contains("screenshot") && args["screenshot"].is_object() && args["screenshot"].contains("frame"))) shot.frame = false;
     return true;
 }
 

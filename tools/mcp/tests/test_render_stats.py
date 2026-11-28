@@ -1,13 +1,16 @@
 """Draw submission (spec S55, docs/mcp/guide/meshes.md): get_render_stats' counters by kind of pass
 (R7, AC7), GPU Instancing on and off through the project settings (R10, R11: undoable), a
 Mesh's Allow GPU Instancing (set_properties), and
-Lua's Scene:getRenderStats() and Mesh.allowGpuInstancing (R12) in Play."""
+Lua's Scene:getRenderStats() and Mesh.allowGpuInstancing (R12) in Play. Culling
+(culling-group-and-simulation-distance AC20-AC22): the `culling` block, the Game view's
+culling_debug drawing and the culling monitors."""
 
 from __future__ import annotations
 
 import shutil
 
 import harness
+import pngdiff
 from harness import Editor
 
 CI = True
@@ -34,8 +37,11 @@ async def spheres(ed: Editor) -> int:
     scene = made["scene"]["id"]
     S["balls"] = []
     for i in range(16):
+        # each Model draws its sphere itself (no Preserve Hierarchy, which a new project places with): the
+        # tests set the Mesh of the Model's own GameObject
         ball = await ed.call("create_entity", scene=scene, type="model", model="assets/models/sphere.gltf", name=f"Ball{i}",
-                             position=[(i % 4) * 2 - 3, 0.5, (i // 4) * 2 - 3], select=False)
+                             position=[(i % 4) * 2 - 3, 0.5, (i // 4) * 2 - 3], select=False,
+                             values={"model": {"preserveHierarchy": False}})
         S["balls"].append(ball["entity_id"])
     await ed.call("create_entity", scene=scene, type="plane", name="Floor", scale=[20, 1, 20], select=False)
     # a still scene's cached shadow slots draw nothing, and settled() waits for a still scene
@@ -126,3 +132,107 @@ async def test_mesh_opt_out(ed: Editor):
     ed.check_eq(stats["instanced_draws"], 0, "a Mesh that does not allow it draws alone")
     for ball in balls:
         await ed.call("set_properties", scene=scene, entity=ball, values={"mesh": {"allowGpuInstancing": True}})
+
+
+async def culling_scene(ed: Editor) -> int:
+    """A camera at z 8 looking at the origin; an enemy 8 m away and two 48 m away, each with a
+    Simulation Culling of 20 m (no visibility exception, no ground rule)."""
+    if "culling" in S:
+        return S["culling"]
+    scene = (await ed.call("create_scene", name="Culling", type="3D"))["scene"]["id"]
+    await ed.call("create_entity", scene=scene, type="camera", name="Main Camera", position=[0, 2, 8], select=False)
+    await ed.call("set_main_camera", scene=scene, entity="Main Camera")
+    for name, position in (("Enemy", [0, 0.5, 0]), ("Enemy (1)", [0, 0.5, -40]), ("Enemy (2)", [3, 0.5, -40])):
+        await ed.call("create_entity", scene=scene, type="box", name=name, position=position, select=False)
+        await ed.call("add_component", scene=scene, entity=name, component="simulationculling",
+                      values={"simulationculling": {"simulationDistance": 20, "boundsRadius": 1.5, "simulateWhenVisible": False,
+                                                    "freezeWhenGroundNotLoaded": False}})
+    S["culling"] = scene
+    return scene
+
+
+# a Lua group of three 1 m spheres 2, 13 and 68 m from the camera (surface): bands 0, 1, 2 of {5, 30}
+GROUP_LUA = ("cullingTest = CullingGroup(scene); cullingTest:setBoundingDistances({5, 30}); "
+             "cullingTest:setBoundingSpheres({BoundingSphere(Vector3(0, 2, 5), 1), BoundingSphere(Vector3(0, 2, -6), 1), "
+             "BoundingSphere(Vector3(0, 2, -61), 1)}); return cullingTest:isValid()")
+
+
+async def test_culling_block(ed: Editor):
+    scene = await culling_scene(ed)
+    plain = (await ed.call("create_scene", name="NoCulling", type="3D"))["scene"]["id"]
+    await ed.call("play", action="start", scene=plain, fixed_fps=60)
+    try:
+        await ed.call("wait", frames=5)
+        stats = await ed.call("get_render_stats", view="game")
+        ed.check("culling" not in stats, f"no group and no component: no culling block: {stats.get('culling')}")
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0)
+
+    await ed.call("play", action="start", scene=scene, fixed_fps=60)
+    try:
+        made = (await ed.call("eval_lua", code=GROUP_LUA))["values"]
+        ed.check(made[0] is True, f"the Lua group: {made}")
+        await ed.call("wait", frames=3)
+        culling = (await ed.call("get_render_stats", view="game"))["culling"]
+        ed.check_eq(culling["simulation"]["components"], 3, f"{culling}")
+        ed.check_eq(culling["simulation"]["culled"], 2, f"the two beyond 20 m: {culling}")
+        ed.check_eq(culling["groups"], 1, f"{culling}")
+        ed.check_eq(culling["per_band"], [1, 1, 1], f"the group's bands: {culling}")
+        far = await ed.call("get_runtime_entity", entity="Enemy (1)", include_script_state=False)
+        component = harness.find_key(far, "simulationculling")
+        ed.check(component["state"] == "culled" and component["reason"] == "distance", f"{component}")
+
+        # the camera beside the far ones: they run, the near one is culled, after one frame
+        await ed.call("set_runtime_property", entity="Main Camera", component="transform", property="position", value=[0, 2, -30])
+        await ed.call("wait", frames=1)
+        moved = (await ed.call("get_render_stats", view="game"))["culling"]
+        ed.check_eq(moved["simulation"]["culled"], 1, f"{moved}")
+        near = harness.find_key(await ed.call("get_runtime_entity", entity="Enemy", include_script_state=False), "simulationculling")
+        ed.check_eq(near["state"], "culled", f"{near}")
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0)
+
+
+async def test_culling_debug_screenshot(ed: Editor):
+    scene = await culling_scene(ed)
+    await ed.call("play", action="start", scene=scene, fixed_fps=60)
+    try:
+        await ed.call("eval_lua", code=GROUP_LUA)
+        await ed.call("wait", frames=5)
+        off = await ed.call_raw("screenshot", {"view": "game", "max_width": 640})
+        ed.check(not off.is_error and off.images, off.text)
+        view = await ed.call("configure_game_view", culling_debug=True)
+        ed.check(view["culling_debug"] is True, f"{view}")
+        await ed.call("wait", frames=3)
+        on = await ed.call_raw("screenshot", {"view": "game", "max_width": 640})
+        ed.check(not on.is_error and on.images, on.text)
+        w, h, a = pngdiff.decode(off.images[0][0])
+        w2, h2, b = pngdiff.decode(on.images[0][0])
+        ed.check_eq((w, h), (w2, h2), "same size")
+        changed = [i // 4 for i in range(0, len(a), 4) if max(abs(a[i + c] - b[i + c]) for c in range(3)) > 24]
+        ed.check(len(changed) > 50, f"the spheres draw: {len(changed)} pixels changed")
+        # around the view's centre, where the enemy at the origin and the group's spheres project;
+        # the corners keep the sky
+        xs = [p % w for p in changed]
+        ys = [p // w for p in changed]
+        ed.check(min(xs) > 0 or max(xs) < w - 1 or min(ys) > 0, "the lines are where the spheres are, not everywhere")
+    finally:
+        await ed.call("configure_game_view", culling_debug=False)
+        await ed.call("play", action="stop", fixed_fps=0)
+
+
+async def test_culling_monitors(ed: Editor):
+    scene = await culling_scene(ed)
+    await ed.call("play", action="start", scene=scene, fixed_fps=60)
+    try:
+        await ed.call("wait", frames=10)
+        r = await ed.call("get_frame_times", window=5, monitors=["Simulation culled", "Script updates skipped", "Culling ms"])
+        monitors = r["monitors"]
+        ed.check("Simulation culled" in monitors, f"{sorted(monitors)}")
+        ed.check_eq(monitors["Simulation culled"]["latest"], 2, f"{monitors['Simulation culled']}")
+        ed.check("Script updates skipped" in monitors and monitors["Culling ms"]["unit"] == "ms", f"{monitors}")
+        stats = (await ed.call("eval_lua", code="local s = DebugOverlay.getStats() return s.simulationCulled, s.simulationFull, "
+                                                "s.cullingGroups, s.scriptUpdatesSkipped ~= nil"))["values"]
+        ed.check(stats[0] == 2 and stats[1] == 1 and stats[2] == 0 and stats[3] is True, f"DebugOverlay.getStats: {stats}")
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0)

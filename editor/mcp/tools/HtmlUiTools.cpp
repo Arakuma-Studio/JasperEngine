@@ -9,6 +9,8 @@
 #include "McpTools.h"
 #include "HtmlUiShared.h"
 #include "PlayViewCommon.h"
+#include "Engine.h"
+#include "subsystem/GamepadCursor.h"
 #include "W4Shared.h"
 
 #include "mcp/McpCall.h"
@@ -28,6 +30,10 @@
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIAssertions.h"
 #include "htmlui/HtmlUIInspector.h"
+#include "htmlui/HtmlL10n.h"
+#include "localization/Localization.h"
+#include "localization/StringTableCook.h"
+#include "util/TitleArtLanguage.h"
 #include "object/ui/UIDocument.h"
 #include "object/ui/UIItemsView.h"
 #include "script/LuaBinding.h"
@@ -116,7 +122,8 @@ std::string viewportText(double width, double height) {
 
 // An asset-relative engine path shown project-relative ("ui/menu.css" -> "assets/ui/menu.css")
 std::string assetToProject(Project* project, const std::string& assetPath) {
-    if (assetPath.empty()) return assetPath;
+    // a style sheet a script added (S93 R29) has no file: "injected:<name>"
+    if (assetPath.empty() || assetPath.rfind("injected:", 0) == 0) return assetPath;
     return w4::projectRelative(project, (project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath)).lexically_normal());
 }
 
@@ -433,6 +440,7 @@ std::string imageUnavailable(Project* project, SceneProject* sp, Entity entity) 
     UIDocumentComponent* component = documentComponent(sp, entity);
     if (!component) return "the document is gone";
     if (component->renderMode == UIDocumentRenderMode::TEXTURE) return "the document renders to a texture, not to the Game view";
+    if (component->renderMode == UIDocumentRenderMode::WORLD) return "the document is drawn in World Space, not over the Game view";
     if (isPlaying(project)) {
         const std::vector<SceneProject*> running = runningScenes(project);
         if (std::find(running.begin(), running.end(), sp) == running.end()) {
@@ -1090,6 +1098,31 @@ void inspectUiTool(const CallPtr& call) {
             text += detailText;
         }
 
+        // the gamepad cursor while a Gamepad Cursor document shows: where it is, the element under it
+        if (Engine::isGamepadCursorShown()) {
+            const Vector2 point = GamepadCursor::getPosition();
+            Json over = nullptr;
+            std::vector<hui::InspectElement> under;
+            std::string ignored;
+            if (GamepadCursor::isActive() && hui::HtmlUIInspector::hitTest(sp->scene, target.entity, point.x, point.y, under, ignored) && !under.empty())
+                over = under.front().ref;
+            data["gamepad_cursor"] = {{"active", GamepadCursor::isActive()}, {"x", std::round(point.x * 10.0f) / 10.0f},
+                                      {"y", std::round(point.y * 10.0f) / 10.0f}, {"over", over}};
+        }
+
+        // the focused text field's soft keyboard (text-entry R30)
+        bool focusPresent = false;
+        hui::InspectFocus focus;
+        std::string focusError;
+        if (hui::HtmlUIInspector::focus(sp->scene, target.entity, focusPresent, focus, focusError) && focusPresent) {
+            const TextEntryTraits& t = focus.traits;
+            data["focus"] = {{"ref", focus.ref}, {"keyboard", keyboardTypeName(t.keyboard)},
+                             {"enter_key", t.enterKey == EnterKey::Default ? "default" : enterKeyName(t.enterKey)},
+                             {"autocapitalize", autoCapitalizeName(t.capitalize)}, {"autocorrect", t.autocorrect},
+                             {"secure", t.secure}, {"multiline", t.multiline},
+                             {"max_length", t.maxLength < 0 ? Json(nullptr) : Json(t.maxLength)}, {"keyboard_open", focus.keyboardOpen}};
+        }
+
         if (args.value("render_stats", false)) {
             std::vector<std::pair<std::string, uint32_t>> fields;
             std::string statsError;
@@ -1103,6 +1136,27 @@ void inspectUiTool(const CallPtr& call) {
                         std::to_string(stats.value("layersPushed", 0u)) + " layers, glyph atlas " +
                         number((double)stats.value("atlasBytes", 0u) / (1024.0 * 1024.0)) + " MiB.";
             }
+        }
+
+        // game-ui-localization.md R34: keyed elements, literal text and misses of this document
+        if (args.value("l10n", false)) {
+            if (!isPlaying(project)) l10n::refreshEditorLocalization(project);
+            const hui::HtmlL10n::DocumentReport report = hui::HtmlL10n::reportOf(sp->scene, target.entity);
+            Json literal = Json::array();
+            Json missing = Json::array();
+            for (size_t i = 0; i < report.literal.size() && i < 50; i++) literal.push_back({{"ref", report.literal[i].first}, {"text", report.literal[i].second}});
+            for (size_t i = 0; i < report.missing.size() && i < 50; i++) {
+                missing.push_back({{"ref", report.missing[i].where}, {"key", report.missing[i].key}, {"kind", report.missing[i].kind}});
+            }
+            Json l10nData = {{"language", report.language}, {"keyed", report.keyed}, {"literal", literal}, {"missing", missing}};
+            if (report.literal.size() > 50) l10nData["literal_count"] = report.literal.size();
+            if (report.missing.size() > 50) l10nData["missing_count"] = report.missing.size();
+            if (!Localization::isActive()) l10nData["next"] = "The project has no String Tables: create one with edit_string_table (group localization).";
+            else if (!report.literal.empty()) l10nData["next"] = "Literal text is not translated: add keys with edit_string_table and data-l10n-id on the elements.";
+            data["l10n"] = l10nData;
+            text += "\nLocalization (" + (report.language.empty() ? std::string("inactive") : report.language) + "): " +
+                    std::to_string(report.keyed) + " keyed, " + std::to_string(report.literal.size()) + " literal, " +
+                    std::to_string(report.missing.size()) + " missing.";
         }
 
         if (args.value("models", false)) {
@@ -1319,8 +1373,28 @@ void assertUiTool(const CallPtr& call) {
         call->fail("screenshot must be on_failure, always or never.");
         return;
     }
+    // game-ui-localization.md R35: every check once per language (x viewports, at most 24 layouts)
+    std::vector<std::string> languages;
+    if (has(args, "languages")) {
+        if (!args["languages"].is_array() || args["languages"].empty() || args["languages"].size() > 8) {
+            call->fail("languages must be 1 to 8 language tags, e.g. [\"de\", \"en-XA\"].");
+            return;
+        }
+        for (const Json& code : args["languages"]) {
+            std::string problem;
+            if (!code.is_string() || !TitleArtLanguage::isValid(code.get<std::string>(), &problem)) {
+                call->fail("languages: " + (problem.empty() ? std::string("each is a language tag") : problem));
+                return;
+            }
+            languages.push_back(TitleArtLanguage::canonicalize(code.get<std::string>()));
+        }
+        if (languages.size() * std::max<size_t>(1, viewports.size()) > 24) {
+            call->fail("languages x viewports is at most 24 layouts.");
+            return;
+        }
+    }
 
-    withDocument(call, [call, specs, viewports, mode](const DocTarget& target) {
+    withDocument(call, [call, specs, viewports, mode, languages](const DocTarget& target) {
         const Json& args = call->args();
         Project* project = call->ctx().project();
         SceneProject* sp = targetScene(project, target);
@@ -1339,25 +1413,36 @@ void assertUiTool(const CallPtr& call) {
             double width, height;
             bool current;
             hui::AssertResult result;
+            std::string language;
         };
         std::vector<Run> runs;
         std::vector<Outline> matchedOutlines;   // screenshot always: what the checks matched (current layout)
-        for (const auto& size : sizes) {
-            const double w = size.first, h = size.second;
-            const bool current = w == currentW && h == currentH;
-            auto runAll = [&]() {
-                for (size_t i = 0; i < specs.size(); i++) {
-                    runs.push_back({i, w, h, current, hui::HtmlUIAssertions::run(sp->scene, target.entity, specs[i])});
+        if (!languages.empty() && !isPlaying(project)) l10n::refreshEditorLocalization(project);
+        // the language for the layout, then back (TitleArt's global: nothing is remembered)
+        const std::string previousLanguage = TitleArtLanguage::global();
+        const std::vector<std::string> runLanguages = languages.empty() ? std::vector<std::string>{std::string()} : languages;
+        for (const std::string& language : runLanguages) {
+            if (!language.empty()) TitleArtLanguage::setGlobal(language);
+            for (const auto& size : sizes) {
+                const double w = size.first, h = size.second;
+                // another language lays out again even at the current size
+                const bool current = w == currentW && h == currentH && language.empty();
+                auto runAll = [&]() {
+                    for (size_t i = 0; i < specs.size(); i++) {
+                        runs.push_back({i, w, h, current, hui::HtmlUIAssertions::run(sp->scene, target.entity, specs[i]), language});
+                    }
+                };
+                if (current) {
+                    runAll();
+                } else if (!hui::HtmlUIInspector::withViewport(sp->scene, target.entity, static_cast<float>(w), static_cast<float>(h),
+                                                               runAll, error)) {
+                    if (!languages.empty()) TitleArtLanguage::setGlobal(previousLanguage);
+                    call->fail(error);
+                    return;
                 }
-            };
-            if (current) {
-                runAll();
-            } else if (!hui::HtmlUIInspector::withViewport(sp->scene, target.entity, static_cast<float>(w), static_cast<float>(h),
-                                                           runAll, error)) {
-                call->fail(error);
-                return;
             }
         }
+        if (!languages.empty()) TitleArtLanguage::setGlobal(previousLanguage);
         for (const Run& run : runs) {
             if (!run.result.error.empty()) {
                 call->fail("checks[" + std::to_string(run.check) + "] (" + specs[run.check].selector + "): " + run.result.error);
@@ -1387,7 +1472,7 @@ void assertUiTool(const CallPtr& call) {
         for (const Run& run : runs) {
             const hui::AssertSpec& spec = specs[run.check];
             const std::string type = assertKindNames()[static_cast<size_t>(spec.kind)];
-            const std::string at = viewportText(run.width, run.height);
+            const std::string at = viewportText(run.width, run.height) + (run.language.empty() ? std::string() : " " + run.language);
             Json failures = Json::array();
             for (size_t f = 0; f < run.result.failures.size(); f++) {
                 const hui::AssertFailure& failure = run.result.failures[f];
@@ -1421,6 +1506,7 @@ void assertUiTool(const CallPtr& call) {
                          {"viewport", Json::array({std::lround(run.width), std::lround(run.height)})},
                          {"passed", run.result.passed}, {"matched", run.result.matched}, {"failures", failures},
                          {"inconclusive", run.result.inconclusive}};
+            if (!run.language.empty()) item["language"] = run.language;
             if (run.result.failures.size() > MAX_FAILURES) item["failures_truncated"] = true;
             checks.push_back(item);
             if (run.result.passed) passed++;
@@ -1604,7 +1690,13 @@ void createUiDocumentTool(const CallPtr& call) {
         Json values = properties;
         if (has(args, "sort_order")) values["sortOrder"] = args["sort_order"];
         for (auto it = values.begin(); it != values.end(); ++it) {
-            PropertyData property = Catalog::findProperty(sp->scene, entity, ComponentType::UIDocumentComponent, it.key());
+            // snake_case names too (update_mode, render_mode, pixels_per_unit)
+            std::string name = it.key();
+            for (size_t underscore = name.find('_'); underscore != std::string::npos && underscore + 1 < name.size(); underscore = name.find('_')) {
+                name[underscore + 1] = (char)std::toupper((unsigned char)name[underscore + 1]);
+                name.erase(underscore, 1);
+            }
+            PropertyData property = Catalog::findProperty(sp->scene, entity, ComponentType::UIDocumentComponent, name);
             if (!property.ref) {
                 std::vector<std::string> names;
                 for (const auto& item : Catalog::findEntityProperties(sp->scene, entity, ComponentType::UIDocumentComponent)) {
@@ -1617,7 +1709,7 @@ void createUiDocumentTool(const CallPtr& call) {
             }
             std::string valueError;
             Command* command = McpValues::buildPropertyCommand(project, sp->id, entity, ComponentType::UIDocumentComponent,
-                                                               it.key(), property, it.value(), valueError);
+                                                               name, property, it.value(), valueError);
             if (!command) {
                 rollback("UI Document." + it.key() + ": " + valueError);
                 return;
@@ -1716,6 +1808,10 @@ std::string mimeOf(const std::string& path) {
     if (ext == ".lua") return "text/x-lua";
     if (ext == ".svg") return "image/svg+xml";
     if (ext == ".json") return "application/json";
+    if (ext == ".woff") return "font/woff";
+    if (ext == ".woff2") return "font/woff2";
+    if (ext == ".ttf") return "font/ttf";
+    if (ext == ".otf") return "font/otf";
     if (ext == ".webm") return "video/webm";   // phase 6: video_menu's background (a blob)
     return "text/plain";
 }
@@ -1811,9 +1907,10 @@ bool elementCenter(McpContext& ctx, const Json& documentRef, const std::string& 
             return false;
         }
         UIDocumentComponent* component = documentComponent(matches[0].first, matches[0].second);
-        if (component->renderMode == UIDocumentRenderMode::TEXTURE) {
+        if (rendersToTexture(component->renderMode)) {
             error = "document " + documentLabel(project, matches[0].first, matches[0].second, true) +
-                    " renders to a texture: its elements are not at canvas points (click the surface it is drawn on with x, y)";
+                    (component->renderMode == UIDocumentRenderMode::WORLD ? " is drawn in World Space" : " renders to a texture") +
+                    ": its elements are not at canvas points (click the surface it is drawn on with x, y)";
             return false;
         }
         candidates.push_back({matches[0].first, matches[0].second, component->sortOrder, 0});
@@ -1821,7 +1918,7 @@ bool elementCenter(McpContext& ctx, const Json& documentRef, const std::string& 
         for (SceneProject* sp : scenes) {
             for (Entity entity : hui::HtmlUIInspector::documents(sp->scene)) {
                 UIDocumentComponent* component = documentComponent(sp, entity);
-                if (!component || component->renderMode == UIDocumentRenderMode::TEXTURE || component->filename.empty()) continue;
+                if (!component || rendersToTexture(component->renderMode) || component->filename.empty()) continue;
                 candidates.push_back({sp, entity, component->sortOrder, candidates.size()});
             }
         }
@@ -1970,21 +2067,22 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.title = "Inspect UI Document";
         tool.description =
             "A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = "
-            "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, "
-            "styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= "
-            "`jasperengine-editor check --ui`). Lua-made content: play only.";
+            "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics. file: a .html/.css's "
+            "diagnostics (= "
+            "`jasperengine-editor check --ui`). l10n: String Tables. Lua content: play only.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("UI Document (default: the only one).")},
             {"file", assetPath(".html/.css: diagnostics only.")},
             {"selector", string("Default: whole document.")},
             {"at", vec2("Hit test (canvas px): element stack.")},
-            {"detail", withDefault(stringEnum("full: box model, attributes, styles + sources (max 20 elements).",
+            {"detail", withDefault(stringEnum("full: box model, attributes, styles + rule file:line (max 20 elements).",
                                               {"tree", "full"}), "tree")},
             {"depth", integer("Descendant levels (default tree 3, full 0).", 0, 16)},
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties.")},
             {"limit", withDefault(integer("", 1, 1000), 200)},
             {"models", boolean("Data-model values (play).")},
+            {"l10n", boolean("")},
             {"reload", boolean("Last hot reload's report.")},
             {"viewport", vec2("Lay out at [w,h], then restore.")},
             {"screenshot", boolean("Game view image, matches outlined.")},
@@ -2004,12 +2102,12 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "assert_ui";
         tool.title = "Assert UI Layout";
         tool.description =
-            "Assert a live HTML/CSS UI document's layout: passed + each failure (element ref, numbers, rects), "
-            "on failure an image with failing boxes outlined. Checks {type, selector}: exists, count and selected "
+            "Assert a live HTML/CSS UI document's layout: passed + each failure (ref, numbers, rects), "
+            "outlined in an image. Checks {type, selector}: exists, count and selected "
             "(count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), "
-            "within_parent (container), within_viewport, contrast (min_ratio, background where the UI is "
-            "transparent), min_size (width, height), virtual_window (max rows), tooltip (text). viewports: other "
-            "sizes too. Zero matches fail.";
+            "within_parent (container), within_viewport, contrast (min_ratio, background under a "
+            "transparent UI), min_size (width, height), virtual_window (max rows), tooltip (text). viewports: "
+            "more layouts. 0 matches fail.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("UI Document (default: the only one).")},
@@ -2032,6 +2130,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
                 {"text", string("")}
             }, {"type", "selector"})}}},
             {"viewports", array(vec2(""), "Up to 6 [w,h]; default: current.")},
+            {"languages", array(string(""), "")},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         }, {"checks"});
@@ -2048,7 +2147,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "create_ui_document";
         tool.title = "Create UI Document";
         tool.description =
-            "Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo step). A missing html is made "
+            "Create a GameObject with a UI Document showing an HTML/CSS file. A missing html is made "
             "from template (blank or an example) with its .css, assets and Lua (script: attached); existing files are "
             "kept unless overwrite. Returns the files and the first load's diagnostics.";
         tool.inputSchema = object({
@@ -2120,7 +2219,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             const std::string path = vars.count("path") ? vars.at("path") : std::string();
             if (const HtmlUiExamples::File* file = HtmlUiExamples::find(path)) {
                 const std::string mime = mimeOf(path);
-                if (mime.rfind("video/", 0) == 0) {
+                if (mime.rfind("video/", 0) == 0 || mime.rfind("font/", 0) == 0) {
                     ResourceResult result;
                     result.contents.push_back({uri, mime, {}, Base64::encode(reinterpret_cast<const unsigned char*>(file->data.data()),
                                                                              file->data.size())});

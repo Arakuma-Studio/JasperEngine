@@ -134,6 +134,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [UI Effects](#libraryui_fx) `library:ui_fx` | ui | 2D | none | alpha (Auto) |
 | [Underwater](#libraryunderwater) `library:underwater` | postprocess | Post-processing | none | - |
 | [Unlit](#libraryunlit) `library:unlit` | mesh | Basic | none | opaque |
+| [Vertex Blend](#libraryvertex_blend) `library:vertex_blend` | mesh | Lit | pixel, vertex, mixed, none | opaque |
 | [Vertex Color](#libraryvertex_color) `library:vertex_color` | mesh | Stylized | none, vertex, pixel | opaque |
 | [Vertex Lit](#libraryvertex_lit) `library:vertex_lit` | mesh | Lit | vertex | opaque |
 | [Water](#librarywater) `library:water` | mesh | Nature | none, pixel | alpha |
@@ -216,6 +217,69 @@ Blinn-Phong lighting: diffuse from every light, specular and shadows from the pi
 | `NORMAL_MAP` | off | Normal map |
 | `EMISSION` | off | Emission |
 | `STOCHASTIC` | off | Stochastic Tiling |
+
+<a id="libraryvertex_blend"></a>
+### Vertex Blend (`library:vertex_blend`)
+
+Blends a base layer and up to four texture layers by the vertex colour's R, G, B and A, each layer sharpened by its height (its albedo's alpha). Per layer: albedo, normal map, optional ORM map, tiling, height blend contrast, roughness and metallic. Lambert diffuse and GGX specular.
+
+- **Type**: mesh (a material's shader); category Lit.
+- **Lighting**: per pixel (default), per vertex, mixed, none.
+- **Inputs**: `color`, `rawcolor`; `uv1` without `TRIPLANAR`; `position`, `normals` with `TRIPLANAR`.
+- **Default state**: blend opaque.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `baseColor` | colour | (1, 1, 1, 1) | Tint |
+| `normalStrength` | range 0 to 2 | 1 | Normal strength |
+| `triplanarSharpness` | range 1 to 16 | 4 | Triplanar blend sharpness (with `TRIPLANAR`) |
+| `baseTiling` | float | 1 | Base tiling |
+| `baseContrast` | range 0.01 to 1 | 0.2 | Base height blend contrast |
+| `baseRoughness` | range 0 to 1 | 0.8 | Base roughness |
+| `baseMetallic` | range 0 to 1 | 0 | Base metallic |
+| `rTiling` | float | 1 | R layer tiling |
+| `rContrast` | range 0.01 to 1 | 0.2 | R layer height blend contrast |
+| `rRoughness` | range 0 to 1 | 0.8 | R layer roughness |
+| `rMetallic` | range 0 to 1 | 0 | R layer metallic |
+| `gTiling` | float | 1 | G layer tiling (with `LAYERS_THREE` or `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `gContrast` | range 0.01 to 1 | 0.2 | G layer height blend contrast (with `LAYERS_THREE` or `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `gRoughness` | range 0 to 1 | 0.8 | G layer roughness (with `LAYERS_THREE` or `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `gMetallic` | range 0 to 1 | 0 | G layer metallic (with `LAYERS_THREE` or `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `bTiling` | float | 1 | B layer tiling (with `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `bContrast` | range 0.01 to 1 | 0.2 | B layer height blend contrast (with `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `bRoughness` | range 0 to 1 | 0.8 | B layer roughness (with `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `bMetallic` | range 0 to 1 | 0 | B layer metallic (with `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `aTiling` | float | 1 | A layer tiling (with `LAYERS_FIVE`) |
+| `aContrast` | range 0.01 to 1 | 0.2 | A layer height blend contrast (with `LAYERS_FIVE`) |
+| `aRoughness` | range 0 to 1 | 0.8 | A layer roughness (with `LAYERS_FIVE`) |
+| `aMetallic` | range 0 to 1 | 0 | A layer metallic (with `LAYERS_FIVE`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseAlbedo` | white | Base albedo (height in alpha) |
+| `u_baseNormal` | flat normal | Base normal map |
+| `u_baseOrm` | white | Base ORM (occlusion, roughness, metallic) (with `ORM`) |
+| `u_rAlbedo` | white | R layer albedo (height in alpha) |
+| `u_rNormal` | flat normal | R layer normal map |
+| `u_rOrm` | white | R layer ORM (with `ORM`) |
+| `u_gAlbedo` | white | G layer albedo (height in alpha) (with `LAYERS_THREE` or `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `u_gNormal` | flat normal | G layer normal map (with `LAYERS_THREE` or `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `u_gOrm` | white | G layer ORM (with `ORM`) |
+| `u_bAlbedo` | white | B layer albedo (height in alpha) (with `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `u_bNormal` | flat normal | B layer normal map (with `LAYERS_FOUR` or `LAYERS_FIVE`) |
+| `u_bOrm` | white | B layer ORM (with `ORM`) |
+| `u_aAlbedo` | white | A layer albedo (height in alpha) (with `LAYERS_FIVE`) |
+| `u_aNormal` | flat normal | A layer normal map (with `LAYERS_FIVE`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `ORM` | off | ORM maps (up to four layers) |
+| `TRIPLANAR` | off | Triplanar projection |
+
+| Keyword group | Values (first is the default) | Description |
+|---|---|---|
+| `LAYERS` | `LAYERS_TWO`, `LAYERS_THREE`, `LAYERS_FOUR`, `LAYERS_FIVE` | Layers |
 
 <a id="libraryvertex_lit"></a>
 ### Vertex Lit (`library:vertex_lit`)
@@ -1357,7 +1421,7 @@ Top, horizon and bottom colours blended by the view direction's height, each sid
 <a id="librarypanoramic_sky"></a>
 ### Panoramic Sky (`library:panoramic_sky`)
 
-An equirectangular (latitude-longitude) 2D image as the sky, with rotation, exposure and tint.
+An equirectangular (latitude-longitude) 2D image as the sky, with rotation, exposure and tint. Unity's Skybox/Panoramic _Rotation r is rotation (r + 270) mod 360.
 
 - **Type**: sky (the Sky component's custom shader); category Sky.
 - **Default state**: the engine's.
@@ -1371,6 +1435,10 @@ An equirectangular (latitude-longitude) 2D image as the sky, with rotation, expo
 | Texture | Default | Description |
 |---|---|---|
 | `u_panoramaTexture` | gray | Panorama (equirectangular, 2:1) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `VERTEX_MAPPING` | off | Per-Vertex Mapping |
 
 <a id="libraryprocedural_sky"></a>
 ### Procedural Sky (`library:procedural_sky`)

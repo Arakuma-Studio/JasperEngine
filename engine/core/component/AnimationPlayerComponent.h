@@ -80,9 +80,14 @@ namespace jasperengine{
         AnimationLayerBlend blend = AnimationLayerBlend::Override;  // layers[0]: always Override
         std::string mask;               // asset-relative .mask, "" = none
         std::string maskGuid;           // the mask's GUID (editor, AssetDatabase)
+        // Override layers above 0: the bones where the mask starts or stops keep this layer's
+        // rotation relative to the player's GameObject (docs/specs/mesh-space-rotation.md R15);
+        // kept and ignored on layer 0 and on Additive layers
+        bool meshSpaceRotation = false;
 
         bool operator==(const AnimationPlayerLayer& other) const{
-            return name == other.name && weight == other.weight && blend == other.blend && mask == other.mask && maskGuid == other.maskGuid;
+            return name == other.name && weight == other.weight && blend == other.blend && mask == other.mask && maskGuid == other.maskGuid &&
+                   meshSpaceRotation == other.meshSpaceRotation;
         }
         bool operator!=(const AnimationPlayerLayer& other) const{ return !(*this == other); }
     };
@@ -108,6 +113,13 @@ namespace jasperengine{
         float poseFrameRate = 0.0f;
         // empty = one "Base Layer" (anim::playerLayers)
         std::vector<AnimationPlayerLayer> layers;
+        // Unity's Apply Root Motion (S94 F34): the root motion of the base layer's clips moves
+        // this GameObject. Off, a clip with a root_motion block still leaves it out of the pose.
+        bool applyRootMotion = false;
+        // Apply Root Motion off: a clip with a root_motion block keeps its root's drift in the
+        // pose, as every Animation Player saved before S94 played it (set by the scene and prefab
+        // migrations); off, it plays in place as in Unity
+        bool legacyRootDrift = false;
 
         // runtime only (not serialised)
         bool needsLoad = true;      // the clip list changed: the next update (re)loads and rebinds

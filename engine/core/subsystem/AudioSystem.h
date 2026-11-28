@@ -134,6 +134,8 @@ namespace jasperengine{
 		int variation = -1;
 		int layer = -1;
 		uint64_t instance = 0;
+		// the pool's sample the voice plays, when a source's effects may wrap it (S97 D2)
+		const std::shared_ptr<SoLoud::AudioSource>* sampleRef = nullptr;
 	};
 	class JASPERENGINE_API AudioSystem : public SubSystem {
 		// the unit tests reach a voice's parameters without the frame's 3D pass after them
@@ -164,6 +166,10 @@ namespace jasperengine{
 		bool motionFresh = false;
 		// the 3D listener at that scene's camera (the main scene's, for every scene's system)
 		void placeListener(Scene& listenerScene);
+		// a source's 3D position and velocity to its voices (main, layers, one-shots)
+		void applySource3d(AudioSourceComponent& audio, const Vector3& position, const Vector3& velocity);
+		// the scene this frame's update placed the listener at, if it did (updateLate)
+		Scene* listenerPlacedScene = nullptr;
 		bool outputRequested = false;
 		// off while the scheduler skips the system (Systems window): its sounds hold too
 		bool schedulerEnabled = true;
@@ -431,8 +437,17 @@ namespace jasperengine{
 		static bool isListenerPaused();
 
 		// Decodes (or opens) a clip ahead, so its first play or one-shot has no load; held until
-		// the engine shuts down (SoundPool::pin)
+		// unload() or the engine shuts down (SoundPool::pin)
 		static bool preload(const std::string& filename, AudioLoadType loadType = AudioLoadType::Auto);
+		// Unity's AudioClip.UnloadAudioData: the clip's preload pin goes and its unused entries
+		// drop (every load type, or the one `loadType` resolves to); the count dropped. A clip a
+		// source or a voice holds stays until released (S97 REQ-11).
+		static int unload(const std::string& filename, const AudioLoadType* loadType = nullptr);
+		// a clip's load state in the pool (Unity's AudioClip.loadState)
+		static AudioLoadState getLoadState(const std::string& filename, AudioLoadType loadType = AudioLoadType::Auto);
+		// a source's (AudioSource.loadState): Loading from loadSound (or the scene's preload of its
+		// clip) until it is ready or failed
+		static AudioLoadState getLoadState(const AudioSourceComponent& audio);
 
 		// ---- the voice budget (every voice a source, a one-shot or playClipAtPoint started)
 		static unsigned int getVoiceCount();
@@ -453,6 +468,10 @@ namespace jasperengine{
 		static void moveSourceVoices(Scene* from, AudioSourceComponent& source, Scene* to, AudioSourceComponent& target);
 		void setListenerEnabled(bool enabled);
 		bool isListenerEnabled() const;
+		// After the late transform pass (S95 REQ-5): with `viewMoved`, the listener this frame's update
+		// placed goes to its camera's pose now; the 3D sources the update placed are heard where they
+		// are now (moved after it, or seen through a moved camera)
+		void updateLate(bool viewMoved);
 		// sounds playing now (getVoiceCount: not the mixer's buses) and the most that play at once
 		// (0, 0 before the output opens)
 		static void getVoiceCounts(uint32_t& active, uint32_t& max);

@@ -36,7 +36,7 @@ DIR = "assets/analysis"
 REPO = Path(__file__).resolve().parents[3]
 ESSENTIALS = REPO / "editor/resources/sound-library/essentials"
 # AudioAnalysis::VERSION
-ANALYZER_VERSION = 1
+ANALYZER_VERSION = 2
 
 
 # -- signals and files ------------------------------------------------------------------------------

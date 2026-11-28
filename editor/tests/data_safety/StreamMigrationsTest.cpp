@@ -6,8 +6,15 @@
 
 #include "StreamMigrations.h"
 #include "Stream.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/AnimatorComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "pool/ShaderPool.h"
+#include "support/EditorTestSupport.h"
+#include "component/TextComponent.h"
+#include "model/ModelImportSettings.h"
+#include "reflect/Reflect.h"
+#include "registry/SortingLayers.h"
 
 #include <gtest/gtest.h>
 
@@ -53,12 +60,12 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     YAML::Node root = YAML::Load("{name: Level1, entities: [{name: A}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 0);
-    EXPECT_EQ(result.versionCurrent, 8);
+    EXPECT_EQ(result.versionCurrent, StreamMigrations::currentVersion(DocumentKind::Scene));
     EXPECT_TRUE(result.migrated());
     EXPECT_FALSE(result.newer());
     ASSERT_TRUE(root.IsMap());
     EXPECT_EQ(root.begin()->first.Scalar(), "formatVersion");
-    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     EXPECT_EQ(root["name"].as<std::string>(), "Level1");
     EXPECT_EQ(root["entities"][0]["name"].as<std::string>(), "A");
     EXPECT_EQ(root.size(), 3u);
@@ -66,7 +73,7 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     // current: nothing to do
     const MigrationResult again = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_FALSE(again.migrated());
-    EXPECT_EQ(again.versionRead, 8);
+    EXPECT_EQ(again.versionRead, StreamMigrations::currentVersion(DocumentKind::Scene));
 }
 
 TEST(StreamMigrations, NewerIsLeftUntouched){
@@ -75,8 +82,10 @@ TEST(StreamMigrations, NewerIsLeftUntouched){
     EXPECT_TRUE(result.newer());
     EXPECT_FALSE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 99);
-    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 9),
-            "Written by a newer JasperEngine (scene format 9; this editor writes 8).");
+    const int scene = StreamMigrations::currentVersion(DocumentKind::Scene);
+    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, scene + 1),
+            "Written by a newer JasperEngine (scene format " + std::to_string(scene + 1) + "; this editor writes " +
+            std::to_string(scene) + ").");
 }
 
 TEST(StreamMigrations, OldPrefabsAreLeftToThePrefabLoader){
@@ -112,15 +121,17 @@ TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
     EXPECT_EQ(result.versionRead, 1);
     // 1 -> 2, then 2 -> 3 (S20's particle systems: none here), 3 -> 4 (S29's derived transform
     // values: none here), 4 -> 5 (S18's splines: identity), 5 -> 6 (S21's Animation Player
-    // controllers: none here) and 6 -> 7 (S27's curve form: no lines)
-    ASSERT_EQ(result.applied.size(), 7u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
+    // controllers: none here), 6 -> 7 (S27's curve form: no lines), 7 -> 8 (S44's sheet sprites:
+    // identity), 8 -> 9 (S98's mesh assets: identity), 9 -> 10 (S92's) and 10 -> 11 (S94's Text
+    // alignment: no texts)
+    ASSERT_EQ(result.applied.size(), 10u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     EXPECT_EQ(root["scene"]["shadowQuality"].as<std::string>(), "auto");
     EXPECT_FLOAT_EQ(root["entities"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][1]["children"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][2]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
-    // one line for the quality, one for the biases (two lights reset)
-    ASSERT_EQ(result.log.lines.size(), 2u);
+    // one line for the quality, one for the biases (two lights reset), one for the HTML UI render mode
+    ASSERT_EQ(result.log.lines.size(), 3u);
     EXPECT_NE(result.log.lines[1].find("2 lights' Bias reset to 1"), std::string::npos) << result.log.lines[1];
 
     // an explicit quality other than Low stays
@@ -135,7 +146,7 @@ TEST(StreamMigrations, PrefabV3ToV4ShadowBiasInTexels){
         "{type: Prefab, version: 3, members: [{type: Entity, entity: 1001, components: {light: {type: spot, shadowBias: 0.002}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 9);
+    EXPECT_EQ(root["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
     EXPECT_FLOAT_EQ(root["members"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
 }
 
@@ -167,9 +178,10 @@ TEST(StreamMigrations, SceneV2ToV3ParticleSystemsMoveToTheirTargets){
         "{type: Entity, entity: 1003, name: Lonely, components: {particlesystem: {rate: 3}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 2);
-    // 2 -> 3, then S29's 3 -> 4, S18's identity 4 -> 5, S21's 5 -> 6 and S27's curve form 6 -> 7
-    ASSERT_EQ(result.applied.size(), 6u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
+    // 2 -> 3, then S29's 3 -> 4, S18's identity 4 -> 5, S21's 5 -> 6, S27's curve form 6 -> 7, the
+    // identities 7 -> 8 (S44) and 8 -> 9 (S98), S92's 9 -> 10 and S94's 10 -> 11
+    ASSERT_EQ(result.applied.size(), 9u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
 
     const YAML::Node fire = root["entities"][0]["components"];
     ASSERT_TRUE(fire["particlesystem"]);
@@ -220,6 +232,29 @@ TEST(StreamMigrations, OldUIParticleSystemKeepsItsUnscaledTime){
     EXPECT_FALSE(root["entities"][2]["components"]["particlesystem"]["useUnscaledTime"]);
 }
 
+TEST(StreamMigrations, SceneV2ToV3MovedSystemNamesItsOldGameObject){
+    // S94 F2: an old script wraps the old system's GameObject (ParticleSystem(scene, e)); the
+    // system moved to its target records it as legacyFrom, which reads back on the component.
+    // One that stays where it was records nothing
+    YAML::Node root = YAML::Load(
+        "{formatVersion: 2, entities: ["
+        "{type: Entity, entity: 1575, name: FxConfetti, components: {transform: {position: [0, 0, 0]}, points: {points: ~}}},"
+        "{type: Entity, entity: 1576, name: FxConfettiSystem, components: {action: {state: Stopped, target: 1575},"
+        " particlesystem: {maxParticles: 45, rate: 0, bursts: [{time: 0.001, minCount: 40, maxCount: 40}]}}},"
+        "{type: Entity, entity: 1577, name: Lonely, components: {particlesystem: {rate: 3}}}]}");
+    StreamMigrations::migrate(DocumentKind::Scene, root);
+    const YAML::Node moved = root["entities"][0]["components"]["particlesystem"];
+    ASSERT_TRUE(moved);
+    ASSERT_TRUE(moved["legacyFrom"]);
+    EXPECT_EQ(moved["legacyFrom"].as<uint64_t>(), 1576u);
+    EXPECT_EQ(Stream::decodeParticleSystemComponent(moved).legacyFrom, (Entity)1576);
+    EXPECT_FALSE(root["entities"][2]["components"]["particlesystem"]["legacyFrom"]) << "a system that did not move";
+    EXPECT_EQ(Stream::decodeParticleSystemComponent(root["entities"][2]["components"]["particlesystem"]).legacyFrom, NULL_ENTITY);
+    // written back only when set
+    EXPECT_FALSE(Stream::encodeParticleSystemComponent(ParticleSystemComponent())["legacyFrom"]);
+    EXPECT_EQ(Stream::encodeParticleSystemComponent(Stream::decodeParticleSystemComponent(moved))["legacyFrom"].as<uint64_t>(), 1576u);
+}
+
 TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
     YAML::Node root = YAML::Load(
         "{type: Prefab, version: 4, members: ["
@@ -227,7 +262,7 @@ TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
         "{type: Entity, entity: 1002, name: Dust FX, components: {action: {target: 1001}, particlesystem: {rate: 9}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 9) << "migrated to the current version";
+    EXPECT_EQ(root["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab)) << "migrated to the current version";
     EXPECT_TRUE(root["members"][0]["components"]["particlesystem"]);
     EXPECT_FALSE(root["members"][1]["components"]["particlesystem"]);
 }
@@ -248,8 +283,8 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
         " components: {animationplayer: {controller: anim/other.controller, controllerGuid: 0000111122223333444455556666aaaa}}}]}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 5);
-    ASSERT_EQ(result.applied.size(), 3u) << "5 -> 6, S27's curve form 6 -> 7 (no lines), then S44's sheet sprites 7 -> 8";
-    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
+    ASSERT_EQ(result.applied.size(), 6u) << "5 -> 6, S27's curve form 6 -> 7 (no lines), S44's sheet sprites 7 -> 8, S98's mesh assets 8 -> 9, S92's 9 -> 10, then S94's 10 -> 11";
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
 
     const YAML::Node granjero = root["entities"][0]["components"];
     ASSERT_TRUE(granjero["animator"]);
@@ -280,17 +315,187 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
     EXPECT_TRUE(enabledOverride);
     EXPECT_FALSE(controllerOverride);
     EXPECT_FALSE(entry["components"]["animationplayer"]["enabled"].as<bool>());
-    ASSERT_EQ(result.log.lines.size(), 1u);
+    // then S94's 10 -> 11: the two Animators keep their root drift (a deliberate addition, S94 F33)
+    ASSERT_EQ(result.log.lines.size(), 2u);
     EXPECT_NE(result.log.lines[0].find("2 players got an Animator"), std::string::npos) << result.log.lines[0];
+    EXPECT_NE(result.log.lines[1].find("keep"), std::string::npos) << result.log.lines[1];
 
     // a prefab's members the same way (6 -> 7, then the curve form 7 -> 8)
     YAML::Node prefab = YAML::Load(
         "{type: Prefab, version: 6, members: [{type: Entity, entity: 1001, components: {animationplayer: {enabled: false, controller: anim/c.controller}}}]}");
     const MigrationResult prefabResult = StreamMigrations::migrate(DocumentKind::Prefab, prefab);
     EXPECT_TRUE(prefabResult.migrated());
-    EXPECT_EQ(prefab["version"].as<int>(), 9);
+    EXPECT_EQ(prefab["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
     EXPECT_EQ(prefab["members"][0]["components"]["animator"]["controller"].as<std::string>(), "anim/c.controller");
     EXPECT_FALSE(prefab["members"][0]["components"]["animator"]["enabled"].as<bool>()) << "a disabled player: a disabled Animator";
+}
+
+// S94 F24 (AC24): scene 8 -> 9 and prefab 9 -> 10 turn a Text's pivotBaseline / pivotCentered into
+// its alignment (false: the old defaults, Bottom and Left, so an instance's override keeps its
+// value), children and prefab instance overrides included, the overridden names renamed
+TEST(StreamMigrations, SceneV8TextPivotsBecomeAnchor){
+    YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/scene-v8-text.scene")));
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
+    ASSERT_TRUE(result.migrated());
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
+    // S92's 9 -> 10 logs the scene's HTML UI render mode first
+    ASSERT_EQ(result.log.lines.size(), 2u);
+    EXPECT_NE(result.log.lines[0].find("Screen Space - Camera"), std::string::npos) << result.log.lines[0];
+    EXPECT_NE(result.log.lines[1].find("3 Texts'"), std::string::npos) << result.log.lines[1];
+
+    const YAML::Node plaque = root["entities"][0]["components"]["text"];
+    EXPECT_EQ(plaque["anchorVertical"].as<std::string>(), "baseline");
+    EXPECT_EQ(plaque["anchorHorizontal"].as<std::string>(), "center");
+    EXPECT_FALSE(plaque["pivotBaseline"]);
+    EXPECT_FALSE(plaque["pivotCentered"]);
+    EXPECT_EQ(plaque["text"].as<std::string>(), "12");
+
+    const YAML::Node caption = root["entities"][0]["children"][0]["components"]["text"];
+    EXPECT_EQ(caption["anchorVertical"].as<std::string>(), "bottom");
+    EXPECT_EQ(caption["anchorHorizontal"].as<std::string>(), "left");
+
+    const YAML::Node instance = root["entities"][1]["prefabInstance"]["overrides"][0];
+    EXPECT_EQ(instance["components"]["text"]["anchorHorizontal"].as<std::string>(), "left");
+    EXPECT_FALSE(instance["components"]["text"]["anchorVertical"]);
+    EXPECT_EQ(instance["properties"]["text"][0].as<std::string>(), "anchorHorizontal");
+    EXPECT_EQ(instance["properties"]["text"][1].as<std::string>(), "text");
+
+    // what the Text decodes to
+    TextComponent text;
+    const YAML::Node component = root["entities"][0]["components"]["text"];
+    reflect::decodeInto(ComponentType::TextComponent, component, &text, nullptr);
+    EXPECT_EQ(text.anchorVertical, TextAnchorVertical::BASELINE);
+    EXPECT_EQ(text.anchorHorizontal, TextAnchorHorizontal::CENTER);
+}
+
+TEST(StreamMigrations, PrefabV9TextPivotsBecomeAnchor){
+    YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/prefab-v9-text.prefab")));
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
+    ASSERT_TRUE(result.migrated());
+    EXPECT_EQ(root["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
+    const YAML::Node sign = root["members"][0]["components"]["text"];
+    EXPECT_EQ(sign["anchorVertical"].as<std::string>(), "baseline");
+    EXPECT_EQ(sign["anchorHorizontal"].as<std::string>(), "center");
+    EXPECT_FALSE(sign["pivotBaseline"]);
+}
+
+// S94 F33, F34: with Apply Root Motion off a clip with a root_motion block plays in place now. An
+// Animator or Animation Player of scene 8 or prefab 9 (children included) keeps the drift it played
+// with (legacyRootDrift); one with Apply Root Motion on and an instance's overrides are left as they
+// are; a component written now has none
+TEST(StreamMigrations, SceneV8AnimatorsKeepTheirRootDrift){
+    YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/scene-v8-root-motion.scene")));
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
+    ASSERT_TRUE(result.migrated());
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
+    // S92's 9 -> 10 logs the scene's HTML UI render mode first
+    ASSERT_EQ(result.log.lines.size(), 2u);
+    EXPECT_NE(result.log.lines[0].find("Screen Space - Camera"), std::string::npos) << result.log.lines[0];
+    EXPECT_NE(result.log.lines[1].find("2 Animators and Animation Players keep"), std::string::npos) << result.log.lines[1];
+
+    const YAML::Node hero = root["entities"][0]["components"]["animator"];
+    ASSERT_TRUE(hero["legacyRootDrift"]);
+    EXPECT_TRUE(hero["legacyRootDrift"].as<bool>());
+    AnimatorComponent animator;
+    reflect::decodeInto(ComponentType::AnimatorComponent, hero, &animator, nullptr);
+    EXPECT_TRUE(animator.legacyRootDrift);
+    EXPECT_FALSE(animator.applyRootMotion);
+
+    const YAML::Node dancer = root["entities"][0]["children"][0]["components"]["animationplayer"];
+    ASSERT_TRUE(dancer["legacyRootDrift"]);
+    EXPECT_TRUE(Stream::decodeAnimationPlayerComponent(dancer).legacyRootDrift);
+
+    EXPECT_FALSE(root["entities"][1]["components"]["animator"]["legacyRootDrift"]) << "Apply Root Motion on: nothing changed";
+    const YAML::Node overrides = root["entities"][2]["prefabInstance"]["overrides"][0];
+    EXPECT_FALSE(overrides["components"]["animator"]["legacyRootDrift"]) << "an override follows its prefab";
+    EXPECT_EQ(overrides["properties"]["animator"].size(), 1u);
+
+    // written back only when set
+    EXPECT_FALSE(Stream::encodeAnimationPlayerComponent(AnimationPlayerComponent())["legacyRootDrift"]);
+    EXPECT_TRUE(Stream::encodeAnimationPlayerComponent(Stream::decodeAnimationPlayerComponent(dancer))["legacyRootDrift"].as<bool>());
+}
+
+TEST(StreamMigrations, PrefabV9AnimationPlayersKeepTheirRootDrift){
+    YAML::Node root = YAML::Load(jasperengine::editor::test::readText(jasperengine::editor::test::fixture("migrations/prefab-v9-root-motion.prefab")));
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
+    ASSERT_TRUE(result.migrated());
+    EXPECT_EQ(root["version"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Prefab));
+    const YAML::Node walker = root["members"][0]["components"]["animationplayer"];
+    ASSERT_TRUE(walker["legacyRootDrift"]);
+    EXPECT_TRUE(Stream::decodeAnimationPlayerComponent(walker).legacyRootDrift);
+
+    YAML::Node current = YAML::Load("{type: Prefab, version: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Prefab)) +
+                                    ", members: [{type: Entity, entity: 1001, components: {animator: {enabled: true}}}]}");
+    EXPECT_FALSE(StreamMigrations::migrate(DocumentKind::Prefab, current).migrated());
+    EXPECT_FALSE(current["members"][0]["components"]["animator"]["legacyRootDrift"]);
+}
+
+// S94 F5 (AC5), F42: a project written before Transparency Sort Mode Default followed the projection
+// sorted every camera by the distance: it loads as Perspective; one that named a mode keeps it,
+// and a project of format 2 without the key is Default. Its FBX submeshes were the used material
+// slots in order: it keeps FBX Submesh Order Used Materials beside its other Mesh settings, and a
+// project of format 2 without the key follows the material slots
+TEST(StreamMigrations, ProjectV1KeepsPerspectiveSort){
+    YAML::Node root = YAML::LoadFile(jasperengine::editor::test::fixture("migrations/project-v1-sort.yaml").string());
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Project, root);
+    EXPECT_EQ(result.versionRead, 1);
+    EXPECT_EQ(result.versionCurrent, 2);
+    EXPECT_TRUE(result.migrated());
+    EXPECT_EQ(root["formatVersion"].as<int>(), 2);
+    ASSERT_TRUE(root["transparencySortMode"]);
+    TransparencySortMode mode = TransparencySortMode::DEFAULT;
+    EXPECT_TRUE(SortingLayers::transparencySortModeFromToken(root["transparencySortMode"].as<std::string>(), mode));
+    EXPECT_EQ(mode, TransparencySortMode::PERSPECTIVE);
+    EXPECT_EQ(root["sortingLayers"].size(), 2u);
+    EXPECT_EQ(result.log.lines.size(), 2u);
+    ASSERT_TRUE(root["mesh"]["fbxSubmeshOrder"]);
+    ModelProjectSettings meshSettings;
+    decodeModelProjectSettings(root["mesh"], meshSettings);
+    EXPECT_EQ(meshSettings.fbxSubmeshOrder, FbxSubmeshOrder::UsedMaterials);
+    EXPECT_EQ(meshSettings.cacheSizeMB, 4096) << "the other Mesh settings stay";
+    EXPECT_EQ(encodeModelProjectSettings(meshSettings)["fbxSubmeshOrder"].as<std::string>(), "used_materials");
+
+    YAML::Node axis = YAML::Load("{formatVersion: 1, name: A, transparencySortMode: custom_axis}");
+    StreamMigrations::migrate(DocumentKind::Project, axis);
+    EXPECT_EQ(axis["transparencySortMode"].as<std::string>(), "custom_axis");
+
+    EXPECT_EQ(axis["mesh"]["fbxSubmeshOrder"].as<std::string>(), "used_materials");
+
+    YAML::Node current = YAML::Load("{formatVersion: 2, name: B}");
+    EXPECT_FALSE(StreamMigrations::migrate(DocumentKind::Project, current).migrated());
+    EXPECT_FALSE(current["transparencySortMode"]);
+    EXPECT_FALSE(current["mesh"]);
+    decodeModelProjectSettings(current["mesh"], meshSettings);
+    EXPECT_EQ(meshSettings.fbxSubmeshOrder, FbxSubmeshOrder::MaterialSlots);
+    EXPECT_FALSE(encodeModelProjectSettings(meshSettings)["fbxSubmeshOrder"]) << "the default is not written";
+}
+
+TEST(StreamMigrations, SceneV9ToV10KeepsTheCameraRenderMode){
+    // S92: an absent htmlUiRenderMode is Screen Space - Overlay now; a scene saved before it drew
+    // its screen documents in the camera pass, so it keeps Screen Space - Camera
+    YAML::Node root = YAML::Load("{formatVersion: 9, scene: {backgroundColor: [0, 0, 0, 1]}, entities: []}");
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
+    ASSERT_EQ(result.applied.size(), 2u) << "S92's 9 -> 10, then S94's 10 -> 11 (no texts or animators)";
+    EXPECT_EQ(root["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
+    EXPECT_EQ(root["scene"]["htmlUiRenderMode"].as<std::string>(), "camera");
+    ASSERT_EQ(result.log.lines.size(), 1u);
+    EXPECT_NE(result.log.lines[0].find("Screen Space - Camera"), std::string::npos) << result.log.lines[0];
+
+    // a mode already written stays (a hand edit, or a key copied from a newer scene)
+    YAML::Node overlay = YAML::Load("{formatVersion: 9, scene: {htmlUiRenderMode: overlay}, entities: []}");
+    StreamMigrations::migrate(DocumentKind::Scene, overlay);
+    EXPECT_EQ(overlay["scene"]["htmlUiRenderMode"].as<std::string>(), "overlay");
+
+    // without a settings map nothing is added: the map would change how its other absent keys decode
+    YAML::Node bare = YAML::Load("{formatVersion: 9, entities: []}");
+    StreamMigrations::migrate(DocumentKind::Scene, bare);
+    EXPECT_FALSE(bare["scene"]);
+
+    // a current scene is not touched: absent is Overlay
+    YAML::Node current = YAML::Load("{formatVersion: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) +
+                                    ", scene: {backgroundColor: [0, 0, 0, 1]}, entities: []}");
+    EXPECT_FALSE(StreamMigrations::migrate(DocumentKind::Scene, current).migrated());
+    EXPECT_FALSE(current["scene"]["htmlUiRenderMode"]);
 }
 
 }  // namespace StreamMigrationsTest_cpp

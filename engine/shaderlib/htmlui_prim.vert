@@ -13,6 +13,9 @@
 //                i_border0..3 = border colours
 //   2 SHADOW_OUTER, 3 SHADOW_INSET: i_a = the shadow's shape, i_b/i_c = its radii, i_d = the
 //                clip box, i_e/i_f = its radii, i_params.y = sigma, i_color = the shadow colour
+//   4 GRADIENT:  i_a = the fill area, i_b/i_c = its radii, i_d = p and v, i_e = stop positions (or
+//                the stop table's row), i_f = function, stop count and tile period,
+//                i_params.yw = the tiles' origin in the area, i_border0..3 = stop colours
 
 uniform u_vs_htmluiPrim {
     mat4 transform;
@@ -66,6 +69,22 @@ void main() {
         // the area the shape reaches (an inset shadow stays in its clip box), widened by its blur and
         // by two device pixels of edge
         vec4 area = (mode == 3) ? i_d : i_a;
+        if (mode == 4){
+            // a gradient's single tile along an axis (a negative period, S92 R7): nothing is drawn
+            // beyond it
+            vec2 tile0 = i_a.xy + i_params.yw;
+            vec2 lo = area.xy;
+            vec2 hi = area.xy + area.zw;
+            if (i_f.z < 0.0){
+                lo.x = max(lo.x, tile0.x);
+                hi.x = max(lo.x, min(hi.x, tile0.x - i_f.z));
+            }
+            if (i_f.w < 0.0){
+                lo.y = max(lo.y, tile0.y);
+                hi.y = max(lo.y, min(hi.y, tile0.y - i_f.w));
+            }
+            area = vec4(lo, hi - lo);
+        }
         float reach = (mode == 2) ? 3.0 * i_params.y : 0.0;
         vec2 center = area.xy + 0.5 * area.zw;
         vec2 s0 = toScreen(center);

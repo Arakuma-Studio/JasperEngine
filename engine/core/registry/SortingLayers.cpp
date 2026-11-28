@@ -176,6 +176,26 @@ TransparencySortMode SortingLayers::getTransparencySortMode(){
     return table().mode;
 }
 
+const char* SortingLayers::transparencySortModeToken(TransparencySortMode mode){
+    switch (mode){
+        case TransparencySortMode::CUSTOM_AXIS:  return "custom_axis";
+        case TransparencySortMode::PERSPECTIVE:  return "perspective";
+        case TransparencySortMode::ORTHOGRAPHIC: return "orthographic";
+        default:                                 return "default";
+    }
+}
+
+bool SortingLayers::transparencySortModeFromToken(const std::string& token, TransparencySortMode& mode){
+    for (TransparencySortMode candidate : {TransparencySortMode::DEFAULT, TransparencySortMode::CUSTOM_AXIS,
+                                           TransparencySortMode::PERSPECTIVE, TransparencySortMode::ORTHOGRAPHIC}){
+        if (token == transparencySortModeToken(candidate)){
+            mode = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
 void SortingLayers::setTransparencySortAxis(const Vector3& axis){
     Table& t = table();
     const Vector3 finite(std::isfinite(axis.x) ? axis.x : 0.0f, std::isfinite(axis.y) ? axis.y : 0.0f, std::isfinite(axis.z) ? axis.z : 0.0f);

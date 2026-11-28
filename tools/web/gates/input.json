@@ -1,5 +1,5 @@
 {
-  "description": "tools/test-projects/input (WEB_PROJECT=input tools/build.sh web): Input.getPointerLockState() with a captured pointer is PENDING until a user gesture, then LOCKED after the gate's synthetic click (CDP Input.dispatchMouseEvent). No pixel check: the scene is empty.",
+  "description": "tools/test-projects/input (WEB_PROJECT=input tools/build.sh web): Input.getPointerLockState() with a captured pointer is PENDING until a user gesture, then LOCKED after the gate's synthetic click (CDP Input.dispatchMouseEvent). No pixel check: the scene is empty. Then a CDP touch tap switches the input scheme to Touch and a key press back to Keyboard&Mouse (input-device-awareness AC18). The scheme's second switch focuses the form's e-mail field (text-entry-gamepad-cursor-back-button AC22): the IME textarea then has inputmode email and enterkeyhint send (eval), and Escape reaches the menu document's back listener.",
   "isolated": true,
   "click": 1,
   "console": [
@@ -10,7 +10,40 @@
     {
       "text": "[gate] pointer locked",
       "level": "log"
+    },
+    {
+      "text": "[gate] scheme Touch",
+      "level": "log"
+    },
+    {
+      "text": "[gate] scheme Keyboard&Mouse",
+      "level": "log"
+    },
+    {
+      "text": "[gate] form focused",
+      "level": "log"
+    },
+    {
+      "text": "[gate] back",
+      "level": "log"
     }
   ],
-  "ordered": true
+  "ordered": true,
+  "touch": 1,
+  "keys": [
+    {
+      "code": "KeyE",
+      "key": "e",
+      "key_code": 69
+    },
+    {
+      "code": "Escape",
+      "key": "Escape",
+      "key_code": 27
+    }
+  ],
+  "eval": "(function(){ var t = document.getElementById('jasper-ime'); return t ? 'ime ' + t.getAttribute('inputmode') + '|' + t.getAttribute('enterkeyhint') : 'no ime textarea'; })()",
+  "eval_expect": [
+    "ime email|send"
+  ]
 }

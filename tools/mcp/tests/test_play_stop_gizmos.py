@@ -1,15 +1,15 @@
 """Stopping Play right after it starts, with every Scene view gizmo map populated.
 
-The Scene view keeps an editor gizmo per annotated GameObject (SceneRender3D: light, camera and
-audio icons; body, joint, bone, line, polygon, track and reflection probe lines). The Game view pass
-hides them all (SceneRender::beginGameViewPass -> hideAllGizmos) before it draws, so a gizmo whose
-own entity went away with Stop threw "FATAL: unhandled exception: unordered_map::at" from
-GameObject::setVisible. Each cycle plays and stops right away (during the startup, before the game
+The Scene view draws each gizmo kind of every annotated GameObject through one renderer
+(SceneRender3D: the icons; light, camera, body, joint, bone, line, polygon, track and reflection
+probe lines; S98 REQ-30). The Game view pass hides them all (SceneRender::beginGameViewPass ->
+hideAllGizmos) before it draws, so a renderer whose own entity went away with Stop (one made while
+the game ran) threw "FATAL: unhandled exception: unordered_map::at" from GameObject::setVisible. Each cycle plays and stops right away (during the startup, before the game
 runs; at once; after a few frames in which the game spawns and destroys annotated GameObjects), once
 with the Scene view and once with the Game view in front (only the Game view pass draws the scene),
 on the pose fixture (two skinned models) plus one GameObject of each gizmo kind. The scene's System
-entities (the editor's gizmos among them) stay as many across the cycles, but for the body added
-each cycle: none is lost or left over.
+entities (the editor's gizmo renderers among them) stay as many across the cycles, whatever the
+bodies added each cycle: none is lost or left over, and no GameObject takes one of its own.
 """
 
 from __future__ import annotations
@@ -82,9 +82,9 @@ async def test_build_scene_with_every_gizmo(ed: Editor):
         ("add_component", {"entity": "Body", "component": "Rigidbody"}),
     ]
     await batch_ok(ed, calls)
-    # every gizmo exists before the first Play
+    # every kind's renderer exists before the first Play: one per kind, not one per GameObject
     S["system"] = await system_entities(ed)
-    ed.check(S["system"] > 20, f"the scene's System entities: {S['system']}")
+    ed.check(4 < S["system"] <= 20, f"the scene's System entities: {S['system']}")
 
 
 async def test_stop_right_after_start(ed: Editor):
@@ -111,9 +111,9 @@ async def test_stop_right_after_start(ed: Editor):
                 await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
         # the first frames after Stop: the Game view pass hides every gizmo
         await shoot(ed, "game")
-        # one body gizmo more per cycle; the copies' gizmos went, the authored ones stayed
+        # the new body draws through the bodies' renderer; what Play made went with Stop
         count = await system_entities(ed)
-        ed.check_eq(count, S["system"] + cycle + 1, f"cycle {cycle} ({variant}, {view}): System entities")
+        ed.check_eq(count, S["system"], f"cycle {cycle} ({variant}, {view}): System entities")
     await ed.check_alive()
     for _, name in KINDS + UNPLACED + [("", "Body")]:
         await ed.call("get_entity", entity=name)

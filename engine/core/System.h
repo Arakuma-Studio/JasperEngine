@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include "io/Data.h"
 #include "math/EdgeInsets.h"
@@ -55,6 +56,7 @@ namespace jasperengine {
     };
 
     class System;
+    struct TextEntryTraits;
 
     // A System for code that runs before the platform made its own (a prebuilt player reads its
     // content and game.json before the window exists): installed only while none is set, and
@@ -208,6 +210,12 @@ namespace jasperengine {
 
         static System* systemInstance;
         static ApplicationInfo applicationInfo;
+        // the build's Build Profile and Scripting Define Symbols (setBuildInfo)
+        static std::string buildProfile;
+        static std::vector<std::string> buildDefines;
+        static std::unordered_set<std::string> buildDefineSet;
+        // the Patch And Run patch the content is (setContentPatch)
+        static int contentPatch;
 
         // Only Engine is allowed to inject an external System implementation.
         static void setSystemInstance(System* system);
@@ -247,7 +255,17 @@ namespace jasperengine {
         virtual bool isTouchDevice();
 
         virtual void showVirtualKeyboard(std::wstring text = L"");
+        // the soft keyboard a text field asks for (input/TextEntry.h); also called while it is open,
+        // when the focus moves to a field of other traits. The base calls the text-only overload
+        virtual void showVirtualKeyboard(const std::wstring& text, const TextEntryTraits& traits);
         virtual void hideVirtualKeyboard();
+        // the field's real text and selection (code points) replace what the soft keyboard holds,
+        // its composition dropped: the field rejected or changed text the keyboard typed. The base
+        // does nothing (no soft keyboard, or one that keeps no text)
+        virtual void updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd);
+        // the soft keyboard keeps the field's text (Android, iOS): the engine resyncs it. False: no
+        // soft keyboard, or one that keeps nothing between edits (the web)
+        virtual bool keepsVirtualKeyboardText();
 
         // The system clipboard, UTF-8 text. The base implementation keeps an in-process
         // string (headless runs, tests); every platform layer replaces it.
@@ -290,6 +308,12 @@ namespace jasperengine {
         // The user's languages as BCP 47 tags ("es-MX"), most preferred first; never empty
         // (the base returns {"en-US"})
         virtual std::vector<std::string> getPreferredLocales();
+        // The platform saw a change that may be the user's languages (Android's configuration, the
+        // Apple locale notification, Windows' WM_SETTINGCHANGE "intl", the web's languagechange):
+        // when getPreferredLocales() differs from what it said last, the game language and Auto
+        // titles resolve again (TitleArtLanguage::localesChanged; game-ui-localization.md R10).
+        // True when it changed. Main thread.
+        bool notifyLocalesMayHaveChanged();
         // getPreferredLocales()[0], normalized ("es-MX")
         std::string getLocale();
         // "es": the language subtag of getLocale(), lower case
@@ -306,6 +330,17 @@ namespace jasperengine {
         // The values the base app getters return (generated main, editor Play start)
         static void setApplicationInfo(const ApplicationInfo& info);
         static const ApplicationInfo& getApplicationInfo();
+        // The build's Build Profile ("" none) and its Scripting Define Symbols, set once at start
+        // (game.json, a Compile build's init, editor Play with the active profile)
+        static void setBuildInfo(const std::string& profile, const std::vector<std::string>& defines);
+        static const std::string& getBuildProfile();
+        static const std::vector<std::string>& getDefines();
+        // one hash lookup
+        static bool isDefined(const std::string& symbol);
+        // Patch And Run (docs/specs/build-and-run-on-device.md R27): the patch of the development
+        // content folder a development player runs (0: its packaged content; the editor's Play too)
+        static void setContentPatch(int patch);
+        static int getContentPatch();
         // Android: the installed package (versionName, versionCode, package name, label);
         // Apple: the main bundle; elsewhere setApplicationInfo's values
         virtual std::string getAppVersion();

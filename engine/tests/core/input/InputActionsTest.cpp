@@ -10,6 +10,7 @@
 #include "TestSystem.h"
 #include "input/InputActionAssetJson.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 
 #include <gtest/gtest.h>
 
@@ -435,6 +436,93 @@ TEST_F(InputActionsTest, DisplayNames){
     Engine::systemGamepadConnect(0, "Sony DualSense Wireless Controller");
     EXPECT_EQ(InputActions::getBindingDisplayName("00000003"), "Cross");
     EXPECT_EQ(InputActions::getBinding("00000003").getDisplayName(), "Cross");
+}
+
+// input-device-awareness AC8: the pad's family from its name, and each family's labels
+TEST_F(InputActionsTest, GamepadFamilyAndLabels){
+    const std::pair<const char*, GamepadFamily> names[] = {
+        {"Xbox Wireless Controller", GamepadFamily::Xbox},
+        {"DualSense Wireless Controller", GamepadFamily::PlayStation},
+        {"Pro Controller", GamepadFamily::Nintendo},
+        {"Logitech Dual Action", GamepadFamily::Generic},
+        {"Wireless Gamepad (STANDARD GAMEPAD Vendor: 057e Product: 2009)", GamepadFamily::Nintendo},
+        {"054c-0ce6-Wireless Controller", GamepadFamily::PlayStation},
+    };
+    for (const auto& [name, family] : names) {
+        EXPECT_EQ(InputSchemeTracker::familyOf(name), family) << name;
+    }
+
+    const char* south[] = {"A", "Cross", "B", "A"};
+    const char* trigger[] = {"RT", "R2", "ZR", "Right Trigger"};
+    const char* view[] = {"View", "Share", "\xE2\x88\x92", "Back"};
+    for (int i = 0; i < 4; i++){
+        Engine::systemGamepadConnect(0, names[i].first);
+        EXPECT_EQ(InputActions::getControlDisplayName("gamepad/a"), south[i]) << names[i].first;
+        EXPECT_EQ(InputActions::getControlDisplayName("gamepad/right_trigger"), trigger[i]) << names[i].first;
+        EXPECT_EQ(InputActions::getControlDisplayName("gamepad/back"), view[i]) << names[i].first;
+        Engine::systemGamepadDisconnect(0);
+    }
+    // Nintendo's labels are by position: its east button reads A
+    Engine::systemGamepadConnect(0, "Nintendo Switch Pro Controller");
+    EXPECT_EQ(InputActions::getControlDisplayName("gamepad/b"), "A");
+    EXPECT_EQ(InputActions::getControlDisplayName("gamepad/left_bumper"), "L");
+    EXPECT_EQ(InputActions::getControlDisplayName("gamepad/left_trigger"), "ZL");
+    EXPECT_EQ(InputActions::getControlDisplayName("gamepad/start"), "+");
+}
+
+// input-device-awareness AC9: an action's binding for a scheme, its display name and glyph key
+TEST_F(InputActionsTest, ActionDisplayForScheme){
+    load(R"({"version":1,"maps":[{"name":"Gameplay","actions":[
+     {"name":"Jump","bindings":[{"id":"00000001","path":"keyboard/space","groups":["Keyboard&Mouse"]},{"id":"00000002","path":"gamepad/a"},
+      {"id":"00000003","path":"touch/primary/press"}]},
+     {"name":"Fire","bindings":[{"id":"00000004","path":"mouse/left"},{"id":"00000005","path":"gamepad/right_trigger"}]},
+     {"name":"Move","type":"VECTOR2","bindings":[{"id":"00000006","composite":"dpad2d","parts":{"up":{"path":"keyboard/w"},"down":{"path":"keyboard/s"},"left":{"path":"keyboard/a"},"right":{"path":"keyboard/d"}}},
+      {"id":"00000007","path":"virtual/stick"}]}]}]})");
+    InputSchemeTracker::reset(false);
+    Engine::systemGamepadConnect(0, "Pad");
+    Engine::systemGamepadConnect(1, "Sony DualSense Wireless Controller");
+    // the PlayStation pad was used last
+    Engine::systemGamepadButtonDown(1, D_GAMEPAD_BUTTON_Y);
+    Input::beginFrame(1.0 / 60.0);
+    Input::endFrame();
+    ASSERT_EQ(InputSchemeTracker::getLastGamepad(), 1);
+    Engine::systemGamepadButtonUp(1, D_GAMEPAD_BUTTON_Y);
+
+    EXPECT_EQ(InputActions::getActionDisplayName("Gameplay/Jump", "Keyboard&Mouse"), "Space");
+    EXPECT_EQ(InputActions::getActionDisplayName("Gameplay/Jump", "Gamepad"), "Cross");
+    EXPECT_EQ(InputActions::getActionDisplayName("Gameplay/Jump", "Touch"), "Touch");
+    // the current scheme by default
+    EXPECT_EQ(InputActions::getActionDisplayName("Gameplay/Jump"), "Cross");
+    EXPECT_EQ(InputActions::getActionGlyph("Gameplay/Jump", "Keyboard&Mouse"), "keyboard/space");
+    EXPECT_EQ(InputActions::getActionGlyph("Gameplay/Jump", "Gamepad"), "gamepad/playstation/cross");
+    EXPECT_EQ(InputActions::getActionGlyph("Gameplay/Jump", "Touch"), "touch/tap");
+    EXPECT_EQ(InputActions::getActionGlyph("Gameplay/Fire", "Gamepad"), "gamepad/playstation/r2");
+    EXPECT_EQ(InputActions::getActionGlyph("Gameplay/Fire", "Keyboard&Mouse"), "mouse/left");
+    // no touch binding: ""
+    EXPECT_EQ(InputActions::getActionDisplayName("Gameplay/Fire", "Touch"), "");
+    EXPECT_EQ(InputActions::getActionGlyph("Gameplay/Fire", "Touch"), "");
+    // a composite by its first part; a virtual control belongs to every scheme
+    EXPECT_EQ(InputActions::getActionDisplayName("Gameplay/Move", "Keyboard&Mouse"), "W/A/S/D");
+    EXPECT_EQ(InputActions::getActionGlyph("Gameplay/Move", "Keyboard&Mouse"), "keyboard/w+keyboard/a+keyboard/s+keyboard/d");
+    EXPECT_EQ(InputActions::getActionGlyph("Gameplay/Move", "Touch"), "virtual/stick");
+    EXPECT_EQ(InputActions::getBindingGlyph("00000002"), "gamepad/playstation/cross");
+    EXPECT_TRUE(InputActions::isBindingInScheme("00000002", "Gamepad"));
+    EXPECT_FALSE(InputActions::isBindingInScheme("00000001", "Gamepad"));
+    // an override changes it
+    const uint32_t revision = InputActions::getBindingRevision();
+    InputActions::setOverride("00000001", "keyboard/e");
+    EXPECT_NE(InputActions::getBindingRevision(), revision);
+    EXPECT_EQ(InputActions::getActionDisplayName("Gameplay/Jump", "Keyboard&Mouse"), "E");
+    EXPECT_EQ(InputActions::getActionGlyph("Gameplay/Jump", "Keyboard&Mouse"), "keyboard/e");
+    // the generic pad's glyphs name the position
+    Engine::systemGamepadButtonDown(0, D_GAMEPAD_BUTTON_A);
+    Input::beginFrame(1.0 / 60.0);
+    Input::endFrame();
+    Engine::systemGamepadButtonUp(0, D_GAMEPAD_BUTTON_A);
+    EXPECT_EQ(InputActions::getActionGlyph("Gameplay/Jump"), "gamepad/generic/south");
+    EXPECT_EQ(InputActions::getActionDisplayName("Gameplay/Jump"), "A");
+    EXPECT_EQ(InputActions::getActionDisplayName("Gameplay/Jump", "Joystick"), "");
+    InputSchemeTracker::reset(false);
 }
 
 TEST_F(InputActionsTest, ControlBoundForShortcutRouting){

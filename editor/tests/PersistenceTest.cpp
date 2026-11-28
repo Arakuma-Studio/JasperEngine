@@ -17,6 +17,7 @@
 #include "component/ActionComponent.h"
 #include "subsystem/AudioSystem.h"
 #include "object/GameObject.h"
+#include "object/sound/Audio.h"
 #include "component/ButtonComponent.h"
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
@@ -38,6 +39,7 @@
 #include <thread>
 #endif
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -369,6 +371,48 @@ TEST_F(PersistenceTest, PlayingSoundKeepsItsVoice) {
         moved.handle = 0;
     }
     Engine::removeAllScenes();
+}
+
+// S97 REQ-23 (AC22): a free voice the persistent scene owns plays on across a load; one the main
+// scene owns stops with it
+TEST_F(PersistenceTest, PersistentFreeVoiceSurvivesALoad) {
+    const AudioBackend backend = AudioSystem::getBackend();
+    AudioSystem::close();
+    // the null driver: a voice whatever the machine has (this test needs no output)
+    AudioSystem::setBackend(AudioBackend::Null);
+    writeWav(dir / "hum.wav", 8000 * 5);
+    Scene* first = nullptr;
+    SceneManager::registerScene(1, "First", [this, &first]() {
+        first = newScene();
+        Engine::setScene(first);
+    });
+    SceneManager::registerScene(2, "Second", [this, &first]() {
+        Engine::setScene(newScene());
+        // as the exported load_X: the replaced scene goes
+        LuaBinding::cleanupLuaScripts(first);
+        ObjectManager::forgetScene(first);
+        scenes.erase(std::remove_if(scenes.begin(), scenes.end(), [first](const std::unique_ptr<Scene>& scene) { return scene.get() == first; }),
+                     scenes.end());
+        first = nullptr;
+    });
+    loadAndFrame("First");
+    Scene* persistent = SceneManager::ensurePersistentScene();
+    ASSERT_NE(persistent, nullptr);
+    PlayOptions kept;
+    kept.scene = persistent;
+    SoundHandle survives = Audio::play("hum.wav", kept);
+    SoundHandle stops = Audio::play("hum.wav");
+    ASSERT_TRUE(survives.isPlaying());
+    ASSERT_TRUE(stops.isPlaying());
+
+    loadAndFrame("Second");
+    frame();
+    EXPECT_TRUE(survives.isPlaying()) << "owned by the persistent scene";
+    EXPECT_FALSE(stops.isValid()) << "owned by the scene the load replaced";
+    survives.stop();
+    Engine::removeAllScenes();
+    AudioSystem::close();
+    AudioSystem::setBackend(backend);
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -860,35 +904,46 @@ TEST_F(PersistenceTest, ReleasedScriptsLeavePersistentEvents) {
 }
 
 // persistent 3D sounds are heard by the loaded main scene's camera: the persistent scene's
-// system places the listener every frame
+// system places the listener every frame, whether the clip loads in the background or at once
+// (a clip that cannot load stops its source: nothing plays, nothing needs the listener)
 TEST_F(PersistenceTest, Persistent3DSoundsUseTheMainCameraAsListener) {
-    Scene* level = newScene();
-    const Entity cameraEntity = entity(level, "LevelCamera");
-    // perspective: it hears at its position (an orthographic or UI camera at the centre of its
-    // view, AudioSourceTest.A2DCamerasListenerStandsAtTheCentreOfItsView)
-    CameraComponent perspective;
-    perspective.type = CameraType::CAMERA_PERSPECTIVE;
-    level->addComponent<CameraComponent>(cameraEntity, perspective);
-    level->getComponent<Transform>(cameraEntity).position = Vector3(5, 6, 7);
-    level->getComponent<Transform>(cameraEntity).worldPosition = Vector3(5, 6, 7);
-    level->setCamera(cameraEntity);
-    const Entity source = entity(level, "Sound3D");
-    AudioSourceComponent audio;
-    audio.filename = "nothing.wav";
-    level->addComponent<AudioSourceComponent>(source, audio);
-    Engine::setScene(level);
-    ASSERT_TRUE(SceneManager::dontDestroyOnLoad(level, source));
-    SceneManager::flushPersistentMoves();
-    // asked to play (its file does not exist: no voice, here or without audio output)
-    AudioSourceComponent& moved = SceneManager::getPersistentScene()->getComponent<AudioSourceComponent>(persistentNamed("Sound3D")[0]);
-    moved.state = AudioSourceState::Playing;
-    AudioSystem::getSoloud().set3dListenerParameters(0, 0, 0, 0, 0, -1, 0, 1, 0);
-    frame();
-    const float* listener = AudioSystem::getSoloud().m3dPosition;
-    EXPECT_FLOAT_EQ(listener[0], 5.0f);
-    EXPECT_FLOAT_EQ(listener[1], 6.0f);
-    EXPECT_FLOAT_EQ(listener[2], 7.0f);
-    Engine::removeAllScenes();
+    writeWav(dir / "sound3d-async.wav", 8000);
+    writeWav(dir / "sound3d-sync.wav", 8000);
+    // the mode goes back as it was, an ASSERT's return included
+    struct AsyncLoadingRestore { bool was = Engine::isAsyncLoading(); ~AsyncLoadingRestore() { Engine::setAsyncLoading(was); } } asyncRestore;
+    for (const bool async : {true, false}) {
+        SCOPED_TRACE(async ? "loaded in the background" : "loaded at once");
+        Engine::setAsyncLoading(async);
+        Scene* level = newScene();
+        const Entity cameraEntity = entity(level, "LevelCamera");
+        // perspective: it hears at its position (an orthographic or UI camera at the centre of its
+        // view, AudioSourceTest.A2DCamerasListenerStandsAtTheCentreOfItsView)
+        CameraComponent perspective;
+        perspective.type = CameraType::CAMERA_PERSPECTIVE;
+        level->addComponent<CameraComponent>(cameraEntity, perspective);
+        level->getComponent<Transform>(cameraEntity).position = Vector3(5, 6, 7);
+        level->getComponent<Transform>(cameraEntity).worldPosition = Vector3(5, 6, 7);
+        level->setCamera(cameraEntity);
+        const Entity source = entity(level, "Sound3D");
+        AudioSourceComponent audio;
+        // a file of its own per mode: a clip the pool already holds loads at once in either
+        audio.filename = async ? "sound3d-async.wav" : "sound3d-sync.wav";
+        level->addComponent<AudioSourceComponent>(source, audio);
+        Engine::setScene(level);
+        ASSERT_TRUE(SceneManager::dontDestroyOnLoad(level, source));
+        SceneManager::flushPersistentMoves();
+        // asked to play (a voice only where there is an audio output)
+        AudioSourceComponent& moved = SceneManager::getPersistentScene()->getComponent<AudioSourceComponent>(persistentNamed("Sound3D")[0]);
+        moved.state = AudioSourceState::Playing;
+        AudioSystem::getSoloud().set3dListenerParameters(0, 0, 0, 0, 0, -1, 0, 1, 0);
+        frame();
+        const float* listener = AudioSystem::getSoloud().m3dPosition;
+        EXPECT_FLOAT_EQ(listener[0], 5.0f);
+        EXPECT_FLOAT_EQ(listener[1], 6.0f);
+        EXPECT_FLOAT_EQ(listener[2], 7.0f);
+        Engine::removeAllScenes();
+        SceneManager::clearAll();
+    }
 }
 
 // a scene's camera made persistent: that scene falls back to a default camera, with a warning

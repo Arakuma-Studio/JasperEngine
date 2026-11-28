@@ -6,8 +6,9 @@
 // asset view of InspectorAnimator.cpp): the Avatar Mask figure's geometry and toggles, the mask
 // "Create Mask from Selection" build and its scene step, "Create Animator Controller from Clips"
 // (the controller written and played by an Animator the player hands over to, one scene step),
-// the mask coverage line of the Bindings report, and the preview hierarchy of a model the mask
-// Inspector draws its tree and figure from. S21's masks (AvatarMaskDef) and weight rule
+// the mask coverage line of the Bindings report, the preview hierarchy of a model the mask
+// Inspector draws its tree and figure from, and the Layers table's fields (one scene step each)
+// with the Mesh Space Rotation row (docs/specs/mesh-space-rotation.md R25 to R27, R32). S21's masks (AvatarMaskDef) and weight rule
 // (AvatarMaskWeights.h). Kept apart so the editor tests drive exactly what the Inspector's clicks
 // run. Main thread.
 
@@ -29,6 +30,7 @@ namespace jasperengine{
 }
 
 namespace jasperengine::editor{
+    class Command;
     class Project;
 }
 
@@ -117,5 +119,32 @@ namespace jasperengine::editor::animlayersui{
     bool previewHierarchyFromModel(Project* project, const std::string& model, PreviewHierarchy& out);
     // from a GameObject of a scene (its descendants; the humanoid rig of its Models)
     bool previewHierarchyFromEntity(Scene* scene, Entity root, PreviewHierarchy& out);
+
+    // ---- the Layers table ----
+
+    // One field of an authored layer (layers[i].<field>) as a scene command; a player with the
+    // default layering gets its whole list (one Base Layer) so the field has a place. Null when
+    // the layer does not exist. Defined for float (weight), AnimationLayerBlend and bool.
+    template<class T>
+    Command* layerFieldCommand(Project* project, uint32_t sceneId, Entity entity, const AnimationPlayerComponent& player, int layer,
+                               const std::string& field, const T& value, T AnimationPlayerLayer::* member);
+    // the row's summary of a layer above 0: "override, mask arm.mask", ", mesh space" when on
+    std::string layerSummary(const AnimationPlayerLayer& layer);
+
+    // the Mesh Space Rotation checkbox's tooltip (spec R25)
+    extern const char* const MESH_SPACE_ROTATION_TOOLTIP;
+    // why the checkbox is disabled on a layer (layer 0, an Additive layer: spec R26); null when
+    // it is not
+    const char* meshSpaceRotationDisabledReason(int layer, AnimationLayerBlend blend);
+    // The GameObjects the player's clips animate below `root` (their transform tracks' targets;
+    // a humanoid clip's, the rig's slot bones): what its Mesh Space Rotation rig is built from
+    std::vector<Entity> playerAnimatedTargets(Project* project, Scene* scene, Entity root, const AnimationPlayerComponent& player);
+    // The GameObjects below `root` where Mesh Space Rotation applies with `mask`, on the Player's
+    // rig of `animated` (anim::playerRig, anim::playerMaskBoundaryBones: the runtime's rule and
+    // rig, body parts from the humanoid rig of its Models); parents first, by depth
+    std::vector<Entity> meshSpaceBoundary(Scene* scene, Entity root, const anim::AvatarMaskDef& mask, const std::vector<Entity>& animated);
+    // the read-only line under the checkbox (spec R27): "Applies at: Spine, ..." (names), the
+    // generic "Applies where the mask starts or stops" when there is no mask data or no rig
+    std::string meshSpaceBoundaryLine(Scene* scene, Entity root, const anim::AvatarMaskDef* mask, const std::vector<Entity>& animated);
 
 }

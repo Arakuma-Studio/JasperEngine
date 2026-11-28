@@ -54,6 +54,8 @@ namespace jasperengine::editor {
     bool isCookableTexture(const std::string& path);
     // R1's texture sources (the cookable ones, .svg and .ktx2)
     bool isTextureSource(const std::string& path);
+    // Sources only the editor decodes (.tif, .tiff, .psb: S94 F50): a game reads their cooks, never them
+    bool isEditorDecodedTexture(const std::string& path);
 
     struct TextureCookState {
         TextureCookStatus status = TextureCookStatus::None;

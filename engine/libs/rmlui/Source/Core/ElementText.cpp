@@ -326,7 +326,9 @@ void ElementText::OnRender()
 	if (!scissor_region.Valid())
 		scissor_region = render_manager.GetLayerRegion(); // fork (P7-F2): a filter's layer may cover more than the viewport
 
-	if (!GetTransformState() || !GetTransformState()->GetTransform())
+	// Fork (S92-F3): under a transform that only scales and translates, the lines where they are drawn.
+	RenderManager::AxisAlignedTransform axis_aligned;
+	if (RenderManager::GetAxisAlignedTransform(GetTransformState() ? GetTransformState()->GetTransform() : nullptr, axis_aligned))
 	{
 		const FontMetrics& font_metrics = GetFontEngineInterface()->GetFontMetrics(GetFontFaceHandle());
 		const int ascent = Math::RoundUpToInteger(font_metrics.ascent);
@@ -336,7 +338,13 @@ void ElementText::OnRender()
 		for (const Line& line : lines)
 		{
 			const Vector2i baseline = Vector2i(translation + line.position);
-			const Rectanglei line_region = Rectanglei::FromCorners(baseline - Vector2i(0, ascent), baseline + Vector2i(line.width, descent));
+			Rectanglei line_region = Rectanglei::FromCorners(baseline - Vector2i(0, ascent), baseline + Vector2i(line.width, descent));
+			if (line_region.Valid() && (axis_aligned.scale != Vector2f(1.f) || axis_aligned.offset != Vector2f(0.f)))
+			{
+				Rectanglef drawn = axis_aligned.Map(Rectanglef(line_region));
+				Math::ExpandToPixelGrid(drawn);
+				line_region = Rectanglei(drawn);
+			}
 
 			if (line_region.Valid() && scissor_region.Intersects(line_region))
 			{
@@ -403,18 +411,24 @@ void ElementText::RenderShadowList(RenderManager& render_manager, Vector<Shadow>
 		if (!shadow.filter)
 			continue;
 
+		Rectanglei scissor = Rectanglei::MakeInvalid();
 		if (!transformed)
 		{
 			Rectanglef region = shadow.ink.Translate(translation).Extend(3.f * sigma + 1.f);
 			Math::ExpandToPixelGrid(region);
-			const Rectanglei scissor = Rectanglei(region).IntersectIfValid(initial_scissor_region);
+			scissor = Rectanglei(region).IntersectIfValid(initial_scissor_region);
 			if (!scissor.Valid())
 				continue;
 			render_manager.SetScissorRegion(scissor);
 		}
 
 		GetFontEngineInterface()->ReportTextEffectFallback(render_manager);
-		render_manager.PushLayer();
+		// Fork (S92-F4): the blur's layer covers the shadow's window (within the layer it is composited into), not the
+		// viewport; under a transform the region of the layer it is drawn in, as before.
+		if (scissor.Valid())
+			render_manager.PushLayer(scissor.IntersectIfValid(render_manager.GetLayerRegion()));
+		else
+			render_manager.PushLayer();
 		for (const TexturedGeometry& part : shadow.geometry)
 			part.geometry.Render(translation, part.texture);
 		if (shadow.decoration)

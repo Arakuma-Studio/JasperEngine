@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: Shadows
 canvasWidth: 1280
 canvasHeight: 720
@@ -15,9 +15,10 @@ windowHeight: 720
 windowResizable: true
 assetsDir: assets
 luaDir: scripts
+transparencySortMode: perspective
 startSceneId: 1
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: Main Scene.scene
     filepathGuid: 2385f1a5e2877b94bc16d5309fb19aca
-  - filepath: Legacy.scene
-    filepathGuid: b4603f423740bf430d1fe579010f6fd8

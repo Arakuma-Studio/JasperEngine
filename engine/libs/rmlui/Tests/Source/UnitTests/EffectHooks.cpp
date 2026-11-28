@@ -568,11 +568,15 @@ TEST_CASE("EffectHooks.render_manager_layer_regions")
 	const Rectanglei viewport = Rectanglei::FromSize({100, 80});
 	CHECK(render_manager.GetLayerRegion() == viewport);
 
-	// within the viewport: an ordinary layer
-	render_manager.PushLayer(Rectanglei::FromCorners({10, 10}, {50, 50}));
-	CHECK(render_interface.regions.empty());
-	CHECK(render_manager.GetLayerRegion() == viewport);
+	// within the viewport: asked of the render interface too, which may size the layer to it (fork, S92-F4)
+	const Rectanglei inside = Rectanglei::FromCorners({10, 10}, {50, 50});
+	render_manager.PushLayer(inside);
+	REQUIRE(render_interface.regions.size() == 1);
+	CHECK(render_interface.regions[0] == inside);
+	CHECK(render_manager.GetLayerRegion() == inside);
 	render_manager.PopLayer();
+	CHECK(render_manager.GetLayerRegion() == viewport);
+	render_interface.regions.clear();
 
 	// beyond it: a region layer, the scissor clamped to its region instead of the viewport
 	const Rectanglei region = Rectanglei::FromCorners({-20, 10}, {50, 50});
@@ -639,9 +643,10 @@ TEST_CASE("EffectHooks.filter_layer_region_beyond_viewport")
 	TestsShell::RenderLoop();
 
 	// #f's layer: its filter region (-65, 35)-(65, 125) within the viewport extended by twice the blur's reach (30 px);
-	// #g's lies within the viewport (an ordinary layer)
-	REQUIRE(render_interface.regions.size() == 1);
+	// #g's lies within the viewport: its filter region, asked for too (fork, S92-F4)
+	REQUIRE(render_interface.regions.size() == 2);
 	CHECK(render_interface.regions[0] == Rectanglei::FromCorners({-30, 35}, {65, 125}));
+	CHECK(render_interface.regions[1] == Rectanglei::FromCorners({185, 35}, {265, 115}));
 
 	// what is drawn into it beyond the viewport is scissored by the layer's region, not cut at the viewport's edge
 	const ClipProbe* beyond = FindProbe("beyond");

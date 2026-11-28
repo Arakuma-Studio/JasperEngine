@@ -14,6 +14,7 @@
 #include "TestGoldenCommon.h"
 
 #include "Engine.h"
+#include "RmlRenderer.h"
 #include "LuaBinding.h"
 #include "object/ParticleSystem.h"
 #include "component/ActionComponent.h"
@@ -270,6 +271,32 @@ TEST_F(ParticleSystemElementTest, DrawsClippedAndRemovalDestroysTheHierarchy){
     document.getBody().appendChild(panel);
     GpuEnvironment::drawFrames(2);
     EXPECT_TRUE(edge.hasParticleSystem()) << "made again once attached";
+}
+
+// S92 R2: a <particle-system> that draws particles is a live source, its document drawn every
+// frame however still the rest is; without one the document's frames are kept
+TEST_F(ParticleSystemElementTest, FramesWithParticlesAreAlwaysDrawn){
+    page("p", panelCss,
+         "<div id=\"panel\">"
+         "<particle-system id=\"stream\" src=\"fx/stream.prefab\" autoplay style=\"left: 60px; top: 60px\"></particle-system>"
+         "</div>");
+    SceneFixture fixture;
+    UIDocument document = fixture.addDocument("ui/p.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    GpuEnvironment::drawFrames(4);
+    for (int i = 0; i < 4; i++){
+        GpuEnvironment::drawFrames(1);
+        const HtmlUIRenderStats stats = document.getRenderStats();
+        EXPECT_EQ(stats.framesKept, 0u) << "frame " << i;
+        EXPECT_NE(stats.liveSources & RmlRenderer::LIVE_PARTICLES, 0u) << "frame " << i;
+    }
+    document.getElementById("stream").remove();
+    bool kept = false;
+    for (int i = 0; i < 30 && !kept; i++){
+        GpuEnvironment::drawFrames(1);
+        kept = document.getRenderStats().framesKept == 1;
+    }
+    EXPECT_TRUE(kept) << "the document without its particles was never kept";
 }
 
 // a new src replaces the whole hierarchy; the document's unload destroys it too

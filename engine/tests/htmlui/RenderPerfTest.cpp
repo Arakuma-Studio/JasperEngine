@@ -22,6 +22,10 @@
 //   <= 16 draws, no stencil draw, the engine's CPU time <= baseline + 5 %.
 // - Gathering: <= 0.2 ms per 10 000 gathered vertices (the first frame of B2, everything new).
 // - The 1-sample report (AC14): every benchmark at one sample with the defaults, printed, not gated.
+// - S92 R33 (B1, B2): the frame signature's CPU time <= 5 % of the recording and the plan's
+//   (Context::Render and the gather), and B1's frames kept by S92 R1 cost no more CPU than the same
+//   frames replayed. Every other measurement replays every frame and every layer (S92's frame
+//   reuse and layer result cache off: what S16 measures is the replay).
 //
 // CPU time is the engine's own work, the frame's wall time less the graphics backend's share
 // (RenderBackendTime: llvmpipe and lavapipe do on this thread what a GPU driver does not), the
@@ -70,19 +74,26 @@ using namespace jasperengine::test;
 
 namespace {
 
-    // S16 off (D1) or the defaults
+    // S16 off (D1) or the defaults; every frame and layer replayed unless keep (S92's frame reuse
+    // and layer result cache: a kept frame replays nothing, a cached layer is not pushed, and S16
+    // measures the replay)
     struct S16Mode {
-        bool batching, primitives, transformAware;
-        explicit S16Mode(bool on):
-            batching(RmlRenderer::isBatching()), primitives(RmlRenderer::isSdfPrimitives()), transformAware(RmlFontEngine::isTransformAwareText()){
+        bool batching, primitives, transformAware, frameReuse, layerCache;
+        explicit S16Mode(bool on, bool keep = false):
+            batching(RmlRenderer::isBatching()), primitives(RmlRenderer::isSdfPrimitives()), transformAware(RmlFontEngine::isTransformAwareText()),
+            frameReuse(RmlRenderer::isFrameReuse()), layerCache(RmlRenderer::isLayerCache()){
             RmlRenderer::setBatchingForTesting(on);
             RmlRenderer::setSdfPrimitivesForTesting(on);
             RmlFontEngine::setTransformAwareTextForTesting(on);
+            RmlRenderer::setFrameReuseForTesting(keep);
+            RmlRenderer::setLayerCacheForTesting(keep);
         }
         ~S16Mode(){
             RmlRenderer::setBatchingForTesting(batching);
             RmlRenderer::setSdfPrimitivesForTesting(primitives);
             RmlFontEngine::setTransformAwareTextForTesting(transformAware);
+            RmlRenderer::setFrameReuseForTesting(frameReuse);
+            RmlRenderer::setLayerCacheForTesting(layerCache);
         }
     };
 
@@ -94,6 +105,8 @@ namespace {
         double frameMs = 0.0;                // median wall time
         double gatherMs = 0.0;               // median
         double updateMs = 0.0, recordMs = 0.0, replayMs = 0.0;   // medians: Context::Update, Render, endFrame less the backend
+        double signatureMs = 0.0;            // median: the frame signature (S92 R1)
+        uint32_t framesKept = 0;             // measured frames S92 R1 kept
         size_t gatherLive = 0, gatherCapacity = 0;
         std::array<uint32_t, (size_t)RmlRenderer::RunBreak::COUNT> runBreaks{};   // the last frame's
         size_t basePages = 0, distancePages = 0;   // the font engine's atlas pages after the run
@@ -142,7 +155,7 @@ namespace {
             idleFrames = (idle && (runner.renderer()->getStats().drawCalls > 0 || i >= 30)) ? idleFrames + 1 : 0;
         }
         BenchRun run;
-        std::vector<double> engines, frames, gathers, updates, records, replays;
+        std::vector<double> engines, frames, gathers, updates, records, replays, signatures;
         for (int i = 0; i < warm + measured; i++){
             clock += 1.0 / 60.0;
             if (perFrame)
@@ -173,6 +186,8 @@ namespace {
             updates.push_back(phases.updateMs);
             records.push_back(phases.renderMs);
             replays.push_back(phases.endFrameMs - RenderBackendTime::totalMs());
+            signatures.push_back(runner.renderer()->getLastSignatureMs());
+            run.framesKept += stats.framesKept;
             run.gatherLive = std::max(run.gatherLive, runner.renderer()->getGatherLiveBytes());
             run.gatherCapacity = std::max(run.gatherCapacity, runner.renderer()->getGatherCapacityBytes());
         }
@@ -185,6 +200,7 @@ namespace {
         run.updateMs = median(updates);
         run.recordMs = median(records);
         run.replayMs = median(replays);
+        run.signatureMs = median(signatures);
         return run;
     }
 
@@ -276,6 +292,37 @@ namespace {
         }
     }
 
+    // S92 R33: the frame signature's share of the recording and the plan (Context::Render, the gather)
+    double signatureShare(const BenchRun& run){
+        const double recordAndPlan = run.recordMs + run.gatherMs;
+        return recordAndPlan > 0.0 ? run.signatureMs / recordAndPlan : 0.0;
+    }
+
+    void reportSignature(const std::string& name, const BenchRun& s16, const BenchRun* kept = nullptr){
+        std::printf("[ ui-bench ] %-24s S92 signature %.4f ms, %.1f %% of record + plan %.3f ms\n", "", s16.signatureMs,
+                    100.0 * signatureShare(s16), s16.recordMs + s16.gatherMs);
+        results()[name]["s92"] = {{"signatureMs", s16.signatureMs}, {"signatureShare", signatureShare(s16)}};
+        if (kept){
+            std::printf("[ ui-bench ] %-24s S92 frame reuse: %u of 120 frames kept, engine %.3f ms (every frame replayed: %.3f ms)\n", "",
+                        kept->framesKept, kept->engineMs, s16.engineMs);
+            results()[name]["s92"]["framesKept"] = kept->framesKept;
+            results()[name]["s92"]["keptEngineMs"] = kept->engineMs;
+        }
+        std::ofstream out(resultsFile());
+        out << results().dump(2) << "\n";
+    }
+
+    // the defaults with S92's frame reuse on
+    BenchRun keptRun(const std::string& asset, const std::string& assetRoot){
+        S16Mode on(true, true);
+        FixtureRunner runner(1280, 720, 4);
+        EXPECT_TRUE(runner.valid());
+        if (!runner.valid() || !load(runner, asset, assetRoot))
+            return BenchRun();
+        HtmlUI::getFontEngine().finishDistanceGlyphsForTesting();
+        return measure(runner);
+    }
+
 }
 
 TEST(HtmlUIRenderPerf, B1Examples){
@@ -293,6 +340,11 @@ TEST(HtmlUIRenderPerf, B1Examples){
         std::printf("[ ui-bench ] %-24s R21 draw target (<= 30 %%, <= 40): %s\n", "", target ? "met" : "not met");
         EXPECT_LE(s16.maxDraws, baseline.maxDraws) << example;
         EXPECT_LE(s16.engineMs, baseline.engineMs * 1.05 * slack + 0.05) << example;
+        // S92 R33
+        const BenchRun kept = keptRun(asset, examplesRoot().string());
+        reportSignature(std::string("B1 ") + example, s16, &kept);
+        EXPECT_LE(signatureShare(s16), 0.05 * slack) << example;
+        EXPECT_LE(kept.engineMs, s16.engineMs * slack + 0.02) << example;
     }
 }
 
@@ -302,6 +354,9 @@ TEST(HtmlUIRenderPerf, B2List500){
     BenchRun baseline, s16;
     both("fixtures/bench/list-500.html", 1280, baseline, s16, [&](const BenchRun& b){ return b.engineMs * 0.5 * slack; });
     record("B2 list-500", baseline, s16);
+    // S92 R33
+    reportSignature("B2 list-500", s16);
+    EXPECT_LE(signatureShare(s16), 0.05 * slack);
     EXPECT_LE(s16.maxDraws, 16u);
     EXPECT_EQ(s16.maxStencilDraws, 0u);
     EXPECT_EQ(s16.maxBoxShadowTextures, 0u);
@@ -523,6 +578,100 @@ TEST(HtmlUIRenderPerf, ProfileTarget){
         frames++;
     }
     std::printf("[ profile  ] %d frames\n", frames);
+}
+
+// S93 R39 (AC14): the first draw of a cold "GO!" at 324 px with the port's outline and glow, the main thread's text
+// generation (RmlFontEngine::GenerateString) in that frame <= 8 ms: with GPU effects while the distance glyphs are pending,
+// and with transform-aware text off (the CPU path). Effects drawn on the CPU while pending: the distance-transform outline
+// and the recursive blur (R11), a big text's glyphs side by side on the workers; the dense kernel took 1.3-3 s (the port's
+// measure). The least of 3 cold runs, enforced by the benchmark run (JASPER_HTMLUI_PERF_SLACK set: a quiet machine; the
+// workers this needs are the ones a loaded host lacks), elsewhere printed.
+TEST(GlyphEffectPerf, OutlinedGoFirstDraw){
+    JASPER_REQUIRE_GPU();
+    RmlFontEngine& fonts = HtmlUI::getFontEngine();
+    const std::string rml = "<rml><head><style>body { margin: 0; font-family: sans-serif; font-weight: bold; color: #ffffff; } "
+                            "p { margin: 0; font-size: 324px; line-height: 340px; "
+                            "font-effect: outline(15px #000000), glow(4px 12px 0px 8px #000000); }</style></head>"
+                            "<body><p>GO!</p></body></rml>";
+    const double slack = compat::benchmarkPerfSlack();
+    const double budget = 8.0 * (slack > 0.0 ? slack : 1.0);
+    // the engine's way: distance glyphs on the background lane (this binary makes them at once for its goldens)
+    RmlFontEngine::setSynchronousDistanceGlyphsForTesting(false);
+    for (const bool gpu : {true, false}){
+        S16Mode mode(gpu);   // off: no transform-aware text, so no GPU effects
+        double least = 1e9;
+        uint32_t fallbacks = 0;
+        for (int run = 0; run < 3 && least > budget; run++){
+            RenderTestContext test(1280, 720);
+            ASSERT_TRUE(test.isValid());
+            fonts.ReleaseFontResources();
+            ASSERT_NE(test.loadFromMemory(rml, "render/go.rml"), nullptr);
+            const double before = fonts.getGenerateStringMs();
+            test.renderFrame();
+            least = std::min(least, fonts.getGenerateStringMs() - before);
+            fallbacks = test.renderer.getStats().textEffectFallbacks;
+        }
+        std::printf("[ ui-bench ] GO! 324 px, outline 15 px and glow, first draw (%s): %.3f ms of text generation, %u CPU effects "
+                    "(budget 8 ms%s)\n", gpu ? "GPU effects, distance glyphs pending" : "CPU path", least, fallbacks,
+                    slack > 0.0 ? "" : ", not enforced: JASPER_HTMLUI_PERF_SLACK unset");
+        EXPECT_GT(fallbacks, 0u) << "the effects were not drawn the CPU way";
+        if (slack > 0.0){
+            EXPECT_LE(least, budget) << (gpu ? "GPU effects pending" : "CPU path");
+        }
+        results()[gpu ? "S93 GO first draw (GPU pending)" : "S93 GO first draw (CPU)"] = {{"textMs", least}};
+    }
+    fonts.ReleaseFontResources();
+    RmlFontEngine::setSynchronousDistanceGlyphsForTesting(true);
+}
+
+// S93 AC13 (R43): hit testing follows the transforms and clips of each ancestor, and costs no more
+// than 110 % of the hit test of the S93 base (6e3924918) on the S17 10 000-row virtual list (B7's
+// fixture: rows in a rounded, clipped pane): 64 points over the list, the least of up to 15
+// medians (gatedCpuMs). The base's figure was measured by this test on the base, on the build host.
+TEST(HitTestPerf, TenThousandRowList){
+    JASPER_REQUIRE_GPU();
+    // ms for the 64 points on the base (the median of 20, least of 15; measured on the build box)
+    constexpr double baseMs = 0.1341;
+    FixtureRunner runner(1280, 720, 4);
+    ASSERT_TRUE(runner.valid());
+    ASSERT_TRUE(load(runner, "fixtures/bench/virtual-list.html"));
+    Rml::Element* element = runner.document() ? runner.document()->GetElementById("list") : nullptr;
+    htmlui::ItemsViewElement* list = rmlui_dynamic_cast<htmlui::ItemsViewElement*>(element);
+    ASSERT_NE(list, nullptr);
+    htmlui::ItemsViewElement::Provider provider;
+    provider.count = 10000;
+    provider.bind = [](Rml::Element* row, int index){
+        if (Rml::Element* name = row->QuerySelector(".name"))
+            name->SetInnerRML("Player " + std::to_string(index + 1));
+    };
+    list->setProvider(provider);
+    double clock = runner.time();
+    for (int i = 0; i < 5; i++){
+        clock += 1.0 / 60.0;
+        runner.frameAt(clock, true);
+    }
+    list->SetScrollTop(48.0f * 5000.0f);
+    for (int i = 0; i < 5; i++){
+        clock += 1.0 / 60.0;
+        runner.frameAt(clock, true);
+    }
+    Rml::Context* context = runner.context();
+    int hits = 0;
+    const auto work = [&](){
+        hits = 0;
+        for (int row = 0; row < 8; row++){
+            for (int column = 0; column < 8; column++){
+                const Rml::Vector2f point(44.0f + 70.0f * (float)column, 44.0f + 80.0f * (float)row);
+                hits += context->GetElementAtPoint(point) ? 1 : 0;
+            }
+        }
+    };
+    const double target = baseMs * 1.10 * compat::perfSlack();
+    const double ms = compat::gatedCpuMs(work, 200, target);
+    std::printf("[ ui-bench ] hit test, 64 points over a 10 000-row list: %.4f ms (base %.4f ms)\n", ms, baseMs);
+    results()["hitTestTenThousandRows"] = {{"ms", ms}, {"baseMs", baseMs}};
+    EXPECT_EQ(hits, 64) << "every point hits the document";
+    EXPECT_LE(ms, target);
 }
 
 #endif

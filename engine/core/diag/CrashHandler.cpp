@@ -7,6 +7,7 @@
 // handler-side code is CrashHandlerPosix.cpp, CrashHandlerWin.cpp and CrashHandlerWeb.cpp.
 
 #include "CrashHandler.h"
+#include "Journal.h"
 #include "detail/CrashState.h"
 
 #include "io/AtomicFile.h"
@@ -69,6 +70,7 @@ namespace jasperengine::diag::crash::detail {
 namespace je_crash_common {
 
     using namespace jasperengine::diag;
+
     using crash::ReportInfo;
     using crash::detail::CrashState;
 
@@ -89,6 +91,16 @@ namespace je_crash_common {
         crash::ReportHook hook;
         std::set<std::string> delivered;
         bool ringSinkAdded = false;
+        std::string backend;
+        // user reports (writeUserReport): their number in this session, the session's id when
+        // no handler was installed, and the reports kept in memory where there are no folders
+        uint32_t userReports = 0;
+        std::string userSession;
+        struct MemoryReport {
+            ReportInfo info;
+            std::vector<std::pair<std::string, std::string>> files;
+        };
+        std::vector<MemoryReport> memoryReports;
     };
 
     Common& common() {
@@ -172,6 +184,24 @@ namespace je_crash_common {
 #endif
     }
 
+    // yyyy-mm-ddThh:mm:ssZ, 0 when it is not one
+    std::time_t isoTime(const std::string& text) {
+        int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+        if (std::sscanf(text.c_str(), "%4d-%2d-%2dT%2d:%2d:%2d", &year, &month, &day, &hour, &minute, &second) != 6) return 0;
+        std::tm tm{};
+        tm.tm_year = year - 1900;
+        tm.tm_mon = month - 1;
+        tm.tm_mday = day;
+        tm.tm_hour = hour;
+        tm.tm_min = minute;
+        tm.tm_sec = second;
+#if defined(_WIN32)
+        return _mkgmtime(&tm);
+#else
+        return timegm(&tm);
+#endif
+    }
+
     std::string readFile(const fs::path& path, size_t limit = 1 << 20) {
         std::ifstream in(path, std::ios::binary);
         if (!in) return {};
@@ -198,6 +228,23 @@ namespace je_crash_common {
             at = end + 1;
         }
         return {};
+    }
+
+    // A user report's reason: its category and the note's first line (at most 80 bytes, cut
+    // between characters)
+    std::string userReason(const std::string& category, std::string note) {
+        note = note.substr(0, note.find('\n'));
+        if (!note.empty() && note.back() == '\r') note.pop_back();
+        if (note.size() > 80) {
+            size_t cut = 80;
+            while (cut > 0 && (static_cast<unsigned char>(note[cut]) & 0xC0) == 0x80) cut--;
+            note.resize(cut);
+        }
+        return "user report (" + category + "): " + note;
+    }
+
+    bool plainFileName(std::string_view name) {
+        return !name.empty() && name != "." && name != ".." && name.find_first_of("/\\:") == std::string_view::npos;
     }
 
     std::string buildIdOfMainModule() {
@@ -268,7 +315,7 @@ namespace je_crash_common {
 #if defined(__ANDROID__)
             // NativeActivity lives in the app's .so; app_process is only the OS launcher.
             // Its build ID cannot locate this game's symbols, so find the module owning us.
-            const uintptr_t owner = reinterpret_cast<uintptr_t>(&je_crash_common::buildIdOfMainModule);
+            const uintptr_t owner = reinterpret_cast<uintptr_t>(&buildIdOfMainModule);
             bool ownsCode = false;
             for (ElfW(Half) i = 0; i < info->dlpi_phnum; i++) {
                 const auto& phdr = info->dlpi_phdr[i];
@@ -416,6 +463,8 @@ namespace je_crash_common {
     std::string classify(const fs::path& folder) {
         std::error_code ec;
         if (fs::exists(folder / "crash.txt", ec)) return "crash";
+        // a player's "Report a Problem" (Crash.createReport): its own <session>-user<N> folder
+        if (fs::exists(folder / "user.txt", ec)) return "user";
         for (fs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
             const std::string name = it->path().filename().string();
             if (name.rfind("hang-", 0) == 0 && name.size() > 9 && name.compare(name.size() - 4, 4, ".txt") == 0) return "hang";
@@ -434,7 +483,7 @@ namespace je_crash_common {
         for (fs::directory_iterator it(c.sessionsDir, ec), end; !ec && it != end; it.increment(ec)) {
             const fs::path file = it->path();
             if (file.extension() != ".json") continue;
-            nlohmann::json marker = nlohmann::json::parse(je_crash_common::readFile(file, 64 << 10), nullptr, false);
+            nlohmann::json marker = nlohmann::json::parse(readFile(file, 64 << 10), nullptr, false);
             if (!marker.is_object()) {
                 std::error_code removeError;
                 fs::remove(file, removeError);
@@ -448,7 +497,7 @@ namespace je_crash_common {
                 const fs::path folder = c.reportsDir / session;
                 std::error_code folderError;
                 fs::create_directories(folder, folderError);
-                if (je_crash_common::classify(folder) == "abnormal_exit") {
+                if (classify(folder) == "abnormal_exit") {
                     io::AtomicWriteOptions options;
                     options.durability = io::Durability::Cache;
                     io::writeFileAtomic(folder / "session.json", marker.dump(2) + "\n", options);
@@ -604,7 +653,7 @@ namespace jasperengine::diag::crash {
     bool install(const Config& input) {
         je_crash_common::Common& c = je_crash_common::common();
         std::unique_lock<std::mutex> lock(c.mutex);
-        je_crash_common::CrashState& s = detail::state();
+        crash::detail::CrashState& s = detail::state();
         if (c.installed) return false;
         c.installed = true;
 
@@ -626,6 +675,7 @@ namespace jasperengine::diag::crash {
         c.product = config.product ? config.product : "JasperEngine";
         c.version = config.version;
         c.buildId = je_crash_common::buildIdOfMainModule();
+        c.backend = config.backend;
         s.startMonotonicNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
         s.includeLogTail = config.includeLogTail;
@@ -645,6 +695,7 @@ namespace jasperengine::diag::crash {
             je_crash_common::copyPath(s.crashFile, sizeof(s.crashFile), session / "crash.txt");
             je_crash_common::copyPath(s.dumpFile, sizeof(s.dumpFile), session / "crash.dmp");
             je_crash_common::copyPath(s.tailFile, sizeof(s.tailFile), session / "log-tail.txt");
+            je_crash_common::copyPath(s.journalFile, sizeof(s.journalFile), session / "journal.txt");
         }
         if (!config.logFile.empty()) {
             je_crash_common::copyPath(s.logFile, sizeof(s.logFile), config.logFile);
@@ -660,6 +711,19 @@ namespace jasperengine::diag::crash {
         je_crash_common::copyText(s.header, sizeof(s.header), header);
         s.headerLength = detail::textLength(s.header);
         je_crash_common::copyText(s.banner, sizeof(s.banner), c.product + (c.version.empty() ? std::string() : " " + c.version));
+
+        // the Gameplay Journal was configured before (D3): its ring and header are constant from
+        // here, so the handlers read them without any publication
+        journal::setIdentity(c.product, c.version, c.session);
+        journal::detail::markAttached();
+        if (journal::enabled()) {
+            s.journal = journal::detail::ring();
+            s.journalCapacity = journal::capacity();
+            s.journalCursor = journal::detail::cursor();
+            s.journalWritten = journal::detail::written();
+            je_crash_common::copyText(s.journalHeader, sizeof(s.journalHeader), journal::detail::headerPrefix());
+            s.journalHeaderLength = detail::textLength(s.journalHeader);
+        }
 
         if (config.ringBytes > 0) {
             // never freed: the handler reads it until the process is gone
@@ -735,7 +799,7 @@ namespace jasperengine::diag::crash {
 
     void setTag(std::string_view key, std::string_view value) {
         if (key.empty()) return;
-        je_crash_common::CrashState& s = detail::state();
+        crash::detail::CrashState& s = detail::state();
         detail::Tag* slot = nullptr;
         for (detail::Tag& tag : s.tags) {
             if (tag.key[0] != '\0' && key == std::string_view(tag.key)) {
@@ -825,6 +889,16 @@ namespace jasperengine::diag::crash {
             info.product = je_crash_common::reportValue(text, "product");
             info.version = je_crash_common::reportValue(text, "version");
             when = je_crash_common::fileTime(last);
+        } else if (info.kind == "user") {
+            const std::string text = je_crash_common::readFile(folder / "user.txt", 64 << 10);
+            info.product = je_crash_common::reportValue(text, "product");
+            info.version = je_crash_common::reportValue(text, "version");
+            info.category = je_crash_common::reportValue(text, "category");
+            // the note follows its "note:" line verbatim; the reason names its first line
+            std::string note;
+            if (const size_t at = text.find("\nnote:\n"); at != std::string::npos) note = text.substr(at + 7);
+            info.reason = je_crash_common::userReason(info.category, note);
+            when = je_crash_common::isoTime(je_crash_common::reportValue(text, "time"));
         } else {
             nlohmann::json marker = nlohmann::json::parse(je_crash_common::readFile(folder / "session.json", 64 << 10), nullptr, false);
             if (marker.is_object()) {
@@ -841,7 +915,10 @@ namespace jasperengine::diag::crash {
     }
 
     std::vector<ReportInfo> listReports(size_t limit) {
-        const fs::path dir = reportsDirectory();
+        return listReportsIn(reportsDirectory(), limit);
+    }
+
+    std::vector<ReportInfo> listReportsIn(const fs::path& dir, size_t limit) {
         std::vector<std::string> names;
         std::error_code ec;
         for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
@@ -861,9 +938,13 @@ namespace jasperengine::diag::crash {
 
     std::vector<ReportInfo> pendingReports() {
         const std::string current = sessionId();
+        // this session's own user reports (<session>-user<N>) wait for the next start, when the
+        // game's upload either succeeded (handled) or offers them again
+        const std::string ownPrefix = current + "-";
         std::vector<ReportInfo> out;
         for (ReportInfo& info : listReports()) {
-            if (!info.handled && info.id != current) out.push_back(std::move(info));
+            if (info.handled || info.id == current || (!current.empty() && info.id.rfind(ownPrefix, 0) == 0)) continue;
+            out.push_back(std::move(info));
         }
         return out;
     }
@@ -876,6 +957,17 @@ namespace jasperengine::diag::crash {
     }
 
     bool markHandled(std::string_view id) {
+        {
+            // an in-memory user report is freed once handled (uploaded)
+            je_crash_common::Common& c = je_crash_common::common();
+            std::lock_guard<std::mutex> lock(c.mutex);
+            for (auto it = c.memoryReports.begin(); it != c.memoryReports.end(); ++it) {
+                if (it->info.id == id) {
+                    c.memoryReports.erase(it);
+                    return true;
+                }
+            }
+        }
         std::optional<ReportInfo> info = findReport(id);
         if (!info) return false;
         if (info->handled) return true;
@@ -993,6 +1085,162 @@ namespace jasperengine::diag::crash {
         options.durability = io::Durability::Cache;
         const fs::path file = folder / name;
         return io::writeFileAtomic(file, text, options).ok() ? file : fs::path();
+    }
+
+    std::optional<ReportInfo> writeUserReport(const UserReportContent& content, std::string& error) {
+        je_crash_common::Common& c = je_crash_common::common();
+        std::string session, product, version, build, backend;
+        fs::path reportsDir;
+        size_t pendingInMemory = 0;
+        {
+            std::lock_guard<std::mutex> lock(c.mutex);
+            if (c.session.empty() && c.userSession.empty()) {
+                c.userSession = je_crash_common::compactUtc(std::time(nullptr)) + "-" + std::to_string(io::currentProcessId());
+            }
+            session = c.session.empty() ? c.userSession : c.session;
+            product = c.product.empty() ? std::string("unknown") : c.product;
+            version = c.version.empty() ? std::string("unknown") : c.version;
+            build = c.buildId.empty() ? std::string("none") : c.buildId;
+            backend = c.backend.empty() ? std::string("none") : c.backend;
+            reportsDir = c.reportsDir;
+            pendingInMemory = c.memoryReports.size();
+        }
+#if defined(__EMSCRIPTEN__)
+        // the browser has no user folder: the session keeps them until handled or a reload
+        const bool memory = true;
+#else
+        const bool memory = reportsDir.empty();
+#endif
+        size_t pending = pendingInMemory;
+        if (!memory) {
+            for (const ReportInfo& report : listReports()) {
+                if (report.kind == "user" && !report.handled) pending++;
+            }
+        }
+        if (pending >= kMaxPendingUserReports) {
+            error = "too_many_pending: upload a report or Crash.markHandled(id) first";
+            return std::nullopt;
+        }
+
+        uint32_t number = 0;
+        {
+            std::lock_guard<std::mutex> lock(c.mutex);
+            number = ++c.userReports;
+        }
+        const std::string id = session + "-user" + std::to_string(number);
+        const std::time_t now = std::time(nullptr);
+        const std::string category = content.category.empty() ? std::string("other") : content.category;
+
+        std::string user = "JasperEngine user report v1\n";
+        user += "product: " + product + "\n";
+        user += "version: " + version + "\n";
+        user += "build_id: " + build + "\n";
+        user += std::string("platform: ") + platformName() + "\n";
+        user += "backend: " + backend + "\n";
+        user += "session: " + session + "\n";
+        user += "time: " + je_crash_common::isoUtc(now) + "\n";
+        user += "category: " + category + "\n";
+        // the tags, as crash.txt has them (a slot being written is skipped)
+        for (const detail::Tag& tag : detail::state().tags) {
+            const uint32_t seq = tag.seq.load(std::memory_order_acquire);
+            if (seq & 1) continue;
+            char key[detail::kTagKeyBytes];
+            char value[detail::kTagValueBytes];
+            std::memcpy(key, tag.key, sizeof(key));
+            std::memcpy(value, tag.value, sizeof(value));
+            key[sizeof(key) - 1] = '\0';
+            value[sizeof(value) - 1] = '\0';
+            if (tag.seq.load(std::memory_order_acquire) != seq || key[0] == '\0') continue;
+            user += std::string(key) + ": " + value + "\n";
+        }
+        for (const auto& [key, value] : content.fields) {
+            std::string line = "field." + key + ": " + value;
+            for (size_t i = 6; i < line.size(); i++) {
+                if (line[i] == '\n' || line[i] == '\r') line[i] = ' ';
+            }
+            user += line + "\n";
+        }
+        user += "note:\n" + content.note;
+        if (content.note.empty() || content.note.back() != '\n') user += "\n";
+
+        std::vector<std::pair<std::string, std::string>> files;
+        {
+            // the device's fields (UserReport.cpp), and who reports: the same identity as user.txt
+            nlohmann::json device = nlohmann::json::parse(content.deviceJson.empty() ? std::string("{}") : content.deviceJson, nullptr, false);
+            if (!device.is_object()) device = nlohmann::json::object();
+            device["product"] = product;
+            device["version"] = version;
+            device["build_id"] = build;
+            device["platform"] = platformName();
+            device["backend"] = backend;
+            device["session"] = session;
+            files.emplace_back("device.json", device.dump(2) + "\n");
+        }
+        if (!content.journal.empty()) files.emplace_back("journal.txt", content.journal);
+        if (content.logTail) files.emplace_back("log-tail.txt", *content.logTail);
+        if (!content.screenshotJpeg.empty()) files.emplace_back("screenshot.jpg", content.screenshotJpeg);
+        // last: a folder is a user report once user.txt is there, so a write that fails halfway
+        // leaves nothing that looks complete
+        files.emplace_back("user.txt", user);
+
+        if (memory) {
+            je_crash_common::Common::MemoryReport report;
+            report.info.id = id;
+            report.info.kind = "user";
+            report.info.category = category;
+            report.info.reason = je_crash_common::userReason(category, content.note);
+            report.info.time = je_crash_common::isoUtc(now);
+            report.info.timeUnix = static_cast<int64_t>(now);
+            report.info.product = product;
+            report.info.version = version;
+            for (const auto& file : files) report.info.files.emplace_back(file.first);
+            std::sort(report.info.files.begin(), report.info.files.end());
+            report.files = std::move(files);
+            ReportInfo info = report.info;
+            std::lock_guard<std::mutex> lock(c.mutex);
+            c.memoryReports.push_back(std::move(report));
+            return info;
+        }
+
+        const fs::path folder = reportsDir / id;
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        for (const auto& [name, bytes] : files) {
+            const io::WriteResult written = io::writeFileAtomic(folder / name, bytes, options);
+            if (!written.ok()) {
+                error = "write_failed: " + written.message;
+                std::error_code removeError;
+                fs::remove_all(folder, removeError);
+                return std::nullopt;
+            }
+        }
+        return readReport(folder);
+    }
+
+    std::optional<std::string> readReportFile(std::string_view id, std::string_view name) {
+        if (!je_crash_common::plainFileName(name)) return std::nullopt;
+        {
+            je_crash_common::Common& c = je_crash_common::common();
+            std::lock_guard<std::mutex> lock(c.mutex);
+            for (const je_crash_common::Common::MemoryReport& report : c.memoryReports) {
+                if (report.info.id != id) continue;
+                for (const auto& file : report.files) {
+                    if (file.first == name) return file.second;
+                }
+                return std::nullopt;
+            }
+        }
+        const std::optional<ReportInfo> info = findReport(id);
+        if (!info) return std::nullopt;
+        constexpr uint64_t kLimit = 8ull << 20;
+        const fs::path file = info->folder / std::string(name);
+        std::error_code ec;
+        if (!fs::is_regular_file(file, ec)) return std::nullopt;
+        const uint64_t size = fs::file_size(file, ec);
+        if (ec || size > kLimit) return std::nullopt;
+        std::string bytes = je_crash_common::readFile(file, static_cast<size_t>(kLimit));
+        if (bytes.size() != size) return std::nullopt;
+        return bytes;
     }
 
     const std::string& buildId() {

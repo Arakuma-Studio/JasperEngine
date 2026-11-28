@@ -23,6 +23,8 @@
 #include "Input.h"
 #include "System.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
+#include "input/TextEntry.h"
 #include "script/ScriptMessages.h"
 #include "script/ScriptRuntime.h"
 #include "script/LuaBinding.h"
@@ -48,6 +50,16 @@ static constexpr float UI_DRAG_START_DISTANCE = 4.0f;
 static constexpr double UI_DOUBLE_CLICK_TIME = 0.3;
 
 namespace {
+
+    // an on-screen control's Visibility: Always, on a touch device, or while the player uses touch
+    bool onScreenControlShown(OnScreenVisibility visibility){
+        switch (visibility){
+            case OnScreenVisibility::TOUCH_DEVICES_ONLY: return System::instance().isTouchDevice();
+            case OnScreenVisibility::TOUCH_SCHEME: return InputSchemeTracker::getCurrent() == InputScheme::Touch;
+            case OnScreenVisibility::ALWAYS: break;
+        }
+        return true;
+    }
 
     bool isMousePointer(int pointerId){
         return pointerId < 0;
@@ -280,16 +292,20 @@ void UISystem::callLegacy(FunctionSubscribe<void(float, float)> UIComponent::* e
 // Unity's HandlePointerExitAndEnter: exit to the old chain's GameObjects the new one does not
 // have (deepest first), then enter to the new ones (root first)
 void UISystem::updateEnterChain(UIPointerState& state, Entity newHit){
-    std::vector<Entity> chain;
+    // built in a reused buffer: a move over the same element allocates nothing (the copies below
+    // only when the chain changed, since the messages may move pointers and come back here)
+    static thread_local std::vector<Entity> walk;
+    walk.clear();
     for (Entity current = newHit; current != NULL_ENTITY && scene->isEntityCreated(current);){
-        chain.push_back(current);
+        walk.push_back(current);
         const Transform* transform = scene->findComponent<Transform>(current);
         current = transform ? transform->parent : NULL_ENTITY;
     }
     state.hit = newHit;
-    if (chain == state.enterChain)
+    if (walk == state.enterChain)
         return;
 
+    const std::vector<Entity> chain = walk;
     const std::vector<Entity> old = state.enterChain;
     state.enterChain = chain;
     const int pointerId = state.pointerId;
@@ -501,7 +517,7 @@ void UISystem::legacyPointerDown(UIPointerState& state){
 
                 bool hadInvalid = false;
                 std::wstring wideText = StringUtils::utf8ToWString(text->text, hadInvalid);
-                System::instance().showVirtualKeyboard(wideText);
+                System::instance().showVirtualKeyboard(wideText, inputFieldTraits(inputfield));
             }
         }
     }else{
@@ -1034,13 +1050,15 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
     validatePointers();
 
     const Vector2 point(x, y);
-    // the mouse's other held buttons follow it (one position)
-    std::vector<int> moved;
+    // the mouse's other held buttons follow it (one position); at most three pointers, on the
+    // stack (a move per frame allocates nothing: the gamepad cursor's budget)
+    int movedIds[3];
+    size_t movedCount = 0;
     if (isMousePointer(pointerId) && !touch){
-        moved.push_back(-1);
+        movedIds[movedCount++] = -1;
         for (int other : {-2, -3}){
             if (findPointer(other))
-                moved.push_back(other);
+                movedIds[movedCount++] = other;
         }
         if (!findPointer(-1)){
             UIPointerState& mouse = pointers[-1];
@@ -1052,7 +1070,7 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
         // a finger that went down elsewhere (a document, the game) does not hover
         if (!findPointer(pointerId))
             return false;
-        moved.push_back(pointerId);
+        movedIds[movedCount++] = pointerId;
     }
 
     CursorType cursor = CursorType::ARROW;
@@ -1060,7 +1078,8 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
     const Entity hit = raycastHit(point, &panelHit);
     bool consumed = false;
 
-    for (int id : moved){
+    for (size_t m = 0; m < movedCount; m++){
+        const int id = movedIds[m];
         UIPointerState* state = findPointer(id);
         if (!state)
             continue;
@@ -1434,18 +1453,17 @@ bool UISystem::controlTakesPointers(Entity entity, Signature signature) const{
     // inactive or in a non-interactable Canvas Group: no (a held control is cancelled, D6)
     if (!scene->isEntityActiveInHierarchy(entity) || !isInteractable(entity))
         return false;
-    const bool touchDevice = System::instance().isTouchDevice();
     if (signature.test(scene->getComponentId<OnScreenStickComponent>())){
         const OnScreenStickComponent& stick = scene->getComponent<OnScreenStickComponent>(entity);
-        return stick.enabled && (stick.visibility == OnScreenVisibility::ALWAYS || touchDevice);
+        return stick.enabled && onScreenControlShown(stick.visibility);
     }
     if (signature.test(scene->getComponentId<OnScreenButtonComponent>())){
         const OnScreenButtonComponent& button = scene->getComponent<OnScreenButtonComponent>(entity);
-        return button.enabled && (button.visibility == OnScreenVisibility::ALWAYS || touchDevice);
+        return button.enabled && onScreenControlShown(button.visibility);
     }
     if (signature.test(scene->getComponentId<TouchAreaComponent>())){
         const TouchAreaComponent& area = scene->getComponent<TouchAreaComponent>(entity);
-        return area.enabled && (area.visibility == OnScreenVisibility::ALWAYS || touchDevice);
+        return area.enabled && onScreenControlShown(area.visibility);
     }
     return false;
 }
@@ -1794,13 +1812,13 @@ void UISystem::setElementOffset(Entity entity, const Vector2& rest, const Vector
 }
 
 // Once a frame: the Touch Areas' onDrag with the frame's movement, the visibility rules (a
-// released Floating base hidden, controls for touch devices only)
+// released Floating base hidden, controls for touch devices only or the touch scheme). A control
+// hidden by them lets go in validatePointers (controlTakesPointers)
 void UISystem::updateControls(){
     if (!ScriptRuntime::hasStarted(scene))
         return;
 
     validatePointers();
-    const bool touchDevice = System::instance().isTouchDevice();
 
     // a control and its children shown or hidden (only when that changes: a pass over the
     // Transforms); the visible flags it sets are runtime state of the playing scene
@@ -1830,8 +1848,8 @@ void UISystem::updateControls(){
     for (int i = 0; i < sticks->size(); i++){
         const Entity entity = sticks->getEntity(i);
         const OnScreenStickComponent& stick = sticks->getComponentFromIndex(i);
-        const bool shown = stick.visibility == OnScreenVisibility::ALWAYS || touchDevice;
-        if (stick.visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY)
+        const bool shown = onScreenControlShown(stick.visibility);
+        if (stick.visibility != OnScreenVisibility::ALWAYS)
             setSubtreeVisible(entity, shown);
         if (shown && stick.background != NULL_ENTITY && stick.mode != OnScreenStickMode::FIXED && stick.hideWhenReleased)
             setSubtreeVisible(stick.background, stick.pressed);
@@ -1840,16 +1858,16 @@ void UISystem::updateControls(){
     auto buttons = scene->getComponentArray<OnScreenButtonComponent>();
     for (int i = 0; i < buttons->size(); i++){
         const OnScreenButtonComponent& control = buttons->getComponentFromIndex(i);
-        if (control.visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY)
-            setSubtreeVisible(buttons->getEntity(i), touchDevice);
+        if (control.visibility != OnScreenVisibility::ALWAYS)
+            setSubtreeVisible(buttons->getEntity(i), onScreenControlShown(control.visibility));
     }
 
     std::vector<std::pair<Entity, Vector2>> drags;
     auto areas = scene->getComponentArray<TouchAreaComponent>();
     for (int i = 0; i < areas->size(); i++){
         TouchAreaComponent& area = areas->getComponentFromIndex(i);
-        if (area.visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY)
-            setSubtreeVisible(areas->getEntity(i), touchDevice);
+        if (area.visibility != OnScreenVisibility::ALWAYS)
+            setSubtreeVisible(areas->getEntity(i), onScreenControlShown(area.visibility));
         if (area.delta.x != 0.0f || area.delta.y != 0.0f)
             drags.emplace_back(areas->getEntity(i), area.delta);
         area.delta = Vector2(0, 0);

@@ -25,6 +25,11 @@ double SystemInterface::GetElapsedTime()
 	return diff.count();
 }
 
+double SystemInterface::GetAnimationClockTime(int /*clock*/)
+{
+	return GetElapsedTime();
+}
+
 bool SystemInterface::LogMessage(Log::Type type, const String& message)
 {
 	return LogDefault::LogMessage(type, message);

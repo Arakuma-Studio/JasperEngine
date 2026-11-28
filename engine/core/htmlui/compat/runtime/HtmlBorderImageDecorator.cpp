@@ -234,8 +234,10 @@ Rml::DecoratorDataHandle HtmlBorderImageDecorator::GenerateElementData(Rml::Elem
     input.borderBox = LayerRect{0, 0, borderSize.x, borderSize.y};
     for (int i = 0; i < 4; i++)
         input.borderWidths[i] = box.GetEdge(Rml::BoxArea::Border, edges[i]);
-    // slice coordinates: image pixels for raster images, SVG units (CSS px) for SVG
+    // slice coordinates: image pixels for raster images, SVG units (CSS px) for SVG; a raster's
+    // intrinsic size is its pixels x the dp ratio, its NUMBER slices scale with it (S93 R21)
     const Rml::Vector2f intrinsic = data->image.intrinsicSize();
+    const float slicePixel = data->image.imagePixelSize();
     input.imageWidth = intrinsic.x;
     input.imageHeight = intrinsic.y;
     input.fill = spec.fill;
@@ -243,7 +245,8 @@ Rml::DecoratorDataHandle HtmlBorderImageDecorator::GenerateElementData(Rml::Elem
     input.repeatY = spec.repeatY;
     for (int i = 0; i < 4; i++){
         const bool vertical = (i % 2) == 0;   // top, bottom
-        input.slice[i] = spec.slice[i].isPercent() ? spec.slice[i].value * (vertical ? intrinsic.y : intrinsic.x) / 100.0f : spec.slice[i].value;
+        input.slice[i] = spec.slice[i].isPercent() ? spec.slice[i].value * (vertical ? intrinsic.y : intrinsic.x) / 100.0f
+                                                   : spec.slice[i].value * slicePixel;
         input.outset[i] = spec.outset[i].isNumber() ? spec.outset[i].value * input.borderWidths[i] : resolve(element, spec.outset[i], 0.0f);
     }
     const float areaWidth = borderSize.x + input.outset[1] + input.outset[3];

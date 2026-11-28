@@ -508,6 +508,49 @@ async def test_cli_anims_masks_and_controllers():
         check_eq(data["checked"], {"anims": 1}, f"--files a controller: {data}")
 
 
+async def test_cli_anims_mask_root_inherits():
+    """mesh-space-rotation R37 (AC24): an Override layer above 0, Mesh Space Rotation off, whose paths mask weighs
+    a torso entry under a torso parent it leaves out (Hips/Spine, B-hips/B-spine) warns anim-mask-root-inherits; a
+    mask that takes the hips (at the top, under Armature or B-root), one from an arm, the option on, an Additive
+    layer, the base layer and a body-part mask do not"""
+    def mask(paths: list, **extra) -> str:
+        return json.dumps({"format": "jasperengine.mask", "version": 2, "default": 0, "paths": paths, **extra})
+
+    def layer(name: str, mask_file: str, **extra) -> dict:
+        return {"name": name, "mask": mask_file, "state_machine": {"states": []}, **extra}
+
+    with scratch_project() as project:
+        write(project, "assets/anim/spine.mask", mask([{"path": "Hips/Spine", "weight": 1, "children": True}]))
+        write(project, "assets/anim/hips.mask", mask([{"path": "Hips", "weight": 1, "children": True},
+                                                      {"path": "Hips/Spine", "weight": 1, "children": True}]))
+        write(project, "assets/anim/parts.mask", mask([{"path": "Hips/Spine", "weight": 1, "children": True}], body_parts={"body": 1}))
+        write(project, "assets/anim/armature.mask", mask([{"path": "Armature/Hips", "weight": 1, "children": True}]))
+        write(project, "assets/anim/brig.mask", mask([{"path": "Rig/B-root/B-hips", "weight": 1, "children": True}]))
+        write(project, "assets/anim/bspine.mask", mask([{"path": "Rig/B-root/B-hips/B-spine", "weight": 1, "children": True}]))
+        write(project, "assets/anim/arm.mask", mask([{"path": "Hips/Spine/Chest/LeftShoulder", "weight": 1, "children": True}]))
+        controller = {"format": "jasperengine.controller", "version": 2, "parameters": [], "layers": [
+            layer("Base Layer", "anim/spine.mask"),
+            layer("Upper Body", "anim/spine.mask"),
+            layer("Whole Torso", "anim/hips.mask"),
+            layer("Fixed", "anim/spine.mask", mesh_space_rotation=True),
+            layer("Breathe", "anim/spine.mask", blending="additive"),
+            layer("Parts", "anim/parts.mask"),
+            layer("Full Body", "anim/armature.mask"),
+            layer("B Full Body", "anim/brig.mask"),
+            layer("B Upper Body", "anim/bspine.mask"),
+            layer("Wave", "anim/arm.mask")]}
+        write(project, "assets/anim/upper.controller", json.dumps(controller))
+        code, data = run_json(project, "--anims")
+        found = [f for f in data["findings"] if f.get("code") == "anim-mask-root-inherits"]
+        check_eq([(f["path"], f["severity"], f["message"].split(":")[0]) for f in found],
+                 [("assets/anim/upper.controller", "warning", "layers[1] 'Upper Body'"),
+                  ("assets/anim/upper.controller", "warning", "layers[8] 'B Upper Body'")],
+                 f"only the layers from the spine, not the masks that take the hips or start at an arm: {data['findings']}")
+        check("Hips/Spine" in found[0]["message"] and "the rig is not read" in found[0]["message"], f"the entry and what it is about: {found}")
+        check("mesh_space_rotation: true" in found[0].get("suggestion", ""), f"the fix: {found}")
+        check_eq(code, 0, f"a warning keeps exit 0: {data}")
+
+
 MASK_GUID = "11111111111111111111111111111111"
 CONTROLLER_GUID = "22222222222222222222222222222222"
 # Animation Players naming masks and a controller (anim layers): one there, one missing, one moved

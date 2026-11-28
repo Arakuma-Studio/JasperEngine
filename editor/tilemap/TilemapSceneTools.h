@@ -131,6 +131,7 @@ namespace jasperengine::editor::tilemap {
 
         const char* id() const override;
         const char* label() const override;
+        const char* exitTooltip() const override { return "Exit tile painting"; }
         bool available(const SceneProject& sceneProject) const override;
         SceneToolPress press(const SceneToolEvent& event) override;
         void drag(const SceneToolEvent& event) override;

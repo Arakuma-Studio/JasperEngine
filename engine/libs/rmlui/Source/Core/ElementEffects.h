@@ -2,6 +2,8 @@
 
 #include "../../Include/RmlUi/Core/CompiledFilterShader.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
+#include "../../Include/RmlUi/Core/StyleTypes.h"
+#include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/Types.h"
 
 namespace Rml {
@@ -29,10 +31,10 @@ public:
 
 	// False when RenderEffects has nothing to do at any stage: no effects to instance or reload, no decorators, filters,
 	// backdrop filters, mask or group opacity. Element::Render tests it inline, as most elements have none of them.
-	bool NeedsRenderEffects(float opacity, bool has_mask_image) const
+	bool NeedsRenderEffects(float opacity, bool has_mask_image, Style::MixBlendMode blend) const
 	{
 		return effects_dirty || effects_data_dirty || !decorators.empty() || !filters.empty() || !backdrop_filters.empty() || bool(group_opacity) ||
-			opacity < 1.f || has_mask_image;
+			opacity < 1.f || has_mask_image || blend != Style::MixBlendMode::Normal;
 	}
 
 	// Fork (P7-F2): extends 'region' (window coordinates: the ink of the element's subtree) by the extent of the element's
@@ -83,6 +85,12 @@ private:
 	// outside the element, extended by the filters' reach), set when the layer is pushed, and whether its clip root is pushed.
 	Rectanglei layer_window = Rectanglei::MakeInvalid();
 	bool layer_clip_root = false;
+	// Fork (S92-F2): the mask is a rounded shape the element is clipped by (RenderManager::PushShapeClip) instead of a
+	// mask layer, decided at Enter (ShapeClips).
+	bool shape_clipped = false;
+	// The clips of a mask that is one rounded shape (ElementBackgroundLayers::GetClipShapes), when nothing else of the
+	// element and its subtree draws through a layer; false otherwise.
+	bool ShapeClips(ClipMaskGeometryList& out);
 	// The rectangle of those clips' scissor region in the clip mask of the layer's composite, when the window extends
 	// beyond it; built for 'clip_rect_manager' at 'clip_rect_size' (placed by the clip mask's offset).
 	Geometry clip_rect_geometry;

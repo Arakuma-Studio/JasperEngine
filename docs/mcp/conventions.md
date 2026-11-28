@@ -121,8 +121,9 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`), upstream's `user_settings` (PlayerPrefs) |
 | `graphs` | S23's graph tools (`list_graph_kinds`, `list_graph_node_types`, `get_graph`, `validate_graph`, `edit_graph`), moved out of `scripting` by S90 R32 |
 | `materials` | S90 (`preview_procedural_material`, `bake_procedural_material`) |
-| `shipping` | S30, upstream's native-bridge `native_plugins` (out of core to fit the budget) |
+| `shipping` | S30, build-size-tools (`get_build_report`), upstream's native-bridge `native_plugins` (out of core to fit the budget) |
 | `pixel_art` | S43 (`edit_palette`, `apply_palette`), S42 (`check_pixel_art`); S46 and S48 add theirs |
+| `localization` | game-ui-localization.md (`edit_string_table`) |
 
 A spec may add a group: one row in `McpToolGroups.cpp` (name, one-line description), and a
 `budget.json` `groups` entry only if it needs other limits than the defaults. Registering a tool
@@ -247,5 +248,6 @@ has a budget too: the `guide` entry of `tools/mcp/budget.json`.
 ## The test-only group
 
 `JASPER_MCP_SELFTEST_GROUP=1` registers the group `selftest` with one tool, `selftest_echo`,
-for the tests of groups, coverage and budget; `=<n>` (n > 1) pads its description to n
-characters (the budget gate's red control). It never exists otherwise.
+for the tests of groups, coverage, budget and fault advice (its `throw` argument raises that
+exception from the handler); `=<n>` (n > 1) pads its description to n characters (the budget
+gate's red control). It never exists otherwise.

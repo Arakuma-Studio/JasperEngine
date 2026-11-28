@@ -73,6 +73,9 @@ namespace jasperengine{
         void load() override;
         void draw() override;
         void destroy() override;
+        // no GPU objects: the state machines keep their states through a view loss (destroy resets them)
+        void releaseGpu() override {}
+        void restoreGpu() override {}
         void update(double dt) override;
         void fixedUpdate(double dt) override;
         void onComponentRemoved(Entity entity, ComponentId componentId) override;
@@ -91,6 +94,10 @@ namespace jasperengine{
 
         // back to the starting state (Play starts and stops: the scene is restored)
         void resetAnimators();
+
+        // A ragdoll took the bones over (S94 F37): the skins of the Animator on `entity` go back to
+        // the render system (from the bone transforms) until the Animator updates again
+        void parkSkins(Entity entity);
 
         // 0 workers or not: the wave's jobs (ParallelEqualsSerial, benchmarks)
         void setParallel(bool parallel);
@@ -142,7 +149,10 @@ namespace jasperengine{
         void finalize(Job& job, float dt);
         // the update's audio cues, then the state_exit stops of the states and montages that ended (S40 R4-R7)
         void fireCues(Entity entity, anim::AnimatorInstance& instance);
+#if !JASPERENGINE_SOUND_LAYER
+        // a build without the soundlayer module met audio cues (S40 §6.6), said once
         bool warnedNoSoundLayer = false;
+#endif
         void release(Entity entity, anim::AnimatorInstance& instance);
         void setSkinsDriven(anim::AnimatorInstance& instance, bool driven);
         std::string modelPathOf(Entity entity) const;

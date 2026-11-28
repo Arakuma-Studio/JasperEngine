@@ -106,6 +106,11 @@ typedef struct b2WorldDef
 	/// Maximum linear speed. Usually meters per second.
 	float maximumLinearSpeed;
 
+	// JASPER PATCH: max rotation
+	/// Maximum rotation of a body per time step, in radians (B2_MAX_ROTATION, 0.25 pi, by default).
+	/// Bodies with allowFastRotation are not capped.
+	float maximumRotation;
+
 	/// Mixing rule for friction. Default is b2_mixGeometricMean.
 	b2MixingRule frictionMixingRule;
 

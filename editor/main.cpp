@@ -8,10 +8,12 @@
 #include "cli/TitleArtCli.h"
 #include "cli/CommandLine.h"
 #include "cli/ProceduralMaterialCommand.h"
+#include "cli/TestCommand.h"
 #include "cli/ShippingCommands.h"
 #include "hub/ProjectHubWindow.h"
 #include "mcp/McpLaunch.h"
 #include "reload/HotReloadService.h"
+#include "titleart/fonts/WebFontDecode.h"
 #include "titleart/library/TitleLibraryCli.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ShellEnv.h"
@@ -45,6 +47,9 @@ int runEditor(int argc, char* argv[]) {
         return editor::cli::CallCommand::run(argc - 1, argv + 1, argv[0]);
     }
     // a bake through such an editor (S90 R39)
+    if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
+        return editor::cli::TestCommand::run(argc - 1, argv + 1, argv[0]);
+    }
     if (argc >= 2 && std::strcmp(argv[1], "procedural-material") == 0) {
         return editor::cli::ProceduralMaterialCommand::run(argc - 1, argv + 1, argv[0]);
     }
@@ -296,6 +301,8 @@ int main(int argc, char* argv[]) {
     editor::TextEncoding::useUtf8Console();
     // before anything logs: the in-memory store and the terminal until a Console window exists
     editor::Out::startLogging();
+    // every mode loads fonts (the HTML UI's @font-face): .woff / .woff2 open in the editor too
+    editor::titlefonts::installWebFontDecoder();
     std::vector<char*> args(argv, argv + argc);
     takeAllowDebugCrashFlag(args);
     if (!takeLogLevelFlag(args) || !takeFileWatcherFlag(args) || !takeHubFlags(args)) {
@@ -303,10 +310,12 @@ int main(int argc, char* argv[]) {
         return 2;
     }
     // the profiler's options go to the engine, whatever the mode; benchmark parses its own, and
-    // generate-sprite-normals has a --profile of its own (the height profile: --profile rounded)
+    // generate-sprite-normals has a --profile of its own (the height profile: --profile rounded), and so
+    // has build (the Build Profile: --profile Demo)
     const bool benchmark = args.size() >= 2 && std::strcmp(args[1], "benchmark") == 0;
     const bool spriteNormals = args.size() >= 2 && std::strcmp(args[1], "generate-sprite-normals") == 0;
-    if (!benchmark && !spriteNormals && !editor::CommandLine::takeProfilerFlags(args)) {
+    const bool build = args.size() >= 2 && std::strcmp(args[1], "build") == 0;
+    if (!benchmark && !spriteNormals && !build && !editor::CommandLine::takeProfilerFlags(args)) {
         editor::Out::stopLogging();
         return 2;
     }

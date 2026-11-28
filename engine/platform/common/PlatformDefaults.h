@@ -81,6 +81,12 @@ namespace jasperengine {
     #ifdef JASPERENGINE_CRASH_WEB_OVERLAY
         config.builtCrashWebOverlay = JASPERENGINE_CRASH_WEB_OVERLAY != 0;
     #endif
+    #ifdef JASPERENGINE_CRASH_JOURNAL_BYTES
+        config.builtCrashJournalBytes = JASPERENGINE_CRASH_JOURNAL_BYTES;
+    #endif
+    #ifdef JASPERENGINE_CRASH_JOURNAL_ENGINE_EVENTS
+        config.builtCrashJournalEngineEvents = JASPERENGINE_CRASH_JOURNAL_ENGINE_EVENTS != 0;
+    #endif
         return config;
     }
 

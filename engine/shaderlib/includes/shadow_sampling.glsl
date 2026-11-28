@@ -381,6 +381,76 @@ float shadowSpot(int slot, vec3 lightPosition, vec3 worldPos, vec3 worldNormal, 
     return mix(1.0, visibility, shadowData.filtering[slot].w);
 }
 
+// SHADOW_RAY_TAPS (volumetric_fog.frag only): the ray lookups of the fog lights and the softer sun
+// shafts (docs/specs/S101-vapor.md R14, R15). Every other includer keeps the one-tap lookup it had, so
+// its programs preprocess as before (ShaderZeroCost.DefaultVariantsUnchanged)
+#ifdef SHADOW_RAY_TAPS
+// The main directional light at a world position (1 lit, 0 shadowed) through one comparison
+// tap, or two mirrored offsetTexels shadow texels about it, with its depth bias and distance
+// fade but no normal offset or filter: for passes that sample shadows many times per pixel
+// along rays (volumetric fog). 1 when the scene has no shadowed directional light.
+float shadowDirectionalRay(vec3 worldPos, bool twoTaps, vec2 offsetTexels){
+    int firstSlot = int(shadowData.header.x + 0.5);
+    if (shadowData.header.x < -0.5)
+        return 1.0;
+    int cascades = int(shadowData.header.y + 0.5);
+    float viewDepth = shadowViewDepth(worldPos);
+    int cascade = shadowCascadeOf(firstSlot, cascades, viewDepth);
+    if (cascade < 0 || viewDepth < 0.0)
+        return 1.0;
+    int slot = firstSlot + cascade;
+    vec4 clip = shadowData.lightVP[slot] * vec4(worldPos, 1.0);
+    vec3 ndc = clip.xyz / clip.w;
+    vec2 uv = ndc.xy * 0.5 + 0.5;
+    float depth = ndc.z * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth > 1.0)
+        return 1.0;
+    vec4 bias = shadowData.bias[slot];
+    float depthBias = bias.x / max(bias.w, 0.000001);
+    float resolution = shadowData.split[slot].w;
+    vec4 rect = shadowData.atlasRect[slot];
+    float visibility;
+    if (twoTaps){
+        vec2 offset = offsetTexels / resolution;
+        visibility = 0.5 * (shadowCompare(false, rect, shadowClampToSlot(uv + offset, resolution), depth - depthBias)
+                          + shadowCompare(false, rect, shadowClampToSlot(uv - offset, resolution), depth - depthBias));
+    }else{
+        visibility = shadowCompare(false, rect, shadowClampToSlot(uv, resolution), depth - depthBias);
+    }
+    visibility = mix(1.0, visibility, shadowData.filtering[slot].w);
+    vec4 fadeRange = shadowData.fade[firstSlot];
+    return mix(visibility, 1.0, smoothstep(fadeRange.x, fadeRange.y, viewDepth));
+}
+
+float sampleDirectionalShadow1(vec3 worldPos){
+    return shadowDirectionalRay(worldPos, false, vec2(0.0));
+}
+
+// two taps offsetTexels apart from worldPos's, either side (the softer light shafts,
+// docs/specs/S101-vapor.md R15)
+float sampleDirectionalShadow2(vec3 worldPos, vec2 offsetTexels){
+    return shadowDirectionalRay(worldPos, true, offsetTexels);
+}
+
+// One comparison tap of a spot light's slot at a world position (1 lit, 0 shadowed), with its
+// depth bias towards the light but no normal offset or filter, as sampleDirectionalShadow1: the
+// volumetric fog's per-step tap. 1 outside the slot.
+float sampleSpotShadow1(int slot, vec3 lightPosition, vec3 worldPos){
+    // the depth bias is per metre of distance from the light
+    vec3 position = lightPosition + (worldPos - lightPosition) * max(1.0 - shadowData.bias[slot].x, 0.0);
+    vec4 clip = shadowData.lightVP[slot] * vec4(position, 1.0);
+    if (clip.w <= 0.0)
+        return 1.0;
+    vec3 ndc = clip.xyz / clip.w;
+    vec2 uv = ndc.xy * 0.5 + 0.5;
+    float depth = ndc.z * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth > 1.0)
+        return 1.0;
+    float resolution = shadowData.split[slot].w;
+    float visibility = shadowCompare(false, shadowData.atlasRect[slot], shadowClampToSlot(uv, resolution), depth);
+    return mix(1.0, visibility, shadowData.filtering[slot].w);
+}
+#else
 // One comparison tap of the main directional light at a world position (1 lit, 0 shadowed),
 // with its depth bias and distance fade but no normal offset or filter: for passes that sample
 // shadows many times per pixel along rays (volumetric fog). 1 when the scene has no shadowed
@@ -409,6 +479,7 @@ float sampleDirectionalShadow1(vec3 worldPos){
     vec4 fadeRange = shadowData.fade[firstSlot];
     return mix(visibility, 1.0, smoothstep(fadeRange.x, fadeRange.y, viewDepth));
 }
+#endif // SHADOW_RAY_TAPS
 
 // ---------------------------------------------------------------- point lights
 
@@ -478,6 +549,22 @@ float shadowPoint(int firstSlot, vec3 lightPosition, vec3 worldPos, vec3 worldNo
                                     min(mode, 2), int(filterParams.y + 0.5), radiusTexels, coord.xy * resolution);
     return mix(1.0, visibility, filterParams.w);
 }
+
+#ifdef SHADOW_RAY_TAPS
+// One comparison tap of a point light's cube face at a world position (1 lit, 0 shadowed), with
+// its depth bias towards the light but no normal offset or filter (sampleSpotShadow1's point form)
+float samplePointShadow1(int firstSlot, vec3 lightPosition, vec3 worldPos){
+    int light = firstSlot / SHADOW_CUBE_FACES;
+    vec4 bias = pointShadowData.bias[light];
+    vec3 v = (worldPos - lightPosition) * max(1.0 - bias.x, 0.0);
+    int face = shadowCubeFace(v);
+    vec3 coord = shadowCubeFaceCoord(shadowCubeFaceSpace(v, face), pointShadowData.projection[light]);
+    if (coord.z > 1.0)
+        return 1.0;
+    float visibility = shadowCompare(true, pointShadowData.faceRect[firstSlot + face], shadowClampToSlot(coord.xy, bias.w), coord.z);
+    return mix(1.0, visibility, pointShadowData.filtering[light].w);
+}
+#endif // SHADOW_RAY_TAPS
 #endif
 
 #endif // SHADOW_SAMPLING_GLSL

@@ -8,6 +8,7 @@
 #include "LuaBridge.h"
 #include "Scene.h"
 #include "util/CanvasScaler.h"
+#include "util/TextAlignment.h"
 #include "util/TextEffects.h"
 #include "Input.h"
 #include "input/InputActions.h"
@@ -30,7 +31,9 @@
 #include "component/FogComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
 #include "render/LodFade.h"
@@ -82,9 +85,20 @@ namespace luabridge
             return {};
         }
 
+        // A number outside the enum's underlying type raises (a Lua -1 for an unsigned enum was
+        // cast into the enum: undefined behaviour, UBSan's "not a valid value for type"); every
+        // value of the underlying type is one, as each bound enum has a fixed one. A value that is
+        // not a number reads 0, as before
         static auto get(lua_State* L, int index) -> std::enable_if_t<std::is_enum_v<T>, luabridge::TypeResult<T>>
         {
-            return static_cast<T>(lua_tointeger(L, index));
+            using U = std::underlying_type_t<T>;
+            static_assert(requires { T{U{}}; }, "a Lua-bound enum needs a fixed underlying type (enum Name : int): "
+                                                "without one a value outside its enumerators' bits is undefined");
+            if (lua_type(L, index) != LUA_TNUMBER)
+                return static_cast<T>(U{});
+            if (! luabridge::is_integral_representable_by<U>(L, index))
+                return luabridge::makeErrorCode(luabridge::ErrorCode::IntegerDoesntFitIntoLuaInteger);
+            return static_cast<T>(static_cast<U>(lua_tointeger(L, index)));
         }
 
         static auto isInstance(lua_State* L, int index) -> std::enable_if_t<std::is_enum_v<T>, bool>
@@ -224,6 +238,7 @@ namespace luabridge
     template<> struct Stack<jasperengine::FogColorMode> : EnumWrapper<jasperengine::FogColorMode>{};
     template<> struct Stack<jasperengine::FogVolumeShape> : EnumWrapper<jasperengine::FogVolumeShape>{};
     template<> struct Stack<jasperengine::FogVolumeFalloff> : EnumWrapper<jasperengine::FogVolumeFalloff>{};
+    template<> struct Stack<jasperengine::FogZoneShape> : EnumWrapper<jasperengine::FogZoneShape>{};
     template<> struct Stack<jasperengine::CloudsPreset> : EnumWrapper<jasperengine::CloudsPreset>{};
     template<> struct Stack<jasperengine::CloudsRendering> : EnumWrapper<jasperengine::CloudsRendering>{};
     template<> struct Stack<jasperengine::AtmosphereQuality> : EnumWrapper<jasperengine::AtmosphereQuality>{};
@@ -241,23 +256,31 @@ namespace luabridge
     // S57's lighting
     template<> struct Stack<jasperengine::TransparencyMode> : EnumWrapper<jasperengine::TransparencyMode>{};
     template<> struct Stack<jasperengine::ShadingModel> : EnumWrapper<jasperengine::ShadingModel>{};
+    // the built-in Lit's Vertex Color section (V1 R70)
+    template<> struct Stack<jasperengine::VertexColorUse> : EnumWrapper<jasperengine::VertexColorUse>{};
+    template<> struct Stack<jasperengine::VertexColorTarget> : EnumWrapper<jasperengine::VertexColorTarget>{};
     template<> struct Stack<jasperengine::CapsuleCastShadows> : EnumWrapper<jasperengine::CapsuleCastShadows>{};
     template<> struct Stack<jasperengine::CapsuleDirection> : EnumWrapper<jasperengine::CapsuleDirection>{};
     template<> struct Stack<jasperengine::LightMode> : EnumWrapper<jasperengine::LightMode>{};
     template<> struct Stack<jasperengine::CascadeSplitMode> : EnumWrapper<jasperengine::CascadeSplitMode>{};
     template<> struct Stack<jasperengine::ShadowTier> : EnumWrapper<jasperengine::ShadowTier>{};
     template<> struct Stack<jasperengine::SceneColorScale> : EnumWrapper<jasperengine::SceneColorScale>{};
+    template<> struct Stack<jasperengine::UIRenderMode> : EnumWrapper<jasperengine::UIRenderMode>{};
     template<> struct Stack<jasperengine::PlanarReflectionResolution> : EnumWrapper<jasperengine::PlanarReflectionResolution>{};
     template<> struct Stack<jasperengine::LitQuality> : EnumWrapper<jasperengine::LitQuality>{};
+    template<> struct Stack<jasperengine::AmbientMode> : EnumWrapper<jasperengine::AmbientMode>{};
     template<> struct Stack<jasperengine::LightUnit> : EnumWrapper<jasperengine::LightUnit>{};
+    template<> struct Stack<jasperengine::AreaLightShape> : EnumWrapper<jasperengine::AreaLightShape>{};
     template<> struct Stack<jasperengine::TonemapMode> : EnumWrapper<jasperengine::TonemapMode>{};
     template<> struct Stack<jasperengine::MonochromeMode> : EnumWrapper<jasperengine::MonochromeMode>{};
     template<> struct Stack<jasperengine::FilmGrainType> : EnumWrapper<jasperengine::FilmGrainType>{};
     template<> struct Stack<jasperengine::FilmGateMask> : EnumWrapper<jasperengine::FilmGateMask>{};
+    template<> struct Stack<jasperengine::CavityType> : EnumWrapper<jasperengine::CavityType>{};
     template<> struct Stack<jasperengine::PaletteDither> : EnumWrapper<jasperengine::PaletteDither>{};
     template<> struct Stack<jasperengine::PaletteDistance> : EnumWrapper<jasperengine::PaletteDistance>{};
     template<> struct Stack<jasperengine::PalettePrecision> : EnumWrapper<jasperengine::PalettePrecision>{};
     template<> struct Stack<jasperengine::LutInputEncoding> : EnumWrapper<jasperengine::LutInputEncoding>{};
+    template<> struct Stack<jasperengine::VignetteFalloff> : EnumWrapper<jasperengine::VignetteFalloff>{};
     template<> struct Stack<jasperengine::AudioSourceState> : EnumWrapper<jasperengine::AudioSourceState>{};
     template<> struct Stack<jasperengine::AudioSourceAttenuation> : EnumWrapper<jasperengine::AudioSourceAttenuation>{};
     template<> struct Stack<jasperengine::AudioLoadType> : EnumWrapper<jasperengine::AudioLoadType>{};
@@ -287,6 +310,10 @@ namespace luabridge
     template<> struct Stack<jasperengine::SpriteBatchMode> : EnumWrapper<jasperengine::SpriteBatchMode>{};
     template<> struct Stack<jasperengine::SpriteBatchSpace> : EnumWrapper<jasperengine::SpriteBatchSpace>{};
     template<> struct Stack<jasperengine::SpriteSortPoint> : EnumWrapper<jasperengine::SpriteSortPoint>{};
+    // Text alignment and font size unit (S94)
+    template<> struct Stack<jasperengine::TextAnchorHorizontal> : EnumWrapper<jasperengine::TextAnchorHorizontal>{};
+    template<> struct Stack<jasperengine::TextAnchorVertical> : EnumWrapper<jasperengine::TextAnchorVertical>{};
+    template<> struct Stack<jasperengine::TextFontSizeUnit> : EnumWrapper<jasperengine::TextFontSizeUnit>{};
 
     template<> struct Stack<jasperengine::ScrollbarType> : EnumWrapper<jasperengine::ScrollbarType>{};
     // ui-components: the Button's Selectable enums
@@ -307,6 +334,9 @@ namespace luabridge
     template<> struct Stack<jasperengine::JointBreakAction> : EnumWrapper<jasperengine::JointBreakAction>{};
     template<> struct Stack<jasperengine::PhysicsMaterialCombine> : EnumWrapper<jasperengine::PhysicsMaterialCombine>{};
     template<> struct Stack<jasperengine::UIDocumentRenderMode> : EnumWrapper<jasperengine::UIDocumentRenderMode>{};
+    template<> struct Stack<jasperengine::UIDocumentUpdateMode> : EnumWrapper<jasperengine::UIDocumentUpdateMode>{};
+    template<> struct Stack<jasperengine::TextHorizontalAlignment> : EnumWrapper<jasperengine::TextHorizontalAlignment>{};
+    template<> struct Stack<jasperengine::TextVerticalAlignment> : EnumWrapper<jasperengine::TextVerticalAlignment>{};
     template<> struct Stack<jasperengine::FluidOutput> : EnumWrapper<jasperengine::FluidOutput>{};
     template<> struct Stack<jasperengine::VideoPlayerSource> : EnumWrapper<jasperengine::VideoPlayerSource>{};
     template<> struct Stack<jasperengine::VideoTimeUpdateMode> : EnumWrapper<jasperengine::VideoTimeUpdateMode>{};

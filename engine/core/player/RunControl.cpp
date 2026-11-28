@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "RunControl.h"
+#include "player/InputScriptRun.h"
+#include "TestRunnerConfig.h"
+#if JASPERENGINE_TEST_RUNNER
+#include "player/PlayerTests.h"
+#endif
+#include "debug/ConsoleCommands.h"
 #include "audio/AudioCapture.h"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
@@ -13,6 +19,7 @@
 #include "io/AtomicFile.h"
 #include "pool/ShaderPool.h"
 #include "pool/TextureDataPool.h"
+#include "profiler/PerfSampler.h"
 #include "log/LogSink.h"
 #include "log/Logger.h"
 
@@ -54,6 +61,12 @@ namespace {
         std::chrono::steady_clock::time_point captureWaitStarted;
         std::atomic<bool> errorLogged{false};
         Logger::SinkId errorSink = 0;
+        bool testsBegun = false;
+        // --command: the next line to run, and whether the gate was checked (at the first frame,
+        // after the game's init set it)
+        size_t nextCommand = 0;
+        bool commandsChecked = false;
+        bool perfWindowWritten = false;
     };
 
     State& state() {
@@ -64,6 +77,26 @@ namespace {
     constexpr double CAPTURE_WAIT_SECONDS = 120.0;
 
     bool (*gpuCreationIdleProbe)() = nullptr;
+
+    // --perf-summary (R12): the JSON through the atomic writer, or on the web a console line
+    void writePerfSummaryFile(const PerfSummary& summary) {
+        const std::filesystem::path& path = state().options.perfSummary;
+        if (path.empty()) return;
+        const std::string json = PerfSampler::toJson(summary);
+#if defined(__EMSCRIPTEN__)
+        std::printf("JASPERENGINE PERF: %s\n", json.c_str());
+        std::fflush(stdout);
+#else
+        const io::WriteResult written = io::writeFileAtomic(path, json + "\n");
+        if (!written.ok())
+            Log::error("--perf-summary: %s", written.message.c_str());
+#endif
+    }
+
+    void writePerfWindow(const PerfSummary& summary) {
+        writePerfSummaryFile(summary);
+        state().perfWindowWritten = true;
+    }
 
     // nothing drawn as a stand-in: no shader or pipeline being made, no texture loading
     bool gpuCreationIdle() {
@@ -151,14 +184,22 @@ void RunControl::reset() {
     s.captureHeldGame = false;
     gpuCreationIdleProbe = nullptr;
     s.errorLogged.store(false);
+    InputScriptRun::reset();
+    s.testsBegun = false;
+    s.nextCommand = 0;
+    s.commandsChecked = false;
+    s.perfWindowWritten = false;
 }
 
 void RunControl::configure(const LaunchOptions& options) {
     reset();
     State& s = state();
     s.options = options;
-    s.active = options.quitAfter > 0 || options.afterReady || !options.screenshot.empty() || options.failOnError;
-    s.counting = !options.afterReady;
+    InputScriptRun::configure(s.options);
+    s.active = s.options.quitAfter > 0 || s.options.afterReady || !s.options.screenshot.empty() || s.options.failOnError ||
+               !s.options.commands.empty();
+    // the commands wait for the ready frame, and the frames count after them
+    s.counting = !s.options.afterReady && s.options.commands.empty();
 }
 
 const LaunchOptions& RunControl::options() {
@@ -168,13 +209,18 @@ const LaunchOptions& RunControl::options() {
 void RunControl::engineStarted() {
     State& s = state();
     s.started = std::chrono::steady_clock::now();
+    InputScriptRun::engineStarted(s.options);
+#if JASPERENGINE_TEST_RUNNER
+    if (s.options.runTests) PlayerTests::launch(s.options);
+#endif
     if (s.options.fixedFps > 0.0)
         Engine::setFixedDeltatime(1.0 / s.options.fixedFps);
     if (s.options.fixedFps > 0.0 && s.options.afterReady) {
         Engine::pauseGameEvents(true);
         s.heldUntilReady = true;
     }
-    if (s.options.failOnError && s.errorSink == 0 && Logger::isInitialized())
+    // a test run owns the errors (project-test-runner R11, R27): --fail-on-error waits
+    if (s.options.failOnError && !s.options.runTests && s.errorSink == 0 && Logger::isInitialized())
         s.errorSink = Logger::addSink(std::make_unique<ErrorWatchSink>());
 }
 
@@ -205,7 +251,25 @@ bool RunControl::isActive() {
 }
 
 bool RunControl::wantsReadySignal() {
-    return state().options.afterReady;
+    return state().options.afterReady || !state().options.commands.empty() || !state().options.perfSummary.empty();
+}
+
+void RunControl::engineReady() {
+    State& s = state();
+    if (s.options.perfSummary.empty()) return;
+    PerfSampler::setWindowWriter(&writePerfWindow);
+    if (!PerfSampler::wasSetByGame()) {
+        PerfSampler::setSampling(true);
+        Log::print("Performance sampling: on (--perf-summary %s)", s.options.perfSummary.string().c_str());
+    }
+}
+
+void RunControl::writePerfSummary() {
+    State& s = state();
+    if (s.options.perfSummary.empty()) return;
+    const PerfSummary summary = PerfSampler::summary();
+    if (s.perfWindowWritten && summary.seconds <= 0.0) return;
+    writePerfSummaryFile(summary);
 }
 
 bool RunControl::wantsScreenshot() {
@@ -215,6 +279,11 @@ bool RunControl::wantsScreenshot() {
 
 bool RunControl::wantsOffscreenFrame() {
     const State& s = state();
+    if (s.active && InputScriptRun::wantsOffscreenFrame()) return true;
+#if JASPERENGINE_TEST_RUNNER
+    // a test case's capture reads the composite of the next frame
+    if (s.active && s.options.runTests && PlayerTests::wantsFrame()) return true;
+#endif
     if (!s.active || s.options.screenshot.empty() || s.screenshotWritten) return false;
     if (s.captureWaiting) return true;
     const uint64_t target = screenshotTarget();
@@ -228,13 +297,35 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
     if (!s.active) return;
     s.drawn++;
 
+    InputScriptRun::frameDrawn(reader);
+    if (!s.options.commands.empty() && !s.commandsChecked) {
+        s.commandsChecked = true;
+        if (!console::commandsEnabled()) {
+            Log::error("%s", commandsOffRefusal());
+            requestQuit(EXIT_BAD_ARGUMENTS);
+            return;
+        }
+    }
+
     if (!s.counting) {
         if (readySignalled) {
-            s.counting = true;
             if (s.heldUntilReady) {
                 Engine::pauseGameEvents(false);
                 s.heldUntilReady = false;
             }
+            // one --command a frame (a scene load or a spawn it asks for lands before the next)
+            if (s.nextCommand < s.options.commands.size()) {
+                const std::string& line = s.options.commands[s.nextCommand++];
+                const console::Result result = console::execute(line, console::Source::LaunchOption);
+                if (result.ok())
+                    Log::print("[command] %s: ok", line.c_str());
+                else
+                    Log::error("[command] %s: %s (%s)", line.c_str(), console::statusName(result.status), result.error.c_str());
+                return;
+            }
+            s.counting = true;
+            // the input script starts where the frames count: after the --command lines
+            InputScriptRun::ready();
         } else {
             const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.started).count();
             if (waited > s.options.readyTimeout) {
@@ -260,6 +351,18 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
         }
     };
 
+#if JASPERENGINE_TEST_RUNNER
+    // --run-tests (project-test-runner R23): the run starts at the ready frame and ends the process
+    if (s.options.runTests && !s.quit) {
+        if (!s.testsBegun) {
+            s.testsBegun = true;
+            PlayerTests::begin(s.options);
+        } else {
+            PlayerTests::frame(reader);
+        }
+        return;
+    }
+#endif
     if (s.captureWaiting) {
         // frames drawn while the capture waits for GPU creation: the game held, none counted
         const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.captureWaitStarted).count();
@@ -320,7 +423,7 @@ bool RunControl::quitRequested() {
 int RunControl::finish() {
     State& s = state();
     if (s.quit && s.quitCode != EXIT_OK) return s.quitCode;
-    if (s.options.failOnError && s.errorLogged.load()) return EXIT_ERROR_LOGGED;
+    if (s.options.failOnError && !s.options.runTests && s.errorLogged.load()) return EXIT_ERROR_LOGGED;
     if (!s.options.screenshot.empty() && !s.screenshotWritten) {
         std::fprintf(stderr, "Screenshot %s was not written: the game ended before the frame it names\n",
                      s.options.screenshot.string().c_str());

@@ -128,16 +128,39 @@ async def test_setup(ed: Editor):
                                                                 "post_processing": {"palette": S["pico"], "palette_enabled": False}})
     texture_value = {"path": HERO_PNG, "min_filter": "nearest", "mag_filter": "nearest"}
     for name, at in (("Hero", HERO_AT), ("Villain", VILLAIN_AT)):
-        made = await ed.call("create_entity", scene=scene, type="sprite", name=name, position=[at[0], at[1], 0],
-                             values={"mesh": {M + "baseColorTexture": texture_value},
-                                     "sprite": {"pivotPreset": "center", "width": 64, "height": 64}})
-        entity = made["entity_id"]
-        S[name] = entity
-        await ed.call("set_properties", scene=scene, entity=entity, values={"mesh": {M + "shader": "library:sprite"}})
-        await ed.call("set_properties", scene=scene, entity=entity, values={"mesh": {
-            M + "shaderFeatures": ["PALETTE_SWAP"],
-            M + "shaderPalettes": {"u_palette": {"source": S["asset_path"]}}}})
+        # in one batch, so no frame runs between the calls: the Sprite's mesh gets its submesh at its
+        # first frame, and an edit of submeshes[0].material before that must reach it all the same
+        made = await ed.call("batch", calls=[
+            {"tool": "create_entity", "arguments": {
+                "scene": scene, "type": "sprite", "name": name, "position": [at[0], at[1], 0],
+                "values": {"mesh": {M + "baseColorTexture": texture_value},
+                           "sprite": {"pivotPreset": "center", "width": 64, "height": 64}}}},
+            {"tool": "set_properties", "arguments": {"scene": scene, "entity": name, "values": {"mesh": {M + "shader": "library:sprite"}}}},
+            {"tool": "set_properties", "arguments": {"scene": scene, "entity": name, "values": {"mesh": {
+                M + "shaderFeatures": ["PALETTE_SWAP"],
+                M + "shaderPalettes": {"u_palette": {"source": S["asset_path"]}}}}}}])
+        ed.check_eq(made["failed"], 0, f"{name}: created and bound in one batch: {[r for r in made['results'] if not r.get('ok')]}")
+        S[name] = made["results"][0]["structured"]["entity_id"]
     await ed.call("select_scene", scene=scene)
+
+
+async def test_binding_set_before_the_sprites_first_frame(ed: Editor):
+    """A Sprite's one submesh is made by its first frame (MeshSystem::prepareSpriteMesh). A binding set
+    in the batch that makes it (no frame) goes through the Mesh's scene-file encoding, which had no
+    submesh then: "Unknown property", as test_setup met whenever CI's slow frames came after its call"""
+    scene = S["scene"]
+    binding = {"mesh": {M + "shaderFeatures": ["PALETTE_SWAP"], M + "shaderPalettes": {"u_palette": {"source": S["asset_path"]}}}}
+    try:
+        # (off the canvas: the next tests sample the hero and the villain)
+        r = await ed.call("batch", calls=[
+            {"tool": "create_entity", "arguments": {"scene": scene, "type": "sprite", "name": "Unframed", "select": False,
+                                                    "position": [-1000, -1000, 0]}},
+            {"tool": "set_properties", "arguments": {"scene": scene, "entity": "Unframed", "values": binding}}])
+        ed.check_eq(r.get("failed"), 0, f"batch: {[x for x in r['results'] if not x.get('ok')]}")
+        got = await ed.call("get_entity", scene=scene, entity="Unframed", properties=[M + "shaderPalettes"])
+        ed.check(S["asset_path"] in json.dumps(got["components"]), f"the binding is set: {json.dumps(got['components'])[:400]}")
+    finally:
+        await ed.call("delete_entities", scene=scene, entities=["Unframed"])
 
 
 async def test_get_entity_row_names(ed: Editor):

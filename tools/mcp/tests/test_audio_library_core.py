@@ -473,7 +473,7 @@ async def test_r4_audio_analyze():
         table[m.group(1)] = {"type": m.group(1), "kind": m.group(2).lower(), "target_lufs": float(m.group(3)),
                              "measure": "integrated" if m.group(4) == "true" else "momentary_max"}
     check_eq(len(table), 31, "SoundTypes.h's table read")
-    check_eq(r.json["analyzer_version"], 1, "the analyzer version")
+    check_eq(r.json["analyzer_version"], 2, "the analyzer version")
     check_eq({t["type"]: t for t in r.json["types"]}, table, "the 31 types with SoundTypes.h's kinds, targets and measures")
     check_eq([t["target_lufs"] for t in r.json["types"] if t["type"] in ("click", "explosion", "hurt", "shoot")], [-32.0, -18.0, -24.0, -21.0],
              "the four lowered targets")
@@ -489,12 +489,12 @@ async def test_r4_audio_analyze():
 
     # analysis.json as the helper wrote it from the CLI is what the reader calls current
     analysis = json.loads((lib.root / "analysis.json").read_text())
-    check_eq((analysis["format"], analysis["analyzer_version"], sorted(analysis["items"])), (slr.ANALYSIS_FORMAT, 1, sorted(lib.ids)),
+    check_eq((analysis["format"], analysis["analyzer_version"], sorted(analysis["items"])), (slr.ANALYSIS_FORMAT, 2, sorted(lib.ids)),
              "analysis.json")
     for cid, it in analysis["items"].items():
         check_eq(it["sha1"], hashlib.sha1(lib.path(cid).read_bytes()).hexdigest(), f"{cid}: the item's sha1 is the file's")
     stale = fresh("stale")
-    text = (stale.root / "analysis.json").read_text().replace('"analyzer_version": 1', '"analyzer_version": 99', 1)
+    text = (stale.root / "analysis.json").read_text().replace('"analyzer_version": 2', '"analyzer_version": 99', 1)
     (stale.root / "analysis.json").write_text(text)
     r = cli("sound-library", "list", "--json", library=stale.root)
     check_eq((r.code, r.json["analysis_current"]), (0, False), "another analyzer version: stale")

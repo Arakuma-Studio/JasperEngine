@@ -82,7 +82,8 @@ namespace {
     }
 
     // the square straddles the edge (shift 0) or lies 64 px further in (a whole number of the
-    // region layers' 64 px granules: the blur's halved passes sample the same grid)
+    // region layers' 64 px granules; S92: the blur's halved levels start at each window, which
+    // the viewport crops at the edge)
     std::string edgeDocument(Edge edge, int shift, const std::string& filter, const std::string& extra = ""){
         const bool horizontal = (edge == Edge::LEFT || edge == Edge::RIGHT);
         int left = 48, top = 48;
@@ -141,6 +142,7 @@ namespace {
 // at the edge (no blue at all there).
 TEST(RenderFilterRegion, BlurReadsTheContentBeyondTheViewport){
     JASPER_REQUIRE_GPU();
+    LayerCacheOff cacheOff;
     for (int samples : {1, 4}){
         for (Edge edge : {Edge::LEFT, Edge::RIGHT, Edge::TOP, Edge::BOTTOM}){
             for (const char* blur : {"blur(4px)", "blur(9px)"}){
@@ -150,14 +152,18 @@ TEST(RenderFilterRegion, BlurReadsTheContentBeyondTheViewport){
                 ASSERT_TRUE(renderLayer(edgeDocument(edge, 0, blur), samples, atEdge));
                 ASSERT_TRUE(renderLayer(edgeDocument(edge, 64, blur), samples, reference));
                 EXPECT_EQ(atEdge.stats.regionLayers, 1u) << "the filter's layer covers its window beyond the viewport";
-                EXPECT_EQ(reference.stats.regionLayers, 0u) << "a filter within the viewport draws into an ordinary layer";
+                // within the viewport: a layer of its window (S92 R10), or an ordinary one where the
+                // window's granules cover as much as this small target
+                EXPECT_LE(reference.stats.regionLayers, 1u);
 
                 // the blue half beyond the edge shows at it (half of it blurred in there)
                 EXPECT_GT(blueAtEdge(atEdge.rgba, edge), 0x50) << "the blur at the edge did not read the half beyond it";
                 const Strip strip = edgeStrip(edge, 27);
                 const int difference = maxDifference(atEdge.rgba, strip.x, strip.y, reference.rgba, strip.x + strip.dx, strip.y + strip.dy,
                                                      strip.w, strip.h);
-                EXPECT_LE(difference, 2) << "the blur at the edge differs from the square's blur further in";
+                // (S92: a blur's halved levels start at its window, which the viewport crops for the
+                // square at the edge, not at the 64 px granules both shared: a level of difference more)
+                EXPECT_LE(difference, 3) << "the blur at the edge differs from the square's blur further in";
                 EXPECT_EQ(SystemRender::getNestedPassCount(), nestedBefore) << "a render pass began inside another";
             }
         }
@@ -170,6 +176,7 @@ TEST(RenderFilterRegion, BlurReadsTheContentBeyondTheViewport){
 // edge, as further in
 TEST(RenderFilterRegion, LayersInsideARegionLayer){
     JASPER_REQUIRE_GPU();
+    LayerCacheOff cacheOff;
     struct Case {
         const char* name;
         const char* extra;
@@ -206,6 +213,7 @@ TEST(RenderFilterRegion, LayersInsideARegionLayer){
 // beyond) and one scaled by 1.5 (its blur too; the filter region of the transformed box)
 TEST(RenderFilterRegion, TransformedElementAtTheEdge){
     JASPER_REQUIRE_GPU();
+    LayerCacheOff cacheOff;
     for (int samples : {1, 4}){
         for (const char* transform : {"transform: rotate(180deg);", "transform: scale(1.5);"}){
             SCOPED_TRACE(std::string(transform) + ", " + std::to_string(samples) + " samples");
@@ -216,7 +224,7 @@ TEST(RenderFilterRegion, TransformedElementAtTheEdge){
             const Strip strip = edgeStrip(Edge::LEFT, 27);
             const int difference = maxDifference(atEdge.rgba, strip.x, strip.y, reference.rgba, strip.x + strip.dx, strip.y + strip.dy, strip.w,
                                                  strip.h);
-            EXPECT_LE(difference, 2) << "the transformed square's blur at the edge differs from its blur further in";
+            EXPECT_LE(difference, 3) << "the transformed square's blur at the edge differs from its blur further in";
         }
     }
 }
@@ -226,6 +234,7 @@ TEST(RenderFilterRegion, TransformedElementAtTheEdge){
 // square and shadow 64 px further in draw them
 TEST(RenderFilterRegion, DropShadowCastOntoTheScreenFromBeyondIt){
     JASPER_REQUIRE_GPU();
+    LayerCacheOff cacheOff;
     for (int samples : {1, 4}){
         for (bool above : {true, false}){
             for (int blur : {0, 3}){
@@ -262,6 +271,7 @@ TEST(RenderFilterRegion, DropShadowCastOntoTheScreenFromBeyondIt){
 // what is inside matches the clip and element 64 px further in
 TEST(RenderFilterRegion, RoundedClipAroundARegionLayer){
     JASPER_REQUIRE_GPU();
+    LayerCacheOff cacheOff;
     for (int samples : {1, 4}){
         SCOPED_TRACE(std::to_string(samples) + " samples");
         auto rml = [&](int shift){
@@ -377,6 +387,7 @@ TEST(RenderFilterRegion, DescendantFilterExtentThreeLevelsDeep){
 // shadow cast from 2000 px beyond the top edge: the documented degradation)
 TEST(RenderFilterRegion, HugeRegionsAreCropped){
     JASPER_REQUIRE_GPU();
+    LayerCacheOff cacheOff;
     struct Case {
         std::string rml;
         bool drawn;
@@ -426,6 +437,7 @@ TEST(RenderFilterRegion, HugeRegionsAreCropped){
 // frame), and they go once no region was pushed for RmlRenderTarget::kRegionKeepFrames frames
 TEST(RenderFilterRegion, RegionImagesArePooled){
     JASPER_REQUIRE_GPU();
+    LayerCacheOff cacheOff;
     RenderTestContext render(kSize, kSize, kSize, kSize, 1);
     ASSERT_TRUE(render.isValid());
     Rml::ElementDocument* doc = render.loadFromMemory(edgeDocument(Edge::LEFT, 0, "blur(4px)"), "filter-region-pool");

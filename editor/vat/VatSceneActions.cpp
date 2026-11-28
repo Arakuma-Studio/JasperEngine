@@ -82,6 +82,8 @@ bool editor::CreateVatObjectCmd::execute(){
     if (!sceneProject || !sceneProject->scene) return false;
     if (!createEntity){
         createEntity.reset(new CreateEntityCmd(project, sceneId, spec.name, EntityCreationType::MODEL, spec.parent));
+        // the Vertex Animator draws the Model's own Mesh: never Preserve Hierarchy (S94 F44)
+        createEntity->addProperty<bool>(ComponentType::ModelComponent, "preserveHierarchy", false);
         createEntity->addProperty<Vector3>(ComponentType::Transform, "position", spec.position);
         createEntity->addProperty<Quaternion>(ComponentType::Transform, "rotation", spec.rotation);
         createEntity->addProperty<Vector3>(ComponentType::Transform, "scale", spec.scale);

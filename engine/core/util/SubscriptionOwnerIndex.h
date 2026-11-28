@@ -48,6 +48,12 @@ namespace jasperengine {
         // Returns the previous one, to restore.
         static uint64_t setRegistrationOwner(uint64_t ownerKey);
         static uint64_t registrationOwner();
+
+        // The Lua script whose callback runs on this thread (its engine events and messages; 0
+        // outside them): what it makes that lives until it is released (a CullingGroup) is
+        // recorded under it. Returns the previous one, to restore.
+        static uint64_t setScriptOwner(uint64_t ownerKey);
+        static uint64_t scriptOwner();
     };
 
 }

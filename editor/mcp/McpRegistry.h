@@ -156,6 +156,18 @@ namespace jasperengine::editor::mcp {
         // matches the uri; a reader's exception becomes a failed result.
         ResourceResult readResource(const std::string& uri, bool& found) const;
 
+        // An unknown argument, naming the nearest valid one and listing them; "" when none. addTool's
+        // wrapper refuses the call with it.
+        static std::string argumentProblem(const std::string& tool, const Json& inputSchema, const Json& args);
+        // A handler's error about a key of a closed object below the top level, or a string outside its
+        // enum, gets the nearest declared name after its mention of it ("did you mean 'x'?", S99 R1).
+        // Not refused up front: schemas stay lean (a closed object may declare only some of the keys its
+        // handler reads) and handlers take aliases their enums do not list (create_entity type "box").
+        static void suggestNearestNames(const Json& inputSchema, const Json& args, std::string& errorText);
+        // "Unknown tool: x (did you mean 'y'?). ..." over every registered tool, listed or not
+        std::string nearestToolName(const std::string& name) const;
+        std::string unknownToolMessage(const std::string& name) const;
+
         static bool matchUriTemplate(const std::string& uriTemplate, const std::string& uri, std::map<std::string, std::string>& vars);
 
         // MCP wire shapes. A tool carries _meta {"jasper/group", "jasper/module", "jasper/while_playing"}.

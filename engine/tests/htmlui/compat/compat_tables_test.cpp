@@ -11,7 +11,11 @@
 
 #include <gtest/gtest.h>
 
+#include <cctype>
 #include <cstring>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::htmlui::compat;
@@ -192,4 +196,52 @@ TEST(CompatTables, TextRenderingIsNative){
     EXPECT_EQ(row->support, Support::Native);
     EXPECT_EQ(row->supportWithFork, Support::Native);
     EXPECT_TRUE(row->inherited);
+}
+
+namespace {
+
+    // the "until the fork has X" clauses of a note whose X this build has
+    void collectStaleNotes(const char* table, const std::string& row, const char* note, std::vector<std::string>& stale){
+        static constexpr std::string_view marker = "until the fork has ";
+        const std::string_view text = note ? note : "";
+        for (size_t at = text.find(marker); at != std::string_view::npos; at = text.find(marker, at + 1)){
+            size_t end = at + marker.size();
+            while (end < text.size() && std::isalnum((unsigned char)text[end]))
+                end++;
+            const std::string_view name = text.substr(at + marker.size(), end - at - marker.size());
+            const ForkFeature feature = findForkFeature(name);
+            if (feature != ForkFeature::None && ForkFeatures::present().has(feature))
+                stale.push_back(std::string(table) + " " + row + ": " + std::string(text));
+        }
+    }
+
+}
+
+// S93 R26, AC30: a note describes what this build does, so none waits for a fork feature that is present
+TEST(SupportTables, NoNoteWaitsForAPresentForkFeature){
+    std::vector<std::string> stale;
+    for (const PropertySupport& row : propertyTable())
+        collectStaleNotes("property", row.name, row.note, stale);
+    for (const ValueSupport& row : valueTable())
+        collectStaleNotes("value", std::string(row.property) + " " + row.value, row.note, stale);
+    for (const SelectorSupport& row : selectorTable())
+        collectStaleNotes("selector", row.name, row.note, stale);
+    for (const AtRuleSupport& row : atRuleTable())
+        collectStaleNotes("at-rule", row.name, row.note, stale);
+    for (const MediaFeatureSupport& row : mediaFeatureTable())
+        collectStaleNotes("media feature", row.name, row.note, stale);
+    for (const ElementSupport& row : elementTable())
+        collectStaleNotes("element", row.name, row.note, stale);
+    for (const AttributeSupport& row : attributeTable())
+        collectStaleNotes("attribute", std::string(row.element) + " " + row.name, row.note, stale);
+    for (const InputTypeSupport& row : inputTypeTable())
+        collectStaleNotes("input type", row.type, row.note, stale);
+    for (const UnitSupport& row : unitTable())
+        collectStaleNotes("unit", row.unit, row.note, stale);
+    for (const FunctionSupport& row : functionTable())
+        collectStaleNotes("function", row.name, row.note, stale);
+    std::string listed;
+    for (const std::string& line : stale)
+        listed += "\n  " + line;
+    EXPECT_TRUE(stale.empty()) << stale.size() << " notes wait for a present fork feature:" << listed;
 }

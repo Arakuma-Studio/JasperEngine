@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: pixel-art
 canvasWidth: 320
 canvasHeight: 180
@@ -37,7 +37,10 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
+transparencySortMode: perspective
 startSceneId: 3618188041
+mesh:
+  fbxSubmeshOrder: used_materials
 audio:
   mixer: audio/Main.mixer
   outputStage: linear

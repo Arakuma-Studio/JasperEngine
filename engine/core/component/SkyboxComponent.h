@@ -70,6 +70,9 @@ namespace jasperengine{
         float rotation = 0;
 
         bool visible = true; // when false the sky is not drawn but still feeds IBL
+        // vertices of the drawn geometry: the unit cube's 36, or the sphere grid of a shader
+        // reading a_texcoord1 (includes/sky_vs.glsl SKY_SPHERE_UV, S94 F18)
+        unsigned int vertexCount = 36;
 
         // IBL environment maps generated from texture (shared via TexturePool,
         // generation is expensive so maps are cached by sky texture id)

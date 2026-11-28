@@ -8,15 +8,18 @@
 #include "Engine.h"
 #include "Log.h"
 #include "FrameTimes.h"
+#include "PerfSampler.h"
 #include "GpuMemory.h"
 #include "Profiler.h"
 #include "Scene.h"
 #include "System.h"
 #include "jobs/JobSystem.h"
 #include "pool/AnimationClipPool.h"
+#include "registry/PhysicsLayers.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
 #include "subsystem/AnimatorSystem.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/RenderSystem.h"
 
@@ -156,6 +159,14 @@ namespace {
         static MonitorHandle m18 = nullptr;
         static MonitorHandle m19 = nullptr;
         static MonitorHandle m20 = nullptr;
+        static MonitorHandle m21 = nullptr;
+        static MonitorHandle m22 = nullptr;
+        static MonitorHandle m23 = nullptr;
+        static MonitorHandle m24 = nullptr;
+        static MonitorHandle m25 = nullptr;
+        static MonitorHandle m26 = nullptr;
+        static MonitorHandle m27 = nullptr;
+        static MonitorHandle m28 = nullptr;
         const FrameTimeSample frame = FrameTimes::latest();
         counter(handle(m0, "FPS", MonitorUnit::Quantity), frame.fps);
         counter(handle(m1, "CPU frame ms", MonitorUnit::TimeMs), frame.cpuMs);
@@ -209,6 +220,44 @@ namespace {
         counter(handle(m19, "Anim Finalize ms", MonitorUnit::TimeMs), animation.finalizeMs);
         // the pool serves every scene, so this one is not a sum of theirs
         counter(handle(m20, "Clip memory", MonitorUnit::Memory), (double)AnimationClipPool::loadedBytes());
+        // Culling Groups and Simulation Culling, only once a scene has used them
+        CullingSystem::Stats culling;
+        bool cullingUsed = false;
+        for (Scene* scene : Engine::getSceneLayers()){
+            if (auto system = scene->findSystem<CullingSystem>()){
+                const CullingSystem::Stats c = system->getStats();
+                if (!c.groups && !c.components) continue;
+                cullingUsed = true;
+                culling.spheres += c.spheres;
+                culling.visible += c.visible;
+                culling.evaluateMs += c.evaluateMs;
+                culling.culled += c.culled;
+                culling.scriptUpdatesSkipped += c.scriptUpdatesSkipped;
+            }
+        }
+        if (cullingUsed){
+            counter(handle(m21, "Culling spheres", MonitorUnit::Quantity), culling.spheres);
+            counter(handle(m22, "Culling visible", MonitorUnit::Quantity), culling.visible);
+            counter(handle(m23, "Culling ms", MonitorUnit::TimeMs), culling.evaluateMs);
+            counter(handle(m24, "Simulation culled", MonitorUnit::Quantity), culling.culled);
+            counter(handle(m25, "Script updates skipped", MonitorUnit::Quantity), culling.scriptUpdatesSkipped);
+        }
+        // the frame thread's own CPU per frame, from its thread clock read once a second while the
+        // Profiler records (a point a second: the value holds between reads)
+        if (isEnabled())
+            PerfSampler::watchThreadCpu();
+        const double threadCpu = PerfSampler::mainThreadCpuMsLastSecond();
+        if (isEnabled() && threadCpu >= 0.0)
+            counter(handle(m26, "Main thread CPU ms", MonitorUnit::TimeMs), threadCpu);
+        // the spatial queries and raycasts of the frame (Physics counts them with a relaxed add)
+        static uint64_t queriesBefore = Physics::getQueryCount();
+        static uint64_t queryHitsBefore = Physics::getQueryHitCount();
+        const uint64_t queries = Physics::getQueryCount();
+        const uint64_t queryHits = Physics::getQueryHitCount();
+        counter(handle(m27, "Physics queries", MonitorUnit::Quantity), (double)(queries - queriesBefore));
+        counter(handle(m28, "Physics query hits", MonitorUnit::Quantity), (double)(queryHits - queryHitsBefore));
+        queriesBefore = queries;
+        queryHitsBefore = queryHits;
         // the slower ones (a walk of every GPU allocation, /proc) four times a second, whatever
         // the frame rate
         const auto now = std::chrono::steady_clock::now();

@@ -9,6 +9,7 @@
 #include "texture/TextureFallback.h"
 
 #include "htmlui/compat/Hash.h"
+#include "lighting/HdriSun.h"
 
 #include <algorithm>
 #include <chrono>
@@ -145,7 +146,8 @@ std::string TextureCooker::flagsText(uint32_t flags){
     return text;
 }
 
-int TextureCooker::decodeSource(const fs::path& path, bool cube, std::array<TextureData, 6>& faces, std::string& error){
+int TextureCooker::decodeSource(const fs::path& path, bool cube, std::array<TextureData, 6>& faces, std::string& error,
+                                bool removeSunDisc, std::string* sunDiscNote){
     TextureData image;
     if (!image.loadTextureFromFile(path.generic_string().c_str()) || !image.getData()){
         error = "cannot decode " + path.filename().generic_string();
@@ -153,6 +155,17 @@ int TextureCooker::decodeSource(const fs::path& path, bool cube, std::array<Text
     }
     // stb hands the pixels over: this object frees them
     image.setDataOwned(true);
+    if (removeSunDisc){
+        // before a cube's float texels narrow to RGBA8 below: the sun is found at its own brightness
+        std::string why;
+        if (image.getColorFormat() != ColorFormat::RGBA32F){
+            why = "not an HDR (float) image";
+        }else if (hdrisun::removeSunDiscInPlace((float*)image.getData(), (int)image.getWidth(), (int)image.getHeight(), cube, why)){
+            why.clear();
+        }
+        if (!why.empty() && sunDiscNote)
+            *sunDiscNote = "Remove Sun Disc left the image as it is: " + why;
+    }
     if (!cube){
         faces[0] = image;
         image.setDataOwned(false);
@@ -312,7 +325,8 @@ TextureCookResult TextureCooker::cook(TextureCookCache& cache, const TextureCook
 
     std::array<TextureData, 6> faces;
     const bool cube = plan.resolved.shape == TextureShape::Cube;
-    const int count = decodeSource(request.source, cube, faces, result.error);
+    std::string sunDiscNote;
+    const int count = decodeSource(request.source, cube, faces, result.error, plan.resolved.removeSunDisc, &sunDiscNote);
     if (count == 0)
         return result;
     if (!request.step.key.empty() && !cube){
@@ -388,6 +402,8 @@ TextureCookResult TextureCooker::cook(TextureCookCache& cache, const TextureCook
     record.cpuBytes = cpuCopy.size();
     record.flags = flags;
     record.warnings = plan.choice.warnings;
+    if (!sunDiscNote.empty())
+        record.warnings.push_back(sunDiscNote);
     record.encoders.push_back(encoder.version() + (encoder.isaInvariant() ? std::string() : std::string(" (") + textureEncoderIsa() + ")"));
     measure(ktx2, prepared, record);
     record.cookMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();

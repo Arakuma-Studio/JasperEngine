@@ -201,4 +201,45 @@ TEST(WebFontDecodeTest, ListsTheFacesOfACollection) {
     EXPECT_EQ(listFontFaces(single.data(), single.size()).size(), 1u);
 }
 
+// The WOFF refusals of the HTML UI's former decoder, kept against this one: a total length that is
+// not the file's, a table over the directory, overlapping tables, a length that wraps 32-bit
+// padding. (A totalSfntSize off by a table's padding and a duplicate tag decode here, as before,
+// within the 64 MB cap.)
+TEST(WebFontDecodeTest, InvalidWoffDirectoriesAreRefused) {
+    const std::vector<uint8_t> original = woff();
+    const size_t tables = (size_t(original[12]) << 8) | original[13];
+    ASSERT_GT(tables, 2u);
+    auto refused = [&](size_t at, uint32_t value) {
+        std::vector<uint8_t> bytes = original;
+        put32(bytes, at, value);
+        EXPECT_FALSE(decodeWebFont(bytes.data(), bytes.size()).ok) << "field at " << at;
+    };
+    refused(8, (uint32_t)original.size() + 1);                  // total length
+    refused(44 + 4, 44);                                        // a table over the directory
+    refused(44 + 20 + 4, be32(original, 44 + 4));               // overlapping tables
+    for (uint32_t oversized : {0xFFFFFFFDu, 0xFFFFFFFEu, 0xFFFFFFFFu}) refused(44 + 12, oversized);
+}
+
+// Red control: FontFace without the decoder installed refuses both files
+TEST(WebFontDecodeTest, InstalledInFontFaceWebFontsOpenAsTheirSfnt) {
+    installWebFontDecoder();
+    const std::vector<uint8_t> ttf = reference();
+    const std::shared_ptr<jasperengine::FontFace> expected = jasperengine::FontFace::loadMemory(ttf.data(), ttf.size(), 0, true, "reference");
+    ASSERT_NE(expected, nullptr);
+    for (const std::vector<uint8_t>& source : {woff(), woff2()}) {
+        std::string error;
+        const std::shared_ptr<jasperengine::FontFace> face = jasperengine::FontFace::loadMemory(source.data(), source.size(), 0, true, "web font", &error);
+        ASSERT_NE(face, nullptr) << error;
+        EXPECT_EQ(face->getFamilyName(), expected->getFamilyName());
+        EXPECT_EQ(face->getUnitsPerEm(), expected->getUnitsPerEm());
+        for (uint32_t codepoint : {0x41u, 0x67u, 0xE9u}) {
+            const uint32_t glyph = face->getGlyphIndex(codepoint);
+            ASSERT_NE(glyph, 0u);
+            EXPECT_EQ(glyph, expected->getGlyphIndex(codepoint));
+            EXPECT_EQ(face->getGlyphAdvance(glyph, 1.0f), expected->getGlyphAdvance(glyph, 1.0f));
+        }
+    }
+    jasperengine::FontFace::setWebFontDecoder(nullptr);
+}
+
 }  // namespace WebFontDecodeTest_cpp

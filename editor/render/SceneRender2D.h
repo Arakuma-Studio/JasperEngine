@@ -28,19 +28,20 @@ namespace jasperengine::editor{
         LineRenderer* gridLines;
         // the component UI's navigation arrows (a Button's Navigation > Visualize)
         LineRenderer* navigationLines;
-        std::map<Entity, LineRenderer*> containerLines;
-        std::map<Entity, LineRenderer*> bodyLines;
-        std::map<Entity, LineRenderer*> jointLines;
-        std::map<Entity, LineRenderer*> controllerLines;
-        std::map<Entity, LineRenderer*> light2DLines;
-        std::map<Entity, LineRenderer*> shadowCaster2DLines;
-        std::map<Entity, LineRenderer*> linePointLines;
-        std::map<Entity, LineRenderer*> polygonPointLines;
-        std::map<Entity, LineRenderer*> trackLines;
-        std::map<Entity, LineRenderer*> stickLines;   // On-Screen Stick: handle range and dead zone
-        std::map<Entity, CameraObjects> cameraObjects;
-        std::map<Entity, SoundObjects> soundObjects;
-        std::map<Entity, Light2DObjects> light2DObjects;
+        // one batch per gizmo kind for every GameObject (S98 REQ-30)
+        GizmoLineBatch containerLines;
+        GizmoLineBatch bodyLines;
+        GizmoLineBatch jointLines;
+        GizmoLineBatch controllerLines;
+        GizmoLineBatch light2DLines;
+        GizmoLineBatch shadowCaster2DLines;
+        GizmoLineBatch linePointLines;
+        GizmoLineBatch polygonPointLines;
+        GizmoLineBatch trackLines;
+        GizmoLineBatch stickLines;   // On-Screen Stick: handle range and dead zone
+        GizmoLineBatch cameraLines{true};
+        GizmoIconBatch icons{false};
+        std::vector<GizmoLineBatch*> lineBatches();
         LineRenderer* tileLines = nullptr;
         // the canvas rectangle, outlined while a UI Document is selected (its documents fill it)
         LineRenderer* documentLines = nullptr;
@@ -54,7 +55,7 @@ namespace jasperengine::editor{
         void applyZoomProjection();
         void updateGridLines();
         void updateNavigationLines(const std::vector<Entity>& entities);
-        void addPointHandle(LineRenderer* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color);
+        void addPointHandle(GizmoLineBatch* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color);
         void createOrUpdateBodyLines(Entity entity, const Transform& transform, Rigidbody2DComponent& body, bool visible, bool highlighted);
         void createOrUpdateJointLines(Entity entity, const Joint2DComponent& joint, bool visible, bool highlighted);
         void createOrUpdateController2DLines(Entity entity, const Transform& transform, const CharacterController2DComponent& controller, bool visible, bool highlighted);
@@ -63,12 +64,10 @@ namespace jasperengine::editor{
         void createOrUpdateShadowCaster2DLines(Entity entity, const Transform& transform, const ShadowCaster2DComponent& occluder, bool visible, bool highlighted);
         void createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible);
         void createOrUpdatePolygonPointLines(Entity entity, const Transform& transform, const std::vector<PolygonPoint>& points, bool isMesh, bool visible);
-        bool instanciateTrackLines(Entity entity);
         void createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible);
 
     protected:
         void hideAllGizmos() override;
-        void hideEntityGizmos(Entity entity) override;
         void dropGoneGizmos() override;
         using SceneRender::dropGoneGizmos;
 

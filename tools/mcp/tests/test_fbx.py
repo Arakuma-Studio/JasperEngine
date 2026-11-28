@@ -3,7 +3,8 @@ loads as a glTF while the scene keeps its .fbx path. import_files converts what 
 get_asset_info summarizes the conversion, set_model loads it (mesh, two bones, an animation,
 a blend shape), a saved scene records which import its model parts came from, an edit of the
 FBX reloads the scene's model, and an export ships each FBX as its cook in je-cooked/models, under
-its .fbx path (S53 R12: the .fbx and its .fbx.glb import stay behind).
+its .fbx path (S53 R12: the .fbx and its .fbx.glb import stay behind). A fresh clone's FBX imports
+run in the background and never block the tool server (S98 REQ-32, REQ-33).
 
 The model is editor/tests/fixtures/rigged_cube.fbx, the gtest FbxImportTest's handwritten ASCII FBX.
 """
@@ -14,16 +15,19 @@ import asyncio
 import json
 import shutil
 import struct
+import tempfile
 import time
 import zlib
 from pathlib import Path
 
 import yaml
 
-from harness import Editor, find_key
+from harness import Editor, find_key, over_budget
 
 EDITOR = {"create": True, "name": "FBX Test"}
 CI = True
+# the background-import tests start three editors of their own
+TIMEOUT = 900
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE = REPO / "editor" / "tests" / "fixtures" / "rigged_cube.fbx"
 GLTF = REPO / "tools" / "fixtures" / "shader-library-export" / "assets" / "models" / "box.gltf"
@@ -213,8 +217,10 @@ async def test_source_export_ships_the_imports(ed: Editor):
     ed.check((assets / "je-cooked" / "desktop" / index["models/textures/checker.png"]["file"]).is_file(),
              "its cooked file ships")
     ed.check(not (shipped / "textures" / "checker.png").exists(), "the cooked source itself is not shipped")
-    sources = [p for p in out.rglob("*.cpp") if "rigged_cube.fbx" in p.read_text(errors="ignore")]
-    ed.check(sources, "the scene source loads the model by its .fbx path")
+    # a source export carries the scenes cooked, as the prebuilt player reads them (S98 WP-1)
+    scenes = list((out / "project" / "content" / "scenes").glob("*.jscn"))
+    ed.check(any(b"models/rigged_cube.fbx" in p.read_bytes() for p in scenes),
+             f"the cooked scene loads the model by its .fbx path: {[p.name for p in scenes]}")
 
 
 async def test_an_asset_at_the_import_path_fails_the_export(ed: Editor):
@@ -228,3 +234,128 @@ async def test_an_asset_at_the_import_path_fails_the_export(ed: Editor):
     finally:
         clash.unlink()
         await ed.call("sync_files", paths=[f"{S['models']}/unused.fbx.glb"])
+
+# ---- FBX imports never block the tool server (S98 REQ-32, REQ-33, AC25, AC26) ----
+# A project whose scene places three FBX models is copied without its import cache (a fresh clone):
+# opening the scene queues the three imports on the import queue's Background job, each held 5 s
+# (JASPER_TEST_FBX_IMPORT_DELAY_MS). Meanwhile editor_status, get_scene_tree and read_console answer,
+# a model created from a fourth FBX waits for its import without holding the other calls, the
+# models appear once their imports land, and the Console has one "Importing N models" line and no
+# model load error. editor_status lists the import job with done/total.
+
+DELAY_ENV = "JASPER_TEST_FBX_IMPORT_DELAY_MS"
+IMPORT_SCENE = "scenes/Imports.scene"
+IMPORT_MODELS = ("A", "B", "C")
+IMPORTS: dict = {}
+
+
+async def import_project_copy() -> Path:
+    """A copy of a project whose scene places three FBX models, without the import and cook caches"""
+    if "source" not in IMPORTS:
+        IMPORTS["work"] = Path(tempfile.mkdtemp(prefix="import-blocking-"))
+        async with Editor(create=True, name="Import Blocking", label="import-source") as ed:
+            summary = await ed.call("get_project_summary")
+            assets = summary["assets_dir"].rstrip("/") or "."
+            IMPORTS["models"] = f"{assets}/models" if assets != "." else "models"
+            folder = ed.project / IMPORTS["models"]
+            for name in ("a", "b", "c", "d"):
+                folder.mkdir(parents=True, exist_ok=True)
+                (folder / f"{name}.fbx").write_bytes(FIXTURE.read_bytes())
+            write_png(folder / "textures" / "checker.png")
+            await ed.call("sync_files")
+            sid = (await ed.call("create_scene", name="Imports", type="3d", path=IMPORT_SCENE))["scene"]["id"]
+            for name in IMPORT_MODELS:
+                await ed.call("create_entity", scene=sid, type="model", name=name, model=f"{IMPORTS['models']}/{name.lower()}.fbx",
+                              select=False)
+            await ed.call("save_scene", scene=sid)
+            await ed.call("close_scene", scene=sid)
+            await ed.call("save_project")
+            IMPORTS["source"] = IMPORTS["work"] / "source"
+            shutil.copytree(ed.project, IMPORTS["source"], ignore=shutil.ignore_patterns("editor.lock"))
+        for cache in ("imported", "cache"):
+            shutil.rmtree(IMPORTS["source"] / ".jasperengine" / cache, ignore_errors=True)
+    IMPORTS["copies"] = IMPORTS.get("copies", 0) + 1
+    copy = IMPORTS["work"] / f"copy{IMPORTS['copies']}"
+    shutil.copytree(IMPORTS["source"], copy)
+    return copy
+
+
+def import_job(status: dict) -> dict | None:
+    return next((job for job in status["jobs"] if job["kind"] == "model_import"), None)
+
+
+async def import_models_loaded(ed: Editor, sid) -> bool:
+    for name in IMPORT_MODELS:
+        info = await ed.call("get_model_info", scene=sid, entity=name)
+        if info["morph_targets"] != ["Bulge"]:
+            return False
+    return True
+
+
+async def test_tools_answer_during_import():
+    """AC25. Red before the change (the delay hook alone): create_entity converts the FBX on the main
+    thread, so the calls behind it answer only once it is done, and no import job is listed"""
+    project = await import_project_copy()
+    async with Editor(project=str(project), label="import-delayed", env={DELAY_ENV: "5000"}) as ed:
+        started = time.monotonic()
+        sid = (await ed.call("open_scene", scene=IMPORT_SCENE))["scene"]["id"]
+        took = {"open_scene": time.monotonic() - started}
+        # a model whose FBX was never imported: the call waits for the import, the others do not wait for it
+        create = asyncio.ensure_future(ed.call("create_entity", scene=sid, type="model", name="D",
+                                               model=f"{IMPORTS['models']}/d.fbx", select=False, timeout=300))
+        await asyncio.sleep(0.5)
+        for tool, args in (("editor_status", {}), ("get_scene_tree", {"scene": sid}), ("read_console", {"limit": 20})):
+            started = time.monotonic()
+            await ed.call(tool, **args)
+            took[tool] = time.monotonic() - started
+            ed.check(not create.done(), f"{tool} answered while create_entity waits for its FBX's import")
+
+        raw = await ed.call_raw("editor_status")
+        job = import_job(raw.value)
+        ed.check(job is not None and job["done"] < job["total"], f"the import job runs: {raw.value['jobs']}")
+        ed.check_in("Importing models:", raw.text, "the status text names the import")
+
+        await wait_until(ed, "the scene's models to appear once imported", lambda: import_models_loaded(ed, sid), timeout=120.0)
+        created = await create
+        ed.check("entity" in created, f"{created!r}")
+        info = await ed.call("get_model_info", scene=sid, entity="D")
+        ed.check(not info["loading"] and info["morph_targets"] == ["Bulge"], f"the created model loaded: {info!r}")
+        ed.check(over_budget("tool calls during a 20 s FBX import", took, 1.0) == {}, "over budget")
+
+
+async def test_pending_import_logs_no_error():
+    """AC26. Red before the change: each model logs "Model file not found" and "Model load failed,
+    not retrying" before its import lands, and no import job is listed"""
+    project = await import_project_copy()
+    async with Editor(project=str(project), label="import-fresh", env={DELAY_ENV: "1000"}) as ed:
+        cursor = (await ed.call("read_console", limit=1)).get("next_cursor")
+        sid = (await ed.call("open_scene", scene=IMPORT_SCENE))["scene"]["id"]
+        jobs = []
+
+        async def loaded():
+            job = import_job(await ed.call("editor_status"))
+            if job:
+                jobs.append(job)
+            return await import_models_loaded(ed, sid)
+
+        await wait_until(ed, "the scene's models to appear once imported", loaded, timeout=120.0)
+
+        args = {"since": cursor} if cursor is not None else {}
+        problems = (await ed.call("read_console", only_problems=True, limit=1000, **args))["entries"]
+        for entry in problems:
+            ed.check("Model file not found" not in entry["message"] and "not retrying" not in entry["message"],
+                     f"a pending import is no failure: {entry['message']}")
+        lines = (await ed.call("read_console", regex=r"Importing \d+ models? \(first open\)", limit=1000, **args))["entries"]
+        # the scene's models in one batch, one line; the model cook queue's import of the unused d.fbx
+        # joins it, or starts a batch of its own when it comes after the line was written
+        messages = [e["message"] for e in lines]
+        scene_batch = [m for m in messages if any(f"Importing {n} models (first open): they appear when ready" in m
+                                                  for n in (len(IMPORT_MODELS), len(IMPORT_MODELS) + 1))]
+        ed.check_eq(len(scene_batch), 1, f"one line for the scene's batch: {messages}")
+        ed.check(len(messages) == 1 or (len(messages) == 2 and f"Importing {len(IMPORT_MODELS)} models" in scene_batch[0]
+                                        and any("Importing 1 model (first open)" in m for m in messages)),
+                 f"at most d.fbx's own line besides it: {messages}")
+        ed.check(jobs, "editor_status listed the model_import job while it ran")
+        ed.check(all(0 <= job["done"] <= job["total"] for job in jobs), f"done/total: {jobs}")
+        # (the model cook queue's import of the unused d.fbx can join the batch)
+        ed.check(max((job["total"] for job in jobs), default=0) >= len(IMPORT_MODELS), f"the job counts the scene's imports: {jobs}")

@@ -5,6 +5,7 @@
 
 #include "Project.h"
 #include "graph/GraphRegistry.h"
+#include "htmlui/HtmlUIDependencies.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -37,9 +38,12 @@ std::string reload::kindOf(const fs::path& path) {
     if (ext == ".voxelvolume") return "voxel";
     if (Util::isPaletteFile(text)) return "palette";
     if (Util::isTilesetFile(text)) return "tileset";
+    if (Util::isMeshAssetFile(text)) return "mesh";
+    if (Util::isFogProfileFile(text)) return "fogprofile";
     if (Util::isShaderFile(text)) return "shader";
     if (Util::isAudioFile(text)) return "audio";
     if (Util::isFontFile(text)) return "font";
+    if (getHtmlUIReferenceKind(text) == HtmlUIReference::FONT) return "ui";
     if (Util::isScriptFile(text) || ext == ".c" || ext == ".inl") return "script";
     if (Util::isHtmlFile(text) || Util::isCssFile(text) || ext == ".json" || ext == ".lottie") return "ui";
     // pose animations, the models' humanoid maps and clip settings, animation clips, the Animator's

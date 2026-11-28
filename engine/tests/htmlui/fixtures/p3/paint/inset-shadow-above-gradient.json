@@ -1,0 +1,7 @@
+{
+ "comment": "S93 R24 (U22): inset box shadows paint above the background images (gradients) and below the border, hard and blurred, with radii, offsets and an outer shadow, as primitives (solid borders) and as textures (a dashed border, border colours that differ on a curve)",
+ "viewport": [
+  440,
+  190
+ ]
+}

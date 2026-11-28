@@ -192,7 +192,9 @@ namespace jasperengine::graph {
     //                 no defaults)}                          removeNode {id} (and its edges)
     //   moveNodes {ids, delta: [x, y]} or {positions: {id: [x, y] or null (no position)}}
     //   layout {ids?} (the nodes without a position, or `ids`: placed by layoutPositions)
-    //   setParam {node, name, value} (value null removes)    connect {from: {node, port}, to: {...}, id?}
+    //   setParam {node, name, value} (value null removes; a dynamic-port node's ports follow when its type computes
+    //            other ports from the new params, and `ports` sets them exactly: an undo's)
+    //                                                         connect {from: {node, port}, to: {...}, id?}
     //   disconnect {id} or {from, to}                         addVariable {variable}
     //   removeVariable {name}                                 renameVariable {from, to}
     //   setVariable {name, type?, default?, exposed?, group?} group {title, nodes, rect?, id?}

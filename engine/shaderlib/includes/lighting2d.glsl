@@ -29,6 +29,10 @@
 // LIGHT2D_SURFACE_NORMALS before including (mesh.frag's lit path: real normals, the light's
 // N.L). Without LIGHT2D_NORMAL_RESPONSE getLight2DIntensity ignores n and the height: a plain
 // sprite is lit as a height-0 light lights it, at any height.
+//
+// LIGHT2D_STEPS (the scene's Light Steps, 'Lst'): each light's term atten * N.L, before its shadow,
+// colour and intensity, becomes ceil(t * steps) / steps, steps = atlasInfo.z (1..16); the ambient
+// is not stepped.
 
 #ifndef LIGHTING2D_GLSL
 #define LIGHTING2D_GLSL
@@ -88,7 +92,7 @@ uniform u_fs_lighting2d {
     vec4 color_intensity[MAX_LIGHTS_2D]; //color.rgb (linear) and intensity.w
     vec4 falloff_shadow[MAX_LIGHTS_2D];  //falloff.x, shadowRow.y (-1.0 if no shadow), softness.z, bias.w
     vec4 ambient;                        //ambient2D.rgb (linear, pre-multiplied by intensity) and numLights2D.w
-    vec4 atlasInfo;                      //1/atlasWidth.x, 1/MAX_LIGHTS_2D.y, atlasWidth.z
+    vec4 atlasInfo;                      //1/atlasWidth.x, 1/MAX_LIGHTS_2D.y, Light Steps.z, PCF radius.w
 } lighting2d;
     #define LIGHTS2D_AMBIENT lighting2d.ambient
     #define LIGHTS2D_ATLAS_INFO lighting2d.atlasInfo
@@ -222,7 +226,18 @@ vec3 getLight2DIntensity(vec3 fragPos, vec3 n, bool includeAmbient){
             }
         #endif
         vec4 colorIntensity = LIGHTS2D_COLOR_INTENSITY(i);
-        acc += colorIntensity.rgb * colorIntensity.w * atten * ndotl * lit;
+        #ifdef LIGHT2D_STEPS
+            // ceil: a lit pixel keeps at least one band and 0 stays 0 (0 steps: smooth, the frames
+            // this variant draws while it reloads after the steps went off)
+            float banded = atten * ndotl;
+            float steps = LIGHTS2D_ATLAS_INFO.z;
+            if (steps >= 1.0){
+                banded = ceil(banded * steps) / steps;
+            }
+            acc += colorIntensity.rgb * colorIntensity.w * banded * lit;
+        #else
+            acc += colorIntensity.rgb * colorIntensity.w * atten * ndotl * lit;
+        #endif
     }
     return acc;
 }

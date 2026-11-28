@@ -145,6 +145,28 @@ TEST(PostProcessingPresets, CostCountsHalationAndListsS13Effects) {
     EXPECT_TRUE(postProcessingPresetsContains(estimatePostProcessingCost(adaptive, {}, false).notes, "min^2 and max^2"));
 }
 
+// S100: Cavity is a draw inside the scene pass: its screen counts, no pass does, at the render
+// scale; the note names the pre-pass it may add; URP needs a renderer feature for it
+TEST(PostProcessingPresets, CostCountsCavity) {
+    PostProcessingSettings settings;
+    settings.cavityEnabled = true;
+    PostProcessingCost cost = estimatePostProcessingCost(settings, {}, false);
+    EXPECT_TRUE(hasPass(cost.engine, "cavity (a draw in the scene pass)"));
+    EXPECT_EQ(cost.engine.passCount, 0);
+    EXPECT_FLOAT_EQ(cost.engine.fullscreen, 1.0f);
+    EXPECT_TRUE(postProcessingPresetsContains(cost.notes, "pre-pass"));
+    EXPECT_FALSE(postProcessingPresetsContains(cost.notes, "Nothing is on"));
+    EXPECT_TRUE(postProcessingPresetsContains(cost.urpCustom, "cavity"));
+
+    settings.renderScale = 0.5f;
+    cost = estimatePostProcessingCost(settings, {}, false);
+    PostProcessingSettings scaledOnly;
+    scaledOnly.renderScale = 0.5f;
+    EXPECT_FLOAT_EQ(cost.engine.fullscreen, estimatePostProcessingCost(scaledOnly, {}, false).engine.fullscreen + 0.25f);
+
+    EXPECT_FALSE(hasPass(estimatePostProcessingCost(PostProcessingSettings(), {}, false).engine, "cavity (a draw in the scene pass)"));
+}
+
 TEST(PostProcessingPresets, DynamicResolutionReadout) {
     std::vector<std::string> warnings;
     DynamicResolutionStatus status;

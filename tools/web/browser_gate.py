@@ -28,11 +28,26 @@ deliberate crash) and fail nothing. Exit 2 when the gate itself cannot run (no C
 --until-line TEXT ends the run at the first console line containing TEXT (a game that prints when it
 is done; --seconds is then the cap).
 
+A baseline's "reload_after": TEXT reloads the page (Page.reload, the same profile: what it stored in
+IndexedDB stays) once a console line contains TEXT, then waits for the ready line again; the console
+checks see both loads. "quota_bytes" sets the site's storage quota (Storage.overrideQuotaForOrigin)
+before the page opens. "project" names the test project whose build the gate runs (default: the
+gate's own name), for a second gate of one build. "serve" ({"/url/path": "repository-relative file"})
+serves more files beside the build, same-origin (an input script the page fetches by URL). "no_ready":
+true: the page ends before the engine starts (a launch option refused), so no ready line is awaited.
+
 A baseline's "click": n clicks the canvas centre n times after the run (CDP Input.dispatchMouseEvent:
 trusted events, so a page can lock the pointer), each followed by "after_click_seconds" (default 2)
 of running; the console lines it causes are checked like the others.
 
-A baseline's "keys": key presses after the clicks, each a {"code", "key", "key_code", "location"} object
+A baseline's "drags": mouse drags after the clicks, each {"from": [fx, fy], "to": [fx, fy]} in fractions of
+the canvas's rectangle (outside 0..1: off the canvas, in the page): a CDP mouseMoved and mousePressed (left
+button) at "from", a mouseMoved and mouseReleased at "to", then "after_drag_seconds" (default 1) of running.
+
+A baseline's "touch": n finger taps at the canvas centre after the clicks (CDP
+Input.dispatchTouchEvent touchStart, touchEnd), each followed by "after_touch_seconds" (default 1).
+
+A baseline's "keys": key presses after the clicks, drags and taps, each a {"code", "key", "key_code", "location"} object
 (every field optional: an event without "code" exercises the legacy keyCode path) sent as a CDP
 Input.dispatchKeyEvent rawKeyDown and keyUp pair (trusted: a key press is a user gesture), each followed
 by "after_key_seconds" (default 0.5). "eval_before_input" with "eval_before_input_expect" is evaluated
@@ -43,6 +58,12 @@ desktop browser).
 The transcript is printed before anything that needs the page's main thread (evaluation, the
 screenshot), so a wedged page still yields its console. The only capture path is
 Page.captureScreenshot: reading a WebGL canvas back from the page returns cleared pixels.
+
+--editor-served URL opens a page the editor serves (build_project run_device "web",
+docs/specs/build-and-run-on-device.md AC9) instead of serving --root; --editor-console CMD then runs
+CMD (a shell command that prints the editor's Console device lines, e.g. `jasperengine-editor call
+--project P read_console ...`) after the run and fails unless its output holds the ready line: the
+development page's reporter carried it to the editor.
 
 Chrome: JASPER_CHROME, else chrome-headless-shell (the web build image's, docker/web.Dockerfile),
 else google-chrome, chromium or chrome on PATH, else the usual install paths. No third-party
@@ -309,7 +330,10 @@ def evaluate(cdp: Cdp, expression: str, timeout: float = 30.0):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--root", type=Path, required=True, help="the web build directory (served)")
+    parser.add_argument("--root", type=Path, help="the web build directory (served); not with --editor-served")
+    parser.add_argument("--editor-served", metavar="URL", help="open this page of the editor's web server instead of serving --root")
+    parser.add_argument("--editor-console", metavar="CMD", help="with --editor-served: a command printing the editor's device "
+                        "Console lines; its output must hold the ready line")
     parser.add_argument("--page", default="jasperengine-project.html", help="page under --root")
     parser.add_argument("--until-ready", action="store_true", help=f"wait for the engine's '{READY_LINE}' line")
     parser.add_argument("--timeout", type=float, default=120.0, help="seconds to wait for the ready line (120)")
@@ -335,18 +359,28 @@ def main() -> int:
     args = parser.parse_args()
 
     baseline = json.loads(args.baseline.read_text()) if args.baseline else {}
+    # a run that ends before the engine starts (a launch option it refuses) has no ready line to wait for
+    if baseline.get("no_ready"):
+        args.until_ready = False
     # a baseline's "seconds" is its own default run length (a scene that needs a while: S19's bakes)
     default_seconds = (2.0 if args.until_ready else 10.0)
     seconds = args.seconds if args.seconds is not None else float(baseline.get("seconds", default_seconds))
     if args.capture_timeout is None:
         args.capture_timeout = float(baseline.get("capture_timeout", 30.0))
-    if not (args.root / args.page).is_file():
-        print(f"browser_gate: no {args.page} in {args.root}", file=sys.stderr)
-        return 2
-
-    server = make_server(args.root, 0, cross_origin_isolation=not args.no_isolation, quiet=True)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    page_url = f"http://127.0.0.1:{server.server_port}/{args.page}?" + "&".join([READY_QUERY] + baseline.get("query", []) + args.query)
+    server = None
+    if args.editor_served:
+        # the editor's server sends the isolation headers itself and relays the page's log
+        page_url = args.editor_served + ("&" if "?" in args.editor_served else "?") + "&".join([READY_QUERY] + baseline.get("query", []) + args.query)
+    else:
+        if args.root is None or not (args.root / args.page).is_file():
+            print(f"browser_gate: no {args.page} in {args.root} (--root, or --editor-served)", file=sys.stderr)
+            return 2
+        # "serve": {"/url/path": "repository-relative file"} serves files beside the build (a script the page fetches)
+        repo = Path(__file__).resolve().parents[2]
+        extra = {url: repo / path for url, path in baseline.get("serve", {}).items()}
+        server = make_server(args.root, 0, cross_origin_isolation=not args.no_isolation, quiet=True, extra_files=extra)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        page_url = f"http://127.0.0.1:{server.server_port}/{args.page}?" + "&".join([READY_QUERY] + baseline.get("query", []) + args.query)
 
     chrome_path = find_chrome()
     cdp_port = free_port()
@@ -385,12 +419,27 @@ def main() -> int:
         cdp.send("Page.enable")
         if baseline.get("init_script"):
             cdp.send("Page.addScriptToEvaluateOnNewDocument", source=baseline["init_script"])
+        # a site storage quota (bytes): IndexedDB writes past it fail with QuotaExceededError
+        if baseline.get("quota_bytes"):
+            cdp.send("Storage.overrideQuotaForOrigin", origin=f"http://127.0.0.1:{server.server_port}",
+                     quotaSize=int(baseline["quota_bytes"]))
         print(f"browser_gate: {Path(chrome_path).name} opens {page_url}")
         cdp.send("Page.navigate", url=page_url)
 
         ready = False
         if args.until_ready:
             ready = cdp.pump(args.timeout, until=lambda event: READY_LINE in console_text(event))
+        reload_after = baseline.get("reload_after")
+        if reload_after:
+            # what the page stored (IndexedDB, localStorage) stays: the same profile loads it again
+            if not any(reload_after in console_text(event) for event in cdp.events):
+                cdp.pump(args.timeout, until=lambda event: reload_after in console_text(event))
+            print(f"browser_gate: reloading the page after {reload_after!r}")
+            loads = sum(1 for event in cdp.events if READY_LINE in console_text(event))
+            cdp.send("Page.reload")
+            if args.until_ready:
+                ready = cdp.pump(args.timeout, until=lambda event: READY_LINE in console_text(event)
+                                 and sum(1 for e in cdp.events if READY_LINE in console_text(e)) > loads)
         cdp.pump(seconds, until=(lambda event: args.until_line in console_text(event)) if args.until_line else None)
 
         before_input = None
@@ -407,6 +456,28 @@ def main() -> int:
                 cdp.send("Input.dispatchMouseEvent", type=kind, x=x, y=y, button="left" if kind != "mouseMoved" else "none",
                          buttons=1 if kind == "mousePressed" else 0, clickCount=1 if kind != "mouseMoved" else 0)
             cdp.pump(float(baseline.get("after_click_seconds", 2.0)))
+
+        # drags: pressed at a point of the canvas, released at another, possibly off the canvas
+        for drag in baseline.get("drags", []):
+            rect = evaluate(cdp, "(() => { const c = document.querySelector('canvas'); if (!c) return null;"
+                                 " const r = c.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; })()")
+            left, top, width, height = rect if rect else (0, 0, 1280, 720)
+            (fx, fy), (tx, ty) = drag["from"], drag["to"]
+            start = (left + fx * width, top + fy * height)
+            end = (left + tx * width, top + ty * height)
+            for kind, (x, y), buttons in (("mouseMoved", start, 0), ("mousePressed", start, 1), ("mouseMoved", end, 1),
+                                          ("mouseReleased", end, 0)):
+                cdp.send("Input.dispatchMouseEvent", type=kind, x=x, y=y, buttons=buttons,
+                         button="left" if kind != "mouseMoved" else "none", clickCount=1 if kind in ("mousePressed", "mouseReleased") else 0)
+            cdp.pump(float(baseline.get("after_drag_seconds", 1.0)))
+        # finger taps at the canvas centre (CDP Input.dispatchTouchEvent)
+        for _ in range(int(baseline.get("touch", 0))):
+            rect = evaluate(cdp, "(() => { const c = document.querySelector('canvas'); if (!c) return null;"
+                                 " const r = c.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+            x, y = (rect[0], rect[1]) if rect else (640, 360)
+            cdp.send("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": x, "y": y, "id": 1}])
+            cdp.send("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+            cdp.pump(float(baseline.get("after_touch_seconds", 1.0)))
 
         # key presses (trusted, so a gesture: web audio starts on one)
         for key in baseline.get("keys", []):
@@ -531,6 +602,13 @@ def main() -> int:
                                 "for a page that cannot be captured")
         if "isolated" in baseline and bool(isolated) != bool(baseline["isolated"]):
             failures.append(f"crossOriginIsolated is {bool(isolated)}, the baseline says {bool(baseline['isolated'])}")
+        if args.editor_console:
+            # the reporter posts at most every 100 ms: the editor has had the lines for a while
+            time.sleep(1.0)
+            relayed = subprocess.run(args.editor_console, shell=True, capture_output=True, text=True, timeout=120)
+            print(f"browser_gate: editor console: {relayed.stdout.strip()[-2000:]}")
+            if READY_LINE not in relayed.stdout:
+                failures.append(f"the editor's Console has no '{READY_LINE}' line from the page (its reporter did not post it)")
 
         print(f"\nbrowser_gate: {len(lines)} console lines, {len(exceptions)} exceptions, {len(errors)} errors, "
               f"ready {'yes' if ready else 'no' if args.until_ready else 'not awaited'}, crossOriginIsolated {bool(isolated)}, "
@@ -548,7 +626,9 @@ def main() -> int:
             chrome.wait(timeout=15)
         except subprocess.TimeoutExpired:
             chrome.kill()
-        server.shutdown()
+        # (an --editor-served page is the editor's server's)
+        if server:
+            server.shutdown()
         shutil.rmtree(profile, ignore_errors=True)
 
 

@@ -8,6 +8,7 @@ uniform u_vs_htmluiPost {
 } htmluiPost;
 
 out vec2 v_uv;
+out vec2 v_dst;     // the destination viewport's 0..1, row 0 first (a composite's clip, S92)
 
 void main() {
     vec2 uv = vec2(float((gl_VertexIndex << 1) & 2), float(gl_VertexIndex & 2));
@@ -16,6 +17,7 @@ void main() {
         // only GL stores destination row 0 at clip y = -1
         uv.y = 1.0 - uv.y;
     #endif
+    v_dst = uv;
     v_uv = uv * htmluiPost.uvTransform.xy + htmluiPost.uvTransform.zw;
     #ifdef IS_VULKAN
         // GL [-1,1] to Vulkan [0,1] depth range

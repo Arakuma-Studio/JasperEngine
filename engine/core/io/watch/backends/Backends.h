@@ -7,11 +7,13 @@
 #define JASPERENGINE_WATCH_BACKENDS_H
 
 #include "FileWatcher.h"
+#include "ProjectFileIndex.h"
 
 #include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 #if defined(__APPLE__)
@@ -46,7 +48,8 @@ namespace jasperengine::watch {
     // Tests: the next `count` streams report nothing, as one fseventsd does not serve
     JASPERENGINE_API void setFsEventsDeadStreamsForTesting(int count);
 #endif
-    std::unique_ptr<FileWatcher> createPollingBackend(std::chrono::milliseconds interval);
+    // `baseline` (FileWatcher::createPolling): the first look at the tree, else start() walks it
+    std::unique_ptr<FileWatcher> createPollingBackend(std::chrono::milliseconds interval, std::optional<ProjectFileIndex> baseline = std::nullopt);
     // Tests: runs before a polling backend's baseline (in start(), on the caller's thread) and on its
     // thread before each timed pass (null: none); blocking in it delays that look at the tree, as a
     // slow scan or a preempted poll thread does

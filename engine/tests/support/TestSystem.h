@@ -5,6 +5,7 @@
 #define JASPER_TEST_SYSTEM_H
 
 #include "System.h"
+#include "input/TextEntry.h"
 
 #include <cstddef>
 #include <functional>
@@ -38,13 +39,22 @@ namespace jasperengine { namespace test {
         bool touchDevice = false;
         float screenDpi = 0.0f;
         bool isTouchDevice() override { return touchDevice; }
+        // the device's languages (the localisation tests); empty: the base's {"en-US"}
+        std::vector<std::string> preferredLocales;
+        std::vector<std::string> getPreferredLocales() override {
+            return preferredLocales.empty() ? System::getPreferredLocales() : preferredLocales;
+        }
         float getScreenDpi() override { return screenDpi; }
 
+        // a window with nothing to draw into (minimized), on any backend: the swapchain reported
+        // invalid with its size and formats still set, as VulkanContext and D3D11Context report it
+        bool swapchainInvalid = false;
+        sg_swapchain getSokolSwapchain() override;
+
 #if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)
-        // the device of the headless VulkanContext; the swapchain is never acquired, so
+        // the device of the headless VulkanContext; the swapchain is never acquired (invalid), so
         // nothing is ever presented
         sg_environment getSokolEnvironment() override;
-        sg_swapchain getSokolSwapchain() override;
 #elif defined(SOKOL_METAL) && defined(JASPER_TEST_HAS_GPU)
         // the headless Metal device; no swapchain pass is ever begun (frames render into the
         // GpuEnvironment target)
@@ -69,6 +79,8 @@ namespace jasperengine { namespace test {
         void clearPathProvider();
         bool syncFileSystem() override;           // counts the calls
         int fileSystemSyncs = 0;
+        // the URLs System::openURL handed to the platform (recorded, nothing opens; taken as opened)
+        std::vector<std::string> openedUrls;
         std::string getCachePath() override;      // <binary>/userdata
         std::string getCrashReportPath() override;   // "": the unit tests install no crash handler
         std::string getLuaPath() override;        // TestPaths::assetDir
@@ -76,18 +88,35 @@ namespace jasperengine { namespace test {
         bool isUserDataLoaded() override;
 
         void platformLog(const int type, const char* fmt, va_list args) override;
+
+    protected:
+        bool platformOpenURL(const std::string& url) override;
+
+    public:
         // the engine's log reaches platformLog through a PlatformSink; the readers below
         // flush the logger first, so what was logged before them is there
         void installLogSinks() override;
 
         // recorded for the input tests (phase 1): the base clipboard is kept
         void showVirtualKeyboard(std::wstring text = L"") override;
+        // also counted in virtualKeyboardShows (text-entry spec part A)
+        void showVirtualKeyboard(const std::wstring& text, const TextEntryTraits& traits) override;
         void hideVirtualKeyboard() override;
+        void updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd) override;
+        // a phone's keyboard that keeps the text (the resync tests); off by default
+        bool keepsKeyboardText = false;
+        bool keepsVirtualKeyboardText() override { return keepsKeyboardText; }
         void setTextInputArea(float x, float y, float width, float height) override;
         void setMouseCursor(CursorType type) override;
         int virtualKeyboardShows = 0;
         int virtualKeyboardHides = 0;
         std::wstring virtualKeyboardText;
+        // the traits of the last show (the defaults after a text-only show)
+        TextEntryTraits virtualKeyboardTraits;
+        // what the platform was told by updateVirtualKeyboardText
+        int virtualKeyboardUpdates = 0;
+        std::wstring virtualKeyboardUpdateText;
+        int virtualKeyboardSelection[2] = {0, 0};
         float textInputArea[4] = {0, 0, 0, 0};
         int textInputAreaCalls = 0;
         CursorType mouseCursor = CursorType::ARROW;

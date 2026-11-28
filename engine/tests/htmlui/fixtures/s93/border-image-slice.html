@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>border-image-slice numbers are image pixels at every dp ratio</title>
+  <style>
+    body { margin: 0; }
+    #frame { position: absolute; left: 20px; top: 20px; width: 200px; height: 120px; box-sizing: border-box;
+             border: 20px solid transparent; border-image: url("images/nine.png") 10 fill / 20px; image-rendering: pixelated; }
+  </style>
+</head>
+<body>
+  <div id="frame"></div>
+</body>
+</html>

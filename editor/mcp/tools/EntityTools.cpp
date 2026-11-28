@@ -6,6 +6,7 @@
 #include "McpTools.h"
 #include "component/PrefabComponent.h"
 #include "component/Transform.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "LatticeShared.h"
 
 #include "mcp/McpCall.h"
@@ -130,6 +131,8 @@ Hierarchy buildHierarchy(SceneProject* scene) {
         const Entity entity = transforms->getEntity(i);
         if (!playing && !authored.count(entity)) continue;
         withTransform.insert(entity);
+        // an Audio Source slot is listed as its GameObject's audio_sources (get_entity), S97 REQ-25
+        if (AudioSourceSlots::isSlot(registry, entity)) continue;
         const Entity parent = transforms->getComponentFromIndex(i).parent;
         if (parent == NULL_ENTITY) transformRoots.push_back(entity);
         else hierarchy.children[parent].push_back(entity);
@@ -192,6 +195,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"skybox", EntityCreationType::SKYBOX, "Skybox"},
         {"fog", EntityCreationType::FOG, "Fog"},
         {"local_volumetric_fog", EntityCreationType::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog"},
+        {"fog_zone", EntityCreationType::FOG_ZONE, "Fog Zone"},
         {"volumetric_clouds", EntityCreationType::VOLUMETRIC_CLOUDS, "Volumetric Clouds"},
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE, "Reflection Probe"},
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},
@@ -384,11 +388,13 @@ void getSceneTreeTool(const CallPtr& call) {
         rootJson = McpRefs::entityJson(scene, root);
     }
     const bool json = args.value("format", std::string("text")) == "json";
+    const size_t entityCount = (size_t)std::count_if(scene->entities.begin(), scene->entities.end(),
+        [scene](Entity entity) { return !AudioSourceSlots::isSlot(scene->scene, entity); });
     std::string header = "Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" (" +
-                         McpRefs::sceneTypeName(scene->sceneType) + ", " + std::to_string(scene->entities.size()) + " GameObjects" +
+                         McpRefs::sceneTypeName(scene->sceneType) + ", " + std::to_string(entityCount) + " GameObjects" +
                          (scene->playState != ScenePlayState::STOPPED ? ", " + McpRefs::playStateName(scene->playState) : "") + ")";
     if (!rootJson.is_null()) header += ", under " + rootJson["path"].get<std::string>();
-    Json data = {{"scene_id", scene->id}, {"scene_name", scene->name}, {"entity_count", scene->entities.size()}};
+    Json data = {{"scene_id", scene->id}, {"scene_name", scene->name}, {"entity_count", entityCount}};
     if (!rootJson.is_null()) data["root"] = rootJson;
 
     if (json) {
@@ -476,7 +482,7 @@ void findEntitiesTool(const CallPtr& call) {
     Json found = Json::array();
     size_t total = 0;
     for (Entity entity : candidates) {
-        if (!registry->isEntityCreated(entity)) continue;
+        if (!registry->isEntityCreated(entity) || AudioSourceSlots::isSlot(registry, entity)) continue;
         if (!namePattern.empty() && !wildcardMatch(namePattern, registry->getEntityName(entity))) continue;
         auto pathIt = paths.find(entity);
         const std::string path = pathIt != paths.end() ? pathIt->second : McpRefs::entityPath(scene, entity);
@@ -707,6 +713,28 @@ void createEntityRun(const CallPtr& call, bool waited) {
         });
     }
     if (!modelStored.empty()) {
+        // the Model values its load reads (animationEntities, preserveHierarchy) go before it, so
+        // the first load already follows them (S94 F47)
+        std::vector<McpValues::Change> loadOptions;
+        for (auto it = changes.begin(); it != changes.end();) {
+            if (it->component == ComponentType::ModelComponent && ModelLoadCmd::isLoadOption(it->property)) {
+                loadOptions.push_back(*it);
+                it = changes.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        if (!loadOptions.empty()) {
+            stepCount++;
+            steps->addStep([project, sceneId, created, loadOptions](std::string& why) -> Command* {
+                auto* multi = new MultiPropertyCmd();
+                if (!McpValues::appendChangeCommands(project, project->getScene(sceneId), {*created}, loadOptions, *multi, why)) {
+                    delete multi;
+                    return nullptr;
+                }
+                return multi;
+            });
+        }
         stepCount++;
         steps->addStep([project, sceneId, created, modelStored](std::string&) -> Command* {
             return new ModelLoadCmd(project, sceneId, *created, modelStored);
@@ -1257,10 +1285,10 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create: parent, name (default: the type's Unity name), local transform, "
+            "GameObject > Create: parent, name (default: Unity name), local transform, "
             "components, values ({component: "
             "{property: value}} or set_properties changes). empty: Transform only; bare: "
-            "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted and bound to "
+            "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted, bound to "
             "targets; *_tween/*_tracks: animation actions.";
         tool.inputSchema = object({
             {"scene", sceneRef()},

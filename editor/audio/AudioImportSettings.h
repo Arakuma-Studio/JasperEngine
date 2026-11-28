@@ -3,7 +3,8 @@
 
 // A clip's import settings (spec S36 R7): the `import.audioImporter` section of its S04 meta
 // sidecar, Unity's AudioImporter in our names. What the bytes cannot say about how a clip plays:
-// its type, gain, trims, click-safe fades, loop region and music tempo (S39 R3). Keys are written
+// its type, gain, trims, click-safe fades, loop region, Force To Mono (build-size-tools R15), music
+// tempo (S39 R3) and how it is held in memory (its Load Type, S97 REQ-16). Keys are written
 // only when they differ from their default, in this order; unknown keys survive a round trip after
 // them.
 //
@@ -15,10 +16,12 @@
 //       trim_head_ms: auto
 //       fade_out_ms: 20
 //       loop_start_ms: 1250.5
+//       force_to_mono: auto
 //       music:
 //         bpm: 120
 //         beats_per_bar: 4
 //         first_beat_ms: 12.4
+//       load_type: streaming
 
 #pragma once
 
@@ -29,6 +32,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -76,6 +80,28 @@ namespace jasperengine::editor {
             nlohmann::json toJson() const;
         };
 
+        // Force To Mono (Unity's AudioImporter.forceToMono, three-way): a stereo file plays as the mean of
+        // its channels, which pans whole as a positional sound; Auto decides from its stereo width
+        enum class ForceToMono { Off, On, Auto };
+        static const char* forceToMonoName(ForceToMono value);   // "off", "on", "auto"
+        static bool forceToMonoFromName(const std::string& name, ForceToMono& out);
+
+        // A file's channels and stereo width as Force To Mono reads them (its analysis' format.channels
+        // and stereo)
+        struct Channels {
+            unsigned int channels = 0;
+            std::optional<double> sideMidDb;     // null: mono, silent or not measured
+            std::optional<double> correlation;
+            // Auto plays it in mono: side_mid_db at or below SoundTypes::MONO_SIDE_MID_DB, and a
+            // correlation not below SoundTypes::PHASE_CORRELATION_MIN
+            bool autoPicksMono() const;
+            // from an analysis item: analyzeFile's, or analyzeClip's (the file's numbers under `source`)
+            static Channels fromAnalysis(const nlohmann::json& item);
+            // what Auto picks, in words: "-> Mono (width -24.3 dB)", "-> Stereo (width -9.1 dB: a wide
+            // image)", "-> Stereo (correlation -0.52: cancels in mono)"; "" for a mono or unmeasured file
+            std::string autoHint() const;
+        };
+
         std::string type;           // SoundTypes.h vocabulary; empty: none
         double gainDb = 0.0;
         Trim trimHead;
@@ -84,14 +110,17 @@ namespace jasperengine::editor {
         double fadeOutMs = 0.0;
         double loopStartMs = -1.0;  // -1: the trimmed start
         double loopEndMs = -1.0;    // -1: the trimmed end
+        ForceToMono forceToMono = ForceToMono::Off;
         Music music;
+        // auto (the value-initialised one) or a SoundPool::loadTypeName; never changes the samples
+        AudioLoadType loadType{};
         // the keys this version does not read (a later version's), in file order
         YAML::Node unknown;
 
         // no key but `version` would be written
         bool isDefault() const;
         bool operator==(const AudioImportSettings& other) const;
-        // the section differs in how the clip sounds (not its type, its tempo or an unknown key)
+        // the section differs in how the clip sounds (not its type, its tempo, its load type or an unknown key)
         bool sameSound(const AudioImportSettings& other) const;
 
         // The one validation of the values (Inspector, MCP, export); false with the reason
@@ -120,6 +149,12 @@ namespace jasperengine::editor {
         // first_beat_frame} with a tempo.
         bool resolve(uint64_t fileFrames, unsigned int sampleRate, double headSilenceMs, double tailSilenceMs, ClipImportSettings& out,
                      std::string& error, Json* resolved = nullptr) const;
+        // Whether a file plays in mono under these settings (On, or Auto when the width says so; never a
+        // mono file)
+        bool playsMono(const Channels& file) const;
+        // After resolve: out.forceMono from playsMono, and resolved (when given) gets force_mono and
+        // channels (as the clip plays)
+        void resolveChannels(const Channels& file, ClipImportSettings& out, Json* resolved = nullptr) const;
         // A number as the section writes it: at most 4 decimals, no trailing zeros, no locale
         static std::string numberText(double value);
     };

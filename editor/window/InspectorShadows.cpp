@@ -102,7 +102,7 @@ void editor::InspectorWindow::drawLightShadows(ComponentType cpType, SceneProjec
         auto label = [&](unsigned int value) -> std::string{
             if (value == 0){
                 const unsigned int tierValue = (light.type == LightType::DIRECTIONAL) ? tierSettings.slotResolution :
-                    (light.type == LightType::SPOT ? tierSettings.spotResolution : tierSettings.pointResolution);
+                    ((light.type == LightType::SPOT || light.type == LightType::AREA) ? tierSettings.spotResolution : tierSettings.pointResolution);
                 return "Use Quality Settings (" + std::to_string(tierValue) + ")";
             }
             return std::to_string(value);
@@ -219,7 +219,7 @@ void editor::InspectorWindow::drawLightShadows(ComponentType cpType, SceneProjec
         settingsAngle.help = "Degrees of the light's disc (the sun: 0.53). Widens soft shadows with distance from their caster; with PCSS "
                              "(Ultra) they harden at contact. " + (pcssTier ? std::string() : pcssNote);
         propertyRow(RowPropertyType::FloatPositive, cpType, "shadowAngularDiameter", "Angular Diameter", sceneProject, entities, settingsAngle);
-    }else{
+    }else if (light.type != LightType::AREA){
         RowSettings settingsRadius;
         settingsRadius.stepSize = 0.01f;
         settingsRadius.format = "%.2f";
@@ -237,7 +237,7 @@ void editor::InspectorWindow::drawLightShadows(ComponentType cpType, SceneProjec
     }
 
     // contact shadows (S57 R3): the screen-space march towards a directional or spot light
-    if (light.type != LightType::POINT){
+    if (light.type != LightType::POINT && light.type != LightType::AREA){
         RowSettings settingsContact;
         settingsContact.help = "Screen-space shadows of the small details the shadow map misses (creases, feet on the ground). Costs a "
                                "fullscreen pass after the depth pre-pass (which it turns on) marching 8-16 depth samples a pixel; full "

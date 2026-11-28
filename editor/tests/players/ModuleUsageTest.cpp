@@ -9,6 +9,11 @@
 #include "players/ShaderNeutralApi.h"
 #include "players/PlayerRuntimes.h"
 #include "util/LuaApiData.h"
+#include "titleart/TitleArtIO.h"
+#include "titleart/render/TitleArtCaps.h"
+#include "titleart/render/TitleArtRenderer.h"
+#include "titleart/runtime/TitleArtExportKeys.h"
+#include "TempDir.h"
 #include "player/PlayerModules.h"
 
 #include "Scene.h"
@@ -24,9 +29,12 @@
 #include "component/RigidbodyComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "component/SplineExtrudeComponent.h"
 #include "component/Transform.h"
 #include "component/UIDocumentComponent.h"
+#include "component/MeshComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/VoxelVolumeComponent.h"
@@ -37,6 +45,7 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <memory>
 #include <set>
 #include <string>
 
@@ -93,6 +102,17 @@ TEST(ModuleUsage, AnEmptyProjectNeedsNothing) {
     EXPECT_EQ(modules(plain.usage()), "");
     // a Lua script of math, input and logs
     EXPECT_EQ(modules(withLua("local v = Vector3(1, 2, 3)\nif Input.isKeyPressed(1) then Log.info(tostring(v:length())) end")), "");
+}
+
+// V1: vertex colors are the core's (an absent component costs nothing, R95): no module to keep
+TEST(ModuleUsage, VertexColorsNeedNoModule) {
+    OneEntity painted;
+    painted.scene.addComponent<MeshComponent>(painted.entity, {});
+    VertexColorsComponent colors;
+    colors.data = AssetRef("paint/Thing.vcolors");
+    colors.format = vertexcolor::Format::RGBA16F;
+    painted.scene.addComponent<VertexColorsComponent>(painted.entity, colors);
+    EXPECT_EQ(modules(painted.usage()), "");
 }
 
 // T5 AC17: a tree's capsule is a body the physics module has to build
@@ -220,6 +240,37 @@ TEST(ModuleUsage, VoxelLuaNameNeedsTheModule) {
     EXPECT_TRUE(usage.needs("voxel"));
     EXPECT_NE(usage.firstEvidence("voxel").find("lua/test.lua:1"), std::string::npos) << usage.firstEvidence("voxel");
     EXPECT_FALSE(withLua("local v = 1").needs("voxel"));
+}
+
+// dialogue-graphs.md R15, AC14: a .dialogue, a Dialogue Runner or a script naming Dialogue or DialogueRunner
+TEST(ModuleUsage, DetectsDialogue) {
+    EXPECT_EQ(modules(withLua("local x = 1")), "");
+    const ModuleUsage handlers = withLua("Dialogue.onAction('quest', function() end)");
+    EXPECT_EQ(modules(handlers), "dialogue");
+    EXPECT_NE(handlers.firstEvidence("dialogue").find("lua/test.lua:1"), std::string::npos) << handlers.firstEvidence("dialogue");
+    EXPECT_TRUE(withLua("local r = DialogueRunner(self.scene, self.entity)").needs("dialogue"));
+    // a member or a string of that name is not the global
+    EXPECT_FALSE(withLua("local t = self.Dialogue\nprint('Dialogue')").needs("dialogue"));
+    ModuleScan scan = empty();
+    scan.dialogues.push_back("assets/npc/guard.dialogue");
+    const ModuleUsage file = ModuleUsageDetector::analyze(scan);
+    EXPECT_EQ(modules(file), "dialogue");
+    EXPECT_EQ(file.firstEvidence("dialogue"), "assets/npc/guard.dialogue: dialogue graph");
+    OneEntity one;
+    one.scene.addComponent<DialogueRunnerComponent>(one.entity, {});
+    EXPECT_EQ(one.usage().firstEvidence("dialogue"), "scene Main: Dialogue Runner on Thing");
+}
+
+// Input scripts are a module (input-recorder-and-input-scripts.md Deviations): a script that records or
+// replays input (an attract mode) needs it; a game that does neither ships without the interpreter
+TEST(ModuleUsage, DetectsInputScripts) {
+    EXPECT_FALSE(withLua("local x = Input.isKeyPressed(1)").needs("inputscripts"));
+    const ModuleUsage replay = withLua("local r = InputRecording.play('asset://demo/attract.input.json')");
+    EXPECT_EQ(modules(replay), "inputscripts");
+    EXPECT_NE(replay.firstEvidence("inputscripts").find("lua/test.lua:1"), std::string::npos) << replay.firstEvidence("inputscripts");
+    EXPECT_TRUE(withLua("InputRecording.checkpoint('gold', 3)").needs("inputscripts"));
+    // a member or a string of that name is not the global
+    EXPECT_FALSE(withLua("local t = self.InputRecording\nprint('InputReplay')").needs("inputscripts"));
 }
 
 // T1 R54: runtime terrain edits are a module, needed by a terrain that allows them or a script that writes one
@@ -359,7 +410,7 @@ TEST(ModuleUsage, LuaNamesNeedTheirModules) {
 }
 
 TEST(ModuleUsage, DynamicAccessNeedsEveryModule) {
-    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit";
+    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit dialogue inputscripts";
     for (const char* code : {"local f = _G[name]", "local f = _ENV[name]", "local chunk = load(text)", "local s = loadstring(text)",
                              "dofile(path)", "local r = debug.getregistry()", "local g = package.loaded", "local m = require(name)",
                              "local g = require('_G')"}) {
@@ -375,7 +426,7 @@ TEST(ModuleUsage, CppScriptsNeedEveryModule) {
     ModuleScan scan = empty();
     scan.cppScripts.push_back("scripts/Player.cpp");
     const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
-    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit");
+    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit dialogue inputscripts");
     EXPECT_NE(usage.firstEvidence("htmlui").find("scripts/Player.cpp"), std::string::npos);
 }
 
@@ -441,6 +492,30 @@ TEST(ModuleUsage, PhysicsDebugDrawingNeedsRuntimeShaders) {
     EXPECT_TRUE(withLua("Physics.debugDraw = true").needs("runtimeshaders"));
     EXPECT_TRUE(withLua("Physics.debugDrawContacts = true").needs("runtimeshaders"));
     EXPECT_FALSE(withLua("local hit = Physics.raycast(self.scene, Ray(Vector3(0, 0, 0), Vector3(0, 1, 0)))").needs("runtimeshaders"));
+}
+
+// spatial-queries AC23: the query debug draw draws lines (runtimeshaders); the queries need no
+// runtime shaders, and reach the physics modules exactly as Physics.raycast / Physics2D.raycast do
+// (functions bound only in builds with that backend)
+TEST(ModuleUsage, PhysicsQueryDebugNeedsRuntimeShaders) {
+    EXPECT_TRUE(withLua("Physics.debugDrawQueries = true").needs("runtimeshaders"));
+    const ModuleUsage queries3D = withLua(
+        "local near = Physics.overlapSphere(self.scene, Vector3(0, 0, 0), 8)\n"
+        "local n = Physics.overlapSphereNonAlloc(self.scene, Vector3(0, 0, 0), 8, {})\n"
+        "local hit = Physics.sphereCast(self.scene, Vector3(0, 0, 0), 1, Vector3(1, 0, 0), 10)\n"
+        "Physics.queriesHitTriggers = false");
+    const ModuleUsage ray3D = withLua("local hit = Physics.raycast(self.scene, Vector3(0, 0, 0), Vector3(0, 1, 0), 10)");
+    EXPECT_FALSE(queries3D.needs("runtimeshaders"));
+    EXPECT_EQ(queries3D.needs("physics3d"), ray3D.needs("physics3d"));
+    EXPECT_FALSE(queries3D.needs("physics2d"));
+    const ModuleUsage queries2D = withLua("local first = Physics2D.overlapCircle(self.scene, Vector2(0, 0), 8)");
+    const ModuleUsage ray2D = withLua("local hit = Physics2D.raycast(self.scene, Vector2(0, 0), Vector2(0, 1), 10)");
+    EXPECT_FALSE(queries2D.needs("runtimeshaders"));
+    EXPECT_EQ(queries2D.needs("physics2d"), ray2D.needs("physics2d"));
+    EXPECT_FALSE(queries2D.needs("physics3d"));
+    // drawn-object overlaps need no runtime shaders (the scan matches member names, so their names,
+    // shared with Physics.overlapSphere / overlapBox, also keep the physics module: the safe side)
+    EXPECT_FALSE(withLua("local seen = MeshRaycast.overlapSphere(self.scene, Vector3(0, 0, 0), 8)").needs("runtimeshaders"));
 }
 
 TEST(ModuleUsage, RuntimeShadersFollowShaderRelevantNames) {
@@ -525,6 +600,48 @@ TEST(ShaderNeutralApi, NeutralClassesAreTheReviewedOnes) {
             for (const mcp::Json& member : cls[key]) members.insert(member.value("name", ""));
         for (const std::string& member : neutral) EXPECT_TRUE(members.count(member)) << name << "." << member << " is not bound";
     }
+}
+
+TEST(ShaderNeutralApi, TitleArtExportIncludesLocalizedShaderPlans) {
+    const titleart::TitleArtParseResult parsed = titleart::parseTitleArt(R"({
+        "format": "jasperengine.titleart", "version": 1,
+        "canvas": {"width": 128, "height": 128},
+        "source_language": "en", "languages": [{"code": "ja"}],
+        "layers": [{
+            "id": "00000001", "type": "shape", "name": "Japanese badge",
+            "shape": "rect", "size": 64, "only_languages": ["ja"],
+            "style": {
+                "face": {"fill": {"kind": "solid", "color": "#ffffff"}},
+                "rims": [{"id": "00000002", "width": 4,
+                    "material": {"fill": {"kind": "solid", "color": "#ffcc00"}}}]
+            }
+        }]
+    })");
+    ASSERT_TRUE(parsed.ok);
+    jasperengine::test::TempDir dir;
+    dir.write("localized.titleart", titleart::writeTitleArt(parsed.doc));
+
+    titleart::TitleArtRenderer renderer;
+    titleart::RenderRequest request;
+    request.doc = std::make_shared<const titleart::TitleArtDoc>(parsed.doc);
+    request.testFlags = titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS;
+    const auto source = renderer.begin(request);
+    ASSERT_TRUE(source);
+    const auto sourcePrograms = source->shaderKeys();
+    const std::set<ShaderKey> sourceKeys(sourcePrograms.begin(), sourcePrograms.end());
+    request.language = "ja";
+    const auto localized = renderer.begin(request);
+    ASSERT_TRUE(localized);
+    const auto localizedKeys = localized->shaderKeys();
+    bool hasLocalizedProgram = false;
+    for (const ShaderKey& key : localizedKeys) hasLocalizedProgram = hasLocalizedProgram || !sourceKeys.count(key);
+    ASSERT_TRUE(hasLocalizedProgram) << "the translated badge must use a shader absent from the source language";
+
+    std::set<ShaderKey> collected;
+    std::string error;
+    ASSERT_TRUE(addTitleArtRenderKeys(dir.path(), "localized.titleart", collected, &error)) << error;
+    for (const ShaderKey& key : localizedKeys)
+        EXPECT_TRUE(collected.count(key)) << "an authored language's shader must be cooked before Lua selects that language";
 }
 
 TEST(ShaderNeutralApi, NeutralMembersGiveNoDrawingObject) {

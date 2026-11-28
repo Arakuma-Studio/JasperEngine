@@ -5,6 +5,7 @@
 
 #include "System.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 #include "object/ui/HtmlUIEventListener.h"
 #include "object/ui/UIValue.h"
 
@@ -143,9 +144,11 @@ void UIOnScreenControl::OnUpdate(){
     Rml::Element::OnUpdate();
     ensureParts();
 
-    // visibility="touch-devices-only": hidden and inert where the device has no touch screen
-    const bool touchOnly = attributeString("visibility", "always") == "touch-devices-only";
-    const bool hide = touchOnly && !System::instance().isTouchDevice();
+    // visibility="touch-devices-only": hidden and inert where the device has no touch screen;
+    // "touch-scheme": while the player is not using touch (InputActions.currentScheme)
+    const std::string visibility = attributeString("visibility", "always");
+    const bool hide = (visibility == "touch-devices-only" && !System::instance().isTouchDevice()) ||
+                      (visibility == "touch-scheme" && InputSchemeTracker::getCurrent() != InputScheme::Touch);
     if (hide != hiddenForDevice){
         hiddenForDevice = hide;
         if (hide)

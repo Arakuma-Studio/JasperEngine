@@ -31,13 +31,14 @@ using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
 // the cleanup's own, not pixelart's namesakes: a batch that declares both would be ambiguous
 using jasperengine::editor::pixelart::cleanup::RgbaImage;
-using jasperengine::editor::pixelart::cleanup::Dither;
+// its own name: another RgbaImage is in sight in some unity units
+using CleanupRecoveryImage = jasperengine::editor::pixelart::cleanup::RgbaImage;
 using jasperengine::pixelart::ColorMetric;
 
 namespace {
 
     struct RecoveryFix {
-        RgbaImage image;
+        CleanupRecoveryImage image;
         Detection detection;
         Grid grid;
         PixelArt art;
@@ -124,7 +125,7 @@ TEST(CleanupRecovery, FindsTheGridOfASmallSpriteInAWideEmptyBackground) {
 
 TEST(CleanupRecovery, FindsALargeGridInALargePictureQuickly) {
     const PixelArt sprite = makeSprite(48, 48, sweetie16(), 8);
-    const RgbaImage image = upscale(sprite, upscaled(21.3, 4, 2, 5));
+    const CleanupRecoveryImage image = upscale(sprite, upscaled(21.3, 4, 2, 5));
     // R36's budget is with the editor's 8 workers
     setParallelFor([](int count, const std::function<void(int)>& body) {
         std::atomic<int> next{0};
@@ -153,7 +154,7 @@ TEST(CleanupRecovery, FindsALargeGridInALargePictureQuickly) {
 }
 
 TEST(CleanupRecovery, FixesTheDemoPictureBackIntoTheMushroomInSweetie16) {
-    const RgbaImage image = demoImage();
+    const CleanupRecoveryImage image = demoImage();
     const std::optional<Detection> detection = detectGrid(image);
     ASSERT_TRUE(detection);
     EXPECT_GT(detection->confidence, 0.5);
@@ -181,7 +182,7 @@ TEST(CleanupRecovery, SnapsColoursOutsideThePaletteToTheNearest) {
     const PixelArt sprite = makeSprite(16, 16, sweetie16(), 9);
     Upscale options = upscaled(4, 0, 0, 20);
     options.seed = 3;
-    const RgbaImage image = upscale(sprite, options);
+    const CleanupRecoveryImage image = upscale(sprite, options);
     const Grid grid = uniformGrid(image.width(), image.height(), GridSpec{4, 4, 0, 0});
     QuantizeOptions snap;
     snap.palette = sweetie16();
@@ -192,7 +193,7 @@ TEST(CleanupRecovery, SnapsColoursOutsideThePaletteToTheNearest) {
 
 TEST(CleanupRecovery, KeepsEachCellsOwnColourWithoutAPalette) {
     const PixelArt sprite = makeSprite(10, 10, sweetie16(), 2);
-    const RgbaImage image = upscale(sprite, upscaled(4, 0));
+    const CleanupRecoveryImage image = upscale(sprite, upscaled(4, 0));
     const Grid grid = uniformGrid(image.width(), image.height(), GridSpec{4, 4, 0, 0});
     QuantizeOptions plain;
     plain.ditherStrength = 0;
@@ -210,7 +211,7 @@ TEST(CleanupRecovery, MixesTwoColoursWithOrderedDitheringForAShadeBetweenThem) {
     flat.palette = {Rgba8{0, 0, 0, 255}, Rgba8{255, 255, 255, 255}};
     flat.ditherStrength = 1;
     QuantizeOptions dithered = flat;
-    dithered.dither = Dither::Ordered;
+    dithered.dither = jasperengine::editor::pixelart::cleanup::Dither::Ordered;
     const PixelArt a = quantize(gray, flat);
     const PixelArt b = quantize(gray, dithered);
     EXPECT_EQ(std::set<int32_t>(a.indices.begin(), a.indices.end()).size(), 1u);

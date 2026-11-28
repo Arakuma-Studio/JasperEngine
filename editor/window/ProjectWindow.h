@@ -65,7 +65,9 @@ namespace jasperengine::editor {
         PALETTE,            // .palette (the Palette window; a thumbnail of its swatches)
         NOISE_GRAPH,        // .noisegraph (the Noise Graph window)
         TILESET,            // .tileset (the Tileset Editor; a thumbnail of its tiles)
-        TITLE_ART           // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
+        TITLE_ART,          // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
+        MESH_ASSET,         // .mesh (S98 F1; get_asset_info, the Mesh Renderer's Mesh field): an icon
+        IES_PROFILE         // .ies (S99: the Inspector's polar plot and metadata)
     };
 
     struct FileEntry {
@@ -189,6 +191,9 @@ namespace jasperengine::editor {
         std::vector<uint8_t> paletteIconPixels;
         Texture tilesetIcon;
         std::vector<uint8_t> tilesetIconPixels;
+        // a wireframe for .mesh files (S98 F1)
+        Texture meshAssetIcon;
+        std::vector<uint8_t> meshAssetIconPixels;
         std::vector<uint8_t> animationClipIconPixels;
         // and a crowd of three figures for .vat files (vertex animation spec 5.3)
         Texture vertexAnimationIcon;
@@ -455,6 +460,8 @@ namespace jasperengine::editor {
         std::vector<std::pair<Guid, std::string>> selectedAssets() const;
         void setLabelOnSelection(const std::string& label, bool on);
         void renderLabelsMenu();
+        // Exclude From Build / Always Include in Build for the selection (or the clicked item)
+        void renderBuildInclusionMenu(const std::filesystem::path& clicked);
         void renderLabelItems();
         float renderLabelStrip(ImVec2 barMin, float barHeight, float right);
         void drawItemLabels(const FileEntry& entry, ImVec2 min, ImVec2 max, bool listView);
@@ -604,6 +611,9 @@ namespace jasperengine::editor {
         void createAsset(AssetCreateKind kind, const fs::path& directory);
         // the folder Assets > Create makes things in
         fs::path createTargetDirectory() const;
+        // Unity YAML .anim / .controller / .mask files as engine assets in `directory` (S94 F35,
+        // F36): each one undo step, numbered past existing names, its report in the Console
+        void importUnityAnimations(const std::vector<fs::path>& files, const fs::path& directory);
         // why a Lua script can't be created in `directory` ("" when it can): outside the Lua directory
         std::string luaScriptRefusal(const fs::path& directory) const;
         // Assets > Create > Pose Animation: a .poseanim with one neutral pose (Pose Animation window)
@@ -621,9 +631,13 @@ namespace jasperengine::editor {
         // Assets > Create > Shake Preset: "New Shake Preset.shake" with the explosion preset's values,
         // one project undo step, then renamed in place (camera shake spec 6)
         void assetsCreateShakePreset(const fs::path& directory);
+        // a .fogprofile setting no field (FogProfileAssetCmd, a project undo step)
+        void assetsCreateFogProfile(const fs::path& directory);
         // Assets > Create > Title Art (S80 R7): "New Title Art.titleart", baked at once
         void assetsCreateTitleArt(const fs::path& directory);
         void assetsCreateProceduralMaterial(const fs::path& directory);
+        // dialogue-graphs.md R22: Create > Dialogue
+        void assetsCreateDialogue(const fs::path& directory);
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer(const fs::path& directory);
@@ -633,6 +647,11 @@ namespace jasperengine::editor {
         // the Create list's Noise Graph entry: a submenu of Blank and the presets
         void renderNoiseGraphCreateMenu(const std::string& label, const fs::path& directory);
         void assetsCreateSoundEvent(const fs::path& directory);
+        // Create > Data Asset > <class> (S95 REQ-21): "New <class>.dataasset" with the class's defaults,
+        // one project undo step, then renamed in place; refused (an alert) outside the assets folder
+        void assetsCreateDataAsset(const std::string& className, const fs::path& directory);
+        // the Create list's Data Asset entry: a submenu of the project's data classes
+        void renderDataAssetCreateMenu(const std::string& label, const fs::path& directory);
         // a shuffle event of the selected audio files
         void assetsCreateSoundEventFromClips();
         bool hasAudioSelection() const;

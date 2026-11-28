@@ -36,7 +36,7 @@ on:
         type: boolean
         default: false
       self_hosted:
-        description: "Test the overflow runners: <job>=<je-mac|je-linux|je-win|blacksmith-6vcpu-macos-26> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
+        description: "Test the overflow or Namespace runners: <job>=<je-mac|je-linux|je-win|namespace> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
         type: string
         default: ''
 
@@ -84,13 +84,18 @@ jobs:
   changes:
     name: changes
     # the planner too can overflow (docs/testing.md "Overflow runners"): tools/ci/runner_dispatch.py names a
-    # Linux overflow runner in SELF_HOSTED_PLANNER while hosted Linux is saturated and it is online, and a run
-    # reads `vars` as it is created, as this job is queued. Not a push (it waits ADMISSION_SECONDS), a fork's
-    # pull request or a rerun (the watchdog's, when the runner went away)
+    # Linux overflow runner in SELF_HOSTED_PLANNER while hosted Linux is saturated and it is online (or
+    # ubuntu-latest while Namespace's Linux runners are down), and a run reads `vars` as it is created, as
+    # this job is queued. Not a push (it waits ADMISSION_SECONDS), a fork's pull request or a rerun (the
+    # watchdog's, when the runner went away). Else Namespace's (NAMESPACE_RUNNERS on or naming linux,
+    # docs/testing.md "Namespace runners"), on the same terms but a push's
     runs-on: >-
       ${{ github.event_name != 'push' && github.run_attempt == 1 && vars.SELF_HOSTED_PLANNER
       && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-      && vars.SELF_HOSTED_PLANNER || 'ubuntu-latest' }}
+      && vars.SELF_HOSTED_PLANNER
+      || github.run_attempt == 1 && (vars.NAMESPACE_RUNNERS == 'on' || contains(vars.NAMESPACE_RUNNERS, 'linux'))
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && 'nscloud-ubuntu-24.04-amd64-4x8' || 'ubuntu-latest' }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -123,6 +128,8 @@ jobs:
       htmlui_filter: ${{ steps.plan.outputs.htmlui_filter }}
       mcp_shards: ${{ steps.plan.outputs.mcp_shards }}
       build_only: ${{ steps.plan.outputs.build_only }}
+      unbuilt: ${{ steps.plan.outputs.unbuilt }}
+      macos_full: ${{ steps.plan.outputs.macos_full }}
       dispatch_advisory: ${{ steps.plan.outputs.dispatch_advisory }}
       runs_on: ${{ steps.plan.outputs.runs_on }}
     steps:
@@ -165,8 +172,8 @@ jobs:
           # the overflow runners (docs/testing.md "Overflow runners"): the ones taken out; a fork's pull
           # request never gets one. Their state is fetched below, as the plan starts
           RUNNER_DISABLED: ${{ vars.SELF_HOSTED_DISABLED }}
-          # the paid tier (Blacksmith) after GitHub's runners and the user's machines: off stops it
-          BLACKSMITH: ${{ vars.BLACKSMITH_OVERFLOW }}
+          # on, or the OSes whose jobs run on Namespace's runners (docs/testing.md "Namespace runners"); unset: none
+          NAMESPACE: ${{ vars.NAMESPACE_RUNNERS }}
           # off: a pull request runs its blocking lanes only, as the merge queue (docs/testing.md "What each event runs")
           PR_ADVISORY: ${{ vars.PR_ADVISORY_LANES }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -185,7 +192,7 @@ jobs:
           esac
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
                 --advisory "$ADVISORY_LANES" --runner-state "$RUNNER_TEMP/runner-state.json"
-                --runner-disabled "$RUNNER_DISABLED" --blacksmith "$BLACKSMITH" --pr-advisory "${PR_ADVISORY:-on}" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
+                --runner-disabled "$RUNNER_DISABLED" --namespace "$NAMESPACE" --pr-advisory "${PR_ADVISORY:-on}" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
                 --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --run-id "$GITHUB_RUN_ID" --self-hosted "$SELF_HOSTED")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
           [[ -f build/ci-inputs/coverage-map.json ]] && args+=(--coverage-map build/ci-inputs/coverage-map.json)
@@ -605,6 +612,11 @@ jobs:
           [[ -n "$f" ]] || f="*"
           if [[ "$f" == *-* ]]; then f="$f:*GpuSlow*"; else f="$f-*GpuSlow*"; fi
           tools/ci/logged.sh "asan-$SUITE" "${BUILD_ONLY}SANITIZE=address,undefined UNIT_SUITE=$SUITE UNIT_TEST_ARGS=$(printf %q "--gtest_filter=$f") tools/build.sh unit-tests"
+      # the editor tests' binary is the largest we link: past 2 GiB from its first loaded section to its
+      # last, x86-64's 32-bit PC-relative relocations no longer reach and the link fails
+      - name: Relocation reach of the test binary
+        if: always() && matrix.suite == 'editor'
+        run: python3 tools/ci/reloc_reach.py build/linux/editor-tests-address-undefined/jasperengine-editor-tests | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: ./.github/actions/ccache-save
         if: always()
@@ -952,8 +964,16 @@ jobs:
           lane: android
           max-size: 0.3G
           toolchain: ${{ steps.image.outputs.tag }}
-      # Gradle's distribution and dependencies (tools/build.sh sets GRADLE_USER_HOME=build/.cache/gradle)
+      # Gradle's distribution and dependencies (tools/build.sh sets GRADLE_USER_HOME=build/.cache/gradle):
+      # on the lane's Namespace cache volume when it has one (ccache-restore), else the Actions cache
+      - uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        if: env.JASPER_CCACHE_VOLUME == '1'
+        with:
+          path: |
+            build/.cache/gradle/caches
+            build/.cache/gradle/wrapper
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: env.JASPER_CCACHE_VOLUME != '1'
         with:
           path: |
             build/.cache/gradle/caches
@@ -967,7 +987,7 @@ jobs:
         run: tools/ci/logged.sh android-build "${ABIS}tools/build.sh android"
 
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && env.JASPER_CCACHE_VOLUME != '1'
         with:
           path: |
             build/.cache/gradle/caches
@@ -988,7 +1008,8 @@ jobs:
   # MSVC through tools/ci/windows.sh, as parallel jobs (the lane takes as long as its longest one): the
   # editor with its CPU unit tests and the call CLI; the engine on each Windows backend, the OpenGL one
   # with the core tests; windows-compile, a Compile build of a fixture with the editor job's install (G2).
-  # Each job has its own ccache entry and report (windows-<part>, tools/ci/report.py WINDOWS_PARTS). The
+  # Each job has its own report, the editor and engine jobs a ccache entry each (windows-<part>,
+  # tools/ci/report.py WINDOWS_PARTS). The
   # legs are the plan's (windows_parts): a pull request and the merge queue build engine-d3d11 and
   # engine-vulkan only for their own inputs (tools/ci/plan_lanes.py windows_legs), the nightly every night
   windows:
@@ -1004,14 +1025,14 @@ jobs:
       actions: write  # ccache-save deletes the lane's older entry as soon as it saved the new one (push)
     strategy:
       fail-fast: false
-      # ccache where it shortens the lane (the 10 GB repository budget, docs/testing.md "CI"): the editor
-      # (0.9 GB working set). The engine legs build cold: the lane ends with its slowest leg, and D3D11 and
-      # Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108)
       matrix:
         part: ${{ fromJSON(needs.changes.outputs.windows_parts) }}
     env:
       JASPER_CI_REPRO: tools/ci/windows.sh
       PART: ${{ matrix.part }}
+      # whether the leg compiles: every run's editor; an engine leg in all but the advisory run, which
+      # runs no engine leg's test (on push, for the leg's ccache entry)
+      COMPILES: ${{ matrix.part == 'editor' || inputs.advisory != true }}
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
@@ -1042,18 +1063,37 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         with:
           arch: x64
+      # each leg its own ccache entry (the backend is a definition of every engine unit: the legs share
+      # no object), capped at its working set (docs/testing.md "CI"). The lane ends with its slowest
+      # leg: cold, each engine leg took 54-109 min (median 74-90, PRs and the queue, 2026-11-20..23)
       - uses: ./.github/actions/ccache-restore
-        if: matrix.part == 'editor'
+        if: env.COMPILES == 'true'
         with:
           lane: windows-${{ matrix.part }}
-          max-size: 0.95G
+          max-size: ${{ fromJSON('{"editor":"0.95G","engine-glcore":"1.6G","engine-d3d11":"0.4G","engine-vulkan":"0.4G"}')[matrix.part] }}
 
+      # the merge queue builds no editor-tests binary (lanes.json unbuilt): their run is advisory there, and
+      # the binary was a quarter of the step's 110 min (run 45291112468); the advisory run on main builds it
       - name: Editor
         if: matrix.part == 'editor'
+        env:
+          EDITOR_TESTS_BUILD: ${{ contains(fromJSON(needs.changes.outputs.unbuilt || '[]'), 'windows-editor-tests') && '0' || '1' }}
         run: tools/ci/windows.sh editor
       # reported apart (windows-editor-tests, in ADVISORY_LANES while the suite settles on Windows): the
       # leg's build gates, its test run is listed; a hang costs TEST_TIMEOUT, not the leg. While advisory
       # it runs in the advisory run, not in the merge queue; never on push (build_only)
+      # the version control tests' svn and svnadmin (the Linux image and the macOS job have them; the
+      # runner image does not): SlikSVN's command-line client, whose installer puts them in its bin
+      - name: Subversion
+        if: matrix.part == 'editor' && !contains(fromJSON(needs.changes.outputs.build_only), 'windows-editor-tests')
+        run: |
+          bin='C:\Program Files\SlikSvn\bin'
+          if ! command -v svnadmin > /dev/null; then
+              tools/ci/retry.sh choco install sliksvn --no-progress -y
+              echo "$bin" >> "$GITHUB_PATH"
+              PATH="$(cygpath -u "$bin"):$PATH"
+          fi
+          svn --version --quiet && svnadmin --version --quiet
       - name: Editor unit tests (CPU suites)
         id: editor-tests
         if: matrix.part == 'editor' && !contains(fromJSON(needs.changes.outputs.build_only), 'windows-editor-tests')
@@ -1072,20 +1112,18 @@ jobs:
       - name: Call CLI without an editor
         if: matrix.part == 'editor' && env.MAIN_STAGE != 'true'
         run: tools/ci/windows.sh check-cli
-      # windows-compile's editor
+      # windows-compile's editor (on push too: its build there saves the Compile build's entry)
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: matrix.part == 'editor' && env.MAIN_STAGE != 'true'
+        if: matrix.part == 'editor' && (github.event_name == 'push' || env.MAIN_STAGE != 'true')
         with:
           name: windows-editor-install
           path: instdir/
           retention-days: 1
           if-no-files-found: error
 
-      # (the OpenGL tree runs the core tests, whose crash and hang reports name frames: debug information).
-      # Not on main's stages: the engine legs keep no ccache entry, so a push's build warms nothing (the
-      # Vulkan SDK's cache above still saves), and the merge queue built them
+      # (the OpenGL tree runs the core tests, whose crash and hang reports name frames: debug information)
       - name: Engine
-        if: startsWith(matrix.part, 'engine-') && env.MAIN_STAGE != 'true'
+        if: startsWith(matrix.part, 'engine-') && env.COMPILES == 'true'
         env:
           ENGINE_DEBUG_INFO: ${{ matrix.part == 'engine-glcore' && '1' || '' }}
         run: tools/ci/windows.sh engine "${PART#engine-}"
@@ -1093,8 +1131,10 @@ jobs:
         if: matrix.part == 'engine-glcore' && env.MAIN_STAGE != 'true'
         run: TEST_SUITES=core tools/ci/windows.sh tests glcore
 
+      # not a cancelled job's: what it had not reached yet would be evicted from the entry it saved (a
+      # glcore leg cancelled 12 min in saved 259 MB over a whole build's 1.2 GB, PR 176's run 45312125810)
       - uses: ./.github/actions/ccache-save
-        if: always() && matrix.part == 'editor'
+        if: ${{ !cancelled() && env.COMPILES == 'true' }}
         with:
           lane: windows-${{ matrix.part }}
           prune: 'true'
@@ -1104,16 +1144,22 @@ jobs:
           lane: windows-${{ matrix.part }}
           status: ${{ job.status }}
 
-  # Every leg above, then the Compile build with the editor job's install; on main's stages, nothing to do
-  # (a PR and the queue ran it), but the job runs so Check sees the lane whole
+  # Every leg above, then the Compile build with the editor job's install, through its own ccache entry
+  # (cold 24 min, 875 compiles: PR 176's run 45274919394); on push for that entry, in the advisory run
+  # nothing to do (the queue ran it), but the job runs so Check sees the lane whole
   windows-compile:
     name: windows (compile)
     needs: [changes, windows]
     if: ${{ !cancelled() && needs.changes.outputs.run_windows == 'true' }}
     runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['windows-compile'] || 'windows-latest' }}
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write  # ccache-save deletes the lane's older entry as soon as it saved the new one (push)
     env:
       JASPER_CI_REPRO: tools/ci/windows.sh compile-smoke tools/fixtures/post-processing
+      # all but the advisory run (on push, for the entry)
+      BUILD: ${{ inputs.advisory != true }}
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
@@ -1124,13 +1170,24 @@ jobs:
         with:
           arch: x64
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: env.MAIN_STAGE != 'true'
+        if: env.BUILD == 'true'
         with:
           name: windows-editor-install
           path: instdir
+      # its working set 425 MiB (the same run)
+      - uses: ./.github/actions/ccache-restore
+        if: env.BUILD == 'true'
+        with:
+          lane: windows-compile
+          max-size: 0.5G
       - name: Compile build of post-processing
-        if: env.MAIN_STAGE != 'true'
+        if: env.BUILD == 'true'
         run: tools/ci/windows.sh compile-smoke tools/fixtures/post-processing
+      - uses: ./.github/actions/ccache-save
+        if: ${{ !cancelled() && env.BUILD == 'true' }}
+        with:
+          lane: windows-compile
+          prune: 'true'
       - uses: ./.github/actions/report
         if: always()
         with:
@@ -1175,18 +1232,21 @@ jobs:
       # 18 min cold on a hosted runner: a hung test fails here, not at the job's 300 min (a link-following
       # cleanup hung for 3 h on je-mac, merge-queue run of #162)
       - name: Unit tests (CPU suites)
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' || needs.changes.outputs.macos_full == 'true'
         timeout-minutes: 60
         run: tools/ci/macos.sh tests
       - name: Call CLI without an editor
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' || needs.changes.outputs.macos_full == 'true'
         run: tools/ci/macos.sh check-cli
+      # on every push, macos_full or not, so its objects are in the saved entry (0.81 GB with them): without,
+      # it missed all its 884 compiles in a run whose editor and engine hit 6,291 of 6,320 (PR run 45075106333)
       - name: Compile build of post-processing
-        if: ${{ !cancelled() && github.event_name != 'push' }}
+        if: ${{ !cancelled() }}
         run: tools/ci/macos.sh compile-smoke tools/fixtures/post-processing
 
+      # (not a cancelled job's, as windows')
       - uses: ./.github/actions/ccache-save
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           lane: macos
           prune: 'true'
@@ -1196,6 +1256,8 @@ jobs:
           lane: macos
           status: ${{ job.status }}
 
+  # Both builds go through Xcode's compilation cache (tools/ci/macos.sh XCODE_CAS), the entry the nightly
+  # saves on main (cold, the two took a median 39 and 19 min, PRs and the queue, 2026-11-20..23)
   ios:
     name: ios
     needs: changes
@@ -1211,6 +1273,7 @@ jobs:
       # dav1d's x86-64 asm: the simulator build has an x86_64 slice
       - name: NASM
         run: command -v nasm > /dev/null || tools/ci/retry.sh brew install nasm
+      - uses: ./.github/actions/xcode-cache-restore
       - name: Xcode project (iOS)
         run: tools/ci/macos.sh xcode ios
       - name: Xcode project (macOS)
@@ -1299,7 +1362,7 @@ jobs:
   # a lane: Check skips it.
   caches:
     name: caches
-    needs: [linux, unit, asan, htmlui, smoke, web, android, windows, macos]
+    needs: [linux, unit, asan, htmlui, smoke, web, android, windows, windows-compile, macos]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1311,8 +1374,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for prefix in gradle- ccache-linux- ccache-web- ccache-android- ccache-windows-editor- \
-                        ccache-macos- ccache-unit-core- ccache-unit-editor- ccache-asan-core- ccache-asan-editor- \
-                        ccache-htmlui- ccache-smoke-; do
+                        ccache-windows-engine-glcore- ccache-windows-engine-d3d11- ccache-windows-engine-vulkan- \
+                        ccache-windows-compile- ccache-macos- ccache-unit-core- ccache-unit-editor- ccache-asan-core- \
+                        ccache-asan-editor- ccache-htmlui- ccache-smoke-; do
               gh cache list --repo "$GITHUB_REPOSITORY" --ref refs/heads/main --key "$prefix" --sort created_at \
                   --order desc --limit 100 --json id,key --jq '.[1:][] | "\(.id) \(.key)"' |
                   while read -r id key; do
@@ -1322,7 +1386,7 @@ jobs:
           done
           # a lane that gave its entry up (docs/testing.md "CI"): its last one would hold the budget 7 days;
           # the plan inputs moved to the ci-plan-inputs branch
-          for prefix in ccache-windows-engine-glcore- plan-inputs- coverage-map-; do
+          for prefix in plan-inputs- coverage-map-; do
               gh cache list --repo "$GITHUB_REPOSITORY" --key "$prefix" --limit 100 --json id,key --jq '.[] | "\(.id) \(.key)"' |
                   while read -r id key; do
                       echo "delete $key"

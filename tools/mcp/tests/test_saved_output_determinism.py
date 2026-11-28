@@ -47,14 +47,16 @@ def scenes_of(project: Path) -> list[str]:
 
 
 def generated_files(project: Path) -> dict[str, bytes]:
-    """{relative path: bytes} of what the editor generated for the project's code"""
-    root = project / ".jasperengine" / "generated"
-    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()} if root.is_dir() else {}
+    """{relative path: bytes} of the scenes and prefabs the editor cooked for the project's own build
+    (every build cooks them alike: S98 D1)"""
+    root = project / ".jasperengine" / "cooked"
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file() and p.suffix in (".jscn", ".jpfb")} \
+        if root.is_dir() else {}
 
 
 def differences(before: dict[str, bytes], after: dict[str, bytes]) -> list[str]:
     """What changed between two saves. A file that appeared is no finding: a frame may write the
-    sources of the project's other scenes (Project::writeMissingSceneSources), and it is compared
+    cooked scenes of the project's other scenes (Project::writeMissingCookedScenes), and it is compared
     when its scene's turn comes; each scene's own source exists after its first save."""
     out = []
     for name in sorted(before):
@@ -78,6 +80,15 @@ async def open_and_save_undrawn(ed: Editor, rel: str) -> None:
     r = await ed.call("batch", calls=[{"tool": "open_scene", "arguments": {"scene": rel, "close_previous": True}},
                                       {"tool": "save_scene", "arguments": {"scene": rel, "allow_data_loss": True}}])
     ed.check_eq(r.get("failed"), 0, f"{rel}: opened and saved in one batch: {[x for x in r['results'] if not x.get('ok')]}")
+
+
+async def write_image(ed: Editor, rel: str, data: bytes) -> None:
+    """A new image the asset database knows before any save names it. The editor picks a file up in
+    a Background walk: a save before the walk lands writes the reference without its GUID, a later
+    save with it, and the two saves a test compares would differ by when the walk ended."""
+    (ed.project / rel).parent.mkdir(parents=True, exist_ok=True)
+    (ed.project / rel).write_bytes(data)
+    await ed.call("resolve_asset", asset=rel)
 
 
 async def draw_with_assets(ed: Editor, sid) -> None:
@@ -130,19 +141,19 @@ def sheet_png() -> bytes:
     return pngdiff.encode(width, height, bytes(pixels))
 
 
-def scene_source(project: Path, scene: str) -> str:
-    """The generated source of a scene (Factory::sceneToFileName: scene_<name>_<id>.cpp)"""
-    sources = [data.decode(errors="replace") for name, data in generated_files(project).items() if name.startswith(f"scene_{scene}_") and name.endswith(".cpp")]
-    assert len(sources) == 1, f"one generated source for {scene}: {sorted(generated_files(project))}"
-    return sources[0]
+def scene_source(project: Path, scene: str) -> bytes:
+    """The cooked scene of <scene>.scene in the editor's cache (scenes/<id>.jscn)"""
+    scene_id = yaml.safe_load((project / f"{scene}.scene").read_text())["id"]
+    cooked = project / ".jasperengine" / "cooked" / "scenes" / f"{scene_id}.jscn"
+    assert cooked.is_file(), f"the cooked scene of {scene}: {sorted(generated_files(project))}"
+    return cooked.read_bytes()
 
 
 async def test_sprite_frames_generate_as_authored(ed: Editor):
     """A Sprite with frames in pixels: drawn and saved, opened and saved in one batch (its texture not
-    loaded), drawn and saved again. The same file and generated code each time, with the pixels the
+    loaded), drawn and saved again. The same file and cooked scene each time, with the pixels the
     user authored. A later editor holding the texture back on its worker generates the same."""
-    (ed.project / SHEET).parent.mkdir(parents=True, exist_ok=True)
-    (ed.project / SHEET).write_bytes(sheet_png())
+    await write_image(ed, SHEET, sheet_png())
     rel = "Frames.scene"
     path = ed.project / rel
     sid = (await ed.call("create_scene", name="Frames", type="2D", path=rel))["scene"]["id"]
@@ -152,29 +163,27 @@ async def test_sprite_frames_generate_as_authored(ed: Editor):
     await ed.call("save_scene", scene=sid)
     drawn, drawn_code = path.read_bytes(), scene_source(ed.project, "Frames")
 
-    # the authored pixels, in the file and in the code, whatever the load state
+    # the authored pixels, in the file, and the same cooked scene, whatever the load state
     frames = next(e for e in yaml.safe_load(drawn)["entities"] if e.get("name") == "Hero")["components"]["sprite"]["framesRect"]
     ed.check_eq([f["rect"] for f in frames], [[0, 0, 32, 32], [32, 0, 32, 32]], "the file holds the authored rects")
-    ed.check_in("sprite.framesRect[1].rect = Rect(32", drawn_code, "the code holds the authored rect, in pixels")
 
     await ed.call("close_scene", scene=sid)
     await open_and_save_undrawn(ed, rel)
     ed.check(path.read_bytes() == drawn, f"the file, its texture not loaded: {first_difference(drawn, path.read_bytes())}")
     undrawn_code = scene_source(ed.project, "Frames")
-    ed.check(undrawn_code == drawn_code, f"the code, its texture not loaded: {first_difference(drawn_code.encode(), undrawn_code.encode())}")
+    ed.check(undrawn_code == drawn_code, f"the cooked scene, its texture not loaded: {first_difference(drawn_code, undrawn_code)}")
 
     await draw_with_assets(ed, sid)
     await ed.call("save_scene", scene=sid)
     ed.check(path.read_bytes() == drawn, f"the file, drawn again: {first_difference(drawn, path.read_bytes())}")
     again = scene_source(ed.project, "Frames")
-    ed.check(again == drawn_code, f"the code, drawn again: {first_difference(drawn_code.encode(), again.encode())}")
+    ed.check(again == drawn_code, f"the cooked scene, drawn again: {first_difference(drawn_code, again)}")
 
 
 async def test_a_save_while_the_texture_loads_generates_the_same(ed: Editor):
     """A save with the sheet's decode held on its worker (a frame ran, the size is not known yet)
     writes what a save with it loaded writes"""
-    (ed.project / SHEET).parent.mkdir(parents=True, exist_ok=True)
-    (ed.project / SHEET).write_bytes(sheet_png())
+    await write_image(ed, SHEET, sheet_png())
     rel = "Held.scene"
     path = ed.project / rel
     sid = (await ed.call("create_scene", name="Held", type="2D", path=rel))["scene"]["id"]
@@ -200,7 +209,7 @@ async def test_a_save_while_the_texture_loads_generates_the_same(ed: Editor):
         got = (held.project / rel).read_bytes()
         held.check(got == loaded, f"the file, the texture still loading: {first_difference(loaded, got)}")
         code = scene_source(held.project, "Held")
-        held.check(code == loaded_code, f"the code, the texture still loading: {first_difference(loaded_code.encode(), code.encode())}")
+        held.check(code == loaded_code, f"the cooked scene, the texture still loading: {first_difference(loaded_code, code)}")
 
 
 # -- a Terrain's maps ---------------------------------------------------------------------------------
@@ -270,11 +279,10 @@ def with_clamped_weather_map(text: str, path: str) -> str:
 
 async def test_weather_map_wrap_stays_authored(ed: Editor):
     """A Volumetric Clouds' weather map authored with Clamp: the wrap stays in the component, in the
-    file and in the generated code after the clouds were drawn (they tile whatever the wrap:
+    file and in the cooked scene after the clouds were drawn (they tile whatever the wrap:
     AtmosphereGpu.AWeatherMapTilesWhateverItsWrap)"""
     weather = "assets/weather.png"
-    (ed.project / weather).parent.mkdir(parents=True, exist_ok=True)
-    (ed.project / weather).write_bytes(pngdiff.encode(8, 8, bytes([200, 200, 200, 255]) * 64))
+    await write_image(ed, weather, pngdiff.encode(8, 8, bytes([200, 200, 200, 255]) * 64))
     rel = "Weather.scene"
     path = ed.project / rel
     sid = (await ed.call("create_scene", name="Weather", type="3D", path=rel))["scene"]["id"]
@@ -289,7 +297,6 @@ async def test_weather_map_wrap_stays_authored(ed: Editor):
     undrawn = path.read_bytes()
     ed.check_in("wrapU: clamp_to_edge", undrawn.decode(), "the authored wrap is loaded and saved")
     code = scene_source(ed.project, "Weather")
-    ed.check_in("TextureWrap::CLAMP_TO_EDGE", code, "the authored wrap is generated")
 
     # until the renderer has drawn them: the noise bake, then the clouds' passes
     for _ in range(60):
@@ -302,5 +309,5 @@ async def test_weather_map_wrap_stays_authored(ed: Editor):
     drawn = path.read_bytes()
     ed.check(drawn == undrawn, f"the file, the clouds drawn: {first_difference(undrawn, drawn)}")
     again = scene_source(ed.project, "Weather")
-    ed.check(again == code, f"the code, the clouds drawn: {first_difference(code.encode(), again.encode())}")
+    ed.check(again == code, f"the cooked scene, the clouds drawn: {first_difference(code, again)}")
     ed.check_in(b"wrapU: clamp_to_edge", authored, "the test authored the wrap it checks")

@@ -270,4 +270,101 @@ TEST(AudioImportTable, ParseSetAndKeyOfTheSample){
     EXPECT_EQ(SoundPool::key("a.wav", AudioLoadType::DecompressOnLoad), "a.wav#decompress_on_load");
 }
 
+TEST(AudioClipSource, ForceMonoMeanOfChannels){
+    const std::vector<float> left = sine(24000, 440.0);
+    const std::vector<float> right = sine(24000, 660.0);
+    const auto bytes = clipSourceWavBytes({left, right});
+    ClipImportSettings settings;
+    settings.trimHeadFrames = 100;
+    settings.trimTailFrames = 200;
+    settings.fadeInFrames = 32;
+    settings.fadeOutFrames = 64;
+    settings.loopStartFrame = 1000;
+    settings.loopEndFrame = 6000;
+    ClipImportSettings mono = settings;
+    mono.forceMono = true;
+    AudioClipSource stereo(decoded(bytes), settings);
+    for (const bool stream : {false, true}){
+        AudioClipSource clip(stream ? streamed(bytes) : decoded(bytes), mono);
+        EXPECT_EQ(clip.getChannels(), 1u);
+        EXPECT_EQ(clip.getFileChannels(), 2u);
+        // the region, its loop and lengths are the stereo clip's
+        EXPECT_EQ(clip.getStartFrame(), stereo.getStartFrame());
+        EXPECT_EQ(clip.getEndFrame(), stereo.getEndFrame());
+        EXPECT_EQ(clip.getLoopStartFrame(), stereo.getLoopStartFrame());
+        EXPECT_EQ(clip.getLoopEndFrame(), stereo.getLoopEndFrame());
+        EXPECT_DOUBLE_EQ(clip.getLength(), stereo.getLength());
+        // looping: the fade-in, then the loop wrapping at the same frames as the stereo clip
+        Voice voice(clip, true, clip.getDefaultLoopPoint());
+        EXPECT_EQ(voice.channels, 1u);
+        Voice l(stereo, true, stereo.getDefaultLoopPoint());
+        Voice r(stereo, true, stereo.getDefaultLoopPoint());
+        const std::vector<float> out = voice.read(20000);
+        const std::vector<float> a = l.read(20000, 512, 0);
+        const std::vector<float> b = r.read(20000, 512, 1);
+        ASSERT_EQ(out.size(), a.size());
+        for (size_t i = 0; i < out.size(); i++) { ASSERT_NEAR(out[i], (a[i] + b[i]) * 0.5f, 1e-6f) << (stream ? "streamed" : "held") << " frame " << i; }
+        // not looping: the fade-out at the region's end, then the voice ends
+        Voice once(clip, false);
+        Voice onceL(stereo, false);
+        Voice onceR(stereo, false);
+        const std::vector<float> all = once.read(100000);
+        const std::vector<float> allL = onceL.read(100000, 512, 0);
+        const std::vector<float> allR = onceR.read(100000, 512, 1);
+        ASSERT_EQ(all.size(), allL.size());
+        for (size_t i = 0; i < all.size(); i++) { ASSERT_NEAR(all[i], (allL[i] + allR[i]) * 0.5f, 1e-6f) << i; }
+        EXPECT_EQ(all.back(), 0.0f);
+        EXPECT_TRUE(once.instance->hasEnded());
+    }
+    // a mono file ignores it
+    AudioClipSource single(decoded(clipSourceWavBytes({left})), mono);
+    EXPECT_EQ(single.getChannels(), 1u);
+    EXPECT_EQ(single.getFileChannels(), 1u);
+}
+
+TEST(ClipImportSettings, ExistingHashesStayAndForceMonoChangesIt){
+    // the values every clip without Force To Mono had before it: wrapped samples and analysis cache
+    // names keep their names
+    ClipImportSettings settings;
+    EXPECT_EQ(settings.hash(), 0x6f9470ddbb445651ull);
+    settings.gainDb = -3.0f;
+    EXPECT_EQ(settings.hash(), 0x87eeaa36692b55d1ull);
+    settings = ClipImportSettings();
+    settings.gainDb = 3.0f;
+    settings.trimHeadFrames = 100;
+    settings.trimTailFrames = 200;
+    settings.fadeInFrames = 32;
+    settings.fadeOutFrames = 64;
+    settings.loopStartFrame = 1000;
+    settings.loopEndFrame = 6000;
+    EXPECT_EQ(settings.hash(), 0x62554a1eba2c7e09ull);
+    settings = ClipImportSettings();
+    settings.bpm = 120.0f;
+    settings.beatsPerBar = 3;
+    settings.firstBeatFrame = 480;
+    EXPECT_EQ(settings.hash(), 0x201e3faf4bfb4a57ull);
+
+    settings = ClipImportSettings();
+    settings.forceMono = true;
+    EXPECT_FALSE(settings.isDefault());
+    EXPECT_FALSE(settings.playsAsFile());
+    EXPECT_NE(settings.hash(), ClipImportSettings().hash());
+}
+
+TEST(AudioImportTable, ImportTableForceMono){
+    AudioImportTable::clear();
+    std::string error;
+    ASSERT_TRUE(AudioImportTable::parse(R"({"format":"jasperengine.audio-imports","version":1,
+        "clips":{"a.wav":{"gain_db":-3},"b.wav":{"force_mono":true}}})", &error)) << error;
+    std::optional<ClipImportSettings> a = AudioImportTable::find("a.wav");
+    ASSERT_TRUE(a.has_value());
+    EXPECT_FALSE(a->forceMono);
+    std::optional<ClipImportSettings> b = AudioImportTable::find("b.wav");
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(b->forceMono);
+    // the forced clip plays wrapped, under a key of its own
+    EXPECT_NE(SoundPool::key("b.wav", AudioLoadType::DecompressOnLoad).find("#i"), std::string::npos);
+    AudioImportTable::clear();
+}
+
 }  // namespace ClipSourceTest_cpp

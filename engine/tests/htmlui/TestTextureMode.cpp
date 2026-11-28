@@ -110,6 +110,34 @@ namespace {
 
 }
 
+// S93 R27 (AC31): a screen and a texture-mode document of one sheet each get their own box-shadow texture and decorator
+// (their render managers do not share texture handles), and the screen one keeps drawing when the other goes
+TEST_F(TextureModeTest, SharedSheetDecoratorsPerRenderManager){
+    Primitive& surface = wall(0, 0, 0);
+    UIDocument texture = textureDocument("p1/shared_shadow.rml", surface.getEntity(), 256, 256, 1.0f);
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    UIDocument screen = fixture->addDocument("p1/shared_shadow.rml");
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    ASSERT_NE(system().getTextureContext(texture.getEntity()), nullptr);
+
+    Screen before;
+    ASSERT_TRUE(capture(before, 2));
+    EXPECT_TRUE(before.is(33, 80, 255, 0, 0));        // the shadow's spread, left of the border
+    EXPECT_TRUE(before.is(100, 50, 255, 255, 0, 24)); // the decorator's top
+
+    texture.removeComponent<UIDocumentComponent>();
+    GpuEnvironment::drawFrames(1);
+    ASSERT_EQ(system().getTextureContext(texture.getEntity()), nullptr);
+
+    Screen after;
+    ASSERT_TRUE(capture(after, 2));
+    EXPECT_TRUE(after.is(33, 80, 255, 0, 0));
+    EXPECT_TRUE(after.is(100, 50, 255, 255, 0, 24));
+    EXPECT_TRUE(after.rgba == before.rgba) << "the screen document draws the same without the texture-mode one";
+    EXPECT_SCREEN_GOLDEN(after, "p1/shared_shadow");
+    (void)screen;
+}
+
 TEST_F(TextureModeTest, RaycastPlaneCenterAndCorners){
     // the horizontal plane primitive, seen from above
     Primitive& plane = fixture->add<Primitive>();
@@ -376,6 +404,37 @@ TEST_F(TextureModeTest, WorldPointerCapture){
     // a touch on the transparent body is not taken, and not tracked
     EXPECT_FALSE(pointer(PointerPhase::DOWN, Vector3(0.5f, 0.5f, 0), 4, true));
     EXPECT_FALSE(system().getTextureContext(document.getEntity())->hasTouch(4));
+
+    tl->RemoveEventListener(Rml::EventId::Click, &clicks);
+}
+
+// S93 R1: a press the game got (on the transparent body) is not the world document's: its release
+// and, while its button is held, the mouse's moves over the document's content are not consumed;
+// they only hover it
+TEST_F(TextureModeTest, GamePressReleasedOverWorldDocumentIsNotConsumed){
+    Primitive& surface = wall(0, 0, 0);
+    UIDocument document = textureDocument("p1/texture_input.rml", surface.getEntity());
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    Rml::Element* tl = element(document.getEntity(), "tl");
+    ASSERT_NE(tl, nullptr);
+    CountingListener clicks;
+    tl->AddEventListener(Rml::EventId::Click, &clicks);
+
+    Input::addMousePressed(D_MOUSE_BUTTON_LEFT);
+    EXPECT_FALSE(pointer(PointerPhase::DOWN, Vector3(0.5f, 0.5f, 0)));
+    EXPECT_FALSE(pointer(PointerPhase::MOVE, Vector3(-0.5f, 0.5f, 0)));
+    EXPECT_TRUE(tl->IsPseudoClassSet("hover"));
+    Input::releaseMousePressed(D_MOUSE_BUTTON_LEFT);
+    EXPECT_FALSE(pointer(PointerPhase::UP, Vector3(-0.5f, 0.5f, 0)));
+    EXPECT_EQ(clicks.count, 0);
+    // no button held: the hover over content is the document's again
+    EXPECT_TRUE(pointer(PointerPhase::MOVE, Vector3(-0.5f, 0.5f, 0)));
+
+    // a finger: not taken on the body, so its release over #tl is not either
+    EXPECT_FALSE(pointer(PointerPhase::DOWN, Vector3(0.5f, 0.5f, 0), 4, true));
+    EXPECT_FALSE(pointer(PointerPhase::MOVE, Vector3(-0.5f, 0.5f, 0), 4, true));
+    EXPECT_FALSE(pointer(PointerPhase::UP, Vector3(-0.5f, 0.5f, 0), 4, true));
+    EXPECT_EQ(clicks.count, 0);
 
     tl->RemoveEventListener(Rml::EventId::Click, &clicks);
 }

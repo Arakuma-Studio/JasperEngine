@@ -550,6 +550,22 @@ float AnimationPlayer::getPoseFrameRate() const{
     return getComponent<AnimationPlayerComponent>().poseFrameRate;
 }
 
+void AnimationPlayer::setApplyRootMotion(bool apply){
+    getComponent<AnimationPlayerComponent>().applyRootMotion = apply;
+}
+
+bool AnimationPlayer::getApplyRootMotion() const{
+    return getComponent<AnimationPlayerComponent>().applyRootMotion;
+}
+
+void AnimationPlayer::setLegacyRootDrift(bool keep){
+    getComponent<AnimationPlayerComponent>().legacyRootDrift = keep;
+}
+
+bool AnimationPlayer::getLegacyRootDrift() const{
+    return getComponent<AnimationPlayerComponent>().legacyRootDrift;
+}
+
 void AnimationPlayer::setDefaultClip(const std::string& name){
     getComponent<AnimationPlayerComponent>().defaultClip = name;
 }
@@ -770,6 +786,30 @@ std::string AnimationPlayer::getLayerBlendMode(const std::string& layer) const{
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
     const int index = anim::layerIndex(player, layer, getName());
     return index >= 0 ? anim::layerBlendName(player.runtime->layers[(size_t)index].blend) : "";
+}
+
+void AnimationPlayer::setLayerMeshSpaceRotation(int layer, bool enabled){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    if (index >= 0) anim::setLayerMeshSpaceRotation(player, index, enabled);
+}
+
+void AnimationPlayer::setLayerMeshSpaceRotation(const std::string& layer, bool enabled){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    if (index >= 0) anim::setLayerMeshSpaceRotation(player, index, enabled);
+}
+
+bool AnimationPlayer::getLayerMeshSpaceRotation(int layer) const{
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    return index >= 0 && anim::playerLayers(player)[(size_t)index].meshSpaceRotation;
+}
+
+bool AnimationPlayer::getLayerMeshSpaceRotation(const std::string& layer) const{
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    return index >= 0 && anim::playerLayers(player)[(size_t)index].meshSpaceRotation;
 }
 
 void AnimationPlayer::stopLayer(int layer){

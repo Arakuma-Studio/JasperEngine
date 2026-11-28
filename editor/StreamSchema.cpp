@@ -4,6 +4,7 @@
 #include "StreamSchema.h"
 #include "component/TerrainComponent.h"
 #include "render/LodFade.h"
+#include "physics/WorldSettings.h"
 
 #include "reflect/Enums.h"
 
@@ -48,10 +49,10 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
 
 const std::vector<std::string>& StreamSchema::knownNestedKeys(NestedKind kind) {
     static const std::map<NestedKind, std::vector<std::string>> tables = {
-        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderGlobalBindings", "shaderPalettes", "shaderParams", "shaderTextures", "sortPriority", "stencil", "stochasticBlendSharpness", "stochasticCellSize", "stochasticContrast", "stochasticRotation", "stochasticTiling"}},
-        {NestedKind::MaterialPass, {"blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "order", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "stencil"}},
+        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendDst", "blendDstAlpha", "blendMode", "blendOp", "blendOpAlpha", "blendSrc", "blendSrcAlpha", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderGlobalBindings", "shaderPalettes", "shaderParams", "shaderTextures", "sortPriority", "stencil", "stochasticBlendSharpness", "stochasticCellSize", "stochasticContrast", "stochasticRotation", "stochasticTiling"}},
+        {NestedKind::MaterialPass, {"blendDst", "blendDstAlpha", "blendMode", "blendOp", "blendOpAlpha", "blendSrc", "blendSrcAlpha", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "order", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "stencil"}},
         {NestedKind::Stencil, {"compare", "depthFail", "fail", "pass", "readMask", "ref", "writeMask"}},
-        {NestedKind::Submesh, {"faceCulling", "hasMorphNormal", "hasMorphTangent", "hasMorphTarget", "hasNormalMap", "hasSkinning", "hasTangent", "hasTexCoord1", "hasTexCoord2", "hasTextureRect", "hasVertexColor3", "hasVertexColor4", "material", "normAdjustJoint", "normAdjustWeight", "overrideFields", "primitiveType", "textureRect", "textureShadow", "vertexCount"}},
+        {NestedKind::Submesh, {"faceCulling", "hasMorphNormal", "hasMorphTangent", "hasMorphTarget", "hasNormalMap", "hasSkinning", "hasTangent", "hasTexCoord1", "hasTexCoord2", "hasTextureRect", "hasVertexColor3", "hasVertexColor4", "material", "normAdjustJoint", "normAdjustWeight", "overrideFields", "primitiveType", "propertyOverrides", "textureRect", "textureShadow", "vertexCount"}},
         {NestedKind::Texture, {"video", "alphaBorder", "camera", "channels", "colorFormat", "cubeMode", "data", "fluid", "guid", "guids", "height", "id", "magFilter", "minFilter", "path", "paths", "releaseDataAfterLoad", "size", "source", "svgScale", "textureType", "width", "wrapU", "wrapV"}},
     };
     return lookup(tables, kind);
@@ -61,9 +62,11 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
     static const std::map<RootKind, std::vector<std::string>> tables = {
         {RootKind::Scene, {"formatVersion", "guid", "formerGuids", "labels", "id", "name", "scene", "sceneType", "mainCamera", "maxValues", "shaderKeys",
             "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "imports", "entities"}},
-        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "capsuleShadowIntensity", "capsuleShadowSoftness", "capsuleShadowsEnabled", "defaultLinesShader", "defaultLinesShaderUniforms", "defaultMeshShader", "defaultMeshShaderUniforms", "defaultPointsShader", "defaultPointsShaderUniforms", "defaultSkyShader", "defaultSkyShaderUniforms", "defaultUIShader", "defaultUIShaderUniforms", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "litQuality", "maxLightsPerObject", "maxPlanarReflections", "meshLodCrossFade", "meshLodCrossFadeDuration", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "planarReflectionClipOffset", "planarReflectionFarClip", "planarReflectionLayers", "planarReflectionResolution", "planarReflectionShadows", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness", "waterWakeArea", "waterWakeFade", "waterWakeResolution",
+        {RootKind::SceneSettings, {"ambientEquatorColor", "ambientGroundColor", "ambientLight2DColor", "ambientLight2DIntensity", "ambientLight2DWithoutLights", "ambientMode", "ambientSkyColor", "backgroundColor", "capsuleShadowIntensity", "capsuleShadowSoftness", "capsuleShadowsEnabled", "defaultLinesShader", "defaultLinesShaderUniforms", "defaultMeshShader", "defaultMeshShaderUniforms", "defaultPointsShader", "defaultPointsShaderUniforms", "defaultSkyShader", "defaultSkyShaderUniforms", "defaultUIShader", "defaultUIShaderUniforms", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "htmlUiMsaaSamples", "htmlUiRenderMode", "light2DSteps", "lightState", "litQuality", "maxLightsPerObject", "maxPlanarReflections", "meshLodCrossFade", "meshLodCrossFadeDuration", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "planarReflectionClipOffset", "planarReflectionFarClip", "planarReflectionLayers", "planarReflectionResolution", "planarReflectionShadows", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness", "waterWakeArea", "waterWakeFade", "waterWakeResolution",
             // upstream's scene settings (SYNC#4): written away from their defaults
-            "canvasScaler", "physics2DSubSteps"}},
+            "canvasScaler", "physics2DSubSteps",
+            // S95: the scene's Fixed Timestep override
+            "fixedTimestep"}},
         // prefabInstance and the keys written before it (prefabOverrides...), and the keys of
         // the GameObjects a prefab adds to an instance (addedTo, childIndex...)
         {RootKind::Entity, {"type", "entity", "name", "active", "tag", "layer", "components", "children",
@@ -71,16 +74,22 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "addedTo", "childIndex", "parentRegistryEntity", "prefabRootRegistryEntity", "prefabPath"}},
         // the editor state an older project.yaml held (Workspace::adoptLegacyProjectState) and
         // its build settings (AppSettings, build.yaml) are read too
-        {RootKind::Project, {"formatVersion", "android", "apple", "application", "assetLabels", "assetsDir", "atmosphereQuality", "foliageQuality", "canvasHeight", "canvasWidth", "cxxStandard", "debug", "device", "dynamicBatching", "export", "foliageDistanceScale", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mesh", "mobilePbrTier", "name", "navigation", "packNativeResources", "palettes", "physics2D", "physics3D", "pixelArt", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "shaderCreation", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "titleArt", "versionControl", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
+        {RootKind::Project, {"formatVersion", "android", "apple", "application", "assetLabels", "assetsDir", "atmosphereQuality", "foliageQuality", "canvasHeight", "canvasWidth", "cxxStandard", "debug", "device", "dynamicBatching", "export", "foliageDistanceScale", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiImageCacheMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mesh", "mobilePbrTier", "name", "navigation", "packNativeResources", "palettes", "physics2D", "physics3D", "pixelArt", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "shaderCreation", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "titleArt", "versionControl", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor",
             // upstream's project.yaml blocks (SYNC#4): the editor writes and reads them
             "audio", "physics3DWorld", "playerCrash", "presentation", "shaderGlobals", "uiScale",
+            // Project Settings > Physics / Physics 2D > Queries Hit Triggers (spatial queries)
+            "physicsQueries",
             // S87: Project Settings > Localization
             "localization",
+            // S95: Project Settings > Time and Input > Simulate Touch From Mouse
+            "time", "simulateTouchFromMouse",
             // Project Settings > Voxels (T6 R7)
-            "voxel"}},
+            "voxel",
+            // Tags and Layers > Sorting Layers and Graphics > Transparency Sort Mode (S52, S94 F5)
+            "sortingLayers", "sortingLayerNextId", "transparencySortMode", "transparencySortAxis"}},
         {RootKind::Material, {}},
-        {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
+        {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped", "followMaterialFiles"}},
     };
     if (kind == RootKind::Material) {
         // a .material file is one encoded Material
@@ -93,6 +102,15 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             return keys;
         }();
         return material;
+    }
+    if (kind == RootKind::SceneSettings) {
+        // and the physics world settings (S96), one key per field of their table
+        static const std::vector<std::string> sceneSettings = [] {
+            std::vector<std::string> keys = lookup(tables, RootKind::SceneSettings);
+            for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) keys.push_back(field.key);
+            return keys;
+        }();
+        return sceneSettings;
     }
     return lookup(tables, kind);
 }
@@ -507,6 +525,14 @@ const EnumTable<LitQuality>& StreamSchema::litQuality() {
     return table;
 }
 
+const EnumTable<AmbientMode>& StreamSchema::ambientMode() {
+    static const EnumTable<AmbientMode> table("AmbientMode", {
+        {AmbientMode::COLOR, "color"},
+        {AmbientMode::GRADIENT, "gradient"},
+    }, AmbientMode::COLOR);
+    return table;
+}
+
 const EnumTable<PbrTier>& StreamSchema::pbrTier() {
     static const EnumTable<PbrTier> table("PbrTier", {
         {PbrTier::FULL, "full"},
@@ -527,6 +553,16 @@ const EnumTable<MaterialAlphaMode>& StreamSchema::materialAlphaMode() {
 
 const EnumTable<MaterialBlendMode>& StreamSchema::materialBlendMode() {
     static const EnumTable<MaterialBlendMode> table(reflect::enums::kMaterialBlendMode);
+    return table;
+}
+
+const EnumTable<MaterialBlendFactor>& StreamSchema::materialBlendFactor() {
+    static const EnumTable<MaterialBlendFactor> table(reflect::enums::kMaterialBlendFactor);
+    return table;
+}
+
+const EnumTable<MaterialBlendOp>& StreamSchema::materialBlendOp() {
+    static const EnumTable<MaterialBlendOp> table(reflect::enums::kMaterialBlendOp);
     return table;
 }
 
@@ -629,6 +665,14 @@ const EnumTable<Scaling>& StreamSchema::scalingMode() {
     return table;
 }
 
+const EnumTable<UIRenderMode>& StreamSchema::uiRenderMode() {
+    static const EnumTable<UIRenderMode> table("UIRenderMode", {
+        {UIRenderMode::OVERLAY, "overlay"},
+        {UIRenderMode::CAMERA, "camera"},
+    }, UIRenderMode::OVERLAY);
+    return table;
+}
+
 const EnumTable<SceneColorScale>& StreamSchema::sceneColorScale() {
     static const EnumTable<SceneColorScale> table("SceneColorScale", {
         {SceneColorScale::FULL, "full"},
@@ -680,6 +724,7 @@ const EnumTable<ScriptPropertyType>& StreamSchema::scriptPropertyType() {
         {ScriptPropertyType::EntityReference, "EntityReference"},
         {ScriptPropertyType::Prefab, "Prefab"},
         {ScriptPropertyType::Asset, "Asset"},
+        {ScriptPropertyType::List, "List"},
     }, ScriptPropertyType::Bool);
     return table;
 }

@@ -98,8 +98,8 @@ namespace jasperengine{
         // a reference acquired by the caller in the current context (replaces one of that kind
         // and type from an earlier context)
         void add(uint8_t kind, uint8_t type, sg_pipeline pipeline);
-        // releases the references of the kinds from `kind` on
-        void removeFrom(uint8_t kind);
+        // releases the references of the `count` kinds from `first` on
+        void removeKinds(uint8_t first, uint8_t count);
         void clear();
 
     private:
@@ -191,7 +191,7 @@ namespace jasperengine{
         size_t loadIndexOffset;
 
         // the pipeline types (PipelineType), by bit index
-        static constexpr int PIPELINE_TYPES = 16;
+        static constexpr int PIPELINE_TYPES = 17;
         sg_pipeline pipelines[PIPELINE_TYPES];
 
         // what setShader, setIndex and addAttribute write, from beginLoad to endLoad or
@@ -243,11 +243,15 @@ namespace jasperengine{
             uint64_t key[PIPELINE_TYPES] = {};
             uint32_t lodFadePipeline[PIPELINE_TYPES] = {};
             uint64_t lodFadeKey[PIPELINE_TYPES] = {};
+            uint32_t viewPipeline[PIPELINE_TYPES] = {};
+            uint64_t viewKey[PIPELINE_TYPES] = {};
         };
         CopiedPtr<WarmTable> warm;
         std::vector<std::pair<uint32_t, uint64_t>> dynamicWarm;
-        // lodFade: the LOD fade variant's table (beginDraw with its shader)
-        bool isWarm(sg_pipeline pipeline, int index, bool lodFade, sg_shader warmShader);
+        // the table of the draw's shader: its own, the LOD fade or the view variant's (beginDraw
+        // with that shader)
+        enum class WarmShader { BASE, LOD_FADE, VIEW };
+        bool isWarm(sg_pipeline pipeline, int index, WarmShader table, sg_shader warmShader);
         bool isDynamicWarm(sg_pipeline pipeline);
         void resetWarm();
 
@@ -276,18 +280,24 @@ namespace jasperengine{
         static constexpr uint8_t VARIANT_LOD_FADE = 5;
         // the editor's Overdraw Draw Mode: additive, no depth test or write, no culling
         static constexpr uint8_t VARIANT_OVERDRAW = 9;
+        // the editor's Vertex Color Draw Mode (V1 R102): the description on the view variant of the
+        // shader ('Vcv', its bindings the base's), and its mirrored and no-cull forms, as the fade's
+        static constexpr uint8_t VARIANT_VIEW = 10;
         SokolVariantRefs variants;
         // the fade variant's shader the VARIANT_LOD_FADE kinds were made on (their GL warm draws:
         // the warm table's)
         uint32_t lodFadeShaderId = SG_INVALID_ID;
+        // and the view variant's shader the VARIANT_VIEW kinds were made on
+        uint32_t viewShaderId = SG_INVALID_ID;
         // the pipeline the last beginDraw applied (diagnostics, tests)
         uint32_t appliedPipeline = SG_INVALID_ID;
         // the pipeline of a type for a draw: a variant made on first use (mirrored, no cull,
         // LOD fade), or the type's own; waits (false, drawWaiting) while it is being made
         enum class Selection { READY, WAIT, FAIL };
-        Selection selectPipeline(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader, sg_pipeline& selected);
+        Selection selectPipeline(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader, ShaderRender* viewShader,
+                                 sg_pipeline& selected);
         // types whose pipeline already culls nothing (its no-cull variant is itself), by bit index
-        uint16_t noCullSame;
+        uint32_t noCullSame;
 
         size_t bindSlotIndex;
         // the vertex inputs (locations) the shader declares, set by setShader
@@ -392,7 +402,7 @@ namespace jasperengine{
         bool prewarmWith(ShaderRender* shader);
         bool isDrawWaiting() const;
         static uint32_t getWaitingDrawCount();
-        bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
+        bool endLoad(uint32_t pipelines, const RenderState& state, int msaaSamples = 1);
         // records shader, vertex layout and index type for beginDraw(PipelineState); creates no pipeline
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
         // another variant of source's shader (the same vertex inputs and bindings) on source's
@@ -408,9 +418,13 @@ namespace jasperengine{
         // disableFaceCulling draws with a variant of the pipeline that culls no face
         // (editor-only debug views; ignored elsewhere); mirrored with one whose face winding is
         // reversed (a draw whose transform mirrors the mesh)
-        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false, ShaderRender* lodFadeShader = nullptr);
+        // viewShader: the view variant's (the editor's Vertex Color Draw Mode), never with a fade
+        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false, ShaderRender* lodFadeShader = nullptr,
+                       ShaderRender* viewShader = nullptr);
         // the LOD fade variant of that draw made (asked for on the first call) and warm
         bool isLodFadeReady(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader);
+        // releases the view variant's pipelines (the Draw Mode was left)
+        void releaseViewVariants();
         uint32_t getAppliedPipelineId() const;
         // the cached pipeline of that state (SokolPipelineCache), applied unless it is the one
         // applied last in this pass

@@ -7,7 +7,9 @@
      extractNativeLibs: false (stored libraries, loaded from the APK); an APK for minSdk < 23
      compresses them and says true (AndroidPackager compressesNativeLibraries). The native plugin
      settings without code (android.extra_permissions, manifest_xml, manifest_application_xml) go
-     into the NATIVE markers; code and Gradle dependencies make the build compile instead. -->
+     into the NATIVE markers; code and Gradle dependencies make the build compile instead.
+     The DEBUGGABLE marker: filled in a Development Build, so Patch And Run can reach the app's files
+     through `adb shell run-as` (docs/specs/build-and-run-on-device.md R9). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.jaspergameengine.jasperengine"
     android:versionCode="{{VERSION_CODE}}"
@@ -22,11 +24,11 @@
         android:icon="{{ICON}}"
         android:label="{{LABEL}}"
         android:hasCode="true"
-        android:extractNativeLibs="false">
+        android:extractNativeLibs="false"{{DEBUGGABLE}}>
 
         <activity android:name="com.jaspergameengine.jasperengine.MainActivity"
             android:label="{{LABEL}}"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|screenLayout|smallestScreenSize|uiMode|density"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|screenLayout|smallestScreenSize|uiMode|density|locale|layoutDirection"
             android:theme="{{THEME}}"{{ORIENTATION}}
             android:exported="true">
             <meta-data android:name="android.app.lib_name" android:value="jasperengine-android" />

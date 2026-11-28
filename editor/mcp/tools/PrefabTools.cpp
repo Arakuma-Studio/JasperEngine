@@ -7,6 +7,7 @@
 // overrides at any level, Prefab Mode (prefab stages), the standalone prefab list.
 // Every edit runs through the editor's commands (one undo step per call).
 #include "McpTools.h"
+#include "component/PrefabComponent.h"
 #include "component/Transform.h"
 
 #include "mcp/McpDataSafety.h"
@@ -603,6 +604,45 @@ Json assetJson(Project* project, const fs::path& relative, bool withUsage, bool 
 
 // ------------------------------------------------------------------ tools
 
+// create_prefab overwrite: the prefab loads, is not open in Prefab Mode, and would not
+// contain itself (the GameObject holds no instance of it or of a prefab nesting it; an
+// instance of it as the root is unpacked first, so it does not count)
+bool overwriteAllowed(Project* project, SceneProject* scene, Entity root, const fs::path& target, std::string& why) {
+    if (!project->loadPrefabAsset(target)) {
+        why = "\"" + generic(target) + "\" does not read as a prefab: overwrite only replaces a prefab file (read_console says why).";
+        return false;
+    }
+    for (size_t i = 0; i < project->getPrefabStageCount(); i++) {
+        const PrefabStage* stage = project->getPrefabStageAt(i);
+        if (stage && stage->assetPath.lexically_normal() == target.lexically_normal()) {
+            why = generic(target) + " is open in Prefab Mode: close it first (prefab_mode action=close), then overwrite.";
+            return false;
+        }
+    }
+    Scene* registry = scene->scene;
+    auto components = registry->getComponentArray<PrefabComponent>();
+    for (size_t i = 0; i < components->size(); i++) {
+        const Entity entity = components->getEntity(i);
+        bool inside = entity == root;
+        for (Transform* t = registry->findComponent<Transform>(entity); !inside && t && t->parent != NULL_ENTITY;
+             t = registry->findComponent<Transform>(t->parent)) {
+            inside = t->parent == root;
+        }
+        if (!inside) continue;
+        const PrefabComponent& component = components->getComponentFromIndex(i);
+        const fs::path path = project->resolvePrefabPath(component.guid, FileUtils::pathFromUtf8(component.path));
+        if (path.empty() || (entity == root && path.lexically_normal() == target.lexically_normal())) continue;
+        const std::vector<fs::path> dependencies = project->getPrefabDependencies(path);
+        if (std::any_of(dependencies.begin(), dependencies.end(), [&](const fs::path& p) { return p.lexically_normal() == target.lexically_normal(); })) {
+            why = McpRefs::entityPath(scene, entity) + " is an instance of " + generic(path) + ", which " +
+                  (path.lexically_normal() == target.lexically_normal() ? std::string("is") : std::string("nests")) + " " +
+                  generic(target) + ": the prefab would contain itself. Unpack that instance (unpack_prefab) or pick another path.";
+            return false;
+        }
+    }
+    return true;
+}
+
 // create_prefab
 void createPrefabTool(const CallPtr& call) {
     Project* project = requireProject(call);
@@ -691,6 +731,11 @@ void createPrefabTool(const CallPtr& call) {
 
     const Json& args = call->args();
     const std::string pathArg = args.value("path", std::string());
+    const bool overwrite = args.value("overwrite", false);
+    if (overwrite && pathArg.empty()) {
+        call->fail("overwrite replaces the prefab at path: pass path (the .prefab to overwrite) with one root GameObject.");
+        return;
+    }
     if (!pathArg.empty() && roots.size() != 1) {
         call->fail("path names one prefab, but " + std::to_string(roots.size()) + " root GameObjects were given: pass directory instead "
                    "(each root becomes <directory>/<name>.prefab).");
@@ -708,6 +753,7 @@ void createPrefabTool(const CallPtr& call) {
 
     std::vector<std::pair<fs::path, YAML::Node>> prefabs;
     std::set<std::string> taken;
+    std::set<std::string> overwritten;
     Json results = Json::array();
     for (size_t i = 0; i < roots.size(); i++) {
         YAML::Node prefabNode = YAML::Clone(roots[i]);
@@ -728,10 +774,26 @@ void createPrefabTool(const CallPtr& call) {
                 return;
             }
             std::error_code ec;
-            if (fs::exists(project->getProjectPath() / relative, ec)) {
-                call->fail("A file already exists at \"" + generic(relative) + "\". Pick another path (prefabs are never overwritten); "
-                           "to make an existing instance follow another prefab use replace_prefab.");
+            const fs::path given = FileUtils::pathFromUtf8(pathArg).lexically_normal();
+            if (overwrite && given.extension() != ".prefab" && fs::exists(project->getProjectPath() / given, ec)) {
+                call->fail("\"" + generic(given) + "\" is not a prefab: overwrite only replaces a .prefab file.");
                 return;
+            }
+            if (fs::exists(project->getProjectPath() / relative, ec)) {
+                if (!overwrite) {
+                    call->fail("A file already exists at \"" + generic(relative) + "\". Pass overwrite: true to replace its content "
+                               "(its GUID and instances stay), or pick another path; to make an existing instance follow "
+                               "another prefab use replace_prefab.");
+                    return;
+                }
+                std::string why;
+                const Entity root = roots[i]["entity"] ? roots[i]["entity"].as<Entity>() : NULL_ENTITY;
+                if (!overwriteAllowed(project, scene, root, project->getPrefabAssetPath(relative), why)) {
+                    call->fail(why);
+                    return;
+                }
+                relative = project->getPrefabAssetPath(relative);
+                overwritten.insert(generic(relative));
             }
         } else {
             const std::string name = roots[i]["name"] ? roots[i]["name"].as<std::string>() : std::string("Prefab");
@@ -746,12 +808,31 @@ void createPrefabTool(const CallPtr& call) {
     }
 
     const uint64_t since = Out::lastLogId();
-    if (!runCommand(CommandHandle::get(sceneId), new CreatePrefabCmd(project, sceneId, prefabs))) {
+    CreatePrefabCmd* command = new CreatePrefabCmd(project, sceneId, prefabs);
+    for (size_t i = 0; i < prefabs.size(); i++) {
+        command->setOverwrite(i, overwritten.count(generic(prefabs[i].first)) != 0);
+    }
+    if (!runCommand(CommandHandle::get(sceneId), command)) {
         const std::string why = problemsSince(since);
-        call->fail("Create Prefab failed" + (why.empty() ? std::string(".") : ": " + why));
+        call->fail(std::string(overwritten.empty() ? "Create Prefab" : "Overwrite Prefab") + " failed" +
+                   (why.empty() ? std::string(".") : ": " + why));
         return;
     }
     refreshProjectWindow(call);
+
+    if (!overwritten.empty()) {
+        Json& item = results[0];
+        const fs::path relative = item["path"].get<std::string>();
+        item["guid"] = project->getPrefabGuid(relative);
+        const Entity root = item["root_id"].get<Entity>();
+        item.erase("root_id");
+        item["overwritten"] = true;
+        if (root != NULL_ENTITY && registry->isEntityCreated(root)) item["instance"] = McpRefs::entityJson(scene, root);
+        call->ok("Overwrote " + generic(relative) + " with the GameObject: same GUID, every open instance updated with its "
+                 "overrides kept, the GameObject is now an instance of it (one undo step).",
+                 Json{{"scene_id", sceneId}, {"prefabs", results}});
+        return;
+    }
 
     std::string text = "Created " + std::to_string(results.size()) + " prefab(s):";
     for (Json& item : results) {
@@ -1953,16 +2034,16 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "create_prefab";
         tool.title = "Create Prefab";
         tool.description =
-            "Create Prefab: saves the GameObject (with children) as a new .prefab (never overwrites) and makes "
-            "it the instance root (same id). Several entities: one each, <directory>/<name>.prefab. An instance "
-            "root becomes an original prefab (variants: create_prefab_variant); an instance member is refused "
-            "(unpack_prefab first).";
+            "Saves the GameObject (with children) as a .prefab and makes it the instance root (same id). Several "
+            "entities: one each, <directory>/<name>.prefab. An instance root becomes an original prefab (variants: "
+            "create_prefab_variant); an instance member is refused (unpack_prefab first).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
             {"path", assetPath("One root only.")},
-            {"directory", withDefault(assetPath("Folder used when path is omitted."), "prefabs")}
+            {"directory", withDefault(assetPath("Folder used when path is omitted."), "prefabs")},
+            {"overwrite", boolean("Replace the prefab at path; GUID and instances stay.")}
         });
         tool.allowedWhilePlaying = false;
         tool.handler = createPrefabTool;

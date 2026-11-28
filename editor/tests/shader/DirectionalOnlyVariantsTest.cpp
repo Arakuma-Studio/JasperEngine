@@ -191,4 +191,60 @@ TEST_F(DirectionalOnlyVariantKeys, TwinsCoverLightModeTiled){
     LightingTiers::setLightMode(LightMode::AUTOMATIC);
 }
 
+namespace {
+
+    // S99 R42: the builtin:lit references of a scene's export MESH keys that name a define
+    size_t areaLightsVariantsWith(Scene& scene, const char* define){
+        ShaderVariantContent content;
+        content.registry = &scene;
+        content.entities = scene.getEntityList();
+        std::set<ShaderKey> keys;
+        ShaderVariantCollector::collectScene(&scene, content, {}, keys);
+        size_t count = 0;
+        for (ShaderKey key : keys){
+            if (ShaderPool::getShaderTypeFromKey(key) != ShaderType::MESH || ShaderPool::getCustomIdFromKey(key) == 0)
+                continue;
+            if (ShaderPool::getCustomShaderName(ShaderPool::getCustomIdFromKey(key)).find(define) != std::string::npos)
+                count++;
+        }
+        return count;
+    }
+
+}
+
+// S99 R41, R42: a scene with an Area Light ships the Lit's USE_AREA_LIGHTS variants, one with an IES
+// Profile its USE_IES ones, and a scene of point and spot lights neither
+TEST_F(DirectionalOnlyVariantKeys, AreaLightsAndIesProfilesShipTheirVariants){
+    {
+        Scene scene;
+        Light area(&scene);
+        area.setType(LightType::AREA);
+        Primitive box(&scene);
+        box.createBox(1.0f, 1.0f, 1.0f);
+        EXPECT_GT(areaLightsVariantsWith(scene, "USE_AREA_LIGHTS"), 0u);
+        EXPECT_EQ(areaLightsVariantsWith(scene, "USE_IES"), 0u);
+    }
+    {
+        Scene scene;
+        Light spot(&scene);
+        spot.setType(LightType::SPOT);
+        spot.setIesProfile("lights/beam.ies");
+        Primitive box(&scene);
+        box.createBox(1.0f, 1.0f, 1.0f);
+        EXPECT_GT(areaLightsVariantsWith(scene, "USE_IES"), 0u);
+        EXPECT_EQ(areaLightsVariantsWith(scene, "USE_AREA_LIGHTS"), 0u);
+    }
+    {
+        Scene scene;
+        Light point(&scene);
+        point.setType(LightType::POINT);
+        Light spot(&scene);
+        spot.setType(LightType::SPOT);
+        Primitive box(&scene);
+        box.createBox(1.0f, 1.0f, 1.0f);
+        EXPECT_EQ(areaLightsVariantsWith(scene, "USE_AREA_LIGHTS"), 0u);
+        EXPECT_EQ(areaLightsVariantsWith(scene, "USE_IES"), 0u);
+    }
+}
+
 }  // namespace DirectionalOnlyVariantsTest_cpp

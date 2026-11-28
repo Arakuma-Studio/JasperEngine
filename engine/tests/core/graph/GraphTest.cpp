@@ -264,6 +264,8 @@ TEST_F(GraphTest, ApplyAndInverseRestoreEveryOp) {
         {{"op", "setParam"}, {"node", "n1"}, {"name", "value"}, {"value", 7}},
         {{"op", "setParam"}, {"node", "n1"}, {"name", "fresh"}, {"value", "x"}},
         {{"op", "setParam"}, {"node", "n1"}, {"name", "value"}, {"value", nullptr}},
+        // the ports follow the count, and the undo brings the stored ones back with their unknown keys
+        {{"op", "setParam"}, {"node", "n3"}, {"name", "count"}, {"value", 4}},
         {{"op", "connect"}, {"from", {{"node", "n3"}, {"port", "out"}}}, {"to", {{"node", "n2"}, {"port", "b"}}}},
         {{"op", "disconnect"}, {"id", "e5"}},
         {{"op", "disconnect"}, {"from", {{"node", "n2"}, {"port", "sum"}}}, {"to", {{"node", "n10"}, {"port", "x"}}}},
@@ -519,6 +521,21 @@ TEST_F(GraphTest, AddNodeWithAnIdGetsDefaultsAndDynamicPorts) {
     apply(graph, opFromJson({{"op", "addNode"}, {"node", {{"id", "wide"}, {"type", "sum"}, {"params", {{"count", 4}}}}}}));
     EXPECT_EQ(graph.findNode("wide")->params.value("count", 0), 4);
     EXPECT_EQ(graph.findNode("wide")->dynamicPorts->size(), 5u);
+}
+
+// dialogue-graphs.md R2: a dynamic-port node's ports follow the params they come from, so an edge
+// can reach a port a setParam made; a param the ports do not depend on leaves the stored ones alone
+TEST_F(GraphTest, SetParamKeepsDynamicPortsInStep) {
+    Graph graph = loadOk(SAMPLE);
+    apply(graph, opFromJson({{"op", "setParam"}, {"node", "n3"}, {"name", "count"}, {"value", 3}}));
+    ASSERT_TRUE(graph.findNode("n3")->dynamicPorts.has_value());
+    EXPECT_EQ(graph.findNode("n3")->dynamicPorts->size(), 4u);
+    apply(graph, opFromJson({{"op", "connect"}, {"from", {{"node", "n1"}, {"port", "value"}}}, {"to", {{"node", "n3"}, {"port", "in2"}}}}));
+    EXPECT_FALSE(codes(graph).count("dangling-edge"));
+
+    Graph other = loadOk(SAMPLE);
+    apply(other, opFromJson({{"op", "setParam"}, {"node", "n3"}, {"name", "label"}, {"value", "x"}}));
+    EXPECT_EQ((*other.findNode("n3")->dynamicPorts)[0].passthrough["hint"], "first");
 }
 
 TEST_F(GraphTest, UndoOfARemoveRestoresTheNodeExactly) {

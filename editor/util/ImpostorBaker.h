@@ -29,6 +29,9 @@ namespace jasperengine::editor {
         int views = 0;
         std::string sourceHash;
         double milliseconds = 0.0;
+        // the view passes (albedo, normal) that could not be read back and stay empty in the atlas
+        int unreadPasses = 0;
+        std::string unreadReason;
         std::string error;
     };
 

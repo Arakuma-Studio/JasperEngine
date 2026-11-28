@@ -75,6 +75,7 @@ namespace {
             if (lua_isstring(L, -1)) options.group = lua_tostring(L, -1);
             lua_pop(L, 1);
             options.unscaled = audioOptBool(L, 2, "unscaled");
+            options.loop = audioOptBool(L, 2, "loop");
         }
         if (!luabridge::push(L, AudioSystem::playFree(name, options, "lua"))) lua_pushnil(L);
         return 1;

@@ -62,6 +62,12 @@ namespace jasperengine{
         virtual void load() = 0;
         virtual void draw() = 0;
         virtual void destroy() = 0;
+        // A view loss (Engine::systemViewDestroyed / systemViewLoaded: an Android window or EGL
+        // context, a lost WebGL context): the GPU objects go and come back, the scene stays. A
+        // system with CPU state that destroy() would drop overrides both; by default it is torn
+        // down and loaded again
+        virtual void releaseGpu() { destroy(); }
+        virtual void restoreGpu() { load(); }
         // Variable timestep update. Called once per frame with the real frame delta time.
         // Use for animation, input, UI, gameplay logic that does not need a deterministic step.
         virtual void update(double dt) = 0;

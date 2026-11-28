@@ -6,7 +6,9 @@
 #include "AppSettings.h"
 #include "Exporter.h"
 #include "ScenesWindow.h"
+#include "BuildProfilesPane.h"
 #include "players/PlayerRuntimes.h"
+#include "platform/DeviceList.h"
 #include "publish/Publishing.h"
 #include "imgui.h"
 
@@ -67,9 +69,17 @@ namespace jasperengine::editor {
         bool m_allowMissingAssets = false;
         bool m_iosSimulator = false;
         bool m_launchDone = false;
+        // the completion page's Build Report, read once per build (a report lists every file)
+        std::filesystem::path m_shownReport;
+        bool m_shownReportLoaded = false;
+        BuildReport m_shownReportData;
+        std::string m_shownReportSince;   // "(+3.2 MB since 2026-11-18 10:15)", "" without an earlier one
         bool m_playerSettingsRequested = false;
         // Nested inside this modal, so it can open without closing Build Settings.
         ScenesWindow m_scenesWindow;
+        // Build Profiles: the list under the platforms and the selected profile's pane; a build of
+        // the selected profile (Build and Build And Run) instead of the platform's
+        BuildProfilesPane m_profiles;
 
         // UI state
         fs::path m_targetDir;
@@ -169,6 +179,37 @@ namespace jasperengine::editor {
         void startRuntimeDownload(const std::string& id);
         void drawRuntimeDownload();
         void finishBackgroundWork();
+
+        // ---- Build And Run on a device (docs/specs/build-and-run-on-device.md R18) ----
+        // probed off the UI thread: when an Android or iOS platform shows, on Refresh, every 3 s
+        struct DeviceProbe {
+            std::thread thread;
+            std::atomic<bool> done{false};
+            ShipPlatform platform = ShipPlatform::Android;
+            std::vector<platform::RunDevice> devices;
+        };
+        std::unique_ptr<DeviceProbe> m_deviceProbe;
+        std::vector<platform::RunDevice> m_runDevices;    // of m_runDevicesPlatform
+        ShipPlatform m_runDevicesPlatform = ShipPlatform::Linux;
+        double m_lastDeviceProbe = -1.0;
+        // the Run Device per platform (devices.yaml, per user: no undo, as the selected platform)
+        std::map<std::string, std::string> m_selectedDevices;
+        bool m_selectedDevicesLoaded = false;
+        // Patch And Run's availability for the selected device, computed when the list or the choice changes
+        bool m_patchAvailable = false;
+        std::string m_patchWhyNot;
+        bool m_patchStateDirty = true;
+        bool m_patchRun = false;                         // the build running is Patch And Run
+        ExportConfig m_lastExportConfig;                 // the build running, for its device run
+        std::thread m_deviceRunThread;
+        ShipPlatform runPlatform() const;                // the platform Build And Run builds (a profile's)
+        void pollRunDevices(bool force);
+        void drawRunDeviceRow();
+        const platform::RunDevice* selectedRunDevice() const;
+        bool runDeviceUsable(std::string& why) const;
+        void refreshPatchState();
+        void applyRunDevice(ExportConfig& config, bool patch);
+        void startDeviceRun();
 
         // the keystore passwords an Android build asks for (never saved)
         bool m_askKeystorePasswords = false;

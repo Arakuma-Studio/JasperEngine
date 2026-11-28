@@ -214,6 +214,8 @@ TEST(CallArgs, EditDistance) {
     EXPECT_EQ(editDistance("", "abc"), 3u);
     EXPECT_EQ(editDistance("same", "same"), 0u);
     EXPECT_EQ(closeMatches("positon", {"position", "parent", "pos"}).front(), "position");
+    // as the server suggests (NearestIdentifier): a camelCase spelling four edits away
+    EXPECT_EQ(closeMatches("maxDocResults", {"max_results", "max_doc_results"}).front(), "max_doc_results");
 }
 
 // ---------------------------------------------------------------- SchemaValidate (AC2)

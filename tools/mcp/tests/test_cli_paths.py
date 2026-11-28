@@ -162,7 +162,7 @@ async def test_export_dotdot_project_yaml_and_out():
 
 
 async def test_export_leaves_recent_projects_alone():
-    """A command-line export saves the project, which records nothing in the person's editor
+    """A command-line export records nothing in the person's editor
     settings: their last project and recent projects stay (an editor opened later reopens theirs)"""
     work = layout()
     cwd = work / "sub" / "deep"

@@ -127,7 +127,9 @@ async def test_cook_textures_cli():
         warm = json.loads(report_path.read_text())
         for family in FAMILIES:
             assert warm["totals"][family]["cache_hits"] == warm["totals"][family]["cooked"], warm["totals"][family]
-        assert elapsed <= 10.0 * max(1.0, float(os.environ.get("JASPER_TEST_PERF_SLACK", "1") or 1)), f"warm run took {elapsed:.1f} s"
+        # every cook a cache hit is the behaviour (above); its time is a budget
+        over = harness.over_budget("cook-textures warm run", {"warm": elapsed}, 10.0)
+        assert not over, f"warm run took {elapsed:.1f} s"
 
         # --check: a UI texture of 130x66 cannot be block compressed (R6)
         ok = run_cli("cook-textures", "--project", str(project), "--check")

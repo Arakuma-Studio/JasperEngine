@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 //
 // je-bench-diag: the crash and hang diagnostics' budgets (S28 R26, AC18): the heartbeat, a
-// 120-byte crash-ring write, the install, and the idle watchdog thread's CPU share.
+// 120-byte crash-ring write, the install, and the idle watchdog thread's CPU share; and a
+// Gameplay Journal entry with four fields (shipped-game-diagnostics R29, AC4).
 //
 //   je-bench-diag [--json <file>]    default file: je-bench-diag.json
 
 #include "diag/CrashHandler.h"
 #include "diag/HangWatchdog.h"
+#include "diag/Journal.h"
 
 #include "BenchUtil.h"
 
@@ -47,6 +49,25 @@ namespace{
         return bench::percentile(samples, 0.5);
     }
 
+    // diag::journal::log with a kind, two strings and two numbers (the ring is 32 KiB)
+    double journalLogNs(){
+        const diag::journal::Field fields[] = {
+            {"level", std::string_view("forest-2")},
+            {"weapon", std::string_view("bow")},
+            {"seed", int64_t(123456)},
+            {"hp", 87.5},
+        };
+        constexpr int kLogs = 2'000'000;
+        std::vector<double> samples;
+        for (int trial = 0; trial < 9; trial++){
+            const auto start = bench::Clock::now();
+            for (int i = 0; i < kLogs; i++)
+                diag::journal::log("player.hit", fields);
+            samples.push_back(bench::secondsSince(start) * 1e9 / kLogs);
+        }
+        return bench::percentile(samples, 0.5);
+    }
+
     // the process's CPU while the main thread idles as the editor's loop does (a beat per
     // 100 ms wait): the watchdog's polls, and 50 beats, only
     double watchdogIdleCpuPercent(){
@@ -74,11 +95,14 @@ int main(int argc, char** argv){
     diag::crash::Config config;
     config.product = "je-bench-diag";
     config.root = root;
+    // as a game does: the journal before the handler takes its ring
+    diag::journal::configure(32 << 10);
     const auto installStart = bench::Clock::now();
     diag::crash::install(config);
     results.add("install_ms", bench::secondsSince(installStart) * 1000.0, "ms");
     results.add("heartbeat_ns", heartbeatNs(), "ns");
     results.add("ring_write_120b_ns", ringWriteNs(), "ns");
+    results.add("journal_log_4f_ns", journalLogNs(), "ns");
     results.add("watchdog_idle_cpu_pct", watchdogIdleCpuPercent(), "%");
     diag::crash::shutdown();
     std::error_code ec;

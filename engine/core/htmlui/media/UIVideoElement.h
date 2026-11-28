@@ -105,7 +105,6 @@ namespace jasperengine {
             uint64_t framesShown = 0;        // frames uploaded for display
             uint64_t uploads = 0;            // plane (or RGBA) uploads
             uint64_t conversionsQueued = 0;  // GPU conversion jobs
-            uint64_t cpuConversions = 0;     // CPU conversions (another render interface)
             uint64_t texturesCreated = 0;
             uint64_t streamsCreated = 0;
         };
@@ -245,7 +244,6 @@ namespace jasperengine {
         Rml::CallbackTexture texture;
         HtmlUITexture* liveTexture = nullptr;      // owned by the renderer (ReleaseTexture deletes it)
         Rml::Vector2i textureSize{0, 0};
-        bool gpuConversion = true;                 // the context's render interface is an RmlRenderer
         Rml::Texture posterTexture;
         std::string posterSource;
         Rml::Vector2f posterSize{0.0f, 0.0f};

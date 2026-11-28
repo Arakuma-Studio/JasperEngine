@@ -14,6 +14,7 @@
 #include "FoliageTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
+#include "MeshColorTools.h"
 #include "AnimationKeys.h"
 
 #include "pixelart/aseprite/AsepriteSpriteSetup.h"
@@ -23,6 +24,8 @@
 #include "sprite/SpriteSheetPool.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
+#include "mcp/McpModelImport.h"
+#include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
@@ -40,6 +43,7 @@
 #include "util/RagdollWizard.h"
 #include "component/AnimationPlayerComponent.h"
 #include "command/type/CreateEntityCmd.h"
+#include "command/type/DecomposeColliderCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/ModelClearCmd.h"
 #include "command/type/ModelLoadCmd.h"
@@ -72,6 +76,10 @@
 #include "component/MeshComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/ModelComponent.h"
+#include "subsystem/MeshSystem.h"
+#include "util/FbxImporter.h"
+#include "util/FileUtils.h"
+#include "tiny_gltf.h"
 #include "component/MorphTracksComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ParticleSystemComponent.h"
@@ -124,6 +132,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <map>
@@ -1182,11 +1191,18 @@ void editTerrainDetailsTool(const CallPtr& call) {
     }
 
     if (editing) {
-        // an FBX draws from its import, made the first time (as the Terrain window does)
+        // an FBX draws from its import, queued the first time (as the Terrain window does): its
+        // layer draws once it lands (S98 REQ-32)
         for (const std::string& mesh : meshes) {
-            if (!project->prepareModelFile(mesh)) {
+            const Project::ModelImport state = project->prepareModelFile(mesh);
+            if (state == Project::ModelImport::Failed) {
                 call->fail("Could not import " + mesh + " (see the console). Nothing was changed.");
                 return;
+            }
+            if (state == Project::ModelImport::Pending) {
+                const JobPtr job = syncModelImportJob(call->ctx(), true);
+                notes.push_back(mesh + " is importing" + (job ? " (job " + job->id() + ")" : std::string()) +
+                                ": its layer draws once the import lands.");
             }
         }
         auto multi = std::make_unique<MultiPropertyCmd>();
@@ -1717,8 +1733,13 @@ bool applyCollider3D(const Target& target, Entity entity, const Json& spec, Coll
             return false;
         }
     }
+    // a capsule's half_height may be 0: a sphere of its radius (S96 REQ-24)
+    if (shape.halfHeight < 0.0f || (shape.halfHeight == 0.0f && shape.type == Collider3DType::CYLINDER)) {
+        error = "half_height must be 0 or more (0: a capsule is a sphere of its radius); a cylinder's must be positive.";
+        return false;
+    }
     if (shape.width <= 0.0f || shape.height <= 0.0f || shape.depth <= 0.0f || shape.radius <= 0.0f ||
-        shape.halfHeight <= 0.0f || shape.topRadius <= 0.0f || shape.bottomRadius <= 0.0f || shape.density <= 0.0f) {
+        shape.topRadius <= 0.0f || shape.bottomRadius <= 0.0f || shape.density <= 0.0f) {
         error = "Collider sizes, radii and density must be positive.";
         return false;
     }
@@ -1808,6 +1829,83 @@ bool editShapes(const Json& args, std::vector<Shape>& shapes, size_t maxShapes, 
     return true;
 }
 
+// edit_colliders decompose: {index, quality, max_hulls} (S96 REQ-20)
+void decomposeColliderTool(const CallPtr& call, const Target& target, bool is2D) {
+    const Json& args = call->args();
+    Scene* scene = target.engineScene();
+    if (is2D) {
+        call->fail("decompose is for a 3D Mesh collider; a 2D polygon is already split in convex pieces.");
+        return;
+    }
+    for (const char* other : {"add", "update", "remove", "clear", "body_type", "body"}) {
+        if (has(args, other)) {
+            call->fail(std::string("decompose runs alone: send ") + other + " in another edit_colliders call.");
+            return;
+        }
+    }
+    if (!sceneStopped(call, target)) return;
+    const Json& spec = args["decompose"];
+    if (!spec.is_object() || !has(spec, "index") || !spec["index"].is_number_integer()) {
+        call->fail("decompose must be {index, quality: low|medium|high, max_hulls}; index is the Mesh collider's.");
+        return;
+    }
+    ColliderDecomposition::Request request;
+    request.sceneId = target.sceneId();
+    request.entity = target.entity;
+    const int index = spec["index"].get<int>();
+    request.index = index < 0 ? SIZE_MAX : (size_t)index;
+    const std::string quality = stringOr(spec, "quality", "medium");
+    if (quality == "low") request.quality = DecompositionQuality::LOW;
+    else if (quality == "medium") request.quality = DecompositionQuality::MEDIUM;
+    else if (quality == "high") request.quality = DecompositionQuality::HIGH;
+    else {
+        call->fail("decompose: quality must be low, medium or high.");
+        return;
+    }
+    const int maxHulls = intOr(spec, "max_hulls", 16);
+    if (maxHulls < 1 || maxHulls > (int)ColliderDecomposition::MAX_HULLS) {
+        call->fail("decompose: max_hulls must be 1 to " + std::to_string(ColliderDecomposition::MAX_HULLS) + ".");
+        return;
+    }
+    request.maxHulls = (uint32_t)maxHulls;
+
+    JobPtr job = call->ctx().jobs().create("edit_colliders", "Decompose collider of " + scene->getEntityName(target.entity));
+    std::string error;
+    std::shared_ptr<ColliderDecomposition> decomposition = ColliderDecomposition::start(target.project, request,
+        [job, target](const ColliderDecomposition::Outcome& outcome) {
+            if (outcome.cancelled) {
+                job->markCancelled(outcome.error);
+                return;
+            }
+            if (!outcome.error.empty()) {
+                job->fail(outcome.error);
+                return;
+            }
+            Json colliders = Json::array();
+            Scene* landed = target.engineScene();
+            if (const RigidbodyComponent* body = landed ? landed->findComponent<RigidbodyComponent>(target.entity) : nullptr) {
+                for (const Collider3D& shape : body->colliders) colliders.push_back(collider3DJson(target, shape));
+            }
+            job->succeed("Decomposed into " + std::to_string(outcome.hulls) + " convex hull collider(s) (undo: " + outcome.undoName + ").",
+                         {{"hulls", outcome.hulls}, {"undo_name", outcome.undoName}, {"colliders", colliders}});
+        }, error);
+    if (!decomposition) {
+        job->fail(error);
+        call->fail(error);
+        return;
+    }
+    std::weak_ptr<ColliderDecomposition> weak = decomposition;
+    job->setCancelHandler([weak]() { if (auto running = weak.lock()) running->cancel(); });
+    call->detach();
+    replyWhenJobDone(call, job, true, 120.0, [](const McpJob& finished) {
+        Json result = finished.result();
+        result["job_id"] = finished.id();
+        result["status"] = jobStatusName(finished.status());
+        if (finished.status() != JobStatus::Succeeded) return ToolResult::error(finished.message(), result);
+        return ToolResult::success(finished.message(), result);
+    });
+}
+
 void editCollidersTool(const CallPtr& call) {
     Target target;
     if (!resolveEntityArg(call, target)) return;
@@ -1826,6 +1924,11 @@ void editCollidersTool(const CallPtr& call) {
         return;
     }
     const bool is2D = dimension == "2d";
+    // S96 WP-C: a Mesh collider made into convex hulls, on a job, in one undo step of its own
+    if (has(args, "decompose")) {
+        decomposeColliderTool(call, target, is2D);
+        return;
+    }
     const bool editing = has(args, "add") || has(args, "update") || has(args, "remove") || boolOr(args, "clear", false) ||
                          has(args, "body_type") || has(args, "body");
     const ComponentType bodyType = is2D ? ComponentType::Rigidbody2DComponent : ComponentType::RigidbodyComponent;
@@ -4795,8 +4898,10 @@ void getAnimationTool(const CallPtr& call) {
     }
     // the Animation Player that plays it (its own, else the nearest ancestor's): clips by path
     const Json players = clip_tools::playersJson(target.project, target.scene, target.entity);
-    if (list.empty() && players.empty()) {
-        call->fail("\"" + scene->getEntityName(target.entity) + "\" is not an Animation, no Animation targets it and no Animation Player plays it. "
+    // the Animator that plays it: its masked layers' coverage and boundary bones
+    const Json animator = animator_tools::animatorLayers(target.project, target.scene, target.entity);
+    if (list.empty() && players.empty() && animator.is_null()) {
+        call->fail("\"" + scene->getEntityName(target.entity) + "\" is not an Animation, no Animation targets it and no Animation Player plays it (nor an Animator). "
                    "Create one with edit_animation {target} (scene) or {clip, create: {}} (a shared clip file).");
         return;
     }
@@ -4812,7 +4917,18 @@ void getAnimationTool(const CallPtr& call) {
             }
         }
     }
-    call->ok(text, Json{{"entity", entityJson(target, target.entity)}, {"players", players}, {"animations", list}});
+    Json out = {{"entity", entityJson(target, target.entity)}, {"players", players}, {"animations", list}};
+    if (!animator.is_null()) {
+        text += " Animator on \"" + animator["entity"].value("name", std::string()) + "\": " + animator["controller"].get<std::string>();
+        for (const Json& layer : animator.value("mask_coverage", Json::array())) {
+            text += "\n  " + layer["layer"].get<std::string>() + ": Mesh Space Rotation " + (layer["mesh_space_rotation"].get<bool>() ? "on" : "off");
+            if (layer.contains("boundary_bones") && !layer["boundary_bones"].empty()) {
+                text += ", mask edges at " + std::to_string(layer["boundary_bones"].size()) + " bone(s)";
+            }
+        }
+        out["animator"] = animator;
+    }
+    call->ok(text, out);
 }
 
 void previewAnimationTool(const CallPtr& call) {
@@ -6124,6 +6240,103 @@ Json modelInfoJson(const Target& target, Entity entity) {
                 {"skeleton", model.skeleton != NULL_ENTITY && scene->isEntityCreated(model.skeleton) ? entityJson(target, model.skeleton) : Json(nullptr)}};
 }
 
+// The first value of a float VEC3 accessor (a translation sampler's output), false otherwise
+bool firstVec3(const tinygltf::Model& gltf, int accessorIndex, double out[3]) {
+    if (accessorIndex < 0 || accessorIndex >= (int)gltf.accessors.size()) return false;
+    const tinygltf::Accessor& accessor = gltf.accessors[(size_t)accessorIndex];
+    if (accessor.type != TINYGLTF_TYPE_VEC3 || accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.count == 0 ||
+        accessor.bufferView < 0 || accessor.bufferView >= (int)gltf.bufferViews.size()) return false;
+    const tinygltf::BufferView& view = gltf.bufferViews[(size_t)accessor.bufferView];
+    // a compressed view (a cook's KHR_meshopt_compression) is decoded into its buffer by the parse
+    if (view.buffer < 0 || view.buffer >= (int)gltf.buffers.size()) return false;
+    const size_t at = view.byteOffset + accessor.byteOffset;
+    const std::vector<unsigned char>& data = gltf.buffers[(size_t)view.buffer].data;
+    if (at + 12 > data.size()) return false;
+    float values[3];
+    std::memcpy(values, data.data() + at, sizeof(values));
+    for (int c = 0; c < 3; c++) out[c] = values[c];
+    return true;
+}
+
+// The model file's mesh nodes and what draws each (S94 F45), and the root or hips translations its
+// clips start away from (S94 F40): read from the file, not the shared parse a load may have released
+void addModelFileInfo(const Target& target, Entity entity, Json& info) {
+    Scene* scene = target.engineScene();
+    const ModelComponent& model = scene->getComponent<ModelComponent>(entity);
+    // an FBX whose import is still running has no file to read yet: no failure, nothing to add
+    if (model.filename.empty() || MeshSystem::isModelImportPending(model.filename.str())) return;
+    tinygltf::Model gltf;
+    std::string parseError;
+    if (!MeshSystem::parseGLTFFile(model.filename.str(), gltf, &parseError)) return;
+    auto entityOf = [&](int node) -> Json {
+        for (const auto* mapping : {&model.nodesIdMapping, &model.bonesIdMapping}) {
+            auto it = mapping->find(node);
+            if (it != mapping->end() && scene->isEntityCreated(it->second)) return entityJson(target, it->second);
+        }
+        return Json(nullptr);
+    };
+    const MeshComponent* rootMesh = scene->findComponent<MeshComponent>(entity);
+    Json meshNodes = Json::array();
+    for (size_t n = 0; n < gltf.nodes.size(); n++) {
+        if (gltf.nodes[n].mesh < 0) continue;
+        Json drawnBy = nullptr;
+        auto part = model.meshNodesMapping.find((int)n);
+        if (part != model.meshNodesMapping.end() && scene->isEntityCreated(part->second)) drawnBy = entityJson(target, part->second);
+        else if (rootMesh && rootMesh->numSubmeshes > 0) drawnBy = entityJson(target, entity);
+        meshNodes.push_back({{"node", n}, {"name", gltf.nodes[n].name}, {"entity", entityOf((int)n)}, {"drawn_by", drawnBy}});
+    }
+    info["mesh_nodes"] = meshNodes;
+    info["preserve_hierarchy"] = model.preserveHierarchy;
+
+    // the skeleton's top joints, the scene's top nodes and any hips
+    std::set<int> candidates;
+    std::set<int> joints;
+    for (const tinygltf::Skin& skin : gltf.skins) joints.insert(skin.joints.begin(), skin.joints.end());
+    std::map<int, int> parentOf;
+    for (size_t n = 0; n < gltf.nodes.size(); n++)
+        for (int child : gltf.nodes[n].children) parentOf[child] = (int)n;
+    for (int joint : joints) {
+        auto parent = parentOf.find(joint);
+        if (parent == parentOf.end() || !joints.count(parent->second)) candidates.insert(joint);
+    }
+    for (const tinygltf::Scene& root : gltf.scenes) {
+        for (int node : root.nodes) {
+            candidates.insert(node);
+            if (node >= 0 && node < (int)gltf.nodes.size())
+                candidates.insert(gltf.nodes[(size_t)node].children.begin(), gltf.nodes[(size_t)node].children.end());
+        }
+    }
+    for (size_t n = 0; n < gltf.nodes.size(); n++) {
+        std::string lower = gltf.nodes[n].name;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+        if (lower.find("hips") != std::string::npos) candidates.insert((int)n);
+    }
+    Json differs = Json::array();
+    for (const tinygltf::Animation& animation : gltf.animations) {
+        for (const tinygltf::AnimationChannel& channel : animation.channels) {
+            if (channel.target_path != "translation" || !candidates.count(channel.target_node) || channel.sampler < 0 ||
+                channel.sampler >= (int)animation.samplers.size() || channel.target_node >= (int)gltf.nodes.size()) continue;
+            double first[3];
+            if (!firstVec3(gltf, animation.samplers[(size_t)channel.sampler].output, first)) continue;
+            const std::vector<double>& t = gltf.nodes[(size_t)channel.target_node].translation;
+            const double node[3] = {t.size() == 3 ? t[0] : 0.0, t.size() == 3 ? t[1] : 0.0, t.size() == 3 ? t[2] : 0.0};
+            const double distance = std::sqrt((first[0] - node[0]) * (first[0] - node[0]) + (first[1] - node[1]) * (first[1] - node[1]) +
+                                              (first[2] - node[2]) * (first[2] - node[2]));
+            if (distance <= 0.01) continue;
+            differs.push_back({{"animation", animation.name}, {"node", gltf.nodes[(size_t)channel.target_node].name},
+                               {"node_translation", {node[0], node[1], node[2]}}, {"first_frame", {first[0], first[1], first[2]}},
+                               {"distance", distance}});
+        }
+    }
+    if (differs.empty()) return;
+    info["first_frame_differs"] = differs;
+    if (FbxImporter::isFbxFile(FileUtils::pathFromUtf8(model.filename.str()))) {
+        info["next"] = "Its clips start with the root or hips away from where the file's nodes put them (first_frame_differs). Unity "
+                       "imports such an FBX in the first frame's pose: set_model_import_settings with settings {rest_pose: \"first_frame\"} "
+                       "(rest_pose_take names another take) does the same, and the model reloads.";
+    }
+}
+
 void getModelInfoTool(const CallPtr& call) {
     Target target;
     if (!resolveEntityArg(call, target)) return;
@@ -6134,6 +6347,7 @@ void getModelInfoTool(const CallPtr& call) {
     }
     Json info = modelInfoJson(target, target.entity);
     if (!boolOr(call->args(), "include_bones", true)) info.erase("bones");
+    addModelFileInfo(target, target.entity, info);
     // the model cook of its file (S53 R23)
     {
         Project* project = call->ctx().project();
@@ -6142,6 +6356,8 @@ void getModelInfoTool(const CallPtr& call) {
         if (!filename.empty() && project->isInsideAssetsPath(absolute) && isModelSource(project->normalizeToAssetsRelative(absolute).generic_string()))
             info["cook"] = ModelAudit::cookSummaryJson(*project, project->normalizeToAssetsRelative(absolute).generic_string());
     }
+    // V1 R124: per submesh, what has vertex colors and what is painted (edit_mesh_colors' targets)
+    if (Json colors = vertexColorTargetsJson(call->ctx().project(), target.sceneId(), target.entity); !colors.is_null()) info["vertex_colors"] = colors;
     call->ok("Model \"" + scene->getEntityName(target.entity) + "\": " + std::to_string(info["meshes"].size()) + " mesh(es), " +
              std::to_string(info["bone_count"].get<size_t>()) + " bone(s), " + std::to_string(info["animations"].size()) + " animation(s).", info);
 }
@@ -6577,10 +6793,9 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- physics
     add("edit_colliders", "Edit Colliders",
-        "Add/update/remove a Rigidbody 2D / Rigidbody's colliders, creating the body if missing (no edits = "
-        "list). Order: clear, remove (old indices), update, add. 2D: box, circle, capsule, segment, polygon, "
-        "chain; 3D: box, sphere, capsule, cylinder, tapered_capsule, convex_hull, mesh, heightfield. New shapes "
-        "fit the drawn GameObject unless fit: false. Fields: jasper://docs/physics.",
+        "Add/update/remove/decompose a Rigidbody (2D)'s colliders, making a missing body (no edits: list). "
+        "2D: box, circle, capsule, segment, polygon, chain; 3D: box, sphere, capsule, cylinder, tapered_capsule, "
+        "convex_hull, mesh, heightfield. New shapes fit the drawn object unless fit: false. Fields: jasper://docs/physics.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -6590,7 +6805,8 @@ void registerWorldTools(McpRegistry& registry) {
             {"clear", boolean("")},
             {"remove", array(integerItem, "")},
             {"update", array(anyObject("{index, ...fields}"), "")},
-            {"add", array(anyObject("{shape, ...fields}"), "")}
+            {"add", array(anyObject("{shape, ...fields}"), "")},
+            {"decompose", anyObject("{index, quality, max_hulls}: mesh to hulls.")}
         }, {"entity"}),
         editCollidersTool, false, false);
 
@@ -6772,14 +6988,14 @@ void registerWorldTools(McpRegistry& registry) {
     // a key takes the channel-specific keys too (in/out tangents...): free-form, said so (S31)
     openKeyItem["additionalProperties"] = true;
     add("edit_animation", "Edit Animation",
-        "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from its player's root; "
-        "create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
-        "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
-        "audio: sound cues (no clip: audio actions).",
+        "Keyframes in seconds (jasper://docs/animation). clip (.anim): tracks by path from its player's root; "
+        "create {from?, humanoid?, unity: Unity .anim}; one project undo step. No clip: an entity "
+        "Animation under target (tweens, actions). tracks: channel + keys {time, value|points, ease}.",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
-            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}, {"humanoid", object({{"model", assetPath("")}})}})},
+            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}, {"humanoid", object({{"model", assetPath("")}})},
+                               {"unity", string("")}, {"mirror_x", boolean("")}})},
             {"root", entityRef("")},
             {"animation", entityRef("")},
             {"target", entityRef("Required to create.")},

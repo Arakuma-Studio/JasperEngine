@@ -15,6 +15,9 @@ as a job. `mode: desktop` is this computer's platform and `mode: web` the web (t
   from source (minutes; this computer's platform and the web only). The result says which:
   `method_used`, `compile_reasons[]`.
 - `prebuilt` fails with the reasons when the project needs native code; `compile` always compiles.
+- The job has an `estimate` from submit (`seconds`, `basis` model or history; `remaining_seconds`
+  in get_job). Its result's `report.fallbacks` names each downgrade (compiled instead of prebuilt,
+  a bigger player variant, textures left uncompressed): tell the user.
 - **development**: the development flavour (profiler, `--profile`); else release.
 - **graphics_api**: `opengl`/`glcore`, `gles3`/`opengles`, `vulkan`, `d3d11`, `metal`. Each
   platform has its list (get_build_info `platforms`).
@@ -38,6 +41,16 @@ them), `module_reasons` (the first evidence of each), `content_manifest`, `execu
 `warnings[{code, message}]` (`W-MAC-UNSIGNED`, `W-ICON-NONWINDOWS`, ...). The output folder is
 replaced only when the build succeeds (the previous build stays until then).
 
+**Size.** Every result says what the build weighs: `build_bytes`, `build_categories` (models,
+textures, audio, scripts, scenes, engine, other), `top_files` (the 5 largest) and `build_report`
+(its `build-report.json`, the Build Report window's). A web build adds `download_bytes_gzip`, an
+estimate of what a browser downloads (gzip -9 of the files the page loads). When the user names a
+size limit, set it as the Download Budget: `set_project_settings`
+`player.download_budget_mb.<web|mobile|desktop>` (MB; web holds the download estimate, the others
+the build's bytes; 0 is off). A build over it still succeeds, with `W-BUILD-OVER-BUDGET`,
+`download_budget {budget_bytes, actual_bytes, largest_categories}` and a `next` naming the tools
+that inspect the largest category: follow it before shrinking anything.
+
 A prebuilt build needs the player runtime `<platform>-<arch>-<backend>-<flavour>` (a release one
 also comes in variants of fewer modules, `-ui`, `-core`, `-lite3d`, `-lite2d`: the build takes the
 smallest installed one that has its modules, `W-PLAYER-VARIANT` names a smaller one to install):
@@ -58,9 +71,19 @@ overrides without building, one project undo step, saved to project.yaml at once
 Settings window shows it while open). `build_project shaders` does the same before a build. Exclude
 a variant only when nothing draws with it: an excluded shader the game needs draws nothing.
 
+**What ships** (Project Settings > Player > Build, `set_project_settings`): `player.asset_stripping`
+`ship_all` ships every asset (a project without the key); `referenced_only` (new projects) ships
+what the build's scenes and project settings reference, the files Lua and C++ string literals
+name, and `player.always_include` (project-relative globs, `*`, `**`). `player.exclude_from_build`
+leaves its globs out under either mode. Lua scripts always ship. The result's `stripped_count`,
+`stripped_bytes` and `build_report` (its `stripped[]`: path, bytes, reason) say what was left out;
+a Development Build's player logs "<path> was stripped from the build" when a script loads one.
+A path a script builds at runtime (`"level" .. n`) needs its files in `player.always_include`.
+
 Every mode's result carries `warnings[{code, message}]` and `notes[]`: `W-EXPORT-FOLDER-SKIPPED`
-(an earlier export inside the project, left out: move it out), `W-SCENE-NOT-SAVED` (an untitled
-scene shipped as it is: save_scene with a path), `W-SHADER-FORK-MISSING` (variants of a deleted
+(an earlier export inside the project, left out: move it out), `W-SCENE-UNSAVED` (a scene or
+prefab with unsaved changes, or an untitled scene, shipped as the editor shows it; its file is not
+written: save_scene to keep it), `W-SHADER-FORK-MISSING` (variants of a deleted
 fork left out), `W-UNREADABLE-FOLDER`; a note when D3D11 shaders ship as HLSL source (built off
 Windows). A failed build's message names what failed: the file a copy or write could not make, or
 the first compiler error (`errors[]` lists them with file and line). `output_dir` inside the
@@ -100,10 +123,75 @@ it works headless) and its exit code is the verdict:
 
 A web build reads the same options from the page's query: `index.html?quit-after=30&fixed-fps=60`.
 
+## Devices
+
+The loop on an Android device or emulator, an iOS Simulator (a Mac with Xcode) or the browser:
+
+1. `get_build_info devices:true` lists the Run Devices (`id`, `usable`, `why`; `installed` with
+   `patchable` / `why_not` when this project is installed there). Probing spawns adb and simctl:
+   ask only when you need the list.
+2. `build_project platform:"android" development:true run_device:"<id>"` (or `"auto"`, the only
+   usable device; `"web"` for a web build) builds, installs or patches, and launches. A Development
+   Build patches by default (`patch`): only the changed content is pushed, no reinstall
+   (`device.installed: "patched"`); when it cannot, it installs in full and `next` says why.
+3. `read_console categories:["device"]` reads the game's log (`[<device>] <line>`).
+4. `run_build device:"<id>"` runs the recorded build on the device for `seconds` with `args`,
+   `fixed_fps`, `quit_after`, `after_ready`, and returns `log`, `errors`, `crashed`, `fatal_lines`
+   and the device's screenshot; `keep_running` leaves it running. `input` is desktop-only: drive a
+   device's game from Lua or its arguments.
+
+A web run gives `device.url` (a headless editor opens no browser).
+
+## Build Report (group `shipping`)
+
+Every export writes `build-report.json` and a copy in the project's history (10 per platform).
+`get_build_report` reads it:
+
+- A build grew, or someone asks what changed: `get_build_report {compare_to: "previous"}` (or a
+  history id or a path): per category and per file changes keyed by source asset, largest first.
+- A file should not ship, or you are asked why it does: `get_build_report {referenced_by: [paths]}`
+  gives the chain back to project.yaml or a script. `unreferenced` means no scene, prefab,
+  material, setting or script reaches it in the index; a script may still load it by a computed
+  path, so ask before deleting it.
+- `report` picks another report (`last` by default, a history id or a path); its `left_out` lists
+  sources shipped as something else (cooked, atlas pages, baked) and why.
+- Size budgets: `set_project_settings {values: {"player.size_budgets": [{platform, category,
+  limit_mb}], "player.size_budget_action": "warn"|"fail"}}`. Over a limit the build warns
+  `W-SIZE-BUDGET` (or fails with `fail`); the report's `budgets` has the rows.
+
+## Build Profiles (group `shipping`)
+
+Make a Build Profile when one project ships more than one variant: a demo, a store edition, a
+white-label copy, a test build with cheats. A profile is a platform plus overrides; the project's
+own settings never change. Do not rename the project, edit its Scenes In Build or flip settings
+before a build and back after it.
+
+1. `edit_build_profile {action: create, name, platform, values?, overrides?}`: `values` holds
+   `product_name`, `identifier`, `version_suffix`, `icon`, `store`, `store_title`, `backend`,
+   `development`, `output_dir`, `scenes` (paths or GUIDs of the project's scenes), `start_scene`,
+   `defines`, `exclude_labels`, `exclude_paths`. `overrides` takes `get_project_settings` keys of
+   the categories `player`, `graphics`, `quality` and the profile's platform (`android.*` for an
+   Android profile); others are refused, naming the allowed ones. A refused edit writes nothing.
+2. `edit_build_profile {action: get, name}`: the stored values, `resolved` (each value the build
+   writes and where it comes from) and `store_findings`.
+3. `build_project {profile}`: platform, Graphics API, Development Build and folder come from the
+   profile; a `platform`, `graphics_api` or `development` that differs is refused. The result
+   names `profile`; store limits are `warnings[]` (`W-STORE-TITLE-LENGTH`, `W-LABEL-TRUNCATED`).
+4. `edit_build_profile {action: activate, name}` makes Play use the profile's name, identifier,
+   version, defines and Scene List (per user, not undoable); `name: null` for none.
+
+Scripting Define Symbols are runtime values (`System.isDefined("DEMO")`, `System.getBuildInfo()`):
+the code behind them still ships. Code that must not ship goes in a folder `exclude_paths` names.
+A shipped scene that uses an excluded asset fails the build naming both. Store limits: Google Play
+and App Store titles 30 characters, home-screen labels warn above 12. A publishing.json target may
+name `"profile"`: `publish_prepare` refuses a build of another profile, another platform, backend
+or flavour, or a store title over its limit. A Build Profile is not a Device Profile
+(`deviceProfile`, S56).
+
 ## Releases (group `shipping`)
 
 `publishing.json` (project root, committed) lists the targets: `{platform, arch, backend,
-flavour, buildDir, executable, depotId?, deviceProfile?: "steamdeck", requiredFiles[]}`, plus
+flavour, buildDir, executable, depotId?, deviceProfile?: "steamdeck", requiredFiles[], profile?}`, plus
 `steam{appId}` and `deck{host, user, remoteDir}`. `jasperengine-editor publish init` writes one.
 
 - `publish_prepare {release}`: validates every target's build (architecture, exec bits, case

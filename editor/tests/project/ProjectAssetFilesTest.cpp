@@ -14,6 +14,7 @@
 #include "Project.h"
 #include "texture/Material.h"
 #include "texture/TextureCookQueue.h"
+#include "texture/TextureExport.h"
 
 #include "support/PosixCompat.h"
 
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -96,6 +98,57 @@ TEST(ProjectTextureSources, LeavesExrOutOfExport) {
     const std::vector<std::string> sources = projectTextureSources(*h.project, true);
     EXPECT_NE(std::find(sources.begin(), sources.end(), "listed.png"), sources.end());
     EXPECT_EQ(std::find(sources.begin(), sources.end(), "source.exr"), sources.end());
+}
+
+// S94 F50: a game cannot decode TIFF or PSB, so export cooks them; a reference that reads the
+// source file itself (an HTML UI image) stops the export, naming the file and the reader
+TEST(ProjectTextureSources, CooksTiffAndPsbAndRefusesTheirSourceReaders) {
+    AssetFilesProject& h = assetFilesProject();
+    ASSERT_TRUE(h.ready);
+    const fs::path assets = h.project->getAssetsPath();
+    {
+        // a 1 x 1 grey baseline TIFF (little endian, one uncompressed strip)
+        std::string tiff("II*\0\x08\0\0\0", 8);
+        auto u16 = [&tiff](uint16_t v) { tiff += static_cast<char>(v & 0xff); tiff += static_cast<char>(v >> 8); };
+        auto u32 = [&u16](uint32_t v) { u16(static_cast<uint16_t>(v & 0xffff)); u16(static_cast<uint16_t>(v >> 16)); };
+        const uint16_t entries[][3] = {{256, 3, 1}, {257, 3, 1}, {258, 3, 8}, {259, 3, 1}, {262, 3, 1},
+                                       {273, 4, 122}, {277, 3, 1}, {278, 3, 1}, {279, 4, 1}};
+        u16(9);
+        for (const auto& e : entries) {
+            u16(e[0]);
+            u16(e[1]);
+            u32(1);
+            u32(e[2]);
+        }
+        u32(0);
+        tiff += static_cast<char>(200);
+        std::ofstream(assets / "photo.tif", std::ios::binary) << tiff;
+    }
+    // what never read as a texture before TIFF support (a float bake, not a baseline TIFF) and
+    // nothing references stays out of the export instead of failing it
+    std::ofstream(assets / "bake.tif", std::ios::binary) << "tif";
+    std::ofstream(assets / "art.psb", std::ios::binary) << "psb";
+    h.project->refreshAssetDatabase(true);
+    const std::vector<std::string> sources = projectTextureSources(*h.project, true);
+    EXPECT_NE(std::find(sources.begin(), sources.end(), "photo.tif"), sources.end());
+    EXPECT_NE(std::find(sources.begin(), sources.end(), "art.psb"), sources.end());
+    std::map<std::string, TextureCookInputs> inputs;
+    std::string error;
+    h.project->getAssetIndex().waitUntilReady();
+    ASSERT_TRUE(TextureExport::gather(*h.project, inputs, error)) << error;
+    EXPECT_EQ(inputs.count("photo.tif"), 1u);
+    EXPECT_EQ(inputs.count("bake.tif"), 0u);
+    fs::remove(assets / "bake.tif");
+
+    std::ofstream(assets / "menu.html") << "<html><body><img src=\"photo.tif\"/></body></html>\n";
+    h.project->refreshAssetDatabase(true);
+    h.project->getAssetIndex().waitUntilReady();
+    EXPECT_FALSE(TextureExport::gather(*h.project, inputs, error));
+    EXPECT_NE(error.find("photo.tif"), std::string::npos) << error;
+    EXPECT_NE(error.find("menu.html"), std::string::npos) << "names the reader: " << error;
+    fs::remove(assets / "menu.html");
+    h.project->refreshAssetDatabase(true);
+    h.project->getAssetIndex().waitUntilReady();
 }
 
 TEST(ProjectResolveAsset, AHitTouchesNothingAndAMissImportsOnlyThatPath) {

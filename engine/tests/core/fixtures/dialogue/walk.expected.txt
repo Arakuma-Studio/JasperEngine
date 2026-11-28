@@ -1,0 +1,7 @@
+start
+line n3 guard: Halt! You have 10 coins. [1 Pay five] [2 Leave]
+choose 1
+action quest.start("intro")
+line n8 guard: Welcome in. 5 left.
+advance
+end paid

@@ -119,25 +119,33 @@ namespace SoLoud
 		// make sure we access pairs of samples (one sample may be skipped)
 		aSamples = aSamples & ~1; 
 
+		// JasperEngine: the coefficients and the state in locals (the same arithmetic in the same
+		// order): aBuffer may alias the members, so the loop reloaded and stored them every sample
+		const float a0 = mA0, a1 = mA1, a2 = mA2, b1 = mB1, b2 = mB2, wet = mParam[WET];
+		float x1 = s.mX1, x2 = s.mX2, y1 = s.mY1, y2 = s.mY2;
 		for (i = 0; i < aSamples; i +=2, c++)
 		{
 			// Generate outputs by filtering inputs.
 			x = aBuffer[c];
-			s.mY2 = (mA0 * x) + (mA1 * s.mX1) + (mA2 * s.mX2) - (mB1 * s.mY1) - (mB2 * s.mY2);
-			aBuffer[c] += (s.mY2 - aBuffer[c]) * mParam[WET];
+			y2 = (a0 * x) + (a1 * x1) + (a2 * x2) - (b1 * y1) - (b2 * y2);
+			aBuffer[c] += (y2 - aBuffer[c]) * wet;
 
 			c++;
 
 			// Permute filter operations to reduce data movement.
 			// Just substitute variables instead of doing mX1=x, etc.
-			s.mX2 = aBuffer[c];
-			s.mY1 = (mA0 * s.mX2) + (mA1 * x) + (mA2 * s.mX1) - (mB1 * s.mY2) - (mB2 * s.mY1);
-			aBuffer[c] += (s.mY1 - aBuffer[c]) * mParam[WET];
+			x2 = aBuffer[c];
+			y1 = (a0 * x2) + (a1 * x) + (a2 * x1) - (b1 * y2) - (b2 * y1);
+			aBuffer[c] += (y1 - aBuffer[c]) * wet;
 
 			// Only move a little data.
-			s.mX1 = s.mX2;
-			s.mX2 = x;
+			x1 = x2;
+			x2 = x;
 		}
+		s.mX1 = x1;
+		s.mX2 = x2;
+		s.mY1 = y1;
+		s.mY2 = y2;
 		// If we skipped a sample earlier, patch it by just copying the previous.
 		if (osamples != aSamples)
 			aBuffer[c] = aBuffer[c - 1];

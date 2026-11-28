@@ -6,6 +6,7 @@
 #include "DefaultFont.h"
 #include "DefaultFontArabic.h"
 #include "Log.h"
+#include "util/TitleArtLanguage.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -33,6 +34,7 @@ namespace {
         std::vector<Entry> entries;
         std::vector<std::shared_ptr<FontFace>> fallbacks;
         std::map<std::string, std::weak_ptr<FontFace>> files;
+        std::vector<std::pair<std::string, std::vector<std::shared_ptr<FontFace>>>> languageFaces;   // registration order
     };
 
     Registry& registry(){
@@ -202,6 +204,74 @@ const std::vector<std::shared_ptr<FontFace>>& FontRegistry::getFallbackFaces(){
     return reg.fallbacks;
 }
 
+void FontRegistry::registerLanguageFace(const std::string& language, std::shared_ptr<FontFace> face){
+    if (!face || language.empty())
+        return;
+    Registry& reg = registry();
+    std::lock_guard<std::recursive_mutex> lock(reg.mutex);
+    const std::string code = TitleArtLanguage::canonicalize(language);
+    for (auto& entry : reg.languageFaces){
+        if (entry.first != code)
+            continue;
+        if (std::find(entry.second.begin(), entry.second.end(), face) == entry.second.end())
+            entry.second.push_back(std::move(face));
+        return;
+    }
+    reg.languageFaces.push_back({code, {std::move(face)}});
+}
+
+void FontRegistry::clearLanguageFaces(){
+    Registry& reg = registry();
+    std::lock_guard<std::recursive_mutex> lock(reg.mutex);
+    reg.languageFaces.clear();
+}
+
+std::string FontRegistry::matchLanguage(const std::string& language){
+    Registry& reg = registry();
+    std::lock_guard<std::recursive_mutex> lock(reg.mutex);
+    if (language.empty() || reg.languageFaces.empty())
+        return std::string();
+    std::vector<std::string> available;
+    for (const auto& entry : reg.languageFaces) available.push_back(entry.first);
+    return TitleArtLanguage::match(language, available);
+}
+
+std::vector<std::shared_ptr<FontFace>> FontRegistry::getFallbackFaces(const std::string& language, int weight, bool italic){
+    Registry& reg = registry();
+    std::lock_guard<std::recursive_mutex> lock(reg.mutex);
+    if (weight <= 0)
+        weight = 400;
+
+    std::vector<std::shared_ptr<FontFace>> faces;
+    const std::string matched = matchLanguage(language);
+    for (const auto& entry : reg.languageFaces){
+        if (entry.first == matched) faces.insert(faces.end(), entry.second.begin(), entry.second.end());
+    }
+    for (const std::shared_ptr<FontFace>& fallback : reg.fallbacks){
+        std::shared_ptr<FontFace> chosen = fallback;
+        const Entry* own = nullptr;
+        for (const Entry& entry : reg.entries){
+            if (entry.face == fallback){
+                own = &entry;
+                break;
+            }
+        }
+        if (own){
+            std::vector<const Entry*> sameStyle;
+            std::vector<const Entry*> otherStyle;
+            for (const Entry& entry : reg.entries){
+                if (entry.family == own->family)
+                    (entry.italic == italic ? sameStyle : otherStyle).push_back(&entry);
+            }
+            if (const Entry* best = matchWeight(sameStyle.empty() ? otherStyle : sameStyle, weight))
+                chosen = best->face;
+        }
+        if (std::find(faces.begin(), faces.end(), chosen) == faces.end())
+            faces.push_back(chosen);
+    }
+    return faces;
+}
+
 std::shared_ptr<FontFace> FontRegistry::getBuiltInLatin(){
     Registry& reg = registry();
     std::lock_guard<std::recursive_mutex> lock(reg.mutex);
@@ -273,6 +343,7 @@ void FontRegistry::clear(){
 
     reg.entries.clear();
     reg.fallbacks.clear();
+    reg.languageFaces.clear();
     reg.files.clear();
     reg.builtInLatin.reset();
     reg.builtInArabic.reset();

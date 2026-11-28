@@ -5,10 +5,12 @@
 
 // An APK or Android App Bundle from a prebuilt player (docs/specs/S30-shipping.md R13), with the
 // SDK's tools and no NDK, CMake or Gradle: the manifest from the project's Android settings, its
-// icons compiled with aapt2, an aapt2 link of the player's compiled resources (stable ids) and
-// the game's content as assets/game, the player's dex and the selected ABIs' libraries (stored, or
-// compressed in an APK for minSdk < 23 as Gradle packages them),
-// zipalign -P 16, apksigner (or bundletool and jarsigner for a bundle). A missing tool fails the
+// icons (every density, round and adaptive: AndroidIcons) compiled with aapt2, an aapt2 link of the
+// player's compiled resources (stable ids) and the game's content as assets/game, the player's dex
+// and the selected ABIs' libraries (stored, or compressed in an APK for minSdk < 23 as Gradle
+// packages them), zipalign -P 16, apksigner (or bundletool and jarsigner for a bundle, whose
+// content is the install-time asset pack game_content: docs/specs/S98-editor-tooling-gaps.md
+// REQ-16). Every content file is then looked up in the package (REQ-13). A missing tool fails the
 // build with what installs it; nothing falls back to Gradle.
 
 #include "Project.h"
@@ -52,6 +54,16 @@ namespace jasperengine::editor::platform {
         std::filesystem::path bundletool;
     };
 
+    // Android's asset filter (androidResources.ignoreAssetsPattern of the Gradle template): its
+    // default without "<dir>_*", which drops every folder starting with "_"; hidden and version
+    // control files stay out. A prebuilt package leaves out the same names.
+    extern const char* const kAndroidIgnoreAssetsPattern;
+    // whether the pattern leaves out a file or folder of that name
+    bool isIgnoredAndroidAsset(const std::string& name);
+
+    // the App Bundle's install-time asset pack holding the game's content
+    extern const char* const kAndroidContentPack;
+
     // What keytool's output says is wrong with a keystore and its key, in words a user can act on
     // (the wrong store or key password, no such alias, not a keystore); "" when it says none of it
     std::string describeKeystoreFailure(const std::string& keytoolOutput, const std::filesystem::path& keystore, const std::string& alias);
@@ -60,7 +72,13 @@ namespace jasperengine::editor::platform {
     // Gradle plugin does; its manifest then says extractNativeLibs="true") or stores them
     bool compressesNativeLibraries(const AndroidPackage& package);
 
-    // the AndroidManifest.xml of a package (the runtime's template with the settings filled in)
+    // whether a player runtime's android/AndroidManifest.template.xml has the {{DEBUGGABLE}} marker
+    // (docs/specs/build-and-run-on-device.md R9): an older runtime builds as before, and Patch And
+    // Run cannot reach its packages
+    bool androidRuntimeHasDebuggableMarker(const std::filesystem::path& runtimeAndroidDir);
+
+    // the AndroidManifest.xml of a package (the runtime's template with the settings filled in;
+    // {{DEBUGGABLE}}, when the template has it, says android:debuggable="true" for a debug package)
     bool writeAndroidManifest(const AndroidPackage& package, const std::string& templateText, std::string& manifest, std::string& error);
 
     bool buildAndroidPackage(const AndroidPackage& package, CommandRunner& runner, const std::function<bool()>& cancelled,

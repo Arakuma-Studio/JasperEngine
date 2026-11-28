@@ -3,6 +3,7 @@
 
 #include "pixelart/BitmapFont.h"
 #include "CreateEntityCmd.h"
+#include "component/MeshComponent.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/SpriteBatchComponent.h"
@@ -28,6 +29,7 @@
 #include "component/Light2DComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ModelComponent.h"
@@ -130,7 +132,8 @@ bool editor::CreateEntityCmd::execute(){
         }
     }
 
-    entityName = ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, entityName);
+    // numbered only when a sibling has the name (Unity's), as it lands below `parent`
+    entityName = ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, parent, entityName);
 
     if (type == EntityCreationType::GAMEOBJECT){
 
@@ -600,6 +603,18 @@ bool editor::CreateEntityCmd::execute(){
         light.range = 10.0f;
         light.intensity = 30.0f;
 
+    }else if (type == EntityCreationType::AREA_LIGHT){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<LightComponent>(entity, {});
+        updateFlags |= Catalog::getComponentStructuralUpdateFlags(ComponentType::LightComponent);
+
+        LightComponent& light = scene->getComponent<LightComponent>(entity);
+        light.type = LightType::AREA;
+        light.direction = Vector3(0.0f, -1.0f, 0.0f);
+        light.range = 10.0f;
+        light.intensity = 30.0f;
+
     }else if (type == EntityCreationType::POINT_LIGHT_2D){
 
         scene->addComponent<Transform>(entity, {});
@@ -610,7 +625,7 @@ bool editor::CreateEntityCmd::execute(){
         light.range = 200.0f;
         light.intensity = 1.0f;
         // the virtual height normal maps respond to; sprites without one are not affected
-        light.height = 64.0f;
+        light.height = Light2DComponent::NEW_HEIGHT;
 
     }else if (type == EntityCreationType::SHADOW_CASTER_2D){
 
@@ -672,6 +687,11 @@ bool editor::CreateEntityCmd::execute(){
 
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<LocalVolumetricFogComponent>(entity, {});
+
+    }else if (type == EntityCreationType::FOG_ZONE){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<FogZoneComponent>(entity, {});
 
     }else if (type == EntityCreationType::VOLUMETRIC_CLOUDS){
 
@@ -917,7 +937,11 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::AUDIO_SOURCE){
 
-        scene->addComponent<AudioSourceComponent>(entity, AudioMixerDocument::newAudioSource());
+        // a GameObject that plays 2D (S97 REQ-21): it can be parented and made persistent
+        scene->addComponent<Transform>(entity, {});
+        AudioSourceComponent audio = AudioMixerDocument::newAudioSource();
+        audio.spatialBlend = 0.0f;
+        scene->addComponent<AudioSourceComponent>(entity, audio);
 
     }else if (type == EntityCreationType::AUDIO_SOURCE_3D){
 
@@ -928,7 +952,10 @@ bool editor::CreateEntityCmd::execute(){
 
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
-        scene->addComponent<ModelComponent>(entity, {});
+        // Project Settings > Mesh > Preserve Hierarchy for New Models (S94 F44)
+        ModelComponent model;
+        model.preserveHierarchy = project->getModelSettings().preserveHierarchyForNewModels;
+        scene->addComponent<ModelComponent>(entity, model);
 
     }else if (type == EntityCreationType::PARTICLE_SYSTEM){
 

@@ -100,9 +100,12 @@ namespace jasperengine{
 
         static RagdollBuildResult build(Scene* scene, Entity root, const RagdollBones& bones, const RagdollBuildSettings& settings);
 
-        // Engine-only: the parts' components on their bones (replacing their Rigidbody and Joint
-        // 3D) and the Ragdoll on root. The editor applies a result through its commands instead.
-        static bool apply(Scene* scene, Entity root, const RagdollBuildResult& result);
+        // Engine-only (Lua Ragdoll.create): the parts' components on their bones (replacing
+        // their Rigidbody and Joint 3D) and the Ragdoll on root, all at once, so no step sees a
+        // part without its joint. The editor applies a result through its commands instead.
+        // False (and error) when nothing could be applied: a replacement while the scene defers
+        // removals (a UI event handler) would leave the old components in place.
+        static bool apply(Scene* scene, Entity root, const RagdollBuildResult& result, std::string* error = nullptr);
     };
 
 }

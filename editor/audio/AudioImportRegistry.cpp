@@ -10,6 +10,8 @@
 #include "asset/AssetTypes.h"
 #include "audio/AudioFileCheck.h"
 #include "command/type/SetAssetMetaCmd.h"
+#include "component/AudioSourceComponent.h"
+#include "pool/SoundPool.h"
 #include "util/FileUtils.h"
 
 #include "json.hpp"
@@ -61,7 +63,23 @@ bool AudioImportRegistry::resolve(const Project& project, const fs::path& asset,
         headMs = silence.value("head_ms", 0.0);
         tailMs = silence.value("tail_ms", 0.0);
     }
-    return settings.resolve(format.frames, format.sampleRate, headMs, tailMs, out, error);
+    if (!settings.resolve(format.frames, format.sampleRate, headMs, tailMs, out, error)) return false;
+    AudioImportSettings::Channels file;
+    file.channels = format.channels;
+    // Auto reads the width through the analysis cache, as `auto` trims read the silence
+    if (settings.forceToMono == AudioImportSettings::ForceToMono::Auto && file.channels > 1) {
+        AudioAnalysis::Json stereo;
+        if (!AudioAnalysis::stereoOfFile(asset, bytes, AudioAnalysis::cacheDirectory(project.getProjectPath()), stereo, error)) return false;
+        file = AudioImportSettings::Channels::fromAnalysis({{"format", {{"channels", format.channels}}}, {"stereo", stereo}});
+    }
+    settings.resolveChannels(file, out);
+    return true;
+}
+
+AudioImportSettings::Channels AudioImportRegistry::channelsOf(const Project& project, const fs::path& asset) {
+    AudioAnalysis::Json cached;
+    if (!AudioAnalysis::cachedFile(asset, AudioAnalysis::cacheDirectory(project.getProjectPath()), cached)) return {};
+    return AudioImportSettings::Channels::fromAnalysis(cached);
 }
 
 std::map<std::string, ClipImportSettings> AudioImportRegistry::collect(const Project& project, std::vector<std::string>& problems) {
@@ -139,6 +157,9 @@ std::string AudioImportRegistry::exportText(const std::map<std::string, ClipImpo
         if (s.bpm != defaults.bpm) entry["bpm"] = s.bpm;
         if (s.beatsPerBar != defaults.beatsPerBar) entry["beats_per_bar"] = s.beatsPerBar;
         if (s.firstBeatFrame != 0) entry["first_beat_frame"] = s.firstBeatFrame;
+        if (s.forceMono) entry["force_mono"] = true;
+        // an optional key (S97 REQ-17): an older player plays the clip as Auto
+        if (s.loadType != AudioLoadType::Auto) entry["load_type"] = SoundPool::loadTypeName(s.loadType);
         entries[clip] = std::move(entry);
     }
     return nlohmann::json{{"format", AudioImportTable::FORMAT}, {"version", AudioImportTable::VERSION}, {"clips", std::move(entries)}}.dump(1) + "\n";

@@ -3,6 +3,9 @@
 
 #include "GraphEditCmd.h"
 
+#include "command/CommandGroup.h"
+#include "graph/GraphEditorHooks.h"
+
 #include "Out.h"
 #include "io/AtomicFile.h"
 #include "util/SafeWrite.h"
@@ -91,4 +94,17 @@ void editor::GraphEditCmd::undo() {
         return;
     }
     if (write(before)) notifyGraphFileChanged(file);
+}
+
+editor::Command* editor::GraphEditCmd::makeStep(Project* project, const std::filesystem::path& file, const std::string& kind, std::string before,
+                                                std::string after, std::string label, bool createsFile) {
+    std::vector<std::unique_ptr<Command>> extra;
+    auto hooks = graphEditorHooks().kindEdits.find(kind);
+    if (hooks != graphEditorHooks().kindEdits.end() && hooks->second.companions) extra = hooks->second.companions(project, file, before, after);
+    auto* edit = new GraphEditCmd(file, std::move(before), std::move(after), label, createsFile);
+    if (extra.empty()) return edit;
+    std::vector<std::unique_ptr<Command>> commands;
+    commands.emplace_back(edit);
+    for (std::unique_ptr<Command>& command : extra) commands.push_back(std::move(command));
+    return new CommandGroup(std::move(commands), label, false);
 }

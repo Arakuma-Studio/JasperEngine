@@ -1,4 +1,5 @@
--- S22's test project: pointer lock and touch phases (main.cpp says where it runs)
+-- S22's test project: pointer lock, touch phases and the input scheme (main.cpp says where it runs);
+-- the scheme's switches also drive FormUI.lua's text field
 Engine.mouseMode = MouseMode.CAPTURED
 
 local logged = {}
@@ -27,3 +28,12 @@ Engine.onUpdate:add("gate", function()
     end
     if Input.getTouchCount() >= 2 then once("[gate] two touches in a frame") end
 end)
+
+-- the input scheme (input-device-awareness AC18): each switch, as the player's device changes
+InputActions.onSchemeChanged = function(scheme, previous)
+    Log.print("[gate] scheme " .. scheme)
+    if FormUIOnScheme then FormUIOnScheme() end
+end
+
+-- the Replay menu and its input script (lua/replay.lua)
+require("replay")

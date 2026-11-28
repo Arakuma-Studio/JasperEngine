@@ -1,0 +1,16 @@
+{
+  "description": "tools/test-projects/game-tests (WEB_PROJECT=game-tests DEVELOPMENT=1 tools/build.sh web): the Development player runs assets/tests/ with ?run-tests&test-filter=tag:smoke, each case in a fresh session; the summary has no failure and the page logs exit code 0 (project-test-runner AC12). A build without the test runner logs exit code 2, one without tests 9.",
+  "query": ["run-tests", "test-filter=tag%3Asmoke"],
+  "seconds": 60,
+  "console": [
+    {
+      "text": "[test] summary {\"error\":0,\"excluded_edit\":0,\"failed\":0,\"hung\":0,\"passed\":3,\"skipped\":1,\"total\":4}",
+      "level": "log"
+    },
+    {
+      "text": "JasperEngine exit code 0",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}

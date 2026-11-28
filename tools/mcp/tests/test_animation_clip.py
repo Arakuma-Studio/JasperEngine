@@ -1113,6 +1113,9 @@ async def test_guide_names_exist(ed: Editor):
               "follow_speed", "pitch_semitones", "state_exit", "volume_db",
               # root_motion's members (S77 R53): a free-form object in edit_animation's lean schema
               "bake_rotation", "bake_position_y", "bake_position_xz",
+              # and S94 F32's Based Upon and Offset members and the body_orientation basis
+              "rotation_based_upon", "rotation_offset", "position_y_based_upon", "position_y_offset", "position_xz_based_upon",
+              "body_orientation",
               # clip quality (S77, test_animation_quality): optimize_animation's and check_animation's result fields and
               # error kinds, which this test does not call (the animation group)
               "bytes_after", "bytes_before", "effective_tolerance_mm", "kept_all_keys", "keys_after", "keys_before", "max_error_mm",
@@ -1183,12 +1186,9 @@ async def test_export_emits_the_component(ed: Editor):
     if isinstance(r, dict) and r.get("status") == "running":
         r = await wait_job(ed, r["job_id"], 900)
     ed.check_eq(r["status"], "succeeded", raw.text[:2000])
-    sources = [p for p in out.rglob("*.cpp") if "AnimationPlayerComponent" in p.read_text(errors="ignore")]
-    ed.check(sources, "no AnimationPlayerComponent in the generated scene code")
-    code = "\n".join(p.read_text(errors="ignore") for p in sources)
-    ed.check('.clip = "anim/bob.anim";' in code, "the generated code sets the clip")
-    ed.check(S["bob_guid"] not in code, "no GUID in the generated code")
-    ed.check('resources.clips.push_back("anim/bob.anim");' in code, "the scene resources preload the clip")
+    # the scenes ship cooked, as the prebuilt player reads them (S98 WP-1)
+    cooked = b"".join(p.read_bytes() for p in (out / "project" / "content" / "scenes").glob("*.jscn"))
+    ed.check(b"anim/bob.anim" in cooked and b"assets/anim/bob.anim" not in cooked, "the cooked scene names the clip asset-relative")
     ed.check((out / "project" / "assets" / "anim" / "bob.anim").is_file(), "the .anim is exported")
 
 

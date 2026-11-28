@@ -32,7 +32,9 @@ bool ClipImportSettings::operator==(const ClipImportSettings& other) const{
            loopEndFrame == other.loopEndFrame &&
            bpm == other.bpm &&
            beatsPerBar == other.beatsPerBar &&
-           firstBeatFrame == other.firstBeatFrame;
+           firstBeatFrame == other.firstBeatFrame &&
+           forceMono == other.forceMono &&
+           loadType == other.loadType;
 }
 
 bool ClipImportSettings::isDefault() const{
@@ -41,7 +43,7 @@ bool ClipImportSettings::isDefault() const{
 
 bool ClipImportSettings::playsAsFile() const{
     return gainDb == 0.0f && trimHeadFrames == 0 && trimTailFrames == 0 && fadeInFrames == 0 && fadeOutFrames == 0 &&
-           loopStartFrame == -1 && loopEndFrame == -1;
+           loopStartFrame == -1 && loopEndFrame == -1 && !forceMono;
 }
 
 uint64_t ClipImportSettings::hash() const{
@@ -76,6 +78,9 @@ uint64_t ClipImportSettings::hash() const{
     addFloat(bpm);
     addInteger((uint64_t)(int64_t)beatsPerBar);
     addInteger((uint64_t)firstBeatFrame);
+    // mixed in only when set: the hashes of every clip without it (wrapped samples, analysis cache
+    // names) stay what they were
+    if (forceMono) addInteger(1);
     return h;
 }
 
@@ -126,6 +131,10 @@ bool AudioImportTable::parse(const std::string& text, std::string* error){
         settings.bpm = clip.value("bpm", 0.0f);
         settings.beatsPerBar = clip.value("beats_per_bar", 4);
         settings.firstBeatFrame = clip.value("first_beat_frame", (int64_t)0);
+        settings.forceMono = clip.value("force_mono", false);
+        // an unknown name (a later engine's type) plays as Auto
+        AudioLoadType loadType = AudioLoadType::Auto;
+        if (SoundPool::loadTypeFromName(clip.value("load_type", std::string("auto")), loadType)) settings.loadType = loadType;
         parsed[it.key()] = settings;
     }
     std::lock_guard<std::mutex> lock(importTableMutex);

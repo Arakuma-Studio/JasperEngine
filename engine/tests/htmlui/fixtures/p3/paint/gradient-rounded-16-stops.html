@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: gradients of 5 to 16 stops on rounded boxes</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; border-radius: 16px; background: linear-gradient(90deg, #ff0000 0%, #ff6000 7%, #ffc000 13%, #c0ff00 20%, #60ff00 27%, #00ff00 33%, #00ff60 40%, #00ffc0 47%, #00c0ff 53%, #0060ff 60%, #0000ff 67%, #6000ff 73%, #c000ff 80%, #ff00c0 87%, #ff0060 93%, #222222 100%); }
+  #b2 { left: 120px; top: 10px; border-radius: 35px / 20px; border: 3px solid #333333; background: radial-gradient(circle at 40% 40%, #ffffff, #ffe080 15%, #ffa020 30%, #e04000 45%, #802000 60%, #401000 75%, #000000); }
+  #b3 { left: 230px; top: 10px; border-radius: 10px 30px; background: linear-gradient(160deg, #3366cc, #66cc99 25%, transparent 50%, #cc6633 75%, #663399); }
+  #b4 { left: 10px; top: 90px; width: 210px; border-radius: 24px; background: linear-gradient(to bottom, #fafafa 0%, #e8e8e8 10%, #d0d0d0 20%, #b8b8b8 30%, #a0a0a0 40%, #888888 50%, #707070 60%, #585858 70%, #404040 80%, #282828 90%, #101010 100%); }
+  #b5 { left: 230px; top: 90px; border-radius: 50%; background: radial-gradient(ellipse at center, #f4c430 0%, #f4c430 20%, #cc3333 20%, #cc3333 40%, #3366cc 40%, #3366cc 60%, #339966 60%, #339966 80%, #222222 80%); }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"></div></body>
+</html>

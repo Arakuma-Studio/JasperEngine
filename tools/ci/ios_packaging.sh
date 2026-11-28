@@ -14,6 +14,9 @@
 #   4. IPA: an unsigned archive of the same project, then -exportArchive as far as it goes without an
 #      Apple developer account (it stops at signing; what it said is in logs/export-archive.log).
 #   5. publish prepare validates the simulator and the device folders.
+#   6. Build And Run on a simulator (development only, docs/specs/build-and-run-on-device.md AC11):
+#      `build --run-device <udid>` installs and launches, a Lua edit and the same command again patch
+#      it (Patch And Run): the new line in `log stream`, `simctl install` ran once.
 #
 #   tools/players/ios_player.sh development build/players-build/ios-development
 #   python3 tools/players/package_player.py --platform ios --arch arm64 --backend metal --flavour development \
@@ -209,5 +212,35 @@ JSON
 "$EDITOR" publish prepare --project "$OUT/game" --release s47 > "$OUT/logs/publish-prepare.log" 2>&1 ||
     { tail -n 30 "$OUT/logs/publish-prepare.log"; fail "publish prepare refused the iOS builds"; }
 ok "publish prepare validates the iOS builds"
+
+# ---- 6. Build And Run on a simulator, then Patch And Run (development)
+if [[ "$FLAVOUR" == development ]]; then
+    UDID="$(xcrun simctl create "je-run-device-$$" "$DEVICE_TYPE" "$RUNTIME")"
+    cleanup() { xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true; xcrun simctl delete "$UDID" >/dev/null 2>&1 || true; }
+    trap cleanup EXIT
+    cp -R "$OUT/game" "$OUT/run"
+    SCRIPT="$(ls "$OUT/run"/scripts/*.lua | head -n 1)"
+    { echo 'print("run-device marker one")'; cat "$SCRIPT"; } > "$OUT/run.lua" && mv "$OUT/run.lua" "$SCRIPT"
+    run_device() {  # output name
+        "${EDITOR_ENV[@]}" "$EDITOR" build --project "$OUT/run" --platform ios --method prebuilt --development --out "$OUT/run-build" \
+            --run-device "$UDID" --run-seconds 20 > "$OUT/logs/$1.log" 2>&1
+    }
+    xcrun simctl boot "$UDID" && xcrun simctl bootstatus "$UDID" -b > /dev/null 2>&1 || fail "the run-device simulator did not boot"
+    EXECUTABLE_RUN="$(plutil -extract CFBundleExecutable raw "$APP/Info.plist")"
+    xcrun simctl spawn "$UDID" log stream --level info --style compact --predicate "process == \"$EXECUTABLE_RUN\"" > "$OUT/logs/run-device-log.txt" 2>&1 &
+    RUN_STREAM=$!
+    run_device run-device-first || { tail -n 40 "$OUT/logs/run-device-first.log"; fail "build --run-device"; }
+    grep -q "^installed: full" "$OUT/logs/run-device-first.log" || fail "the first run did not install in full"
+    sed -i '' 's/run-device marker one/run-device marker two/' "$SCRIPT"
+    run_device run-device-second || { tail -n 40 "$OUT/logs/run-device-second.log"; fail "build --run-device (patch)"; }
+    grep -q "^installed: patched" "$OUT/logs/run-device-second.log" || { tail -n 20 "$OUT/logs/run-device-second.log"; fail "the second run did not patch"; }
+    kill "$RUN_STREAM" >/dev/null 2>&1 || true
+    grep -q "run-device marker two" "$OUT/logs/run-device-log.txt" || fail "log stream has no line of the patched script"
+    INSTALLS="$(cat "$OUT/logs/run-device-first.log" "$OUT/logs/run-device-second.log" | grep -c "Installing on" || true)"
+    [[ "$INSTALLS" == 1 ]] || fail "simctl install ran $INSTALLS times (once expected)"
+    cleanup
+    trap - EXIT
+    ok "Build And Run on the simulator, then Patch And Run: the new line in its log, installed once"
+fi
 
 echo "PASS: iOS packaging (simulator run and shown; device to signing; IPA as far as it goes without an account)"

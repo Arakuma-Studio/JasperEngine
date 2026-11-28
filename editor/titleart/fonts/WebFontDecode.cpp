@@ -5,6 +5,8 @@
 
 #include "FontTables.h"
 
+#include "util/FontFace.h"
+
 // (miniz's zlib-named macros, compress / uncompress ..., stay out of this file)
 #ifndef MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
@@ -16,6 +18,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <utility>
 
 namespace jasperengine::editor::titlefonts {
 
@@ -146,6 +149,18 @@ namespace jasperengine::editor::titlefonts {
             case FontFileFormat::Unknown: return refuse("it is not a font file (no WOFF, WOFF2, TrueType or OpenType signature)");
             default: return refuse("it is not a web font: it is already a TrueType or OpenType file");
         }
+    }
+
+    void installWebFontDecoder() {
+        FontFace::setWebFontDecoder([](const unsigned char* data, size_t size, std::vector<unsigned char>& sfnt, std::string& error) {
+            DecodedFont decoded = decodeWebFont(data, size);
+            if (!decoded.ok) {
+                error = decoded.error;
+                return false;
+            }
+            sfnt = std::move(decoded.bytes);
+            return true;
+        });
     }
 
     DecodedFont decodeWoff(const uint8_t* data, size_t size, size_t maxDecoded) {

@@ -109,6 +109,34 @@ TEST(ModelClipSettings, ParseAndWriteKeepUnknownKeys){
     EXPECT_EQ(written.back(), '\n');
 }
 
+// S94 F32: a model clip's Root Transform Based Upon and Offsets round-trip through <model>.clips
+// (read as settings, not kept as unknown keys) and reach the clip's root_motion block
+TEST(ModelClipSettings, RootTransformBasedUponRoundTrips){
+    anim::ModelClipSettings settings;
+    std::vector<std::string> warnings;
+    std::string error;
+    ASSERT_TRUE(anim::parseModelClipSettings(R"({"version": 1, "clips": {"Walk": {"root_motion": {"rotation_based_upon": "body_orientation",
+        "rotation_offset": 10, "position_y_based_upon": "feet", "position_y_offset": 0.05, "position_xz_based_upon": "center_of_mass"}}}})",
+        settings, warnings, &error)) << error;
+    EXPECT_TRUE(warnings.empty());
+    const anim::ModelClipSetting& walk = *settings.find("Walk");
+    ASSERT_TRUE(walk.rootMotion.has_value());
+    EXPECT_TRUE(walk.rootMotionUnknownKeys.empty());
+    EXPECT_EQ(walk.rootMotion->rotationBasedUpon, anim::RootRotationBasis::BodyOrientation);
+    EXPECT_FLOAT_EQ(walk.rootMotion->rotationOffset, 10.0f);
+    EXPECT_EQ(walk.rootMotion->positionYBasedUpon, anim::RootPositionYBasis::Feet);
+    EXPECT_FLOAT_EQ(walk.rootMotion->positionYOffset, 0.05f);
+    EXPECT_EQ(walk.rootMotion->positionXZBasedUpon, anim::RootPositionXZBasis::CenterOfMass);
+    anim::ModelClipSettings again;
+    ASSERT_TRUE(anim::parseModelClipSettings(anim::writeModelClipSettings(settings), again, warnings, &error)) << error;
+    EXPECT_TRUE(*again.find("Walk") == walk);
+    ClipData data;
+    anim::applyModelClipSetting(walk, data);
+    const anim::ClipRootMotion block = anim::readClipRootMotion(data.unknownKeys);
+    EXPECT_EQ(block.rotationBasedUpon, anim::RootRotationBasis::BodyOrientation);
+    EXPECT_EQ(block.positionYBasedUpon, anim::RootPositionYBasis::Feet);
+}
+
 TEST(ModelClipSettings, BadValuesAreWarningsAndANewerVersionFails){
     anim::ModelClipSettings settings;
     std::vector<std::string> warnings;

@@ -17,6 +17,7 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "RmlRenderer.h"
 
 #include <gtest/gtest.h>
 
@@ -196,6 +197,11 @@ namespace jasperengine { namespace test {
             GpuEnvironment::drawFrames(frames);
             if (!screen.read())
                 return ::testing::AssertionFailure() << "readback of the target failed";
+            // S92 R3 (JASPER_HTMLUI_VERIFY_KEPT=1): a second frame, which a static document keeps,
+            // verified against a fresh replay (on GL in that frame, elsewhere in the next one); a
+            // difference is an [HTML UI] error TearDown reports
+            if (RmlRenderer::isKeptFrameVerification())
+                GpuEnvironment::drawFrames(Engine::isOpenGL() ? 1 : 2);
             return ::testing::AssertionSuccess();
         }
 

@@ -18,7 +18,6 @@
 #include "util/Util.h"
 #include "widget/ColorField.h"
 #include "window/EditorModal.h"
-#include "window/ProjectWindow.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -112,7 +111,7 @@ using namespace jasperengine::editor::tilemap;
 
 namespace jasperengine::editor::tilemap {
 
-TilesetEditorWindow::TilesetEditorWindow(Project* project, ProjectWindow* projectWindow): project(project), projectWindow(projectWindow) {
+TilesetEditorWindow::TilesetEditorWindow(Project* project): project(project) {
 }
 
 void TilesetEditorWindow::setOpen(bool open) {

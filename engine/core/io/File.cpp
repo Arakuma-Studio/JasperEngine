@@ -10,6 +10,7 @@
 #include "File.h"
 
 #include "System.h"
+#include "StrippedAssets.h"
 #include "watch/SharedFileReader.h"
 
 using namespace jasperengine;
@@ -91,8 +92,11 @@ unsigned int File::open(const char *aFilename, bool write){
     }else{
         fileHandle = System::instance().platformFopen(systemPath.c_str(), "w+b");
     }
-    if (!fileHandle)
+    if (!fileHandle){
+        // a Development Build names the setting that left the file out (S98 REQ-10)
+        if (!write) StrippedAssets::explainMissing(aFilename);
         return FileErrors::FILE_NOT_FOUND;
+    }
     return FileErrors::FILEDATA_OK;
 }
 

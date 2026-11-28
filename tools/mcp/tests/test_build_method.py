@@ -8,20 +8,25 @@ C++ script makes Auto pick Compile and --method prebuilt refuse. run_build runs 
 script that implements --quit-after / --screenshot as a player does.
 """
 
+import asyncio
 import base64
+import gzip
 import hashlib
 import json
+import os
 import plistlib
 import re
 import shutil
 import stat
 import struct
+import subprocess
 import zipfile
 import zlib
 from pathlib import Path
 
 import pbxproj
-from harness import Editor, record_built_player
+from audio_refs import write_tone
+from harness import Editor, editor_command, record_built_player
 
 CI = True
 EDITOR = {"create": True, "name": "Build Method Test"}
@@ -30,10 +35,12 @@ REPO = Path(__file__).resolve().parents[3]
 
 
 def content_format() -> str:
-    """The cooked format this tree's editor writes (a runtime that reads less is refused), as
-    tools/players/package_player.py reads it."""
+    """The newest content format this tree's player reads (CONTENT_MINOR: a Build Profile's build needs
+    more than the cooked files' FORMAT_MINOR), as tools/players/package_player.py stamps a runtime."""
     text = (REPO / "engine/core/serialization/CookedScene.h").read_text(encoding="utf-8")
-    return ".".join(re.search(rf"FORMAT_{part} = (\d+)", text).group(1) for part in ("MAJOR", "MINOR"))
+    major = re.search(r"FORMAT_MAJOR = (\d+)", text).group(1)
+    minor = re.search(r"CONTENT_MINOR = (\d+)", text).group(1)
+    return f"{major}.{minor}"
 
 
 def png_bytes(width: int, height: int, rgb=(200, 40, 40)) -> bytes:
@@ -49,7 +56,7 @@ def runtime_archive(path: Path, version: str) -> Path:
     info = {
         "schemaVersion": 1, "id": RUNTIME, "platform": "linux", "arch": "x64", "backend": "glcore", "flavour": "release",
         "engineVersion": version, "gitSha": "", "contentFormatVersion": content_format(), "modelCookFormats": [1],
-        "capacities": {}, "features": ["physics2d", "physics3d", "navigation", "runtimeshaders"], "notices": ["lua"],
+        "capacities": {}, "features": ["physics2d", "physics3d", "navigation", "runtimeshaders", "soundlayer"], "notices": ["lua"],
         "executables": {"files/jasperengine-player": hashlib.sha256(binary).hexdigest()}, "executable": "jasperengine-player",
     }
     with zipfile.ZipFile(path, "w") as zipped:
@@ -96,6 +103,12 @@ async def test_prebuilt_linux_build(ed: Editor):
     r = await ed.call("build_project", mode="player", platform="linux", output_dir=str(out), timeout_seconds=600)
     ed.check_eq(r["status"], "succeeded", f"{r}")
     result = r["result"]
+    # S99 R13, R14: an estimate at submit; the report's fallbacks are the downgrades the build took:
+    # here at most the bigger player variant, exactly when the build warned W-PLAYER-VARIANT
+    ed.check(r.get("estimate", {}).get("seconds", 0) > 0, f"an estimate: {r.get('estimate')}")
+    fallbacks = result.get("report", {}).get("fallbacks")
+    variant = any(isinstance(w, dict) and w.get("code") == "W-PLAYER-VARIANT" for w in result.get("warnings", []))
+    ed.check_eq([f["step"] for f in fallbacks or []], ["player"] if variant else [], f"a report: {result.get('report')}")
     ed.check_eq(result["method_used"], "prebuilt")
     ed.check_eq(result["player_id"], RUNTIME)
     ed.check_eq(result["compile_reasons"], [])
@@ -135,16 +148,21 @@ async def test_ios_simulator_parameter(ed: Editor):
 async def test_prebuilt_build_hears_the_projects_mixer_and_audio_settings(ed: Editor):
     """A prebuilt game sounds as Play does: Play applies Project Settings > Audio and the project's
     mixer, a Compile build's generated init does the same; game.json carries both to the player
-    (the mixer by its asset-relative path, which the build ships)."""
+    (the mixer by its asset-relative path, which the build ships). A clip's Load Type travels in
+    je-audio-imports.json and the Unused Clip Cache in game.json (S97 REQ-10, REQ-17)."""
     r = await ed.call_raw("audio_mixer", {"action": "edit", "ops": [
         {"op": "add_group", "name": "Music"},
         {"op": "add_effect", "group": "Music", "type": "lowpass", "params": {"cutoff": 800}},
     ]})
     ed.check(not r.is_error, f"the project's mixer: {r.text[:300]}")
-    await ed.call("set_project_settings", values={"audio.max_real_voices": 20, "audio.max_voices": 100, "audio.sample_rate": 48000})
+    await ed.call("set_project_settings", values={"audio.max_real_voices": 20, "audio.max_voices": 100, "audio.sample_rate": 48000,
+                                                  "audio.unused_clip_cache": 8})
+    write_tone(ed.project / "sounds" / "rain.wav", seconds=0.5)
+    await ed.call("sync_files", paths=["sounds/rain.wav"])
+    await ed.call("set_audio_import_settings", paths=["sounds/rain.wav"], settings={"load_type": "streaming"})
     await ed.call("save_project", untitled_scene_dir="scenes")
     played = (await ed.call("get_project_settings", keys=["audio.mixer", "audio.max_real_voices", "audio.max_voices",
-                                                           "audio.sample_rate"]))["settings"]
+                                                           "audio.sample_rate", "audio.unused_clip_cache"]))["settings"]
     print(f"[audio] Play's settings: {played}")
 
     out = ed.scratch.root / "game-linux-audio"
@@ -155,8 +173,11 @@ async def test_prebuilt_build_hears_the_projects_mixer_and_audio_settings(ed: Ed
     audio = game.get("audio")
     print(f"[audio] game.json audio: {audio}")
     ed.check(isinstance(audio, dict), f"game.json has the audio settings: {sorted(game)}")
-    ed.check_eq((audio["maxRealVoices"], audio["maxVoices"], audio["sampleRate"]),
-                (played["audio.max_real_voices"], played["audio.max_voices"], 48000), "Project Settings > Audio, as Play has them")
+    ed.check_eq((audio["maxRealVoices"], audio["maxVoices"], audio["sampleRate"], audio["unusedClipCacheMb"]),
+                (played["audio.max_real_voices"], played["audio.max_voices"], 48000, 8), "Project Settings > Audio, as Play has them")
+    tables = list(out.rglob("je-audio-imports.json"))
+    ed.check_eq(len(tables), 1, "the clip's import settings ship")
+    ed.check_eq(json.loads(tables[0].read_text())["clips"]["sounds/rain.wav"], {"load_type": "streaming"}, "its Load Type")
     ed.check(played["audio.mixer"].endswith(audio["mixer"]), f"the mixer Play loads ({played['audio.mixer']}): {audio['mixer']}")
     shipped = out / "assets" / audio["mixer"]
     ed.check(shipped.is_file(), f"the mixer ships at {shipped}")
@@ -187,7 +208,8 @@ async def test_native_code_compiles(ed: Editor):
     ed.check_eq(info["platforms"]["linux"]["method"], "prebuilt")
 
 
-FEATURES = ["physics2d", "physics3d", "navigation", "runtimeshaders"]
+# a full runtime's modules: the mixer test leaves the project a clip with a Load Type, which needs the sound layer
+FEATURES = ["physics2d", "physics3d", "navigation", "runtimeshaders", "soundlayer"]
 
 
 def fake_runtime(path: Path, version: str, runtime: str, platform: str, arch: str, backend: str, files: dict[str, bytes],
@@ -268,6 +290,88 @@ async def test_prebuilt_web_carries_plugins(ed: Editor):
     finally:
         await ed.call("set_project_settings", values={"web.script_urls": []})
         shutil.rmtree(ed.project / "plugins", ignore_errors=True)
+
+
+def web_fetched_gzip(out: Path) -> int:
+    """gzip -9 of what a browser fetches of a web build: not the notices, manifests or report."""
+    skipped = {"build-report.json", "content-manifest.json", "_headers", "THIRD-PARTY-NOTICES.txt"}
+    return sum(len(gzip.compress(p.read_bytes(), 9)) for p in out.rglob("*")
+               if p.is_file() and p.name not in skipped and "licenses" not in p.relative_to(out).parts)
+
+
+async def test_build_sizes_and_download_budget(ed: Editor):
+    """S99 R10, R11, AC3: build_project's result says what the build weighs (a web build also its
+    gzip download estimate); a build over its platform group's Download Budget still succeeds,
+    with W-BUILD-OVER-BUDGET and a next naming the tools that inspect its largest category. The
+    CLI's build --json has the same fields. (The Linux and web runtimes of the tests above are
+    installed.)"""
+    for platform in ("linux", "web"):
+        out = ed.scratch.root / f"sized-{platform}"
+        r = await ed.call("build_project", mode="player", platform=platform, output_dir=str(out), timeout_seconds=600)
+        ed.check_eq(r["status"], "succeeded", f"{r}")
+        result = r["result"]
+        ed.check_eq(Path(result["build_report"]), out / "build-report.json")
+        report = json.loads((out / "build-report.json").read_text())
+        ed.check(result["build_bytes"] > 0, f"{platform} build_bytes {result['build_bytes']}")
+        ed.check_eq(result["build_bytes"], report["total_bytes"])
+        ed.check_eq(result["build_categories"], report["categories"])
+        ed.check_eq(result["top_files"], [{"path": f["path"], "bytes": f["bytes"]} for f in report["largest"][:5]])
+        ed.check(0 < len(result["top_files"]) <= 5, f"{result['top_files']}")
+        if platform == "web":
+            expected = web_fetched_gzip(out)
+            ed.check(abs(result["download_bytes_gzip"] - expected) <= expected * 0.05 + 64,
+                     f"download_bytes_gzip {result['download_bytes_gzip']}, gzip -9 of the fetched files {expected}")
+            ed.check_eq(report["download_bytes_gzip"], result["download_bytes_gzip"])
+        else:
+            ed.check("download_bytes_gzip" not in result, "only a web build has a download estimate")
+        ed.check("download_budget" not in result and "W-BUILD-OVER-BUDGET" not in warning_codes(r), "no budget, no verdict")
+
+    await ed.call("set_project_settings", values={"player.download_budget_mb.web": 0.001})
+    try:
+        out = ed.scratch.root / "sized-web"
+        r = await ed.call("build_project", mode="player", platform="web", output_dir=str(out), timeout_seconds=600)
+        ed.check_eq(r["status"], "succeeded", f"over budget still builds: {r}")
+        result = r["result"]
+        ed.check_in("W-BUILD-OVER-BUDGET", warning_codes(r))
+        message = next(w["message"] for w in result["warnings"] if w.get("code") == "W-BUILD-OVER-BUDGET")
+        ed.check_in("over its Download Budget of 1.0 KB (player.download_budget_mb.web)", message)
+        ed.check_in("largest categories: ", message)
+        budget = result["download_budget"]
+        ed.check_eq(budget["budget_bytes"], 1049)
+        ed.check_eq(budget["actual_bytes"], result["download_bytes_gzip"])
+        ed.check_eq(budget["over"], True)
+        largest = max(result["build_categories"].items(), key=lambda kv: kv[1])
+        ed.check_eq(budget["largest_categories"][0], {"category": largest[0], "bytes": largest[1]})
+        ed.check(len(budget["largest_categories"]) <= 3, f"{budget}")
+        # the next names tools that exist, for the largest category
+        inspect = {"textures": "get_texture_cook_report", "models": "inspect_models", "engine": "player.strip_engine_code"}.get(largest[0], "list_assets")
+        ed.check_in("Over the Download Budget", r.get("next", ""))
+        ed.check_in(inspect, r["next"])
+        names = {t.name for t in await ed.tools()}
+        for tool in re.findall(r"\b([a-z]+(?:_[a-z]+)+) \{", r["next"]):
+            ed.check_in(tool, names)
+
+        # another platform group's budget does not hold a Linux build
+        r = await ed.call("build_project", mode="player", platform="linux", output_dir=str(ed.scratch.root / "sized-linux"), timeout_seconds=600)
+        ed.check_eq(r["status"], "succeeded", f"{r}")
+        ed.check("W-BUILD-OVER-BUDGET" not in warning_codes(r) and "download_budget" not in r["result"], f"{r['result']}")
+
+        # the CLI's build --json, with the editor's environment (its HOME holds the installed runtimes)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_") and k not in ("DISPLAY", "WAYLAND_DISPLAY")}
+        env["HOME"] = str(ed.scratch.home)
+        cli_out = ed.scratch.root / "cli-web"
+        p = await asyncio.to_thread(subprocess.run, [*editor_command(), "build", "--project", str(ed.project), "--platform", "web",
+                                                     "--out", str(cli_out), "--json"],
+                                    cwd=ed.scratch.root, env=env, capture_output=True, text=True, timeout=600)
+        ed.check_eq(p.returncode, 0, f"{p.stdout[-2000:]}\n{p.stderr[-2000:]}")
+        cli = json.loads(p.stdout[p.stdout.index("{"):])
+        ed.check_eq(Path(cli["build_report"]), cli_out / "build-report.json")
+        ed.check(cli["build_bytes"] > 0 and cli["top_files"] and cli["download_bytes_gzip"] > 0, f"{cli}")
+        ed.check_eq(cli["download_budget"]["budget_bytes"], 1049)
+        ed.check_eq(cli["download_budget"]["over"], True)
+        ed.check_in("W-BUILD-OVER-BUDGET", [w["code"] for w in cli["warnings"]])
+    finally:
+        await ed.call("set_project_settings", values={"player.download_budget_mb.web": 0})
 
 
 async def install_ios_runtime(ed: Editor, name: str, with_manifest: bool = True) -> None:

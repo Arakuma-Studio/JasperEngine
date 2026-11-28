@@ -248,11 +248,28 @@ namespace jasperengine::editor::spritenormals {
         int lights = 0;                      // enabled Light 2Ds
         int lightsWithHeight = 0;            // ... with height > 0 (they light normal maps)
         float ambientIntensity = 0.0f;       // scene ambient 2D intensity
+        float ambientBrightness = 0.0f;      // ambientLight2DBrightness (util/Ambient2D.h)
     };
     LightCheck lightCheck(const Scene* scene);
+
+    // The larger side of a frame in px: of the largest cell, else of the whole image
+    int framePixels(const std::vector<Cell>& cells, int width, int height);
+    // light_low (S78 R14): the enabled Light 2Ds with a height above 0 but under half the
+    // sprite's larger side in world units, which light a big sprite from the side only. The
+    // sprite's size: a Sprite's drawn size (its pixels over its Pixels Per Unit), else
+    // `framePixels` over the entity's (a Tilemap's) or the project's Pixels Per Unit; times the
+    // entity's world scale. `raiseTo` is that larger side rounded up (to whole units from 10, to
+    // 0.01 below), the height the fix sets. Scene null: none.
+    struct LowLights {
+        std::vector<Entity> lights;          // in the scene's component order
+        float spriteSize = 0.0f;             // the larger side, world units
+        float raiseTo = 0.0f;
+    };
+    LowLights lowLights(const Scene* scene, Entity entity, int framePixels);
     // The scene-aware warnings of section 8.2, the only ones every surface shows: no_light (no
-    // enabled Light 2D), no_light_height (lights > 0 but none with height), ambient_high
-    // (ambientIntensity >= 0.8), and for an entity: size_mismatch (its base texture size !=
+    // enabled Light 2D), no_light_height (lights > 0 but none with height), light_low
+    // (lowLights, with `framePixels`; 0: the normal map's larger side), ambient_high
+    // (isAmbientLight2DBright), and for an entity: size_mismatch (its base texture size !=
     // normal size), filter_mismatch (a normal texture set, or the result will be applied, and its min/mag
     // filter or wrap differ from the base texture's; apply copies them, so a willApply result is
     // compared after that copy), material_linked (submesh material from a .material file),
@@ -262,7 +279,7 @@ namespace jasperengine::editor::spritenormals {
     // only zero_delay. `submesh`: the submesh the map is for (size, filter and material checks).
     std::vector<Problem> sceneWarnings(const Scene* scene, Entity entity, const Settings& settings, int normalWidth,
                                        int normalHeight, const std::vector<Delay>& delays, bool willApply,
-                                       unsigned submesh = 0);
+                                       unsigned submesh = 0, int framePixels = 0);
 
     // ---- generation
 

@@ -83,6 +83,13 @@ std::set<std::pair<int, int>> ModelUsage::blended() const{
     return out;
 }
 
+std::set<std::pair<int, int>> ModelUsage::painted() const{
+    for (const ModelDocumentUse& use : documents)
+        if (use.painted)
+            return {{-1, -1}};
+    return {};
+}
+
 bool ModelUsage::anyLod() const{
     return std::any_of(documents.begin(), documents.end(), [](const ModelDocumentUse& use){ return use.lodEnabled; });
 }
@@ -136,6 +143,8 @@ void ModelUsageIndex::readDocument(Project& project, const fs::path& absolute, c
         use.document = relative;
         use.scene = out.lodEnabled || Util::isSceneFile(relative);
         use.objects++;
+        if (const YAML::Node colors = item["components"]["vertexcolors"]; colors && colors.IsMap())
+            use.painted = true;
         owned[path].insert(id);
         if (const YAML::Node mapping = model["meshNodesMapping"]; mapping && mapping.IsSequence())
             for (const YAML::Node& node : mapping)

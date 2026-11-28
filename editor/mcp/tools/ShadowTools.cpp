@@ -30,6 +30,7 @@ const char* lightTypeName(LightType type){
         case LightType::DIRECTIONAL: return "directional";
         case LightType::POINT: return "point";
         case LightType::SPOT: return "spot";
+        case LightType::AREA: return "area";
     }
     return "directional";
 }

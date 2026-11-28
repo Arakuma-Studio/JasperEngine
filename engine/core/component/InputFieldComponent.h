@@ -10,6 +10,17 @@
 
 namespace jasperengine{
 
+    // the soft keyboard the field asks for (Unity's TouchScreenKeyboardType subset; text-entry R7)
+    enum class InputFieldKeyboardType{
+        DEFAULT,
+        NUMBER_PAD,
+        DECIMAL_PAD,
+        PHONE_PAD,
+        EMAIL_ADDRESS,
+        URL,
+        SEARCH
+    };
+
     struct JASPERENGINE_API InputFieldComponent{
         Entity text = NULL_ENTITY;
         Entity selection = NULL_ENTITY;
@@ -31,6 +42,10 @@ namespace jasperengine{
         float cursorBlinkTimer = 0;
         bool disabled = false;
         bool password = false;
+
+        InputFieldKeyboardType keyboardType = InputFieldKeyboardType::DEFAULT;
+        // code points the player can type or paste; 0 = no limit
+        int characterLimit = 0;
 
         FunctionSubscribe<void()> onChange;
         FunctionSubscribe<void()> onSubmit;

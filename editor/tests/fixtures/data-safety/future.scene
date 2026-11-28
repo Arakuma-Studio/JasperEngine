@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 11
 id: 4100
 name: Future
 scene:
@@ -60,7 +60,7 @@ entities:
         cylindricalBillboard: false
       light:
         enabled: true
-        type: area
+        type: spots
         direction: [-0.4, -1, -0.6]
         color: [1, 1, 1]
         range: 100

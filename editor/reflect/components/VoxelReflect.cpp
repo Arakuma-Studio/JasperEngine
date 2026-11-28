@@ -9,12 +9,10 @@
 #include "reflect/Components.h"
 #include "reflect/components/TerrainLayerReflect.h"
 
-#include "Factory.h"
 #include "component/VoxelVolumeComponent.h"
 #include "serialization/codecs/VoxelVolumeCodec.h"
 
 namespace jasperengine::editor::reflect {
-
     JE_REFLECT_STRUCT_TRAITS(VoxelMaterialSlot, kVoxelMaterialSlotStruct);
 
 namespace {
@@ -47,8 +45,8 @@ namespace enums {
 
 namespace {
 
-    constexpr uint32_t kOmit = OmitIfDefault | EmptyIsDefault | CodegenIfChanged;
-    constexpr uint32_t kOmitFloat = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | CodegenIfChanged;
+    constexpr uint32_t kOmit = OmitIfDefault | EmptyIsDefault;
+    constexpr uint32_t kOmitFloat = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault;
 
     constexpr FieldDesc kVoxelMaterialSlotFields[] = {
         JE_FIELD(VoxelMaterialSlot, name, .flags = kOmit),
@@ -65,10 +63,10 @@ namespace {
 
     constexpr FieldDesc kVoxelVolumeFields[] = {
         JE_FIELD(VoxelVolumeComponent, enabled, .flags = kOmit),
-        JE_FIELD(VoxelVolumeComponent, volumeData, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged, .label = "Volume Data",
+        JE_FIELD(VoxelVolumeComponent, volumeData, .flags = OmitIfDefault | EmptyIsDefault, .label = "Volume Data",
                  .tooltip = "The .voxelvolume asset: dimensions, voxel size and the blocks."),
         // exported by voxelCodegen: a slot's layer holds textures, which take statements
-        JE_FIELD(VoxelVolumeComponent, materialSlots, .flags = OmitIfDefault | EmptyIsDefault | NoCodegen | ListWhole | ListTemplate,
+        JE_FIELD(VoxelVolumeComponent, materialSlots, .flags = OmitIfDefault | EmptyIsDefault | ListWhole | ListTemplate,
                  .label = "Material Slots"),
         JE_FIELD(VoxelVolumeComponent, quality, .enumDesc = &enums::kVoxelQuality, .flags = kOmit,
                  .tooltip = "Auto: the platform's, or the attached terrain's."),
@@ -100,29 +98,6 @@ namespace {
         sanitizeVoxelVolume(*static_cast<VoxelVolumeComponent*>(comp));
     }
 
-    // each slot as its own block: a layer's textures are statements (Factory::formatTexture), so
-    // the slot cannot be one aggregate literal
-    void voxelCodegen(const void* comp, const CodegenContext& ctx, std::string& out) {
-        const VoxelVolumeComponent& volume = *static_cast<const VoxelVolumeComponent*>(comp);
-        if (volume.materialSlots.empty()) return;
-        const std::string ind = Factory::indentation(ctx.indentSpaces);
-        out += ind + ctx.variable + ".materialSlots.resize(" + std::to_string(volume.materialSlots.size()) + ");\n";
-        const TerrainSurfaceLayer defaults;
-        for (size_t i = 0; i < volume.materialSlots.size(); i++) {
-            const VoxelMaterialSlot& slot = volume.materialSlots[i];
-            const std::string target = ctx.variable + ".materialSlots[" + std::to_string(i) + "]";
-            if (!slot.name.empty()) out += ind + target + ".name = " + Factory::formatString(slot.name) + ";\n";
-            if (slot.linkedTerrainLayer != -1) out += ind + target + ".linkedTerrainLayer = " + std::to_string(slot.linkedTerrainLayer) + ";\n";
-            for (const FieldDesc& member : kTerrainSurfaceLayerStruct.fields) {
-                void* value = member.ref(const_cast<TerrainSurfaceLayer*>(&slot.layer));
-                if (member.ops->equals(value, member.ref(const_cast<TerrainSurfaceLayer*>(&defaults)), 0.0f)) continue;
-                const std::string name = target + ".layer." + (member.cppPath ? member.cppPath : member.name);
-                if (member.ops->cppStatements) member.ops->cppStatements(member, value, name, ctx, out);
-                else if (member.ops->cppLiteral) out += ind + name + " = " + member.ops->cppLiteral(member, value, ctx) + ";\n";
-            }
-        }
-    }
-
 }
 
 const ComponentDesc kVoxelVolumeDesc{
@@ -131,7 +106,6 @@ const ComponentDesc kVoxelVolumeDesc{
     .body = JE_STRUCT_DESC(VoxelVolumeComponent, "VoxelVolumeComponent", kVoxelVolumeFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(VoxelVolumeComponent),
     .postDecode = &voxelPostDecode,
-    .codegenVar = "voxelVolume", .codegenExtra = &voxelCodegen,
 };
 
 }

@@ -44,6 +44,17 @@ int TestSystem::getScreenHeight(){
     return screenHeight;
 }
 
+sg_swapchain TestSystem::getSokolSwapchain(){
+#if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)
+    sg_swapchain swapchain = VulkanContext::swapchain();
+#else
+    sg_swapchain swapchain = System::getSokolSwapchain();
+#endif
+    if (swapchainInvalid)
+        swapchain.invalid = true;
+    return swapchain;
+}
+
 }  // namespace jasperengine::test
 
 #if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)
@@ -52,10 +63,6 @@ namespace jasperengine::test {
 
 sg_environment TestSystem::getSokolEnvironment(){
     return VulkanContext::environment();
-}
-
-sg_swapchain TestSystem::getSokolSwapchain(){
-    return VulkanContext::swapchain();
 }
 
 }  // namespace jasperengine::test
@@ -112,6 +119,11 @@ void TestSystem::clearPathProvider(){
 
 bool TestSystem::syncFileSystem(){
     fileSystemSyncs++;
+    return true;
+}
+
+bool TestSystem::platformOpenURL(const std::string& url){
+    openedUrls.push_back(url);
     return true;
 }
 
@@ -214,6 +226,20 @@ std::vector<TestSystem::LogEntry> TestSystem::getLogsSince(size_t sequence) cons
 void TestSystem::showVirtualKeyboard(std::wstring text){
     virtualKeyboardShows++;
     virtualKeyboardText = text;
+    virtualKeyboardTraits = TextEntryTraits();
+}
+
+void TestSystem::showVirtualKeyboard(const std::wstring& text, const TextEntryTraits& traits){
+    virtualKeyboardShows++;
+    virtualKeyboardText = text;
+    virtualKeyboardTraits = traits;
+}
+
+void TestSystem::updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd){
+    virtualKeyboardUpdates++;
+    virtualKeyboardUpdateText = text;
+    virtualKeyboardSelection[0] = selectionStart;
+    virtualKeyboardSelection[1] = selectionEnd;
 }
 
 void TestSystem::hideVirtualKeyboard(){

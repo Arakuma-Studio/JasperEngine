@@ -183,7 +183,11 @@ to the Pose window's Map Bones.
   look twisted in every clip. Twists change the model's pose animations too (one rig, one neutral
   pose). A **Test clip** (type or drop a clip) plays retargeted with a scrubber, with **Mirror** and
   **Foot IK** to try.
-- **Notes**: what the detection decided and why.
+- **Notes**: what the detection decided and why. A bone whose name contains `proxy` is never
+  mapped. A model with an animated spine proxy node beside the hips (`Rig/B-root/B-spineProxy` in
+  Kevin Iglesias' packs, made for Unity's Spine Proxy script) gets a note saying JasperEngine does
+  not need it: turn on Mesh Space Rotation on the animation layer instead. The node and its track
+  stay in the model, unused.
 
 Edits preview live; **Apply** writes the `.humanoid` file as one undo step (the model's clips and
 poses update), **Discard** goes back. Closing with changes asks to apply or discard.
@@ -245,7 +249,9 @@ The complete reference is in [docs/mcp/guide/lua-api.md](mcp/guide/lua-api.md) (
 ## Troubleshooting
 
 - **"Missing: ..." / the model is not humanoid.** Bones are mapped to body parts from their names
-  (Mixamo, Blender/Rigify, Unreal, VRM and Unity names). When a name is unusual, press **Map
+  (Mixamo, Blender/Rigify, Unreal, VRM and Unity names, and the `B-` names of Kevin Iglesias' packs:
+  `B-hips`, `B-upperArm.L`; a `B-` model imported by an older editor is read as before until you
+  reimport it, as its notes say). When a name is unusual, press **Map
   Bones...** and pick the bone for each missing part; "Auto" goes back to automatic detection. The
   fix is saved next to the model (`hero.gltf.humanoid`) and ships with the game. Hips, spine, head,
   upper and lower arms and legs, hands and feet are required; chest, upper chest, neck, shoulders

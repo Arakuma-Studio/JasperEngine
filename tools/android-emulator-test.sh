@@ -27,11 +27,38 @@
 #                       engine's 'Graphics:' line), the process still running and no crash; the
 #                       font scale is restored after. The screenshot is the one before it: the
 #                       relaunched scene is still loading after the new view.
+#   --view-loss         once the engine's ready line is in, the app goes to the background (Home),
+#                       gets a trim-memory call (COMPLETE: APP_CMD_LOW_MEMORY without a window drops
+#                       the EGL context) and comes back from the launcher. The run then needs a new
+#                       view (the engine's 'Graphics:' line) and the expected lines, which may come
+#                       from either side of the return (the ready line is required before it, not in
+#                       the --ordered list)
+#   --once TEXT         a line containing TEXT may appear at most once (repeatable), e.g. what a
+#                       library logs when it initialises
+#   --kill-relaunch-after TEXT  once a logcat line contains TEXT, send the app to the background
+#                       (HOME), kill its process (am kill, as Android does to a backgrounded app)
+#                       and launch it again; the expected lines are then checked on the new
+#                       process only (SaveGame's slot survives: tools/test-projects/savegame)
+#   --locale-change TAG once the expected lines are in, set the system language to TAG
+#                       (`adb shell cmd locale set-system-locales`, falling back to the app's own
+#                       locales, `cmd locale set-app-locales`) while the game runs, and require its
+#                       '[Localization] language <TAG's language>' line within --timeout: the game
+#                       language re-resolves without a relaunch (game-ui-localization.md R10, AC15).
+#                       The language is restored to en-US after
+#   --ime TEXT          once a logcat line contains TEXT (the game focused a text field), save
+#                       `dumpsys input_method` (ime.txt: the field's EditorInfo), type "abcdefgh"
+#                       (`input text`) and press Enter; the game's lines for them go in --expect
+#   --ime-editor-info TEXT  with --ime: a line of ime.txt must contain TEXT, e.g.
+#                       'inputType=0x21 imeOptions=0x12000004' (an e-mail field with a send key)
 #   --scene NAME        launch the app once per --scene (repeatable), with the property
 #                       debug.jasperengine.scene set to NAME (a test project picks what it shows
 #                       by it: tools/test-projects/render-gate); every run is checked on its own
 #   --setprop NAME=VALUE  an Android system property set before each launch (repeatable),
-#                       e.g. debug.jasperengine.titleart_rgba8=1 (the render gate's forced RGBA8 path)
+#                       e.g. debug.jasperengine.titleart_rgba8=1 (the render gate's forced RGBA8 path),
+#                       or player arguments: "debug.jasperengine.args=--run-tests --test-filter tag:smoke".
+#                       VALUE is letters, digits and _ . - : , = / and spaces only: it reaches the
+#                       device's shell double-quoted, where none of those is special
+#   --self-test         check the --setprop rule (what passes, what is refused) and exit
 #   --golden DIR        check what the screen shows: each run waits for the engine's
 #                       'I/JasperEngine: Engine presented:' line (30 frames presented after the
 #                       ready line), screenshots the device and fails when the screen is black or
@@ -89,9 +116,31 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    sed -n '2,79p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,106p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
 }
+
+# --setprop's VALUE reaches `adb shell` (a shell on the device) inside double quotes: no quote,
+# $, backquote, backslash, ; | & < > ( ) or newline, so nothing in it is special there
+setprop_valid() {
+    local rule='^[A-Za-z0-9_.]+=[A-Za-z0-9_.:,=/ -]*$'
+    [[ "$1" =~ $rule ]]
+}
+
+if [[ "${1:-}" == --self-test ]]; then
+    failed=0
+    for ok in "debug.jasperengine.titleart_rgba8=1" "debug.jasperengine.args=--run-tests --test-filter tag:smoke" \
+              "debug.jasperengine.args=--test-filter=tag:smoke,tag:red --keep-test-data" "a.b=" \
+              "debug.jasperengine.args=--input-script tests/Input/menu.input.json --quit-after-input"; do
+        setprop_valid "$ok" || { echo "self-test: refused a good value: $ok" >&2; failed=1; }
+    done
+    for bad in "debug.x=a;reboot" "debug.x=\$(id)" "debug.x=\`id\`" "debug.x=a\"b" "debug.x=a'b" "debug.x=a|b" "debug.x=a&b" \
+               "debug.x=a>b" "debug.x=a\\b" "debug.x=(a)" $'debug.x=a\nb' "debug x=1" "=1" "debug.x"; do
+        setprop_valid "$bad" && { echo "self-test: passed a dangerous value: $bad" >&2; failed=1; }
+    done
+    [[ $failed == 0 ]] && echo "android-emulator-test self-test: ok"
+    exit $failed
+fi
 
 [[ $# -ge 1 ]] || usage
 APK="$1"; shift
@@ -109,6 +158,12 @@ SECONDS_TO_RUN=20
 TWO_FINGER_TAP=0
 TAP_AFTER=10
 RELAUNCH=0
+VIEW_LOSS=0
+ONCES=()
+KILL_AFTER=""
+LOCALE_CHANGE=""
+IME_AFTER=""
+IME_EDITOR_INFO=""
 OUT="build/android-emulator"
 BUNDLETOOL=""
 while [[ $# -gt 0 ]]; do
@@ -129,11 +184,17 @@ while [[ $# -gt 0 ]]; do
         --two-finger-tap) TWO_FINGER_TAP=1; shift ;;
         --tap-after) TAP_AFTER="$2"; shift 2 ;;
         --relaunch) RELAUNCH=1; shift ;;
+        --view-loss) VIEW_LOSS=1; shift ;;
+        --once) ONCES+=("$2"); shift 2 ;;
+        --kill-relaunch-after) KILL_AFTER="$2"; shift 2 ;;
+        --locale-change) LOCALE_CHANGE="$2"; shift 2 ;;
+        --ime) IME_AFTER="$2"; shift 2 ;;
+        --ime-editor-info) IME_EDITOR_INFO="$2"; shift 2 ;;
         --scene)
             [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "android-emulator-test: --scene takes a name of letters, digits, _ and - (got $2)" >&2; exit 2; }
             SCENES+=("$2"); shift 2 ;;
         --setprop)
-            [[ "$2" =~ ^[A-Za-z0-9_.]+=[A-Za-z0-9_.-]*$ ]] || { echo "android-emulator-test: --setprop takes NAME=VALUE (got $2)" >&2; exit 2; }
+            setprop_valid "$2" || { echo "android-emulator-test: --setprop takes NAME=VALUE, VALUE of letters, digits, spaces and _ . - : , = / (got $2)" >&2; exit 2; }
             SETPROPS+=("$2"); shift 2 ;;
         --golden) GOLDEN="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
@@ -148,6 +209,7 @@ if [[ "$APK" == *.aab ]]; then
 fi
 [[ -e /dev/kvm ]] || { echo "android-emulator-test: no /dev/kvm here: the emulator needs KVM (servers A and C have it)" >&2; exit 2; }
 [[ "$OUT" =~ ^build/[A-Za-z0-9_./-]+$ ]] || { echo "android-emulator-test: --out must be under build/ (got $OUT)" >&2; exit 2; }
+[[ -z "$IME_EDITOR_INFO" || -n "$IME_AFTER" ]] || { echo "android-emulator-test: --ime-editor-info needs --ime" >&2; exit 2; }
 if [[ -n "$GOLDEN" ]]; then
     (( READY )) || { echo "android-emulator-test: --golden needs the ready line (no --no-ready)" >&2; exit 2; }
     command -v python3 >/dev/null || { echo "android-emulator-test: --golden needs python3 on the host" >&2; exit 2; }
@@ -168,7 +230,7 @@ if [[ -n "$BUNDLETOOL" ]]; then
     BUNDLETOOL_IN="/src/$OUT/bundletool.jar"
 fi
 mkdir -p "$ROOT/$OUT" "$ROOT/build/.cache/home"
-rm -f "$ROOT/$OUT"/{logcat.txt,logcat-full.txt,screen.png,emulator.log,result.txt,stacks.txt}
+rm -f "$ROOT/$OUT"/{logcat.txt,logcat-full.txt,screen.png,emulator.log,result.txt,stacks.txt,ime.txt}
 rm -f "$ROOT/$OUT"/screen.*.png
 for scene in ${SCENES[@]+"${SCENES[@]}"}; do rm -rf "${ROOT:?}/$OUT/$scene"; done
 
@@ -183,23 +245,28 @@ fi
 
 # the expectations go in through a file: any character survives (the ready line last: it comes
 # after what the scenes log as they start; the presented line after it)
-(( READY )) && EXPECTS+=("I/JasperEngine: Engine ready:")
+(( READY && ! VIEW_LOSS )) && EXPECTS+=("I/JasperEngine: Engine ready:")
 [[ -n "$GOLDEN" ]] && EXPECTS+=("I/JasperEngine: Engine presented:")
 printf '%s\n' ${EXPECTS[@]+"${EXPECTS[@]}"} > "$ROOT/$OUT/expect-all.txt"
 printf '%s\n' ${FORBIDS[@]+"${FORBIDS[@]}"} > "$ROOT/$OUT/forbid.txt"
+printf '%s\n' ${ONCES[@]+"${ONCES[@]}"} > "$ROOT/$OUT/once.txt"
 
 TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
 status=0
+# the properties one a line: a value may hold spaces
+SETPROP_LINES=""
+for prop in ${SETPROPS[@]+"${SETPROPS[@]}"}; do SETPROP_LINES+="$prop"$'\n'; done
 docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     --device /dev/kvm --group-add "$(stat -c %g /dev/kvm)" \
     --user "$(id -u):$(id -g)" \
     -v "$ROOT:/src" -w /src \
     -e HOME=/src/build/.cache/home \
     -e APK="$APK_IN" -e BUNDLETOOL="$BUNDLETOOL_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
-    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" \
-    -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
-    -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SETPROPS="${SETPROPS[*]+"${SETPROPS[*]}"}" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
+    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" -e VIEW_LOSS="$VIEW_LOSS" -e READY="$READY" -e LOCALE_CHANGE="$LOCALE_CHANGE" \
+    -e IME_AFTER="$IME_AFTER" -e IME_EDITOR_INFO="$IME_EDITOR_INFO" \
+    -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" -e KILL_AFTER="$KILL_AFTER" \
+    -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SETPROPS="$SETPROP_LINES" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
     -e GPU="${EMULATOR_GPU:-swangle_indirect}" \
     -e BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-600}" -e MEMORY="${EMULATOR_MEMORY:-3072}" -e CORES="${EMULATOR_CORES:-4}" \
     --tmpfs "/avd:rw,exec,size=${EMULATOR_TMPFS_GB:-10}g,mode=1777" \
@@ -268,7 +335,11 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             adb install -r -g "$APK" > "$OUT/install.log" 2>&1 || { log "install failed"; cat "$OUT/install.log"; exit 2; }
         fi
         adb shell setprop debug.jasperengine.ready_signal 1
-        for prop in ${SETPROPS:-}; do adb shell setprop "${prop%%=*}" "${prop#*=}"; done
+        # one property a line (a value may hold spaces), double-quoted for the device shell
+        while IFS= read -r prop; do
+            [[ -n "$prop" ]] || continue
+            adb shell setprop "${prop%%=*}" "\"${prop#*=}\""
+        done <<< "${SETPROPS:-}"
 
         # what the GLES path logs when it goes wrong (NativeEngine, sokol GL, ShaderPool, libEGL)
         GLES_ERRORS="^[A-Z]/JasperEngine: .*(OpenGL error|OPENGL ERRORS|shader compilation failed|shader linking failed|GL_SHADER_COMPILATION_FAILED|GL_SHADER_LINKING_FAILED|framebuffer completeness check failed|GL_FRAMEBUFFER_STATUS|failed to compile at runtime|Shader build failed|Shader resource creation failed|EGL error|SwappyGL_swap failed|\(PANIC\))|^E/libEGL *: call to OpenGL ES API with no current context"
@@ -307,8 +378,85 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             if [[ "$TWO_FINGER_TAP" == 1 ]]; then
                 ( sleep "$TAP_AFTER"; bash /src/tools/android-two-finger-tap.sh > "$DIR/tap.log" 2>&1 ) &
             fi
+            # the focused field: its EditorInfo as the input method service holds it, then text past
+            # its limit and the Enter key (expected lines say what the game made of them)
+            if [[ -n "$IME_AFTER" ]]; then
+                (
+                    start=$SECONDS
+                    until adb logcat -d -v tag | grep -qF -- "$IME_AFTER"; do
+                        (( SECONDS - start > TIMEOUT )) && exit 0
+                        sleep 1
+                    done
+                    sleep 2
+                    adb shell dumpsys input_method > "$DIR/ime.txt" 2>&1
+                    adb shell input text abcdefgh
+                    sleep 1
+                    adb shell input keyevent KEYCODE_ENTER
+                ) > "$DIR/ime.log" 2>&1 &
+            fi
+
+            if [[ -n "$KILL_AFTER" ]]; then
+                start=$SECONDS
+                until adb logcat -d -v tag | grep -qF -- "$KILL_AFTER"; do
+                    (( SECONDS - start > TIMEOUT )) && break
+                    sleep 1
+                done
+                adb logcat -d -v tag > "$DIR/logcat-before-kill.txt"
+                log "background, kill and relaunch after: $KILL_AFTER"
+                adb shell input keyevent HOME
+                sleep 3
+                adb shell am kill "$PACKAGE" >/dev/null 2>&1 || true
+                start=$SECONDS
+                while [[ -n "$(adb shell pidof "$PACKAGE" 2>/dev/null | tr -d "\r")" ]] && (( SECONDS - start < 20 )); do
+                    sleep 1
+                done
+                # am kill spares a process Android still counts as visible: then as a low-memory kill would
+                [[ -n "$(adb shell pidof "$PACKAGE" 2>/dev/null | tr -d "\r")" ]] && adb shell am force-stop "$PACKAGE"
+                adb logcat -c
+                adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+            fi
 
             if grep -q . "$DIR/expect.txt"; then WAIT=$TIMEOUT; else WAIT=$SECONDS_TO_RUN; fi
+            # the view lost in the background and made again: after the first view is ready
+            viewloss=""
+            if [[ "$VIEW_LOSS" == 1 ]]; then
+                start=$SECONDS
+                while true; do
+                    adb logcat -d -v tag > "$DIR/logcat.txt"
+                    adb logcat -d -v threadtime > "$DIR/logcat-full.txt"
+                    crashes="$(grep -E "FATAL EXCEPTION|Fatal signal|>>> $PACKAGE <<<" "$DIR/logcat-full.txt" | head -10 || true)"
+                    [[ -n "$crashes" ]] && break
+                    [[ "$READY" != 1 ]] && (( SECONDS - start > SECONDS_TO_RUN )) && break
+                    grep -q "I/JasperEngine: Engine ready:" "$DIR/logcat.txt" && break
+                    (( SECONDS - start > TIMEOUT )) && break
+                    sleep 2
+                done
+                if [[ -z "$crashes" ]] && { [[ "$READY" != 1 ]] || grep -q "I/JasperEngine: Engine ready:" "$DIR/logcat.txt"; }; then
+                    # frames of the first view before it goes
+                    sleep 5
+                    views="$(grep -c "I/JasperEngine: Graphics:" "$DIR/logcat.txt" || true)"
+                    log "view loss: Home, then a trim-memory call (COMPLETE), then the launcher"
+                    adb shell input keyevent KEYCODE_HOME
+                    sleep 4
+                    adb shell am send-trim-memory "$PACKAGE" COMPLETE > "$DIR/trim-memory.txt" 2>&1 || true
+                    sleep 4
+                    adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+                    start=$SECONDS
+                    while true; do
+                        sleep 2
+                        adb logcat -d -v tag > "$DIR/logcat.txt"
+                        (( $(grep -c "I/JasperEngine: Graphics:" "$DIR/logcat.txt" || true) > views )) && break
+                        (( SECONDS - start > TIMEOUT )) && break
+                    done
+                    if (( $(grep -c "I/JasperEngine: Graphics:" "$DIR/logcat.txt" || true) > views )); then
+                        viewloss="found        a new view after the return (I/JasperEngine: Graphics:)"
+                    else
+                        viewloss="MISSING      a new view after the return (I/JasperEngine: Graphics:; trim-memory: $(tr -d "\r\n" < "$DIR/trim-memory.txt"))"
+                    fi
+                else
+                    viewloss="MISSING      the ready line of the engine before the view loss"
+                fi
+            fi
             start=$SECONDS
             while true; do
                 adb logcat -d -v tag > "$DIR/logcat.txt"
@@ -352,8 +500,42 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                     relaunched="found        relaunched in process $pid: a new view, still running"
                 fi
             fi
+            # the system language changed while the game runs: its game language follows
+            localechanged=""
+            if [[ -n "$LOCALE_CHANGE" && -z "$crashes" ]]; then
+                wanted="[Localization] language ${LOCALE_CHANGE%%-*}"
+                log "changing the system language to $LOCALE_CHANGE"
+                # the system list where the image has the command; else the locales of the app
+                # (Android 13+), which reach the running activity as the same configuration change
+                if ! adb shell cmd locale set-system-locales "$LOCALE_CHANGE" > "$DIR/locale.txt" 2>&1 ||
+                   grep -qiE "unknown|error|exception" "$DIR/locale.txt"; then
+                    adb shell cmd locale set-app-locales "$PACKAGE" --locales "$LOCALE_CHANGE" >> "$DIR/locale.txt" 2>&1 || true
+                fi
+                start=$SECONDS
+                localechanged="MISSING      \"$wanted\" after the system language became $LOCALE_CHANGE"
+                while (( SECONDS - start <= TIMEOUT )); do
+                    sleep 2
+                    adb logcat -d -v tag > "$DIR/logcat.txt"
+                    if grep -qF "$wanted" "$DIR/logcat.txt"; then
+                        localechanged="found        $wanted (the system language became $LOCALE_CHANGE in the same run)"
+                        break
+                    fi
+                done
+                adb shell cmd locale set-system-locales en-US >/dev/null 2>&1 || true
+                adb shell cmd locale set-app-locales "$PACKAGE" --locales "" >/dev/null 2>&1 || true
+            fi
             adb logcat -d -v tag > "$DIR/logcat.txt"
             adb logcat -d -v threadtime > "$DIR/logcat-full.txt"
+            imechecked=""
+            if [[ -n "$IME_EDITOR_INFO" ]]; then
+                if [[ ! -s "$DIR/ime.txt" ]]; then
+                    imechecked="MISSING      dumpsys input_method (no line contained: $IME_AFTER)"
+                elif grep -qF -- "$IME_EDITOR_INFO" "$DIR/ime.txt"; then
+                    imechecked="found        $(grep -F -m1 -- "$IME_EDITOR_INFO" "$DIR/ime.txt" | sed "s/^ *//")"
+                else
+                    imechecked="MISSING      $IME_EDITOR_INFO in dumpsys input_method (ime.txt: $(grep -m2 -E "inputType=" "$DIR/ime.txt" | sed "s/^ *//" | tr "\n" " "))"
+                fi
+            fi
 
             result=0
             : > "$DIR/result.txt"
@@ -391,6 +573,23 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             if [[ -n "$relaunched" ]]; then
                 echo "$relaunched" >> "$DIR/result.txt"
                 [[ "$relaunched" == found* ]] || result=1
+            fi
+            if [[ -n "$viewloss" ]]; then
+                echo "$viewloss" >> "$DIR/result.txt"
+                [[ "$viewloss" == found* ]] || result=1
+            fi
+            while IFS= read -r once; do
+                [[ -z "$once" ]] && continue
+                n="$(grep -c -F -- "$once" "$DIR/logcat.txt" || true)"
+                if (( n > 1 )); then echo "MORE THAN ONCE $n lines contain: $once" >> "$DIR/result.txt"; result=1; fi
+            done < "$OUT/once.txt"
+            if [[ -n "$localechanged" ]]; then
+                echo "$localechanged" >> "$DIR/result.txt"
+                [[ "$localechanged" == found* ]] || result=1
+            fi
+            if [[ -n "$imechecked" ]]; then
+                echo "$imechecked" >> "$DIR/result.txt"
+                [[ "$imechecked" == found* ]] || result=1
             fi
             # no expectation (--no-ready): the app must at least still be running after its seconds
             if [[ "$EXPECT_NATIVE_CRASH" != 1 ]] && ! grep -q . "$DIR/expect.txt" &&

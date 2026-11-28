@@ -157,6 +157,11 @@ int UIEvent::getGamepad() const{
     return (gamepadKey(event) >= 0) ? event->GetParameter<int>("gamepad", -1) : -1;
 }
 
+std::string UIEvent::getEnterKeyHint() const{
+    Rml::Event* event = liveEvent(state);
+    return event ? event->GetParameter<Rml::String>("enterKeyHint", "") : std::string();
+}
+
 bool UIEvent::getCtrlKey() const{
     return intParameter(state, "ctrl_key") != 0;
 }

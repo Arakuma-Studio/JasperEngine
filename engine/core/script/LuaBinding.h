@@ -42,7 +42,8 @@ namespace jasperengine {
 
         static int luaRegisterEvent(lua_State* L);
         static int luaRegisterEngineEvent(lua_State* L);
-        static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive);
+        static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive,
+                                        int32_t priority = 0);
         static int luaUnregisterEvent(lua_State* L);
         static int luaUnregisterEngineEvent(lua_State* L);
         // Pushes the tag RegisterEvent / RegisterEngineEvent give a subscription
@@ -93,7 +94,14 @@ namespace jasperengine {
         static void registerUtilClasses(lua_State *L);
         static void registerThreadClasses(lua_State *L);
         static void registerProfilerClasses(lua_State *L);
+        // What the Profiler table holds for the state (Profiler.gpuTiming's GPU timing), let go
+        static void releaseProfilerState();
         static void registerGameplayClasses(lua_State *L);
+        // S96: Physics / Physics2D shape queries, RaycastHit fields (PhysicsQueriesLua.cpp)
+        static void registerPhysicsQueryClasses(lua_State *L);
+        // spatial queries beside S96's: the NonAlloc overlaps, Physics.debugDrawQueries, MeshRaycast
+        // overlaps (PhysicsQueryLua.cpp)
+        static void registerSpatialQueryClasses(lua_State *L);
         static void registerNavigationClasses(lua_State *L);
         // S76: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride (NavigationComponentsLua.cpp)
         static void registerNavigationComponentClasses(lua_State *L);
@@ -101,6 +109,8 @@ namespace jasperengine {
         static void registerSplineClasses(lua_State *L);
         static void registerNoiseClasses(lua_State *L);
         static void registerTerrainClasses(lua_State *L);
+        // V1: VertexColors (VertexColorClassesLua.cpp)
+        static void registerVertexColorClasses(lua_State *L);
 #if JASPERENGINE_VOXEL
         static void registerVoxelClasses(lua_State *L);
 #endif
@@ -110,8 +120,17 @@ namespace jasperengine {
         static void registerPixelArtClasses(lua_State *L);
         // S52: SortingLayer, the renderers' sorting fields, SortingGroup, SpriteBatch (SortingClassesLua.cpp)
         static void registerSortingClasses(lua_State *L);
+        // S94 F22: OutlineMode, OutlineWidthUnits, Outline (OutlineLua.cpp)
+        static void registerOutlineClasses(lua_State *L);
+        // S94 F49: SpriteSkin (SpriteSkinLua.cpp)
+        static void registerSpriteSkinClasses(lua_State *L);
+        // S94: MaterialPropertyBlock and the Mesh calls taking it, Mesh:setShaderTexture (MaterialPropertyBlockLua.cpp)
+        static void registerMaterialPropertyBlockClasses(lua_State *L);
         // S48: HitStop and HitStopExempt (HitStopClassesLua.cpp)
         static void registerHitStopClasses(lua_State *L);
+        static void registerCullingClasses(lua_State *L);
+        // Fog Profiles, Fog's profile and blend, Fog Zones (after the GameObject classes: reopens Fog)
+        static void registerFogClasses(lua_State *L);
         // S48: Transition, TransitionHandle, TransitionKind, PixelFX.glitch (TransitionClassesLua.cpp)
         static void registerTransitionClasses(lua_State *L);
         // S48: PixelFX.play, PixelFX.set and PixelFXHandle (PixelFxClassesLua.cpp)
@@ -119,6 +138,18 @@ namespace jasperengine {
         // S50: Grid, TilemapLayer, Tileset, TileFlip (TilemapClassesLua.cpp)
         static void registerTilemapClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
+        static void registerDataAssetClasses(lua_State *L);
+        // InputRecording and InputReplay (InputRecordingClassesLua.cpp)
+        static void registerInputRecordingClasses(lua_State *L);
+        static void registerLocalizationClasses(lua_State *L);
+        static void registerSaveGameClasses(lua_State *L);
+        // dialogue-graphs.md R27: Dialogue and DialogueRunner (DialogueClassesLua.cpp); without the
+        // module, the stubs below
+        static void registerDialogueClasses(lua_State *L);
+#ifdef JASPERENGINE_PHYSICS_3D
+        // S96: WheelCollider, VehicleDrivetrain and their value types (VehicleClassesLua.cpp)
+        static void registerVehicleClasses(lua_State *L);
+#endif
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);
         static void registerHtmlUIAnimeClasses(lua_State *L);
@@ -130,8 +161,6 @@ namespace jasperengine {
 #endif
         static void registerCoroutineClasses(lua_State *L);
         static void registerScriptClasses(lua_State *L);
-
-        static void init();
 
         // Shader library values from Lua (binding directory). A Material is a copy
         // (Mesh:getMaterial): the shader its submesh draws with when the material names none
@@ -153,6 +182,11 @@ namespace jasperengine {
         static void releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry);
 
     public:
+        // runs the project's main.lua (Engine starts the project with it; tests run it too)
+        static void init();
+
+        // the names without the module: any use logs once that it is not compiled (R15)
+        static void registerDialogueStubs(lua_State *L);
         LuaBinding();
         virtual ~LuaBinding();
         
@@ -162,6 +196,28 @@ namespace jasperengine {
         // Which Lua state this is: a new state (a restarted engine, an Android activity relaunched
         // in the same process) has a new generation, even at the address of the one it replaces
         static uint64_t getLuaStateGeneration();
+
+        // A private editor preview owns this registry reference until releaseLuaRef(). Its
+        // require() cache starts with engine modules only and persists across preview slices.
+        static int createPreviewModuleCache();
+        class JASPERENGINE_API ScopedModuleCache {
+        public:
+            explicit ScopedModuleCache(int moduleCacheRef);
+            ~ScopedModuleCache();
+            ScopedModuleCache(const ScopedModuleCache&) = delete;
+            ScopedModuleCache& operator=(const ScopedModuleCache&) = delete;
+        private:
+            lua_State* state = nullptr;
+            uint64_t stateGeneration = 0;
+            int previousRegistryRef = 0;
+            int previousPackageRef = 0;
+            int previousPackageLoadedRef = 0;
+            int previousPreviewContextKey = 0;
+        };
+        static bool isPreviewContext(); // main thread, while a ScopedModuleCache is active
+        static int getPreviewContextKey(); // its module-cache registry reference; negative outside previews
+        // Push the private globals shared by project chunks in this preview; false outside one.
+        static bool pushPreviewEnvironment(lua_State* L);
 
 #ifdef JASPERENGINE_PHYSICS_3D
         // Calls `function(self, hit)` on each enabled Lua script of the entity that defines it
@@ -289,6 +345,8 @@ namespace jasperengine {
         // The compiled chunk of a script path becomes the function at `index`: instances made
         // from now on run it
         static void setScriptChunk(lua_State* L, const std::string& path, int index);
+        // A private preview reads a saved script again without unloading unrelated modules.
+        static void invalidateScriptChunk(const std::string& path);
         // Pushes a script property's value as an instance field gets it at creation (an unset
         // prefab or asset is nil; an EntityReference is resolved in `scene` like init's pass 2)
         static void pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& property);

@@ -15,7 +15,7 @@ namespace jasperengine{
 
     public:
 
-        enum Side
+        enum Side : int
         {
             NO_SIDE,
             POSITIVE_SIDE,
@@ -53,9 +53,26 @@ namespace jasperengine{
 
         Plane& normalize(void);
         Plane normalized() const;
-    
+
     };
-    
+
+}
+
+namespace jasperengine::math{
+
+    // A sphere is in a camera's frustum unless it lies wholly behind one of its six planes (the
+    // order of CameraComponent::frustumPlanes); the far plane (index 1) is skipped when the
+    // camera's far clip is 0. RenderSystem::isInsideCamera and the Culling Groups share it.
+    inline bool sphereInFrustum(const Plane planes[6], float farClip, const Vector3& center, float radius){
+        for (int plane = 0; plane < 6; ++plane){
+            if (plane == 1 && farClip == 0)
+                continue;
+            if (planes[plane].getDistance(center) < -radius)
+                return false;
+        }
+        return true;
+    }
+
 }
 
 

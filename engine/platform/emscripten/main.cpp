@@ -5,6 +5,7 @@
 #include "FileWatchService.h"
 #include "../common/PlatformDefaults.h"
 #include "io/ResourcePack.h"
+#include "player/InputScriptRun.h"
 #include "player/PlayerLaunch.h"
 
 #include <emscripten.h>
@@ -103,6 +104,67 @@ static void mountFetchedContentPack() {
         std::printf("content.jpak: %s\n", error.c_str());
 }
 
+// ?input-script=<URL> (input-recorder-and-input-scripts R30): the page's same-origin fetch of the
+// file, before the start scene loads; null with the reason in *error (malloc'd) when it fails
+EM_JS(char*, jasperengineFetchInputScript, (const char* url, char** error), {
+    const fail = (text) => {
+        const length = lengthBytesUTF8(text) + 1;
+        const buffer = _malloc(length);
+        stringToUTF8(text, buffer, length);
+        HEAPU32[error >> 2] = buffer;
+        return 0;
+    };
+    try {
+        const target = new URL(UTF8ToString(url), globalThis.location.href);
+        if (target.origin !== globalThis.location.origin) return fail("not same-origin as the page (" + globalThis.location.origin + ")");
+        // synchronous: main() reads it before the engine starts, as the content pack is read
+        const request = new XMLHttpRequest();
+        request.open("GET", target.href, false);
+        request.send(null);
+        if (request.status !== 200 && request.status !== 0) return fail("HTTP " + request.status);
+        const text = request.responseText;
+        const length = lengthBytesUTF8(text) + 1;
+        const buffer = _malloc(length);
+        stringToUTF8(text, buffer, length);
+        return buffer;
+    } catch (e) {
+        return fail(String(e && e.message ? e.message : e));
+    }
+});
+
+// The URL of ?input-script= fetched into MEMFS, the argument pointed at the copy; false (logged as
+// the run's failure) when the fetch fails
+static bool fetchInputScript(std::vector<std::string>& args) {
+    static const std::string flag = "--input-script=";
+    for (std::string& arg : args) {
+        if (arg.rfind(flag, 0) != 0 || !jasperengine::player::InputScriptRun::isFetchedUrl(arg.substr(flag.size())))
+            continue;
+        const std::string url = arg.substr(flag.size());
+        char* error = nullptr;
+        char* text = jasperengineFetchInputScript(url.c_str(), &error);
+        if (!text) {
+            std::string why = error ? error : "the fetch failed";
+            std::free(error);
+            for (char& c : why) if (c == '"' || c == '\\') c = '\'';
+            std::printf("[input] failed {\"event\": -1, \"error\": \"cannot fetch %s: %s\"}\n", url.c_str(), why.c_str());
+            return false;
+        }
+        const char* copy = "/jasperengine-input-script.input.json";
+        FILE* file = std::fopen(copy, "wb");
+        if (file) {
+            std::fwrite(text, 1, std::strlen(text), file);
+            std::fclose(file);
+        }
+        std::free(text);
+        if (!file) {
+            std::printf("[input] failed {\"event\": -1, \"error\": \"cannot fetch %s: no file system to keep it\"}\n", url.c_str());
+            return false;
+        }
+        arg = flag + copy;
+    }
+    return true;
+}
+
 static void probeFileWatcher() {
     const std::filesystem::path folder = "/jasperengine-watch-probe";
     std::error_code ec;
@@ -129,8 +191,13 @@ int main(int argc, char **argv) {
     // URL carries queries of its own, so unknown items are not errors
     jasperengine::applyPlatformDefaults();
     char* query = jasperengineLocationQuery();
-    const std::vector<std::string> args = jasperengine::player::argsFromQuery(query ? query : "");
+    std::vector<std::string> args = jasperengine::player::argsFromQuery(query ? query : "");
     std::free(query);
+    if (!fetchInputScript(args)) {
+        std::printf("JasperEngine exit code %d\n", static_cast<int>(jasperengine::player::EXIT_INPUT_FAILED));
+        std::fflush(stdout);
+        return jasperengine::player::EXIT_INPUT_FAILED;
+    }
     const int launched = jasperengine::player::launch(args, jasperengine::player::ParseMode::Lenient);
     if (launched >= 0) {
         std::printf("JasperEngine exit code %d\n", launched);

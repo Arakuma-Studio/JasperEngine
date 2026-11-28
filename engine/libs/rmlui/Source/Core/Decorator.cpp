@@ -63,6 +63,11 @@ bool Decorator::PaintsOwnClip() const
 	return false;
 }
 
+bool Decorator::GetMaskClipShape(Element* /*element*/, DecoratorDataHandle /*element_data*/, ClipShape& /*shape*/, Geometry*& /*geometry*/) const
+{
+	return false;
+}
+
 bool DecoratorInstancer::InterpolatesAsImageLayer() const
 {
 	return false;

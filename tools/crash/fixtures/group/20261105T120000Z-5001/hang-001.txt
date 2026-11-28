@@ -1,0 +1,27 @@
+JasperEngine hang report v1
+product: Forest Run
+version: 1.4
+build_id: 0b9e44d1a7c24f2e9d61f3a8b5c7e902-1
+platform: windows-x86_64
+session: 20261105T120000Z-5001
+hang: 1
+stalled_ms: 5250
+threshold_ms: 5000
+phase: lua
+busy_scopes: Loading level > Spawning enemies
+busy_scope: Loading level (budget unlimited, for 9.1 s)
+busy_scope: Spawning enemies (budget 2000 ms, for 5.3 s)
+shutdown: false
+frame: 24718
+last_frame_ms: 16.70
+play_state: playing
+scene: forest-2
+lua: enemies.lua:88 spawnWave
+stack:
+#0 ntdll.dll+0x9d4c4 [NtDelayExecution+0x14]
+#1 KERNELBASE.dll+0x4a1be [SleepEx+0x9e]
+#2 ForestRun.exe+0x7a10 [game::Ai::think+0x50]
+#3 ForestRun.exe+0x7b00 [jasperengine::LuaFunction::call+0x30]
+job system:
+  main (main): busy
+  worker 1 (worker): idle

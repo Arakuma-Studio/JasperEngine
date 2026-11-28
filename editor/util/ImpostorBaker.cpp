@@ -52,6 +52,8 @@ namespace {
         std::vector<uint8_t> albedo, normal;
         int atlasWidth = 0, atlasHeight = 0;
         std::chrono::steady_clock::time_point started;
+        int unreadPasses = 0;
+        std::string unreadReason;
 
         std::vector<editor::ImpostorBakeResult> results;
         std::vector<jobs::Task<void>> writes;
@@ -294,6 +296,8 @@ namespace {
         result.views = state.request.views;
         result.sourceHash = editor::ImpostorBaker::sourceHash(state.project, meshPath);
         result.milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - state.started).count();
+        result.unreadPasses = state.unreadPasses;
+        result.unreadReason = state.unreadReason;
         state.results.push_back(result);
 
         // R68: the encode and the write on a job, through writeFileAtomic
@@ -383,6 +387,8 @@ void editor::ImpostorBaker::update() {
         state.normal.assign(state.albedo.size(), 0);
         state.view = 0;
         state.normalPass = false;
+        state.unreadPasses = 0;
+        state.unreadReason.clear();
         state.loaded = true;
         state.waitingFrame = false;
         state.settleFrames = 0;
@@ -408,6 +414,8 @@ void editor::ImpostorBaker::update() {
             }
         } else {
             Log::warn("Impostor bake could not read a view: %s", readError.c_str());
+            state.unreadPasses++;
+            if (state.unreadReason.empty()) state.unreadReason = readError.empty() ? std::string("the view could not be read back") : readError;
         }
         if (state.normalPass) {
             state.view++;

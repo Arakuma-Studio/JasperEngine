@@ -2,16 +2,24 @@
 # ccache-save's work (action.yml): prints the run's ccache statistics, evicts every entry the run neither
 # used nor wrote (a hit refreshes an entry's mtime), so what remains is the lane's working set, and decides
 # whether to save it: on push to main or a schedule, when the run wrote something, after cutting it to the
-# lane's cap and zeroing the statistics (the next run's are then its own). The build itself runs without a
-# cap (ccache-restore): a cleanup in the middle of a build evicts the restored entries it has not reached
-# yet, and every miss after that evicts more.
+# lane's cap, recompressing it smaller and zeroing the statistics (the next run's are then its own). The
+# build itself runs without a cap (ccache-restore): a cleanup in the middle of a build evicts the restored
+# entries it has not reached yet, and every miss after that evicts more.
 #
 #   LANE=<lane> EVENT=<event> REF=<ref> .github/actions/ccache-save/trim.sh
+#
+# A Namespace cache volume (ccache-restore's JASPER_CCACHE_VOLUME) is trimmed and cut the same way, in
+# place, and never uploaded (save=false): Namespace commits the volume as the job ends, from main's jobs
+# only (tools/ci/plan_lanes.py namespace_labels).
 #
 # Run from the repository root after ccache-restore. Writes save=true|false to $GITHUB_OUTPUT.
 set -euo pipefail
 
 DIR=build/.cache/ccache
+# (macOS: the volume's own directory; Linux binds it at DIR, which its image mounts)
+[[ "${JASPER_CCACHE_VOLUME:-}" == 1 && "$RUNNER_OS" != Linux ]] && DIR="$CCACHE_DIR"
+# the level a saved entry is recompressed to (below)
+RECOMPRESS_LEVEL=9
 out() { echo "save=$1" >> "${GITHUB_OUTPUT:-/dev/stdout}"; }
 
 if [[ -z "${JASPER_CCACHE_LANE:-}" ]]; then
@@ -45,7 +53,7 @@ save=false
 if [[ "$EVENT" == schedule || ( "$EVENT" == push && "$REF" == refs/heads/main ) ]]; then
     # an object or manifest written since the restore (ccache rewrites its stats files on every hit)
     new="$(find "$DIR" -type f -newer "$JASPER_CCACHE_MARKER" ! -name stats ! -name '*.lock' \
-        ! -name ccache.conf ! -path '*/tmp/*' -print -quit 2> /dev/null || true)"
+        ! -name ccache.conf ! -path "$DIR/tmp/*" -print -quit 2> /dev/null || true)"
     if [[ -n "$new" ]]; then save=true; else echo "ccache-save: nothing new since the restore"; fi
 else
     echo "ccache-save: $EVENT runs restore only"
@@ -62,11 +70,39 @@ echo "ccache-save: the run's working set (entries used or written), cap $JASPER_
 du -sh "$DIR"
 
 if [[ "$save" == true ]]; then
+    # only a working set over the cap is cut: ccache's cleanup holds each of its 16 subdirectories to a
+    # 16th of the cap and cuts one over that to 80 % of it, so under the cap it still evicted the
+    # fullest subdirectories' entries, which the next run missed (linux, 0.85 GB under a 0.95G cap: 240
+    # of 5,312 objects went, and the next build of the same commit missed 238 of its 5,284 compiles)
+    used="$(run_ccache --print-stats | awk '$1 == "cache_size_kibibyte" { printf "%.0f\n", $2 * 1024 }')"
+    cap="$(awk -v s="$JASPER_CCACHE_CAP" 'BEGIN {
+        if (!match(s, /^[0-9.]+/)) exit
+        n = substr(s, 1, RLENGTH); u = substr(s, RLENGTH + 1)
+        m["k"] = 1e3; m["M"] = 1e6; m["G"] = 1e9; m["T"] = 1e12; m[""] = 1e9
+        m["Ki"] = 2^10; m["Mi"] = 2^20; m["Gi"] = 2^30; m["Ti"] = 2^40
+        if (u in m) printf "%.0f\n", n * m[u] }')"
     CAP="$JASPER_CCACHE_CAP"
-    # the oldest-used entries go first when the working set is over the cap
-    run_ccache --cleanup > /dev/null && run_ccache --zero-stats > /dev/null \
-        || { echo "ccache-save: the cut to $JASPER_CCACHE_CAP failed; nothing saved"; out false; exit 0; }
-    echo "ccache-save: saving"
+    if [[ -n "$used" && -n "$cap" ]] && (( used <= cap )); then
+        echo "ccache-save: the working set is within the cap; nothing cut"
+    else
+        # the oldest-used entries go first
+        run_ccache --cleanup > /dev/null \
+            || { echo "ccache-save: the cut to $JASPER_CCACHE_CAP failed; nothing saved"; out false; exit 0; }
+    fi
+    # zstd level 9 instead of the level 1 a build writes: 14 % smaller (a linux entry's 296 MB: 255 MB,
+    # 23 s on 2 CPUs; level 19, 22 % in 277 s), room in the repository's budget for every lane's entry
+    # (docs/testing.md "CI"). After the cut: ccache 4.5 gives each rewritten file a new mtime,
+    # which would lose the order the cut evicts by. A hit decompresses at the same speed
+    run_ccache --recompress "$RECOMPRESS_LEVEL" > /dev/null \
+        || { echo "ccache-save: recompressing failed; nothing saved"; out false; exit 0; }
+    run_ccache --zero-stats > /dev/null \
+        || { echo "ccache-save: zeroing the statistics failed; nothing saved"; out false; exit 0; }
     du -sh "$DIR"
+    if [[ "${JASPER_CCACHE_VOLUME:-}" == 1 ]]; then
+        echo "ccache-save: kept on the Namespace cache volume, which Namespace commits as the job ends"
+        save=false
+    else
+        echo "ccache-save: saving"
+    fi
 fi
 out "$save"

@@ -10,9 +10,6 @@
 #include "System.h"
 #include "stb_image_write.h"
 #include "stb_image_resize2.h"
-#include "util/STBText.h"
-#include "pixelart/BitmapFont.h"
-#include "pixelart/BitmapText.h"
 #include "jobs/JobSystem.h"
 
 #include <algorithm>
@@ -125,15 +122,9 @@ Vector2 editor::GraphicUtils::getRectTransformCenter(Scene* scene, Entity entity
     Vector2 center = Vector2(0, 0);
     Signature signature = scene->getSignature(entity);
     if (signature.test(scene->getComponentId<TextComponent>())) {
-        TextComponent& text = scene->getComponent<TextComponent>(entity);
-        if (text.pivotBaseline && text.bitmapText) {
-            center.y = text.bitmapText->getAscent(text.pixelUnit);
-        }else if (text.pivotBaseline && text.stbtext) {
-            center.y = text.stbtext->getAscent();
-        }
-        if (text.pivotCentered) {
-            center.x = layout.width / 2.0f;
-        }
+        // the alignment's offset of the text's box (UISystem::finishTextGeometry)
+        const TextComponent& text = scene->getComponent<TextComponent>(entity);
+        center = Vector2(-text.boxMin.x, -text.boxMin.y);
     }
     return center;
 }

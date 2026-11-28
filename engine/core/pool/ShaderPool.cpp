@@ -220,6 +220,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::TITLE_GLINT;
         return true;
     }
+    if (typeToken == "cavity") {
+        shaderType = ShaderType::CAVITY;
+        return true;
+    }
 
     return false;
 }
@@ -649,6 +653,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::TITLE_ENV: return lowerCase ? "titleenv" : "Title Environment";
         case ShaderType::TITLE_GLINT_SPRITE: return lowerCase ? "titleglintsprite" : "Title Glint Sprite";
         case ShaderType::TITLE_GLINT: return lowerCase ? "titleglint" : "Title Glint";
+        case ShaderType::CAVITY: return lowerCase ? "cavity" : "Cavity";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -692,10 +697,32 @@ uint64_t ShaderPool::getDirectionalOnlyProperty(){
     return shaderPropertyBit(44);
 }
 
+uint64_t ShaderPool::getLight2DStepsProperty(){
+    return shaderPropertyBit(55);
+}
+
 // MESH's 'Lfd': the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in the variant
 // fading draws use
 uint64_t ShaderPool::getLodFadeProperty(){
     return shaderPropertyBit(40);
+}
+
+// MESH 56-59, after S78's 'Lst' 55: 'Vcv' the view, 'Vcs' one channel as grey, 'Vk1' 'Vk2' its index
+// (R 0, G 1, B 2, A 3). Only the editor's Scene view asks for them (RenderSystem::drawMesh)
+uint64_t ShaderPool::getVertexColorViewProperties(int channel){
+    if (channel <= 0)
+        return shaderPropertyBit(56);
+    const int index = std::min(channel, 4) - 1;
+    uint64_t bits = shaderPropertyBit(56) | shaderPropertyBit(57);
+    if (index & 1)
+        bits |= shaderPropertyBit(58);
+    if (index & 2)
+        bits |= shaderPropertyBit(59);
+    return bits;
+}
+
+uint64_t ShaderPool::getVertexColorViewMask(){
+    return shaderPropertyBit(56) | shaderPropertyBit(57) | shaderPropertyBit(58) | shaderPropertyBit(59);
 }
 
 uint64_t ShaderPool::getWaterExclusionProperty(){
@@ -750,6 +777,14 @@ uint64_t ShaderPool::getTerrainWorldProperty(ShaderType shaderType){
     }
 }
 
+uint64_t ShaderPool::getDepthNormalsProperty(){
+    return shaderPropertyBit(26);
+}
+
+uint64_t ShaderPool::getCavityProperties(bool screen, bool world){
+    return (screen ? shaderPropertyBit(0) : 0) | (world ? shaderPropertyBit(1) : 0);
+}
+
 uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:    return shaderPropertyBit(52);
@@ -791,8 +826,8 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 55;
-        case ShaderType::DEPTH:  return 26;
+        case ShaderType::MESH:   return 60;
+        case ShaderType::DEPTH:  return 27;
         case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 6;
         case ShaderType::POINTS: return 5;
@@ -809,13 +844,15 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
-        case ShaderType::HTMLUI_POST: return 7;
+        case ShaderType::HTMLUI_POST: return 8;
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
         case ShaderType::PROBE_FILTER: return 0;
         // Lok (the look program), Mfl (the solver with manual filtering)
         case ShaderType::FLUID:  return 2;
         case ShaderType::SHADOW_CACHE: return 1;
+        // 'Pnt': the point lights' shadows (a shadowed point fog light, docs/specs/S101-vapor.md R14)
+        case ShaderType::VOLUMETRIC_FOG: return 1;
         // the source's texture type: 2D (none), array, cube or 3D
         case ShaderType::PASS_PREVIEW: return 3;
         // ShaderPool::getParticlesProperties
@@ -836,6 +873,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::TITLE_ENV: return 4;
         case ShaderType::TITLE_GLINT_SPRITE: return 0;
         case ShaderType::TITLE_GLINT: return 4;
+        // S100's terms: 'Scr' Screen, 'Wld' World (both: Both)
+        case ShaderType::CAVITY: return 2;
         default:                 return 0;
     }
 }
@@ -928,6 +967,14 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 53: return shortName ? "Twd" : "Terrain World";
             // a Tilemap Layer's tiles sample inside their frame (S50 R35, TILE_CLAMP_FRAME)
             case 54: return shortName ? "Tcl" : "Tile Clamp Frame";
+            // S78: the scene's Light Steps on a 2D-lit variant (LIGHT2D_STEPS, includes/lighting2d.glsl)
+            case 55: return shortName ? "Lst" : "Light Steps";
+            // the editor's Vertex Color Draw Mode (V1 R102, getVertexColorViewProperties): the
+            // view, one channel as grey, and that channel's index
+            case 56: return shortName ? "Vcv" : "Vertex Color View";
+            case 57: return shortName ? "Vcs" : "Vertex Color View Channel";
+            case 58: return shortName ? "Vk1" : "Vertex Color View Channel Bit 1";
+            case 59: return shortName ? "Vk2" : "Vertex Color View Channel Bit 2";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -965,6 +1012,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 23: return shortName ? "Dth" : "Foliage Dither";
             case 24: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
             case 25: return shortName ? "Twd" : "Terrain World"; // T4 R58
+            case 26: return shortName ? "Cvn" : "Cavity Normals"; // S100 R2
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -1030,6 +1078,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 4: return shortName ? "Blr" : "Blur";
             case 5: return shortName ? "Unp" : "Unpremultiply";
             case 6: return shortName ? "Yuv" : "YUV";
+            case 7: return shortName ? "Bmd" : "Blend Mode";
         }
     } else if (shaderType == ShaderType::SHADOW_CACHE) {
         switch (bit) {
@@ -1038,6 +1087,15 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
     } else if (shaderType == ShaderType::LIGHTING_PASS) {
         switch (bit) {
             case 0: return shortName ? "Oir" : "OIT Resolve";
+        }
+    } else if (shaderType == ShaderType::CAVITY) {
+        switch (bit) {
+            case 0: return shortName ? "Scr" : "Screen";
+            case 1: return shortName ? "Wld" : "World";
+        }
+    } else if (shaderType == ShaderType::VOLUMETRIC_FOG) {
+        switch (bit) {
+            case 0: return shortName ? "Pnt" : "Point Shadows";
         }
     } else if (shaderType == ShaderType::PASS_PREVIEW) {
         switch (bit) {
@@ -1396,8 +1454,9 @@ std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, u
     // ('Wwk' and 'Wex' first: their block and textures are theirs alone, the water draws without
     // wakes or holes; then 'Dlo': the general variant draws a directional-only scene the same, with
     // the point and spot resources it binds by reflection. 'Dlo' is the built-in Lit's, the water
-    // bits a manifest shader's: never in one variant)
-    static const int meshBits[] = {43, 42, 44, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Wwk Wex Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
+    // bits a manifest shader's: never in one variant. 'Lst' before them all: the smooth 2D light
+    // reads the same block)
+    static const int meshBits[] = {55, 43, 42, 44, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Lst Wwk Wex Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
     static const int depthBits[] = {7, 0};                               // Ams Tex
     static const int gbufferBits[] = {16, 17, 8, 0};                     // Occ Uv2 Mrt Bct
 
@@ -1971,6 +2030,9 @@ ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
     // the high-quality shadow filters only exist in a variant that receives shadows
     if (type == ShaderType::MESH && !(key.properties & shaderPropertyBit(4)))
         key.properties &= ~getShadowsHQProperty();
+    // Light Steps only exist on the 2D light path
+    if (type == ShaderType::MESH && !(key.properties & shaderPropertyBit(22)))
+        key.properties &= ~getLight2DStepsProperty();
     // the built-in Lit's unlit 2D light variant took 'Tan' without 'Nmp' until November 2026;
     // the 2D lights read tangents only for a normal map. A shader with a custom id keeps it: a
     // library shader may @require tangents on that path

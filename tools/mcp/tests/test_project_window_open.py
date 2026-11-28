@@ -6,6 +6,10 @@ click still shows it in the Inspector). No text buffer opens. Open as Text stays
 The Inspector edits a .material as Unity's does: the rows of a submesh's material, each gesture one project undo step
 on the file (byte-exact back), the linked submeshes following, the open scene's undo untouched. An agent's edit reaches
 the rows. A file that did not read completely is not written without the lossy-save modal's answer.
+
+The Hierarchy's timed refresh (S98 E11, REQ-31), last: with the structure unchanged it fills the rows
+of the last full rebuild again in place instead of building the tree anew; a name written without a
+command (Lua in Edit mode, not undoable, so no structural change) still shows in its row.
 """
 
 from __future__ import annotations
@@ -436,3 +440,29 @@ async def test_a_write_keeps_guid_references_unknown_keys_and_line_endings(ed: E
     file.write_bytes(original)
     await ed.call("sync_files")
     await ui.frames(6)
+
+
+# ---- the Hierarchy's timed refresh (S98 REQ-31) ----
+
+
+async def hierarchy_wait_item(ed: Editor, name: str, frames: int = 300) -> None:
+    for _ in range(frames // 5):
+        if ed.ui_items().get(name):
+            return
+        await ed.call("wait", frames=5)
+    ed.fail(f"{name} is not drawn: {sorted(k for k in ed.ui_items() if k.startswith('hierarchy.node.'))}")
+
+
+async def test_name_written_without_a_command_shows(ed: Editor):
+    scene = (await ed.call("create_scene", name="Refresh", type="3D"))["scene"]["id"]
+    for name in ("Before", "RefreshMe", "After"):
+        await ed.call("create_entity", scene=scene, type="cube", name=name, select=False)
+    await ed.call("focus_window", window="hierarchy")
+    await hierarchy_wait_item(ed, "hierarchy.node.RefreshMe")
+    renamed = await ed.call("eval_lua", allow_edit_mode=True,
+                            code='local e = scene:findEntity("RefreshMe"); GameObject(scene, e).name = "Refreshed"; return e')
+    ed.check(renamed["values"][0], f"the GameObject was renamed: {renamed}")
+    await hierarchy_wait_item(ed, "hierarchy.node.Refreshed")
+    ed.check(not ed.ui_items().get("hierarchy.node.RefreshMe"), "the old name's row is gone")
+    for name in ("Before", "After"):
+        ed.check(ed.ui_items().get(f"hierarchy.node.{name}"), f"the row {name} stays")

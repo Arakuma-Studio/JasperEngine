@@ -11,6 +11,7 @@
 #include "texture/MaterialPbr.h"
 #include "util/OutOfLineValue.h"
 #include "shader/ShaderUniforms.h"
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -33,13 +34,57 @@ namespace jasperengine{
     // @state default, else to the engine's legacy behaviour, so a default material renders
     // exactly as before. NONE in MaterialBlendMode means opaque (no blending); the value is
     // not called OPAQUE because wingdi.h defines that name as a macro.
+    // CUSTOM blends with the material's own factors and operation (MaterialBlendFactors, Unity's
+    // ShaderLab "Blend <src> <dst>" and "BlendOp")
     enum class MaterialBlendMode {
         AUTO,
         NONE,
         ALPHA,
         PREMULTIPLIED,
         ADDITIVE,
-        MULTIPLY
+        MULTIPLY,
+        CUSTOM
+    };
+
+    // Unity's BlendMode factor names; only the fixed-function factors every backend has (no
+    // dual-source blending)
+    enum class MaterialBlendFactor {
+        ZERO,
+        ONE,
+        SRC_COLOR,
+        ONE_MINUS_SRC_COLOR,
+        SRC_ALPHA,
+        ONE_MINUS_SRC_ALPHA,
+        DST_COLOR,
+        ONE_MINUS_DST_COLOR,
+        DST_ALPHA,
+        ONE_MINUS_DST_ALPHA
+    };
+
+    // Unity's BlendOp; MIN and MAX ignore the factors, as on every graphics API
+    enum class MaterialBlendOp {
+        ADD,
+        SUBTRACT,
+        REVERSE_SUBTRACT,
+        MIN,
+        MAX
+    };
+
+    // the factors of MaterialBlendMode::CUSTOM, colour and alpha (the defaults draw opaque:
+    // One Zero)
+    struct JASPERENGINE_API MaterialBlendFactors {
+        MaterialBlendFactor src = MaterialBlendFactor::ONE;
+        MaterialBlendFactor dst = MaterialBlendFactor::ZERO;
+        MaterialBlendFactor srcAlpha = MaterialBlendFactor::ONE;
+        MaterialBlendFactor dstAlpha = MaterialBlendFactor::ZERO;
+        MaterialBlendOp op = MaterialBlendOp::ADD;
+        MaterialBlendOp opAlpha = MaterialBlendOp::ADD;
+
+        bool operator == (const MaterialBlendFactors& other) const {
+            return src == other.src && dst == other.dst && srcAlpha == other.srcAlpha && dstAlpha == other.dstAlpha && op == other.op &&
+                   opAlpha == other.opAlpha;
+        }
+        bool operator != (const MaterialBlendFactors& other) const { return !(*this == other); }
     };
 
     enum class MaterialCullMode {
@@ -126,7 +171,7 @@ namespace jasperengine{
 
     // colour channels a draw writes: -1 = AUTO (manifest @state colorwrite, else all),
     // otherwise a mask of these bits (0 = depth/stencil only)
-    enum MaterialColorWriteBits {
+    enum MaterialColorWriteBits : int {
         MATERIAL_COLOR_WRITE_R = 1,
         MATERIAL_COLOR_WRITE_G = 2,
         MATERIAL_COLOR_WRITE_B = 4,
@@ -151,6 +196,13 @@ namespace jasperengine{
         std::vector<std::pair<std::string, Texture>> shaderTextures;
         std::vector<std::string> shaderFeatures;
         MaterialBlendMode blendMode = MaterialBlendMode::AUTO;
+        // as Material's (blendMode CUSTOM)
+        MaterialBlendFactor blendSrc = MaterialBlendFactor::ONE;
+        MaterialBlendFactor blendDst = MaterialBlendFactor::ZERO;
+        MaterialBlendFactor blendSrcAlpha = MaterialBlendFactor::ONE;
+        MaterialBlendFactor blendDstAlpha = MaterialBlendFactor::ZERO;
+        MaterialBlendOp blendOp = MaterialBlendOp::ADD;
+        MaterialBlendOp blendOpAlpha = MaterialBlendOp::ADD;
         MaterialCullMode cullMode = MaterialCullMode::AUTO;
         MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
         MaterialDepthTest depthTest = MaterialDepthTest::AUTO;
@@ -160,15 +212,66 @@ namespace jasperengine{
         int colorWrite = -1;
         MaterialPassOrder order = MaterialPassOrder::AFTER;
 
+        MaterialBlendFactors getBlendFactors() const {
+            MaterialBlendFactors factors;
+            factors.src = blendSrc;
+            factors.dst = blendDst;
+            factors.srcAlpha = blendSrcAlpha;
+            factors.dstAlpha = blendDstAlpha;
+            factors.op = blendOp;
+            factors.opAlpha = blendOpAlpha;
+            return factors;
+        }
+
         bool operator == (const MaterialPass& other) const {
             return shader == other.shader && shaderParams == other.shaderParams &&
                    shaderTextures == other.shaderTextures && shaderFeatures == other.shaderFeatures &&
-                   blendMode == other.blendMode && cullMode == other.cullMode &&
+                   blendMode == other.blendMode && getBlendFactors() == other.getBlendFactors() && cullMode == other.cullMode &&
                    depthWrite == other.depthWrite && depthTest == other.depthTest &&
                    depthOffsetFactor == other.depthOffsetFactor && depthOffsetUnits == other.depthOffsetUnits &&
                    stencil == other.stencil && colorWrite == other.colorWrite && order == other.order;
         }
         bool operator != (const MaterialPass& other) const { return !(*this == other); }
+    };
+
+    // Property Overrides (Unity's MaterialPropertyBlock, saved with the renderer, S94 F7): values
+    // and textures by the shader's member or uniform name, over the material's. On a Mesh, and per
+    // submesh, which wins over the Mesh's. Custom and library shaders take any member and @texture;
+    // the built-in Lit takes baseColorFactor, emissiveFactor (colours linear) and baseColorTexture.
+    // Empty: nothing is looked up, nothing changes.
+    struct JASPERENGINE_API ShaderPropertyOverrides {
+        ShaderUniformValues values;
+        std::vector<std::pair<std::string, Texture>> textures;
+
+        bool empty() const { return values.empty() && textures.empty(); }
+        void clear() { values.clear(); textures.clear(); }
+        // the texture overriding `uniform`, null without one
+        const Texture* findTexture(const std::string& uniform) const {
+            for (const auto& texture : textures){
+                if (texture.first == uniform)
+                    return &texture.second;
+            }
+            return nullptr;
+        }
+        bool operator == (const ShaderPropertyOverrides& other) const {
+            return values == other.values && textures == other.textures;
+        }
+        bool operator != (const ShaderPropertyOverrides& other) const { return !(*this == other); }
+    };
+
+    // the textures a submesh draws with when its Property Overrides name some (made at load,
+    // RenderSystem::resolveOverrideTextures): its material's shader textures with the overrides'
+    // over them, and the built-in Lit's base colour texture an override names
+    struct JASPERENGINE_API SubmeshOverrideTextures {
+        std::vector<std::pair<std::string, Texture>> shaderTextures;
+        bool hasShaderTextures = false;
+        Texture baseColor;
+        bool hasBaseColor = false;
+
+        bool operator == (const SubmeshOverrideTextures& other) const {
+            return shaderTextures == other.shaderTextures && hasShaderTextures == other.hasShaderTextures &&
+                   baseColor == other.baseColor && hasBaseColor == other.hasBaseColor;
+        }
     };
 
     // Material::extraPass: a MaterialPass kept out of line, so the materials without one (most
@@ -241,6 +344,13 @@ namespace jasperengine{
         ShaderGlobalBindings shaderGlobalBindings;
 
         MaterialBlendMode blendMode = MaterialBlendMode::AUTO;
+        // Blend Mode Custom's factors (blendMode CUSTOM; ignored otherwise)
+        MaterialBlendFactor blendSrc = MaterialBlendFactor::ONE;
+        MaterialBlendFactor blendDst = MaterialBlendFactor::ZERO;
+        MaterialBlendFactor blendSrcAlpha = MaterialBlendFactor::ONE;
+        MaterialBlendFactor blendDstAlpha = MaterialBlendFactor::ZERO;
+        MaterialBlendOp blendOp = MaterialBlendOp::ADD;
+        MaterialBlendOp blendOpAlpha = MaterialBlendOp::ADD;
         MaterialCullMode cullMode = MaterialCullMode::AUTO;
         MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
         MaterialDepthTest depthTest = MaterialDepthTest::AUTO;
@@ -295,6 +405,7 @@ namespace jasperengine{
                    shaderFeatures == other.shaderFeatures &&
                    shaderGlobalBindings == other.shaderGlobalBindings &&
                    blendMode == other.blendMode &&
+                   getBlendFactors() == other.getBlendFactors() &&
                    cullMode == other.cullMode &&
                    depthWrite == other.depthWrite &&
                    depthTest == other.depthTest &&
@@ -311,6 +422,17 @@ namespace jasperengine{
 
         bool operator != (const Material& other) const {
             return !(*this == other);
+        }
+
+        MaterialBlendFactors getBlendFactors() const {
+            MaterialBlendFactors factors;
+            factors.src = blendSrc;
+            factors.dst = blendDst;
+            factors.srcAlpha = blendSrcAlpha;
+            factors.dstAlpha = blendDstAlpha;
+            factors.op = blendOp;
+            factors.opAlpha = blendOpAlpha;
+            return factors;
         }
     };
 

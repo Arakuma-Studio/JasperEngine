@@ -41,6 +41,8 @@ namespace jasperengine {
         BeginDrag, Drag, EndDrag, Drop, Scroll,
         // ui-components: the selection callbacks (a BaseEventData or AxisEventData argument)
         Select, Deselect, Move, Submit, Cancel,
+        // culling-group-and-simulation-distance R17: Simulation Culling froze or resumed the GameObject
+        SimulationCulled, SimulationResumed,
         Count
     };
     static_assert(static_cast<int>(ScriptMessage::Count) < 64, "ScriptMessageMask holds 63 messages (all-ones mask shifts by Count)");

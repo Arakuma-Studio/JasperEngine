@@ -19,6 +19,8 @@
 #include "pixelart/cleanup/CleanupImportCook.h"
 #include "pixelart/cleanup/CleanupRecipe.h"
 #include "Out.h"
+#include "sprite/SpriteSheetPool.h"
+#include "texture/PsdLayerImport.h"
 
 #include "stb_image_resize2.h"
 
@@ -324,6 +326,34 @@ bool TextureImporterView::boolField(const char* label, const std::string& key, b
 }
 
 void TextureImporterView::drawGeneral(const ResolvedTextureSettings& r){
+    // S94 F48: a PSD/PSB is one flattened image, or its layers as sprites (Unity's PSD Importer)
+    const bool allPsd = !assetPaths.empty() && std::all_of(assetPaths.begin(), assetPaths.end(), [](const std::string& p){ return isPsdPath(p); });
+    if (allPsd){
+        const TextureImportSettings psd = workingSettings();
+        comboField("Import Mode", "importMode", textureEnumValues("importMode"), {"Flattened", "Layers (sprites + prefab)"},
+                   textureImportModeName(psd.resolvedImportMode()),
+                   "Layers: every visible pixel layer becomes a sprite of one packed sheet, and <file>.prefab places them as in the document.");
+        if (psd.resolvedImportMode() == TextureImportMode::Layers){
+            boolField("Character Rig", "characterRig", psd.characterRig.value_or(false),
+                      "The prefab gets the layers' skin bones as GameObjects, each layer's Sprite Skin bound to them.");
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Layers");
+            ImGui::TableSetColumnIndex(1);
+            if (assetPaths.size() == 1 && PsdLayerImporter::get().isLayered(assetPaths[0])){
+                std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(assetPaths[0]);
+                ImGui::TextDisabled("%d sprites; %s", sheet ? sheet->frameCount() : 0, PsdLayerImporter::prefabPathOf(assetPaths[0]).c_str());
+                if (ImGui::SmallButton("Reimport Layers")){
+                    std::string error;
+                    PsdLayerImporter::get().invalidate(assetPaths[0]);
+                    if (!PsdLayerImporter::get().writePrefab(assetPaths[0], error)) Out::warning("%s: %s", assetPaths[0].c_str(), error.c_str());
+                }
+            }else{
+                ImGui::TextDisabled("Apply to import the layers");
+            }
+        }
+    }
     const std::vector<std::string>& types = textureEnumValues("type");
     comboField("Texture Type", "type", types, importerTypeLabels(), textureImportTypeName(r.type),
                "What the texture is: it picks the format, the colour space and the mip chain.");
@@ -391,6 +421,11 @@ void TextureImporterView::drawGeneral(const ResolvedTextureSettings& r){
                    textureChannelName(r.channel), "The source channel a single-channel texture keeps.");
     if (r.type == TextureImportType::Normal)
         boolField("Flip Green Channel", "flipGreen", r.flipGreen, "For DirectX-style (Y down) normal maps.");
+    if (r.type == TextureImportType::HDR)
+        boolField("Remove Sun Disc", "removeSunDisc", r.removeSunDisc,
+                  "For a sky whose sun a Directional Light gives (Skybox > Extract Sun): the cook clamps the sun's disc (up to 5 "
+                  "degrees) to the sky around it, so image-based lighting does not count the sun twice. A sky with no distinct sun "
+                  "cooks as it is.");
 }
 
 void TextureImporterView::drawAdvanced(const ResolvedTextureSettings& r){

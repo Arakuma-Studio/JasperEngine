@@ -35,6 +35,20 @@ namespace{
         {ViewDrawMode::SHADED_WIREFRAME, "shaded_wireframe", "Shaded Wireframe"},
         {ViewDrawMode::LOD_LEVEL, "lod_level", "LOD Level"},
         {ViewDrawMode::OVERDRAW, "overdraw", "Overdraw"},
+        {ViewDrawMode::VERTEX_COLOR, "vertex_color", "Vertex Color"},
+    };
+
+    struct ChannelName{
+        ViewVertexColorChannel channel;
+        const char* key;
+        const char* label;
+    };
+    const ChannelName kChannels[VERTEX_COLOR_CHANNEL_COUNT] = {
+        {ViewVertexColorChannel::RGB, "rgb", "RGB"},
+        {ViewVertexColorChannel::R, "r", "R"},
+        {ViewVertexColorChannel::G, "g", "G"},
+        {ViewVertexColorChannel::B, "b", "B"},
+        {ViewVertexColorChannel::A, "a", "A"},
     };
 
     const Vector4 kWireColor(0.05f, 0.05f, 0.05f, 1.0f);
@@ -64,6 +78,28 @@ const char* editor::drawModeLabel(ViewDrawMode mode){
 
 bool editor::drawModeHasWires(ViewDrawMode mode){
     return mode == ViewDrawMode::WIREFRAME || mode == ViewDrawMode::SHADED_WIREFRAME;
+}
+
+const char* editor::vertexColorChannelKey(ViewVertexColorChannel channel){
+    for (const ChannelName& name : kChannels)
+        if (name.channel == channel) return name.key;
+    return "rgb";
+}
+
+bool editor::vertexColorChannelFromKey(std::string_view key, ViewVertexColorChannel& channel){
+    for (const ChannelName& name : kChannels){
+        if (key == name.key){
+            channel = name.channel;
+            return true;
+        }
+    }
+    return false;
+}
+
+const char* editor::vertexColorChannelLabel(ViewVertexColorChannel channel){
+    for (const ChannelName& name : kChannels)
+        if (name.channel == channel) return name.label;
+    return "RGB";
 }
 
 const SceneWireframe::Edges* SceneWireframe::edgesOf(MeshComponent& mesh, Entity entity, unsigned int submesh, unsigned int level){
@@ -202,7 +238,7 @@ void editor::drawTerrainOverlayLegend(ImDrawList* drawList, ImVec2 imageMin, ImV
     }
 }
 
-void editor::drawStatsBox(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax, const std::vector<std::string>& lines){
+ImVec2 editor::drawStatsBox(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax, const std::vector<std::string>& lines){
     float boxWidth = 0.0f;
     for (const std::string& line : lines) boxWidth = std::max(boxWidth, ImGui::CalcTextSize(line.c_str()).x);
     const ImVec2 pad = Theme::dpi(ImVec2(10.0f, 8.0f));
@@ -216,6 +252,7 @@ void editor::drawStatsBox(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax
         const ImU32 color = i == 0 ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 255);
         drawList->AddText(ImVec2(boxMin.x + pad.x, boxMin.y + pad.y + lineHeight * (float)i), color, lines[i].c_str());
     }
+    return ImVec2(boxMin.x + pad.x, boxMin.y + pad.y);
 }
 
 void editor::appendMeshStatsLines(std::vector<std::string>& lines, uint64_t vertices, const LodFrameStats& lod, bool lodEnabled){

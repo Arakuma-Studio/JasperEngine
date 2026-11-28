@@ -191,6 +191,9 @@ namespace jasperengine {
         // what was logged after it (a test's log capture).
         static void flushSummaries();
         static bool flushForCrash(std::chrono::milliseconds timeout, uint64_t* unwritten = nullptr) noexcept;
+        // Tests: runs on the sweeping thread after it took the rate limit's summaries of ended
+        // windows and before it logs them (nullptr: none)
+        static void setSweepHookForTesting(void (*hook)());
 
         // The engine frame records are stamped with (Engine::systemDraw)
         static void setFrame(uint64_t frame);

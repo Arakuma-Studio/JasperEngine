@@ -54,6 +54,9 @@ public:
 	/// Loads the current source file if needed. This normally happens automatically during layouting.
 	void EnsureSourceLoaded();
 
+	/// Inline descendants changed: regenerate their SVG source on the next render.
+	void DirtySource();
+
 	/// Gets the SVG XML data (as text) if using inline SVG, if using a file source this will return a blank string
 	/// @param[out] content The SVG XML data (as text) or blank string
 	void GetInnerRML(String& content) const override;
@@ -68,6 +71,8 @@ protected:
 
 	/// Regenerates the element's geometry.
 	void OnResize() override;
+	void OnChildAdd(Element* child) override;
+	void OnChildRemove(Element* child) override;
 
 	/// Checks for changes to the image's source or dimensions.
 	/// @param[in] changed_attributes A list of attributes changed on the element.
@@ -87,6 +92,7 @@ private:
 	void GenerateFittedGeometry(const Function<SharedPtr<SVG::SVGData>(const Vector2i*)>& get_handle);
 
 	String svg_data;
+	unsigned long source_revision = 0;
 	bool svg_dirty = false;
 
 	SharedPtr<SVG::SVGData> handle;

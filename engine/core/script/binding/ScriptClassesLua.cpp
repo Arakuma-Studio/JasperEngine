@@ -22,6 +22,7 @@
 #include "manager/ObjectManager.h"
 #include "manager/SceneManager.h"
 #include "registry/EntityCloner.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "component/Transform.h"
 #include "component/ScriptComponent.h"
 #include "component/ActionComponent.h"
@@ -32,6 +33,7 @@
 #include "component/CameraComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/FogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/OnScreenControlComponents.h"
@@ -300,6 +302,7 @@ namespace {
             {"UIDocument", hasComponent<UIDocumentComponent>()},
             {"Bone", hasComponent<BoneComponent>()},
             {"Fog", hasComponent<FogComponent>()},
+            {"FogZone", hasComponent<FogZoneComponent>()},
             {"Skybox", hasComponent<SkyboxComponent>()},
             {"ReflectionProbe", hasComponent<ReflectionProbeComponent>()},
             {"FluidSimulation", hasComponent<FluidSimulationComponent>()},
@@ -479,8 +482,10 @@ int LuaBinding::luaFind(lua_State* L) {
     }
     for (Scene* scene : findScenes()) {
         for (Entity entity : scene->getEntityList()) {
+            // a further Audio Source's slot entity is a component in Unity, not a GameObject to find
             if (scene->isEntityCreated(entity) && scene->getEntityNameRef(entity) == path.back() &&
-                    scene->isEntityActiveInHierarchy(entity) && matchesPath(scene, entity, path, fromRoot)) {
+                    scene->isEntityActiveInHierarchy(entity) && matchesPath(scene, entity, path, fromRoot) &&
+                    !AudioSourceSlots::isSlot(scene, entity)) {
                 pushGameObject(L, scene, entity);
                 return 1;
             }
@@ -647,7 +652,22 @@ void LuaBinding::registerScriptClasses(lua_State* L) {
         .addFunction("add", &ScriptEvent::luaAdd)
         .addFunction("remove", &ScriptEvent::luaRemove)
         .addFunction("has", &ScriptEvent::luaHas)
+        .addFunction("getListeners", &ScriptEvent::luaGetListeners)
+        .addFunction("cancel", &ScriptEvent::luaCancel)
         .addProperty("listenerCount", &ScriptEvent::listenerCount)
+        .addStaticProperty("MONITOR", &ScriptEvent::monitorPriority)
         .addFunction("__tostring", &ScriptEvent::luaToString)
+        .endClass()
+        .deriveClass<CancellableScriptEvent, ScriptEvent>("CancellableEvent")
+        .addConstructor<void (*) ()>()
+        .addFunction("invoke", &CancellableScriptEvent::luaInvoke)
+        .addProperty("cancelledBy", &CancellableScriptEvent::cancelledBy)
+        // metamethods are not inherited from Event
+
+        .addFunction("__tostring", &ScriptEvent::luaToString)
+        .endClass()
+        .beginClass<ScriptCancelEventArgs>("CancelEventArgs")
+        .addFunction("cancel", &ScriptCancelEventArgs::luaCancel)
+        .addProperty("cancelled", &ScriptCancelEventArgs::isCancelled)
         .endClass();
 }

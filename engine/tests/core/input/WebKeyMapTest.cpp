@@ -6,6 +6,7 @@
 // legacy keyCode fallback of events without a code (Android soft keyboards, old browsers).
 
 #include "WebKeyMap.h"
+#include "WebTextEntry.h"
 
 #include <gtest/gtest.h>
 
@@ -106,6 +107,41 @@ TEST(WebKeyMap, NoCodeNameTwice){
     for (const web::KeyCodeName& entry : web::KEY_CODES){
         EXPECT_TRUE(seen.emplace(std::string(entry.code), entry.key).second) << entry.code << " is listed twice";
     }
+}
+
+
+TEST(WebKeyMap, TextEntryAttributes){
+    TextEntryTraits email;
+    email.keyboard = KeyboardType::Email;
+    email.enterKey = EnterKey::Send;
+    email.capitalize = AutoCapitalize::Sentences;
+    const web::TextAreaAttributes mail = web::textAreaAttributesOf(email);
+    EXPECT_STREQ(mail.inputmode, "email");
+    EXPECT_STREQ(mail.enterkeyhint, "send");
+    EXPECT_STREQ(mail.autocapitalize, "sentences");
+    EXPECT_TRUE(web::lineBreakIsActionKey(email));
+
+    // every keyboard by its inputmode name, the default key without an enterkeyhint
+    const char* const modes[] = {"text", "numeric", "decimal", "tel", "email", "url", "search", "none"};
+    for (int i = 0; i <= (int)KeyboardType::None; i++){
+        TextEntryTraits traits;
+        traits.keyboard = (KeyboardType)i;
+        EXPECT_STREQ(web::textAreaAttributesOf(traits).inputmode, modes[i]);
+        EXPECT_STREQ(web::textAreaAttributesOf(traits).enterkeyhint, "");
+        EXPECT_STREQ(web::textAreaAttributesOf(traits).autocapitalize, "off");
+    }
+    const char* const hints[] = {"", "enter", "done", "go", "next", "previous", "search", "send"};
+    for (int i = 0; i <= (int)EnterKey::Send; i++){
+        TextEntryTraits traits;
+        traits.enterKey = (EnterKey)i;
+        EXPECT_STREQ(web::textAreaAttributesOf(traits).enterkeyhint, hints[i]);
+    }
+
+    // a textarea's Enter stays the Enter key
+    TextEntryTraits notes;
+    notes.multiline = true;
+    notes.enterKey = EnterKey::Enter;
+    EXPECT_FALSE(web::lineBreakIsActionKey(notes));
 }
 
 }  // namespace WebKeyMapTest_cpp

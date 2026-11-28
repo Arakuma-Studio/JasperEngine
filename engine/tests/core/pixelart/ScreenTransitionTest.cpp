@@ -16,10 +16,9 @@
 
 #include <gtest/gtest.h>
 
-namespace ScreenTransitionTest_cpp {
-
-using namespace jasperengine;
-using namespace jasperengine::pixelart;
+// the tests in Pixel Art's namespace: a file-scope using-directive would reach the next source of a
+// unity unit (docs/testing.md, Unity build)
+namespace jasperengine::pixelart::ScreenTransitionTest_cpp {
 
 namespace {
 
@@ -277,4 +276,4 @@ TEST(ScreenTransitionController, ACompositeTransitionBakesOffscreenPipelines){
     Engine::setFramebuffer(target);
 }
 
-}  // namespace ScreenTransitionTest_cpp
+}  // namespace jasperengine::pixelart::ScreenTransitionTest_cpp

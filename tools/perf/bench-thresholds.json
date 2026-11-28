@@ -13,6 +13,7 @@
     "heartbeat_ns": {"max": 5, "spec": "S28 R26 diag::heartbeat(), median of 9 runs"},
     "ring_write_120b_ns": {"max": 150, "spec": "S28 R26 a 120-byte crash-ring write (memcpy included), median of 9 runs"},
     "install_ms": {"max": 3, "spec": "S28 R26 diag::crash::install on an empty report root"},
+    "journal_log_4f_ns": {"max": 250, "spec": "shipped-game-diagnostics R29 diag::journal::log, a kind and 4 fields (2 strings, 2 numbers), median of 9 runs"},
     "watchdog_idle_cpu_pct": {"max": 0.1, "spec": "S28 R26 the hang watchdog's polls with the main thread idle, % of one core over 5 s"}
   },
   "je-bench-memory": {
@@ -20,6 +21,11 @@
     "object_pool_new_delete_ns": {"max": 25, "spec": "R26 ObjectPool new+delete"},
     "range_allocator_alloc_free_p99_ns": {"max": 250, "spec": "R26 RangeAllocator allocate+free with 10k live ranges, p99"},
     "stats_and_hooks_overhead_pct": {"max": 2, "spec": "R26 stats per job, one thread (bounds the share of R23), median of 41 paired trials"}
+  },
+  "je-bench-physics-query": {
+    "lua_overlap_nonalloc_p95_ms": {"max": 0.011, "spec": "spatial-queries R19 Lua Physics.overlapSphereNonAlloc r 5 m, binding included, p95"},
+    "mesh_overlap_p95_ms": {"max": 0.011, "spec": "spatial-queries R19 MeshRaycast.overlapSphere, 10,000 leaves, no refit due, p95"},
+    "mesh_overlap_trees_p95_ms": {"max": 0.011, "spec": "spatial-queries R19 MeshRaycast.overlapSphere r 5 m among T5's 50,000 bench trees (a cell walk), the leaves' budget, p95"}
   },
   "je-bench-picking": {
     "pick_p99_ms_1000x1k": {"max": 1.0, "spec": "R28 closest hit, 1,000 entities x 1k tris, p99 of 10k rays"},
@@ -117,6 +123,14 @@
     "stored_tree_bytes": {"max": 40, "spec": "T5 R42 a stored tree"},
     "memory_total_mb": {"max": 128, "spec": "T5 R42 desktop, CPU and GPU, without meshes and impostors"}
   },
+  "je-bench-culling": {
+    "group_10k_eval_ms": {"max": 0.132, "spec": "culling-group-and-simulation-distance R22: one group, 10,000 fixed spheres, 4 distances, one camera, no change (desktop + 10 %)"},
+    "group_10k_follow_eval_ms": {"max": 0.22, "spec": "R22 the same with every sphere following a GameObject"},
+    "simulation_1k_eval_ms": {"max": 0.066, "spec": "R22 1,000 Simulation Culling components, 2 focuses, no state change"},
+    "simulation_64_transitions_ms": {"max": 0.165, "spec": "R22 64 state changes"},
+    "ground_1k_ms": {"max": 0.022, "spec": "R22 the ground rule over 1,000 components (round robin)"},
+    "culling_zero_cost_ms": {"max": 0.0022, "spec": "R22 no group, no component: the system and the guards of 1,000 callbacks"}
+  },
   "je-bench-splines": {
     "evaluate_at_distance_ns": {"max": 60, "spec": "R18 evaluateAtDistance on a 100-knot spline"},
     "closest_point_100_knots_us": {"max": 6, "spec": "R18 closestPoint on a 100-knot spline"},
@@ -142,6 +156,10 @@
     "crowd200_main_thread_p95_ms": {"max": 0.4, "spec": "R19 the main thread's share (prepare + finalize), p95"},
     "crowd200_serial_p95_ms": {"max": 8.8, "spec": "R19 serial (0 workers), p95"},
     "crowd200_steady_state_allocations": {"max": 0, "spec": "R19 heap allocations per frame after warm-up (--count-allocs)"},
+    "crowd200_mesh_space_parallel_p95_ms": {"max": 2.5, "spec": "mesh-space-rotation R24 Crowd200MeshSpace (Mesh Space Rotation on the upper layer) within R19's wall time, p95"},
+    "crowd200_mesh_space_main_thread_p95_ms": {"max": 0.4, "spec": "mesh-space-rotation R24 the main thread's share, p95"},
+    "crowd200_mesh_space_serial_p95_ms": {"max": 8.8, "spec": "mesh-space-rotation R24 serial (0 workers), p95"},
+    "crowd200_mesh_space_steady_state_allocations": {"max": 0, "spec": "mesh-space-rotation R24 heap allocations after warm-up (--count-allocs)"},
     "micro_blend128_us": {"max": 1.1, "spec": "R20 a two-pose blend at 128 bones, median"},
     "micro_blend128_simd_speedup": {"min": 2.0, "spec": "R20 SIMD against Scalar for the blend"},
     "micro_sample65_us": {"max": 2.2, "spec": "R20 one 65-bone clip sample, median"},
@@ -230,5 +248,14 @@
     "runtime_apply_circle_r32_ms": {"max": 0.2, "spec": "T1 R52 applyOps circle radius 32 texels, main thread"},
     "collision_refresh_64_ms": {"max": 2.0, "spec": "T1 R52 SetHeights refresh of 64x64 samples"},
     "collision_refresh_64_rebuilds": {"max": 0, "spec": "T1 R52 every refresh wrote in place"}
+  },
+  "je-bench-late-transforms": {
+    "_comment": "docs/specs/S95-lua-runtime-gaps.md REQ-33, REQ-35 (AC-9): a scene of 10 000 static Transforms and one camera, medians",
+    "late_idle_us": {"max": 1.0, "spec": "REQ-33 the late pass with nothing moved since the update, per scene"},
+    "late_camera_ratio": {"max": 0.10, "spec": "REQ-33 the late pass with the camera moved in onPostUpdate, over the scene's main pass"},
+    "late_steady_allocations": {"max": 0, "spec": "the late pass at steady state (--count-allocs)"},
+    "late_idle_follow_us": {"max": 1.0, "spec": "REQ-33 a follow camera's scene, its target not moved after the update"},
+    "late_follow_allocations": {"max": 0, "spec": "a follower stepped again in the late pass (--count-allocs)"},
+    "world_pose_allocations": {"max": 0, "spec": "REQ-35 getWorldPosition's pose, clean and under a moved parent (--count-allocs)"}
   }
 }

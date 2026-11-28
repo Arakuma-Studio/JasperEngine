@@ -5,6 +5,7 @@
 #include "pixelart/PixelColor.h"
 
 #include "audio/AudioMixer.h"
+#include "pool/SoundPool.h"
 #include "subsystem/AudioSystem.h"
 
 #include <algorithm>
@@ -37,6 +38,44 @@ namespace {
     const EnumNames<ShadowTier> kShadowTier[] = {{ShadowTier::LOW, "low"}, {ShadowTier::MEDIUM, "medium"}, {ShadowTier::HIGH, "high"},
         {ShadowTier::ULTRA, "ultra"}};
     const char* const kWindowModes[] = {"windowed", "maximized", "fullscreen"};
+    const EnumNames<ShaderGlobalType> kShaderGlobalTypes[] = {{ShaderGlobalType::Float, "float"}, {ShaderGlobalType::Vector2, "vector2"},
+        {ShaderGlobalType::Vector3, "vector3"}, {ShaderGlobalType::Vector4, "vector4"}, {ShaderGlobalType::Color, "color"},
+        {ShaderGlobalType::Matrix4, "matrix4"}, {ShaderGlobalType::FloatArray, "float_array"}, {ShaderGlobalType::Vector4Array, "vector4_array"},
+        {ShaderGlobalType::Texture2D, "texture2d"}, {ShaderGlobalType::TextureCube, "texture_cube"}};
+    const EnumNames<PlayerConfig::BuildMode> kBuildModes[] = {{PlayerConfig::BuildMode::Development, "development"},
+        {PlayerConfig::BuildMode::Never, "never"}, {PlayerConfig::BuildMode::Always, "always"}};
+    const EnumNames<DebugOverlaySettings::Gesture> kGestures[] = {{DebugOverlaySettings::Gesture::ThreeFingerHold, "three_finger_hold"},
+        {DebugOverlaySettings::Gesture::FourFingerTap, "four_finger_tap"}, {DebugOverlaySettings::Gesture::Off, "off"}};
+    const EnumNames<DebugOverlaySettings::Popup> kPopups[] = {{DebugOverlaySettings::Popup::TouchDevices, "touch_devices"},
+        {DebugOverlaySettings::Popup::Never, "never"}, {DebugOverlaySettings::Popup::AllDevices, "all_devices"}};
+    const EnumNames<DebugOverlaySettings::Stats> kStats[] = {{DebugOverlaySettings::Stats::Off, "off"}, {DebugOverlaySettings::Stats::Fps, "fps"},
+        {DebugOverlaySettings::Stats::Full, "full"}};
+    const EnumNames<DebugOverlaySettings::Corner> kCorners[] = {{DebugOverlaySettings::Corner::TopLeft, "top_left"},
+        {DebugOverlaySettings::Corner::TopRight, "top_right"}, {DebugOverlaySettings::Corner::BottomLeft, "bottom_left"},
+        {DebugOverlaySettings::Corner::BottomRight, "bottom_right"}};
+    const EnumNames<LogStackTraces> kStackTraces[] = {{LogStackTraces::Warnings, "warnings"}, {LogStackTraces::Off, "off"},
+        {LogStackTraces::Errors, "errors"}, {LogStackTraces::All, "all"}};
+    const EnumNames<UIScaleMode> kScaleModes[] = {{UIScaleMode::FollowGameCanvas, "follow_game_canvas"},
+        {UIScaleMode::ConstantPixelSize, "constant_pixel_size"}, {UIScaleMode::ScaleWithScreenSize, "scale_with_screen_size"},
+        {UIScaleMode::ConstantPhysicalSize, "constant_physical_size"}};
+    const EnumNames<ScreenMatchMode> kMatchModes[] = {{ScreenMatchMode::MatchWidthOrHeight, "match_width_or_height"},
+        {ScreenMatchMode::Expand, "expand"}, {ScreenMatchMode::Shrink, "shrink"}};
+    const EnumNames<PhysicalUnit> kPhysicalUnits[] = {{PhysicalUnit::Points, "points"}, {PhysicalUnit::Centimeters, "centimeters"},
+        {PhysicalUnit::Millimeters, "millimeters"}, {PhysicalUnit::Inches, "inches"}, {PhysicalUnit::Picas, "picas"}};
+
+    json appInfoJson(const ApplicationInfo& info) {
+        return {{"name", info.name}, {"identifier", info.identifier}, {"version", info.version}, {"build", info.build}};
+    }
+
+    ApplicationInfo appInfoFrom(const json& in) {
+        ApplicationInfo info;
+        if (!in.is_object()) return info;
+        info.name = in.value("name", "");
+        info.identifier = in.value("identifier", "");
+        info.version = in.value("version", "");
+        info.build = in.value("build", int64_t(0));
+        return info;
+    }
 
     template<typename E, size_t N>
     const char* nameOf(const EnumNames<E> (&names)[N], E value) {
@@ -98,6 +137,18 @@ json PlayerConfig::toJson() const {
     }
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
+    if (simulateTouchFromMouse)
+        out["input"]["simulateTouchFromMouse"] = true;
+    // (only when set: a game at the defaults keeps its file)
+    if (fixedTimestep != PlayerConfig().fixedTimestep || maximumDeltaTime != PlayerConfig().maximumDeltaTime)
+        out["time"] = {{"fixedTimestep", fixedTimestep}, {"maximumDeltaTime", maximumDeltaTime}};
+    if (!localization.empty()) out["localization"] = localization;
+    if (gamepadCursor != GamepadCursorSettings()){
+        out["input"]["gamepadCursor"] = {{"speed", gamepadCursor.speed}, {"accelerationTime", gamepadCursor.accelerationTime},
+                                         {"slowOverControls", gamepadCursor.slowOverControls}, {"scrollSpeed", gamepadCursor.scrollSpeed},
+                                         {"deadzone", gamepadCursor.deadzone}, {"graphic", gamepadCursor.graphic}, {"size", gamepadCursor.size},
+                                         {"hotSpot", {gamepadCursor.hotSpot.x, gamepadCursor.hotSpot.y}}};
+    }
     json areas = json::array();
     for (const nav::AreaSettings& area : navigation.areas)
         areas.push_back({{"name", area.name}, {"cost", area.cost}, {"color", {area.color.x, area.color.y, area.color.z, area.color.w}}});
@@ -116,8 +167,12 @@ json PlayerConfig::toJson() const {
     out["textureDefaults"] = textures;
     out["htmlUi"] = {{"msaa", htmlUiMsaa}, {"glyphAtlasMiB", glyphAtlasMiB}, {"sdfPrimitives", sdfPrimitives},
                      {"transformAwareText", transformAwareText}};
+    // S93's image cache budget, only away from the platform's default (-1): a game without it keeps its file
+    if (imageCacheMiB >= 0)
+        out["htmlUi"]["imageCacheMiB"] = imageCacheMiB;
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
     out["dynamicBatching"] = dynamicBatching;
+    out["pauseOnFocusLoss"] = pauseOnFocusLoss;
     out["lightMode"] = LightingTiers::getModeName(lightMode);
     if (transitions != pixelart::TransitionDefaults()){
         char color[8];
@@ -139,18 +194,69 @@ json PlayerConfig::toJson() const {
         for (const SortingLayerInfo& layer : sortingLayers) layers.push_back({{"id", layer.id}, {"name", layer.name}});
         out["sortingLayers"] = layers;
     }
-    if (transparencySortMode == TransparencySortMode::CUSTOM_AXIS) out["transparencySortMode"] = "custom_axis";
+    if (transparencySortMode != TransparencySortMode::DEFAULT) out["transparencySortMode"] = SortingLayers::transparencySortModeToken(transparencySortMode);
     if (transparencySortAxis != Vector3(0.0f, 1.0f, 0.0f))
         out["transparencySortAxis"] = {transparencySortAxis.x, transparencySortAxis.y, transparencySortAxis.z};
     out["collision3D"] = collision3D;
     out["collision2D"] = collision2D;
+    // written only when off: an older player and a game.json without them read true
+    if (!queriesHitTriggers3D) out["queries_hit_triggers_3d"] = false;
+    if (!queriesHitTriggers2D) out["queries_hit_triggers_2d"] = false;
     out["logging"] = {{"level", logLevel}, {"file", logFile}, {"backtrace", logBacktrace}};
     out["crash"] = {{"handler", crashHandler}, {"logTail", crashLogTail}, {"dumpWithHeap", crashDumpWithHeap},
-                    {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
+                    {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay},
+                    {"journalBytes", crashJournalBytes}, {"journalEngineEvents", crashJournalEngineEvents}};
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
-                    {"musicGroup", audioMusicGroup}};
+                    {"musicGroup", audioMusicGroup}, {"unusedClipCacheMb", audioUnusedClipCacheMb}};
     if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
+    if (!nativePlatformOnlyByTarget.empty()) out["nativePlatformOnlyByTarget"] = nativePlatformOnlyByTarget;
+    if (hasPlayerSettings) {
+        out["player"] = {{"targetFrameRate", targetFrameRate}, {"defaultLanguage", defaultLanguage},
+                         {"defaultOrientation", static_cast<int>(defaultOrientation)}, {"allowedOrientations", allowedOrientations},
+                         {"keepScreenOn", keepScreenOn}, {"allowInsecureHttp", allowInsecureHttp},
+                         {"applicationInfo", {{"linux", appInfoJson(linuxApp)}, {"windows", appInfoJson(windowsApp)},
+                                              {"macos", appInfoJson(macosApp)}, {"web", appInfoJson(webApp)}}}};
+    }
+    // (each only when not the default: a game without them keeps its file)
+    if (shaderCreation != ShaderCreationSettings()) {
+        out["shaderCreation"] = {{"asyncCreation", shaderCreation.asyncCreation}, {"mainThreadBudgetMs", shaderCreation.mainThreadBudgetMs},
+                                 {"glWarmDraws", shaderCreation.glWarmDraws}, {"holdFirstSceneForWarmup", shaderCreation.holdFirstSceneForWarmup}};
+    }
+    if (!gpuInstancing) out["gpuInstancing"] = false;
+    if (!shaderGlobals.empty()) {
+        json globals = json::array();
+        for (const ShaderGlobalDecl& decl : shaderGlobals) {
+            json values = json::array();
+            for (const Vector4& v : decl.defaultValue) values.push_back({v.x, v.y, v.z, v.w});
+            globals.push_back({{"name", decl.name}, {"type", nameOf(kShaderGlobalTypes, decl.type)}, {"arraySize", decl.arraySize},
+                               {"default", values}, {"texture", decl.defaultTexture}});
+        }
+        out["shaderGlobals"] = globals;
+    }
+    if (canvasScaler != CanvasScalerSettings()) {
+        out["canvas"]["scaler"] = {{"mode", nameOf(kScaleModes, canvasScaler.mode)}, {"scaleFactor", canvasScaler.scaleFactor},
+                                   {"referenceResolution", {canvasScaler.referenceResolution.x, canvasScaler.referenceResolution.y}},
+                                   {"screenMatchMode", nameOf(kMatchModes, canvasScaler.screenMatchMode)},
+                                   {"matchWidthOrHeight", canvasScaler.matchWidthOrHeight},
+                                   {"physicalUnit", nameOf(kPhysicalUnits, canvasScaler.physicalUnit)},
+                                   {"fallbackScreenDPI", canvasScaler.fallbackScreenDPI}};
+    }
+    if (hasPhysics3DCapacity) {
+        out["physics3D"] = {{"maxBodies", maxBodies3D}, {"maxBodyPairs", maxBodyPairs3D}, {"maxContactConstraints", maxContactConstraints3D}};
+    }
+    if (hasDebugSettings) {
+        out["debug"] = {{"overlay", nameOf(kBuildModes, debugOverlayMode)}, {"allowLua", nameOf(kBuildModes, debugAllowLuaMode)},
+                        {"toggleKey", debugOverlay.toggleKey}, {"statsKey", debugOverlay.statsKey},
+                        {"gesture", nameOf(kGestures, debugOverlay.gesture)}, {"popup", nameOf(kPopups, debugOverlay.popup)},
+                        {"openOnError", debugOverlay.openOnError}, {"stats", nameOf(kStats, debugOverlay.stats)},
+                        {"statsCorner", nameOf(kCorners, debugOverlay.statsCorner)}, {"logBufferSize", logBufferSize},
+                        {"logStackTraces", nameOf(kStackTraces, logStackTraces)}};
+    }
+    if (!buildProfile.empty()) out["buildProfile"] = buildProfile;
+    if (!buildProfile.empty()) out["defines"] = defines;
+    if (consoleCommands != "development") out["consoleCommands"] = consoleCommands;
+    if (saveGame != savegame::SaveSettings()) out["saveGame"] = {{"backups", saveGame.backups}, {"maxSlotMiB", saveGame.maxSlotMiB}};
     return out;
 }
 
@@ -175,6 +281,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         config.appId = in.value("appId", "");
         config.version = in.value("version", "");
         config.startScene = in.value("startScene", 0u);
+        config.localization = in.value("localization", std::string());
         for (const json& scene : in.value("scenes", json::array())) {
             GameScene item;
             item.id = scene.at("id").get<uint32_t>();
@@ -240,6 +347,31 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
+            config.simulateTouchFromMouse = input->value("simulateTouchFromMouse", false);
+            if (const auto cursor = input->find("gamepadCursor"); cursor != input->end() && cursor->is_object()){
+                GamepadCursorSettings& c = config.gamepadCursor;
+                c.speed = cursor->value("speed", c.speed);
+                c.accelerationTime = cursor->value("accelerationTime", c.accelerationTime);
+                c.slowOverControls = cursor->value("slowOverControls", c.slowOverControls);
+                c.scrollSpeed = cursor->value("scrollSpeed", c.scrollSpeed);
+                c.deadzone = cursor->value("deadzone", c.deadzone);
+                c.graphic = cursor->value("graphic", c.graphic);
+                c.size = cursor->value("size", c.size);
+                if (const auto hot = cursor->find("hotSpot"); hot != cursor->end() && hot->is_array() && hot->size() == 2 &&
+                    (*hot)[0].is_number() && (*hot)[1].is_number())
+                    c.hotSpot = Vector2((*hot)[0].get<float>(), (*hot)[1].get<float>());
+            }
+        }
+        if (const auto time = in.find("time"); time != in.end() && time->is_object()) {
+            // a step the engine refuses keeps the default
+            auto seconds = [&](const char* key, double fallback) {
+                const auto value = time->find(key);
+                if (value == time->end() || !value->is_number()) return fallback;
+                const double v = value->get<double>();
+                return v > 0.0 && std::isfinite(v) ? v : fallback;
+            };
+            config.fixedTimestep = seconds("fixedTimestep", config.fixedTimestep);
+            config.maximumDeltaTime = seconds("maximumDeltaTime", config.maximumDeltaTime);
         }
         if (const auto voxel = in.find("voxel"); voxel != in.end()) {
             config.voxelMaxDimension = voxel->value("maxDimension", 0);
@@ -285,9 +417,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.glyphAtlasMiB = htmlUi->value("glyphAtlasMiB", config.glyphAtlasMiB);
             config.sdfPrimitives = htmlUi->value("sdfPrimitives", config.sdfPrimitives);
             config.transformAwareText = htmlUi->value("transformAwareText", config.transformAwareText);
+            config.imageCacheMiB = htmlUi->value("imageCacheMiB", config.imageCacheMiB);
         }
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
         config.dynamicBatching = in.value("dynamicBatching", config.dynamicBatching);
+        config.pauseOnFocusLoss = in.value("pauseOnFocusLoss", config.pauseOnFocusLoss);
         // absent (a config written before it) or unknown: Automatic
         if (const auto transitions = in.find("transitions"); transitions != in.end() && transitions->is_object()){
             pixelart::TransitionDefaults& t = config.transitions;
@@ -327,7 +461,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                     config.sortingLayers.push_back({layer["id"].get<int32_t>(), layer["name"].get<std::string>()});
             }
         }
-        if (in.value("transparencySortMode", std::string()) == "custom_axis") config.transparencySortMode = TransparencySortMode::CUSTOM_AXIS;
+        SortingLayers::transparencySortModeFromToken(in.value("transparencySortMode", std::string()), config.transparencySortMode);
         if (const auto axis = in.find("transparencySortAxis"); axis != in.end() && axis->is_array() && axis->size() == 3 &&
                 (*axis)[0].is_number() && (*axis)[1].is_number() && (*axis)[2].is_number())
             config.transparencySortAxis = Vector3((*axis)[0].get<float>(), (*axis)[1].get<float>(), (*axis)[2].get<float>());
@@ -335,6 +469,8 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         const std::vector<uint32_t> collision2D = in.value("collision2D", std::vector<uint32_t>{});
         for (size_t i = 0; i < collision3D.size() && i < config.collision3D.size(); i++) config.collision3D[i] = collision3D[i];
         for (size_t i = 0; i < collision2D.size() && i < config.collision2D.size(); i++) config.collision2D[i] = collision2D[i];
+        config.queriesHitTriggers3D = in.value("queries_hit_triggers_3d", config.queriesHitTriggers3D);
+        config.queriesHitTriggers2D = in.value("queries_hit_triggers_2d", config.queriesHitTriggers2D);
         if (const auto logging = in.find("logging"); logging != in.end()) {
             config.logLevel = logging->value("level", "");
             config.logFile = logging->value("file", config.logFile);
@@ -347,6 +483,9 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.hangWatchdog = crash->value("hangWatchdog", config.hangWatchdog);
             config.hangMs = crash->value("hangMs", config.hangMs);
             config.crashWebOverlay = crash->value("webOverlay", config.crashWebOverlay);
+            // absent (an older editor's game.json): the default journal
+            config.crashJournalBytes = crash->value("journalBytes", config.crashJournalBytes);
+            config.crashJournalEngineEvents = crash->value("journalEngineEvents", config.crashJournalEngineEvents);
         }
         // absent (a game.json of an older editor): no mixer, the default voices
         if (const auto audio = in.find("audio"); audio != in.end()) {
@@ -358,12 +497,100 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioOutputStage = audio->value("outputStage", config.audioOutputStage);
             config.audioIosSession = audio->value("iosSessionCategory", config.audioIosSession);
             config.audioMusicGroup = audio->value("musicGroup", config.audioMusicGroup);
+            config.audioUnusedClipCacheMb = audio->value("unusedClipCacheMb", config.audioUnusedClipCacheMb);
         }
+        // absent (an older editor's game.json): development
+        config.consoleCommands = in.value("consoleCommands", config.consoleCommands);
         // absent: no native plugin of the project is for other platforms only
         if (const auto native = in.find("nativePlatformOnly"); native != in.end() && native->is_object()) {
             for (const auto& [plugin, message] : native->items()) {
                 if (message.is_string()) config.nativePlatformOnly[plugin] = message.get<std::string>();
             }
+        }
+        if (const auto byTarget = in.find("nativePlatformOnlyByTarget"); byTarget != in.end() && byTarget->is_object()) {
+            for (const auto& [target, plugins] : byTarget->items()) {
+                if (!plugins.is_object()) continue;
+                for (const auto& [plugin, message] : plugins.items())
+                    if (message.is_string()) config.nativePlatformOnlyByTarget[target][plugin] = message.get<std::string>();
+            }
+        }
+        if (const auto player = in.find("player"); player != in.end() && player->is_object()) {
+            config.hasPlayerSettings = true;
+            config.targetFrameRate = player->value("targetFrameRate", config.targetFrameRate);
+            config.defaultLanguage = player->value("defaultLanguage", config.defaultLanguage);
+            config.defaultOrientation = static_cast<ScreenOrientation>(player->value("defaultOrientation", static_cast<int>(config.defaultOrientation)));
+            config.allowedOrientations = player->value("allowedOrientations", config.allowedOrientations);
+            config.keepScreenOn = player->value("keepScreenOn", config.keepScreenOn);
+            config.allowInsecureHttp = player->value("allowInsecureHttp", config.allowInsecureHttp);
+            if (const auto apps = player->find("applicationInfo"); apps != player->end() && apps->is_object()) {
+                config.linuxApp = appInfoFrom(apps->value("linux", json()));
+                config.windowsApp = appInfoFrom(apps->value("windows", json()));
+                config.macosApp = appInfoFrom(apps->value("macos", json()));
+                config.webApp = appInfoFrom(apps->value("web", json()));
+            }
+        }
+        if (const auto creation = in.find("shaderCreation"); creation != in.end() && creation->is_object()) {
+            config.shaderCreation.asyncCreation = creation->value("asyncCreation", config.shaderCreation.asyncCreation);
+            config.shaderCreation.mainThreadBudgetMs = creation->value("mainThreadBudgetMs", config.shaderCreation.mainThreadBudgetMs);
+            config.shaderCreation.glWarmDraws = creation->value("glWarmDraws", config.shaderCreation.glWarmDraws);
+            config.shaderCreation.holdFirstSceneForWarmup = creation->value("holdFirstSceneForWarmup", config.shaderCreation.holdFirstSceneForWarmup);
+        }
+        config.gpuInstancing = in.value("gpuInstancing", config.gpuInstancing);
+        if (const auto globals = in.find("shaderGlobals"); globals != in.end() && globals->is_array()) {
+            for (const json& global : *globals) {
+                if (!global.is_object()) continue;
+                ShaderGlobalDecl decl;
+                decl.name = global.value("name", "");
+                valueOf(kShaderGlobalTypes, global.value("type", std::string("vector4")), decl.type);
+                decl.arraySize = global.value("arraySize", 0u);
+                for (const json& value : global.value("default", json::array())) {
+                    const std::vector<float> v = value.is_array() ? value.get<std::vector<float>>() : std::vector<float>{};
+                    decl.defaultValue.push_back(v.size() == 4 ? Vector4(v[0], v[1], v[2], v[3]) : Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+                }
+                decl.defaultTexture = global.value("texture", "");
+                if (!decl.name.empty()) config.shaderGlobals.push_back(std::move(decl));
+            }
+        }
+        if (const auto canvas = in.find("canvas"); canvas != in.end()) {
+            if (const auto scaler = canvas->find("scaler"); scaler != canvas->end() && scaler->is_object()) {
+                CanvasScalerSettings& c = config.canvasScaler;
+                valueOf(kScaleModes, scaler->value("mode", std::string("follow_game_canvas")), c.mode);
+                c.scaleFactor = scaler->value("scaleFactor", c.scaleFactor);
+                const std::vector<float> reference = scaler->value("referenceResolution", std::vector<float>{});
+                if (reference.size() == 2) c.referenceResolution = Vector2(reference[0], reference[1]);
+                valueOf(kMatchModes, scaler->value("screenMatchMode", std::string("match_width_or_height")), c.screenMatchMode);
+                c.matchWidthOrHeight = scaler->value("matchWidthOrHeight", c.matchWidthOrHeight);
+                valueOf(kPhysicalUnits, scaler->value("physicalUnit", std::string("points")), c.physicalUnit);
+                c.fallbackScreenDPI = scaler->value("fallbackScreenDPI", c.fallbackScreenDPI);
+            }
+        }
+        if (const auto physics = in.find("physics3D"); physics != in.end() && physics->is_object()) {
+            config.hasPhysics3DCapacity = true;
+            config.maxBodies3D = physics->value("maxBodies", config.maxBodies3D);
+            config.maxBodyPairs3D = physics->value("maxBodyPairs", config.maxBodyPairs3D);
+            config.maxContactConstraints3D = physics->value("maxContactConstraints", config.maxContactConstraints3D);
+        }
+        if (const auto debug = in.find("debug"); debug != in.end() && debug->is_object()) {
+            config.hasDebugSettings = true;
+            valueOf(kBuildModes, debug->value("overlay", std::string("development")), config.debugOverlayMode);
+            valueOf(kBuildModes, debug->value("allowLua", std::string("development")), config.debugAllowLuaMode);
+            DebugOverlaySettings& overlay = config.debugOverlay;
+            overlay.toggleKey = debug->value("toggleKey", overlay.toggleKey);
+            overlay.statsKey = debug->value("statsKey", overlay.statsKey);
+            valueOf(kGestures, debug->value("gesture", std::string("three_finger_hold")), overlay.gesture);
+            valueOf(kPopups, debug->value("popup", std::string("touch_devices")), overlay.popup);
+            overlay.openOnError = debug->value("openOnError", overlay.openOnError);
+            valueOf(kStats, debug->value("stats", std::string("off")), overlay.stats);
+            valueOf(kCorners, debug->value("statsCorner", std::string("top_left")), overlay.statsCorner);
+            config.logBufferSize = debug->value("logBufferSize", config.logBufferSize);
+            valueOf(kStackTraces, debug->value("logStackTraces", std::string("warnings")), config.logStackTraces);
+        }
+        config.buildProfile = in.value("buildProfile", std::string());
+        config.defines = in.value("defines", std::vector<std::string>{});
+        // absent: the defaults
+        if (const auto saveGame = in.find("saveGame"); saveGame != in.end() && saveGame->is_object()) {
+            config.saveGame.backups = saveGame->value("backups", config.saveGame.backups);
+            config.saveGame.maxSlotMiB = saveGame->value("maxSlotMiB", config.saveGame.maxSlotMiB);
         }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;
@@ -393,6 +620,9 @@ void applyAudio(const PlayerConfig& game) {
         game.audioSeed != (int)defaults.seed || game.audioMusicGroup != defaults.musicGroup) {
         AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate, stage, session, (uint32_t)game.audioSeed,
                                 game.audioMusicGroup});
+    }
+    if (game.audioUnusedClipCacheMb >= 0 && (uint64_t)game.audioUnusedClipCacheMb * 1024 * 1024 != SoundPool::defaultUnusedBudget) {
+        SoundPool::setUnusedBudget((uint64_t)game.audioUnusedClipCacheMb * 1024 * 1024);
     }
     if (!game.audioMixer.empty()) {
         AudioMixer::load(game.audioMixer);

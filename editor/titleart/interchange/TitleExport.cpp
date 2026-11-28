@@ -294,7 +294,7 @@ void TitleExportContext::measure(std::shared_ptr<const titleart::TitleArtDoc> do
     r.language = language;
     r.outputBitDepth = 8;
     const int threshold = image.alphaThreshold;
-    render(std::move(r), [this, done, reach, measureScale, threshold](TitleRenderedImage& img) {
+    render(std::move(r), [done, reach, measureScale, threshold](TitleRenderedImage& img) {
         if (img.frame.empty()) img.frame = reach;
         img.pxScale = (float)measureScale;
         const TitleRectI b = thresholdBounds(img.image, threshold);

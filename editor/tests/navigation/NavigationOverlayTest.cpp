@@ -4,10 +4,12 @@
 // The Scene view's AI Navigation overlay (docs/specs/S19-navigation.md R33, docs/specs/S75-navigation-
 // diagnostics.md R27, R38, AC14), without a GPU: its workspace settings round trip and an S19
 // workspace loads with the new options at their defaults; the options off create nothing; tile
-// labels read the tiles' last builds; Color By Islands greys what the query's start cannot reach.
+// labels read the tiles' last builds; Color By Islands greys what the query's start cannot reach;
+// the translucent fills draw in the transparent queue.
 
 #include "JasperEngine.h"
 #include "Project.h"
+#include "component/MeshComponent.h"
 #include "navigation/NavMesh.h"
 #include "navigation/NavigationEditor.h"
 #include "navigation/NavigationOverlay.h"
@@ -151,6 +153,34 @@ TEST(NavigationOverlay, OffCostsNothing){
     overlay.update(world.sceneProject, world.camera.get(), {}, settings);
     EXPECT_EQ(overlay.getSlopeTriangleCount(), 0u);
     EXPECT_TRUE(overlay.getTileLabels().empty());
+}
+
+TEST(NavigationOverlay, FillsDrawInTheTransparentQueue){
+    // the fills' tint is their vertex alpha: in the opaque queue they blended over what was drawn
+    // before them (the sky, or the clear colour once the sky drew after that queue) and their depth
+    // hid the ground under them
+    OverlayWorld world;
+    Primitive ramp(&world.scene);
+    ramp.createPlane(4.0f, 4.0f);
+    ramp.setPosition(0.0f, 1.0f, 0.0f);
+    ramp.setRotation(0.0f, 0.0f, 60.0f);
+    resolveOverlayTransforms(world.scene);
+
+    NavigationOverlay overlay(&world.scene);
+    NavOverlaySettings settings;
+    settings.showSteepSlopes = true;
+    overlay.update(world.sceneProject, world.camera.get(), {}, settings);
+    ASSERT_GT(overlay.getSlopeTriangleCount(), 0u);
+
+    auto render = world.scene.getSystem<RenderSystem>();
+    auto meshes = world.scene.getComponentArray<MeshComponent>();
+    size_t fills = 0;
+    for (size_t i = 0; i < meshes->size(); i++) {
+        if (!render->isEditorOverlay(meshes->getEntity(i))) continue;
+        fills++;
+        EXPECT_TRUE(meshes->getComponentFromIndex(i).isTransparent()) << "overlay mesh " << meshes->getEntity(i);
+    }
+    EXPECT_GE(fills, 2u) << "the navmesh's fill and the slopes'";
 }
 
 TEST(NavigationOverlay, TileLabelsText){

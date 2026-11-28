@@ -1,0 +1,70 @@
+$ SANITIZE=address,undefined UNIT_SUITE=editor tools/build.sh unit-tests
+[==========] Running 5271 tests from 800 test suites.
+[ RUN      ] UnityParticleImportTest.NestedPrefabInstances
+[       OK ] UnityParticleImportTest.NestedPrefabInstances (231 ms)
+[ RUN      ] UnityParticleImportTest.MalformedFileFailsCleanly
+error: no ParticleSystem in Broken.prefab
+[       OK ] UnityParticleImportTest.MalformedFileFailsCleanly (25 ms)
+[ RUN      ] UnityParticleImportTest.NeverWritesIntoTheUnityProject
+[       OK ] UnityParticleImportTest.NeverWritesIntoTheUnityProject (1 ms)
+[----------] 13 tests from UnityParticleImportTest (3196 ms total)
+[----------] 17 tests from Fixtures/StreamFixtureScene (4801 ms total)
+
+[----------] Global test environment tear-down
+[==========] 5271 tests from 800 test suites ran. (2178431 ms total)
+[  PASSED  ] 5271 tests.
+
+  YOU HAVE 7 DISABLED TESTS
+
+
+=================================================================
+==10183==ERROR: LeakSanitizer: detected memory leaks
+
+Too many leaks! Only the first 5000 leaks encountered will be reported.
+Direct leak of 32 byte(s) in 1 object(s) allocated from:
+    #0 0x712dbefe9887 in __interceptor_malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:145
+    #1 0x712d9f9c2306 in stbi__malloc /src/engine/libs/stb/stb_image.h:987
+    #2 0x712d9f9c2306 in stbi__malloc_mad3 /src/engine/libs/stb/stb_image.h:1058
+    #3 0x712d9f9c72bc in stbi__create_png_image_raw /src/engine/libs/stb/stb_image.h:4712
+    #4 0x712d9f9e0fea in stbi__create_png_image /src/engine/libs/stb/stb_image.h:4868
+    #5 0x712d9f9e0fea in stbi__parse_png_file /src/engine/libs/stb/stb_image.h:5214
+    #6 0x712d9f9e4cc4 in stbi__do_png /src/engine/libs/stb/stb_image.h:5267
+    #7 0x712d9f9e4cc4 in stbi__png_load /src/engine/libs/stb/stb_image.h:5299
+    #8 0x712d9f9e4cc4 in stbi__load_main /src/engine/libs/stb/stb_image.h:1147
+    #9 0x712d9f9f3aca in stbi__load_and_postprocess_8bit /src/engine/libs/stb/stb_image.h:1263
+    #10 0x712d9f9f44a7 in stbi_load_from_memory /src/engine/libs/stb/stb_image.h:1433
+    #11 0x712d9b72e080 in jasperengine::TextureData::loadTexture(jasperengine::Data*) /src/engine/core/texture/TextureData.cpp:270
+    #12 0x712d9b72fcea in jasperengine::TextureData::loadTextureFromMemory(unsigned char*, unsigned int) /src/engine/core/texture/TextureData.cpp:617
+    #13 0x712d963af77f in jasperengine::HttpTransfer::finish(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) /src/engine/core/net/Http.cpp:653
+    #14 0x712d9badd169 in complete /src/engine/core/net/HttpBackendCurl.cpp:422
+    #15 0x712d9badd169 in run /src/engine/core/net/HttpBackendCurl.cpp:485
+    #16 0x712d9badedaf in operator() /src/engine/core/net/HttpBackendCurl.cpp:157
+    #17 0x712d9badedaf in __invoke_impl<void, (anonymous namespace)::CurlBackend::start(const std::shared_ptr<jasperengine::HttpTransfer>&)::<lambda()> > /usr/include/c++/11/bits/invoke.h:61
+    #18 0x712d9badedaf in __invoke<(anonymous namespace)::CurlBackend::start(const std::shared_ptr<jasperengine::HttpTransfer>&)::<lambda()> > /usr/include/c++/11/bits/invoke.h:96
+    #19 0x712d9badedaf in _M_invoke<0> /usr/include/c++/11/bits/std_thread.h:259
+    #20 0x712d9badedaf in operator() /usr/include/c++/11/bits/std_thread.h:266
+    #21 0x712d9badedaf in _M_run /usr/include/c++/11/bits/std_thread.h:211
+    #22 0x712d784b0252  (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc252)
+
+Direct leak of 16 byte(s) in 1 object(s) allocated from:
+    #0 0x712dbefe9887 in __interceptor_malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:145
+    #1 0x5f978b00a16a in __wrap_malloc /src/engine/tests/core/support/AllocationCounter.cpp:99
+    #2 0x5f97887ed1c2 in probeAllocate /src/editor/tests/support/AllocationProbe.cpp:17
+    #3 0x5f97887ed20a in operator new(unsigned long) /src/editor/tests/support/AllocationProbe.cpp:30
+    #4 0x5f97830128ba in LogListenerTest_SelfRemovalWithAnotherCallRunning_Test::TestBody() /src/editor/tests/LogListenerTest.cpp:345
+    #5 0x5f978d573ea6 in void testing::internal::HandleSehExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /src/libs/googletest/googletest/src/gtest.cc:2664
+    #6 0x5f978d573ea6 in void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /src/libs/googletest/googletest/src/gtest.cc:2700
+    #7 0x5f978d524455 in testing::Test::Run() /src/libs/googletest/googletest/src/gtest.cc:2739
+    #8 0x5f978d5255f9 in testing::TestInfo::Run() /src/libs/googletest/googletest/src/gtest.cc:2885
+    #9 0x5f978d52d0b6 in testing::TestSuite::Run() /src/libs/googletest/googletest/src/gtest.cc:3063
+    #10 0x5f978d53faa1 in testing::internal::UnitTestImpl::RunAllTests() /src/libs/googletest/googletest/src/gtest.cc:6054
+    #11 0x5f978d5756a4 in bool testing::internal::HandleSehExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /src/libs/googletest/googletest/src/gtest.cc:2664
+    #12 0x5f978d5756a4 in bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /src/libs/googletest/googletest/src/gtest.cc:2700
+    #13 0x5f978d52473b in testing::UnitTest::Run() /src/libs/googletest/googletest/src/gtest.cc:5594
+    #14 0x5f978b08751d in RUN_ALL_TESTS() /src/libs/googletest/googletest/include/gtest/gtest.h:2334
+    #15 0x5f978b08751d in main /src/engine/tests/support/TestMain.cpp:87
+    #16 0x712d77b9fd8f  (/lib/x86_64-linux-gnu/libc.so.6+0x29d8f)
+
+SUMMARY: AddressSanitizer: 97055 byte(s) leaked in 6605 allocation(s).
+tools/with-xvfb.sh: line 52: 10183 Aborted                 (core dumped) DISPLAY=":$display" "$@"
+gtest-gate: build/test-results/editor-address-undefined.xml: 5271 ran, 0 failed, 0 skipped, 7 disabled

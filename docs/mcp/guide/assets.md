@@ -147,6 +147,8 @@ the project. Links inside the project are written through.
   different file at a destination, an unwritable file, a link out of the new directory, unsaved
   Code Editor edits of a moving file) refuses the call and nothing changes. After the change,
   `failed_saves` lists files that keep the old paths on disk (save them again).
+- A new project keeps its assets in `assets/` and its Lua scripts in `scripts/` (`assetsDir: assets`,
+  `luaDir: scripts`); a `project.yaml` without the keys means the project folder for both.
 - Set the directories right after creating a project, before importing: a later change moves files.
 
 ## Missing Assets and Find References
@@ -209,6 +211,11 @@ command line, or `allow_missing_assets` for `build_project` to build anyway. The
 `assetmap.bin` (every asset's GUID, its former GUIDs and its sub-assets, mapped to paths) for
 the `Asset` Lua API. It is loaded on the first query and costs nothing until then. Metas and
 the asset database never ship.
+
+Under Asset Stripping: Referenced Only (`player.asset_stripping`) an asset ships when a
+reference reaches it from the build's scenes or project settings, or a Lua or C++ string literal
+names its path (`Texture("ui/logo.png")`); an asset only a GUID query or a computed path finds
+needs `player.always_include`. `Asset.exists` answers false for one the build left out.
 
 ## Command line
 

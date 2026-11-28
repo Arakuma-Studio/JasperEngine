@@ -147,6 +147,18 @@ APPLE_INPUTS = ("engine/platform/apple/*", "engine/platform/mac/*", "engine/work
                 "tools/test_xcode_sync_sources.py", "engine/shaders/msl21*", "tools/ci/macos.sh",
                 "tools/ci/platform-common.sh", "tools/ci/retry.sh", ".github/actions/report/*")
 APPLE_LANES = ("macos", "ios")
+# the macos lane in the merge queue: what an Apple build alone reads, more widely than a pull request's
+# rule (APPLE_INPUTS) since the queue is the last gate before main: Objective-C sources, Mac and Apple named
+# sources and resources, the vendored sokol (its Metal backend), and by content (macos_inputs): a C/C++ file
+# whose text names an Apple macro (MACOS_TEXT), a CMake file whose changed lines or their context name an
+# Apple setting (MACOS_CMAKE), ci.yml's macos job or env. macOS caps the queue: 5 hosted runners and je-mac,
+# a macos job a group. A push to main runs the whole lane when the queue left it out (macos_full), the
+# nightly always: a mac-only break shows on main right after the merge
+MACOS_PATHS = (*APPLE_INPUTS, "*.mm", "*.m", "*/Mac[A-Z]*", "*Mac.cpp", "*Mac.h", "*/Apple*", "editor/resources/macos/*",
+               "engine/libs/sokol/*", "tools/ci/macos.sh", ".github/actions/ccache-restore/*", ".github/actions/ccache-save/*")
+MACOS_TEXT = re.compile(r"__APPLE__|TARGET_OS_|SOKOL_METAL|__OBJC__")
+MACOS_CMAKE = re.compile(r"\bAPPLE\b|\bIOS\b|CMAKE_OSX|Darwin|XCODE|macos|metal", re.I)
+MACOS_JOB = "macos"
 # the repository variable that runs a pull request's blocking lanes only (off), as the merge queue does, while
 # GitHub's 60 concurrent jobs are the bottleneck: its advisory test lanes run on main after the merge anyway
 PR_ADVISORY_VARIABLE = "PR_ADVISORY_LANES"
@@ -309,22 +321,26 @@ def suite_choice(value) -> tuple[bool, str]:
 
 def decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_out: dict[str, str],
            nightly_out: dict[str, str], advisory=(), superseded_by: tuple[str, str] | None = None,
-           full_selection: bool = False, asan_definition: str = "", pr_advisory: bool = True) -> dict:
+           full_selection: bool = False, asan_definition: str = "", pr_advisory: bool = True,
+           macos_inputs: str | None = None) -> dict:
     """The lanes of an event, from check-changed's plan (None: there is none, plan_error says why),
     in LANES order; advisory: ADVISORY_LANES; superseded_by: a newer push to main, and a path it
     changed that builds (newer_push). full_selection (the rollback switch, FULL_SELECTION_VARIABLE):
     a pull request, the merge queue or the advisory run runs every lane whole for any change that builds.
-    asan_definition: the asan lane's definition changed, and where (definition_change). pr_advisory
+    asan_definition: the asan lane's definition changed, and where (definition_change). macos_inputs:
+    the first macOS-only input of the change (macos_inputs; "": none, so the queue leaves macos out; None:
+    not known, so it runs). pr_advisory
     (PR_ADVISORY_VARIABLE): False runs a pull request's blocking lanes only, as the merge queue does."""
     result = _decide("merge_group" if event == "advisory" else event, plan, plan_error, ci, left_out, nightly_out,
-                     full_selection, asan_definition)
+                     full_selection, asan_definition, macos_inputs)
     result["advisory_off"] = []
     result["build_only"] = []
+    result["unbuilt"] = []
     result["dispatch_advisory"] = False
     if event == "advisory":
         keep_advisory_only(result, set(advisory))
     elif event == "merge_group":
-        leave_advisory_out(result, set(advisory))
+        leave_advisory_out(result, set(advisory), unbuilt=True)
     elif event == "pull_request" and not pr_advisory:
         leave_advisory_out(result, set(advisory), f"a pull request while {PR_ADVISORY_VARIABLE} is off")
     elif event == "push" and superseded_by:
@@ -343,7 +359,7 @@ def decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_o
     return result
 
 
-def leave_advisory_out(result: dict, advisory: set[str], who: str = "the merge queue") -> None:
+def leave_advisory_out(result: dict, advisory: set[str], who: str = "the merge queue", unbuilt: bool = False) -> None:
     """The merge queue (or a pull request while PR_ADVISORY_VARIABLE is off): the advisory test lanes and
     test runs planned off, so its Check waits only for what can block the merge (they run in the
     advisory run a push to main dispatches). A plan that runs nothing keeps nothing."""
@@ -361,6 +377,10 @@ def leave_advisory_out(result: dict, advisory: set[str], who: str = "the merge q
         if test_run in advisory and lanes[job]["run"]:
             result["advisory_off"].append(test_run)
             result["build_only"].append(test_run)
+            # unbuilt: its binary is not even built (the merge queue: an MSVC-only compile error in a test
+            # shows on main after the merge, in the advisory run, which builds and runs it)
+            if unbuilt:
+                result["unbuilt"].append(test_run)
 
 
 def keep_advisory_only(result: dict, advisory: set[str]) -> None:
@@ -388,13 +408,14 @@ def keep_advisory_only(result: dict, advisory: set[str]) -> None:
 
 
 def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_out: dict[str, str],
-            nightly_out: dict[str, str], full_selection: bool = False, asan_definition: str = "") -> dict:
+            nightly_out: dict[str, str], full_selection: bool = False, asan_definition: str = "",
+            macos_inputs: str | None = None) -> dict:
     lanes: dict[str, dict] = {}
     fallbacks: list[str] = []
     result = {"lanes": lanes, "unit_filter": {"core": "", "editor": ""}, "unit_run": {"core": False, "editor": False},
               "asan_filter": {"core": "", "editor": ""}, "asan_run": {"core": False, "editor": False},
               "htmlui_filter": "", "mcp": {"mode": "none", "files": [], "not_in_ci": []}, "fallbacks": fallbacks,
-              "queue_off": []}
+              "queue_off": [], "macos_full": False}
 
     def lane(name: str, run: bool, why: str) -> None:
         lanes[name] = {"run": run, "why": why}
@@ -432,6 +453,17 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
             lane("asan", True, f"the unit lane's tests under ASan and UBSan ({seen[0]} changed)")
         else:
             lane("asan", False, lanes["unit"]["why"])
+
+    def queue_macos() -> None:
+        """The merge queue's macos lane: only for a macOS-only input (MACOS_PATHS, macos_inputs)."""
+        why = macos_inputs if macos_inputs is not None else "(the inputs were not read)"
+        why = why or next((f for f in files if cc.match(f, MACOS_PATHS)), "")
+        if why:
+            lane("macos", True, f"{why} changed (what an Apple build alone reads)")
+        else:
+            lane("macos", False, "no macOS-only input changed (MACOS_PATHS, Apple macros or CMake settings): the "
+                                 "push to main runs the whole lane, the nightly too")
+            result["queue_off"].append("macos")
 
     def apple_scope(names=APPLE_LANES) -> None:
         """A pull request's macos and ios lanes, the merge queue's ios: only when an Apple-only input
@@ -480,6 +512,10 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         lane("smoke", bool(smoke), f"push to main: the games' builds keep the smoke cache warm ({smoke[0]} changed)"
              if smoke else "push to main: no path a game's export reads changed")
         lane("ios", False, "push to main: keeps no cache entry, so a build would warm nothing; the merge queue ran it")
+        # the queue left macos out without a macOS-only input (queue_macos): the push runs its tests too
+        apple = macos_inputs if macos_inputs is not None else "(the inputs were not read)"
+        apple = apple or next((f for f in files if cc.match(f, MACOS_PATHS)), "") if files is not None else "(no diff)"
+        result["macos_full"] = not apple
         result["unit_run"] = {"core": True, "editor": True}
         result["asan_run"] = {"core": True, "editor": True}
         return result
@@ -496,6 +532,7 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
             apple_scope()
         elif event == "merge_group" and not full_selection:
             apple_scope(("ios",))
+            queue_macos()
         return result
     if full_selection:
         fallbacks.append(f"the repository variable {FULL_SELECTION_VARIABLE} is true: every lane, every test (the selection's rollback)")
@@ -508,6 +545,7 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         apple_scope()
     elif queue:
         apple_scope(("ios",))
+        queue_macos()
     # unit and ASan: the gtest suites that see the change (the merge queue: all)
     unit = plan.get("unit", {})
     if queue:
@@ -764,6 +802,34 @@ def definition_change(root: Path, base: str, files: list[str], job: str = ASAN_J
     return ""
 
 
+def macos_inputs(root: Path, base: str, files: list[str]) -> str:
+    """The first macOS-only input of the diff since base, said, or "": a path (MACOS_PATHS), a C/C++ source
+    whose text, before or after, names an Apple macro (MACOS_TEXT), a CMake file whose changed lines or their
+    context name an Apple setting (MACOS_CMAKE), or ci.yml's macos job or env (definition_change)."""
+    for f in files:
+        if cc.match(f, MACOS_PATHS):
+            return f
+    sources = (*cc.CXX, ".inc", ".c", ".m", ".mm")
+    for f in files:
+        if not f.endswith(sources):
+            continue
+        texts = [git(root, "show", f"{base}:{f}").stdout]
+        try:
+            texts.append((root / f).read_text(errors="replace"))
+        except OSError:
+            pass
+        m = next((MACOS_TEXT.search(t) for t in texts if MACOS_TEXT.search(t)), None)
+        if m:
+            return f"{f} (it names {m.group(0)})"
+    for f in files:
+        if f.endswith(("CMakeLists.txt", ".cmake", "CMakePresets.json")):
+            hunks = git(root, "diff", "-U10", base, "HEAD", "--", f).stdout
+            m = MACOS_CMAKE.search("\n".join(l for l in hunks.splitlines() if not l.startswith(("+++", "---"))))
+            if m:
+                return f"{f} (a change near {m.group(0)})"
+    return definition_change(root, base, files, MACOS_JOB)
+
+
 def newer_push(root: Path, head: str, newest: str | None) -> tuple[str, str] | None:
     """main's newer head and the first path after head that builds, when there is one: that push's run
     then builds and saves the caches. None while main is at head, when the newer commits touch only
@@ -936,7 +1002,7 @@ def windows_legs(event: str, plan: dict | None, result: dict, inputs: dict[str, 
 
 # where a job runs (ci.yml's runs-on reads lanes.json runs_on by job: a lane's name, or <lane>-<entry> for a
 # matrix job: unit-editor-1, asan-core, mcp-3, windows-engine-d3d11): GitHub's hosted runner of its OS,
-# unless an overflow runner takes it (docs/testing.md "Overflow runners")
+# unless Namespace's (NAMESPACE_VARIABLE, below) or an overflow runner takes it (docs/testing.md "Overflow runners")
 HOSTED = {"linux": "ubuntu-latest", "windows": "windows-latest", "macos": "macos-latest"}
 # the overflow runners, by label: their OS and the jobs each may take, best first (each runs one at a
 # time). je-win (8 cores, 7 GB) takes the engine legs; the editor's MSVC build does not fit
@@ -947,19 +1013,6 @@ OVERFLOW = {
                            "android", "web", "unit-core", "lint")),
     "je-win": ("windows", ("windows-engine-d3d11", "windows-engine-glcore")),
 }
-# the paid tier, last: Blacksmith (its GitHub App is on the organization; its runner groups are open to
-# public repositories). Its jobs do not count toward GitHub's 60 concurrent jobs, so Linux there frees
-# hosted slots for the queue's macOS jobs. Linux: 4 vCPU as ubuntu-latest, $0.008 a minute; macOS: an M4,
-# macOS 26 with Xcode 26.6 (run 45229221354), $0.08 a minute. A job of the merge queue or a push to main
-# (the critical path; BLACKSMITH_EVENTS) goes there only when the hosted runners of its OS are saturated
-# with at least BLACKSMITH_MIN_QUEUED of its OS waiting, and no machine of the user's takes it; the state's
-# blacksmith.ok false (the dispatcher saw a job wait there: the spend limit) or BLACKSMITH_VARIABLE=off stop it
-BLACKSMITH = {"linux": "blacksmith-4vcpu-ubuntu-2404", "macos": "blacksmith-6vcpu-macos-26"}
-BLACKSMITH_MIN_QUEUED = {"linux": 10, "macos": 3}
-BLACKSMITH_EVENTS = ("merge_group", "push")
-BLACKSMITH_VARIABLE = "BLACKSMITH_OVERFLOW"
-# the labels a self_hosted dispatch may force, by OS
-FORCEABLE = {**{label: os_ for label, (os_, _order) in OVERFLOW.items()}, **{label: os_ for os_, label in BLACKSMITH.items()}}
 # the jobs of one plan a runner takes (it runs them one after the other): the Mac builds ios in 12 min
 # (run 45104498209), so the plan's macos and ios both beat a saturated hosted queue there
 TAKES = {"je-mac": 2}
@@ -969,6 +1022,79 @@ TAKES = {"je-mac": 2}
 STATE_BRANCH = "ci-runner-state"
 DISABLED_VARIABLE = "SELF_HOSTED_DISABLED"
 WINDOWS_PARTS = ("editor", "engine-glcore", "engine-d3d11", "engine-vulkan")
+
+# Namespace's runners (docs/testing.md "Namespace runners"): the repository variable NAMESPACE_VARIABLE, `on`
+# or the OSes it takes (`linux macos`), puts every job of those OSes on a Namespace machine, labelled here
+# (no dashboard profile): nscloud-<os>-<arch>-<vCPU>x<GB>, sized by the job, and the cache volume of its
+# lane (the ccache lane's: ccache-restore keeps the cache there), committed by jobs of main only (PRs and
+# the queue restore, as from the Actions cache). Unset or `off`: today's labels, exactly
+NAMESPACE_VARIABLE = "NAMESPACE_RUNNERS"
+NAMESPACE_OSES = ("linux", "windows", "macos")
+NAMESPACE_MACHINE = {"linux": "nscloud-ubuntu-24.04-amd64", "windows": "nscloud-windows-2022-amd64",
+                     "macos": "nscloud-macos-tahoe-arm64"}
+NAMESPACE_PREFIXES = ("nscloud-", "namespace-profile-")
+NAMESPACE_OS_OF = {"nscloud-ubuntu-": "linux", "nscloud-windows-": "windows", "nscloud-macos-": "macos"}
+# the forced dispatch's label (parse_force) for a job's Namespace machine
+NAMESPACE_FORCE = "namespace"
+# vCPU x GB by job (a matrix job by its lane's prefix), else its OS's default: the long builds the most
+# cores (linux, unit and asan compile 2,700-3,900 units; the Windows editor and OpenGL legs are the lane's
+# longest), the MCP shards the 16 GB of a hosted runner they run -j 2 on. The disk comes with the shape
+# (32 GB and 8 per max(vCPU, GB / 2)) and free-disk does nothing there: smoke and android (33 and 44 GB
+# used, docs/testing.md "Job setup") take 8x32's 160. Namespace queues a job past the plan's concurrency
+# (Linux 160 vCPU on Business), so a larger shape only costs a run its parallelism
+NAMESPACE_SHAPES = {"lint": "4x8", "linux": "16x32", "unit-": "16x32", "asan-core": "16x32", "asan-editor": "16x64",
+                    "htmlui": "8x16", "smoke": "8x32", "web": "8x16", "android": "8x32", "mcp-": "4x16",
+                    "windows-editor": "16x32", "windows-engine-glcore": "16x32", "macos": "12x28", "ios": "6x14"}
+NAMESPACE_DEFAULT_SHAPE = {"linux": "4x16", "windows": "8x16", "macos": "6x14"}
+# the jobs with a cache volume, by tag (its ccache lane; mcp's holds the images only). Not Windows: the
+# docs name no cache volume there (its lanes keep the Actions cache), nor ios (its Xcode cache is the
+# nightly's Actions cache entry), nor lint
+NAMESPACE_CACHE = {"linux": "linux", "unit-core": "unit-core", "unit-editor-": "unit-editor", "asan-core": "asan-core",
+                   "asan-editor": "asan-editor", "htmlui": "htmlui", "smoke": "smoke", "web": "web", "android": "android",
+                   "mcp-": "mcp", "macos": "macos"}
+# the smallest volume Namespace makes; the largest lane holds an image (2.3-4.1 GB) and a 2.2 GB ccache
+NAMESPACE_CACHE_GB = 20
+
+
+def by_job(table: dict, job: str):
+    """table's entry for job: its own, else the longest prefix (a `-` key) it starts with."""
+    if job in table:
+        return table[job]
+    keys = [k for k in table if k.endswith("-") and job.startswith(k)]
+    return table[max(keys, key=len)] if keys else None
+
+
+def namespace_oses(text: str) -> set[str]:
+    """NAMESPACE_VARIABLE's OSes: `on`, all; else the OSes it names; unset, `off` or anything else, none."""
+    words = set(text.lower().replace(",", " ").split())
+    return set(NAMESPACE_OSES) if "on" in words else words & set(NAMESPACE_OSES)
+
+
+def namespace_labels(job: str, os_: str):
+    """The job's runs-on on Namespace: its machine label, and its lane's cache volume (Linux: with the
+    container images) that only main's jobs commit; the second editor part commits none (ccache-save
+    trims the first's, the lead's, which holds both parts' objects)."""
+    machine = f"{NAMESPACE_MACHINE[os_]}-{by_job(NAMESPACE_SHAPES, job) or NAMESPACE_DEFAULT_SHAPE[os_]}"
+    tag = by_job(NAMESPACE_CACHE, job)
+    if not tag:
+        return machine
+    labels = [f"{machine}-with-cache", f"nscloud-cache-tag-jasperengine-{tag}", f"nscloud-cache-size-{NAMESPACE_CACHE_GB}gb",
+              "nscloud-cache-allow-commit-from-main"]
+    if os_ == "linux":
+        labels.append("nscloud-container-image-cache")
+    part = job.rsplit("-", 1)[-1]
+    if job.startswith("unit-") and part.isdigit() and part != "1":
+        labels.append("nscloud-cache-exp-do-not-commit")
+    return labels
+
+
+def namespace_os(labels) -> str:
+    """The OS of a Namespace job's runs-on labels (nscloud-<os>-...), "" for any other job."""
+    for label in labels if isinstance(labels, list) else [labels]:
+        for prefix, os_ in NAMESPACE_OS_OF.items():
+            if str(label).startswith(prefix):
+                return os_
+    return ""
 
 
 def planned_jobs(doc: dict) -> dict[str, str]:
@@ -1008,14 +1134,15 @@ def trusted(trigger: str, head_repo: str, repo: str) -> str:
 
 
 def parse_force(text: str) -> tuple[dict[str, str], list[str]]:
-    """The self_hosted dispatch input: `<job>=<label> ...`; the entries it cannot use, said."""
+    """The self_hosted dispatch input: `<job>=<label> ...`, a label an overflow runner's or NAMESPACE_FORCE
+    (the job's Namespace machine); the entries it cannot use, said."""
     force, bad = {}, []
     for item in text.replace(",", " ").split():
         job, _, label = item.partition("=")
-        if label in FORCEABLE:
+        if label in OVERFLOW or label == NAMESPACE_FORCE:
             force[job] = label
         else:
-            bad.append(f"{item}: not <job>=<{'|'.join(FORCEABLE)}>")
+            bad.append(f"{item}: not <job>=<{'|'.join((*OVERFLOW, NAMESPACE_FORCE))}>")
     return force, bad
 
 
@@ -1038,14 +1165,17 @@ def restrict_to_forced(result: dict, force: dict[str, str]) -> None:
 
 def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str, repo: str, attempt: int,
           disabled: str = "", force: dict[str, str] | None = None, run_id: str = "",
-          blacksmith: str = "") -> tuple[dict[str, str], list[str]]:
+          namespace: str = "") -> tuple[dict[str, str], list[str]]:
     """runs_on of each planned job and why. A job goes to an overflow runner only when the run may use one
     (trusted), on its first attempt (a rerun, which the watchdog makes when a runner went away, stays
     hosted), when state (STATE_BRANCH's state.json: tools/ci/runner_dispatch.py, at most STATE_MAX_AGE old) says
     the hosted runners of its OS are saturated (the merge queue, the critical path: macOS as soon as a
     hosted macOS job waits) and the runner is online, idle and fit, and it is not in disabled
     (SELF_HOSTED_DISABLED: labels, or `all`); each runner takes TAKES jobs (default one). force (a dispatch's
-    self_hosted input, first attempt only) puts those jobs on those runners whatever the state says."""
+    self_hosted input, first attempt only) puts those jobs on those runners whatever the state says.
+    namespace (NAMESPACE_VARIABLE) puts a trusted run's jobs of its OSes on Namespace instead of GitHub's
+    runners, unless the rerun is one the watchdog moved off (hosted_only) or the state says Namespace is
+    down for that OS; an overflow runner then takes none of them."""
     runs_on = {job: HOSTED[os_] for job, os_ in jobs.items()}
     why = trusted(trigger, head_repo, repo)
     if why:
@@ -1055,29 +1185,51 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
     held = {str(r) for r in state.get("hosted_only") or []} if isinstance(state, dict) else set()
     if attempt > 1 and (not run_id or str(run_id) in held or force):
         return runs_on, [f"hosted only: attempt {attempt} (a rerun after a runner went away stays on GitHub's runners)"]
+    t = state.get("t") if isinstance(state, dict) else None
+    fresh = isinstance(t, (int, float)) and -60 <= now - t <= STATE_MAX_AGE
+    notes = []
+    # Namespace: the variable decides, a stale or missing state does not stop it (it needs no host of
+    # ours); a fresh one that says Namespace is down for an OS keeps that OS's jobs on GitHub's runners
+    oses = namespace_oses(namespace)
+    down = {o: e for o, e in ((state or {}).get("namespace") or {}).items() if isinstance(e, dict) and e.get("down")} \
+        if fresh and isinstance(state, dict) else {}
+    for os_ in sorted(oses & set(down)):
+        notes.append(f"namespace {os_}: GitHub's runners ({down[os_].get('why') or 'down'}, tools/ci/runner_dispatch.py)")
+    on = oses - set(down)
+    for job, os_ in jobs.items():
+        if os_ in on:
+            runs_on[job] = namespace_labels(job, os_)
+    if on:
+        notes.append(f"namespace: the {', '.join(o for o in NAMESPACE_OSES if o in on)} jobs on Namespace ({NAMESPACE_VARIABLE})")
     if force:
-        notes = []
         for job, label in sorted(force.items()):
+            os_ = jobs.get(job)
             if trigger != "workflow_dispatch":
                 notes.append(f"{job}={label} ignored: only a workflow_dispatch forces a runner")
-            elif job not in jobs or jobs[job] != FORCEABLE[label]:
-                notes.append(f"{job}={label} ignored: no {FORCEABLE[label]} job {job} in this plan")
+            elif label == NAMESPACE_FORCE:
+                if os_:
+                    runs_on[job] = namespace_labels(job, os_)
+                    notes.append(f"{job} on Namespace: forced (self_hosted)")
+                else:
+                    notes.append(f"{job}={label} ignored: no job {job} in this plan")
+            elif os_ != OVERFLOW[label][0]:
+                notes.append(f"{job}={label} ignored: no {OVERFLOW[label][0]} job {job} in this plan")
             else:
                 runs_on[job] = label
                 notes.append(f"{job} on {label}: forced (self_hosted)")
         return runs_on, notes
     off = set(disabled.replace(",", " ").split())
+    lead = "no overflow runner" if on else "hosted only"
     if "all" in off:
-        off |= set(OVERFLOW)
-    t = state.get("t") if isinstance(state, dict) else None
-    if not isinstance(t, (int, float)) or not -60 <= now - t <= STATE_MAX_AGE:
-        return runs_on, ["hosted only: " + ("no runner state" if t is None else
-                                            f"the runner state is {now - t:.0f} s old (over {STATE_MAX_AGE})")]
-    notes = []
+        return runs_on, notes + [f"{lead}: {DISABLED_VARIABLE} is all"]
+    if not fresh:
+        return runs_on, notes + [f"{lead}: " + ("no runner state" if t is None else
+                                                f"the runner state is {now - t:.0f} s old (over {STATE_MAX_AGE})")]
     for label, (os_, order) in OVERFLOW.items():
         runner = (state.get("runners") or {}).get(label) or {}
         hosted = (state.get("os") or {}).get(os_) or {}
-        candidates = [j for j in order if j in jobs]
+        # (a job on Namespace is not GitHub's to wait for)
+        candidates = [j for j in order if j in jobs and runs_on[j] == HOSTED[os_]]
         if not candidates:
             continue
         if label in off:
@@ -1096,27 +1248,6 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
                 runs_on[job] = label
                 notes.append(f"{job} on {label}: hosted {os_} {'saturated' if hosted.get('saturated') else 'has a job waiting'} "
                              f"({hosted.get('running', 0)} running, {hosted.get('queued', 0)} queued), {label} idle")
-    # the paid tier: the jobs neither GitHub nor the user's machines take soon
-    paid = state.get("blacksmith") or {}
-    for os_, label in BLACKSMITH.items():
-        left = [j for j, o in jobs.items() if o == os_ and runs_on[j] == HOSTED[os_]]
-        hosted = (state.get("os") or {}).get(os_) or {}
-        if not left:
-            continue
-        if blacksmith.strip().lower() == "off":
-            notes.append(f"{label}: off ({BLACKSMITH_VARIABLE})")
-        elif trigger not in BLACKSMITH_EVENTS:
-            notes.append(f"{label}: the merge queue's and main's only (a {trigger} run)")
-        elif paid.get("ok") is False:
-            notes.append(f"{label}: paused ({paid.get('why', 'a job waited there')})")
-        elif not (hosted.get("saturated") and hosted.get("queued", 0) >= BLACKSMITH_MIN_QUEUED[os_]):
-            notes.append(f"{label}: not needed ({hosted.get('queued', 0)} hosted {os_} jobs waiting, it takes from "
-                         f"{BLACKSMITH_MIN_QUEUED[os_]} with hosted saturated)")
-        else:
-            for job in left:
-                runs_on[job] = label
-            notes.append(f"{', '.join(left)} on {label}: hosted {os_} saturated ({hosted.get('queued', 0)} waiting), "
-                         "no machine of the user's takes them (the paid tier)")
     return runs_on, notes
 
 
@@ -1183,6 +1314,10 @@ def github_output(doc: dict, unit_run: dict) -> str:
               f"windows_parts={json.dumps(doc.get('windows_parts', []), separators=(',', ':'))}",
               # the jobs that run but skip a test run of theirs (lanes or report.TEST_REPORTS)
               f"build_only={json.dumps(doc.get('build_only', []), separators=(',', ':'))}",
+              # the test runs whose binary is not built either (the merge queue's windows-editor-tests)
+              f"unbuilt={json.dumps(doc.get('unbuilt', []), separators=(',', ':'))}",
+              # push: the queue left macos out, so this run runs its tests too
+              f"macos_full={'true' if doc.get('macos_full') else 'false'}",
               # push: ci.yml dispatches the advisory run
               f"dispatch_advisory={'true' if doc.get('dispatch_advisory') else 'false'}",
               # each job's runs-on (route)
@@ -1239,15 +1374,16 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--previous-runs", type=Path, help="push, advisory: `gh run list` JSON of the event's earlier runs on the branch")
     ap.add_argument("--run-id", type=int, help="this run's id, left out of --previous-runs")
     ap.add_argument("--runner-state", type=Path, help=f"state.json of the branch {STATE_BRANCH} (tools/ci/runner_dispatch.py)")
-    ap.add_argument("--blacksmith", default="", help=f"{BLACKSMITH_VARIABLE}: off stops the paid tier")
     ap.add_argument("--pr-advisory", default="on", help=f"{PR_ADVISORY_VARIABLE}: off runs a pull request's blocking lanes only")
     ap.add_argument("--runner-disabled", default="", help=f"{DISABLED_VARIABLE}: overflow runner labels to leave alone, or all")
+    ap.add_argument("--namespace", default="", help=f"{NAMESPACE_VARIABLE}: on, or the OSes ({' '.join(NAMESPACE_OSES)}) whose jobs "
+                    "run on Namespace's runners; unset or off, none")
     ap.add_argument("--trigger", default="", help="github.event_name (an overflow runner takes no fork's pull request)")
     ap.add_argument("--head-repo", default="", help="a pull request's head repository (github.event.pull_request.head.repo.full_name)")
     ap.add_argument("--repo", default="", help="github.repository")
     ap.add_argument("--run-attempt", type=int, default=1, help="github.run_attempt (a rerun stays hosted)")
     ap.add_argument("--self-hosted", default="", help="a dispatch's self_hosted input: <job>=<label> ...: those jobs' lanes "
-                    "only, forced onto those runners on the first attempt")
+                    f"only, forced onto those runners (or {NAMESPACE_FORCE}: Namespace's) on the first attempt")
     args = ap.parse_args(argv)
 
     out = args.out_dir.resolve()
@@ -1280,9 +1416,10 @@ def main(argv: list[str]) -> int:
         def definition(p: dict | None, job: str = ASAN_JOB) -> str:
             return definition_change(root, p.get("base") or base, p.get("files") or [], job) if p else ""
 
+        mac = macos_inputs(root, plan.get("base") or base, plan.get("files") or []) if plan else None
         result = decide(args.event, plan, error, ci, left_out, nightly_out, args.advisory.split(),
                         superseded_by=superseded, full_selection=args.full_selection, asan_definition=definition(plan),
-                        pr_advisory=args.pr_advisory.strip().lower() != "off")
+                        pr_advisory=args.pr_advisory.strip().lower() != "off", macos_inputs=mac)
         force, bad_force = parse_force(args.self_hosted)
         notes += [f"self_hosted {b}" for b in bad_force]
         # (a rerun keeps the lanes, on GitHub's runners: route)
@@ -1316,7 +1453,8 @@ def main(argv: list[str]) -> int:
                    root, plan["files"] if plan else [], definition(plan, WINDOWS_JOB), (plan or {}).get("base") or base),
                    args.full_selection, force if args.trigger == "workflow_dispatch" else ()),
                "mcp": dict(result["mcp"], shards=shards), "fallbacks": result["fallbacks"], "notes": notes,
-               "advisory_off": result["advisory_off"], "build_only": result["build_only"], "queue_off": result["queue_off"],
+               "macos_full": result.get("macos_full", False),
+               "advisory_off": result["advisory_off"], "build_only": result["build_only"], "unbuilt": result["unbuilt"], "queue_off": result["queue_off"],
                "superseded_by": superseded[0] if superseded else None,
                "dispatch_advisory": result["dispatch_advisory"],
                "files": plan["files"] if plan else None,
@@ -1324,7 +1462,7 @@ def main(argv: list[str]) -> int:
                "checks": {"modules_off": plan["modules_off"] if plan else "", "navigation_off": bool(plan and plan["navigation_off"])}}
         doc["runs_on"], doc["routing"] = route(planned_jobs(doc), load_state(args.runner_state), time.time(), args.trigger,
                                                args.head_repo, args.repo, args.run_attempt, args.runner_disabled, force,
-                                               run_id=str(args.run_id or ""), blacksmith=args.blacksmith)
+                                               run_id=str(args.run_id or ""), namespace=args.namespace)
         write_selection(doc, args.event, plan, result, ci, tests, args.inputs_manifest, out)
         doc["shadow"] = shadow_selection(shadow_plan, ci, left_out, nightly_out, definition(shadow_plan)) if shadow_plan else None
         doc["shadow_why"] = "" if shadow_plan else shadow_why

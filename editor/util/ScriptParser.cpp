@@ -584,6 +584,10 @@ std::vector<ScriptProperty> editor::ScriptParser::parseScriptPropertiesFromStrin
                     prop.defaultValue = val;
                     break;
                 }
+
+                case ScriptPropertyType::List:
+                    // a Lua property type: a C++ type never maps to it
+                    break;
             }
         } catch (const std::exception& e) {
             size_t lineNum = std::count(content.begin(), content.begin() + position, '\n') + 1;
@@ -631,6 +635,8 @@ std::vector<ScriptProperty> editor::ScriptParser::parseScriptPropertiesFromStrin
                 case ScriptPropertyType::Asset:
                     prop.value = AssetRef();
                     prop.defaultValue = AssetRef();
+                    break;
+                case ScriptPropertyType::List:
                     break;
             }
         }

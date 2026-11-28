@@ -140,6 +140,11 @@ const char* reflect::assetKindName(AssetKind kind) {
         case AssetKind::TerrainWorld: return "terrain_world";
         case AssetKind::Tileset: return "tileset";
         case AssetKind::TitleArt: return "title_art";
+        case AssetKind::Mesh: return "mesh";
+        case AssetKind::IesProfile: return "ies_profile";
+        case AssetKind::Dialogue: return "dialogue";
+        case AssetKind::VertexColors: return "vertex_colors";
+        case AssetKind::FogProfile: return "fog_profile";
     }
     return "";
 }

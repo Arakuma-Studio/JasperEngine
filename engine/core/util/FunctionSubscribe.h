@@ -8,6 +8,7 @@
 #ifndef FUNCTIONSUBSCRIBE_H
 #define FUNCTIONSUBSCRIBE_H
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <type_traits>
@@ -50,7 +51,8 @@
     do { \
         std::string __tag = JASPERENGINE_EVENT_SUBSCRIPTION_TAG(EVENT); \
         ::jasperengine::Engine::EVENT.add(__tag, ::jasperengine::detail::engineEventCallback( \
-            this, &std::remove_pointer_t<decltype(this)>::EVENT), ::jasperengine::ownerKeyOf(this)); \
+            this, &std::remove_pointer_t<decltype(this)>::EVENT, ::jasperengine::detail::engineEventFamily(#EVENT)), \
+            ::jasperengine::ownerKeyOf(this)); \
     } while (0)
 
 #define UNREGISTER_ENGINE_EVENT(EVENT) \
@@ -389,6 +391,42 @@ namespace jasperengine {
     // (start runs before its first update; defined in ScriptBase.cpp).
     JASPERENGINE_API bool isScriptActive(Scene* scene, unsigned int entity, const void* instance);
 
+    // Simulation Culling's script guard (docs/specs/culling-group-and-simulation-distance.md D7),
+    // defined in CullingSystem.cpp. The family of an engine event: 1 onUpdate and onPostUpdate,
+    // 2 onFixedUpdate, 0 any other (never culled).
+    namespace detail {
+        // scenes with a live Simulation Culling component: the guard's one relaxed load
+        extern JASPERENGINE_API std::atomic<int> simulationCullingActive;
+
+        constexpr int engineEventFamily(const char* name) {
+            auto same = [](const char* a, const char* b) {
+                while (*a && *a == *b) { a++; b++; }
+                return *a == *b;
+            };
+            if (same(name, "onUpdate") || same(name, "onPostUpdate")) return 1;
+            if (same(name, "onFixedUpdate")) return 2;
+            return 0;
+        }
+    }
+    enum class SimulationGate : int { Call, Skip, Reduced };
+    // Whether a script's update-family callback runs: Skip while its GameObject is culled, or in
+    // the reduced band off its frame; Reduced on its frame (`reducedDelta`: the scaled time since
+    // its previous reduced call). Skipped calls are counted.
+    JASPERENGINE_API SimulationGate simulationCullingGate(Scene* scene, unsigned int entity, int family, double& reducedDelta);
+    // Around a reduced call: Engine::getScriptDeltatime (Lua Engine.deltatime) inside it is
+    // `reducedDelta` (Hit Stop still applies on top)
+    class JASPERENGINE_API SimulationReducedScope {
+    public:
+        SimulationReducedScope(Scene* scene, unsigned int entity, double reducedDelta);
+        ~SimulationReducedScope();
+        SimulationReducedScope(const SimulationReducedScope&) = delete;
+        SimulationReducedScope& operator=(const SimulationReducedScope&) = delete;
+    private:
+        Scene* previousScene;
+        unsigned int previousEntity;
+        double previousDelta;
+    };
+
     namespace detail {
         template<typename T, typename = void>
         struct IsSceneScript : std::false_type {};
@@ -398,10 +436,11 @@ namespace jasperengine {
 
         // REGISTER_ENGINE_EVENT callback; a scene script (ScriptBase) is skipped while
         // inactive or disabled, like Unity's Update on a disabled MonoBehaviour
+        // (`family`: engineEventFamily of the event, for Simulation Culling)
         template<typename T, typename Ret, typename... Args>
-        std::function<Ret(Args...)> engineEventCallback(T* obj, Ret (T::*method)(Args...)) {
+        std::function<Ret(Args...)> engineEventCallback(T* obj, Ret (T::*method)(Args...), int family = 0) {
             if constexpr (IsSceneScript<T>::value) {
-                return [obj, method](Args... args) -> Ret {
+                return [obj, method, family](Args... args) -> Ret {
                     if (!::jasperengine::isScriptActive(obj->getScene(), obj->getEntity(), static_cast<const void*>(obj))) {
                         if constexpr (std::is_void<Ret>::value) {
                             return;
@@ -409,9 +448,25 @@ namespace jasperengine {
                             return Ret();
                         }
                     }
+                    if (family != 0 && simulationCullingActive.load(std::memory_order_relaxed)) {
+                        double reducedDelta = 0.0;
+                        const SimulationGate gate = simulationCullingGate(obj->getScene(), obj->getEntity(), family, reducedDelta);
+                        if (gate == SimulationGate::Skip) {
+                            if constexpr (std::is_void<Ret>::value) {
+                                return;
+                            } else {
+                                return Ret();
+                            }
+                        }
+                        if (gate == SimulationGate::Reduced) {
+                            SimulationReducedScope scope(obj->getScene(), obj->getEntity(), reducedDelta);
+                            return (obj->*method)(args...);
+                        }
+                    }
                     return (obj->*method)(args...);
                 };
             } else {
+                (void)family;
                 return [obj, method](Args... args) -> Ret {
                     return (obj->*method)(args...);
                 };

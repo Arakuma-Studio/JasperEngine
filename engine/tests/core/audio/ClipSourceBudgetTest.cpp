@@ -9,6 +9,7 @@
 
 #include "audio/AudioImport.h"
 #include "audio/ClipSource.h"
+#include "support/AllocationCounter.h"
 
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -30,28 +31,30 @@ using namespace jasperengine;
 
 namespace {
 
-std::vector<unsigned char> toneWav(uint32_t frames){
+std::vector<unsigned char> toneWav(uint32_t frames, uint16_t channels = 1){
     std::vector<unsigned char> out;
     auto u32 = [&out](uint32_t v){ for (int i = 0; i < 4; i++) out.push_back((unsigned char)(v >> (8 * i))); };
     auto u16 = [&out](uint16_t v){ out.push_back((unsigned char)v); out.push_back((unsigned char)(v >> 8)); };
-    const uint32_t data = frames * 4;
+    const uint32_t data = frames * 4 * channels;
     out.insert(out.end(), {'R', 'I', 'F', 'F'});
     u32(36 + data);
     out.insert(out.end(), {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '});
     u32(16);
     u16(3);
-    u16(1);
+    u16(channels);
     u32(48000);
-    u32(192000);
-    u16(4);
+    u32(192000 * channels);
+    u16((uint16_t)(4 * channels));
     u16(32);
     out.insert(out.end(), {'d', 'a', 't', 'a'});
     u32(data);
     for (uint32_t i = 0; i < frames; i++){
-        const float x = (float)std::sin((double)i * 0.0576);
-        uint32_t bits = 0;
-        std::memcpy(&bits, &x, 4);
-        u32(bits);
+        for (uint16_t c = 0; c < channels; c++){
+            const float x = (float)std::sin((double)i * (0.0576 + 0.01 * c));
+            uint32_t bits = 0;
+            std::memcpy(&bits, &x, 4);
+            u32(bits);
+        }
     }
     return out;
 }
@@ -101,6 +104,65 @@ TEST(ClipSourceBudget, DISABLED_AddsAtMostThreePercentToAVoice){
     std::printf("[budget] without gain %.3f ms: %+.1f %%\n", withoutGain * 1000.0, (withoutGain / plain - 1.0) * 100.0);
     std::printf("[budget] Wav %.3f ms, AudioClipSource %.3f ms over %d blocks: %+.1f %%\n", plain * 1000.0, wrapped * 1000.0, blocks, (wrapped / plain - 1.0) * 100.0);
     EXPECT_LE(wrapped, plain * 1.03);
+}
+
+// spec build-size-tools R25: a Force To Mono voice of a stereo file costs the mix no more than the same
+// voice in stereo (SoLoud's 1 -> 2 path), and its reads allocate nothing. 32 voices of each, the
+// fastest of several runs; the budget is enforced under JASPER_TEST_PERF_SLACK and printed otherwise.
+TEST(ClipSourceBudget, ForceMonoCostsNoMore){
+    const std::vector<unsigned char> bytes = toneWav(48000, 2);
+    auto wav = std::make_shared<SoLoud::Wav>();
+    ASSERT_EQ(wav->loadMem(bytes.data(), (unsigned int)bytes.size(), true, false), (unsigned int)SoLoud::SO_NO_ERROR);
+    ClipImportSettings stereoSettings;
+    stereoSettings.gainDb = -3.0f;
+    ClipImportSettings monoSettings = stereoSettings;
+    monoSettings.forceMono = true;
+    AudioClipSource stereo(wav, stereoSettings);
+    AudioClipSource mono(wav, monoSettings);
+    stereo.setSingleInstance(false);
+    mono.setSingleInstance(false);
+    ASSERT_EQ(mono.getChannels(), 1u);
+
+    auto mix = [](SoLoud::AudioSource& source, int blocks, uint64_t& allocations){
+        SoLoud::Soloud engine;
+        EXPECT_EQ(engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER, 48000, 512, 2), (unsigned int)SoLoud::SO_NO_ERROR);
+        engine.setMaxActiveVoiceCount(32);
+        for (int v = 0; v < 32; v++){
+            const SoLoud::handle voice = engine.play(source, 0.5f, -1.0f + (float)v / 16.0f);
+            engine.setLooping(voice, true);
+        }
+        std::vector<float> buffer(1024);
+        // the first mix starts the voices: what follows is the steady state
+        engine.mix(buffer.data(), 512);
+        float sink = 0.0f;
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < blocks; i++){
+            const testsupport::ThreadAllocationCount reading;
+            engine.mix(buffer.data(), 512);
+            allocations += reading.count();
+            sink += buffer[0];
+        }
+        const std::chrono::duration<double> took = std::chrono::steady_clock::now() - start;
+        EXPECT_LT(sink, 1e9f);
+        EXPECT_EQ(engine.getActiveVoiceCount(), 32u);
+        engine.deinit();
+        return took.count();
+    };
+    double stereoSeconds = 1e9, monoSeconds = 1e9;
+    uint64_t monoAllocations = 0, stereoAllocations = 0;
+    for (int run = 0; run < 5; run++){
+        stereoSeconds = std::min(stereoSeconds, mix(stereo, 200, stereoAllocations));
+        monoSeconds = std::min(monoSeconds, mix(mono, 200, monoAllocations));
+    }
+    std::printf("[bench] 32 voices, 200 blocks: stereo %.3f ms, Force To Mono %.3f ms (%+.1f %%)\n", stereoSeconds * 1000.0,
+                monoSeconds * 1000.0, (monoSeconds / stereoSeconds - 1.0) * 100.0);
+    if (testsupport::countsAllocations()){
+        EXPECT_EQ(monoAllocations, 0u) << "a Force To Mono voice allocated in the mix";
+    }
+    const double slack = testsupport::perfSlack();
+    if (slack > 0.0){
+        EXPECT_LE(monoSeconds, stereoSeconds * slack);
+    }
 }
 
 }  // namespace ClipSourceBudgetTest_cpp

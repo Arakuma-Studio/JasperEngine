@@ -6,6 +6,7 @@
 #include "titleart/localisation/TitleLanguageExport.h"
 #include "Project.h"
 #include "ShippingTypes.h"
+#include "buildprofile/BuildProfile.h"
 #include "cook/BuildReport.h"
 #include "cook/SceneCooker.h"
 #include "players/ModuleUsage.h"
@@ -13,6 +14,7 @@
 #include "ShaderDataSerializer.h"
 #include "util/BuildDiagnostics.h"
 #include "util/CommandRunner.h"
+#include "export/AssetStripping.h"
 #include "export/ExportFiles.h"
 
 #include <filesystem>
@@ -116,7 +118,21 @@ namespace jasperengine::editor {
         std::string keyPassword;
         // iOS: the simulator's unsigned .app instead of an archive
         bool iosSimulator = false;
+        // the Build Profile the build resolves (docs/specs/build-profiles.md); "" none: today's build.
+        // The caller has applied its platform, backend, flavour and folder (applyBuildProfile)
+        std::string buildProfile;
+        // Build And Run on an Android device (docs/specs/build-and-run-on-device.md R3): one APK of
+        // this ABI, whatever androidFormat says; "" none
+        std::string androidRunAbi;
+        // Patch And Run (R6, D6): cook the content into the build cache as a build does, up to its
+        // content manifest, and stop there: no package, no signing, the output folder untouched
+        bool contentOnly = false;
     };
+
+    // A build of `profileName`: its platform, Graphics API, Development Build and output folder
+    // into `config` (an output folder of its own replaces `defaultOutputDir`). False with the
+    // reason when it does not exist, cannot be read or does not validate.
+    bool applyBuildProfile(Project& project, const std::string& profileName, ExportConfig& config, std::string& error);
 
     // Why a project needs the Compile method (R5); empty: a prebuilt player can build it
     struct BuildMethodChoice {
@@ -140,6 +156,7 @@ namespace jasperengine::editor {
         fs::path executable;
         std::vector<fs::path> artifacts;
         std::vector<BuildWarning> warnings;
+        std::vector<BuildFallback> fallbacks;
         // what the user does next ("Open on a Mac with Xcode")
         std::vector<std::string> notes;
         // S34: the engine modules the build ships (a prebuilt player's: the ones the project
@@ -151,6 +168,27 @@ namespace jasperengine::editor {
         fs::path buildReport;
         uint64_t buildBytes = 0;
         std::map<std::string, uint64_t> buildCategories;
+        // build-size-tools: the report's history id and its size budget rows
+        std::string buildReportId;
+        std::vector<BuildReportBudget> sizeBudgets;
+        // the Build Profile the build resolved ("" none)
+        std::string buildProfile;
+        // Android: the package name; iOS: the bundle identifier ("" elsewhere)
+        std::string appId;
+        // the cooked content folder (Patch And Run's source: the build cache's)
+        fs::path contentDir;
+        // an Android package that says android:debuggable (a Development Build of a runtime whose
+        // manifest template has the {{DEBUGGABLE}} marker, R9)
+        bool debuggable = false;
+        // S99 R10, R11: the largest files (largest first), a web build's gzip download estimate
+        // (0 otherwise), and the Download Budget the build was held to (0: none)
+        std::vector<BuildReportFile> largestFiles;
+        uint64_t downloadBytesGzip = 0;
+        uint64_t downloadBudgetBytes = 0;
+        std::string downloadBudgetFamily;     // "desktop", "mobile", "web"; empty: none (a source export)
+        // S98 REQ-10: what Asset Stripping (and Exclude From Build) left out
+        size_t strippedCount = 0;
+        uint64_t strippedBytes = 0;
     };
 
     struct ExportProgress {
@@ -190,6 +228,31 @@ namespace jasperengine::editor {
     private:
         Project* project = nullptr;
         ExportConfig config;
+        // Build Profiles (R14): every Project Settings value of the build comes from `settings`, the
+        // open project itself without a profile (R15) or its settings snapshot; scenes and assets
+        // come from `project`. Made on the main thread when the export starts (prepareBuildProfile)
+        std::shared_ptr<Project> settingsHolder;
+        Project* settings = nullptr;
+        std::shared_ptr<const BuildProfile> buildProfile;
+        // what resolving it found (W-PROFILE-SUFFIX-NUMERIC, the store limits): the build's warnings
+        std::vector<BuildWarning> profileWarnings;
+        BuildContentFilter contentFilter;
+        // the profile's Scene List as project scene ids (listed first, then the scenes they
+        // involve), found while the scenes are loaded; empty: every scene of the project ships
+        std::vector<uint32_t> profileListedScenes;
+        std::set<uint32_t> shippedScenes;
+        bool prepareBuildProfile();
+        bool shipsScene(uint32_t sceneId) const { return shippedScenes.empty() || shippedScenes.count(sceneId) > 0; }
+        // the profile's start scene, else the first it lists; 0 without a Scene List
+        uint32_t profileStartScene() const;
+        // a path under the project, project-relative and generic ("" outside it), for the content filter
+        std::string projectRelativeForFilter(const fs::path& absolute) const;
+        // the project-relative prefix of a folder's paths ("assets/", "" for the project root)
+        std::string filterPrefixOf(const fs::path& folder) const;
+        // R12: what the shipped scenes reach through the dependency graph against the exclusions
+        // (main thread, the asset index ready); "" when nothing excluded is used
+        std::string excludedReference() const;
+        void warnExcludedLuaRequires(const fs::path& luaRoot);
         ExportProgress progress;
         mutable std::mutex progressMutex;
         std::atomic<bool> cancelRequested{false};
@@ -206,7 +269,7 @@ namespace jasperengine::editor {
         // held while a build uses the shared compile tree (getSharedBuildCacheDir)
         std::unique_ptr<io::ScopedFileLock> sharedBuildLock;
 
-        // The UI Documents of the exported scenes, collected while loadAndSaveAllScenes() has
+        // The UI Documents of the exported scenes, collected while loadAndCookAllScenes() has
         // every scene loaded, for checkHtmlUIReferences()
         struct HtmlUIDocumentUse {
             std::string scene;
@@ -230,7 +293,17 @@ namespace jasperengine::editor {
         // S53 R21: what the export's cooks measured, for the Build Report: a cooked file's build
         // path -> its source asset and that source's bytes
         std::map<std::string, std::pair<std::string, uint64_t>> cookedModelSizes;
+        // build-size-tools R19: the WAVs Force To Mono shipped mono, the same way (build path
+        // "assets/<rel>" -> the asset and the original file's bytes)
+        std::map<std::string, std::pair<std::string, uint64_t>> cookedAudioSizes;
         BuildReport buildReport;
+        // build-size-tools R2: the sources copyAssets() did not ship as themselves, and why
+        std::vector<BuildReportLeftOut> leftOutSources;
+        // S98 REQ-8 to REQ-12: what Asset Stripping and Exclude From Build leave out of this
+        // build (planAssetStripping), and the files the steps left out (copyAssets, copyLua,
+        // copyCustomShaderSources), for the Build Report and a Development Build's manifest
+        AssetStrippingPlan strippingPlan;
+        std::vector<BuildReportStripped> leftOutAssets;
         // S44: the imports of the project's .aseprite files (gatherImportedAssets), shipped as
         // assets/je-imported/ with its index.json; the .aseprite files themselves never ship
         std::vector<std::shared_ptr<const pixelart::aseprite::ImportRecord>> importedRecords;
@@ -241,17 +314,19 @@ namespace jasperengine::editor {
         std::map<std::string, std::string> textureSheetFiles;
         std::set<std::string> atlasOnlySources;
 
-        // S30: the Player build's report, the cooked scenes and prefabs loadAndSaveAllScenes()
+        // S30: the Player build's report, the cooked scenes and prefabs loadAndCookAllScenes()
         // made while every scene was loaded, and the player runtime it stages
         ExportResult result;
         std::vector<cook::CookedFileBytes> cookedFiles;
         std::vector<cook::CookedPrefabInfo> cookedPrefabs;
+        // the C++ scripts of the build (scene_scripts.cpp), taken while its scenes are loaded
+        std::vector<SceneScriptSource> buildCppScripts;
         // assets-relative: the volumes some component ships with runtimeGeneration on (T6 R78)
         std::set<std::string> voxelKeptGenerators;
         std::map<std::string, std::shared_ptr<const voxel::BaseSource>> voxelTerrainBases;
         std::shared_ptr<PlayerInfo> player;
         // S34: what the project reaches of the optional modules, found while every scene was
-        // loaded (loadAndSaveAllScenes); a source export has no such answer (every module allowed)
+        // loaded (loadAndCookAllScenes); a source export has no such answer (every module allowed)
         ModuleUsage moduleUsage;
         bool moduleUsageKnown = false;
         // the prebuilt build's player: the smallest installed variant with every needed module
@@ -372,6 +447,11 @@ namespace jasperengine::editor {
         static bool isLuaSourceFile(const fs::path& path);
 
         std::string getAppName() const;
+        // the game's Android package name or iOS bundle identifier ("" for the other platforms)
+        std::string applicationId() const;
+    public:
+        static std::string applicationIdOf(const Project& project, BuildPlatform platform, const std::string& appName);
+    private:
         fs::path getBuildCacheDir() const;
         // The compile tree every project with this build's kit and engine settings shares (the
         // engine and vendored objects built once), in the user cache; docs/specs/S33-build-speed.md R11
@@ -386,6 +466,12 @@ namespace jasperengine::editor {
         // the build's job count: ExportConfig::buildJobs (0: automatic), within the machine's cap
         unsigned int effectiveBuildJobs() const;
         bool runBuild();
+        // a Compile build's output staged beside its destination (S30 R7), swapped in by finishOutputStaging
+        bool beginOutputStaging();
+        bool finishOutputStaging();
+        void abandonOutputStaging();
+        fs::path finalDestinationDir;
+        bool outputStaged = false;
         bool collectDesktopArtifacts();
         bool collectWebArtifacts();
         // the pthreads build next to the single-thread one, the cross-origin isolation
@@ -400,15 +486,15 @@ namespace jasperengine::editor {
         bool collectPackedTreeEntries(const fs::path& dir, std::vector<fs::path>& out, const fs::path& keep = fs::path());
         bool removeResourcePack(const fs::path& packPath);
         bool writeNativeResourcePack(const fs::path& outputPath, bool& created);
-        bool clearGenerated();
-        // Test hook (JASPER_TEST_EXPORT_HOLD=<path>): waits after the clear while <path> exists
+        // Test hook (JASPER_TEST_EXPORT_HOLD=<path>): waits before the scenes are read while <path> exists
         void holdForTest();
-        bool loadAndSaveAllScenes();
+        bool loadAndCookAllScenes();
         // runs checkHtmlUIReferences(...) on htmlUIDocuments; setError on a broken reference
         bool checkHtmlUIReferences();
         // S37 R24: an event whose clip is missing is a build warning naming both
         void checkSoundEventClips();
         bool copyGenerated();
+        bool writeCompiledContent();
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
         // S80 R35: Title Art outputs stale or missing before the textures cook
@@ -428,7 +514,17 @@ namespace jasperengine::editor {
         // its engine files, and the report written next to the export
         void measureBuildContent(const fs::path& contentRoot);
         void measureBuildEngine(const fs::path& root);
-        bool writeBuildReport(const fs::path& outputDir, const std::string& method);
+        // build-size-tools: the report's id and time, each file's asset, the reachability walk
+        // (R3, R4), the engine and total budgets (unless a content budget already stopped the build),
+        // then build-report.json and its history entry (R6). False when it cannot be written or a
+        // fail budget stops the export.
+        bool writeBuildReport(const fs::path& outputDir, const std::string& method, bool engineMeasured = true);
+        // R13: the size budgets of the content (content true, right after measureBuildContent) or
+        // of the engine and total; false when a fail budget stopped the export (its report written)
+        bool checkSizeBudgets(bool content, const fs::path& outputDir, const std::string& method);
+        std::string buildReportPlatform() const;
+        // each file's asset (main thread) and, with the index ready, why each asset ships
+        void mapBuildReportAssets();
         // What walkTree() does after visiting an entry: enter it (a folder; a file goes on to the
         // next entry), skip what it holds, or stop the walk
         enum class TreeStep { Enter, Skip, Stop };
@@ -452,6 +548,14 @@ namespace jasperengine::editor {
         // S45 R19: every atlas built for the export's family, and the texture sheets' records
         bool gatherSpriteAtlases(const std::vector<std::string>& platforms);
         bool copyAssets();
+        // S98 REQ-9, REQ-12: the plan on the main thread, then the FBX files it ships imported
+        // (their linked textures ship with them); fails naming an FBX that cannot be imported
+        bool planAssetStripping();
+        // whether the plan leaves a project-relative file out (recorded once, with its bytes)
+        bool leftOutOfBuild(const std::string& projectRelative, const fs::path& absolute);
+        // .vert and .frag, and .glsl includes when the game compiles shaders at runtime: what
+        // copyCustomShaderSources() ships and copyAssets() leaves to it (S98 REQ-11)
+        static bool isShippedShaderSource(const fs::path& path, bool runtimeShaders);
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);
         // S51 R34: the project's bitmap fonts' sources no asset references (main thread)
@@ -467,6 +571,12 @@ namespace jasperengine::editor {
         bool checkMissingAssets();
         // S04: assetmap.bin at the exported assets root, the runtime's GUID <-> path map
         bool writeAssetMap();
+        // S95 REQ-24: je-dataassets.json at the exported assets root (the data classes and their
+        // assets: DataAsset.loadAll); a Data Asset whose class is missing or does not ship is warned
+        bool writeDataAssetIndex();
+        // S95: a .dataasset written with its references' current paths (their GUIDs resolved), so a
+        // game finds them by path too; false (it ships as it is) when it does not parse or write
+        bool writeResolvedDataAsset(const fs::path& source, const fs::path& destination);
         // Runtime shader compilation builds a fork's variants from its sources, which it
         // reads from the build's assets at their project-relative paths: a script can
         // put any fork of the project on a mesh, so all of them ship
@@ -485,6 +595,7 @@ namespace jasperengine::editor {
         // The exported project's sources (scenes, prefabs, scene_scripts.cpp, C++ scripts) in
         // the Xcode app targets, with the include directories CMake gives the game target
         bool addXcodeProjectSources(std::string& xcodeProject);
+        bool addXcodeProjectContent(std::string& xcodeProject);
         // The project's C++ standard and the scene capacities, as the CMake build sets them
         bool writeXcodeBuildSettings(std::string& xcodeProject);
         // Where the native plugins sit in an Xcode project: the source export's workspace (both
@@ -522,6 +633,11 @@ namespace jasperengine::editor {
         bool writeAudioCredits();
         // assets/je-audio-imports.json when any shipped clip has import settings
         bool writeAudioImports();
+        // game-ui-localization.md D5, R21: the String Tables cooked into assets/l10n (nothing without tables)
+        bool writeLocalization();
+        // assets/je-dialogue.json: Project Settings > Dialogue's variable defaults (nothing without any)
+        bool writeDialogueSettings();
+        bool localizationShipped = false;
         // the paths the export writes the notices to, relative to its root
         static const char* effectLicensePath();
         static const char* fluidLicensePath();
@@ -550,6 +666,8 @@ namespace jasperengine::editor {
         // are recipes: they ship only when the game can load one at run time, and then all of them, since a
         // Lua string can name any. usage null: not known (a source export), which keeps everything.
         static bool shipsForNoise(const fs::path& relPath, const ModuleUsage* usage);
+        // dialogue-graphs.md R15: .dialogue files ship only when the project needs the dialogue module
+        static bool shipsForDialogue(const fs::path& relPath, const ModuleUsage* usage);
         // Why `dir` can't take an export of `project` ("" when it can): it is, or is inside, the
         // project, its assets or its Lua folder (the editor would import the exported files as
         // project assets), unless it is below a hidden folder or the project's top-level build/
@@ -574,6 +692,15 @@ namespace jasperengine::editor {
         // without them, or not a well-formed PNG, as it is); false when it is not a .png or could
         // not be read or written this way (the caller then copies the file)
         static bool copyPngWithoutEditorChunks(const std::filesystem::path& source, const std::filesystem::path& destination);
+        // a .woff / .woff2 written as the sfnt it encodes (titlefonts::decodeWebFont), at the same
+        // path: players have no web font decoder. False when it is not a web font, or (warned with
+        // the decoder's reason) cannot be decoded or written; the caller then copies it as it is
+        static bool shipWebFontDecoded(const std::filesystem::path& source, const std::filesystem::path& destination);
+        // dialogue-graphs.md R16: a .dialogue written to `destination` as its compiled program
+        // (dialogue::Program::cook), which the game reads at `assetPath` without parsing JSON; false
+        // with `error` when it does not compile (the caller ships it as it is: the game logs the same)
+        static bool cookDialogue(const std::filesystem::path& source, const std::filesystem::path& destination, const std::string& assetPath,
+                                 std::string& error);
         // What the HTML/CSS of each UI Document refers to (HtmlUIDependencies): a missing
         // file, a path outside the assets directory or a remote URL is an error with
         // file:line:column (project-relative); an absolute path is a warning. documents =
@@ -609,6 +736,10 @@ namespace jasperengine::editor {
         // Native Plugins Info.plist entries (replacing keys), then raw <key>..</key> pairs
         static void applyNativePlistEntries(std::string& plist, const std::map<std::string, NativePlistValue>& entries,
                                             const std::string& rawXml);
+        // Player > Resolution and Presentation in an iOS Info.plist, the source export's and a prebuilt
+        // player's alike: UISupportedInterfaceOrientations and its ~ipad key (the allowed set, the
+        // default first) and UIRequiresFullScreen; true when that is on
+        static bool applyIosOrientations(std::string& plist, const PresentationSettings& presentation);
         static std::string getShaderDisplayName(ShaderType type, uint64_t properties, uint16_t customId = 0);
         static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);

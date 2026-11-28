@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "object/SimulationCulling.h"
 #include "pixelart/HitStop.h"
 
 #include "Engine.h"
@@ -294,6 +295,13 @@ HitStop::ScriptScope::~ScriptScope(){
 double HitStop::getScriptDeltaTime(){
     const HitStopState& s = state();
     const double dt = Engine::getDeltatime();
+    // a Simulation Culling reduced call: the time since the GameObject's previous one, this
+    // frame's part of it under the hit-stop (culling-group-and-simulation-distance R15)
+    double reduced = 0.0;
+    if (SimulationCulling::anyActive() && !Engine::isInFixedStep() && SimulationCulling::getReducedScriptDelta(s.scriptScene, s.scriptEntity, reduced)){
+        if (!s.frameActive || !s.scriptScene) return reduced;
+        return reduced - dt + deltaFor(s.scriptScene, s.scriptEntity, dt);
+    }
     if (!s.frameActive || !s.scriptScene) return dt;
     return deltaFor(s.scriptScene, s.scriptEntity, dt);
 }

@@ -85,6 +85,47 @@ TEST(DebugReflect, OnlyChangedValuesAreWrittenAndBadOnesKeepTheirDefault){
     EXPECT_EQ(read.logBufferSize, DebugSettings::maxLogBufferSize);
 }
 
+// Console Commands (dev-console-for-agents R23, R32): debug.consoleCommands, omitted at its default,
+// read back; the debug.console_commands row and its undo; resolved per build type
+TEST(DebugReflect, ConsoleCommandsKeyRoundTrips){
+    DebugSettings defaults;
+    const YAML::Node none = reflect::encode(reflect::debugSettingsStruct(), &defaults, reflect::EncodeContext{});
+    EXPECT_FALSE(none.IsMap() && none["consoleCommands"]) << "omitted at development";
+
+    DebugSettings changed;
+    changed.consoleCommands = DebugSettings::AllowLua::Never;
+    const YAML::Node node = reflect::encode(reflect::debugSettingsStruct(), &changed, reflect::EncodeContext{});
+    ASSERT_TRUE(node.IsMap());
+    EXPECT_EQ(node.size(), 1u) << YAML::Dump(node);
+    EXPECT_EQ(node["consoleCommands"].as<std::string>(), "never");
+    DebugSettings read;
+    reflect::DecodeContext ctx;
+    ctx.component = "debug";
+    reflect::decode(reflect::debugSettingsStruct(), YAML::Load(YAML::Dump(node)), &read, ctx);
+    EXPECT_EQ(read.consoleCommands, DebugSettings::AllowLua::Never);
+    EXPECT_EQ(read, changed);
+
+    EXPECT_TRUE(defaults.toOverlaySettings(true).commands);
+    EXPECT_FALSE(defaults.toOverlaySettings(false).commands) << "a release build";
+    EXPECT_FALSE(changed.toOverlaySettings(true).commands);
+    changed.consoleCommands = DebugSettings::AllowLua::AllBuilds;
+    EXPECT_TRUE(changed.toOverlaySettings(false).commands);
+
+    Project project;
+    SettingsContext settings;
+    settings.projectPtr = &project;
+    const SettingRow* row = SettingsRegistry::get().find("debug.console_commands");
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->label, "Console Commands");
+    EXPECT_EQ(row->values, (std::vector<std::string>{"development", "always", "never"}));
+    std::string error;
+    ASSERT_TRUE(row->set(settings, mcp::Json("never"), true, error)) << error;
+    EXPECT_EQ(project.getDebugSettings().consoleCommands, DebugSettings::AllowLua::Never);
+    EXPECT_EQ(row->get(settings), mcp::Json("never"));
+    project.getProjectCommandHistory()->undo();
+    EXPECT_EQ(project.getDebugSettings().consoleCommands, DebugSettings::AllowLua::Development);
+}
+
 // set_project_settings' path: each debug.* row applied is one undoable step of the project history
 TEST(DebugReflect, EachRowIsOneUndoStep){
     Project project;

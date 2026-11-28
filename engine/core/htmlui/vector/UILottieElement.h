@@ -31,7 +31,7 @@ namespace jasperengine {
     // <lottie src="anim.json|anim.lottie" autoplay loop speed direction mode segment marker
     // animation playonhover>: a Lottie animation rendered by ThorVG (CPU) into ONE dynamic RGBA8 texture
     // per element (HtmlUITexture DYNAMIC), updated in place, and only when the shown frame
-    // changes or the element is resized. Playback time is the UI clock (HtmlUIClock).
+    // changes or the element is resized. Playback time is its document's UI clock (HtmlUIClock, the Update Mode).
     // Events on the element: load, error (parameter "message"), play, pause, loop, complete.
     // The content is placed in the content box by object-fit and object-position (Rml::
     // ComputeObjectFitRect, as <img>); without a declared object-fit it is contained, centred

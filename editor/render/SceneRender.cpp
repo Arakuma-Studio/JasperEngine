@@ -8,6 +8,7 @@
 #include "scenetool/SceneTool.h"
 #include "LayerViewCamera.h"
 #include "component/AudioSourceComponent.h"
+#include "component/LightComponent.h"
 #include "component/Transform.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/NavGridComponent.h"
@@ -24,16 +25,17 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/UISystem.h"
 #include "object/Sprite.h"
-#include "spline/SplineEditor.h"
-#include "profiler/Profile.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/LineRendererComponent.h"
+#include "texture/TextureData.h"
 
+#include "resources/icons/sun-icon_png.h"
+#include "resources/icons/bulb-icon_png.h"
+#include "resources/icons/spot-icon_png.h"
 #include "resources/icons/camera-icon_png.h"
 #include "resources/icons/audio-source-icon_png.h"
-
-// defined by resources/icons/bulb-icon_png.h, included in SceneRender3D.cpp
-// (the xxd headers define non-static arrays, so they link in one TU only)
-extern unsigned char bulb_icon_png[];
-extern unsigned int bulb_icon_png_len;
+#include "spline/SplineEditor.h"
+#include "profiler/Profile.h"
 
 #include "Backend.h"
 #include "Project.h"
@@ -64,6 +66,7 @@ extern unsigned int bulb_icon_png_len;
 #include "subsystem/VoxelSystem.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cfloat>
@@ -106,47 +109,80 @@ void editor::SceneRender::deleteGizmo(EntityHandle* gizmo, const RenderSystem& r
 
 void editor::SceneRender::dropGoneGizmos(){
     const RenderSystem& render = *scene->getSystem<RenderSystem>();
-    dropGoneGizmos(latticeCages, render, &LatticeCageLines::overlay, &LatticeCageLines::depth);
+    dropGoneGizmos(latticeCageOverlay, render);
+    dropGoneGizmos(latticeCageDepth, render);
     dropGoneGizmos(particleShapeLines, render);
 }
 
-void editor::SceneRender::ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity){
-    if (lines.find(entity) == lines.end()){
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        lines[entity] = overlay(new LineRenderer(scene));
+void editor::SceneRender::flushGizmos(GizmoLineBatch& batch){
+    if (!batch.getRenderer() && batch.size() > 0){
+        Scene* target = batch.isToolsLayer() ? toolslayer.getScene() : scene;
+        ScopedDefaultEntityPool sys(*target, EntityPool::System);
+        LineRenderer* lines = new LineRenderer(target);
+        if (target == scene){
+            overlay(lines);
+        }
+        batch.setRenderer(lines);
     }
+    batch.flush();
+}
+
+void editor::SceneRender::flushGizmos(GizmoIconBatch& batch){
+    if (!batch.getSprite() && batch.size() > 0){
+        // 3D views draw the icons in the scene (billboards), 2D views in the tools layer
+        Scene* target = batch.isBillboard() ? scene : toolslayer.getScene();
+        ScopedDefaultEntityPool sys(*target, EntityPool::System);
+        Sprite* icons = new Sprite(target);
+        if (target == scene){
+            overlay(icons);
+        }
+        batch.setSprite(icons);
+    }
+    batch.flush();
+}
+
+void editor::SceneRender::dropGoneGizmos(GizmoLineBatch& batch, const RenderSystem& render){
+    if (batch.getRenderer() && isGizmoGone(batch.getRenderer(), render)){
+        deleteGizmo(batch.getRenderer(), render);
+        batch.forgetRenderer();
+    }
+}
+
+void editor::SceneRender::dropGoneGizmos(GizmoIconBatch& batch, const RenderSystem& render){
+    if (batch.getSprite() && isGizmoGone(batch.getSprite(), render)){
+        deleteGizmo(batch.getSprite(), render);
+        batch.forgetSprite();
+    }
+}
+
+void editor::SceneRender::deleteGizmos(GizmoLineBatch& batch, const RenderSystem& render){
+    deleteGizmo(batch.getRenderer(), render);
+    batch.forgetRenderer();
+}
+
+void editor::SceneRender::deleteGizmos(GizmoLineBatch& batch){
+    deleteGizmos(batch, *scene->getSystem<RenderSystem>());
+}
+
+void editor::SceneRender::deleteGizmos(GizmoIconBatch& batch, const RenderSystem& render){
+    deleteGizmo(batch.getSprite(), render);
+    batch.forgetSprite();
 }
 
 // the selected Particle System's shape in the 2D Scene view (the 3D view's are in its particle
 // lines, SceneRender3D): the effect's Shape module outline (ParticleCompiler::shapeOutline)
-void editor::SceneRender::updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current){
+void editor::SceneRender::updateParticleShapeLines(Entity entity, bool selected){
     const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
     const Transform* transform = scene->findComponent<Transform>(entity);
     if (!ps || !transform) return;
-    current.insert(entity);
-    ensureOverlayLines(particleShapeLines, entity);
-    LineRenderer* lines = particleShapeLines[entity];
-    lines->clearLines();
     const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(*ps);
     const bool visible = selected && transform->visible && document && document->shape.present && document->shape.enabled;
-    lines->setVisible(visible);
     if (!visible) return;
     std::vector<Vector3> segments;
     particles::ParticleCompiler::shapeOutline(document->shape, segments);
     const Vector4 color(0.45f, 0.8f, 1.0f, 1.0f);
     for (size_t i = 0; i + 1 < segments.size(); i += 2){
-        lines->addLine(transform->modelMatrix * segments[i], transform->modelMatrix * segments[i + 1], color);
-    }
-}
-
-void editor::SceneRender::dropParticleShapeLines(const std::set<Entity>& current){
-    for (auto it = particleShapeLines.begin(); it != particleShapeLines.end();){
-        if (current.find(it->first) == current.end()){
-            delete it->second;
-            it = particleShapeLines.erase(it);
-        }else{
-            ++it;
-        }
+        particleShapeLines.addLine(transform->modelMatrix * segments[i], transform->modelMatrix * segments[i + 1], color);
     }
 }
 
@@ -208,11 +244,10 @@ editor::SceneRender::~SceneRender(){
     terrainOverlay.reset();
     destroySplineOverlay();
     delete wireframeLines;
-    for (auto& pair : particleShapeLines) {
-        delete pair.second;
-    }
+    deleteGizmos(particleShapeLines, *scene->getSystem<RenderSystem>());
     VoxelSceneOverlay::release(scene);
     delete terrainBrushLines;
+    delete sceneToolLines;
     delete physicsLines;
     delete camera;
 }
@@ -628,11 +663,6 @@ OBB editor::SceneRender::getFamilyVisualOBB(Scene* target, Entity entity, float 
     return result;
 }
 
-void editor::SceneRender::hideEntityGizmos(Entity entity){
-    auto shape = particleShapeLines.find(entity);
-    if (shape != particleShapeLines.end()) shape->second->setVisible(false);
-}
-
 bool editor::SceneRender::gizmoActive(Entity entity) const{
     return !scene->hasInactiveEntities() || scene->isEntityActiveInHierarchy(entity);
 }
@@ -655,6 +685,7 @@ void editor::SceneRender::hideAllGizmos(){
     uilayer.setSelectionBoxVisible(false);
     uilayer.setCameraGaugeVisible(false);
     hideLatticeCages();
+    particleShapeLines.hide();
     if (navigationOverlay) navigationOverlay->hide();
     if (terrainOverlay) terrainOverlay->hide();
     hideSplineOverlay();
@@ -797,6 +828,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
                       displaySettings.disableFog, (float)width, (float)height,
                       displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
     layers.back().drawMode = previewing ? 0 : (uint8_t)displaySettings.drawMode;
+    layers.back().vertexColorChannel = (uint8_t)displaySettings.vertexColorChannel;
     // S41 R21: Snap Preview, the drawables snapped on this view's own grid of art pixels (a scene
     // without a snapping Pixel Perfect Camera has no snapped variants: nothing changes)
     if (!previewing && displaySettings.pixelSnapPreview && zoom > 0.0f && dynamic_cast<SceneRender2D*>(this))
@@ -881,6 +913,7 @@ void editor::SceneRender::drawPaneView(uint32_t viewId, Entity paneCamera, Frame
     base.disableClouds = displaySettings.disableClouds;
     base.shadows = flags.shadows;
     base.drawMode = (uint8_t)displaySettings.drawMode;
+    base.vertexColorChannel = (uint8_t)displaySettings.vertexColorChannel;
     layers.push_back(base);
     for (Scene* childScene : childSceneLayers){
         if (childScene && childScene != scene){
@@ -974,6 +1007,13 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             clearLinePointSelection();
         }
     }
+    // an Area Light handle the same: its light selected, still an Area Light with that handle
+    if (selectedAreaHandleIndex >= 0){
+        if (selectedAreaHandleIndex >= areaHandleCount(selectedAreaHandleEntity) ||
+                std::find(selEntities.begin(), selEntities.end(), selectedAreaHandleEntity) == selEntities.end()){
+            clearAreaHandleSelection();
+        }
+    }
     // a capsule handle the same: its GameObject selected, its capsule there
     if (selectedCapsuleHandleIndex >= 0){
         const CapsuleShadowCasterComponent* caster = scene->findComponent<CapsuleShadowCasterComponent>(selectedCapsuleHandleEntity);
@@ -1019,7 +1059,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // view of its own (drawSceneView). Free to toggle: nothing reloads.
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(displaySettings.disableFaceCulling && !isPlaying);
     // the Draw Mode the same way (spec S54 R11)
-    scene->getSystem<RenderSystem>()->setDrawMode(isPlaying ? ViewDrawMode::SHADED : displaySettings.drawMode);
+    scene->getSystem<RenderSystem>()->setDrawMode(isPlaying ? ViewDrawMode::SHADED : displaySettings.drawMode, displaySettings.vertexColorChannel);
     scene->getSystem<RenderSystem>()->setDisableFog(displaySettings.disableFog && !isPlaying);
     scene->getSystem<RenderSystem>()->setDisableClouds(displaySettings.disableClouds && !isPlaying);
     // the Game view's Preview Atmosphere Quality is set on the frame while playing (App)
@@ -1280,6 +1320,18 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             }
         }
 
+        // Override gizmo for the selected Area Light size handle (3D translate)
+        if (selectedAreaHandleIndex >= 0 && toolEntities.size() == 1 && toolEntities[0] == selectedAreaHandleEntity
+            && tools.getGizmoSelected() == GizmoSelected::TRANSLATE && !editLayer.active){
+            OBB pointOBB = getAreaHandleOBB(selectedAreaHandleEntity, selectedAreaHandleIndex);
+            if (!pointOBB.isNull()){
+                Vector3 pointCenter = pointOBB.getCenter();
+                tools.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+            }else{
+                clearAreaHandleSelection();
+            }
+        }
+
         // Override gizmo for the selected Capsule Shadow Caster handle (3D translate)
         if (selectedCapsuleHandleIndex >= 0 && toolEntities.size() == 1 && toolEntities[0] == selectedCapsuleHandleEntity
             && tools.getGizmoSelected() == GizmoSelected::TRANSLATE && !editLayer.active){
@@ -1368,6 +1420,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         // T1 R55: each frame, so the decal fades once the pointer rests and hides while the camera moves
         updateTerrainBrushCursor();
     }
+    updateSceneToolDecal();
 
     syncObject2DGizmoMode();
 
@@ -1593,6 +1646,15 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
         // Override gizmo start position to the selected Joint 2D anchor
         if (selectedJointAnchorIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedJointAnchorEntity){
             OBB pointOBB = getJointAnchorOBB(selectedJointAnchorEntity, selectedJointAnchorIndex);
+            if (!pointOBB.isNull()){
+                gizmoStartPosition = pointOBB.getCenter();
+                cursorStartOffset = gizmoStartPosition - rretrun.point;
+            }
+        }
+
+        // Override gizmo start position to the selected Area Light handle
+        if (selectedAreaHandleIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedAreaHandleEntity){
+            OBB pointOBB = getAreaHandleOBB(selectedAreaHandleEntity, selectedAreaHandleIndex);
             if (!pointOBB.isNull()){
                 gizmoStartPosition = pointOBB.getCenter();
                 cursorStartOffset = gizmoStartPosition - rretrun.point;
@@ -2141,6 +2203,13 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                                 dragCommand = new PropertyCmd<Vector2>(project, commandSceneId, entity, ComponentType::Joint2DComponent, anchorProp, value);
                             }
                         }
+                    }else if (selectedAreaHandleIndex >= 0 && entity == selectedAreaHandleEntity){
+                        // resize the Area Light: its Width, Height or Radius, one undo step a drag
+                        std::string property;
+                        float value = 0.0f;
+                        if (areaSizeWithHandleAt(entity, selectedAreaHandleIndex, newPos, property, value)){
+                            dragCommand = new PropertyCmd<float>(project, commandSceneId, entity, ComponentType::LightComponent, property, value);
+                        }
                     }else if (selectedCapsuleHandleIndex >= 0 && entity == selectedCapsuleHandleEntity){
                         // move the selected capsule end or radius handle: the whole list is the
                         // property, so the drag is one undo step whichever capsule fields it changes
@@ -2605,14 +2674,15 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     }
 
                     if (isText){
-                        TextComponent& text = target->getComponent<TextComponent>(entity);
-                        if (text.pivotCentered){
+                        // a centred or right-aligned box grows about its origin: the origin moves so the
+                        // edge not dragged stays
+                        const float align = UISystem::textAnchorX(target->getComponent<TextComponent>(entity));
+                        if (align > 0.0f){
                             float widthDelta = size.x - objectSizeOffset[entity].x;
                             Gizmo2DSideSelected side = tools.getGizmo2DSideSelected();
-                            if (side == Gizmo2DSideSelected::NX || side == Gizmo2DSideSelected::NX_NY || side == Gizmo2DSideSelected::NX_PY) {
-                                pos.x += widthDelta * 0.5f;
-                            }else if (side == Gizmo2DSideSelected::PX || side == Gizmo2DSideSelected::PX_NY || side == Gizmo2DSideSelected::PX_PY) {
-                                pos.x += widthDelta * 0.5f;
+                            if (side == Gizmo2DSideSelected::NX || side == Gizmo2DSideSelected::NX_NY || side == Gizmo2DSideSelected::NX_PY ||
+                                side == Gizmo2DSideSelected::PX || side == Gizmo2DSideSelected::PX_NY || side == Gizmo2DSideSelected::PX_PY) {
+                                pos.x += widthDelta * align;
                             }
                         }
                     }
@@ -2756,6 +2826,7 @@ bool editor::SceneRender::hasToolSubSelection(const std::vector<Entity>& selEnti
         || (selectedPolygonPointIndex >= 0 && entity == selectedPolygonPointEntity)
         || (selectedJointAnchorIndex >= 0 && entity == selectedJointAnchorEntity)
         || (selectedCapsuleHandleIndex >= 0 && entity == selectedCapsuleHandleEntity)
+        || (selectedAreaHandleIndex >= 0 && entity == selectedAreaHandleEntity)
         || (selectedTrackPointIndex >= 0 && entity == selectedTrackPointEntity)
         || (getPointEditLattice(selEntities) == entity && getLatticeSceneId() != NULL_PROJECT_SCENE &&
             !LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), entity).empty())
@@ -3019,6 +3090,29 @@ void editor::SceneRender::updateTerrainBrushCursor(){
     }
 
     terrainBrushLines->setVisible(true);
+}
+
+void editor::SceneRender::updateSceneToolDecal(){
+    const SceneTool* tool = SceneTools::activeFor(scene);
+    const SceneToolDecal* decal = tool ? tool->decal() : nullptr;
+    if (!decal || decal->points.size() < 2){
+        if (sceneToolLines) sceneToolLines->setVisible(false);
+        return;
+    }
+    if (!sceneToolLines){
+        sceneToolLines = overlay(new LineRenderer(scene));
+        sceneToolLines->setMaxLines(4096);
+        sceneToolLinesRevision = 0;
+    }
+    if (decal->revision != sceneToolLinesRevision){
+        sceneToolLines->clearLines();
+        for (size_t i = 0; i + 1 < decal->points.size(); i += 2){
+            const Vector4 color = i / 2 < decal->colors.size() ? decal->colors[i / 2] : Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+            sceneToolLines->addLine(decal->points[i], decal->points[i + 1], color);
+        }
+        sceneToolLinesRevision = decal->revision;
+    }
+    sceneToolLines->setVisible(true);
 }
 
 bool editor::SceneRender::getFluidBrushCircle(std::vector<Vector2>& points){
@@ -3289,6 +3383,7 @@ void editor::SceneRender::setEditLayer(uint32_t sceneId, Scene* layerScene, cons
         clearPolygonPointSelection();
         clearJointAnchorSelection();
         clearCapsuleHandleSelection();
+        clearAreaHandleSelection();
         clearTrackPointSelection();
     }
     if (!wasActive || editLayer.sceneId != sceneId){
@@ -3867,6 +3962,93 @@ int editor::SceneRender::hitTestCapsuleHandle(Entity entity, float x, float y){
     return bestIndex;
 }
 
+void editor::SceneRender::selectAreaHandle(Entity entity, int index){
+    selectedAreaHandleEntity = entity;
+    selectedAreaHandleIndex = index;
+}
+
+void editor::SceneRender::clearAreaHandleSelection(){
+    selectedAreaHandleEntity = 0;
+    selectedAreaHandleIndex = -1;
+}
+
+int editor::SceneRender::areaHandleCount(Entity entity){
+    const LightComponent* light = scene->findComponent<LightComponent>(entity);
+    if (!light || light->type != LightType::AREA || !scene->findComponent<Transform>(entity))
+        return 0;
+    return light->areaShape == AreaLightShape::DISC ? 1 : 2;
+}
+
+namespace {
+    // an Area Light's frame in the world: its forward axis, the plane's right and up (as the
+    // renderer builds them from the light's direction, not its scale)
+    void areaLightFrame(const LightComponent& light, const Transform& transform, Vector3& right, Vector3& up){
+        const Vector3 forward = (transform.worldRotation * light.direction).normalized();
+        up = (transform.worldRotation * light.getLocalSpotProjectionUp()).normalized();
+        up = (up - forward * up.dotProduct(forward)).normalized();
+        right = forward.crossProduct(up).normalized();
+    }
+}
+
+bool editor::SceneRender::getAreaHandleWorld(Entity entity, int index, Vector3& worldPoint){
+    if (index < 0 || index >= areaHandleCount(entity))
+        return false;
+    const LightComponent& light = *scene->findComponent<LightComponent>(entity);
+    const Transform& transform = *scene->findComponent<Transform>(entity);
+    Vector3 right, up;
+    areaLightFrame(light, transform, right, up);
+    worldPoint = transform.worldPosition + ((index == 0) ? right * light.getAreaHalfWidth() : up * light.getAreaHalfHeight());
+    return true;
+}
+
+int editor::SceneRender::hitTestAreaHandle(Entity entity, float x, float y){
+    const Ray ray = screenToRay(x, y);
+    int bestIndex = -1;
+    float bestDistance = FLT_MAX;
+    for (int i = 0; i < areaHandleCount(entity); i++){
+        Vector3 worldPoint;
+        if (!getAreaHandleWorld(entity, i, worldPoint)) continue;
+        const float halfSize = getPointHandleHalfSize(worldPoint);
+        RayReturn rr = ray.intersects(AABB(worldPoint - Vector3(halfSize), worldPoint + Vector3(halfSize)));
+        if (rr && rr.distance < bestDistance){
+            bestDistance = rr.distance;
+            bestIndex = i;
+        }
+    }
+    return bestIndex;
+}
+
+OBB editor::SceneRender::getAreaHandleOBB(Entity entity, int index){
+    Vector3 worldPoint;
+    if (!getAreaHandleWorld(entity, index, worldPoint)) return OBB();
+    const float halfSize = getPointHandleHalfSize(worldPoint);
+    return AABB(worldPoint - Vector3(halfSize), worldPoint + Vector3(halfSize)).getOBB();
+}
+
+bool editor::SceneRender::areaSizeWithHandleAt(Entity entity, int index, const Vector3& world, std::string& property, float& value){
+    if (index < 0 || index >= areaHandleCount(entity))
+        return false;
+    const LightComponent& light = *scene->findComponent<LightComponent>(entity);
+    const Transform& transform = *scene->findComponent<Transform>(entity);
+    Vector3 right, up;
+    areaLightFrame(light, transform, right, up);
+    const Vector3 offset = world - transform.worldPosition;
+    // the handle's distance from the centre in the plane, along its own axis (a disc's: radial)
+    if (light.areaShape == AreaLightShape::DISC){
+        const float x = offset.dotProduct(right);
+        const float y = offset.dotProduct(up);
+        property = "areaRadius";
+        value = std::max(std::sqrt(x * x + y * y), 0.005f);
+    }else if (index == 0){
+        property = "areaWidth";
+        value = std::max(2.0f * std::abs(offset.dotProduct(right)), 0.01f);
+    }else{
+        property = "areaHeight";
+        value = std::max(2.0f * std::abs(offset.dotProduct(up)), 0.01f);
+    }
+    return true;
+}
+
 OBB editor::SceneRender::getCapsuleHandleOBB(Entity entity, int index){
     Vector3 worldPoint;
     if (!getCapsuleHandleWorld(entity, index, worldPoint)) return OBB();
@@ -4120,80 +4302,6 @@ int editor::SceneRender::hitTestInstance(Entity entity, float x, float y){
     return bestIndex;
 }
 
-void editor::SceneRender::setupCameraIcon(CameraObjects& co){
-    TextureData iconData;
-    iconData.loadTextureFromMemory(camera_icon_png, camera_icon_png_len);
-    co.icon->setTexture("editor:resources:camera_icon", iconData);
-    co.icon->setSize(128, 128);
-    co.icon->setReceiveLights(false);
-    co.icon->setCastShadows(false);
-    co.icon->setReceiveShadows(false);
-    co.icon->setPivotPreset(PivotPreset::CENTER);
-}
-
-void editor::SceneRender::setupSoundIcon(SoundObjects& so){
-    TextureData iconData;
-    iconData.loadTextureFromMemory(audio_source_icon_png, audio_source_icon_png_len);
-    so.icon->setTexture("editor:resources:sound_icon", iconData);
-    so.icon->setSize(128, 128);
-    so.icon->setReceiveLights(false);
-    so.icon->setCastShadows(false);
-    so.icon->setReceiveShadows(false);
-    so.icon->setPivotPreset(PivotPreset::CENTER);
-}
-
-void editor::SceneRender::setupLight2DIcon(Light2DObjects& lo){
-    TextureData iconData;
-    iconData.loadTextureFromMemory(bulb_icon_png, bulb_icon_png_len);
-    lo.icon->setTexture("editor:resources:bulb_icon", iconData);
-    lo.icon->setSize(128, 128);
-    lo.icon->setReceiveLights(false);
-    lo.icon->setCastShadows(false);
-    lo.icon->setReceiveShadows(false);
-    lo.icon->setPivotPreset(PivotPreset::CENTER);
-}
-
-void editor::SceneRender::updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum){
-    if (cameraComponent.type == CameraType::CAMERA_UI){
-        co.lines->clearLines();
-        co.type = CameraType::CAMERA_UI;
-        return;
-    }
-
-    bool changed = false;
-    if (co.type != cameraComponent.type) changed = true;
-    if (co.isMainCamera != isMainCamera) changed = true;
-    if (co.fullFrustum != fullFrustum) changed = true;
-    if (cameraComponent.type == CameraType::CAMERA_PERSPECTIVE){
-        if (co.yfov != cameraComponent.yfov || co.aspect != cameraComponent.aspect ||
-            co.nearClip != cameraComponent.nearClip || co.farClip != cameraComponent.farClip){
-            changed = true;
-        }
-    }else if (cameraComponent.type == CameraType::CAMERA_ORTHO){
-        if (co.leftClip != cameraComponent.leftClip || co.rightClip != cameraComponent.rightClip ||
-            co.bottomClip != cameraComponent.bottomClip || co.topClip != cameraComponent.topClip ||
-            co.nearClip != cameraComponent.nearClip || co.farClip != cameraComponent.farClip){
-            changed = true;
-        }
-    }
-
-    if (!changed) return;
-
-    co.type = cameraComponent.type;
-    co.isMainCamera = isMainCamera;
-    co.fullFrustum = fullFrustum;
-    co.yfov = cameraComponent.yfov;
-    co.aspect = cameraComponent.aspect;
-    co.nearClip = cameraComponent.nearClip;
-    co.farClip = cameraComponent.farClip;
-    co.leftClip = cameraComponent.leftClip;
-    co.rightClip = cameraComponent.rightClip;
-    co.bottomClip = cameraComponent.bottomClip;
-    co.topClip = cameraComponent.topClip;
-
-    drawCameraFrustumLines(co.lines, cameraComponent, isMainCamera, fullFrustum);
-}
-
 std::array<Vector3, 8> editor::cameraGizmoCorners(const CameraComponent& camera, bool fullFrustum){
     // near and far as rendered (a perspective near <= 0 draws with the clamped one)
     const Vector2 nearFar = RenderSystem::getCameraNearFar(camera);
@@ -4236,12 +4344,18 @@ std::array<Vector3, 8> editor::cameraGizmoCorners(const CameraComponent& camera,
             Vector3(fl, ft, -farClip), Vector3(fr, ft, -farClip), Vector3(fl, fb, -farClip), Vector3(fr, fb, -farClip)};
 }
 
-void editor::SceneRender::drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum){
-    lines->clearLines();
-
+void editor::SceneRender::drawCameraFrustumLines(GizmoLineBatch& batch, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum,
+                                                 const Matrix4& toWorld){
     if (cameraComponent.type == CameraType::CAMERA_UI){
         return;
     }
+    // placed by toWorld (the lines are the camera's own space)
+    struct Placed{
+        GizmoLineBatch& batch;
+        const Matrix4& toWorld;
+        void addLine(const Vector3& a, const Vector3& b, const Vector4& color){ batch.addLine(toWorld * a, toWorld * b, color); }
+    } placed{batch, toWorld};
+    Placed* lines = &placed;
 
     Vector4 color(0.8f, 0.8f, 0.8f, 1.0f);
     if (isMainCamera){
@@ -4351,4 +4465,186 @@ void editor::SceneRender::updateWireframeOverlay(){
         return mesh ? mesh->lodFade.plan.dominant() : 0u;
     });
     wireframeLines->setVisible(true);
+}
+
+// ---------------------------------------------------------------- gizmo batches (GizmoBatch.h)
+namespace {
+
+    constexpr int GIZMO_ICON_SIZE = 128;
+    constexpr int GIZMO_ICON_COUNT = (int)editor::GizmoIcon::Count;
+
+    // room for a capacity of at least `count`, doubling (as LineRenderer and Mesh grow)
+    unsigned int gizmoCapacity(size_t count, unsigned int current){
+        unsigned int capacity = std::max(current, 16u);
+        while (capacity < count) capacity *= 2;
+        return capacity;
+    }
+
+    // the icons side by side in one texture, so one instanced sprite draws them all: the RGBA
+    // texels live as long as the editor (the texture pool may read them at any load)
+    const TextureData& gizmoIconAtlas(){
+        static std::vector<unsigned char> texels;
+        static TextureData atlas = [](){
+            const std::array<std::pair<unsigned char*, unsigned int>, GIZMO_ICON_COUNT> pngs = {{
+                {sun_icon_png, sun_icon_png_len}, {bulb_icon_png, bulb_icon_png_len}, {spot_icon_png, spot_icon_png_len},
+                {camera_icon_png, camera_icon_png_len}, {audio_source_icon_png, audio_source_icon_png_len}}};
+            const int width = GIZMO_ICON_SIZE * GIZMO_ICON_COUNT;
+            texels.assign((size_t)width * GIZMO_ICON_SIZE * 4, 0);
+            for (int i = 0; i < GIZMO_ICON_COUNT; i++){
+                TextureData icon;
+                if (!icon.loadTextureFromMemory(pngs[i].first, pngs[i].second)) continue;
+                if (icon.getWidth() != GIZMO_ICON_SIZE || icon.getHeight() != GIZMO_ICON_SIZE){
+                    icon.resize(GIZMO_ICON_SIZE, GIZMO_ICON_SIZE);
+                }
+                const bool rgba = icon.getColorFormat() == ColorFormat::RGBA;
+                for (int y = 0; y < GIZMO_ICON_SIZE; y++){
+                    for (int x = 0; x < GIZMO_ICON_SIZE; x++){
+                        unsigned char* texel = &texels[((size_t)y * width + (size_t)(i * GIZMO_ICON_SIZE + x)) * 4];
+                        for (int c = 0; c < 4; c++){
+                            texel[c] = rgba ? icon.getColorComponent(x, y, c) : (c == 3 ? 255 : icon.getColorComponent(x, y, 0));
+                        }
+                    }
+                }
+                // the decoded icon is copied: TextureData does not free what it decoded
+                icon.releaseImageData();
+            }
+            return TextureData(width, GIZMO_ICON_SIZE, (unsigned int)texels.size(), ColorFormat::RGBA, 4, texels.data());
+        }();
+        return atlas;
+    }
+
+}
+
+// ---------------------------------------------------------------- lines
+
+void editor::GizmoLineBatch::addLine(const Vector3& pointA, const Vector3& pointB, const Vector4& color){
+    addLine(pointA, pointB, color, color);
+}
+
+void editor::GizmoLineBatch::addLine(const Vector3& pointA, const Vector3& pointB, const Vector4& colorA, const Vector4& colorB){
+    pending.push_back({pointA, colorA, pointB, colorB});
+}
+
+void editor::GizmoLineBatch::addLines(const GizmoLineList& list, const Matrix4& toWorld){
+    for (const GizmoLine& line : list.lines){
+        pending.push_back({toWorld * line.pointA, line.colorA, toWorld * line.pointB, line.colorB});
+    }
+}
+
+void editor::GizmoLineBatch::flush(){
+    if (!renderer){
+        return;
+    }
+    if (pending.empty()){
+        hide();
+        return;
+    }
+    renderer->setVisible(true);
+    if (pending == shown){
+        return;
+    }
+    // written in place: clearLines() would reload the renderer's buffers every time
+    LineRendererComponent& lines = renderer->getComponent<LineRendererComponent>();
+    if (lines.maxLines < pending.size()){
+        renderer->setMaxLines(gizmoCapacity(pending.size(), lines.maxLines));
+    }
+    lines.mode = LineRendererMode::Segments;
+    lines.lines.resize(pending.size());
+    for (size_t i = 0; i < pending.size(); i++){
+        LineData& line = lines.lines[i];
+        line.pointA = pending[i].pointA;
+        line.colorA = pending[i].colorA;
+        line.pointB = pending[i].pointB;
+        line.colorB = pending[i].colorB;
+    }
+    renderer->updateLines();
+    shown.swap(pending);
+}
+
+void editor::GizmoLineBatch::hide(){
+    if (renderer){
+        renderer->setVisible(false);
+    }
+    // a hidden renderer is written again when it shows (the render drops what a hidden one drew)
+    shown.clear();
+}
+
+void editor::GizmoLineBatch::setRenderer(LineRenderer* lines){
+    renderer = lines;
+    shown.clear();
+}
+
+void editor::GizmoLineBatch::forgetRenderer(){
+    renderer = nullptr;
+    shown.clear();
+}
+
+// ---------------------------------------------------------------- icons
+
+void editor::GizmoIconBatch::add(GizmoIcon icon, const Vector3& position, float scale){
+    pending.push_back({icon, position, scale});
+}
+
+void editor::GizmoIconBatch::flush(){
+    if (!sprite){
+        return;
+    }
+    if (pending.empty()){
+        hide();
+        return;
+    }
+    sprite->setVisible(true);
+    if (pending == shown){
+        return;
+    }
+    InstancedMeshComponent& instmesh = sprite->getComponent<InstancedMeshComponent>();
+    if (instmesh.maxInstances < pending.size()){
+        sprite->setMaxInstances(gizmoCapacity(pending.size(), instmesh.maxInstances));
+    }
+    // each icon its cell of the atlas
+    const float width = 1.0f / (float)GIZMO_ICON_COUNT;
+    instmesh.instances.resize(pending.size());
+    for (size_t i = 0; i < pending.size(); i++){
+        InstanceData& instance = instmesh.instances[i];
+        instance = InstanceData();
+        instance.position = pending[i].position;
+        instance.scale = Vector3(pending[i].scale, pending[i].scale, pending[i].scale);
+        instance.textureRect = Rect(width * (float)(int)pending[i].icon, 0.0f, width, 1.0f);
+    }
+    sprite->updateInstances();
+    shown.swap(pending);
+}
+
+void editor::GizmoIconBatch::hide(){
+    if (sprite){
+        sprite->setVisible(false);
+    }
+    // a hidden sprite's instances are written again when it shows (the render drops a hidden
+    // instanced mesh's instances: the icon did not come back with the same ones)
+    shown.clear();
+}
+
+void editor::GizmoIconBatch::setSprite(Sprite* icons){
+    sprite = icons;
+    shown.clear();
+    if (!sprite){
+        return;
+    }
+    sprite->setTexture("editor:resources:gizmo_icons", gizmoIconAtlas());
+    sprite->setSize(GIZMO_ICON_SIZE, GIZMO_ICON_SIZE);
+    sprite->setReceiveLights(false);
+    sprite->setCastShadows(false);
+    sprite->setReceiveShadows(false);
+    sprite->setPivotPreset(PivotPreset::CENTER);
+    // the icons' edges are soft: blended, whatever the texture reports
+    sprite->setAutoTransparency(false);
+    sprite->setTransparent(true);
+    sprite->createInstancedMesh();
+    sprite->setInstancedBillboard(billboard);
+    sprite->setVisible(false);
+}
+
+void editor::GizmoIconBatch::forgetSprite(){
+    sprite = nullptr;
+    shown.clear();
 }

@@ -78,6 +78,14 @@ void WindowMac::showHeadless() {
     [gWindow setIgnoresMouseEvents:YES];
     [gWindow setHasShadow:NO];
     [gWindow orderBack:nil];
+    // nobody sees this window, so its size is in backing pixels: the frames, input shots and
+    // --screenshot are the asked size (--resolution), not twice it on a Retina screen
+    const CGFloat scale = gWindow.backingScaleFactor;
+    if (gContentView && scale > 0.0 && scale != 1.0) {
+        const NSSize points = gContentView.bounds.size;
+        [gWindow setContentSize:NSMakeSize(points.width / scale, points.height / scale)];
+        refreshDrawableSize();
+    }
 }
 
 void WindowMac::installMinimalMenuBar(const std::string& applicationName) {

@@ -8,7 +8,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/ForceFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
@@ -33,7 +32,7 @@ namespace {
     }
     constexpr TypeOps kEffectDocumentOps{"value", Kind::Custom, PropertyType::Custom, sizeof(EffectDocument),
         &detail::construct<EffectDocument>, &detail::destroy<EffectDocument>, &detail::copy<EffectDocument>, &equalEffects,
-        nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::customSchema};
+        nullptr, nullptr, nullptr, nullptr, nullptr, false, &detail::customSchema};
 
     constexpr FieldDesc kParticleSystemFields[] = {
         JE_FIELD(ParticleSystemComponent, enabled),
@@ -44,21 +43,24 @@ namespace {
         JE_FIELD(ParticleSystemComponent, seed, .updateFlags = kParticles, .tooltip = "0: a new random seed at every play."),
         JE_FIELD(ParticleSystemComponent, playbackSpeed),
         // S52: the 2D draw order and the transparent queue's first keys (a layer id: SortingLayers)
-        JE_FIELD(ParticleSystemComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
-        JE_FIELD(ParticleSystemComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
+        JE_FIELD(ParticleSystemComponent, sortingLayer, .flags = OmitIfDefault, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
+        JE_FIELD(ParticleSystemComponent, sortingOrder, .flags = OmitIfDefault, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
         // written only when on: a file from before it reads as it was, byte for byte
-        JE_FIELD(ParticleSystemComponent, useUnscaledTime, .flags = OmitIfDefault | CodegenIfChanged, .label = "Unscaled Time",
+        JE_FIELD(ParticleSystemComponent, useUnscaledTime, .flags = OmitIfDefault, .label = "Unscaled Time",
                  .tooltip = "Ticks with the unscaled frame time: it plays at Engine.timeScale 0 (a pause menu, UI particles), as the effect's own Unscaled Time does."),
         JE_FIELD(ParticleSystemComponent, exposedValues, .ops = &ops::Opaque<std::vector<ParticleExposedValue>>, .updateFlags = kParticles),
         // GameObjects whose transforms are more collision planes (their up axis is the normal)
         JE_FIELD(ParticleSystemComponent, collisionPlanes, .flags = NoDefault | ListWhole, .elementOps = &ops::Entity),
+        // the old system's GameObject a migrated one came from (S94 F2): old scripts' wrappers
+        // resolve through it; the migration writes it, nothing edits it
+        JE_FIELD(ParticleSystemComponent, legacyFrom, .ops = &ops::Entity, .flags = Hidden | OmitIfDefault),
     };
 
     const ComponentCodec kParticleSystemCodec = JE_STREAM_CODEC(ParticleSystemComponent, encodeParticleSystemComponent, decodeParticleSystemComponent);
 
     // the keys its codec reads
     constexpr const char* kParticleSystemKnownKeys[] = {"collisionPlanes", "effect", "effectGuid", "enabled", "exposedValues", "inlineEffect",
-                                                        "playOnAwake", "playbackSpeed", "seed", "sortingLayer", "sortingOrder", "useUnscaledTime"};
+                                                        "legacyFrom", "playOnAwake", "playbackSpeed", "seed", "sortingLayer", "sortingOrder", "useUnscaledTime"};
 
     // ---------------------------------------------------------------- Force Field
 
@@ -91,7 +93,6 @@ const ComponentDesc kParticleSystemDesc{
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(ParticleSystemComponent),
     .codec = &kParticleSystemCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createParticleSystemComponent),
     .extraKeys = kParticleSystemKnownKeys,
 };
 
@@ -102,9 +103,6 @@ const ComponentDesc kForceFieldDesc{
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(ForceFieldComponent),
     .codec = &kForceFieldCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
-        return Factory::createForceFieldComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
-    },
     .extraKeys = kForceFieldKnownKeys,
 };
 

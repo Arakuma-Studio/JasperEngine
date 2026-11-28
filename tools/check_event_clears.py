@@ -45,6 +45,10 @@ WALKS = {
                     ("engine/core/input/InputActions.cpp", "InputActions::resetSession")],
     # a TitleArtRendererComponent's runtime state: Engine::clearComponentSubscriptions and
     # Scene::removeSubscriptionsByTag walk the scene's titles through these
+    # a Culling Group's onStateChanged (CullingSystem's group slots): Engine::clearComponentSubscriptions
+    # and Scene::removeSubscriptionsByTag walk the scene's groups through these
+    "GroupSlot": [("engine/core/subsystem/CullingSystem.cpp", "CullingSystem::clearSubscriptions"),
+                  ("engine/core/subsystem/CullingSystem.cpp", "CullingSystem::removeSubscriptionsByTag")],
     "TitleArtInstance": [("engine/core/subsystem/TitleArtSystem.cpp", "TitleArtSystem::clearSubscriptions"),
                          ("engine/core/subsystem/TitleArtSystem.cpp", "TitleArtSystem::removeSubscriptionsByTag")],
 }

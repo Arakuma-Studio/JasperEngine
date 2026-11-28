@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: pixel-art-bad
 canvasWidth: 320
 canvasHeight: 180
@@ -23,7 +23,10 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
+transparencySortMode: perspective
 startSceneId: 382528969
+mesh:
+  fbxSubmeshOrder: used_materials
 audio:
   mixer: audio/Main.mixer
   outputStage: linear

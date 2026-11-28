@@ -61,7 +61,7 @@ namespace {
         std::vector<ParamDef> params;
         const char* help;
         void (*isolate)(PostProcessingSettings& settings);
-        const char* tierText; // replaces the derived tier text (MSAA: part of the scene pass)
+        const char* tierText; // replaces the derived tier text (MSAA, Cavity: part of the scene pass)
     };
 
     struct GroupDef {
@@ -83,7 +83,8 @@ namespace {
                 {"Color Grading", "color_grading_enabled",
                  {{"temperature", "Temperature"}, {"tint", "Tint"}, {"contrast", "Contrast"}, {"saturation", "Saturation"},
                   {"lift", "Lift"}, {"gamma", "Gamma"}, {"gain", "Gain"}, {"lut_texture", "LUT Texture"},
-                  {"lut_input_encoding", "LUT Input Encoding"}, {"lut_contribution", "LUT Contribution"}, {"lut_size", "LUT Size"}},
+                  {"lut_input_encoding", "LUT Input Encoding"}, {"lut_flip_green", "Flip Green"}, {"lut_contribution", "LUT Contribution"},
+                  {"lut_size", "LUT Size"}},
                  "White balance, contrast, lift/gamma/gain, saturation and an optional LUT: an image strip (N*N x N, "
                  "Unity's layout) or a .cube file (1D, 3D or both, from Resolve and other grading tools), baked with the "
                  "curve into one small colour LUT whenever a value changes (no GPU cost). A .cube in a log encoding applies "
@@ -98,9 +99,11 @@ namespace {
             }},
             {"Lens", {
                 {"Vignette", "vignette_enabled",
-                 {{"vignette_intensity", "Intensity"}, {"vignette_smoothness", "Smoothness"}, {"vignette_roundness", "Roundness"},
-                  {"vignette_color", "Color"}},
-                 "Darkens the image towards its corners (towards Color).",
+                 {{"vignette_intensity", "Intensity"}, {"vignette_falloff", "Falloff"}, {"vignette_smoothness", "Smoothness"},
+                  {"vignette_start", "Start"}, {"vignette_end", "End"}, {"vignette_roundness", "Roundness"}, {"vignette_color", "Color"}},
+                 "Darkens the image towards its corners (towards Color). Falloff Smoothness widens the ramp with one value; "
+                 "Radii darkens from Start to End, radii where 1 is the middle of the screen's edge (Roundness 1: of its "
+                 "top edge).",
                  [](PostProcessingSettings& s) { s.vignetteEnabled = true; }, nullptr},
                 {"Chromatic Aberration", "chromatic_aberration_enabled", {{"chromatic_aberration_intensity", "Intensity"}},
                  "Red and blue fringes growing towards the screen's edges (two extra taps). With FXAA, every channel "
@@ -152,6 +155,25 @@ namespace {
                  {{"edge_detect_threshold", "Threshold"}, {"edge_detect_intensity", "Intensity"}, {"edge_detect_color", "Color"}},
                  "Outlines where the brightness changes (Sobel on luma): ink or toon outlines.",
                  [](PostProcessingSettings& s) { s.edgeDetectEnabled = true; }, nullptr},
+                {"Cavity", "cavity_enabled",
+                 {{"cavity_type", "Type"}, {"cavity_screen_ridge", "Screen Ridge"}, {"cavity_screen_valley", "Screen Valley"},
+                  {"cavity_screen_width", "Line Width"}, {"cavity_world_radius", "World Radius"},
+                  {"cavity_world_ridge", "World Ridge"}, {"cavity_world_valley", "World Valley"},
+                  {"cavity_world_samples", "Samples"}, {"cavity_max_pixel_radius", "Max Pixel Radius"},
+                  {"cavity_debug", "Debug View"}},
+                 "Blender's viewport Cavity on every opaque 3D material: convex edges get lighter (ridges) and creases "
+                 "darker (valleys), from the geometry, not the colours. Screen: thin crisp lines from neighbouring "
+                 "pixels' normals, as wide at any resolution. World: a soft bevel from depth samples within World "
+                 "Radius (raise it when nothing shows). Both runs the two. Transparent objects, sprites and UI are "
+                 "drawn after it and stay untouched; with SSAO on, creases darken twice. Debug View shows the cavity "
+                 "alone as grey.",
+                 [](PostProcessingSettings& s) { s.cavityEnabled = true; },
+                 "In the scene pass: one full-screen draw after the opaque objects (Screen about 9 taps per pixel, World "
+                 "3 + Samples, Both shares them), no pass of its own. It reads the scene's depth and normals: SSR's "
+                 "G-buffer when SSR is on, else the depth pre-pass also writes normals. When nothing else needs that "
+                 "pre-pass (SSR, SSAO, volumetric fog, contact shadows, a depth-reading shader), Cavity adds it: a "
+                 "geometry pass drawing every opaque mesh once more, like URP's DepthNormals pre-pass, so a heavy "
+                 "scene pays more. Device tiers cap Samples (Medium 8, Low 4)."},
                 {"Sharpen", "sharpen_enabled", {{"sharpen_intensity", "Intensity"}},
                  "Crisper detail (shares FXAA's taps); pairs well with a render scale below 1.",
                  [](PostProcessingSettings& s) { s.sharpenEnabled = true; }, nullptr},
@@ -453,6 +475,7 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
             std::vector<std::pair<int, const char*>> choices;
             if (std::strcmp(f.name, "lutSize") == 0) choices = {{16, "16 (low end)"}, {32, "32"}};
             else if (std::strcmp(f.name, "msaaSamples") == 0) choices = {{1, "Off"}, {2, "2x"}, {4, "4x"}};
+            else if (std::strcmp(f.name, "cavityWorldSamples") == 0) choices = {{4, "4"}, {8, "8"}, {16, "16"}};
             if (!choices.empty()) {
                 std::string previewText = std::to_string(value);
                 for (const auto& choice : choices) if (choice.first == value) previewText = choice.second;
@@ -512,10 +535,10 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
                 ImGui::TextDisabled("Slower to bake: for palettes of many close shades");
             if (std::strcmp(f.name, "lutInputEncoding") == 0) {
                 // what the .cube's encoding resolves to (Auto: the proposal from its title and range)
-                const std::shared_ptr<const CubeLut> lut = getCachedColorLut(settings.lutTexture);
+                const std::shared_ptr<const CubeLut> lut = getCachedColorLut(settings.lutTexture, settings.lutFlipGreen);
                 ImGui::PushTextWrapPos(0.0f);
                 ImGui::TextDisabled("%s", describeLutInputEncoding(settings.lutInputEncoding, lut.get(),
-                                                                   getCachedColorLutError(settings.lutTexture)).c_str());
+                                                                   getCachedColorLutError(settings.lutTexture, settings.lutFlipGreen)).c_str());
                 ImGui::PopTextWrapPos();
             }
             break;

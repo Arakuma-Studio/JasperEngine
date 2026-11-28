@@ -13,6 +13,8 @@
 
 namespace jasperengine::editor{
 
+    class Project;
+
     // A batch of graph edits (graph/Graph.h ops) on a graph file, as one step of the project
     // history (S23 R24, S24 names): the file's text before and after. "Connect Speed → Blend",
     // "Edit Graph (3 Changes)". An open window or a pool of the kind learns of these edits through a
@@ -31,6 +33,10 @@ namespace jasperengine::editor{
         using ChangeListener = std::function<void(const std::filesystem::path& file)>;
 
         GraphEditCmd(std::filesystem::path file, std::string before, std::string after, std::string label, bool createsFile = false);
+        // The step of a graph edit: this command, grouped with what the file's kind adds to it
+        // (graphEditorHooks().kindEdits: a dialogue's translations); the caller adds it to a history
+        static Command* makeStep(Project* project, const std::filesystem::path& file, const std::string& kind, std::string before,
+                                 std::string after, std::string label, bool createsFile = false);
 
         // Called after each write of execute (a redo too) and undo, with the absolute path; not when
         // the write failed. Main thread, like the history. Returns what removes it: do that before

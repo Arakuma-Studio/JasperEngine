@@ -95,13 +95,19 @@ namespace jasperengine::editor {
 
         static std::vector<PlayerInfo> list(const std::filesystem::path& override = {});
         // the runtime of that id this editor may use (R10: its engineVersion, and a content format
-        // of the same major that reads this editor's minor), else nullopt with why; allowMismatch
-        // takes any engine version and an older minor
+        // of the same major that reads the build's `content`), else nullopt with why. allowMismatch
+        // takes any engine version and an older minor, unless the build needs what that minor
+        // lacks: content above the cooked files' layout (a Build Profile's game.json) is never run
+        // by a runtime that would ignore it, nor is a Build Profile's build (`buildProfile`) by a
+        // runtime older than BUILD_PROFILE_MINOR, which ignores game.json's profile and defines
+        // whatever the cooked layout's minor. `content` "": a build without a Build Profile
+        // (cook::buildContentFormatVersion)
         static std::optional<PlayerInfo> find(const std::string& id, const std::filesystem::path& override, bool allowMismatch,
-                                              std::string& error);
+                                              std::string& error, const std::string& content = std::string(), bool buildProfile = false);
         // every installed runtime this editor may use of a <platform>-<arch>-<backend>-<flavour>
         // (`baseId`): the full player and each release variant
-        static std::vector<PlayerInfo> findVariants(const std::string& baseId, const std::filesystem::path& override, bool allowMismatch);
+        static std::vector<PlayerInfo> findVariants(const std::string& baseId, const std::filesystem::path& override, bool allowMismatch,
+                                                    const std::string& content = std::string(), bool buildProfile = false);
         // of `candidates`, the one that stages the fewest bytes and holds every module (nullptr: none)
         static const PlayerInfo* smallestWith(const std::vector<PlayerInfo>& candidates, const std::vector<std::string>& modules);
 

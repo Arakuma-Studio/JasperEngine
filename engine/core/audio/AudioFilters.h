@@ -7,12 +7,34 @@
 
 #include <atomic>
 #include <cstddef>
+#include <functional>
+#include <memory>
 #include <vector>
+
+#include "AudioEffects.h"
 
 #include "soloud.h"
 #include "soloud_filter.h"
 
 namespace jasperengine {
+
+    // The mixer's filter construction (audio-mixer spec 7.2), shared by the groups and an Audio
+    // Source's own effects (docs/specs/S97-audio-gaps.md D1). `value` gives a parameter's value
+    // heard now (wet is passed apart).
+    namespace EffectFilters {
+        using ParamValue = std::function<float(const AudioEffectParamInfo&)>;
+        // a filter of a type a source can hold (lowpass .. bassboost) set to the values; null for
+        // the others (the mixer makes duck and limiter itself)
+        std::unique_ptr<SoLoud::Filter> make(AudioEffectType type, const ParamValue& value, float sampleRate);
+        // what each SoLoud attribute gets now: the values clamped, with the A5 rule (a low-pass at
+        // or above lowPassBypassRatio x the rate, a high-pass at or below 10 Hz: wet 0)
+        std::vector<float> attributes(AudioEffectType type, const ParamValue& value, float wet, float sampleRate);
+        // whether the A5 rule leaves an effect off at these values (a filter at its off value)
+        bool atOffValue(AudioEffectType type, const ParamValue& value, float sampleRate);
+        // every filter made, by the mixer or a source (AudioMixer::getDebugCounters)
+        void countBuild();
+        unsigned int builds();
+    }
 
     // A peak limiter, channels linked. With lookahead 0 and truePeak 0 it is lookahead-free: the gain
     // drops at once to keep every sample under the threshold and recovers with the release time.

@@ -22,7 +22,8 @@
 //
 //   postColor_vignetteScaleOffset  xy, zw: p = gl_FragCoord.xy * xy - zw, centred, 1 at the edges
 //   postColor_vignetteColor        rgb display colour, a intensity (0 = none)
-//   postColor_params               x, y: falloff w = saturate(dot(p, p) * x + y); z dither
+//   postColor_params               x, y: falloff w = saturate(dot(p, p) * x + y), or with x < 0
+//                                  (Radii) saturate(-length(p) * x + y); z dither
 //                                  amplitude (0 = none); w LUT side N, 0 = no LUT (a pass
 //                                  without post-processing: render-to-texture cameras,
 //                                  reflection probes, the editor's Scene view)
@@ -87,7 +88,9 @@
         vec4 scaleOffset = POST_COLOR_BLOCK.postColor_vignetteScaleOffset;
         vec2 p = gl_FragCoord.xy * scaleOffset.xy - scaleOffset.zw;
         vec4 params = POST_COLOR_BLOCK.postColor_params;
-        float w = clamp(dot(p, p) * params.x + params.y, 0.0, 1.0);
+        float d = dot(p, p);
+        d = params.x < 0.0 ? -sqrt(d) : d;
+        float w = clamp(d * params.x + params.y, 0.0, 1.0);
         return w * w * (3.0 - 2.0 * w) * POST_COLOR_BLOCK.postColor_vignetteColor.a;
     }
 

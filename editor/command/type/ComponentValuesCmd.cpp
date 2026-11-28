@@ -4,6 +4,7 @@
 #include "ComponentValuesCmd.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "animation/ClipRecordHooks.h"
 
@@ -133,6 +134,11 @@ namespace {
                 value["submeshes"] = submeshes;
                 break;
             }
+            case editor::ComponentType::AudioSourceComponent:
+                // which Audio Source of its GameObject it is (S97 REQ-24): a slot stays a slot, the
+                // GameObject's own source stays its own
+                keep("slot");
+                break;
             case editor::ComponentType::UIComponent:
                 if (editor::Stream::isGeneratedUI(scene, scene->getSignature(entity))) {
                     for (const char* key : uiGeometryKeys) {
@@ -180,6 +186,7 @@ namespace {
         std::string filename;
         bool mergeStaticMeshes = false;
         bool animationEntities = true;
+        bool preserveHierarchy = false;
     };
 
     ModelValue readModelValue(const YAML::Node& value) {
@@ -189,6 +196,8 @@ namespace {
         if (value["mergeStaticMeshes"]) model.mergeStaticMeshes = value["mergeStaticMeshes"].as<bool>();
         // written only when false (Stream::encodeModelComponent)
         if (value["animationEntities"]) model.animationEntities = value["animationEntities"].as<bool>();
+        // written only when true
+        if (value["preserveHierarchy"]) model.preserveHierarchy = value["preserveHierarchy"].as<bool>();
         return model;
     }
 
@@ -202,10 +211,12 @@ namespace {
         const std::string currentFile = current ? current->filename.path : std::string();
         const bool currentMerge = current ? current->mergeStaticMeshes : false;
         const bool currentAnimationEntities = current ? current->animationEntities : true;
+        const bool currentPreserveHierarchy = current ? current->preserveHierarchy : false;
         // the loader makes (or skips) the animation entities by the flag (spec 9.R15): set before
         // the load in the same step, and a changed flag on the same file reloads it
         if (!model.filename.empty() && (model.filename != currentFile || model.mergeStaticMeshes != currentMerge ||
-                                        model.animationEntities != currentAnimationEntities)) {
+                                        model.animationEntities != currentAnimationEntities ||
+                                        model.preserveHierarchy != currentPreserveHierarchy)) {
             for (editor::ComponentType needed : {editor::ComponentType::Transform, editor::ComponentType::MeshComponent}) {
                 if (!hasComponent(scene, entity, needed)) {
                     multi->addCommand(std::make_unique<editor::AddComponentCmd>(project, sceneId, entity, needed));
@@ -214,6 +225,9 @@ namespace {
             if (model.animationEntities != currentAnimationEntities) {
                 multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "animationEntities", model.animationEntities);
             }
+            if (model.preserveHierarchy != currentPreserveHierarchy) {
+                multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "preserveHierarchy", model.preserveHierarchy);
+            }
             multi->addCommand(std::make_unique<editor::ModelLoadCmd>(project, sceneId, entity, model.filename, model.mergeStaticMeshes));
         } else if (model.filename.empty()) {
             if (current && editor::ModelClearCmd::hasContent(*current)) {
@@ -221,6 +235,7 @@ namespace {
             }
             multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "mergeStaticMeshes", model.mergeStaticMeshes);
             multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "animationEntities", model.animationEntities);
+            multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "preserveHierarchy", model.preserveHierarchy);
             if (reset) {
                 multi->addPropertyCmd<Entity>(project, sceneId, entity, editor::ComponentType::ModelComponent, "skeleton", NULL_ENTITY);
                 multi->addPropertyCmd<std::vector<Entity>>(project, sceneId, entity, editor::ComponentType::ModelComponent, "animations", std::vector<Entity>());

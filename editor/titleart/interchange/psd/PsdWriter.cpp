@@ -51,8 +51,9 @@ namespace {
         return v;
     }
 
-    // one plane (w x h samples, big-endian when 16-bit) as a channel: PackBits (8) or ZIP with prediction (16)
-    std::vector<uint8_t> encodePlane(const std::vector<uint8_t>& plane, int w, int h, int bps) {
+    // one plane (w x h samples, big-endian when 16-bit) as a channel: PackBits (8; a PSB's row
+    // byte counts are 4 bytes) or ZIP with prediction (16)
+    std::vector<uint8_t> encodePlane(const std::vector<uint8_t>& plane, int w, int h, int bps, bool psb) {
         std::vector<uint8_t> out;
         if (w == 0 || h == 0) {
             out = {0, 0};
@@ -63,6 +64,10 @@ namespace {
             std::vector<std::vector<uint8_t>> rows((size_t)h);
             for (int y = 0; y < h; y++) packBits(plane.data() + (size_t)y * w, (size_t)w, rows[(size_t)y]);
             for (const auto& row : rows) {
+                if (psb) {
+                    out.push_back((uint8_t)(row.size() >> 24));
+                    out.push_back((uint8_t)(row.size() >> 16));
+                }
                 out.push_back((uint8_t)(row.size() >> 8));
                 out.push_back((uint8_t)row.size());
             }
@@ -96,7 +101,7 @@ namespace {
 
     // the layer's channels: its pixels trimmed to alpha > 0, transparent colour as 0. One plane at
     // a time, so a full-frame layer never holds four planes at once (R49)
-    bool pixelChannels(const PsdWriteLayer& l, int bps, Record& rec, const EmitChannel& emit) {
+    bool pixelChannels(const PsdWriteLayer& l, int bps, bool psb, Record& rec, const EmitChannel& emit) {
         int x0 = l.width, y0 = l.height, x1 = -1, y1 = -1;
         const size_t pixelBytes = 4 * (size_t)bps;
         const bool ok = l.width > 0 && l.height > 0 && l.rgba.size() == (size_t)l.width * l.height * pixelBytes;
@@ -128,15 +133,15 @@ namespace {
                     else std::memcpy(plane.data() + dst * 2, &v, 2);
                 }
             }
-            if (!emit(c == 3 ? (int16_t)-1 : (int16_t)c, encodePlane(plane, w, h, bps))) return false;
+            if (!emit(c == 3 ? (int16_t)-1 : (int16_t)c, encodePlane(plane, w, h, bps, psb))) return false;
         }
         return true;
     }
 
-    std::vector<uint8_t> maskChannel(const PsdWriteLayer& l, int bps) {
+    std::vector<uint8_t> maskChannel(const PsdWriteLayer& l, int bps, bool psb) {
         std::vector<uint8_t> mask = l.mask;
         if (mask.size() != (size_t)l.maskWidth * l.maskHeight * bps) mask.assign((size_t)l.maskWidth * l.maskHeight * bps, 255);
-        return encodePlane(mask, l.maskWidth, l.maskHeight, bps);
+        return encodePlane(mask, l.maskWidth, l.maskHeight, bps, psb);
     }
 
     Channel spooledChannel(const PsdSpooledChannel& c) {
@@ -157,7 +162,7 @@ namespace {
         }
     }
 
-    void flatten(const std::vector<PsdWriteLayer>& layers, int bps, std::vector<Record>& out, uint32_t& nextId) {
+    void flatten(const std::vector<PsdWriteLayer>& layers, int bps, bool psb, std::vector<Record>& out, uint32_t& nextId) {
         for (const PsdWriteLayer& l : layers) {
             if (l.group) {
                 Record end;
@@ -166,7 +171,7 @@ namespace {
                 emptyChannels(end);
                 end.id = nextId++;
                 out.push_back(std::move(end));
-                flatten(l.children, bps, out, nextId);
+                flatten(l.children, bps, psb, out, nextId);
                 Record open;
                 open.layer = &l;
                 open.section = l.groupOpen ? 1 : 2;
@@ -186,7 +191,7 @@ namespace {
                 rec.bottom = l.spooledBottom;
                 for (const PsdSpooledChannel& c : l.spooledPixels) rec.channels.push_back(spooledChannel(c));
             } else {
-                pixelChannels(l, bps, rec, [&rec](int16_t id, std::vector<uint8_t> data) {
+                pixelChannels(l, bps, psb, rec, [&rec](int16_t id, std::vector<uint8_t> data) {
                     Channel c;
                     c.id = id;
                     c.data = std::move(data);
@@ -199,7 +204,7 @@ namespace {
             } else if (l.hasMask) {
                 Channel c;
                 c.id = -2;
-                c.data = maskChannel(l, bps);
+                c.data = maskChannel(l, bps, psb);
                 rec.channels.push_back(std::move(c));
             }
             rec.id = nextId++;
@@ -216,7 +221,7 @@ namespace {
         w.bytes(padded);
     }
 
-    void writeRecord(ByteWriter& w, const Record& rec) {
+    void writeRecord(ByteWriter& w, const Record& rec, bool psb) {
         const PsdWriteLayer& l = *rec.layer;
         w.i32(rec.top);
         w.i32(rec.left);
@@ -225,7 +230,8 @@ namespace {
         w.u16((uint16_t)rec.channels.size());
         for (const Channel& c : rec.channels) {
             w.i16(c.id);
-            w.u32((uint32_t)c.size());
+            if (psb) w.u64(c.size());
+            else w.u32((uint32_t)c.size());
         }
         w.fourcc("8BIM");
         const std::string blend = rec.section == 3 ? std::string("norm") : (l.blendKey.size() == 4 ? l.blendKey : std::string("norm"));
@@ -324,7 +330,7 @@ namespace {
     };
 
     // the merged image section: compression tag, then the data
-    std::vector<uint8_t> encodeMerged(int width, int height, int bps, const std::vector<uint8_t>& merged) {
+    std::vector<uint8_t> encodeMerged(int width, int height, int bps, bool psb, const std::vector<uint8_t>& merged) {
         const size_t count = (size_t)width * height;
         ByteWriter w;
         if (bps == 1) {
@@ -342,7 +348,10 @@ namespace {
                     packBits(plane.data() + (size_t)y * width, (size_t)width, rows.back());
                 }
             }
-            for (const auto& row : rows) w.u16((uint16_t)row.size());
+            for (const auto& row : rows) {
+                if (psb) w.u32((uint32_t)row.size());
+                else w.u16((uint16_t)row.size());
+            }
             for (const auto& row : rows) w.bytes(row);
             return std::move(w.out);
         }
@@ -367,11 +376,13 @@ namespace {
             error = "bad_bit_depth: a PSD is 8- or 16-bit, not " + std::to_string(doc.bitDepth);
             return false;
         }
-        if (doc.width <= 0 || doc.height <= 0 || doc.width > PSD_MAX_SIDE || doc.height > PSD_MAX_SIDE) {
-            error = "psd_too_large: a PSD is at most " + std::to_string(PSD_MAX_SIDE) + " px a side; this one is " + std::to_string(doc.width) + " x " +
-                    std::to_string(doc.height);
+        const int maxSide = doc.psb ? PSB_MAX_SIDE : PSD_MAX_SIDE;
+        if (doc.width <= 0 || doc.height <= 0 || doc.width > maxSide || doc.height > maxSide) {
+            error = std::string("psd_too_large: a ") + (doc.psb ? "PSB" : "PSD") + " is at most " + std::to_string(maxSide) + " px a side; this one is " +
+                    std::to_string(doc.width) + " x " + std::to_string(doc.height);
             return false;
         }
+        const bool psb = doc.psb;
         const int bps = doc.bitDepth / 8;
         const size_t mergedBytes = (size_t)doc.width * doc.height * 4 * bps;
         if (!doc.merged.empty() && doc.merged.size() != mergedBytes) {
@@ -380,7 +391,18 @@ namespace {
         }
         std::vector<Record> records;
         uint32_t nextId = 1;
-        flatten(doc.layers, bps, records, nextId);
+        flatten(doc.layers, bps, psb, records, nextId);
+        if (psb) {
+            // the spool encodes PSD row byte counts (2 bytes); a PSB's are 4
+            bool spooled = doc.mergedSpooled;
+            for (const Record& r : records) {
+                for (const Channel& c : r.channels) spooled = spooled || c.spooled;
+            }
+            if (spooled) {
+                error = "psb_spooled: a PSB is written from pixels in memory, not from a channel spool";
+                return false;
+            }
+        }
         if (records.size() > 32767) {
             error = "psd_too_large: more than 32,767 layer records";
             return false;
@@ -388,7 +410,7 @@ namespace {
 
         ByteWriter w;
         w.fourcc("8BPS");
-        w.u16(1);
+        w.u16(psb ? 2 : 1);
         w.zeros(6);
         w.u16(4);
         w.u32((uint32_t)doc.height);
@@ -424,27 +446,33 @@ namespace {
         // the channels themselves never have to be in memory together
         ByteWriter info;
         info.i16((int16_t)-(int)records.size());
-        for (const Record& r : records) writeRecord(info, r);
+        for (const Record& r : records) writeRecord(info, r, psb);
         uint64_t body = info.size();
         for (const Record& r : records) {
             for (const Channel& c : r.channels) body += c.size();
         }
         const uint64_t padded = (body + 3) / 4 * 4;
-        if (padded > (uint64_t)std::numeric_limits<int32_t>::max() - 64) {
+        if (!psb && padded > (uint64_t)std::numeric_limits<int32_t>::max() - 64) {
             error = "psd_too_large: the layers need " + std::to_string(padded) + " bytes, over the format's 2 GB";
             return false;
         }
+        // a PSB's section, layer info and Lr16 lengths are 8 bytes; the global layer mask's stays 4
+        auto length = [&](uint64_t v) {
+            if (psb) w.u64(v);
+            else w.u32((uint32_t)v);
+        };
+        const uint64_t lengthBytes = psb ? 8 : 4;
         if (bps == 1) {
-            w.u32((uint32_t)(8 + padded));
-            w.u32((uint32_t)padded);
+            length(lengthBytes + 4 + padded);
+            length(padded);
         } else {
             // 16-bit layers live in the document-level Lr16 block
-            w.u32((uint32_t)(20 + padded));
-            w.u32(0);
+            length(lengthBytes + 4 + 8 + lengthBytes + padded);
+            length(0);
             w.u32(0);
             w.fourcc("8BIM");
             w.fourcc("Lr16");
-            w.u32((uint32_t)padded);
+            length(padded);
         }
         if (!sink.put(w.out) || !sink.put(info.out)) return false;
         for (const Record& r : records) {
@@ -464,7 +492,7 @@ namespace {
             merged.length = doc.mergedLength;
             return sink.channel(merged);
         }
-        return sink.put(encodeMerged(doc.width, doc.height, bps, doc.merged));
+        return sink.put(encodeMerged(doc.width, doc.height, bps, psb, doc.merged));
     }
 
 }
@@ -497,7 +525,7 @@ bool psd::writePsdFile(const PsdWriteDocument& doc, PsdChannelSpool& spool, cons
 
 bool psd::psdSpoolPixels(PsdWriteLayer& layer, int bitDepth, PsdChannelSpool& spool, std::string& error) {
     Record rec;
-    const bool ok = pixelChannels(layer, bitDepth / 8, rec, [&](int16_t id, std::vector<uint8_t> data) {
+    const bool ok = pixelChannels(layer, bitDepth / 8, false, rec, [&](int16_t id, std::vector<uint8_t> data) {
         PsdSpooledChannel c;
         c.id = id;
         c.length = data.size();
@@ -516,7 +544,7 @@ bool psd::psdSpoolPixels(PsdWriteLayer& layer, int bitDepth, PsdChannelSpool& sp
 }
 
 bool psd::psdSpoolMask(PsdWriteLayer& layer, int bitDepth, PsdChannelSpool& spool, std::string& error) {
-    std::vector<uint8_t> data = maskChannel(layer, bitDepth / 8);
+    std::vector<uint8_t> data = maskChannel(layer, bitDepth / 8, false);
     layer.spooledMask.id = -2;
     layer.spooledMask.length = data.size();
     if (!spool.append(data, layer.spooledMask.offset, error)) return false;
@@ -526,7 +554,7 @@ bool psd::psdSpoolMask(PsdWriteLayer& layer, int bitDepth, PsdChannelSpool& spoo
 }
 
 bool psd::psdSpoolMerged(PsdWriteDocument& doc, PsdChannelSpool& spool, std::string& error) {
-    const std::vector<uint8_t> data = encodeMerged(doc.width, doc.height, doc.bitDepth / 8, doc.merged);
+    const std::vector<uint8_t> data = encodeMerged(doc.width, doc.height, doc.bitDepth / 8, false, doc.merged);
     doc.mergedLength = data.size();
     if (!spool.append(data, doc.mergedOffset, error)) return false;
     doc.mergedSpooled = true;

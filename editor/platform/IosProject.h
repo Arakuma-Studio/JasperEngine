@@ -11,6 +11,7 @@
 // app-store); with no team, the device build is compiled and stops before signing, and says so.
 // Elsewhere, or on a Mac without Xcode, the project is the result ("Open on a Mac with Xcode").
 
+#include "Project.h"
 #include "ShippingTypes.h"
 #include "util/CommandRunner.h"
 
@@ -30,6 +31,8 @@ namespace jasperengine::editor::platform {
         std::string teamId;
         std::string exportMethod = "development";
         bool hideStatusBar = true;
+        // Player > Resolution and Presentation: the Info.plist's supported orientations
+        PresentationSettings presentation;
         std::filesystem::path iconPng;
         std::filesystem::path runtimeDir;     // the player runtime's ios/
         std::filesystem::path projectDir;     // the staged project (Content/ is in it already)
@@ -57,6 +60,9 @@ namespace jasperengine::editor::platform {
 
     // the template's text with the settings in its {{MARKERS}}
     std::string fillIosTemplate(std::string text, const IosProjectSettings& settings);
+    // the template's Info.plist with its markers filled and the orientations of the presentation
+    // settings (Exporter::applyIosOrientations, as a source export writes them)
+    std::string fillIosInfoPlist(std::string text, const IosProjectSettings& settings);
 
     // The runtime's template copied into settings.projectDir with the settings and the icon; the
     // export then adds the game's native plugins and settings to the staged project

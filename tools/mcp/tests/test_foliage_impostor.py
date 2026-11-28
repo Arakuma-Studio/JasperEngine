@@ -57,8 +57,13 @@ async def test_bake_op_job_and_refuses_in_play(ed: Editor):
     sid, terrain = await common.terrain_scene(ed, "Bake")
     started = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "bake_impostors", "views": 4, "resolution": 128}], wait=False)
     ed.check("job_id" in started, f"{started}")
+    # S99 R13, R14: an estimate at submit (one impostor's two 2x2 atlases), a report at the end
+    estimate = started.get("estimate") or {}
+    ed.check(estimate.get("seconds", 0) > 0 and estimate.get("bytes", 0) > 0, f"an estimate: {started}")
     job = await wait_job(ed, started["job_id"], 120)
     ed.check_eq(job["status"], "succeeded", f"{job}")
+    report = job["result"].get("report") or {}
+    ed.check(report.get("estimated_seconds") == estimate.get("seconds") and report.get("fallbacks") == [], f"a report: {job['result']}")
     got = await ed.call("sample_terrain", scene=sid, entity=terrain, foliage=True, grid=0)
     ed.check_eq(got["foliage"]["trees"][0]["impostor_state"], "baked", f"{got['foliage']}")
 

@@ -154,7 +154,7 @@ const std::vector<PlayerVariant>& PlayerRuntimes::variants() {
         }
         std::stable_partition(out.begin(), out.end(), [](const PlayerVariant& v) { return v.suffix.empty(); });
         if (out.empty() || !out.front().suffix.empty())
-            out.insert(out.begin(), PlayerVariant{"full", "", {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart"}});
+            out.insert(out.begin(), PlayerVariant{"full", "", {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue", "inputscripts"}});
         return out;
     }();
     return list;
@@ -172,11 +172,12 @@ const PlayerVariant& PlayerRuntimes::variantFor(const std::vector<std::string>& 
     return *best;
 }
 
-std::vector<PlayerInfo> PlayerRuntimes::findVariants(const std::string& baseId, const fs::path& override, bool allowMismatch) {
+std::vector<PlayerInfo> PlayerRuntimes::findVariants(const std::string& baseId, const fs::path& override, bool allowMismatch,
+                                                     const std::string& content, bool buildProfile) {
     std::vector<PlayerInfo> out;
     for (const PlayerVariant& variant : variants()) {
         std::string error;
-        std::optional<PlayerInfo> found = find(variant.suffix.empty() ? baseId : baseId + "-" + variant.suffix, override, allowMismatch, error);
+        std::optional<PlayerInfo> found = find(variant.suffix.empty() ? baseId : baseId + "-" + variant.suffix, override, allowMismatch, error, content, buildProfile);
         if (found) out.push_back(std::move(*found));
     }
     return out;
@@ -243,7 +244,16 @@ std::vector<PlayerInfo> PlayerRuntimes::list(const fs::path& override) {
     return out;
 }
 
-std::optional<PlayerInfo> PlayerRuntimes::find(const std::string& id, const fs::path& override, bool allowMismatch, std::string& error) {
+std::optional<PlayerInfo> PlayerRuntimes::find(const std::string& id, const fs::path& override, bool allowMismatch, std::string& error,
+                                               const std::string& content, bool buildProfile) {
+    const std::string writes = content.empty() ? jasperengine::cook::buildContentFormatVersion(false) : content;
+    // what a runtime must read to apply a Build Profile (its game.json): BUILD_PROFILE_MINOR, also
+    // once the cooked layout's minor is past it (S95's 1.12/1.13), where `writes` cannot tell
+    const std::string profileContent =
+        std::to_string(jasperengine::cook::FORMAT_MAJOR) + "." + std::to_string(jasperengine::cook::BUILD_PROFILE_MINOR);
+    // content past the cooked files' layout is game.json's (a Build Profile): a runtime that does
+    // not read it would run the build as another one, so not even --allow-player-mismatch takes it
+    const bool needsGameConfig = !jasperengine::cook::readsContentFormat(jasperengine::cook::buildContentFormatVersion(false), writes);
     std::vector<std::string> rejected;
     for (const PlayerInfo& info : list(override)) {
         if (info.id != id) continue;
@@ -251,16 +261,22 @@ std::optional<PlayerInfo> PlayerRuntimes::find(const std::string& id, const fs::
             rejected.push_back(info.dir.string() + " is for editor " + info.engineVersion);
             continue;
         }
-        // another major never reads; an older minor would skip what this editor's content adds
-        const std::string writes = jasperengine::cook::contentFormatVersion();
+        // another major never reads; an older minor would skip what this build's content adds
         if (majorOf(info.contentFormatVersion) != majorOf(writes)) {
             rejected.push_back(info.dir.string() + " reads content format " + info.contentFormatVersion);
             continue;
         }
-        if (!allowMismatch && !jasperengine::cook::readsContentFormat(info.contentFormatVersion, writes)) {
-            rejected.push_back(info.dir.string() + " reads content format " + info.contentFormatVersion + ", older than the " + writes +
-                               " this editor writes: update the player runtime");
-            continue;
+        if (!jasperengine::cook::readsContentFormat(info.contentFormatVersion, writes)) {
+            if (needsGameConfig || (buildProfile && !jasperengine::cook::readsContentFormat(info.contentFormatVersion, profileContent))) {
+                rejected.push_back(info.dir.string() + " reads content format " + info.contentFormatVersion + ", older than the " + writes +
+                                   " a Build Profile's build needs (its game.json's profile and defines): update the player runtime");
+                continue;
+            }
+            if (!allowMismatch) {
+                rejected.push_back(info.dir.string() + " reads content format " + info.contentFormatVersion + ", older than the " + writes +
+                                   " this editor writes: update the player runtime");
+                continue;
+            }
         }
         return info;
     }

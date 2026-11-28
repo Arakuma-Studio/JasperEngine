@@ -3,6 +3,8 @@
 
 #include "htmlui/compat/runtime/SvgPreprocess.h"
 
+#include "htmlui/compat/Arena.h"
+#include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/CssSerialize.h"
 
 #include "Log.h"
@@ -13,8 +15,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <memory>
+#include <sstream>
 
 using namespace jasperengine;
 using namespace jasperengine::htmlui::compat;
@@ -189,7 +193,56 @@ namespace {
         }
     }
 
+    void rewriteSvgDrawableStroke(tinyxml2::XMLElement& element){
+        const char* draw = element.Attribute("draw");
+        const char* dashes = element.Attribute("stroke-dasharray");
+        const char* offset = element.Attribute("stroke-dashoffset");
+        if (!draw || !dashes || !offset) return;
+        std::istringstream range(draw);
+        double start = 0, end = 0;
+        if (!(range >> start >> end) || !std::isfinite(start) || !std::isfinite(end)) return;
+        const bool collapsed = start == end;
+        const char* authored = element.Attribute("style");
+        if (!authored || !*authored) return;
+        const std::string text(authored);
+        Arena arena;
+        ArenaScope scope(arena);
+        const auto parsed = parseBlockContents(0, text, 0, nullptr);
+        std::string style, cap;
+        bool capSeen = false, capImportant = false;
+        size_t cursor = 0;
+        for (const auto& declaration : parsed.declarations){
+            const bool linecap = declaration.name == "stroke-linecap";
+            if (!linecap && declaration.name != "stroke-dasharray" && declaration.name != "stroke-dashoffset") continue;
+            if (linecap && !collapsed && (!capSeen || declaration.important || !capImportant)){
+                cap = serialize(declaration.value);
+                capSeen = true;
+                capImportant = declaration.important;
+            }
+            const size_t begin = std::min((size_t)declaration.ref.offset, text.size());
+            size_t finish = std::min(begin + (size_t)declaration.ref.length, text.size());
+            while (finish < text.size() && std::isspace((unsigned char)text[finish])) ++finish;
+            if (finish < text.size() && text[finish] == ';') ++finish;
+            if (begin >= cursor){
+                style.append(text, cursor, begin - cursor);
+                cursor = finish;
+            }
+        }
+        style.append(text, cursor, std::string::npos);
+        // Draw controls the rendered stroke even when an exported inline declaration wins
+        // over its presentation attributes. Rewrite only the rasterizer's temporary copy:
+        // authored styles and concurrent Rml property animations stay intact, with no growth.
+        std::string stroke = "stroke-dasharray:" + std::string(dashes) + ";stroke-dashoffset:" + offset + ";";
+        if (collapsed) stroke += "stroke-linecap:butt;";
+        else if (capSeen) stroke += "stroke-linecap:" + cap + ";";
+        // LunaSVG stops its inline parser at a quoted semicolon in an unrelated custom
+        // property. Put these declarations first so those preserved values cannot hide them.
+        style.insert(0, stroke);
+        element.SetAttribute("style", style.c_str());
+    }
+
     void walk(tinyxml2::XMLElement* element, bool fillSet, bool rendered, bool root, Scan& scan){
+        if (element->Attribute("data-anime-drawable")) rewriteSvgDrawableStroke(*element);
         // paints set on this element: attributes, then style="" (which wins)
         const std::vector<Declaration> style = parseStyle(element->Attribute("style"));
         bool hasFill = false;

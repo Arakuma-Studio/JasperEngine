@@ -133,3 +133,46 @@ the add-ons did not compile with MSVC.
 - The loader's enum block gains `GL_VERSION` and `GL_RENDERER`.
 
 Status: local; upstream has no use for them. Every sokol update re-applies it.
+
+## GPU quirks: the driver's version and compile threads off again (release-performance-and-gpu-quirks R16, R18)
+
+The GPU quirk rules match a driver version (`docs/device-tiers.md`, "GPU quirks"), and the tests
+force the `gl_no_compile_threads` lever both ways in one process. Both are changes to our add-ons,
+not to `sokol_gfx.h`; they are listed here so an update of sokol knows what the add-ons read of it.
+
+- `sokol_gpu_timer.h` / `sokol_gpu_timer_impl.h`: `sgj_driver_version()`. GL and GLES return
+  `GL_VERSION`; Vulkan calls `vkGetPhysicalDeviceProperties2` with a `VkPhysicalDeviceDriverProperties`
+  in the chain when `_sg.vk.dev_props.properties.apiVersion` is 1.2 or later and returns
+  `driverName + " " + driverInfo`, else decodes `driverVersion` (NVIDIA's 10.8.8.6 bits, others
+  `VK_VERSION_*`); D3D11 asks `IDXGIAdapter::CheckInterfaceSupport(__uuidof(IDXGIDevice))` for the
+  user-mode driver version and prints it as `a.b.c.d`; Metal returns the OS version (the driver ships
+  with it); WebGL returns `""`. It reads `_sg.vk.phys_dev`, `_sg.vk.dev_props` and `_sg.d3d11.dev`.
+- `sokol_async.h` / `sokol_async_impl.h`: `sgj_gl_disable_compile_threads()`,
+  `glMaxShaderCompilerThreadsKHR/ARB(0)` on the current context (KHR_parallel_shader_compile: the
+  compiler spawns no threads), through the same proc lookup as `sgj_gl_enable_compile_threads`; a
+  no-op on WebGL and without the extension. `SokolAsyncCreate` calls it only on a context where an
+  earlier setup enabled the threads.
+
+Status: local; upstream has no use for them. Every sokol update keeps the fields they read.
+
+## One mutated framebuffer per MSAA sample count on GL
+
+Upstream's GL backend mutates one framebuffer object (`_sg.gl.fb`) for every offscreen pass. The
+Android emulator's guest GLES encoder answers `glCheckFramebufferStatus` from its own tracking, and
+that tracking keeps a renderbuffer in the depth slot after the app detaches it (renderbuffer 0) and
+attaches a texture at `GL_DEPTH_STENCIL_ATTACHMENT`. On GLES3 a multisampled attachment is a
+renderbuffer, so after the first 4-sample HTML UI pass every single-sampled pass (the scene camera's
+target) was `GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` and was skipped. A framebuffer made fresh for the
+same attachments was complete.
+
+- `_sg_gl_t` gains `msaa_fb[4]` (2, 4, 8 and 16 samples, made at the first pass of that count and
+  deleted in `_sg_gl_discard_backend`) and `cur_fb`.
+- `_sg_gl_pass_framebuffer` picks the framebuffer by the pass's sample count (its first colour view,
+  else its depth-stencil view): `fb` for single-sampled passes. `_sg_gl_begin_pass` binds it and keeps
+  it in `cur_fb`; `_sg_gl_end_render_pass` reads the MSAA resolve from `cur_fb` and binds it again
+  before the invalidate. A framebuffer then only ever holds attachments of one sample count, so a
+  stale slot cannot mix counts.
+- Marked `JasperEngine: msaa framebuffers`.
+
+Status: local (works around a driver's state tracking); upstream may still want it, as any sokol
+user mixing MSAA and single-sampled passes on that emulator hits it.

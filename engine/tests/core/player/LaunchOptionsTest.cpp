@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include "player/InputScriptRun.h"
 #include "player/PlayerLaunch.h"
 #include "player/LaunchOptions.h"
 #include "player/RunControl.h"
@@ -132,6 +133,22 @@ TEST(LaunchOptions, RefusalsSayHowToFixThem) {
     EXPECT_NE(refused({"--content", "/nonexistent-dir-s30"}).find("not a directory"), std::string::npos);
     EXPECT_NE(refused({"--scene", ""}).find("scene name"), std::string::npos);
     EXPECT_NE(refused({"--help"}).find("--quit-after N"), std::string::npos);
+    // --command: a console line (and, in a player whose Console Commands keep typed commands
+    // off, RunControl's refusal: exit 2)
+    EXPECT_NE(refused({"--command", "  "}).find("needs a console line"), std::string::npos);
+    EXPECT_NE(refused({"--command"}).find("needs a value"), std::string::npos);
+    EXPECT_NE(refused({"--help"}).find("--command LINE"), std::string::npos);
+    EXPECT_EQ(std::string(commandsOffRefusal()),
+              "--command needs a development player or Project Settings > Debug > Console Commands: Always.");
+}
+
+// --command (dev-console-for-agents R16): repeatable, in order; the web's ?command= items too
+TEST(LaunchOptions, CommandRepeatsInOrder) {
+    const LaunchOptions options = ok({"--command", "give gold 10", "--headless", "--command=tp \"Big Tree\""});
+    EXPECT_EQ(options.commands, (std::vector<std::string>{"give gold 10", "tp \"Big Tree\""}));
+    EXPECT_TRUE(ok({}).commands.empty());
+    const LaunchOptions web = ok(argsFromQuery("?command=help&command=give+gold+10"), ParseMode::Lenient);
+    EXPECT_EQ(web.commands, (std::vector<std::string>{"help", "give gold 10"}));
 }
 
 TEST(LaunchOptions, LenientModeKeepsUnknownArguments) {
@@ -176,6 +193,91 @@ TEST(LaunchOptions, DeviceTier) {
     EXPECT_TRUE(ok({}).deviceTier.empty());
     EXPECT_NE(refused({"--device-tier=extreme"}).find("low, medium, high or ultra"), std::string::npos);
     EXPECT_NE(refused({"--device-tier"}).find("needs a value"), std::string::npos);
+}
+
+// project-test-runner AC11: --run-tests needs the test runner; a release player (built without
+// JASPERENGINE_TEST_RUNNER) refuses it with exit 2 and the fixed message, a development one
+// takes it with its filter and results path
+TEST(LaunchOptions, RunTestsNeedsTheTestRunner) {
+    if (!testRunnerCompiled()) {
+        EXPECT_EQ(refused({"--run-tests"}), NO_TEST_RUNNER);
+        EXPECT_EQ(refused({"--test-filter", "smoke"}), NO_TEST_RUNNER);
+        return;
+    }
+    test::TempDir dir;
+    const std::string results = (dir.path() / "results.json").string();
+    const LaunchOptions options = ok({"--run-tests", "--test-filter", "tag:smoke,shop", "--test-results", results, "--keep-test-data"});
+    EXPECT_TRUE(options.runTests);
+    EXPECT_TRUE(options.keepTestData);
+    EXPECT_EQ(options.testFilter, "tag:smoke,shop");
+    EXPECT_EQ(options.testResults.string(), results);
+    EXPECT_TRUE(options.afterReady) << "a test run counts from the ready frame";
+    EXPECT_NE(refused({"--test-filter", "smoke"}).find("go with --run-tests"), std::string::npos);
+    EXPECT_NE(refused({"--run-tests=yes"}).find("takes no value"), std::string::npos);
+    EXPECT_NE(refused({"--run-tests", "--test-results", (dir.path() / "missing" / "r.json").string()}).find("does not exist"), std::string::npos);
+}
+
+TEST(LaunchOptions, TestFlagsFromTheQuery) {
+    const std::vector<std::string> args = argsFromQuery("?run-tests&test-filter=tag%3Asmoke");
+    ASSERT_EQ(args.size(), 2u);
+    EXPECT_EQ(args[0], "--run-tests");
+    EXPECT_EQ(args[1], "--test-filter=tag:smoke");
+    if (!testRunnerCompiled()) return;
+    const LaunchOptions options = ok(args);
+    EXPECT_TRUE(options.runTests);
+    EXPECT_EQ(options.testFilter, "tag:smoke");
+}
+
+// --gpu-quirk (GPU quirks R21, AC18): name:on|off, repeatable or comma-separated, in order
+TEST(LaunchOptions, GpuQuirkFlagParses) {
+    const LaunchOptions options = ok({"--gpu-quirk=gl_no_warm_draws:off,gl_no_worker_context:on", "--gpu-quirk", "gl_no_compile_threads:off"});
+    ASSERT_EQ(options.gpuQuirks.size(), 3u);
+    EXPECT_EQ(options.gpuQuirks[0].quirk, GpuQuirk::GlNoWarmDraws);
+    EXPECT_FALSE(options.gpuQuirks[0].on);
+    EXPECT_EQ(options.gpuQuirks[1].quirk, GpuQuirk::GlNoWorkerContext);
+    EXPECT_TRUE(options.gpuQuirks[1].on);
+    EXPECT_EQ(options.gpuQuirks[2].quirk, GpuQuirk::GlNoCompileThreads);
+    EXPECT_TRUE(ok({}).gpuQuirks.empty());
+    // the web page's query takes the same form (?gpu-quirk=gl_no_warm_draws:off)
+    EXPECT_EQ(ok(argsFromQuery("?gpu-quirk=gl_no_warm_draws:off")).gpuQuirks.size(), 1u);
+}
+
+// an unknown name is refused (exit 2), naming the known quirks
+TEST(LaunchOptions, GpuQuirkRejectsUnknownNames) {
+    EXPECT_EQ(refused({"--gpu-quirk=x:on"}).rfind("--gpu-quirk: unknown quirk \"x\" (known: gl_no_worker_context, gl_no_compile_threads, "
+                                                  "gl_no_warm_draws", 0), 0u);
+    EXPECT_NE(refused({"--gpu-quirk=gl_no_warm_draws:maybe"}).find(":on or :off"), std::string::npos);
+    const PlatformConfig saved = platformConfig();
+    EXPECT_EQ(launch({"--gpu-quirk=x:on"}, ParseMode::Strict), EXIT_BAD_ARGUMENTS);
+    RunControl::reset();
+    platformConfig() = saved;
+}
+
+// --perf-summary (R12): a file in a directory that exists; it asks for the ready signal
+TEST(LaunchOptions, PerfSummary) {
+    test::TempDir dir;
+    const std::string path = (dir.path() / "perf.json").string();
+    const LaunchOptions options = ok({"--perf-summary=" + path});
+    EXPECT_EQ(options.perfSummary.string(), path);
+    EXPECT_NE(refused({"--perf-summary=" + (dir.path() / "missing" / "perf.json").string()}).find("does not exist"), std::string::npos);
+    RunControl::configure(options);
+    EXPECT_TRUE(RunControl::wantsReadySignal());
+    EXPECT_FALSE(RunControl::isActive()) << "no frame option: the run is not counted";
+    RunControl::reset();
+}
+
+// R30: the web page fetches an --input-script given as a URL or a page path before the start
+// scene; a content path is read from the game's content as on every other target
+TEST(InputScriptRun, WebFetchesUrlsNotContentPaths) {
+    using player::InputScriptRun::isFetchedUrl;
+    EXPECT_TRUE(isFetchedUrl("/tests/menu.input.json"));
+    EXPECT_TRUE(isFetchedUrl("./menu.input.json"));
+    EXPECT_TRUE(isFetchedUrl("../scripts/menu.input.json"));
+    EXPECT_TRUE(isFetchedUrl("https://example.com/menu.input.json"));
+    EXPECT_TRUE(isFetchedUrl("http://127.0.0.1:8000/menu.input.json"));
+    EXPECT_FALSE(isFetchedUrl("tests/Input/menu.input.json"));
+    EXPECT_FALSE(isFetchedUrl("asset://demo/attract.input.json"));
+    EXPECT_FALSE(isFetchedUrl("data://input/menu.input.json"));
 }
 
 }  // namespace LaunchOptionsTest_cpp

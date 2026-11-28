@@ -1033,7 +1033,10 @@ void WidgetTextInput::ExpandSelection()
 const String& WidgetTextInput::GetValue() const
 {
 	static const String empty_value;
-	if (parent->IsPseudoClassSet("placeholder-shown"))
+	// Fork (text-entry R26): the name as a constant, so a caret query per frame (the soft keyboard's
+	// resync check) does not build a 17-character string on the heap each time.
+	static const String placeholder_shown = "placeholder-shown";
+	if (parent->IsPseudoClassSet(placeholder_shown))
 		return empty_value;
 
 	return text_element->GetText();

@@ -180,3 +180,23 @@ async def test_settings_keys(ed: Editor):
     await ed.call("create_entity", name="Click", type="audio_source")
     entity = await ed.call("get_entity", entity="Click", components=["audiosource"])
     ed.check_eq(audio_props(entity)["outputGroup"], "SFX", "the default output group")
+
+
+async def test_create_audio_source_spatial_blend(ed: Editor):
+    """S97 REQ-21 (AC20): a 2D Audio Source is a GameObject (a Transform) at Spatial Blend 0; a 3D one is at 1."""
+    await ed.call("create_entity", name="Flat", type="audio_source")
+    await ed.call("create_entity", name="Spatial", type="audio_source_3d")
+    flat = await ed.call("get_entity", entity="Flat")
+    spatial = await ed.call("get_entity", entity="Spatial")
+    for name, entity in (("Flat", flat), ("Spatial", spatial)):
+        ed.check(any("transform" == k.lower() for k in entity["components"]), f"{name} has a Transform: {list(entity['components'])}")
+    ed.check_eq(audio_props(flat)["spatialBlend"], 0, "2D: Spatial Blend 0")
+    ed.check_eq(audio_props(spatial)["spatialBlend"], 1, "3D: Spatial Blend 1")
+    # the 2D one stays 2D in Play: Lua sees its GameObject, not 3D
+    await ed.call("play", action="start", auto_pause=False)
+    try:
+        values = await lua(ed, "local s = object('Flat', 'AudioSource')\n"
+                               "return {s.sound3D, s.spatialBlend, s:getGameObject() ~= nil}")
+        ed.check_eq(values[0], [False, 0, True], "sound3D, spatialBlend, getGameObject")
+    finally:
+        await stop(ed)

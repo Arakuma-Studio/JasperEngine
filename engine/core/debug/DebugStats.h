@@ -38,6 +38,14 @@ namespace jasperengine {
         uint32_t coroutines = 0;            // engine coroutines running or waiting (ScriptScheduler)
         uint32_t timers = 0;                // engine timers pending (ScriptScheduler)
         uint32_t htmlUiDrawCalls = 0;       // HTML UI draw calls of the last frame, every scene
+        // Culling Groups and Simulation Culling of the running scenes (CullingSystem::Stats)
+        uint32_t cullingGroups = 0;
+        uint32_t cullingSpheres = 0;
+        uint32_t cullingVisible = 0;
+        uint32_t simulationFull = 0;
+        uint32_t simulationReduced = 0;
+        uint32_t simulationCulled = 0;
+        uint32_t scriptUpdatesSkipped = 0;  // update callbacks Simulation Culling skipped in the last frame
     };
 
     // The sampling of the stats: everything is read when asked (main thread); the overlay keeps

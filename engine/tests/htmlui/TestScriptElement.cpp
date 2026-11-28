@@ -7,6 +7,13 @@
 
 #include "TestScriptCommon.h"
 
+#include "RmlRenderer.h"
+#include "htmlui/HtmlUIInspector.h"
+#include "subsystem/UIDocumentSystem.h"
+
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -14,6 +21,61 @@ using namespace jasperengine::test;
 namespace {
 
     class ScriptElementTest : public ScriptTest {};
+
+    // an .html document in a directory of its own, which a test edits (the live patch)
+    class ScriptElementHtmlTest : public ScriptTest {
+    protected:
+        std::filesystem::path dir;
+        std::string file;
+
+        const char* documentFile() const override{ return file.c_str(); }
+
+        void SetUp() override{
+            const ::testing::TestInfo* info = ::testing::UnitTest::GetInstance()->current_test_info();
+            dir = std::filesystem::path(JASPER_HTMLUI_TEST_BINARY_DIR) / "script-element" / info->name();
+            std::filesystem::remove_all(dir);
+            std::filesystem::create_directories(dir);
+            write("page.html", page("Go"));
+            file = path("page.html");
+            ScriptTest::SetUp();
+        }
+
+        static std::string page(const std::string& label){
+            return "<!DOCTYPE html>\n<html>\n<head>\n<style>\nbody { margin: 0; }\n"
+                   ".btn { display: inline-block; font-size: 20px; padding-left: 4px; }\n</style>\n</head>\n<body>\n"
+                   "<div id=\"b\" class=\"btn\">" + label + "</div>\n</body>\n</html>\n";
+        }
+
+        std::string path(const std::string& name) const{
+            return (dir / name).generic_string();
+        }
+
+        // a later write time, so the reload sees an edit
+        void write(const std::string& name, const std::string& content){
+            const std::filesystem::path target = dir / name;
+            std::error_code error;
+            const bool existed = std::filesystem::exists(target, error);
+            const std::filesystem::file_time_type before = existed ? std::filesystem::last_write_time(target, error) : std::filesystem::file_time_type();
+            {
+                std::ofstream out(target, std::ios::binary | std::ios::trunc);
+                out << content;
+            }
+            if (existed)
+                std::filesystem::last_write_time(target, before + std::chrono::seconds(2), error);
+        }
+
+        std::string sourceOf(const std::string& property){
+            htmlui::InspectDetail detail;
+            std::string error;
+            if (!htmlui::HtmlUIInspector::detail(&scene(), document->getEntity(), "#b", {property}, detail, error))
+                return error;
+            for (const htmlui::InspectStyle& style : detail.styles){
+                if (style.property == property)
+                    return style.source;
+            }
+            return std::string();
+        }
+    };
 
     std::vector<std::string> ids(const std::vector<UIElement>& elements){
         std::vector<std::string> result;
@@ -351,6 +413,10 @@ TEST_F(ScriptElementTest, DocumentApi){
 // S16 R28 (AC18): UIDocument:getRenderStats() is the HtmlUIRenderStats of the document's context,
 // every field by its name, the same values as the C++ API
 TEST_F(ScriptElementTest, RenderStats){
+    // the statistics of a replayed frame: S92 R1 keeps an unchanged one (no pass, no draw)
+    const bool reuse = RmlRenderer::isFrameReuse();
+    RmlRenderer::setFrameReuseForTesting(false);
+    struct Restore { bool on; ~Restore(){ RmlRenderer::setFrameReuseForTesting(on); } } restore{reuse};
     GpuEnvironment::drawFrames(3);
     const HtmlUIRenderStats stats = document->getRenderStats();
     EXPECT_GT(stats.drawCalls, 0u);
@@ -366,4 +432,85 @@ TEST_F(ScriptElementTest, RenderStats){
     });
     EXPECT_EQ(luaString("doc:getRenderStats().drawCalls"), std::to_string(stats.drawCalls));
     EXPECT_EQ(luaString("doc:getRenderStats().atlasBytes"), std::to_string(stats.atlasBytes));
+}
+
+// S93 R28 (AC32): a keyword reads back as the first name registered for its value: 'hidden', not its alias 'collapse'
+TEST_F(ScriptElementTest, VisibilityHiddenReadsHidden){
+    UIElement btn = document->getElementById("btn");
+    btn.setStyle("visibility", "hidden");
+    update();
+    EXPECT_EQ(btn.getStyle("visibility"), "hidden");
+    EXPECT_LUA("local el = doc:getElementById('btn'); el.style.visibility = 'collapse'; result = el.style.visibility");
+    EXPECT_EQ(luaString("result"), "hidden");
+    EXPECT_LUA("local el = doc:getElementById('btn'); el.style.visibility = 'visible'; result = el.style.visibility");
+    EXPECT_EQ(luaString("result"), "visible");
+}
+
+// S93 R29 (AC33): a sheet a script adds goes through the compat layer and cascades after the document's own (a
+// pseudo-element included); disabling and removing it restores the old style; it survives a live patch and a
+// rebuild; inspect_ui names its source; its problems are the document's diagnostics
+TEST_F(ScriptElementHtmlTest, AddStyleSheetTargetsPseudoElements){
+    UIElement button = document->getElementById("b");
+    ASSERT_TRUE(button.isValid());
+    EXPECT_EQ(button.getStyle("padding-left"), "4px");
+    const float plain = button.getOffsetWidth();
+
+    EXPECT_LUA("sheet = doc:addStyleSheet(\".btn::before { content: '>>>'; }\\n.btn { padding-left: 30px; }\", 'press-tint')");
+    update();
+    EXPECT_EQ(button.getStyle("padding-left"), "30px");
+    // the padding and the ::before text
+    EXPECT_GT(button.getOffsetWidth(), plain + 26.0f + 5.0f);
+    EXPECT_EQ(luaString("sheet.name"), "press-tint");
+    EXPECT_EQ(luaString("sheet.enabled"), "true");
+    const std::string source = sourceOf("padding-left");
+    EXPECT_EQ(source.rfind("injected:press-tint:2", 0), 0u) << source;
+
+    EXPECT_LUA("sheet.enabled = false");
+    update();
+    EXPECT_EQ(button.getStyle("padding-left"), "4px");
+    EXPECT_NEAR(button.getOffsetWidth(), plain, 0.5f);
+    EXPECT_LUA("sheet.enabled = true");
+    update();
+    EXPECT_EQ(button.getStyle("padding-left"), "30px");
+
+    // a file
+    write("extra.css", ".btn { padding-right: 12px; }\n");
+    EXPECT_LUA("extra = doc:addStyleSheetFile('" + path("extra.css") + "')");
+    update();
+    EXPECT_EQ(button.getStyle("padding-right"), "12px");
+    EXPECT_EQ(sourceOf("padding-right").rfind(path("extra.css") + ":1", 0), 0u) << sourceOf("padding-right");
+
+    // the live patch keeps the elements and the sheets
+    write("page.html", page("Go!"));
+    UIDocumentSystem& system = *scene().getSystem<UIDocumentSystem>();
+    system.reloadChangedFiles({file});
+    update();
+    update();
+    EXPECT_EQ(system.getLastReloadReport(document->getEntity()).mode, "patch") << system.getLastReloadReport(document->getEntity()).fallbackReason;
+    EXPECT_TRUE(button == document->getElementById("b"));
+    EXPECT_EQ(button.getStyle("padding-left"), "30px");
+    EXPECT_EQ(button.getStyle("padding-right"), "12px");
+    // a rebuild too
+    document->reload(UIReloadMode::REBUILD);
+    update();
+    button = document->getElementById("b");
+    ASSERT_TRUE(button.isValid());
+    EXPECT_EQ(button.getStyle("padding-left"), "30px");
+
+    // the sheet's problems are the document's, at the sheet's lines
+    EXPECT_LUA("bad = doc:addStyleSheet('.btn {\\n  frobnicate: 1;\\n}', 'bad')");
+    update();
+    bool reported = false;
+    for (const htmlui::compat::Diagnostic& diagnostic : document->getDiagnostics())
+        reported |= (diagnostic.file == "injected:bad" && diagnostic.line == 2);
+    EXPECT_TRUE(reported);
+
+    EXPECT_LUA("sheet:remove(); extra:remove(); bad:remove()");
+    update();
+    EXPECT_EQ(button.getStyle("padding-left"), "4px");
+    EXPECT_EQ(luaString("sheet.valid"), "false");
+    EXPECT_LUA("sheet.enabled = true");   // a removed sheet: a no-op
+    update();
+    EXPECT_EQ(button.getStyle("padding-left"), "4px");
+    lua("sheet, extra, bad = nil, nil, nil");
 }

@@ -7,10 +7,13 @@
 // platform's finalizer) or the Compile build of today's Desktop and Web exports. Everything is
 // written to <dest>.staging-<pid> and swapped in at the end.
 
+#include "util/CppIdentifier.h"
 #include "Exporter.h"
+#include "test/GameTests.h"
 
 #include "EditorHost.h"
 #include "Generator.h"
+#include "cook/GameConfig.h"
 #include "Out.h"
 #include "cook/JPakWriter.h"
 #include "io/JPak.h"
@@ -19,6 +22,7 @@
 #include "platform/AndroidPackager.h"
 #include "platform/IosProject.h"
 #include "platform/MacBundle.h"
+#include "platform/WebServe.h"
 #include "platform/WindowsResources.h"
 #include "player/ContentManifest.h"
 #include "player/PlayerConfig.h"
@@ -113,7 +117,7 @@ void editor::Exporter::warnPrivacy(const std::string& platform, const std::vecto
 }
 
 bool editor::Exporter::iosDeclaresTrackingUsage() const {
-    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    const IOSProjectSettings& ios = settings->getIOSProjectSettings();
     std::vector<std::string> keys;
     for (const auto& [key, value] : ios.plistEntries) keys.push_back(key);
     return ApplePrivacy::declaresTrackingUsage(keys, ios.plistXml);
@@ -141,7 +145,7 @@ namespace {
 
 editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, const ExportConfig& cfg, const PlayerInfo* playerInfo) {
     BuildMethodChoice choice;
-    const std::string appName = proj->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(proj->getName());
+    const std::string appName = proj->getName().empty() ? "jasperengine-project" : toIdentifier(proj->getName());
     // (a) C++ scripts: what a script directory compiles (Generator::writeSourceFiles)
     std::vector<std::string> sources;
     for (const fs::path& scriptDir : proj->getScriptDirs()) {
@@ -195,14 +199,31 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
     return choice;
 }
 
+std::string editor::Exporter::applicationIdOf(const Project& project, BuildPlatform platform, const std::string& appName) {
+    if (platform == BuildPlatform::Android) {
+        const std::string id = project.getApplicationIdentifier(project.getAndroidProjectSettings().packageName);
+        return id.empty() ? "com.jasperengine." + appName : id;
+    }
+    if (platform == BuildPlatform::IOS) {
+        const IOSProjectSettings& ios = project.getIOSProjectSettings();
+        return ios.bundleIdentifier.empty() ? "com.jasperengine." + appName : ios.bundleIdentifier;
+    }
+    return "";
+}
+
+std::string editor::Exporter::applicationId() const {
+    return applicationIdOf(*settings, config.platform, getAppName());
+}
+
 bool editor::Exporter::resolvePlayer() {
     // the full player, else any installed variant of it (the method only needs one);
     // selectPlayerVariant picks the build's once its modules are known
     const std::string id = playerIdFor(config, config.developmentBuild);
+    const std::string content = ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr);
     std::string error;
-    std::optional<PlayerInfo> found = PlayerRuntimes::find(id, config.playersDir, config.allowPlayerMismatch, error);
+    std::optional<PlayerInfo> found = PlayerRuntimes::find(id, config.playersDir, config.allowPlayerMismatch, error, content, buildProfile != nullptr);
     if (!found) {
-        std::vector<PlayerInfo> variants = PlayerRuntimes::findVariants(id, config.playersDir, config.allowPlayerMismatch);
+        std::vector<PlayerInfo> variants = PlayerRuntimes::findVariants(id, config.playersDir, config.allowPlayerMismatch, content, buildProfile != nullptr);
         if (!variants.empty()) found = variants.front();
     }
     {
@@ -217,19 +238,29 @@ bool editor::Exporter::resolvePlayer() {
     if (config.allowPlayerMismatch && player->engineVersion != PlayerRuntimes::editorVersion())
         warn("W-PLAYER-MISMATCH", "player " + id + " is for editor " + player->engineVersion + ", this is " + PlayerRuntimes::editorVersion() +
                                   " (--allow-player-mismatch; publish verify refuses the build)");
-    else if (config.allowPlayerMismatch && !::jasperengine::cook::readsContentFormat(player->contentFormatVersion, ::jasperengine::cook::contentFormatVersion()))
-        warn("W-PLAYER-MISMATCH", "player " + id + " reads content format " + player->contentFormatVersion + ", this editor writes " +
-                                  ::jasperengine::cook::contentFormatVersion() + ": it skips what is newer (--allow-player-mismatch; publish verify refuses the build)");
+    else if (config.allowPlayerMismatch && !::jasperengine::cook::readsContentFormat(player->contentFormatVersion, content))
+        warn("W-PLAYER-MISMATCH", "player " + id + " reads content format " + player->contentFormatVersion + ", this build writes " +
+                                  content + ": it skips what is newer (--allow-player-mismatch; publish verify refuses the build)");
     return true;
 }
 
 void editor::Exporter::runPlayerBuild() {
+    // the build's terrain targets (loadAndCookAllScenes) end with it, as runExport's do
+    struct TerrainExportEnd {
+        Project* project;
+        ~TerrainExportEnd() {
+            if (project) project->endTerrainExport();
+        }
+    } terrainExportEnd{project};
     {
         std::lock_guard<std::mutex> lock(progressMutex);
         result = ExportResult();
         result.outputDir = config.destinationDir;
+        if (buildProfile) result.buildProfile = buildProfile->name;
     }
-    if (project) config.developmentBuild = config.developmentBuild || project->isDevelopmentBuild();
+    if (buildProfile) Out::info("Build Profile: %s", buildProfile->name.c_str());
+    for (const BuildWarning& warning : profileWarnings) warn(warning.code, warning.message);
+    if (project) config.developmentBuild = config.developmentBuild || settings->isDevelopmentBuild();
     const std::string backend = normalizeBackend(config.graphicBackend);
     const std::vector<std::string> backends = platformBackends(config.platform);
     if (!config.graphicBackend.empty() && (backend.empty() || std::find(backends.begin(), backends.end(), backend) == backends.end())) {
@@ -258,6 +289,12 @@ void editor::Exporter::runPlayerBuild() {
         result.compileReasons = choice.reasons;
         result.methodUsed = choice.method;
         if (choice.method == BuildMethod::Prebuilt) result.carried = choice.carried;
+        // Auto prefers the prebuilt player: compiling instead is a downgrade of build time
+        if (config.method == BuildMethod::Auto && choice.method == BuildMethod::Compile) {
+            std::string reasons;
+            for (const std::string& reason : choice.reasons) reasons += (reasons.empty() ? "" : "; ") + reason;
+            result.fallbacks.push_back({"method", "prebuilt", "compiled", reasons});
+        }
     }
     for (const std::string& warning : choice.nativeWarnings) warn("W-NATIVE-MOCK", warning);
     Out::info("Build method: %s%s", choice.method == BuildMethod::Prebuilt ? "prebuilt player" : "compile from source",
@@ -293,10 +330,15 @@ void editor::Exporter::runPlayerBuild() {
         }
         config.mode = config.platform == BuildPlatform::Web ? ExportMode::Web : ExportMode::Desktop;
         config.selectedBackends = {shaderBackendOf(config.platform, config.graphicBackend)};
-        config.webMultithreaded = config.webMultithreaded || project->getThreadingSettings().webMultithreaded;
+        config.webMultithreaded = config.webMultithreaded || settings->getThreadingSettings().webMultithreaded;
         holdFinish = true;
         runExport();
         holdFinish = false;
+        // its output is staged (beginOutputStaging): published at the end, or dropped
+        struct StagingGuard {
+            Exporter* exporter;
+            ~StagingGuard() { exporter->abandonOutputStaging(); }
+        } stagingGuard{this};
         if (getProgress().failed) return;
         // a Compile build ships the same notices and manifest, so publish treats both alike
         std::string error;
@@ -317,11 +359,15 @@ void editor::Exporter::runPlayerBuild() {
         const fs::path executable = config.destinationDir / (getAppName() + (config.platform == BuildPlatform::Windows ? ".exe" : ""));
         if (config.mode == ExportMode::Desktop && !keepBuildSymbols(executable)) return;
         if (!writeContentManifest(false)) return;
+        {
+            std::lock_guard<std::mutex> lock(progressMutex);
+            result.methodUsed = BuildMethod::Compile;
+            result.contentManifest = config.destinationDir / "content-manifest.json";
+            std::error_code exists;
+            if (config.mode == ExportMode::Desktop && fs::is_regular_file(executable, exists)) result.executable = executable;
+        }
+        if (!finishOutputStaging()) return;
         std::lock_guard<std::mutex> lock(progressMutex);
-        result.methodUsed = BuildMethod::Compile;
-        result.contentManifest = config.destinationDir / "content-manifest.json";
-        std::error_code exists;
-        if (config.mode == ExportMode::Desktop && fs::is_regular_file(executable, exists)) result.executable = executable;
         // only now: a caller reading the result once the build is finished finds all of it
         progress.finished = true;
         return;
@@ -329,7 +375,8 @@ void editor::Exporter::runPlayerBuild() {
 
     if (!player) {
         std::string error;
-        PlayerRuntimes::find(playerIdFor(config, config.developmentBuild), config.playersDir, config.allowPlayerMismatch, error);
+        PlayerRuntimes::find(playerIdFor(config, config.developmentBuild), config.playersDir, config.allowPlayerMismatch, error,
+                             ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr), buildProfile != nullptr);
         // what would build it without the runtime
         if (config.platform == BuildPlatform::Web && config.method == BuildMethod::Auto)
             error += "; or install the Emscripten SDK (EMSDK, or Preferences > External Tools) to compile it";
@@ -340,6 +387,16 @@ void editor::Exporter::runPlayerBuild() {
     }
     if (!runPrebuilt()) {
         discardStaging();
+        return;
+    }
+    if (config.contentOnly) {
+        // Patch And Run: the content is cooked; the package and the output folder stay as they are
+        setProgressRaw("Content cooked", 1.0f);
+        {
+            std::lock_guard<std::mutex> lock(progressMutex);
+            progress.finished = true;
+        }
+        Out::info("Content cooked for Patch And Run: %s", contentDir.string().c_str());
         return;
     }
     measureBuildEngine(config.destinationDir);
@@ -378,7 +435,8 @@ bool editor::Exporter::selectPlayerVariant() {
     }
     const std::vector<std::string> needed = moduleUsage.list();
     const std::string baseId = playerIdFor(config, config.developmentBuild);
-    const std::vector<PlayerInfo> installed = PlayerRuntimes::findVariants(baseId, config.playersDir, config.allowPlayerMismatch);
+    const std::vector<PlayerInfo> installed = PlayerRuntimes::findVariants(baseId, config.playersDir, config.allowPlayerMismatch,
+                                                                           ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr), buildProfile != nullptr);
     const PlayerInfo* best = PlayerRuntimes::smallestWith(installed, needed);
     // (a development build is always the full player: its variants are release ones)
     const PlayerVariant& fitting = config.developmentBuild ? PlayerRuntimes::variants().front() : PlayerRuntimes::variantFor(needed);
@@ -407,6 +465,8 @@ bool editor::Exporter::selectPlayerVariant() {
     player = std::make_shared<PlayerInfo>(*best);
     {
         std::lock_guard<std::mutex> lock(progressMutex);
+        if (!fittingInstalled && fitting.modules.size() < bestModules && best->shippedBytes > 0)
+            result.fallbacks.push_back({"player", fittingId, best->id, "the smaller player that fits is not installed"});
         result.playerId = player->id;
     }
     std::vector<std::string> shipped;
@@ -471,6 +531,12 @@ bool editor::Exporter::runPrebuilt() {
         case BuildPlatform::Web: contentDir = config.targetDir / "content"; break;
         default: contentDir = stagingDir; break;
     }
+    // a patch cooks into the build cache whatever the platform (nothing is staged)
+    if (config.contentOnly) contentDir = config.targetDir / "content";
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        result.appId = applicationId();
+    }
     fs::remove_all(config.targetDir / "content", ec);
     fs::create_directories(contentDir, ec);
 
@@ -480,10 +546,12 @@ bool editor::Exporter::runPrebuilt() {
         return true;
     };
 
-    if (!loadAndSaveAllScenes()) return false;
+    if (!loadAndCookAllScenes()) return false;
     if (!checkMissingAssets()) return false;
     if (!selectPlayerVariant()) return false;
     resolveShaderKeys();
+    if (cancelled()) return false;
+    if (!planAssetStripping()) return false;
     if (cancelled()) return false;
     if (!copyLua()) return false;
     if (!checkHtmlUIReferences()) return false;
@@ -498,7 +566,10 @@ bool editor::Exporter::runPrebuilt() {
     if (!copyAssets()) return false;
     if (!writeTitleArtRuntime()) return false;
     if (!writeAudioImports()) return false;
+    if (!writeLocalization()) return false;
+    if (!writeDialogueSettings()) return false;
     if (!writeAssetMap()) return false;
+    if (!writeDataAssetIndex()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;
     if (!buildAndSaveShaders()) return false;
@@ -509,16 +580,27 @@ bool editor::Exporter::runPrebuilt() {
     if (!cookScenes()) return false;
     if (cancelled()) return false;
     if (!writeGameConfig()) return false;
-    if (!stagePlayer()) return false;
+    if (!config.contentOnly && !stagePlayer()) return false;
     if (cancelled()) return false;
     if (!stageNotices()) return false;
     // what ships, measured before the pack hides it (S53 R21)
     buildReport = BuildReport();
     measureBuildContent(contentDir);
+    // R13: the content budgets, before the pack
+    if (!checkSizeBudgets(true, config.destinationDir, "prebuilt")) return false;
     if (!packContent()) return false;
     if (cancelled()) return false;
     if (!writeContentManifest(true)) return false;
     if (cancelled()) return false;
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        result.contentDir = contentDir;
+    }
+    if (config.contentOnly) {
+        discardStaging();
+        stagingDir.clear();
+        return true;
+    }
 
     bool finalized = false;
     switch (config.platform) {
@@ -539,6 +621,7 @@ bool editor::Exporter::runPrebuilt() {
     target.arch = platformArch(config.platform);
     target.backend = config.graphicBackend;
     target.executable = fs::relative(getResult().executable, stagingDir, ec).generic_string();
+    target.flavour = config.developmentBuild || config.buildType == "Debug" ? "development" : "release";
     std::vector<std::string> findings;
     publish::validatePayload(stagingDir, target, findings);
     for (const std::string& finding : findings) {
@@ -581,120 +664,55 @@ bool editor::Exporter::cookScenes() {
             fs::remove_all(contentDir / "assets" / "je-cooked" / family, ec);
         }
     }
+    // Include Tests (project-test-runner R50): a Development build carries tests/ for --run-tests
+    if (project) {
+        std::string warning;
+        // under assets/: a player reads asset://tests/ on every platform (from the content pack too)
+        const bool includeTests = project->isIncludeTests() || gametests::includeTestsForced();
+        if (!gametests::exportTests(project->getProjectPath(), config.developmentBuild, includeTests, contentDir / "assets", warning, error)) {
+            setError(error);
+            return false;
+        }
+        if (!warning.empty()) Out::warning("%s", warning.c_str());
+    }
     return true;
+}
+
+uint32_t editor::Exporter::profileStartScene() const {
+    if (profileListedScenes.empty()) return 0;
+    if (!buildProfile->startScene.empty()) {
+        const Guid wanted = Guid::parse(buildProfile->startScene);
+        for (const SceneProject& scene : project->getScenes())
+            if (!scene.filepath.empty() && project->getAssetDatabase().getAssetGuid(scene.filepath) == wanted) return scene.id;
+    }
+    return profileListedScenes.front();
 }
 
 bool editor::Exporter::writeGameConfig() {
     setProgressRaw("Writing game.json...", 0.78f);
-    player::PlayerConfig game;
-    const WindowSettings window = project->getWindowSettings();
-    game.name = project->getName().empty() ? getAppName() : project->getName();
-    game.appId = config.platform == BuildPlatform::Android ? project->getAndroidProjectSettings().packageName
-               : config.platform == BuildPlatform::MacOS ? project->getMacOSProjectSettings().bundleIdentifier
-               : config.platform == BuildPlatform::IOS ? project->getIOSProjectSettings().bundleIdentifier
-               : getAppName();
-    if (game.appId.empty()) game.appId = getAppName();
-    game.version = project->getAndroidProjectSettings().versionName;
-    // the native plugins the player's platform has no code of (a Compile build's generated init sets the same)
-    game.nativePlatformOnly = NativePlugins::platformOnlyPlugins(NativePlugins::listPlugins(NativePlugins::scan(project->getProjectPath())),
-                                                                 nativeRunningName(config.platform));
+    cook::GameConfigTarget target;
+    // a source export builds for the platforms its project opens on; a build, for one
+    if (config.mode != ExportMode::SourceCode) target.platform = config.platform;
     // the selected scene of the editor (in Prefab Mode, the scene behind it), else the project's
-    game.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
-    for (const SceneProject& scene : project->getScenes()) {
-        player::GameScene item;
-        item.id = scene.id;
-        item.name = scene.name;
-        item.file = "scenes/" + std::to_string(scene.id) + ".jscn";
-        project->collectInvolvedScenesForExport(scene.id, item.involved);
-        project->collectStartActiveScenesForExport(scene.id, item.active);
-        game.scenes.push_back(std::move(item));
+    // (a Build Profile's Scene List: its start scene, else the first it lists, R4)
+    const uint32_t profileStart = profileStartScene();
+    target.startScene = profileStart != 0 ? profileStart : config.startSceneId;
+    target.fallbackName = getAppName();
+    target.prefabs = cookedPrefabs;
+    // a Build Profile's settings snapshot and the scenes it ships (R4)
+    target.settings = settings;
+    if (!shippedScenes.empty()) target.scenes = &shippedScenes;
+    player::PlayerConfig game = cook::makeGameConfig(*project, target);
+    // the String Tables writeLocalization shipped (game-ui-localization.md D5)
+    game.localization = localizationShipped ? "l10n/manifest.json" : "";
+    // R17: the profile and its Scripting Define Symbols (absent without one)
+    if (buildProfile) {
+        game.buildProfile = buildProfile->name;
+        game.defines = buildProfile->defines;
     }
-    if (!game.findScene(game.startScene) && !game.scenes.empty()) game.startScene = game.scenes.front().id;
-    for (const cook::CookedPrefabInfo& prefab : cookedPrefabs) game.prefabs.push_back({prefab.id, prefab.name, prefab.guid, prefab.file});
-    game.windowMode = static_cast<int>(window.mode);
-    game.windowWidth = static_cast<int>(window.width);
-    game.windowHeight = static_cast<int>(window.height);
-    game.resizable = window.resizable;
-    game.title = window.title.empty() ? game.name : window.title;
-    game.vsync = project->isVSyncEnabled();
-    game.storageId = Factory::toIdentifier(game.name);
-    game.canvasWidth = project->getCanvasWidth();
-    game.canvasHeight = project->getCanvasHeight();
-    game.scaling = project->getScalingMode();
-    game.pixelsPerUnit = project->getPixelsPerUnit();
-    game.defaultFilterPoint = project->getDefaultFilterMode() == TextureFilterMode::Point;
-    game.bitmapTextCacheMiB = project->getBitmapTextCacheMiB();
-    game.textureStrategy = project->getTextureStrategy();
-    const LoadingSettings& loading = project->getLoadingSettings();
-    game.loadingScene = loading.sceneId;
-    game.loadingDelay = loading.delay;
-    game.loadingTimeout = loading.timeout;
-    game.asyncLoading = loading.asyncLoading;
-    game.particleWorldBudget = project->getParticleWorldBudget();
-    const ThreadingProjectSettings& threading = project->getThreadingSettings();
-    game.threading.workers = threading.workers;
-    game.threading.reservedFrameWorkers = threading.reservedFrameWorkers;
-    game.threading.ioThreads = threading.ioThreads;
-    game.threading.webPumpBudgetMs = threading.webPumpBudgetMs;
-    game.atmosphereQuality = project->getAtmosphereQuality();
-    game.foliageQuality = project->getFoliageQuality();
-    game.foliageQualityUncapped = !project->isFoliageQualityDeclared();
-    game.foliageDistanceScale = project->getFoliageDistanceScale();
-    game.inputDeadzone = project->getInputDeadzone();
-    game.inputActions = project->getInputActionsEnginePath();
-    game.navigation = project->getNavigationSettings().settings;
-    game.voxelMaxDimension = project->getVoxelSettings().maxDimension;
-    game.voxelCpuBudgetMB = project->getVoxelSettings().cpuBudgetMB;
-    game.voxelMeshBudgetMB = project->getVoxelSettings().meshBudgetMB;
-    const TextureProjectSettings& textures = project->getTextureSettings();
-    for (size_t g = 0; g < 3; g++)
-        game.textureDefaults[g] = {textures.textureQuality[g], textures.memoryBudgetMB[g], textures.lowMemoryFallback[g]};
-    game.htmlUiMsaa = project->getHtmlUiMsaaSamples();
-    game.glyphAtlasMiB = project->getHtmlUiRenderSettings().glyphAtlasMiB;
-    game.sdfPrimitives = project->getHtmlUiRenderSettings().sdfPrimitives;
-    game.transformAwareText = project->getHtmlUiRenderSettings().transformAwareText;
-    game.mobilePbrTier = project->getMobilePbrTier();
-    game.dynamicBatching = project->isDynamicBatching();
-    game.lightMode = project->getLightMode();
-    game.transitions = project->getTransitionDefaults();
-    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
-    game.device = project->getDeviceSettings();
-    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) game.terrainQualityTiers[platform] = static_cast<int>(project->getTerrainQualityTier(platform));
-    game.terrainShippedTiers = project->getShippedTerrainTiers();
-    game.tags = project->getTags();
-    game.layerNames = project->getLayerNames();
-    if (project->getSortingLayers().size() > 1) game.sortingLayers = project->getSortingLayers();
-    game.transparencySortMode = project->getTransparencySortMode();
-    game.transparencySortAxis = project->getTransparencySortAxis();
-    for (int layer = 0; layer < MAX_LAYERS; layer++) {
-        game.collision3D[layer] = project->getLayerCollisionMatrix3D()[layer];
-        game.collision2D[layer] = project->getLayerCollisionMatrix2D()[layer];
-    }
-    const PlayerLoggingSettings& logging = project->getPlayerLogging();
-    game.logLevel = logging.level;
-    game.logFile = logging.fileLog;
-    game.logBacktrace = logging.backtrace;
-    const PlayerCrashSettings& crash = project->getPlayerCrash();
-    game.crashHandler = crash.enabled;
-    game.crashLogTail = crash.includeLogTail;
-    game.crashDumpWithHeap = crash.dumpWithHeap;
-    game.hangWatchdog = crash.hangWatchdog;
-    game.hangMs = crash.hangSeconds * 1000;
-    game.crashWebOverlay = crash.webCrashOverlay;
-    // Project Settings > Audio, as Play applies them (Project::setAudioSettings) and a Compile
-    // build's init (Generator::audioInitSource): the mixer by its asset-relative path, which ships
-    const AudioSettings& audio = project->getAudioSettings();
-    game.audioMixer = audio.mixer;
-    game.audioMaxRealVoices = audio.maxRealVoices;
-    game.audioMaxVoices = audio.maxVoices;
-    game.audioSeed = audio.seed;
-    game.audioMusicGroup = audio.musicGroup;
-    game.audioSampleRate = audio.sampleRate;
-    game.audioOutputStage = audio.outputStage;
-    game.audioIosSession = audio.iosSessionCategory;
 
     // the project icon, at the content root: the window and taskbar icon of every platform
-    fs::path icon = project->getWindowIcon();
+    fs::path icon = settings->getWindowIcon();
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
     std::error_code ec;
     if (!icon.empty() && fs::is_regular_file(icon, ec) && icon.extension() == ".png") {
@@ -833,7 +851,8 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
     setProgressRaw("Writing the content manifest...", 0.88f);
     player::ContentManifest manifest;
     manifest.engineVersion = JASPERENGINE_EDITOR_VERSION;
-    manifest.contentFormatVersion = ::jasperengine::cook::contentFormatVersion();
+    // what this build's content needs: a build without a Build Profile stays playable by older runtimes
+    manifest.contentFormatVersion = ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr);
     manifest.method = prebuilt ? "prebuilt" : "compile";
     manifest.backend = config.graphicBackend.empty() ? getCMakeGraphicBackend(*config.selectedBackends.begin()) : normalizeBackend(config.graphicBackend);
     manifest.allowPlayerMismatch = config.allowPlayerMismatch;
@@ -842,9 +861,12 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
     manifest.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
     {
         const std::vector<SceneProject>& scenes = project->getScenes();
-        const bool known = std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& scene) { return scene.id == manifest.startScene; });
-        if (!known && !scenes.empty()) manifest.startScene = scenes.front().id;
+        const bool known = std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& scene) { return scene.id == manifest.startScene && scene.inBuild; });
+        const auto first = std::find_if(scenes.begin(), scenes.end(), [](const SceneProject& scene) { return scene.inBuild; });
+        if (!known && first != scenes.end()) manifest.startScene = first->id;
     }
+    if (const uint32_t start = profileStartScene()) manifest.startScene = start;
+    if (buildProfile) manifest.buildProfile = buildProfile->name;
     // the modules the content needs (S34 R3): a player without one of them refuses to start
     manifest.modules = prebuilt ? moduleUsage.list() : compiledModules();
     manifest.hasModules = true;
@@ -853,6 +875,14 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
         manifest.playerId = player->id;
         auto exe = player->executables.find(player->executable);
         if (exe != player->executables.end()) manifest.playerSha256 = exe->second;
+    }
+    // S98 REQ-10: a Development Build names what it left out, so a load of one says why
+    if (config.developmentBuild) {
+        const std::string assetsRoot = project->getAssetRoots().assetsDir;
+        for (const BuildReportStripped& item : buildReport.stripped) {
+            const bool inAssets = assetsRoot.empty() || item.path.rfind(assetsRoot + "/", 0) == 0;
+            manifest.stripped[inAssets && !assetsRoot.empty() ? item.path.substr(assetsRoot.size() + 1) : item.path] = item.reason;
+        }
     }
     if (!prebuilt) {
         manifest.notices = compileNotices;
@@ -932,6 +962,7 @@ bool editor::Exporter::swapStagingIntoPlace() {
         return (relative.empty() || *relative.begin() == "..") ? path : config.destinationDir / relative;
     };
     result.contentManifest = moved(result.contentManifest);
+    result.contentDir = moved(result.contentDir);
     result.executable = moved(result.executable);
     for (fs::path& artifact : result.artifacts) artifact = moved(artifact);
     stagingDir = config.destinationDir;
@@ -956,7 +987,7 @@ bool editor::Exporter::finalizeLinux() {
     }
     fs::permissions(stagingDir / app, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
                                           fs::perms::others_exec, fs::perm_options::replace, ec);
-    const std::string title = project->getWindowSettings().title.empty() ? project->getName() : project->getWindowSettings().title;
+    const std::string title = settings->getWindowSettings().title.empty() ? project->getName() : settings->getWindowSettings().title;
     std::string desktop = "[Desktop Entry]\nType=Application\nName=" + title + "\nExec=" + app + "\nStartupWMClass=" + app + "\n";
     if (fs::is_regular_file(stagingDir / "icon.png", ec)) desktop += "Icon=icon\n";
     desktop += "Categories=Game;\nTerminal=false\n";
@@ -989,12 +1020,12 @@ bool editor::Exporter::finalizeWindows() {
     // stays in the file (the window and taskbar take icon.png at runtime)
     std::string error;
     platform::WindowsVersionInfo info;
-    const WindowsProjectSettings& windows = project->getWindowsProjectSettings();
+    const WindowsProjectSettings& windows = settings->getWindowsProjectSettings();
     info.productName = windows.productName.empty() ? project->getName() : windows.productName;
     info.companyName = windows.companyName;
     info.fileVersion = windows.fileVersion;
     info.productVersion = windows.productVersion;
-    fs::path icon = project->getWindowIcon();
+    fs::path icon = settings->getWindowIcon();
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
     if (platform::canPatchExecutableResources()) {
         if (!platform::patchExecutableResources(stagingDir / app, icon, info, error)) {
@@ -1015,27 +1046,27 @@ bool editor::Exporter::finalizeMacOS() {
     setProgressRaw("Finishing the macOS build...", 0.9f);
     const std::string app = getAppName();
     const fs::path bundle = stagingDir / (app + ".app");
-    platform::MacBundleSettings settings;
-    const MacOSProjectSettings& mac = project->getMacOSProjectSettings();
-    settings.bundleName = mac.applicationName.empty() ? project->getName() : mac.applicationName;
-    settings.executable = app;
-    settings.bundleIdentifier = mac.bundleIdentifier.empty() ? "com.jasperengine." + app : mac.bundleIdentifier;
-    settings.version = mac.versionName.empty() ? "1.0" : mac.versionName;
-    settings.build = mac.buildNumber.empty() ? "1" : mac.buildNumber;
-    settings.highDpi = mac.highDpi;
-    fs::path icon = mac.icon.empty() ? project->getWindowIcon() : mac.icon;
+    platform::MacBundleSettings macBundle;
+    const MacOSProjectSettings& mac = settings->getMacOSProjectSettings();
+    macBundle.bundleName = mac.applicationName.empty() ? project->getName() : mac.applicationName;
+    macBundle.executable = app;
+    macBundle.bundleIdentifier = mac.bundleIdentifier.empty() ? "com.jasperengine." + app : mac.bundleIdentifier;
+    macBundle.version = mac.versionName.empty() ? "1.0" : mac.versionName;
+    macBundle.build = mac.buildNumber.empty() ? "1" : mac.buildNumber;
+    macBundle.highDpi = mac.highDpi;
+    fs::path icon = mac.icon.empty() ? settings->getWindowIcon() : mac.icon;
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
-    settings.iconPng = icon;
+    macBundle.iconPng = icon;
     // the privacy manifest and Info.plist entries (macos.plist_entries) the source export has too
-    const ApplePrivacy::Composed privacy = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), "macos");
+    const ApplePrivacy::Composed privacy = ApplePrivacy::compose(project->getProjectPath(), settings->getApplePrivacy(), "macos");
     warnPrivacy("macOS", privacy.warnings);
-    settings.privacyManifest = ApplePrivacy::toXml(privacy.manifest);
+    macBundle.privacyManifest = ApplePrivacy::toXml(privacy.manifest);
     if (!mac.plistEntries.empty()) {
-        settings.customizePlist = [entries = mac.plistEntries](std::string& plist) { applyNativePlistEntries(plist, entries, ""); };
+        macBundle.customizePlist = [entries = mac.plistEntries](std::string& plist) { applyNativePlistEntries(plist, entries, ""); };
     }
     std::string error;
     std::vector<BuildWarning> warnings;
-    if (!platform::finishMacBundle(bundle, settings, warnings, error)) {
+    if (!platform::finishMacBundle(bundle, macBundle, warnings, error)) {
         setError("macOS bundle: " + error);
         return false;
     }
@@ -1082,7 +1113,7 @@ std::string editor::Exporter::composeWebPage(std::string page, const std::string
 bool editor::Exporter::finalizeWeb() {
     setProgressRaw("Finishing the web build...", 0.9f);
     std::error_code ec;
-    const bool threads = project->getThreadingSettings().webMultithreaded || config.webMultithreaded;
+    const bool threads = settings->getThreadingSettings().webMultithreaded || config.webMultithreaded;
     // the pthreads player and its isolation worker ship only when the project asks for them
     if (!threads) {
         for (const char* file : {"jasperengine-player-mt.js", "jasperengine-player-mt.wasm", "jasperengine-player-mt.worker.js", "coi-serviceworker.js"})
@@ -1105,7 +1136,7 @@ bool editor::Exporter::finalizeWeb() {
         setError("Cannot read the player's index.html");
         return false;
     }
-    const WebProjectSettings& web = project->getWebProjectSettings();
+    const WebProjectSettings& web = settings->getWebProjectSettings();
     if (!web.customHtmlShell.empty()) {
         const fs::path shell = web.customHtmlShell.is_absolute() ? web.customHtmlShell : project->getProjectPath() / web.customHtmlShell;
         std::string text;
@@ -1134,9 +1165,12 @@ bool editor::Exporter::finalizeWeb() {
             }
         }
     }
-    page = composeWebPage(page, project->getApplicationName(web.applicationName), web.headInclude, web.resizeCanvasToWindow,
+    // a development page reports its log to the editor that serves it (R11); a release page carries no reporter
+    const std::string headInclude = config.developmentBuild || config.buildType == "Debug" ? web.headInclude + "\n" + platform::webDevelopmentReporter()
+                                                                                         : web.headInclude;
+    page = composeWebPage(page, settings->getApplicationName(web.applicationName), headInclude, web.resizeCanvasToWindow,
                           web.hideEmscriptenUI, true,
-                          project->getCanvasWidth(), project->getCanvasHeight(), threads, webNativeScripts(web.scriptUrls, nativeFiles));
+                          settings->getCanvasWidth(), settings->getCanvasHeight(), threads, webNativeScripts(web.scriptUrls, nativeFiles));
     if (page.find("player-loader.js") == std::string::npos) {
         setError("The web page does not load player-loader.js (a custom shell keeps {{JASPERENGINE_DEFAULT_HTML}} or {{JASPERENGINE_LOADER}})");
         return false;
@@ -1174,17 +1208,16 @@ bool editor::Exporter::finalizeWeb() {
 bool editor::Exporter::finalizeAndroid() {
     setProgressRaw("Packaging for Android...", 0.9f);
     platform::AndroidPackage package;
-    const AndroidProjectSettings& android = project->getAndroidProjectSettings();
+    const AndroidProjectSettings& android = settings->getAndroidProjectSettings();
     package.settings = android;
-    package.presentation = project->getPresentationSettings();
-    package.label = project->getApplicationName(android.applicationName);
+    package.presentation = settings->getPresentationSettings();
+    package.label = settings->getApplicationName(android.applicationName);
     if (package.label.empty()) package.label = project->getName();
-    package.applicationId = project->getApplicationIdentifier(android.packageName);
-    if (package.applicationId.empty()) package.applicationId = "com.jasperengine." + getAppName();
-    package.versionCode = std::max(1u, project->getApplicationVersionCode(android.versionCode));
-    package.versionName = project->getApplicationVersion(android.versionName);
+    package.applicationId = applicationId();
+    package.versionCode = std::max(1u, settings->getApplicationVersionCode(android.versionCode));
+    package.versionName = settings->getApplicationVersion(android.versionName);
     if (package.versionName.empty()) package.versionName = "1.0";
-    package.astc = !project->getTextureSettings().androidEtc2Fallback;
+    package.astc = !settings->getTextureSettings().androidEtc2Fallback;
     package.runtimeDir = player->dir / "android";
     package.contentDir = contentDir;
     package.projectPath = project->getProjectPath();
@@ -1198,7 +1231,11 @@ bool editor::Exporter::finalizeAndroid() {
     // an App Bundle (Google Play serves each device its ABI), one APK per selected ABI, or the
     // universal APK of every selected ABI (Project Settings > Android > Package Format)
     std::vector<std::vector<std::string>> packages;
-    if (config.androidFormat == AndroidFormat::ApkPerAbi) {
+    if (!config.androidRunAbi.empty()) {
+        // Build And Run: one APK of the device's ABI, whatever the Package Format (R3)
+        package.format = AndroidFormat::Apk;
+        packages.push_back({config.androidRunAbi});
+    } else if (config.androidFormat == AndroidFormat::ApkPerAbi) {
         for (const std::string& abi : platform::selectedAndroidAbis(android)) packages.push_back({abi});
         if (packages.empty()) {
             setError("no Android architecture is selected (Project Settings > Android > Architectures)");
@@ -1214,7 +1251,7 @@ bool editor::Exporter::finalizeAndroid() {
         package.abis = abis;
         const std::string suffix = abis.empty() ? "" : "-" + abis.front();
         package.workDir = config.targetDir / ("android" + suffix);
-        package.output = stagingDir / (getAppName() + suffix + (config.androidFormat == AndroidFormat::Aab ? ".aab" : ".apk"));
+        package.output = stagingDir / (getAppName() + suffix + (package.format == AndroidFormat::Aab ? ".aab" : ".apk"));
         if (!platform::buildAndroidPackage(package, commandRunner, [this]() { return isCancelled(); }, warnings, error)) {
             setError(error);
             return false;
@@ -1228,39 +1265,41 @@ bool editor::Exporter::finalizeAndroid() {
     std::lock_guard<std::mutex> lock(progressMutex);
     result.executable = outputs.front();
     result.artifacts = outputs;
+    result.debuggable = package.debug && platform::androidRuntimeHasDebuggableMarker(package.runtimeDir);
     return true;
 }
 
 bool editor::Exporter::finalizeIOS() {
     setProgressRaw("Writing the Xcode project...", 0.9f);
-    platform::IosProjectSettings settings;
-    const IOSProjectSettings& ios = project->getIOSProjectSettings();
-    settings.appName = getAppName();
-    settings.displayName = ios.applicationName.empty() ? project->getName() : ios.applicationName;
-    settings.bundleIdentifier = ios.bundleIdentifier.empty() ? "com.jasperengine." + getAppName() : ios.bundleIdentifier;
-    settings.version = ios.versionName.empty() ? "1.0" : ios.versionName;
-    settings.build = ios.buildNumber.empty() ? "1" : ios.buildNumber;
-    settings.teamId = ios.teamId;
-    settings.exportMethod = ios.exportMethod;
-    settings.hideStatusBar = ios.hideStatusBar;
-    fs::path icon = ios.icon.empty() ? project->getWindowIcon() : ios.icon;
+    platform::IosProjectSettings xcode;
+    const IOSProjectSettings& ios = settings->getIOSProjectSettings();
+    xcode.appName = getAppName();
+    xcode.displayName = ios.applicationName.empty() ? project->getName() : ios.applicationName;
+    xcode.bundleIdentifier = applicationId();
+    xcode.version = ios.versionName.empty() ? "1.0" : ios.versionName;
+    xcode.build = ios.buildNumber.empty() ? "1" : ios.buildNumber;
+    xcode.teamId = ios.teamId;
+    xcode.exportMethod = ios.exportMethod;
+    xcode.hideStatusBar = ios.hideStatusBar;
+    xcode.presentation = settings->getPresentationSettings();
+    fs::path icon = ios.icon.empty() ? settings->getWindowIcon() : ios.icon;
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
-    settings.iconPng = icon;
-    settings.runtimeDir = player->dir / "ios";
-    settings.projectDir = stagingDir / getAppName();
-    settings.simulator = config.iosSimulator;
+    xcode.iconPng = icon;
+    xcode.runtimeDir = player->dir / "ios";
+    xcode.projectDir = stagingDir / getAppName();
+    xcode.simulator = config.iosSimulator;
     std::string error;
     std::vector<std::string> notes;
     std::vector<fs::path> artifacts;
     std::vector<BuildWarning> warnings;
-    if (!platform::stageIosProject(settings, error)) {
+    if (!platform::stageIosProject(xcode, error)) {
         setError(error);
         return false;
     }
     // the game's Objective-C/Swift plugins, SDKs, packages, Info.plist entries, entitlements and
     // privacy manifest: the template is an Xcode project, so they are carried, not dropped
-    if (!addNativeToIosPlayer(settings.projectDir)) return false;
-    if (!platform::buildIosProject(settings, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, warnings, error)) {
+    if (!addNativeToIosPlayer(xcode.projectDir)) return false;
+    if (!platform::buildIosProject(xcode, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, warnings, error)) {
         setError(error);
         return false;
     }
@@ -1269,6 +1308,6 @@ bool editor::Exporter::finalizeIOS() {
     std::lock_guard<std::mutex> lock(progressMutex);
     result.notes = notes;
     result.artifacts = artifacts;
-    result.executable = artifacts.empty() ? settings.projectDir : artifacts.front();
+    result.executable = artifacts.empty() ? xcode.projectDir : artifacts.front();
     return true;
 }

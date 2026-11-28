@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "player/RunControl.h"
+#include "debug/ConsoleCommands.h"
 #include "io/AtomicFile.h"
 #include "Engine.h"
 #include "Log.h"
@@ -267,6 +268,76 @@ TEST_F(RunControlFixture, FixedFpsAfterReadyHoldsGameEventsUntilReady) {
     RunControl::engineStarted();
     EXPECT_FALSE(Engine::areGameEventsPaused());
     Engine::setFixedDeltatime(0.0);
+}
+
+// --command (dev-console-for-agents R16): nothing before the ready frame, then one line a frame in
+// order, each result logged; the frames count from the one after the last command
+TEST_F(RunControlFixture, CommandsRunAfterReadyOnePerFrame) {
+    console::reset();
+    console::setCommandsEnabled(true);
+    std::vector<std::string> ran;
+    console::CommandSpec give;
+    give.name = "give";
+    give.maxArgs = 2;
+    give.run = [&ran](console::Call& call) { ran.push_back("give " + call.words()[0]); };
+    ASSERT_TRUE(console::add(give));
+    LaunchOptions options;
+    options.commands = {"give gold", "give gem"};
+    options.quitAfter = 2;
+    configureIdle(options);
+    EXPECT_TRUE(RunControl::isActive());
+    EXPECT_TRUE(RunControl::wantsReadySignal()) << "the commands wait for the ready line";
+    for (int i = 0; i < 10; i++) RunControl::frameDrawn(false, {});
+    EXPECT_TRUE(ran.empty()) << "not before ready";
+    const uint64_t logged = Log::getLastId();
+    RunControl::frameDrawn(true, {});
+    EXPECT_EQ(ran, (std::vector<std::string>{"give gold"}));
+    RunControl::frameDrawn(true, {});
+    EXPECT_EQ(ran, (std::vector<std::string>{"give gold", "give gem"}));
+    EXPECT_EQ(RunControl::countedFrames(), 0u) << "the command frames are not counted";
+    bool reported = false;
+    for (const LogEntry& entry : Log::getEntries(0, LOG_LEVELS_ALL, logged))
+        reported = reported || entry.message == "[command] give gem: ok";
+    EXPECT_TRUE(reported);
+    RunControl::frameDrawn(true, {});
+    EXPECT_FALSE(RunControl::quitRequested());
+    RunControl::frameDrawn(true, {});
+    EXPECT_TRUE(RunControl::quitRequested()) << "--quit-after counts from the last command";
+    EXPECT_EQ(RunControl::finish(), EXIT_OK);
+    console::reset();
+}
+
+// a command that is not ok logs an error (--fail-on-error: exit 3); commands off: exit 2
+TEST_F(RunControlFixture, FailedCommandLogsAnError) {
+    console::reset();
+    console::setCommandsEnabled(true);
+    LaunchOptions options;
+    options.commands = {"nope"};
+    options.failOnError = true;
+    options.quitAfter = 1;
+    configureIdle(options);
+    RunControl::engineStarted();
+    const uint64_t logged = Log::getLastId();
+    RunControl::frameDrawn(true, {});
+    RunControl::frameDrawn(true, {});
+    bool reported = false;
+    for (const LogEntry& entry : Log::getEntries(0, logLevelBit(LogLevel::Error), logged))
+        reported = reported || entry.message.rfind("[command] nope: unknown (unknown command 'nope'", 0) == 0;
+    EXPECT_TRUE(reported);
+    EXPECT_EQ(RunControl::finish(), EXIT_ERROR_LOGGED);
+    RunControl::reset();
+
+    console::setCommandsEnabled(false);
+    options.failOnError = false;
+    configureIdle(options);
+    RunControl::frameDrawn(false, {});
+    EXPECT_TRUE(RunControl::quitRequested()) << "refused at the first frame, before ready";
+    EXPECT_EQ(RunControl::finish(), EXIT_BAD_ARGUMENTS);
+    bool refusal = false;
+    for (const LogEntry& entry : Log::getEntries(0, logLevelBit(LogLevel::Error), logged))
+        refusal = refusal || entry.message == commandsOffRefusal();
+    EXPECT_TRUE(refusal);
+    console::reset();
 }
 
 }  // namespace RunControlTest_cpp

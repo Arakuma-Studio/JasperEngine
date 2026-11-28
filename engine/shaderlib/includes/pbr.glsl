@@ -23,6 +23,46 @@ vec4 getVertexColor(){
    return color;
 }
 
+// What the material does with the vertex colour (its Vertex Color section, V1 R70; the defines of
+// MaterialPbr::getVertexColorDefines): without one of them the colour tints, RGB the albedo and A
+// the opacity, as it always did. LIT_VC_OFF leaves it out, LIT_VC_ALPHA_IGNORED tints the albedo
+// only. In Masks, LIT_VC_<INPUT> maps channels to an input of the surface: the channels each
+// input takes are pbrParams.vertexColorMasks' (per channel the input's number: 1 Occlusion,
+// 2 Roughness multiplied, 3 Roughness replaced, 4 Metallic, 5 Emission, 6 Opacity, 7 Albedo tint,
+// 0 none), several channels of one input multiplied; LIT_VC_RGB_TINT tints the albedo by RGB when
+// no channel of them is mapped. mesh.frag declares the block member (LIT_VC_MASKS)
+#if defined(LIT_VC_MASKS)
+    // the product of the channels mapped to the input (1 when none is)
+    float vertexColorMask(float target){
+        vec4 mapped = vec4(equal(pbrParams.vertexColorMasks, vec4(target)));
+        vec4 values = mix(vec4(1.0), getVertexColor(), mapped);
+        return values.x * values.y * values.z * values.w;
+    }
+#endif
+
+#if defined(LIT_VC_OFF) || defined(LIT_VC_MASKS) || defined(LIT_VC_ALPHA_IGNORED)
+    vec4 getVertexColorTint(){
+        #if defined(LIT_VC_OFF)
+            return vec4(1.0);
+        #elif defined(LIT_VC_MASKS)
+            vec4 tint = vec4(1.0);
+            #ifdef LIT_VC_RGB_TINT
+                tint.rgb = getVertexColor().rgb;
+            #endif
+            #ifdef LIT_VC_ALBEDO
+                tint.rgb *= vertexColorMask(7.0);
+            #endif
+            #ifdef LIT_VC_OPACITY
+                tint.a = vertexColorMask(6.0);
+            #endif
+            return tint;
+        #else
+            return vec4(getVertexColor().rgb, 1.0);
+        #endif
+    }
+    #define LIT_VERTEX_COLOR_TINT getVertexColorTint()
+#endif
+
 // Per-texture UV set selection (glTF texCoord). When a second UV set is present
 // the renderer supplies u_fs_texCoordSets telling each texture which set to sample
 // (0 = v_uv1, 1 = v_uv2). Without a second set everything samples v_uv1.
@@ -151,7 +191,11 @@ vec4 getBaseColor(){
     #elif defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
         baseColor *= sRGBToLinear(texture(sampler2D(u_baseColorTexture, u_baseColor_smp), getBaseColorUV()));
     #endif
+    #ifdef LIT_VERTEX_COLOR_TINT
+        return baseColor * LIT_VERTEX_COLOR_TINT;
+    #else
     return baseColor * getVertexColor();
+    #endif
 }
 #ifndef MATERIAL_UNLIT
     MaterialInfo getMetallicRoughnessInfo(MaterialInfo info, float f0_ior){
@@ -171,6 +215,16 @@ vec4 getBaseColor(){
             #endif
             info.perceptualRoughness *= mrSample.g;
             info.metallic *= mrSample.b;
+        #endif
+        // the vertex colour's masks (V1 R70): a replaced roughness, then the multiplied ones
+        #ifdef LIT_VC_ROUGHNESS_SET
+            info.perceptualRoughness = vertexColorMask(3.0);
+        #endif
+        #ifdef LIT_VC_ROUGHNESS
+            info.perceptualRoughness *= vertexColorMask(2.0);
+        #endif
+        #ifdef LIT_VC_METALLIC
+            info.metallic *= vertexColorMask(4.0);
         #endif
         // Achromatic f0 based on IOR.
         vec3 f0 = vec3(f0_ior);

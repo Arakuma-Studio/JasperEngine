@@ -51,6 +51,7 @@ namespace jasperengine::htmlui::compat {
         bool always = false;
         bool never = false;
         std::vector<MediaConjunction> blocks;
+        bool dependsOnPointer = false;        // read hover or pointer (they follow the last pointer used)
 
         static MediaResult unconditional();
         // a AND b (nested @media, link media + @media): the cross product of the blocks

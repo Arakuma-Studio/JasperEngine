@@ -265,6 +265,26 @@ namespace jasperengine{
         Quaternion getRotation() const;
         void setRotation(Quaternion rotation);
 
+        // S96 WP-C
+        // interpolate: the drawn pose slides there from the pose before the last step (false: a
+        // jump, as the one-argument forms)
+        void setPosition(Vector3 position, bool interpolate);
+        void setRotation(Quaternion rotation, bool interpolate);
+        // Unity MovePosition / MoveRotation / Move: the body is there at the end of the next fixed
+        // step (a kinematic one moved by velocity, pushing and carrying what it touches, over the
+        // frame's steps when called from an update; a static or dynamic one placed before the
+        // step, its velocity kept), drawn interpolated. The last call before a step wins.
+        void movePosition(Vector3 position);
+        void moveRotation(Quaternion rotation);
+        void movePositionAndRotation(Vector3 position, Quaternion rotation);
+        // Unity's colliders below a Rigidbody: this GameObject's colliders join the nearest
+        // ancestor's body (physics/AttachedColliders.h), and it has no body of its own
+        bool isAttachToParentBody() const;
+        void setAttachToParentBody(bool attach);
+        // the GameObject whose body this one's colliders joined, NULL_ENTITY when none (outside
+        // Play: the one they would join)
+        Entity getAttachedBody() const;
+
         Vector3 getLinearVelocity() const;
         void setLinearVelocity(Vector3 linearVelocity);
         void setLinearVelocityClamped(Vector3 linearVelocity);

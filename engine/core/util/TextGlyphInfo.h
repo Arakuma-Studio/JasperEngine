@@ -16,6 +16,11 @@ namespace jasperengine {
         // a styled bitmap glyph's back layer (outline and shadow, S51): drawn first, coloured in
         // its texture, and moved with the face quad of the same character
         bool back = false;
+        // the pen span of its glyph on the line (text pixels, layout x before any alignment) and
+        // whether its character is a space: what alignment measures and justification spreads
+        float penLeft = 0.0f;
+        float penRight = 0.0f;
+        bool space = false;
     };
 
 }

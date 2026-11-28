@@ -162,3 +162,73 @@ TEST(ModelImportSettings, AnimationEntitiesMissingKeyIsAlways){
     decodeModelProjectSettings(YAML::Load("animationEntities: sometimes"), decoded);
     EXPECT_EQ(decoded.animationEntities, AnimationEntitiesMode::Always) << "an unknown name is skipped";
 }
+
+// spec S94 F40, F43, F44: the normals, tangents and rest pose keys, and Preserve Hierarchy for New Models
+TEST(ModelImportSettings, NormalsTangentsAndRestPoseRoundTrip){
+    const YAML::Node node = YAML::Load(
+        "version: 1\nnormals: calculate\nnormalsWeighting: area\nsmoothnessSource: prefer_smoothing_groups\ntangents: calculate\n"
+        "restPose: first_frame\nrestPoseTake: Run\nplatforms:\n  mobile: {override: true, normals: none, tangents: none}\n");
+    ModelImportSettings settings;
+    std::string error;
+    ASSERT_TRUE(ModelImportSettings::parse(node, settings, &error)) << error;
+    EXPECT_EQ(settings.values.normals, ModelNormals::Calculate);
+    EXPECT_EQ(settings.values.normalsWeighting, NormalsWeighting::Area);
+    EXPECT_EQ(settings.values.smoothnessSource, SmoothnessSource::PreferSmoothingGroups);
+    EXPECT_EQ(settings.values.tangents, ModelTangents::Calculate);
+    EXPECT_EQ(settings.values.restPose, RestPose::FirstFrame);
+    EXPECT_EQ(settings.values.restPoseTake, std::string("Run"));
+    EXPECT_TRUE(!settings.unknown || settings.unknown.size() == 0) << "every key is known";
+    ModelImportSettings again;
+    ASSERT_TRUE(ModelImportSettings::parse(settings.serialize(), again, &error)) << error;
+    EXPECT_TRUE(again == settings);
+
+    const ModelProjectSettings project;
+    const ResolvedModelSettings desktop = settings.resolve(ModelFamily::Desktop, project);
+    EXPECT_EQ(desktop.normalsWeighting, NormalsWeighting::Area);
+    EXPECT_EQ(desktop.smoothnessSource, SmoothnessSource::PreferSmoothingGroups);
+    EXPECT_EQ(desktop.tangents, ModelTangents::Calculate);
+    const ResolvedModelSettings mobile = settings.resolve(ModelFamily::Mobile, project);
+    EXPECT_EQ(mobile.normals, ModelNormals::None);
+    EXPECT_EQ(mobile.tangents, ModelTangents::None);
+
+    // the FBX conversion's keys are the model's: not a platform's, not a project default's
+    ModelImportSettings refused;
+    EXPECT_FALSE(ModelImportSettings::parse(YAML::Load("platforms:\n  web: {override: true, restPose: first_frame}\n"), refused, &error));
+    EXPECT_NE(error.find("platforms.web.restPose"), std::string::npos) << error;
+    ModelProjectSettings decoded;
+    decodeModelProjectSettings(YAML::Load("defaults:\n  desktop: {smoothnessSource: from_smoothing_groups, tangents: none}\n"), decoded);
+    EXPECT_FALSE(decoded.defaults[(size_t)ModelFamily::Desktop].smoothnessSource);
+    EXPECT_EQ(decoded.defaults[(size_t)ModelFamily::Desktop].tangents, ModelTangents::None);
+
+    std::string fieldError;
+    EXPECT_FALSE(validateModelSettingsField("tangents", YAML::Node("mikk"), fieldError));
+    EXPECT_NE(fieldError.find("import, calculate, none"), std::string::npos) << fieldError;
+}
+
+TEST(ModelImportSettings, OlderSectionsKeepTheirCookKey){
+    // a section of the keys before S94 cooks under the key it had (no recook of old projects):
+    // the weighting is written only once set, the tangents and smoothness source only off their defaults
+    ResolvedModelSettings calculate;
+    calculate.normals = ModelNormals::Calculate;
+    calculate.smoothingAngle = 45.0f;
+    EXPECT_EQ(calculate.canonical(), "{\"optimizeMesh\":\"everything\",\"meshCompression\":\"lossless\",\"weldVertices\":1,"
+                                     "\"indexFormat\":\"auto\",\"normals\":\"calculate\",\"smoothingAngle\":45000,\"generateLods\":\"automatic\"}");
+    ResolvedModelSettings weighted = calculate;
+    weighted.normalsWeighting = NormalsWeighting::AreaAndAngle;
+    EXPECT_NE(weighted.canonical(), calculate.canonical());
+    ResolvedModelSettings tangents;
+    tangents.tangents = ModelTangents::Calculate;
+    EXPECT_NE(tangents.canonical(), ResolvedModelSettings().canonical());
+}
+
+TEST(ModelImportSettings, PreserveHierarchyForNewModelsMissingKeyIsOff){
+    ModelProjectSettings settings;
+    decodeModelProjectSettings(YAML::Load("cacheSizeMB: 512\n"), settings);
+    EXPECT_FALSE(settings.preserveHierarchyForNewModels) << "an older project places models as it did";
+    settings.preserveHierarchyForNewModels = true;
+    const YAML::Node encoded = encodeModelProjectSettings(settings);
+    ASSERT_TRUE(encoded["preserveHierarchyForNewModels"]);
+    ModelProjectSettings decoded;
+    decodeModelProjectSettings(encoded, decoded);
+    EXPECT_TRUE(decoded.preserveHierarchyForNewModels);
+}

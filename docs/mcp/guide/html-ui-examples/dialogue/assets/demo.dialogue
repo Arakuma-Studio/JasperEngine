@@ -1,0 +1,322 @@
+{
+  "formatVersion": 1,
+  "kind": "dialogue",
+  "kindVersion": 1,
+  "nextId": 14,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "entry",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "name": "start",
+        "arguments": ""
+      }
+    },
+    {
+      "id": "n2",
+      "type": "line",
+      "position": [
+        280.0,
+        0.0
+      ],
+      "params": {
+        "speaker": "Captain Mira",
+        "text": "The archive doors are sealed and the tide is rising. We have one shot at this. How do we get in?",
+        "variants": [],
+        "variant_mode": "random",
+        "mood": "",
+        "tags": [],
+        "options": [
+          {
+            "id": "o1",
+            "text": "Blow the doors with a charge."
+          },
+          {
+            "id": "o2",
+            "text": "Look for the old maintenance shaft."
+          },
+          {
+            "id": "o3",
+            "text": "Wait for the tide to turn."
+          }
+        ],
+        "action": "",
+        "max_chars": 0,
+        "next_sub_id": 4
+      },
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "flow",
+          "name": "In",
+          "multi": true,
+          "optional": true
+        },
+        {
+          "id": "next",
+          "direction": "out",
+          "type": "flow",
+          "name": "Next",
+          "optional": true
+        },
+        {
+          "id": "o1",
+          "direction": "out",
+          "type": "flow",
+          "name": "Blow the doors with a ch...",
+          "optional": true
+        },
+        {
+          "id": "o2",
+          "direction": "out",
+          "type": "flow",
+          "name": "Look for the old mainten...",
+          "optional": true
+        },
+        {
+          "id": "o3",
+          "direction": "out",
+          "type": "flow",
+          "name": "Wait for the tide to tur...",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "id": "n3",
+      "type": "line",
+      "position": [
+        620.0,
+        -200.0
+      ],
+      "params": {
+        "speaker": "Captain Mira",
+        "text": "Loud, but it works. Everyone, stand back from the doors!",
+        "variants": [],
+        "variant_mode": "random",
+        "mood": "",
+        "tags": [],
+        "options": [],
+        "action": "",
+        "max_chars": 0,
+        "next_sub_id": 1
+      },
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "flow",
+          "name": "In",
+          "multi": true,
+          "optional": true
+        },
+        {
+          "id": "next",
+          "direction": "out",
+          "type": "flow",
+          "name": "Next",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "id": "n4",
+      "type": "line",
+      "position": [
+        620.0,
+        0.0
+      ],
+      "params": {
+        "speaker": "Captain Mira",
+        "text": "Good eye. The grate is rusted through. Follow me, and keep your light low.",
+        "variants": [],
+        "variant_mode": "random",
+        "mood": "",
+        "tags": [],
+        "options": [],
+        "action": "",
+        "max_chars": 0,
+        "next_sub_id": 1
+      },
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "flow",
+          "name": "In",
+          "multi": true,
+          "optional": true
+        },
+        {
+          "id": "next",
+          "direction": "out",
+          "type": "flow",
+          "name": "Next",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "id": "n5",
+      "type": "line",
+      "position": [
+        620.0,
+        200.0
+      ],
+      "params": {
+        "speaker": "Captain Mira",
+        "text": "Then we wait. But the watch changes at dawn, and we will not be alone.",
+        "variants": [],
+        "variant_mode": "random",
+        "mood": "",
+        "tags": [],
+        "options": [],
+        "action": "",
+        "max_chars": 0,
+        "next_sub_id": 1
+      },
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "flow",
+          "name": "In",
+          "multi": true,
+          "optional": true
+        },
+        {
+          "id": "next",
+          "direction": "out",
+          "type": "flow",
+          "name": "Next",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "id": "n6",
+      "type": "line",
+      "position": [
+        960.0,
+        0.0
+      ],
+      "params": {
+        "speaker": "Narrator",
+        "text": "Somewhere below, something old stirs in the dark.",
+        "variants": [],
+        "variant_mode": "random",
+        "mood": "",
+        "tags": [],
+        "options": [],
+        "action": "",
+        "max_chars": 0,
+        "next_sub_id": 1
+      },
+      "ports": [
+        {
+          "id": "in",
+          "direction": "in",
+          "type": "flow",
+          "name": "In",
+          "multi": true,
+          "optional": true
+        },
+        {
+          "id": "next",
+          "direction": "out",
+          "type": "flow",
+          "name": "Next",
+          "optional": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e7",
+      "from": {
+        "node": "n1",
+        "port": "next"
+      },
+      "to": {
+        "node": "n2",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e8",
+      "from": {
+        "node": "n2",
+        "port": "o1"
+      },
+      "to": {
+        "node": "n3",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e9",
+      "from": {
+        "node": "n2",
+        "port": "o2"
+      },
+      "to": {
+        "node": "n4",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e10",
+      "from": {
+        "node": "n2",
+        "port": "o3"
+      },
+      "to": {
+        "node": "n5",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e11",
+      "from": {
+        "node": "n3",
+        "port": "next"
+      },
+      "to": {
+        "node": "n6",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e12",
+      "from": {
+        "node": "n4",
+        "port": "next"
+      },
+      "to": {
+        "node": "n6",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e13",
+      "from": {
+        "node": "n5",
+        "port": "next"
+      },
+      "to": {
+        "node": "n6",
+        "port": "in"
+      }
+    }
+  ],
+  "metadata": {
+    "namespace": "dialogue_demo",
+    "source_language": "en"
+  }
+}

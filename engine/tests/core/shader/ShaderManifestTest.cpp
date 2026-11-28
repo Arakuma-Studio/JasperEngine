@@ -6,9 +6,11 @@
 
 #include "shader/ShaderManifest.h"
 #include "util/Color.h"
+#include "shader/ShaderUniforms.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -467,6 +469,85 @@ TEST(ShaderManifest, SpriteManifestHasPixelFx){
     EXPECT_EQ(sprite->resolveExpand(sprite->resolveFeatures({"OUTLINE", "OUTLINE_STYLE_PIXEL8"}), {{"outlineWidth", Vector4(2, 0, 0, 0)}}),
               (ShaderExpand{2, 2, 2, 2}));
     EXPECT_EQ(sprite->resolveExpand(sprite->resolveFeatures({"DROP_SHADOW"}), {}), (ShaderExpand{0, 1, 1, 0}));
+}
+
+// S94 F14 (AC14): gameTime is no longer reserved (the engine writes sceneTime); a manifest may
+// declare it and a mesh value of it is stored like any other
+TEST(ShaderManifest, GameTimeIsAnOrdinaryProperty){
+    const ShaderManifest manifest = shaderManifestParse("// @shader mesh\n// @property gameTime float 0\n");
+    EXPECT_FALSE(manifest.hasErrors());
+    ASSERT_NE(manifest.findProperty("gameTime"), nullptr);
+    ShaderUniformValues values;
+    EXPECT_TRUE(ShaderUniforms::set(values, "gameTime", Vector4(2.5f, 0.0f, 0.0f, 0.0f)));
+    EXPECT_FLOAT_EQ(ShaderUniforms::get(values, "gameTime").x, 2.5f);
+    // the engine-written names stay refused
+    EXPECT_TRUE(shaderManifestHasDiagnostic(shaderManifestParse("// @shader mesh\n// @property time float 0\n"), true, "'time' is written by the engine"));
+}
+
+// S94 F13 (AC13): @require vertexnormals asks for the attribute without the varying
+TEST(ShaderManifest, RequireVertexNormals){
+    const ShaderManifest manifest = shaderManifestParse("// @shader mesh\n// @require vertexnormals uv1\n");
+    EXPECT_FALSE(manifest.hasErrors());
+    EXPECT_NE(manifest.require & ShaderRequire_VertexNormals, 0u);
+    EXPECT_EQ(manifest.require & ShaderRequire_Normals, 0u);
+    const std::vector<std::string> defines = manifest.getRequireDefines(std::vector<std::string>());
+    EXPECT_EQ(std::find(defines.begin(), defines.end(), "SURFACE_NORMALS"), defines.end());
+    EXPECT_NE(std::find(defines.begin(), defines.end(), "SURFACE_UV1"), defines.end());
+    const std::vector<std::string> names = ShaderManifest::getRequireNames(manifest.require);
+    EXPECT_NE(std::find(names.begin(), names.end(), "vertexnormals"), names.end());
+}
+
+// S94 F9 (AC9): ShaderLab's custom factors, the 2- and 4-factor forms and blendop=; an unknown
+// factor names the valid ones
+TEST(ShaderManifest, BlendCustomFactorsParse){
+    const ShaderManifest two = shaderManifestParse("// @shader mesh\n// @state blend=DstColor,SrcColor\n");
+    EXPECT_FALSE(two.hasErrors());
+    EXPECT_EQ(two.state.blend, MaterialBlendMode::CUSTOM);
+    EXPECT_EQ(two.state.blendFactors.src, MaterialBlendFactor::DST_COLOR);
+    EXPECT_EQ(two.state.blendFactors.dst, MaterialBlendFactor::SRC_COLOR);
+    EXPECT_EQ(two.state.blendFactors.srcAlpha, MaterialBlendFactor::DST_COLOR);
+    EXPECT_EQ(two.state.blendFactors.dstAlpha, MaterialBlendFactor::SRC_COLOR);
+    EXPECT_EQ(two.state.blendFactors.op, MaterialBlendOp::ADD);
+
+    const ShaderManifest four = shaderManifestParse("// @shader mesh\n// @state blend=SrcAlpha,OneMinusSrcAlpha,One,One blendop=RevSub\n"
+                                      "// @feature MAXED \"Max\"\n// @state[MAXED] blendop=max\n");
+    EXPECT_FALSE(four.hasErrors());
+    EXPECT_EQ(four.state.blendFactors.src, MaterialBlendFactor::SRC_ALPHA);
+    EXPECT_EQ(four.state.blendFactors.dst, MaterialBlendFactor::ONE_MINUS_SRC_ALPHA);
+    EXPECT_EQ(four.state.blendFactors.srcAlpha, MaterialBlendFactor::ONE);
+    EXPECT_EQ(four.state.blendFactors.dstAlpha, MaterialBlendFactor::ONE);
+    EXPECT_EQ(four.state.blendFactors.op, MaterialBlendOp::REVERSE_SUBTRACT);
+    // a rule's blendop over the base factors
+    const ShaderManifestState maxed = four.resolveState({"MAXED"});
+    EXPECT_EQ(maxed.blend, MaterialBlendMode::CUSTOM);
+    EXPECT_EQ(maxed.blendFactors.op, MaterialBlendOp::MAX);
+    EXPECT_EQ(maxed.blendFactors.src, MaterialBlendFactor::SRC_ALPHA);
+
+    const ShaderManifest bad = shaderManifestParse("// @shader mesh\n// @state blend=DstColour,SrcColor\n");
+    EXPECT_TRUE(shaderManifestHasDiagnostic(bad, true, "OneMinusDstAlpha"));
+    const ShaderManifest three = shaderManifestParse("// @shader mesh\n// @state blend=One,One,One\n");
+    EXPECT_TRUE(shaderManifestHasDiagnostic(three, true, "<src>,<dst>[,<srcAlpha>,<dstAlpha>]"));
+    const ShaderManifest op = shaderManifestParse("// @shader mesh\n// @state blendop=multiply\n");
+    EXPECT_TRUE(shaderManifestHasDiagnostic(op, true, "add, sub, revsub, min or max"));
+}
+
+// S94 F11: the texture Mesh:setTexture writes, marked main or else the first; one main only
+TEST(ShaderManifest, TextureMain){
+    const ShaderManifest marked = shaderManifestParse("// @shader mesh\n// @texture u_mask white\n// @texture u_albedo white \"Albedo\" main\n");
+    EXPECT_FALSE(marked.hasErrors());
+    ASSERT_NE(marked.getMainTexture(), nullptr);
+    EXPECT_EQ(marked.getMainTexture()->uniform, "u_albedo");
+    const ShaderManifest shortForm = shaderManifestParse("// @shader mesh\n// @texture u_mask black\n// @texture u_albedo main\n");
+    EXPECT_FALSE(shortForm.hasErrors());
+    ASSERT_NE(shortForm.getMainTexture(), nullptr);
+    EXPECT_EQ(shortForm.getMainTexture()->uniform, "u_albedo");
+    EXPECT_EQ(shortForm.findTexture("u_albedo")->defaultTexture, ShaderTextureDefault::WHITE);
+    const ShaderManifest first = shaderManifestParse("// @shader mesh\n// @texture u_mask white\n// @texture u_albedo white\n");
+    ASSERT_NE(first.getMainTexture(), nullptr);
+    EXPECT_EQ(first.getMainTexture()->uniform, "u_mask");
+    EXPECT_EQ(shaderManifestParse("// @shader mesh\n").getMainTexture(), nullptr);
+    const ShaderManifest twice = shaderManifestParse("// @shader mesh\n// @texture u_a white main\n// @texture u_b white main\n");
+    EXPECT_TRUE(shaderManifestHasDiagnostic(twice, true, "is the main texture already"));
 }
 
 }  // namespace ShaderManifestTest_cpp

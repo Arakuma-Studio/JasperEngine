@@ -72,7 +72,8 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
 
 Picking (S26): `JASPER_PICK_SIMD=scalar|avx2|neon` forces the mesh BVH's slab test path; `MeshPose.MatchesGpuSkinning` is a GPU suite (the
 CPU pose against the skinned shaders, glcore and Vulkan). `JASPER_PICK_BUILD_DELAY_MS=<ms>` holds
-every background mesh BVH build pending that long: the MCP tests use it to see the Scene view's
+every background mesh BVH build pending that long (the wait runs on a blocking thread, so it holds no
+Background gate slot other loads queue for): the MCP tests use it to see the Scene view's
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 `JASPER_TEXTURE_LOAD_DELAY_MS=<ms>` holds every async texture decode that long: a screenshot must
 then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
@@ -86,6 +87,7 @@ recording, nothing when unset (`tools/mcp/tests/test_recorder_integrity.py`).
 `JASPER_MESH_LOAD_HOLD_FILE=<path>` holds the first load (the binding) of the meshes of a scene that
 loaded a model in the background while that file exists, so what else loads the same model meanwhile
 (a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
+`JASPER_TEST_MCP_LOG_MAX_BYTES=<bytes>` lowers the MCP call log's 16 MB rotation size (`test_call_log` in `tools/mcp/tests/test_protocol.py`).
 `JASPER_TEST_MATERIAL_THUMBNAIL_STUCK=<project-relative file>` keeps a material thumbnail loading while that file exists (`test_material_thumbnail.py`).
 `JASPER_TEST_TRANSITION_TWIN_SKEW=<coverage>` shifts the CPU evaluation a transition capture's `transition_edges` compares the frames with, for the lint's red path (`tools/mcp/tests/test_contact_sheet.py`).
 `JASPER_TEST_STAGING_HOLD=<path>` holds a Project Hub import or template copy with part of its files in
@@ -117,7 +119,11 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   (`build/web-mesh-raycast`, the web image; up to date after the first time) for
   `test_mesh_raycast.py`'s web latency gate. The Linux image carries the suite's test tools
   (lua-language-server, clangd, FFmpeg with AV1, chrome-headless-shell), so none of their tests
-  skips there. See `docs/mcp/README.md` for writing MCP tests.
+  skips there. See `docs/mcp/README.md` for writing MCP tests. A project the harness creates
+  (`Editor(create=True)`) keeps the flat layout the tests are written against, its assets and
+  scripts at its root: the harness sets `JASPER_TEST_FLAT_NEW_PROJECT=1` unless the test passes
+  `env={"JASPER_TEST_FLAT_NEW_PROJECT": "0"}`, which gives a new project's real layout (`assets/`,
+  `scripts/`, `test_asset_stripping.py`).
 - `test_audio_meter.py` takes no editor: it compiles `engine/tests/core/audio/AudioMeterProbe.cpp` with
   `AudioMeter.cpp` and `TruePeak.cpp` alone (so it needs a C++ compiler; FFmpeg decodes the fixtures)
   and compares the meter with pyloudnorm (`uv run --with`, pinned in the test).
@@ -149,10 +155,12 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   look in a desktop browser.
 - A gate baseline can also list `console` lines (`{"text", "level"}`, `"ordered": true`): each must
   appear at that console level (log, info, warning, error), in order; an error listed there is
-  expected and fails nothing. `GATE=core-utilities` (after `WEB_PROJECT=core-utilities tools/build.sh
-  web`) checks the logger's browser console sink and a Lua `Timer` that way.
-- `GATE=mesh-raycast` (after `WEB_PROJECT=mesh-raycast tools/build.sh web`) times 10,000
-  MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
+  expected and fails nothing. `GATE=core-utilities` (after `BUILD_TYPE=Release WEB_PROJECT=core-utilities
+  tools/build.sh web`) checks the logger's browser console sink and a Lua `Timer` that way, and the
+  Culling Group and Simulation Culling evaluation p99 against their release web budgets.
+- `GATE=mesh-raycast` (after `BUILD_TYPE=Release WEB_PROJECT=mesh-raycast tools/build.sh web`: its budgets are release figures) times 10,000
+  MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17), then
+  10,000 overlap queries of each kind against 0.04 ms (spatial-queries AC15).
 - The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13), `pcss` (PCSS's two views
   of the shadow atlas in one WebGL2 draw, the Ultra tier's contact hardening) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
@@ -164,6 +172,9 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   desktop autoplay policy (`chrome_flags` in the baseline): the page's audio is suspended until the
   first key press (`keys`: trusted CDP key events, `eval_before_input` before them, `eval` after),
   and Meta, ContextMenu and events without a code reach the game as their engine keys.
+- `GATE=web-pointer` (after `WEB_PROJECT=web-pointer tools/build.sh web`) drags mouse presses off a
+  canvas smaller than the window (`drags`: trusted CDP mouse events): each release reaches the game
+  once, clamped to the canvas (S93 R2).
 - `GATE=pixel-perfect` (after
   `WEB_PROJECT=pixel-perfect tools/build.sh web`) runs at a device scale factor of 2 and checks that
   a Pixel Perfect Camera sizes the canvas backing store at its CSS size times `devicePixelRatio` and
@@ -184,6 +195,7 @@ takes about a second. So an MCP test compiles only when the compile path is what
   | `test_build.py::test_desktop_build_and_run` | the compile path end to end (CMake, the engine, the link, a player that runs), and a broken C++ source's errors parsed as `file:line` (only a compiler produces them) |
   | `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` | `graphics.runtime_shaders: false`: a compiled game ships without the runtime shader compiler whatever its scripts do (a prebuilt variant leaves it out only when no script can need it, S34), so it shows the exported UI effect variants are all the game needs |
   | `test_build.py::test_cancel_desktop_build`, `test_busy.py::test_export_job_refusals` | a compile runs long enough to cancel, and to refuse other tools while it runs (a prebuilt build ends first); both are cancelled within seconds |
+  | `test_localization_export.py::test_compiled_game_loads_the_manifest` | the generated main of a compiled game loads `l10n/manifest.json` (a prebuilt player reads it from `game.json`): the String Tables reach a compiled game |
   | `test_lifecycle_export.py::test_play_and_export_log_the_same_lifecycle` | a C++ script's lifecycle in an exported player: C++ scripts ship only in a compiled game |
 
 - **(b) Prebuilt** (`method="prebuilt"`, and it checks `method_used` and the `player_id` it
@@ -249,7 +261,8 @@ The cache cannot hide a bug:
   run tries again.
 - The compiled games (`method="compile"`) build through ccache too: their editors get
   `harness.compile_env(name)`, a user cache (where the kit's compile tree goes) at the fixed path
-  `build/mcp-compile-home/<file>/`, emptied as the file starts, and ccache as CMake's compiler
+  `build/mcp-compile-home/<file>/`, emptied as the file's first editor starts (not as the file loads:
+  any run's `-k` listing loads every file), and ccache as CMake's compiler
   launcher. Each run still configures and compiles a fresh tree and links; an object comes from
   ccache only when its preprocessed source, flags and directory are those it was made from. They
   link without LTO (`JASPERENGINE_RELEASE_LTO=OFF` in the editor's environment, which an exported
@@ -309,6 +322,12 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   $EMULATOR_GPU`: see "The emulator's GPU" below),
   installs the APK with every permission granted, clears logcat, launches the app and polls
   logcat until every `--expect` line is there, the app crashes, or `--timeout` (120 s) passes.
+- `--view-loss` sends the app to the background once it is ready (Home), calls `am send-trim-memory
+  <package> COMPLETE` (APP_CMD_LOW_MEMORY without a window drops the EGL context) and launches it
+  again; the run needs a new view and its expectations from both sides of the return. `--once TEXT`
+  fails on a second line containing TEXT. `tools/test-projects/app-lifecycle` uses both (S95 AC-17:
+  an HTML UI document keeps its DOM through the loss); its `main.cpp` says how to lose and restore
+  the WebGL context of its web build by hand.
 - `--expect` matches a `logcat -v tag` line: `W/JasperEngine: [render] text` checks the priority,
   the tag and the text. `--ordered` requires the order given, `--forbid` fails on a line,
   `--expect-file` reads expectations one per line. A `FATAL EXCEPTION`, a native crash of the
@@ -322,12 +341,47 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   about 40 s; a whole run about 70 s.
 - `EMULATOR_BOOT_TIMEOUT`, `EMULATOR_MEMORY`, `EMULATOR_CORES` and `JASPER_DOCKER_IMAGE` (a
   prebuilt emulator image) tune it. `EMULATOR_GPU` is passed to `-gpu` (below).
+- `--setprop NAME=VALUE` sets a system property before each launch. VALUE may hold spaces and
+  `: , =` (it reaches the device's shell double-quoted; quotes, `$`, backquotes, backslashes and
+  `; | & < > ( )` are refused): the player arguments of a Development build go in
+  `debug.jasperengine.args`. `tools/android-emulator-test.sh --self-test` checks that rule. The
+  project test runner's check (docs/game-tests.md, AC13):
+
+  ```sh
+  ANDROID_PROJECT=game-tests tools/build.sh android
+  tools/android-emulator-test.sh build/android-game-tests/app-debug.apk \
+      --setprop "debug.jasperengine.args=--run-tests --test-filter tag:smoke" \
+      --expect-file tools/test-projects/game-tests/android-expect.txt
+  ```
+- `--ime TEXT` waits for a logcat line containing TEXT (the game focused a text field), saves
+  `dumpsys input_method` as `ime.txt`, types `abcdefgh` and presses Enter; `--ime-editor-info` names
+  what `ime.txt` must show. The soft keyboard check of text-entry-gamepad-cursor-back-button AC7:
+
+  ```sh
+  ANDROID_PROJECT=input ANDROID_ABIS=x86_64 tools/build.sh android
+  tools/android-emulator-test.sh build/android-input/app-debug.apk --two-finger-tap \
+      --expect-file tools/test-projects/input/android-expect.txt \
+      --ime '[gate] form focused' --ime-editor-info 'inputType=0x21 imeOptions=0x12000004' \
+      --expect-file tools/test-projects/input/android-ime-expect.txt
+  ```
 - Every run also fails on what the GLES path logs when it goes wrong, expected or not: an
   `OpenGL error` (NativeEngine reads `glGetError` after every frame; a debug build's sokol also
   asserts on one after each GL call, which the crash check catches), a shader that did not compile
   or link (sokol's GL backend, the runtime shader compiler), an incomplete framebuffer, an EGL
   error or a failed swap, a sokol panic, and libEGL's "call to OpenGL ES API with no current
   context".
+
+#### Patch And Run: `tools/ci/android_patch_run.sh`
+
+Build And Run and Patch And Run on the same headless emulator (docs/specs/build-and-run-on-device.md
+AC10): a Development Build of a copy of `tools/fixtures/tween-curve` through
+`jasperengine-editor build --run-device emulator-5554`, a Lua string edit, the same command again.
+It checks the second run patched (`installed: patched`), logcat has the new string, the installed
+APK's SHA-256 did not change, and prints the patch's time against its 15 s budget as a `[bench]`
+line (`JASPER_MCP_PERF_SLACK` enforces it). It builds the `android-universal-gles3-development`
+runtime (x86_64) when `build/players` lacks it, and runs the editor of `tools/build.sh linux` inside
+the emulator image (its SDK and JDK make the APK). `test_device_run.py` covers the same flow with a
+stand-in adb on every MCP run.
 
 #### Rendering gate: `--scene` and `--golden`
 
@@ -351,7 +405,8 @@ then screenshots the device (`adb exec-out screencap`) and checks it with
 `debug.jasperengine.scene` set to it (a test project reads it, `JASPERENGINE_SCENE` elsewhere),
 each run checked on its own in `--out/<scene>/`; `{scene}` in an expectation is the run's scene.
 The gate's project is `tools/test-projects/render-gate`: a lit 3D scene (`lit3d`), 2D and UI
-(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`) and Title Art
+(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`), the JasperArcade port's
+scaled list of filtered rows clipped by its viewport (`htmlui-u27`, S92 R11) and Title Art
 Renderers (`titleart`, S81; run it also with `--setprop debug.jasperengine.titleart_rgba8=1` against
 the same golden), goldens in its `golden/`:
 
@@ -359,7 +414,7 @@ the same golden), goldens in its `golden/`:
 ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android
 tools/android-emulator-test.sh build/android-render-gate/app-debug.apk \
     --expect-file tools/test-projects/render-gate/android-expect.txt \
-    --scene lit3d --scene ui2d --scene htmlui --scene titleart --golden tools/test-projects/render-gate/golden
+    --scene lit3d --scene ui2d --scene htmlui --scene htmlui-u27 --scene titleart --golden tools/test-projects/render-gate/golden
 ```
 
 `ANDROID_ABIS=x86_64` builds only the emulator's ABI (a quarter of the build).
@@ -389,7 +444,7 @@ frame timing (SwiftShader draws a frame in tens to hundreds of milliseconds).
 
 `jasperengine-crash-test` is built with core tests. `ctest --test-dir build/linux/core-tests
 -R 'native-crash|posix-crash' --output-on-failure` runs each deliberate fatal mode in a child,
-checks registers, frames, log tail, signal chaining and overflow reporting, and checks the POSIX
+checks registers, frames, log tail, the Gameplay Journal's `journal.txt`, signal chaining and overflow reporting, and checks the POSIX
 object for allocation/stdio/mutex imports. It also verifies a main-thread hang frame. These
 checks work in the ASan/UBSan tree too (`core-tests-address-undefined`). Windows/macOS desktop
 CTest builds register the same child-process checks; Windows additionally requires a minidump.
@@ -400,6 +455,9 @@ then `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.a
 The opt-in flag requires the engine report **and** a matching debuggerd tombstone, saves both
 under the emulator result directory, and accepts that deliberate crash. Ordinary emulator tests
 continue to fail on any native crash.
+The fixture's Lua logs the Gameplay Journal entry `gate.ready` first, so the pulled report folder
+also holds `journal.txt` with it (`native-crash-journal` checks the same on the desktop:
+`jasperengine-crash-test --mode segv --journal`).
 
 ## Gates: per commit, then CI
 
@@ -419,10 +477,11 @@ continue to fail on any native crash.
   `gh workflow run ci.yml --ref <branch> -f full=true` runs everything on a branch. check-changed is
   a selection and says so in every summary. The MCP files outside the CI suite (`MCP_SUITE=all`)
   run only where someone runs them.
-- **Lints check-changed does not run**, by area (`AGENTS.md`, Test): `tools/check_raw_writes.py` and
-  `tools/check_stream_keys.py` (file writes, decoders), `tools/check_text_encoding.py` (code-page
-  conversions, Win32 `-A` calls, Apple string encodings, vswhere; `--self-test` is its red control),
-  `tools/ci/check-hardcoded-shortcuts.py`, `tools/ci/check-notices.py`.
+- **check-changed runs the area lints** by the paths they read (`AREA_LINTS`): `tools/check_raw_writes.py` and
+  `tools/check_stream_keys.py` (file writes, decoders), `tools/check_event_clears.py` (engine events),
+  `tools/check_text_encoding.py` (code-page conversions, Win32 `-A` calls, Apple string encodings, vswhere)
+  and `tools/ci/check-hardcoded-shortcuts.py` (editor keys). `tools/ci/check-notices.py` (vendored
+  libraries and `NOTICE.md`) runs in the lint lane.
 
 ### `tools/check-changed`
 
@@ -431,18 +490,24 @@ tools/check-changed                           # build and test what the change t
 tools/check-changed --dry-run                 # the plan only
 tools/check-changed --base main               # another base (default: the merge base with oe-port, else main, origin/main)
 tools/check-changed --no-mcp                  # builds and unit tests only, said so in the summary and not cached
+tools/check-changed --json                    # the plan, step results, logs and fix commands as one JSON document
+tools/check-changed --red-control             # then the selected tests without the change: some must fail
+tools/check-changed --red-control --restore   # the tree an interrupted red control left reverted
 tools/build.sh exec linux tools/check-changed # inside the Linux image (no web or Android build there)
 ```
 
+- The area lints run first, each when a path it reads changes: what it scans (editor and engine
+  C++ outside tests and vendored libraries, the decoders and reflection tables for
+  `check_stream_keys.py`) or its allow-list. A change of the lint, or of its self-test's fixtures,
+  also runs its `--self-test`. `tools/check_event_clears.py` runs for any engine source outside
+  `engine/libs`, `engine/tests` and `engine/workspaces`: every `FunctionSubscribe` member is in its
+  holder's `forEachEvent`, every component holder in `ComponentEvents.h`, every other holder in the
+  lint's `WALKS` or `TRANSIENT`, and every static event in Engine's clears, so the clears at Stop
+  reach it; `Ease` members count; `tools/build.sh linux` runs it too.
 - Tool tests: a changed `tools/<dir>/<x>.py` runs `tools/<dir>/test_<x>.py` beside it (and a changed
   test itself), unless it takes arguments only its lane has (`SELF_TESTS_ELSEWHERE`); `SELF_TESTS`
   names the rest. CI's lint lane runs every tool test that needs no build (`tools/ci/lint.sh`).
-- Lints with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`; a changed
-  engine source (not `engine/libs`, `engine/tests`) runs `tools/check_event_clears.py` (every
-  `FunctionSubscribe` member is in its holder's `forEachEvent`, every component holder in
-  `ComponentEvents.h`, every other holder in the lint's `WALKS` or `TRANSIENT`, and every static
-  event in Engine's clears, so the clears at Stop reach it; `Ease` members count; `tools/build.sh
-  linux` runs it too).
+- Other checks with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`.
 - The change: committed since the base, staged, unstaged and untracked files. A checkout without
   the stream's history reads its diff from `build/.rb-changes.json` (with every file's sha256: a
   diff that does not match the files is refused).
@@ -477,8 +542,29 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
   changed and untracked file, the images' Dockerfiles, the coverage map's version and the script
   itself: the same inputs reprint the last summary (`--no-cache` runs again); a run during which
   the files changed caches nothing. Exit 1 when a step fails or a selected test cannot run.
-- Output: the plan, then each step's result; a failed step's output (`CHECK_CHANGED_VERBOSE=1`:
-  everything).
+- Output: the plan, then each step as it ends. Each step's whole output goes to
+  `build/check-changed/<step>.log` (`CHECK_CHANGED_VERBOSE=1`: to the terminal too). A failed step
+  prints its parsed failures, at most 40 lines (googletest, unittest and pytest failures, the MCP
+  results, and build diagnostics, crashes and gate verdicts through `tools/ci/report.py`'s
+  parsers; else a lint's `file:line` findings), then its log. The run ends with one line per step,
+  `ok|FAIL|skip|cached  <step>  <seconds>`; a FAIL carries `fix:`, the command that reruns it,
+  narrowed to the failed googletest tests or MCP files.
+- Independent steps go on after a failure. A step whose build failed is `skip` with the reason
+  (the unit tests after their build, the header gates and MCP tests after the editor's). `--json`
+  prints one document on stdout (the plan, the steps with their status, log, fix, failures and
+  failed tests, and the red control's verdicts); the progress goes to stderr.
+- `--red-control` proves the selected tests pin the change. It refuses a dirty tree, and any run
+  refuses while an interrupted one's marker (`build/red-control/in-progress.json`) is there,
+  printing `tools/check-changed --red-control --restore`. After the normal run passes (or its
+  cached pass), it saves the branch's diff from the base over the paths outside the tests
+  (everything but `engine/tests`, `editor/tests`, `tools/mcp/tests`, `tools/fixtures`, `golden`
+  folders, `docs/`, and the tools' own tests and fixtures) to `build/red-control/patch.diff` and
+  reverse-applies it in place. It then rebuilds and reruns the same selected tests (logs in
+  `build/red-control/logs/`) and restores the tree in a `finally`, SIGTERM and Ctrl-C included.
+  It then checks that the tree is byte-identical to before (status, diff, untracked files). Each
+  test step is `red` (with the tests that failed), `red (build)` (its build failed), `green` (it
+  does not pin the change) or `not run`. It exits 1 when none went red. The red run is never
+  cached, and it reverts the shared worktree it runs in: do not edit it meanwhile.
 - Inside the Linux image `tools/build.sh` has no Docker to call and runs the image's own targets
   directly, with the same environment; a target of another image (web, Android) exits 3; check-changed there leaves those
   builds out, says so in its summary and caches no pass.
@@ -489,7 +575,8 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
   OFF").
 - Its tests: `python3 -I tools/test_check_changed.py` (the diff and its fallbacks, the build plan,
   the suites from a synthetic `ninja -t deps`, the MCP selection from a synthetic map, the gcda
-  reader, the cache and its invalidation, the exit codes).
+  reader, the cache and its invalidation, the area lints by path, the exit codes, keep-going, the
+  logs, summary and fix lines, `--json`, and the red control on scratch repositories).
 
 **The coverage map** (`tools/mcp/coverage_map.py`): for each MCP test file, the engine and editor
 sources its editors executed. A full run of a coverage-instrumented editor records it, off the
@@ -697,6 +784,16 @@ JASPER_TEST_UPDATE_GOLDEN=1 UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=Rende
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=RenderGpu.*' tools/build.sh unit-tests
 ```
 
+An HTML UI frame that records what the last drawn one did is not replayed (S92 R1). A test that
+counts a replay's passes, draws or caches frame after frame turns that off for its scope
+(`FrameReuseMode replayed(false)`, `TestRenderCommon.h`). `JASPER_HTMLUI_VERIFY_KEPT=1` makes the
+golden harnesses draw a second frame and compare every kept frame with a fresh replay; a
+difference fails the comparison and logs `[HTML UI] kept frame differs`:
+
+```sh
+JASPER_HTMLUI_VERIFY_KEPT=1 HTMLUI_TEST_ARGS='--gtest_filter=*Golden*:RenderP1*:RenderPrimitive.*:RenderClip.*:RenderFilter*' tools/build.sh htmlui-tests
+```
+
 The cooked fixtures of the texture format test (`engine/tests/core/fixtures/texture_formats/`, S14
 AC8: every `GpuTextureFormat` as a cooked 32 px KTX2 with the CPU decode of each level, which
 `TextureFormatsGpu` compares the GPU's sampling with) come from the editor's encoders and
@@ -844,6 +941,19 @@ no-silent-green gate, and fails unless at least two `NavStubTest` tests passed (
 compiles navigation in runs none). The first run builds the whole engine (the switch is a public
 define); later runs are incremental. `tools/check-changed` plans it for a navigation or engine CMake
 change; nothing else runs it, CI included.
+
+### Dialogue OFF: `tools/check-physics-off.sh dialogue-off`
+
+A project with no `.dialogue`, Dialogue Runner or script naming `Dialogue` exports with
+`JASPERENGINE_DIALOGUE=OFF` (dialogue-graphs.md R15): `engine/core/dialogue` is not compiled and the
+Lua names `Dialogue` and `DialogueRunner` are stubs that log once. The module-off variant of
+`tools/check-physics-off.sh` builds that engine (`build/physics-off-dialogue-off`); the stubs'
+test, `DialogueStubTest.LogsOnceWhenNotCompiled`, binds them on a Lua state of its own, so it runs in
+every core build:
+
+```sh
+tools/build.sh exec linux tools/check-physics-off.sh dialogue-off
+```
 
 ### Sanitizers
 
@@ -1030,14 +1140,14 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `lint` | the repository's and the workflows' lints |
 | `linux` | `WERROR=1 tools/build.sh linux`; its editor install feeds `mcp` and `smoke` |
 | `unit` (one job per test binary: `core`; `editor-1`, `editor-2`) | `UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun (core); each editor part with `UNIT_SHARD=<k>/2`, after compiling half the objects (`UNIT_BUILD_PART=<k>/2`) and taking the other half from the other part (below) |
-| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter (on a PR: below) without the `*GpuSlow*` suites (the nightly runs them under ASan) |
+| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter (on a PR: below) without the `*GpuSlow*` suites (the nightly runs them under ASan); the editor job prints how much of x86-64's 2 GiB relocation reach its test binary uses (`tools/ci/reloc_reach.py`) |
 | `htmlui` | `JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests` |
 | `mcp` (one job per shard) | `tools/ci/mcp_shard.sh <k> build/ci-plan`: the CI suite's planned files, `-j 2`, without the fixture project |
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
 | `web` | `tools/build.sh web && tools/build.sh web-gate` |
 | `android` | `tools/build.sh android` (`ANDROID_ABIS=arm64-v8a` on a PR) |
-| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`), the D3D11 and Vulkan legs on a PR and in the queue only for their inputs (below); then a Compile build of a fixture with the editor job's install |
-| `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `xcode ios` for iOS |
+| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`), the D3D11 and Vulkan legs on a PR and in the queue only for their inputs (below); then a Compile build of a fixture with the editor job's install. Each job keeps its own ccache entry |
+| `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `XCODE_CAS=build/.cache/xcode-cas tools/ci/macos.sh xcode ios` (and `macos`) for the Xcode project, through Xcode's compilation cache |
 | `report` | writes the PR comment (below) |
 | `check` | the one required status, `Check` (`tools/ci/check_gate.py`): green only when every lane that had to run passed |
 
@@ -1160,6 +1270,31 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   median of 2 h (up to 10) while the merge queue stalled behind them. The queue is the gate: it, a push
   to `main`, full runs and the nightly build `macos` for every change that builds, so a macOS break
   still stops the merge, one queue run later than a PR would have shown it.
+- **The Windows editor leg in the merge queue** builds the editor and its call CLI (what `windows
+  (compile)` and the CLI check use), not the editor-tests binary: its test run is advisory there
+  (`lanes.json` `unbuilt`; `tools/ci/windows.sh editor` with `EDITOR_TESTS_BUILD=0`). The tree is
+  still configured with its tests, so every object is the one the ccache entry holds. The binary was
+  558 of the step's 3,957 build steps, about a quarter of its 110 min (run 45291112468). A pull
+  request, a push to `main`, the advisory run and full runs build it. An MSVC-only compile error in an
+  editor test therefore shows on `main` after the merge, in the advisory run, not in the queue.
+- **macOS in the merge queue** builds only for a macOS-only input. macOS is what caps the queue: 5
+  hosted runners and `je-mac`, a `macos` job a group. Its inputs, wider than a pull request's (the queue
+  is the last gate), are:
+  - `APPLE_INPUTS`, plus Objective-C sources (`*.mm`, `*.m`), Mac and Apple named sources and
+    resources (`*/Mac[A-Z]*`, `*Mac.cpp`, `*/Apple*`, `editor/resources/macos/`), the vendored sokol
+    (its Metal backend), `tools/ci/macos.sh` and the ccache actions it runs;
+  - a C/C++ source whose text, before or after, names `__APPLE__`, `TARGET_OS_`, `SOKOL_METAL` or
+    `__OBJC__`;
+  - a CMake file whose changed lines or their 10 lines of context name an Apple setting (`APPLE`,
+    `IOS`, `CMAKE_OSX`, `Darwin`, `XCODE`, macOS, Metal);
+  - `ci.yml`'s `macos` job or `env` (`tools/ci/plan_lanes.py` `MACOS_PATHS`, `macos_inputs`).
+
+  Without one, the lane is planned off (`queue_off`), so a mac-only break (a compile error or a CPU
+  test) shows on `main` right after the merge, not in the queue. The push to `main` runs the whole lane
+  then (`macos_full`: its CPU tests, the call CLI and the compile smoke, which a push otherwise skips
+  because the queue ran them), and the nightly builds it every night. Replayed over the 40 merges up
+  to #181 (38 that build), the queue would have built `macos` for 13 (34%) and left it out for 25;
+  today's mix was CI-heavy.
 - **iOS in the merge queue** follows the same rule (`lanes.json` `queue_off`, which `Check` accepts as
   a planned skip). `ios` is a compile check of the Xcode project with the same Apple Clang the queue's
   `macos` lane builds every change with, and macOS capacity is the bottleneck. `nightly.yml`'s `ios`
@@ -1192,10 +1327,11 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **Push to `main`** builds what keeps a cache and nothing else (`tools/ci/plan_lanes.py` `build_only`
   lists what builds without its tests): it saves the caches (ccache per lane), and a PR restores what
   `main` saved, never what the queue did; and it publishes the deps dumps `changes` plans from (below,
-  "Plan inputs"). The queue built and tested the same commit, so a push runs no check: not `ios` or
-  the Windows engine legs, which keep no cache entry, nor any step the queue ran (`MAIN_STAGE` in
-  `ci.yml`). ASan builds both binaries for their entries, and `smoke` runs when a game-building path
-  changed, for its entry.
+  "Plan inputs"). The queue built and tested the same commit, so a push runs no check, nor any step
+  the queue ran (`MAIN_STAGE` in `ci.yml`). ASan builds both binaries for their entries, the Windows
+  engine legs build without their tests and `windows (compile)` and macOS make their Compile builds,
+  for theirs, and `smoke` runs when a game-building path changed, for its
+  entry.
 - **One push run at a time.** Merge-queue groups land one push each, some minutes apart (2026-11-15
   to 20: 21 pushes, gaps of 62 s, 3 and 4 min among 20). Push runs share one concurrency group without
   cancel-in-progress: one runs, the newest waits, and GitHub drops an older waiting run before it takes
@@ -1221,14 +1357,18 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **ccache in CI**: a build runs with no size limit (a cleanup in the middle of a build evicts the
   restored entries it has not reached yet, and each miss then evicts more: a PR that changed one test
   file hit 5 of 5,279 compiles). `ccache-save` then evicts every entry the run neither used nor wrote
-  and prints the rest, the lane's working set, on every run; on `main` it cuts that to the lane's cap
-  (`max-size` in `ci.yml`), oldest-used first, saves it and deletes the lane's older entry (`prune`;
+  and prints the rest, the lane's working set, on every run; on `main` it cuts a working set over the
+  lane's cap (`max-size` in `ci.yml`) to it, oldest-used first, and keeps one under it whole (ccache's
+  cleanup evicts from each of its 16 subdirectories past a 16th of the cap, so under the cap it still
+  cost the next linux build 238 of 5,284 compiles), recompresses it from the zstd level 1 a build
+  writes to level 9 (14 % smaller: a linux sample of 296 MB took 23 s on 2 CPUs; level 12 gave 15 %,
+  19 22 % in 277 s), saves it and deletes the lane's older entry (`prune`;
   the `caches` job, after every lane, deletes them again). Each lane's old and new entries would
   otherwise both live until the push's slowest lane ended, and past the 10 GB GitHub evicts the least
   recently used entries of any lane: during push run 44629653601 the repository held 11.7 GB, two
   entries of linux, unit-core and Android, and the plan inputs, the coverage map and the Vulkan SDK
   were gone. A cap below the working set loses the start of the build, not all of it. The caches
-  share GitHub's 10 GB per repository (the repository's `max_cache_size_gb`); working sets from each
+  share the repository's 20 GB (`max_cache_size_gb`, raised from GitHub's default 10 on 2026-11-24); working sets from each
   lane's `ccache-save` (no precompiled headers, line tables only: `JASPERENGINE_DEBUG_INFO=lines`,
   "Build speed"), in decimal GB (ccache's caps are decimal; `du -h` prints binary), from PR 131's
   runs 44775260806 and 44806837004:
@@ -1241,18 +1381,24 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   | asan-core | 0.74 | 2.1 | 0.8G | yes |
   | asan-editor | 1.58-1.62 (the whole build: 7,721 entries of 3,863 compiles; runs 44934269450, 44959473600, 44970821863 and a local build) | 4.6 | 2.2G | yes |
   | htmlui | 0.78 (2,176 compiles, Release) | 1.66 | 0.85G | yes |
-  | macOS | 0.84 | 1.30-1.37 | 0.9G | yes |
+  | macOS | 0.81 with the Compile build, which a push makes for it (PR run 45075106333) | 1.30-1.37 | 0.9G | yes |
   | Windows editor | 0.92 (MSVC: `/Z7` as before) | 0.91 | 0.95G | yes |
+  | Windows OpenGL | 1.50 (1.4 GiB; `/Z7`: its core tests' reports name frames), 1.29 recompressed; PR 176's run 45274919394 | | 1.6G | yes |
+  | Windows D3D11, Vulkan | 0.35 each (337 MiB; Release, no debug information), 0.31 recompressed; same run | | 0.4G each | yes |
+  | Windows Compile | 0.45 (425 MiB), 0.38 recompressed; same run | | 0.5G | yes |
+  | iOS and macOS Xcode (`xcode-cas`, Xcode's compilation cache, no debug symbols) | 1.14-1.23 raw, 0.35-0.38 compressed (both SDKs, five builds of two commits 36 apart, on the Mac); saved by the nightly's `ios` job on `main` (a push would take a macOS runner for a lane the queue mostly leaves out), and it only grows, so a nightly that restores over 2 GB starts it afresh (`COMPILATION_CACHE_LIMIT_SIZE=1600M` held it at 1.78 GB with 92 % hits on a commit seen before, against 100 % without) | iOS alone 0.89 compressed | 2 GB raw (`fresh-over`) | yes |
   | Android | 0.27 | 0.63 | 0.3G | yes |
   | web | 0.24 | 0.48 | 0.3G | yes |
   | smoke | 1.93 (the player runtime and two Compile builds, which share nothing: each its own directory) | 3.5 | 0.5G | yes, the last-used part: the second Compile build |
   | Gradle, Vulkan SDK, MCP timings, uv | 0.73, 0.21, under 0.01 each | | | yes |
-  | Windows OpenGL | 1.4 | | | no: the lane ends with its slowest leg, and D3D11 and Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108) |
 
-  At most 9.0 GB of caps plus 0.96 GB of the rest, 9.96 GB in ccache's sizes; GitHub counts the saved
-  archives, about 0.96 of those (asan-editor: 1,526 MB for its 1.59 GB), and a cut entry holds about
-  92 % of its cap, so full caps would hold about 9.2 GB (8.9 GB at these working sets, smoke cut to
-  its cap). A cap a few percent above its working set still cuts it: ccache 4.5 (the image's) empties
+  The caps add up to 11.9 GB in ccache's sizes; a saved entry is recompressed to about 0.86 of its
+  working set (the Windows legs: 0.85-0.89), and GitHub counts the saved archives, about 0.96 of that
+  again (asan-editor: 1,526 MB for its 1.59 GB). At these working sets the ccache entries come to
+  about 8.6 GB and the rest (Gradle, the Vulkan SDK, `xcode-cas`, MCP timings, uv) to 1.3 GB: main's
+  entries hold about 10 GB, and caps full everywhere about 11 GB, which leaves the 20 GB room for a
+  push's old and new entries side by side and for the other branches' caches (the Vulkan SDK of a PR,
+  the merge queue's Gradle) without GitHub evicting one of main's. A cap a few percent above its working set still cuts it: ccache 4.5 (the image's) empties
   each of its 16 subdirectories that is over a sixteenth of the cap down to 80 % of that
   (`limit_multiple`), whatever the total, and the largest subdirectory runs about a quarter above the
   mean. asan-editor's whole build (1.58 GB, the largest subdirectory 123 MB) lost 415 of its 7,721
@@ -1263,7 +1409,8 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   same way. Smoke,
   last in line (the slowest cold lanes that run on every PR came first: unit-editor, then ASan),
   takes what is left and keeps its last-used part. A cache with no entry builds cold, its job still
-  reusing what an earlier step of the same job compiled, as do Windows D3D11 and Vulkan. A lane that
+  reusing what an earlier step of the same job compiled. A cancelled job saves nothing (the Windows
+  and macOS lanes): its working set lacks what it had not reached. A lane that
   gives its entry up has its prefix in the `caches` job's second list, so its last entry goes at
   once instead of holding the budget for 7 days.
 - **Full run on any branch**: `gh workflow run ci.yml --ref <branch> -f full=true`.
@@ -1465,6 +1612,7 @@ one repository runner (one job at a time), labelled `self-hosted`, its OS and ar
 label, running as the machine's normal user under its runner folder (`~/je-runner`, `C:\je-runner`) as
 a service that starts with the machine (macOS: with the user's login) and reconnects after sleep.
 `tools/ci/self-hosted/` installs it (`install-runner.sh`, `install-runner.ps1`, `windows-tools.ps1`).
+With Namespace on for an OS (below), its jobs are Namespace's and no overflow runner takes them.
 
 **Hosted first.** `changes` routes a job (`tools/ci/plan_lanes.py` `route`; `ci.yml` reads
 `runs_on.<job>`, the hosted label when it is missing) to an overflow runner only when all of these hold:
@@ -1492,47 +1640,6 @@ a service that starts with the machine (macOS: with the user's login) and reconn
 
 The `changes` job's summary and `lanes.json` (`routing`) say where each job went and why.
 
-**The paid tier: Blacksmith.** After GitHub's runners and the user's machines, a Linux or macOS job may
-go to Blacksmith, whose GitHub App is installed on the organization; its runner groups already allow
-public repositories. Its jobs do not count toward GitHub's 60 concurrent jobs, so Linux there frees
-hosted slots for the queue's macOS jobs. Linux goes first: GitHub's cap fills with Linux jobs.
-
-| OS | Label | Like | Price |
-|---|---|---|---|
-| Linux | `blacksmith-4vcpu-ubuntu-2404` | `ubuntu-latest` (4 vCPU) | $0.008 a minute |
-| macOS | `blacksmith-6vcpu-macos-26` | an M4, macOS 26, Xcode 26.6 selected | $0.08 a minute |
-
-Windows has no tier. The plan (`tools/ci/plan_lanes.py` `BLACKSMITH`) routes a job there only when
-all of these hold:
-
-- it is a job of the merge queue or a push to `main` (`BLACKSMITH_EVENTS`: the critical path; a pull
-  request never pays);
-- it is a first attempt, or a rerun the watchdog did not hold (as above);
-- the runner state is fresh and says the hosted runners of its OS are saturated, with at least
-  `BLACKSMITH_MIN_QUEUED` jobs of that OS waiting (Linux 10, macOS 3);
-- no machine of the user's takes it (busy, offline, unfit, disabled, or past what it takes of one
-  plan);
-- the state does not have it paused.
-
-- **Kill switch**: `gh variable set BLACKSMITH_OVERFLOW --body off` stops it from the next run on;
-  `gh variable delete BLACKSMITH_OVERFLOW` lets it run again.
-- **Spend limit**: $20 a month, set in the Blacksmith dashboard. Past it Blacksmith takes no job. A
-  job queued 10 min on a Blacksmith label gets its run cancelled and rerun on GitHub's runners (the
-  state's `hosted_only`, as for a lost runner), and the dispatcher pauses the tier for 6 h
-  (`blacksmith.ok` false in the state, said in the plan's routing notes), so the next runs do not
-  wait there either.
-- **Safety**: the same routing rules as the self-hosted tier (never a fork's pull request, the state
-  from `ci-runner-state`), and `free-disk` does nothing on a self-hosted-environment runner, which a
-  Blacksmith VM is. A Blacksmith VM runs none of the machines' hooks. What keeps a fork's own
-  `ci.yml` from asking for its label is GitHub's approval of every outside contributor's run, and the
-  spend limit.
-- **Caches**: a Blacksmith VM restores no GitHub cache entry (its `actions/cache` is its own store,
-  inferred from "Cache not found"), so its builds are cold until a push to `main` there saves one.
-  Only a `je-*` machine keeps a ccache of its own.
-- **Measured**: the `macos` lane took 43.4 min there, about $3.47 (run 45229221354, cold). The Linux
-  lane took 57.2 min, about $0.46 (run 45248117157, cold: no cache entry; the image pulled in 9 s).
-- **Testing it**: `gh workflow run ci.yml --ref <branch> -f self_hosted='linux=blacksmith-4vcpu-ubuntu-2404 macos=blacksmith-6vcpu-macos-26'`.
-
 **The planner overflows too.** `changes` cannot route itself, and on 2026-11-23 it waited up to an
 hour for a hosted Linux runner (79 Linux jobs queued, the oldest for 4 h), so no plan ran at all. The
 dispatcher sets the repository variable `SELF_HOSTED_PLANNER` to `je-linux` while hosted Linux is
@@ -1555,17 +1662,26 @@ runs, and force-pushes the state to `ci-runner-state` as one parentless commit. 
 touches a run it did not route): a job queued 10 min for a runner that is offline or gone, or running
 on one offline for 3 min, or failed because its runner went away ("lost communication", "shutdown
 signal", read as soon as the job ends), gets its run cancelled and, once stopped, rerun whole (`gh run rerun`): the rerun plans on
-GitHub's runners only. A merge-queue run is cancelled and its pull request put back in the queue (the
-queue removed the group, so a rerun would build nothing); a pull request's run that a newer push
-superseded is not rerun.
+GitHub's runners only. A pull request's run that a newer push superseded is not rerun.
+
+**A merge-queue run is cancelled only when its job cannot finish.** A cancel fails its `Check`: the
+queue removes the pull request, and every group behind it restarts (run 45310250691, #153's group:
+about 2 h lost for a job that would have waited). So the dispatcher cancels a queue run only:
+
+- when one of its jobs already failed because its runner went away (the group is red anyway);
+- or when a job has been queued for a runner gone 30 min (`QUEUE_OFFLINE_LIMIT`), not 10.
+
+It does not cancel one for a runner that went offline mid-job, since GitHub fails that job itself
+and the first case follows. It never cancels one for an idle runner, a busy planner or anything that
+only makes it wait. After such a cancel the pull request goes back to the front of the queue
+(`enqueuePullRequest` with `jump: true`, unless it is queued already): a rerun of a removed group
+builds nothing.
 
 **Re-routing a waiting job.** A plan routes once, so a job queued on a hosted label stays there even
 when an overflow runner becomes idle. When a trusted run's job has waited 15 min
 (`IDLE_REROUTE_WAIT`) for a hosted runner while an overflow runner that would take it (`OVERFLOW`) is
 online, idle, fit and not disabled, the dispatcher cancels the run and reruns it, so its plan routes
-it there; the merge queue's runs first, one run per idle runner a minute. A merge-queue run's pull
-request goes back to the front of the queue (`enqueuePullRequest` with `jump: true`): it was building
-there. The runs moved off a runner that went away are listed in the state's `hosted_only` for a day,
+it there, one run per idle runner a minute. Never a merge-queue run's (above). The runs moved off a runner that went away are listed in the state's `hosted_only` for a day,
 and their reruns plan hosted only. Each run gets at most one reroute of each kind, and none for an idle
 runner after one for a lost runner: never a loop. All of it shares the limit of 6 actions an hour, each
 logged to the host's `je-runner-dispatch.log`. With no state for 5 min (the host, `gh` or the cron is down) every
@@ -1600,6 +1716,58 @@ runs only those jobs' lanes, those jobs on those runners whatever the state says
   reroutes.
 - Jobs build with `JOBS` (and on Linux `CPUS`) from the runner's `.env`, under the machine's cores, so
   the user's own work stays usable.
+
+### Namespace runners
+
+[Namespace](https://namespace.so) gives the project Linux, Windows and macOS runners. They are off
+unless the repository variable `NAMESPACE_RUNNERS` says otherwise:
+
+- **On**: `gh variable set NAMESPACE_RUNNERS --body on` (every OS), or the OSes it takes
+  (`--body 'linux macos'`). **Off**: `gh variable set NAMESPACE_RUNNERS --body off`, or delete it. A run
+  reads it as it is created; a run already planned keeps its runners. Unset or `off`, every job's
+  `runs-on` is the GitHub-hosted label it always was (`tools/ci/test_plan_lanes.py` `Namespace`).
+- **Where jobs run**: on a first attempt (and any rerun the watchdog did not make), `changes` gives each
+  job of those OSes a Namespace machine, labelled in the workflow, so no dashboard profile is needed:
+  `nscloud-ubuntu-24.04-amd64-<vCPU>x<GB>`, `nscloud-windows-2022-amd64-...`, `nscloud-macos-tahoe-arm64-...`.
+  The shapes are in `tools/ci/plan_lanes.py` `NAMESPACE_SHAPES`: 16x32 for `linux`, `unit` and
+  `asan-core`, 16x64 for `asan-editor`, 8x16 for `htmlui` and `web`, 8x32 for `smoke` and `android`, 4x16
+  for each MCP shard, 4x8 for `lint` and `changes`; 16x32 for the Windows editor and OpenGL legs, 8x16 for
+  the other legs; 12x28 for `macos` and 6x14 for `ios`. The disk comes with the shape (32 GB plus 8 GB per
+  vCPU or per 2 GB of memory, whichever is more), and `free-disk` does nothing there, so each Linux shape
+  holds its job's measured use (Job setup). Namespace queues a job past the plan's concurrency limit
+  (Business: Linux 160 vCPU, Windows 80, macOS 48), so a larger shape costs parallelism, not failures. A
+  fork's pull request stays on GitHub's runners. `Check`, `report` and the housekeeping jobs always do,
+  so a Namespace outage cannot hold the required status. An overflow runner takes no job that is on
+  Namespace, and the dispatcher counts none of them as GitHub's.
+- **Caches**: each Linux lane and `macos` has its own cache volume (tag `jasperengine-<lane>`, 20 GB).
+  Namespace forks it for each job and commits it only from `main`'s jobs
+  (`nscloud-cache-allow-commit-from-main`): the push to `main` and the advisory run write it, pull
+  requests and the queue read it, as with the Actions cache. ccache lives there (`ccache-restore`: Linux
+  binds `build/.cache/ccache` onto it with `namespacelabs/nscloud-cache-action`, macOS points `CCACHE_DIR`
+  into it), and `ccache-save` trims it and cuts it to the lane's cap as before, uploading nothing. The
+  Linux volumes also hold the Docker images (`nscloud-container-image-cache`), and `android`'s holds the
+  Gradle caches. The second editor unit part commits nothing: the first one trims both parts' objects.
+  Windows (Namespace's docs name no cache volume there), `ios` (the nightly's Xcode cache entry) and
+  `lint` keep the Actions cache.
+- **When Namespace is down**: `tools/ci/runner_dispatch.py` calls an OS down when one of its Namespace
+  jobs has waited 10 min (`NAMESPACE_DOWN_WAIT`) while none of that OS runs there: an outage, the app
+  uninstalled, or a plan not enabled. A full concurrency limit is not down, since jobs are running. The
+  verdict lasts until a job runs there, or 30 min (`NAMESPACE_HOLD`) after it was last seen, after which
+  plans try Namespace again. While it lasts:
+  - plans put that OS's jobs on GitHub's runners (`lanes.json` `routing`: `namespace <os>: GitHub's
+    runners`);
+  - `SELF_HOSTED_PLANNER` is `ubuntu-latest`, so new runs plan there;
+  - the watchdog cancels a run waiting on Namespace and reruns it on GitHub's runners (the state's
+    `hosted_only`). A merge-queue run is cancelled only after 30 min (`QUEUE_OFFLINE_LIMIT`), and its pull
+    request goes back to the front of the queue.
+
+  Without the dispatcher (its host down), nothing falls back by itself. Switch the variable off, then
+  cancel the waiting runs and start new ones (a push, a dispatch, a re-enqueue), which plan on GitHub's
+  runners.
+- **Testing it**: `gh workflow run ci.yml --ref <branch> -f self_hosted='linux=namespace windows-engine-d3d11=namespace macos=namespace'`
+  runs only those jobs' lanes, with those jobs on Namespace whatever the variable says (with it on, the
+  planner and the lanes' other jobs too). Each job's "Set up job" step names its runner, and
+  `ccache-restore` logs `the Namespace cache volume at <path>`.
 
 ### Measured lane times
 

@@ -42,6 +42,8 @@ namespace jasperengine::editor{
         bool showIK              = false;
         bool showRootMotion      = false;
         bool showFootTrails      = false;
+        // the selected Animator's Mesh Space Rotation bones (docs/specs/mesh-space-rotation.md R30)
+        bool showTorsoDirection  = false;
         // S41 R21, in a 2D scene whose main camera has a Pixel Perfect Camera: the wheel in whole
         // pixel steps, the art-pixel grid from 6x, the snapped drawables, moves on whole pixels
         bool pixelZoom           = true;
@@ -52,9 +54,13 @@ namespace jasperengine::editor{
         NavOverlaySettings navigation;
         // the terrain overlay (T1 R65; terrain/TerrainOverlay.h)
         TerrainOverlaySettings terrainOverlay;
-        // the Draw Mode (spec S54 R11) and the Stats overlay of the Scene view
+        // the Draw Mode (spec S54 R11) and the Stats overlay of the Scene view, and the channel
+        // the Vertex Color mode shows (V1 R102)
         ViewDrawMode drawMode = ViewDrawMode::SHADED;
+        ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB;
         bool showStats = false;
+        // Frame Checks (S99 R9): the view's findings listed at its corner, refreshed twice a second
+        bool frameChecks = false;
     };
 
 }

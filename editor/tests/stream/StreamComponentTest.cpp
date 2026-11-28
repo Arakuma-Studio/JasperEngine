@@ -74,6 +74,10 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "particles/ParticleEffectCodec.h"
 #include "reflect/Reflect.h"
 #include "component/ActionComponent.h"
@@ -161,6 +165,19 @@ STABLE(FogComponent, FogComponent, component.type = FogType::EXPONENTIAL; compon
 STABLE(MirrorComponent, MirrorComponent, )
 STABLE(ReflectionProbeComponent, ReflectionProbeComponent, )
 STABLE(UIDocumentComponent, UIDocumentComponent, )
+// S92 R18: a texture-mode document's own MSAA samples
+TEST(StreamComponent, UIDocumentMsaaSamplesRoundTrip){
+    UIDocumentComponent component{};
+    EXPECT_FALSE(reflect::encodeValue(ComponentType::UIDocumentComponent, &component)["msaaSamples"]) << "0 is not written";
+    component.renderMode = UIDocumentRenderMode::TEXTURE;
+    component.msaaSamples = 2;
+    const YAML::Node node = reflect::encodeValue(ComponentType::UIDocumentComponent, &component);
+    EXPECT_EQ(node["msaaSamples"].as<int>(), 2);
+    EXPECT_EQ(reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, node).msaaSamples, 2);
+    // a document saved before it
+    EXPECT_EQ(reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, YAML::Load("renderMode: texture\n")).msaaSamples, 0);
+    EXPECT_NO_ENGINE_ERRORS();
+}
 STABLE(CameraComponent, CameraComponent,
     component.type = CameraType::CAMERA_PERSPECTIVE; component.target = Vector3(0, 1, -5); component.cullingMask = 0x5u;
     component.transparencyMode = TransparencyMode::ORDER_INDEPENDENT; component.oitWeightScale = 0.5f)
@@ -219,8 +236,18 @@ STABLE(WaterVolumeComponent, WaterVolumeComponent, component.infinite = true; co
 STABLE(WaterExcluderComponent, WaterExcluderComponent, component.shape = WaterExcluderShape::SPHERE; component.center = Vector3(0.0f, 0.5f, 1.0f);
     component.size = Vector3(2.0f, 1.0f, 6.0f); component.enabled = false)
 STABLE(WaterWakeComponent, WaterWakeComponent, component.foam = 1.5f; component.waves = 0.25f; component.width = 2.0f; component.length = 7.0f)
+STABLE(SimulationCullingComponent, SimulationCullingComponent, component.simulationDistance = 80.0f; component.reducedRateDistance = 30.0f;
+    component.reducedUpdateInterval = 6; component.cullPhysics = false; component.simulateWhenVisible = false)
+STABLE(DialogueRunnerComponent, DialogueRunnerComponent, component.dialogue = "dialogue/guard.dialogue"; component.startEntry = "greet";
+    component.autoStart = true; component.seed = 42)
 STABLE(BuoyancyComponent, BuoyancyComponent, component.columns = BuoyancyColumns::CUSTOM;
     component.customPoints = {Vector3(-1.0f, 0.0f, -1.0f), Vector3(1.0f, 0.0f, 1.0f)}; component.volumeScale = 0.8f)
+// S96 vehicles: the nested spring and friction curves, the drivetrain's lists
+STABLE(WheelColliderComponent, WheelColliderComponent, component.radius = 0.35f; component.suspensionSpring.spring = 50000.0f;
+    component.sidewaysFriction.stiffness = 1.3f; component.driveTransform = false; component.center = Vector3(0.0f, 0.1f, 0.0f))
+STABLE(VehicleDrivetrainComponent, VehicleDrivetrainComponent, component.transmission = VehicleTransmissionMode::MANUAL;
+    component.gearRatios = {3.0f, 2.0f}; component.differentials.push_back(VehicleDifferential{5, 6, 4.0f, 0.5f, 1.4f, 1.0f});
+    component.antiRollBars.push_back(VehicleAntiRollBar{5, 6, 2000.0f}); component.maxTorque = 300.0f)
 #undef STABLE
 
 // The fields added after the S08 base (S11's photometric light, terrain hex tiling, the 64-bit
@@ -244,6 +271,26 @@ TEST(StreamComponent, LightPhotometricFieldsRoundTrip){
     EXPECT_EQ(decoded.intensityUnit, LightUnit::CANDELA);
     EXPECT_TRUE(decoded.useColorTemperature);
     EXPECT_FLOAT_EQ(decoded.colorTemperature, 2700.0f);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// text-entry-gamepad-cursor-back-button R32: Is Menu and Gamepad Cursor are additive (OmitIfDefault):
+// an old document saves without them, set ones round-trip
+TEST(StreamComponent, UIDocumentMenuAndCursorRoundTrip){
+    UIDocumentComponent document{};
+    document.filename = "ui/menu.html";
+    const YAML::Node plain = reflect::encodeValue(ComponentType::UIDocumentComponent, &document);
+    EXPECT_FALSE(plain["isMenu"]) << "default: omitted";
+    EXPECT_FALSE(plain["gamepadCursor"]);
+    const UIDocumentComponent old = reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, plain);
+    EXPECT_FALSE(old.isMenu);
+    EXPECT_FALSE(old.gamepadCursor);
+
+    document.isMenu = true;
+    document.gamepadCursor = true;
+    const UIDocumentComponent decoded = streamComponentRoundTrip(ComponentType::UIDocumentComponent, document);
+    EXPECT_TRUE(decoded.isMenu);
+    EXPECT_TRUE(decoded.gamepadCursor);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -397,15 +444,6 @@ TEST(StreamComponent, ActionStartOffsetRoundTripsAndOmitsDefaults){
     EXPECT_FLOAT_EQ(old.startOffset, 0.0f);
     EXPECT_FALSE(old.randomStart);
 
-    // exported code: only when set
-    const reflect::ComponentDesc& desc = *reflect::find(ComponentType::ActionComponent);
-    reflect::CodegenContext ctx;
-    ctx.variable = "action";
-    EXPECT_EQ(reflect::cppAssignments(desc, &plain, ctx).find("startOffset"), std::string::npos);
-    const std::string code = reflect::cppAssignments(desc, &set, ctx);
-    EXPECT_NE(code.find("action.startOffset = 0.35"), std::string::npos) << code;
-    EXPECT_NE(code.find("action.randomStart = true"), std::string::npos) << code;
-    EXPECT_EQ(code.find("phase"), std::string::npos) << code;
     EXPECT_NO_ENGINE_ERRORS();
 }
 

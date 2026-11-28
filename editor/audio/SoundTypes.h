@@ -113,6 +113,9 @@ namespace jasperengine::editor::SoundTypes {
     // the true peak a gain suggestion leaves room for
     inline constexpr double HEADROOM_DBTP = -1.0;
     inline constexpr double PHASE_CORRELATION_MIN = -0.3;
+    // stereo.side_mid_db at or below which a stereo file is near-mono: its side energy at most 1.6 %
+    // of its mid's, so the mean of its channels loses under 0.07 dB (Force To Mono's Auto)
+    inline constexpr double MONO_SIDE_MID_DB = -18.0;
 
     // -- measured_kind, the first rule that matches
 

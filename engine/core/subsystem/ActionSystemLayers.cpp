@@ -189,9 +189,205 @@ namespace {
         return value / reference;
     }
 
+    // ---- Mesh Space Rotation (docs/specs/mesh-space-rotation.md R5-R7, R16) ----
+
+    // the layer runs the pass when it has a mask: an Override layer above 0 with the option on
+    bool layerRunsMeshSpace(size_t layer, const anim::LayerRuntime& runtime){
+        return layer > 0 && runtime.meshSpaceRotation && runtime.blend == AnimationLayerBlend::Override;
+    }
+
+    // The bones an earlier table gave a Rotation slot of their own (boundary bones no clip
+    // rotates) back at their rest, once, as their slot goes: nothing writes them after that, so
+    // they would keep the pass's last rotation
+    void restoreMeshSpaceSlots(Scene* scene, const anim::PlayerPoseScratch& scratch){
+        for (size_t s = scratch.boundSlots; s < scratch.slots.size(); s++){
+            const anim::PoseSlot& slot = scratch.slots[s];
+            if (slot.channel != ClipChannel::Rotation || !slot.rest || !scene->isEntityCreated(slot.target)) continue;
+            if (Transform* transform = scene->findComponent<Transform>(slot.target)){
+                transform->rotation = slot.rest->rotation;
+                transform->needUpdate = true;
+            }
+        }
+    }
+
+    // every Mesh Space vector released, and the Rotation slots an earlier table added gone (their
+    // bones at their rest)
+    void releaseMeshSpaceTable(Scene* scene, anim::PlayerPoseScratch& scratch){
+        restoreMeshSpaceSlots(scene, scratch);
+        uint32_t end = (uint32_t)scratch.elements.size();
+        for (size_t s = scratch.boundSlots; s < scratch.slots.size(); s++) end = std::min(end, scratch.slots[s].first);
+        scratch.slots.resize(std::min<size_t>(scratch.slots.size(), scratch.boundSlots));
+        scratch.elements.resize(end);
+        scratch.elementSlot.resize(end);
+        std::vector<anim::PoseMeshNode>().swap(scratch.meshNodes);
+        std::vector<std::vector<uint16_t>>().swap(scratch.meshBoundary);
+        std::vector<anim::PoseMeshSum>().swap(scratch.meshSums);
+        std::vector<Quaternion>().swap(scratch.meshBelow);
+        std::vector<Quaternion>().swap(scratch.meshRig);
+        std::vector<std::pair<Entity, Entity>>().swap(scratch.meshParents);
+        scratch.meshSerial++;
+    }
+
+    // every bone of the table's rig still under the Transform parent it was built with
+    bool meshSpaceHierarchyHolds(Scene* scene, const anim::PlayerPoseScratch& scratch){
+        for (const std::pair<Entity, Entity>& bone : scratch.meshParents){
+            if (!scene->isEntityCreated(bone.first) || parentOf(scene, bone.first) != bone.second) return false;
+        }
+        return true;
+    }
+
+    // The node table on the scratch's slot table for `masks` (per layer: the mask it runs the pass
+    // with and its bindMaskPaths entities; null: no pass). The rig is anim::playerRig over every
+    // GameObject a transform slot animates; each layer's boundary bones come from
+    // anim::playerMaskBoundaryBones there (the editor's line shares both); the nodes
+    // are those and their ancestors, with a Rotation slot added (its rest taken now) for one that
+    // no binding rotates. Nothing is kept when no layer has a boundary bone.
+    void buildMeshSpaceTable(Scene* scene, Entity root, anim::PlayerPoseScratch& scratch,
+                             const std::vector<std::pair<const anim::AvatarMaskDef*, const std::vector<Entity>*>>& masks,
+                             const anim::HumanoidSlots* humanoid, anim::RestMap& rest){
+        releaseMeshSpaceTable(scene, scratch);
+        std::unordered_map<Entity, uint32_t> rotationSlot;
+        std::vector<Entity> animated;
+        for (uint32_t s = 0; s < scratch.slots.size(); s++){
+            const anim::PoseSlot& slot = scratch.slots[s];
+            if (slot.channel != ClipChannel::Position && slot.channel != ClipChannel::Rotation && slot.channel != ClipChannel::Scale) continue;
+            if (slot.channel == ClipChannel::Rotation) rotationSlot.emplace(slot.target, s);
+            animated.push_back(slot.target);
+        }
+        const anim::PlayerRig rig = anim::playerRig(scene, root, animated);
+        const std::vector<Entity>& bones = rig.bones;
+        const std::vector<int>& parents = rig.parents;
+        scratch.meshParents.reserve(bones.size());
+        for (Entity bone : bones) scratch.meshParents.push_back({bone, parentOf(scene, bone)});
+
+        std::vector<std::vector<uint16_t>> boundary(masks.size());
+        std::vector<bool> needed(bones.size(), false);
+        bool any = false;
+        for (size_t l = 0; l < masks.size(); l++){
+            if (!masks[l].first) continue;
+            anim::playerMaskBoundaryBones(*masks[l].first, scene, root, rig, *masks[l].second, humanoid, boundary[l]);
+            for (uint16_t b : boundary[l]){
+                for (int a = (int)b; a >= 0 && !needed[(size_t)a]; a = parents[(size_t)a]) needed[(size_t)a] = true;
+            }
+            any = any || !boundary[l].empty();
+        }
+        if (!any) return;
+
+        std::vector<int> nodeOf(bones.size(), -1);
+        for (size_t b = 0; b < bones.size(); b++){
+            if (!needed[b]) continue;
+            const Entity entity = bones[b];
+            anim::PoseMeshNode node;
+            node.parent = parents[b] >= 0 ? nodeOf[(size_t)parents[b]] : -1;
+            const auto found = rotationSlot.find(entity);
+            if (found != rotationSlot.end()){
+                node.element = scratch.slots[found->second].first;
+            }else{
+                anim::PoseSlot slot;
+                slot.target = entity;
+                slot.channel = ClipChannel::Rotation;
+                slot.first = (uint32_t)scratch.elements.size();
+                slot.width = 1;
+                slot.rest = &rest[entity];
+                scratch.elementSlot.push_back((uint32_t)scratch.slots.size());
+                scratch.slots.push_back(slot);
+                scratch.elements.push_back(anim::PoseElement());
+                node.element = slot.first;
+            }
+            playerdetail::completeRest(scene, entity, rest[entity], ClipChannel::Rotation);
+            nodeOf[b] = (int)scratch.meshNodes.size();
+            scratch.meshNodes.push_back(node);
+        }
+        scratch.meshBoundary.assign(masks.size(), std::vector<uint16_t>());
+        for (size_t l = 0; l < masks.size(); l++){
+            for (uint16_t b : boundary[l]) scratch.meshBoundary[l].push_back((uint16_t)nodeOf[b]);
+        }
+        scratch.meshSums.assign(scratch.meshNodes.size(), anim::PoseMeshSum());
+        scratch.meshBelow.assign(scratch.meshNodes.size(), Quaternion());
+        scratch.meshRig.assign(scratch.meshNodes.size(), Quaternion());
+        // the pass writes boundary elements no layer wrote: the lists hold every element
+        scratch.touched.reserve(scratch.elements.size());
+        scratch.covered.reserve(scratch.elements.size());
+        scratch.written.reserve(scratch.elements.size());
+    }
+
+    // One state's sources on the table: per node, the rotation track (else the humanoid output)
+    // of its bindings there, and the state's mask weight there (`weightOf(GameObject)`)
+    template<class WeightOf>
+    void buildMeshSpaceSources(const anim::PlayerPoseScratch& scratch, const anim::ClipBindings& bindings, const std::vector<uint32_t>& trackSlots,
+                               const std::vector<uint32_t>& humanoidSlots, WeightOf weightOf, std::vector<anim::PoseMeshSource>& out){
+        out.assign(scratch.meshNodes.size(), anim::PoseMeshSource());
+        auto nodeOf = [&](uint32_t slotIndex){
+            if (slotIndex == NO_SLOT) return -1;
+            for (size_t n = 0; n < scratch.meshNodes.size(); n++){
+                if (scratch.meshNodes[n].element == scratch.slots[slotIndex].first) return (int)n;
+            }
+            return -1;
+        };
+        const std::vector<AnimationClip::Track>& tracks = bindings.clip->getTracks();
+        for (size_t i = 0; i < tracks.size() && i < trackSlots.size(); i++){
+            if (tracks[i].channel != ClipChannel::Rotation) continue;
+            const int n = nodeOf(trackSlots[i]);
+            if (n >= 0 && out[(size_t)n].track < 0) out[(size_t)n].track = (int32_t)i;
+        }
+        if (bindings.humanoid && humanoidSlots.size() == bindings.humanoid->outputs.size()){
+            for (size_t o = 0; o < humanoidSlots.size(); o++){
+                if (bindings.humanoid->outputs[o].channel != ClipChannel::Rotation) continue;
+                const int n = nodeOf(humanoidSlots[o]);
+                if (n >= 0 && out[(size_t)n].output < 0) out[(size_t)n].output = (int32_t)o;
+            }
+        }
+        for (size_t n = 0; n < scratch.meshNodes.size(); n++){
+            out[n].mask = weightOf(scratch.slots[scratch.elementSlot[scratch.meshNodes[n].element]].target);
+        }
+    }
+
+    // a node's local rotation in the pose so far: its result, else its rest (w x y z)
+    void meshSpaceLocal(const anim::PlayerPoseScratch& scratch, const anim::PoseMeshNode& node, float* out){
+        const anim::PoseElement& e = scratch.elements[node.element];
+        if (e.hasResult){
+            for (int k = 0; k < 4; k++) out[k] = e.result[k];
+        }else{
+            restOf(scratch.slots[scratch.elementSlot[node.element]], 0, out);
+        }
+    }
+
+    // a state's rotation at every node into the layer's own sums, whatever its mask (the layer
+    // clip's hips under a mask from the spine): its track, its humanoid output, else the rest
+    void accumulateMeshSpace(anim::PlayerPoseScratch& scratch, const anim::PoseStateInput& state, anim::TrackSample& sample){
+        const std::vector<AnimationClip::Track>& tracks = state.clip->getTracks();
+        anim::ClipBindings& bindings = *state.bindings;
+        for (size_t n = 0; n < scratch.meshNodes.size(); n++){
+            const anim::PoseMeshSource& source = state.meshSources[n];
+            const anim::PoseSlot& slot = scratch.slots[scratch.elementSlot[scratch.meshNodes[n].element]];
+            float q[4];
+            restOf(slot, 0, q);
+            if (source.track >= 0){
+                const AnimationClip::Track& track = tracks[(size_t)source.track];
+                if (anim::sampleTrack(track, state.time, sample, &bindings.cursors[(size_t)source.track], state.stepFps)){
+                    setQuat(q, track.relative ? slot.rest->rotation * sample.rotation : sample.rotation);
+                }
+            }else if (source.output >= 0 && state.humanoidSlots){
+                // the state's humanoid pass sampled it: a live output on a node is never occluded
+                const anim::HumanoidOutput& output = bindings.humanoid->outputs[(size_t)source.output];
+                if (anim::isLive(*bindings.humanoid, output)) setQuat(q, output.rotation);
+            }
+            anim::PoseMeshSum& m = scratch.meshSums[n];
+            if (!m.hasRef){
+                m.hasRef = true;
+                for (int k = 0; k < 4; k++) m.ref[k] = q[k];
+            }else if (dot4(m.ref, q) < 0.0f){
+                for (int k = 0; k < 4; k++) q[k] = -q[k];
+            }
+            for (int k = 0; k < 4; k++) m.sum[k] += q[k] * state.weight;
+            m.masked += state.weight * source.mask;
+        }
+    }
+
 }
 
 void playerdetail::buildPoseSlots(Scene* scene, anim::PlayerPoseScratch& scratch, const std::vector<PoseSlotSource>& sources, anim::RestMap& rest){
+    restoreMeshSpaceSlots(scene, scratch);
     scratch.slots.clear();
     scratch.elementSlot.clear();
     scratch.touched.clear();
@@ -306,6 +502,7 @@ void playerdetail::buildPoseSlots(Scene* scene, anim::PlayerPoseScratch& scratch
     scratch.touched.reserve(elements);
     scratch.covered.reserve(elements);
     scratch.written.reserve(elements);
+    scratch.boundSlots = (uint32_t)scratch.slots.size();
     scratch.dirty = false;
 }
 
@@ -400,12 +597,62 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
         for (anim::LayerRuntime& layer : runtime.layers) layer.maskEntitiesValid = false;
     }
 
+    // a hierarchy change that moved a bone of the Mesh Space Rotation table's rig while the
+    // bindings still resolve (a humanoid's bone, a reparent that keeps the paths): the masks'
+    // entries are bound again, which rebuilds the table below
+    const uint64_t hierarchy = scene->hierarchyRevision();
+    if (runtime.meshSpaceStamp.size() > 2 && runtime.meshSpaceStamp[2] != hierarchy){
+        if (meshSpaceHierarchyHolds(scene, runtime.scratch)){
+            runtime.meshSpaceStamp[2] = hierarchy;
+        }else{
+            for (anim::LayerRuntime& layer : runtime.layers) layer.maskEntitiesValid = false;
+        }
+    }
+
     // the masks' transform entries on the root (with the bindings)
     for (anim::LayerRuntime& layer : runtime.layers){
         if (layer.mask && !layer.maskEntitiesValid){
             layer.maskEntities = anim::bindMaskPaths(*layer.mask, scene, entity);
             layer.maskEntitiesValid = true;
             layer.maskEntitiesSerial++;
+        }
+    }
+
+    // Mesh Space Rotation's node table (R16), again when the slots, the humanoid rig, the
+    // hierarchy under its rig or a mask of a layer that runs the pass changed; nothing while no
+    // layer does
+    {
+        std::vector<uint64_t>& stamp = runtime.meshSpaceStamp;
+        bool any = false;
+        for (size_t l = 0; l < runtime.layers.size(); l++) any = any || (layerRunsMeshSpace(l, runtime.layers[l]) && runtime.layers[l].mask);
+        if (!any){
+            if (!stamp.empty()){
+                releaseMeshSpaceTable(scene, runtime.scratch);
+                std::vector<uint64_t>().swap(stamp);
+            }
+        }else{
+            const size_t size = 3 + 2 * runtime.layers.size();
+            bool same = stamp.size() == size && stamp[0] == runtime.scratchSerial && stamp[1] == runtime.humanoidRevision && stamp[2] == hierarchy;
+            for (size_t l = 0; same && l < runtime.layers.size(); l++){
+                const anim::LayerRuntime& layer = runtime.layers[l];
+                const bool runs = layerRunsMeshSpace(l, layer) && layer.mask;
+                same = stamp[3 + 2 * l] == (runs ? (uint64_t)(uintptr_t)layer.mask.get() : 0) && stamp[4 + 2 * l] == (runs ? layer.maskEntitiesSerial : 0);
+            }
+            if (!same){
+                stamp.assign(size, 0);
+                stamp[0] = runtime.scratchSerial;
+                stamp[1] = runtime.humanoidRevision;
+                stamp[2] = hierarchy;
+                std::vector<std::pair<const anim::AvatarMaskDef*, const std::vector<Entity>*>> masks(runtime.layers.size(), {nullptr, nullptr});
+                for (size_t l = 0; l < runtime.layers.size(); l++){
+                    const anim::LayerRuntime& layer = runtime.layers[l];
+                    if (!(layerRunsMeshSpace(l, layer) && layer.mask)) continue;
+                    masks[l] = {layer.mask.get(), &layer.maskEntities};
+                    stamp[3 + 2 * l] = (uint64_t)(uintptr_t)layer.mask.get();
+                    stamp[4 + 2 * l] = layer.maskEntitiesSerial;
+                }
+                buildMeshSpaceTable(scene, entity, runtime.scratch, masks, runtime.humanoid.get(), runtime.rest);
+            }
         }
     }
 
@@ -423,11 +670,15 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
         stamp.bindings = runtime.scratchSerial;
         stamp.mixing = state.mixingRevision;
         stamp.humanoid = runtime.humanoidRevision;
+        const std::vector<std::vector<uint16_t>>& meshBoundary = runtime.scratch.meshBoundary;
+        stamp.meshSpace = (size_t)layerIndex < meshBoundary.size() && !meshBoundary[(size_t)layerIndex].empty() ? runtime.scratch.meshSerial : 0;
         stamp.valid = true;
         const anim::PlayerStateRuntime::MaskStamp& old = state.maskStamp;
         if (!(old.valid && old.mask == stamp.mask && old.maskEntities == stamp.maskEntities && old.layer == stamp.layer &&
-              old.bindings == stamp.bindings && old.mixing == stamp.mixing && old.humanoid == stamp.humanoid)){
+              old.bindings == stamp.bindings && old.mixing == stamp.mixing && old.humanoid == stamp.humanoid && old.meshSpace == stamp.meshSpace)){
             state.maskStamp = stamp;
+            // a layer that runs the pass has a mask: its sources are computed with the track mask
+            if (!stamp.meshSpace) std::vector<anim::PoseMeshSource>().swap(state.meshSources);
             if (!mask && state.mixing.empty()){
                 state.trackMask.clear();
                 state.humanoidMask.clear();
@@ -469,6 +720,9 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
                     for (const anim::HumanoidOutput& output : state.bindings.humanoid->outputs){
                         state.humanoidMask.push_back(weightOf(output.entity));
                     }
+                }
+                if (stamp.meshSpace){
+                    buildMeshSpaceSources(runtime.scratch, state.bindings, state.trackSlots, state.humanoidSlots, weightOf, state.meshSources);
                 }
             }
         }
@@ -535,6 +789,7 @@ void ActionSystem::evaluateLayeredPlayer(Entity entity, AnimationPlayerComponent
             input.discreteWarned = &state.discreteAdditiveWarned;
             input.humanoidReference = state.humanoidReference.size() == outputs ? state.humanoidReference.data() : nullptr;
         }
+        if (!state.meshSources.empty() && state.meshSources.size() == scratch.meshNodes.size()) input.meshSources = state.meshSources.data();
         scratch.stateInputs.push_back(input);
     }
     composePlayerLayers(scratch, nullptr);
@@ -590,10 +845,20 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
         }
     }
 
+    // Mesh Space Rotation (R16) reads the pose at its nodes below a layer and after it: no layer
+    // above leaves them unsampled
+    for (const anim::PoseMeshNode& node : scratch.meshNodes) scratch.elements[node.element].occluder = -1;
+
     for (size_t l = 0; l < scratch.layerInputs.size(); l++){
         const anim::PoseLayerInput& layer = scratch.layerInputs[l];
         if (layer.skip) continue;
         const bool additive = l > 0 && layer.blend == AnimationLayerBlend::Additive;
+        const bool meshSpace = l < scratch.meshBoundary.size() && !scratch.meshBoundary[l].empty() && !additive;
+        // the states' total weight in the layer's own rotations at the nodes (0: the pass has nothing to do)
+        float meshWeight = 0.0f;
+        if (meshSpace){
+            for (anim::PoseMeshSum& m : scratch.meshSums) m = anim::PoseMeshSum();
+        }
 
         // 1. the layer's states into its sums
         for (const anim::PoseStateInput& state : scratch.stateInputs){
@@ -778,6 +1043,24 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 *state.referenceWarned = true;
                 Log::warn("Animation Player: additive clip with a scale of 0 at its additive_reference: those components add nothing");
             }
+            if (meshSpace && state.meshSources && state.weight > 0.0f){
+                accumulateMeshSpace(scratch, state, sample);
+                meshWeight += state.weight;
+            }
+        }
+
+        // R6.1: the rig rotations at the nodes up to the last boundary bone, below the layer (the
+        // results so far) and of the layer's own pose, before its blend
+        const size_t meshEnd = meshSpace && meshWeight > 0.0f ? (size_t)scratch.meshBoundary[l].back() + 1 : 0;
+        for (size_t n = 0; n < meshEnd; n++){
+            const anim::PoseMeshNode& node = scratch.meshNodes[n];
+            float local[4], own[4];
+            meshSpaceLocal(scratch, node, local);
+            normalizeOr(scratch.meshSums[n].sum, local, own);
+            const Quaternion below = getQuat(local);
+            const Quaternion layerOwn = getQuat(own);
+            scratch.meshBelow[n] = node.parent >= 0 ? scratch.meshBelow[(size_t)node.parent] * below : below;
+            scratch.meshRig[n] = node.parent >= 0 ? scratch.meshRig[(size_t)node.parent] * layerOwn : layerOwn;
         }
 
         // 2. compose the layer's elements into R (raw floats: no Quaternion temporaries here)
@@ -860,6 +1143,30 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
             if (!hadResult) scratch.written.push_back(index);
         }
         scratch.touched.clear();
+
+        // R6.3: each boundary bone, parents first, turned to the rig rotation the blend gives it
+        // (belowRig toward layerRig by λ·min(1, S), S its masked weight) under its parent as
+        // blended and corrected; meshBelow becomes the corrected pose's rig rotations as it goes
+        const std::vector<uint16_t>* boundary = meshEnd > 0 ? &scratch.meshBoundary[l] : nullptr;
+        size_t next = 0;
+        for (size_t n = 0; n < meshEnd; n++){
+            const anim::PoseMeshNode& node = scratch.meshNodes[n];
+            float local[4];
+            meshSpaceLocal(scratch, node, local);
+            Quaternion q = getQuat(local);
+            if (next < boundary->size() && (size_t)(*boundary)[next] == n){
+                next++;
+                const float weight = lambda * std::min(1.0f, scratch.meshSums[n].masked);
+                q = anim::poseMeshSpaceLocal(scratch.meshBelow[(size_t)node.parent], scratch.meshBelow[n], scratch.meshRig[n], weight);
+                anim::PoseElement& e = scratch.elements[node.element];
+                setQuat(e.result, q);
+                if (!e.hasResult){
+                    e.hasResult = true;
+                    scratch.written.push_back(node.element);
+                }
+            }
+            scratch.meshBelow[n] = node.parent >= 0 ? scratch.meshBelow[(size_t)node.parent] * q : q;
+        }
     }
 
     for (uint32_t index : scratch.covered){
@@ -1020,6 +1327,7 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
     session.humanoidSlots.assign(states.size(), std::vector<uint32_t>());
     session.humanoidMasks.assign(states.size(), std::vector<float>());
     session.humanoidReferences.assign(states.size(), std::vector<anim::HumanoidOutput>());
+    session.meshSources.assign(states.size(), std::vector<anim::PoseMeshSource>());
     std::vector<playerdetail::PoseSlotSource> sources;
     for (size_t i = 0; i < states.size(); i++){
         sources.push_back({&bindings[states[i].bindings], &session.trackSlots[i], &session.humanoidSlots[i]});
@@ -1030,6 +1338,16 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
     for (size_t l = 0; l < layerCount; l++){
         if (masks[l]) maskEntities[l] = anim::bindMaskPaths(*masks[l], scene, root);
     }
+    // Mesh Space Rotation (R16) on the layers that run it, as the player does
+    std::vector<std::pair<const anim::AvatarMaskDef*, const std::vector<Entity>*>> meshMasks(layerCount, {nullptr, nullptr});
+    bool meshSpace = false;
+    for (size_t l = 1; l < preview.layers.size(); l++){
+        if (!preview.layers[l].meshSpaceRotation || scratch.layerInputs[l].blend != AnimationLayerBlend::Override || !masks[l]) continue;
+        meshMasks[l] = {masks[l].get(), &maskEntities[l]};
+        meshSpace = true;
+    }
+    if (meshSpace) buildMeshSpaceTable(scene, root, scratch, meshMasks, session.humanoid.get(), session.rest);
+    else releaseMeshSpaceTable(scene, scratch);
     scratch.stateInputs.clear();
     for (size_t i = 0; i < states.size(); i++){
         const LayeredPreviewState& state = states[i];
@@ -1048,6 +1366,12 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
                 session.humanoidMasks[i].push_back(anim::maskWeightOf(*masks[layer], scene, root, binding.humanoid->outputs[o].entity, maskEntities[layer], session.humanoid.get()).weight);
             }
         }
+        if (layer < scratch.meshBoundary.size() && !scratch.meshBoundary[layer].empty()){
+            auto weightOf = [&](Entity target){
+                return anim::maskWeightOf(*masks[layer], scene, root, target, maskEntities[layer], session.humanoid.get()).weight;
+            };
+            buildMeshSpaceSources(scratch, binding, session.trackSlots[i], session.humanoidSlots[i], weightOf, session.meshSources[i]);
+        }
         anim::PoseStateInput input;
         input.clip = binding.clip.get();
         input.bindings = &binding;
@@ -1060,6 +1384,7 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
             input.humanoidSlots = session.humanoidSlots[i].data();
             input.humanoidMask = session.humanoidMasks[i].size() == outputs ? session.humanoidMasks[i].data() : nullptr;
         }
+        if (!session.meshSources[i].empty()) input.meshSources = session.meshSources[i].data();
         if (layer > 0 && scratch.layerInputs[layer].blend == AnimationLayerBlend::Additive){
             anim::sampleClipTracks(*binding.clip, binding.clip->getAdditiveReference(), session.references[i]);
             input.reference = session.references[i].data();

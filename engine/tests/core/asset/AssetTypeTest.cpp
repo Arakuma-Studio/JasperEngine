@@ -38,6 +38,19 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
     EXPECT_EQ(assetTypeFromName("title_art"), AssetType::TitleArt);
     EXPECT_EQ(assetTypeFromName("sound_event"), AssetType::SoundEvent);
     EXPECT_EQ(static_cast<int>(AssetType::TitleArt), 34) << "the numbers are a file format: append only";
+    EXPECT_EQ(static_cast<int>(AssetType::Mesh), 35) << "the numbers are a file format: append only";
+    EXPECT_EQ(assetTypeFromName("mesh"), AssetType::Mesh);
+    EXPECT_EQ(assetTypeFromName("ies_profile"), AssetType::IesProfile);
+    EXPECT_EQ(static_cast<int>(AssetType::IesProfile), 36) << "the numbers are a file format: append only";
+    EXPECT_EQ(static_cast<int>(AssetType::StringTable), 37) << "the numbers are a file format: append only";
+    EXPECT_EQ(assetTypeFromName("stringtable"), AssetType::StringTable);
+    EXPECT_EQ(static_cast<int>(AssetType::Dialogue), 38) << "the numbers are a file format: append only";
+    EXPECT_EQ(assetTypeFromName("dialogue"), AssetType::Dialogue);
+    EXPECT_EQ(assetTypeFromName("data_asset"), AssetType::DataAsset);
+    EXPECT_EQ(static_cast<int>(AssetType::DataAsset), 39) << "the numbers are a file format: append only";
+    EXPECT_EQ(static_cast<int>(AssetType::VertexColors), 40) << "the numbers are a file format: append only";
+    EXPECT_EQ(static_cast<int>(AssetType::FogProfile), 41) << "the numbers are a file format: append only";
+    EXPECT_EQ(assetTypeFromName("fog_profile"), AssetType::FogProfile);
     EXPECT_EQ(assetTypeFromName("nothing"), AssetType::Unknown);
 }
 

@@ -13,7 +13,7 @@
 
 namespace jasperengine {
 
-    enum FileErrors{
+    enum FileErrors : int {
         FILEDATA_OK       = 0,
         INVALID_PARAMETER = 1,
         FILE_NOT_FOUND    = 2,

@@ -5,6 +5,7 @@
 
 #include "render/CapsuleShadows.h"
 
+#include "GizmoBatch.h"
 #include "SceneDisplaySettings.h"
 #include "spline/SplineTypes.h"
 #include "ToolsLayer.h"
@@ -42,32 +43,6 @@ namespace jasperengine::editor{
     // bottom-right, then the far ones): near to far with fullFrustum, else compact (2 units deep in
     // perspective, half the view's larger side in orthographic, never past the far plane)
     std::array<Vector3, 8> cameraGizmoCorners(const CameraComponent& camera, bool fullFrustum);
-
-    struct CameraObjects{
-        Sprite* icon = nullptr;
-        LineRenderer* lines = nullptr;
-
-        CameraType type = CameraType::CAMERA_UI;
-        bool isMainCamera = false;
-        // drawn near to far (a selected camera), else compact
-        bool fullFrustum = false;
-        float yfov = 0;
-        float aspect = 0;
-        float nearClip = 0;
-        float farClip = 0;
-        float leftClip = 0;
-        float rightClip = 0;
-        float bottomClip = 0;
-        float topClip = 0;
-    };
-
-    struct SoundObjects{
-        Sprite* icon = nullptr;
-    };
-
-    struct Light2DObjects{
-        Sprite* icon = nullptr;
-    };
 
     class Project;
     class PoseViewport;
@@ -150,6 +125,11 @@ namespace jasperengine::editor{
         // an end that fromWorld snaps to a bone axis does not drift the other end
         std::vector<CapsuleShadowShape> capsuleDragBase;
 
+        // Area Light size handle sub-selection (S99 R38): a Rectangle's width (0) and height (1)
+        // handles, a Disc's radius (0)
+        Entity selectedAreaHandleEntity = 0;  // NULL_ENTITY
+        int selectedAreaHandleIndex = -1;
+
         // world position of vertex pointIndex of the selected entity's Polygon/MeshPolygon
         // points (nullptr list / bad index -> false)
         bool getPolygonPointWorld(Entity entity, bool isMesh, int pointIndex, Vector3& worldPoint);
@@ -223,6 +203,8 @@ namespace jasperengine::editor{
         float targetBillboardScale(Scene* target, const Vector3& worldPos, float logicalScale) const;
         static OBB transformAABBPreservingShear(const Matrix4& modelMatrix, const AABB& localAABB);
         void updateTerrainBrushCursor();
+        // the active Scene-view tool's decal (SceneTool::decal), depth tested in this scene
+        void updateSceneToolDecal();
         float snapRotationAngle(float angle, bool invertRotationSnap) const;
         static Vector3 getMatrixScale(const Matrix4& matrix);
         static bool isCorner2DGizmoSide(Gizmo2DSideSelected side);
@@ -252,9 +234,10 @@ namespace jasperengine::editor{
     private:
 
         // --- lattices: cages, point gizmo and drag (editor/lattice/LatticeSceneRender.cpp) ---
+        // one cage's lines; every cage draws through the two batches below
         struct LatticeCageLines{
-            LineRenderer* overlay = nullptr; // tools scene: over the geometry (faded where hidden in 3D)
-            LineRenderer* depth = nullptr;   // this scene: depth tested, at full colour (3D views)
+            GizmoLineList overlay; // tools scene: over the geometry (faded where hidden in 3D)
+            GizmoLineList depth;   // this scene: depth tested, at full colour (3D views)
             // what an unselected cage was last built from: its lines do not depend on the camera,
             // so they are rebuilt only when one of these changes (many cages, Show all lattices)
             bool cached = false;
@@ -267,6 +250,8 @@ namespace jasperengine::editor{
         std::vector<Vector3> latticeRestScratch;
         std::vector<Vector3> latticeWorldScratch;
         std::map<Entity, LatticeCageLines> latticeCages;
+        GizmoLineBatch latticeCageOverlay{true};
+        GizmoLineBatch latticeCageDepth;
         LineRenderer* latticeFalloffLines = nullptr;
         // the project scene this view shows, found on first use (selections are per scene)
         uint32_t latticeSceneId = 0;
@@ -294,6 +279,7 @@ namespace jasperengine::editor{
         bool getLatticePointsPivot(Entity entity, const std::vector<int>& points, Vector3& pivot, Quaternion& rotation, OBB& obb);
         void updateLatticeCages(const std::vector<Entity>& selEntities, const std::vector<Entity>& entities, Entity editedLattice);
         void drawLatticeCage(LatticeCageLines& lines, Entity entity, bool selected, bool editable);
+        void appendLatticeCage(const LatticeCageLines& lines, bool depthTested);
         void drawLatticeFalloff(Entity entity, bool visible);
         void hideLatticeCages();
         void destroyLatticeCages();
@@ -346,27 +332,31 @@ namespace jasperengine::editor{
         // selection outline of boxes: their near face (2D views), or all twelve edges
         static void fillSelectionLines(LineRenderer* lines, const std::vector<OBB>& obbs, bool boxes);
 
-        // fullFrustum: near to far (a selected camera, as Unity draws it), else a compact gizmo
-        void updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum);
-        void drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum);
-        void setupCameraIcon(CameraObjects& co);
-        void setupSoundIcon(SoundObjects& so);
-        void setupLight2DIcon(Light2DObjects& lo);
+        // fullFrustum: near to far (a selected camera, as Unity draws it), else a compact gizmo;
+        // toWorld places the camera's space
+        void drawCameraFrustumLines(GizmoLineBatch& lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum,
+                                    const Matrix4& toWorld);
+
+        // A batch's collected gizmos to its renderer, made in the system pool the first time it
+        // draws anything (in this scene, marked as an editor overlay, or in the tools layer)
+        void flushGizmos(GizmoLineBatch& batch);
+        void flushGizmos(GizmoIconBatch& batch);
+        // a batch whose renderer its scene destroyed (Stop) is forgotten (the next flush makes one)
+        void dropGoneGizmos(GizmoLineBatch& batch, const RenderSystem& render);
+        void dropGoneGizmos(GizmoIconBatch& batch, const RenderSystem& render);
+        void deleteGizmos(GizmoLineBatch& batch, const RenderSystem& render);
+        void deleteGizmos(GizmoIconBatch& batch, const RenderSystem& render);
+        void deleteGizmos(GizmoLineBatch& batch);
 
         float overlayPx(float logicalPixels) const { return logicalPixels * overlayScale; }
-        void ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity);
 
-        // the wire of a selected version 2 Particle System's Shape module (particles spec 6.8):
-        // `entity` noted in `current`; the wires of systems not in it are dropped by
-        // dropParticleShapeLines after the entity loop
-        void updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current);
-        void dropParticleShapeLines(const std::set<Entity>& current);
-        std::map<Entity, LineRenderer*> particleShapeLines;
+        // the wire of a selected version 2 Particle System's Shape module (particles spec 6.8),
+        // into particleShapeLines (begun and flushed around the subclasses' entity loop)
+        void updateParticleShapeLines(Entity entity, bool selected);
+        GizmoLineBatch particleShapeLines;
 
-        // Hides the icons and lines of one GameObject inactive in hierarchy (Unity draws no
-        // gizmos for those; the icon picker refuses them too); called after its update
-        virtual void hideEntityGizmos(Entity entity);
-        // the GameObject is active in hierarchy (cheap when the scene has no inactive ones)
+        // the GameObject is active in hierarchy (cheap when the scene has no inactive ones):
+        // Unity draws no gizmos for an inactive one (the icon picker refuses them too)
         bool gizmoActive(Entity entity) const;
 
         // Marks an editor gizmo or icon created in the scene it annotates: only the
@@ -436,6 +426,9 @@ namespace jasperengine::editor{
 
         LineRenderer* selLines;
         LineRenderer* terrainBrushLines;
+        // made on the first decal a tool draws, so a scene without one pays nothing
+        LineRenderer* sceneToolLines = nullptr;
+        uint64_t sceneToolLinesRevision = 0;
         // Physics Placement: region, contacts, teleport ring, ghosts, proxies, distance rays
         LineRenderer* physicsLines;
 
@@ -752,6 +745,19 @@ namespace jasperengine::editor{
         // other stays), the radius handle sets the radius to its distance from the segment
         bool capsulesWithHandleAt(Entity entity, int index, const Vector3& world, const std::vector<CapsuleShadowShape>& base,
                                   std::vector<CapsuleShadowShape>& capsules);
+
+        // Area Light size handles (the Move tool drags them, S99 R38): a Rectangle's right edge
+        // (Width) and top edge (Height), a Disc's edge (Radius), in the light's plane
+        int getSelectedAreaHandleIndex() const { return selectedAreaHandleIndex; }
+        Entity getSelectedAreaHandleEntity() const { return selectedAreaHandleEntity; }
+        void selectAreaHandle(Entity entity, int index);
+        void clearAreaHandleSelection();
+        int areaHandleCount(Entity entity);
+        int hitTestAreaHandle(Entity entity, float x, float y);
+        OBB getAreaHandleOBB(Entity entity, int index);
+        bool getAreaHandleWorld(Entity entity, int index, Vector3& worldPoint);
+        // the property handle `index` drags and its value with the handle at `world` (false: none)
+        bool areaSizeWithHandleAt(Entity entity, int index, const Vector3& world, std::string& property, float& value);
     };
 
 }

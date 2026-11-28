@@ -1,0 +1,44 @@
+{
+ "fixture": "paint/gradient-hard-px-stops.html",
+ "viewport": [
+  340,
+  170
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "b1",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 144,
+    "h": 60
+   },
+   {
+    "id": "b2",
+    "tag": "div",
+    "x": 170,
+    "y": 10,
+    "w": 140,
+    "h": 56
+   },
+   {
+    "id": "b3",
+    "tag": "div",
+    "x": 10,
+    "y": 90,
+    "w": 156,
+    "h": 76
+   },
+   {
+    "id": "b4",
+    "tag": "div",
+    "x": 180,
+    "y": 90,
+    "w": 150,
+    "h": 70
+   }
+  ]
+ }
+}

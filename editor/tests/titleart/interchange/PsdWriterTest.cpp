@@ -173,8 +173,9 @@ namespace {
         fs::remove_all(dir);
     }
 
-    void psdWriterRoundTrip(int bps) {
-        const PsdWriteDocument doc = psdWriterDocument(bps);
+    void psdWriterRoundTrip(int bps, bool psb = false) {
+        PsdWriteDocument doc = psdWriterDocument(bps);
+        doc.psb = psb;
         std::vector<uint8_t> bytes, again;
         std::string error;
         ASSERT_TRUE(writePsd(doc, bytes, error)) << error;
@@ -182,7 +183,7 @@ namespace {
         EXPECT_EQ(bytes, again) << "the same document gives the same bytes";
         PsdFile file;
         ASSERT_TRUE(readPsd(bytes.data(), bytes.size(), file, error)) << error;
-        EXPECT_EQ(file.version, 1);
+        EXPECT_EQ(file.version, psb ? 2 : 1);
         EXPECT_EQ(file.width, W);
         EXPECT_EQ(file.depth, bps * 8);
         EXPECT_EQ(file.mode, 3);
@@ -248,6 +249,37 @@ TEST(PsdWriter, RoundTrip8) {
 
 TEST(PsdWriter, RoundTrip16) {
     psdWriterRoundTrip(2);
+}
+
+// S94 F48: the same document as a PSB (8-byte lengths, 4-byte row counts) reads back the same
+TEST(PsdWriter, RoundTripPsb8) {
+    psdWriterRoundTrip(1, true);
+}
+
+TEST(PsdWriter, RoundTripPsb16) {
+    psdWriterRoundTrip(2, true);
+}
+
+TEST(PsdWriter, PsbIsLargerThanAPsdAndNeverSpooled) {
+    PsdWriteDocument doc;
+    doc.psb = true;
+    doc.width = PSD_MAX_SIDE + 1;
+    doc.height = 1;
+    std::vector<uint8_t> bytes;
+    std::string error;
+    ASSERT_TRUE(writePsd(doc, bytes, error)) << error;
+    PsdFile file;
+    ASSERT_TRUE(readPsd(bytes.data(), bytes.size(), file, error)) << error;
+    EXPECT_EQ(file.version, 2);
+    EXPECT_EQ(file.width, PSD_MAX_SIDE + 1);
+    doc.width = PSB_MAX_SIDE + 1;
+    EXPECT_FALSE(writePsd(doc, bytes, error));
+    EXPECT_EQ(error.rfind("psd_too_large", 0), 0u) << error;
+    doc = psdWriterDocument(1);
+    doc.psb = true;
+    doc.mergedSpooled = true;
+    EXPECT_FALSE(writePsd(doc, bytes, error));
+    EXPECT_EQ(error.rfind("psb_spooled", 0), 0u) << error;
 }
 
 TEST(PsdWriter, TransparentColourIsZero) {
@@ -331,6 +363,15 @@ TEST(PsdWriter, PsdReadAccepts) {
         const fs::path good = dir / ("good" + std::to_string(bps * 8) + ".psd");
         std::ofstream(good, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
         EXPECT_EQ(std::system((python + " -I \"" + script + "\" --check --icc \"" + good.string() + "\"").c_str()), 0) << bps * 8 << "-bit";
+        {
+            PsdWriteDocument large = psdWriterDocument(bps);
+            large.psb = true;
+            std::vector<uint8_t> psbBytes;
+            ASSERT_TRUE(writePsd(large, psbBytes, error)) << error;
+            const fs::path psbFile = dir / ("good" + std::to_string(bps * 8) + ".psb");
+            std::ofstream(psbFile, std::ios::binary).write(reinterpret_cast<const char*>(psbBytes.data()), (std::streamsize)psbBytes.size());
+            EXPECT_EQ(std::system((python + " -I \"" + script + "\" --check --icc \"" + psbFile.string() + "\"").c_str()), 0) << bps * 8 << "-bit PSB";
+        }
         // the layer and mask section's length, 4 bytes past the header, colour mode data and resources
         size_t at = 26;
         at += 4 + ((size_t)bytes[at] << 24 | (size_t)bytes[at + 1] << 16 | (size_t)bytes[at + 2] << 8 | bytes[at + 3]);

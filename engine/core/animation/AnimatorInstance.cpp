@@ -4,6 +4,7 @@
 #include "AnimatorInstance.h"
 #include "animation/AvatarMaskWeights.h"
 
+#include "Log.h"
 #include "Scene.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimatorIK.h"
@@ -25,30 +26,14 @@ namespace{
 
     constexpr int kMaxDepth = 16;
     constexpr double kMaxLaps = 1000.0;
-    constexpr float kPi = 3.14159265358979323846f;
     // Foot IK's contact for the debug readouts: the animated ankle within this of its planted
     // height (footHeight above the rig's floor), the height its lift is measured from
     constexpr float kFootContactLift = 0.02f;
-
-    float wrapAngle(float a){
-        while (a > kPi) a -= 2.0f * kPi;
-        while (a <= -kPi) a += 2.0f * kPi;
-        return a;
-    }
-
-    float yawOf(const Quaternion& q){
-        const Vector3 f = q * Vector3(0, 0, 1);
-        return std::atan2(f.x, f.z);
-    }
 
     // a rotation by `yaw` radians about +y applied to v
     Vector3 rotateYaw(const Vector3& v, float yaw){
         const float c = std::cos(yaw), s = std::sin(yaw);
         return Vector3(c * v.x + s * v.z, v.y, -s * v.x + c * v.z);
-    }
-
-    Quaternion yawRotation(float yaw){
-        return Quaternion(std::cos(0.5f * yaw), 0.0f, std::sin(0.5f * yaw), 0.0f);
     }
 
     double fract(double t){
@@ -383,6 +368,18 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
         }
     }
 
+    // Mesh Space Rotation's boundary bones (D2): where the mask starts, and where it stops right
+    // under that (the one rule the Animation Player and the editor share); a body-part mask's
+    // body starts at the avatar's hips
+    for (size_t l = 0; l < layers.size(); l++){
+        AnimatorLayerRun& run = layers[l];
+        run.boundaryBones.clear();
+        if (l == 0 || !run.masked) continue;
+        const AvatarMaskDef* mask = l < masks.size() ? masks[l].get() : nullptr;
+        const int hips = mask && mask->usesHumanoid() && humanoid.valid ? humanoid.slotBones[(size_t)pose::HumanBone::Hips] : -1;
+        maskBoundaryBones(run.mask.data(), rig.parents.data(), boneCount, hips, run.boundaryBones);
+    }
+
     // bones written to their entities
     writeMask.assign(boneCount, component.writeBones == AnimatorWriteBones::All);
     if (component.writeBones == AnimatorWriteBones::Exposed){
@@ -435,6 +432,7 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
     }
 
     bound = true;
+    updateMeshSpace();
     for (size_t s = 0; s < clips.size(); s++){
         clips[s].bound = false;
         if (clips[s].clip) bindClip(s, component);
@@ -504,9 +502,35 @@ void anim::AnimatorInstance::bindClip(size_t index, const AnimatorComponent& com
         slot.rootParent = chain;
         slot.rootParentInverse = chain.inverse();
         slot.rootParentRotation = rotation;
-        Quaternion start;
-        rootSample(slot, 0.0f, slot.rootStart, start);
-        slot.rootStartYaw = yawOf(start);
+        // Based Upon Body Orientation / Center Of Mass / Feet: a humanoid whose body moves with
+        // the root bone (its slots under it), else Original
+        slot.rootBody = false;
+        if (rootMotionNeedsBody(slot.rootMotion)){
+            HumanBodyPoints rest;
+            bodyPoints(rig.rest, rest);
+            bool under = rest.usable();
+            for (size_t s = 0; under && s < (size_t)pose::HUMAN_BONE_COUNT; s++){
+                if (!rest.has.test(s)) continue;
+                int b = humanoid.slotBones[s];
+                while (b >= 0 && b != slot.rootBone) b = rig.parents[(size_t)b];
+                under = b == slot.rootBone;
+            }
+            slot.rootBody = under;
+            if (!under && warnOnce("root_motion_body:" + slot.path)){
+                Log::warn("Animator: %s: root motion Based Upon Body Orientation / Center Of Mass / Feet needs a humanoid rig under its root "
+                          "bone; it plays as Original", slot.path.c_str());
+            }
+        }
+        slot.rootFrame = RootMotionFrame();
+        const RootBasisSample start = rootBasisAt(slot, 0.0f);
+        if (slot.rootBody){
+            HumanBodyPoints rest, first;
+            bodyPoints(rig.rest, rest);
+            bodyPoints(basisPose, first);   // rootBasisAt(0) left time 0's pose there
+            slot.rootFrame = rootMotionFrame(slot.rootMotion, start, &first, &rest);
+        }else{
+            slot.rootFrame = rootMotionFrame(slot.rootMotion, start, nullptr, nullptr);
+        }
         rootPoint(slot, 0.0f, slot.lapStart, slot.lapStartHeading);
         rootPoint(slot, slot.length(), slot.lapEnd, slot.lapEndHeading);
     }
@@ -664,6 +688,102 @@ float anim::AnimatorInstance::getLayerWeight(int layer) const{
 
 int anim::AnimatorInstance::getLayerIndex(const std::string& name) const{
     return controller ? controller->findLayer(name) : -1;
+}
+
+// ---------------------------------------------------------------- Mesh Space Rotation
+
+bool anim::AnimatorInstance::layerMeshSpaceRotation(int layer) const{
+    if (layer < 0 || (size_t)layer >= layers.size()) return false;
+    const int8_t runtime = layers[(size_t)layer].meshSpaceOverride;
+    if (runtime >= 0) return runtime != 0;
+    return controller && (size_t)layer < controller->layers.size() && controller->layers[(size_t)layer].meshSpaceRotation;
+}
+
+void anim::AnimatorInstance::setLayerMeshSpaceRotation(int layer, bool enabled){
+    if (layer < 0 || (size_t)layer >= layers.size()) return;
+    layers[(size_t)layer].meshSpaceOverride = enabled ? 1 : 0;
+    updateMeshSpace();
+}
+
+bool anim::AnimatorInstance::layerMeshSpaceApplies(int layer) const{
+    // D5: layer 0 has nothing below it, an Additive layer adds deltas
+    if (layer <= 0 || (size_t)layer >= layers.size() || !controller || (size_t)layer >= controller->layers.size()) return false;
+    return controller->layers[(size_t)layer].blending == AnimatorLayerBlending::Override && layerMeshSpaceRotation(layer) &&
+           !layers[(size_t)layer].boundaryBones.empty();
+}
+
+const std::vector<uint16_t>& anim::AnimatorInstance::layerBoundaryBones(int layer) const{
+    static const std::vector<uint16_t> none;
+    if (layer < 0 || (size_t)layer >= layers.size()) return none;
+    return layers[(size_t)layer].boundaryBones;
+}
+
+void anim::AnimatorInstance::setMeshSpaceDebug(bool debug){
+    meshSpaceDebugOn = debug;
+    updateMeshSpace();
+}
+
+const std::vector<Quaternion>* anim::AnimatorInstance::layerMeshSpaceUnpassed(int layer) const{
+    if (layer < 0 || (size_t)layer >= layers.size()) return nullptr;
+    const AnimatorLayerRun& run = layers[(size_t)layer];
+    return evaluations > 0 && run.meshSpaceRecordedAt == evaluations ? &run.meshSpaceUnpassed : nullptr;
+}
+
+size_t anim::AnimatorInstance::meshSpaceScratchBytes() const{
+    return (meshSpaceBelow.capacity() + meshSpaceLayer.capacity()) * sizeof(Quaternion);
+}
+
+const anim::Pose& anim::AnimatorInstance::layerOutput(int layer) const{
+    if (layer < 0 || (size_t)layer >= layers.size()) return rig.rest;
+    return layers[(size_t)layer].output;
+}
+
+int anim::AnimatorInstance::humanoidSlotOf(int bone) const{
+    if (!humanoid.valid || bone < 0) return -1;
+    for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
+        if (humanoid.slotBones[(size_t)s] == bone) return s;
+    }
+    return -1;
+}
+
+// R21, R22: the scratch exists only while some layer runs the pass; sized here (bind, the
+// setters: the main thread), never in an update
+void anim::AnimatorInstance::updateMeshSpace(){
+    bool any = false;
+    for (size_t l = 0; l < layers.size(); l++){
+        AnimatorLayerRun& run = layers[l];
+        run.meshSpaceActive = bound && layerMeshSpaceApplies((int)l);
+        any = any || run.meshSpaceActive;
+        run.meshSpaceRecordedAt = 0;
+        if (meshSpaceDebugOn && run.meshSpaceActive) run.meshSpaceUnpassed.assign(run.boundaryBones.size(), Quaternion());
+        else std::vector<Quaternion>().swap(run.meshSpaceUnpassed);
+    }
+    if (any){
+        meshSpaceBelow.assign(rig.bones.size(), Quaternion());
+        meshSpaceLayer.assign(rig.bones.size(), Quaternion());
+    }else{
+        std::vector<Quaternion>().swap(meshSpaceBelow);
+        std::vector<Quaternion>().swap(meshSpaceLayer);
+    }
+}
+
+// R6: the rig rotations under the layer and of the layer's own pose (its hips included, the mask
+// notwithstanding) before the blend, the blend unchanged, then the boundary bones turned back to
+// the rotation relative to the rig that the blend gives them
+void anim::AnimatorInstance::blendMeshSpace(AnimatorLayerRun& run, const float* mask, const float* channelMask){
+    const int* parents = rig.parents.data();
+    const size_t count = (size_t)run.boundaryBones.back() + 1;
+    poseRigRotations(finalPose, parents, count, meshSpaceBelow.data());
+    poseRigRotations(run.output, parents, count, meshSpaceLayer.data());
+    poseBlend(finalPose, finalPose, run.output, run.weight, mask, channelMask);
+    if (meshSpaceDebugOn && run.meshSpaceUnpassed.size() == run.boundaryBones.size()){
+        // spaceRotation is free until runIK fills it after the combine
+        poseRigRotations(finalPose, parents, count, spaceRotation.data());
+        for (size_t i = 0; i < run.boundaryBones.size(); i++) run.meshSpaceUnpassed[i] = spaceRotation[run.boundaryBones[i]];
+        run.meshSpaceRecordedAt = evaluations;
+    }
+    poseMeshSpaceRotation(finalPose, parents, run.boundaryBones.data(), run.boundaryBones.size(), mask, run.weight,
+                          meshSpaceBelow.data(), meshSpaceLayer.data());
 }
 
 size_t anim::AnimatorInstance::montageClipSlot(const AnimatorAssetRef& ref){
@@ -1272,16 +1392,50 @@ bool anim::AnimatorInstance::rootSample(const AnimatorClipSlot& slot, float clip
     return true;
 }
 
-void anim::AnimatorInstance::rootPoint(const AnimatorClipSlot& slot, float clipTime, Vector3& p, float& h) const{
-    const ClipRootMotion& rm = slot.rootMotion;
+void anim::AnimatorInstance::bodyPoints(const Pose& pose, HumanBodyPoints& out) const{
+    out = HumanBodyPoints();
+    if (!humanoid.valid || pose.boneCount() != rig.bones.size()) return;
+    int chain[kMaxDepth * 4];
+    for (size_t s = 0; s < (size_t)pose::HUMAN_BONE_COUNT; s++){
+        const int bone = humanoid.slotBones[s];
+        if (bone < 0) continue;
+        int depth = 0;
+        for (int b = bone; b >= 0 && depth < kMaxDepth * 4; b = rig.parents[(size_t)b]) chain[depth++] = b;
+        Affine world;
+        for (int i = depth - 1; i >= 0; i--){
+            const size_t b = (size_t)chain[i];
+            world = world * Affine::compose(pose.position(b), pose.rotation(b), pose.scale(b));
+        }
+        out.set(pose::boneAt((int)s), world.translation());
+    }
+}
+
+RootBasisSample anim::AnimatorInstance::rootBasisAt(const AnimatorClipSlot& slot, float clipTime) const{
+    Vector3 p;
     Quaternion q;
     rootSample(slot, clipTime, p, q);
-    h = rm.bakeRotation ? 0.0f : wrapAngle(yawOf(q) - slot.rootStartYaw);
-    if (rm.bakePositionY) p.y = slot.rootStart.y;
-    if (rm.bakePositionXZ){
-        p.x = slot.rootStart.x;
-        p.z = slot.rootStart.z;
+    if (!slot.rootBody) return rootBasis(slot.rootMotion, p, q, nullptr);
+    // the whole pose at clipTime, for the body's slots
+    basisPose.copyFrom(rig.rest);
+    if (slot.retargeted){
+        HumanoidSample sample;
+        slot.retarget.sample(*slot.clip, clipTime, nullptr, false, sample);
+        pose::HumanPose realised;
+        std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extraLocal;
+        std::bitset<pose::HUMAN_EXTRA_BONE_COUNT> extraLive;
+        realiseHumanoid(*humanoid.avatar, sample, false, false, realised, extraLocal, &extraLive);
+        writeRealised(humanoid, realised, extraLocal, extraLive, sample.hasHips, slot.retarget.slots.any(), basisPose);
+    }else{
+        basisCursors.resize(slot.binding.groups.size());
+        sampleClip(slot.binding, rig, clipTime, basisCursors, basisPose);
     }
+    HumanBodyPoints body;
+    bodyPoints(basisPose, body);
+    return rootBasis(slot.rootMotion, p, q, &body);
+}
+
+void anim::AnimatorInstance::rootPoint(const AnimatorClipSlot& slot, float clipTime, Vector3& p, float& h) const{
+    rootMotionPoint(slot.rootMotion, slot.rootFrame, rootBasisAt(slot, clipTime), p, h);
 }
 
 void anim::AnimatorInstance::rootDelta(const AnimatorClipSlot& slot, double from, double to, bool loops, bool pingPong,
@@ -1304,7 +1458,8 @@ void anim::AnimatorInstance::rootDelta(const AnimatorClipSlot& slot, double from
         }
         sampleAt(a, p0, h0);
         sampleAt(b, p1, h1);
-        delta = rotateYaw(p1 - p0, -h0);
+        // the motion turns with the pose (Body Orientation, Offset)
+        delta = rotateYaw(rotateYaw(p1 - p0, -h0), slot.rootFrame.turn);
         yaw = h1 - h0;
         return;
     }
@@ -1327,27 +1482,24 @@ void anim::AnimatorInstance::rootDelta(const AnimatorClipSlot& slot, double from
     sampleAt(t0, p0, h0);
     sampleAt(t1, p1, h1);
     const Vector3 inner = sum + rotateYaw(p1 - start, (float)n * turn) - (p0 - start);
-    delta = rotateYaw(inner, -h0);
+    delta = rotateYaw(rotateYaw(inner, -h0), slot.rootFrame.turn);
     yaw = (float)n * turn + h1 - h0;
 }
 
 void anim::AnimatorInstance::removeRootMotion(const AnimatorClipSlot& slot, Pose& out) const{
     if (slot.rootBone < 0) return;
-    const ClipRootMotion& rm = slot.rootMotion;
     const size_t b = (size_t)slot.rootBone;
     Vector3 p = slot.rootParent.transformPoint(out.position(b));
     Quaternion q = slot.rootParentRotation * out.rotation(b);
-    if (!rm.bakeRotation){
-        const float h = wrapAngle(yawOf(q) - slot.rootStartYaw);
-        const Quaternion unturn = yawRotation(-h);
-        q = unturn * q;
-        p = slot.rootStart + rotateYaw(p - slot.rootStart, -h);
+    RootBasisSample now;
+    if (slot.rootBody){
+        HumanBodyPoints body;
+        bodyPoints(out, body);
+        now = rootBasis(slot.rootMotion, p, q, &body);
+    }else{
+        now = rootBasis(slot.rootMotion, p, q, nullptr);
     }
-    if (!rm.bakePositionXZ){
-        p.x = slot.rootStart.x;
-        p.z = slot.rootStart.z;
-    }
-    if (!rm.bakePositionY) p.y = slot.rootStart.y;
+    anim::removeRootMotion(slot.rootMotion, slot.rootFrame, now, p, q);
     out.setPosition(b, slot.rootParentInverse.transformPoint(p));
     out.setRotation(b, (slot.rootParentRotation.inverse() * q).normalized());
 }
@@ -1571,7 +1723,7 @@ void anim::AnimatorInstance::sampleSlot(size_t index, float clipTime, Pose& out,
     // S48 Pose Frame Rate: held poses, the root bone's translation smooth
     sampleClip(slot.binding, rig, clipTime, slot.cursors, out, component.poseFrameRate, slot.rootBone);
     if (slot.retargeted) sampleHumanoid(slot, clipTime, out, mirror, footIK, slot.retargetCursors.data(), component.poseFrameRate);
-    if (component.applyRootMotion) removeRootMotion(slot, out);
+    if (removesRootMotion(slot, component)) removeRootMotion(slot, out);
     if (!additive) return;
     const uint8_t flags = (uint8_t)((mirror ? 1 : 0) | (footIK ? 2 : 0));
     if (!slot.hasReference || slot.referenceKind != reference || (reference == AdditiveReference::Time && slot.referenceTime != referenceTime) ||
@@ -1584,7 +1736,7 @@ void anim::AnimatorInstance::sampleSlot(size_t index, float clipTime, Pose& out,
                            : 0.0f;
             sampleClip(slot.binding, rig, at, slot.cursors, slot.reference);
             if (slot.retargeted) sampleHumanoid(slot, at, slot.reference, mirror, footIK, nullptr);
-            if (component.applyRootMotion) removeRootMotion(slot, slot.reference);
+            if (removesRootMotion(slot, component)) removeRootMotion(slot, slot.reference);
         }
         slot.hasReference = true;
         slot.referenceKind = reference;
@@ -1745,6 +1897,9 @@ void anim::AnimatorInstance::update(const AnimatorComponent& component, const An
             const float* channelMask = run.masked ? run.channelMask.data() : nullptr;
             if (controller->layers[l].blending == AnimatorLayerBlending::Additive){
                 poseAdditive(finalPose, finalPose, run.output, run.weight, mask, channelMask);
+            }else if (run.meshSpaceActive && !meshSpaceBypassed){
+                // before the next layer blends: it sees the corrected pose (R9)
+                blendMeshSpace(run, mask, channelMask);
             }else{
                 poseBlend(finalPose, finalPose, run.output, run.weight, mask, channelMask);
             }
@@ -1954,7 +2109,7 @@ void anim::AnimatorInstance::clearIKResults(){
 
 size_t anim::AnimatorInstance::runtimeStateBytes() const{
     // the instance less what it holds by value that is bone- or clip-sized
-    size_t bytes = sizeof(*this) - sizeof(rig) - sizeof(humanoid) - 6 * sizeof(Pose);
+    size_t bytes = sizeof(*this) - sizeof(rig) - sizeof(humanoid) - 7 * sizeof(Pose);
     bytes += parameters.capacity() * sizeof(float) + velocities.capacity() * sizeof(float);
     bytes += dampTargets.capacity() * sizeof(float) + dampTimes.capacity() * sizeof(float);
     bytes += layers.capacity() * sizeof(AnimatorLayerRun);

@@ -84,6 +84,18 @@ out vec2 v_projZW;
 #include "includes/lattice.glsl"
 #include "includes/vat.glsl"
 
+// S100 R2: the world-space normal Cavity reads beside this pre-pass's depth (includes/
+// depth_normals.glsl): the vertex normal as the colour pass moves it (skin, vertex animation,
+// lattices, the instance and the object; not the morph targets' normals, as the G-buffer), no
+// normal map. A terrain makes its own from the heightmap; a mesh without normals writes none
+#ifdef DEPTH_NORMALS
+    #include "includes/instance_normal.glsl"
+    out vec4 v_depthNormal;
+    #ifdef HAS_NORMALS
+        in vec3 a_normal;
+    #endif
+#endif
+
 vec4 getPosition(mat4 boneTransform){
     vec3 pos = vatPosition(a_position);
 
@@ -112,18 +124,27 @@ void main() {
 
     #ifdef HAS_LATTICE
         // as mesh.vert, so both passes compute the same position (the normal and tangent
-        // are not used here)
+        // are not used here but by Cavity's normals)
         vec3 latticePosition = getMorphPosition(vatPosition(a_position));
         vec3 latticeNormal = vec3(0.0, 1.0, 0.0);
+        #if defined(DEPTH_NORMALS) && defined(HAS_NORMALS)
+            latticeNormal = vatNormal(a_normal);
+        #endif
         vec3 latticeTangent = vec3(1.0, 0.0, 0.0);
         float latticeStretchValue = 1.0;
         #ifdef HAS_SKINNING
             latticeDeform(0, latticePosition, latticeNormal, latticeTangent, latticeStretchValue);
         #endif
         vec4 pos = vec4(getSkinPosition(latticePosition, boneTransform), 1.0);
+        #if defined(DEPTH_NORMALS) && defined(HAS_NORMALS)
+            latticeNormal = getSkinNormal(latticeNormal, boneTransform);
+        #endif
         #ifdef HAS_INSTANCING
             mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
             pos = instanceMatrix * pos;
+            #if defined(DEPTH_NORMALS) && defined(HAS_NORMALS)
+                latticeNormal = instanceNormal(mat3(instanceMatrix), latticeNormal);
+            #endif
         #endif
     #elif defined(HAS_INSTANCING)
         mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
@@ -158,6 +179,26 @@ void main() {
 
     #ifdef HAS_LATTICE
         latticeDeform(1, pos.xyz, latticeNormal, latticeTangent, latticeStretchValue);
+    #endif
+
+    #ifdef DEPTH_NORMALS
+        v_depthNormal = vec4(0.0);
+        #ifdef HAS_NORMALS
+            #ifdef HAS_LATTICE
+                // skinned, instanced and through both lattice stages above (as gbuffer.vert)
+                vec3 objectNormal = latticeNormal;
+            #else
+                vec3 objectNormal = getSkinNormal(vatNormal(a_normal), boneTransform);
+                #ifdef HAS_TERRAIN
+                    objectNormal = getTerrainNormal(objectNormal, getPosition(boneTransform).xyz);
+                #endif
+                #ifdef HAS_INSTANCING
+                    objectNormal = instanceNormal(mat3(instanceMatrix), objectNormal);
+                #endif
+            #endif
+            // world space: the object block alone, no camera block (Cavity turns it to view space)
+            v_depthNormal = vec4(normalize(instanceNormal(mat3(depthParams.modelMatrix), objectNormal)), 1.0);
+        #endif
     #endif
 
     gl_Position = depthParams.mvpMatrix * pos;

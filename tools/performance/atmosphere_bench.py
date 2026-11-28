@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The atmosphere's performance gate (docs/specs/S12-atmosphere.md R18, R19, AC10).
+"""The atmosphere's performance gate (docs/specs/S12-atmosphere.md R18, R19, AC10; docs/specs/S101-vapor.md R22).
 
     uv run --no-project --with-requirements tools/mcp/requirements.txt \\
         python tools/performance/atmosphere_bench.py [--width 1920 --height 1080] [--frames 300] [--json out.json]
@@ -10,7 +10,9 @@
 
 Opens a copy of tools/fixtures/atmosphere/ in the editor (MCP), plays bench.scene at the given
 render size without vsync, and for each configuration (nothing, linear fog, height fog, height
-fog with sky fill, volumetric fog and clouds at each tier) measures the median frame time over
+fog with sky fill, volumetric fog and clouds at each tier, and the shadowed fog lights: 1, 2 and 4
+spot lights on Low, Medium and High and 1 point light on Low, each against the same lights with
+Volumetric Intensity 0, so the lights' own shading and shadow maps are in both) measures the median frame time over
 `frames` frames, the passes get_atmosphere_info reports and their memory. While the S15 pass
 timings are not in the engine, a feature's cost is its frame time above the configuration
 without it (run on an otherwise idle reference machine: GTX 1660 / RX 5500 class desktop, Adreno
@@ -54,8 +56,8 @@ SCENE = "bench.scene"
 # R18/R19 (desktop at 1080p; mobile at 720p): ms of GPU per feature, MB of memory per tier
 BUDGETS_MS = {
     "desktop": {"height_fog": 0.10, "sky_composite": 0.15, "volumetric_medium": 1.0, "volumetric_high": 1.8,
-                "clouds_medium": 0.8, "clouds_high": 2.5},
-    "mobile": {"height_fog": 0.3, "volumetric_low": 1.5, "clouds_low": 0.6},
+                "clouds_medium": 0.8, "clouds_high": 2.5, "fog_spots2_medium": 0.25, "fog_spots4_high": 0.4},
+    "mobile": {"height_fog": 0.3, "volumetric_low": 1.5, "clouds_low": 0.6, "fog_spots1_low": 0.2, "fog_point1_low": 0.2},
 }
 BUDGETS_MB = {"low": 4, "medium": 16, "high": 24}
 # --relative: the reference frame the budgets are a share of (60 fps)
@@ -107,11 +109,48 @@ CONFIGS = [
     ("clouds_low", {"type": "height", "skyFill": True, "volumetric": False}, True, "low"),
     ("clouds_medium", {"type": "height", "skyFill": True, "volumetric": False}, True, "medium"),
     ("clouds_high", {"type": "height", "skyFill": True, "volumetric": False}, True, "high"),
+    # the shadowed fog lights (S101-vapor.md R22), each after its baseline: the same lights unscattered
+    ("fog_spots1_low_base", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "low"),
+    ("fog_spots1_low", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "low"),
+    ("fog_spots2_medium_base", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "medium"),
+    ("fog_spots2_medium", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "medium"),
+    ("fog_spots4_high_base", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "high"),
+    ("fog_spots4_high", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "high"),
+    ("fog_point1_low_base", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "low"),
+    ("fog_point1_low", {"type": "height", "skyFill": True, "volumetric": True, "lightShafts": True}, False, "low"),
 ]
+# the shadowed point or spot lights of a configuration: (type, count, volumetric intensity)
+FOG_LIGHTS = {
+    "fog_spots1_low_base": ("spot_light", 1, 0.0), "fog_spots1_low": ("spot_light", 1, 1.0),
+    "fog_spots2_medium_base": ("spot_light", 2, 0.0), "fog_spots2_medium": ("spot_light", 2, 1.0),
+    "fog_spots4_high_base": ("spot_light", 4, 0.0), "fog_spots4_high": ("spot_light", 4, 1.0),
+    "fog_point1_low_base": ("point_light", 1, 0.0), "fog_point1_low": ("point_light", 1, 1.0),
+}
 # the configuration each feature is measured against
 BASELINE = {"height_fog": "linear_fog", "sky_composite": "height_fog", "volumetric_low": "sky_composite",
             "volumetric_medium": "sky_composite", "volumetric_high": "sky_composite", "clouds_low": "sky_composite",
-            "clouds_medium": "sky_composite", "clouds_high": "sky_composite"}
+            "clouds_medium": "sky_composite", "clouds_high": "sky_composite", "fog_spots1_low": "fog_spots1_low_base",
+            "fog_spots2_medium": "fog_spots2_medium_base", "fog_spots4_high": "fog_spots4_high_base",
+            "fog_point1_low": "fog_point1_low_base"}
+
+
+async def set_fog_lights(ed: Editor, scene, lights: tuple | None, made: list[str]) -> None:
+    """The configuration's shadowed fog lights in view, over the street ahead (the previous ones
+    deleted): spots pointing down, points, 30 m of range."""
+    if made:
+        await ed.call("delete_entities", scene=scene, entities=list(made))
+        made.clear()
+    if not lights:
+        return
+    kind, count, volumetric = lights
+    for i in range(count):
+        name = f"BenchFogLight{i}"
+        light = await ed.call("create_entity", scene=scene, type=kind, name=name)
+        await ed.call("set_transform", scene=scene, entity=light["entity_id"], position=[-12 + 8 * i, 12, -10 - 8 * i])
+        await ed.call("set_properties", scene=scene, entity=light["entity_id"],
+                      values={"light": {"direction": [0, -1, 0], "range": 30, "intensity": 200, "shadows": True,
+                                        "volumetricIntensity": volumetric}})
+        made.append(name)
 
 
 async def render_size(ed: Editor) -> list[int]:
@@ -131,6 +170,7 @@ def atmosphere_ms(gpu: dict | None) -> float:
 async def measure(ed: Editor, frames: int, gpu_size: tuple[int, int] | None = None) -> dict:
     results = {}
     scene = (await ed.call("open_scene", scene=SCENE))["scene"]["id"]
+    fog_lights: list[str] = []
     for name, fog, clouds, tier in CONFIGS:
         # "none" (first): no Fog component at all (the GameObject deleted; made again as the
         # fixture made it for the next configuration) and the clouds' GameObject inactive
@@ -142,6 +182,7 @@ async def measure(ed: Editor, frames: int, gpu_size: tuple[int, int] | None = No
         else:
             await ed.call("delete_entities", scene=scene, entities=["Fog"])
         await ed.call("set_entity_state", scene=scene, entity="Clouds", active=clouds)
+        await set_fog_lights(ed, scene, FOG_LIGHTS.get(name), fog_lights)
         await ed.call("configure_game_view", atmosphere_quality=tier)
         await ed.call("play", action="start", scene=scene)
         try:
@@ -162,12 +203,14 @@ async def measure(ed: Editor, frames: int, gpu_size: tuple[int, int] | None = No
         finally:
             await ed.call("play", action="stop")
         results[name] = {"frame_ms": statistics.median(times), "passes": info["passes"], "vram_mb": info["vramBytes"] / 2 ** 20,
+                         "local_lights": info.get("fog", {}).get("volumetric", {}).get("localLights", 0),
                          "vram_screen_mb": info.get("vramScreenBytes", info["vramBytes"]) / 2 ** 20, "tier": tier,
                          "render_size": size}
         if gpu is not None:
             results[name]["gpu"] = gpu
         print(f"{name:18s} {results[name]['frame_ms']:7.3f} ms  {results[name]['vram_mb']:6.2f} MB  "
-              f"{', '.join(p['label'] for p in info['passes'])}"
+              + (f"{results[name]['local_lights']} fog lights  " if name in FOG_LIGHTS else "")
+              + f"{', '.join(p['label'] for p in info['passes'])}"
               + (f"  GPU frame {gpu['_frame']:.3f} ms, atmosphere {atmosphere_ms(gpu):.3f} ms at {size[0]}x{size[1]}" if gpu else ""))
     return results
 

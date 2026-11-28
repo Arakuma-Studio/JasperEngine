@@ -1,0 +1,21 @@
+type: Prefab
+version: 9
+guid: 7d3f1c52-9a4e-4b8d-b2c6-3e5a1f0d9c47
+nextEntity: 1002
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Box
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      mesh:
+        submeshes:
+          - material:
+              baseColorFactor: [1, 0, 0, 1]
+              metallicFactor: 0
+              roughnessFactor: 1
+              name: materials/Box.material

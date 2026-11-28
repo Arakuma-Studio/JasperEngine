@@ -1,12 +1,12 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/CppIdentifier.h"
 #include "ScriptCreateDialog.h"
 #include "window/EditorModal.h"
 #include "util/AtomicFileStream.h"
 #include "external/IconsFontAwesome6.h"
 #include "Scene.h"
-#include "Factory.h"
 #include "Theme.h"
 #include "util/FileDialogs.h"
 #include "util/ScriptParser.h"
@@ -41,7 +41,7 @@ fs::path findCompanion(const fs::path& path, std::initializer_list<const char*> 
 // ...) is converted to '_' immediately. Structural normalization that cannot be
 // done per-character without fighting the typist - stripping leading/trailing
 // underscores, prefixing a leading digit, escaping C++ keywords - is deferred to
-// Factory::toIdentifier(), applied when editing finishes, so the committed name
+// toIdentifier(), applied when editing finishes, so the committed name
 // always equals the identifier the code generator emits.
 int ScriptCreateDialog::classNameCharFilter(ImGuiInputTextCallbackData* data) {
     ImWchar c = data->EventChar;
@@ -86,7 +86,7 @@ std::string ScriptCreateDialog::sanitizeClassName(const std::string& in) const {
     // (Factory::toIdentifier): collapses invalid characters to underscores,
     // strips leading/trailing underscores, ensures a valid identifier start and
     // avoids C++ keywords - so the class name always compiles.
-    return Factory::toIdentifier(in);
+    return toIdentifier(in);
 }
 
 std::string ScriptCreateDialog::inferClassName(const fs::path& headerPath,

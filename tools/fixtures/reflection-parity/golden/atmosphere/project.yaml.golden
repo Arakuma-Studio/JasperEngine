@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: AtmosphereBench
 canvasWidth: 1280
 canvasHeight: 720
@@ -14,7 +14,10 @@ windowWidth: 1280
 windowHeight: 720
 windowResizable: true
 luaDir: .
+transparencySortMode: perspective
 startSceneId: 910579834
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: bench.scene
     filepathGuid: 5a8340b00ae91e3756ead7ddaa1a5fcd

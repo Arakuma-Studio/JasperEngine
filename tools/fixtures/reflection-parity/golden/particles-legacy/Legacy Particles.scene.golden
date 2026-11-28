@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 11
 guid: 0f153ca2a957eb5d8f91ac03716acf99
 id: 1
 name: Legacy Particles
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: auto
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]
@@ -33,13 +34,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_3d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 0
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 0
 shaderKeys:
   - type: blit
   - type: blit
@@ -72,6 +66,7 @@ entities:
         playOnAwake: false
         seed: 0
         playbackSpeed: 1
+        legacyFrom: 1002
   - type: Entity
     entity: 1002
     name: Fire Particles
@@ -100,6 +95,7 @@ entities:
         playOnAwake: false
         seed: 0
         playbackSpeed: 1
+        legacyFrom: 1004
   - type: Entity
     entity: 1004
     name: Explosion Particles

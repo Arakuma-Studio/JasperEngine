@@ -97,8 +97,10 @@ namespace jasperengine::editor {
         static TextureCookResult cook(TextureCookCache& cache, const TextureCookRequest& request, const std::function<bool()>& cancelled);
 
         // The source as the cook reads it: float for .hdr / .exr, a 4:3 or 3:4 cross split
-        // into six faces when cube. Returns the face count.
-        static int decodeSource(const std::filesystem::path& path, bool cube, std::array<TextureData, 6>& faces, std::string& error);
+        // into six faces when cube. Returns the face count. With removeSunDisc a float source's
+        // sun disc is clamped first (S99 R29); when it is not, sunDiscNote says why.
+        static int decodeSource(const std::filesystem::path& path, bool cube, std::array<TextureData, 6>& faces, std::string& error,
+                                bool removeSunDisc = false, std::string* sunDiscNote = nullptr);
         static void analyze(const std::array<TextureData, 6>& faces, int count, TextureSourceAnalysis& out);
         // the bytes a family's devices hold for a cooked file (Basis: the first transcode target
         // of a desktop browser)

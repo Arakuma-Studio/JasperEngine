@@ -11,12 +11,19 @@
 ---@field cpuMs number # the frame's CPU work, presenting and waiting excluded
 ---@field fps number
 ---@field gpuMs? number # the game frame's GPU time, while GPU timing runs (it arrives a few frames late)
+---@field gpuPasses? ProfilerGpuPass[] # with Profiler.gpuTiming: the passes of the newest timed frame
+
+---One render pass's GPU time (Profiler.frameStats().gpuPasses)
+---@class ProfilerGpuPass
+---@field name string # the pass label, as get_gpu_passes names it
+---@field ms number
 
 ---The CPU profiler (Window > Analysis > Profiler). Samples are scopes in the profiler's CPU
 ---Usage and Hierarchy; in a release game (no profiler) every function does nothing, enabled
 ---stays false, and frameStats still works.
 ---@class Profiler
 ---@field enabled boolean # whether the profiler records (setting it starts or stops recording)
+---@field gpuTiming boolean # times every render pass on the GPU while true; stays false where the backend or a release build has no GPU timer
 Profiler = {}
 
 ---Opens a sample; close it with Profiler.endSample (samples nest)

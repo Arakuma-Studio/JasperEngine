@@ -147,7 +147,7 @@ bool SpriteSheetSources::isAtlasPath(const std::string& path){
 
 bool SpriteSheetSources::isTexturePath(const std::string& path){
     // (the Texture asset type's files: SVG too, which the engine rasterizes)
-    for (const char* ext : {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".psd", ".hdr", ".pic", ".pnm", ".svg"}){
+    for (const char* ext : {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".psd", ".psb", ".tif", ".tiff", ".hdr", ".pic", ".pnm", ".svg"}){
         if (sourcesEndsWithNoCase(path, ext)) return true;
     }
     return false;

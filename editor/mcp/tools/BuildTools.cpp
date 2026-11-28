@@ -4,6 +4,7 @@
 // W5: async export/build/run players
 //
 //   get_build_info     Build Settings state: modes, tools, output dirs, graphics APIs, shaders
+//   get_build_report   an export's Build Report, a comparison with another, why files ship (shipping group)
 //   build_project      export / build a player as a job (replaces export_project)
 //   generate_shaders   compile shader sets as a job (replaces the legacy blocking one)
 //   run_build          launch a built Desktop player, capture its log and a screenshot, stop it
@@ -11,6 +12,7 @@
 // Builds never block the main thread: Exporter::startExport runs on its own thread (it hops to
 // the main thread to save scenes, which keeps running since tool handlers return at once) and a
 // watcher thread forwards its progress and log lines (Out) into the McpJob.
+#include "util/CppIdentifier.h"
 #include "McpTools.h"
 #include "util/BuildDiagnostics.h"
 #include "util/SourceLocation.h"
@@ -30,20 +32,28 @@
 #include "EditorHost.h"
 #include "AppSettings.h"
 #include "Exporter.h"
-#include "Factory.h"
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
 #include "command/type/ShaderOverridesCmd.h"
+#include "cook/BuildReport.h"
+#include "cook/BuildReportHistory.h"
+#include "cook/Reachability.h"
+#include "export/SizeBudget.h"
 #include "ShippingTypes.h"
 #include "players/PlayerRuntimes.h"
 #include "platform/AndroidTools.h"
 #include "platform/IosProject.h"
 #include "platform/ExternalTools.h"
 #include "util/BuiltPlayers.h"
+#include "BuildDevices.h"
 #include "pool/ShaderPool.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
+#include "mcp/McpServer.h"
+#include "recorder/RecordInput.h"
+#include "input/InputScript.h"
+#include "player/RunControl.h"
 
 #include "stb_image.h"
 #include "stb_image_resize2.h"
@@ -58,6 +68,7 @@
 #include <cstdlib>
 #include <functional>
 #include <fstream>
+#include <future>
 #include <map>
 #include <cstdint>
 #ifndef _WIN32
@@ -65,6 +76,7 @@
 #endif
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -352,7 +364,7 @@ Json shaderOverridesJson(const ShaderOverrides& overrides) {
 }
 
 std::string appName(Project* project) {
-    return project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(project->getName());
+    return project->getName().empty() ? "jasperengine-project" : toIdentifier(project->getName());
 }
 
 // The file starts like a native executable: ELF, Mach-O (thin or universal) or PE
@@ -503,6 +515,10 @@ struct BuildRun {
     ExportResult result;                  // a player build's report (taken before the exporter goes)
     std::string next;                     // the success result's next: a platform the game does not target
     Json unreadableScenes = Json::array();  // generate_shaders: the scenes its list could not read (R4)
+    // build_project run_device: the device run after the build (docs/specs/build-and-run-on-device.md R22)
+    std::shared_ptr<builddevice::BuildDeploy> deploy;
+    uint64_t workFiles = 0;               // S99: what the estimate's model counted (the Assets folder)
+    uint64_t workBytes = 0;
 };
 
 // Never destroyed: a build still running at exit must not be joined from a static destructor
@@ -577,8 +593,99 @@ Json artifactsJson(const fs::path& dir) {
     return list;
 }
 
+// S99 R10, R11: what the build weighs, and the Download Budget it was held to. Returns the next
+// step when the build is over its budget: the tools that inspect its largest category.
+std::string addBuildSizes(const ExportResult& report, Json& result) {
+    if (report.buildReport.empty()) return std::string();
+    result["build_report"] = FileUtils::pathToGenericUtf8(report.buildReport);
+    result["build_bytes"] = report.buildBytes;
+    result["build_categories"] = BuildReport::categoriesJson(report.buildCategories);
+    Json top = Json::array();
+    for (size_t i = 0; i < report.largestFiles.size() && i < 5; i++)
+        top.push_back({{"path", report.largestFiles[i].path}, {"bytes", report.largestFiles[i].bytes}});
+    result["top_files"] = top;
+    if (report.downloadBytesGzip) result["download_bytes_gzip"] = report.downloadBytesGzip;   // the name says it is an estimate
+    if (!report.downloadBudgetBytes) return std::string();
+    BuildReport sizes;
+    sizes.categories = report.buildCategories;
+    const auto largest = sizes.largestCategories(3);
+    const uint64_t actual = report.downloadBytesGzip ? report.downloadBytesGzip : report.buildBytes;
+    Json categories = Json::array();
+    for (const auto& [name, bytes] : largest) categories.push_back({{"category", name}, {"bytes", bytes}});
+    result["download_budget"] = {{"budget_bytes", report.downloadBudgetBytes}, {"actual_bytes", actual},
+                                 {"over", actual > report.downloadBudgetBytes}, {"largest_categories", categories}};
+    if (actual <= report.downloadBudgetBytes || largest.empty()) return std::string();
+    const std::string& family = report.downloadBudgetFamily;
+    const std::string& category = largest.front().first;
+    std::string inspect;
+    if (category == "textures")
+        // the cooked files in top_files are hashes, and the tools are outside core: without both an agent stops at the hashes
+        inspect = "get_texture_cook_report {\"platforms\": [\"" + family + "\"]} (tool_groups: assets_pipeline) names the source texture of "
+                  "each cooked file with its disk bytes; set_texture_import_settings lowers max_size or quality";
+    else if (category == "models")
+        inspect = "inspect_models {\"platform\": \"" + family + "\"} lists each model's download; set_model_import_settings shrinks them";
+    else if (category == "engine")
+        inspect = "modules and module_reasons say why each engine module ships; set_project_settings {\"player.strip_engine_code\": true} "
+                  "leaves out the unused ones";
+    else
+        inspect = "top_files names the largest files; list_assets {\"details\": true} sizes the project's";
+    return "Over the Download Budget: " + category + " is the largest category (" + BuildReport::formatBytes(largest.front().second) + "). " + inspect + ".";
+}
+
+// S99 R13: a build's history kind (platform and method: their times differ by minutes)
+std::string buildHistoryKind(ExportMode mode, BuildPlatform platform, jobmodel::BuildKind kind) {
+    if (mode == ExportMode::SourceCode) return "build_project:source";
+    if (mode != ExportMode::Player) return std::string("build_project:") + modeName(mode);
+    return std::string("build_project:") + buildPlatformName(platform) + (kind == jobmodel::BuildKind::Prebuilt ? ":prebuilt" : ":compiled");
+}
+
+jobmodel::BuildKind buildModelKind(ExportMode mode, BuildPlatform platform, bool prebuilt) {
+    if (mode == ExportMode::SourceCode) return jobmodel::BuildKind::Source;
+    if (mode == ExportMode::Player && prebuilt) return jobmodel::BuildKind::Prebuilt;
+    return mode == ExportMode::Web || (mode == ExportMode::Player && platform == BuildPlatform::Web) ? jobmodel::BuildKind::CompiledWeb
+                                                                                                    : jobmodel::BuildKind::CompiledDesktop;
+}
+
+// S99 R13: the estimate at submit: the files and bytes of the Assets folder, and the method the
+// exporter will pick (chooseBuildMethod, as get_build_info shows it)
+void estimateBuildJob(BuildRun& run, Project* project) {
+    std::error_code ec;
+    size_t seen = 0;
+    for (auto it = fs::recursive_directory_iterator(project->getAssetsPath(), fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator() && seen < 200000; it.increment(ec), seen++) {
+        std::error_code entryError;
+        if (!it->is_regular_file(entryError)) continue;
+        const uintmax_t size = it->file_size(entryError);
+        run.workFiles++;
+        if (!entryError) run.workBytes += size;
+    }
+    bool prebuilt = false;
+    uint64_t bytes = 0;
+    if (run.mode == ExportMode::Player) {
+        std::string findError;
+        const std::optional<PlayerInfo> runtime = PlayerRuntimes::find(
+            Exporter::playerIdFor(run.config, run.config.developmentBuild || project->isDevelopmentBuild()), run.config.playersDir, false, findError);
+        const BuildMethodChoice choice = Exporter::chooseBuildMethod(project, run.config, runtime ? &*runtime : nullptr);
+        prebuilt = choice.method == BuildMethod::Prebuilt && runtime;
+        if (prebuilt && runtime->shippedBytes > 0) bytes = runtime->shippedBytes + run.workBytes;
+    }
+    const jobmodel::BuildKind kind = buildModelKind(run.mode, run.config.platform, prebuilt);
+    run.job->estimateFor(project->getProjectPath(), buildHistoryKind(run.mode, run.config.platform, kind),
+                         jobmodel::buildSeconds(kind, run.workFiles, run.workBytes), bytes);
+}
+
+// S99 R14: the downgrades the build took; a build whose method was not the one estimated records
+// its measure against the model of what ran
+void reportBuildJob(BuildRun& r) {
+    for (const BuildFallback& f : r.result.fallbacks) r.job->addFallback({f.step, f.from, f.to, f.reason});
+    if (r.mode != ExportMode::Player || r.shadersOnly || r.result.methodUsed == BuildMethod::Auto) return;
+    const jobmodel::BuildKind kind = buildModelKind(r.mode, r.config.platform, r.result.methodUsed == BuildMethod::Prebuilt);
+    r.job->setHistoryModel(buildHistoryKind(r.mode, r.config.platform, kind), jobmodel::buildSeconds(kind, r.workFiles, r.workBytes));
+}
+
 void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progress) {
     BuildRun& r = *run;
+    reportBuildJob(r);
     Json result = {
         {"mode", r.shadersOnly ? "shaders" : modeName(r.mode)},
         {"errors", diagnosticsJson(r, "error")},
@@ -593,6 +700,7 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
     if (r.mode == ExportMode::Player) {
         const ExportResult& report = r.result;
         result["platform"] = buildPlatformName(r.config.platform);
+        if (!report.buildProfile.empty()) result["profile"] = report.buildProfile;
         result["method_used"] = buildMethodName(report.methodUsed);
         result["compile_reasons"] = report.compileReasons;
         result["carried"] = report.carried;
@@ -611,8 +719,22 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
     // notices) and notes
     for (const BuildWarning& warning : r.result.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
     if (!r.result.notes.empty()) result["notes"] = r.result.notes;
-    if (progress.finished && !progress.failed) {
+    const std::string budgetNext = addBuildSizes(r.result, result);
+    if (progress.finished && !progress.failed && r.deploy && !r.deploy->result.ok) {
+        // built, but the device run failed: the error names the fix
+        result["step"] = "device";
+        r.job->fail("Built, but the run on " + r.deploy->device.name + " failed: " + r.deploy->result.error + ".", result);
+    } else if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
+        // S98 REQ-10: what Asset Stripping and Exclude From Build left out, listed in the report
+        if (!r.result.buildReport.empty()) {
+            result["build_report"] = FileUtils::pathToGenericUtf8(r.result.buildReport);
+            result["stripped_count"] = r.result.strippedCount;
+            result["stripped_bytes"] = r.result.strippedBytes;
+            if (r.result.strippedCount > 0)
+                result["next"] = "build_report lists each asset left out and why; a script that builds a path at runtime needs its file in "
+                                 "player.always_include (set_project_settings)";
+        }
         std::string message;
         if (r.mode == ExportMode::Player) {
             const ExportResult& report = r.result;
@@ -656,7 +778,19 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         }
         if (r.warningCount) message += " " + std::to_string(r.warningCount) + " compiler warning(s).";
         if (!r.result.warnings.empty()) message += " " + std::to_string(r.result.warnings.size()) + " build warning(s): see warnings.";
-        if (!r.next.empty()) result["next"] = r.next;
+        if (r.deploy) {
+            result["device"] = builddevice::resultJson(*r.deploy);
+            message = r.deploy->result.installed == "patched"
+                          ? "Patched " + r.deploy->device.name + " (" + std::to_string(r.deploy->result.pushedFiles) + " files, no reinstall) and launched the game."
+                          : message + " Installed on " + r.deploy->device.name + " and launched.";
+            if (!r.deploy->result.url.empty()) message += " " + r.deploy->result.url;
+            r.next = builddevice::nextHint(*r.deploy) + (r.next.empty() ? "" : "; " + r.next);
+        }
+        // every hint that applies: the build's own (a non-target platform), Asset Stripping's and the Download Budget's
+        std::string next = r.next;
+        if (result.contains("next")) next = next.empty() ? result["next"].get<std::string>() : next + "; " + result["next"].get<std::string>();
+        if (!budgetNext.empty()) next = next.empty() ? budgetNext : next + "; " + budgetNext;
+        if (!next.empty()) result["next"] = next;
         r.job->succeed(message, result);
     } else if (r.job->cancelRequested()) {
         r.job->markCancelled("Build cancelled.");
@@ -717,6 +851,10 @@ void watchRun(std::shared_ptr<BuildRun> run) {
         if (r.exporter) r.result = r.exporter->getResult();
         if (r.exporter) r.producedExecutable = r.exporter->getProducedExecutable();
         r.exporter.reset();
+    }
+    // Build And Run on a device: install or patch and launch, inside the build's job (D5)
+    if (r.deploy && progress.finished && !progress.failed && !r.job->cancelRequested()) {
+        builddevice::deploy(*r.deploy, r.projectPath, r.result, r.config, [&r](const std::string& step) { r.job->setProgress(0.99, step); });
     }
     finishRun(run, progress);
     if (r.logFile) r.logFile.close();
@@ -792,7 +930,8 @@ ToolResult buildResult(const McpJob& job) {
 
 bool busy(const CallPtr& call) {
     std::lock_guard<std::mutex> lock(manager().mutex);
-    if (manager().active) {
+    // a finished job's watcher clears active just after it: its caller may already have the result
+    if (manager().active && manager().active->job->status() == JobStatus::Running) {
         call->fail("A build is already running (job " + manager().active->job->id() + "). Wait for it with get_job or stop it with cancel_job.",
                    manager().active->job->toJson(5));
         return true;
@@ -808,10 +947,19 @@ void buildProjectTool(const CallPtr& call) {
     const Json& args = call->args();
 
     if (ctx.isPlaying()) {
-        call->fail("Stop Play mode first: a build saves every scene.");
+        call->fail("Stop Play mode first: a build cooks the scenes as edited, not as playing.");
         return;
     }
     if (busy(call)) return;
+
+    // ---- run_device / patch (R22): Build And Run on a device
+    const std::string runDevice = args.contains("run_device") && args["run_device"].is_string() ? args["run_device"].get<std::string>() : "";
+    std::optional<bool> patchArg;
+    if (args.contains("patch") && args["patch"].is_boolean()) patchArg = args["patch"].get<bool>();
+    if (patchArg && runDevice.empty()) {
+        call->fail("patch needs run_device: Patch And Run pushes the content to a device (get_build_info devices:true lists them).");
+        return;
+    }
 
     // ---- mode: omitted, the project's default platform (Project::defaultBuildPlatform: this computer's
     // when it is a target), or the platform named
@@ -838,9 +986,52 @@ void buildProjectTool(const CallPtr& call) {
         return;
     }
 
+    // ---- Build Profile (R23): its platform, Graphics API, Development Build and output folder
+    BuildProfile profile;
+    const bool profileGiven = args.contains("profile") && args["profile"].is_string() && !args["profile"].get<std::string>().empty();
+    if (profileGiven) {
+        std::string profileError;
+        if (!buildprofiles::load(project->getProjectPath(), args["profile"].get<std::string>(), profile, profileError)) {
+            call->fail(profileError + ".");
+            return;
+        }
+        const std::string profilePlatform = buildPlatformName(profile.platform);
+        if (mode != ExportMode::Player || (modeText == "web" && profile.platform != BuildPlatform::Web)) {
+            call->fail("Build Profile '" + profile.name + "' builds a " + profilePlatform + " player: drop mode (the profile supplies it).");
+            return;
+        }
+        if (platformGiven && lowerText(args["platform"].get<std::string>()) != profilePlatform) {
+            call->fail("platform " + lowerText(args["platform"].get<std::string>()) + " differs from Build Profile '" + profile.name + "', which builds for " +
+                       profilePlatform + ": drop platform, or change the profile (edit_build_profile).");
+            return;
+        }
+        if (args.contains("development") && profile.development && args.value("development", false) != *profile.development) {
+            call->fail(std::string("development differs from Build Profile '") + profile.name + "' (Development Build " +
+                       (*profile.development ? "on" : "off") + "): drop development, or change the profile (edit_build_profile).");
+            return;
+        }
+        if (args.contains("graphics_api") && args["graphics_api"].is_string() && !profile.backend.empty() &&
+            normalizeBackend(args["graphics_api"].get<std::string>()) != normalizeBackend(profile.backend)) {
+            call->fail("graphics_api differs from Build Profile '" + profile.name + "' (" + normalizeBackend(profile.backend) +
+                       "): drop graphics_api, or change the profile (edit_build_profile).");
+            return;
+        }
+        const std::vector<std::string> findings = validateProfile(*project, profile);
+        if (!findings.empty()) {
+            call->fail("Build Profile '" + profile.name + "': " + findings.front() + ".");
+            return;
+        }
+        platform = profile.platform;
+    }
+
+    if (!runDevice.empty() && mode != ExportMode::Player) {
+        call->fail("run_device runs a game: build mode player, desktop or web (a source export has nothing to run).");
+        return;
+    }
+
     // ---- scenes
     bool hasSavedScene = false;
-    for (const SceneProject& scene : project->getScenes()) hasSavedScene = hasSavedScene || !scene.filepath.empty();
+    for (const SceneProject& scene : project->getScenes()) hasSavedScene = hasSavedScene || (!scene.filepath.empty() && scene.inBuild);
     if (!hasSavedScene) {
         call->fail("No saved scene is in the build: save a scene first (save_project saves untitled scenes).");
         return;
@@ -865,13 +1056,17 @@ void buildProjectTool(const CallPtr& call) {
             call->fail("start_scene \"" + scene->name + "\" is untitled: save it first.");
             return;
         }
+        if (!scene->inBuild) {
+            call->fail("start_scene \"" + scene->name + "\" is not in the build: edit_build_scenes add puts it in.");
+            return;
+        }
         startScene = scene->id;
     }
     const SceneProject* start = project->getScene(startScene);
-    if (!start || start->filepath.empty()) {
+    if (!start || start->filepath.empty() || !start->inBuild) {
         startScene = NULL_PROJECT_SCENE;
         for (const SceneProject& scene : project->getScenes()) {
-            if (!scene.filepath.empty()) {
+            if (!scene.filepath.empty() && scene.inBuild) {
                 startScene = scene.id;
                 break;
             }
@@ -889,6 +1084,9 @@ void buildProjectTool(const CallPtr& call) {
             call->fail("output_dir must be an absolute directory outside the project.");
             return;
         }
+    } else if (profileGiven && !profile.outputDir.empty()) {
+        outputDir = FileUtils::pathFromUtf8(profile.outputDir);
+        if (outputDir.is_relative()) outputDir = project->getProjectPath() / outputDir;
     } else {
         outputDir = mode == ExportMode::Player ? defaultPlayerDir(project, platform) : defaultOutputDir(project, mode);
     }
@@ -966,6 +1164,7 @@ void buildProjectTool(const CallPtr& call) {
                 desktop.graphicBackendConfigured = true;
             }
         }
+        if (profileGiven && !profile.backend.empty()) backend = normalizeBackend(profile.backend);
         if (backend.empty() || std::find(backends.begin(), backends.end(), backend) == backends.end()) backend = backends.front();
         config.graphicBackend = backend;
         config.selectedBackends = {shaderBackendOf(platform, backend)};
@@ -974,7 +1173,8 @@ void buildProjectTool(const CallPtr& call) {
             call->fail("method must be auto (the project's choice), prebuilt or compile.");
             return;
         }
-        config.developmentBuild = args.value("development", false);
+        config.developmentBuild = profileGiven && profile.development ? *profile.development : args.value("development", false);
+        if (profileGiven) config.buildProfile = profile.name;
         // the project's package format (Project Settings > Android), unless the call names one
         const std::string format = lowerText(args.value("android_format", project->getAndroidProjectSettings().packageFormat));
         if (!parseAndroidFormat(format, config.androidFormat)) {
@@ -1097,33 +1297,52 @@ void buildProjectTool(const CallPtr& call) {
         call->fail(escape);
         return;
     }
-    const std::string playerLabel = std::string("Build ") + buildPlatformName(platform);
-    const char* modeLabel = mode == ExportMode::SourceCode ? "Export source" : mode == ExportMode::Desktop ? "Build Desktop player"
-                          : mode == ExportMode::Player ? playerLabel.c_str() : "Build Web player";
-    auto run = std::make_shared<BuildRun>();
-    run->job = ctx.jobs().create("build", std::string(modeLabel) + (mode == ExportMode::SourceCode ? "" : " (" + config.buildType + ")"),
-                                 JobBusy::Export);
-    run->mode = mode;
-    run->config = config;
-    run->projectPath = project->getProjectPath();
-    if (mode == ExportMode::Player && !project->isTargetPlatform(platform)) {
-        std::string targets;
-        for (const std::string& name : targetPlatformNames(project)) targets += (targets.empty() ? "" : ", ") + name;
-        run->next = std::string(buildPlatformName(platform)) + " is not a target (player.target_platforms: " + targets + ")";
-    }
-    run->executableName = executableName(project);
-    run->exporter = std::make_unique<Exporter>();
-    run->logCursor = Out::lastLogId();
-    openRunLog(*run, project);
-    {
-        std::lock_guard<std::mutex> lock(manager().mutex);
-        manager().active = run;
-    }
-    Out::info("MCP: %s to %s", modeLabel, FileUtils::pathToUtf8(outputDir).c_str());
-    run->exporter->startExport(project, config);
-    startRun(run);
+    // Build And Run on a device (R22): the device is probed off the main thread, then the build starts
+    auto startBuild = [call, project, mode, platform, outputDir](ExportConfig config, std::shared_ptr<builddevice::BuildDeploy> deploy) {
+        const Json& args = call->args();
+        if (busy(call)) return;
+        const std::string playerLabel = std::string(config.contentOnly ? "Patch " : "Build ") + buildPlatformName(platform);
+        const char* modeLabel = mode == ExportMode::SourceCode ? "Export source" : mode == ExportMode::Desktop ? "Build Desktop player"
+                              : mode == ExportMode::Player ? playerLabel.c_str() : "Build Web player";
+        auto run = std::make_shared<BuildRun>();
+        run->job = call->ctx().jobs().create("build", std::string(modeLabel) + (mode == ExportMode::SourceCode ? "" : " (" + config.buildType + ")"),
+                                     JobBusy::Export);
+        run->mode = mode;
+        run->config = config;
+        run->deploy = deploy;
+        run->projectPath = project->getProjectPath();
+        if (mode == ExportMode::Player && !project->isTargetPlatform(platform)) {
+            std::string targets;
+            for (const std::string& name : targetPlatformNames(project)) targets += (targets.empty() ? "" : ", ") + name;
+            run->next = std::string(buildPlatformName(platform)) + " is not a target (player.target_platforms: " + targets + ")";
+        }
+        run->executableName = executableName(project);
+        run->exporter = std::make_unique<Exporter>();
+        run->logCursor = Out::lastLogId();
+        openRunLog(*run, project);
+        {
+            std::lock_guard<std::mutex> lock(manager().mutex);
+            manager().active = run;
+        }
+        estimateBuildJob(*run, project);
+        Out::info("MCP: %s to %s", modeLabel, FileUtils::pathToUtf8(outputDir).c_str());
+        run->exporter->startExport(project, config);
+        startRun(run);
 
-    replyWhenJobDone(call, run->job, args.value("wait", true), args.value("timeout_seconds", 120.0), buildResult);
+        replyWhenJobDone(call, run->job, args.value("wait", true), args.value("timeout_seconds", 120.0), buildResult);
+    };
+    if (!runDevice.empty()) {
+        builddevice::resolve(call, project, config, runDevice, patchArg, [startBuild, config](std::shared_ptr<builddevice::BuildDeploy> deploy) {
+            ExportConfig deviceConfig = config;
+            deviceConfig.contentOnly = deploy->patch;
+            deviceConfig.androidRunAbi = deploy->patch ? std::string() : deploy->androidAbi;
+            // the simulator .app is what a simulator runs (R3)
+            if (deviceConfig.platform == BuildPlatform::IOS) deviceConfig.iosSimulator = true;
+            startBuild(deviceConfig, deploy);
+        });
+        return;
+    }
+    startBuild(config, nullptr);
 }
 
 // ------------------------------------------------------------------ the shader list (S64)
@@ -1325,6 +1544,171 @@ void generateShadersTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ get_build_info
 
+std::string joinReportWords(const std::vector<std::string>& words, const std::string& separator) {
+    std::string out;
+    for (const std::string& word : words) out += (out.empty() ? "" : separator) + word;
+    return out;
+}
+
+// "+3.2 MB", "-12.0 KB"
+std::string signedBytes(int64_t delta) {
+    return (delta < 0 ? "-" : "+") + BuildReport::formatBytes((uint64_t)(delta < 0 ? -delta : delta));
+}
+
+Json reportFileItem(const BuildReportFile& file) {
+    Json item = {{"path", file.path}, {"category", file.category}, {"bytes", file.bytes}};
+    if (!file.source.empty()) item["source"] = file.source;
+    return item;
+}
+
+// build-size-tools R33: the report, its comparison and why files ship; false with the error
+bool buildReportInfo(Project* project, const Json& args, Json& data, std::string& text, std::vector<std::string>& next, std::string& error) {
+    const fs::path projectPath = project->getProjectPath();
+    const fs::path file = BuildReportHistory::resolve(projectPath, args.value("report", std::string("last")), error);
+    if (file.empty()) return false;
+    BuildReport report;
+    if (!BuildReport::load(file, report, error)) return false;
+    std::vector<std::string> ids;
+    for (const BuildReportHistory::Entry& entry : BuildReportHistory::list(projectPath, report.platform)) ids.push_back(entry.id);
+    const std::string name = report.id.empty() ? FileUtils::pathToGenericUtf8(file) : report.id;
+
+    Json largest = Json::array();
+    for (const BuildReportFile& item : report.largest) largest.push_back(reportFileItem(item));
+    const std::vector<const BuildReportFile*> unreferenced = report.unreferenced();
+    uint64_t unreferencedBytes = 0;
+    Json unreferencedTop = Json::array();
+    for (const BuildReportFile* item : unreferenced) {
+        unreferencedBytes += item->bytes;
+        if (unreferencedTop.size() < 10) unreferencedTop.push_back(reportFileItem(*item));
+    }
+    std::vector<BuildReportLeftOut> leftOut = report.leftOut;
+    std::stable_sort(leftOut.begin(), leftOut.end(), [](const BuildReportLeftOut& a, const BuildReportLeftOut& b) { return a.bytes > b.bytes; });
+    Json leftOutTop = Json::array();
+    for (size_t i = 0; i < leftOut.size() && i < 10; i++)
+        leftOutTop.push_back({{"source", leftOut[i].source}, {"reason", leftOut[i].reason}, {"bytes", leftOut[i].bytes}});
+    Json budgets = Json::array();
+    for (const BuildReportBudget& budget : report.budgets) {
+        budgets.push_back({{"platform", budget.platform}, {"category", budget.category}, {"limit_bytes", budget.limitBytes},
+                           {"bytes", budget.bytes}, {"over_bytes", budget.overBytes()}});
+        if (!budget.overBytes()) continue;
+        std::string files;
+        int shown = 0;
+        for (const BuildReportFile& item : report.largest) {
+            if (shown == 3 || (budget.category != "total" && item.category != budget.category)) continue;
+            files += (shown++ ? ", " : "") + (item.source.empty() ? item.path : item.source);
+        }
+        next.push_back(budget.category + " is " + signedBytes((int64_t)budget.overBytes()) + " over its " + BuildReport::formatBytes(budget.limitBytes) +
+                       " budget: look at " + (files.empty() ? std::string("the Files tab") : files) +
+                       " (referenced_by says why each ships)");
+    }
+    data["report"] = {{"id", report.id}, {"file", FileUtils::pathToGenericUtf8(file)}, {"platform", report.platform}, {"method", report.method},
+                      {"created", report.created}, {"total_bytes", report.totalBytes}, {"categories", report.categories}, {"largest", largest},
+                      {"unreferenced", {{"count", unreferenced.size()}, {"bytes", unreferencedBytes}, {"top", unreferencedTop}}},
+                      {"left_out", {{"count", report.leftOut.size()}, {"bytes", report.leftOutBytes()}, {"top", leftOutTop}}},
+                      {"budgets", budgets}, {"history", ids}};
+    if (!report.reachability) data["report"]["reachability"] = nullptr;
+    text = "Build Report " + report.platform + " " + name + ": " + BuildReport::formatBytes(report.totalBytes);
+
+    if (args.contains("compare_to")) {
+        std::string against = args.value("compare_to", std::string());
+        if (against == "previous") {
+            against = BuildReportHistory::previous(projectPath, report);
+            if (against.empty()) {
+                error = "no earlier " + report.platform + " report in the history to compare " + name + " with (history: " +
+                        (ids.empty() ? std::string("empty") : joinReportWords(ids, ", ")) + "); export again, or give compare_to a path";
+                return false;
+            }
+        }
+        const fs::path baseFile = BuildReportHistory::resolve(projectPath, against, error);
+        if (baseFile.empty()) return false;
+        BuildReport base;
+        if (!BuildReport::load(baseFile, base, error, true)) return false;
+        const BuildReportDiff diff = compareBuildReports(base, report);
+        Json categories = Json::object();
+        std::string parts;
+        for (const auto& [category, sizes] : diff.categories) {
+            const int64_t delta = (int64_t)sizes.second - (int64_t)sizes.first;
+            categories[category] = {{"before", sizes.first}, {"after", sizes.second}, {"delta", delta}};
+            if (delta == 0) continue;
+            std::map<std::string, size_t> counts;
+            for (const BuildReportChange& change : diff.changes)
+                if (change.category == category) counts[change.change]++;
+            std::string counted;
+            for (const char* kind : {"grown", "added", "shrunk", "removed"})
+                if (counts[kind]) counted += (counted.empty() ? "" : ", ") + std::to_string(counts[kind]) + " " + kind;
+            parts += "; " + category + " " + signedBytes(delta) + (counted.empty() ? "" : " (" + counted + ")");
+        }
+        Json changes = Json::array();
+        for (size_t i = 0; i < diff.changes.size() && i < 50; i++) {
+            const BuildReportChange& change = diff.changes[i];
+            changes.push_back({{"change", change.change}, {"key", change.key}, {"path", change.path}, {"category", change.category},
+                               {"before", change.before}, {"after", change.after}, {"delta", change.delta}});
+        }
+        const int64_t total = (int64_t)diff.totalAfter - (int64_t)diff.totalBefore;
+        data["comparison"] = {{"base", base.id.empty() ? FileUtils::pathToGenericUtf8(baseFile) : base.id}, {"categories", categories},
+                              {"total", {{"before", diff.totalBefore}, {"after", diff.totalAfter}, {"delta", total}}},
+                              {"changes", changes},
+                              {"counts", {{"added", diff.added}, {"removed", diff.removed}, {"grown", diff.grown}, {"shrunk", diff.shrunk},
+                                          {"unchanged", diff.unchanged}}},
+                              {"partial", diff.partial}, {"platform_differs", diff.platformDiffers}, {"truncated", diff.changes.size() > 50}};
+        text += " (" + signedBytes(total) + " vs " + (base.id.empty() ? FileUtils::pathToGenericUtf8(baseFile) : base.id) + ")" + parts;
+        if (diff.partial) text += "; partial: the older report lists its 25 largest files only";
+        if (diff.platformDiffers) text += "; the platforms differ (" + base.platform + " vs " + report.platform + ")";
+    }
+
+    if (args.contains("referenced_by")) {
+        const Json& asked = args["referenced_by"];
+        if (!asked.is_array() || asked.size() > 50) {
+            error = "referenced_by must be a list of at most 50 build or asset paths";
+            return false;
+        }
+        // R10: a report from before the walk answers from the index as the project is now
+        const bool live = !report.reachability;
+        if (live) {
+            AssetIndex& index = project->getAssetIndex();
+            if (!index.isReady()) {
+                error = "this report has no Referenced By data and the asset index is still building: call again once Indexing ends";
+                return false;
+            }
+            const std::string prefix = FileUtils::pathToGenericUtf8(project->getAssetsPath().lexically_relative(projectPath));
+            const std::string assetsPrefix = prefix.empty() || prefix == "." ? std::string() : prefix + "/";
+            std::vector<std::string> roots;
+            for (const BuildReportFile& item : report.files)
+                if (!item.asset.empty() && item.category == "scripts") roots.push_back(item.asset);
+            std::sort(roots.begin(), roots.end());
+            roots.insert(roots.begin(), reachAssetKey("project.yaml", assetsPrefix));
+            report.reachability = computeReachability(reachEdgesOf(index, project->getAssetDatabase(), assetsPrefix), roots);
+        }
+        Json items = Json::array();
+        bool askedUnreferenced = false;
+        for (const Json& path : asked) {
+            if (!path.is_string()) {
+                error = "referenced_by must be a list of at most 50 build or asset paths";
+                return false;
+            }
+            const BuildReportReferrers why = report.referencedBy(path.get<std::string>());
+            Json chain = Json::array();
+            for (const BuildReportStep& step : why.chain) {
+                Json item = {{"asset", step.asset}, {"field", step.field}, {"kind", step.kind}};
+                if (!step.object.empty()) item["object"] = step.object;
+                chain.push_back(item);
+            }
+            Json item = {{"file", why.file}, {"asset", why.asset}, {"reason", why.reason}, {"chain", chain}, {"live", live}};
+            if (why.reason == "unreferenced") {
+                item["note"] = BuildReport::unreferencedNote();
+                askedUnreferenced = true;
+            }
+            items.push_back(item);
+        }
+        data["referenced_by"] = items;
+        if (askedUnreferenced)
+            next.push_back(std::string("unreferenced: ") + BuildReport::unreferencedNote() + "; delete it, or keep it if a script loads it by a computed path");
+        if (live) text += "; Referenced By as the project is now, not as it was built";
+    }
+    text += ".";
+    return true;
+}
+
 void getBuildInfoTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
@@ -1427,7 +1811,7 @@ void getBuildInfoTool(const CallPtr& call) {
     Json scenes = Json::array();
     const uint32_t startId = project->getStartSceneId();
     for (const SceneProject& scene : project->getScenes()) {
-        if (scene.filepath.empty()) continue;
+        if (scene.filepath.empty() || !scene.inBuild) continue;
         scenes.push_back({{"id", scene.id}, {"name", scene.name}, {"start", scene.id == startId}});
     }
     data["scenes"] = scenes;
@@ -1469,12 +1853,27 @@ void getBuildInfoTool(const CallPtr& call) {
     data["shader_count"] = included;
     if (args.value("include_shaders", false)) data["shaders"] = shaders;
 
+    // Build Profiles (R23): the project's, and this user's active one
+    const std::string activeProfile = buildprofiles::activeName(project->getProjectPath());
+    Json profiles = Json::array();
+    for (const BuildProfileEntry& entry : buildprofiles::list(project->getProjectPath())) {
+        Json item = {{"name", entry.name}, {"platform", entry.readable ? buildPlatformName(entry.profile.platform) : ""},
+                     {"active", buildprofiles::find({entry}, activeProfile) != nullptr}, {"readable", entry.readable}};
+        if (!entry.readable) item["error"] = entry.error;
+        profiles.push_back(item);
+    }
+    data["profiles"] = profiles;
+    data["active_profile"] = activeProfile.empty() ? Json(nullptr) : Json(activeProfile);
+
     {
         std::lock_guard<std::mutex> lock(manager().mutex);
         data["running_job"] = manager().active ? Json(manager().active->job->id()) : Json(nullptr);
         data["last_build"] = manager().lastBuild;
         data["last_executable"] = manager().lastExecutable.empty() ? Json(nullptr) : Json(FileUtils::pathToGenericUtf8(manager().lastExecutable));
     }
+    // Asked why a file ships or what grew, agents grepped the project and guessed: the export's Build Report says (build-size-tools R33)
+    if (!BuildReportHistory::last(project->getProjectPath()).empty())
+        data["next"] = "get_build_report (group shipping): sizes, what grew, why a file ships";
 
     std::string text = std::string("Host ") + hostPlatformName() + ". Desktop player: " +
                        (missing.empty() ? "available" : "missing tools") + "; Web: " + (emsdk.found ? "available" : "no emsdk") +
@@ -1485,6 +1884,25 @@ void getBuildInfoTool(const CallPtr& call) {
                 data["shaders_job_id"].get<std::string>() + " until it ends, then get_build_info again.";
     }
     for (const UnreadableScene& scene : list.unreadableScenes) text += " Cannot read scene " + scene.path + ": " + scene.error + ".";
+    // the Run Devices (R21): probing spawns processes, so only when asked, off the main thread
+    if (args.value("devices", false)) {
+        builddevice::replyWithDevices(call, project, text, data);
+        return;
+    }
+    call->ok(text, data);
+}
+
+// ------------------------------------------------------------------ get_build_report
+
+void getBuildReportTool(const CallPtr& call) {
+    Json data;
+    std::string text, error;
+    std::vector<std::string> next;
+    if (!buildReportInfo(call->ctx().project(), call->args(), data, text, next, error)) {
+        call->fail(error);
+        return;
+    }
+    if (!next.empty()) data["next"] = joinReportWords(next, " ");
     call->ok(text, data);
 }
 
@@ -1790,6 +2208,8 @@ struct PlayerRun {
     PlayerInputSender* sender = nullptr;
     std::string inputMethod;
     std::string inputError;
+    // input_script: the folder its shot steps write into (--input-shots); empty without one
+    fs::path inputShots;
 };
 
 constexpr size_t MAX_PLAYER_OUTPUT = 4 * 1024 * 1024;
@@ -1984,7 +2404,9 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         data["exit_code"] = WEXITSTATUS(run->status);
         data["exited_early"] = true;
         how = "exited by itself after " + std::to_string(static_cast<int>(ran + 0.5)) + " s with code " + std::to_string(WEXITSTATUS(run->status));
-        if (WEXITSTATUS(run->status) != 0) crashed = true;
+        // 10, 11: the input script failed or diverged (its [input] lines say how), not a crash
+        const int code = WEXITSTATUS(run->status);
+        if (code != 0 && !(!run->inputShots.empty() && (code == player::EXIT_INPUT_FAILED || code == player::EXIT_INPUT_DIVERGED))) crashed = true;
     } else if (WIFSIGNALED(run->status)) {
         const int sig = WTERMSIG(run->status);
         data["signal"] = sig;
@@ -2017,6 +2439,36 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         else if (run->nextAction < run->actions.size()) text += " Input: " + std::to_string(run->nextAction) + "/" +
                                                                 std::to_string(run->actions.size()) + " action(s) sent before the run ended.";
         else text += " Input: all " + std::to_string(run->actions.size()) + " action(s) sent (" + run->inputMethod + ").";
+    }
+
+    // input_script: its [input] lines and the PNGs of its shot steps (the first 4 as images)
+    if (!run->inputShots.empty()) {
+        Json inputLines = Json::array();
+        Json inputShots = Json::array();
+        std::string ending;
+        for (const std::string& line : lines) {
+            const size_t at = line.find("[input] ");
+            if (at == std::string::npos) continue;
+            const std::string entry = line.substr(at);
+            if (inputLines.size() < 60) inputLines.push_back(entry.size() > 2000 ? entry.substr(0, 2000) + "..." : entry);
+            if (entry.rfind("[input] done", 0) == 0 || entry.rfind("[input] failed", 0) == 0) ending = entry;
+            if (entry.rfind("[input] shot ", 0) != 0) continue;
+            const Json shot = Json::parse(entry.substr(13), nullptr, false);
+            if (!shot.is_object()) continue;
+            Json item = {{"name", shot.value("name", "")}, {"path", shot.value("path", "")}, {"frame", shot.value("frame", 0)},
+                         {"width", shot.value("width", 0)}, {"height", shot.value("height", 0)}};
+            if (result.images.size() < 4) {
+                const ScreenCapture capture = loadPlayerShot(FileUtils::pathFromUtf8(item["path"].get<std::string>()), run->maxWidth);
+                if (capture.ok) {
+                    item["image"] = static_cast<int>(result.images.size());
+                    result.images.push_back({Base64::encode(capture.png.data(), capture.png.size()), "image/png"});
+                }
+            }
+            inputShots.push_back(item);
+        }
+        data["input_script"] = {{"lines", inputLines}, {"shots", inputShots}, {"shots_folder", FileUtils::pathToGenericUtf8(run->inputShots)}};
+        text += " Input script: " + (ending.empty() ? std::string("no [input] done line (it did not finish)") : ending) + "; " +
+                std::to_string(inputShots.size()) + " shot(s).";
     }
 
     if (!run->playerShot.empty()) {
@@ -2068,10 +2520,82 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
     call->reply(std::move(result));
 }
 
+// resolutions: the player launched once per size (--resolution), one after another; the runs'
+// results side by side, the first 4 images of them all (input-recorder-and-input-scripts R24)
+void runBuildResolutions(const CallPtr& call, std::vector<std::string> sizes) {
+    auto results = std::make_shared<std::vector<ToolResult>>();
+    auto step = std::make_shared<std::function<void(size_t)>>();
+    *step = [call, sizes, results, step](size_t index) {
+        Json nested = call->args();
+        nested.erase("resolutions");
+        Json extra = nested.value("args", Json::array());
+        extra.push_back("--resolution");
+        extra.push_back(sizes[index]);
+        nested["args"] = extra;
+        McpServer::get().runNested(call, "run_build", nested, [call, sizes, results, step, index](const ToolResult& ran) {
+            results->push_back(ran);
+            if (index + 1 < sizes.size()) {
+                (*step)(index + 1);
+                return;
+            }
+            ToolResult merged;
+            Json runs = Json::array();
+            std::string text;
+            for (size_t i = 0; i < results->size(); i++) {
+                const ToolResult& r = (*results)[i];
+                Json data = r.structured.is_object() ? r.structured : Json::object();
+                data["resolution"] = sizes[i];
+                // the run's images, renumbered into the merged result's (the first 4 overall)
+                Json images = Json::array();
+                for (const ToolImage& image : r.images) {
+                    if (merged.images.size() >= 4) break;
+                    images.push_back(static_cast<int>(merged.images.size()));
+                    merged.images.push_back(image);
+                }
+                data["images"] = images;
+                runs.push_back(data);
+                text += (text.empty() ? "" : "\n") + sizes[i] + ": " + r.text.substr(0, r.text.find('\n'));
+                merged.isError = merged.isError || r.isError;
+            }
+            merged.text = text;
+            merged.structured = {{"runs", runs}};
+            call->reply(std::move(merged));
+            // (the chain held itself)
+            *step = nullptr;
+        });
+    };
+    // the runs complete the call
+    call->detach();
+    (*step)(0);
+}
+
 void runBuildTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
     const Json& args = call->args();
+    if (args.contains("resolutions") && args["resolutions"].is_array() && !args["resolutions"].empty()) {
+        std::vector<std::string> sizes;
+        for (const Json& item : args["resolutions"]) {
+            int width = 0, height = 0;
+            std::string error;
+            if (!item.is_string() || !recordinput::parseResolution(item.get<std::string>(), width, height, error)) {
+                call->fail("resolutions: " + (item.is_string() ? error : std::string("each is a \"WxH\" string")) + ".");
+                return;
+            }
+            sizes.push_back(std::to_string(width) + "x" + std::to_string(height));
+        }
+        if (args.contains("device") || sizes.size() > 8) {
+            call->fail(args.contains("device") ? "resolutions runs this computer's player: drop device." : "At most 8 resolutions.");
+            return;
+        }
+        runBuildResolutions(call, std::move(sizes));
+        return;
+    }
+    // R23: a device's run (Android, the iOS Simulator, the browser)
+    if (args.contains("device") && args["device"].is_string()) {
+        builddevice::runBuildOnDevice(call);
+        return;
+    }
 
     fs::path exe;
     const std::string pathText = args.value("path", "");
@@ -2156,6 +2680,36 @@ void runBuildTool(const CallPtr& call) {
         run->inputDelay = std::clamp(args.value("input_delay_seconds", 1.0), 0.0, 120.0);
     }
 
+    // input_script: the engine's own input interpreter in the player, on any desktop and headless
+    // (input-recorder-and-input-scripts R24): its frame rate, the ready frame and its end are the player's
+    std::vector<std::string> inputScriptArgs;
+    if (args.contains("input_script") && args["input_script"].is_string()) {
+        if (!run->actions.empty()) {
+            call->fail("Pass input_script (the engine's input, any desktop) or input (X11 events), not both.");
+            return;
+        }
+        const std::string scriptText = args["input_script"].get<std::string>();
+        std::shared_ptr<input::ParsedScript> script;
+        std::string error;
+        if (!recordinput::RecordInput::get().loadReplay(scriptText, script, error)) {
+            call->fail(error);
+            return;
+        }
+        fs::path scriptPath = FileUtils::pathFromUtf8(scriptText);
+        if (scriptPath.is_relative()) scriptPath = project->getProjectPath() / scriptPath;
+        // its shots: Recordings/Input/<stem>/player/, a folder per --resolution
+        run->inputShots = project->getProjectPath() / "Recordings" / "Input" / recordinput::fileStem(scriptPath) / "player";
+        const Json& extra = args.value("args", Json::array());
+        for (size_t i = 0; extra.is_array() && i + 1 < extra.size(); i++) {
+            if (extra[i] == "--resolution" && extra[i + 1].is_string()) run->inputShots /= extra[i + 1].get<std::string>();
+        }
+        fs::create_directories(run->inputShots, ec);
+        for (const auto& entry : fs::directory_iterator(run->inputShots, ec)) {
+            if (entry.path().extension() == ".png") fs::remove(entry.path(), ec);
+        }
+        inputScriptArgs = {"--input-script", scriptPath.string(), "--input-shots", run->inputShots.string(), "--quit-after-input"};
+    }
+
     // screenshots: screenshots_at (seconds since launch), else the single screenshot
     double lastShot = 0.0;
     if (args.contains("screenshots_at") && !args["screenshots_at"].is_null()) {
@@ -2195,6 +2749,7 @@ void runBuildTool(const CallPtr& call) {
         controlArgs.insert(controlArgs.end(), {"--fixed-fps", std::to_string(args["fixed_fps"].get<double>())});
     if (args.value("after_ready", false)) controlArgs.push_back("--after-ready");
     if (args.value("headless", false)) controlArgs.push_back("--headless");
+    controlArgs.insert(controlArgs.end(), inputScriptArgs.begin(), inputScriptArgs.end());
     const bool playerControl = !controlArgs.empty() || args.contains("screenshot_frame");
     if (playerControl) {
         if (args.contains("screenshot_frame") && args["screenshot_frame"].is_number_integer())
@@ -2206,7 +2761,7 @@ void runBuildTool(const CallPtr& call) {
         // the player ends the run itself: seconds is only the limit
         if (!run->secondsGiven) run->seconds = 300.0;
     }
-    const bool wantScreenshot = args.value("screenshot", run->shots.empty() && !hasInputShots);
+    const bool wantScreenshot = args.value("screenshot", run->shots.empty() && !hasInputShots && run->inputShots.empty());
     if (playerControl && wantScreenshot && run->shots.empty()) {
         const fs::path logs = project->getProjectInternalPath() / "logs";
         fs::create_directories(logs, ec);
@@ -2369,6 +2924,10 @@ void runBuildTool(const CallPtr& call) {
 #else
 
 void runBuildTool(const CallPtr& call) {
+    if (call->args().contains("device") && call->args()["device"].is_string()) {
+        builddevice::runBuildOnDevice(call);
+        return;
+    }
     call->fail("run_build is not implemented on Windows yet: start the player from its output directory.");
 }
 
@@ -2379,20 +2938,62 @@ void runBuildTool(const CallPtr& call) {
 void registerBuildTools(McpRegistry& registry) {
     using namespace schema;
 
+    // Build And Run's Screenshot of this computer's player: run_build's window capture, on the main
+    // thread (Xlib's), asked for from the run's worker
+    platform::DeviceRuns::setHostCapture([](long pid, std::vector<uint8_t>& png, std::string& error) {
+        auto promise = std::make_shared<std::promise<ScreenCapture>>();
+        std::future<ScreenCapture> captured = promise->get_future();
+        getEditorHost().enqueueMainThreadTask([pid, promise]() {
+            const unsigned long window = findPlayerWindow(pid, {});
+            promise->set_value(window ? captureWindow(window, 4096) : ScreenCapture{});
+        });
+        if (captured.wait_for(std::chrono::seconds(10)) != std::future_status::ready) {
+            error = "the editor did not capture the player's window in time";
+            return false;
+        }
+        ScreenCapture capture = captured.get();
+        if (!capture.ok) {
+            error = capture.note.empty() ? "the player's window was not found (X11 only)" : capture.note;
+            return false;
+        }
+        png = std::move(capture.png);
+        return true;
+    });
+
     {
         ToolDef tool;
         tool.name = "get_build_info";
         tool.title = "Get Build Info";
         tool.description =
-            "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), graphics APIs and last "
+            "Build Settings state: toolchains (missing ones listed), graphics APIs and last "
             "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for edit_build_shaders), "
-            "running job, last result. Call before build_project.";
+            "running job, last result (sizes: get_build_report). Call before build_project.";
         tool.inputSchema = object({
-            {"include_shaders", withDefault(boolean(""), false)}
+            {"include_shaders", withDefault(boolean(""), false)},
+            {"devices", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getBuildInfoTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_build_report";
+        tool.title = "Get Build Report";
+        tool.group = "shipping";
+        tool.description =
+            "An export's Build Report (default: the last): sizes by category, largest, unreferenced and left-out files, size "
+            "budgets. compare_to: what changed since another report; referenced_by: why each file ships.";
+        tool.inputSchema = object({
+            {"report", string("last (default), a history id or a build-report.json path.")},
+            {"compare_to", string("previous, a history id or a path.")},
+            {"referenced_by", array(Json{{"type", "string"}}, "Build or asset paths, at most 50.")}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getBuildReportTool;
         registry.addTool(std::move(tool));
     }
 
@@ -2405,28 +3006,31 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "File > Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled if it needs "
-            "native code); desktop/web: this computer/web; source: a CMake project; omitted: the project's default platform "
-            "(get_build_info). Saves scenes first. Past timeout_seconds: {job_id} (get_job).";
+            "Build Settings > Build, as a job. player: a game per platform; desktop/web: this "
+            "computer/web; source: a CMake project; omitted: get_build_info's default platform. profile: a Build Profile sets "
+            "platform, API, flavour, folder. run_device: Build And Run.";
         tool.inputSchema = object({
             {"mode", stringEnum("", {"player", "desktop", "web", "source"})},
-            {"output_dir", string("Absolute, outside the project.")},
-            {"overwrite", withDefault(boolean("source: allow a non-empty output_dir."), false)},
-            {"start_scene", sceneRef("Also becomes the start scene.")},
+            {"output_dir", string("Absolute, outside project.")},
+            {"overwrite", withDefault(boolean("source: into a non-empty dir."), false)},
+            {"start_scene", sceneRef("Also set as start scene.")},
             {"allow_missing_assets", withDefault(boolean(""), false)},
             {"graphics_api", string("opengl/vulkan/d3d11/metal-macos/opengles. Remembered.")},
-            {"platform", stringEnum("player/source target.", {"windows", "macos", "linux", "android", "ios", "web"})},
+            {"platform", stringEnum("player/source.", {"windows", "macos", "linux", "android", "ios", "web"})},
+            {"profile", string("")},
             {"method", withDefault(stringEnum("", {"auto", "prebuilt", "compile"}), "auto")},
             {"development", withDefault(boolean(""), false)},
-            {"android_format", stringEnum("Default: project's.", {"aab", "apk-per-abi", "apk"})},
+            {"android_format", stringEnum("Default: project.", {"aab", "apk-per-abi", "apk"})},
             {"ios_simulator", withDefault(boolean("Unsigned simulator .app."), false)},
+            {"run_device", string("")},
+            {"patch", boolean("")},
             {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},
             {"build_type", withDefault(stringEnum("", {"Release", "Debug", "RelWithDebInfo", "MinSizeRel"}), "Release")},
             {"build_jobs", integer("0 = auto.")},
             {"shaders", object({
-                {"add", array(stringItem, "Shader keys.")},
+                {"add", array(stringItem, "Keys.")},
                 {"exclude", array(stringItem, "")},
-                {"reset", boolean("Clear manual add/exclude first.")}
+                {"reset", boolean("Clear add/exclude.")}
             })},
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", jobTimeout}
@@ -2483,17 +3087,20 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "run_build";
         tool.title = "Run Build";
         tool.description =
-            "Run a desktop player for `seconds`, screenshot it (Linux/X11), stop it. Returns log tail (log_file), "
-            "errors, exit code/signal, crashed, fatal_lines. input (Linux): send_input events (key, text, mouse, "
-            "wait, release_all, screenshot). screenshots_at: seconds since launch.";
+            "Run the last build `seconds` here or on a device (get_build_info devices), screenshot it, stop it. input: "
+            "send_input events (Linux/X11); input_script: a .input.json, any desktop, headless.";
         tool.inputSchema = object({
-            {"path", string("Executable or build dir. Default: last build.")},
+            {"path", string("")},
+            {"device", string("")},
+            {"keep_running", withDefault(boolean(""), false)},
             {"seconds", number("Default 5.", 0.5, 300)},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
             {"input_delay_seconds", withDefault(number("", 0, 120), 1)},
+            {"input_script", string("")},
+            {"resolutions", array(stringItem, "")},
             {"space", withDefault(stringEnum("", {"window", "normalized"}), "window")},
             {"gap_ms", withDefault(number("", 0, 10000), 50)},
-            {"screenshots_at", array(number(""), "")},
+            {"screenshots_at", array(number(""), "Seconds since launch.")},
             {"screenshot", boolean("")},
             {"screenshot_after_seconds", number("")},
             {"max_width", withDefault(integer("", 64, 4096), 1280)},
@@ -2835,7 +3442,7 @@ unsigned long playerKeysym(const std::string& rawName) {
     };
     auto it = keys.find(name);
     if (it != keys.end()) return it->second;
-    if (name.size() >= 2 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), ::isdigit)) {
+    if (name.size() >= 2 && name.size() <= 3 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), ::isdigit)) {
         const int n = std::stoi(name.substr(1));
         if (n >= 1 && n <= 24) return XK_F1 + (n - 1);
     }

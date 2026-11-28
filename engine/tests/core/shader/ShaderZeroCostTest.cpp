@@ -5,7 +5,9 @@
 // unused: every built-in Lit variant compiled without their defines preprocesses to exactly the
 // program it was before them. The list of hashes was generated on the commit the work started
 // from (JASPER_ZERO_COST_UPDATE=1 rewrites it; only do so when a change of the built-in shader
-// is meant to change existing variants, and say so in its commit).
+// is meant to change existing variants, and say so in its commit). The same holds for the
+// built-in depth programs without S100's Cavity normals ('Cvn'), whose list was generated on
+// the commit S100 started from (869e2f760).
 
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -31,6 +33,10 @@ namespace {
 
     const char* hashListPath(){
         return JASPER_TEST_SOURCE_DIR "/fixtures/shader/zero_cost_mesh_variants.txt";
+    }
+
+    const char* depthHashListPath(){
+        return JASPER_TEST_SOURCE_DIR "/fixtures/shader/zero_cost_depth_variants.txt";
     }
 
     struct ShaderZeroCostCase{
@@ -61,6 +67,8 @@ namespace {
             // the built-in Lit requires neither, so its variants stay as they were)
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.waterExclusion = true; e.waterWake = true; }},
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.postColor = true; }},
+            // S100's Cavity changes the depth programs alone ('Cvn'), never a colour variant
+            {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.cavityNormals = true; }},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ e.postColor = true; e.fog = true; i.baseColorTexture = true; i.normalTexture = true; }},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; i.baseColorTexture = true; e.lights2D = true; e.shadows2D = true; }},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.terrain = true; i.texCoord1 = false; i.tangent = false; }},
@@ -120,9 +128,28 @@ namespace {
         return variants;
     }
 
-    std::map<std::string, std::string> readHashList(){
+    // every built-in depth program (customId 0) the cases reach, in a scene with the depth pre-pass
+    // (every opaque mesh has one), with or without Cavity's normals
+    std::set<uint64_t> enumerateDepthVariants(bool cavity){
+        std::set<uint64_t> variants;
+        for (const auto& setup : lightingSetups()){
+            for (const ShaderZeroCostCase& meshCase : meshCases()){
+                SubmeshShaderInputs inputs = setup.first;
+                MeshShaderEnvironment environment = setup.second;
+                meshCase.apply(inputs, environment);
+                environment.depthPrepass = true;
+                environment.cavityNormals = cavity;
+                const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+                if (variant.depth)
+                    variants.insert(variant.depthProperties);
+            }
+        }
+        return variants;
+    }
+
+    std::map<std::string, std::string> readHashList(const char* path = hashListPath()){
         std::map<std::string, std::string> list;
-        std::ifstream file(hashListPath());
+        std::ifstream file(path);
         std::string line;
         while (std::getline(file, line)){
             if (line.empty() || line[0] == '#')
@@ -173,6 +200,53 @@ TEST(ShaderZeroCost, DefaultVariantsUnchanged){
         EXPECT_EQ(found->second, hashes) << name << " preprocesses to another program than before";
     }
     EXPECT_EQ(expected.size(), current.size()) << "the hash list has variants the matrix no longer reaches";
+}
+
+TEST(ShaderZeroCost, DepthVariantsUnchangedWithoutCavity){
+    ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no embedded shader library";
+
+    const std::set<uint64_t> variants = enumerateDepthVariants(false);
+    ASSERT_GT(variants.size(), 5u);
+
+    std::map<std::string, std::string> current;
+    for (uint64_t properties : variants){
+        const ShaderKey key = ShaderPool::getShaderKey(ShaderType::DEPTH, properties, 0);
+        std::string vertex, fragment, error;
+        ASSERT_TRUE(ShaderVariantCompiler::preprocess(key, ShaderBackend::GLCore, nullptr, vertex, fragment, &error))
+            << ShaderPool::getShaderStr(ShaderType::DEPTH, properties) << ": " << error;
+        current[ShaderPool::getShaderStr(ShaderType::DEPTH, properties)] =
+            ShaderVariantCompiler::toHex(ShaderVariantCompiler::hash(ShaderVariantCompiler::normalizePreprocessed(vertex))) + " " +
+            ShaderVariantCompiler::toHex(ShaderVariantCompiler::hash(ShaderVariantCompiler::normalizePreprocessed(fragment)));
+    }
+
+    const char* update = std::getenv("JASPER_ZERO_COST_UPDATE");
+    if (update && std::string(update) == "1"){
+        std::filesystem::create_directories(std::filesystem::path(depthHashListPath()).parent_path());
+        std::ofstream file(depthHashListPath(), std::ios::trunc);
+        ASSERT_TRUE(file.good()) << "cannot write " << depthHashListPath();
+        file << "# built-in depth variants: <variant> <depth.vert hash> <depth.frag hash> (normalized preprocessed GLSL,\n";
+        file << "# FNV-1a 64). Generated by ShaderZeroCostTest with JASPER_ZERO_COST_UPDATE=1.\n";
+        for (const auto& [name, hashes] : current)
+            file << name << " " << hashes << "\n";
+        return;
+    }
+
+    const std::map<std::string, std::string> expected = readHashList(depthHashListPath());
+    ASSERT_FALSE(expected.empty()) << "no hash list at " << depthHashListPath();
+    for (const auto& [name, hashes] : current){
+        auto found = expected.find(name);
+        ASSERT_NE(found, expected.end()) << name << " is not in the hash list: the matrix reaches a variant it did not";
+        EXPECT_EQ(found->second, hashes) << name << " preprocesses to another program than before";
+    }
+    EXPECT_EQ(expected.size(), current.size()) << "the hash list has variants the matrix no longer reaches";
+}
+
+TEST(ShaderZeroCost, CavityNormalsOnlyWithCavity){
+    const uint64_t normals = ShaderPool::getDepthNormalsProperty();
+    for (uint64_t properties : enumerateDepthVariants(false))
+        EXPECT_EQ(properties & normals, 0u) << ShaderPool::getShaderStr(ShaderType::DEPTH, properties) << " has 'Cvn' with Cavity off";
+    for (uint64_t properties : enumerateDepthVariants(true))
+        EXPECT_NE(properties & normals, 0u) << ShaderPool::getShaderStr(ShaderType::DEPTH, properties) << " has no 'Cvn' with Cavity on";
 }
 
 }  // namespace ShaderZeroCostTest_cpp

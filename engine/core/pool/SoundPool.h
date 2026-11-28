@@ -33,7 +33,7 @@ namespace jasperengine{
         AudioLoadType loadType = AudioLoadType::DecompressOnLoad;
     };
 
-    // A cached sample, for the memory checks (tests, get_play_state)
+    // A cached sample, for the memory checks: get_play_state's audio.clips (PlayTools.cpp) and tests
     struct SoundPoolEntry {
         std::string id;
         std::string file;
@@ -42,10 +42,21 @@ namespace jasperengine{
         // each voice reads the file)
         size_t memoryBytes = 0;
         double length = 0;
+        // what holds it besides the pool: sources, voices, a preload pin
+        int holders = 0;
+        // no holder: cached within the unused-clip budget
+        bool unused = false;
     };
 
     // The shared samples, one per file and load type ("<file>#<type>": a decoded and a streamed
     // copy of one file can coexist). Samples are multi-instance: any number of voices play one.
+    //
+    // Lifetime (docs/specs/S97-audio-gaps.md REQ-8): an entry is held while a source, a voice or a
+    // preload pin holds its sample. When the last one lets go it is unused and stays cached, the
+    // least recently used dropped first past the budget (setUnusedBudget; streamed entries count 0
+    // bytes) or past maxUnusedEntries. remove() / unload() drop an unused entry at once, as do
+    // clearUnused() (low memory) and clear(). A scene load drops nothing. Main thread only: load
+    // jobs only make the samples.
     class JASPERENGINE_API SoundPool{
     private:
         static sounds_t& getMap();
@@ -61,6 +72,22 @@ namespace jasperengine{
 
         static std::unordered_map<std::string, uint32_t>& getGenerations();
 
+        // an entry's bytes (taken once, when it is cached) and when it was last handed out or
+        // released: the unused ones go oldest first
+        struct EntryInfo {
+            size_t bytes = 0;
+            uint64_t stamp = 0;
+        };
+        static std::unordered_map<std::string, EntryInfo>& getInfo();
+        // ids preloaded while their load was on its way: pinned when it arrives
+        static std::unordered_set<std::string>& getPendingPins();
+        // ids unloaded while held: dropped, not cached, when their last holder lets go
+        static std::unordered_set<std::string>& getDropOnRelease();
+        // a sample was cached under `id`: its bytes, a pending pin, then the budget
+        static void cached(const std::string& id);
+        static void touch(const std::string& id);
+        static size_t sampleBytes(SoLoud::AudioSource* sample);
+
         static std::shared_ptr<SoLoud::AudioSource> loadSoundInternal(const std::string& id, const std::string& filename, AudioLoadType loadType, bool trackProgress);
         // makes the sample of a load type held in memory from the file's bytes (on a Background
         // job for async loads: the bytes are read on an asset reader thread)
@@ -75,8 +102,9 @@ namespace jasperengine{
         // Auto streams a file from this size on (spec A8: on disk, compressed)
         static constexpr uint64_t streamingThreshold = 1024 * 1024;
 
-        // Auto -> Streaming from streamingThreshold on, else Decompress On Load; Streaming of a
-        // file the platform cannot open for random access (a resource pack) -> Compressed In Memory
+        // Auto -> the clip's import settings' load type when not Auto, else Streaming from
+        // streamingThreshold on, else Decompress On Load; Streaming of a file the platform cannot
+        // open for random access (a resource pack) -> Compressed In Memory
         static AudioLoadType resolveLoadType(const std::string& filename, AudioLoadType requested);
         // the size of a file on disk or in the pack (cached), 0 when it does not exist
         static uint64_t fileSize(const std::string& filename);
@@ -102,10 +130,39 @@ namespace jasperengine{
         // re-allows async loads after a recreated view
         static void cancelShutdown();
 
-        // drops the cached sample when no one else holds it
+        // Project Settings > Audio > Unused Clip Cache: the bytes unused entries may keep
+        static constexpr uint64_t defaultUnusedBudget = 16ull * 1024 * 1024;
+        static constexpr size_t maxUnusedEntries = 256;
+        static void setUnusedBudget(uint64_t bytes);
+        static uint64_t getUnusedBudget();
+
+        // A holder let `id` go (a source switched clip, a voice ended): unused, it stays cached
+        // within the budget (at budget 0 it goes at once)
+        static void release(const std::string& id);
+        // holders let samples go without naming them (voices that ended): the unused entries
+        // drop, oldest first, until they fit the budget (all of them at budget 0)
+        static void trimUnused();
+        // drops the cached sample now when no one else holds it (AudioSource.destroySound)
         static void remove(const std::string& id);
-        // keeps a loaded sample until clear() (AudioSystem.preload): clearUnused leaves it
+        // keeps a sample until unload() or clear() (AudioSystem.preload): clearUnused leaves it.
+        // An id still loading is pinned when it arrives.
         static void pin(const std::string& id);
+        // AudioSystem.unload: removes the pin of the file's entries (all its load types, or the one
+        // `requested` resolves to) and drops those now unused; the count dropped. A held entry
+        // stays until its last holder lets go.
+        static int unload(const std::string& filename, const AudioLoadType* requested = nullptr);
+        // Unity's AudioDataLoadState of a clip in the pool: Loaded when cached, Loading while its
+        // load is on its way, Failed after a failed load, else Unloaded
+        static AudioLoadState getLoadState(const std::string& filename, AudioLoadType requested = AudioLoadType::Auto);
+        // every sample made from a file since the start (decodes and stream opens): tests check
+        // that a clip is not decoded again
+        static uint64_t getDecodeCount();
+        // the bytes of the unused entries
+        static size_t getUnusedBytes();
+        // loads on their way (asynchronous loading)
+        static size_t getLoadingCount();
+        // Test seam: while held, a finished asynchronous load still reads as Loading (a slow load)
+        static void holdLoads(bool hold);
 
         // The cached sample of `id` ("<file>#<type>"; nullptr when none)
         static std::shared_ptr<SoLoud::AudioSource> get(const std::string& id);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "UISystem.h"
+#include "localization/Localization.h"
 #include "component/ActionComponent.h"
 #include "component/TweenComponent.h"
 #include "component/ButtonComponent.h"
@@ -9,6 +10,7 @@
 #include "component/CanvasGroupComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InputFieldComponent.h"
+#include "input/TextEntry.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "component/PanelComponent.h"
@@ -249,7 +251,8 @@ STBTextOptions UISystem::getTextOptions(const TextComponent& text) const{
     // a bitmap font's scale is in its quads and its outline in its pixels (S51 D3, R10)
     if (text.loaded ? (bool)text.bitmapText : pixelart::isBitmapFontPath(text.font[0]))
         return options;
-    const float fontSize = (float)std::max(text.fontSize, 1u);
+    const float fontSize = (float)std::max(effectiveFontSize(text), 1u);
+    options.emSize = text.fontSizeUnit == TextFontSizeUnit::EM;
 
     // whole raster pixels, so a resize reuses an atlas once the size settles
     const float scale = getTextRasterScale();
@@ -284,8 +287,20 @@ std::string UISystem::getFontId(const TextComponent& text) const{
     return getFontId(text, getTextOptions(text));
 }
 
+namespace {
+
+    // game-ui-localization.md R14: a Text without a font uses the game language's first font
+    std::string primaryFontOf(const TextComponent& text){
+        if (!text.font[0].empty() || !Localization::isActive())
+            return text.font[0];
+        const std::vector<std::string> fonts = Localization::getLanguageFonts(Localization::getLanguage());
+        return fonts.empty() ? std::string() : fonts.front();
+    }
+
+}
+
 std::string UISystem::getFontId(const TextComponent& text, const STBTextOptions& options) const{
-    std::string fontId = text.font[0];
+    std::string fontId = primaryFontOf(text);
     if (fontId.empty())
         fontId = "font";
 
@@ -295,10 +310,13 @@ std::string UISystem::getFontId(const TextComponent& text, const STBTextOptions&
             fontId += std::string(";") + text.font[i];
     }
 
-    fontId += std::string("|") + std::to_string(text.fontSize);
+    fontId += std::string("|") + std::to_string(effectiveFontSize(text));
+    // an em size is another scale of the same faces
+    if (options.emSize)
+        fontId += "em";
     // another raster size or an SDF is another atlas (plain texts keep their old id)
     if (options.rasterScale != 1.0f)
-        fontId += std::string("@") + std::to_string((int)std::lround((float)text.fontSize * options.rasterScale));
+        fontId += std::string("@") + std::to_string((int)std::lround((float)effectiveFontSize(text) * options.rasterScale));
     if (options.sdfPadding > 0)
         fontId += std::string("~sdf") + std::to_string(options.sdfPadding);
     return fontId;
@@ -355,9 +373,10 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransform
                 fallbacks.push_back(text.font[i]);
         }
 
-        text.stbtext = FontPool::get(fontId, text.font[0], fallbacks, text.fontSize, options);
+        const std::string primary = primaryFontOf(text);
+        text.stbtext = FontPool::get(fontId, primary, fallbacks, effectiveFontSize(text), options);
         if (!text.stbtext) {
-            Log::error("Cannot load font atlas from: %s", text.font[0].c_str());
+            Log::error("Cannot load font atlas from: %s", primary.c_str());
             return false;
         }
     }
@@ -366,6 +385,7 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransform
     text.atlasVersion = 0;
     text.rasterScale = options.rasterScale;
     text.sdfPadding = options.sdfPadding;
+    text.atlasFontSize = effectiveFontSize(text);
 
     text.needReloadAtlas = false;
     text.loaded = true;
@@ -549,21 +569,113 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
     syncFontAtlas(text, ui);
     updateTextShaderParams(text, ui);
 
-    finishTextGeometry(text, ui, layout, text.stbtext->getAscent(), 0.0f, true, indices_array);
+    finishTextGeometry(text, ui, layout, text.stbtext->getAscent(), text.stbtext->getCapHeight(), text.stbtext->getXHeight(), 0.0f, true,
+                       indices_array);
 }
 
-void UISystem::finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float pivotStep,
-                                  bool fillColors, std::vector<uint16_t>& indices_array){
-    float baselineOffsetY = ui.flipY ? (layout.height - ascent) : ascent;
-    float offsetX = text.pivotCentered ? -(layout.width / 2.0f) : 0.0f;
-    // a bitmap text's pivot stays a whole number of font pixels from its glyphs (S51 R8)
-    if (pivotStep > 0.0f){
-        baselineOffsetY = std::round(baselineOffsetY / pivotStep) * pivotStep;
-        offsetX = text.pivotCentered ? -std::floor((float)layout.width / 2.0f / pivotStep) * pivotStep : 0.0f;
-    }
-    float offsetY = text.pivotBaseline ? 0.0f : baselineOffsetY;
+void UISystem::alignTextGlyphs(TextComponent& text, UIComponent& ui, const RectTransformComponent& layout, float ascent, float pivotStep){
+    const bool horizontal = text.horizontalAlignment != TextHorizontalAlignment::LEFT && layout.width > 0;
+    // (the box is the fixed height from the first line's top, whatever the anchor puts on the origin)
+    const bool vertical = text.verticalAlignment != TextVerticalAlignment::TOP && text.fixedHeight && layout.height > 0;
+    if ((!horizontal && !vertical) || text.glyphInfo.empty())
+        return;
 
-    if (text.pivotCentered || !text.pivotBaseline){
+    // a bitmap text moves by whole font pixels (S51 R8)
+    auto snap = [pivotStep](float value){ return pivotStep > 0.0f ? std::round(value / pivotStep) * pivotStep : value; };
+
+    bool hadInvalid = false;
+    const std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(text.text, hadInvalid);
+    std::vector<float> offsets = horizontal ? TextAlignment::horizontalOffsets(text.glyphInfo, codepoints, (float)layout.width, text.horizontalAlignment)
+                                            : std::vector<float>(text.glyphInfo.size(), 0.0f);
+    for (float& offset : offsets)
+        offset = snap(offset);
+
+    float down = 0.0f;
+    if (vertical){
+        uint32_t lines = 0;
+        for (const TextGlyphInfo& glyph : text.glyphInfo)
+            lines = std::max(lines, glyph.line + 1);
+        const float lineHeight = text.bitmapText ? (float)text.bitmapText->getFont()->getLineHeight() * text.pixelUnit
+                                                 : (float)text.stbtext->getLineHeight();
+        down = snap(TextAlignment::verticalOffset(lines, lineHeight, ascent, (float)layout.height, text.verticalAlignment));
+    }
+
+    // the quads (4 vertices each, one glyph info each); y is up when the text is flipped
+    Attribute* atrVertice = ui.buffer.getAttribute(AttributeType::POSITION);
+    const float dy = ui.flipY ? -down : down;
+    const int quads = std::min((int)text.glyphInfo.size(), (int)ui.buffer.getCount() / 4);
+    for (int q = 0; q < quads; q++){
+        for (int c = 0; c < 4; c++){
+            Vector3 vertex = ui.buffer.getVector3(atrVertice, q * 4 + c);
+            vertex.x += offsets[(size_t)q];
+            vertex.y += dy;
+            ui.buffer.setVector3(q * 4 + c, atrVertice, vertex);
+        }
+    }
+
+    // the caret and selection positions follow their characters (indexed without newlines)
+    std::vector<float> clusterOffset(codepoints.size(), 0.0f);
+    for (size_t g = 0; g < text.glyphInfo.size(); g++){
+        if (text.glyphInfo[g].cluster < clusterOffset.size())
+            clusterOffset[text.glyphInfo[g].cluster] = offsets[g];
+    }
+    size_t k = 0;
+    for (size_t i = 0; i < codepoints.size(); i++){
+        if (codepoints[i] == 10)
+            continue;
+        if (k < text.charPositions.size()){
+            text.charPositions[k].x += clusterOffset[i];
+            text.charPositions[k].y += down;
+        }
+        if (k < text.charExtents.size()){
+            text.charExtents[k].left += clusterOffset[i];
+            text.charExtents[k].right += clusterOffset[i];
+            text.charExtents[k].y += down;
+        }
+        k++;
+    }
+}
+
+float UISystem::textAnchorX(const TextComponent& text){
+    switch (text.anchorHorizontal){
+        case TextAnchorHorizontal::CENTER: return 0.5f;
+        case TextAnchorHorizontal::RIGHT: return 1.0f;
+        default: return 0.0f;
+    }
+}
+
+void UISystem::finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float capHeight, float xHeight,
+                                  float pivotStep, bool fillColors, std::vector<uint16_t>& indices_array){
+    // the glyphs come with the first baseline at y 0: the box spans [boxLow, boxLow + height] along
+    // the text's local y, and "up" (from the baseline to the capitals) is +y unless the y-down UI
+    // camera draws it
+    const float height = (float)layout.height;
+    float boxLow = ui.flipY ? (ascent - height) : -ascent;
+    // a bitmap text's pivot stays a whole number of font pixels from its glyphs (S51 R8)
+    if (pivotStep > 0.0f)
+        boxLow = -std::round(-boxLow / pivotStep) * pivotStep;
+    const float up = ui.flipY ? 1.0f : -1.0f;
+    float anchorY = boxLow;
+    switch (text.anchorVertical){
+        case TextAnchorVertical::TOP: anchorY = boxLow + height; break;
+        case TextAnchorVertical::MIDDLE: anchorY = boxLow + height / 2.0f; break;
+        case TextAnchorVertical::BASELINE: anchorY = 0.0f; break;
+        case TextAnchorVertical::CAPLINE: anchorY = up * capHeight / 2.0f; break;
+        case TextAnchorVertical::MIDLINE: anchorY = up * xHeight / 2.0f; break;
+        default: break;
+    }
+    float offsetY = -anchorY;
+    float offsetX = -(float)layout.width * textAnchorX(text);
+    if (pivotStep > 0.0f){
+        offsetY = std::round(offsetY / pivotStep) * pivotStep;
+        offsetX = -std::floor(-offsetX / pivotStep) * pivotStep;
+    }
+    text.boxMin = Vector2(offsetX, offsetY + boxLow);
+
+    // S93 R37: the lines inside the box (Alignment), then the box on the origin (S94's Anchor)
+    alignTextGlyphs(text, ui, layout, ascent, pivotStep);
+
+    if (offsetX != 0.0f || offsetY != 0.0f){
         Attribute* atrVertice = ui.buffer.getAttribute(AttributeType::POSITION);
         for (int i = 0; i < ui.buffer.getCount(); i++){
             Vector3 vertice = ui.buffer.getVector3(atrVertice, i);
@@ -580,8 +692,8 @@ void UISystem::finishTextGeometry(TextComponent& text, UIComponent& ui, RectTran
     bool clipHeight = text.fixedHeight && layout.height > 0;
 
     if (clipWidth || clipHeight){
-        // the layout rect follows the same pivot offset applied to the glyphs
-        Rect clip(offsetX, offsetY - baselineOffsetY, layout.width, layout.height);
+        // the layout rect follows the same alignment offset applied to the glyphs
+        Rect clip(offsetX, offsetY + boxLow, layout.width, layout.height);
 
         Attribute* atrVertice = ui.buffer.getAttribute(AttributeType::POSITION);
         Attribute* atrTexcoord = ui.buffer.getAttribute(AttributeType::TEXCOORD1);
@@ -1647,6 +1759,12 @@ bool UISystem::handleInputFieldCharInput(InputFieldComponent& inputfield, TextCo
             : 0;
 
         if (text.maxTextSize > 0 && currentCount - selectionSize + insertCount > text.maxTextSize){
+            keyboardResyncPending = System::instance().keepsVirtualKeyboardText();
+            return true;
+        }
+        // Character Limit: typing and pasting stop there (pasted text arrives a character at a time)
+        if (inputfield.characterLimit > 0 && currentCount - selectionSize + insertCount > static_cast<size_t>(inputfield.characterLimit)){
+            keyboardResyncPending = System::instance().keepsVirtualKeyboardText();
             return true;
         }
 
@@ -1848,6 +1966,9 @@ void UISystem::checkTextAtlasOptions(TextComponent& text, UIComponent& ui){
     }
     if (text.loaded && !text.needReloadAtlas){
         const STBTextOptions options = getTextOptions(text);
+        // (Auto Size fitted another size, or turned off: the atlas of the size it lays out at)
+        if (effectiveFontSize(text) != text.atlasFontSize)
+            text.needReloadAtlas = true;
         if (options.rasterScale != text.rasterScale || options.sdfPadding != text.sdfPadding){
             text.needReloadAtlas = true;
             // another shader variant (SDF on or off)
@@ -1855,6 +1976,49 @@ void UISystem::checkTextAtlasOptions(TextComponent& text, UIComponent& ui){
                 ui.needReload = true;
         }
     }
+}
+
+bool UISystem::fitTextAutoSize(TextComponent& text, const RectTransformComponent& layout){
+    const bool box = (text.fixedWidth && layout.width > 0) || (text.fixedHeight && layout.height > 0);
+    if (text.bitmapText){
+        // a bitmap font draws only at whole multiples of its native size (S51 R7): the largest
+        // scale whose multiple lies in [fontSizeMin, fontSizeMax] and fits; its atlas is the same
+        // at every scale, so nothing reloads
+        text.autoFontSize = (text.autoSize && box) ? fitBitmapTextAutoSize(text, layout) : 0;
+        return false;
+    }
+    // a vector font in a fixed box
+    if (!text.autoSize || !box || !text.loaded || !text.stbtext){
+        const bool changed = text.autoFontSize != 0;
+        text.autoFontSize = 0;
+        return changed && text.loaded && effectiveFontSize(text) != text.atlasFontSize;
+    }
+    const unsigned int fitted = TextAlignment::fitSize(text.fontSizeMin, text.fontSizeMax, [&](unsigned int size){
+        float width = 0.0f, height = 0.0f;
+        text.stbtext->measure(text.text, size, layout.width, text.fixedWidth, text.multiline, width, height);
+        return (!text.fixedWidth || width <= (float)layout.width) && (!text.fixedHeight || height <= (float)layout.height);
+    });
+    text.autoFontSize = fitted;
+    return fitted != text.atlasFontSize;
+}
+
+unsigned int UISystem::fitBitmapTextAutoSize(const TextComponent& text, const RectTransformComponent& layout) const{
+    const pixelart::BitmapFont& font = *text.bitmapText->getFont();
+    const unsigned int native = (unsigned int)std::max(font.getNativeSize(), 1);
+    // the scales whose sizes lie in the range; a range holding none takes the scale nearest to it
+    const unsigned int maxScale = std::max(text.fontSizeMax / native, 1u);
+    const unsigned int minScale = std::clamp((std::max(text.fontSizeMin, 1u) + native - 1) / native, 1u, maxScale);
+    const bool wrap = text.fixedWidth && text.multiline;
+    const unsigned int k = TextAlignment::fitSize(minScale, maxScale, [&](unsigned int scale){
+        const float unit = getBitmapTextUnit((int)scale);
+        // as BitmapText::createText lays it out
+        const int widthPx = (int)std::floor((float)layout.width / unit + 1e-4f);
+        int width = 0, height = 0;
+        pixelart::BitmapText::measure(font, text.text, wrap, widthPx, width, height);
+        return (!text.fixedWidth || std::ceil((float)width * unit - 1e-4f) <= (float)layout.width) &&
+               (!text.fixedHeight || std::ceil((float)height * unit - 1e-4f) <= (float)layout.height);
+    });
+    return k * native;
 }
 
 bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
@@ -1887,11 +2051,42 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTran
         if (!text.loaded){
             loadFontAtlas(text, ui, layout);
         }
-        createText(text, ui, layout);
+        // S93 R37 Auto Size: the fitted size's atlas before the layout
+        if (fitTextAutoSize(text, layout)){
+            destroyText(text);
+            loadFontAtlas(text, ui, layout);
+        }
+        if (!text.localizedPreview.empty()){
+            // Edit mode's message (D-15): drawn, while `text` keeps the authored value
+            std::string authored = std::move(text.text);
+            text.text = text.localizedPreview;
+            createText(text, ui, layout);
+            text.text = std::move(authored);
+        }else{
+            createText(text, ui, layout);
+        }
 
         text.needUpdateText = false;
     }
 
+    return true;
+}
+
+bool UISystem::updateTextLayout(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
+    checkTextAtlasOptions(text, ui);
+    // F-PF7: nothing runs for a text laid out already
+    if (text.loaded && !text.needUpdateText && !text.needReloadAtlas && !isFontAtlasStale(text))
+        return true;
+    if (createOrUpdateText(text, ui, layout))
+        return true;
+
+    // no camera to pick the flip from: the size does not depend on it
+    if (text.loaded && text.needReloadAtlas)
+        destroyText(text);
+    if (!text.loaded && !loadFontAtlas(text, ui, layout))
+        return false;
+    createText(text, ui, layout);
+    text.needUpdateText = true;
     return true;
 }
 
@@ -2266,7 +2461,7 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
     }
 
     const bool reduced = UISystem::isReducedMotion();
-    const float fontSize = (float)text.fontSize;
+    const float fontSize = (float)effectiveFontSize(text);
     const Vector4 baseSRGB(Color::linearTosRGB(plainRgb), base.w);
     // y up under an orthographic camera (flipped text): the effects work y down
     const float ySign = ui.flipY ? -1.0f : 1.0f;
@@ -2376,9 +2571,9 @@ void UISystem::updateTextEffects(double dt){
             effect.basePositions.resize(positions->getCount());
             for (unsigned int v = 0; v < positions->getCount(); v++)
                 effect.basePositions[v] = ui->buffer.getVector3(positions, v);
-            if (effect.appliedText != text->text || effect.appliedFontSize != text->fontSize){
+            if (effect.appliedText != text->text || effect.appliedFontSize != effectiveFontSize(*text)){
                 effect.appliedText = text->text;
-                effect.appliedFontSize = text->fontSize;
+                effect.appliedFontSize = effectiveFontSize(*text);
                 effect.cycleTime = 0.0;
                 effect.revealed = 0;
                 effect.finished = false;
@@ -2756,6 +2951,41 @@ void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity 
 
             if (noGeometry) text.needUpdateText = true;
 
+            // game-ui-localization.md R14, R16: the key's message and the language font, at start
+            // and after each change of language or tables
+            // (an Inspector or MCP edit of the key marks the text for update, so Edit mode follows it)
+            const bool languageChanged = (!text.localizationKey.empty() || text.font[0].empty()) &&
+                                         text.localizationGeneration != Localization::getGeneration();
+            const bool maybeKeyEdited = text.needUpdateText && (!text.localizationKey.empty() || !text.localizedPreview.empty());
+            // isSceneRunning locks: asked only when one of the cheap tests above holds
+            const bool running = (languageChanged || maybeKeyEdited || !text.localizedPreview.empty()) && Engine::isSceneRunning(scene);
+            if (languageChanged || (maybeKeyEdited && !running) || (running && !text.localizedPreview.empty())){
+                text.localizationGeneration = Localization::getGeneration();
+                std::string message;
+                const bool found = !text.localizationKey.empty() &&
+                                   Localization::translate(text.localizationKey, text.textArgs, message, "Text " + std::to_string(entity));
+                if (running){
+                    // a scene copied from Edit mode for Play draws `text` from now on
+                    if (!text.localizedPreview.empty()){
+                        text.localizedPreview.clear();
+                        text.needUpdateText = true;
+                    }
+                    if (found && message != text.text){
+                        text.text = message;
+                        text.needUpdateText = true;
+                    }
+                }else{
+                    // Edit mode draws the message without writing `text`, which a save keeps (D-15)
+                    if (!found) message.clear();
+                    if (message != text.localizedPreview){
+                        text.localizedPreview = std::move(message);
+                        text.needUpdateText = true;
+                    }
+                }
+                if (languageChanged && text.font[0].empty() && text.loaded)
+                    text.needReloadAtlas = true;
+            }
+
             // a Text Effect needs a colour per vertex: another buffer layout and shader variant
             const bool vertexColor = scene->findComponent<TextEffectComponent>(entity) != nullptr;
             if (text.vertexColor != vertexColor){
@@ -2931,8 +3161,23 @@ void UISystem::calculateUIAABB(UIComponent& ui){
     ui.needUpdateAABB = true;
 }
 
+void UISystem::flushKeyboardResync(){
+    const Entity entity = keyboardResyncField;
+    keyboardResyncField = NULL_ENTITY;
+    const InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity);
+    const UIComponent* ui = scene->findComponent<UIComponent>(entity);
+    const TextComponent* text = inputfield ? scene->findComponent<TextComponent>(inputfield->text) : nullptr;
+    if (!text || !ui || !ui->focused || !System::instance().keepsVirtualKeyboardText())
+        return;
+    bool hadInvalid = false;
+    const std::wstring wide = StringUtils::utf8ToWString(text->text, hadInvalid);
+    System::instance().updateVirtualKeyboardText(wide, inputfield->cursorIndex, inputfield->cursorIndex);
+}
+
 void UISystem::update(double dt){
     pendingImages = false;
+    if (keyboardResyncField != NULL_ENTITY)
+        flushKeyboardResync();
 
     syncCanvasGroups();
 
@@ -3578,6 +3823,40 @@ bool UISystem::isInputFieldFocused(){
     return false;
 }
 
+TextEntryTraits UISystem::inputFieldTraits(const InputFieldComponent& inputfield){
+    TextEntryTraits traits;
+    switch (inputfield.keyboardType){
+        case InputFieldKeyboardType::NUMBER_PAD: traits.keyboard = KeyboardType::Number; break;
+        case InputFieldKeyboardType::DECIMAL_PAD: traits.keyboard = KeyboardType::Decimal; break;
+        case InputFieldKeyboardType::PHONE_PAD: traits.keyboard = KeyboardType::Phone; break;
+        case InputFieldKeyboardType::EMAIL_ADDRESS: traits.keyboard = KeyboardType::Email; break;
+        case InputFieldKeyboardType::URL: traits.keyboard = KeyboardType::Url; break;
+        case InputFieldKeyboardType::SEARCH:
+            traits.keyboard = KeyboardType::Search;
+            traits.enterKey = EnterKey::Search;
+            break;
+        case InputFieldKeyboardType::DEFAULT: break;
+    }
+    traits.secure = inputfield.password;
+    traits.maxLength = inputfield.characterLimit > 0 ? inputfield.characterLimit : -1;
+    return traits;
+}
+
+bool UISystem::getTypingInputFieldTraits(TextEntryTraits& traits) const{
+    auto inputfields = scene->getComponentArray<InputFieldComponent>();
+    for (size_t i = 0; i < inputfields->size(); i++){
+        const Entity entity = inputfields->getEntity(i);
+        const Signature signature = scene->getSignature(entity);
+        if (!signature.test(scene->getComponentId<UIComponent>()))
+            continue;
+        if (scene->getComponent<UIComponent>(entity).focused && isUIActive(entity, signature) && isInteractable(entity)){
+            traits = inputFieldTraits(inputfields->getComponentFromIndex(i));
+            return true;
+        }
+    }
+    return false;
+}
+
 bool UISystem::eventOnCharInput(char32_t codepoint){
     // what the event handlers destroy goes when the dispatch is over
     StructuralDeferScope deferScope(*scene);
@@ -3594,6 +3873,10 @@ bool UISystem::eventOnCharInput(char32_t codepoint){
             if (ui.focused && isUIActive(entity, signature) && isInteractable(entity)){
                 TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
                 if (text && handleInputFieldCharInput(inputfield, *text, ui, codepoint)){
+                    if (keyboardResyncPending){
+                        keyboardResyncPending = false;
+                        keyboardResyncField = entity;
+                    }
                     return true;
                 }
             }

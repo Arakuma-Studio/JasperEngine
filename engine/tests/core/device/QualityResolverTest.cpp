@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+#include <optional>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -59,6 +61,7 @@ TEST_F(QualityResolverTest, NoTierChangesNothing){
     EXPECT_EQ(QualityResolver::targetFrameRate(-1), -1);
     EXPECT_EQ(QualityResolver::textureQuality(1), 1);
     EXPECT_EQ(QualityResolver::particleBudget(1000u), 1000u);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 16);
 }
 
 // R3's defaults: Low halves, Low shadows, LOD Bias 0.5, no volumetrics or SSAO; Medium 0.85;
@@ -301,6 +304,105 @@ TEST_F(QualityResolverTest, SettingsJsonRoundTrip){
     // a newer player's cell is ignored
     ASSERT_TRUE(DeviceSettings::fromJson("{\"tiers\": {\"mobile\": {\"low\": {\"future_cell\": 1}}}}", back, error)) << error;
     EXPECT_EQ(back, DeviceSettings());
+}
+
+// culling-group-and-simulation-distance R16: Low 0.6, Medium 0.8, High and Ultra inherit 1; a
+// project cell wins and is kept in 0.25..1; never a thermal step's
+TEST_F(QualityResolverTest, SimulationDistanceCell){
+    QualityResolver::setSettings(DeviceSettings());
+    QualityResolver::setPlatformGroup(DevicePlatformGroup::Mobile);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 1.0f) << "no tier applied";
+    QualityResolver::setTier(DeviceTier::Low);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 0.6f);
+    QualityResolver::setTier(DeviceTier::Medium);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 0.8f);
+    QualityResolver::setTier(DeviceTier::High);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 1.0f);
+    QualityResolver::setTier(DeviceTier::Ultra);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 1.0f);
+
+    DeviceSettings settings;
+    settings.tier(DevicePlatformGroup::Mobile, DeviceTier::Low).set(DeviceOverride::SimulationDistance, 0.5f);
+    QualityResolver::setSettings(settings);
+    QualityResolver::setTier(DeviceTier::Low);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 0.5f);
+    QualityResolver::forceThermalResponse(ThermalState::Critical);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 0.5f) << "not thermal-adjusted";
+    QualityResolver::forceThermalResponse(ThermalState::Nominal);
+
+    std::string error;
+    float value = 0.0f;
+    EXPECT_FALSE(DeviceOverrides::validate(DeviceOverride::SimulationDistance, 0.1f, error));
+    EXPECT_FALSE(DeviceOverrides::validate(DeviceOverride::SimulationDistance, 1.5f, error));
+    EXPECT_TRUE(DeviceOverrides::parse(DeviceOverride::SimulationDistance, "0.25", value, error)) << error;
+    EXPECT_STREQ(DeviceOverrides::info(DeviceOverride::SimulationDistance).key, "simulation_distance");
+    EXPECT_STREQ(DeviceOverrides::info(DeviceOverride::SimulationDistance).label, "Simulation Distance");
+}
+
+// R37: a tier JSON written before the cell existed loads its defaults; the defaults write nothing
+TEST_F(QualityResolverTest, OldTierJsonLoads){
+    DeviceSettings back;
+    std::string error;
+    ASSERT_TRUE(DeviceSettings::fromJson("{\"tiers\": {\"mobile\": {\"low\": {\"render_scale\": 0.6}}}}", back, error)) << error;
+    EXPECT_FLOAT_EQ(*back.tier(DevicePlatformGroup::Mobile, DeviceTier::Low).get(DeviceOverride::SimulationDistance), 0.6f);
+    EXPECT_FLOAT_EQ(*back.tier(DevicePlatformGroup::Desktop, DeviceTier::Medium).get(DeviceOverride::SimulationDistance), 0.8f);
+    EXPECT_FALSE(back.tier(DevicePlatformGroup::Web, DeviceTier::High).get(DeviceOverride::SimulationDistance).has_value());
+    EXPECT_EQ(DeviceSettings().toJson().find("simulation_distance"), std::string::npos);
+    DeviceSettings changed;
+    changed.tier(DevicePlatformGroup::Web, DeviceTier::High).set(DeviceOverride::SimulationDistance, 0.7f);
+    EXPECT_NE(changed.toJson().find("\"simulation_distance\""), std::string::npos);
+}
+
+// S100: Cavity's World samples are as authored on High and Ultra, at most 8 on Medium and 4 on Low
+// (a cap: never raised, never off); a Critical thermal step takes the tier below's cap; the cell
+// is 4, 8 or 16, and a project saved before it gets the defaults
+TEST_F(QualityResolverTest, CavitySamplesCappedByTier){
+    QualityResolver::setSettings(mobileOnly());
+    QualityResolver::setPlatformGroup(DevicePlatformGroup::Mobile);
+
+    QualityResolver::setTier(DeviceTier::Low);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 4);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(8), 4);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(4), 4);
+    QualityResolver::setTier(DeviceTier::Medium);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 8);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(8), 8);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(4), 4) << "a cap never raises the scene's value";
+    for (DeviceTier tier : {DeviceTier::High, DeviceTier::Ultra}){
+        QualityResolver::setTier(tier);
+        EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 16);
+    }
+
+    QualityResolver::setTier(DeviceTier::High);
+    QualityResolver::forceThermalResponse(ThermalState::Critical);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 8) << "Critical: Medium's post-processing cells";
+    QualityResolver::resetResponse();
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 16);
+
+    float value = 0.0f;
+    std::string error;
+    EXPECT_FALSE(DeviceOverrides::validate(DeviceOverride::Cavity, 6.0f, error));
+    EXPECT_NE(error.find("4, 8 or 16"), std::string::npos) << error;
+    EXPECT_TRUE(DeviceOverrides::parse(DeviceOverride::Cavity, "16", value, error)) << error;
+    EXPECT_FLOAT_EQ(value, 16.0f);
+    DeviceOverride field;
+    ASSERT_TRUE(DeviceOverrides::fromKey("cavity_samples", field));
+    EXPECT_EQ(field, DeviceOverride::Cavity);
+
+    // the defaults are not written; an older project's table (no cavity_samples) gets them
+    EXPECT_EQ(DeviceSettings().toJson(), "{}");
+    DeviceSettings old;
+    ASSERT_TRUE(DeviceSettings::fromJson("{\"tiers\": {\"mobile\": {\"low\": {\"render_scale\": 0.6}}}}", old, error)) << error;
+    EXPECT_EQ(old.tier(DevicePlatformGroup::Mobile, DeviceTier::Low).get(DeviceOverride::Cavity), std::optional<float>(4.0f));
+    EXPECT_EQ(old.tier(DevicePlatformGroup::Mobile, DeviceTier::Medium).get(DeviceOverride::Cavity), std::optional<float>(8.0f));
+    EXPECT_FALSE(old.tier(DevicePlatformGroup::Mobile, DeviceTier::High).get(DeviceOverride::Cavity).has_value());
+    EXPECT_FALSE(DeviceSettings::fromJson("{\"tiers\": {\"web\": {\"high\": {\"cavity_samples\": 12}}}}", old, error));
+    // a cleared default stays cleared
+    DeviceSettings cleared;
+    cleared.tier(DevicePlatformGroup::Web, DeviceTier::Low).set(DeviceOverride::Cavity, std::nullopt);
+    DeviceSettings back;
+    ASSERT_TRUE(DeviceSettings::fromJson(cleared.toJson(), back, error)) << error;
+    EXPECT_EQ(back, cleared);
 }
 
 }  // namespace QualityResolverTest_cpp

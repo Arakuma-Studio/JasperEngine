@@ -10,19 +10,27 @@
 #      password and an unknown alias each fail with their own message; no password reaches a log, a
 #      package or the output folder.
 #   3. publish prepare validates the APK and the bundle (signed, aligned, the content there).
+#   3b. What ships (docs/specs/S98-editor-tooling-gaps.md AC12, AC14): a folder starting with "_"
+#      is in the APK and the bundle; a hidden file is left out with W-ANDROID-ASSET-IGNORED; a
+#      package that lost a content file (JASPER_TEST_ANDROID_DROP_ENTRY) fails naming it; the
+#      bundle's content is the install-time asset pack game_content (bundletool dump manifest), and
+#      its universal APK holds all of it; the debug key's package takes the Debug Package Suffix.
 #   4. The emulator (tools/android-emulator-test.sh; needs KVM): the APK installs, runs, relaunches and
 #      its screen is compared with tools/fixtures/unified-lighting/golden/android/screen.png.
 #      The bundle goes through bundletool build-apks and install-apks and is compared the same way.
 #      A texture that fails to load fails the run: the picture would still look like a game.
+#      The debug project carries an HTML UI document over the scene, so the GLES log check and
+#      the golden cover a multisampled UI target next to the camera's single-sampled one.
 #
 #   tools/build.sh linux                                   # the editor install
 #   PLAYER_PLATFORM=android PLAYER_ANDROID_ABIS=x86_64 PLAYER_FLAVOURS=development tools/build.sh players
 #   tools/ci/android_packaging.sh [release|development]    # default development
 #
 # ANDROID_PACKAGING_SOURCE=1 adds the source export, which compiles the engine (about half an hour):
-# the editor's export built with the project's own Gradle into a debug APK and bundle, both run and
-# compared on the emulator as well. Gradle signs them with the debug key: a source export's release key
-# is set up in Android Studio, as the Gradle project has no signing config of the project's keystore.
+# the editor's export built with the project's own Gradle into a debug APK and, in a Gradle run of
+# its own, a bundle whose content is the install-time asset pack; both run and are compared on the
+# emulator as well. The debug type's native code is optimised (-O2, RelWithDebInfo) and its package
+# takes the Debug Package Suffix. Gradle signs them with the debug key.
 #
 # ANDROID_PACKAGING_NO_EMULATOR=1 stops after step 3 (no KVM here). Results in build/android-packaging/.
 set -euo pipefail
@@ -54,8 +62,38 @@ make_project() {
         printf '%s\n' "$@"
     } >> "$OUT/$name/project.yaml"
 }
-make_project debug
+make_project debug '  debugPackageSuffix: .dbg'
 python3 tools/ci/freeze_unified_lighting.py "$OUT/debug"
+# what Android's default asset filter drops: a folder starting with "_" (it must ship) and a
+# hidden file (it stays out, said)
+mkdir -p "$OUT/debug/assets/_Onboarding"
+echo '{"step": 1}' > "$OUT/debug/assets/_Onboarding/level.json"
+touch "$OUT/debug/assets/_Onboarding/.gitkeep"
+# an HTML UI document over the scene, above and below it: its targets are multisampled (4 samples by
+# default) and the camera's are not, which the emulator's GLES once failed as an incomplete framebuffer
+mkdir -p "$OUT/debug/assets/ui"
+cat > "$OUT/debug/assets/ui/packaging.html" <<'HTML'
+<html><head><style>
+body { width: 100%; height: 100%; margin: 0; }
+#panel { position: absolute; left: 6%; top: 6%; width: 88%; height: 18%; background-color: #e04030;
+         border-radius: 40px; border: 8px #ffffff; }
+#disc { position: absolute; left: 30%; top: 70%; width: 40%; height: 18%; background-color: #2080ffc0; border-radius: 50%; }
+</style></head><body><div id="panel"></div><div id="disc"></div></body></html>
+HTML
+cat >> "$OUT/debug/Main Scene.scene" <<'SCENE'
+  - type: Entity
+    entity: 1900
+    name: Packaging UI
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+      uidocument:
+        enabled: true
+        filename: ui/packaging.html
+SCENE
 # the emulator's renderer has no ASTC: without ETC2 cooks these textures fail to load there
 printf 'texture:\n  androidEtc2Fallback: true\n' >> "$OUT/debug/project.yaml"
 make_project release '  keystore:' "    path: ../release.jks" '    alias: game'
@@ -155,6 +193,36 @@ JSON
     dbus-run-session -- build/linux/editor-install/bin/jasperengine-editor publish prepare --project \$OUT/debug --release s47 > \$OUT/logs/publish-prepare.log 2>&1 \
         || { tail -n 30 \$OUT/logs/publish-prepare.log; fail 'publish prepare refused the APK or the bundle'; }
     ok 'publish prepare validates the APK and the bundle'
+
+    # ---- 3b. what ships (listings in files: grep -q on a pipe can end unzip early, a failure
+    # under pipefail)
+    APK=\$OUT/debug-apk/UnifiedLighting.apk
+    AAB=\$OUT/debug-aab/UnifiedLighting.aab
+    unzip -Z1 \$APK > \$OUT/logs/apk-entries.txt
+    unzip -Z1 \$AAB > \$OUT/logs/aab-entries.txt
+    grep -qx 'assets/game/assets/_Onboarding/level.json' \$OUT/logs/apk-entries.txt || fail 'the APK lost the _Onboarding folder'
+    grep -q '\.gitkeep' \$OUT/logs/apk-entries.txt && fail 'the APK holds a hidden file'
+    grep -q 'W-ANDROID-ASSET-IGNORED.*_Onboarding/.gitkeep' \$OUT/logs/debug-apk.log || fail 'the hidden file is left out without a word'
+    ok 'a folder starting with _ ships; a hidden file is left out, named'
+    [[ \$(\$BT/aapt2 dump packagename \$APK | tr -d '\r') == com.jasperengine.packaging.dbg ]] || fail 'the debug key package has no Debug Package Suffix'
+    ok 'the debug-key package is com.jasperengine.packaging.dbg (Debug Package Suffix)'
+    grep -qx 'game_content/assets/game/assets/_Onboarding/level.json' \$OUT/logs/aab-entries.txt || fail 'the bundle content is not in game_content'
+    grep -q '^base/assets/game/' \$OUT/logs/aab-entries.txt && fail 'the bundle base module still holds content'
+    java -jar \$OUT/bundletool.jar dump manifest --bundle=\$AAB --module=game_content > \$OUT/logs/game_content-manifest.xml
+    grep -q 'dist:install-time' \$OUT/logs/game_content-manifest.xml || { cat \$OUT/logs/game_content-manifest.xml; fail 'game_content is not install-time'; }
+    java -jar \$OUT/bundletool.jar build-apks --bundle=\$AAB --output=\$OUT/universal.apks --mode=universal --overwrite > \$OUT/logs/universal.log 2>&1 \
+        || { cat \$OUT/logs/universal.log; fail 'bundletool build-apks --mode universal'; }
+    rm -rf \$OUT/universal && mkdir -p \$OUT/universal && unzip -q -o \$OUT/universal.apks -d \$OUT/universal
+    unzip -Z1 \$OUT/universal/universal.apk > \$OUT/logs/universal-entries.txt
+    grep '^assets/game/.*[^/]\$' \$OUT/logs/apk-entries.txt | sort > \$OUT/logs/apk-content.txt
+    grep '^assets/game/.*[^/]\$' \$OUT/logs/universal-entries.txt | sort > \$OUT/logs/universal-content.txt
+    diff \$OUT/logs/apk-content.txt \$OUT/logs/universal-content.txt > \$OUT/logs/universal-diff.txt \
+        || { head -20 \$OUT/logs/universal-diff.txt; fail 'the universal APK of the bundle lacks content the APK has'; }
+    ok \"the bundle's content is the install-time pack game_content; its universal APK holds all \$(wc -l < \$OUT/logs/apk-content.txt) files\"
+    export JASPER_TEST_ANDROID_DROP_ENTRY=assets/game/assets/_Onboarding/level.json
+    must_refuse 'lacks 1 file(s) of the game' debug apk dropped-apk
+    must_refuse 'game_content/assets/game/assets/_Onboarding/level.json' debug aab dropped-aab
+    unset JASPER_TEST_ANDROID_DROP_ENTRY
 "
 echo "ok: the packaging, signing and bundletool checks passed"
 
@@ -174,15 +242,29 @@ done
 if [[ "${ANDROID_PACKAGING_SOURCE:-0}" == 1 ]]; then
     tools/build.sh exec android bash -euo pipefail -c "
         BT=\$(ls -d \$ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
-        dbus-run-session -- build/linux/editor-install/bin/jasperengine-editor export --project $OUT/debug --out $OUT/source --backend opengles \
+        dbus-run-session -- build/linux/editor-install/bin/jasperengine-editor export --project $OUT/debug --out $OUT/source --platform android \
             > $OUT/logs/source-export.log 2>&1 || { tail -n 30 $OUT/logs/source-export.log; echo 'FAIL: the source export'; exit 1; }
         cd $OUT/source/workspaces/androidstudio
-        JASPERENGINE_ANDROID_ABIS=x86_64 CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug bundleDebug \
+        # the APK, then the bundle in a run of its own (its content then goes to the asset pack)
+        JASPERENGINE_ANDROID_ABIS=x86_64 CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug \
             > /src/$OUT/logs/source-gradle.log 2>&1 || { tail -n 40 /src/$OUT/logs/source-gradle.log; echo 'FAIL: Gradle on the source export'; exit 1; }
+        JASPERENGINE_ANDROID_ABIS=x86_64 CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon bundleDebug \
+            > /src/$OUT/logs/source-gradle-bundle.log 2>&1 || { tail -n 40 /src/$OUT/logs/source-gradle-bundle.log; echo 'FAIL: Gradle bundleDebug on the source export'; exit 1; }
         \$BT/apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -q 'CN=Android Debug' || { echo 'FAIL: the APK of the source export is not signed'; exit 1; }
         jarsigner -verify app/build/outputs/bundle/debug/app-debug.aab | grep -q 'jar verified' || { echo 'FAIL: the bundle of the source export is not signed'; exit 1; }
+        unzip -Z1 app/build/outputs/apk/debug/app-debug.apk > /src/$OUT/logs/source-apk-entries.txt
+        unzip -Z1 app/build/outputs/bundle/debug/app-debug.aab > /src/$OUT/logs/source-aab-entries.txt
+        grep -qx 'assets/_Onboarding/level.json' /src/$OUT/logs/source-apk-entries.txt || { echo 'FAIL: the source APK lost the _Onboarding folder'; exit 1; }
+        [[ \$(\$BT/aapt2 dump packagename app/build/outputs/apk/debug/app-debug.apk | tr -d '\r') == com.jasperengine.packaging.dbg ]] \
+            || { echo 'FAIL: the source debug APK has no Debug Package Suffix'; exit 1; }
+        grep -qx 'game_content/assets/_Onboarding/level.json' /src/$OUT/logs/source-aab-entries.txt \
+            || { echo 'FAIL: the source bundle content is not in the asset pack game_content'; exit 1; }
+        if grep -q '^base/assets/_Onboarding/' /src/$OUT/logs/source-aab-entries.txt; then echo 'FAIL: the source bundle base holds content'; exit 1; fi
+        # the debug type native code is optimised (RelWithDebInfo: -O2), not AGP's Debug -O0
+        COMMANDS=\$(find app/.cxx -name compile_commands.json | head -n 1)
+        grep -q -- '-O2' \"\$COMMANDS\" && ! grep -q -- ' -O0 ' \"\$COMMANDS\" || { echo \"FAIL: the debug native code is not -O2 (\$COMMANDS)\"; exit 1; }
     "
-    echo "ok: the source export builds with Gradle: a signed APK and bundle"
+    echo "ok: the source export builds with Gradle: a signed APK and bundle (content in game_content), -O2 debug native code, the suffix"
     SOURCE="$OUT/source/workspaces/androidstudio/app/build/outputs"
     # (both, whatever the first says: each is its own evidence)
     source_status=0

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // W4: Lua/C++ scripts, compile check, code editor sync
+#include "util/CppIdentifier.h"
 #include "sprite/SpriteSheetPool.h"
 #include "sprite/SpriteSheetSources.h"
 #include "camera/ShakePreset.h"
@@ -26,7 +27,6 @@
 #include "App.h"
 #include "AppSettings.h"
 #include "Catalog.h"
-#include "Factory.h"
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
@@ -123,6 +123,7 @@ std::string assetType(const fs::path& path) {
     // Sprite Atlases (S45)
     if (SpriteSheetSources::isAtlasPath(p)) return "sprite_atlas";
     if (Util::isColorLutFile(p)) return "color_lut";
+    if (Util::isIesFile(p)) return "ies_profile";
     if (Util::isParticleEffectFile(p)) return "particle_effect";
     if (Util::isModelFile(p)) return "model";
     if (Util::isAudioFile(p)) return "audio";
@@ -145,6 +146,9 @@ std::string assetType(const fs::path& path) {
     // Title Art documents (.titleart, S80; the baked PNGs are textures)
     if (Util::isTitleArtFile(p)) return "title_art";
     if (Util::isSoundEventFile(p)) return "sound_event";
+    // .mesh assets (S98 F1)
+    if (Util::isMeshAssetFile(p)) return "mesh";
+    if (Util::isDataAssetFile(p)) return "data_asset";
     return "other";
 }
 
@@ -153,7 +157,8 @@ bool isTextFile(const fs::path& path) {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
         ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg", ".bitmapfont",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake", ".titleart", ".soundevent", ".particles"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake", ".titleart", ".soundevent", ".particles", ".dataasset",
+        ".fogprofile"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
     return text.count(extensionOf(path)) > 0 || graph::GraphRegistry::get().kindForFile(FileUtils::pathToUtf8(path));
@@ -524,7 +529,14 @@ std::string scriptPropertyTypeName(const ScriptProperty& prop) {
         case ScriptPropertyType::EntityReference:
             return prop.ptrTypeName.empty() ? "entity" : "entity:" + prop.ptrTypeName;
         case ScriptPropertyType::Prefab: return "prefab";
-        case ScriptPropertyType::Asset: return prop.assetType.empty() ? "asset" : "asset:" + prop.assetType;
+        case ScriptPropertyType::Asset:
+            if (!prop.ptrTypeName.empty()) return prop.ptrTypeName;   // a data class: its Data Assets
+            return prop.assetType.empty() ? "asset" : "asset:" + prop.assetType;
+        case ScriptPropertyType::List: {
+            ScriptProperty element = prop;
+            element.type = prop.elementType;
+            return "list:" + scriptPropertyTypeName(element);
+        }
     }
     return "unknown";
 }
@@ -693,7 +705,7 @@ void createScriptTool(const CallPtr& call) {
         call->fail("name is required (the class / Lua module name, e.g. \"PlayerController\").");
         return;
     }
-    const std::string name = Factory::toIdentifier(requested);
+    const std::string name = toIdentifier(requested);
     Json warnings = Json::array();
     if (name != requested) warnings.push_back("Name \"" + requested + "\" is not a valid identifier; using \"" + name + "\".");
 
@@ -957,7 +969,7 @@ void updateScriptEntryTool(const CallPtr& call) {
         scripts[index].className = repointed.className;
         changed = true;
     } else if (args.contains("class_name") && args["class_name"].is_string()) {
-        const std::string className = Factory::toIdentifier(args["class_name"].get<std::string>());
+        const std::string className = toIdentifier(args["class_name"].get<std::string>());
         if (scripts[index].type == ScriptType::LUA) {
             call->fail("A Lua script's class name is its file name; rename the file (move_asset) and pass path instead.");
             return;

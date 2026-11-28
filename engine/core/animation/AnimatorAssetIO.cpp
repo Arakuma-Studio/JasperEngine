@@ -72,6 +72,16 @@ namespace{
         {AvatarBodyPart::LeftLeg, "left_leg"}, {AvatarBodyPart::RightLeg, "right_leg"},
         {AvatarBodyPart::LeftFingers, "left_fingers"}, {AvatarBodyPart::RightFingers, "right_fingers"},
     };
+    constexpr NameEntry<RootRotationBasis> kRotationBases[] = {
+        {RootRotationBasis::Original, "original"}, {RootRotationBasis::BodyOrientation, "body_orientation"},
+    };
+    constexpr NameEntry<RootPositionYBasis> kPositionYBases[] = {
+        {RootPositionYBasis::Original, "original"}, {RootPositionYBasis::CenterOfMass, "center_of_mass"},
+        {RootPositionYBasis::Feet, "feet"},
+    };
+    constexpr NameEntry<RootPositionXZBasis> kPositionXZBases[] = {
+        {RootPositionXZBasis::Original, "original"}, {RootPositionXZBasis::CenterOfMass, "center_of_mass"},
+    };
     constexpr NameEntry<AnimatorIKType> kIKTypes[] = {
         {AnimatorIKType::TwoBone, "two_bone"}, {AnimatorIKType::Fabrik, "fabrik"}, {AnimatorIKType::LookAt, "look_at"},
         {AnimatorIKType::FootIK, "foot_ik"}, {AnimatorIKType::FootLock, "foot_lock"},
@@ -959,6 +969,12 @@ const char* additiveReferenceName(AdditiveReference reference){ return nameOf(kR
 bool additiveReferenceFromName(const std::string& name, AdditiveReference& out){ return valueOf(kReferences, name, out); }
 const char* bodyPartName(AvatarBodyPart part){ return nameOf(kBodyParts, part); }
 bool bodyPartFromName(const std::string& name, AvatarBodyPart& out){ return valueOf(kBodyParts, name, out); }
+const char* rootRotationBasisName(RootRotationBasis basis){ return nameOf(kRotationBases, basis); }
+bool rootRotationBasisFromName(const std::string& name, RootRotationBasis& out){ return valueOf(kRotationBases, name, out); }
+const char* rootPositionYBasisName(RootPositionYBasis basis){ return nameOf(kPositionYBases, basis); }
+bool rootPositionYBasisFromName(const std::string& name, RootPositionYBasis& out){ return valueOf(kPositionYBases, name, out); }
+const char* rootPositionXZBasisName(RootPositionXZBasis basis){ return nameOf(kPositionXZBases, basis); }
+bool rootPositionXZBasisFromName(const std::string& name, RootPositionXZBasis& out){ return valueOf(kPositionXZBases, name, out); }
 const char* ikTypeName(AnimatorIKType type){ return nameOf(kIKTypes, type); }
 bool ikTypeFromName(const std::string& name, AnimatorIKType& out){ return valueOf(kIKTypes, name, out); }
 
@@ -1102,7 +1118,7 @@ namespace{
 
     // the S21 controller members of each kind of object (an unknown key of the same name, from a
     // converted file, would be written twice: it is renamed "upstream_<key>")
-    const std::set<std::string> kLayerMembers = {"name", "weight", "blending", "mask", "slot", "state_machine"};
+    const std::set<std::string> kLayerMembers = {"name", "weight", "blending", "mask", "slot", "mesh_space_rotation", "state_machine"};
     const std::set<std::string> kMachineMembers = {"name", "position", "default_state", "entry", "any_state", "states", "sub_state_machines",
                                                    "exit_transitions", "entry_position", "any_state_position", "exit_position"};
     const std::set<std::string> kStateMembers = {"name", "position", "motion", "speed", "speed_parameter", "cycle_offset", "cycle_offset_parameter",
@@ -1218,8 +1234,8 @@ bool isUnityYamlController(const std::string& text){
 }
 
 const char* unityYamlControllerRefusal(){
-    return "This is a Unity .controller (YAML). Create a JasperEngine Animator Controller (Assets > Create > Animator Controller, "
-           "or MCP edit_animator_controller {path, create: true}).";
+    return "This is a Unity .controller (YAML). Import it with Assets > Import Unity Animation... or MCP edit_animator_controller "
+           "{path, create: {unity: \"<absolute .controller path>\"}}.";
 }
 
 bool isUnityYamlMask(const std::string& text){
@@ -1227,7 +1243,8 @@ bool isUnityYamlMask(const std::string& text){
 }
 
 const char* unityYamlMaskRefusal(){
-    return "This is a Unity .mask (YAML). Create a JasperEngine Avatar Mask (Assets > Create > Avatar Mask, or MCP edit_avatar_mask {path, create: true}).";
+    return "This is a Unity .mask (YAML). Import it with Assets > Import Unity Animation... or MCP edit_avatar_mask "
+           "{path, create: {unity: \"<absolute .mask path>\"}}.";
 }
 
 // ---------------------------------------------------------------- public: controller
@@ -1296,6 +1313,7 @@ anim::ControllerParseResult parseController(const std::string& text){
                 reader.enumeration(l, at, "blending", kBlendings, layer.blending);
                 reader.assetRef(l, at, "mask", layer.mask);
                 reader.string(l, at, "slot", layer.slot);
+                reader.boolean(l, at, "mesh_space_rotation", layer.meshSpaceRotation);
                 auto machine = l.find("state_machine");
                 if (machine != l.end() && machine->is_object()){
                     readMachine(reader, *machine, Reader::member(at, "state_machine"), layer.machine, 0);
@@ -1303,7 +1321,7 @@ anim::ControllerParseResult parseController(const std::string& text){
                     reader.warn(Reader::member(at, "state_machine"), "expected an object");
                 }
                 layer.machine.name.clear();
-                reader.keep(l, at, {"name", "weight", "blending", "mask", "slot", "state_machine"}, layer.unknownKeys);
+                reader.keep(l, at, {"name", "weight", "blending", "mask", "slot", "mesh_space_rotation", "state_machine"}, layer.unknownKeys);
                 data.layers.push_back(std::move(layer));
             }
         }
@@ -1378,6 +1396,10 @@ std::string writeController(const ControllerDef& data){
         out.key("blending"); out.str(layerBlendingName(layer.blending));
         out.key("mask"); writeRef(out, layer.mask);
         out.key("slot"); out.str(layer.slot);
+        // written only when on: a controller without it re-saves byte for byte (no version bump)
+        if (layer.meshSpaceRotation){
+            out.key("mesh_space_rotation"); out.boolean(true);
+        }
         out.key("state_machine");
         writeMachine(out, layer.machine, true);
         writeUnknown(out, layer.unknownKeys);
@@ -1809,7 +1831,7 @@ anim::ClipRootMotion readClipRootMotion(const std::vector<std::pair<std::string,
         if (entry.first != "root_motion") continue;
         OJson value = OJson::parse(entry.second, nullptr, false);
         if (value.is_discarded() || !value.is_object()){
-            if (warnings) warnings->push_back({"root_motion", "expected {\"bone\", \"bake_rotation\", \"bake_position_y\", \"bake_position_xz\"}"});
+            if (warnings) warnings->push_back({"root_motion", "expected {\"bone\", \"bake_rotation\", \"bake_position_y\", \"bake_position_xz\", ...}"});
             return out;
         }
         std::vector<ClipWarning> local;
@@ -1819,15 +1841,34 @@ anim::ClipRootMotion readClipRootMotion(const std::vector<std::pair<std::string,
         reader.boolean(value, "root_motion", "bake_rotation", out.bakeRotation);
         reader.boolean(value, "root_motion", "bake_position_y", out.bakePositionY);
         reader.boolean(value, "root_motion", "bake_position_xz", out.bakePositionXZ);
-        reader.unknown(value, "root_motion", {"bone", "bake_rotation", "bake_position_y", "bake_position_xz"});
+        reader.enumeration(value, "root_motion", "rotation_based_upon", kRotationBases, out.rotationBasedUpon);
+        reader.number(value, "root_motion", "rotation_offset", out.rotationOffset);
+        reader.enumeration(value, "root_motion", "position_y_based_upon", kPositionYBases, out.positionYBasedUpon);
+        reader.number(value, "root_motion", "position_y_offset", out.positionYOffset);
+        reader.enumeration(value, "root_motion", "position_xz_based_upon", kPositionXZBases, out.positionXZBasedUpon);
+        reader.unknown(value, "root_motion", {"bone", "bake_rotation", "bake_position_y", "bake_position_xz", "rotation_based_upon",
+                                              "rotation_offset", "position_y_based_upon", "position_y_offset", "position_xz_based_upon"});
     }
     return out;
 }
 
 std::string writeClipRootMotion(const ClipRootMotion& rootMotion){
-    return "{\"bone\": " + quote(rootMotion.bone) + ", \"bake_rotation\": " + (rootMotion.bakeRotation ? "true" : "false") +
-           ", \"bake_position_y\": " + (rootMotion.bakePositionY ? "true" : "false") +
-           ", \"bake_position_xz\": " + (rootMotion.bakePositionXZ ? "true" : "false") + "}";
+    std::string text = "{\"bone\": " + quote(rootMotion.bone) + ", \"bake_rotation\": " + (rootMotion.bakeRotation ? "true" : "false") +
+                       ", \"bake_position_y\": " + (rootMotion.bakePositionY ? "true" : "false") +
+                       ", \"bake_position_xz\": " + (rootMotion.bakePositionXZ ? "true" : "false");
+    // the Based Upon members only when set: older files stay byte-identical on save
+    if (rootMotion.rotationBasedUpon != RootRotationBasis::Original){
+        text += std::string(", \"rotation_based_upon\": \"") + nameOf(kRotationBases, rootMotion.rotationBasedUpon) + "\"";
+    }
+    if (rootMotion.rotationOffset != 0.0f) text += ", \"rotation_offset\": " + number(rootMotion.rotationOffset);
+    if (rootMotion.positionYBasedUpon != RootPositionYBasis::Original){
+        text += std::string(", \"position_y_based_upon\": \"") + nameOf(kPositionYBases, rootMotion.positionYBasedUpon) + "\"";
+    }
+    if (rootMotion.positionYOffset != 0.0f) text += ", \"position_y_offset\": " + number(rootMotion.positionYOffset);
+    if (rootMotion.positionXZBasedUpon != RootPositionXZBasis::Original){
+        text += std::string(", \"position_xz_based_upon\": \"") + nameOf(kPositionXZBases, rootMotion.positionXZBasedUpon) + "\"";
+    }
+    return text + "}";
 }
 
 // ---------------------------------------------------------------- public: validation

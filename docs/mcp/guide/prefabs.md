@@ -23,6 +23,11 @@ independent GameObjects: an edit then has to be repeated on each. More: `jasper:
 - **Instances cannot be restructured**: reparenting, reordering or moving a member out of an
   instance is refused ("Open the Prefab to restructure it"). Open the prefab (Prefab Mode),
   restructure there, save. Instance roots and GameObjects you added to an instance move freely.
+- **Overwrite** (Unity's Save As Prefab Asset over an existing one): `create_prefab {path, overwrite: true}`
+  replaces the prefab's content with the GameObject's. The GUID stays, so references hold; a
+  GameObject at the same name path keeps its identity, so every instance keeps its overrides on it.
+  The GameObject becomes an instance; one undo step puts the old content back. Never delete and
+  re-create a prefab to replace it: that breaks every reference by GUID.
 - **Unpack** turns an instance into plain GameObjects (Unpack Completely also unpacks nested
   instances).
 - **Nested prefabs**: a prefab may contain instances of other prefabs, with its own overrides

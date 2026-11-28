@@ -11,7 +11,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/NavGridComponent.h"
 #include "component/NavMeshAgentComponent.h"
@@ -283,7 +282,6 @@ const ComponentDesc kNavMeshSurfaceDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(NavMeshSurfaceComponent),
     .codec = &kNavMeshSurfaceCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createNavMeshSurfaceComponent),
     .extraKeys = kNavMeshSurfaceKnownKeys,
 };
 
@@ -294,7 +292,6 @@ const ComponentDesc kNavMeshAgentDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(NavMeshAgentComponent),
     .codec = &kNavMeshAgentCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createNavMeshAgentComponent),
     .extraKeys = kNavMeshAgentKnownKeys,
 };
 
@@ -305,7 +302,6 @@ const ComponentDesc kNavMeshObstacleDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(NavMeshObstacleComponent),
     .codec = &kNavMeshObstacleCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createNavMeshObstacleComponent),
     .extraKeys = kNavMeshObstacleKnownKeys,
 };
 
@@ -316,7 +312,6 @@ const ComponentDesc kNavMeshLinkDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(NavMeshLinkComponent),
     .codec = &kNavMeshLinkCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createNavMeshLinkComponent),
     .extraKeys = kNavMeshLinkKnownKeys,
 };
 
@@ -327,7 +322,6 @@ const ComponentDesc kNavMeshModifierDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(NavMeshModifierComponent),
     .codec = &kNavMeshModifierCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createNavMeshModifierComponent),
     .extraKeys = kNavMeshModifierKnownKeys,
 };
 
@@ -338,7 +332,6 @@ const ComponentDesc kNavGridDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(NavGridComponent),
     .codec = &kNavGridCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createNavGridComponent),
     .extraKeys = kNavGridKnownKeys,
 };
 

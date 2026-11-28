@@ -45,3 +45,31 @@ TEST(StreamProjectCrash, HangSecondsAreClamped) {
     EXPECT_EQ(project.getPlayerCrash().hangSeconds, PlayerCrashSettings::maxHangSeconds);
     EXPECT_FALSE(project.getPlayerCrash().dumpWithHeap) << "an unknown dump type is Small";
 }
+
+// the Gameplay Journal's rows (docs/specs/shipped-game-diagnostics.md R41, AC22)
+TEST(StreamProjectCrash, JournalSettingsDefaultsAreNotWritten) {
+    Project project;
+    YAML::Node node = YAML::Load("playerCrash:\n  enabled: true\n  hangSeconds: 5\n");
+    Stream::decodeProject(&project, node, Workspace());
+    EXPECT_EQ(project.getPlayerCrash().journalKiB, 32) << "an old project without the keys: a 32 KiB journal";
+    EXPECT_TRUE(project.getPlayerCrash().journalEngineEvents);
+    EXPECT_FALSE(Stream::encodeProject(&project)["playerCrash"].IsDefined()) << "the defaults are not written";
+}
+
+TEST(StreamProjectCrash, JournalSettingsRoundTrip) {
+    Project project;
+    PlayerCrashSettings crash;
+    crash.journalKiB = 0;
+    crash.journalEngineEvents = false;
+    project.setPlayerCrash(crash);
+    YAML::Node encoded = YAML::Load(YAML::Dump(Stream::encodeProject(&project)));
+    EXPECT_EQ(encoded["playerCrash"]["journalKiB"].as<int>(), 0);
+    EXPECT_FALSE(encoded["playerCrash"]["journalEngineEvents"].as<bool>());
+    Project loaded;
+    Stream::decodeProject(&loaded, encoded, Workspace());
+    EXPECT_TRUE(loaded.getPlayerCrash() == crash);
+
+    YAML::Node big = YAML::Load("playerCrash:\n  journalKiB: 100000\n");
+    Stream::decodeProject(&loaded, big, Workspace());
+    EXPECT_EQ(loaded.getPlayerCrash().journalKiB, PlayerCrashSettings::maxJournalKiB);
+}

@@ -12,7 +12,6 @@
 #include "reflect/Components.h"
 #include "reflect/components/MaterialReflect.h"
 
-#include "Factory.h"
 #include "Stream.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/OnScreenControlComponents.h"
@@ -47,14 +46,14 @@ namespace {
         JE_FIELD(TrailRendererComponent, autodestruct),
         JE_FIELD(TrailRendererComponent, sortPriority, .updateFlags = kTrail),
         // S52: the 2D draw order and the transparent queue's first keys (a layer id: SortingLayers)
-        JE_FIELD(TrailRendererComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
-        JE_FIELD(TrailRendererComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
+        JE_FIELD(TrailRendererComponent, sortingLayer, .flags = OmitIfDefault, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
+        JE_FIELD(TrailRendererComponent, sortingOrder, .flags = OmitIfDefault, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
         JE_FIELD(TrailRendererComponent, customShader, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(TrailRendererComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
-        JE_FIELD(TrailRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kTrailShader),
+        JE_FIELD(TrailRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kTrailShader, .enumMask = enums::kComponentBlendModes),
         JE_FIELD(TrailRendererComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, stencil, .flags = ListWhole, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kTrailShader, .min = -1.0f, .max = 15.0f),
@@ -171,7 +170,6 @@ const ComponentDesc kTrailRendererDesc{
     .codec = &kTrailRendererCodec,
     .keyAliases = kTrailRendererAliases,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegen = JE_FACTORY_CODEGEN(createTrailRendererComponent),
     .extraKeys = kTrailRendererKnownKeys,
 };
 
@@ -183,7 +181,6 @@ const ComponentDesc kCanvasGroupDesc{
     .codec = &kCanvasGroupCodec,
     .structuralUpdateFlags = kCanvasGroup,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegenVar = "canvasgroup",
     .extraKeys = kCanvasGroupKnownKeys,
 };
 
@@ -194,7 +191,6 @@ const ComponentDesc kOnScreenStickDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(OnScreenStickComponent),
     .codec = &kOnScreenStickCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegenVar = "stick",
     .extraKeys = kOnScreenStickKnownKeys,
 };
 
@@ -205,7 +201,6 @@ const ComponentDesc kOnScreenButtonDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(OnScreenButtonComponent),
     .codec = &kOnScreenButtonCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegenVar = "button",
     .extraKeys = kOnScreenButtonKnownKeys,
 };
 
@@ -216,7 +211,6 @@ const ComponentDesc kTouchAreaDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(TouchAreaComponent),
     .codec = &kTouchAreaCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegenVar = "touchArea",
     .extraKeys = kTouchAreaKnownKeys,
 };
 
@@ -227,7 +221,6 @@ const ComponentDesc kRagdollDesc{
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(RagdollComponent),
     .codec = &kRagdollCodec,
     .decodeApply = DecodeApply::MarkOnly,
-    .codegenVar = "ragdoll",
     .codegenGuard = "JASPERENGINE_PHYSICS_3D",
     .extraKeys = kRagdollKnownKeys,
 };

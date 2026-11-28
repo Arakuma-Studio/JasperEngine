@@ -16,6 +16,7 @@
 #include "Engine.h"
 #include "Project.h"
 #include "device/Device.h"
+#include "device/GpuQuirks.h"
 #include "device/QualityResolver.h"
 #include "render/SystemRender.h"
 #include "window/GameWindow.h"
@@ -95,6 +96,16 @@ Json deviceInfoJson(McpContext& ctx, std::string& summary){
         {"deferred_uploads", SystemRender::getDeferredUploadCount()},
         {"playing", ctx.project() && ctx.project()->isAnyScenePlaying()},
     };
+    // the driver and the GPU quirks it runs with (R23): how frames are made, never what they show
+    info["driver"] = SystemRender::getDriverVersion();
+    Json quirks = Json::array();
+    for (GpuQuirk quirk : GpuQuirks::known()){
+        const GpuQuirkState& state = GpuQuirks::state(quirk);
+        if (state.active)
+            quirks.push_back({{"name", GpuQuirks::name(quirk)}, {"reason", state.reason}, {"source", state.source}});
+    }
+    info["quirks"] = quirks;
+    info["quirks_forced_off"] = GpuQuirks::forcedOffNames();
     if (GameWindow* game = ctx.gameWindow())
         info["simulation"] = deviceSimulationJson(game->getSettings());
     // what an agent testing a tier does next, where it is not obvious
@@ -172,7 +183,7 @@ void registerDeviceTools(McpRegistry& registry){
         tool.name = "get_device_info";
         tool.title = "Get Device Info";
         tool.description =
-            "The GPU, its detected Device Tier and why, the tier in effect (simulated, set, detected; none in the editor until "
+            "The GPU, driver, GPU quirks, its detected Device Tier and why, the tier in effect (simulated, set, detected; none in the editor until "
             "simulated), thermal and memory state, the overrides in effect and the upload queue. Tier table: "
             "quality.device_tiers.* in set_project_settings. jasper://docs/device";
         tool.inputSchema = object({});

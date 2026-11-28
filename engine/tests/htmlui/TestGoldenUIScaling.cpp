@@ -15,6 +15,9 @@
 #include "object/ui/Panel.h"
 #include "object/ui/Text.h"
 
+#include <algorithm>
+#include <vector>
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -123,11 +126,13 @@ TEST_F(FullPathGoldenTest, UIParticleSystemsClippedByAPanel){
         {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
         {"type": "renderer", "untexturedShape": "square"}]})";
     const Vector2 at[3] = {Vector2(60, 60), Vector2(200, 60), Vector2(400, 60)};
+    std::vector<ParticleSystem*> systems;
     for (const Vector2& position : at){
         ParticleSystem& system = fixture.add<ParticleSystem>();
         ASSERT_TRUE(system.setInlineEffect(effect));
         panel.addChild(&system);
         system.setPosition(position.x, position.y);
+        systems.push_back(&system);
     }
     // a later sibling over the inside one's top-left quarter
     Image& cover = fixture.add<Image>();
@@ -137,7 +142,11 @@ TEST_F(FullPathGoldenTest, UIParticleSystemsClippedByAPanel){
     cover.setColor(1.0f, 0.0f, 0.0f, 1.0f);
 
     ASSERT_TRUE(fixture.waitUntilLoaded());
-    GpuEnvironment::drawFrames(4);
+    // the burst at time 0 comes with the first simulation tick (1/30 s of game time): the few short
+    // frames of a renderer whose shaders are already compiled can end before it
+    ASSERT_TRUE(GpuEnvironment::runFrames([&](){
+        return std::all_of(systems.begin(), systems.end(), [](const ParticleSystem* system){ return system->getParticleCount() > 0; });
+    }, 600)) << "the particles were emitted";
     Screen screen;
     ASSERT_TRUE(capture(screen));
 

@@ -148,7 +148,7 @@ TEST(ClipIO, UnityYamlIsRefusedWithTheGuideText){
     EXPECT_EQ(result.error.line, 0);
     EXPECT_EQ(std::string(anim::unityYamlRefusal()),
               "This is a Unity .anim (YAML). JasperEngine clips are JSON {\"format\": \"jasperengine.anim\"}: "
-              "create one with Assets > Create > Animation Clip or edit_animation {clip, create}.");
+              "import it with Assets > Import Unity Animation... or edit_animation {clip, create: {unity: \"<absolute .anim path>\"}}.");
     EXPECT_FALSE(anim::parseClip("--- !u!74 &7400000\nAnimationClip:\n").ok());
 }
 
@@ -335,7 +335,7 @@ TEST(ClipIO, QuaternionsNearTheToleranceAreAFixedPoint){
         ClipData data;
         ClipTrackData track;
         track.channel = ClipChannel::Rotation;
-        // built by key() (a braced list assigned to a fresh key's value trips GCC's -Wnonnull)
+        // built by clipIOKey() (a braced list assigned to a fresh key's value trips GCC's -Wnonnull)
         ClipKey a = clipIOKey(0, {0, 0, 0, 1});
         ClipKey b = clipIOKey(1, {q[0] * scale, q[1] * scale, q[2] * scale, q[3] * scale});
         if (round % 2){

@@ -682,17 +682,7 @@ bool TitleArtBakeJob::step(double budgetMs) {
     return finished;
 }
 
-const TitleBakeResult& TitleArtBakeJob::run() {
-    while (!step(1000.0)) {}
-    return outcome;
-}
-
 // ==================================================================== helpers
-
-TitleBakeResult editor::bakeTitleArt(Project* project, const fs::path& document, const titleart::TitleArtDoc& doc, const TitleBakeOptions& options) {
-    TitleArtBakeJob job(project, document, doc, options);
-    return job.run();
-}
 
 bool editor::loadTitleArtForBake(Project* project, const fs::path& document, titleart::TitleArtDoc& out, std::string& code, std::string& error) {
     (void)project;

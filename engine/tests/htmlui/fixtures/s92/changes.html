@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>S92: every change redraws</title>
+<!-- S92 AC2 (engine/tests/htmlui/TestRenderFrameReuse.cpp, RenderFrameReuse.EveryChangeRedraws): one
+     element per kind of change; the s92 data model is made by the test before the document loads. -->
+<style>
+  html, body { margin: 0; width: 640px; height: 360px; font-family: sans-serif; color: #ffffff; }
+  .box { position: absolute; width: 80px; height: 40px; background-color: #3060c0; }
+  #classy.on { background-color: #c03060; }
+  #hover:hover { background-color: #30c060; }
+  #spin.go { animation: turn 0.25s linear 1 forwards; }
+  @keyframes turn { from { transform: rotate(10deg); } to { transform: rotate(90deg); } }
+  #scroller { position: absolute; left: 20px; top: 200px; width: 120px; height: 80px; overflow: hidden; }
+  #scroller div { height: 40px; }
+  #pic { position: absolute; left: 500px; top: 20px; width: 64px; height: 64px; }
+  #field { position: absolute; left: 300px; top: 200px; width: 160px; height: 28px; font-size: 16px; color: #000000; }
+</style>
+</head>
+<body>
+<div id="text" style="position: absolute; left: 20px; top: 20px; font-size: 20px">one</div>
+<div id="classy" class="box" style="left: 20px; top: 60px"></div>
+<div id="styled" class="box" style="left: 120px; top: 60px"></div>
+<div id="hover" class="box" style="left: 220px; top: 60px"></div>
+<div id="spin" class="box" style="left: 320px; top: 60px"></div>
+<div id="scroller">
+<div style="background-color: #ff0000"></div>
+<div style="background-color: #00ff00"></div>
+<div style="background-color: #0000ff"></div>
+</div>
+<img id="pic">
+<div data-model="s92" style="position: absolute; left: 20px; top: 120px; font-size: 20px">model {{value}}</div>
+<input id="field" type="text" value="caret">
+</body>
+</html>

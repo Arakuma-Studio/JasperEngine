@@ -86,7 +86,8 @@ namespace {
                 }
                 if (name == "font-format"){
                     const std::string format = lowerAscii(serialize(trimWhitespace(value.children)));
-                    return format == "truetype" || format == "opentype" || format == "collection";
+                    return format == "truetype" || format == "opentype" || format == "collection" ||
+                           format == "woff" || format == "woff2";
                 }
                 if (name == "font-tech")
                     return false;
@@ -173,6 +174,7 @@ namespace {
     bool usableFormat(const std::string& format){
         return format == "truetype" || format == "opentype" || format == "ttf" || format == "otf" || format == "ttc" ||
                format == "collection" || format == "truetype-variations" || format == "opentype-variations" ||
+               format == "woff" || format == "woff2" || format == "woff-variations" || format == "woff2-variations" ||
                // a bitmap font (S51 R15): the engine's own .bitmapfont and AngelCode BMFont
                format == "bitmapfont" || format == "fnt";
     }
@@ -291,7 +293,7 @@ namespace {
                                    "add font-family: \"Name\";");
             return;
         }
-        // the first TrueType/OpenType source wins
+        // The first supported source wins, in CSS source order.
         const FontSource* chosen = nullptr;
         std::vector<std::string> skipped;
         bool skippedLocal = false;
@@ -315,13 +317,13 @@ namespace {
             std::string list;
             for (const std::string& s : skipped)
                 list += (list.empty() ? "" : ", ") + s;
-            session.sink->reportAs(Severity::Info, codes::FontSource, srcRef, "font sources in " + list + " format are skipped (the engine reads TTF/OTF and bitmap fonts)");
+            session.sink->reportAs(Severity::Info, codes::FontSource, srcRef, "font sources in " + list + " format are skipped (the engine reads TTF/OTF, WOFF/WOFF2 and bitmap fonts)");
         }
         if (!chosen){
             // its own subject: the Info about skipped formats has the same code and location
             session.sink->reportAs(Severity::Warning, codes::FontSource, srcRef.valid() ? srcRef : rule.ref,
-                                   "@font-face '" + family + "' has no TrueType/OpenType or bitmap font source; the rule is dropped",
-                                   "convert the font to TTF (remote fonts are imported as TTF by the editor)", std::string(), family);
+                                   "@font-face '" + family + "' has no supported font source; the rule is dropped",
+                                   "provide a TTF, OTF, WOFF, WOFF2 or bitmap font", std::string(), family);
             return;
         }
         const std::string path = props::resolveUrlIn(session, chosen->url, at.file, chosen->ref, "font");

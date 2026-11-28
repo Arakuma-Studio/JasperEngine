@@ -15,7 +15,7 @@ paths; over 48 items page with `offset`. `get_asset_info` gives a smaller summar
 - `peak`: `sample_dbfs`, `true_peak_dbtp`, `clipped`.
 - `bands_db`, `band_share` (octaves from 31.5 Hz), `sub_share`, `centroid_hz`, `flatness`, `rolloff_hz`.
 - `onset`: `peak_ms`, `attack_ms`, `first_ms`; `onsets_ms` with `detail: full`. `silence`: `head_ms`, `tail_ms`.
-- `stereo`: `correlation`. `loop`: `seam_jump`, `seam_step_db`, `seam_level_db`. `pitch`: `hz`, `confidence`.
+- `stereo`: `correlation`, `side_mid_db` (side over mid energy; at or below -18 the note `near_mono`). `loop`: `seam_jump`, `seam_step_db`, `seam_level_db`. `pitch`: `hz`, `confidence`.
 - `kind`: the built-in manifest's, else the importer `type`'s, else `measured_kind`. `kind_source` says which.
 - `defects`: `edges`, `clicks`, `tail`, `gaps`, `resonance`, `aliasing` with `cuts` of its trims.
 - `notes[]`: `{id, text, fix?}`, in plain language. `fix` holds the `set_audio_import_settings` keys that fix it.
@@ -45,11 +45,16 @@ fresh analysis. A null key resets it; a default key is not written.
 | `fade_in_ms`, `fade_out_ms` | 0 to 1000, raised cosine | 0 |
 | `loop_start_ms` | >= 0, or -1: the trimmed start | -1 |
 | `loop_end_ms` | after the start, or -1: the trimmed end | -1 |
+| `force_to_mono` | `off`, `on`, `auto` (mono when `stereo.side_mid_db` <= -18) | `off` |
 | `music` | `{bpm: 20-400, beats_per_bar: 1-16, first_beat_ms: >= 0}`, beat 1 from the file's start | none |
+| `load_type` | `auto` (1 MiB and more streams), `decompress_on_load`, `compressed_in_memory`, `streaming`; an Audio Source's own Load Type other than Auto wins | `auto` |
 
 The engine plays these in Play and in every export: a looping voice wraps at the loop region, and fades
 never shape a wrap. Settings that do not fit the file are refused, naming the frames. A clip without
 settings plays bit for bit as its file. A level change is `gain_db`; do not rewrite the file.
+`force_to_mono` plays a stereo clip as the mean of its channels, so a positional voice pans whole; the reply's
+`resolved` gives `force_mono` and `channels`. An export ships a PCM or float WAV mono at half the bytes; Ogg,
+MP3 and FLAC ship as they are and save no memory.
 
 `provenance` keys: `licence` (an SPDX id, or `generated`, `unknown`, `proprietary`), `licence_url`,
 `author`, `attribution`, `source`, `url`. `labels` replaces the clip's asset labels.

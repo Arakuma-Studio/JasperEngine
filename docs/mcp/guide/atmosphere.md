@@ -8,8 +8,10 @@ agree where they meet (design record: `docs/specs/S12-atmosphere.md`):
   perspective and orthographic cameras and covers the sky near the horizon (Sky Fill).
 - **Volumetric fog**: an option of the height fog. Near the camera the same medium is
   raymarched with the sun's shadows (light shafts), Local Volumetric Fog volumes, a density
-  noise and, at High quality, point and spot lights. Past its Distance the analytic height fog
+  noise and point and spot lights, shadowed when they cast shadows. Past its Distance the analytic height fog
   continues, so the two meet without a seam.
+- **Fog Profiles and Fog Zones**: a fog look as an asset shared by every Fog linked to it, and
+  places (a cave) that blend their own look in as the camera comes near.
 - **Volumetric clouds**: a Volumetric Clouds component; raymarched clouds lit by the sun and the
   sky, in a Sky Map (every camera) or per pixel on screen (the main camera).
 
@@ -22,8 +24,9 @@ fragment shaders only: no compute.
 
 | Inspector | Field | Meaning |
 |---|---|---|
-| Color Mode | `colorMode` | Constant Color: the fog takes its Color. Sky Color: the sky's colour at the horizon, from a cube map Skybox (4 directions, the Skybox's colour and rotation applied) or a sky shader with a `horizonColor` property; any other sky uses the Color and the Inspector says so |
-| Color | `color` | linear colour |
+| Color Mode | `colorMode` | Constant Color: the fog takes its Color. Sky Color: the sky's colour at the horizon, from a cube map Skybox (4 directions, the Skybox's colour and rotation applied) or a sky shader with a `horizonColor` property; any other sky uses the Color and the Inspector says so. Lit: see below |
+| Color | `color` | linear colour (not in Lit) |
+| Albedo, Ambient Multiplier, Emissive | `albedo`, `ambientMultiplier`, `emissive` | Lit only (below) |
 | Attenuation Distance | `attenuationDistance` | metres light travels below the Base Height before 63% is absorbed (extinction = 1 / distance) |
 | Base Height | `baseHeight` | uniform density below this height (m) |
 | Maximum Height | `maximumHeight` | the height where the density has fallen to 1/1000 |
@@ -39,9 +42,78 @@ The light of the medium is `L = fog colour + sun colour × Intensity × 4π HG(A
 visibility` (visibility is the shadow term in the volumetric fog, 1 elsewhere). A part of a ray
 lets `T = exp(-optical depth)` through and adds `S = L (1 - T)`.
 
-Presets (Inspector > Preset, MCP `apply_atmosphere_preset`, Lua `fog:applyPreset(id)`) make the
-Fog a height fog of that look and keep its Color Mode and volumetric settings:
-`morning_haze`, `ground_mist`, `mountain_valley`, `horizon_haze`, `night`.
+### Lit colour mode
+
+With Color Mode **Lit** (`colorMode: "lit"`) the fog has no colour of its own: it scatters the
+scene's light, so one look holds from noon to night as the sun and the ambient change. Its light
+is `albedo × (sun colour × Intensity × 4π HG × visibility + scene ambient × ambientMultiplier) +
+emissive`; the scene ambient is the Lighting's ambient colour × intensity, as meshes get it.
+
+- `albedo` (linear, default white): the share of the light the fog scatters, per channel. Dark
+  values make a murky fog; a tint colours the fog only, never the Local Volumetric Fog volumes
+  inside it (each scatters by its own albedo).
+- `ambientMultiplier` (default 1): the ambient's weight; 0 lights the fog by the sun alone.
+- `emissive` (linear HDR, default black): light the fog gives off whatever lights it (a
+  glowing, toxic or infernal fog). It is the only thing that shows with no sun and no ambient.
+
+Use Lit for a scene whose lighting changes (day-night cycles, a sun that sets) or a fog that must
+match its lighting; use Constant Color for a fixed look. The analytic fog, the sky fill and the
+volumetric fog all take it.
+
+## Fog Profiles
+
+A Fog Profile (`.fogprofile`) is a fog look shared by every Fog and Fog Zone linked to it. Each
+look field is either set by the profile (ticked) or left to the Fog's own value, as in Unity's
+Volume Profiles. The look fields are `color`, `density`, `linearStart`, `linearEnd`, `colorMode`,
+`attenuationDistance`, `baseHeight`, `maximumHeight`, `startDistance`, `maxFogDistance`,
+`maxOpacity`, `directionalInscattering`, `anisotropy`, `skyFill`, `skyFillAngle`,
+`noiseIntensity`, `noiseScale`, `wind`, `albedo`, `ambientMultiplier` and `emissive`. Fields that
+set cost or technique (`type`, `volumetric`, `volumetricDistance`, `lightShafts`,
+`qualityOverride`) are never in a profile: they stay on each Fog.
+
+The built-ins are `morning_haze`, `ground_mist`, `mountain_valley`, `horizon_haze`, `night` (the
+old presets' looks) and the Lit looks `bright_haze`, `murky`, `infernal`, `toxic`. Linking one
+copies it to `FogProfiles/<id>.fogprofile` in the assets folder the first time, in the same undo step; later
+links reuse that copy. Linking a profile that sets height fog fields makes a distance fog a Height
+fog in the same step.
+
+The file is JSON: `{"version": 1, "name", "description", "fields": {<field>: <value>}}`, colours as
+linear `[r, g, b]`, `colorMode` as `"color"`, `"sky"` or `"lit"`. A missing or unreadable profile
+counts as an empty one (`profile_missing`).
+
+Editing a profile changes every Fog and Fog Zone using it, in every scene. To change one scene
+only, duplicate it (`edit_fog_profile {path: <new>, from: {profile: <path>}}`) and link the copy
+there.
+
+## Fog Zones
+
+A Fog Zone (GameObject > Effects > Fog Zone; `create_entity {type: "fog_zone"}`) is a place with a
+look of its own: a cave, a swamp, a building. It blends its profile's ticked fields over the
+scene's Fog as the camera comes near: weight × clamp(1 − d / Blend Distance, 0, 1), d the camera's
+distance to its shape (0 inside). The scene still needs one Fog; zones change it, they draw nothing
+themselves and cost nothing on the GPU.
+
+| Field | Meaning |
+|---|---|
+| `shape`, `size` | a box or a sphere, before the Transform's scale; the Transform places and turns it |
+| `blendDistance` | how far outside the shape the look fades in (0: a hard switch at its surface) |
+| `priority` | zones apply in ascending priority over the Fog (ties by entity id): the higher wins |
+| `weight` | how much of the look applies inside (0..1) |
+| `profile` | the Fog Profile whose ticked fields it blends in; none: no effect |
+
+The look of a view, field by field: the Fog's own fields, then its profile, then a scripted blend,
+then the zones by priority, then Lua and animation writes in Play. The Game view and the game take
+the main camera's position, the Scene view its own camera's.
+
+## Blending at run time (Lua)
+
+`fog:blendTo(profile, seconds)` cross-fades the look to another profile over game time (`nil`:
+back to the Fog's own fields), from wherever it is now; `fog.blending` is true meanwhile.
+`fog:getResolved(field)` reads the look the main camera sees. Profiles from `FogProfile.load(path)`
+and `FogProfile.builtin(id)` are read-only; `profile:clone()` makes a copy the script may `set`
+and `clear`, never saved. A script's write to a Fog field in Play shows over the profile and the
+zones, and goes at Stop (`fog:clearOverride(field)` and `fog:clearOverrides()` drop it sooner).
+`fog:applyPreset(id)` still writes the Fog's own fields. Details: `jasper://docs/lua-api`.
 
 ## Volumetric fog (Fog > Volumetric Fog)
 
@@ -49,7 +121,7 @@ Fog a height fog of that look and keep its Color Mode and volumetric settings:
 |---|---|---|
 | Enabled | `volumetric` | the main camera raymarches the fog near it (Atmosphere Quality Low and up) |
 | Distance | `volumetricDistance` | how far it marches (m); the analytic fog continues beyond |
-| Light Shafts | `lightShafts` | the main directional light's shadows darken the fog (it must cast shadows) |
+| Light Shafts | `lightShafts` | shadows darken the fog: the main directional light's and the fog lights' (each must cast shadows) |
 | Noise Intensity, Noise Scale, Wind | `noiseIntensity`, `noiseScale`, `wind` | a drifting 3D density noise, faded out over the last fifth of the Distance |
 | Quality Override | `qualityOverride` | caps this fog's tier below the project's (never raises it) |
 
@@ -58,8 +130,8 @@ The Inspector's last line says what runs, e.g. "Running: Medium · 960×540 · 3
 
 How it renders: the scene's depth is reduced to the fog's resolution (the farthest of each block),
 the march runs per low-resolution texel with steps spread quadratically and offset by a static
-64×64 blue noise (no frame index: a still scene renders the same image every frame), a 3×3
-depth-aware denoise removes the pattern, and a joint bilateral upsample composites it over the
+64×64 blue noise (no frame index: a still scene renders the same image every frame), a
+depth-aware denoise (5×5 at Low, 3×3 at Medium and High) removes the pattern, and a joint bilateral upsample composites it over the
 opaque scene. Every surface takes the analytic fog over its whole ray; the composite then puts
 the marched fog in place of the analytic fog's near part (up to the Distance), so where the two
 are the same medium (no shadow, volume or noise) the image is exactly the analytic fog's, and
@@ -76,8 +148,11 @@ inner (blend) shape of a selected volume. It shows only through volumetric fog (
 warns otherwise). Per frame the volumes in view and within the Distance are sorted by distance
 and the nearest are used: 2 at Low, 4 at Medium, 8 at High.
 
-Point and spot lights with **Volumetric Intensity** above 0 scatter in the volumetric fog at High
-quality (the 4 nearest, without shadows).
+Point and spot lights with Intensity and **Volumetric Intensity** above 0 scatter in the volumetric
+fog: those whose range reaches the view and comes within the Distance, the nearest first, 1 at
+Low, 2 at Medium, 4 at High. With Light Shafts on, a light with Shadows on casts them in the fog
+(one shadow tap per step), as the sun does; the sun takes two taps per step at Medium and High
+(softer shafts). A light set to Volumetric Intensity 0 costs nothing.
 
 ## Volumetric clouds
 
@@ -119,7 +194,8 @@ tiered. Components cap it downward with Quality Override.
 | | Low | Medium | High |
 |---|---|---|---|
 | Volumetric fog resolution / steps | 1/4 per axis, 16 | 1/2, 32 | 1/2, 64 |
-| Local lights / volumes | 0 / 2 | 0 / 4 | 4 / 8 |
+| Local lights / volumes | 1 / 2 | 2 / 4 | 4 / 8 |
+| Sun shadow taps per step / denoise | 1 / 5×5 | 2 / 3×3 | 2 / 3×3 |
 | Clouds (Automatic) | Sky Map 256², 8 frames, 32 + 3 steps, no erosion | Sky Map 512², 4 frames, 64 + 4 steps | Screen ¼ resolution, 96 + 6 steps |
 
 Low-resolution targets are RGBA16F where the device renders and filters them, else RGBA8 with the
@@ -178,18 +254,69 @@ GPU budgets still need the reference-GPU run with S15's pass timings.
 
 ## Agents
 
-- `create_entity` types `fog`, `local_volumetric_fog`, `volumetric_clouds`; every field above is
-  a `set_properties` property (enums by name: `type: "height"`, `rendering: "sky_map"`), one undo
-  step per call.
-- `list_atmosphere_presets {kind: "fog" | "clouds"}`, `apply_atmosphere_preset {entity, preset}`
-  (one undo step).
-- `get_atmosphere_info {view: "game" | "scene"}`: the tier and platform default, the fog's type
-  and volumetric target (size, steps, format, volumes used and culled, local lights, whether it
-  forced a depth pre-pass), the clouds' mode, noise state and Sky Map, the `Atmosphere/*` passes
-  of the last frame and their VRAM.
+- `create_entity` types `fog`, `fog_zone`, `local_volumetric_fog`, `volumetric_clouds`; every field
+  above is a `set_properties` property (enums by name: `type: "height"`, `rendering: "sky_map"`),
+  one undo step per call.
+- `list_atmosphere_presets {kind: "fog"}`: the built-in profiles (id, name, description, number of
+  fields set, users, the project's copy) and the project's profiles (path, the same).
+  `kind: "clouds"`: the Volumetric Clouds presets.
+- `apply_atmosphere_preset {entity, preset}` links a Fog or a Fog Zone to a profile (a built-in id
+  or a `.fogprofile` path) or sets a clouds preset; `unlink: true` turns a Fog's profile into its
+  own fields (the look stays) and clears the link. One undo step. When the profile has other users,
+  `next` says how to change them all or this one only.
+- `edit_fog_profile {path, from?, set?, clear?}` (group `rendering_fx`) edits a profile as one undo
+  step: `from` (`{builtin}`, `{entity}`: a Fog's look or a zone's profile, `{profile}`) creates the
+  file, `set` writes fields as the file holds them and ticks them (also `name`, `description`),
+  `clear` unticks. It returns the fields, the users and the open scene's resolved look. Refused in
+  Play.
+- `set_properties` on a Fog field its profile sets is refused, naming both fixes: `edit_fog_profile
+  {set}` for every user, or a copy for this scene only. Other fields write as before.
+- `get_atmosphere_info {view: "game" | "scene", resolved?}`: the tier and platform default, the
+  fog's type, `profile` and volumetric target (size, steps, format, volumes used and culled, local
+  lights, whether it forced a depth pre-pass), `zones` (entity, priority, the weight at the view's
+  camera, distance, profile), `blend` (target, progress) in Play, the clouds' mode, noise state and
+  Sky Map, the `Atmosphere/*` passes of the last frame and their VRAM, the `diagnostics` and the
+  `opacity` estimate (below). `resolved: true` adds each look field's value and the layer it comes
+  from: `fog`, `profile`, `blend`, `zone:<entity>` or `runtime`.
 - `configure_game_view {atmosphere_quality}`, the Scene view's `disable_fog` and
   `disable_clouds` display settings (`set_scene_camera display`), and the project settings
   `quality.atmosphere_quality_desktop`, `_mobile`, `_web`.
+
+## Diagnostics
+
+When fog does not show, looks too thin, hides everything or ignores a volume or a light, call
+`get_atmosphere_info` before changing the look. Its `diagnostics` list each cause found:
+`{code, severity, message, entity?, fix}` (`entity`: the GameObject it is about; severity `info`,
+`warning` or `error`), the same text as the Inspector's help boxes on Fog, Local Volumetric Fog and
+Light. Apply the fix of each `warning`, by the route below (`next` names the first one's), then
+call it again. `info` items explain a choice (a light past the tier's cap, a volume out of view)
+and need nothing. The checks and the estimate read the look the main camera sees (its profile,
+zones and blend included).
+
+| Code | Seen when | Route |
+|---|---|---|
+| `fog_missing` | Local Volumetric Fog or Fog Zones in a scene with no Fog | `create_entity {type: "fog"}`; for volumes also `set_properties` fog `type: "height"`, `volumetric: true` |
+| `fog_second_ignored` | a second Fog (on `entity`): only the first is used | `delete_entities` one of them |
+| `profile_missing` | the Fog's or a Fog Zone's (on `entity`) profile file is missing or does not read: the Fog shows its own values, the zone nothing | restore the file, or `apply_atmosphere_preset` an existing profile |
+| `profile_no_effect` | the profile sets only fields the Fog's Type ignores (height fog fields on a distance fog, or the reverse) | `set_properties` fog `type`, or another profile |
+| `zone_no_effect` | a Fog Zone (on `entity`) with no profile, a profile that sets nothing, or Weight 0 | `apply_atmosphere_preset` the zone a profile, `edit_fog_profile {set}`, or `set_properties` fogzone `weight` |
+| `volumetric_needs_height` | Volumetric on a distance fog, or volumes with the volumetric fog off | `set_properties` fog `type: "height"`, `volumetric: true` |
+| `volumetric_quality_off` | the view's Atmosphere Quality is Off; the message names the setting | that setting: `configure_game_view {atmosphere_quality: "project"}`, `quality.atmosphere_quality_desktop` (`_mobile`, `_web`), the script's `Engine.setAtmosphereQuality`, or the device tier's Volumetrics cell |
+| `volumetric_main_camera_only` | the view, or a render-to-texture camera, is not the main camera | read `view: "game"`; the volumetric fog draws for the main camera only |
+| `shafts_off` | Light Shafts off while the sun casts shadows | `set_properties` fog `lightShafts: true` |
+| `shafts_sun_no_shadows` | Light Shafts on, but no sun shadow map was drawn | `set_properties` the named light `shadows: true` |
+| `light_not_scattered` | a point or spot light (on `entity`) the fog left out: intensity, Volumetric Intensity, distance, out of view, past the tier's cap | its `volumetricIntensity`, the Fog's `volumetricDistance`, or the quality |
+| `volume_culled` | a Local Volumetric Fog (on `entity`) left out: distance, out of view, past the tier's cap | the Fog's `volumetricDistance`, or the quality |
+| `scene_view_fog_disabled` | the Scene view's Disable fog display setting is on | `set_scene_camera {display: {disable_fog: false}}` |
+| `sky_mode_no_horizon` | Color Mode Sky with a sky that has no horizon colour | `set_properties` fog `colorMode: "color"`, or a cube map Skybox |
+| `lit_no_light` | Color Mode Lit with no sun, no ambient light and no emissive: black fog | a directional light, or `set_scene_settings` `global_illumination_intensity` |
+| `fog_invisible` | `opacity.at200` below 0.02 | Height: lower `attenuationDistance`; Linear: lower `linearEnd`; Exponential: raise `density` |
+| `fog_opaque` | `opacity.at10` above 0.95 | Height: raise `attenuationDistance`; Linear: raise `linearStart`; Exponential: lower `density` |
+
+`opacity {at10, at50, at200, includes: "analytic"}` is the share (0..1) of the scene the fog hides
+10, 50 and 200 m along the main camera's forward ray: the analytic fog exactly (the volumetric
+fog's medium without shadows), not Local Volumetric Fog or the noise. It is `null` without a Fog
+or a main camera. Compare it after a change instead of a screenshot.
 
 ## Limits
 

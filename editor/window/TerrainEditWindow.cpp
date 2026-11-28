@@ -470,7 +470,7 @@ bool editor::TerrainEditWindow::raycastTerrainStrokeSurface(const Ray& localRay,
 
 editor::TerrainEditWindow::TerrainEditWindow(Project* project){
     this->project = project;
-    foliagePanel = std::make_unique<TerrainFoliagePanel>(project, this);
+    foliagePanel = std::make_unique<TerrainFoliagePanel>(project);
     windowOpen = false;
     focusRequested = false;
     brushActive = false;
@@ -565,6 +565,8 @@ private:
             std::string name = fs::path(assetPath).stem().string();
             createHostCmd = new CreateEntityCmd(project, sceneId, name.empty() ? "Terrain Instances" : name, EntityCreationType::MODEL, terrainEntity);
             createHostCmd->setQuiet(true);
+            // its Instanced Mesh draws the Model's own Mesh: never Preserve Hierarchy (S94 F44)
+            createHostCmd->addProperty<bool>(ComponentType::ModelComponent, "preserveHierarchy", false);
         }
         if (!createHostCmd->execute()){
             return false;
@@ -2100,8 +2102,8 @@ void editor::TerrainEditWindow::drawFoliageMesh(const TerrainFoliageLayer& layer
         SceneProject* sceneProject = getTargetSceneProject();
         const std::string property = "foliageLayers[" + std::to_string(selectedFoliageLayer) + "].meshPath";
         const std::string meshPath = path.empty() ? std::string() : project->normalizeToAssetsRelative(path).generic_string();
-        // An FBX loads from its import, created here the first time
-        if (!project->prepareModelFile(meshPath)){
+        // An FBX loads from its import, queued here the first time: the layer draws once it lands
+        if (project->prepareModelFile(meshPath) == Project::ModelImport::Failed){
             return;
         }
         CommandHandle::get(sceneProject->id)->addCommandNoMerge(new PropertyCmd<std::string>(
@@ -2278,7 +2280,8 @@ void editor::TerrainEditWindow::drawPlacementAsset(){
             return;
         }
         const std::string assetPath = project->normalizeToAssetsRelative(path).generic_string();
-        if (project->prepareModelFile(assetPath)){
+        // an FBX still importing is placed once its import lands
+        if (project->prepareModelFile(assetPath) != Project::ModelImport::Failed){
             placeAssetPath = assetPath;
         }
     };

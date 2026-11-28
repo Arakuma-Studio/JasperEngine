@@ -3,15 +3,22 @@
 
 #include "PoseRigProvider.h"
 
+#include "Out.h"
 #include "Project.h"
 #include "Scene.h"
+#include "io/AtomicFile.h"
 #include "component/ModelComponent.h"
 #include "object/Model.h"
 #include "pose/HumanoidMapIO.h"
 #include "pose/ModelRig.h"
+#include "util/FbxImporter.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectFileWrites.h"
+
+#include <cstdint>
+#include <cstring>
+#include <string_view>
 
 using namespace jasperengine;
 
@@ -52,6 +59,61 @@ namespace {
         return editor::FileUtils::pathFromUtf8(pose::humanoidSidecarPath(editor::FileUtils::pathToUtf8(model)));
     }
 
+    // The skeleton of a glTF (.gltf, or a .glb's JSON chunk) read from its JSON alone: the joints of
+    // every skin, each under its nearest joint ancestor, named as written. All the auto-detect reads
+    // (names and parents), without loading the model or its buffers, so a model arriving before its
+    // .bin is read the same. False when the file is no glTF the reader understands.
+    bool gltfJsonSkeleton(const fs::path& model, pose::Skeleton& out){
+        out.bones.clear();
+        std::string bytes;
+        if (!editor::ProjectChecks::readFile(model, bytes)) return false;
+        std::string_view json = bytes;
+        if (bytes.size() >= 20 && bytes.compare(0, 4, "glTF") == 0){
+            uint32_t length = 0;
+            std::memcpy(&length, bytes.data() + 12, sizeof(length));
+            if (bytes.compare(16, 4, "JSON") != 0 || length > bytes.size() - 20) return false;
+            json = std::string_view(bytes.data() + 20, length);
+        }
+        const nlohmann::json root = nlohmann::json::parse(json.begin(), json.end(), nullptr, false);
+        if (root.is_discarded() || !root.is_object()) return false;
+        const auto nodes = root.find("nodes");
+        const auto skins = root.find("skins");
+        if (nodes == root.end() || !nodes->is_array() || skins == root.end() || !skins->is_array()) return true;
+        const int count = (int)nodes->size();
+        std::vector<int> parent((size_t)count, -1);
+        for (int n = 0; n < count; n++){
+            const auto children = (*nodes)[(size_t)n].find("children");
+            if (children == (*nodes)[(size_t)n].end() || !children->is_array()) continue;
+            for (const nlohmann::json& child : *children){
+                if (child.is_number_integer() && child.get<int>() >= 0 && child.get<int>() < count && child.get<int>() != n) parent[(size_t)child.get<int>()] = n;
+            }
+        }
+        std::vector<int> boneOf((size_t)count, -1);
+        for (const nlohmann::json& skin : *skins){
+            const auto joints = skin.is_object() ? skin.find("joints") : skin.end();
+            if (!skin.is_object() || joints == skin.end() || !joints->is_array()) continue;
+            for (const nlohmann::json& joint : *joints){
+                if (joint.is_number_integer() && joint.get<int>() >= 0 && joint.get<int>() < count) boneOf[(size_t)joint.get<int>()] = 0;
+            }
+        }
+        for (int n = 0; n < count; n++){
+            if (boneOf[(size_t)n] < 0) continue;
+            boneOf[(size_t)n] = (int)out.bones.size();
+            pose::SkeletonBone bone;
+            const auto name = (*nodes)[(size_t)n].find("name");
+            if (name != (*nodes)[(size_t)n].end() && name->is_string()) bone.name = name->get<std::string>();
+            out.bones.push_back(bone);
+        }
+        for (int n = 0; n < count; n++){
+            if (boneOf[(size_t)n] < 0) continue;
+            // a cycle in the node graph ends the walk (at most `count` steps)
+            int up = parent[(size_t)n];
+            for (int steps = 0; up >= 0 && boneOf[(size_t)up] < 0 && steps < count; steps++) up = parent[(size_t)up];
+            if (up >= 0 && up != n && boneOf[(size_t)up] >= 0) out.bones[(size_t)boneOf[(size_t)n]].parent = boneOf[(size_t)up];
+        }
+        return true;
+    }
+
     // The sidecar's overrides (a missing sidecar is all auto); false + error when it is unreadable
     bool readOverrides(editor::Project* project, const fs::path& sidecar, pose::HumanoidOverrides& overrides,
                        std::vector<std::string>& notes, std::string& error){
@@ -85,6 +147,7 @@ namespace {
         for (const pose::SkeletonBone& bone : skeleton.bones) info.boneNames.push_back(bone.name);
         std::string error;
         const bool valid = pose::resolveHumanoid(skeleton, overrides, info.humanoid, &error, &info.notes);
+        pose::noteSpineProxies(scene, model, info.humanoid, info.notes);
         for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
             const pose::HumanBone bone = pose::boneAt(b);
             if (pose::humanBoneInfo(bone).required && info.humanoid.bones[b].empty()){
@@ -181,4 +244,41 @@ bool editor::PoseRigProvider::setAnimationType(Project* project, const fs::path&
     if (type == pose::AnimationType::Humanoid) changed.animationType = type;
     else changed.animationType.reset();
     return ProjectFileWrites::writeUndoable(project, {{sidecarOf(model.lexically_normal()), pose::writeHumanoidOverrides(changed)}}, error);
+}
+
+bool editor::PoseRigProvider::adoptNameRules(Project* project, const fs::path& model){
+    const fs::path file = model.lexically_normal();
+    // the rig of the model file, or of an FBX's converted .glb, against the current naming rules
+    auto adopt = [](Project* project, const fs::path& file, bool fbx) -> bool {
+        pose::Skeleton skeleton;
+        if (!gltfJsonSkeleton(fbx ? project->getImportedModelPath(file) : file, skeleton) || skeleton.bones.empty()) return false;
+        const fs::path sidecar = sidecarOf(file);
+        pose::HumanoidOverrides overrides;
+        std::vector<std::string> notes;
+        std::string error;
+        if (!readOverrides(project, sidecar, overrides, notes, error)){
+            Out::warning("%s", unreadableSidecarRefusal(error).c_str());
+            return false;
+        }
+        const int rules = overrides.detectNameRules();
+        if (rules >= pose::HUMANOID_NAME_RULES) return false;
+        // the rules agree on this rig: nothing to record, its sidecar stays as it is (or absent)
+        if (pose::autoDetectHumanoid(skeleton, nullptr, rules).bones == pose::autoDetectHumanoid(skeleton).bones) return false;
+        overrides.nameRules = pose::HUMANOID_NAME_RULES;
+        const io::WriteResult written = io::writeFileAtomic(sidecar, pose::writeHumanoidOverrides(overrides));
+        if (!written.ok()){
+            Out::warning("%s: %s", ProjectChecks::projectRelative(project->getProjectPath(), sidecar).c_str(), io::describeWriteError(written).c_str());
+            return false;
+        }
+        return true;
+    };
+    const bool fbx = FbxImporter::isFbxFile(file);
+    if (fbx && !project->importFbxModel(file)) return false;
+    // the main thread only queues the conversion (S98 REQ-32): the rig is read once it landed, without
+    // asking for the import again (a request queues even a current FBX)
+    if (fbx && project->isModelImportPending(file)) {
+        project->whenModelImported(file, [project, file, adopt]() { adopt(project, file, true); });
+        return false;
+    }
+    return adopt(project, file, fbx);
 }

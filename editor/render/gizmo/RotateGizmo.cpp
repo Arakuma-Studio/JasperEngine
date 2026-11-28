@@ -3,6 +3,7 @@
 
 #include "RotateGizmo.h"
 
+#include "component/MeshComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "util/Angle.h"
 #include "math/Sphere.h"

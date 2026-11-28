@@ -1,0 +1,12 @@
+---@meta _
+-- Hand-written: System.getBuildInfo returns a table the generator cannot describe
+-- (engine/core/script/binding/CoreClassesLua.cpp).
+
+---What the running build is (docs/shipping.md, "Build Profiles"). In the editor's Play: the
+---active Build Profile's values.
+---@class BuildInfo
+---@field profile string # the Build Profile ("" without one)
+---@field defines string[] # its Scripting Define Symbols
+---@field development boolean # a Development Build
+---@field contentPatch integer # the Patch And Run patch of the content (0: the packaged content)
+---@field contentPatched boolean # the game runs patched content (Patch And Run)

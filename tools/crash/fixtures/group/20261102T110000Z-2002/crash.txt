@@ -1,0 +1,26 @@
+JasperEngine crash report v1
+product: Forest Run
+version: 1.4
+build_id: 0b9e44d1a7c24f2e9d61f3a8b5c7e902-1
+platform: windows-x86_64
+backend: d3d11
+session: 20261102T110000Z-2002
+reason: unhandled Windows exception
+exception_code: 0xc0000005
+fault_address: 0x18
+thread: 9120
+thread_name: main
+pc: 0x7ff7c1d48100
+sp: 0xa1c3bff5e0
+time_since_start_ms: 98250
+minidump: crash.dmp
+backtrace:
+#0 ForestRun.exe+0x8100 [jasperengine::diag::crash::detail::faultTrampoline+0x10]
+#1 VCRUNTIME140.dll+0x13d4c [memcpy+0x2ac]
+#2 ForestRun.exe+0x21e70 [game::Inventory::addItem<game::Item>+0x24]
+#3 ForestRun.exe+0x23104 [game::Player::pickUp+0x44]
+#4 ForestRun.exe+0x24480 [`anonymous namespace'::onTouch+0xc]
+#5 ForestRun.exe+0x26100 [jasperengine::PhysicsWorld::dispatchContacts+0x120]
+modules:
+C:\Games\Forest Run\ForestRun.exe 0x7ff7c1d40000 size=0x518000
+C:\Windows\SYSTEM32\VCRUNTIME140.dll 0x7ffd1c450000 size=0x1d000

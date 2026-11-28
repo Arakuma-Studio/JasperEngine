@@ -105,7 +105,9 @@ async def test_unknown_keys_survive_and_undo_restores_bytes(ed: Editor):
     ed.check_eq((await ed.call("get_animation", clip=MODEL + "#Idle", max_keys=1))["wrap"], "ping_pong", "an edit on disk reloads")
 
     r = await ed.call("edit_animation", clip=WALK, root_motion={"bone": "mixamorig:Hips", "bake_position_xz": True})
-    ed.check_eq(r["root_motion"], {"bone": "mixamorig:Hips", "bake_rotation": False, "bake_position_y": True, "bake_position_xz": True}, f"{r}")
+    ed.check_eq(r["root_motion"], {"bone": "mixamorig:Hips", "bake_rotation": False, "bake_position_y": True, "bake_position_xz": True,
+                                   "rotation_based_upon": "original", "rotation_offset": 0, "position_y_based_upon": "original",
+                                   "position_y_offset": 0, "position_xz_based_upon": "original"}, f"{r}")
     written = json.loads(sidecar(ed).read_text())
     ed.check_eq(written["tool"], {"x": 1}, "a top-level key it does not know")
     ed.check_eq(written["clips"]["Idle"], {"wrap": "ping_pong", "note": "by hand"}, "another clip's entry and its unknown key")
@@ -148,6 +150,31 @@ async def test_an_anim_takes_root_motion(ed: Editor):
     await ed.call("edit_animation", clip=clip, root_motion={"bake_rotation": True})
     block = json.loads((ed.project / clip).read_text())["root_motion"]
     ed.check_eq(block, {"bone": "", "bake_rotation": True, "bake_position_y": True, "bake_position_xz": False}, "the .anim's block")
+
+
+async def test_root_transform_based_upon(ed: Editor):
+    """S94 F32: Unity's Based Upon and Offsets in root_motion, on a .anim and on a model clip; a wrong
+    value names the valid ones."""
+    clip = "assets/anim/s94_based_upon.anim"
+    await ed.call("edit_animation", clip=clip, create={}, tracks=[
+        {"path": "mixamorig:Hips", "channel": "position", "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 1, "value": [0, 0, 1]}]}])
+    await ed.call("edit_animation", clip=clip, root_motion={"rotation_based_upon": "body_orientation", "rotation_offset": 10,
+                                                            "position_y_based_upon": "feet", "position_xz_based_upon": "center_of_mass"})
+    block = json.loads((ed.project / clip).read_text())["root_motion"]
+    ed.check_eq(block, {"bone": "", "bake_rotation": False, "bake_position_y": True, "bake_position_xz": False,
+                        "rotation_based_upon": "body_orientation", "rotation_offset": 10, "position_y_based_upon": "feet",
+                        "position_xz_based_upon": "center_of_mass"}, "the .anim's block (offset 0 not written)")
+    r = await ed.call_raw("edit_animation", {"clip": clip, "root_motion": {"position_y_based_upon": "hips"}})
+    ed.check(r.is_error and "center_of_mass" in r.text and "feet" in r.text, r.text)
+
+    r = await ed.call("edit_animation", clip=WALK, root_motion={"position_y_based_upon": "feet", "position_y_offset": 0.1})
+    ed.check_eq((r["root_motion"]["position_y_based_upon"], r["root_motion"]["position_y_offset"]), ("feet", 0.1), f"{r}")
+    written = json.loads(sidecar(ed).read_text())["clips"]["Walk"]["root_motion"]
+    ed.check_eq(written.get("position_y_based_upon"), "feet", f"{written}")
+    walk = walk_of(await ed.call("get_asset_info", path=MODEL))
+    ed.check_eq(walk["root_motion"]["position_y_based_upon"], "feet", f"get_asset_info: {walk}")
+    await ed.call("undo", scope="project")
+    ed.check(not sidecar(ed).exists() or "feet" not in sidecar(ed).read_text(), "one undo step")
 
 
 async def test_exports_ship_the_sidecar(ed: Editor):

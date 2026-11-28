@@ -482,6 +482,10 @@ std::vector<std::string> PlatformRules::iosPlistOrientations(ScreenOrientation d
     return out;
 }
 
+bool PlatformRules::iosRequiresFullScreen(ScreenOrientation defaultOrientation, uint8_t allowedMask){
+    return isFixedOrientation(defaultOrientation) || effectiveMask(ScreenOrientation::AutoRotation, allowedMask) != ALL_ORIENTATIONS;
+}
+
 FramePacing PlatformRules::computeFramePacing(Platform platform, int targetFrameRate, int vSyncCount,
                                               double refreshRate, int maxSwapInterval, bool canDisableVSync){
     FramePacing pacing;

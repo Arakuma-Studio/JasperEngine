@@ -14,6 +14,7 @@
 #include "mcp/McpContext.h"
 #include "mcp/McpDialogs.h"
 #include "mcp/McpJobs.h"
+#include "mcp/McpModelImport.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
@@ -23,6 +24,7 @@
 #include "util/ScriptStatus.h"
 
 #include "App.h"
+#include "Engine.h"
 #include "search/SearchPalette.h"
 #include "widget/ColorPickerWindow.h"
 #include "widget/CurveField.h"
@@ -37,6 +39,7 @@
 #include "memory/MemoryStats.h"
 #include "physics/PlacementSession.h"
 #include "util/FileUtils.h"
+#include "util/NearestName.h"
 #include "util/SystemFonts.h"
 #include "AppSettings.h"
 #include "window/CodeEditor.h"
@@ -677,9 +680,18 @@ void reportEditorStatus(const CallPtr& call) {
         else if (scene->playState != ScenePlayState::STOPPED) playing = true;
     }
 
+    // the FBX imports (S98 REQ-33): models still converting, with done/total
+    const JobPtr importJob = syncModelImportJob(ctx);
+    const Project::ModelImportProgress imports = project->getModelImportProgress();
     Json jobs = Json::array();
     for (const JobPtr& job : ctx.jobs().list()) {
-        if (!job->finished()) jobs.push_back(job->toJson(0));
+        if (job->finished()) continue;
+        Json item = job->toJson(0);
+        if (job == importJob) {
+            item["done"] = imports.done;
+            item["total"] = imports.total;
+        }
+        jobs.push_back(item);
     }
 
     const McpServerStatus status = server.status();
@@ -798,6 +810,8 @@ void reportEditorStatus(const CallPtr& call) {
         {"status_message", StatusBar::getTransientMessage()},
         {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
+        // fixed steps the per-frame cap dropped in this Play (Time.maximumFixedStepsPerFrame, S96)
+        {"physics", {{"dropped_fixed_steps", Engine::getDroppedFixedSteps()}}},
         // false: minimized or hidden, nothing is drawn (screenshots fail; a playing game updates)
         {"window", {{"visible", app.isWindowVisible()}}},
         {"dialog", dialog},
@@ -819,7 +833,15 @@ void reportEditorStatus(const CallPtr& call) {
     text += playing ? ". Playing." : ".";
     if (!unsavedScenes.empty()) text += " Unsaved scenes: " + unsavedScenes.dump() + ".";
     if (!jobs.empty()) text += " Running jobs: " + std::to_string(jobs.size()) + ".";
+    if (importJob) {
+        text += " Importing models: " + std::to_string(imports.done) + "/" + std::to_string(imports.total) + " (job " + importJob->id() +
+                "); they appear when ready.";
+    }
     if (!dialog.is_null()) text += " Open dialog: \"" + info.title + "\".";
+    if (Engine::getDroppedFixedSteps() > 0) {
+        text += " Dropped fixed steps: " + std::to_string(Engine::getDroppedFixedSteps()) +
+                " (frames needed more than the cap: Time.maximumDeltaTime's, or Time.maximumFixedStepsPerFrame when lower).";
+    }
     call->ok(text, data);
 }
 
@@ -847,8 +869,12 @@ bool changeToolGroups(const CallPtr& call, const char* key, bool on, std::set<st
         const std::string name = item.is_string() ? item.get<std::string>() : item.dump();
         if (!item.is_string() || !findToolGroup(name)) {
             std::string valid;
-            for (const ToolGroupInfo& group : toolGroups()) valid += (valid.empty() ? "" : ", ") + group.name;
-            call->fail("Unknown tool group " + name + ". Groups: " + valid + ".");
+            std::vector<std::string> groups;
+            for (const ToolGroupInfo& group : toolGroups()) {
+                valid += (valid.empty() ? "" : ", ") + group.name;
+                groups.push_back(group.name);
+            }
+            call->fail("Unknown tool group " + name + NearestIdentifierSuffix(name, groups) + ". Groups: " + valid + ".");
             return false;
         }
         if (name == CORE_TOOL_GROUP) {

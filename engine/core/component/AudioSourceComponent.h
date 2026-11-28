@@ -8,6 +8,7 @@
 #include "Engine.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,6 +25,7 @@ namespace SoLoud{
 namespace jasperengine{
 
     struct SoundEventDef;
+    struct SourceEffectRuntime;
 
     // What plays a source by itself (AudioSource.playOn, docs/specs/S37-sound-events.md R12)
     enum AudioPlayOn : uint32_t{
@@ -50,6 +52,24 @@ namespace jasperengine{
         DecompressOnLoad,
         CompressedInMemory,
         Streaming
+    };
+
+    // Where a clip is (Unity's AudioDataLoadState; docs/specs/S97-audio-gaps.md REQ-12)
+    enum class AudioLoadState{
+        Unloaded,
+        Loading,
+        Loaded,
+        Failed
+    };
+
+    // One effect of a source's own chain (S97 REQ-1): a mixer effect type (AudioEffects, by its
+    // file name, "lowpass"), its wet and the parameters it sets (a missing one is the effect's
+    // default). An unknown type or parameter is kept as read and does nothing.
+    struct AudioSourceEffectDef{
+        std::string type;
+        bool bypass = false;
+        float wet = 1.0f;
+        std::map<std::string, float> params;
     };
 
     // what a running fade does when it reaches its volume
@@ -132,9 +152,12 @@ namespace jasperengine{
         FunctionSubscribe<void()> onStart;
         FunctionSubscribe<void()> onPause;
         FunctionSubscribe<void()> onStop;
+        // once per loadSound (and the scene's preload of its clip), in the audio update after the
+        // clip is ready (true) or failed (false); never inside loadSound (S97 REQ-13)
+        FunctionSubscribe<void(bool)> onLoad;
 
         // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
-        template<typename F> void forEachEvent(F&& f) { f(onStart); f(onPause); f(onStop); }
+        template<typename F> void forEachEvent(F&& f) { f(onStart); f(onPause); f(onStop); f(onLoad); }
 
         double volume = 1;
         float speed = 1;
@@ -176,6 +199,15 @@ namespace jasperengine{
         float pitchRandomSemitones = 0.0f;
         float volumeRandomDb = 0.0f;
 
+        // ---- S97 (docs/specs/S97-audio-gaps.md)
+        // the source's own effects, in order, before its output group (REQ-1); up to maxEffects
+        static constexpr int maxEffects = 4;
+        std::vector<AudioSourceEffectDef> effects;
+        // 0 = 2D (pan, no attenuation), 1 = 3D (REQ-18); a source without a Transform is 2D
+        float spatialBlend = 1.0f;
+        // a further Audio Source of its parent GameObject: 1, 2, ...; 0 = not a slot (REQ-24)
+        int slot = 0;
+
         // setted by system
         double length = 0;
         double playingTime = 0;
@@ -215,6 +247,20 @@ namespace jasperengine{
         bool timelineStopFade = false;
         // an audio action without a Transform plays at its animation's target (3D settings only)
         Entity timelineTarget = NULL_ENTITY;
+        // Spatial Blend between 0 and 1 (S97 REQ-18): its 2D voices' gain and pan this frame
+        bool blended = false;
+        float blendGain = 1.0f;
+        float blendPan = 0.0f;
+        // the blend was 1 when its voices last took 3D or 2D: crossing it switches the playing voices
+        bool voicesFullBlend = true;
+        // S97 REQ-12/13: a load asked by loadSound or the scene's preload, not over yet
+        // (loadState Loading), and onLoad(loadEventOk) due in the next audio update
+        bool loadRequested = false;
+        bool loadEventPending = false;
+        bool loadEventOk = false;
+        // the effects' filters, wrappers and timed changes while voices play through them (S97,
+        // audio/SourceEffects.h); null for a source without effects
+        std::shared_ptr<SourceEffectRuntime> effectRuntime;
     };
 
 }

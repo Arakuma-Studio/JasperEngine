@@ -10,6 +10,9 @@
 #include "sprite/SpriteSheetBuilder.h"
 #include "ReloadHandlers.h"
 
+#include "Out.h"
+#include "texture/PsdLayerImport.h"
+
 #include "Project.h"
 #include "component/TerrainComponent.h"
 #include "pool/TextureDataPool.h"
@@ -69,6 +72,10 @@ void reload::reloadTextures(Context& ctx, const std::vector<fs::path>& files) {
             const std::string assetPath = ctx.project.normalizeToAssetsRelative(path).generic_string();
             sprite::SpriteSheetBuilder::get().invalidate(assetPath);
             sprite::SpriteAtlasBuilder::get().memberChanged(assetPath);
+            // S94 F48: a layered PSD/PSB imports again, its prefab with it
+            std::string error;
+            if (isPsdPath(assetPath) && PsdLayerImporter::get().isLayered(assetPath) && !PsdLayerImporter::get().writePrefab(assetPath, error))
+                Out::warning("%s: %s", assetPath.c_str(), error.c_str());
         }
         const std::vector<std::string> ids = TextureDataPool::findIdsUsingFile(watch::pathToUtf8(path));
 

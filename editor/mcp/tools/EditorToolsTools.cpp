@@ -32,6 +32,8 @@
 #include "mcp/McpSchema.h"
 #include "math/CurveJson.h"
 #include "particles/ParticleEffectCodec.h"
+#include "recorder/InputCapture.h"
+#include "recorder/RecordInput.h"
 #include "recorder/RecorderSession.h"
 #include "pool/TextureDataPool.h"
 #include "render/SystemRender.h"
@@ -60,6 +62,86 @@ namespace fs = std::filesystem;
 
 // ---------------------------------------------------------------- record_game
 
+// record_game {input}: the file replayed in each run, once per resolution (input-recorder-and-input-scripts R23)
+void recordGameWithInput(const CallPtr& call, recorder::Settings settings, const std::string& format) {
+    McpContext& ctx = call->ctx();
+    const Json& args = call->args();
+    const std::string inputFile = args["input"].get<std::string>();
+    recordinput::CaptureRequest request;
+    std::string error;
+    if (!recordinput::RecordInput::get().loadReplay(inputFile, request.script, error)) {
+        call->fail(error);
+        return;
+    }
+    const int fileFps = request.script->header.fixedFps;
+    if (args.contains("fps") && args["fps"].is_number_integer() && args["fps"].get<int>() != fileFps) {
+        const std::string fps = std::to_string(fileFps);
+        call->fail("This file runs at " + fps + " fps (fixed_fps); record_game fps must be " + fps + " or omitted.");
+        return;
+    }
+    if (args.contains("resolutions") && args["resolutions"].is_array()) {
+        if (args["resolutions"].size() > 20) {
+            call->fail("At most 20 resolutions.");
+            return;
+        }
+        for (const Json& item : args["resolutions"]) {
+            recordinput::CaptureSize size;
+            if (!item.is_string() || !recordinput::parseResolution(item.get<std::string>(), size.width, size.height, error)) {
+                call->fail("resolutions: " + (item.is_string() ? error : std::string("each is a \"WxH\" string")) + ".");
+                return;
+            }
+            request.sizes.push_back(size);
+        }
+    }
+    request.input = inputFile;
+    request.shots = format == "shots";
+    const std::string stem = recordinput::fileStem(FileUtils::pathFromUtf8(inputFile));
+    fs::path output = FileUtils::pathFromUtf8(args.value("output", std::string()));
+    if (output.empty()) output = fs::path("Recordings") / (request.shots ? "Screenshots" : "Input") / stem;
+    if (!output.is_absolute()) output = ctx.project()->getProjectPath() / output;
+    request.output = output;
+    request.exitPlay = args.value("exit_play", true);
+    if (!request.shots) {
+        settings.frameRate = fileFps;
+        int64_t frames = args.value("frames", (int64_t)0);
+        if (frames <= 0 && args.contains("seconds")) frames = (int64_t)std::llround(args["seconds"].get<double>() * fileFps);
+        // by default the whole replay
+        if (frames <= 0) frames = (int64_t)request.script->lastFrame() + 1;
+        settings.mode = recorder::Mode::FrameInterval;
+        settings.frameStart = std::max(0, args.value("start_frame", 0));
+        settings.frameEnd = settings.frameStart + (int)frames - 1;
+        settings.movieName = stem;
+        request.recorder = settings;
+    }
+    const size_t runs = std::max<size_t>(1, request.sizes.size());
+    if (!recordinput::InputCapture::get().start(std::move(request), error)) {
+        call->fail(error + ".");
+        return;
+    }
+    JobPtr job = ctx.jobs().create("record", "Replay " + stem + " and record " + format + " (" + std::to_string(runs) + " run(s))");
+    job->setCancelHandler([]() { recordinput::InputCapture::get().cancel(); });
+    recordinput::InputCapture::get().setOnFinished([job](const recordinput::InputCapture::Result& result) {
+        Json files = Json::array();
+        for (const fs::path& file : result.files) files.push_back(FileUtils::pathToGenericUtf8(file));
+        Json data = {{"runs", result.runs}, {"files", files}};
+        if (!result.sidecar.empty()) data["sidecar"] = FileUtils::pathToGenericUtf8(result.sidecar);
+        if (result.cancelled) {
+            job->markCancelled("Stopped after " + std::to_string(result.runs.size()) + " run(s).");
+            return;
+        }
+        if (result.ok) {
+            job->succeed("Captured " + std::to_string(result.files.size()) + " file(s) in " + std::to_string(result.runs.size()) + " run(s).", data);
+            return;
+        }
+        job->fail("The capture failed: " + result.error + ".", data);
+    });
+    replyWhenJobDone(call, job, args.value("wait", true), args.value("timeout_seconds", 300.0), [](const McpJob& done) {
+        Json result = done.result();
+        result["job"] = done.toJson(10);
+        return done.status() == JobStatus::Failed ? ToolResult::error(done.message(), result) : ToolResult::success(done.message(), result);
+    });
+}
+
 void recordGameTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     const Json& args = call->args();
@@ -74,7 +156,8 @@ void recordGameTool(const CallPtr& call) {
     settings.format = format == "mov" ? recorder::Format::Mov : recorder::Format::Mp4;
     const std::string quality = args.value("quality", std::string("high"));
     settings.quality = quality == "low" ? recorder::Quality::Low : (quality == "medium" ? recorder::Quality::Medium : recorder::Quality::High);
-    settings.frameRate = std::clamp(args.value("fps", 30), recorder::kMinFrameRate, recorder::kMaxFrameRate);
+    const int askedFps = args.value("fps", 30);
+    settings.frameRate = std::clamp(askedFps, recorder::kMinFrameRate, recorder::kMaxFrameRate);
     settings.captureAudio = args.value("audio", false);
     settings.exitPlayMode = args.value("exit_play", true);
     settings.recordOnPlay = false;
@@ -82,6 +165,28 @@ void recordGameTool(const CallPtr& call) {
         settings.resolution = recorder::Resolution::Custom;
         settings.customWidth = std::clamp(args.value("width", 1920), recorder::kMinSize, recorder::kMaxSize);
         settings.customHeight = std::clamp(args.value("height", 1080), recorder::kMinSize, recorder::kMaxSize);
+    }
+    const bool hasInput = args.contains("input") && args["input"].is_string() && !args["input"].get<std::string>().empty();
+    if (!hasInput && (format == "shots" || args.contains("resolutions"))) {
+        call->fail(std::string(format == "shots" ? "format shots writes an input file's shot steps" : "resolutions replays an input file once per size") +
+                   ": give input (a .input.json).");
+        return;
+    }
+    if (hasInput) {
+        recordGameWithInput(call, settings, format);
+        return;
+    }
+    // S99 R14: the arguments the Recorder's limits changed (the session adds its own clamps)
+    std::vector<JobFallback> clamped;
+    if (askedFps != settings.frameRate) {
+        clamped.push_back({"frame_rate", std::to_string(askedFps), std::to_string(settings.frameRate),
+                           "the Recorder records " + std::to_string(recorder::kMinFrameRate) + "-" + std::to_string(recorder::kMaxFrameRate) + " fps"});
+    }
+    if (settings.resolution == recorder::Resolution::Custom &&
+        (args.value("width", 1920) != settings.customWidth || args.value("height", 1080) != settings.customHeight)) {
+        clamped.push_back({"resolution", std::to_string(args.value("width", 1920)) + "x" + std::to_string(args.value("height", 1080)),
+                           std::to_string(settings.customWidth) + "x" + std::to_string(settings.customHeight),
+                           "the Recorder records " + std::to_string(recorder::kMinSize) + "-" + std::to_string(recorder::kMaxSize) + " px a side"});
     }
     // the frames: an interval from start_frame (frames, or seconds at fps)
     int64_t frames = args.value("frames", (int64_t)0);
@@ -111,8 +216,15 @@ void recordGameTool(const CallPtr& call) {
         return;
     }
     JobPtr job = ctx.jobs().create("record", "Record " + std::to_string(frames) + " frame(s) to " + format);
+    // S99 R13: frames x the output size, corrected by this project's last recordings of the format
+    const int outputWidth = session.outputWidth(), outputHeight = session.outputHeight();
+    job->estimateFor(ctx.project()->getProjectPath(), "record_game:" + format,
+                     jobmodel::recordSeconds(frames, outputWidth, outputHeight, settings.kind == recorder::Kind::Movie),
+                     recorder::estimateRecordingBytes(session.settings(), outputWidth, outputHeight, frames));
+    for (const JobFallback& fallback : clamped) job->addFallback(fallback);
     job->setCancelHandler([]() { recorder::RecorderSession::get().stop(); });
     session.setOnFinished([job, settings](const recorder::Result& result) {
+        for (const recorder::Result::Downgrade& d : result.downgrades) job->addFallback({d.step, d.from, d.to, d.reason});
         Json data = result.sidecarJson();
         Json files = Json::array();
         for (const fs::path& file : result.files) files.push_back(FileUtils::pathToGenericUtf8(file));
@@ -690,19 +802,22 @@ void registerEditorToolsTools(McpRegistry& registry) {
         tool.name = "record_game";
         tool.title = "Record Game";
         tool.description =
-            "The Recorder as a job: enters Play when needed and records frames start_frame.. of the Game view at a fixed fps "
-            "(game time k/fps per frame, deterministic) to a PNG sequence or an MP4 (H.264) / MOV (ProRes) through the user's FFmpeg. "
-            "Returns the sidecar (frames, fps, size, encoder, warnings, wallSeconds) and the files or movie. cancel_job stops and finalises.";
+            "The Recorder as a job: enters Play when needed and records the Game view from start_frame at a fixed fps "
+            "(deterministic game time) to a PNG sequence or an MP4 (H.264) / MOV (ProRes) through the user's FFmpeg. "
+            "Returns the sidecar and the files or movie; cancel_job stops and finalises. "
+            "input: replays a .input.json, a new session per run; shots: only its shot steps.";
         tool.inputSchema = object({
             {"frames", integer("Frames to record.", 1, 100000)},
             {"seconds", number("Or game seconds (frames = seconds x fps).")},
             {"start_frame", withDefault(integer("Frame 0: Play's first.", 0, 1000000), 0)},
             {"fps", withDefault(integer("", 1, 240), 30)},
-            {"width", integer("Default: the Recorder's resolution.", 16, 8192)},
+            {"width", integer("Default: the Recorder's.", 16, 8192)},
             {"height", integer("", 16, 8192)},
-            {"format", withDefault(stringEnum("", {"png", "mp4", "mov"}), "png")},
+            {"format", withDefault(stringEnum("", {"png", "mp4", "mov", "shots"}), "png")},
+            {"input", string("")},
+            {"resolutions", array(Json{{"type", "string"}}, "A run per WxH.")},
             {"quality", withDefault(stringEnum("", {"low", "medium", "high"}), "high")},
-            {"audio", withDefault(boolean("Movies; mixed offline from Play's start."), false)},
+            {"audio", withDefault(boolean("Movies; from Play's start."), false)},
             {"output", string("png: a folder; movie: a file. Default Recordings/.")},
             {"exit_play", withDefault(boolean(""), true)},
             {"wait", withDefault(boolean(""), true)},

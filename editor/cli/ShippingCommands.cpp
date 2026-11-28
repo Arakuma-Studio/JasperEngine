@@ -11,9 +11,12 @@
 #include "Platform.h"
 #include "Project.h"
 #include "cli/CommandLine.h"
+#include "cook/BuildReport.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "io/AtomicFile.h"
 #include "platform/ExternalTools.h"
+#include "mcp/tools/BuildDevices.h"
+#include "platform/DeviceRunner.h"
 #include "players/PlayerRuntimes.h"
 #include "pool/ShaderPool.h"
 #include "publish/Publishing.h"
@@ -22,8 +25,11 @@
 #include "json.hpp"
 #include "util/FileUtils.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
+#include <thread>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -106,7 +112,11 @@ namespace {
     };
 
     struct EngineRuntimeGuard {
+        Project& project;
         ~EngineRuntimeGuard() {
+            // the project's scenes and their renders go while the engine runs: ~Project, which
+            // comes after this guard, leaves them to the process exit
+            project.releaseScenes();
             ShaderPool::setShaderBuilder(nullptr);
             ShaderBuilder::requestShutdown();
             Engine::systemShutdown();
@@ -148,7 +158,10 @@ namespace {
     void printBuildUsage(const char* executableName) {
         std::printf(
             "Usage: %s build --project P --platform <windows|linux|macos|android|ios|web> --out D [options]\n"
+            "       %s build --project P --profile <name> [--out D] [options]\n"
             "Builds a game: with a prebuilt player when the project needs no native code, else from source (S30).\n"
+            "  --profile name           a Build Profile (EditorSettings/BuildProfiles): its platform, backend,\n"
+            "                           flavour and Output Folder; a --platform that differs exits 2\n"
             "  --backend b              glcore, gles3, vulkan, d3d11 or metal (default: the platform's first)\n"
             "  --method m               auto (default: the project's), prebuilt or compile\n"
             "  --development            the development flavour (the profiler, --profile)\n"
@@ -160,11 +173,17 @@ namespace {
             "  --allow-player-mismatch  a player of another engine version (engine development only)\n"
             "  --ios-simulator          an unsigned simulator .app instead of an archive\n"
             "  --allow-missing-assets   build even when a scene references a missing asset\n"
+            "  --run-device d           Build And Run on a device: an adb serial or simulator UDID, auto (the\n"
+            "                           only usable one) or web; a Development Build patches the installed app\n"
+            "  --no-patch               with --run-device: a full install, never Patch And Run\n"
+            "  --run-seconds S          with --run-device: follow its log for S seconds (default 0: return\n"
+            "                           once it launched; web: serve the page until interrupted)\n"
             "  --json                   the result as JSON\n"
             "Prints method, compile_reason, player, modules (the engine modules the build ships), left_out,\n"
             "module (why one is needed), output, executable, content_manifest, artifact, warning and note\n"
-            "lines; exits 1 when the build fails, 2 on bad arguments.\n",
-            executableName);
+            "lines (and profile: with --profile; device:, installed: and url: with --run-device); exits 1 when the\n"
+            "build or the device run fails, 2 on bad arguments.\n",
+            executableName, executableName);
     }
 
 }
@@ -175,7 +194,9 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     attachConsole();
     EditorHostOverrideGuard hostOverride(nullptr);
     fs::path projectPath, out, playersDir;
-    std::string platformName, backend, method = "auto", androidFormat, startScene;
+    std::string platformName, backend, method = "auto", androidFormat, startScene, profileName, runDevice;
+    bool noPatch = false;
+    double runSeconds = 0.0;
     bool development = false, pack = false, json = false, mismatch = false, simulator = false, allowMissing = false;
     for (int i = 1; i < argc; i++) {
         const std::string arg = argv[i];
@@ -188,6 +209,8 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
             projectPath = CommandLine::projectArgPath(value);
         } else if (arg == "--platform") {
             if (!takeValue(argc, argv, i, platformName, "build")) return 2;
+        } else if (arg == "--profile") {
+            if (!takeValue(argc, argv, i, profileName, "build")) return 2;
         } else if (arg == "--out") {
             if (!takeValue(argc, argv, i, value, "build")) return 2;
             out = CommandLine::absoluteArgPath(value);
@@ -214,6 +237,18 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
             simulator = true;
         } else if (arg == "--allow-missing-assets") {
             allowMissing = true;
+        } else if (arg == "--run-device") {
+            if (!takeValue(argc, argv, i, runDevice, "build")) return 2;
+        } else if (arg == "--no-patch") {
+            noPatch = true;
+        } else if (arg == "--run-seconds") {
+            if (!takeValue(argc, argv, i, value, "build")) return 2;
+            char* end = nullptr;
+            runSeconds = std::strtod(value.c_str(), &end);
+            if (!end || *end != '\0' || runSeconds < 0.0 || runSeconds > 86400.0) {
+                std::fprintf(stderr, "build: --run-seconds is 0 to 86400 seconds (got %s)\n", value.c_str());
+                return 2;
+            }
         } else {
             std::fprintf(stderr, "build: unknown argument %s (try --help)\n", arg.c_str());
             return 2;
@@ -221,11 +256,11 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     }
     ExportConfig config;
     config.mode = ExportMode::Player;
-    if (projectPath.empty() || platformName.empty() || out.empty()) {
-        std::fprintf(stderr, "build: --project, --platform and --out are required (try --help)\n");
+    if (projectPath.empty() || (profileName.empty() && (platformName.empty() || out.empty()))) {
+        std::fprintf(stderr, "build: --project, and --platform and --out (or --profile) are required (try --help)\n");
         return 2;
     }
-    if (!parseBuildPlatform(platformName, config.platform)) {
+    if (!platformName.empty() && !parseBuildPlatform(platformName, config.platform)) {
         std::fprintf(stderr, "build: unknown platform %s (windows, linux, macos, android, ios, web)\n", platformName.c_str());
         return 2;
     }
@@ -252,9 +287,16 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     config.keystorePassword = envOr("JASPER_ANDROID_KS_PASS");
     config.keyPassword = envOr("JASPER_ANDROID_KEY_PASS");
 
+    if ((noPatch || runSeconds > 0.0) && runDevice.empty()) {
+        std::fprintf(stderr, "build: --no-patch and --run-seconds go with --run-device (try --help)\n");
+        return 2;
+    }
+
     bool ok = false;
+    int exitCode = 1;
     ExportResult result;
     std::string error;
+    std::shared_ptr<mcp::builddevice::BuildDeploy> deploy;
     {
         StdoutToStderr quiet;
         Out::setConsoleWindow(nullptr);
@@ -262,7 +304,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         Project project;
         auto platform = std::make_unique<Platform>(&project);
         Engine::systemInit(argc, argv, platform.get());
-        EngineRuntimeGuard engineRuntime;
+        EngineRuntimeGuard engineRuntime{project};
         Engine::pauseGameEvents(true);
         Engine::setAsyncLoading(true);
         ShaderPool::setShaderBuilder([projectPtr = &project](ShaderKey shaderKey) -> ShaderBuildResult {
@@ -278,19 +320,85 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
             config.startSceneId = sceneIdOf(project, startScene);
             // no --android-format: the project's (Project Settings > Android > Package Format)
             if (androidFormat.empty()) parseAndroidFormat(project.getAndroidProjectSettings().packageFormat, config.androidFormat);
-            if (!startScene.empty() && config.startSceneId == 0) {
+            // a Build Profile supplies the platform, backend, flavour and folder; an explicit one that differs is refused
+            const BuildPlatform asked = config.platform;
+            const std::string askedBackend = normalizeBackend(config.graphicBackend);
+            bool profileOk = true;
+            if (!profileName.empty()) {
+                if (!applyBuildProfile(project, profileName, config, error)) {
+                    profileOk = false;
+                } else if (!platformName.empty() && asked != config.platform) {
+                    error = "--platform " + platformName + " differs from Build Profile '" + config.buildProfile + "', which builds for " +
+                            buildPlatformName(config.platform);
+                    profileOk = false;
+                } else if (!backend.empty() && askedBackend != normalizeBackend(config.graphicBackend)) {
+                    error = "--backend " + backend + " differs from Build Profile '" + config.buildProfile + "' (" + config.graphicBackend + ")";
+                    profileOk = false;
+                } else {
+                    if (!out.empty()) config.destinationDir = out;
+                    if (config.destinationDir.empty()) {
+                        error = "--out is needed: Build Profile '" + config.buildProfile + "' has no Output Folder";
+                        profileOk = false;
+                    }
+                }
+                if (!profileOk) exitCode = 2;
+            }
+            if (!profileOk) {
+                // the reason is in error, the exit code 2
+            } else if (!startScene.empty() && config.startSceneId == 0) {
                 error = "--start-scene " + startScene + ": no scene of that id or name";
             } else {
-                Exporter exporter;
-                ok = exporter.exportProject(&project, config);
-                result = exporter.getResult();
-                if (!ok) error = exporter.getProgress().errorMessage;
+                // --run-device: the device first (its ABI, patch or full install), then the build
+                if (!runDevice.empty()) {
+                    std::string pickError;
+                    const std::vector<platform::RunDevice> devices = platform::devicesOf(config.platform, project.getAndroidProjectSettings().minSdk);
+                    const platform::RunDevice* device = platform::pickDevice(devices, config.platform, runDevice, pickError);
+                    if (!device) error = "--run-device: " + pickError;
+                    else deploy = mcp::builddevice::prepare(&project, config, *device, noPatch ? std::optional<bool>(false) : std::nullopt, error);
+                    if (deploy) {
+                        config.contentOnly = deploy->patch;
+                        config.androidRunAbi = deploy->patch ? std::string() : deploy->androidAbi;
+                        if (config.platform == BuildPlatform::IOS) config.iosSimulator = true;
+                        if (!deploy->fullBecause.empty() && !deploy->patch && !noPatch) Out::info("Build And Run installs in full: %s", deploy->fullBecause.c_str());
+                    }
+                }
+                if (runDevice.empty() || deploy) {
+                    Exporter exporter;
+                    ok = exporter.exportProject(&project, config);
+                    result = exporter.getResult();
+                    if (!ok) error = exporter.getProgress().errorMessage;
+                }
+                if (ok && deploy) {
+                    ok = mcp::builddevice::deploy(*deploy, project.getProjectPath(), result, config, [](const std::string& step) { Out::info("%s", step.c_str()); });
+                    if (!ok) error = "the run on " + deploy->device.name + " failed: " + deploy->result.error;
+                    // its log until it exits, or for --run-seconds
+                    const auto start = std::chrono::steady_clock::now();
+                    // (the web page is served by this process: without --run-seconds it serves until interrupted)
+                    const bool serving = deploy->device.kind == platform::RunDeviceKind::Browser;
+                    if (ok && serving && runSeconds <= 0.0) Out::info("Serving %s until interrupted (Ctrl+C)", deploy->result.url.c_str());
+                    while (ok && (runSeconds > 0.0 || serving)) {
+                        const std::optional<platform::DeviceRunState> state = platform::DeviceRuns::get().state(deploy->device.id);
+                        if (!state || !state->running) break;
+                        if (runSeconds > 0.0 && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() >= runSeconds) break;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                    if (ok) {
+                        const std::optional<platform::DeviceRunState> state = platform::DeviceRuns::get().state(deploy->device.id);
+                        if (state && state->crashed) {
+                            ok = false;
+                            error = deploy->device.name + " crashed: " + (state->fatalLines.empty() ? std::string("see its log") : state->fatalLines.front());
+                        }
+                    }
+                    // the game keeps running; nothing follows it once the command returns
+                    platform::DeviceRuns::get().releaseAll();
+                }
             }
         }
     }
     if (json) {
         ordered_json report;
         report["ok"] = ok;
+        if (!result.buildProfile.empty()) report["profile"] = result.buildProfile;
         report["method_used"] = buildMethodName(result.methodUsed);
         report["compile_reasons"] = result.compileReasons;
         report["carried"] = result.carried;
@@ -315,11 +423,42 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         if (!result.buildReport.empty()) {
             report["build_report"] = result.buildReport.string();
             report["build_bytes"] = result.buildBytes;
-            report["build_categories"] = result.buildCategories;
+            // S99 R10, R11: as build_project and build-report.json have them (every category)
+            ordered_json categories = ordered_json::object();
+            for (const std::string& name : BuildReport::categoryNames())
+                categories[name] = result.buildCategories.count(name) ? result.buildCategories.at(name) : 0;
+            report["build_categories"] = categories;
+            // build-size-tools R35: the history id and the size budget rows the build met
+            report["build_report_id"] = result.buildReportId;
+            ordered_json budgets = ordered_json::array();
+            for (const BuildReportBudget& budget : result.sizeBudgets)
+                budgets.push_back({{"platform", budget.platform}, {"category", budget.category}, {"limit_bytes", budget.limitBytes},
+                                   {"bytes", budget.bytes}, {"over_bytes", budget.overBytes()}});
+            report["size_budgets"] = budgets;
+            ordered_json top = ordered_json::array();
+            for (size_t i = 0; i < result.largestFiles.size() && i < 5; i++)
+                top.push_back({{"path", result.largestFiles[i].path}, {"bytes", result.largestFiles[i].bytes}});
+            report["top_files"] = top;
+            if (result.downloadBytesGzip) report["download_bytes_gzip"] = result.downloadBytesGzip;
+            if (result.downloadBudgetBytes) {
+                const uint64_t actual = result.downloadBytesGzip ? result.downloadBytesGzip : result.buildBytes;
+                report["download_budget"] = {{"budget_bytes", result.downloadBudgetBytes}, {"actual_bytes", actual},
+                                             {"over", actual > result.downloadBudgetBytes}};
+            }
+            report["stripped_count"] = result.strippedCount;
+            report["stripped_bytes"] = result.strippedBytes;
+        }
+        if (deploy) {
+            report["device"] = deploy->device.id;
+            report["device_name"] = deploy->device.name;
+            report["installed"] = deploy->result.installed;
+            report["pushed_files"] = deploy->result.pushedFiles;
+            if (!deploy->result.url.empty()) report["url"] = deploy->result.url;
         }
         if (!ok) report["error"] = error;
         std::printf("%s\n", report.dump(2).c_str());
     } else {
+        if (!result.buildProfile.empty()) std::printf("profile: %s\n", result.buildProfile.c_str());
         if (result.methodUsed != BuildMethod::Auto) std::printf("method: %s\n", buildMethodName(result.methodUsed));
         for (const std::string& reason : result.compileReasons) std::printf("compile_reason: %s\n", reason.c_str());
         for (const std::string& item : result.carried) std::printf("carried: %s\n", item.c_str());
@@ -346,11 +485,17 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         }
         for (const BuildWarning& warning : result.warnings) std::printf("warning: %s: %s\n", warning.code.c_str(), warning.message.c_str());
         for (const std::string& note : result.notes) std::printf("note: %s\n", note.c_str());
+        if (deploy && !deploy->result.installed.empty()) {
+            std::printf("device: %s (%s)\n", deploy->device.id.c_str(), deploy->device.name.c_str());
+            std::printf("installed: %s\n", deploy->result.installed.c_str());
+            if (deploy->result.installed == "patched") std::printf("pushed_files: %zu\n", deploy->result.pushedFiles);
+            if (!deploy->result.url.empty()) std::printf("url: %s\n", deploy->result.url.c_str());
+        }
     }
     std::fflush(stdout);
     if (!ok) {
         std::fprintf(stderr, "build: %s\n", error.empty() ? "the build failed" : error.c_str());
-        return 1;
+        return exitCode;
     }
     return 0;
 }

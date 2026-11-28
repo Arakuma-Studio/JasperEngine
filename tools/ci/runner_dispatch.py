@@ -23,6 +23,13 @@ Each run:
   GitHub's runners only. A merge-queue run is not rerun (the queue removed its group) but its pull
   request is put back in the queue. Each run at most once, at most MAX_ACTIONS an hour; runs it did not
   route are never touched; every action goes to --log.
+- Namespace (NAMESPACE_VARIABLE in plan_lanes.py): its jobs (nscloud-* labels) are no hosted runner's and
+  no overflow runner's, so they count nowhere above and are never rerouted to an overflow runner. The
+  state says, per OS, whether Namespace is down: a job of it has waited NAMESPACE_DOWN_WAIT while none of
+  that OS runs, and for NAMESPACE_HOLD after that was last seen (then plans try it again); while it is,
+  plans keep that OS on GitHub's runners, `changes` runs on ubuntu-latest (SELF_HOSTED_PLANNER, Linux),
+  and the watchdog reroutes a run waiting on it as for an offline runner (a merge-queue run's after
+  QUEUE_OFFLINE_LIMIT).
 
 --hosts: JSON {"<label>": {"ssh": "<user@host>", "shell": "posix|powershell", "min_free_gb": N}}, kept on
 the host (it names the machines). --dry-run reads and prints, and writes and changes nothing.
@@ -42,7 +49,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from plan_lanes import BLACKSMITH, OVERFLOW, STATE_BRANCH  # noqa: E402
+from plan_lanes import HOSTED, NAMESPACE_OSES, NAMESPACE_PREFIXES, OVERFLOW, STATE_BRANCH, namespace_os  # noqa: E402
 
 REPO = "Arakuma-Studio/JasperEngine"
 # GitHub Team: 60 concurrent hosted jobs, 5 of them macOS
@@ -50,11 +57,22 @@ HOSTED_LIMITS = {"macos": 5}
 TOTAL_LIMIT = 60
 SATURATED_WAIT = 300        # a hosted job queued this long (s): its OS's runners are taken, whatever the count
 PLANNER_WAIT = 300          # a `changes` job queued this long (s) for a busy overflow runner is rerouted
+# A merge-queue run is cancelled only when its job truly cannot finish: a cancel fails its Check, the queue
+# removes the pull request and every group behind it restarts (run 45310250691, #153's group, 2026-11-24:
+# about 2 h lost for a job that would have waited). So never for an idle runner or a runner that went
+# offline mid-job (GitHub fails that job itself, and LOST then puts the pull request back), and for a job
+# queued for an offline runner only once that runner has been gone QUEUE_OFFLINE_LIMIT
+QUEUE_OFFLINE_LIMIT = 1800
 QUEUED_LIMIT = 600          # a job queued for an offline overflow runner this long (s) is rerouted
 OFFLINE_LIMIT = 180         # a running job's overflow runner offline this long (s): rerouted
 LOOKBACK = 6 * 3600         # finished runs looked at for a job its runner's loss failed
 MAX_ACTIONS = 6             # watchdog actions an hour
 MIN_FREE_GB = 60
+# Namespace starts a runner in seconds: a job of an OS waiting this long (s) while none of that OS runs means
+# its runners are down (an outage, the app uninstalled, the plan not enabled), not busy (a full concurrency
+# limit has jobs running); the verdict holds this long (s) after it was last seen, then plans try again
+NAMESPACE_DOWN_WAIT = 600
+NAMESPACE_HOLD = 1800
 # what GitHub says when a job's runner went away
 LOST = re.compile(r"lost communication with the server|received a shutdown signal", re.I)
 QUEUE_REF = re.compile(r"^gh-readonly-queue/[^/]+/pr-(\d+)-[0-9a-f]+$")
@@ -70,13 +88,13 @@ def epoch(stamp: str | None) -> float | None:
 
 
 def os_of(labels: list[str]) -> tuple[str, str]:
-    """(OS, overflow label or "") of a job's runs-on labels; ("", "") for a runner this does not count."""
+    """(OS, overflow label or "") of a job's runs-on labels; ("", "") for a runner this does not count
+    (Namespace's: namespace_os)."""
+    if any(str(label).startswith(NAMESPACE_PREFIXES) for label in labels):
+        return "", ""
     for label in labels:
         if label in OVERFLOW:
             return OVERFLOW[label][0], label
-        for os_, paid in BLACKSMITH.items():
-            if label == paid:
-                return os_, label
     for label in labels:
         for prefix, name in (("ubuntu-", "linux"), ("windows-", "windows"), ("macos-", "macos")):
             if label.startswith(prefix):
@@ -91,8 +109,13 @@ def compute_state(runners: list[dict], jobs: list[dict], probes: dict, now: floa
     probes ({label: {"alive", "free_gb", "ok", "why"}}: online when GitHub or the probe says the runner
     is; a label without a probe is fit)."""
     hosted = {o: {"running": 0, "queued": 0, "waited": 0} for o in ("linux", "windows", "macos")}
+    namespace = {o: {"running": 0, "queued": 0, "waited": 0} for o in NAMESPACE_OSES}
     claimed: set[str] = set()
     for job in jobs:
+        ns = namespace_os(job.get("labels") or [])
+        if ns:
+            count(namespace[ns], job, now)
+            continue
         os_, label = os_of(job.get("labels") or [])
         if not os_:
             continue
@@ -101,13 +124,7 @@ def compute_state(runners: list[dict], jobs: list[dict], probes: dict, now: floa
             if status in ("queued", "waiting", "pending", "requested"):
                 claimed.add(label)
             continue
-        if status == "in_progress":
-            hosted[os_]["running"] += 1
-        elif status in ("queued", "waiting", "pending", "requested"):
-            hosted[os_]["queued"] += 1
-            created = epoch(job.get("created_at"))
-            if created is not None:
-                hosted[os_]["waited"] = max(hosted[os_]["waited"], int(now - created))
+        count(hosted[os_], job, now)
     total = sum(h["running"] for h in hosted.values())
     for os_, h in hosted.items():
         full = h["running"] >= HOSTED_LIMITS.get(os_, TOTAL_LIMIT) or total >= TOTAL_LIMIT
@@ -123,19 +140,39 @@ def compute_state(runners: list[dict], jobs: list[dict], probes: dict, now: floa
         if "free_gb" in probe:
             entry["free_gb"] = probe["free_gb"]
         out[label] = entry
-    return {"t": int(now), "os": hosted, "runners": out}
+    return {"t": int(now), "os": hosted, "runners": out, "namespace": namespace}
 
 
-BLACKSMITH_PAUSE = 6 * 3600   # after a job waited there: the plans route nothing to Blacksmith this long
+def count(entry: dict, job: dict, now: float) -> None:
+    """A job into its OS's running and queued counts, and the longest wait."""
+    status = job.get("status")
+    if status == "in_progress":
+        entry["running"] += 1
+    elif status in ("queued", "waiting", "pending", "requested"):
+        entry["queued"] += 1
+        created = epoch(job.get("created_at"))
+        if created is not None:
+            entry["waited"] = max(entry["waited"], int(now - created))
 
 
-def paused(memory: dict, now: float) -> dict:
-    """The state's blacksmith entry: ok, or paused (and why) for BLACKSMITH_PAUSE after a job waited there."""
-    until = memory.get("blacksmith_paused_until", 0)
-    if now < until:
-        return {"ok": False, "why": f"a job waited there at {memory.get('blacksmith_paused_why', '?')}; until "
-                                    f"{datetime.fromtimestamp(until, timezone.utc).strftime('%H:%M')} UTC"}
-    return {"ok": True}
+def namespace_health(counts: dict, memory: dict, now: float) -> dict:
+    """Namespace's state per OS (compute_state's counts with down, and when down why and since): down once
+    a job has waited NAMESPACE_DOWN_WAIT while none of the OS runs, up as soon as one runs, else down until
+    NAMESPACE_HOLD after it was last seen. memory: the state directory's record."""
+    seen = memory.setdefault("namespace_down", {})
+    out = {}
+    for os_, c in counts.items():
+        if c["running"]:
+            seen.pop(os_, None)
+        elif c["queued"] and c["waited"] >= NAMESPACE_DOWN_WAIT:
+            seen.setdefault(os_, {"since": int(now)}).update(
+                last=int(now), why=f"a job waited {c['waited'] // 60} min with no {os_} job running on Namespace")
+        entry = seen.get(os_)
+        if entry and now - entry.get("last", 0) >= NAMESPACE_HOLD:
+            seen.pop(os_)
+            entry = None
+        out[os_] = dict(c, down=bool(entry), **({"why": entry["why"], "since": entry["since"]} if entry else {}))
+    return out
 
 
 PLANNER_VARIABLE = "SELF_HOSTED_PLANNER"
@@ -145,17 +182,20 @@ PLANNER = "je-linux"
 def planner(state: dict, disabled: str) -> str:
     """The runner `changes` runs on (ci.yml reads PLANNER_VARIABLE as a run is created): the Linux overflow
     runner while hosted Linux is saturated and it is online, fit and idle (no job running or queued for it:
-    runs created while it plans go hosted, so planners never queue behind each other or a build), else ""."""
+    runs created while it plans go hosted, so planners never queue behind each other or a build), else
+    GitHub's while Namespace's Linux runners are down (ci.yml would put it there), else ""."""
     off = set(disabled.replace(",", " ").split())
     r = state["runners"].get(PLANNER) or {}
     ok = (state["os"]["linux"]["saturated"] and r.get("online") and r.get("fit") and not r.get("busy")
           and not off & {"all", PLANNER})
-    return PLANNER if ok else ""
+    if ok:
+        return PLANNER
+    return HOSTED["linux"] if ((state.get("namespace") or {}).get("linux") or {}).get("down") else ""
 
 
 def reserve(state: dict, want: str) -> None:
     """The planner's runner takes no lane while it plans: every run's `changes` would queue behind them."""
-    if want:
+    if want in state["runners"]:
         state["runners"][want].update(fit=False, why="reserved for `changes` (SELF_HOSTED_PLANNER)")
 
 
@@ -181,9 +221,17 @@ def probe(label: str, host: dict, run=subprocess.run) -> dict:
 
 # ---------------------------------------------------------------------------------------- watchdog
 
-def stuck(run: dict, jobs: list[dict], runners: dict, offline_since: dict, now: float) -> str:
-    """Why a run the plan routed onto an overflow runner waits on one that went away, or ""."""
+def stuck(run: dict, jobs: list[dict], runners: dict, offline_since: dict, now: float, namespace: dict | None = None) -> str:
+    """Why a run the plan routed onto an overflow runner waits on one that went away, or on Namespace's
+    runners of an OS while they are down (namespace: the state's), or ""."""
+    queue = run.get("event") == "merge_group"
     for job in jobs:
+        ns = namespace_os(job.get("labels") or [])
+        if ns and job.get("status") in ("queued", "waiting", "pending", "requested"):
+            health = (namespace or {}).get(ns) or {}
+            waited = now - (epoch(job.get("created_at")) or now)
+            if health.get("down") and waited >= (QUEUE_OFFLINE_LIMIT if queue else NAMESPACE_DOWN_WAIT):
+                return f"{job.get('name')} queued {waited / 60:.0f} min for Namespace, down for {ns} ({health.get('why', '')})"
         _os, label = os_of(job.get("labels") or [])
         if not label:
             continue
@@ -192,9 +240,8 @@ def stuck(run: dict, jobs: list[dict], runners: dict, offline_since: dict, now: 
         status = job.get("status")
         if status in ("queued", "waiting", "pending", "requested") and not online:
             waited = now - (epoch(job.get("created_at")) or now)
-            if waited >= QUEUED_LIMIT and label in BLACKSMITH.values():
-                return f"{job.get('name')} queued {waited / 60:.0f} min for {label}: Blacksmith took no job (its spend limit?)"
-            if waited >= QUEUED_LIMIT:
+            gone = now - offline_since.get(label, now)
+            if waited >= QUEUED_LIMIT and (not queue or gone >= QUEUE_OFFLINE_LIMIT):
                 return f"{job.get('name')} queued {waited / 60:.0f} min for {label}, which is offline"
         # the planner behind a busy runner: every lane of its run waits on it. Not a merge-queue run's (a
         # cancel fails its group): the planner is named only while its runner is idle (planner)
@@ -203,7 +250,7 @@ def stuck(run: dict, jobs: list[dict], runners: dict, offline_since: dict, now: 
             waited = now - (epoch(job.get("created_at")) or now)
             if waited >= PLANNER_WAIT:
                 return f"changes queued {waited / 60:.0f} min for {label}, which is busy"
-        if status == "in_progress" and not online and job.get("runner_name") == label:
+        if status == "in_progress" and not online and job.get("runner_name") == label and not queue:
             gone = now - offline_since.get(label, now)
             if gone >= OFFLINE_LIMIT:
                 return f"{job.get('name')} running on {label}, offline for {gone / 60:.0f} min"
@@ -283,24 +330,36 @@ class Watchdog:
         return True
 
     def finish(self, run: dict, why: str) -> None:
+        """Rerun a stopped run, or put its pull request back in the queue: one try (a failure is logged
+        and left), within the hourly limit."""
         key = str(run["id"])
         kinds = self.kinds(key)
+        if not self.allowed():
+            return  # (still pending: the next hour's budget takes it)
         if run.get("event") == "merge_group":
             m = QUEUE_REF.match(run.get("head_branch") or "")
-            if m and self.act("re-enqueue the pull request of", run, f"#{m.group(1)} back at the front of the merge queue: {why}",
-                              lambda: self.gh.enqueue(int(m.group(1)))):
-                self.record(key, "requeued", why, kinds)
-            elif not m:
+            if not m:
                 self.log(f"run {run['id']}: a merge-queue run without a pull request in {run.get('head_branch')}: left")
                 self.record(key, "left", why, kinds)
+                return
+            pr = int(m.group(1))
+            queued = self.gh.queue_state(pr)
+            if queued:
+                self.log(f"run {run['id']}: #{pr} is {queued} already: nothing to do ({why})")
+                self.record(key, "requeued", why, kinds)
+                return
+            ok = self.act("re-enqueue the pull request of", run, f"#{pr} back at the front of the merge queue: {why}",
+                          lambda: self.gh.enqueue(pr))
+            self.record(key, "requeued" if ok else "left", why, kinds)
             return
         # (a pull request's newer push has a run of its own: a rerun of this one would cancel it)
         newest = self.gh.newest_run(run) if run.get("event") == "pull_request" else run["id"]
         if newest != run["id"]:
             self.log(f"run {run['id']}: superseded by run {newest} of {run.get('head_branch')}: not rerun ({why})")
             self.record(key, "left", why, kinds)
-        elif self.act("rerun", run, why, lambda: self.gh.rerun(run["id"])):
-            self.record(key, "rerun", why, kinds)
+        else:
+            ok = self.act("rerun", run, why, lambda: self.gh.rerun(run["id"]))
+            self.record(key, "rerun" if ok else "left", why, kinds)
 
     def pending(self) -> list[str]:
         """Runs it cancelled and has not rerun yet."""
@@ -327,7 +386,8 @@ def job_key(name: str) -> str:
 def waiting_for_idle(run: dict, jobs: list[dict], runners: dict, disabled: str, now: float, taken: set[str]) -> tuple[str, str]:
     """(why, label) when a trusted run's job has waited IDLE_REROUTE_WAIT for a hosted runner while an
     overflow runner that would take it (OVERFLOW) is online, idle and fit; else ("", "")."""
-    if not trusted_run(run):
+    # (never a merge-queue run: its cancel fails the group and restarts every group behind it)
+    if not trusted_run(run) or run.get("event") == "merge_group":
         return "", ""
     off = set(disabled.replace(",", " ").split())
     for label, (os_, order) in OVERFLOW.items():
@@ -419,6 +479,19 @@ class Gh:
     def rerun(self, run_id) -> bool:
         return self._cli("run", "rerun", str(run_id))
 
+    def queue_state(self, pr: int) -> str:
+        """Why the pull request needs no enqueue: "in the merge queue" or "closed", else ""."""
+        self.calls += 1
+        owner, name = self.repo.split("/")
+        r = subprocess.run(["gh", "api", "graphql", "-f", "query=query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n)"
+                            "{pullRequest(number:$p){state mergeQueueEntry{state}}}}", "-F", f"o={owner}", "-F", f"n={name}",
+                            "-F", f"p={pr}", "--jq", ".data.repository.pullRequest | [.state, (.mergeQueueEntry.state // \"\")] | @tsv"],
+                           capture_output=True, text=True, timeout=60)
+        state, _, entry = r.stdout.strip().partition("\t")
+        if r.returncode != 0 or not state:
+            return ""
+        return "in the merge queue" if entry else ("" if state == "OPEN" else state.lower())
+
     def enqueue(self, pr: int) -> bool:
         """Back in the merge queue, at its front (it was building there when the watchdog stopped it)."""
         self.calls += 2
@@ -493,10 +566,13 @@ def main(argv: list[str]) -> int:
     with ThreadPoolExecutor(4) as pool:
         probes = dict(zip(labels, pool.map(lambda label: probe(label, hosts[label]), labels)))
     state = compute_state(runners, [j for js in jobs.values() for j in js], probes, now)
+    state["namespace"] = namespace_health(state["namespace"], memory, now)
+    for os_, entry in state["namespace"].items():
+        if entry["down"] and entry["since"] == int(now):
+            log(f"Namespace {os_} down: {entry['why']}: its plans go to GitHub's runners for {NAMESPACE_HOLD // 60} min")
     dog = Watchdog(gh, memory, now, log, args.dry_run)
     # the reruns of runs moved off a runner that went away plan on GitHub's runners (plan_lanes.route)
     state["hosted_only"] = dog.held()
-    state["blacksmith"] = paused(memory, now)
     disabled = ""
     try:
         disabled = gh.variable("SELF_HOSTED_DISABLED")
@@ -544,16 +620,12 @@ def main(argv: list[str]) -> int:
     for rid, run in active.items():
         # stuck, or a job its runner's loss failed while the rest of the run goes on
         try:
-            why = stuck(run, jobs[rid], state["runners"], offline_since, now) or lost(jobs[rid], annotations)
+            why = stuck(run, jobs[rid], state["runners"], offline_since, now, state["namespace"]) or lost(jobs[rid], annotations)
         except RuntimeError as e:
             log(f"run {rid}: {e}")
             continue
         if why:
             dog.handle(run, why, finished=False)
-            if "Blacksmith took no job" in why and now >= memory.get("blacksmith_paused_until", 0):
-                memory["blacksmith_paused_until"] = now + BLACKSMITH_PAUSE
-                memory["blacksmith_paused_why"] = stamp
-                log(f"Blacksmith paused for {BLACKSMITH_PAUSE // 3600} h: {why}")
     # a trusted run waiting for a hosted runner while an overflow runner of its OS is idle: rerun, so its
     # plan routes it there (the merge queue's first: it is the gate). One run per idle runner a minute
     taken: set[str] = set()

@@ -160,7 +160,8 @@ float RenderSystem::shadowPCFRadius() const{
 unsigned int RenderSystem::lightShadowCascades(const LightComponent& light, const CameraComponent& camera) const{
     if (light.type == LightType::POINT)
         return SHADOW_CUBE_FACES;
-    if (light.type == LightType::SPOT)
+    // (an Area Light draws one perspective map along its forward axis, as a spot: S99 R35)
+    if (light.type == LightType::SPOT || light.type == LightType::AREA)
         return 1;
     if (camera.type != CameraType::CAMERA_PERSPECTIVE)
         return 1;
@@ -186,7 +187,7 @@ unsigned int RenderSystem::lightShadowResolution(const LightComponent& light) co
     unsigned int resolution = light.mapResolution;
     if (resolution == 0){
         resolution = (light.type == LightType::DIRECTIONAL) ? tier.slotResolution :
-                     (light.type == LightType::SPOT ? tier.spotResolution : tier.pointResolution);
+                     ((light.type == LightType::SPOT || light.type == LightType::AREA) ? tier.spotResolution : tier.pointResolution);
     }
     return ShadowSlotPlanner::powerOfTwoResolution(resolution, MIN_SHADOW_RESOLUTION, tier.slotResolution);
 }
@@ -249,7 +250,7 @@ void RenderSystem::planShadowSlots(int numLights){
         ShadowLightRequest request;
         request.id = (uint32_t)entity;
         request.kind = (light.type == LightType::DIRECTIONAL) ? ShadowLightKind::DIRECTIONAL :
-                       (light.type == LightType::SPOT ? ShadowLightKind::SPOT : ShadowLightKind::POINT);
+                       ((light.type == LightType::SPOT || light.type == LightType::AREA) ? ShadowLightKind::SPOT : ShadowLightKind::POINT);
         request.slots = sceneCamera ? lightShadowCascades(light, *sceneCamera) :
                         ((light.type == LightType::POINT) ? SHADOW_CUBE_FACES : 1u);
         request.resolution = lightShadowResolution(light);
@@ -726,13 +727,16 @@ void RenderSystem::computeLightCameras(const LightComponent& light, const Transf
             cameras[c].nearFar = Vector2(fit.splitNear[c], fit.splitFar[c]);
             updateCameraFrustumPlanes(cameras[c].lightViewProjectionMatrix, cameras[c].frustumPlanes);
         }
-    }else if (light.type == LightType::SPOT){
+    }else if (light.type == LightType::SPOT || light.type == LightType::AREA){
         const Vector3 lightUp = (std::abs(light.worldDirection.normalized().y) > 0.99f) ? Vector3(0, 0, 1) : Vector3(0, 1, 0);
-        const Vector3 projectionUp = light.spotMaskReady ? light.worldUp : lightUp;
-        const float projectionAspect = light.spotMaskReady ? light.spotMaskAspect : 1.0f;
+        const bool masked = light.type == LightType::SPOT && light.spotMaskReady;
+        const Vector3 projectionUp = masked ? light.worldUp : lightUp;
+        const float projectionAspect = masked ? light.spotMaskAspect : 1.0f;
+        // an Area Light's map covers 120 degrees in front of it; outside, receivers are unshadowed
+        const float fieldOfView = (light.type == LightType::AREA) ? Angle::degToRad(120.0f) :
+                                  std::acos(std::clamp(light.outerConeCos, -1.0f, 1.0f)) * 2.0f;
         const Matrix4 viewMatrix = Matrix4::lookAtMatrix(transform.worldPosition, light.worldDirection + transform.worldPosition, projectionUp);
-        const Matrix4 projectionMatrix = Matrix4::perspectiveMatrix(std::acos(std::clamp(light.outerConeCos, -1.0f, 1.0f)) * 2.0f,
-                                                                    projectionAspect, nearFar.x, nearFar.y);
+        const Matrix4 projectionMatrix = Matrix4::perspectiveMatrix(fieldOfView, projectionAspect, nearFar.x, nearFar.y);
         cameras[0].lightViewMatrix = viewMatrix;
         cameras[0].lightProjectionMatrix = projectionMatrix;
         cameras[0].lightViewProjectionMatrix = projectionMatrix * viewMatrix;
@@ -937,7 +941,10 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
                 const float texelPerUnit = 2.0f / (projectionScale * resolution);
                 data.bias[slot] = Vector4(light.shadowBias * texelPerUnit, light.shadowNormalBias * texelPerUnit, texelPerUnit, shadowCamera.nearFar.y);
                 data.split[slot] = Vector4(shadowCamera.nearFar.x, shadowCamera.nearFar.y, shadowCamera.nearFar.y, resolution);
-                data.filtering[slot] = Vector4(filter.x, (filter.x >= 2.0f) ? 0.0f : filter.y, light.shadowSourceRadius, strength);
+                // PCSS's light size: an Area Light's half extent
+                const float sourceRadius = (light.type == LightType::AREA) ? std::max(light.getAreaHalfWidth(), light.getAreaHalfHeight())
+                                                                         : light.shadowSourceRadius;
+                data.filtering[slot] = Vector4(filter.x, (filter.x >= 2.0f) ? 0.0f : filter.y, sourceRadius, strength);
                 data.fade[slot].x = 1e30f;
                 data.fade[slot].y = 1e30f;
                 legacyBias = 0.0005f * light.shadowBias;
@@ -956,7 +963,16 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
     // frame block of the camera's passes is filled by updatePassFrame
     view.fs_lighting.eyePos = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z, 0.0);
     view.fs_lighting.cameraDir = Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, shadowPCFRadius());
-    view.fs_lighting.globalIllum = Vector4(scene->getGlobalIlluminationColorLinear(), scene->getGlobalIlluminationIntensity());
+    // (a Gradient ambient as its average over every facing, at intensity 1)
+    if (scene->getAmbientMode() == AmbientMode::GRADIENT){
+        Vector4 ambientSH[3];
+        Vector3 flatAmbient;
+        Vector3 litFlatAmbient;
+        sceneAmbient(ambientSH, flatAmbient, litFlatAmbient);
+        view.fs_lighting.globalIllum = Vector4(flatAmbient, 1.0f);
+    }else{
+        view.fs_lighting.globalIllum = Vector4(scene->getGlobalIlluminationColorLinear(), scene->getGlobalIlluminationIntensity());
+    }
     view.fs_lighting.envColor = environmentInfo();
     view.fs_lighting.viewportInfo = lightingViewportInfo(camera);
 }

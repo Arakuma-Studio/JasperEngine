@@ -11,7 +11,6 @@
 
 #include "reflect/Components.h"
 
-#include "Factory.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
@@ -20,7 +19,6 @@
 #include <cmath>
 
 namespace jasperengine::editor::reflect {
-
     JE_REFLECT_STRUCT_TRAITS(spline::SplineKnot, kSplineKnotStruct);
     JE_REFLECT_STRUCT_TRAITS(SplineTerrainSettings, kSplineTerrainStruct);
     JE_REFLECT_STRUCT_TRAITS(SplineProfilePoint, kSplineProfilePointStruct);
@@ -153,8 +151,8 @@ namespace {
     // ---------------------------------------------------------------- shared
 
     // only what differs from the defaults is written; a missing (or empty) key is the default
-    constexpr uint32_t kOmit = OmitIfDefault | EmptyIsDefault | CodegenIfChanged;
-    constexpr uint32_t kOmitFloat = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | CodegenIfChanged;
+    constexpr uint32_t kOmit = OmitIfDefault | EmptyIsDefault;
+    constexpr uint32_t kOmitFloat = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault;
     constexpr uint64_t kCurve = UpdateFlags_Spline;
 
     // a list whose elements are flow maps, one per line; exported as push_backs of each
@@ -171,7 +169,6 @@ namespace {
     constexpr TypeOps flowList() {
         TypeOps ops = jasperengine::editor::reflect::ops::Array<T>;
         ops.toYaml = &flowListToYaml;
-        ops.cppStatements = &detail::structPushBackStatements;
         return ops;
     }
 
@@ -265,19 +262,6 @@ namespace {
         const float length = up.length();
         up = (std::isfinite(length) && length > 0.0f) ? up / length : Vector3(0.0f, 1.0f, 0.0f);
         data.markDirty();
-    }
-
-    // the terrain settings away from their defaults (a struct the field list does not export)
-    void splineCodegen(const void* comp, const CodegenContext& ctx, std::string& out) {
-        const SplineComponent& spline = *static_cast<const SplineComponent*>(comp);
-        const SplineTerrainSettings defaults;
-        void* settings = const_cast<SplineTerrainSettings*>(&spline.terrain);
-        const std::string ind = Factory::indentation(ctx.indentSpaces);
-        for (const FieldDesc& member : kSplineTerrainFields) {
-            const void* value = member.ref(settings);
-            if (member.ops->equals(value, member.ref(const_cast<SplineTerrainSettings*>(&defaults)), 0.0f) || !member.ops->cppLiteral) continue;
-            out += ind + ctx.variable + ".terrain." + member.name + " = " + member.ops->cppLiteral(member, value, ctx) + ";\n";
-        }
     }
 
     // ---------------------------------------------------------------- Spline Extrude
@@ -431,7 +415,6 @@ const ComponentDesc kSplineDesc{
     .body = JE_STRUCT_DESC(SplineComponent, "SplineComponent", kSplineFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SplineComponent),
     .postDecode = &splinePostDecode,
-    .codegenVar = "spline", .codegenExtra = &splineCodegen,
 };
 
 const ComponentDesc kSplineExtrudeDesc{
@@ -439,7 +422,6 @@ const ComponentDesc kSplineExtrudeDesc{
     .displayName = "Spline Extrude", .icon = ICON_FA_ROAD,
     .body = JE_STRUCT_DESC(SplineExtrudeComponent, "SplineExtrudeComponent", kSplineExtrudeFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SplineExtrudeComponent),
-    .codegenVar = "splineExtrude",
 };
 
 const ComponentDesc kSplineInstantiateDesc{
@@ -447,7 +429,6 @@ const ComponentDesc kSplineInstantiateDesc{
     .displayName = "Spline Instantiate", .icon = ICON_FA_TREE,
     .body = JE_STRUCT_DESC(SplineInstantiateComponent, "SplineInstantiateComponent", kSplineInstantiateFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SplineInstantiateComponent),
-    .codegenVar = "splineInstantiate",
 };
 
 const ComponentDesc kSplineAnimateDesc{
@@ -455,7 +436,6 @@ const ComponentDesc kSplineAnimateDesc{
     .displayName = "Spline Animate", .icon = ICON_FA_ROUTE,
     .body = JE_STRUCT_DESC(SplineAnimateComponent, "SplineAnimateComponent", kSplineAnimateFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SplineAnimateComponent),
-    .codegenVar = "splineAnimate",
 };
 
 }

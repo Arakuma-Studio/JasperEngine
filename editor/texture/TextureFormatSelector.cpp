@@ -241,6 +241,7 @@ TextureFormatChoice TextureFormatSelector::select(const TextureFormatInputs& in)
     if (needsMultipleOf4(in.family, choice) && (in.width % 4 != 0 || in.height % 4 != 0)){
         const TextureImportType type = s.type;
         if (type == TextureImportType::Sprite || type == TextureImportType::UI){
+            choice.fallbackFrom = choice.label();
             choice.codec = TextureCodec::Raw;
             choice.format = uncompressedOf(kind);
             choice.uncompressed = true;

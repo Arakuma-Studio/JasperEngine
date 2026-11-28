@@ -9,6 +9,7 @@
 #include "SokolPassRecorder.h"
 #include "SokolSystem.h"
 #include "render/SystemRender.h"
+#include "device/GpuQuirks.h"
 
 #include "sokol_gfx.h"
 #include <cmath>
@@ -42,6 +43,11 @@ SokolCamera::~SokolCamera(){
 }
 
 void SokolCamera::setClearColor(Vector4 clearColor){
+#if JASPERENGINE_GPU_QUIRK_TEST_HOOKS
+    // the test-only quirk that changes what a frame shows (GpuQuirksGpu's red control)
+    if (GpuQuirks::active(GpuQuirk::TestTint))
+        clearColor = Vector4(1.0f - clearColor.x, clearColor.y, 1.0f - clearColor.z, clearColor.w);
+#endif
     pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
     pass.action.colors[0].clear_value = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
 }
@@ -149,19 +155,36 @@ void SokolCamera::startRenderPass(TextureRender* texture, size_t face, int mip){
     beginPass(texturePass);
 }
 
+namespace {
+    // A window with nothing to draw into (minimized, a Vulkan image not acquired) reports its
+    // swapchain invalid with its size and formats still set (VulkanContext, D3D11Context). sokol
+    // skips such a pass only with every other field unset: a debug sokol fails the begin, and
+    // sg_end_pass then ends a swapchain pass that never began (an abort on Vulkan)
+    sg_swapchain passSwapchain(){
+        sg_swapchain swapchain = System::instance().getSokolSwapchain();
+        if (swapchain.invalid){
+            swapchain = {};
+            swapchain.invalid = true;
+        }
+        return swapchain;
+    }
+}
+
 void SokolCamera::startRenderPass(int width, int height){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     pass.attachments = {};
-    pass.swapchain = System::instance().getSokolSwapchain();
-    pass.swapchain.width = width;
-    pass.swapchain.height = height;
+    pass.swapchain = passSwapchain();
+    if (!pass.swapchain.invalid){
+        pass.swapchain.width = width;
+        pass.swapchain.height = height;
+    }
     beginPass(pass);
 }
 
 void SokolCamera::startRenderPass(){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     pass.attachments = {};
-    pass.swapchain = System::instance().getSokolSwapchain();
+    pass.swapchain = passSwapchain();
     beginPass(pass);
 }
 

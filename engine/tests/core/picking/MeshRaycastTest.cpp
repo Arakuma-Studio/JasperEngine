@@ -25,12 +25,16 @@
 #include "terrain/TerrainHoles.h"
 #include "object/Tilemap.h"
 #include "picking/PickingTestUtil.h"
+#include "support/AllocationCounter.h"
+#include "../terrain/FoliageTestSupport.h"
+#include "Engine.h"
 #include "util/Angle.h"
 
 #include <gtest/gtest.h>
 
 #include <chrono>
 #include <cmath>
+#include <random>
 #include <thread>
 #include <vector>
 
@@ -583,6 +587,241 @@ TEST(MeshRaycast, TerrainHoleMisses){
     if (hit.hit && hit.entity == terrain.getEntity()){
         EXPECT_FALSE(querySurface(component, hit.point.x, hit.point.z).hole);
     }
+}
+
+}  // namespace MeshRaycastTest_cpp
+
+namespace jasperengine {
+    // the engine's frame counter, advanced as the run loop does each frame
+    struct EngineTestAccess {
+        static void nextFrame(){ Engine::frameIndex++; }
+    };
+}
+
+namespace MeshRaycastTest_cpp {
+
+// spatial-queries AC11: within a frame overlaps see the bounds of its first overlap (current =
+// true refits now), the next frame the new ones; overlaps without a rebuild allocate nothing
+TEST(MeshRaycast, OverlapSnapshotRefitsOncePerFrame){
+    Scene scene;
+    Primitive box(&scene);
+    box.createBox(1, 1, 1);
+    Primitive other(&scene);
+    other.createBox(1, 1, 1);
+    other.setPosition(20, 0, 0);
+    settleScene(scene);
+    std::vector<MeshOverlapHit> hits;
+    EngineTestAccess::nextFrame();
+    ASSERT_EQ(MeshRaycast::overlapSphere(&scene, Vector3(0, 0, 0), 1.0f, hits), 1u);
+    EXPECT_EQ(hits[0].entity, box.getEntity());
+
+    // moved within the frame: the snapshot still has it where it was
+    box.setPosition(10, 0, 0);
+    settleScene(scene);
+    EXPECT_EQ(MeshRaycast::overlapSphere(&scene, Vector3(0, 0, 0), 1.0f, hits), 1u);
+    EXPECT_EQ(MeshRaycast::overlapSphere(&scene, Vector3(10, 0, 0), 1.0f, hits), 0u);
+    MeshRaycastOptions current = MeshRaycast::overlapOptions();
+    current.current = true;
+    EXPECT_EQ(MeshRaycast::overlapSphere(&scene, Vector3(10, 0, 0), 1.0f, hits, LAYER_MASK_DEFAULT_RAYCAST, current), 1u);
+
+    // the next frame sees the new bounds
+    box.setPosition(-10, 0, 0);
+    settleScene(scene);
+    EXPECT_EQ(MeshRaycast::overlapBox(&scene, Vector3(-10, 0, 0), Vector3(1, 1, 1), Quaternion::IDENTITY, hits), 0u);
+    EngineTestAccess::nextFrame();
+    ASSERT_EQ(MeshRaycast::overlapBox(&scene, Vector3(-10, 0, 0), Vector3(1, 1, 1), Quaternion(0.9238795f, 0.0f, 0.3826834f, 0.0f), hits), 1u);
+    EXPECT_EQ(hits[0].entity, box.getEntity());
+
+    // 1,000 overlaps without a rebuild (the first 50 after a move: refits, under
+    // SceneBvh::REBUILD_AFTER_REFITS) allocate nothing once warm
+    if (testsupport::countsAllocations()){
+        Primitive added(&scene);
+        added.createBox(1, 1, 1);
+        added.setPosition(40, 0, 0);
+        settleScene(scene);
+        EngineTestAccess::nextFrame();
+        hits.reserve(16);
+        // warm: the rebuild the new object asked for, and one refit
+        MeshRaycast::overlapSphere(&scene, Vector3(20, 0, 0), 8.0f, hits);
+        other.setPosition(21, 0, 0);
+        settleScene(scene);
+        EngineTestAccess::nextFrame();
+        MeshRaycast::overlapSphere(&scene, Vector3(20, 0, 0), 8.0f, hits);
+        uint64_t allocations = 0;
+        size_t found = 0;
+        for (int i = 0; i < 1000; i++){
+            if (i < 50){
+                other.setPosition(20.0f + (float)(i % 7), 0, 0);
+                settleScene(scene);
+            }
+            EngineTestAccess::nextFrame();
+            testsupport::AllocationCountScope scope;
+            found += MeshRaycast::overlapSphere(&scene, Vector3(20, 0, 0), 8.0f, hits);
+            allocations += scope.count();
+        }
+        EXPECT_EQ(found, 1000u);
+        EXPECT_EQ(allocations, 0u);
+    }
+}
+
+// spatial-queries R12: a Terrain's trees have no SceneBvh leaves, so overlaps walk FoliageSystem's
+// cells; each tree is one hit by its mesh's bounds, its Terrain the entity, with its id and prototype
+TEST(MeshRaycast, OverlapFindsTreesByTheirBounds){
+    foliagetest::FoliageFixture fixture;
+    foliagetest::withTrees(fixture, {{10.0f, 10.0f}, {-30.0f, 40.0f}});
+    fixture.settle();
+    Scene* scene = fixture.scene.get();
+    const std::shared_ptr<terraincore::TreeStore> store = fixture.foliage->getTreeStore(fixture.entity);
+    ASSERT_EQ(store->records().size(), 2u);
+    terraincore::TreeId ids[2];
+    FoliageInstanceInfo poses[2];
+    for (int i = 0; i < 2; i++){
+        ids[i] = terraincore::makeTreeId(0, store->records()[i].id);
+        ASSERT_TRUE(fixture.foliage->getTreePose(fixture.entity, ids[i], poses[i]));
+    }
+    std::vector<MeshOverlapHit> hits;
+    EngineTestAccess::nextFrame();
+
+    // the cross mesh: 2 m wide, 4 m tall on its base
+    const Vector3 middle = poses[0].position + Vector3(0.0f, 2.0f, 0.0f);
+    ASSERT_EQ(MeshRaycast::overlapSphere(scene, middle, 0.5f, hits), 1u);
+    EXPECT_EQ(hits[0].entity, fixture.entity);
+    EXPECT_EQ(hits[0].kind, PickKind::TREE);
+    EXPECT_EQ(hits[0].instance, -1);
+    EXPECT_EQ(hits[0].foliageId, ids[0]);
+    EXPECT_EQ(hits[0].prototype, 0);
+    ASSERT_EQ(MeshRaycast::overlapBox(scene, middle + Vector3(1.4f, 0.0f, 0.0f), Vector3(0.5f, 0.5f, 0.5f), Quaternion(0.0f, 45.0f, 0.0f), hits), 1u);
+    EXPECT_EQ(hits[0].foliageId, ids[0]);
+    // past its bounds' side, nothing (the terrain and its grass are not default kinds)
+    EXPECT_EQ(MeshRaycast::overlapSphere(scene, middle + Vector3(2.5f, 0.0f, 0.0f), 1.0f, hits), 0u);
+
+    // both, in foliageId order
+    ASSERT_EQ(MeshRaycast::overlapSphere(scene, (poses[0].position + poses[1].position) * 0.5f, 40.0f, hits), 2u);
+    EXPECT_EQ(hits[0].foliageId, std::min(ids[0], ids[1]));
+    EXPECT_EQ(hits[1].foliageId, std::max(ids[0], ids[1]));
+
+    // the filters are the Terrain's: kinds, layer mask, ignore
+    MeshRaycastOptions noTrees = MeshRaycast::overlapOptions();
+    noTrees.kinds = MeshRaycast::MESH | MeshRaycast::INSTANCE | MeshRaycast::BOUNDS;
+    EXPECT_EQ(MeshRaycast::overlapSphere(scene, middle, 0.5f, hits, LAYER_MASK_DEFAULT_RAYCAST, noTrees), 0u);
+    const uint32_t terrainLayer = 1u << (scene->getEntityLayer(fixture.entity) & 31);
+    EXPECT_EQ(MeshRaycast::overlapSphere(scene, middle, 0.5f, hits, LAYER_MASK_DEFAULT_RAYCAST & ~terrainLayer), 0u);
+    MeshRaycastOptions ignore = MeshRaycast::overlapOptions();
+    ignore.ignore = {fixture.entity};
+    EXPECT_EQ(MeshRaycast::overlapSphere(scene, middle, 0.5f, hits, LAYER_MASK_DEFAULT_RAYCAST, ignore), 0u);
+
+    // details only when asked: the layer in prototype, no id
+    MeshRaycastOptions withDetails = MeshRaycast::overlapOptions();
+    withDetails.kinds |= MeshRaycast::DETAIL;
+    MeshRaycast::overlapSphere(scene, poses[0].position, 6.0f, hits, LAYER_MASK_DEFAULT_RAYCAST, withDetails);
+    size_t details = 0;
+    for (const MeshOverlapHit& hit : hits){
+        if (hit.kind != PickKind::DETAIL) continue;
+        details++;
+        EXPECT_EQ(hit.entity, fixture.entity);
+        EXPECT_EQ(hit.foliageId, 0u);
+        EXPECT_EQ(hit.prototype, 0);
+    }
+    EXPECT_GT(details, 0u);
+    MeshRaycast::overlapSphere(scene, poses[0].position, 6.0f, hits);
+    for (const MeshOverlapHit& hit : hits) EXPECT_NE(hit.kind, PickKind::DETAIL) << "details are opt-in, as for rays";
+
+    // R20: the walk allocates nothing once out has room
+    if (testsupport::countsAllocations()){
+        hits.reserve(4096);
+        MeshRaycast::overlapSphere(scene, poses[0].position, 6.0f, hits, LAYER_MASK_DEFAULT_RAYCAST, withDetails);
+        uint64_t allocations = 0;
+        size_t found = 0;
+        for (int i = 0; i < 100; i++){
+            EngineTestAccess::nextFrame();
+            testsupport::AllocationCountScope scope;
+            found += MeshRaycast::overlapSphere(scene, poses[0].position, 6.0f, hits, LAYER_MASK_DEFAULT_RAYCAST, withDetails);
+            found += MeshRaycast::overlapBox(scene, middle, Vector3(3.0f, 3.0f, 3.0f), Quaternion(0.0f, 30.0f, 0.0f), hits);
+            allocations += scope.count();
+        }
+        EXPECT_GT(found, 200u);
+        EXPECT_EQ(allocations, 0u);
+    }
+}
+
+// The walk keeps every tree whose world bounds can touch the shape though the Terrain turns and
+// scales unevenly (a world box's preimage is no box): it equals testing every tree's bounds, also
+// for small spheres just past a tree's bounds' corner, far from the tree itself
+TEST(MeshRaycast, OverlapTreesMatchAScanOnATurnedTerrain){
+    foliagetest::FoliageFixture fixture;
+    TerrainTreePrototype prototype;
+    prototype.id = 5;
+    prototype.meshPath = AssetRef(foliagetest::crossMesh());
+    fixture.terrain().treePrototypes.push_back(prototype);
+    fixture.frame();
+    std::shared_ptr<terraincore::TreeStore> store = fixture.foliage->getOrCreateTreeStore(fixture.entity);
+    ASSERT_NE(store, nullptr);
+    std::mt19937 rng(5);
+    std::uniform_real_distribution<float> along(-60.0f, 60.0f);
+    std::vector<terraincore::TreeRecord> added;
+    for (int i = 0; i < 300; i++){
+        terraincore::TreeRecord record = foliagetest::treeAt(along(rng), along(rng), 5);
+        record.scale = 0.5f + (float)(i % 5) * 0.4f;
+        added.push_back(record);
+    }
+    terraincore::TreeDelta delta;
+    store->apply({}, added, {}, &delta);
+    fixture.foliage->treesChanged(fixture.entity, delta);
+    fixture.scene->getComponent<Transform>(fixture.entity).modelMatrix =
+        Matrix4::composeTRS(Vector3(7.0f, -2.0f, 3.0f), Quaternion(35.0f, 45.0f, 0.0f), Vector3(2.0f, 1.0f, 0.5f));
+    fixture.settle();
+
+    std::vector<FoliageSystem::FoliageInBox> every;
+    auto collect = [&](const FoliageSystem::FoliageInBox& found){ every.push_back(found); };
+    fixture.foliage->forEachFoliageInBox(AABB(Vector3(-1e5f, -1e5f, -1e5f), Vector3(1e5f, 1e5f, 1e5f)), true, false, collect);
+    ASSERT_EQ(every.size(), added.size()) << "every tree is resident and loaded";
+
+    MeshRaycastOptions trees = MeshRaycast::overlapOptions();
+    trees.kinds = MeshRaycast::TREE;
+    std::uniform_real_distribution<float> place(-110.0f, 110.0f);
+    std::uniform_real_distribution<float> height(-15.0f, 25.0f);
+    std::uniform_real_distribution<float> size(0.2f, 6.0f);
+    std::vector<MeshOverlapHit> hits;
+    size_t total = 0;
+    std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+    for (int q = 0; q < 4000; q++){
+        Vector3 center(place(rng), height(rng), place(rng));
+        const bool box = q % 2 == 1;
+        float radius = size(rng);
+        const Vector3 half(size(rng), size(rng), size(rng));
+        if (q % 4 == 0){
+            // a 0.3 m sphere 0.25 m out of a corner of a tree's bounds, along the diagonal
+            const AABB& bounds = every[(size_t)q / 4 % every.size()].bounds;
+            const Vector3 sign(unit(rng) < 0.5f ? -1.0f : 1.0f, unit(rng) < 0.5f ? -1.0f : 1.0f, unit(rng) < 0.5f ? -1.0f : 1.0f);
+            const Vector3 corner = bounds.getCenter() + bounds.getHalfSize() * sign;
+            center = corner + sign * (0.25f / 1.7320508f);
+            radius = 0.3f;
+        }
+        std::vector<uint64_t> expected;
+        for (const FoliageSystem::FoliageInBox& tree : every){
+            const Vector3& mn = tree.bounds.getMinimum();
+            const Vector3& mx = tree.bounds.getMaximum();
+            bool touches;
+            if (box){
+                touches = center.x + half.x >= mn.x && center.x - half.x <= mx.x && center.y + half.y >= mn.y &&
+                          center.y - half.y <= mx.y && center.z + half.z >= mn.z && center.z - half.z <= mx.z;
+            }else{
+                const float dx = std::max({mn.x - center.x, 0.0f, center.x - mx.x});
+                const float dy = std::max({mn.y - center.y, 0.0f, center.y - mx.y});
+                const float dz = std::max({mn.z - center.z, 0.0f, center.z - mx.z});
+                touches = dx * dx + dy * dy + dz * dz <= radius * radius;
+            }
+            if (touches) expected.push_back(tree.id);
+        }
+        std::sort(expected.begin(), expected.end());
+        if (box) MeshRaycast::overlapBox(fixture.scene.get(), center, half, Quaternion::IDENTITY, hits, LAYER_MASK_DEFAULT_RAYCAST, trees);
+        else MeshRaycast::overlapSphere(fixture.scene.get(), center, radius, hits, LAYER_MASK_DEFAULT_RAYCAST, trees);
+        std::vector<uint64_t> got;
+        for (const MeshOverlapHit& hit : hits) got.push_back(hit.foliageId);
+        ASSERT_EQ(got, expected) << "query " << q << (box ? " (box)" : " (sphere)");
+        total += got.size();
+    }
+    EXPECT_GT(total, 200u) << "the queries reach trees";
 }
 
 }  // namespace MeshRaycastTest_cpp

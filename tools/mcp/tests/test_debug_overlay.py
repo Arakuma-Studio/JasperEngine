@@ -106,7 +106,8 @@ async def test_console_in_play(ed: Editor):
     await start(ed)
     try:
         state = await ed.call("get_play_state")
-        ed.check_eq(state.get("debug_overlay"), {"enabled": True, "console_visible": False, "stats": "off"}, "overlay block")
+        ed.check_eq(state.get("debug_overlay"), {"enabled": True, "console_visible": False, "stats": "off",
+                                                "commands_enabled": True, "cheats_used": False}, "overlay block")
         before = await ed.screenshot("game")
 
         await lua(ed, "DebugOverlay.showConsole()")

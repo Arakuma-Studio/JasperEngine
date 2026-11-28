@@ -21,7 +21,8 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"diagnostics", "Jobs, memory, ECS, logging and crash/hang diagnostics."},
         {"editor_ux", "Undo history, command palette, layouts, search, bookmarks and Scene view tools."},
         {"profiling", "GPU/CPU timings, VRAM, frame passes and render statistics."},
-        {"device", "Device tiers: detected GPU tier and why, thermal and memory state, overrides in effect, Play simulation."},
+        {"device", "Device tiers: detected GPU tier and why, thermal and memory state, overrides in effect, Play simulation. "
+                   "A build on a phone or emulator: build_project run_device, run_build device (core)."},
         {"rendering_fx", "Shadow statistics and debug views, fog, clouds, post effects beyond the core set, material variants and light units."},
         {"meshes", "Model import and cook settings, detail levels (LOD) and their captures, render budgets."},
         {"splines", "Roads, walls, rivers, placement, terrain on splines (jasper://docs/splines)."},
@@ -31,14 +32,16 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"particles", "Particle processors, forces, trails, sub-emitters and render modes."},
         {"animation", "Blend spaces, state machines, layers, IK, retargeting and curves."},
         {"gameplay", "Character controller, buoyancy and input action maps."},
-        {"physics", "Ragdolls and physics materials."},
+        {"physics", "Ragdolls, physics materials and physics queries in Play."},
         {"audio", "Audio Mixer, sound analysis, placeholders, sound search, Sound Events, Play capture and checks."},
-        {"editor_tools", "Colour picker, curve editor, project templates and movie recording."},
+        {"editor_tools", "Colour picker, curve editor, project templates, and the Recorder: movies, PNG sequences, screenshots from a "
+                         ".input.json at several sizes."},
         {"vcs", "Version control: status, locks, commits and scene diffs."},
-        {"scripting", "Script hot reload and status, editor-script menus and numeric expressions."},
+        {"testing", "The project's tests (Tests/*.test.lua): run, list, import player results, accept goldens (jasper://docs/testing)."},
+        {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, Data Assets, PlayerPrefs and save slots (user_settings)."},
         {"graphs", "Graph files (Procedural Materials and other node graphs): kinds, node catalog, read, validate, edit."},
         {"materials", "Procedural Materials: preview any material with checks, bake a graph to PNGs and a .material (jasper://docs/procedural-materials)."},
-        {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
+        {"html_ui", "HTML UI: preview exact frames without Play and watch for saves; interactive list, grid, tree and table views."},
         {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
         // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
         {"tilemaps", "Tilesets (tiles, collision, terrains, animation, properties) and Tiled/LDtk map import (jasper://docs/tilemaps)."},
@@ -46,6 +49,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         // the pixel-art family's group: S42's check, S43's palettes, S51's font previews, S48's effect contact sheets, S46's cleanup and lints (pages named in pixel-art.md)
         {"pixel_art", "Pixel art: checks, lints, cleanup, palettes, fonts, effect contact sheets (jasper://docs/pixel-art)."},
         {"title_art", "Title Art documents (.titleart): library, edit, render, check, export."},
+        {"localization", "String Tables: keys, translations, coverage, Play misses, CSV/XLIFF (jasper://docs/localization)."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

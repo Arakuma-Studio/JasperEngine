@@ -10,8 +10,10 @@
 //   nothing inside expected-write scopes, then their textures are reloaded and recooked
 //   explicitly. Bakes are not undo steps (derived files).
 // - TitleArtBakeJob is resumable: step(budgetMs) advances the current render within the budget
-//   (TitleRenderJob slices), so the editor keeps drawing; run() takes it to the end (export,
-//   CLI). `dryRun` renders and reports sizes, bytes and VRAM without writing.
+//   (TitleRenderJob slices), so the editor keeps drawing; every caller steps it from the frames
+//   (export_title, edit_title, the export's rebakes, Auto Bake), since a render that meets a
+//   program still being built waits for the frames that build it (S80 Deviation 61). `dryRun`
+//   renders and reports sizes, bytes and VRAM without writing.
 // - Auto Bake (R34): with title_art.auto_bake, a commit (or an outside edit, or a changed font,
 //   image or SVG of the document) of a document whose outputs exist schedules a rebake of its
 //   stale outputs 500 ms after its last change; TitleArtAutoBake::tick runs from the editor
@@ -81,8 +83,6 @@ namespace jasperengine::editor {
 
         // advances within about `budgetMs`; true when finished (ok or failed)
         bool step(double budgetMs);
-        // to the end
-        const TitleBakeResult& run();
         bool done() const { return finished; }
         // renders finished / renders in all
         float progress() const;
@@ -121,9 +121,6 @@ namespace jasperengine::editor {
         void fail(const std::string& code, const std::string& message);
     };
 
-    // bakes a document to the end (the export, the CLI, edit_title's bake "now")
-    TitleBakeResult bakeTitleArt(Project* project, const std::filesystem::path& document, const titleart::TitleArtDoc& doc,
-                                 const TitleBakeOptions& options);
     // the document of a path for baking: the open document's snapshot, else the file's; false with
     // `error` (and `code`) when it does not load or is a newer version
     bool loadTitleArtForBake(Project* project, const std::filesystem::path& document, titleart::TitleArtDoc& out, std::string& code,

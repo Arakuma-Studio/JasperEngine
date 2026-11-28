@@ -119,6 +119,8 @@ namespace jasperengine{
         bool isTransparent() const { return transparent || (autoTransparency && derivedTransparent); }
 
         bool hasTextureRect = false;
+        // a sprite frame outside UV units (0..1) was warned about, once per Points (runtime)
+        bool frameUnitsWarned = false;
 
         // UI particles (Points under a RectTransform): the Canvas Group alpha over the chain,
         // multiplied into each render point (UISystem::syncCanvasGroups), runtime

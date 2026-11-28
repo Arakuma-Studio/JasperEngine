@@ -19,6 +19,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -239,6 +241,84 @@ TEST(CompatBasicShape, ShapesToSvg){
     EXPECT_FALSE(BasicShape::parse("circle(10px) circle(5px)", shape, &error));
     EXPECT_FALSE(BasicShape::parse("blob(10px)", shape, &error));
     EXPECT_FALSE(BasicShape::parse("", shape, &error));
+}
+
+// S92 R8: inset(), xywh(), rect(), circle() and ellipse() as the rounded rectangle an analytic clip
+// takes (what toSvg draws); polygon() and path() are none
+TEST(CompatBasicShape, RoundedShapesAsClipRectangles){
+    BasicShape shape;
+    std::string error;
+    Rml::Rectanglef rect;
+    Rml::Array<Rml::Vector2f, 4> radii;
+    ASSERT_TRUE(BasicShape::parse("inset(10px 20% round 5px 0 8px / 4px)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toRoundedRect(100, 50, nullptr, rect, radii));
+    EXPECT_FLOAT_EQ(rect.Left(), 20.0f);
+    EXPECT_FLOAT_EQ(rect.Top(), 10.0f);
+    EXPECT_FLOAT_EQ(rect.Width(), 60.0f);
+    EXPECT_FLOAT_EQ(rect.Height(), 30.0f);
+    EXPECT_EQ(radii[0], Rml::Vector2f(5, 4));
+    EXPECT_EQ(radii[1], Rml::Vector2f(0, 4));
+    EXPECT_EQ(radii[2], Rml::Vector2f(8, 4));
+
+    ASSERT_TRUE(BasicShape::parse("circle(at right 10px top)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toRoundedRect(100, 40, nullptr, rect, radii));
+    EXPECT_FLOAT_EQ(rect.Width(), 0.0f);
+    ASSERT_TRUE(BasicShape::parse("circle(50% at 50% 50%)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toRoundedRect(40, 40, nullptr, rect, radii));
+    EXPECT_FLOAT_EQ(rect.Left(), 0.0f);
+    EXPECT_FLOAT_EQ(rect.Width(), 40.0f);
+    EXPECT_EQ(radii[3], Rml::Vector2f(20, 20));
+    ASSERT_TRUE(BasicShape::parse("ellipse(farthest-side 25% at left)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toRoundedRect(100, 40, nullptr, rect, radii));
+    EXPECT_FLOAT_EQ(rect.Left(), -100.0f);
+    EXPECT_FLOAT_EQ(rect.Top(), 10.0f);
+    EXPECT_EQ(radii[0], Rml::Vector2f(100, 10));
+    ASSERT_TRUE(BasicShape::parse("xywh(10px 5px 50% 20px round 3px)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toRoundedRect(100, 40, nullptr, rect, radii));
+    EXPECT_FLOAT_EQ(rect.Right(), 60.0f);
+    EXPECT_EQ(radii[2], Rml::Vector2f(3, 3));
+
+    ASSERT_TRUE(BasicShape::parse("polygon(50% 0%, 100% 100%, 0 100%)", shape, &error)) << error;
+    EXPECT_FALSE(shape.toRoundedRect(20, 10, nullptr, rect, radii));
+    ASSERT_TRUE(BasicShape::parse("path('M0 0 L10 0 L10 10 Z')", shape, &error)) << error;
+    EXPECT_FALSE(shape.toRoundedRect(10, 10, nullptr, rect, radii));
+}
+
+// S92: convex polygon() of at most 16 points as an analytic clip, counter-clockwise; anything else keeps the mask
+TEST(CompatBasicShape, ConvexPolygonsAsClips){
+    BasicShape shape;
+    std::string error;
+    std::vector<Rml::Vector2f> points;
+    // the port's octagon, written clockwise on screen (y down): turned counter-clockwise
+    ASSERT_TRUE(BasicShape::parse("polygon(21px 0px, 69px 0px, 90px 21px, 90px 49px, 69px 70px, 21px 70px, 0px 49px, 0px 21px)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toConvexPolygon(90, 70, nullptr, points));
+    ASSERT_EQ(points.size(), 8u);
+    double area = 0.0;
+    for (size_t i = 0; i < points.size(); i++){
+        const Rml::Vector2f a = points[i], b = points[(i + 1) % points.size()];
+        area += (double)a.x * b.y - (double)b.x * a.y;
+    }
+    EXPECT_GT(area, 0.0);
+    // percentages, a fill rule, a repeated closing point
+    ASSERT_TRUE(BasicShape::parse("polygon(evenodd, 50% 0%, 100% 100%, 0% 100%, 50% 0%)", shape, &error)) << error;
+    ASSERT_TRUE(shape.toConvexPolygon(20, 10, nullptr, points));
+    EXPECT_EQ(points.size(), 3u);
+    // concave, a star (turns twice), collinear only, more than 16 points, another shape: no
+    ASSERT_TRUE(BasicShape::parse("polygon(0% 0%, 100% 0%, 50% 40%, 100% 100%, 0% 100%)", shape, &error)) << error;
+    EXPECT_FALSE(shape.toConvexPolygon(90, 70, nullptr, points));
+    ASSERT_TRUE(BasicShape::parse("polygon(50% 0%, 79% 90%, 2% 35%, 98% 35%, 21% 90%)", shape, &error)) << error;
+    EXPECT_FALSE(shape.toConvexPolygon(100, 100, nullptr, points));
+    ASSERT_TRUE(BasicShape::parse("polygon(0px 0px, 10px 0px, 20px 0px)", shape, &error)) << error;
+    EXPECT_FALSE(shape.toConvexPolygon(20, 20, nullptr, points));
+    std::string many = "polygon(";
+    for (int i = 0; i < 17; i++){
+        const double angle = 2.0 * 3.14159265358979 * i / 17.0;
+        many += (i ? ", " : "") + std::to_string(50.0 + 40.0 * std::cos(angle)) + "px " + std::to_string(50.0 + 40.0 * std::sin(angle)) + "px";
+    }
+    ASSERT_TRUE(BasicShape::parse(many + ")", shape, &error)) << error;
+    EXPECT_FALSE(shape.toConvexPolygon(100, 100, nullptr, points));
+    ASSERT_TRUE(BasicShape::parse("inset(10px)", shape, &error)) << error;
+    EXPECT_FALSE(shape.toConvexPolygon(100, 100, nullptr, points));
 }
 
 // ---------------------------------------------------------------- GPU

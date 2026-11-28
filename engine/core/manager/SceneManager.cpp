@@ -5,6 +5,9 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "Log.h"
+#include "System.h"
+#include "diag/Journal.h"
+#include "profiler/PerfSampler.h"
 #include "memory/HeapTrim.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AudioSystem.h"
@@ -37,6 +40,9 @@ using namespace jasperengine;
 
 std::vector<SceneManager::SceneEntry> SceneManager::entries;
 uint32_t SceneManager::currentId = 0;
+std::string SceneManager::buildProfileName;
+std::vector<uint32_t> SceneManager::buildProfileScenes;
+bool SceneManager::buildProfileScenesSet = false;
 std::optional<uint32_t> SceneManager::pendingId;
 std::map<uint32_t, Scene*> SceneManager::scenePtrs;
 bool SceneManager::factoryRunning = false;
@@ -49,6 +55,7 @@ SceneManager::LoadingState SceneManager::loadingState = SceneManager::LoadingSta
 bool SceneManager::loadingSceneShown = false;
 bool SceneManager::loadingSceneReady = false;
 double SceneManager::loadingStateTime = 0.0;
+double SceneManager::journalLoadStart = 0.0;
 size_t SceneManager::loadingCount = 0;
 double SceneManager::loadingProgressTime = 0.0;
 float SceneManager::loadingProgress = 0.0f;
@@ -144,8 +151,26 @@ bool SceneManager::loadScene(const std::string& name) {
             return loadScene(entries[i].id);
         }
     }
+    // a build of a Build Profile registers only the scenes the profile ships
+    if (!System::getBuildProfile().empty()) {
+        Log::error("Scene '%s' is not in this build (Build Profile '%s')", name.c_str(), System::getBuildProfile().c_str());
+        return false;
+    }
     Log::error("SceneManager: scene '%s' not found", name.c_str());
     return false;
+}
+
+void SceneManager::setBuildProfileScenes(const std::string& profile, const std::vector<uint32_t>& sceneIds) {
+    buildProfileName = profile;
+    buildProfileScenes = sceneIds;
+    buildProfileScenesSet = !profile.empty();
+}
+
+void SceneManager::warnOutsideBuildProfile(uint32_t id) {
+    if (!buildProfileScenesSet || std::find(buildProfileScenes.begin(), buildProfileScenes.end(), id) != buildProfileScenes.end()) return;
+    const SceneEntry* entry = findEntry(id);
+    Log::warn("Scene '%s' is not in Build Profile '%s': a build leaves it out", entry ? entry->name.c_str() : std::to_string(id).c_str(),
+              buildProfileName.c_str());
 }
 
 SceneManager::SceneEntry* SceneManager::findEntry(uint32_t id) {
@@ -167,6 +192,14 @@ void SceneManager::runFactory(uint32_t id) {
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::sceneLoad(entry->name, "load");
 #endif
+
+    // the Gameplay Journal: the stack this load replaces
+    if (currentId != 0 && findEntry(currentId)) {
+        const std::string unloaded = getSceneName(currentId);
+        const diag::journal::Field fields[] = {{"name", std::string_view(unloaded)}};
+        diag::journal::logEngine("engine.scene_unloaded", fields);
+    }
+    journalLoadStart = Engine::getSystemTime();
 
     // Copied for the same reason as in addChildScene: the factory runs scripts
     std::function<void()> loadFactory = entry->loadFactory;
@@ -231,6 +264,7 @@ bool SceneManager::loadScene(uint32_t id) {
         Log::error("SceneManager: scene id %u not found", id);
         return false;
     }
+    warnOutsideBuildProfile(id);
 
     // input callbacks run between frames, but still inside the scenes being replaced; a
     // script's init asking from inside a load factory (the first scene's, before any frame and
@@ -443,6 +477,7 @@ void SceneManager::setCurrentScene(uint32_t id) {
     currentId = id;
     Engine::markLevelLoad();
     loadingState = LoadingState::Loading;
+    journalLoadStart = Engine::getSystemTime();
     resetLoadProgress();
 }
 
@@ -639,7 +674,7 @@ void SceneManager::updatePreloads() {
             SoundPool::parseClipRef(*it, file, loadType);
             const SoundLoadResult result = SoundPool::loadClip(file, loadType);
             const std::string id = result.id;
-            auto release = [id]() { SoundPool::remove(id); };
+            auto release = [id]() { SoundPool::release(id); };
             it = finished(result, release) ? pending.sounds.erase(it) : it + 1;
             if (oneFile) return;
         }
@@ -782,7 +817,15 @@ void SceneManager::updateLoading() {
         }
 
         loadingState = LoadingState::Loaded;
+        {
+            const std::string loaded = getSceneName(currentId);
+            const diag::journal::Field fields[] = {{"ms", static_cast<int64_t>((now - journalLoadStart) * 1000.0)},
+                                                   {"name", std::string_view(loaded)}};
+            diag::journal::logEngine("engine.scene_loaded", fields);
+        }
         // a handler can hold the load or start another one
+        // the Performance sampler drops the second after a scene load (R3)
+        PerfSampler::noteSceneLoaded();
         Engine::onSceneLoaded.call();
     }
 
@@ -806,6 +849,7 @@ bool SceneManager::addChildScene(uint32_t id) {
         Log::error("SceneManager: scene id %u not found", id);
         return false;
     }
+    warnOutsideBuildProfile(id);
 
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::sceneLoad(entry->name, "add");
@@ -846,7 +890,10 @@ bool SceneManager::addChildScene(uint32_t id) {
 bool SceneManager::addChildScene(const std::string& name) {
     uint32_t id = getSceneId(name);
     if (id == 0) {
-        Log::error("SceneManager: scene '%s' not found", name.c_str());
+        if (!System::getBuildProfile().empty())
+            Log::error("Scene '%s' is not in this build (Build Profile '%s')", name.c_str(), System::getBuildProfile().c_str());
+        else
+            Log::error("SceneManager: scene '%s' not found", name.c_str());
         return false;
     }
 
@@ -1238,4 +1285,9 @@ void SceneManager::endStartingScenes() {
 
 bool SceneManager::isStartingScenes() {
     return factoryRunning || startingScenes > 0;
+}
+
+void SceneManager::mainSceneStarting(Scene* scene) {
+    if (!scene || scene == persistentScene || currentId == 0 || getScenePtr(currentId) != scene) return;
+    Engine::applySceneUpdateTime(scene->getFixedTimestep());
 }

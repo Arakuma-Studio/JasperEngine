@@ -37,7 +37,7 @@ REPO = Path(__file__).resolve().parents[3]
 ESSENTIALS = REPO / "editor/resources/sound-library/essentials"
 JUMP = REPO / "tools/fixtures/audio/assets/audio/jump.wav"
 REF = Path(ar.__file__).resolve().parent / "audio_defects_ref.py"
-ANALYZER_VERSION = 1
+ANALYZER_VERSION = 2
 
 NEW_NOTES = ("edge_click", "clicks", "crackle", "truncated_tail", "silence_gap", "harsh_resonance", "aliasing", "trim_cut")
 EDGE_MAX_DB = -40.0

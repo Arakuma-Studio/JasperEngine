@@ -428,6 +428,24 @@ std::string TerrainWorldSystem::getError(Entity entity) const {
     return it == errors.end() ? std::string() : it->second;
 }
 
+bool TerrainWorldSystem::isAreaLoaded(float x, float z, float radius) {
+    for (const auto& [entity, runtime] : runtimes) {
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        const Vector3 origin = transform ? transform->worldPosition : Vector3(0.0f, 0.0f, 0.0f);
+        if (!runtime->isAreaLoaded(x - origin.x, z - origin.z, radius)) return false;
+    }
+    return true;
+}
+
+float TerrainWorldSystem::getTileSize() const {
+    float size = 0.0f;
+    for (const auto& entry : runtimes) {
+        const float tile = entry.second->lattice().tileSize();
+        if (tile > 0.0f && (size == 0.0f || tile < size)) size = tile;
+    }
+    return size;
+}
+
 TerrainWorldRuntime* TerrainWorldSystem::getRuntime(Entity entity) {
     const auto it = runtimes.find(entity);
     return it == runtimes.end() ? nullptr : it->second.get();

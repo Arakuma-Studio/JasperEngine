@@ -37,6 +37,8 @@ namespace jasperengine {
         std::string group;
         // the delay runs on unscaled time
         bool unscaled = false;
+        // a clip's voice loops until stopped (S97 REQ-22); a Sound Event keeps its own loop setting
+        bool loop = false;
 
         PlayOptions& following(const EntityHandle& gameObject);
     };

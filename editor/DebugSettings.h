@@ -29,6 +29,9 @@ namespace jasperengine::editor {
         DebugOverlaySettings::Stats stats = DebugOverlaySettings::Stats::Off;
         DebugOverlaySettings::Corner statsCorner = DebugOverlaySettings::Corner::TopLeft;
         AllowLua allowLua = AllowLua::Development;
+        // who outside the game's code may type console commands (the command field, agents,
+        // the player's --command): development builds, always or never
+        AllowLua consoleCommands = AllowLua::Development;
         unsigned int logBufferSize = 500;
         LogStackTraces logStackTraces = LogStackTraces::Warnings;
 
@@ -55,7 +58,7 @@ namespace jasperengine::editor {
         const std::vector<std::string>& popups();        // never, touch_devices, always
         const std::vector<std::string>& stats();         // off, fps, full
         const std::vector<std::string>& corners();       // top_left, top_right, bottom_left, bottom_right
-        const std::vector<std::string>& allowLua();      // development, always, never
+        const std::vector<std::string>& allowLua();      // development, always, never (Console Commands too)
         const std::vector<std::string>& stackTraces();   // none, errors, warnings, all
 
         std::string name(DebugSettings::Mode value);
