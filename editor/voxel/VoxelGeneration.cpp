@@ -6,7 +6,6 @@
 #include "Scene.h"
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
-#include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
 #include "io/Data.h"
 #include "object/TerrainEdit.h"
