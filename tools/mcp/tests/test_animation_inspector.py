@@ -277,9 +277,11 @@ async def test_player_layers_mesh_space_rotation(ed: Editor):
     header = await ui.reveal("player.layers")
     if "player.layer.1.mask" not in ed.ui_items():
         await ui.click(*center(header))
-    box = await ui.reveal("player.layer.1.meshSpaceRotation")
-    mask = ed.ui_items().get("player.layer.1.mask")
-    ed.check(mask, f"the Mask field is drawn with it: {sorted(ed.ui_items())}")
+    # the Mask row to the panel's top, so the row under it is drawn too (revealing the checkbox itself
+    # scrolls Mask out above it now that each wheel notch is waited for)
+    mask = await ui.reveal("player.layer.1.mask")
+    box = ed.ui_items().get("player.layer.1.meshSpaceRotation")
+    ed.check(box, f"the checkbox is drawn with Mask: {sorted(ed.ui_items())}")
     ed.check(mask[3] <= box[1] < mask[3] + 0.8 * (mask[3] - mask[1]) + 12, f"the checkbox is the row under Mask: mask {mask}, box {box}")
     await ui.click(*center(box))
     layers = (await player(ed))["layers"]
