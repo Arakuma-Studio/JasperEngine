@@ -17,13 +17,6 @@
 ---@field includeSpaces? boolean # append a NBSP to each word's last character, default false
 ---@field accessible? boolean # keep a visually hidden unsplit copy, default true
 
----@class AnimeTextSplitter
----@field chars UIElement[]
----@field words UIElement[]
----@field lines UIElement[]
----@field target UIElement
----@field ready boolean
-
 ---A time (ms), "+=100" / "-=100" / "*=2" (relative to the end), "<" (end of the previous
 ---child), "<<" (its start), "<+=50", a label, "label+=50", or a stagger
 ---@alias AnimeTimelinePosition number|string|AnimeStagger

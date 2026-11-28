@@ -410,7 +410,7 @@ async def play_checks(ed: Editor):
     # (eval_lua captures print while it runs: the callbacks' prints go to a global log instead)
     log = ("_G.guideLog = ''\nlocal print = function(...) "
            "_G.guideLog = _G.guideLog .. table.concat({...}, ' ') .. '\\n' end\n")
-    await lua(ed, prelude("Menu") + log + fragment("lua", "anime.createTimeline"))
+    await lua(ed, prelude("Menu") + log + fragment("lua", "anime.createTimeline({ defaults"))
     await ed.call("wait", frames=150)
     printed = (await lua(ed, "return _G.guideLog"))[0]
     lines = printed.splitlines()
