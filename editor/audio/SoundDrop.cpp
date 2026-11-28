@@ -14,7 +14,6 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "component/AudioSourceComponent.h"
 #include "component/ButtonComponent.h"
-#include "component/Transform.h"
 #include "util/ProjectFileWrites.h"
 #include "util/Util.h"
 #include "window/SoundBrowserWindow.h"

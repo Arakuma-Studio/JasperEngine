@@ -601,6 +601,12 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
 - **AC15 timing.** A browser's clock is too coarse for one 0.04 ms call: the gate times batches of
   100 calls and takes the p99 of the per-call mean over 100 batches. `MeshRaycast.overlapSphere` is
   timed from C++, `Physics.overlapSphereNonAlloc` through Lua.
+- **AC15's budget is reported, not asserted.** `GATE=mesh-raycast` prints each p99 per call with its
+  0.04 ms budget every run; queries that find nothing fail it, a p99 over the budget is a warning line
+  (the nightly's MCP shard builds the project in Debug, several times slower). CI's browser renders in
+  software (SwiftShader) and a loaded host preempts the page, so a hard check measured the runner, not
+  the engine; wall-clock budgets are reported, never asserted (AGENTS.md), as core-utilities' AC17 gate
+  did in #163; `PhysicsQueryBench` still holds the desktop figures.
 - **D8 ring.** An entry holds the `QueryShape`, the sweep and up to 4 hit points (more than 96 bytes);
   the scene's `PhysicsQueryDebug` is made by the first recorded query and its ring freed after 10 s
   with debug draw off and nothing live.

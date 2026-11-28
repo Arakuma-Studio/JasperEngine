@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // T5 AC1, AC4: foliage in wasm with one thread. The fixture's hash goes to the console for the gate to
-// compare with the constant the native suite pins, and a camera jump fills a new ring within the frame
-// budget (WEB_PROJECT=foliage tools/build.sh web, GATE=foliage tools/build.sh web-gate). The terrain is a real
+// compare with the constant the native suite pins, and a camera jump fills a new ring, every cell placed
+// (WEB_PROJECT=foliage tools/build.sh web, GATE=foliage tools/build.sh web-gate). The p99 frame's foliage
+// work is printed with the 4 ms frame budget every run; over it is a warning, not a failure: CI's browser
+// renders in software, and wall-clock budgets are reported, never asserted (AGENTS.md). The terrain is a real
 // one, built and drawn by the engine; its foliage is assets/cross.obj. The camera looks up, so the canvas
 // centre stays the background.
 
@@ -25,6 +27,7 @@ using namespace jasperengine;
 namespace {
 
     constexpr int MAP = 256;
+    constexpr double BUDGET_MS = 4.0;
 
     Scene scene;
     Camera sceneCamera(&scene);
@@ -64,12 +67,15 @@ namespace {
         }
         std::sort(frames.begin(), frames.end());
         const double p99 = frames.empty() ? 0.0 : frames[static_cast<size_t>((frames.size() - 1) * 0.99)];
+        const double p50 = frames.empty() ? 0.0 : frames[frames.size() / 2];
         const bool complete = !foliage->hasPendingUpdates();
         Log::print("%s", complete ? "[gate] foliage cells complete" : "[gate] foliage cells pending");
-        if (p99 <= 4.0) {
-            Log::print("[gate] foliage p99 within 4 ms");
+        Log::print("[gate] foliage p99 %.2f ms (p50 %.2f) over %zu frames, web budget %g ms", p99, p50, frames.size(), BUDGET_MS);
+        if (p99 <= BUDGET_MS) {
+            Log::print("[gate] foliage p99 within %g ms", BUDGET_MS);
         } else {
-            Log::print("[gate] foliage p99 %.2f ms", p99);
+            Log::warn("[gate] foliage p99 %.2f ms over the %g ms web budget (a device figure: this browser may render in software)",
+                      p99, BUDGET_MS);
         }
         phase = 2;
     }
