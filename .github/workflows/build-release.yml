@@ -534,7 +534,7 @@ jobs:
     runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-prebuilt'] || 'ubuntu-latest' }}
     timeout-minutes: 150
     env:
-      JASPER_CI_REPRO: tools/build.sh exec runtime tools/ci/release-players.sh ${{ inputs.version }} build/player-archives build/players linux- web- && tools/build.sh exec runtime python3 tools/ci/test_player_cli.py && SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting
+      JASPER_CI_REPRO: tools/build.sh exec runtime tools/ci/release-players.sh ${{ inputs.version }} build/player-archives build/players linux- web- && tools/build.sh exec runtime python3 tools/ci/test_player_cli.py${{ inputs.channel == 'stable' && '' || ' --skip audio' }} && SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
@@ -563,8 +563,11 @@ jobs:
         run: >-
           tools/ci/logged.sh release-players "tools/build.sh exec runtime tools/ci/release-players.sh
           $JASPERENGINE_VERSION build/player-archives build/players linux- web-"
+      # (a nightly builds the release players only: S35 AC3's audio capture needs a development one)
       - name: Player CLI in the no-compiler image
-        run: tools/ci/logged.sh player-cli 'tools/build.sh exec runtime python3 tools/ci/test_player_cli.py'
+        env:
+          SKIP: ${{ inputs.channel == 'stable' && '' || 'audio' }}
+        run: tools/ci/logged.sh player-cli "tools/build.sh exec runtime python3 tools/ci/test_player_cli.py --skip '$SKIP'"
       - name: Smoke test of the prebuilt player
         run: tools/ci/logged.sh smoke-prebuilt 'SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

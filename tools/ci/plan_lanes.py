@@ -1057,7 +1057,7 @@ NAMESPACE_SHAPES = {"lint": "4x8", "linux": "16x32", "unit-": "16x32", "asan-cor
                     "nightly-slow": "8x32", "nightly-web-threads": "8x16", "nightly-parity": "8x32",
                     "nightly-windows-engine": "8x16", "nightly-mcp-editor": "16x32", "nightly-ios": "6x14",
                     "nightly-export-checks": "8x32", "nightly-coverage-editor": "16x32",
-                    "release-players-linux": "16x32", "release-players-web": "16x32", "release-players-android": "8x32",
+                    "release-players-linux": "16x32", "release-players-web": "16x32", "release-players-android": "16x32",
                     "release-players-windows": "16x32", "release-players-apple": "12x28", "release-editor-linux": "16x32",
                     "release-editor-windows": "16x32", "release-editor-macos": "12x28", "release-prebuilt": "8x32",
                     "release-prebuilt-android": "8x32"}
