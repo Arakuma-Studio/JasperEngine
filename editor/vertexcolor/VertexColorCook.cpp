@@ -42,7 +42,7 @@ void editor::paintedModelChanged(Project& project, const std::string& modelAsset
     if (ModelCookQueue::get().getProject() == &project) ModelCookQueue::get().settingsChanged(modelAssetPath);
 }
 
-std::vector<std::string> editor::vertexColorExportProblems(Project& project) {
+std::vector<std::string> editor::vertexColorExportProblems(Project& project, std::vector<std::string>* unreadable) {
     std::vector<std::string> problems;
     for (SceneProject& sceneProject : project.getScenes()) {
         Scene* scene = sceneProject.scene;
@@ -57,7 +57,7 @@ std::vector<std::string> editor::vertexColorExportProblems(Project& project) {
             jasperengine::vertexcolor::Data shipped;
             std::string error;
             if (!jasperengine::vertexcolor::readFile(vcd::absoluteAssetPath(project, component.data.path), shipped, error)) {
-                problems.push_back(where + ": " + error + ". Fix or replace the file, or clear the component's Data.");
+                (unreadable ? *unreadable : problems).push_back(where + ": " + error + ". Fix or replace the file, or clear the component's Data.");
                 continue;
             }
             for (const jasperengine::vertexcolor::TargetData& target : shipped.targets) {
